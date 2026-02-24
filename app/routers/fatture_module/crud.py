@@ -99,21 +99,22 @@ async def get_archivio_fatture(
     projection = {
         "_id": 0,
         "id": 1,
-        "numero_documento": 1, "invoice_number": 1,
-        "data_documento": 1, "invoice_date": 1,
+        "numero_documento": 1, "invoice_number": 1, "numero_fattura": 1,
+        "data_documento": 1, "invoice_date": 1, "data_fattura": 1,
         "importo_totale": 1, "total_amount": 1,
-        "fornitore_ragione_sociale": 1, "supplier_name": 1,
-        "fornitore_partita_iva": 1, "supplier_vat": 1,
+        "fornitore_ragione_sociale": 1, "supplier_name": 1, "fornitore_nome": 1,
+        "fornitore_partita_iva": 1, "supplier_vat": 1, "fornitore_piva": 1,
         "stato": 1, "stato_pagamento": 1,
         "metodo_pagamento": 1,
         "pagato": 1,
         "riconciliato": 1,
         "has_pdf": 1,
-        "created_at": 1
+        "created_at": 1,
+        "anno": 1
     }
     
     fatture = await db[COL_FATTURE_RICEVUTE].find(query, projection).sort([
-        ("data_documento", -1), ("invoice_date", -1)
+        ("data_documento", -1), ("invoice_date", -1), ("data_fattura", -1)
     ]).skip(skip).limit(limit).to_list(limit)
     
     total = await db[COL_FATTURE_RICEVUTE].count_documents(query)
@@ -121,18 +122,19 @@ async def get_archivio_fatture(
     normalized = []
     for f in fatture:
         normalized.append({
-            "id": f.get("id"),
-            "numero_documento": f.get("numero_documento") or f.get("invoice_number"),
-            "data_documento": f.get("data_documento") or f.get("invoice_date"),
+            "id": f.get("id") or str(f.get("_id", "")),
+            "numero_documento": f.get("numero_documento") or f.get("invoice_number") or f.get("numero_fattura"),
+            "data_documento": f.get("data_documento") or f.get("invoice_date") or f.get("data_fattura"),
             "importo_totale": f.get("importo_totale") or f.get("total_amount", 0),
-            "fornitore_ragione_sociale": f.get("fornitore_ragione_sociale") or f.get("supplier_name"),
-            "fornitore_partita_iva": f.get("fornitore_partita_iva") or f.get("supplier_vat"),
+            "fornitore_ragione_sociale": f.get("fornitore_ragione_sociale") or f.get("supplier_name") or f.get("fornitore_nome"),
+            "fornitore_partita_iva": f.get("fornitore_partita_iva") or f.get("supplier_vat") or f.get("fornitore_piva"),
             "stato": f.get("stato") or f.get("stato_pagamento", "importata"),
             "metodo_pagamento": f.get("metodo_pagamento"),
             "pagato": f.get("pagato", False),
             "riconciliato": f.get("riconciliato", False),
             "has_pdf": f.get("has_pdf", False),
-            "created_at": f.get("created_at")
+            "created_at": f.get("created_at"),
+            "anno": f.get("anno")
         })
     
     return {"fatture": normalized, "total": total, "limit": limit, "skip": skip}
