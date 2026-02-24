@@ -29,7 +29,7 @@ const ALL_NAV_ITEMS = [
   { to: "/prima-nota", label: "Prima Nota", icon: "📒" },
   { to: "/riconciliazione", label: "Riconciliazione", icon: "🏦" },
   { to: "/dipendenti", label: "Dipendenti", icon: "👥" },
-  { to: "/cedolini", label: "Cedolini", icon: "💰" },
+  { to: "/cedolini", label: "Cedolini", icon: "📄" },
   { to: "/f24", label: "F24", icon: "📋" },
   { to: "/iva", label: "IVA", icon: "📊" },
   { to: "/fisco", label: "Fisco", icon: "🏛️" },
