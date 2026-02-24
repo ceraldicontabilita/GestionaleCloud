@@ -149,11 +149,29 @@ async def train_all_models():
         assegni_patterns = await learn_assegni_associations(db)
         results["modules"]["assegni"] = assegni_patterns
         
-        # Salva risultati apprendimento
+        # Salva risultati apprendimento - Converti chiavi None a stringa
+        safe_results = {
+            "started_at": results["started_at"],
+            "modules": {}
+        }
+        
+        for mod_name, mod_data in results["modules"].items():
+            safe_mod = {}
+            for k, v in mod_data.items():
+                if isinstance(v, dict):
+                    # Converti chiavi None in "unknown"
+                    safe_mod[k] = {str(key) if key is not None else "unknown": val for key, val in v.items()}
+                elif isinstance(v, list) and v and isinstance(v[0], tuple):
+                    # Converti tuple a list per JSON
+                    safe_mod[k] = [[str(item[0]) if item[0] is not None else "unknown", item[1]] for item in v]
+                else:
+                    safe_mod[k] = v
+            safe_results["modules"][mod_name] = safe_mod
+        
         await db.learning_results.update_one(
             {"_id": "latest"},
             {"$set": {
-                **results,
+                **safe_results,
                 "completed_at": datetime.utcnow().isoformat()
             }},
             upsert=True
