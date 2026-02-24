@@ -1,6 +1,5 @@
-import React, { lazy } from 'react';
-import { SectionPage } from '../../components/SectionPage';
-import { BookOpen, BarChart2, Settings, Calendar, Building, TrendingUp, Lock } from 'lucide-react';
+import React, { lazy, Suspense } from 'react';
+import { useLocation } from 'react-router-dom';
 
 const PianoContiContent = lazy(() => import('../PianoDeiConti.jsx'));
 const ControlloContent = lazy(() => import('../ControlloMensile.jsx'));
@@ -9,59 +8,43 @@ const CalendarioContent = lazy(() => import('../CalendarioFiscale.jsx'));
 const CespitiContent = lazy(() => import('../GestioneCespiti.jsx'));
 const FinanziariaContent = lazy(() => import('../Finanziaria.jsx'));
 const ChiusuraContent = lazy(() => import('../ChiusuraEsercizio.jsx'));
+const BilancioContent = lazy(() => import('../Bilancio.jsx'));
+
+const Loading = () => (
+  <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>
+    <div style={{
+      width: 32, height: 32,
+      border: '3px solid #e2e8f0',
+      borderTop: '3px solid #2563eb',
+      borderRadius: '50%',
+      animation: 'spin 1s linear infinite',
+      margin: '0 auto 12px'
+    }} />
+    Caricamento...
+  </div>
+);
 
 export default function ContabilitaHub() {
-  const sections = [
-    {
-      id: 'piano-conti',
-      label: 'Piano dei Conti',
-      icon: <BookOpen size={16} />,
-      desc: 'Struttura conti, classificazione, mastri',
-      component: <PianoContiContent />
-    },
-    {
-      id: 'controllo',
-      label: 'Controllo Mensile',
-      icon: <BarChart2 size={16} />,
-      desc: 'Verifica mensile quadratura e anomalie',
-      component: <ControlloContent />
-    },
-    {
-      id: 'motore',
-      label: 'Motore Contabile',
-      icon: <Settings size={16} />,
-      desc: 'Regole automatiche di contabilizzazione',
-      component: <MotoreContent />
-    },
-    {
-      id: 'calendario',
-      label: 'Calendario Fiscale',
-      icon: <Calendar size={16} />,
-      desc: 'Scadenze fiscali e adempimenti',
-      component: <CalendarioContent />
-    },
-    {
-      id: 'cespiti',
-      label: 'Cespiti',
-      icon: <Building size={16} />,
-      desc: 'Registro beni ammortizzabili',
-      component: <CespitiContent />
-    },
-    {
-      id: 'finanziaria',
-      label: 'Finanziaria',
-      icon: <TrendingUp size={16} />,
-      desc: 'Flussi di cassa, indici finanziari',
-      component: <FinanziariaContent />
-    },
-    {
-      id: 'chiusura',
-      label: 'Chiusura Esercizio',
-      icon: <Lock size={16} />,
-      desc: 'Operazioni di chiusura e apertura esercizio',
-      component: <ChiusuraContent />
-    }
-  ];
+  const location = useLocation();
+  const path = location.pathname;
 
-  return <SectionPage title="Contabilità" icon={<BookOpen size={22} />} sections={sections} defaultOpen="piano-conti" />;
+  const getContent = () => {
+    if (path.includes('/piano-dei-conti')) return <PianoContiContent />;
+    if (path.includes('/bilancio')) return <BilancioContent />;
+    if (path.includes('/cespiti')) return <CespitiContent />;
+    if (path.includes('/controllo-mensile')) return <ControlloContent />;
+    if (path.includes('/motore-contabile')) return <MotoreContent />;
+    if (path.includes('/calendario-fiscale')) return <CalendarioContent />;
+    if (path.includes('/finanziaria')) return <FinanziariaContent />;
+    if (path.includes('/chiusura')) return <ChiusuraContent />;
+    return <PianoContiContent />;
+  };
+
+  return (
+    <div style={{ padding: '16px 24px', minHeight: '100vh', background: '#f8fafc' }}>
+      <Suspense fallback={<Loading />}>
+        {getContent()}
+      </Suspense>
+    </div>
+  );
 }
