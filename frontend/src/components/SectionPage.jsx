@@ -26,7 +26,7 @@ export function SectionPage({ title, subtitle, icon, sections, defaultOpen, acti
 
   return (
     <div data-testid="section-page" style={{ minHeight: '100vh', background: '#f8fafc' }}>
-      {/* Header */}
+      {/* Header - Solo titolo, senza tab duplicati */}
       <div style={{
         background: 'white',
         borderBottom: '1px solid #e2e8f0',
@@ -56,56 +56,7 @@ export function SectionPage({ title, subtitle, icon, sections, defaultOpen, acti
         {actions && <div style={{ display: 'flex', gap: 8 }}>{actions}</div>}
       </div>
 
-      {/* Tab Navigation */}
-      <div style={{
-        background: 'white',
-        borderBottom: '1px solid #e2e8f0',
-        padding: '8px 24px',
-        display: 'flex',
-        gap: 6,
-        flexWrap: 'wrap',
-        overflowX: 'auto'
-      }}>
-        {sections.map(s => (
-          <button
-            key={s.id}
-            data-testid={`section-nav-${s.id}`}
-            onClick={() => setActiveSection(s.id)}
-            style={{
-              padding: '8px 16px',
-              fontSize: 13,
-              fontWeight: 600,
-              border: '1px solid',
-              borderColor: activeSection === s.id ? '#1e293b' : '#e2e8f0',
-              borderRadius: 8,
-              background: activeSection === s.id ? '#1e293b' : 'white',
-              color: activeSection === s.id ? 'white' : '#475569',
-              cursor: 'pointer',
-              transition: 'all 0.2s',
-              whiteSpace: 'nowrap',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6
-            }}
-          >
-            {s.icon && <span style={{ opacity: 0.9 }}>{s.icon}</span>}
-            {s.label}
-            {s.badge && (
-              <span style={{
-                padding: '1px 8px',
-                fontSize: 10,
-                fontWeight: 700,
-                background: activeSection === s.id ? 'rgba(255,255,255,0.2)' : '#dbeafe',
-                color: activeSection === s.id ? 'white' : '#2563eb',
-                borderRadius: 10,
-                marginLeft: 4
-              }}>{s.badge}</span>
-            )}
-          </button>
-        ))}
-      </div>
-
-      {/* Content - Direct render without collapsible */}
+      {/* Content - Render diretto senza tab (i tab sono già nella topnav) */}
       <div style={{ padding: '16px 24px' }}>
         {activeContent && (
           <Suspense fallback={<SectionLoading />}>
