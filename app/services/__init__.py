@@ -28,10 +28,10 @@ from .data_propagation import DataPropagationService, get_propagation_service
 __all__ = [
     # Core Services
     "AuthService",
-    "InvoiceService",
+    # "InvoiceService",  # DEPRECATO
     "InvoiceServiceV2",
     "get_invoice_service_v2",
-    "SupplierService",
+    # "SupplierService",  # DEPRECATO
     "WarehouseService",
     "AccountingService",
     "AccountingEntriesService",
