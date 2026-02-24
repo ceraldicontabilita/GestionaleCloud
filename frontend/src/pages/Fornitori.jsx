@@ -1295,21 +1295,34 @@ export default function Fornitori() {
               Anagrafica completa • Metodi di pagamento
             </p>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 24 }}>
             <button 
               onClick={reloadData}
               disabled={loading}
               style={{ 
-                padding: '10px 20px',
-                background: 'rgba(255,255,255,0.9)',
-                color: '#1535a8',
+                padding: '14px 28px',
+                background: 'white',
+                color: '#2563eb',
                 border: 'none',
-                borderRadius: 8,
+                borderRadius: 10,
                 cursor: loading ? 'wait' : 'pointer',
                 fontWeight: '600',
+                fontSize: 16,
                 display: 'flex',
                 alignItems: 'center',
-                gap: 6
+                gap: 10,
+                boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                transition: 'all 0.2s'
+              }}
+              onMouseEnter={(e) => {
+                if (!loading) {
+                  e.target.style.transform = 'translateY(-2px)';
+                  e.target.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.transform = 'translateY(0)';
+                e.target.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)';
               }}
             >
               🔄 {loading ? 'Caricamento...' : 'Aggiorna'}
@@ -1336,17 +1349,62 @@ export default function Fornitori() {
                 }
               }}
               style={{ 
-                padding: '10px 20px',
-                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                color: 'white',
+                padding: '14px 28px',
+                background: 'white',
+                color: '#2563eb',
                 border: 'none',
-                borderRadius: 8,
+                borderRadius: 10,
                 cursor: 'pointer',
                 fontWeight: '600',
+                fontSize: 16,
                 display: 'flex',
                 alignItems: 'center',
-                gap: 6
+                gap: 10,
+                boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                transition: 'all 0.2s'
               }}
+              onMouseEnter={(e) => {
+                e.target.style.transform = 'translateY(-2px)';
+                e.target.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.transform = 'translateY(0)';
+                e.target.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)';
+              }}
+            >
+              🔄 Aggiorna da OpenAPI
+            </button>
+            <button 
+              onClick={() => setShowModal(true)}
+              style={{ 
+                padding: '14px 28px',
+                background: '#22c55e',
+                color: 'white',
+                border: 'none',
+                borderRadius: 10,
+                cursor: 'pointer',
+                fontWeight: '600',
+                fontSize: 16,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                transition: 'all 0.2s'
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.background = '#16a34a';
+                e.target.style.transform = 'translateY(-2px)';
+                e.target.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.background = '#22c55e';
+                e.target.style.transform = 'translateY(0)';
+                e.target.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)';
+              }}
+            >
+              <Plus size={20} /> Nuovo Fornitore
+            </button>
+          </div>
               data-testid="btn-aggiorna-openapi-bulk"
             >
               <RefreshCw size={18} /> Aggiorna da OpenAPI
