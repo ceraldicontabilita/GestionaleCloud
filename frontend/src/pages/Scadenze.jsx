@@ -602,50 +602,63 @@ export default function Scadenze() {
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 15,
-                    padding: '15px 20px',
+                    gap: 12,
+                    padding: '10px 16px',
                     borderBottom: '1px solid #f1f5f9',
                     background: isPassata ? '#f9fafb' : style.bg,
                     opacity: isPassata ? 0.6 : 1,
                     borderLeft: `4px solid ${style.border}`
                   }}
                 >
-                  <span style={{ fontSize: 24 }}>{getTipoIcon(s.tipo)}</span>
+                  {/* Tipo badge compatto */}
+                  <span style={{ 
+                    padding: '3px 8px', 
+                    background: style.border + '20', 
+                    borderRadius: 6,
+                    color: style.text,
+                    fontWeight: '600',
+                    fontSize: 11,
+                    minWidth: 55,
+                    textAlign: 'center'
+                  }}>
+                    {s.tipo}
+                  </span>
                   
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: '500', marginBottom: 4 }}>{s.descrizione}</div>
-                    <div style={{ fontSize: 12, color: '#6b7280', display: 'flex', gap: 15, flexWrap: 'wrap' }}>
-                      <span>📅 {formatDate(s.data)}</span>
-                      <span style={{ 
-                        padding: '2px 8px', 
-                        background: style.border + '20', 
-                        borderRadius: 10,
-                        color: style.text,
-                        fontWeight: '500'
-                      }}>
-                        {s.tipo}
-                      </span>
-                      {s.fornitore && <span>🏢 {s.fornitore}</span>}
-                    </div>
-                  </div>
+                  {/* Importo */}
+                  <span style={{ 
+                    fontWeight: 'bold', 
+                    fontSize: 13, 
+                    color: style.text,
+                    minWidth: 80,
+                    textAlign: 'right'
+                  }}>
+                    {s.importo > 0 ? formatEuro(s.importo) : '-'}
+                  </span>
                   
-                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                    {s.importo > 0 && (
-                      <div style={{ fontWeight: 'bold', fontSize: 16, color: style.text }}>
-                        {formatEuro(s.importo)}
-                      </div>
-                    )}
-                    <div style={{ 
-                      fontSize: 12, 
-                      fontWeight: 'bold',
-                      color: isPassata ? '#dc2626' : (s.urgente ? '#dc2626' : '#6b7280')
-                    }}>
-                      {s.giorni_mancanti === undefined ? '' :
-                       s.giorni_mancanti === 0 ? '⚠️ OGGI' :
-                       s.giorni_mancanti === 1 ? '⚠️ DOMANI' :
-                       s.giorni_mancanti < 0 ? `❌ Scaduta da ${Math.abs(s.giorni_mancanti)}g` :
-                       `tra ${s.giorni_mancanti} giorni`}
-                    </div>
+                  {/* Data compatta */}
+                  <span style={{ fontSize: 12, color: '#6b7280', minWidth: 55 }}>
+                    {formatDate(s.data)}
+                  </span>
+                  
+                  {/* Giorni mancanti compatto */}
+                  <span style={{ 
+                    fontSize: 11, 
+                    fontWeight: 'bold',
+                    color: isPassata ? '#dc2626' : (s.urgente ? '#dc2626' : '#6b7280'),
+                    minWidth: 50,
+                    textAlign: 'center'
+                  }}>
+                    {s.giorni_mancanti === undefined ? '' :
+                     s.giorni_mancanti === 0 ? 'OGGI' :
+                     s.giorni_mancanti === 1 ? '1g' :
+                     s.giorni_mancanti < 0 ? `-${Math.abs(s.giorni_mancanti)}g` :
+                     `${s.giorni_mancanti}g`}
+                  </span>
+                  
+                  {/* Descrizione - prende il resto dello spazio */}
+                  <div style={{ flex: 1, minWidth: 0, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {s.descrizione}
+                    {s.fornitore && <span style={{ color: '#9ca3af', marginLeft: 8 }}>• {s.fornitore}</span>}
                   </div>
                   
                   {s.source === 'custom' && (
