@@ -16,7 +16,7 @@ export function PageLayout({
       style={{
         minHeight: '100vh',
         background: '#f8fafc',
-        padding: noPadding ? 0 : '16px 24px',
+        padding: noPadding ? 0 : '8px 16px',
       }} 
       className={className}
     >
