@@ -126,7 +126,7 @@ export default function Scadenze() {
       case 'F24': return '📋';
       case 'FATTURA': return '📄';
       case 'INPS': return '🏛️';
-      case 'IRPEF': return '💰';
+      case 'IRPEF': return '📋';
       default: return '📌';
     }
   };
@@ -325,7 +325,7 @@ export default function Scadenze() {
                 borderLeft: '4px solid #f87171'
               }}>
                 <div style={{ fontSize: 32, fontWeight: 700 }}>{documentiRiconciliare.esattoriali}</div>
-                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>💰 Cartelle Esattoriali</div>
+                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>Cartelle Esattoriali</div>
                 <div style={{ fontSize: 11, opacity: 0.8 }}>
                   Da verificare e processare
                 </div>
