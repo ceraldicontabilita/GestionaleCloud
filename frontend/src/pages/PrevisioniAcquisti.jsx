@@ -292,9 +292,9 @@ export default function PrevisioniAcquisti() {
                           </>
                         ) : (
                           <>
-                            <span>🎯 Prev: {item.quantita_prevista?.toFixed(1)} {item.unita_misura}</span>
-                            <span>📅 {item.media_settimanale}/sett</span>
-                            <span>💰 {formatEuro(item.costo_stimato)}</span>
+                            <span>Prev: {item.quantita_prevista?.toFixed(1)} {item.unita_misura}</span>
+                            <span>{item.media_settimanale}/sett</span>
+                            <span>{formatEuro(item.costo_stimato)}</span>
                           </>
                         )}
                       </div>

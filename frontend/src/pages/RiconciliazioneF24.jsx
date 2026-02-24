@@ -242,7 +242,7 @@ export default function RiconciliazioneF24() {
     if (f24.sezione_erario?.length > 0) {
       sections.push(
         <div key="erario" style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: 11, fontWeight: 600, color: '#1e40af', marginBottom: 6 }}>💰 SEZIONE ERARIO</div>
+          <div style={{ fontSize: 11, fontWeight: 600, color: '#1e40af', marginBottom: 6 }}>SEZIONE ERARIO</div>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
               <tr style={{ background: '#dbeafe' }}>

@@ -499,7 +499,7 @@ export default function DizionarioProdotti() {
                 border: '2px solid #f59e0b'
               }}>
                 <label style={{ display: 'block', fontSize: '14px', fontWeight: 700, color: '#92400e', marginBottom: '8px' }}>
-                  💰 PREZZO AL KG (€/kg)
+                  PREZZO AL KG (€/kg)
                 </label>
                 <p style={{ fontSize: '12px', color: '#78350f', marginBottom: '12px' }}>
                   Questo valore viene usato per calcolare il food cost delle ricette
