@@ -592,109 +592,80 @@ export default function Scadenze() {
           </div>
         ) : (
           <div style={{ maxHeight: '60vh', overflow: 'auto' }}>
-            {/* Intestazioni colonne */}
-            <div style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: 12, 
-              padding: '8px 16px',
-              fontSize: 11,
-              fontWeight: 700,
-              color: '#64748b',
-              textTransform: 'uppercase',
-              letterSpacing: 0.5,
-              borderBottom: '2px solid #e2e8f0',
-              background: '#f8fafc'
-            }}>
-              <span style={{ minWidth: 55, textAlign: 'center' }}>Tipo</span>
-              <span style={{ minWidth: 80, textAlign: 'right' }}>Importo</span>
-              <span style={{ minWidth: 55 }}>Data</span>
-              <span style={{ minWidth: 50, textAlign: 'center' }}>Giorni</span>
-              <span style={{ flex: 1 }}>Descrizione</span>
-              <span style={{ minWidth: 80, textAlign: 'right' }}>Azioni</span>
-            </div>
-            
+            {/* Tabella scadenze */}
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead>
+                <tr style={{ borderBottom: '2px solid #e2e8f0', background: '#f8fafc' }}>
+                  <th style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 700, fontSize: 11, color: '#64748b', textTransform: 'uppercase', width: 70 }}>Tipo</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 700, fontSize: 11, color: '#64748b', textTransform: 'uppercase', width: 90 }}>Importo</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 700, fontSize: 11, color: '#64748b', textTransform: 'uppercase', width: 70 }}>Data</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 700, fontSize: 11, color: '#64748b', textTransform: 'uppercase', width: 60 }}>Giorni</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 700, fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}>Descrizione</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 700, fontSize: 11, color: '#64748b', textTransform: 'uppercase', width: 100 }}>Azioni</th>
+                </tr>
+              </thead>
+              <tbody>
             {scadenze.map((s, idx) => {
               const style = getPriorityStyle(s.priorita, s.urgente);
               const isPassata = s.giorni_mancanti !== undefined && s.giorni_mancanti < 0;
               
               return (
-                <div
-                  key={s.id || idx}
+                <tr
+                  key={s.id || `scad-${idx}`}
                   style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 12,
-                    padding: '10px 16px',
-                    borderBottom: '1px solid #f1f5f9',
                     background: isPassata ? '#f9fafb' : style.bg,
                     opacity: isPassata ? 0.6 : 1,
-                    borderLeft: `4px solid ${style.border}`
+                    borderLeft: `4px solid ${style.border}`,
+                    borderBottom: '1px solid #f1f5f9'
                   }}
                 >
-                  {/* Tipo badge compatto */}
-                  <span style={{ 
-                    padding: '3px 8px', 
-                    background: style.border + '20', 
-                    borderRadius: 6,
-                    color: style.text,
-                    fontWeight: '600',
-                    fontSize: 11,
-                    minWidth: 55,
-                    textAlign: 'center'
-                  }}>
-                    {s.tipo}
-                  </span>
-                  
-                  {/* Importo */}
-                  <span style={{ 
-                    fontWeight: 'bold', 
-                    fontSize: 13, 
-                    color: style.text,
-                    minWidth: 80,
-                    textAlign: 'right'
-                  }}>
+                  <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                    <span style={{ 
+                      padding: '3px 8px', 
+                      background: style.border + '20', 
+                      borderRadius: 6,
+                      color: style.text,
+                      fontWeight: '600',
+                      fontSize: 11
+                    }}>
+                      {s.tipo}
+                    </span>
+                  </td>
+                  <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 'bold', color: style.text }}>
                     {s.importo > 0 ? formatEuro(s.importo) : '-'}
-                  </span>
-                  
-                  {/* Data compatta */}
-                  <span style={{ fontSize: 12, color: '#6b7280', minWidth: 55 }}>
+                  </td>
+                  <td style={{ padding: '8px 12px', textAlign: 'center', color: '#6b7280' }}>
                     {formatDate(s.data)}
-                  </span>
-                  
-                  {/* Giorni mancanti compatto */}
-                  <span style={{ 
-                    fontSize: 11, 
+                  </td>
+                  <td style={{ 
+                    padding: '8px 12px', 
+                    textAlign: 'center',
                     fontWeight: 'bold',
-                    color: isPassata ? '#dc2626' : (s.urgente ? '#dc2626' : '#6b7280'),
-                    minWidth: 50,
-                    textAlign: 'center'
+                    color: isPassata ? '#dc2626' : (s.urgente ? '#dc2626' : '#6b7280')
                   }}>
                     {s.giorni_mancanti === undefined ? '' :
                      s.giorni_mancanti === 0 ? 'OGGI' :
                      s.giorni_mancanti === 1 ? '1g' :
                      s.giorni_mancanti < 0 ? `-${Math.abs(s.giorni_mancanti)}g` :
                      `${s.giorni_mancanti}g`}
-                  </span>
-                  
-                  {/* Descrizione - prende il resto dello spazio */}
-                  <div style={{ flex: 1, minWidth: 0, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  </td>
+                  <td style={{ padding: '8px 12px', color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 250 }}>
                     {s.descrizione}
                     {s.fornitore && <span style={{ color: '#9ca3af', marginLeft: 8 }}>• {s.fornitore}</span>}
-                  </div>
-                  
+                  </td>
+                  <td style={{ padding: '8px 12px', textAlign: 'center' }}>
                   {s.source === 'custom' && (
-                    <div style={{ display: 'flex', gap: 8 }}>
+                    <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
                       <button
                         onClick={() => handleCompleta(s.id)}
                         style={{
-                          padding: '6px 12px',
+                          padding: '4px 10px',
                           background: '#10b981',
                           color: 'white',
                           border: 'none',
-                          borderRadius: 6,
+                          borderRadius: 4,
                           cursor: 'pointer',
-                          fontSize: 12
+                          fontSize: 11
                         }}
                         title="Segna come completata"
                       >
