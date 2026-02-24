@@ -322,7 +322,7 @@ export default function Admin() {
 
   const cardHeaderStyle = {
     padding: '12px 16px',
-    borderBottom: '1px solid #e5e7eb'
+    borderBottom: '1px solid #dce8f4'
   };
 
   const cardContentStyle = {
@@ -384,9 +384,9 @@ export default function Admin() {
           </div>
           <div style={cardContentStyle}>
             {loadingEmails ? (
-              <div style={{ textAlign: 'center', padding: 20, color: '#6b7280' }}>Caricamento...</div>
+              <div style={{ textAlign: 'center', padding: 20, color: '#6080a0' }}>Caricamento...</div>
             ) : emailAccounts.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: 20, color: '#6b7280' }}>Nessun account email configurato</div>
+              <div style={{ textAlign: 'center', padding: 20, color: '#6080a0' }}>Nessun account email configurato</div>
             ) : (
               <div style={{ display: 'grid', gap: 12 }}>
                 {emailAccounts.map(acc => (
@@ -401,7 +401,7 @@ export default function Admin() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, fontSize: 14 }}>
                           📧 {acc.nome}
                           {acc.is_env_default && (
-                            <span style={{ fontSize: 10, background: '#dbeafe', color: '#1d4ed8', padding: '2px 8px', borderRadius: 4 }}>
+                            <span style={{ fontSize: 10, background: '#dbeafe', color: '#1535a8', padding: '2px 8px', borderRadius: 4 }}>
                               Principale (da .env)
                             </span>
                           )}
@@ -411,13 +411,13 @@ export default function Admin() {
                             <span style={{ fontSize: 10, background: '#fee2e2', color: '#991b1b', padding: '2px 8px', borderRadius: 4 }}>Disattivo</span>
                           )}
                         </div>
-                        <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>{acc.email}</div>
+                        <div style={{ fontSize: 12, color: '#6080a0', marginTop: 4 }}>{acc.email}</div>
                       </div>
                       <div style={{ display: 'flex', gap: 4 }}>
-                        <button onClick={() => testEmailConnection(acc.id)} disabled={testingConnection === acc.id} style={smallButtonStyle('#e5e7eb', '#374151')}>
+                        <button onClick={() => testEmailConnection(acc.id)} disabled={testingConnection === acc.id} style={smallButtonStyle('#dce8f4', '#374151')}>
                           {testingConnection === acc.id ? '⏳' : 'Test'}
                         </button>
-                        <button onClick={() => { setEditingAccount({...acc}); setEditKeywordInput(''); }} style={smallButtonStyle('#e5e7eb', '#374151')}>
+                        <button onClick={() => { setEditingAccount({...acc}); setEditKeywordInput(''); }} style={smallButtonStyle('#dce8f4', '#374151')}>
                           Modifica
                         </button>
                         {!acc.is_env_default && (
@@ -429,7 +429,7 @@ export default function Admin() {
                     </div>
                     
                     {/* Password */}
-                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ fontSize: 12, color: '#6080a0', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
                       <span>App Password:</span>
                       <span style={{ fontFamily: 'monospace' }}>{showPassword[acc.id] ? acc.app_password : acc.app_password_masked}</span>
                       <button 
@@ -549,7 +549,7 @@ export default function Admin() {
                 </div>
                 <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
                   <button onClick={() => saveEmailAccount(newAccount)} style={buttonStyle('#16a34a')}>✔️ Salva</button>
-                  <button onClick={() => { setShowNewForm(false); setNewKeywordInput(''); }} style={buttonStyle('#e5e7eb', '#374151')}>✕ Annulla</button>
+                  <button onClick={() => { setShowNewForm(false); setNewKeywordInput(''); }} style={buttonStyle('#dce8f4', '#374151')}>✕ Annulla</button>
                 </div>
               </div>
             )}
@@ -559,7 +559,7 @@ export default function Admin() {
               <div style={{ marginTop: 20, borderTop: '1px solid #e2e8f0', paddingTop: 20 }}>
                 <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>
                   ✏️ Modifica Account: {editingAccount.nome}
-                  {editingAccount.is_env_default && <span style={{ fontSize: 10, color: '#6b7280', marginLeft: 8 }}>(Email Principale da .env)</span>}
+                  {editingAccount.is_env_default && <span style={{ fontSize: 10, color: '#6080a0', marginLeft: 8 }}>(Email Principale da .env)</span>}
                 </h4>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
                   <div>
@@ -645,7 +645,7 @@ export default function Admin() {
                 </div>
                 <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
                   <button onClick={() => saveEmailAccount(editingAccount)} style={buttonStyle('#16a34a')}>✔️ Salva Modifiche</button>
-                  <button onClick={() => { setEditingAccount(null); setEditKeywordInput(''); }} style={buttonStyle('#e5e7eb', '#374151')}>✕ Annulla</button>
+                  <button onClick={() => { setEditingAccount(null); setEditKeywordInput(''); }} style={buttonStyle('#dce8f4', '#374151')}>✕ Annulla</button>
                 </div>
               </div>
             )}
@@ -660,7 +660,7 @@ export default function Admin() {
             <h3 style={{ margin: 0, fontSize: 16 }}>Parole Chiave per Filtro Email (Globali)</h3>
           </div>
           <div style={cardContentStyle}>
-            <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 16 }}>
+            <p style={{ fontSize: 12, color: '#6080a0', marginBottom: 16 }}>
               Queste parole chiave vengono usate per categorizzare automaticamente i documenti scaricati dalle email.
             </p>
             
@@ -775,18 +775,18 @@ export default function Admin() {
             </div>
             <div style={cardContentStyle}>
               {loading ? (
-                <div style={{ textAlign: 'center', padding: 20, color: '#6b7280' }}>Caricamento...</div>
+                <div style={{ textAlign: 'center', padding: 20, color: '#6080a0' }}>Caricamento...</div>
               ) : stats ? (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(80px, 1fr))', gap: 8 }}>
                   {Object.entries(stats).map(([key, value]) => (
                     <div key={key} style={{ background: '#f8fafc', padding: '8px 10px', borderRadius: 6, textAlign: 'center' }}>
                       <div style={{ fontSize: 16, fontWeight: 700, color: '#1535a8' }}>{fmt(value)}</div>
-                      <div style={{ fontSize: 9, color: '#6b7280', textTransform: 'capitalize' }}>{key.replace(/_/g, ' ')}</div>
+                      <div style={{ fontSize: 9, color: '#6080a0', textTransform: 'capitalize' }}>{key.replace(/_/g, ' ')}</div>
                     </div>
                   ))}
                 </div>
               ) : (
-                <div style={{ color: '#6b7280' }}>Nessuna statistica disponibile</div>
+                <div style={{ color: '#6080a0' }}>Nessuna statistica disponibile</div>
               )}
             </div>
           </div>
@@ -801,42 +801,42 @@ export default function Admin() {
           <div style={cardStyle}>
             <div style={{ ...cardHeaderStyle, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3 style={{ margin: 0, fontSize: 14, display: 'flex', alignItems: 'center', gap: 8 }}>📊 Stato Sincronizzazione</h3>
-              <button onClick={loadSyncStatus} disabled={syncLoading} style={smallButtonStyle('#e5e7eb', '#374151')}>🔄</button>
+              <button onClick={loadSyncStatus} disabled={syncLoading} style={smallButtonStyle('#dce8f4', '#374151')}>🔄</button>
             </div>
             <div style={cardContentStyle}>
               {syncStatus ? (
                 <div style={{ display: 'grid', gap: 8 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #e5e7eb' }}>
-                    <span style={{ color: '#6b7280', fontSize: 13 }}>Fatture Totali</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #dce8f4' }}>
+                    <span style={{ color: '#6080a0', fontSize: 13 }}>Fatture Totali</span>
                     <span style={{ fontWeight: 600 }}>{fmt(syncStatus.fatture?.totali)}</span>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #e5e7eb' }}>
-                    <span style={{ color: '#6b7280', fontSize: 13 }}>Fatture Pagate</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #dce8f4' }}>
+                    <span style={{ color: '#6080a0', fontSize: 13 }}>Fatture Pagate</span>
                     <span style={{ fontWeight: 600, color: '#16a34a' }}>{fmt(syncStatus.fatture?.pagate)}</span>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #e5e7eb' }}>
-                    <span style={{ color: '#6b7280', fontSize: 13 }}>Fatture → Cassa</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #dce8f4' }}>
+                    <span style={{ color: '#6080a0', fontSize: 13 }}>Fatture → Cassa</span>
                     <span style={{ fontWeight: 600 }}>{fmt(syncStatus.fatture?.cassa)}</span>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #e5e7eb' }}>
-                    <span style={{ color: '#6b7280', fontSize: 13 }}>Fatture → Banca</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #dce8f4' }}>
+                    <span style={{ color: '#6080a0', fontSize: 13 }}>Fatture → Banca</span>
                     <span style={{ fontWeight: 600 }}>{fmt(syncStatus.fatture?.banca)}</span>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #e5e7eb' }}>
-                    <span style={{ color: '#6b7280', fontSize: 13 }}>Prima Nota Cassa (Entrate)</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #dce8f4' }}>
+                    <span style={{ color: '#6080a0', fontSize: 13 }}>Prima Nota Cassa (Entrate)</span>
                     <span style={{ fontWeight: 600, color: '#16a34a' }}>{fmt(syncStatus.prima_nota_cassa?.entrate)}</span>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #e5e7eb' }}>
-                    <span style={{ color: '#6b7280', fontSize: 13 }}>Prima Nota Cassa (Uscite)</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #dce8f4' }}>
+                    <span style={{ color: '#6080a0', fontSize: 13 }}>Prima Nota Cassa (Uscite)</span>
                     <span style={{ fontWeight: 600, color: '#dc2626' }}>{fmt(syncStatus.prima_nota_cassa?.uscite)}</span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0' }}>
-                    <span style={{ color: '#6b7280', fontSize: 13 }}>Corrispettivi</span>
+                    <span style={{ color: '#6080a0', fontSize: 13 }}>Corrispettivi</span>
                     <span style={{ fontWeight: 600 }}>{fmt(syncStatus.corrispettivi)}</span>
                   </div>
                 </div>
               ) : (
-                <div style={{ color: '#6b7280', textAlign: 'center', padding: 20 }}>Caricamento...</div>
+                <div style={{ color: '#6080a0', textAlign: 'center', padding: 20 }}>Caricamento...</div>
               )}
             </div>
           </div>
@@ -847,7 +847,7 @@ export default function Admin() {
               <h3 style={{ margin: 0, fontSize: 14, display: 'flex', alignItems: 'center', gap: 8 }}>⚠️ Verifica Entrate {anno}</h3>
             </div>
             <div style={cardContentStyle}>
-              <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 12 }}>
+              <p style={{ fontSize: 12, color: '#6080a0', marginBottom: 12 }}>
                 Verifica che le entrate da corrispettivi includano l&apos;IVA (Imponibile + IVA).
               </p>
               <button onClick={verificaEntrateCorrette} disabled={syncLoading} style={{ ...buttonStyle('#4f46e5'), width: '100%', marginBottom: 12 }}>
@@ -900,28 +900,28 @@ export default function Admin() {
             </div>
             <div style={{ ...cardContentStyle, display: 'grid', gap: 12 }}>
               <div>
-                <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>
+                <p style={{ fontSize: 12, color: '#6080a0', marginBottom: 8 }}>
                   Cerca corrispondenze tra fatture XML e pagamenti in Prima Nota Cassa.
                 </p>
-                <button onClick={matchFattureCassa} disabled={syncLoading} style={{ ...buttonStyle('#e5e7eb', '#374151'), width: '100%' }}>
+                <button onClick={matchFattureCassa} disabled={syncLoading} style={{ ...buttonStyle('#dce8f4', '#374151'), width: '100%' }}>
                   Match Fatture ↔ Cassa
                 </button>
               </div>
               
               <div>
-                <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>
+                <p style={{ fontSize: 12, color: '#6080a0', marginBottom: 8 }}>
                   Cerca corrispondenze tra fatture e movimenti estratto conto bancario.
                 </p>
-                <button onClick={matchFattureBanca} disabled={syncLoading} style={{ ...buttonStyle('#e5e7eb', '#374151'), width: '100%' }}>
+                <button onClick={matchFattureBanca} disabled={syncLoading} style={{ ...buttonStyle('#dce8f4', '#374151'), width: '100%' }}>
                   Match Fatture ↔ Banca
                 </button>
               </div>
               
               <div>
-                <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>
+                <p style={{ fontSize: 12, color: '#6080a0', marginBottom: 8 }}>
                   Imposta le fatture senza metodo pagamento a &quot;Bonifico&quot; (banca).
                 </p>
-                <button onClick={impostaFattureBanca} disabled={syncLoading} style={{ ...buttonStyle('#e5e7eb', '#374151'), width: '100%' }}>
+                <button onClick={impostaFattureBanca} disabled={syncLoading} style={{ ...buttonStyle('#dce8f4', '#374151'), width: '100%' }}>
                   Fatture → Bonifico
                 </button>
               </div>
@@ -956,7 +956,7 @@ export default function Admin() {
               {/* Ricostruzione Assegni */}
               <div style={{ background: '#f8fafc', padding: 16, borderRadius: 8, border: '1px solid #e2e8f0' }}>
                 <h4 style={{ margin: '0 0 8px', color: '#1e293b', fontSize: 14 }}>📝 Assegni</h4>
-                <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 12 }}>
+                <p style={{ fontSize: 12, color: '#6080a0', marginBottom: 12 }}>
                   Ricostruisce beneficiari mancanti e associa fatture agli assegni.
                 </p>
                 <button 
@@ -978,7 +978,7 @@ export default function Admin() {
               {/* Ricostruzione F24 */}
               <div style={{ background: '#f8fafc', padding: 16, borderRadius: 8, border: '1px solid #e2e8f0' }}>
                 <h4 style={{ margin: '0 0 8px', color: '#1e293b', fontSize: 14 }}>📋 F24 e Riconciliazione</h4>
-                <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 12 }}>
+                <p style={{ fontSize: 12, color: '#6080a0', marginBottom: 12 }}>
                   Corregge dati F24, riconcilia automaticamente movimenti bancari.
                 </p>
                 <button 
@@ -1000,7 +1000,7 @@ export default function Admin() {
               {/* Ricostruzione Fatture */}
               <div style={{ background: '#f8fafc', padding: 16, borderRadius: 8, border: '1px solid #e2e8f0' }}>
                 <h4 style={{ margin: '0 0 8px', color: '#1e293b', fontSize: 14 }}>📄 Fatture Ricevute</h4>
-                <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 12 }}>
+                <p style={{ fontSize: 12, color: '#6080a0', marginBottom: 12 }}>
                   Corregge campi mancanti, associa fornitori, rimuove duplicati.
                 </p>
                 <button 
@@ -1036,7 +1036,7 @@ export default function Admin() {
               {/* Ricostruzione Corrispettivi */}
               <div style={{ background: '#f8fafc', padding: 16, borderRadius: 8, border: '1px solid #e2e8f0' }}>
                 <h4 style={{ margin: '0 0 8px', color: '#1e293b', fontSize: 14 }}>🧾 Corrispettivi</h4>
-                <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 12 }}>
+                <p style={{ fontSize: 12, color: '#6080a0', marginBottom: 12 }}>
                   Ricalcola IVA, rimuove duplicati nei corrispettivi.
                 </p>
                 <button 
@@ -1058,7 +1058,7 @@ export default function Admin() {
               {/* Ricostruzione Salari */}
               <div style={{ background: '#f8fafc', padding: 16, borderRadius: 8, border: '1px solid #e2e8f0' }}>
                 <h4 style={{ margin: '0 0 8px', color: '#1e293b', fontSize: 14 }}>👥 Salari e Cedolini</h4>
-                <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 12 }}>
+                <p style={{ fontSize: 12, color: '#6080a0', marginBottom: 12 }}>
                   Pulisce righe vuote, corregge dati salari.
                 </p>
                 <button 
@@ -1080,7 +1080,7 @@ export default function Admin() {
               {/* Analytics */}
               <div style={{ background: '#f8fafc', padding: 16, borderRadius: 8, border: '1px solid #e2e8f0' }}>
                 <h4 style={{ margin: '0 0 8px', color: '#1e293b', fontSize: 14 }}>📊 Analytics</h4>
-                <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 12 }}>
+                <p style={{ fontSize: 12, color: '#6080a0', marginBottom: 12 }}>
                   Visualizza stato delle collezioni database.
                 </p>
                 <button 
@@ -1144,7 +1144,7 @@ export default function Admin() {
               <h3 style={{ margin: 0, fontSize: 14, display: 'flex', alignItems: 'center', gap: 8 }}>📄 Esporta Fatture</h3>
             </div>
             <div style={cardContentStyle}>
-              <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 12 }}>
+              <p style={{ fontSize: 12, color: '#6080a0', marginBottom: 12 }}>
                 Esporta tutte le fatture dell&apos;anno {anno} in formato Excel.
               </p>
               <button 
@@ -1161,19 +1161,19 @@ export default function Admin() {
               <h3 style={{ margin: 0, fontSize: 14, display: 'flex', alignItems: 'center', gap: 8 }}>📄 Esporta Prima Nota</h3>
             </div>
             <div style={cardContentStyle}>
-              <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 12 }}>
+              <p style={{ fontSize: 12, color: '#6080a0', marginBottom: 12 }}>
                 Esporta prima nota cassa/banca dell&apos;anno {anno}.
               </p>
               <div style={{ display: 'grid', gap: 8 }}>
                 <button 
                   onClick={() => window.open(`${api.defaults.baseURL}/api/exports/prima-nota-cassa?anno=${anno}`, '_blank')}
-                  style={{ ...buttonStyle('#e5e7eb', '#374151'), width: '100%' }}
+                  style={{ ...buttonStyle('#dce8f4', '#374151'), width: '100%' }}
                 >
                   📥 Prima Nota Cassa
                 </button>
                 <button 
                   onClick={() => window.open(`${api.defaults.baseURL}/api/exports/prima-nota-banca?anno=${anno}`, '_blank')}
-                  style={{ ...buttonStyle('#e5e7eb', '#374151'), width: '100%' }}
+                  style={{ ...buttonStyle('#dce8f4', '#374151'), width: '100%' }}
                 >
                   📥 Prima Nota Banca
                 </button>
@@ -1186,12 +1186,12 @@ export default function Admin() {
               <h3 style={{ margin: 0, fontSize: 14, display: 'flex', alignItems: 'center', gap: 8 }}>📄 Documentazione API</h3>
             </div>
             <div style={cardContentStyle}>
-              <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 12 }}>
+              <p style={{ fontSize: 12, color: '#6080a0', marginBottom: 12 }}>
                 Accedi alla documentazione Swagger delle API del sistema.
               </p>
               <button 
                 onClick={() => window.open(`${api.defaults.baseURL}/docs`, '_blank')}
-                style={{ ...buttonStyle('#e5e7eb', '#374151'), width: '100%' }}
+                style={{ ...buttonStyle('#dce8f4', '#374151'), width: '100%' }}
               >
                 📄 Apri Swagger Docs
               </button>
@@ -1219,7 +1219,7 @@ function FattureAdminTab() {
 
   const cardHeaderStyle = {
     padding: '12px 16px',
-    borderBottom: '1px solid #e5e7eb'
+    borderBottom: '1px solid #dce8f4'
   };
 
   const cardContentStyle = {
@@ -1295,7 +1295,7 @@ function FattureAdminTab() {
         </div>
         <div style={cardContentStyle}>
           {loading ? (
-            <div style={{ textAlign: 'center', padding: 20, color: '#6b7280' }}>Caricamento...</div>
+            <div style={{ textAlign: 'center', padding: 20, color: '#6080a0' }}>Caricamento...</div>
           ) : fattureStats ? (
             <div style={{ display: 'grid', gap: 8, fontSize: 13 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #f1f5f9' }}>
@@ -1352,7 +1352,7 @@ function FattureAdminTab() {
                   <button 
                     onClick={() => setConfirmAction(null)}
                     disabled={updating}
-                    style={smallButtonStyle('#e5e7eb', '#374151')}
+                    style={smallButtonStyle('#dce8f4', '#374151')}
                   >
                     ✕ Annulla
                   </button>
@@ -1380,7 +1380,7 @@ function FattureAdminTab() {
       {/* Refresh */}
       <div style={{ ...cardStyle, gridColumn: 'span 2' }}>
         <div style={{ ...cardContentStyle, display: 'flex', justifyContent: 'flex-end' }}>
-          <button onClick={loadFattureStats} disabled={loading} style={smallButtonStyle('#e5e7eb', '#374151')}>
+          <button onClick={loadFattureStats} disabled={loading} style={smallButtonStyle('#dce8f4', '#374151')}>
             🔄 Aggiorna Stats
           </button>
         </div>

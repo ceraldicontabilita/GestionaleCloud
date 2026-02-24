@@ -39,11 +39,11 @@ export default function IVA() {
     }
   }
 
-  const getSaldoColor = (saldo) => saldo > 0 ? "#dc2626" : saldo < 0 ? "#16a34a" : "#6b7280";
+  const getSaldoColor = (saldo) => saldo > 0 ? "#dc2626" : saldo < 0 ? "#16a34a" : "#6080a0";
   const getSaldoBadge = (stato) => {
     if (stato === "Da versare") return { bg: "#fee2e2", color: "#dc2626" };
     if (stato === "A credito") return { bg: "#dcfce7", color: "#16a34a" };
-    return { bg: "#f3f4f6", color: "#6b7280" };
+    return { bg: "#f3f4f6", color: "#6080a0" };
   };
 
   const viewModes = [
@@ -56,7 +56,7 @@ export default function IVA() {
   const KPICard = ({ label, value, subtext, color, bgColor, icon: Icon }) => (
     <div style={{ background: bgColor, borderRadius: 12, padding: 20, textAlign: 'center' }}>
       {Icon && <Icon size={24} color={color} style={{ marginBottom: 8 }} />}
-      <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 6 }}>{label}</div>
+      <div style={{ fontSize: 13, color: '#6080a0', marginBottom: 6 }}>{label}</div>
       <div style={{ fontSize: 28, fontWeight: 700, color }}>{value}</div>
       {subtext && <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 6 }}>{subtext}</div>}
     </div>
@@ -95,7 +95,7 @@ export default function IVA() {
             📅 Anno: {selectedYear}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <label style={{ fontSize: 13, color: '#6b7280' }}>Mese:</label>
+            <label style={{ fontSize: 13, color: '#6080a0' }}>Mese:</label>
             <select value={selectedMonth} onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
               style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 14 }}>
               {mesiItaliani.slice(1).map((m, i) => (<option key={i+1} value={i+1}>{m}</option>))}
@@ -122,7 +122,7 @@ export default function IVA() {
           {annualData && (
             <PageGrid cols={3} gap={16} style={{ marginTop: 20 }}>
               <div style={{ background: "#e0f2fe", borderRadius: 12, padding: 20, textAlign: 'center' }}>
-                <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 6 }}>Saldo IVA {selectedYear}</div>
+                <div style={{ fontSize: 13, color: '#6080a0', marginBottom: 6 }}>Saldo IVA {selectedYear}</div>
                 <div style={{ fontSize: 32, fontWeight: 700, color: getSaldoColor(annualData.totali?.saldo) }}>{formatEuro(annualData.totali?.saldo)}</div>
                 <span style={{ ...getSaldoBadge(annualData.totali?.stato), padding: '4px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600, display: 'inline-block', marginTop: 8 }}>{annualData.totali?.stato}</span>
               </div>
@@ -137,7 +137,7 @@ export default function IVA() {
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
                   <thead>
-                    <tr style={{ borderBottom: "2px solid #e5e7eb", background: '#f9fafb' }}>
+                    <tr style={{ borderBottom: "2px solid #dce8f4", background: '#f2f6fd' }}>
                       <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600 }}>Mese</th>
                       <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600 }}>IVA Debito</th>
                       <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600 }}>IVA Credito</th>
@@ -147,7 +147,7 @@ export default function IVA() {
                   </thead>
                   <tbody>
                     {annualData.mesi?.map((m, idx) => (
-                      <tr key={idx} style={{ borderBottom: '1px solid #f3f4f6', background: idx % 2 === 0 ? 'white' : '#f9fafb' }}>
+                      <tr key={idx} style={{ borderBottom: '1px solid #f3f4f6', background: idx % 2 === 0 ? 'white' : '#f2f6fd' }}>
                         <td style={{ padding: '12px 16px', fontWeight: 500 }}>{mesiItaliani[m.mese]}</td>
                         <td style={{ padding: '12px 16px', textAlign: 'right', color: '#ea580c' }}>{formatEuro(m.iva_debito)}</td>
                         <td style={{ padding: '12px 16px', textAlign: 'right', color: '#16a34a' }}>{formatEuro(m.iva_credito)}</td>
@@ -183,16 +183,16 @@ export default function IVA() {
                   const saldo = totDebito - totCredito;
                   const stato = saldo > 0 ? "Da versare" : saldo < 0 ? "A credito" : "Neutro";
                   return (
-                    <div key={q} style={{ background: '#f9fafb', borderRadius: 12, padding: 20, border: '1px solid #e5e7eb' }}>
+                    <div key={q} style={{ background: '#f2f6fd', borderRadius: 12, padding: 20, border: '1px solid #dce8f4' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                         <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>Q{q}</h3>
                         <span style={{ ...getSaldoBadge(stato), padding: '4px 10px', borderRadius: 6, fontSize: 12, fontWeight: 600 }}>{stato}</span>
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
-                        <div><div style={{ fontSize: 11, color: '#6b7280' }}>Debito</div><div style={{ fontSize: 16, fontWeight: 700, color: '#ea580c' }}>{formatEuro(totDebito)}</div></div>
-                        <div><div style={{ fontSize: 11, color: '#6b7280' }}>Credito</div><div style={{ fontSize: 16, fontWeight: 700, color: '#16a34a' }}>{formatEuro(totCredito)}</div></div>
+                        <div><div style={{ fontSize: 11, color: '#6080a0' }}>Debito</div><div style={{ fontSize: 16, fontWeight: 700, color: '#ea580c' }}>{formatEuro(totDebito)}</div></div>
+                        <div><div style={{ fontSize: 11, color: '#6080a0' }}>Credito</div><div style={{ fontSize: 16, fontWeight: 700, color: '#16a34a' }}>{formatEuro(totCredito)}</div></div>
                       </div>
-                      <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ borderTop: '1px solid #dce8f4', paddingTop: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{ fontSize: 13, fontWeight: 600 }}>Saldo</span>
                         <span style={{ fontSize: 18, fontWeight: 700, color: getSaldoColor(saldo) }}>{formatEuro(saldo)}</span>
                       </div>
@@ -210,7 +210,7 @@ export default function IVA() {
                 <KPICard label="IVA Debito" value={formatEuro(monthlyData.totali?.iva_debito)} subtext={`${monthlyData.totali?.corrispettivi_count || 0} corr.`} color="#ea580c" bgColor="#fff7ed" />
                 <KPICard label="IVA Credito" value={formatEuro(monthlyData.totali?.iva_credito)} subtext={`${monthlyData.totali?.fatture_count || 0} fatt.`} color="#16a34a" bgColor="#dcfce7" />
                 <div style={{ background: '#e0f2fe', borderRadius: 12, padding: 20, textAlign: 'center' }}>
-                  <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 6 }}>Saldo</div>
+                  <div style={{ fontSize: 13, color: '#6080a0', marginBottom: 6 }}>Saldo</div>
                   <div style={{ fontSize: 24, fontWeight: 700, color: getSaldoColor(monthlyData.totali?.saldo) }}>{formatEuro(monthlyData.totali?.saldo)}</div>
                   <span style={{ ...getSaldoBadge(monthlyData.totali?.stato), padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 600 }}>{monthlyData.totali?.stato}</span>
                 </div>
@@ -219,7 +219,7 @@ export default function IVA() {
                 <div style={{ marginTop: 20 }}>
                   <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: '#374151' }}>Dettaglio Giornaliero</h4>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                    <thead><tr style={{ borderBottom: "2px solid #e5e7eb", background: '#f9fafb' }}><th style={{ padding: 10, textAlign: 'left' }}>Giorno</th><th style={{ padding: 10, textAlign: 'right' }}>Debito</th><th style={{ padding: 10, textAlign: 'right' }}>Credito</th><th style={{ padding: 10, textAlign: 'right' }}>Saldo</th></tr></thead>
+                    <thead><tr style={{ borderBottom: "2px solid #dce8f4", background: '#f2f6fd' }}><th style={{ padding: 10, textAlign: 'left' }}>Giorno</th><th style={{ padding: 10, textAlign: 'right' }}>Debito</th><th style={{ padding: 10, textAlign: 'right' }}>Credito</th><th style={{ padding: 10, textAlign: 'right' }}>Saldo</th></tr></thead>
                     <tbody>
                       {monthlyData.giorni.filter(g => g.iva_debito > 0 || g.iva_credito > 0).map((g, idx) => (
                         <tr key={idx} style={{ borderBottom: '1px solid #f3f4f6' }}>

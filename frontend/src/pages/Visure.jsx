@@ -74,7 +74,7 @@ export default function Visure() {
         alignItems: 'flex-start',
         marginBottom: 24,
         paddingBottom: 24,
-        borderBottom: '1px solid #e5e7eb'
+        borderBottom: '1px solid #dce8f4'
       }}>
         <div>
           <h2 style={{ 
@@ -90,7 +90,7 @@ export default function Visure() {
             {data.companyName}
           </h2>
           <p style={{ 
-            color: '#6b7280', 
+            color: '#6080a0', 
             margin: '8px 0 0',
             fontSize: 14
           }}>
@@ -216,7 +216,7 @@ export default function Visure() {
       <div style={{ 
         marginTop: 24, 
         paddingTop: 24, 
-        borderTop: '1px solid #e5e7eb',
+        borderTop: '1px solid #dce8f4',
         display: 'flex',
         justifyContent: 'flex-end',
         gap: 12
@@ -226,7 +226,7 @@ export default function Visure() {
           disabled={loading}
           style={{
             padding: '12px 24px',
-            background: 'linear-gradient(135deg, #15803d 0%, #059669 100%)',
+            background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
             color: 'white',
             border: 'none',
             borderRadius: 10,
@@ -257,7 +257,7 @@ export default function Visure() {
         }}>
           🔍 Visure Aziendali
         </h1>
-        <p style={{ color: '#6b7280', margin: 0 }}>
+        <p style={{ color: '#6080a0', margin: 0 }}>
           Cerca informazioni su aziende italiane tramite Camera di Commercio
         </p>
       </div>
@@ -275,9 +275,9 @@ export default function Visure() {
             onClick={() => setSearchType('piva')}
             style={{
               padding: '10px 20px',
-              border: searchType === 'piva' ? '2px solid #1535a8' : '2px solid #e5e7eb',
+              border: searchType === 'piva' ? '2px solid #1535a8' : '2px solid #dce8f4',
               background: searchType === 'piva' ? '#eff6ff' : 'white',
-              color: searchType === 'piva' ? '#1535a8' : '#6b7280',
+              color: searchType === 'piva' ? '#1535a8' : '#6080a0',
               borderRadius: 10,
               cursor: 'pointer',
               fontWeight: 600
@@ -289,9 +289,9 @@ export default function Visure() {
             onClick={() => setSearchType('nome')}
             style={{
               padding: '10px 20px',
-              border: searchType === 'nome' ? '2px solid #1535a8' : '2px solid #e5e7eb',
+              border: searchType === 'nome' ? '2px solid #1535a8' : '2px solid #dce8f4',
               background: searchType === 'nome' ? '#eff6ff' : 'white',
-              color: searchType === 'nome' ? '#1535a8' : '#6b7280',
+              color: searchType === 'nome' ? '#1535a8' : '#6080a0',
               borderRadius: 10,
               cursor: 'pointer',
               fontWeight: 600
@@ -311,7 +311,7 @@ export default function Visure() {
             style={{
               flex: 1,
               padding: '14px 18px',
-              border: '2px solid #e5e7eb',
+              border: '2px solid #dce8f4',
               borderRadius: 12,
               fontSize: 16,
               fontFamily: searchType === 'piva' ? 'monospace' : 'inherit'
@@ -385,7 +385,7 @@ export default function Visure() {
                   }}
                   style={{
                     padding: 16,
-                    border: '1px solid #e5e7eb',
+                    border: '1px solid #dce8f4',
                     borderRadius: 10,
                     cursor: 'pointer',
                     transition: 'all 0.2s'
@@ -394,12 +394,12 @@ export default function Visure() {
                   onMouseLeave={(e) => e.target.style.background = 'white'}
                 >
                   <strong>{r.companyName || `ID: ${r.id}`}</strong>
-                  {r.vatCode && <span style={{ marginLeft: 12, color: '#6b7280' }}>P.IVA: {r.vatCode}</span>}
+                  {r.vatCode && <span style={{ marginLeft: 12, color: '#6080a0' }}>P.IVA: {r.vatCode}</span>}
                 </div>
               ))}
             </div>
           ) : (
-            <p style={{ color: '#6b7280' }}>Nessun risultato trovato. Prova con la Partita IVA.</p>
+            <p style={{ color: '#6080a0' }}>Nessun risultato trovato. Prova con la Partita IVA.</p>
           )}
         </div>
       )}

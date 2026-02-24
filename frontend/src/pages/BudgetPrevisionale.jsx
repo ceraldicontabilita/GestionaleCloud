@@ -338,7 +338,7 @@ export default function BudgetPrevisionale() {
                             ))}
                             <td style={{ padding: '8px 4px', textAlign: 'center' }}>
                               <button onClick={() => startEdit(v)} style={{ background: 'none', border: 'none', cursor: 'pointer', marginRight: 4 }} title="Modifica">
-                                <Edit2 size={14} color="#6b7280" />
+                                <Edit2 size={14} color="#6080a0" />
                               </button>
                               <button onClick={() => handleDelete(v.voce)} style={{ background: 'none', border: 'none', cursor: 'pointer' }} title="Elimina">
                                 <Trash2 size={14} color="#ef4444" />

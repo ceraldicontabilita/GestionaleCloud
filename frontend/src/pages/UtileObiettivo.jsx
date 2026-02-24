@@ -74,7 +74,7 @@ export default function UtileObiettivo() {
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
         <Icon size={20} color={color} />
-        <span style={{ fontSize: 13, color: '#6b7280', fontWeight: 500 }}>{label}</span>
+        <span style={{ fontSize: 13, color: '#6080a0', fontWeight: 500 }}>{label}</span>
       </div>
       <div style={{ fontSize: 24, fontWeight: 700, color }}>{value}</div>
     </div>
@@ -104,7 +104,7 @@ export default function UtileObiettivo() {
                   style={{
                     width: '100%',
                     padding: 12,
-                    border: '1px solid #e5e7eb',
+                    border: '1px solid #dce8f4',
                     borderRadius: 8,
                     fontSize: 16,
                     fontWeight: 600
@@ -123,7 +123,7 @@ export default function UtileObiettivo() {
                   style={{
                     width: '100%',
                     padding: 12,
-                    border: '1px solid #e5e7eb',
+                    border: '1px solid #dce8f4',
                     borderRadius: 8,
                     fontSize: 16,
                     fontWeight: 600
@@ -165,13 +165,13 @@ export default function UtileObiettivo() {
               <PageSection title="Raggiungimento Obiettivo" style={{ marginTop: 24 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
                   <div>
-                    <div style={{ fontSize: 14, color: '#6b7280', marginBottom: 4 }}>Percentuale</div>
+                    <div style={{ fontSize: 14, color: '#6080a0', marginBottom: 4 }}>Percentuale</div>
                     <div style={{ fontSize: 48, fontWeight: 700, color: progressColor }}>
                       {percentualeRaggiungimento.toFixed(1)}%
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: 14, color: '#6b7280', marginBottom: 4 }}>Target</div>
+                    <div style={{ fontSize: 14, color: '#6080a0', marginBottom: 4 }}>Target</div>
                     <div style={{ fontSize: 32, fontWeight: 700, color: '#1f2937' }}>
                       {formatEuro(status.target_utile || 0)}
                     </div>
@@ -259,7 +259,7 @@ export default function UtileObiettivo() {
                         <div style={{ fontSize: 18, fontWeight: 700, color: '#1e293b' }}>
                           {formatEuro(data.totale || 0)}
                         </div>
-                        <div style={{ fontSize: 12, color: '#6b7280' }}>
+                        <div style={{ fontSize: 12, color: '#6080a0' }}>
                           {data.count || 0} fatture
                         </div>
                       </div>

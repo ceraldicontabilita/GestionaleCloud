@@ -84,7 +84,7 @@ export default function LiquidazioneIVA() {
     borderRadius: 12,
     padding: 20,
     boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-    border: '1px solid #e5e7eb',
+    border: '1px solid #dce8f4',
     marginBottom: 20
   };
 
@@ -96,7 +96,7 @@ export default function LiquidazioneIVA() {
     >
       <div data-testid="liquidazione-iva-page">
         {/* Filtri */}
-        <div style={{ background: 'white', borderRadius: 12, padding: 20, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', border: '1px solid #e5e7eb', marginBottom: 20 }}>
+        <div style={{ background: 'white', borderRadius: 12, padding: 20, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', border: '1px solid #dce8f4', marginBottom: 20 }}>
         <h3 style={{ margin: '0 0 16px 0', fontSize: 16, fontWeight: 'bold', color: '#1535a8', display: 'flex', alignItems: 'center', gap: 8 }}>
           <Calculator size={18} />
           Parametri Calcolo
@@ -107,11 +107,11 @@ export default function LiquidazioneIVA() {
           </div>
           
           <div>
-            <label style={{ display: 'block', fontSize: 13, marginBottom: 4, fontWeight: 500, color: '#6b7280' }}>Mese</label>
+            <label style={{ display: 'block', fontSize: 13, marginBottom: 4, fontWeight: 500, color: '#6080a0' }}>Mese</label>
             <select
               value={mese}
               onChange={(e) => setMese(parseInt(e.target.value))}
-              style={{ padding: '10px 12px', borderRadius: 8, border: '2px solid #e5e7eb', fontSize: 14, minWidth: 150, background: 'white' }}
+              style={{ padding: '10px 12px', borderRadius: 8, border: '2px solid #dce8f4', fontSize: 14, minWidth: 150, background: 'white' }}
               data-testid="select-mese"
             >
               {MESI.slice(1).map((m, i) => (
@@ -121,7 +121,7 @@ export default function LiquidazioneIVA() {
           </div>
           
           <div>
-            <label style={{ display: 'block', fontSize: 13, marginBottom: 4, fontWeight: 500, color: '#6b7280' }}>
+            <label style={{ display: 'block', fontSize: 13, marginBottom: 4, fontWeight: 500, color: '#6080a0' }}>
               Credito Precedente (€)
             </label>
             <input
@@ -129,7 +129,7 @@ export default function LiquidazioneIVA() {
               value={creditoPrecedente}
               onChange={(e) => setCreditoPrecedente(parseFloat(e.target.value) || 0)}
               placeholder="0.00"
-              style={{ padding: '10px 12px', borderRadius: 8, border: '2px solid #e5e7eb', fontSize: 14, width: 150 }}
+              style={{ padding: '10px 12px', borderRadius: 8, border: '2px solid #dce8f4', fontSize: 14, width: 150 }}
               data-testid="input-credito-precedente"
             />
           </div>
@@ -147,7 +147,7 @@ export default function LiquidazioneIVA() {
             <button 
               onClick={scaricaPDF} 
               disabled={!result}
-              style={{ padding: '10px 16px', background: result ? '#e5e7eb' : '#f3f4f6', color: result ? '#374151' : '#9ca3af', border: 'none', borderRadius: 8, cursor: result ? 'pointer' : 'not-allowed', fontWeight: '600', fontSize: 14 }}
+              style={{ padding: '10px 16px', background: result ? '#dce8f4' : '#f3f4f6', color: result ? '#374151' : '#9ca3af', border: 'none', borderRadius: 8, cursor: result ? 'pointer' : 'not-allowed', fontWeight: '600', fontSize: 14 }}
               data-testid="btn-pdf"
             >
               <Download size={16} />
@@ -167,7 +167,7 @@ export default function LiquidazioneIVA() {
                 <p style={{ fontSize: 28, fontWeight: 'bold', color: '#dc2626', margin: '0 0 4px 0' }} data-testid="iva-debito">
                   {formatEuro(result.iva_debito)}
                 </p>
-                <p style={{ fontSize: 13, color: '#6b7280' }}>
+                <p style={{ fontSize: 13, color: '#6080a0' }}>
                   {result.statistiche?.corrispettivi_count || 0} corrispettivi
                 </p>
               </div>
@@ -183,7 +183,7 @@ export default function LiquidazioneIVA() {
                 <p style={{ fontSize: 28, fontWeight: 'bold', color: '#16a34a', margin: '0 0 4px 0' }} data-testid="iva-credito">
                   {formatEuro(result.iva_credito)}
                 </p>
-                <p style={{ fontSize: 13, color: '#6b7280' }}>
+                <p style={{ fontSize: 13, color: '#6080a0' }}>
                   {result.statistiche?.fatture_incluse || 0} fatture 
                   {result.statistiche?.note_credito > 0 && ` (${result.statistiche.note_credito} NC)`}
                 </p>
@@ -208,10 +208,10 @@ export default function LiquidazioneIVA() {
                 <p style={{ fontSize: 13, color: '#64748b', marginBottom: 4 }}>
                   {result.iva_da_versare > 0 ? 'IVA da Versare' : 'Credito da Riportare'}
                 </p>
-                <p style={{ fontSize: 28, fontWeight: 'bold', color: result.iva_da_versare > 0 ? '#d97706' : '#1535a8', margin: '0 0 4px 0' }} data-testid="saldo-iva">
+                <p style={{ fontSize: 28, fontWeight: 'bold', color: result.iva_da_versare > 0 ? '#f59e0b' : '#1535a8', margin: '0 0 4px 0' }} data-testid="saldo-iva">
                   {formatEuro(result.iva_da_versare > 0 ? result.iva_da_versare : result.credito_da_riportare)}
                 </p>
-                <p style={{ fontSize: 13, color: '#6b7280' }}>{result.stato}</p>
+                <p style={{ fontSize: 13, color: '#6080a0' }}>{result.stato}</p>
               </div>
               <FileText size={32} style={{ color: result.iva_da_versare > 0 ? '#fcd34d' : '#93c5fd' }} />
             </div>
@@ -221,7 +221,7 @@ export default function LiquidazioneIVA() {
 
       {/* Dettaglio per Aliquota */}
       {result && (
-        <div style={{ background: 'white', borderRadius: 12, padding: 20, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', border: '1px solid #e5e7eb', marginBottom: 20 }}>
+        <div style={{ background: 'white', borderRadius: 12, padding: 20, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', border: '1px solid #dce8f4', marginBottom: 20 }}>
           <div 
             style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', marginBottom: showDettaglio ? 16 : 0 }}
             onClick={() => setShowDettaglio(!showDettaglio)}
@@ -311,7 +311,7 @@ export default function LiquidazioneIVA() {
                 value={confronto.debito}
                 onChange={(e) => setConfronto({ ...confronto, debito: e.target.value })}
                 placeholder="0.00"
-                style={{ padding: '10px 12px', borderRadius: 8, border: '2px solid #e5e7eb', fontSize: 14, width: 180 }}
+                style={{ padding: '10px 12px', borderRadius: 8, border: '2px solid #dce8f4', fontSize: 14, width: 180 }}
                 data-testid="input-confronto-debito"
               />
             </div>
@@ -325,7 +325,7 @@ export default function LiquidazioneIVA() {
                 value={confronto.credito}
                 onChange={(e) => setConfronto({ ...confronto, credito: e.target.value })}
                 placeholder="0.00"
-                style={{ padding: '10px 12px', borderRadius: 8, border: '2px solid #e5e7eb', fontSize: 14, width: 180 }}
+                style={{ padding: '10px 12px', borderRadius: 8, border: '2px solid #dce8f4', fontSize: 14, width: 180 }}
                 data-testid="input-confronto-credito"
               />
             </div>
@@ -390,7 +390,7 @@ export default function LiquidazioneIVA() {
       <div style={{ ...cardStyle }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <h3 style={{ margin: 0, fontSize: 16, fontWeight: 'bold', color: '#1535a8' }}>📅 Riepilogo Annuale {anno}</h3>
-          <button onClick={caricaRiepilogoAnnuale} style={{ padding: '8px 14px', background: '#e5e7eb', color: '#374151', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: '600', fontSize: 13 }} data-testid="btn-riepilogo-annuale">
+          <button onClick={caricaRiepilogoAnnuale} style={{ padding: '8px 14px', background: '#dce8f4', color: '#374151', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: '600', fontSize: 13 }} data-testid="btn-riepilogo-annuale">
             <RefreshCw size={14} style={loading ? { animation: 'spin 1s linear infinite' } : {}} />
             Carica
           </button>
@@ -414,7 +414,7 @@ export default function LiquidazioneIVA() {
                     <td style={{ fontWeight: 500 }}>{m.mese_nome}</td>
                     <td style={{ textAlign: 'right', color: '#dc2626' }}>{formatEuro(m.iva_debito || 0)}</td>
                     <td style={{ textAlign: 'right', color: '#16a34a' }}>{formatEuro(m.iva_credito || 0)}</td>
-                    <td style={{ textAlign: 'right', color: '#d97706', fontWeight: 600 }}>
+                    <td style={{ textAlign: 'right', color: '#f59e0b', fontWeight: 600 }}>
                       {m.iva_da_versare > 0 ? formatEuro(m.iva_da_versare) : '-'}
                     </td>
                     <td style={{ textAlign: 'right', color: '#1535a8' }}>
@@ -427,7 +427,7 @@ export default function LiquidazioneIVA() {
                         fontSize: 12, 
                         fontWeight: '600',
                         background: m.stato === 'Da versare' ? '#fef3c7' : m.stato === 'A credito' ? '#dbeafe' : '#f3f4f6',
-                        color: m.stato === 'Da versare' ? '#b45309' : m.stato === 'A credito' ? '#1d4ed8' : '#6b7280'
+                        color: m.stato === 'Da versare' ? '#b45309' : m.stato === 'A credito' ? '#1535a8' : '#6080a0'
                       }}>
                         {m.stato}
                       </span>
@@ -447,7 +447,7 @@ export default function LiquidazioneIVA() {
                   <td style={{ textAlign: 'right', padding: 12, color: '#b45309' }}>
                     {formatEuro(riepilogoAnnuale.totali?.iva_versata_totale || 0)}
                   </td>
-                  <td style={{ textAlign: 'right', padding: 12, color: '#1d4ed8' }}>
+                  <td style={{ textAlign: 'right', padding: 12, color: '#1535a8' }}>
                     {formatEuro(riepilogoAnnuale.totali?.credito_finale || 0)}
                   </td>
                   <td style={{ textAlign: 'center', padding: 12 }}>
@@ -457,7 +457,7 @@ export default function LiquidazioneIVA() {
                       fontSize: 12, 
                       fontWeight: '600',
                       background: riepilogoAnnuale.totali?.saldo_annuale > 0 ? '#fef3c7' : '#dbeafe',
-                      color: riepilogoAnnuale.totali?.saldo_annuale > 0 ? '#d97706' : '#1d4ed8'
+                      color: riepilogoAnnuale.totali?.saldo_annuale > 0 ? '#d97706' : '#1535a8'
                     }}>
                       {riepilogoAnnuale.totali?.saldo_annuale > 0 ? 'Da Versare' : 'A Credito'}
                     </span>

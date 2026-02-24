@@ -6,9 +6,9 @@ import { PageLayout } from '../components/PageLayout';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 
 const CATEGORIE = {
-  attivo: { nome: "ATTIVO", color: "#2196f3", icon: "📊" },
+  attivo: { nome: "ATTIVO", color: "#1535a8", icon: "📊" },
   passivo: { nome: "PASSIVO", color: "#f44336", icon: "📉" },
-  patrimonio_netto: { nome: "PATRIMONIO NETTO", color: "#9c27b0", icon: "💎" },
+  patrimonio_netto: { nome: "PATRIMONIO NETTO", color: "#7c3aed", icon: "💎" },
   ricavi: { nome: "RICAVI", color: "#15803d", icon: "📈" },
   costi: { nome: "COSTI", color: "#d97706", icon: "💸" }
 };
@@ -130,7 +130,7 @@ export default function PianoDeiConti() {
       {/* Bilancio Summary Cards */}
       {bilancio && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 15, marginBottom: 25 }}>
-          <div style={{ background: '#e3f2fd', borderRadius: 12, padding: 15, borderLeft: '4px solid #2196f3' }}>
+          <div style={{ background: '#e3f2fd', borderRadius: 12, padding: 15, borderLeft: '4px solid #1535a8' }}>
             <div style={{ fontSize: 12, color: '#1565c0', marginBottom: 5 }}>Totale Attivo</div>
             <div style={{ fontSize: 24, fontWeight: 'bold', color: '#0d47a1' }}>
               {formatEuro(bilancio.stato_patrimoniale.attivo.totale)}
@@ -178,7 +178,7 @@ export default function PianoDeiConti() {
             onClick={() => setActiveTab(tab)}
             style={{
               padding: '12px 24px',
-              background: activeTab === tab ? '#1535a8' : '#e5e7eb',
+              background: activeTab === tab ? '#1535a8' : '#dce8f4',
               color: activeTab === tab ? 'white' : '#374151',
               border: 'none',
               borderRadius: 8,
@@ -218,7 +218,7 @@ export default function PianoDeiConti() {
                 background: 'white', 
                 borderRadius: 12, 
                 overflow: 'hidden',
-                border: '1px solid #e5e7eb'
+                border: '1px solid #dce8f4'
               }}>
                 {/* Category Header */}
                 <div 
@@ -257,7 +257,7 @@ export default function PianoDeiConti() {
                     ) : (
                       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                         <thead>
-                          <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
+                          <tr style={{ borderBottom: '2px solid #dce8f4' }}>
                             <th style={{ padding: 10, textAlign: 'left', fontWeight: 600 }}>Codice</th>
                             <th style={{ padding: 10, textAlign: 'left', fontWeight: 600 }}>Nome Conto</th>
                             <th style={{ padding: 10, textAlign: 'center', fontWeight: 600 }}>Natura</th>
@@ -337,10 +337,10 @@ export default function PianoDeiConti() {
             </ul>
           </div>
 
-          <div style={{ background: 'white', borderRadius: 12, overflow: 'hidden', border: '1px solid #e5e7eb' }}>
+          <div style={{ background: 'white', borderRadius: 12, overflow: 'hidden', border: '1px solid #dce8f4' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
-                <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e5e7eb' }}>
+                <tr style={{ background: '#f8fafc', borderBottom: '2px solid #dce8f4' }}>
                   <th style={{ padding: 12, textAlign: 'left' }}>Tipo</th>
                   <th style={{ padding: 12, textAlign: 'left' }}>Pattern</th>
                   <th style={{ padding: 12, textAlign: 'left' }}>Conto DARE</th>

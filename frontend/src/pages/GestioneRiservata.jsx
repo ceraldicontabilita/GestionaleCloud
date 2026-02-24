@@ -311,7 +311,7 @@ function DashboardGestioneRiservata({ onLogout }) {
       {riepilogo && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20, marginBottom: 30 }}>
           <div style={{
-            background: "linear-gradient(135deg, #15803d 0%, #059669 100%)",
+            background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
             borderRadius: 12,
             padding: 24,
             color: "white"

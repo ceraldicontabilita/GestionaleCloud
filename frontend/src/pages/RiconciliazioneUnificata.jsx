@@ -19,8 +19,8 @@ import { PageLayout } from '../components/PageLayout';
 
 const TABS = [
   { id: 'dashboard', label: '📊 Dashboard', color: '#1535a8' },
-  { id: 'banca', label: '🏦 Banca', color: '#15803d' },
-  { id: 'assegni', label: '📝 Assegni', color: '#d97706' },
+  { id: 'banca', label: '🏦 Banca', color: '#10b981' },
+  { id: 'assegni', label: '📝 Assegni', color: '#f59e0b' },
   { id: 'f24', label: '📄 F24', color: '#ef4444' },
   { id: 'aruba', label: '🧾 Fatture Aruba', color: '#8b5cf6' },
   { id: 'stipendi', label: '👤 Stipendi', color: '#06b6d4' },
@@ -557,7 +557,7 @@ export default function RiconciliazioneUnificata() {
             data-testid="btn-load-f24"
             style={{
               padding: '10px 16px',
-              background: processing === 'f24' ? '#9ca3af' : '#d97706',
+              background: processing === 'f24' ? '#9ca3af' : '#f59e0b',
               color: 'white',
               border: 'none',
               borderRadius: 8,
@@ -573,7 +573,7 @@ export default function RiconciliazioneUnificata() {
             disabled={processing}
             style={{
               padding: '10px 20px',
-              background: '#15803d',
+              background: '#10b981',
               color: 'white',
               border: 'none',
               borderRadius: 8,
@@ -649,7 +649,7 @@ export default function RiconciliazioneUnificata() {
               type="date"
               value={filters.dataFrom}
               onChange={(e) => setFilters({...filters, dataFrom: e.target.value})}
-              style={{ width: '100%', padding: 8, border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 13 }}
+              style={{ width: '100%', padding: 8, border: '1px solid #dce8f4', borderRadius: 6, fontSize: 13 }}
             />
           </div>
           <div>
@@ -658,7 +658,7 @@ export default function RiconciliazioneUnificata() {
               type="date"
               value={filters.dataTo}
               onChange={(e) => setFilters({...filters, dataTo: e.target.value})}
-              style={{ width: '100%', padding: 8, border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 13 }}
+              style={{ width: '100%', padding: 8, border: '1px solid #dce8f4', borderRadius: 6, fontSize: 13 }}
             />
           </div>
           <div>
@@ -668,7 +668,7 @@ export default function RiconciliazioneUnificata() {
               placeholder="0"
               value={filters.importoMin}
               onChange={(e) => setFilters({...filters, importoMin: e.target.value})}
-              style={{ width: '100%', padding: 8, border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 13 }}
+              style={{ width: '100%', padding: 8, border: '1px solid #dce8f4', borderRadius: 6, fontSize: 13 }}
             />
           </div>
           <div>
@@ -678,7 +678,7 @@ export default function RiconciliazioneUnificata() {
               placeholder="999999"
               value={filters.importoMax}
               onChange={(e) => setFilters({...filters, importoMax: e.target.value})}
-              style={{ width: '100%', padding: 8, border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 13 }}
+              style={{ width: '100%', padding: 8, border: '1px solid #dce8f4', borderRadius: 6, fontSize: 13 }}
             />
           </div>
           <div>
@@ -688,7 +688,7 @@ export default function RiconciliazioneUnificata() {
               placeholder="Descrizione, tipo..."
               value={filters.search}
               onChange={(e) => setFilters({...filters, search: e.target.value})}
-              style={{ width: '100%', padding: 8, border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 13 }}
+              style={{ width: '100%', padding: 8, border: '1px solid #dce8f4', borderRadius: 6, fontSize: 13 }}
             />
           </div>
           <div style={{ display: 'flex', alignItems: 'flex-end' }}>
@@ -897,7 +897,7 @@ function MovimentiTab({ movimenti, onConferma, onIgnora, onElimina, processing, 
 
   return (
     <div>
-      <div style={{ padding: 16, background: '#f8fafc', borderBottom: '1px solid #e5e7eb' }}>
+      <div style={{ padding: 16, background: '#f8fafc', borderBottom: '1px solid #dce8f4' }}>
         <h3 style={{ margin: 0, fontSize: 16 }}>{title} ({movimenti.length})</h3>
       </div>
       <div style={{ maxHeight: 800, overflow: 'auto' }}>
@@ -1003,7 +1003,7 @@ function MovimentoCard({ movimento, onConferma, onIgnora, onElimina, processing,
             <div style={{ 
               marginTop: 4, 
               fontSize: 11, 
-              color: '#d97706',
+              color: '#f59e0b',
               display: 'flex',
               flexWrap: 'wrap',
               gap: 8,
@@ -1086,7 +1086,7 @@ function MovimentoCard({ movimento, onConferma, onIgnora, onElimina, processing,
             <div style={{ 
               marginTop: 2, 
               fontSize: 11, 
-              color: '#d97706'
+              color: '#f59e0b'
             }}>
               👤 Beneficiario: {movimento.beneficiario}
             </div>
@@ -1112,7 +1112,7 @@ function MovimentoCard({ movimento, onConferma, onIgnora, onElimina, processing,
             disabled={processing}
             style={{
               padding: '8px 16px',
-              background: '#15803d',
+              background: '#10b981',
               color: 'white',
               border: 'none',
               borderRadius: 6,
@@ -1260,7 +1260,7 @@ function F24Tab({ f24, onConfermaF24, processing }) {
         <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <button 
             onClick={toggleTutti}
-            style={{ padding: '8px 12px', background: '#e5e7eb', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}
+            style={{ padding: '8px 12px', background: '#dce8f4', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}
           >
             {selezionati.size === f24Validi.length ? '☐ Deseleziona' : '☑ Seleziona tutti'}
           </button>
@@ -1343,7 +1343,7 @@ function F24Tab({ f24, onConfermaF24, processing }) {
                   <div style={{ display: 'flex', gap: 4, marginTop: 8, justifyContent: 'flex-end' }}>
                     <button
                       onClick={() => confermaF24Singolo(f, 'banca')}
-                      style={{ padding: '4px 8px', background: '#15803d', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 11 }}
+                      style={{ padding: '4px 8px', background: '#10b981', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 11 }}
                       title="Conferma pagamento F24 tramite Banca"
                     >
                       🏦 Paga con Banca
@@ -1522,7 +1522,7 @@ function ArubaTab({ fatture, onConferma, processing, fornitori = [], onRefresh, 
           <select 
             value={filtroFornitore}
             onChange={e => setFiltroFornitore(e.target.value)}
-            style={{ padding: '8px 12px', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 13 }}
+            style={{ padding: '8px 12px', border: '1px solid #dce8f4', borderRadius: 6, fontSize: 13 }}
           >
             <option value="">Tutti i fornitori ({fatture.length})</option>
             {fornitori.map(f => (
@@ -1533,7 +1533,7 @@ function ArubaTab({ fatture, onConferma, processing, fornitori = [], onRefresh, 
           {/* Azioni batch */}
           <button 
             onClick={toggleTutte}
-            style={{ padding: '8px 12px', background: '#e5e7eb', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}
+            style={{ padding: '8px 12px', background: '#dce8f4', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}
           >
             {selezionate.size === fattureFiltrate.length ? '☐ Deseleziona' : '☑ Seleziona tutte'}
           </button>
@@ -1543,7 +1543,7 @@ function ArubaTab({ fatture, onConferma, processing, fornitori = [], onRefresh, 
               <select 
                 value={metodoBatch}
                 onChange={e => setMetodoBatch(e.target.value)}
-                style={{ padding: '8px 12px', border: '1px solid #15803d', borderRadius: 6, fontSize: 13, background: '#d1fae5' }}
+                style={{ padding: '8px 12px', border: '1px solid #10b981', borderRadius: 6, fontSize: 13, background: '#d1fae5' }}
               >
                 <option value="cassa">💰 Cassa</option>
                 <option value="bonifico">🏦 Bonifico</option>
@@ -1556,7 +1556,7 @@ function ArubaTab({ fatture, onConferma, processing, fornitori = [], onRefresh, 
                 disabled={salvandoBatch}
                 style={{ 
                   padding: '8px 16px', 
-                  background: '#15803d', 
+                  background: '#10b981', 
                   color: 'white', 
                   border: 'none', 
                   borderRadius: 6, 
@@ -1595,7 +1595,7 @@ function ArubaTab({ fatture, onConferma, processing, fornitori = [], onRefresh, 
                     height: 18, 
                     marginTop: 2,
                     cursor: 'pointer',
-                    accentColor: '#15803d'
+                    accentColor: '#10b981'
                   }}
                 />
                 
@@ -1685,7 +1685,7 @@ const metodoBtn = (bg, color, isPreferred = false) => ({
   padding: '10px 16px',
   background: bg,
   color: color,
-  border: isPreferred ? '2px solid #15803d' : 'none',
+  border: isPreferred ? '2px solid #10b981' : 'none',
   borderRadius: 6,
   fontWeight: 600,
   cursor: 'pointer',
@@ -1830,7 +1830,7 @@ function DocumentiTab({ documenti, stats, onRefresh, processing }) {
       {/* Layout a due colonne */}
       <div style={{ display: 'grid', gridTemplateColumns: selectedDoc ? '1fr 1fr' : '1fr', gap: 0 }}>
         {/* Lista documenti */}
-        <div style={{ maxHeight: 600, overflow: 'auto', borderRight: selectedDoc ? '1px solid #e5e7eb' : 'none' }}>
+        <div style={{ maxHeight: 600, overflow: 'auto', borderRight: selectedDoc ? '1px solid #dce8f4' : 'none' }}>
           {documenti.map((doc) => (
             <div
               key={doc.id}
@@ -1868,7 +1868,7 @@ function DocumentiTab({ documenti, stats, onRefresh, processing }) {
                   {doc.category || 'altro'}
                 </span>
                 {doc.proposta?.anno_suggerito && (
-                  <span style={{ padding: '2px 8px', fontSize: 11, borderRadius: 4, background: '#dbeafe', color: '#1d4ed8' }}>
+                  <span style={{ padding: '2px 8px', fontSize: 11, borderRadius: 4, background: '#dbeafe', color: '#1535a8' }}>
                     {doc.proposta.anno_suggerito}
                   </span>
                 )}
@@ -1929,7 +1929,7 @@ function DocumentiTab({ documenti, stats, onRefresh, processing }) {
                 padding: 12, 
                 marginBottom: 16 
               }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: '#1d4ed8', marginBottom: 8 }}>💡 Proposta Intelligente</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#1535a8', marginBottom: 8 }}>💡 Proposta Intelligente</div>
                 {selectedDoc.proposta.tipo_suggerito && (
                   <div style={{ fontSize: 12, color: '#475569', marginBottom: 4 }}>Tipo: <strong>{selectedDoc.proposta.tipo_suggerito}</strong></div>
                 )}

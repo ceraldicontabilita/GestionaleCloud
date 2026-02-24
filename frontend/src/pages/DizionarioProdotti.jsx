@@ -138,7 +138,7 @@ export default function DizionarioProdotti() {
           <Database size={32} />
           Dizionario Prodotti
         </h1>
-        <p style={{ color: '#6b7280', margin: 0 }}>
+        <p style={{ color: '#6080a0', margin: 0 }}>
           Tutti i prodotti estratti dalle fatture - Modifica il prezzo/kg per calcoli food cost accurati
         </p>
       </div>
@@ -152,15 +152,15 @@ export default function DizionarioProdotti() {
           </div>
           <div style={{ background: 'white', padding: '16px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
             <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '4px' }}>CON PREZZO/KG</div>
-            <div style={{ fontSize: '24px', fontWeight: 700, color: '#15803d' }}>{stats.con_prezzo_al_kg?.toLocaleString()}</div>
+            <div style={{ fontSize: '24px', fontWeight: 700, color: '#10b981' }}>{stats.con_prezzo_al_kg?.toLocaleString()}</div>
           </div>
           <div style={{ background: 'white', padding: '16px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
             <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '4px' }}>SENZA PREZZO</div>
-            <div style={{ fontSize: '24px', fontWeight: 700, color: '#d97706' }}>{(stats.totale_prodotti - stats.con_prezzo_al_kg)?.toLocaleString()}</div>
+            <div style={{ fontSize: '24px', fontWeight: 700, color: '#f59e0b' }}>{(stats.totale_prodotti - stats.con_prezzo_al_kg)?.toLocaleString()}</div>
           </div>
           <div style={{ background: 'white', padding: '16px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
             <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '4px' }}>COMPLETEZZA</div>
-            <div style={{ fontSize: '24px', fontWeight: 700, color: stats.completezza_percentuale > 50 ? '#15803d' : '#d97706' }}>
+            <div style={{ fontSize: '24px', fontWeight: 700, color: stats.completezza_percentuale > 50 ? '#10b981' : '#f59e0b' }}>
               {stats.completezza_percentuale?.toFixed(1)}%
             </div>
           </div>
@@ -198,7 +198,7 @@ export default function DizionarioProdotti() {
           onChange={(e) => { setFornitoreFilter(e.target.value); setOffset(0); }}
           style={{
             padding: '8px 12px',
-            border: '1px solid #e5e7eb',
+            border: '1px solid #dce8f4',
             borderRadius: '6px',
             fontSize: '13px',
             minWidth: '200px',
@@ -257,7 +257,7 @@ export default function DizionarioProdotti() {
             style={{
               width: '100%',
               padding: '10px 12px 10px 40px',
-              border: '1px solid #e5e7eb',
+              border: '1px solid #dce8f4',
               borderRadius: '8px',
               fontSize: '14px'
             }}
@@ -267,7 +267,7 @@ export default function DizionarioProdotti() {
 
       {/* Lista Prodotti - Tabella Dettagliata */}
       {loading ? (
-        <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Caricamento...</div>
+        <div style={{ textAlign: 'center', padding: '40px', color: '#6080a0' }}>Caricamento...</div>
       ) : prodotti.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '60px', background: '#f8fafc', borderRadius: '12px' }}>
           <Package size={48} style={{ color: '#cbd5e1', marginBottom: '16px' }} />
@@ -383,7 +383,7 @@ export default function DizionarioProdotti() {
                 style={{
                   padding: '8px 16px',
                   background: offset === 0 ? '#f3f4f6' : 'white',
-                  border: '1px solid #e5e7eb',
+                  border: '1px solid #dce8f4',
                   borderRadius: '6px',
                   cursor: offset === 0 ? 'not-allowed' : 'pointer',
                   fontSize: '13px',
@@ -401,7 +401,7 @@ export default function DizionarioProdotti() {
                 style={{
                   padding: '8px 16px',
                   background: offset + limit >= totale ? '#f3f4f6' : 'white',
-                  border: '1px solid #e5e7eb',
+                  border: '1px solid #dce8f4',
                   borderRadius: '6px',
                   cursor: offset + limit >= totale ? 'not-allowed' : 'pointer',
                   fontSize: '13px',
@@ -439,7 +439,7 @@ export default function DizionarioProdotti() {
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div style={{ padding: '20px 24px', borderBottom: '1px solid #e5e7eb', background: '#f8fafc' }}>
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid #dce8f4', background: '#f8fafc' }}>
               <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1e293b', margin: 0 }}>
                 Modifica Prodotto
               </h2>
@@ -496,7 +496,7 @@ export default function DizionarioProdotti() {
                 padding: '20px', 
                 background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', 
                 borderRadius: '12px',
-                border: '2px solid #d97706'
+                border: '2px solid #f59e0b'
               }}>
                 <label style={{ display: 'block', fontSize: '14px', fontWeight: 700, color: '#92400e', marginBottom: '8px' }}>
                   💰 PREZZO AL KG (€/kg)
@@ -513,7 +513,7 @@ export default function DizionarioProdotti() {
                   style={{
                     width: '100%',
                     padding: '14px',
-                    border: '2px solid #d97706',
+                    border: '2px solid #f59e0b',
                     borderRadius: '8px',
                     fontSize: '18px',
                     fontWeight: 600,
@@ -528,7 +528,7 @@ export default function DizionarioProdotti() {
             </div>
 
             {/* Footer */}
-            <div style={{ padding: '16px 24px', borderTop: '1px solid #e5e7eb', display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+            <div style={{ padding: '16px 24px', borderTop: '1px solid #dce8f4', display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
               <button
                 onClick={() => setEditingProdotto(null)}
                 style={{ padding: '10px 20px', background: '#f3f4f6', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '14px' }}
@@ -540,7 +540,7 @@ export default function DizionarioProdotti() {
                 disabled={saving}
                 style={{
                   padding: '10px 24px',
-                  background: saving ? '#9ca3af' : '#15803d',
+                  background: saving ? '#9ca3af' : '#10b981',
                   color: 'white',
                   border: 'none',
                   borderRadius: '8px',

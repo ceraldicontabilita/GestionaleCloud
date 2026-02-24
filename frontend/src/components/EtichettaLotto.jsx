@@ -164,7 +164,7 @@ const styles = {
     marginTop: '2mm',
     padding: '2mm',
     background: '#fef3c7',
-    border: '1px solid #d97706',
+    border: '1px solid #f59e0b',
     borderRadius: '2mm'
   },
   allergeniLabel: {
@@ -217,7 +217,7 @@ const styles = {
       background: '#1535a8',
       color: 'white'
     } : variant === 'success' ? {
-      background: '#15803d',
+      background: '#10b981',
       color: 'white'
     } : {
       background: 'white',

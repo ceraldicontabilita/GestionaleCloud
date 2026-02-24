@@ -193,7 +193,7 @@ export default function RicercaProdotti() {
     }
   }
 
-  const cardStyle = { background: 'white', borderRadius: 12, padding: 20, marginBottom: 20, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', border: '1px solid #e5e7eb' };
+  const cardStyle = { background: 'white', borderRadius: 12, padding: 20, marginBottom: 20, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', border: '1px solid #dce8f4' };
   const h1Style = { fontSize: 24, fontWeight: 'bold', color: '#1e293b', marginBottom: 12 };
   const smallStyle = { fontSize: 13, color: '#64748b' };
   const rowStyle = { display: 'flex', alignItems: 'center' };

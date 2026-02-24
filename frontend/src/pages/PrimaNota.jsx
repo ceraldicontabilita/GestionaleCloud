@@ -470,7 +470,7 @@ function PrimaNotaDesktop() {
         position: 'sticky',
         top: 0,
         zIndex: 100,
-        background: '#f9fafb',
+        background: '#f2f6fd',
         padding: '8px 0'
       }}>
         <button
@@ -508,7 +508,7 @@ function PrimaNotaDesktop() {
             fontSize: 14,
             fontWeight: 'bold',
             background: activeSection === 'banca' 
-              ? 'linear-gradient(135deg, #1535a8 0%, #1d4ed8 100%)' 
+              ? 'linear-gradient(135deg, #1535a8 0%, #1535a8 100%)' 
               : '#f3f4f6',
             color: activeSection === 'banca' ? 'white' : '#374151',
             border: 'none',
@@ -534,7 +534,7 @@ function PrimaNotaDesktop() {
               <h1 style={{ margin: 0, fontSize: 24, fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 10 }}>
                 <span>💵</span> Prima Nota Cassa
               </h1>
-              <p style={{ margin: '4px 0 0 0', color: '#6b7280', fontSize: 14 }}>
+              <p style={{ margin: '4px 0 0 0', color: '#6080a0', fontSize: 14 }}>
                 Registro movimenti di cassa • DARE: Corrispettivi, Finanziamenti • AVERE: POS, Versamenti, Fatture
               </p>
             </div>
@@ -546,7 +546,7 @@ function PrimaNotaDesktop() {
             <MiniCard title="Uscite (AVERE)" value={formatEuro(cassaData.totale_uscite)} color="#ef4444" />
             <MiniCard title={`Saldo ${selectedYear}`} value={formatEuro(cassaData.saldo_anno || (cassaData.totale_entrate - cassaData.totale_uscite))} color={(cassaData.saldo_anno || (cassaData.totale_entrate - cassaData.totale_uscite)) >= 0 ? '#15803d' : '#ef4444'} highlight />
             {cassaData.saldo_precedente !== 0 && cassaData.saldo_precedente !== undefined && (
-              <MiniCard title="Riporto anni prec." value={formatEuro(cassaData.saldo_precedente)} color="#6b7280" />
+              <MiniCard title="Riporto anni prec." value={formatEuro(cassaData.saldo_precedente)} color="#6080a0" />
             )}
           </div>
 
@@ -575,7 +575,7 @@ function PrimaNotaDesktop() {
                   marginLeft: 'auto', 
                   fontSize: 11, 
                   background: '#dbeafe', 
-                  color: '#1d4ed8', 
+                  color: '#1535a8', 
                   padding: '2px 8px', 
                   borderRadius: 4 
                 }}>
@@ -598,11 +598,11 @@ function PrimaNotaDesktop() {
 
                 {/* POS - Ultra compatto */}
                 <div style={{ background: 'white', borderRadius: 8, padding: 10, borderLeft: '3px solid #1535a8' }}>
-                  <div style={{ fontSize: 11, fontWeight: 'bold', color: '#1d4ed8', marginBottom: 6 }}>💳 POS</div>
+                  <div style={{ fontSize: 11, fontWeight: 'bold', color: '#1535a8', marginBottom: 6 }}>💳 POS</div>
                   <div style={{ display: 'flex', gap: 4 }}>
                     <input type="date" value={pos.data} onChange={(e) => setPos({...pos, data: e.target.value})} style={{ ...inputStyleCompact, flex: 1, padding: '4px 6px', fontSize: 11 }} />
                     <input type="number" step="0.01" placeholder="€" value={pos.pos1} onChange={(e) => setPos({...pos, pos1: e.target.value, pos2: '', pos3: ''})} style={{ ...inputStyleCompact, width: 70, padding: '4px 6px', fontSize: 11 }} />
-                    <button onClick={handleSavePos} disabled={savingPos} style={{ ...buttonStyleCompact('#1d4ed8', savingPos), padding: '4px 8px', minWidth: 32 }}>
+                    <button onClick={handleSavePos} disabled={savingPos} style={{ ...buttonStyleCompact('#1535a8', savingPos), padding: '4px 8px', minWidth: 32 }}>
                       {savingPos ? '⏳' : '💾'}
                     </button>
                   </div>
@@ -642,7 +642,7 @@ function PrimaNotaDesktop() {
 
           {/* Filter - Bottoni Mesi */}
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 12, color: '#6b7280', marginRight: 4 }}>📅 Mese:</span>
+            <span style={{ fontSize: 12, color: '#6080a0', marginRight: 4 }}>📅 Mese:</span>
             <button 
               onClick={() => setSelectedMonth(null)} 
               style={{ 
@@ -706,7 +706,7 @@ function PrimaNotaDesktop() {
               <h1 style={{ margin: 0, fontSize: 24, fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 10 }}>
                 <span>🏦</span> Prima Nota Banca - Estratto Conto
               </h1>
-              <p style={{ margin: '4px 0 0 0', color: '#6b7280', fontSize: 14 }}>
+              <p style={{ margin: '4px 0 0 0', color: '#6080a0', fontSize: 14 }}>
                 Visualizzazione movimenti dall'estratto conto bancario importato
               </p>
             </div>
@@ -732,7 +732,7 @@ function PrimaNotaDesktop() {
 
           {/* Filter - Bottoni Mesi */}
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 14, color: '#6b7280', marginRight: 8 }}>📅 Mese:</span>
+            <span style={{ fontSize: 14, color: '#6080a0', marginRight: 8 }}>📅 Mese:</span>
             <button 
               onClick={() => setSelectedMonth(null)} 
               style={{ 
@@ -793,9 +793,9 @@ function MiniCard({ title, value, color, highlight }) {
       background: highlight ? `${color}15` : 'white',
       borderRadius: 8, 
       padding: 10, 
-      border: highlight ? `2px solid ${color}` : '1px solid #e5e7eb'
+      border: highlight ? `2px solid ${color}` : '1px solid #dce8f4'
     }}>
-      <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 2 }}>{title}</div>
+      <div style={{ fontSize: 11, color: '#6080a0', marginBottom: 2 }}>{title}</div>
       <div style={{ fontSize: 18, fontWeight: 'bold', color }}>{value}</div>
     </div>
   );
@@ -803,8 +803,8 @@ function MiniCard({ title, value, color, highlight }) {
 
 function TinyStatCard({ title, value, color }) {
   return (
-    <div style={{ background: 'white', borderRadius: 6, padding: 8, border: '1px solid #e5e7eb', borderLeft: `3px solid ${color}` }}>
-      <div style={{ fontSize: 10, color: '#6b7280' }}>{title}</div>
+    <div style={{ background: 'white', borderRadius: 6, padding: 8, border: '1px solid #dce8f4', borderLeft: `3px solid ${color}` }}>
+      <div style={{ fontSize: 10, color: '#6080a0' }}>{title}</div>
       <div style={{ fontSize: 13, fontWeight: 'bold', color }}>{value}</div>
     </div>
   );
@@ -832,10 +832,10 @@ function SummaryCard({ title, value, color, icon, highlight, subtitle }) {
       background: highlight ? `linear-gradient(135deg, ${color}15 0%, ${color}25 100%)` : 'white',
       borderRadius: 12, 
       padding: 16, 
-      border: highlight ? `2px solid ${color}` : '1px solid #e5e7eb'
+      border: highlight ? `2px solid ${color}` : '1px solid #dce8f4'
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-        <span style={{ fontSize: 13, color: '#6b7280' }}>{title}</span>
+        <span style={{ fontSize: 13, color: '#6080a0' }}>{title}</span>
         <span style={{ fontSize: 18 }}>{icon}</span>
       </div>
       <div style={{ fontSize: 24, fontWeight: 'bold', color }}>{value}</div>
@@ -847,8 +847,8 @@ function SummaryCard({ title, value, color, icon, highlight, subtitle }) {
 // eslint-disable-next-line no-unused-vars
 function MiniStatCard({ title, value, color }) {
   return (
-    <div style={{ background: 'white', borderRadius: 8, padding: 12, border: '1px solid #e5e7eb', borderLeft: `4px solid ${color}` }}>
-      <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>{title}</div>
+    <div style={{ background: 'white', borderRadius: 8, padding: 12, border: '1px solid #dce8f4', borderLeft: `4px solid ${color}` }}>
+      <div style={{ fontSize: 11, color: '#6080a0', marginBottom: 4 }}>{title}</div>
       <div style={{ fontSize: 16, fontWeight: 'bold', color }}>{value}</div>
     </div>
   );
@@ -887,7 +887,7 @@ function MovementsTable({ movimenti, tipo, loading, formatEuro, formatDate, onDe
   const categorieUniche = [...new Set(movimenti.map(m => m.categoria).filter(Boolean))].sort();
   
   if (loading) {
-    return <div style={{ textAlign: 'center', padding: 40, color: '#6b7280' }}>⏳ Caricamento...</div>;
+    return <div style={{ textAlign: 'center', padding: 40, color: '#6080a0' }}>⏳ Caricamento...</div>;
   }
 
   // Applica filtri
@@ -938,7 +938,7 @@ function MovementsTable({ movimenti, tipo, loading, formatEuro, formatDate, onDe
   };
 
   return (
-    <div style={{ background: 'white', borderRadius: 12, overflow: 'hidden', border: '1px solid #e5e7eb' }}>
+    <div style={{ background: 'white', borderRadius: 12, overflow: 'hidden', border: '1px solid #dce8f4' }}>
       {/* Modal Modifica Movimento - solo se non readOnly */}
       {!readOnly && editingMovimento && (
         <EditMovimentoModal
@@ -977,7 +977,7 @@ function MovementsTable({ movimenti, tipo, loading, formatEuro, formatDate, onDe
       <div style={{ 
         padding: '12px 16px', 
         background: '#f8fafc', 
-        borderBottom: '1px solid #e5e7eb',
+        borderBottom: '1px solid #dce8f4',
         display: 'flex',
         gap: 12,
         flexWrap: 'wrap',
@@ -1039,7 +1039,7 @@ function MovementsTable({ movimenti, tipo, loading, formatEuro, formatDate, onDe
         </select>
         
         {/* Contatore risultati */}
-        <span style={{ fontSize: 12, color: '#6b7280' }}>
+        <span style={{ fontSize: 12, color: '#6080a0' }}>
           {movimentiFiltrati.length} / {movimenti.length} movimenti
         </span>
         
@@ -1087,7 +1087,7 @@ function MovementsTable({ movimenti, tipo, loading, formatEuro, formatDate, onDe
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
           <thead>
-            <tr style={{ background: '#f9fafb', borderBottom: '2px solid #e5e7eb' }}>
+            <tr style={{ background: '#f2f6fd', borderBottom: '2px solid #dce8f4' }}>
               <th style={{ padding: '8px 8px', textAlign: 'left', fontWeight: 600, fontSize: 11 }}>Data</th>
               <th style={{ padding: '8px 8px', textAlign: 'center', fontWeight: 600, fontSize: 11, width: 40 }}>T</th>
               <th style={{ padding: '8px 8px', textAlign: 'left', fontWeight: 600, fontSize: 11 }}>Cat.</th>
@@ -1104,8 +1104,8 @@ function MovementsTable({ movimenti, tipo, loading, formatEuro, formatDate, onDe
               <tr 
                 key={mov.id || idx} 
                 style={{ 
-                  borderBottom: '1px solid #e5e7eb', 
-                  background: idx % 2 === 0 ? 'white' : '#f9fafb'
+                  borderBottom: '1px solid #dce8f4', 
+                  background: idx % 2 === 0 ? 'white' : '#f2f6fd'
                 }}
                 data-testid={`movimento-row-${mov.id || idx}`}
               >
@@ -1149,7 +1149,7 @@ function MovementsTable({ movimenti, tipo, loading, formatEuro, formatDate, onDe
                       style={{
                         display: 'inline-block',
                         padding: '6px 12px',
-                        background: '#2196f3',
+                        background: '#1535a8',
                         color: 'white',
                         border: 'none',
                         borderRadius: 6,
@@ -1171,7 +1171,7 @@ function MovementsTable({ movimenti, tipo, loading, formatEuro, formatDate, onDe
                       style={{
                         display: 'inline-block',
                         padding: '6px 12px',
-                        background: '#9c27b0',
+                        background: '#7c3aed',
                         color: 'white',
                         border: 'none',
                         borderRadius: 6,
@@ -1301,24 +1301,24 @@ function MovementsTable({ movimenti, tipo, loading, formatEuro, formatDate, onDe
       </div>
 
       {movimenti.length === 0 && (
-        <div style={{ padding: 40, textAlign: 'center', color: '#6b7280' }}>
+        <div style={{ padding: 40, textAlign: 'center', color: '#6080a0' }}>
           {readOnly ? 'Nessun movimento nell\'estratto conto. Importa un file CSV dalla pagina Import/Export.' : 'Nessun movimento trovato'}
         </div>
       )}
 
       {/* Footer con Paginazione ANCHE IN BASSO */}
       {movimenti.length > 0 && (
-        <div style={{ padding: 12, background: '#f9fafb', borderTop: '1px solid #e5e7eb', fontSize: 12, color: '#6b7280' }}>
+        <div style={{ padding: 12, background: '#f2f6fd', borderTop: '1px solid #dce8f4', fontSize: 12, color: '#6080a0' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span>Mostrando {start + 1}-{Math.min(start + itemsPerPage, movimenti.length)} di {movimenti.length} movimenti</span>
             {totalPages > 1 && (
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <span>📄 Pagina {currentPage} di {totalPages}</span>
                 <div style={{ display: 'flex', gap: 4 }}>
-                  <button onClick={() => setCurrentPage(1)} disabled={currentPage === 1} style={{ padding: '4px 8px', borderRadius: 4, border: 'none', cursor: 'pointer', opacity: currentPage === 1 ? 0.5 : 1, background: '#e5e7eb' }}>⏮️</button>
-                  <button onClick={() => setCurrentPage(p => Math.max(1, p-1))} disabled={currentPage === 1} style={{ padding: '4px 8px', borderRadius: 4, border: 'none', cursor: 'pointer', opacity: currentPage === 1 ? 0.5 : 1, background: '#e5e7eb' }}>◀️</button>
-                  <button onClick={() => setCurrentPage(p => Math.min(totalPages, p+1))} disabled={currentPage === totalPages} style={{ padding: '4px 8px', borderRadius: 4, border: 'none', cursor: 'pointer', opacity: currentPage === totalPages ? 0.5 : 1, background: '#e5e7eb' }}>▶️</button>
-                  <button onClick={() => setCurrentPage(totalPages)} disabled={currentPage === totalPages} style={{ padding: '4px 8px', borderRadius: 4, border: 'none', cursor: 'pointer', opacity: currentPage === totalPages ? 0.5 : 1, background: '#e5e7eb' }}>⏭️</button>
+                  <button onClick={() => setCurrentPage(1)} disabled={currentPage === 1} style={{ padding: '4px 8px', borderRadius: 4, border: 'none', cursor: 'pointer', opacity: currentPage === 1 ? 0.5 : 1, background: '#dce8f4' }}>⏮️</button>
+                  <button onClick={() => setCurrentPage(p => Math.max(1, p-1))} disabled={currentPage === 1} style={{ padding: '4px 8px', borderRadius: 4, border: 'none', cursor: 'pointer', opacity: currentPage === 1 ? 0.5 : 1, background: '#dce8f4' }}>◀️</button>
+                  <button onClick={() => setCurrentPage(p => Math.min(totalPages, p+1))} disabled={currentPage === totalPages} style={{ padding: '4px 8px', borderRadius: 4, border: 'none', cursor: 'pointer', opacity: currentPage === totalPages ? 0.5 : 1, background: '#dce8f4' }}>▶️</button>
+                  <button onClick={() => setCurrentPage(totalPages)} disabled={currentPage === totalPages} style={{ padding: '4px 8px', borderRadius: 4, border: 'none', cursor: 'pointer', opacity: currentPage === totalPages ? 0.5 : 1, background: '#dce8f4' }}>⏭️</button>
                 </div>
               </div>
             )}
@@ -1428,7 +1428,7 @@ function EditMovimentoModal({ movimento, tipo, onClose, onSave }) {
         {/* Header */}
         <div style={{
           padding: '16px 24px',
-          borderBottom: '1px solid #e5e7eb',
+          borderBottom: '1px solid #dce8f4',
           background: tipo === 'cassa' ? '#4f46e5' : '#1535a8',
           borderRadius: '16px 16px 0 0',
           color: 'white',
@@ -1545,7 +1545,7 @@ function EditMovimentoModal({ movimento, tipo, onClose, onSave }) {
           <div style={{ 
             marginTop: 24, 
             paddingTop: 16, 
-            borderTop: '1px solid #e5e7eb',
+            borderTop: '1px solid #dce8f4',
             display: 'flex', 
             justifyContent: 'flex-end', 
             gap: 12 

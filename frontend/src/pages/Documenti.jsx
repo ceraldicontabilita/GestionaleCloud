@@ -438,7 +438,7 @@ export default function Documenti() {
       icon="📨" 
       subtitle="Gestisci documenti email e documenti estratti con AI"
       actions={
-        <button onClick={activeTab === 'email' ? loadData : loadAiDocuments} disabled={loading || aiLoading} style={buttonStyle('#e5e7eb', '#374151')}>
+        <button onClick={activeTab === 'email' ? loadData : loadAiDocuments} disabled={loading || aiLoading} style={buttonStyle('#dce8f4', '#374151')}>
           {loading || aiLoading ? '⏳' : '🔄'} Aggiorna
         </button>
       }
@@ -462,7 +462,7 @@ export default function Documenti() {
             borderRadius: 8,
             cursor: 'pointer',
             fontWeight: activeTab === 'email' ? 600 : 400,
-            color: activeTab === 'email' ? '#1535a8' : '#6b7280',
+            color: activeTab === 'email' ? '#1535a8' : '#6080a0',
             boxShadow: activeTab === 'email' ? '0 2px 4px rgba(0,0,0,0.1)' : 'none',
             display: 'flex',
             alignItems: 'center',
@@ -480,7 +480,7 @@ export default function Documenti() {
             borderRadius: 8,
             cursor: 'pointer',
             fontWeight: activeTab === 'ai' ? 600 : 400,
-            color: activeTab === 'ai' ? '#7c3aed' : '#6b7280',
+            color: activeTab === 'ai' ? '#7c3aed' : '#6080a0',
             boxShadow: activeTab === 'ai' ? '0 2px 4px rgba(0,0,0,0.1)' : 'none',
             display: 'flex',
             alignItems: 'center',
@@ -499,7 +499,7 @@ export default function Documenti() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 12, marginBottom: 20 }}>
           <div style={{ ...cardStyle, padding: '10px 12px' }}>
             <div style={{ fontSize: 20, fontWeight: 'bold', color: '#1e293b' }}>{stats.totale}</div>
-            <div style={{ fontSize: 11, color: '#6b7280' }}>Documenti Totali</div>
+            <div style={{ fontSize: 11, color: '#6080a0' }}>Documenti Totali</div>
           </div>
           <div style={{ ...cardStyle, background: '#dbeafe', padding: '10px 12px' }}>
             <div style={{ fontSize: 20, fontWeight: 'bold', color: '#1535a8' }}>{stats.nuovi}</div>
@@ -511,7 +511,7 @@ export default function Documenti() {
           </div>
           <div style={{ ...cardStyle, padding: '10px 12px' }}>
             <div style={{ fontSize: 20, fontWeight: 'bold', color: '#7c3aed' }}>{stats.spazio_disco_mb} MB</div>
-            <div style={{ fontSize: 11, color: '#6b7280' }}>Spazio Usato</div>
+            <div style={{ fontSize: 11, color: '#6080a0' }}>Spazio Usato</div>
           </div>
         </div>
       )}
@@ -607,7 +607,7 @@ export default function Documenti() {
                         borderRadius: 20,
                         border: paroleChiaveSelezionate.includes(kw.id) ? '2px solid #1535a8' : '1px solid #e2e8f0',
                         background: paroleChiaveSelezionate.includes(kw.id) ? '#dbeafe' : 'white',
-                        color: paroleChiaveSelezionate.includes(kw.id) ? '#1535a8' : '#6b7280',
+                        color: paroleChiaveSelezionate.includes(kw.id) ? '#1535a8' : '#6080a0',
                         cursor: 'pointer',
                         fontSize: 13,
                         fontWeight: paroleChiaveSelezionate.includes(kw.id) ? 'bold' : 'normal'
@@ -687,7 +687,7 @@ export default function Documenti() {
                           </button>
                           <div style={{ flex: 1 }}>
                             <div style={{ fontWeight: 'bold', fontSize: 13, color: '#166534' }}>{kw.label}</div>
-                            <div style={{ fontSize: 11, color: '#6b7280' }}>
+                            <div style={{ fontSize: 11, color: '#6080a0' }}>
                               Varianti: {kw.keywords}
                             </div>
                           </div>
@@ -710,7 +710,7 @@ export default function Documenti() {
                     </div>
                   </div>
                 )}
-                <p style={{ fontSize: 12, color: '#6b7280', marginTop: 8 }}>
+                <p style={{ fontSize: 12, color: '#6080a0', marginTop: 8 }}>
                   💡 Crea parole chiave personalizzate per categorizzare automaticamente i documenti.
                   Es: &quot;cartella esattoriale&quot; creerà una cartella &quot;Cartelle Esattoriali&quot;.
                 </p>
@@ -762,7 +762,7 @@ export default function Documenti() {
                   {taskStatus.message || 'Elaborazione...'}
                 </div>
                 {taskStatus.status === 'in_progress' && (
-                  <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>
+                  <div style={{ fontSize: 12, color: '#6080a0', marginTop: 4 }}>
                     Puoi continuare a navigare, ti avviseremo al completamento.
                   </div>
                 )}
@@ -788,7 +788,7 @@ export default function Documenti() {
       {/* Filtri */}
       <div style={{ display: 'flex', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 14, color: '#6b7280' }}>🔍</span>
+          <span style={{ fontSize: 14, color: '#6080a0' }}>🔍</span>
           <select
             value={filtroCategoria}
             onChange={(e) => setFiltroCategoria(e.target.value)}
@@ -844,17 +844,17 @@ export default function Documenti() {
 
       {/* Lista Documenti */}
       <div style={cardStyle}>
-        <div style={{ padding: '16px 20px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid #dce8f4', display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 18 }}>📄</span>
           <h2 style={{ margin: 0, fontSize: 16 }}>Documenti ({documents.length})</h2>
         </div>
         <div style={{ padding: 16 }}>
           {loading ? (
-            <div style={{ textAlign: 'center', padding: 40, color: '#6b7280' }}>
+            <div style={{ textAlign: 'center', padding: 40, color: '#6080a0' }}>
               ⏳ Caricamento...
             </div>
           ) : documents.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 40, color: '#6b7280' }}>
+            <div style={{ textAlign: 'center', padding: 40, color: '#6080a0' }}>
               <div style={{ fontSize: 48, marginBottom: 16, opacity: 0.3 }}>📧</div>
               <p>Nessun documento trovato</p>
               <p style={{ fontSize: 14 }}>Clicca &quot;Scarica da Email&quot; per iniziare</p>
@@ -909,12 +909,12 @@ export default function Documenti() {
                             overflow: 'hidden', 
                             textOverflow: 'ellipsis',
                             fontSize: 12,
-                            color: '#6b7280'
+                            color: '#6080a0'
                           }} title={doc.email_subject}>
                             {doc.email_subject || '-'}
                           </div>
                         </td>
-                        <td style={{ padding: 12, fontSize: 12, color: '#6b7280' }}>
+                        <td style={{ padding: 12, fontSize: 12, color: '#6080a0' }}>
                           {doc.email_from?.split('<')[0]?.trim() || '-'}
                         </td>
                         <td style={{ padding: 12, textAlign: 'center', fontSize: 12 }}>
@@ -1055,7 +1055,7 @@ export default function Documenti() {
         background: '#f8fafc', 
         borderRadius: 8,
         fontSize: 13,
-        color: '#6b7280'
+        color: '#6080a0'
       }}>
         💡 <strong>Configurazione Email:</strong> Le credenziali email sono configurate nel file .env del backend 
         (EMAIL_USER e EMAIL_APP_PASSWORD). Il sistema supporta Gmail con App Password.
@@ -1169,7 +1169,7 @@ export default function Documenti() {
                 <div style={{ fontWeight: 600, color: '#1e293b', marginBottom: 4 }}>
                   Clicca per caricare un documento
                 </div>
-                <div style={{ fontSize: 12, color: '#6b7280' }}>
+                <div style={{ fontSize: 12, color: '#6080a0' }}>
                   PDF, PNG, JPG (max 20MB) - Il sistema estrarrà automaticamente i dati
                 </div>
               </label>
@@ -1206,11 +1206,11 @@ export default function Documenti() {
             </div>
             
             {aiLoading ? (
-              <div style={{ padding: 40, textAlign: 'center', color: '#6b7280' }}>
+              <div style={{ padding: 40, textAlign: 'center', color: '#6080a0' }}>
                 ⏳ Caricamento...
               </div>
             ) : aiDocuments.filter(d => !aiFilterTipo || d.document_type === aiFilterTipo).length === 0 ? (
-              <div style={{ padding: 40, textAlign: 'center', color: '#6b7280' }}>
+              <div style={{ padding: 40, textAlign: 'center', color: '#6080a0' }}>
                 <div style={{ fontSize: 48, marginBottom: 16 }}>🤖</div>
                 <div style={{ fontWeight: 600, marginBottom: 8 }}>Nessun documento estratto</div>
                 <div style={{ fontSize: 13 }}>Carica un documento PDF per estrarre i dati automaticamente</div>
@@ -1333,7 +1333,7 @@ export default function Documenti() {
                             <span style={{ color: '#16a34a' }}>✓ No</span>
                           )}
                         </td>
-                        <td style={{ padding: 12, fontSize: 12, color: '#6b7280' }}>
+                        <td style={{ padding: 12, fontSize: 12, color: '#6080a0' }}>
                           {doc.created_at ? new Date(doc.created_at).toLocaleDateString('it-IT') : '-'}
                         </td>
                         <td style={{ padding: 12, textAlign: 'center' }}>
@@ -1447,7 +1447,7 @@ export default function Documenti() {
                 <span style={{ fontSize: 20 }}>📄</span>
                 <div>
                   <div style={{ fontWeight: 600, color: '#1e293b' }}>{selectedPdfDoc.filename}</div>
-                  <div style={{ fontSize: 12, color: '#6b7280' }}>
+                  <div style={{ fontSize: 12, color: '#6080a0' }}>
                     {CATEGORY_COLORS[selectedPdfDoc.category]?.label || selectedPdfDoc.category}
                     {selectedPdfDoc.file_size && ` • ${formatBytes(selectedPdfDoc.file_size)}`}
                   </div>
@@ -1473,7 +1473,7 @@ export default function Documenti() {
                   onClick={closePdfViewer}
                   style={{
                     background: '#f1f5f9',
-                    color: '#6b7280',
+                    color: '#6080a0',
                     border: 'none',
                     borderRadius: 6,
                     padding: '8px 16px',

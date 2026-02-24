@@ -64,7 +64,7 @@ export default function Breadcrumb({ pageTitle = '', customItems = null }) {
               <Link
                 to={item.path}
                 style={{
-                  color: '#6b7280',
+                  color: '#6080a0',
                   textDecoration: 'none',
                   fontSize: 14,
                   display: 'flex',
@@ -72,7 +72,7 @@ export default function Breadcrumb({ pageTitle = '', customItems = null }) {
                   transition: 'color 0.2s'
                 }}
                 onMouseEnter={(e) => e.target.style.color = '#1535a8'}
-                onMouseLeave={(e) => e.target.style.color = '#6b7280'}
+                onMouseLeave={(e) => e.target.style.color = '#6080a0'}
               >
                 {index === 0 ? <Home style={{ width: 14, height: 14 }} /> : item.label}
               </Link>

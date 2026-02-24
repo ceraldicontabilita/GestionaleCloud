@@ -184,7 +184,7 @@ export default function VerificaCoerenza() {
                   <div style={{ fontSize: 11, color: '#64748b' }}>Critiche</div>
                 </div>
                 <div>
-                  <div style={{ fontSize: 24, fontWeight: 'bold', color: '#d97706' }}>
+                  <div style={{ fontSize: 24, fontWeight: 'bold', color: '#f59e0b' }}>
                     {verificaCompleta.riepilogo?.warning || 0}
                   </div>
                   <div style={{ fontSize: 11, color: '#64748b' }}>Avvisi</div>
@@ -482,7 +482,7 @@ export default function VerificaCoerenza() {
                             borderRadius: 4,
                             fontSize: 10,
                             fontWeight: 'bold',
-                            background: d.severita === 'critical' ? '#dc2626' : '#d97706',
+                            background: d.severita === 'critical' ? '#dc2626' : '#f59e0b',
                             color: 'white'
                           }}>
                             {d.severita.toUpperCase()}

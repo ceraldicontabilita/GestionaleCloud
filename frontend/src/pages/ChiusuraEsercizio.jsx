@@ -363,7 +363,7 @@ export default function ChiusuraEsercizio() {
                   height: '100%',
                   width: `${verifica?.punteggio_completezza || 0}%`,
                   background: verifica?.punteggio_completezza >= 80 ? '#22c55e' : 
-                             verifica?.punteggio_completezza >= 50 ? '#d97706' : '#ef4444',
+                             verifica?.punteggio_completezza >= 50 ? '#f59e0b' : '#ef4444',
                   borderRadius: 4,
                   transition: 'width 0.5s ease'
                 }} />

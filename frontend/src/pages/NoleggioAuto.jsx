@@ -28,9 +28,9 @@ export default function NoleggioAuto() {
 
   const categorie = [
     { key: 'canoni', label: 'Canoni', icon: '📋', color: '#15803d' },
-    { key: 'pedaggio', label: 'Pedaggio', icon: '🛣️', color: '#2196f3' },
+    { key: 'pedaggio', label: 'Pedaggio', icon: '🛣️', color: '#1535a8' },
     { key: 'verbali', label: 'Verbali', icon: '⚠️', color: '#f44336' },
-    { key: 'bollo', label: 'Bollo', icon: '📄', color: '#9c27b0' },
+    { key: 'bollo', label: 'Bollo', icon: '📄', color: '#7c3aed' },
     { key: 'costi_extra', label: 'Costi Extra', icon: '💳', color: '#d97706' },
     { key: 'riparazioni', label: 'Riparazioni', icon: '🔧', color: '#795548' }
   ];
@@ -250,7 +250,7 @@ export default function NoleggioAuto() {
           onClick={fetchVeicoli}
           style={{ 
             padding: '10px 20px',
-            background: '#e5e7eb',
+            background: '#dce8f4',
             color: '#374151',
             border: 'none',
             borderRadius: 8,
@@ -326,7 +326,7 @@ export default function NoleggioAuto() {
               }}
               style={{
                 padding: '4px 10px',
-                background: '#d97706',
+                background: '#f59e0b',
                 color: 'white',
                 border: 'none',
                 borderRadius: 4,
@@ -384,7 +384,7 @@ export default function NoleggioAuto() {
                   boxShadow: '0 1px 4px rgba(0,0,0,0.06)', 
                   borderLeft: `3px solid ${cat.color}` 
                 }}>
-                  <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>{cat.icon} {cat.label}</div>
+                  <div style={{ fontSize: 11, color: '#6080a0', marginBottom: 4 }}>{cat.icon} {cat.label}</div>
                   <div style={{ fontSize: 16, fontWeight: 'bold', color: cat.color }}>{formatEuro(valore)}</div>
                 </div>
               );
@@ -435,15 +435,15 @@ export default function NoleggioAuto() {
           {/* Info generali veicolo */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginBottom: 20 }}>
             <div>
-              <h3 style={{ margin: '0 0 8px 0', fontSize: 14, color: '#6b7280' }}>Dati Veicolo</h3>
+              <h3 style={{ margin: '0 0 8px 0', fontSize: 14, color: '#6080a0' }}>Dati Veicolo</h3>
               <div style={{ fontSize: 13, lineHeight: 1.8 }}>
                 <div>Targa: <strong>{selectedVeicolo.targa}</strong></div>
                 <div>Fornitore: {selectedVeicolo.fornitore_noleggio || "-"}</div>
-                <div>P.IVA: <span style={{ fontFamily: 'monospace', color: '#6b7280' }}>{selectedVeicolo.fornitore_piva || "-"}</span></div>
+                <div>P.IVA: <span style={{ fontFamily: 'monospace', color: '#6080a0' }}>{selectedVeicolo.fornitore_piva || "-"}</span></div>
               </div>
             </div>
             <div>
-              <h3 style={{ margin: '0 0 8px 0', fontSize: 14, color: '#6b7280' }}>Contratto</h3>
+              <h3 style={{ margin: '0 0 8px 0', fontSize: 14, color: '#6080a0' }}>Contratto</h3>
               <div style={{ fontSize: 13, lineHeight: 1.8 }}>
                 <div>N° Contratto: <strong>{selectedVeicolo.contratto || "-"}</strong></div>
                 <div>Cod. Cliente: {selectedVeicolo.codice_cliente || "-"}</div>
@@ -451,7 +451,7 @@ export default function NoleggioAuto() {
               </div>
             </div>
             <div>
-              <h3 style={{ margin: '0 0 8px 0', fontSize: 14, color: '#6b7280' }}>Assegnazione</h3>
+              <h3 style={{ margin: '0 0 8px 0', fontSize: 14, color: '#6080a0' }}>Assegnazione</h3>
               <div style={{ fontSize: 13, lineHeight: 1.8 }}>
                 <div>Driver: <strong>{selectedVeicolo.driver || "Non assegnato"}</strong></div>
                 <div>Inizio: {formatDate(selectedVeicolo.data_inizio)}</div>
@@ -459,7 +459,7 @@ export default function NoleggioAuto() {
               </div>
             </div>
             <div>
-              <h3 style={{ margin: '0 0 8px 0', fontSize: 14, color: '#6b7280' }}>Totale {annoFiltro}</h3>
+              <h3 style={{ margin: '0 0 8px 0', fontSize: 14, color: '#6080a0' }}>Totale {annoFiltro}</h3>
               <div style={{ fontSize: 24, fontWeight: 'bold', color: '#1535a8' }}>
                 {formatEuro(selectedVeicolo.totale_generale)}
               </div>
@@ -496,7 +496,7 @@ export default function NoleggioAuto() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span>{cat.icon}</span>
                     <span style={{ fontWeight: '600', color: cat.color }}>{cat.label}</span>
-                    <span style={{ fontSize: 13, color: '#6b7280' }}>({spese.length} fatture)</span>
+                    <span style={{ fontSize: 13, color: '#6080a0' }}>({spese.length} fatture)</span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                     <span style={{ fontWeight: 'bold', fontSize: 16, color: cat.color }}>{formatEuro(totaleSezione)}</span>
@@ -508,7 +508,7 @@ export default function NoleggioAuto() {
                   <div style={{ marginTop: 8, overflowX: 'auto' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                       <thead>
-                        <tr style={{ background: '#f9fafb', borderBottom: '2px solid #e5e7eb' }}>
+                        <tr style={{ background: '#f2f6fd', borderBottom: '2px solid #dce8f4' }}>
                           <th style={{ padding: '8px 10px', textAlign: 'left', fontWeight: '600' }}>Data</th>
                           <th style={{ padding: '8px 10px', textAlign: 'left', fontWeight: '600' }}>Fattura</th>
                           {cat.key === 'verbali' && (
@@ -526,11 +526,11 @@ export default function NoleggioAuto() {
                         {spese.map((s, idx) => (
                           <tr key={idx} style={{ borderBottom: '1px solid #f3f4f6', background: s.imponibile < 0 ? '#fff7ed' : 'white' }}>
                             <td style={{ padding: '8px 10px', fontSize: 12 }}>{formatDate(s.data)}</td>
-                            <td style={{ padding: '8px 10px', color: '#6b7280', fontSize: 11, fontFamily: 'monospace' }}>{s.numero_fattura || "-"}</td>
+                            <td style={{ padding: '8px 10px', color: '#6080a0', fontSize: 11, fontFamily: 'monospace' }}>{s.numero_fattura || "-"}</td>
                             {cat.key === 'verbali' && (
                               <td style={{ padding: '8px 10px', fontSize: 11, fontFamily: 'monospace', color: s.numero_verbale ? '#dc2626' : '#9ca3af' }}>
                                 {s.numero_verbale || "-"}
-                                {s.data_verbale && <div style={{ fontSize: 10, color: '#6b7280' }}>{formatDate(s.data_verbale)}</div>}
+                                {s.data_verbale && <div style={{ fontSize: 10, color: '#6080a0' }}>{formatDate(s.data_verbale)}</div>}
                               </td>
                             )}
                             <td style={{ padding: '8px 10px' }}>
@@ -543,7 +543,7 @@ export default function NoleggioAuto() {
                             <td style={{ padding: '8px 10px', textAlign: 'right', color: s.imponibile < 0 ? '#ea580c' : 'inherit', fontSize: 12 }}>
                               {formatEuro(s.imponibile)}
                             </td>
-                            <td style={{ padding: '8px 10px', textAlign: 'right', color: '#6b7280', fontSize: 12 }}>{formatEuro(s.iva)}</td>
+                            <td style={{ padding: '8px 10px', textAlign: 'right', color: '#6080a0', fontSize: 12 }}>{formatEuro(s.iva)}</td>
                             <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 'bold', color: s.totale < 0 ? '#ea580c' : 'inherit', fontSize: 12 }}>
                               {formatEuro(s.totale)}
                             </td>
@@ -602,7 +602,7 @@ export default function NoleggioAuto() {
                         ))}
                       </tbody>
                       <tfoot>
-                        <tr style={{ background: `${cat.color}10`, borderTop: '2px solid #e5e7eb' }}>
+                        <tr style={{ background: `${cat.color}10`, borderTop: '2px solid #dce8f4' }}>
                           <td colSpan={cat.key === 'verbali' ? 4 : 3} style={{ padding: '8px 10px', textAlign: 'right', fontWeight: '600' }}>Totale {cat.label}:</td>
                           <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 'bold', fontSize: 12 }}>{formatEuro(spese.reduce((a, s) => a + (s.imponibile || 0), 0))}</td>
                           <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 'bold', fontSize: 12 }}>{formatEuro(spese.reduce((a, s) => a + (s.iva || 0), 0))}</td>
@@ -619,7 +619,7 @@ export default function NoleggioAuto() {
           })}
 
           {categorie.every(cat => (selectedVeicolo[cat.key] || []).length === 0) && (
-            <div style={{ textAlign: 'center', padding: 40, color: '#6b7280' }}>
+            <div style={{ textAlign: 'center', padding: 40, color: '#6080a0' }}>
               Nessuna spesa registrata per {annoFiltro}
             </div>
           )}
@@ -628,18 +628,18 @@ export default function NoleggioAuto() {
 
       {/* Lista Veicoli */}
       <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
-        <div style={{ padding: '16px 20px', borderBottom: '1px solid #e5e7eb' }}>
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid #dce8f4' }}>
           <h2 style={{ margin: 0, fontSize: 18 }}>🚗 Elenco Veicoli ({veicoli.length})</h2>
         </div>
         
         {loading ? (
-          <div style={{ padding: 40, textAlign: 'center', color: '#6b7280' }}>
+          <div style={{ padding: 40, textAlign: 'center', color: '#6080a0' }}>
             ⏳ Caricamento...
           </div>
         ) : veicoli.length === 0 ? (
           <div style={{ padding: 40, textAlign: 'center' }}>
             <div style={{ fontSize: 48, marginBottom: 16 }}>🚗</div>
-            <div style={{ color: '#6b7280' }}>Nessun veicolo trovato per {annoFiltro}</div>
+            <div style={{ color: '#6080a0' }}>Nessun veicolo trovato per {annoFiltro}</div>
             <div style={{ color: '#9ca3af', fontSize: 14, marginTop: 8 }}>
               I veicoli vengono rilevati automaticamente dalle fatture dei fornitori di noleggio
             </div>
@@ -648,7 +648,7 @@ export default function NoleggioAuto() {
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }} data-testid="noleggio-table">
               <thead>
-                <tr style={{ background: '#f9fafb', borderBottom: '2px solid #e5e7eb' }}>
+                <tr style={{ background: '#f2f6fd', borderBottom: '2px solid #dce8f4' }}>
                   <th style={{ padding: '12px 10px', textAlign: 'left', fontWeight: '600', fontSize: 12 }}>Targa</th>
                   <th style={{ padding: '12px 10px', textAlign: 'left', fontWeight: '600', fontSize: 12 }}>Veicolo</th>
                   <th style={{ padding: '12px 10px', textAlign: 'left', fontWeight: '600', fontSize: 12 }}>Fornitore</th>
@@ -679,7 +679,7 @@ export default function NoleggioAuto() {
                       <div style={{ fontWeight: '500', fontSize: 12 }}>{v.marca} {(v.modello || '-').slice(0, 25)}</div>
                     </td>
                     <td style={{ padding: '10px', fontSize: 12 }}>{v.fornitore_noleggio?.split(' ')[0] || '-'}</td>
-                    <td style={{ padding: '10px', fontSize: 11, fontFamily: 'monospace', color: '#6b7280' }}>
+                    <td style={{ padding: '10px', fontSize: 11, fontFamily: 'monospace', color: '#6080a0' }}>
                       {v.contratto || v.codice_cliente || '-'}
                     </td>
                     <td style={{ padding: '10px', fontSize: 12, color: v.driver ? 'inherit' : '#9ca3af' }}>
@@ -687,7 +687,7 @@ export default function NoleggioAuto() {
                     </td>
                     <td style={{ padding: '10px', textAlign: 'right', color: '#15803d', fontSize: 12 }}>{formatEuro(v.totale_canoni)}</td>
                     <td style={{ padding: '10px', textAlign: 'right', color: '#f44336', fontSize: 12 }}>{formatEuro(v.totale_verbali)}</td>
-                    <td style={{ padding: '10px', textAlign: 'right', color: '#9c27b0', fontSize: 12 }}>{formatEuro(v.totale_bollo)}</td>
+                    <td style={{ padding: '10px', textAlign: 'right', color: '#7c3aed', fontSize: 12 }}>{formatEuro(v.totale_bollo)}</td>
                     <td style={{ padding: '10px', textAlign: 'right', color: '#795548', fontSize: 12 }}>{formatEuro(v.totale_riparazioni)}</td>
                     <td style={{ padding: '10px', textAlign: 'right', fontWeight: 'bold', color: '#1535a8', fontSize: 13 }}>{formatEuro(v.totale_generale)}</td>
                     <td style={{ padding: '10px', textAlign: 'center' }}>
@@ -816,7 +816,7 @@ export default function NoleggioAuto() {
                 )}
                 
                 {!lookupResult && (
-                  <p style={{ fontSize: 11, color: '#6b7280', margin: '8px 0 0 0' }}>
+                  <p style={{ fontSize: 11, color: '#6080a0', margin: '8px 0 0 0' }}>
                     Clicca "Cerca Dati" per recuperare marca, modello e altri dati dalla targa.
                   </p>
                 )}
@@ -831,7 +831,7 @@ export default function NoleggioAuto() {
                     value={editingVeicolo.marca || ''}
                     onChange={(e) => setEditingVeicolo({...editingVeicolo, marca: e.target.value})}
                     placeholder="Es: BMW"
-                    style={{ width: '100%', padding: '8px 12px', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 13 }}
+                    style={{ width: '100%', padding: '8px 12px', border: '1px solid #dce8f4', borderRadius: 6, fontSize: 13 }}
                   />
                 </div>
                 <div>
@@ -841,7 +841,7 @@ export default function NoleggioAuto() {
                     value={editingVeicolo.modello || ''}
                     onChange={(e) => setEditingVeicolo({...editingVeicolo, modello: e.target.value})}
                     placeholder="Es: X3 xDrive 20d M Sport"
-                    style={{ width: '100%', padding: '8px 12px', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 13 }}
+                    style={{ width: '100%', padding: '8px 12px', border: '1px solid #dce8f4', borderRadius: 6, fontSize: 13 }}
                   />
                 </div>
               </div>
@@ -856,7 +856,7 @@ export default function NoleggioAuto() {
                       const d = drivers.find(x => x.id === e.target.value);
                       setEditingVeicolo({...editingVeicolo, driver_id: e.target.value, driver: d?.nome_completo || ''});
                     }}
-                    style={{ width: '100%', padding: '8px 12px', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 13 }}
+                    style={{ width: '100%', padding: '8px 12px', border: '1px solid #dce8f4', borderRadius: 6, fontSize: 13 }}
                   >
                     <option value="">-- Seleziona Driver --</option>
                     {drivers.map(d => (
@@ -869,7 +869,7 @@ export default function NoleggioAuto() {
                     value={editingVeicolo.driver || ''}
                     onChange={(e) => setEditingVeicolo({...editingVeicolo, driver: e.target.value})}
                     placeholder="Nome e Cognome"
-                    style={{ width: '100%', padding: '8px 12px', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 13 }}
+                    style={{ width: '100%', padding: '8px 12px', border: '1px solid #dce8f4', borderRadius: 6, fontSize: 13 }}
                   />
                 )}
               </div>
@@ -883,7 +883,7 @@ export default function NoleggioAuto() {
                     value={editingVeicolo.contratto || ''}
                     onChange={(e) => setEditingVeicolo({...editingVeicolo, contratto: e.target.value})}
                     placeholder="Numero contratto"
-                    style={{ width: '100%', padding: '8px 12px', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 13 }}
+                    style={{ width: '100%', padding: '8px 12px', border: '1px solid #dce8f4', borderRadius: 6, fontSize: 13 }}
                   />
                 </div>
                 <div>
@@ -893,7 +893,7 @@ export default function NoleggioAuto() {
                     value={editingVeicolo.codice_cliente || ''}
                     onChange={(e) => setEditingVeicolo({...editingVeicolo, codice_cliente: e.target.value})}
                     placeholder="Codice cliente fornitore"
-                    style={{ width: '100%', padding: '8px 12px', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 13 }}
+                    style={{ width: '100%', padding: '8px 12px', border: '1px solid #dce8f4', borderRadius: 6, fontSize: 13 }}
                   />
                 </div>
               </div>
@@ -906,7 +906,7 @@ export default function NoleggioAuto() {
                   value={editingVeicolo.centro_fatturazione || ''}
                   onChange={(e) => setEditingVeicolo({...editingVeicolo, centro_fatturazione: e.target.value})}
                   placeholder="Centro di fatturazione (es: K26858)"
-                  style={{ width: '100%', padding: '8px 12px', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 13 }}
+                  style={{ width: '100%', padding: '8px 12px', border: '1px solid #dce8f4', borderRadius: 6, fontSize: 13 }}
                 />
               </div>
 
@@ -918,7 +918,7 @@ export default function NoleggioAuto() {
                     type="date"
                     value={editingVeicolo.data_inizio || ''}
                     onChange={(e) => setEditingVeicolo({...editingVeicolo, data_inizio: e.target.value})}
-                    style={{ width: '100%', padding: '8px 12px', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 13 }}
+                    style={{ width: '100%', padding: '8px 12px', border: '1px solid #dce8f4', borderRadius: 6, fontSize: 13 }}
                   />
                 </div>
                 <div>
@@ -927,7 +927,7 @@ export default function NoleggioAuto() {
                     type="date"
                     value={editingVeicolo.data_fine || ''}
                     onChange={(e) => setEditingVeicolo({...editingVeicolo, data_fine: e.target.value})}
-                    style={{ width: '100%', padding: '8px 12px', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 13 }}
+                    style={{ width: '100%', padding: '8px 12px', border: '1px solid #dce8f4', borderRadius: 6, fontSize: 13 }}
                   />
                 </div>
               </div>
@@ -940,7 +940,7 @@ export default function NoleggioAuto() {
                   value={editingVeicolo.note || ''}
                   onChange={(e) => setEditingVeicolo({...editingVeicolo, note: e.target.value})}
                   placeholder="Note aggiuntive"
-                  style={{ width: '100%', padding: '8px 12px', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 13 }}
+                  style={{ width: '100%', padding: '8px 12px', border: '1px solid #dce8f4', borderRadius: 6, fontSize: 13 }}
                 />
               </div>
             </div>
@@ -994,7 +994,7 @@ export default function NoleggioAuto() {
               <button onClick={() => setShowAddVeicolo(false)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer' }}>✕</button>
             </div>
 
-            <p style={{ fontSize: 13, color: '#6b7280', marginBottom: 16 }}>
+            <p style={{ fontSize: 13, color: '#6080a0', marginBottom: 16 }}>
               Usa questo form per aggiungere veicoli di fornitori che non includono la targa nelle fatture (es: LeasePlan).
             </p>
 
@@ -1007,7 +1007,7 @@ export default function NoleggioAuto() {
                   onChange={(e) => setNuovoVeicolo({...nuovoVeicolo, targa: e.target.value.toUpperCase()})}
                   placeholder="Es: AB123CD"
                   maxLength={7}
-                  style={{ width: '100%', padding: '8px 12px', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 14, fontFamily: 'monospace' }}
+                  style={{ width: '100%', padding: '8px 12px', border: '1px solid #dce8f4', borderRadius: 6, fontSize: 14, fontFamily: 'monospace' }}
                 />
               </div>
 
@@ -1016,7 +1016,7 @@ export default function NoleggioAuto() {
                 <select
                   value={nuovoVeicolo.fornitore_piva}
                   onChange={(e) => setNuovoVeicolo({...nuovoVeicolo, fornitore_piva: e.target.value})}
-                  style={{ width: '100%', padding: '8px 12px', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 14 }}
+                  style={{ width: '100%', padding: '8px 12px', border: '1px solid #dce8f4', borderRadius: 6, fontSize: 14 }}
                 >
                   <option value="">-- Seleziona Fornitore --</option>
                   {fornitori.map(f => (
@@ -1035,7 +1035,7 @@ export default function NoleggioAuto() {
                     value={nuovoVeicolo.marca}
                     onChange={(e) => setNuovoVeicolo({...nuovoVeicolo, marca: e.target.value})}
                     placeholder="Es: BMW"
-                    style={{ width: '100%', padding: '8px 12px', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 14 }}
+                    style={{ width: '100%', padding: '8px 12px', border: '1px solid #dce8f4', borderRadius: 6, fontSize: 14 }}
                   />
                 </div>
                 <div>
@@ -1045,7 +1045,7 @@ export default function NoleggioAuto() {
                     value={nuovoVeicolo.modello}
                     onChange={(e) => setNuovoVeicolo({...nuovoVeicolo, modello: e.target.value})}
                     placeholder="Es: X3 xDrive"
-                    style={{ width: '100%', padding: '8px 12px', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 14 }}
+                    style={{ width: '100%', padding: '8px 12px', border: '1px solid #dce8f4', borderRadius: 6, fontSize: 14 }}
                   />
                 </div>
               </div>
@@ -1057,7 +1057,7 @@ export default function NoleggioAuto() {
                   value={nuovoVeicolo.contratto}
                   onChange={(e) => setNuovoVeicolo({...nuovoVeicolo, contratto: e.target.value})}
                   placeholder="Numero contratto noleggio"
-                  style={{ width: '100%', padding: '8px 12px', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 14 }}
+                  style={{ width: '100%', padding: '8px 12px', border: '1px solid #dce8f4', borderRadius: 6, fontSize: 14 }}
                 />
               </div>
             </div>

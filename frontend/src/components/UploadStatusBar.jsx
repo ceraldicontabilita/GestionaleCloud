@@ -34,7 +34,7 @@ export function UploadStatusBar() {
           width: 56,
           height: 56,
           borderRadius: '50%',
-          background: hasActiveUploads ? '#1535a8' : completedUploads.length > 0 ? '#15803d' : '#ef4444',
+          background: hasActiveUploads ? '#1535a8' : completedUploads.length > 0 ? '#10b981' : '#ef4444',
           border: 'none',
           boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
           cursor: 'pointer',
@@ -200,7 +200,7 @@ export function UploadStatusBar() {
             {(upload.status === 'uploading' || upload.status === 'pending') && (
               <div style={{
                 height: 6,
-                background: '#e5e7eb',
+                background: '#dce8f4',
                 borderRadius: 3,
                 overflow: 'hidden'
               }}>
@@ -251,7 +251,7 @@ export function UploadStatusBar() {
         <div style={{
           padding: '8px 16px',
           background: '#f8fafc',
-          borderTop: '1px solid #e5e7eb',
+          borderTop: '1px solid #dce8f4',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center'

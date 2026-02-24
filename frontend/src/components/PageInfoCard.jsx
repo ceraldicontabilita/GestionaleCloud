@@ -136,7 +136,7 @@ export function PageInfoCard({ pageKey, style = {} }) {
       background: 'white',
       borderRadius: 10,
       boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-      border: '1px solid #e5e7eb',
+      border: '1px solid #dce8f4',
       overflow: 'hidden',
       fontSize: 12,
       maxWidth: 320,
@@ -185,7 +185,7 @@ export function PageInfoCard({ pageKey, style = {} }) {
                 <span key={idx} style={{
                   padding: '2px 8px',
                   background: '#dbeafe',
-                  color: '#1d4ed8',
+                  color: '#1535a8',
                   borderRadius: 4,
                   fontSize: 10
                 }}>
@@ -236,7 +236,7 @@ export function PageInfoCard({ pageKey, style = {} }) {
           <div style={{ 
             marginTop: 10, 
             paddingTop: 8, 
-            borderTop: '1px dashed #e5e7eb',
+            borderTop: '1px dashed #dce8f4',
             fontSize: 10,
             color: '#94a3b8'
           }}>

@@ -121,7 +121,7 @@ export default function CalendarioFiscale() {
       'iva': '#1535a8',
       'f24': '#ef4444',
       'dichiarazione': '#8b5cf6',
-      'imu': '#d97706',
+      'imu': '#f59e0b',
       'comunicazione': '#06b6d4',
       'default': '#64748b'
     };
@@ -229,7 +229,7 @@ export default function CalendarioFiscale() {
             </Card>
             <Card>
               <CardContent style={{ padding: 16, textAlign: 'center' }}>
-                <div style={{ fontSize: 32, fontWeight: 700, color: '#d97706' }}>
+                <div style={{ fontSize: 32, fontWeight: 700, color: '#f59e0b' }}>
                   {(calendario?.totale_scadenze || 0) - (calendario?.completate || 0)}
                 </div>
                 <div style={{ fontSize: 13, color: '#64748b' }}>Da Completare</div>
@@ -417,7 +417,7 @@ export default function CalendarioFiscale() {
                               Scaduta
                             </span>
                           ) : (
-                            <span style={{ color: '#d97706', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                            <span style={{ color: '#f59e0b', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
                               <Clock size={16} />
                               In attesa
                             </span>

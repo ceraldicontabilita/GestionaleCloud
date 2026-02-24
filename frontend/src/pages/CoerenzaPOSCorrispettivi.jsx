@@ -54,9 +54,9 @@ export default function CoerenzaPOSCorrispettivi() {
 
   const getStatoIcon = (stato) => {
     switch (stato) {
-      case 'ok': return <CheckCircle size={16} color="#15803d" />;
+      case 'ok': return <CheckCircle size={16} color="#10b981" />;
       case 'mancante': return <XCircle size={16} color="#ef4444" />;
-      case 'differenza': return <AlertTriangle size={16} color="#d97706" />;
+      case 'differenza': return <AlertTriangle size={16} color="#f59e0b" />;
       case 'extra': return <FileWarning size={16} color="#8b5cf6" />;
       default: return null;
     }

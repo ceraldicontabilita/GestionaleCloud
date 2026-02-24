@@ -143,7 +143,7 @@ export default function BilancioVerifica() {
             {quadratura ? <CheckCircle size={20} /> : <AlertTriangle size={20} />}
             {quadratura ? 'OK' : formatEuro(totali.sbilancio)}
           </div>
-          <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>
+          <div style={{ fontSize: 11, color: '#6080a0', marginTop: 4 }}>
             {riepilogo.n_conti} conti • {riepilogo.n_conti_attivo}A {riepilogo.n_conti_passivo}P {riepilogo.n_conti_ricavo}R {riepilogo.n_conti_costo}C
           </div>
         </div>
@@ -277,7 +277,7 @@ export default function BilancioVerifica() {
 
                       {/* Righe conti (se espanso) */}
                       {isExpanded && gruppo.conti.map((conto, idx) => {
-                        const tc = TIPO_COLORS[conto.tipo] || { bg: '#f9fafb', color: '#6b7280', label: conto.tipo };
+                        const tc = TIPO_COLORS[conto.tipo] || { bg: '#f2f6fd', color: '#6080a0', label: conto.tipo };
                         return (
                           <React.Fragment key={conto.codice}>
                             <tr style={{ background: idx % 2 === 0 ? 'white' : '#fafafa', borderBottom: '1px solid #f1f5f9' }}>
@@ -329,7 +329,7 @@ export default function BilancioVerifica() {
                                     <tbody>
                                       {conto.movimenti.map((m, mi) => (
                                         <tr key={mi} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                          <td style={{ padding: '3px 8px', color: '#6b7280' }}>{m.data}</td>
+                                          <td style={{ padding: '3px 8px', color: '#6080a0' }}>{m.data}</td>
                                           <td style={{ padding: '3px 8px', color: '#374151' }}>{m.descrizione}</td>
                                           <td style={{ padding: '3px 8px', textAlign: 'right', color: '#059669' }}>
                                             {m.dare > 0 ? formatEuro(m.dare) : ''}

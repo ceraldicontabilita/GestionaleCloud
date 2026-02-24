@@ -208,7 +208,7 @@ export default function IntegrazioniOpenAPI() {
                   <button 
                     onClick={riceviFatture}
                     disabled={ricezioneLoading}
-                    style={{ ...button('#15803d'), width: '100%' }}
+                    style={{ ...button('#10b981'), width: '100%' }}
                   >
                     {ricezioneLoading ? '⏳ Caricamento...' : '📥 Ricevi Fatture SDI'}
                   </button>
@@ -242,7 +242,7 @@ export default function IntegrazioniOpenAPI() {
                   </p>
                   <button 
                     onClick={loadNotifiche}
-                    style={{ ...button('#d97706'), width: '100%' }}
+                    style={{ ...button('#f59e0b'), width: '100%' }}
                   >
                     🔔 Carica Notifiche
                   </button>
@@ -334,7 +334,7 @@ export default function IntegrazioniOpenAPI() {
                   <button 
                     onClick={richiediXbrl}
                     disabled={xbrlLoading}
-                    style={{ ...button('#15803d'), height: 42 }}
+                    style={{ ...button('#10b981'), height: 42 }}
                     data-testid="richiedi-xbrl-btn"
                   >
                     {xbrlLoading ? '⏳ Invio...' : '📤 Richiedi Bilancio'}
@@ -396,7 +396,7 @@ export default function IntegrazioniOpenAPI() {
                                 href={r.download_url} 
                                 target="_blank" 
                                 rel="noreferrer"
-                                style={{ marginLeft: 8, ...button('#15803d'), padding: '4px 10px', fontSize: 11, textDecoration: 'none' }}
+                                style={{ marginLeft: 8, ...button('#10b981'), padding: '4px 10px', fontSize: 11, textDecoration: 'none' }}
                               >
                                 📥 Download
                               </a>
@@ -458,7 +458,7 @@ export default function IntegrazioniOpenAPI() {
                     onClick={richiediXbrl}
                     disabled={xbrlLoading || !xbrlPiva}
                     style={{
-                      ...button('#15803d'),
+                      ...button('#10b981'),
                       minWidth: 120,
                       height: 40
                     }}

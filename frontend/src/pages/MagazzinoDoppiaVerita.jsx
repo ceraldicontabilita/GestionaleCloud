@@ -97,7 +97,7 @@ export default function MagazzinoDoppiaVerita() {
         <h1 style={{ fontSize: '28px', fontWeight: 700, color: '#1f2937', margin: '0 0 8px 0', display: 'flex', alignItems: 'center', gap: '12px' }}>
           📦 Magazzino Doppia Verità
         </h1>
-        <p style={{ color: '#6b7280', margin: 0 }}>
+        <p style={{ color: '#6080a0', margin: 0 }}>
           Confronto giacenze teoriche vs reali - Tracciamento differenze inventariali
         </p>
       </div>
@@ -110,7 +110,7 @@ export default function MagazzinoDoppiaVerita() {
         </div>
         <div style={{ background: '#eff6ff', padding: '20px', borderRadius: '12px', border: '1px solid #93c5fd' }}>
           <div style={{ fontSize: '12px', color: '#1535a8', fontWeight: 600 }}>VALORE TEORICO</div>
-          <div style={{ fontSize: '24px', fontWeight: 700, color: '#1d4ed8' }}>{formatEuro(stats.valore_teorico || 0)}</div>
+          <div style={{ fontSize: '24px', fontWeight: 700, color: '#1535a8' }}>{formatEuro(stats.valore_teorico || 0)}</div>
         </div>
         <div style={{ background: '#f0fdf4', padding: '20px', borderRadius: '12px', border: '1px solid #86efac' }}>
           <div style={{ fontSize: '12px', color: '#16a34a', fontWeight: 600 }}>VALORE REALE</div>
@@ -177,7 +177,7 @@ export default function MagazzinoDoppiaVerita() {
             style={{
               width: '100%',
               padding: '10px 10px 10px 36px',
-              border: '1px solid #e5e7eb',
+              border: '1px solid #dce8f4',
               borderRadius: '8px',
               fontSize: '14px'
             }}
@@ -205,7 +205,7 @@ export default function MagazzinoDoppiaVerita() {
           style={{
             padding: '8px 14px',
             background: '#f3f4f6',
-            border: '1px solid #e5e7eb',
+            border: '1px solid #dce8f4',
             borderRadius: '8px',
             cursor: 'pointer',
             display: 'flex',
@@ -251,7 +251,7 @@ export default function MagazzinoDoppiaVerita() {
           </h3>
           
           {fornitoriEsclusi.fornitori_esclusi === 0 ? (
-            <p style={{ color: '#6b7280', margin: 0 }}>
+            <p style={{ color: '#6080a0', margin: 0 }}>
               Nessun fornitore con flag "Esclude Magazzino" attivo. 
               Per escludere un fornitore, vai nella pagina <strong>Fornitori</strong> e attiva il checkbox "Esclude dal Magazzino".
             </p>
@@ -331,7 +331,7 @@ export default function MagazzinoDoppiaVerita() {
                   style={{
                     padding: '10px 20px',
                     background: 'white',
-                    border: '1px solid #e5e7eb',
+                    border: '1px solid #dce8f4',
                     borderRadius: '8px',
                     cursor: 'pointer'
                   }}
@@ -346,7 +346,7 @@ export default function MagazzinoDoppiaVerita() {
 
       {/* Tabella/Cards Prodotti */}
       {loading ? (
-        <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Caricamento...</div>
+        <div style={{ textAlign: 'center', padding: '40px', color: '#6080a0' }}>Caricamento...</div>
       ) : (
         <>
           {/* MOBILE CARDS VIEW */}
@@ -363,7 +363,7 @@ export default function MagazzinoDoppiaVerita() {
           
           <div className="mobile-cards-magazzino" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {prodotti.length === 0 ? (
-              <div style={{ padding: '40px', textAlign: 'center', color: '#6b7280', background: 'white', borderRadius: 12 }}>
+              <div style={{ padding: '40px', textAlign: 'center', color: '#6080a0', background: 'white', borderRadius: 12 }}>
                 Nessun prodotto trovato
               </div>
             ) : (
@@ -380,7 +380,7 @@ export default function MagazzinoDoppiaVerita() {
                       background: hasDiff ? '#fef2f2' : (scortaBassa ? '#fefce8' : 'white'),
                       borderRadius: 12,
                       padding: 14,
-                      border: '1px solid #e5e7eb',
+                      border: '1px solid #dce8f4',
                       cursor: 'pointer'
                     }}
                   >
@@ -390,7 +390,7 @@ export default function MagazzinoDoppiaVerita() {
                         <div style={{ fontWeight: 600, color: '#1f2937', fontSize: 14, marginBottom: 2 }}>
                           {p.nome}
                         </div>
-                        <div style={{ fontSize: 12, color: '#6b7280' }}>
+                        <div style={{ fontSize: 12, color: '#6080a0' }}>
                           {p.categoria || 'N/D'} • {p.fornitore || 'Fornitore n/d'}
                         </div>
                       </div>
@@ -412,27 +412,27 @@ export default function MagazzinoDoppiaVerita() {
                     {/* Row 2: Giacenze */}
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
                       <div style={{ textAlign: 'center', padding: '8px 4px', background: 'rgba(37, 99, 235, 0.1)', borderRadius: 6 }}>
-                        <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 2 }}>Teorica</div>
+                        <div style={{ fontSize: 11, color: '#6080a0', marginBottom: 2 }}>Teorica</div>
                         <div style={{ fontWeight: 600, color: '#1535a8', fontSize: 14 }}>
                           {(p.giacenza_teorica || 0).toFixed(1)}
                         </div>
                       </div>
                       <div style={{ textAlign: 'center', padding: '8px 4px', background: 'rgba(22, 163, 74, 0.1)', borderRadius: 6 }}>
-                        <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 2 }}>Reale</div>
+                        <div style={{ fontSize: 11, color: '#6080a0', marginBottom: 2 }}>Reale</div>
                         <div style={{ fontWeight: 600, color: '#16a34a', fontSize: 14 }}>
                           {(p.giacenza_reale || 0).toFixed(1)}
                         </div>
                       </div>
                       <div style={{ textAlign: 'center', padding: '8px 4px', background: diff !== 0 ? 'rgba(220, 38, 38, 0.1)' : 'rgba(107, 114, 128, 0.1)', borderRadius: 6 }}>
-                        <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 2 }}>Diff.</div>
-                        <div style={{ fontWeight: 600, color: diff > 0 ? '#dc2626' : (diff < 0 ? '#16a34a' : '#6b7280'), fontSize: 14 }}>
+                        <div style={{ fontSize: 11, color: '#6080a0', marginBottom: 2 }}>Diff.</div>
+                        <div style={{ fontWeight: 600, color: diff > 0 ? '#dc2626' : (diff < 0 ? '#16a34a' : '#6080a0'), fontSize: 14 }}>
                           {diff > 0 ? '+' : ''}{diff.toFixed(1)}
                         </div>
                       </div>
                     </div>
                     
                     {/* Row 3: Costo */}
-                    <div style={{ marginTop: 8, fontSize: 12, color: '#6b7280', display: 'flex', justifyContent: 'space-between' }}>
+                    <div style={{ marginTop: 8, fontSize: 12, color: '#6080a0', display: 'flex', justifyContent: 'space-between' }}>
                       <span>Costo medio: <strong style={{ color: '#374151' }}>{formatEuro(p.costo_medio || 0)}</strong></span>
                       <span>{p.unita || 'pz'}</span>
                     </div>
@@ -443,7 +443,7 @@ export default function MagazzinoDoppiaVerita() {
           </div>
           
           {/* DESKTOP TABLE VIEW */}
-          <div className="desktop-table-magazzino" style={{ background: 'white', borderRadius: '12px', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+          <div className="desktop-table-magazzino" style={{ background: 'white', borderRadius: '12px', border: '1px solid #dce8f4', overflow: 'hidden' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: '#f8fafc' }}>
@@ -475,7 +475,7 @@ export default function MagazzinoDoppiaVerita() {
                       <td style={{ padding: '12px 16px', fontSize: '14px', fontWeight: 500, color: '#1f2937' }}>
                         {p.nome}
                       </td>
-                      <td style={{ padding: '12px 16px', fontSize: '13px', color: '#6b7280' }}>
+                      <td style={{ padding: '12px 16px', fontSize: '13px', color: '#6080a0' }}>
                         {p.categoria || '-'}
                       </td>
                       <td style={{ padding: '12px 16px', textAlign: 'right', fontSize: '14px', color: '#1535a8', fontWeight: 600 }}>
@@ -489,7 +489,7 @@ export default function MagazzinoDoppiaVerita() {
                         textAlign: 'right', 
                         fontSize: '14px', 
                         fontWeight: 600,
-                        color: diff > 0 ? '#dc2626' : (diff < 0 ? '#16a34a' : '#6b7280')
+                        color: diff > 0 ? '#dc2626' : (diff < 0 ? '#16a34a' : '#6080a0')
                       }}>
                         {diff > 0 ? '+' : ''}{diff.toFixed(2)}
                       </td>
@@ -518,7 +518,7 @@ export default function MagazzinoDoppiaVerita() {
             </table>
             
             {prodotti.length === 0 && (
-              <div style={{ padding: '40px', textAlign: 'center', color: '#6b7280' }}>
+              <div style={{ padding: '40px', textAlign: 'center', color: '#6080a0' }}>
                 Nessun prodotto trovato
               </div>
             )}
@@ -561,11 +561,11 @@ function ProdottoDetailModal({ prodotto, onClose }) {
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div style={{ padding: '24px', borderBottom: '1px solid #e5e7eb' }}>
+        <div style={{ padding: '24px', borderBottom: '1px solid #dce8f4' }}>
           <h2 style={{ fontSize: '20px', fontWeight: 700, color: '#1f2937', margin: 0 }}>
             {prodotto.nome}
           </h2>
-          <p style={{ color: '#6b7280', margin: '4px 0 0 0' }}>
+          <p style={{ color: '#6080a0', margin: '4px 0 0 0' }}>
             {prodotto.categoria} - {prodotto.fornitore || 'Fornitore n/d'}
           </p>
         </div>
@@ -574,7 +574,7 @@ function ProdottoDetailModal({ prodotto, onClose }) {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
             <div style={{ background: '#eff6ff', padding: '16px', borderRadius: '8px' }}>
               <div style={{ fontSize: '12px', color: '#1535a8', fontWeight: 600 }}>Giacenza Teorica</div>
-              <div style={{ fontSize: '24px', fontWeight: 700, color: '#1d4ed8' }}>
+              <div style={{ fontSize: '24px', fontWeight: 700, color: '#1535a8' }}>
                 {(prodotto.giacenza_teorica || 0).toFixed(2)} {prodotto.unita}
               </div>
             </div>
@@ -588,23 +588,23 @@ function ProdottoDetailModal({ prodotto, onClose }) {
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '11px', color: '#6b7280' }}>Costo Medio</div>
+              <div style={{ fontSize: '11px', color: '#6080a0' }}>Costo Medio</div>
               <div style={{ fontSize: '16px', fontWeight: 600, color: '#1f2937' }}>{formatEuro(prodotto.costo_medio || 0)}</div>
             </div>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '11px', color: '#6b7280' }}>Scorta Minima</div>
+              <div style={{ fontSize: '11px', color: '#6080a0' }}>Scorta Minima</div>
               <div style={{ fontSize: '16px', fontWeight: 600, color: '#1f2937' }}>{prodotto.scorta_minima || 0}</div>
             </div>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '11px', color: '#6b7280' }}>Ultimo Aggiorn.</div>
-              <div style={{ fontSize: '14px', fontWeight: 500, color: '#6b7280' }}>
+              <div style={{ fontSize: '11px', color: '#6080a0' }}>Ultimo Aggiorn.</div>
+              <div style={{ fontSize: '14px', fontWeight: 500, color: '#6080a0' }}>
                 {prodotto.updated_at ? formatDateIT(prodotto.updated_at) : '-'}
               </div>
             </div>
           </div>
         </div>
 
-        <div style={{ padding: '16px 24px', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end' }}>
+        <div style={{ padding: '16px 24px', borderTop: '1px solid #dce8f4', display: 'flex', justifyContent: 'flex-end' }}>
           <button
             onClick={onClose}
             style={{

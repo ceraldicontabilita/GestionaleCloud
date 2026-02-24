@@ -568,7 +568,7 @@ export default function Scadenze() {
           onClick={loadData}
           style={{
             padding: '8px 16px',
-            background: '#e5e7eb',
+            background: '#dce8f4',
             border: 'none',
             borderRadius: 6,
             cursor: 'pointer'
@@ -579,15 +579,15 @@ export default function Scadenze() {
       </div>
 
       {/* Lista Scadenze */}
-      <div style={{ background: 'white', borderRadius: 12, overflow: 'hidden', border: '1px solid #e5e7eb' }}>
-        <div style={{ padding: '16px 20px', background: '#f8fafc', borderBottom: '1px solid #e5e7eb', fontWeight: 'bold' }}>
+      <div style={{ background: 'white', borderRadius: 12, overflow: 'hidden', border: '1px solid #dce8f4' }}>
+        <div style={{ padding: '16px 20px', background: '#f8fafc', borderBottom: '1px solid #dce8f4', fontWeight: 'bold' }}>
           📋 Tutte le Scadenze ({scadenze.length})
         </div>
         
         {loading ? (
-          <div style={{ padding: 40, textAlign: 'center', color: '#6b7280' }}>⏳ Caricamento...</div>
+          <div style={{ padding: 40, textAlign: 'center', color: '#6080a0' }}>⏳ Caricamento...</div>
         ) : scadenze.length === 0 ? (
-          <div style={{ padding: 40, textAlign: 'center', color: '#6b7280' }}>
+          <div style={{ padding: 40, textAlign: 'center', color: '#6080a0' }}>
             Nessuna scadenza trovata per i filtri selezionati.
           </div>
         ) : (
@@ -605,7 +605,7 @@ export default function Scadenze() {
                     gap: 15,
                     padding: '15px 20px',
                     borderBottom: '1px solid #f1f5f9',
-                    background: isPassata ? '#f9fafb' : style.bg,
+                    background: isPassata ? '#f2f6fd' : style.bg,
                     opacity: isPassata ? 0.6 : 1,
                     borderLeft: `4px solid ${style.border}`
                   }}
@@ -614,7 +614,7 @@ export default function Scadenze() {
                   
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: '500', marginBottom: 4 }}>{s.descrizione}</div>
-                    <div style={{ fontSize: 12, color: '#6b7280', display: 'flex', gap: 15, flexWrap: 'wrap' }}>
+                    <div style={{ fontSize: 12, color: '#6080a0', display: 'flex', gap: 15, flexWrap: 'wrap' }}>
                       <span>📅 {formatDate(s.data)}</span>
                       <span style={{ 
                         padding: '2px 8px', 
@@ -638,7 +638,7 @@ export default function Scadenze() {
                     <div style={{ 
                       fontSize: 12, 
                       fontWeight: 'bold',
-                      color: isPassata ? '#dc2626' : (s.urgente ? '#dc2626' : '#6b7280')
+                      color: isPassata ? '#dc2626' : (s.urgente ? '#dc2626' : '#6080a0')
                     }}>
                       {s.giorni_mancanti === undefined ? '' :
                        s.giorni_mancanti === 0 ? '⚠️ OGGI' :
@@ -654,7 +654,7 @@ export default function Scadenze() {
                         onClick={() => handleCompleta(s.id)}
                         style={{
                           padding: '6px 12px',
-                          background: '#15803d',
+                          background: '#10b981',
                           color: 'white',
                           border: 'none',
                           borderRadius: 6,
@@ -729,7 +729,7 @@ export default function Scadenze() {
                         rel="noopener noreferrer"
                         style={{
                           padding: '6px 12px',
-                          background: '#15803d',
+                          background: '#10b981',
                           color: 'white',
                           border: 'none',
                           borderRadius: 6,
@@ -858,7 +858,7 @@ export default function Scadenze() {
                 onClick={() => setShowModal(false)}
                 style={{
                   padding: '10px 20px',
-                  background: '#e5e7eb',
+                  background: '#dce8f4',
                   border: 'none',
                   borderRadius: 6,
                   cursor: 'pointer'

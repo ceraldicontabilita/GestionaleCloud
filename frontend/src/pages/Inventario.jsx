@@ -143,7 +143,7 @@ export default function Inventario() {
           onClick={nuovoInventario}
           style={{
             padding: '12px 24px',
-            background: 'linear-gradient(135deg, #15803d 0%, #059669 100%)',
+            background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
             color: 'white',
             border: 'none',
             borderRadius: '10px',
@@ -164,7 +164,7 @@ export default function Inventario() {
       {!showCreazione && (
         <div>
           {loading ? (
-            <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Caricamento...</div>
+            <div style={{ textAlign: 'center', padding: '40px', color: '#6080a0' }}>Caricamento...</div>
           ) : inventari.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '60px', background: '#f8fafc', borderRadius: '16px' }}>
               <Archive size={64} style={{ color: '#cbd5e1', marginBottom: '16px' }} />
@@ -192,7 +192,7 @@ export default function Inventario() {
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: '24px', fontWeight: 700, color: '#15803d' }}>
+                    <div style={{ fontSize: '24px', fontWeight: 700, color: '#10b981' }}>
                       {formatEuro(inv.importo_totale || 0)}
                     </div>
                     {inv.importo_target > 0 && (
@@ -214,7 +214,7 @@ export default function Inventario() {
           {/* Header Creazione */}
           <div style={{ 
             padding: '20px 24px', 
-            background: 'linear-gradient(135deg, #1535a8 0%, #1d4ed8 100%)',
+            background: 'linear-gradient(135deg, #1535a8 0%, #1535a8 100%)',
             color: 'white'
           }}>
             <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 600 }}>Nuovo Inventario</h2>
@@ -224,7 +224,7 @@ export default function Inventario() {
           </div>
 
           {/* Parametri */}
-          <div style={{ padding: '20px 24px', borderBottom: '1px solid #e5e7eb', display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+          <div style={{ padding: '20px 24px', borderBottom: '1px solid #dce8f4', display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
             <div>
               <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#64748b', marginBottom: '6px' }}>
                 ANNO INVENTARIO
@@ -232,7 +232,7 @@ export default function Inventario() {
               <select
                 value={annoInventario}
                 onChange={(e) => setAnnoInventario(parseInt(e.target.value))}
-                style={{ padding: '10px 14px', border: '1px solid #e5e7eb', borderRadius: '8px', fontSize: '14px', minWidth: '120px' }}
+                style={{ padding: '10px 14px', border: '1px solid #dce8f4', borderRadius: '8px', fontSize: '14px', minWidth: '120px' }}
               >
                 {[...Array(8)].map((_, i) => { const y = new Date().getFullYear() - i; return (
                   <option key={y} value={y}>{y}</option>
@@ -248,7 +248,7 @@ export default function Inventario() {
                 value={importoTarget}
                 onChange={(e) => setImportoTarget(e.target.value)}
                 placeholder="Es: 7250"
-                style={{ padding: '10px 14px', border: '1px solid #e5e7eb', borderRadius: '8px', fontSize: '14px', width: '150px' }}
+                style={{ padding: '10px 14px', border: '1px solid #dce8f4', borderRadius: '8px', fontSize: '14px', width: '150px' }}
               />
             </div>
             
@@ -257,20 +257,20 @@ export default function Inventario() {
               <div style={{ flex: 1, minWidth: '300px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#64748b', marginBottom: '6px' }}>
                   <span>Progresso: {formatEuro(totaleCorrente)} / {formatEuro(parseFloat(importoTarget))}</span>
-                  <span style={{ color: percentualeRaggiunta >= 100 ? '#15803d' : '#d97706' }}>
+                  <span style={{ color: percentualeRaggiunta >= 100 ? '#10b981' : '#f59e0b' }}>
                     {percentualeRaggiunta.toFixed(1)}%
                   </span>
                 </div>
-                <div style={{ height: '8px', background: '#e5e7eb', borderRadius: '4px', overflow: 'hidden' }}>
+                <div style={{ height: '8px', background: '#dce8f4', borderRadius: '4px', overflow: 'hidden' }}>
                   <div style={{
                     height: '100%',
                     width: `${Math.min(percentualeRaggiunta, 100)}%`,
-                    background: percentualeRaggiunta >= 100 ? '#15803d' : 'linear-gradient(90deg, #1535a8, #8b5cf6)',
+                    background: percentualeRaggiunta >= 100 ? '#10b981' : 'linear-gradient(90deg, #1535a8, #8b5cf6)',
                     transition: 'width 0.3s'
                   }} />
                 </div>
                 {importoTarget > 0 && (
-                  <div style={{ fontSize: '12px', marginTop: '4px', color: differenza > 0 ? '#d97706' : '#15803d' }}>
+                  <div style={{ fontSize: '12px', marginTop: '4px', color: differenza > 0 ? '#f59e0b' : '#10b981' }}>
                     {differenza > 0 ? `Mancano ${formatEuro(differenza)}` : `Superato di ${formatEuro(Math.abs(differenza))}`}
                   </div>
                 )}
@@ -279,7 +279,7 @@ export default function Inventario() {
           </div>
 
           {/* Ricerca Prodotti */}
-          <div style={{ padding: '20px 24px', borderBottom: '1px solid #e5e7eb' }}>
+          <div style={{ padding: '20px 24px', borderBottom: '1px solid #dce8f4' }}>
             <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#64748b', marginBottom: '8px' }}>
               AGGIUNGI PRODOTTO DAL DIZIONARIO
             </label>
@@ -296,7 +296,7 @@ export default function Inventario() {
                 style={{
                   width: '100%',
                   padding: '12px 12px 12px 42px',
-                  border: '1px solid #e5e7eb',
+                  border: '1px solid #dce8f4',
                   borderRadius: '8px',
                   fontSize: '14px'
                 }}
@@ -310,7 +310,7 @@ export default function Inventario() {
                   left: 0,
                   right: 0,
                   background: 'white',
-                  border: '1px solid #e5e7eb',
+                  border: '1px solid #dce8f4',
                   borderRadius: '8px',
                   boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
                   maxHeight: '300px',
@@ -386,7 +386,7 @@ export default function Inventario() {
                           type="number"
                           value={prod.quantita}
                           onChange={(e) => updateProdottoQta(idx, e.target.value)}
-                          style={{ width: '70px', padding: '6px', border: '1px solid #e5e7eb', borderRadius: '6px', textAlign: 'center' }}
+                          style={{ width: '70px', padding: '6px', border: '1px solid #dce8f4', borderRadius: '6px', textAlign: 'center' }}
                           step="0.1"
                         />
                       </td>
@@ -395,7 +395,7 @@ export default function Inventario() {
                           type="number"
                           value={prod.prezzo_unitario}
                           onChange={(e) => updateProdottoPrezzo(idx, e.target.value)}
-                          style={{ width: '90px', padding: '6px', border: '1px solid #e5e7eb', borderRadius: '6px', textAlign: 'center' }}
+                          style={{ width: '90px', padding: '6px', border: '1px solid #dce8f4', borderRadius: '6px', textAlign: 'center' }}
                           step="0.01"
                         />
                       </td>
@@ -429,7 +429,7 @@ export default function Inventario() {
           </div>
 
           {/* Footer Actions */}
-          <div style={{ padding: '16px 24px', borderTop: '1px solid #e5e7eb', display: 'flex', gap: '12px', justifyContent: 'flex-end', background: '#f8fafc' }}>
+          <div style={{ padding: '16px 24px', borderTop: '1px solid #dce8f4', display: 'flex', gap: '12px', justifyContent: 'flex-end', background: '#f8fafc' }}>
             <button
               onClick={() => setShowCreazione(false)}
               style={{ padding: '10px 20px', background: '#f3f4f6', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '14px' }}
@@ -441,7 +441,7 @@ export default function Inventario() {
               disabled={saving || prodottiInventario.length === 0}
               style={{
                 padding: '10px 24px',
-                background: saving ? '#9ca3af' : '#15803d',
+                background: saving ? '#9ca3af' : '#10b981',
                 color: 'white',
                 border: 'none',
                 borderRadius: '8px',

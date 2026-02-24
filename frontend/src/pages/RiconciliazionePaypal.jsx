@@ -30,13 +30,13 @@ const TIPO_LABELS = {
 
 const TIPO_COLORS = {
   express_checkout: '#ef4444',
-  pagamento_utenza: '#d97706',
+  pagamento_utenza: '#f59e0b',
   pagamento_web: '#8b5cf6',
   pagamento: '#dc2626',
   accredito: '#22c55e',
   bonifico_paypal: '#1535a8',
   rimborso: '#06b6d4',
-  conversione_valuta: '#6b7280',
+  conversione_valuta: '#6080a0',
   prelievo: '#f97316',
   altro: '#9ca3af'
 };
@@ -156,28 +156,28 @@ export default function RiconciliazionePaypal() {
             { label: 'Transazioni', value: dashboard?.total_transactions, color: '#6366f1' },
             { label: 'Totale Speso', value: formatEuro(Math.abs(dashboard?.totale_speso || 0)), color: '#ef4444', isText: true },
             { label: 'Riconciliati Banca', value: dashboard?.riconciliati_banca, color: '#22c55e' },
-            { label: 'Movimenti Banca', value: dashboard?.movimenti_banca_paypal, color: '#d97706' },
+            { label: 'Movimenti Banca', value: dashboard?.movimenti_banca_paypal, color: '#f59e0b' },
           ].map((s, i) => (
             <div key={i} style={{ background: 'white', borderRadius: 10, padding: 16, boxShadow: '0 1px 4px rgba(0,0,0,0.06)', borderLeft: `3px solid ${s.color}` }}>
-              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>{s.label}</div>
+              <div style={{ fontSize: 12, color: '#6080a0', marginBottom: 4 }}>{s.label}</div>
               <div style={{ fontSize: s.isText ? 20 : 28, fontWeight: 'bold', color: s.color }}>{s.value || 0}</div>
             </div>
           ))}
         </div>
 
         {/* Tabs */}
-        <div style={{ display: 'flex', gap: 4, borderBottom: '2px solid #e5e7eb', marginBottom: 16 }}>
+        <div style={{ display: 'flex', gap: 4, borderBottom: '2px solid #dce8f4', marginBottom: 16 }}>
           {tabs.map(t => (
             <button key={t.id} onClick={() => setActiveTab(t.id)}
               style={{
                 padding: '8px 14px', fontSize: 13, fontWeight: activeTab === t.id ? 'bold' : 'normal',
                 borderRadius: '6px 6px 0 0', border: 'none',
                 background: activeTab === t.id ? '#0070ba' : 'transparent',
-                color: activeTab === t.id ? 'white' : '#6b7280',
+                color: activeTab === t.id ? 'white' : '#6080a0',
                 cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6
               }}>
               {t.icon} {t.label}
-              {t.count !== undefined && <span style={{ padding: '1px 6px', background: activeTab === t.id ? 'rgba(255,255,255,0.2)' : '#e5e7eb', borderRadius: 8, fontSize: 11 }}>{t.count}</span>}
+              {t.count !== undefined && <span style={{ padding: '1px 6px', background: activeTab === t.id ? 'rgba(255,255,255,0.2)' : '#dce8f4', borderRadius: 8, fontSize: 11 }}>{t.count}</span>}
             </button>
           ))}
         </div>
@@ -247,7 +247,7 @@ export default function RiconciliazionePaypal() {
         {/* Transazioni Tab */}
         {activeTab === 'transazioni' && (
           <div style={{ background: 'white', borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.06)', overflow: 'hidden' }}>
-            <div style={{ padding: '12px 16px', borderBottom: '1px solid #e5e7eb', display: 'flex', gap: 12, alignItems: 'center' }}>
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid #dce8f4', display: 'flex', gap: 12, alignItems: 'center' }}>
               <div style={{ position: 'relative', flex: 1 }}>
                 <Search size={14} style={{ position: 'absolute', left: 10, top: 10, color: '#9ca3af' }} />
                 <input value={searchTx} onChange={e => setSearchTx(e.target.value)}
@@ -258,12 +258,12 @@ export default function RiconciliazionePaypal() {
                 <input type="checkbox" checked={soloPagamenti} onChange={e => setSoloPagamenti(e.target.checked)} />
                 Solo pagamenti
               </label>
-              <span style={{ fontSize: 12, color: '#6b7280' }}>{filteredTx.length} risultati</span>
+              <span style={{ fontSize: 12, color: '#6080a0' }}>{filteredTx.length} risultati</span>
             </div>
             <div style={{ overflowX: 'auto', maxHeight: 600, overflowY: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                 <thead>
-                  <tr style={{ background: '#f9fafb', position: 'sticky', top: 0 }}>
+                  <tr style={{ background: '#f2f6fd', position: 'sticky', top: 0 }}>
                     <th style={{ textAlign: 'left', padding: '10px 12px' }}>Data</th>
                     <th style={{ textAlign: 'left', padding: '10px 12px' }}>Tipo</th>
                     <th style={{ textAlign: 'left', padding: '10px 12px' }}>Descrizione</th>
@@ -317,12 +317,12 @@ export default function RiconciliazionePaypal() {
                 <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>Report Spese PayPal {annoFiltro || 'Totale'}</h3>
                 <div style={{ fontSize: 20, fontWeight: 'bold', color: '#ef4444' }}>{formatEuro(Math.abs(report.totale_speso))}</div>
               </div>
-              <div style={{ fontSize: 13, color: '#6b7280' }}>{report.totale_transazioni} pagamenti</div>
+              <div style={{ fontSize: 13, color: '#6080a0' }}>{report.totale_transazioni} pagamenti</div>
             </div>
 
             {/* Per Fornitore */}
             <div style={{ background: 'white', borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.06)', overflow: 'hidden' }}>
-              <div style={{ padding: '12px 16px', background: '#f9fafb', borderBottom: '1px solid #e5e7eb', fontWeight: 600, fontSize: 14 }}>
+              <div style={{ padding: '12px 16px', background: '#f2f6fd', borderBottom: '1px solid #dce8f4', fontWeight: 600, fontSize: 14 }}>
                 Dettaglio per Fornitore
               </div>
               <div style={{ maxHeight: 500, overflowY: 'auto' }}>
@@ -340,7 +340,7 @@ export default function RiconciliazionePaypal() {
                     </summary>
                     <div style={{ padding: '0 16px 10px 32px' }}>
                       {(f.transazioni || []).map((t, j) => (
-                        <div key={j} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 12, color: '#6b7280' }}>
+                        <div key={j} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 12, color: '#6080a0' }}>
                           <span>{formatDate(t.data)} - {t.descrizione}</span>
                           <span style={{ fontWeight: 500 }}>{formatEuro(Math.abs(t.importo))}</span>
                         </div>
@@ -356,12 +356,12 @@ export default function RiconciliazionePaypal() {
         {/* Estratti Conto Tab */}
         {activeTab === 'estratti' && (
           <div style={{ background: 'white', borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.06)', overflow: 'hidden' }}>
-            <div style={{ padding: '12px 16px', background: '#f9fafb', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ padding: '12px 16px', background: '#f2f6fd', borderBottom: '1px solid #dce8f4', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontWeight: 600, fontSize: 14 }}>Estratti Conto Importati ({statements.length})</span>
             </div>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
-                <tr style={{ background: '#f9fafb' }}>
+                <tr style={{ background: '#f2f6fd' }}>
                   <th style={{ textAlign: 'left', padding: '10px 12px' }}>Tipo</th>
                   <th style={{ textAlign: 'left', padding: '10px 12px' }}>Periodo</th>
                   <th style={{ textAlign: 'center', padding: '10px 12px' }}>Transazioni</th>

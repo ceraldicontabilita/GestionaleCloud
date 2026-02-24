@@ -9,9 +9,9 @@ import { PageLayout } from '../components/PageLayout';
 
 const STATI_ASSEGNO = {
   vuoto: { label: "Valido", color: "#15803d" },
-  compilato: { label: "Compilato", color: "#2196f3" },
+  compilato: { label: "Compilato", color: "#1535a8" },
   emesso: { label: "Emesso", color: "#d97706" },
-  incassato: { label: "Incassato", color: "#9c27b0" },
+  incassato: { label: "Incassato", color: "#7c3aed" },
   annullato: { label: "Annullato", color: "#f44336" },
 };
 
@@ -858,7 +858,7 @@ export default function GestioneAssegni() {
           data-testid="auto-associa-btn"
           style={{
             padding: '10px 16px',
-            background: autoAssociating ? '#ccc' : '#2196f3',
+            background: autoAssociating ? '#ccc' : '#1535a8',
             color: 'white',
             border: 'none',
             borderRadius: 8,
@@ -923,7 +923,7 @@ export default function GestioneAssegni() {
             data-testid="stampa-selezionati-btn"
             style={{
               padding: '10px 16px',
-              background: '#9c27b0',
+              background: '#7c3aed',
               color: 'white',
               border: 'none',
               borderRadius: 8,
@@ -1392,7 +1392,7 @@ export default function GestioneAssegni() {
                     {autoAssocResult.dettagli.slice(0, 10).map((d, i) => (
                       <li key={i}>
                         Assegno {d.assegno_numero} → Fattura {d.fattura_numero} ({d.fornitore?.substring(0, 30)})
-                        {d.tipo === 'multiplo' && <span style={{ color: '#9c27b0' }}> [MULTIPLO]</span>}
+                        {d.tipo === 'multiplo' && <span style={{ color: '#7c3aed' }}> [MULTIPLO]</span>}
                       </li>
                     ))}
                     {autoAssocResult.dettagli.length > 10 && (
@@ -1450,7 +1450,7 @@ export default function GestioneAssegni() {
                           Assegni: {d.assegni?.join(', ')} • 
                           Somma: {formatEuro(d.somma_assegni)} = Fattura: {formatEuro(d.fattura_importo)}
                           {d.differenza !== 0 && (
-                            <span style={{ color: '#d97706' }}> (diff: {formatEuro(d.differenza)})</span>
+                            <span style={{ color: '#f59e0b' }}> (diff: {formatEuro(d.differenza)})</span>
                           )}
                         </div>
                       </li>
@@ -1459,7 +1459,7 @@ export default function GestioneAssegni() {
                 </div>
               )}
               {combinazioneResult.assegni_non_associabili && combinazioneResult.assegni_non_associabili.length > 0 && (
-                <div style={{ marginTop: 8, fontSize: 12, color: '#d97706' }}>
+                <div style={{ marginTop: 8, fontSize: 12, color: '#f59e0b' }}>
                   ⚠️ {combinazioneResult.assegni_non_associabili.length} assegni rimasti senza corrispondenza
                 </div>
               )}
@@ -1708,7 +1708,7 @@ export default function GestioneAssegni() {
                       
                       {/* Row 3: Fattura (se presente) */}
                       {assegno.numero_fattura && (
-                        <div style={{ fontSize: 12, color: '#2196f3', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <div style={{ fontSize: 12, color: '#1535a8', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
                           <span>📄 Fatt. {assegno.numero_fattura}</span>
                           {assegno.data_fattura && (
                             <span style={{ color: '#666' }}>({formatDateIT(assegno.data_fattura)})</span>
@@ -1776,7 +1776,7 @@ export default function GestioneAssegni() {
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 700 }}>
                 <thead>
-                  <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e5e7eb' }}>
+                  <tr style={{ background: '#f8fafc', borderBottom: '2px solid #dce8f4' }}>
                     <th style={{ padding: '10px 8px', textAlign: 'center', fontWeight: 600, fontSize: 12, width: 40 }}>
                       <input
                         type="checkbox"
@@ -1924,7 +1924,7 @@ export default function GestioneAssegni() {
                               )}
                               {/* Info fattura */}
                               <div>
-                                {assegno.numero_fattura && <div style={{ color: '#2196f3' }}>Fatt. {assegno.numero_fattura}</div>}
+                                {assegno.numero_fattura && <div style={{ color: '#1535a8' }}>Fatt. {assegno.numero_fattura}</div>}
                                 {assegno.data_fattura && <div style={{ color: '#666', fontSize: 11 }}>{formatDateIT(assegno.data_fattura)}</div>}
                               </div>
                             </div>
@@ -1950,7 +1950,7 @@ export default function GestioneAssegni() {
                                     doc.save(`Assegno_${assegno.numero}.pdf`);
                                   }} 
                                   data-testid={`print-${assegno.id}`} 
-                                  style={{ padding: '4px 6px', cursor: 'pointer', background: '#2196f3', color: 'white', border: 'none', borderRadius: 4 }} 
+                                  style={{ padding: '4px 6px', cursor: 'pointer', background: '#1535a8', color: 'white', border: 'none', borderRadius: 4 }} 
                                   title="Stampa"
                                 >🖨️</button>
                                 {/* ELIMINA */}
@@ -2134,7 +2134,7 @@ export default function GestioneAssegni() {
                     <div style={{ 
                       marginTop: 12, 
                       paddingTop: 12, 
-                      borderTop: '2px solid #15803d',
+                      borderTop: '2px solid #10b981',
                       display: 'flex',
                       justifyContent: 'space-between',
                       fontWeight: 'bold',
@@ -2152,7 +2152,7 @@ export default function GestioneAssegni() {
                         display: 'flex',
                         justifyContent: 'space-between',
                         fontSize: 13,
-                        color: Math.abs((editingAssegnoForFatture?.importo || 0) - selectedFatture.reduce((sum, f) => sum + (f.importo || 0), 0)) < 1 ? '#15803d' : '#d97706'
+                        color: Math.abs((editingAssegnoForFatture?.importo || 0) - selectedFatture.reduce((sum, f) => sum + (f.importo || 0), 0)) < 1 ? '#10b981' : '#f59e0b'
                       }}>
                         <span>Differenza:</span>
                         <span style={{ fontWeight: 600 }}>
@@ -2229,7 +2229,7 @@ export default function GestioneAssegni() {
                   data-testid="salva-fatture-btn"
                   style={{ 
                     padding: '10px 24px', 
-                    background: selectedFatture.length > 0 ? '#15803d' : '#9ca3af', 
+                    background: selectedFatture.length > 0 ? '#10b981' : '#9ca3af', 
                     color: 'white', 
                     border: 'none', 
                     borderRadius: 8, 

@@ -293,7 +293,7 @@ export default function Magazzino() {
       )}
 
       {/* Tabs */}
-      <div style={{ marginTop: 20, background: 'white', borderRadius: 12, overflow: 'hidden', border: '1px solid #e5e7eb' }}>
+      <div style={{ marginTop: 20, background: 'white', borderRadius: 12, overflow: 'hidden', border: '1px solid #dce8f4' }}>
         <div style={{ display: 'flex', borderBottom: '2px solid #e2e8f0' }}>
           <button
             onClick={() => handleTabChange('catalogo')}

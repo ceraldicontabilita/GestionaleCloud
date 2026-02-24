@@ -102,8 +102,8 @@ function SezioneBustePaga({ anno }) {
 
       {/* Stats */}
       <div style={{ padding: 16, display: 'flex', gap: 12, flexWrap: 'wrap', borderBottom: '1px solid #e5e7eb', background: '#fafafa' }}>
-        <StatBox label="Da Pagare" value={formatEuro(totDaPagare)} color="#d97706" icon={Clock} />
-        <StatBox label="Pagati" value={formatEuro(totPagato)} color="#15803d" icon={CheckCircle} />
+        <StatBox label="Da Pagare" value={formatEuro(totDaPagare)} color="#f59e0b" icon={Clock} />
+        <StatBox label="Pagati" value={formatEuro(totPagato)} color="#10b981" icon={CheckCircle} />
         <StatBox label="Totale" value={formatEuro(totPagato + totDaPagare)} icon={Wallet} />
       </div>
 
@@ -204,8 +204,8 @@ function SezioneF24({ anno }) {
 
       {/* Stats */}
       <div style={{ padding: 16, display: 'flex', gap: 12, flexWrap: 'wrap', borderBottom: '1px solid #e5e7eb', background: '#fafafa' }}>
-        <StatBox label="Da Pagare" value={formatEuro(totDaPagare)} color="#d97706" icon={Clock} />
-        <StatBox label="Pagati" value={formatEuro(totPagato)} color="#15803d" icon={CheckCircle} />
+        <StatBox label="Da Pagare" value={formatEuro(totDaPagare)} color="#f59e0b" icon={Clock} />
+        <StatBox label="Pagati" value={formatEuro(totPagato)} color="#10b981" icon={CheckCircle} />
         <StatBox label="Totale" value={formatEuro(totPagato + totDaPagare)} icon={FileText} />
       </div>
 
@@ -297,7 +297,7 @@ export default function PagheHub() {
           borderRadius: 10, 
           border: '1px solid #bfdbfe',
           fontSize: 13,
-          color: '#1535a8'
+          color: '#1e40af'
         }}>
           <strong>Come funziona:</strong> Carica i PDF (Libro Unico, F24) dalla pagina <strong>Import Documenti</strong>. 
           Il sistema importa automaticamente i dati e li mostra qui. Al caricamento dell'estratto conto, 

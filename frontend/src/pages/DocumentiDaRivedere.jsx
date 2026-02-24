@@ -81,8 +81,8 @@ export default function DocumentiDaRivedere() {
     fattura: { bg: '#dbeafe', color: '#1535a8' },
     f24: { bg: '#fee2e2', color: '#dc2626' },
     busta_paga: { bg: '#dcfce7', color: '#166534' },
-    altro: { bg: '#f3f4f6', color: '#6b7280' }
-  }[type] || { bg: '#f3f4f6', color: '#6b7280' });
+    altro: { bg: '#f3f4f6', color: '#6080a0' }
+  }[type] || { bg: '#f3f4f6', color: '#6080a0' });
 
   const getTypeLabel = (type) => ({ fattura: 'Fattura', f24: 'F24', busta_paga: 'Busta Paga', altro: 'Altro' }[type] || type);
 
@@ -99,7 +99,7 @@ export default function DocumentiDaRivedere() {
   return (
     <PageLayout
       title="Documenti Da Rivedere"
-      icon={<AlertCircle size={28} color="#d97706" />}
+      icon={<AlertCircle size={28} color="#f59e0b" />}
       subtitle="Documenti che richiedono classificazione manuale o verifica dei dati estratti dall'AI"
       actions={
         <div style={{ display: 'flex', gap: 10 }}>
@@ -116,7 +116,7 @@ export default function DocumentiDaRivedere() {
     >
       {/* KPI */}
       <PageGrid cols={5} gap={12}>
-        <KPICard label="Da Rivedere" value={stats.needs_review || documents.length} color="#d97706" icon={<AlertCircle size={20} />} />
+        <KPICard label="Da Rivedere" value={stats.needs_review || documents.length} color="#f59e0b" icon={<AlertCircle size={20} />} />
         <KPICard label="Processati AI" value={stats.total_parsed || 0} color="#1535a8" icon={<Brain size={20} />} />
         <KPICard label="Classificati Auto" value={stats.auto_classified || 0} color="#16a34a" icon={<CheckCircle size={20} />} />
         <KPICard label="In Attesa" value={stats.pending_processing || 0} color="#8b5cf6" icon={<Clock size={20} />} />

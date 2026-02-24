@@ -114,7 +114,7 @@ export default function RegoleContabili() {
       id: 'riconciliazione',
       titolo: '🔄 Riconciliazione Bancaria',
       icona: '🔄',
-      colore: '#15803d',
+      colore: '#10b981',
       sottosezioni: [
         {
           titolo: 'Criteri di Match',
@@ -172,7 +172,7 @@ export default function RegoleContabili() {
       id: 'corrispettivi',
       titolo: '🧾 Corrispettivi e POS',
       icona: '🧾',
-      colore: '#d97706',
+      colore: '#f59e0b',
       sottosezioni: [
         {
           titolo: 'Dati Provvisori vs XML',

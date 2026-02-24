@@ -198,7 +198,7 @@ export default function Mutui() {
                   fontSize: 13
                 }}>
                   <div style={{ fontWeight: 600, color: '#1f2937' }}>{scad.nome}</div>
-                  <div style={{ color: '#6b7280' }}>
+                  <div style={{ color: '#6080a0' }}>
                     Rata {scad.numero_rata} - {scad.data_scadenza} - {formatEuro(scad.importo_totale)}
                   </div>
                 </div>
@@ -216,7 +216,7 @@ export default function Mutui() {
               style={{ 
                 background: 'white', 
                 borderRadius: 12, 
-                border: '1px solid #e5e7eb',
+                border: '1px solid #dce8f4',
                 overflow: 'hidden',
                 boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
               }}
@@ -227,7 +227,7 @@ export default function Mutui() {
                 style={{ 
                   padding: 20, 
                   cursor: 'pointer',
-                  background: expandedMutuo === mutuo.mutuo_id ? '#f9fafb' : 'white',
+                  background: expandedMutuo === mutuo.mutuo_id ? '#f2f6fd' : 'white',
                   transition: 'background 0.2s'
                 }}
               >
@@ -236,7 +236,7 @@ export default function Mutui() {
                     <h3 style={{ fontSize: 18, fontWeight: 600, color: '#1f2937', marginBottom: 4 }}>
                       {mutuo.nome}
                     </h3>
-                    <div style={{ fontSize: 14, color: '#6b7280' }}>
+                    <div style={{ fontSize: 14, color: '#6080a0' }}>
                       {mutuo.tipo_finanziamento} | Delibera: {mutuo.numero_delibera}
                     </div>
                     <div style={{ fontSize: 13, color: '#9ca3af', marginTop: 2 }}>
@@ -244,7 +244,7 @@ export default function Mutui() {
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: 13, color: '#6b7280' }}>Importo accordato</div>
+                    <div style={{ fontSize: 13, color: '#6080a0' }}>Importo accordato</div>
                     <div style={{ fontSize: 22, fontWeight: 700, color: '#6366f1' }}>
                       {formatEuro(mutuo.importo_accordato)}
                     </div>
@@ -258,10 +258,10 @@ export default function Mutui() {
                   gap: 16, 
                   marginTop: 16,
                   paddingTop: 16,
-                  borderTop: '1px solid #e5e7eb'
+                  borderTop: '1px solid #dce8f4'
                 }}>
                   <div>
-                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 2 }}>Totale pagato</div>
+                    <div style={{ fontSize: 12, color: '#6080a0', marginBottom: 2 }}>Totale pagato</div>
                     <div style={{ fontSize: 16, fontWeight: 600, color: '#22c55e' }}>
                       {formatEuro(mutuo.totale_pagato)}
                     </div>
@@ -270,13 +270,13 @@ export default function Mutui() {
                     </div>
                   </div>
                   <div>
-                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 2 }}>Debito residuo</div>
+                    <div style={{ fontSize: 12, color: '#6080a0', marginBottom: 2 }}>Debito residuo</div>
                     <div style={{ fontSize: 16, fontWeight: 600, color: '#f97316' }}>
                       {formatEuro(mutuo.debito_residuo_totale)}
                     </div>
                   </div>
                   <div>
-                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 2 }}>Riconciliazione</div>
+                    <div style={{ fontSize: 12, color: '#6080a0', marginBottom: 2 }}>Riconciliazione</div>
                     <div style={{ fontSize: 16, fontWeight: 600, color: '#1535a8' }}>
                       {mutuo.percentuale_riconciliazione?.toFixed(1) || 0}%
                     </div>
@@ -286,9 +286,9 @@ export default function Mutui() {
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
                     {expandedMutuo === mutuo.mutuo_id ? (
-                      <ChevronUp size={24} style={{ color: '#6b7280' }} />
+                      <ChevronUp size={24} style={{ color: '#6080a0' }} />
                     ) : (
-                      <ChevronDown size={24} style={{ color: '#6b7280' }} />
+                      <ChevronDown size={24} style={{ color: '#6080a0' }} />
                     )}
                   </div>
                 </div>
@@ -316,8 +316,8 @@ export default function Mutui() {
               {expandedMutuo === mutuo.mutuo_id && (
                 <div style={{ 
                   padding: 20, 
-                  background: '#f9fafb',
-                  borderTop: '1px solid #e5e7eb'
+                  background: '#f2f6fd',
+                  borderTop: '1px solid #dce8f4'
                 }}>
                   <h4 style={{ fontSize: 14, fontWeight: 600, color: '#374151', marginBottom: 12 }}>
                     Piano di Ammortamento ({mutuo.rate?.length || 0} rate)
@@ -327,7 +327,7 @@ export default function Mutui() {
                     overflowY: 'auto',
                     background: 'white',
                     borderRadius: 8,
-                    border: '1px solid #e5e7eb'
+                    border: '1px solid #dce8f4'
                   }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                       <thead>
@@ -346,14 +346,14 @@ export default function Mutui() {
                           <tr 
                             key={idx} 
                             style={{ 
-                              borderBottom: '1px solid #e5e7eb',
+                              borderBottom: '1px solid #dce8f4',
                               background: rata.stato === 'Pagata' ? '#f0fdf4' : (rata.stato === 'Scaduta' ? '#fef2f2' : 'white')
                             }}
                           >
                             <td style={{ padding: '10px 12px', fontWeight: 500 }}>{rata.numero_rata}</td>
                             <td style={{ padding: '10px 12px' }}>{rata.data_scadenza}</td>
                             <td style={{ padding: '10px 12px', textAlign: 'right' }}>{formatEuro(rata.quota_capitale)}</td>
-                            <td style={{ padding: '10px 12px', textAlign: 'right', color: '#6b7280' }}>{formatEuro(rata.quota_interessi)}</td>
+                            <td style={{ padding: '10px 12px', textAlign: 'right', color: '#6080a0' }}>{formatEuro(rata.quota_interessi)}</td>
                             <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600 }}>{formatEuro(rata.importo_totale)}</td>
                             <td style={{ padding: '10px 12px', textAlign: 'center' }}>
                               {rata.stato === 'Pagata' && (
@@ -377,7 +377,7 @@ export default function Mutui() {
                                   alignItems: 'center', 
                                   gap: 4,
                                   padding: '2px 8px',
-                                  background: '#e5e7eb',
+                                  background: '#dce8f4',
                                   color: '#374151',
                                   borderRadius: 12,
                                   fontSize: 11,
@@ -468,11 +468,11 @@ export default function Mutui() {
           <div style={{ 
             textAlign: 'center', 
             padding: 60, 
-            background: '#f9fafb', 
+            background: '#f2f6fd', 
             borderRadius: 12 
           }}>
             <Landmark size={48} style={{ color: '#d1d5db', marginBottom: 16 }} />
-            <div style={{ fontSize: 18, fontWeight: 500, color: '#6b7280' }}>Nessun mutuo trovato</div>
+            <div style={{ fontSize: 18, fontWeight: 500, color: '#6080a0' }}>Nessun mutuo trovato</div>
             <div style={{ fontSize: 14, color: '#9ca3af', marginTop: 4 }}>
               I mutui verranno visualizzati qui una volta importati
             </div>

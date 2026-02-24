@@ -84,23 +84,6 @@ export default function App() {
     processGoogleAuth();
   }, []);
 
-  // Carica notifiche non lette all'avvio e ogni 60 secondi
-  useEffect(() => {
-    // Carica alert commercialista
-    const loadAlertCommercialista = async () => {
-      try {
-        const res = await api.get('/api/commercialista/alert-status');
-        if (res.data.show_alert) {
-          setAlertCommercialista(res.data);
-        }
-      } catch (e) {
-        // Silently fail
-      }
-    };
-    
-    loadAlertCommercialista();
-  }, []);
-
   // Se sta processando Google Auth, mostra loading
   if (processingGoogleAuth) {
     return (
@@ -126,6 +109,25 @@ export default function App() {
       </div>
     );
   }
+
+  // PLACEHOLDER - removed submenu toggle
+
+  // Carica notifiche non lette all'avvio e ogni 60 secondi
+  useEffect(() => {
+    // Carica alert commercialista
+    const loadAlertCommercialista = async () => {
+      try {
+        const res = await api.get('/api/commercialista/alert-status');
+        if (res.data.show_alert) {
+          setAlertCommercialista(res.data);
+        }
+      } catch (e) {
+        // Silently fail
+      }
+    };
+    
+    loadAlertCommercialista();
+  }, []);
 
   return (
     <UploadProvider>

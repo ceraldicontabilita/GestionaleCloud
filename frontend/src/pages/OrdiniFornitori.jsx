@@ -27,7 +27,7 @@ const styles = {
     padding: 12,
     marginBottom: 12,
     boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
-    border: '1px solid #e5e7eb'
+    border: '1px solid #dce8f4'
   },
   cardOrange: {
     background: '#fff7ed',
@@ -75,7 +75,7 @@ const styles = {
   },
   btnSuccess: {
     padding: '6px 12px',
-    background: '#15803d',
+    background: '#10b981',
     color: 'white',
     border: 'none',
     borderRadius: 6,

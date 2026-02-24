@@ -285,7 +285,7 @@ const AUTO_TASKS = [
     name: 'Categorizzazione',
     description: 'Classifica movimenti bancari (stipendi, fornitori, tributi)',
     icon: BarChart3,
-    color: '#9c27b0',
+    color: '#7c3aed',
     endpoint: '/api/estratto-conto-movimenti/ricategorizza-batch',
     method: 'POST',
     autoRun: true

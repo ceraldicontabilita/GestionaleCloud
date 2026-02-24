@@ -199,7 +199,7 @@ export default function F24() {
             </thead>
             <tbody>
               {f.tributi_erario.map((t, i) => (
-                <tr key={i} style={{ borderBottom: '1px solid #e5e7eb' }}>
+                <tr key={i} style={{ borderBottom: '1px solid #dce8f4' }}>
                   <td style={{ padding: 6 }}>{t.codice_tributo}</td>
                   <td style={{ padding: 6 }}>{t.riferimento || t.anno_riferimento || '-'}</td>
                   <td style={{ padding: 6, textAlign: 'right' }}>{formatEuro(t.importo_debito || t.importo || 0)}</td>
@@ -228,7 +228,7 @@ export default function F24() {
             </thead>
             <tbody>
               {f.tributi_inps.map((t, i) => (
-                <tr key={i} style={{ borderBottom: '1px solid #e5e7eb' }}>
+                <tr key={i} style={{ borderBottom: '1px solid #dce8f4' }}>
                   <td style={{ padding: 6 }}>{t.codice_sede}/{t.causale_contributo}</td>
                   <td style={{ padding: 6 }}>{t.matricola || '-'}</td>
                   <td style={{ padding: 6 }}>{t.periodo_da || '-'} - {t.periodo_a || '-'}</td>
@@ -257,7 +257,7 @@ export default function F24() {
             </thead>
             <tbody>
               {f.tributi_regioni.map((t, i) => (
-                <tr key={i} style={{ borderBottom: '1px solid #e5e7eb' }}>
+                <tr key={i} style={{ borderBottom: '1px solid #dce8f4' }}>
                   <td style={{ padding: 6 }}>{t.codice_tributo || t.codice}</td>
                   <td style={{ padding: 6 }}>{t.codice_ente || '-'}</td>
                   <td style={{ padding: 6, textAlign: 'right' }}>{formatEuro(t.importo_debito || t.importo || 0)}</td>
@@ -286,7 +286,7 @@ export default function F24() {
             </thead>
             <tbody>
               {f.tributi_imu.map((t, i) => (
-                <tr key={i} style={{ borderBottom: '1px solid #e5e7eb' }}>
+                <tr key={i} style={{ borderBottom: '1px solid #dce8f4' }}>
                   <td style={{ padding: 6 }}>{t.codice_tributo || t.codice}</td>
                   <td style={{ padding: 6 }}>{t.codice_comune || t.codice_ente || '-'}</td>
                   <td style={{ padding: 6 }}>{t.periodo_riferimento || '-'}</td>
@@ -333,9 +333,9 @@ export default function F24() {
       {/* Dashboard */}
       {dashboard && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 15, marginBottom: 25 }}>
-          <div style={{ background: '#e3f2fd', padding: 'clamp(10px, 3vw, 15px)', borderRadius: 8, borderLeft: '4px solid #2196f3' }}>
+          <div style={{ background: '#e3f2fd', padding: 'clamp(10px, 3vw, 15px)', borderRadius: 8, borderLeft: '4px solid #1535a8' }}>
             <div style={{ fontSize: 'clamp(10px, 2.5vw, 12px)', color: '#666' }}>📊 Totale F24</div>
-            <div style={{ fontSize: 'clamp(20px, 5vw, 28px)', fontWeight: 'bold', color: '#2196f3' }}>{dashboard.totale || 0}</div>
+            <div style={{ fontSize: 'clamp(20px, 5vw, 28px)', fontWeight: 'bold', color: '#1535a8' }}>{dashboard.totale || 0}</div>
             <div style={{ fontSize: 'clamp(9px, 2vw, 11px)', color: '#666' }}>{formatEuro(dashboard.importo_totale)}</div>
           </div>
           <div style={{ background: '#e8f5e9', padding: 'clamp(10px, 3vw, 15px)', borderRadius: 8, borderLeft: '4px solid #15803d' }}>
@@ -606,7 +606,7 @@ export default function F24() {
                             onClick={() => setEditingF24(f)}
                             style={{
                               padding: '6px 10px',
-                              background: '#2196f3',
+                              background: '#1535a8',
                               color: 'white',
                               border: 'none',
                               borderRadius: 4,

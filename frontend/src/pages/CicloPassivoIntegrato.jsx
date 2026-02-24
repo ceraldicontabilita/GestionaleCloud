@@ -162,13 +162,13 @@ const styles = {
       background: '#1535a8',
       color: 'white'
     } : variant === 'success' ? {
-      background: '#15803d',
+      background: '#10b981',
       color: 'white'
     } : variant === 'danger' ? {
       background: '#ef4444',
       color: 'white'
     } : variant === 'warning' ? {
-      background: '#d97706',
+      background: '#f59e0b',
       color: 'white'
     } : {
       background: '#f1f5f9',
@@ -481,12 +481,12 @@ export default function CicloPassivoIntegrato() {
           <p style={styles.statValue('#ef4444')}>{stats.num_scadenze_aperte || 0}</p>
           <p style={styles.statLabel}>Scadenze Aperte</p>
         </div>
-        <div style={styles.statCard('#d97706')}>
-          <p style={styles.statValue('#d97706')}>{formatEuro(stats.totale_debito_aperto || 0)}</p>
+        <div style={styles.statCard('#f59e0b')}>
+          <p style={styles.statValue('#f59e0b')}>{formatEuro(stats.totale_debito_aperto || 0)}</p>
           <p style={styles.statLabel}>Debito Aperto</p>
         </div>
-        <div style={styles.statCard('#15803d')}>
-          <p style={styles.statValue('#15803d')}>{stats.num_scadenze_saldate || 0}</p>
+        <div style={styles.statCard('#10b981')}>
+          <p style={styles.statValue('#10b981')}>{stats.num_scadenze_saldate || 0}</p>
           <p style={styles.statLabel}>Scadenze Saldate</p>
         </div>
         <div style={styles.statCard('#1535a8')}>
@@ -552,7 +552,7 @@ export default function CicloPassivoIntegrato() {
               </div>
               <div style={{ padding: '16px', background: '#eff6ff', borderRadius: '8px', border: '1px solid #bfdbfe' }}>
                 <strong style={{ color: '#1535a8' }}>2. Prima Nota</strong>
-                <p style={{ margin: '8px 0 0 0', fontSize: '13px', color: '#1d4ed8' }}>
+                <p style={{ margin: '8px 0 0 0', fontSize: '13px', color: '#1535a8' }}>
                   Scritture contabili Dare/Avere
                 </p>
               </div>
@@ -724,7 +724,7 @@ export default function CicloPassivoIntegrato() {
                         <span style={styles.badge('#1535a8')}>{s.metodo_descrizione || s.metodo_pagamento}</span>
                       </td>
                       <td style={styles.td}>
-                        <span style={styles.badge('#d97706')}>Da pagare</span>
+                        <span style={styles.badge('#f59e0b')}>Da pagare</span>
                       </td>
                       <td style={styles.td}>
                         <div style={{ display: 'flex', gap: '8px' }}>
@@ -859,13 +859,13 @@ export default function CicloPassivoIntegrato() {
                             <td style={styles.td}>
                               <strong>{formatEuro(m.importo)}</strong>
                               {m.diff_importo > 0 && (
-                                <span style={{ fontSize: '11px', color: '#d97706', display: 'block' }}>
+                                <span style={{ fontSize: '11px', color: '#f59e0b', display: 'block' }}>
                                   Diff: {formatEuro(m.diff_importo)}
                                 </span>
                               )}
                             </td>
                             <td style={styles.td}>
-                              <span style={styles.badge(m.match_score < 50 ? '#15803d' : m.match_score < 200 ? '#d97706' : '#ef4444')}>
+                              <span style={styles.badge(m.match_score < 50 ? '#10b981' : m.match_score < 200 ? '#f59e0b' : '#ef4444')}>
                                 {m.match_score < 50 ? '⭐ Ottimo' : m.match_score < 200 ? '🔸 Buono' : '⚠️ Incerto'}
                               </span>
                             </td>
@@ -910,7 +910,7 @@ export default function CicloPassivoIntegrato() {
             <h3 style={styles.cardTitle}>
               <span>✅</span> Storico Pagamenti Effettuati
             </h3>
-            <span style={styles.badge('#15803d')}>
+            <span style={styles.badge('#10b981')}>
               {dashboard?.scadenze_saldate?.length || 0} pagamenti
             </span>
           </div>
@@ -936,16 +936,16 @@ export default function CicloPassivoIntegrato() {
                       <td style={styles.td}>{s.fornitore_nome}</td>
                       <td style={styles.td}>{s.numero_fattura}</td>
                       <td style={styles.td}>
-                        <strong style={{ color: '#15803d' }}>{formatEuro(s.importo_totale)}</strong>
+                        <strong style={{ color: '#10b981' }}>{formatEuro(s.importo_totale)}</strong>
                       </td>
                       <td style={styles.td}>
                         <span style={styles.badge('#1535a8')}>{s.metodo_descrizione || s.metodo_pagamento}</span>
                       </td>
                       <td style={styles.td}>
                         {s.riconciliato ? (
-                          <span style={styles.badge('#15803d')}>✓ Sì</span>
+                          <span style={styles.badge('#10b981')}>✓ Sì</span>
                         ) : (
-                          <span style={styles.badge('#d97706')}>Manuale</span>
+                          <span style={styles.badge('#f59e0b')}>Manuale</span>
                         )}
                       </td>
                     </tr>

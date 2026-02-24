@@ -164,7 +164,7 @@ export default function MotoreContabile() {
                 {bilancioVerifica?.conti?.length > 0 ? (
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
-                      <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
+                      <tr style={{ borderBottom: '2px solid #dce8f4' }}>
                         <th style={{ textAlign: 'left', padding: '12px 8px' }}>Codice</th>
                         <th style={{ textAlign: 'left', padding: '12px 8px' }}>Conto</th>
                         <th style={{ textAlign: 'right', padding: '12px 8px' }}>Dare</th>
@@ -300,7 +300,7 @@ export default function MotoreContabile() {
                         justifyContent: 'space-between',
                         padding: '8px 0',
                         fontWeight: 600,
-                        borderTop: '1px solid #e5e7eb',
+                        borderTop: '1px solid #dce8f4',
                         marginTop: 4
                       }}>
                         <span>Totale sezione</span>
@@ -364,7 +364,7 @@ export default function MotoreContabile() {
                         justifyContent: 'space-between',
                         padding: '8px 0',
                         fontWeight: 600,
-                        borderTop: '1px solid #e5e7eb',
+                        borderTop: '1px solid #dce8f4',
                         marginTop: 4
                       }}>
                         <span>Totale sezione</span>
@@ -401,7 +401,7 @@ export default function MotoreContabile() {
                     </div>
                     <div style={{ 
                       width: 1, 
-                      background: '#e5e7eb',
+                      background: '#dce8f4',
                       margin: '0 20px'
                     }} />
                     <div>
@@ -414,7 +414,7 @@ export default function MotoreContabile() {
                     </div>
                     <div style={{ 
                       width: 1, 
-                      background: '#e5e7eb',
+                      background: '#dce8f4',
                       margin: '0 20px'
                     }} />
                     <div>
@@ -574,7 +574,7 @@ export default function MotoreContabile() {
                 {cespiti.length > 0 ? (
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
-                      <tr style={{ borderBottom: '2px solid #e5e7eb', background: '#f8fafc' }}>
+                      <tr style={{ borderBottom: '2px solid #dce8f4', background: '#f8fafc' }}>
                         <th style={{ textAlign: 'left', padding: '12px 8px' }}>Descrizione</th>
                         <th style={{ textAlign: 'left', padding: '12px 8px' }}>Categoria</th>
                         <th style={{ textAlign: 'center', padding: '12px 8px' }}>Data Acq.</th>

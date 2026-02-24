@@ -402,7 +402,7 @@ export default function ArchivioBonifici() {
             onClick={handleSyncIbanToAnagrafica}
             style={{
               padding: "10px 20px",
-              background: "#15803d",
+              background: "#10b981",
               color: "white",
               fontWeight: "bold",
               border: "none",
@@ -459,7 +459,7 @@ export default function ArchivioBonifici() {
 
       {/* Pulsante Riconciliazione */}
       <div style={{ 
-        background: 'linear-gradient(135deg, #0ea5e9, #0369a1)', 
+        background: 'linear-gradient(135deg, #1535a8, #0369a1)', 
         padding: 16, 
         borderRadius: 12, 
         marginBottom: 24,
@@ -821,9 +821,9 @@ export default function ArchivioBonifici() {
                                 </div>
                               )}
                               {loadingOperazioni ? (
-                                <div style={{ padding: 16, textAlign: 'center', color: '#6b7280' }}>⏳ Caricamento...</div>
+                                <div style={{ padding: 16, textAlign: 'center', color: '#6080a0' }}>⏳ Caricamento...</div>
                               ) : operazioniCompatibili.length === 0 ? (
-                                <div style={{ padding: 16, textAlign: 'center', color: '#6b7280', fontSize: 11 }}>
+                                <div style={{ padding: 16, textAlign: 'center', color: '#6080a0', fontSize: 11 }}>
                                   {dipendenteIbanMatch 
                                     ? `Nessuna operazione in Prima Nota Salari per ${dipendenteIbanMatch.nome_display}` 
                                     : 'Nessuna operazione salari compatibile trovata'}
@@ -873,7 +873,7 @@ export default function ArchivioBonifici() {
                                         </span>
                                       </div>
                                     </div>
-                                    <div style={{ fontSize: 10, color: '#6b7280', marginTop: 4, display: 'flex', justifyContent: 'space-between' }}>
+                                    <div style={{ fontSize: 10, color: '#6080a0', marginTop: 4, display: 'flex', justifyContent: 'space-between' }}>
                                       <span>{op.anno && op.mese ? `${op.mese}/${op.anno}` : formatDate(op.data)}</span>
                                       <span style={{ fontWeight: 600 }}>{formatEuro(op.importo_display)}</span>
                                     </div>
@@ -891,7 +891,7 @@ export default function ArchivioBonifici() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                           <span style={{ 
                             background: '#dbeafe', 
-                            color: '#1d4ed8', 
+                            color: '#1535a8', 
                             padding: '4px 8px', 
                             borderRadius: 6, 
                             fontSize: 10,
@@ -913,7 +913,7 @@ export default function ArchivioBonifici() {
                             onClick={() => toggleAssociaFatturaDropdown(t.id)}
                             style={{
                               padding: '4px 10px',
-                              background: associaFatturaDropdown === t.id ? '#1d4ed8' : '#f1f5f9',
+                              background: associaFatturaDropdown === t.id ? '#1535a8' : '#f1f5f9',
                               color: associaFatturaDropdown === t.id ? 'white' : '#475569',
                               border: 'none',
                               borderRadius: 6,
@@ -941,9 +941,9 @@ export default function ArchivioBonifici() {
                               overflowY: 'auto'
                             }}>
                               {loadingFatture ? (
-                                <div style={{ padding: 16, textAlign: 'center', color: '#6b7280' }}>⏳ Caricamento...</div>
+                                <div style={{ padding: 16, textAlign: 'center', color: '#6080a0' }}>⏳ Caricamento...</div>
                               ) : fattureCompatibili.length === 0 ? (
-                                <div style={{ padding: 16, textAlign: 'center', color: '#6b7280', fontSize: 11 }}>
+                                <div style={{ padding: 16, textAlign: 'center', color: '#6080a0', fontSize: 11 }}>
                                   Nessuna fattura compatibile trovata
                                 </div>
                               ) : (
@@ -975,7 +975,7 @@ export default function ArchivioBonifici() {
                                         {f.compatibilita_score}%
                                       </span>
                                     </div>
-                                    <div style={{ fontSize: 10, color: '#6b7280', marginTop: 4 }}>
+                                    <div style={{ fontSize: 10, color: '#6080a0', marginTop: 4 }}>
                                       {formatDate(f.data_fattura)} • {formatEuro(f.importo)}
                                     </div>
                                   </div>

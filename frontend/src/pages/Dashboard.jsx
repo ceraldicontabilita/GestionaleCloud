@@ -380,7 +380,7 @@ export default function Dashboard() {
           </div>
           
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
-            <div style={{ background: 'rgba(16,185,129,0.2)', borderRadius: 6, padding: 10, borderLeft: '3px solid #15803d' }}>
+            <div style={{ background: 'rgba(16,185,129,0.2)', borderRadius: 6, padding: 10, borderLeft: '3px solid #10b981' }}>
               <div style={{ fontSize: 10, opacity: 0.8 }}>RICAVI</div>
               <div style={{ fontSize: 16, fontWeight: 700 }}>{formatEuro(bilancioIstantaneo.ricavi?.totale || 0)}</div>
             </div>
@@ -397,7 +397,7 @@ export default function Dashboard() {
             <div style={{ 
               background: (bilancioIstantaneo.bilancio?.utile_lordo || 0) >= 0 ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)', 
               borderRadius: 6, padding: 10, 
-              borderLeft: `3px solid ${(bilancioIstantaneo.bilancio?.utile_lordo || 0) >= 0 ? '#15803d' : '#ef4444'}`
+              borderLeft: `3px solid ${(bilancioIstantaneo.bilancio?.utile_lordo || 0) >= 0 ? '#10b981' : '#ef4444'}`
             }}>
               <div style={{ fontSize: 10, opacity: 0.8 }}>UTILE LORDO</div>
               <div style={{ fontSize: 16, fontWeight: 700, color: (bilancioIstantaneo.bilancio?.utile_lordo || 0) >= 0 ? '#34d399' : '#f87171' }}>
@@ -462,7 +462,7 @@ export default function Dashboard() {
           borderRadius: 10, 
           padding: 14, 
           marginTop: 12,
-          border: '1px solid #e5e7eb',
+          border: '1px solid #dce8f4',
           boxShadow: '0 1px 3px rgba(0,0,0,0.06)'
         }} data-testid="widget-scadenze-f24">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
@@ -499,7 +499,7 @@ export default function Dashboard() {
                     padding: '8px 10px',
                     background: isScaduto ? '#fef2f2' : isUrgente ? '#fef3c7' : '#f8fafc',
                     borderRadius: 6,
-                    borderLeft: `3px solid ${isScaduto ? '#dc2626' : isUrgente ? '#d97706' : '#1535a8'}`
+                    borderLeft: `3px solid ${isScaduto ? '#dc2626' : isUrgente ? '#f59e0b' : '#1535a8'}`
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
@@ -517,7 +517,7 @@ export default function Dashboard() {
                     <div style={{ fontSize: 13, fontWeight: 700, color: '#dc2626' }}>
                       {formatEuro(f24.importo)}
                     </div>
-                    <div style={{ fontSize: 10, color: isScaduto ? '#dc2626' : isUrgente ? '#d97706' : '#64748b' }}>
+                    <div style={{ fontSize: 10, color: isScaduto ? '#dc2626' : isUrgente ? '#f59e0b' : '#64748b' }}>
                       {isScaduto ? 'Scaduto' : f24.giorni_mancanti === 0 ? 'Oggi' : f24.giorni_mancanti === 1 ? 'Domani' : `${f24.giorni_mancanti}g`}
                     </div>
                   </div>
@@ -530,7 +530,7 @@ export default function Dashboard() {
             <div style={{ 
               marginTop: 10, 
               paddingTop: 10, 
-              borderTop: '1px solid #e5e7eb',
+              borderTop: '1px solid #dce8f4',
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center'
@@ -550,11 +550,11 @@ export default function Dashboard() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
             <div>
               <h2 style={{ fontSize: 18, margin: 0, fontWeight: 'bold', color: '#1535a8' }}>📈 Trend Mensile {anno}</h2>
-              <span style={{ fontSize: 13, color: '#6b7280' }}>Entrate vs Uscite</span>
+              <span style={{ fontSize: 13, color: '#6080a0' }}>Entrate vs Uscite</span>
             </div>
             <div style={{ display: 'flex', gap: 20, fontSize: 14 }}>
               <div>
-                <span style={{ color: '#15803d' }}>● Entrate:</span>{' '}
+                <span style={{ color: '#10b981' }}>● Entrate:</span>{' '}
                 <strong>{formatEuro(trendData.totali?.entrate)}</strong>
               </div>
               <div>
@@ -562,8 +562,8 @@ export default function Dashboard() {
                 <strong>{formatEuro(trendData.totali?.uscite)}</strong>
               </div>
               <div>
-                <span style={{ color: trendData.totali?.saldo >= 0 ? '#15803d' : '#ef4444' }}>● Saldo:</span>{' '}
-                <strong style={{ color: trendData.totali?.saldo >= 0 ? '#15803d' : '#ef4444' }}>
+                <span style={{ color: trendData.totali?.saldo >= 0 ? '#10b981' : '#ef4444' }}>● Saldo:</span>{' '}
+                <strong style={{ color: trendData.totali?.saldo >= 0 ? '#10b981' : '#ef4444' }}>
                   {formatEuro(trendData.totali?.saldo)}
                 </strong>
               </div>
@@ -573,16 +573,16 @@ export default function Dashboard() {
           <div style={{ height: 300, width: '100%', minHeight: 300 }}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={trendData.trend_mensile} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#dce8f4" />
                 <XAxis dataKey="mese_nome" tick={{ fontSize: 12 }} />
                 <YAxis tickFormatter={(v) => `€${(v/1000).toFixed(0)}k`} tick={{ fontSize: 11 }} />
                 <Tooltip 
                   formatter={(value) => formatEuro(value)}
                   labelStyle={{ fontWeight: 'bold' }}
-                  contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb' }}
+                  contentStyle={{ borderRadius: 8, border: '1px solid #dce8f4' }}
                 />
                 <Legend />
-                <Bar dataKey="entrate" fill="#15803d" name="Entrate" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="entrate" fill="#10b981" name="Entrate" radius={[4, 4, 0, 0]} />
                 <Bar dataKey="uscite" fill="#ef4444" name="Uscite" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -599,23 +599,23 @@ export default function Dashboard() {
             borderRadius: 8
           }}>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 12, color: '#6b7280' }}>Media Entrate</div>
-              <div style={{ fontSize: 18, fontWeight: 'bold', color: '#15803d' }}>
+              <div style={{ fontSize: 12, color: '#6080a0' }}>Media Entrate</div>
+              <div style={{ fontSize: 18, fontWeight: 'bold', color: '#10b981' }}>
                 {formatEuro(trendData.statistiche?.media_entrate_mensile)}
               </div>
             </div>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 12, color: '#6b7280' }}>Media Uscite</div>
+              <div style={{ fontSize: 12, color: '#6080a0' }}>Media Uscite</div>
               <div style={{ fontSize: 18, fontWeight: 'bold', color: '#ef4444' }}>
                 {formatEuro(trendData.statistiche?.media_uscite_mensile)}
               </div>
             </div>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 12, color: '#6b7280' }}>Picco Entrate</div>
+              <div style={{ fontSize: 12, color: '#6080a0' }}>Picco Entrate</div>
               <div style={{ fontSize: 18, fontWeight: 'bold' }}>{trendData.statistiche?.mese_picco_entrate}</div>
             </div>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 12, color: '#6b7280' }}>Picco Uscite</div>
+              <div style={{ fontSize: 12, color: '#6080a0' }}>Picco Uscite</div>
               <div style={{ fontSize: 18, fontWeight: 'bold' }}>{trendData.statistiche?.mese_picco_uscite}</div>
             </div>
           </div>
@@ -629,7 +629,7 @@ export default function Dashboard() {
           <div style={{ height: 200, width: '100%', minHeight: 200 }}>
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={trendData.trend_mensile} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#dce8f4" />
                 <XAxis dataKey="mese_nome" tick={{ fontSize: 12 }} />
                 <YAxis tickFormatter={(v) => `€${(v/1000).toFixed(0)}k`} tick={{ fontSize: 11 }} />
                 <Tooltip 
@@ -637,7 +637,7 @@ export default function Dashboard() {
                   contentStyle={{ borderRadius: 8 }}
                 />
                 <Legend />
-                <Line type="monotone" dataKey="iva_debito" stroke="#d97706" strokeWidth={2} name="IVA Debito" dot={{ r: 3 }} />
+                <Line type="monotone" dataKey="iva_debito" stroke="#f59e0b" strokeWidth={2} name="IVA Debito" dot={{ r: 3 }} />
                 <Line type="monotone" dataKey="iva_credito" stroke="#1535a8" strokeWidth={2} name="IVA Credito" dot={{ r: 3 }} />
               </LineChart>
             </ResponsiveContainer>
@@ -650,13 +650,13 @@ export default function Dashboard() {
             fontSize: 14 
           }}>
             <div>
-              IVA Debito Totale: <strong style={{ color: '#d97706' }}>{formatEuro(trendData.totali?.iva_debito)}</strong>
+              IVA Debito Totale: <strong style={{ color: '#f59e0b' }}>{formatEuro(trendData.totali?.iva_debito)}</strong>
             </div>
             <div>
               IVA Credito Totale: <strong style={{ color: '#1535a8' }}>{formatEuro(trendData.totali?.iva_credito)}</strong>
             </div>
             <div>
-              Saldo IVA: <strong style={{ color: trendData.totali?.saldo_iva >= 0 ? '#ef4444' : '#15803d' }}>
+              Saldo IVA: <strong style={{ color: trendData.totali?.saldo_iva >= 0 ? '#ef4444' : '#10b981' }}>
                 {formatEuro(Math.abs(trendData.totali?.saldo_iva))} {trendData.totali?.saldo_iva >= 0 ? '(da versare)' : '(a credito)'}
               </strong>
             </div>
@@ -670,7 +670,7 @@ export default function Dashboard() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
             <div>
               <h2 style={{ fontSize: 18, margin: 0, fontWeight: 'bold', color: '#1535a8' }}>💳 Calendario POS - Sfasamento Accrediti</h2>
-              <span style={{ fontSize: 13, color: '#6b7280' }}>Mese corrente - Giorni con sfasamento lungo evidenziati</span>
+              <span style={{ fontSize: 13, color: '#6080a0' }}>Mese corrente - Giorni con sfasamento lungo evidenziati</span>
             </div>
             <Link to="/riconciliazione" style={{
               padding: '6px 12px',
@@ -756,7 +756,7 @@ export default function Dashboard() {
                       <div style={{ fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {cat.nome}
                       </div>
-                      <div style={{ color: '#6b7280' }}>{formatEuro(cat.valore)}</div>
+                      <div style={{ color: '#6080a0' }}>{formatEuro(cat.valore)}</div>
                     </div>
                   </div>
                 ))}
@@ -769,7 +769,7 @@ export default function Dashboard() {
               background: '#f0fdf4', 
               borderRadius: 8 
             }}>
-              <span style={{ color: '#6b7280' }}>Totale Spese: </span>
+              <span style={{ color: '#6080a0' }}>Totale Spese: </span>
               <strong style={{ color: '#dc2626' }}>{formatEuro(speseCategoria.totale_spese)}</strong>
             </div>
           </div>
@@ -783,18 +783,18 @@ export default function Dashboard() {
             {/* Barra progresso globale */}
             <div style={{ marginBottom: 20 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
-                <span style={{ fontSize: 13, color: '#6b7280' }}>Progresso Globale</span>
-                <span style={{ fontWeight: 'bold', color: statoRiconciliazione.riepilogo.percentuale_globale >= 80 ? '#16a34a' : '#d97706' }}>
+                <span style={{ fontSize: 13, color: '#6080a0' }}>Progresso Globale</span>
+                <span style={{ fontWeight: 'bold', color: statoRiconciliazione.riepilogo.percentuale_globale >= 80 ? '#16a34a' : '#f59e0b' }}>
                   {statoRiconciliazione.riepilogo.percentuale_globale}%
                 </span>
               </div>
-              <div style={{ height: 12, background: '#e5e7eb', borderRadius: 6, overflow: 'hidden' }}>
+              <div style={{ height: 12, background: '#dce8f4', borderRadius: 6, overflow: 'hidden' }}>
                 <div style={{ 
                   height: '100%', 
                   width: `${statoRiconciliazione.riepilogo.percentuale_globale}%`,
                   background: statoRiconciliazione.riepilogo.percentuale_globale >= 80 
-                    ? 'linear-gradient(90deg, #15803d, #34d399)' 
-                    : 'linear-gradient(90deg, #d97706, #fbbf24)',
+                    ? 'linear-gradient(90deg, #10b981, #34d399)' 
+                    : 'linear-gradient(90deg, #f59e0b, #fbbf24)',
                   borderRadius: 6,
                   transition: 'width 0.5s ease'
                 }}></div>
@@ -817,13 +817,13 @@ export default function Dashboard() {
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, fontSize: 13 }}>
                 <div>
-                  <div style={{ color: '#6b7280' }}>Pagate</div>
+                  <div style={{ color: '#6080a0' }}>Pagate</div>
                   <div style={{ fontWeight: 'bold', color: '#16a34a' }}>
                     {statoRiconciliazione.fatture.pagate} / {statoRiconciliazione.fatture.totali}
                   </div>
                 </div>
                 <div>
-                  <div style={{ color: '#6b7280' }}>Da pagare</div>
+                  <div style={{ color: '#6080a0' }}>Da pagare</div>
                   <div style={{ fontWeight: 'bold', color: '#dc2626' }}>
                     {formatEuro(statoRiconciliazione.fatture.importo_da_pagare)}
                   </div>
@@ -847,14 +847,14 @@ export default function Dashboard() {
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, fontSize: 13 }}>
                 <div>
-                  <div style={{ color: '#6b7280' }}>Riconciliati</div>
+                  <div style={{ color: '#6080a0' }}>Riconciliati</div>
                   <div style={{ fontWeight: 'bold', color: '#16a34a' }}>
                     {statoRiconciliazione.salari.riconciliati} / {statoRiconciliazione.salari.totali}
                   </div>
                 </div>
                 <div>
-                  <div style={{ color: '#6b7280' }}>Da verificare</div>
-                  <div style={{ fontWeight: 'bold', color: '#d97706' }}>
+                  <div style={{ color: '#6080a0' }}>Da verificare</div>
+                  <div style={{ fontWeight: 'bold', color: '#f59e0b' }}>
                     {statoRiconciliazione.salari.da_riconciliare}
                   </div>
                 </div>
@@ -906,7 +906,7 @@ export default function Dashboard() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
               {/* Fornitori */}
               <div style={{ background: 'white', borderRadius: 10, padding: 12, textAlign: 'center' }}>
-                <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>Fornitori</div>
+                <div style={{ fontSize: 11, color: '#6080a0', marginBottom: 4 }}>Fornitori</div>
                 <div style={{ fontSize: 22, fontWeight: 'bold', color: '#166534' }}>
                   {learningStats.fornitori_con_keywords || 0}
                 </div>
@@ -917,7 +917,7 @@ export default function Dashboard() {
               
               {/* Fatture */}
               <div style={{ background: 'white', borderRadius: 10, padding: 12, textAlign: 'center' }}>
-                <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>Fatture</div>
+                <div style={{ fontSize: 11, color: '#6080a0', marginBottom: 4 }}>Fatture</div>
                 <div style={{ fontSize: 22, fontWeight: 'bold', color: '#166534' }}>
                   {learningStats.percentuale_fatture || 0}%
                 </div>
@@ -928,7 +928,7 @@ export default function Dashboard() {
               
               {/* F24 */}
               <div style={{ background: 'white', borderRadius: 10, padding: 12, textAlign: 'center' }}>
-                <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>F24</div>
+                <div style={{ fontSize: 11, color: '#6080a0', marginBottom: 4 }}>F24</div>
                 <div style={{ fontSize: 22, fontWeight: 'bold', color: '#166534' }}>
                   {learningStats.percentuale_f24 || 0}%
                 </div>
@@ -969,7 +969,7 @@ export default function Dashboard() {
           }}>
             {/* Entrate */}
             <div style={{ background: '#f0fdf4', borderRadius: 12, padding: 15 }}>
-              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 5 }}>Entrate</div>
+              <div style={{ fontSize: 12, color: '#6080a0', marginBottom: 5 }}>Entrate</div>
               <div style={{ fontSize: 24, fontWeight: 'bold', color: '#16a34a' }}>
                 {formatEuro(confrontoAnnuale.anno_corrente.entrate)}
               </div>
@@ -987,13 +987,13 @@ export default function Dashboard() {
                   {confrontoAnnuale.variazioni_percentuali.entrate >= 0 ? '↑' : '↓'} 
                   {Math.abs(confrontoAnnuale.variazioni_percentuali.entrate)}%
                 </span>
-                <span style={{ color: '#6b7280' }}>vs {anno - 1}</span>
+                <span style={{ color: '#6080a0' }}>vs {anno - 1}</span>
               </div>
             </div>
 
             {/* Uscite */}
             <div style={{ background: '#fef2f2', borderRadius: 12, padding: 15 }}>
-              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 5 }}>Uscite</div>
+              <div style={{ fontSize: 12, color: '#6080a0', marginBottom: 5 }}>Uscite</div>
               <div style={{ fontSize: 24, fontWeight: 'bold', color: '#dc2626' }}>
                 {formatEuro(confrontoAnnuale.anno_corrente.uscite)}
               </div>
@@ -1011,7 +1011,7 @@ export default function Dashboard() {
                   {confrontoAnnuale.variazioni_percentuali.uscite >= 0 ? '↑' : '↓'} 
                   {Math.abs(confrontoAnnuale.variazioni_percentuali.uscite)}%
                 </span>
-                <span style={{ color: '#6b7280' }}>vs {anno - 1}</span>
+                <span style={{ color: '#6080a0' }}>vs {anno - 1}</span>
               </div>
             </div>
 
@@ -1021,7 +1021,7 @@ export default function Dashboard() {
               borderRadius: 12, 
               padding: 15 
             }}>
-              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 5 }}>Saldo</div>
+              <div style={{ fontSize: 12, color: '#6080a0', marginBottom: 5 }}>Saldo</div>
               <div style={{ 
                 fontSize: 24, 
                 fontWeight: 'bold', 
@@ -1043,13 +1043,13 @@ export default function Dashboard() {
                   {confrontoAnnuale.variazioni_percentuali.saldo >= 0 ? '↑' : '↓'} 
                   {Math.abs(confrontoAnnuale.variazioni_percentuali.saldo)}%
                 </span>
-                <span style={{ color: '#6b7280' }}>vs {anno - 1}</span>
+                <span style={{ color: '#6080a0' }}>vs {anno - 1}</span>
               </div>
             </div>
 
             {/* Numero Fatture */}
             <div style={{ background: '#f0f9ff', borderRadius: 12, padding: 15 }}>
-              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 5 }}>N. Fatture</div>
+              <div style={{ fontSize: 12, color: '#6080a0', marginBottom: 5 }}>N. Fatture</div>
               <div style={{ fontSize: 24, fontWeight: 'bold', color: '#0284c7' }}>
                 {confrontoAnnuale.anno_corrente.num_fatture}
               </div>
@@ -1061,13 +1061,13 @@ export default function Dashboard() {
                 fontSize: 13
               }}>
                 <span style={{ 
-                  color: '#6b7280',
+                  color: '#6080a0',
                   fontWeight: 'bold'
                 }}>
                   {confrontoAnnuale.variazioni_percentuali.num_fatture >= 0 ? '↑' : '↓'} 
                   {Math.abs(confrontoAnnuale.variazioni_percentuali.num_fatture)}%
                 </span>
-                <span style={{ color: '#6b7280' }}>vs {anno - 1}</span>
+                <span style={{ color: '#6080a0' }}>vs {anno - 1}</span>
               </div>
             </div>
           </div>
@@ -1186,7 +1186,7 @@ export default function Dashboard() {
               rel="noopener noreferrer"
               style={{
                 padding: '8px 14px',
-                background: '#15803d',
+                background: '#10b981',
                 color: 'white',
                 borderRadius: 6,
                 textDecoration: 'none',
@@ -1217,7 +1217,7 @@ const quickActionStyle = (bg, color) => ({
 });
 
 // Colori per grafico a torta
-const PIE_COLORS = ['#1535a8', '#15803d', '#d97706', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16', '#f97316', '#6366f1'];
+const PIE_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16', '#f97316', '#6366f1'];
 
 // POS Calendar Widget Component
 function POSCalendarWidget({ data }) {
@@ -1261,7 +1261,7 @@ function POSCalendarWidget({ data }) {
     if (sfasamento === 1) return '#dcfce7';
     if (sfasamento === 2) return '#fef3c7';
     if (sfasamento >= 3) return '#fee2e2';
-    return '#f9fafb';
+    return '#f2f6fd';
   };
   
   return (
@@ -1304,7 +1304,7 @@ function POSCalendarWidget({ data }) {
             {g && (
               <>
                 <div style={{ fontWeight: '500' }}>{g.giorno}</div>
-                <div style={{ fontSize: 9, color: '#6b7280' }}>+{g.sfasamento}g</div>
+                <div style={{ fontSize: 9, color: '#6080a0' }}>+{g.sfasamento}g</div>
               </>
             )}
           </div>
@@ -1329,13 +1329,13 @@ function AlertGiustificativiWidget({ data }) {
     if (livello === 'critical') {
       return { bg: '#fef2f2', border: '#fecaca', text: '#dc2626', badge: '#dc2626' };
     }
-    return { bg: '#fffbeb', border: '#fde68a', text: '#d97706', badge: '#d97706' };
+    return { bg: '#fffbeb', border: '#fde68a', text: '#d97706', badge: '#f59e0b' };
   };
   
   return (
     <div style={{ 
       background: 'white',
-      border: '1px solid #e5e7eb',
+      border: '1px solid #dce8f4',
       borderRadius: 10, 
       padding: 16, 
       marginBottom: 12,
@@ -1353,13 +1353,13 @@ function AlertGiustificativiWidget({ data }) {
             alignItems: 'center',
             justifyContent: 'center'
           }}>
-            <AlertTriangle size={18} color={criticalCount > 0 ? '#dc2626' : '#d97706'} />
+            <AlertTriangle size={18} color={criticalCount > 0 ? '#dc2626' : '#f59e0b'} />
           </div>
           <div>
             <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#1f2937' }}>
               Alert Ferie e Permessi
             </h3>
-            <span style={{ fontSize: 11, color: '#6b7280' }}>
+            <span style={{ fontSize: 11, color: '#6080a0' }}>
               {data.dipendenti_coinvolti} dipendenti vicini al limite
             </span>
           </div>
@@ -1416,7 +1416,7 @@ function AlertGiustificativiWidget({ data }) {
                   <div style={{ fontWeight: 500, fontSize: 13, color: '#1f2937' }}>
                     {alert.employee_nome}
                   </div>
-                  <div style={{ fontSize: 11, color: '#6b7280' }}>
+                  <div style={{ fontSize: 11, color: '#6080a0' }}>
                     {alert.descrizione} ({alert.codice})
                   </div>
                 </div>
@@ -1430,7 +1430,7 @@ function AlertGiustificativiWidget({ data }) {
                 }}>
                   {alert.percentuale}%
                 </div>
-                <div style={{ fontSize: 10, color: '#6b7280' }}>
+                <div style={{ fontSize: 10, color: '#6080a0' }}>
                   {alert.ore_usate}h / {alert.limite}h
                 </div>
               </div>
@@ -1536,7 +1536,7 @@ function ScadenzeWidget({ scadenze }) {
       borderRadius: 12, 
       padding: 20,
       marginBottom: 20,
-      border: urgenti.length > 0 ? '2px solid #fecaca' : '1px solid #e5e7eb',
+      border: urgenti.length > 0 ? '2px solid #fecaca' : '1px solid #dce8f4',
       boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
     }}>
       <div style={{ 
@@ -1549,7 +1549,7 @@ function ScadenzeWidget({ scadenze }) {
           <span style={{ fontSize: 24 }}>📅</span>
           <div>
             <div style={{ fontWeight: 'bold', fontSize: 16 }}>Prossime Scadenze</div>
-            <div style={{ fontSize: 12, color: '#6b7280' }}>
+            <div style={{ fontSize: 12, color: '#6080a0' }}>
               {scadenze.totale} scadenze nei prossimi 30 giorni
               {urgenti.length > 0 && (
                 <span style={{ color: '#dc2626', fontWeight: 'bold', marginLeft: 8 }}>
@@ -1566,7 +1566,7 @@ function ScadenzeWidget({ scadenze }) {
             padding: '8px 12px',
             borderRadius: 8
           }}>
-            <div style={{ fontSize: 11, color: '#6b7280' }}>Prossima</div>
+            <div style={{ fontSize: 11, color: '#6080a0' }}>Prossima</div>
             <div style={{ fontWeight: 'bold', color: getPriorityColor(scadenze.prossima_scadenza.priorita, scadenze.prossima_scadenza.urgente).text }}>
               {scadenze.prossima_scadenza.giorni_mancanti === 0 ? 'OGGI' : 
                scadenze.prossima_scadenza.giorni_mancanti === 1 ? 'DOMANI' :
@@ -1631,7 +1631,7 @@ function ScadenzeWidget({ scadenze }) {
                 <div style={{ fontSize: 12, fontWeight: 'bold', color: colors.text }}>
                   {formatDate(s.data)}
                 </div>
-                <div style={{ fontSize: 10, color: '#6b7280' }}>
+                <div style={{ fontSize: 10, color: '#6080a0' }}>
                   {s.giorni_mancanti === 0 ? 'Oggi' :
                    s.giorni_mancanti === 1 ? 'Domani' :
                    s.giorni_mancanti < 0 ? 'Scaduta' :
@@ -1668,7 +1668,7 @@ function ScadenzeWidget({ scadenze }) {
                   onClick={() => setPagaModal(s)}
                   style={{
                     padding: '4px 8px',
-                    background: '#15803d',
+                    background: '#10b981',
                     color: 'white',
                     border: 'none',
                     borderRadius: 4,
@@ -1763,7 +1763,7 @@ function ScadenzeWidget({ scadenze }) {
                 disabled={processing}
                 style={{
                   padding: '14px 24px',
-                  background: processing ? '#94a3b8' : '#d97706',
+                  background: processing ? '#94a3b8' : '#f59e0b',
                   color: 'white',
                   border: 'none',
                   borderRadius: 10,
@@ -1847,7 +1847,7 @@ function AlertPagamentiWidget({ data }) {
       style={{
         background: 'linear-gradient(135deg, #fff7ed 0%, #fef3c7 100%)',
         border: '1px solid #fcd34d',
-        borderLeft: '4px solid #d97706',
+        borderLeft: '4px solid #f59e0b',
         borderRadius: 10,
         padding: '14px 18px',
         marginBottom: 12,
@@ -1892,7 +1892,7 @@ function AlertPagamentiWidget({ data }) {
           alignItems: 'center',
           gap: 6,
           padding: '8px 16px',
-          background: '#d97706',
+          background: '#f59e0b',
           color: 'white',
           borderRadius: 8,
           textDecoration: 'none',

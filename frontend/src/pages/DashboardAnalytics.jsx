@@ -87,7 +87,7 @@ function PieChart({ data }) {
 
 // KPI Card con indicatore real-time
 function KPICard({ title, value, subtitle, trend, color = '#1535a8', icon = '📊', isLive = false }) {
-  const trendColor = trend > 0 ? '#15803d' : trend < 0 ? '#ef4444' : '#94a3b8';
+  const trendColor = trend > 0 ? '#10b981' : trend < 0 ? '#ef4444' : '#94a3b8';
   const trendIcon = trend > 0 ? '↑' : trend < 0 ? '↓' : '→';
   
   return (
@@ -108,7 +108,7 @@ function KPICard({ title, value, subtitle, trend, color = '#1535a8', icon = '�
           alignItems: 'center',
           gap: 4,
           fontSize: 10,
-          color: '#15803d',
+          color: '#10b981',
           background: '#f0fdf4',
           padding: '2px 6px',
           borderRadius: 10
@@ -117,7 +117,7 @@ function KPICard({ title, value, subtitle, trend, color = '#1535a8', icon = '�
             width: 6,
             height: 6,
             borderRadius: '50%',
-            background: '#15803d',
+            background: '#10b981',
             animation: 'pulse 2s infinite'
           }} />
           LIVE
@@ -287,9 +287,9 @@ export default function DashboardAnalytics() {
       
       const coloriCategorie = {
         salari: '#8b5cf6',
-        fornitori: '#d97706', 
+        fornitori: '#f59e0b', 
         f24: '#ef4444',
-        utenze: '#15803d',
+        utenze: '#10b981',
         altro: '#94a3b8',
         cassa: '#1535a8',
         banca: '#06b6d4'
@@ -312,7 +312,7 @@ export default function DashboardAnalytics() {
         return {
           label: mese,
           value: entrate - uscite,
-          color: entrate - uscite >= 0 ? '#15803d' : '#ef4444'
+          color: entrate - uscite >= 0 ? '#10b981' : '#ef4444'
         };
       });
 
@@ -453,7 +453,7 @@ export default function DashboardAnalytics() {
           title="Entrate" 
           value={formatEuro(stats?.kpi?.entrate || 0)} 
           icon="📈"
-          color="#15803d"
+          color="#10b981"
           isLive={wsConnected}
         />
         <KPICard 
@@ -468,7 +468,7 @@ export default function DashboardAnalytics() {
           value={formatEuro(stats?.kpi?.cashFlow || 0)} 
           subtitle={stats?.kpi?.cashFlow >= 0 ? 'Positivo' : 'Negativo'}
           icon={stats?.kpi?.cashFlow >= 0 ? '✅' : '⚠️'}
-          color={stats?.kpi?.cashFlow >= 0 ? '#15803d' : '#ef4444'}
+          color={stats?.kpi?.cashFlow >= 0 ? '#10b981' : '#ef4444'}
           isLive={wsConnected}
         />
       </div>
@@ -510,7 +510,7 @@ export default function DashboardAnalytics() {
           <div style={{ fontSize: 12, color: '#64748b' }}>F24 Pendenti</div>
         </div>
         <div style={{ background: '#f8fafc', borderRadius: 8, padding: 16, textAlign: 'center' }}>
-          <div style={{ fontSize: 24, fontWeight: 700, color: '#15803d' }}>{stats?.kpi?.numFatture || 0}</div>
+          <div style={{ fontSize: 24, fontWeight: 700, color: '#10b981' }}>{stats?.kpi?.numFatture || 0}</div>
           <div style={{ fontSize: 12, color: '#64748b' }}>Fatture Emesse</div>
         </div>
       </div>

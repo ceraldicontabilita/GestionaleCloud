@@ -1,3 +1,29 @@
+## Aggiornamento V8 - 2026-02-08
+- F24 Unificato: nuova pagina con tab Tributi e Riconciliazione
+- IVA Unificata: nuova pagina con tab Calcolo e Liquidazione
+- Filtro anno aggiunto a endpoint F24 riconciliazione
+- Auth middleware: aggiunti path pubblici per setup e F24
+- Aggiornate 17 pagine frontend
+
+## Aggiornamento V7 - 2026-02-08
+- Nuova pagina Bilancio di Verifica
+- Nuova pagina Partitario Clienti/Fornitori
+- Nuova pagina Budget Previsionale
+- Nuovo router contabilita_gestionale.py
+
+## Aggiornamento V6 - 2026-02-08
+- Autenticazione JWT obbligatoria attivata
+- Redirect automatico a /login su 401
+- Filtro anno per endpoint F24 pubblici
+- Emoji 🚪 aggiunta al pulsante Esci
+
+## Aggiornamento V5 - 2026-02-08
+- Patch V5 applicata
+- Aggiunta pagina Login completa
+- Aggiunto pulsante Logout nella sidebar
+- Endpoint /api/auth/setup per setup admin iniziale
+- Strategia multi-livello per riconciliazione verbali-driver
+
 # Getting Started with Create React App
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).

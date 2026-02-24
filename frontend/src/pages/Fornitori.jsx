@@ -194,7 +194,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                 style={{
                   width: '100%',
                   padding: '10px 14px',
-                  border: '1px solid #e5e7eb',
+                  border: '1px solid #dce8f4',
                   borderRadius: '8px',
                   fontSize: '14px',
                   boxSizing: 'border-box'
@@ -217,7 +217,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                     style={{
                       flex: 1,
                       padding: '10px 14px',
-                      border: '1px solid #e5e7eb',
+                      border: '1px solid #dce8f4',
                       borderRadius: '8px',
                       fontSize: '14px',
                       fontFamily: 'monospace',
@@ -234,7 +234,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                       padding: '10px 12px',
                       border: 'none',
                       borderRadius: '8px',
-                      background: loadingOpenAPI ? '#9ca3af' : 'linear-gradient(135deg, #15803d 0%, #059669 100%)',
+                      background: loadingOpenAPI ? '#9ca3af' : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
                       color: 'white',
                       cursor: loadingOpenAPI || !form.partita_iva ? 'not-allowed' : 'pointer',
                       display: 'flex',
@@ -267,7 +267,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                   style={{
                     width: '100%',
                     padding: '10px 14px',
-                    border: '1px solid #e5e7eb',
+                    border: '1px solid #dce8f4',
                     borderRadius: '8px',
                     fontSize: '14px',
                     fontFamily: 'monospace',
@@ -289,7 +289,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                 style={{
                   width: '100%',
                   padding: '10px 14px',
-                  border: '1px solid #e5e7eb',
+                  border: '1px solid #dce8f4',
                   borderRadius: '8px',
                   fontSize: '14px',
                   boxSizing: 'border-box'
@@ -306,7 +306,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                   type="text"
                   value={form.cap || ''}
                   onChange={(e) => handleChange('cap', e.target.value)}
-                  style={{ width: '100%', padding: '10px 14px', border: '1px solid #e5e7eb', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box' }}
+                  style={{ width: '100%', padding: '10px 14px', border: '1px solid #dce8f4', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box' }}
                   maxLength={5}
                 />
               </div>
@@ -316,7 +316,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                   type="text"
                   value={form.comune || ''}
                   onChange={(e) => handleChange('comune', e.target.value)}
-                  style={{ width: '100%', padding: '10px 14px', border: '1px solid #e5e7eb', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box' }}
+                  style={{ width: '100%', padding: '10px 14px', border: '1px solid #dce8f4', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box' }}
                 />
               </div>
               <div>
@@ -325,7 +325,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                   type="text"
                   value={form.provincia || ''}
                   onChange={(e) => handleChange('provincia', e.target.value.toUpperCase())}
-                  style={{ width: '100%', padding: '10px 14px', border: '1px solid #e5e7eb', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box' }}
+                  style={{ width: '100%', padding: '10px 14px', border: '1px solid #dce8f4', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box' }}
                   maxLength={2}
                 />
               </div>
@@ -339,7 +339,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                   type="tel"
                   value={form.telefono || ''}
                   onChange={(e) => handleChange('telefono', e.target.value)}
-                  style={{ width: '100%', padding: '10px 14px', border: '1px solid #e5e7eb', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box' }}
+                  style={{ width: '100%', padding: '10px 14px', border: '1px solid #dce8f4', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box' }}
                 />
               </div>
               <div>
@@ -348,7 +348,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                   type="email"
                   value={form.email || ''}
                   onChange={(e) => handleChange('email', e.target.value)}
-                  style={{ width: '100%', padding: '10px 14px', border: '1px solid #e5e7eb', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box' }}
+                  style={{ width: '100%', padding: '10px 14px', border: '1px solid #dce8f4', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box' }}
                 />
               </div>
             </div>
@@ -360,7 +360,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                 <select
                   value={form.metodo_pagamento || 'bonifico'}
                   onChange={(e) => handleChange('metodo_pagamento', e.target.value)}
-                  style={{ width: '100%', padding: '10px 14px', border: '1px solid #e5e7eb', borderRadius: '8px', fontSize: '14px', backgroundColor: 'white', boxSizing: 'border-box' }}
+                  style={{ width: '100%', padding: '10px 14px', border: '1px solid #dce8f4', borderRadius: '8px', fontSize: '14px', backgroundColor: 'white', boxSizing: 'border-box' }}
                 >
                   {Object.entries(METODI_PAGAMENTO).filter(([k]) => k !== 'banca').map(([key, val]) => (
                     <option key={key} value={key}>{val.label}</option>
@@ -373,7 +373,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                   type="number"
                   value={form.giorni_pagamento || 30}
                   onChange={(e) => handleChange('giorni_pagamento', parseInt(e.target.value) || 30)}
-                  style={{ width: '100%', padding: '10px 14px', border: '1px solid #e5e7eb', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box' }}
+                  style={{ width: '100%', padding: '10px 14px', border: '1px solid #dce8f4', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box' }}
                   min={0}
                 />
               </div>
@@ -391,7 +391,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                 style={{
                   width: '100%',
                   padding: '10px 14px',
-                  border: '1px solid #e5e7eb',
+                  border: '1px solid #dce8f4',
                   borderRadius: '8px',
                   fontSize: '14px',
                   fontFamily: 'monospace',
@@ -402,7 +402,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
               {/* Lista IBAN aggiuntivi */}
               {form.iban_lista && form.iban_lista.length > 0 && (
                 <div style={{ marginTop: '8px', padding: '10px', background: '#f8fafc', borderRadius: '6px' }}>
-                  <div style={{ fontSize: '12px', color: '#6b7280', marginBottom: '6px' }}>IBAN aggiuntivi (da fatture):</div>
+                  <div style={{ fontSize: '12px', color: '#6080a0', marginBottom: '6px' }}>IBAN aggiuntivi (da fatture):</div>
                   {form.iban_lista.map((iban, idx) => (
                     <div key={idx} style={{ 
                       display: 'flex', 
@@ -449,13 +449,13 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                   type="checkbox"
                   checked={form.esclude_magazzino || false}
                   onChange={(e) => handleChange('esclude_magazzino', e.target.checked)}
-                  style={{ width: '18px', height: '18px', accentColor: '#d97706' }}
+                  style={{ width: '18px', height: '18px', accentColor: '#f59e0b' }}
                 />
                 <div>
                   <div style={{ fontSize: '14px', fontWeight: 600, color: '#374151' }}>
                     Esclude dal Magazzino
                   </div>
-                  <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '2px' }}>
+                  <div style={{ fontSize: '12px', color: '#6080a0', marginTop: '2px' }}>
                     I prodotti di questo fornitore NON verranno caricati in magazzino (es. manutenzione, servizi, ferramenta)
                   </div>
                 </div>
@@ -467,15 +467,15 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
         {/* Footer */}
         <div style={{
           padding: '16px 24px',
-          borderTop: '1px solid #e5e7eb',
+          borderTop: '1px solid #dce8f4',
           display: 'flex',
           justifyContent: 'flex-end',
           gap: '12px',
-          backgroundColor: '#f9fafb'
+          backgroundColor: '#f2f6fd'
         }}>
           <button onClick={onClose} style={{
             padding: '10px 20px',
-            border: '1px solid #e5e7eb',
+            border: '1px solid #dce8f4',
             borderRadius: '8px',
             backgroundColor: 'white',
             cursor: 'pointer',
@@ -533,7 +533,7 @@ function StatCard({ icon: Icon, label, value, color, bgColor }) {
       </div>
       <div>
         <div style={{ fontSize: '28px', fontWeight: 700, color: color }}>{value}</div>
-        <div style={{ fontSize: '13px', color: '#6b7280' }}>{label}</div>
+        <div style={{ fontSize: '13px', color: '#6080a0' }}>{label}</div>
       </div>
     </div>
   );
@@ -607,7 +607,7 @@ function SupplierCard({ supplier, onEdit, onDelete, onViewInvoices, onChangeMeto
     <div style={{
       backgroundColor: 'white',
       borderRadius: '12px',
-      border: '1px solid #e5e7eb',
+      border: '1px solid #dce8f4',
       overflow: 'hidden',
       transition: 'all 0.2s',
       position: 'relative'
@@ -619,7 +619,7 @@ function SupplierCard({ supplier, onEdit, onDelete, onViewInvoices, onChangeMeto
       <div style={{ 
         height: '4px', 
         background: hasIncomplete 
-          ? 'linear-gradient(90deg, #d97706, #fbbf24)' 
+          ? 'linear-gradient(90deg, #f59e0b, #fbbf24)' 
           : 'linear-gradient(90deg, #1535a8, #2050e8)'
       }} />
       
@@ -654,7 +654,7 @@ function SupplierCard({ supplier, onEdit, onDelete, onViewInvoices, onChangeMeto
                 {nome}
               </div>
               {supplier.partita_iva && (
-                <div style={{ fontSize: '12px', color: '#6b7280', fontFamily: 'monospace' }}>
+                <div style={{ fontSize: '12px', color: '#6080a0', fontFamily: 'monospace' }}>
                   P.IVA {supplier.partita_iva}
                 </div>
               )}
@@ -675,13 +675,13 @@ function SupplierCard({ supplier, onEdit, onDelete, onViewInvoices, onChangeMeto
         {/* Info */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
           {supplier.comune && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#6b7280' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#6080a0' }}>
               <MapPin size={14} />
               <span>{supplier.comune}{supplier.provincia && ` (${supplier.provincia})`}</span>
             </div>
           )}
           {supplier.email && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#6b7280' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#6080a0' }}>
               <Mail size={14} />
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{supplier.email}</span>
             </div>
@@ -742,7 +742,7 @@ function SupplierCard({ supplier, onEdit, onDelete, onViewInvoices, onChangeMeto
       <div style={{ 
         display: 'flex', 
         borderTop: '1px solid #f3f4f6',
-        backgroundColor: '#f9fafb',
+        backgroundColor: '#f2f6fd',
         flexWrap: 'wrap'
       }}>
         {/* Pulsante Fatturato Anno */}
@@ -787,7 +787,7 @@ function SupplierCard({ supplier, onEdit, onDelete, onViewInvoices, onChangeMeto
             justifyContent: 'center',
             gap: '6px',
             fontSize: '13px',
-            color: '#6b7280',
+            color: '#6080a0',
             transition: 'all 0.2s',
             minWidth: '70px'
           }}
@@ -826,7 +826,7 @@ function SupplierCard({ supplier, onEdit, onDelete, onViewInvoices, onChangeMeto
           flex: 1,
           padding: '12px',
           border: 'none',
-          borderLeft: hasPiva ? '1px solid #e5e7eb' : 'none',
+          borderLeft: hasPiva ? '1px solid #dce8f4' : 'none',
           backgroundColor: 'transparent',
           cursor: 'pointer',
           display: 'flex',
@@ -848,7 +848,7 @@ function SupplierCard({ supplier, onEdit, onDelete, onViewInvoices, onChangeMeto
           flex: 1,
           padding: '12px',
           border: 'none',
-          borderLeft: hasPiva ? '1px solid #e5e7eb' : 'none',
+          borderLeft: hasPiva ? '1px solid #dce8f4' : 'none',
           backgroundColor: 'transparent',
           cursor: 'pointer',
           display: 'flex',
@@ -856,11 +856,11 @@ function SupplierCard({ supplier, onEdit, onDelete, onViewInvoices, onChangeMeto
           justifyContent: 'center',
           gap: '6px',
           fontSize: '13px',
-          color: '#6b7280',
+          color: '#6080a0',
           transition: 'all 0.2s'
         }}
         onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#eef2ff'; e.currentTarget.style.color = '#4f46e5'; }}
-        onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = '#6b7280'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = '#6080a0'; }}
         >
           <FileText size={15} /> Fatture
         </button>
@@ -868,7 +868,7 @@ function SupplierCard({ supplier, onEdit, onDelete, onViewInvoices, onChangeMeto
           flex: 1,
           padding: '12px',
           border: 'none',
-          borderLeft: '1px solid #e5e7eb',
+          borderLeft: '1px solid #dce8f4',
           backgroundColor: 'transparent',
           cursor: 'pointer',
           display: 'flex',
@@ -876,18 +876,18 @@ function SupplierCard({ supplier, onEdit, onDelete, onViewInvoices, onChangeMeto
           justifyContent: 'center',
           gap: '6px',
           fontSize: '13px',
-          color: '#6b7280',
+          color: '#6080a0',
           transition: 'all 0.2s'
         }}
         onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#eef2ff'; e.currentTarget.style.color = '#4f46e5'; }}
-        onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = '#6b7280'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = '#6080a0'; }}
         >
           <Edit2 size={15} /> Modifica
         </button>
         <button onClick={() => onDelete(supplier.id)} style={{
           padding: '12px 16px',
           border: 'none',
-          borderLeft: '1px solid #e5e7eb',
+          borderLeft: '1px solid #dce8f4',
           backgroundColor: 'transparent',
           cursor: 'pointer',
           color: '#9ca3af',
@@ -922,7 +922,7 @@ function SupplierCard({ supplier, onEdit, onDelete, onViewInvoices, onChangeMeto
               backgroundColor: 'white',
               borderRadius: '10px',
               boxShadow: '0 10px 40px rgba(0,0,0,0.25)',
-              border: '1px solid #e5e7eb',
+              border: '1px solid #dce8f4',
               overflow: 'hidden',
               zIndex: 99999,
               minWidth: '160px'
@@ -950,7 +950,7 @@ function SupplierCard({ supplier, onEdit, onDelete, onViewInvoices, onChangeMeto
                   textAlign: 'left',
                   transition: 'all 0.15s'
                 }}
-                onMouseEnter={(e) => { if (metodoKey !== key) e.currentTarget.style.backgroundColor = '#f9fafb'; }}
+                onMouseEnter={(e) => { if (metodoKey !== key) e.currentTarget.style.backgroundColor = '#f2f6fd'; }}
                 onMouseLeave={(e) => { if (metodoKey !== key) e.currentTarget.style.backgroundColor = 'white'; }}
               >
                 <span style={{
@@ -1269,60 +1269,48 @@ export default function Fornitori() {
 
   return (
     <PageLayout title="Gestione Fornitori" subtitle="Anagrafica e gestione fornitori">
-    <div style={{ minHeight: '100vh', backgroundColor: '#f2f6fd', position: 'relative' }}>
+    <div style={{ minHeight: '100vh', backgroundColor: '#f3f4f6', position: 'relative' }}>
       
       <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
         
-        {/* Header con Gradiente - Nuovo Design */}
+        {/* Header con Gradiente */}
         <div style={{ 
           display: 'flex', 
           justifyContent: 'space-between', 
           alignItems: 'center', 
-          marginBottom: 32,
-          padding: '32px 40px',
+          marginBottom: 24,
+          padding: '15px 20px',
           background: 'linear-gradient(135deg, #1535a8 0%, #2050e8 100%)',
-          borderRadius: 0,
+          borderRadius: 12,
           color: 'white',
           flexWrap: 'wrap',
-          gap: 16,
-          boxShadow: '0 4px 12px rgba(37, 99, 235, 0.15)'
+          gap: 10
         }}>
-          <div>
-            <h1 style={{ margin: 0, fontSize: 32, fontWeight: '700', display: 'flex', alignItems: 'center', gap: 16, marginBottom: 8 }}>
-              <Building2 size={36} /> Gestione Fornitori
-            </h1>
-            <p style={{ margin: 0, fontSize: 16, opacity: 0.9, fontWeight: '400' }}>
-              Anagrafica completa • Metodi di pagamento
-            </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 15 }}>
+            {/* Page Info Card spostata a sinistra nel header */}            <div>
+              <h1 style={{ margin: 0, fontSize: 22, fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 10 }}>
+                <Building2 size={24} /> Gestione Fornitori
+              </h1>
+              <p style={{ margin: '4px 0 0 0', fontSize: 13, opacity: 0.9 }}>
+                Anagrafica completa • Metodi di pagamento
+              </p>
+            </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 24 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <button 
               onClick={reloadData}
               disabled={loading}
               style={{ 
-                padding: '14px 28px',
-                background: 'white',
+                padding: '10px 20px',
+                background: 'rgba(255,255,255,0.9)',
                 color: '#1535a8',
                 border: 'none',
-                borderRadius: 10,
+                borderRadius: 8,
                 cursor: loading ? 'wait' : 'pointer',
                 fontWeight: '600',
-                fontSize: 16,
                 display: 'flex',
                 alignItems: 'center',
-                gap: 10,
-                boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-                transition: 'all 0.2s'
-              }}
-              onMouseEnter={(e) => {
-                if (!loading) {
-                  e.target.style.transform = 'translateY(-2px)';
-                  e.target.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                e.target.style.transform = 'translateY(0)';
-                e.target.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)';
+                gap: 6
               }}
             >
               🔄 {loading ? 'Caricamento...' : 'Aggiorna'}
@@ -1349,60 +1337,37 @@ export default function Fornitori() {
                 }
               }}
               style={{ 
-                padding: '14px 28px',
-                background: 'white',
-                color: '#1535a8',
-                border: 'none',
-                borderRadius: 10,
-                cursor: 'pointer',
-                fontWeight: '600',
-                fontSize: 16,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-                boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-                transition: 'all 0.2s'
-              }}
-              onMouseEnter={(e) => {
-                e.target.style.transform = 'translateY(-2px)';
-                e.target.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
-              }}
-              onMouseLeave={(e) => {
-                e.target.style.transform = 'translateY(0)';
-                e.target.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)';
-              }}
-            >
-              🔄 Aggiorna da OpenAPI
-            </button>
-            <button 
-              onClick={() => setShowModal(true)}
-              style={{ 
-                padding: '14px 28px',
-                background: '#15803d',
+                padding: '10px 20px',
+                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
                 color: 'white',
                 border: 'none',
-                borderRadius: 10,
+                borderRadius: 8,
                 cursor: 'pointer',
                 fontWeight: '600',
-                fontSize: 16,
                 display: 'flex',
                 alignItems: 'center',
-                gap: 10,
-                boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-                transition: 'all 0.2s'
+                gap: 6
               }}
-              onMouseEnter={(e) => {
-                e.target.style.background = '#166534';
-                e.target.style.transform = 'translateY(-2px)';
-                e.target.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
-              }}
-              onMouseLeave={(e) => {
-                e.target.style.background = '#15803d';
-                e.target.style.transform = 'translateY(0)';
-                e.target.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)';
+              data-testid="btn-aggiorna-openapi-bulk"
+            >
+              <RefreshCw size={18} /> Aggiorna da OpenAPI
+            </button>
+            <button 
+              onClick={() => { setCurrentSupplier(null); setModalOpen(true); }}
+              style={{ 
+                padding: '10px 20px',
+                background: '#10b981',
+                color: 'white',
+                border: 'none',
+                borderRadius: 8,
+                cursor: 'pointer',
+                fontWeight: '600',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6
               }}
             >
-              <Plus size={20} /> Nuovo Fornitore
+              <Plus size={18} /> Nuovo Fornitore
             </button>
           </div>
         </div>
@@ -1415,8 +1380,8 @@ export default function Fornitori() {
           marginBottom: '24px' 
         }}>
           <StatCard icon={Users} label="Totale Fornitori" value={stats.total} color="#1535a8" bgColor="#eef2ff" />
-          <StatCard icon={FileText} label="Con Fatture" value={stats.withInvoices} color="#15803d" bgColor="#dcfce7" />
-          <StatCard icon={AlertCircle} label="Dati Incompleti" value={stats.incomplete} color="#d97706" bgColor="#fef3c7" />
+          <StatCard icon={FileText} label="Con Fatture" value={stats.withInvoices} color="#10b981" bgColor="#d1fae5" />
+          <StatCard icon={AlertCircle} label="Dati Incompleti" value={stats.incomplete} color="#f59e0b" bgColor="#fef3c7" />
           <StatCard icon={CreditCard} label="Pagamento Contanti" value={stats.cash} color="#8b5cf6" bgColor="#ede9fe" />
         </div>
 
@@ -1490,7 +1455,7 @@ export default function Fornitori() {
                 style={{
                   width: '100%',
                   padding: '10px 12px 10px 40px',
-                  border: '1px solid #e5e7eb',
+                  border: '1px solid #dce8f4',
                   borderRadius: '8px',
                   fontSize: '14px',
                   boxSizing: 'border-box'
@@ -1504,7 +1469,7 @@ export default function Fornitori() {
               onChange={(e) => setFilterMetodo(e.target.value)}
               style={{
                 padding: '10px 14px',
-                border: '1px solid #e5e7eb',
+                border: '1px solid #dce8f4',
                 borderRadius: '8px',
                 fontSize: '14px',
                 backgroundColor: 'white',
@@ -1523,7 +1488,7 @@ export default function Fornitori() {
               alignItems: 'center', 
               gap: '8px', 
               padding: '10px 14px',
-              border: '1px solid #e5e7eb',
+              border: '1px solid #dce8f4',
               borderRadius: '8px',
               cursor: 'pointer',
               fontSize: '14px',
@@ -1541,7 +1506,7 @@ export default function Fornitori() {
         </div>
 
         {/* Results Count */}
-        <div style={{ marginBottom: '16px', fontSize: '14px', color: '#6b7280' }}>
+        <div style={{ marginBottom: '16px', fontSize: '14px', color: '#6080a0' }}>
           {filteredSuppliers.length === suppliers.length 
             ? `${suppliers.length} fornitori`
             : `${filteredSuppliers.length} di ${suppliers.length} fornitori`
@@ -1554,7 +1519,7 @@ export default function Fornitori() {
             <div style={{
               width: '40px',
               height: '40px',
-              border: '4px solid #e5e7eb',
+              border: '4px solid #dce8f4',
               borderTopColor: '#1535a8',
               borderRadius: '50%',
               animation: 'spin 1s linear infinite',
@@ -1572,7 +1537,7 @@ export default function Fornitori() {
           }}>
             <Building2 size={48} color="#d1d5db" style={{ marginBottom: '16px' }} />
             <h3 style={{ margin: '0 0 8px', color: '#374151' }}>Nessun fornitore trovato</h3>
-            <p style={{ color: '#6b7280', margin: 0 }}>
+            <p style={{ color: '#6080a0', margin: 0 }}>
               {suppliers.length === 0 ? 'Aggiungi il primo fornitore' : 'Modifica i filtri di ricerca'}
             </p>
           </div>
@@ -1671,13 +1636,13 @@ export default function Fornitori() {
                   <div style={{
                     width: '40px',
                     height: '40px',
-                    border: '4px solid #e5e7eb',
+                    border: '4px solid #dce8f4',
                     borderTopColor: '#0284c7',
                     borderRadius: '50%',
                     animation: 'spin 1s linear infinite',
                     margin: '0 auto'
                   }} />
-                  <p style={{ marginTop: '16px', color: '#6b7280' }}>Caricamento fatturato...</p>
+                  <p style={{ marginTop: '16px', color: '#6080a0' }}>Caricamento fatturato...</p>
                 </div>
               ) : fatturatoModal.data ? (
                 <div>
@@ -1703,12 +1668,12 @@ export default function Fornitori() {
                     <div style={{ background: '#f0fdf4', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
                       <div style={{ fontSize: '12px', color: '#16a34a' }}>Pagate</div>
                       <div style={{ fontSize: '20px', fontWeight: 700, color: '#15803d' }}>{fatturatoModal.data.fatture_pagate || 0}</div>
-                      <div style={{ fontSize: '11px', color: '#6b7280' }}>{formatEuro((fatturatoModal.data.importo_pagato || 0))}</div>
+                      <div style={{ fontSize: '11px', color: '#6080a0' }}>{formatEuro((fatturatoModal.data.importo_pagato || 0))}</div>
                     </div>
                     <div style={{ background: '#fef2f2', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
                       <div style={{ fontSize: '12px', color: '#dc2626' }}>Da Pagare</div>
                       <div style={{ fontSize: '20px', fontWeight: 700, color: '#b91c1c' }}>{fatturatoModal.data.fatture_non_pagate || 0}</div>
-                      <div style={{ fontSize: '11px', color: '#6b7280' }}>{formatEuro((fatturatoModal.data.importo_non_pagato || 0))}</div>
+                      <div style={{ fontSize: '11px', color: '#6080a0' }}>{formatEuro((fatturatoModal.data.importo_non_pagato || 0))}</div>
                     </div>
                   </div>
 
@@ -1725,7 +1690,7 @@ export default function Fornitori() {
                             borderBottom: '1px solid #f3f4f6',
                             fontSize: '13px'
                           }}>
-                            <span style={{ color: '#6b7280' }}>{m.mese_nome}</span>
+                            <span style={{ color: '#6080a0' }}>{m.mese_nome}</span>
                             <span style={{ fontWeight: 600, color: '#1f2937' }}>
                               {formatEuro(m.totale || 0)} 
                               <span style={{ fontWeight: 400, color: '#9ca3af', marginLeft: '8px' }}>({m.numero_fatture} fatt.)</span>
@@ -1737,7 +1702,7 @@ export default function Fornitori() {
                   )}
 
                   {fatturatoModal.data.numero_fatture === 0 && (
-                    <div style={{ textAlign: 'center', color: '#6b7280', padding: '20px' }}>
+                    <div style={{ textAlign: 'center', color: '#6080a0', padding: '20px' }}>
                       Nessuna fattura registrata per questo anno
                     </div>
                   )}
@@ -1775,7 +1740,7 @@ export default function Fornitori() {
             {/* Header */}
             <div style={{
               padding: '20px 24px',
-              borderBottom: '1px solid #e5e7eb',
+              borderBottom: '1px solid #dce8f4',
               background: 'linear-gradient(135deg, #1535a8 0%, #2050e8 100%)',
               color: 'white'
             }}>
@@ -1807,7 +1772,7 @@ export default function Fornitori() {
             {/* Filtri */}
             <div style={{ 
               padding: '16px 24px', 
-              borderBottom: '1px solid #e5e7eb',
+              borderBottom: '1px solid #dce8f4',
               background: '#f8fafc',
               display: 'flex',
               flexWrap: 'wrap',
@@ -1815,7 +1780,7 @@ export default function Fornitori() {
               alignItems: 'flex-end'
             }}>
               <div>
-                <label style={{ fontSize: 11, color: '#6b7280', display: 'block', marginBottom: 4 }}>Anno</label>
+                <label style={{ fontSize: 11, color: '#6080a0', display: 'block', marginBottom: 4 }}>Anno</label>
                 <select
                   value={estrattoModal.filtri.anno || ''}
                   onChange={(e) => setEstrattoModal(prev => ({ 
@@ -1829,7 +1794,7 @@ export default function Fornitori() {
                 </select>
               </div>
               <div>
-                <label style={{ fontSize: 11, color: '#6b7280', display: 'block', marginBottom: 4 }}>Data Da</label>
+                <label style={{ fontSize: 11, color: '#6080a0', display: 'block', marginBottom: 4 }}>Data Da</label>
                 <input
                   type="date"
                   value={estrattoModal.filtri.data_da}
@@ -1841,7 +1806,7 @@ export default function Fornitori() {
                 />
               </div>
               <div>
-                <label style={{ fontSize: 11, color: '#6b7280', display: 'block', marginBottom: 4 }}>Data A</label>
+                <label style={{ fontSize: 11, color: '#6080a0', display: 'block', marginBottom: 4 }}>Data A</label>
                 <input
                   type="date"
                   value={estrattoModal.filtri.data_a}
@@ -1853,7 +1818,7 @@ export default function Fornitori() {
                 />
               </div>
               <div>
-                <label style={{ fontSize: 11, color: '#6b7280', display: 'block', marginBottom: 4 }}>Importo Min</label>
+                <label style={{ fontSize: 11, color: '#6080a0', display: 'block', marginBottom: 4 }}>Importo Min</label>
                 <input
                   type="number"
                   placeholder="€"
@@ -1866,7 +1831,7 @@ export default function Fornitori() {
                 />
               </div>
               <div>
-                <label style={{ fontSize: 11, color: '#6b7280', display: 'block', marginBottom: 4 }}>Importo Max</label>
+                <label style={{ fontSize: 11, color: '#6080a0', display: 'block', marginBottom: 4 }}>Importo Max</label>
                 <input
                   type="number"
                   placeholder="€"
@@ -1879,7 +1844,7 @@ export default function Fornitori() {
                 />
               </div>
               <div>
-                <label style={{ fontSize: 11, color: '#6b7280', display: 'block', marginBottom: 4 }}>Tipo</label>
+                <label style={{ fontSize: 11, color: '#6080a0', display: 'block', marginBottom: 4 }}>Tipo</label>
                 <select
                   value={estrattoModal.filtri.tipo}
                   onChange={(e) => setEstrattoModal(prev => ({ 
@@ -1916,7 +1881,7 @@ export default function Fornitori() {
               {estrattoModal.loading ? (
                 <div style={{ textAlign: 'center', padding: 40 }}>
                   <div className="spinner" style={{ width: 40, height: 40, margin: '0 auto' }}></div>
-                  <p style={{ marginTop: 16, color: '#6b7280' }}>Caricamento fatture...</p>
+                  <p style={{ marginTop: 16, color: '#6080a0' }}>Caricamento fatture...</p>
                 </div>
               ) : estrattoModal.data ? (
                 <>
@@ -1962,7 +1927,7 @@ export default function Fornitori() {
                       </thead>
                       <tbody>
                         {(estrattoModal.data.estratto || []).map((f, idx) => (
-                          <tr key={f.id || idx} style={{ borderBottom: '1px solid #e5e7eb', background: f.is_nota_credito ? '#fef2f2' : (idx % 2 === 0 ? 'white' : '#f9fafb') }}>
+                          <tr key={f.id || idx} style={{ borderBottom: '1px solid #dce8f4', background: f.is_nota_credito ? '#fef2f2' : (idx % 2 === 0 ? 'white' : '#f2f6fd') }}>
                             <td style={{ padding: '10px 12px' }}>{f.data}</td>
                             <td style={{ padding: '10px 12px', fontWeight: 500 }}>{f.numero}</td>
                             <td style={{ padding: '10px 12px' }}>
@@ -1990,18 +1955,18 @@ export default function Fornitori() {
                             </td>
                             <td style={{ padding: '10px 12px', textAlign: 'center' }}>
                               {f.riconciliato ? (
-                                <span style={{ background: '#15803d', color: 'white', padding: '2px 8px', borderRadius: 12, fontSize: 10, fontWeight: 600 }}>✓ RICONCILIATA</span>
+                                <span style={{ background: '#10b981', color: 'white', padding: '2px 8px', borderRadius: 12, fontSize: 10, fontWeight: 600 }}>✓ RICONCILIATA</span>
                               ) : f.pagato ? (
                                 <span style={{ background: '#22c55e', color: 'white', padding: '2px 8px', borderRadius: 12, fontSize: 10 }}>Pagata</span>
                               ) : (
-                                <span style={{ background: '#d97706', color: 'white', padding: '2px 8px', borderRadius: 12, fontSize: 10 }}>Da pagare</span>
+                                <span style={{ background: '#f59e0b', color: 'white', padding: '2px 8px', borderRadius: 12, fontSize: 10 }}>Da pagare</span>
                               )}
                             </td>
                           </tr>
                         ))}
                         {(!estrattoModal.data.estratto || estrattoModal.data.estratto.length === 0) && (
                           <tr>
-                            <td colSpan={8} style={{ padding: 40, textAlign: 'center', color: '#6b7280' }}>
+                            <td colSpan={8} style={{ padding: 40, textAlign: 'center', color: '#6080a0' }}>
                               Nessuna fattura trovata con i filtri selezionati
                             </td>
                           </tr>
@@ -2016,13 +1981,13 @@ export default function Fornitori() {
             {/* Footer */}
             <div style={{ 
               padding: '16px 24px', 
-              borderTop: '1px solid #e5e7eb',
+              borderTop: '1px solid #dce8f4',
               background: '#f8fafc',
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center'
             }}>
-              <div style={{ fontSize: 12, color: '#6b7280' }}>
+              <div style={{ fontSize: 12, color: '#6080a0' }}>
                 Metodo pagamento predefinito fornitore: <strong>{estrattoModal.data?.fornitore?.metodo_pagamento_predefinito || '-'}</strong>
               </div>
               <div style={{ display: 'flex', gap: 12 }}>
@@ -2077,7 +2042,7 @@ export default function Fornitori() {
             }}>
               {/* Header */}
               <div style={{
-                padding: '20px 24px', borderBottom: '1px solid #e5e7eb',
+                padding: '20px 24px', borderBottom: '1px solid #dce8f4',
                 background: 'linear-gradient(135deg, #1535a8 0%, #2050e8 100%)',
                 color: 'white'
               }}>
@@ -2100,14 +2065,14 @@ export default function Fornitori() {
               {/* Content */}
               <div style={{ flex: 1, overflow: 'auto', padding: 24 }}>
                 {schedeTecnicheModal.loading ? (
-                  <div style={{ textAlign: 'center', padding: 60, color: '#6b7280' }}>
+                  <div style={{ textAlign: 'center', padding: 60, color: '#6080a0' }}>
                     ⏳ Caricamento schede tecniche...
                   </div>
                 ) : schedeTecnicheModal.schede.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: 60 }}>
                     <div style={{ fontSize: 48, marginBottom: 16 }}>📄</div>
                     <h3 style={{ color: '#374151', margin: '0 0 8px 0' }}>Nessuna scheda tecnica</h3>
-                    <p style={{ color: '#6b7280', margin: 0 }}>
+                    <p style={{ color: '#6080a0', margin: 0 }}>
                       Questo fornitore non ha ancora schede tecniche associate.
                     </p>
                     <p style={{ color: '#9ca3af', fontSize: 13, marginTop: 12 }}>
@@ -2118,8 +2083,8 @@ export default function Fornitori() {
                   <div style={{ display: 'grid', gap: 12 }}>
                     {schedeTecnicheModal.schede.map((scheda, idx) => (
                       <div key={scheda.id || idx} style={{
-                        background: '#f9fafb', borderRadius: 12, padding: 16,
-                        border: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', gap: 16
+                        background: '#f2f6fd', borderRadius: 12, padding: 16,
+                        border: '1px solid #dce8f4', display: 'flex', alignItems: 'center', gap: 16
                       }}>
                         <div style={{
                           width: 48, height: 48, borderRadius: 8, background: '#e0e7ff',
@@ -2131,7 +2096,7 @@ export default function Fornitori() {
                           <h4 style={{ margin: '0 0 4px 0', fontSize: 14, fontWeight: 600, color: '#1535a8' }}>
                             {scheda.nome_prodotto || scheda.nome || 'Scheda Tecnica'}
                           </h4>
-                          <p style={{ margin: 0, fontSize: 12, color: '#6b7280' }}>
+                          <p style={{ margin: 0, fontSize: 12, color: '#6080a0' }}>
                             {scheda.codice_articolo && `Cod. ${scheda.codice_articolo} • `}
                             Caricata: {scheda.created_at ? new Date(scheda.created_at).toLocaleDateString('it-IT') : '-'}
                           </p>
@@ -2157,7 +2122,7 @@ export default function Fornitori() {
 
               {/* Footer */}
               <div style={{
-                padding: '16px 24px', borderTop: '1px solid #e5e7eb', background: '#f8fafc',
+                padding: '16px 24px', borderTop: '1px solid #dce8f4', background: '#f8fafc',
                 display: 'flex', justifyContent: 'flex-end'
               }}>
                 <button

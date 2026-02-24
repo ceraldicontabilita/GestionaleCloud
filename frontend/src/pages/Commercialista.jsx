@@ -1054,7 +1054,7 @@ export default function Commercialista() {
                   <div style={{ 
                     maxHeight: 250, 
                     overflowY: 'auto', 
-                    border: '1px solid #e5e7eb', 
+                    border: '1px solid #dce8f4', 
                     borderRadius: 8,
                     marginBottom: 15
                   }}>
@@ -1155,7 +1155,7 @@ export default function Commercialista() {
                       style={{
                         flex: 1,
                         padding: '12px',
-                        background: selectedCarnets.length === 0 ? '#e5e7eb' : '#f5f5f5',
+                        background: selectedCarnets.length === 0 ? '#dce8f4' : '#f5f5f5',
                         color: selectedCarnets.length === 0 ? '#9ca3af' : '#333',
                         border: 'none',
                         borderRadius: 8,
@@ -1208,7 +1208,7 @@ export default function Commercialista() {
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
-                <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e5e7eb' }}>
+                <tr style={{ background: '#f8fafc', borderBottom: '2px solid #dce8f4' }}>
                   <th style={{ padding: 12, textAlign: 'left' }}>Data Invio</th>
                   <th style={{ padding: 12, textAlign: 'left' }}>Tipo</th>
                   <th style={{ padding: 12, textAlign: 'left' }}>Periodo/ID</th>

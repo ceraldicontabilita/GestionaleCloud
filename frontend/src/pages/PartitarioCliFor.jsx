@@ -230,7 +230,7 @@ export default function PartitarioCliFor() {
                           <tbody>
                             {f.movimenti.map((m, mi) => (
                               <tr key={mi} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                <td style={{ padding: '6px 8px', color: '#6b7280' }}>{m.data}</td>
+                                <td style={{ padding: '6px 8px', color: '#6080a0' }}>{m.data}</td>
                                 <td style={{ padding: '6px 8px' }}>
                                   <span style={{ 
                                     padding: '1px 6px', borderRadius: 4, fontSize: 10, fontWeight: 600,

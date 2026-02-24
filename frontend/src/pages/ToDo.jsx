@@ -142,8 +142,8 @@ export default function ToDo() {
     const diffGiorni = Math.ceil((dataScadenza - oggi) / (1000 * 60 * 60 * 24));
     
     if (diffGiorni < 0) return { label: 'Scaduto', color: '#ef4444', bg: '#fef2f2' };
-    if (diffGiorni === 0) return { label: 'Oggi', color: '#d97706', bg: '#fefce8' };
-    if (diffGiorni <= 3) return { label: `Tra ${diffGiorni}g`, color: '#d97706', bg: '#fefce8' };
+    if (diffGiorni === 0) return { label: 'Oggi', color: '#f59e0b', bg: '#fefce8' };
+    if (diffGiorni <= 3) return { label: `Tra ${diffGiorni}g`, color: '#f59e0b', bg: '#fefce8' };
     return { label: formatDateIT(scadenza), color: '#64748b', bg: 'transparent' };
   };
   
@@ -182,7 +182,7 @@ export default function ToDo() {
       }}>
         <StatCard label="Da Fare" value={stats.da_fare || 0} color="#1535a8" />
         <StatCard label="Completati" value={stats.completati || 0} color="#22c55e" />
-        <StatCard label="Urgenti" value={stats.urgenti || 0} color="#d97706" />
+        <StatCard label="Urgenti" value={stats.urgenti || 0} color="#f59e0b" />
         <StatCard label="Scaduti" value={stats.scaduti || 0} color="#ef4444" />
       </div>
       
@@ -193,7 +193,7 @@ export default function ToDo() {
           borderRadius: 12, 
           padding: 24, 
           marginBottom: 24,
-          border: '1px solid #e5e7eb',
+          border: '1px solid #dce8f4',
           boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
         }}>
           <h3 style={{ margin: '0 0 16px 0', color: '#1e293b' }}>Nuovo Task</h3>
@@ -484,7 +484,7 @@ export default function ToDo() {
                   background: 'white',
                   borderRadius: 12,
                   padding: 16,
-                  border: `1px solid ${task.completato ? '#e5e7eb' : priorityColors.border}`,
+                  border: `1px solid ${task.completato ? '#dce8f4' : priorityColors.border}`,
                   borderLeft: `4px solid ${task.completato ? '#94a3b8' : priorityColors.border}`,
                   opacity: task.completato ? 0.7 : 1,
                   display: 'flex',
@@ -612,7 +612,7 @@ function StatCard({ label, value, color }) {
       background: 'white',
       borderRadius: 12,
       padding: 16,
-      border: '1px solid #e5e7eb',
+      border: '1px solid #dce8f4',
       textAlign: 'center'
     }}>
       <div style={{ fontSize: 28, fontWeight: 'bold', color }}>{value}</div>

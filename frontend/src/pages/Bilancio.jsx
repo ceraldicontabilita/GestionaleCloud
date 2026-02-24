@@ -128,7 +128,7 @@ export default function Bilancio() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <tbody>
               <tr><td style={{ padding: '12px 0', color: '#374151', fontSize: 15 }}>Corrispettivi (Imponibile)</td><td style={{ padding: '12px 0', textAlign: 'right', fontWeight: 500, fontSize: 16 }}>{formatEuro(ricavi.corrispettivi)}</td></tr>
-              {ricavi.corrispettivi_lordi && <tr><td style={{ padding: '12px 0', color: '#6b7280', fontSize: 13, fontStyle: 'italic' }}>(Lordo incl. IVA: {formatEuro(ricavi.corrispettivi_lordi)})</td><td></td></tr>}
+              {ricavi.corrispettivi_lordi && <tr><td style={{ padding: '12px 0', color: '#6080a0', fontSize: 13, fontStyle: 'italic' }}>(Lordo incl. IVA: {formatEuro(ricavi.corrispettivi_lordi)})</td><td></td></tr>}
               <tr style={{ borderTop: '2px solid #22c55e', background: '#dcfce7' }}><td style={{ padding: '12px 0', fontWeight: 700, fontSize: 16 }}>TOTALE RICAVI</td><td style={{ padding: '12px 0', textAlign: 'right', fontWeight: 700, fontSize: 18, color: '#16a34a' }}>{formatEuro(ricavi.totale_ricavi)}</td></tr>
             </tbody>
           </table>

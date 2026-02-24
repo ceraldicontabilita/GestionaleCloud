@@ -145,7 +145,7 @@ export default function GestioneInvoiceTronic() {
             disabled={sincronizzaLoading || !status?.connected}
             style={{ 
               padding: '10px 20px',
-              background: (sincronizzaLoading || !status?.connected) ? '#9ca3af' : '#15803d',
+              background: (sincronizzaLoading || !status?.connected) ? '#9ca3af' : '#10b981',
               color: 'white',
               border: 'none',
               borderRadius: 8,
@@ -171,22 +171,22 @@ export default function GestioneInvoiceTronic() {
           <div style={{ 
             padding: '16px 20px', 
             background: '#f8fafc', 
-            borderBottom: '1px solid #e5e7eb'
+            borderBottom: '1px solid #dce8f4'
           }}>
             <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: '#1f2937' }}>📡 Stato Connessione</h2>
           </div>
           <div style={{ padding: 16 }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
               <div>
-                <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Ambiente</p>
+                <p style={{ fontSize: 12, color: '#6080a0', marginBottom: 4 }}>Ambiente</p>
                 <p style={{ fontWeight: 500, margin: 0 }}>{status.environment === 'sandbox' ? '🧪 Sandbox (Test)' : '🚀 Produzione'}</p>
               </div>
               <div>
-                <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Codice Destinatario</p>
+                <p style={{ fontSize: 12, color: '#6080a0', marginBottom: 4 }}>Codice Destinatario</p>
                 <p style={{ fontWeight: 500, margin: 0, fontFamily: 'monospace' }}>{status.codice_destinatario || 'Non configurato'}</p>
               </div>
               <div>
-                <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Ultima Sincronizzazione</p>
+                <p style={{ fontSize: 12, color: '#6080a0', marginBottom: 4 }}>Ultima Sincronizzazione</p>
                 <p style={{ fontWeight: 500, margin: 0 }}>{status.last_sync || 'Mai'}</p>
               </div>
             </div>
@@ -200,7 +200,7 @@ export default function GestioneInvoiceTronic() {
           padding: 12, 
           background: '#fef3c7', 
           borderRadius: 8, 
-          borderLeft: '4px solid #d97706',
+          borderLeft: '4px solid #f59e0b',
           fontSize: 13,
           color: '#92400e',
           marginBottom: 20
@@ -231,7 +231,7 @@ export default function GestioneInvoiceTronic() {
             boxShadow: '0 1px 4px rgba(0,0,0,0.06)', 
             borderLeft: '3px solid #1535a8' 
           }}>
-            <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>📄 Fatture Ricevute</div>
+            <div style={{ fontSize: 11, color: '#6080a0', marginBottom: 4 }}>📄 Fatture Ricevute</div>
             <div style={{ fontSize: 18, fontWeight: 'bold', color: '#1535a8' }} data-testid="stats-totali">{fatture.length}</div>
           </div>
           <div style={{ 
@@ -241,7 +241,7 @@ export default function GestioneInvoiceTronic() {
             boxShadow: '0 1px 4px rgba(0,0,0,0.06)', 
             borderLeft: '3px solid #22c55e' 
           }}>
-            <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>✅ Importate</div>
+            <div style={{ fontSize: 11, color: '#6080a0', marginBottom: 4 }}>✅ Importate</div>
             <div style={{ fontSize: 18, fontWeight: 'bold', color: '#22c55e' }}>{fatture.filter(f => f.importata).length}</div>
           </div>
           <div style={{ 
@@ -251,7 +251,7 @@ export default function GestioneInvoiceTronic() {
             boxShadow: '0 1px 4px rgba(0,0,0,0.06)', 
             borderLeft: '3px solid #f97316' 
           }}>
-            <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>⏳ Da Importare</div>
+            <div style={{ fontSize: 11, color: '#6080a0', marginBottom: 4 }}>⏳ Da Importare</div>
             <div style={{ fontSize: 18, fontWeight: 'bold', color: '#f97316' }}>{fatture.filter(f => !f.importata).length}</div>
           </div>
           <div style={{ 
@@ -278,12 +278,12 @@ export default function GestioneInvoiceTronic() {
         <div style={{ 
           padding: '16px 20px', 
           background: '#f8fafc', 
-          borderBottom: '1px solid #e5e7eb'
+          borderBottom: '1px solid #dce8f4'
         }}>
           <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: '#1f2937' }}>
             📄 Fatture Ricevute da SDI
           </h2>
-          <p style={{ margin: '4px 0 0 0', fontSize: 13, color: '#6b7280' }}>
+          <p style={{ margin: '4px 0 0 0', fontSize: 13, color: '#6080a0' }}>
             {fatture.length} fatture nel sistema
           </p>
         </div>
@@ -304,18 +304,18 @@ export default function GestioneInvoiceTronic() {
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
-                  <tr style={{ borderBottom: '2px solid #e5e7eb', background: '#f9fafb' }}>
-                    <th style={{ textAlign: 'left', padding: '12px 16px', fontWeight: 500, color: '#6b7280', fontSize: 13 }}>Data Ricezione</th>
-                    <th style={{ textAlign: 'left', padding: '12px 16px', fontWeight: 500, color: '#6b7280', fontSize: 13 }}>Numero</th>
-                    <th style={{ textAlign: 'left', padding: '12px 16px', fontWeight: 500, color: '#6b7280', fontSize: 13 }}>Fornitore</th>
-                    <th style={{ textAlign: 'right', padding: '12px 16px', fontWeight: 500, color: '#6b7280', fontSize: 13 }}>Importo</th>
-                    <th style={{ textAlign: 'center', padding: '12px 16px', fontWeight: 500, color: '#6b7280', fontSize: 13 }}>Stato</th>
-                    <th style={{ textAlign: 'center', padding: '12px 16px', fontWeight: 500, color: '#6b7280', fontSize: 13 }}>Azioni</th>
+                  <tr style={{ borderBottom: '2px solid #dce8f4', background: '#f2f6fd' }}>
+                    <th style={{ textAlign: 'left', padding: '12px 16px', fontWeight: 500, color: '#6080a0', fontSize: 13 }}>Data Ricezione</th>
+                    <th style={{ textAlign: 'left', padding: '12px 16px', fontWeight: 500, color: '#6080a0', fontSize: 13 }}>Numero</th>
+                    <th style={{ textAlign: 'left', padding: '12px 16px', fontWeight: 500, color: '#6080a0', fontSize: 13 }}>Fornitore</th>
+                    <th style={{ textAlign: 'right', padding: '12px 16px', fontWeight: 500, color: '#6080a0', fontSize: 13 }}>Importo</th>
+                    <th style={{ textAlign: 'center', padding: '12px 16px', fontWeight: 500, color: '#6080a0', fontSize: 13 }}>Stato</th>
+                    <th style={{ textAlign: 'center', padding: '12px 16px', fontWeight: 500, color: '#6080a0', fontSize: 13 }}>Azioni</th>
                   </tr>
                 </thead>
                 <tbody>
                   {fatture.map((fattura, idx) => (
-                    <tr key={fattura.id || idx} style={{ borderBottom: '1px solid #e5e7eb' }}>
+                    <tr key={fattura.id || idx} style={{ borderBottom: '1px solid #dce8f4' }}>
                       <td style={{ padding: '12px 16px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           📅 {formatDateIT(fattura.data_ricezione) || '-'}
@@ -346,7 +346,7 @@ export default function GestioneInvoiceTronic() {
                           style={{ 
                             padding: '6px 10px', 
                             background: 'transparent', 
-                            border: '1px solid #e5e7eb', 
+                            border: '1px solid #dce8f4', 
                             borderRadius: 6, 
                             cursor: 'pointer' 
                           }}

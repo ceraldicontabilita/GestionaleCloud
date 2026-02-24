@@ -64,7 +64,7 @@ export default function NotificationBell() {
   const getAlertIcon = (tipo) => {
     switch (tipo) {
       case "fornitore_senza_metodo_pagamento":
-        return <AlertTriangle size={16} style={{ color: '#d97706' }} />;
+        return <AlertTriangle size={16} style={{ color: '#f59e0b' }} />;
       case "scadenza":
         return <Bell size={16} style={{ color: '#ef4444' }} />;
       default:
@@ -75,7 +75,7 @@ export default function NotificationBell() {
   const getPriorityBorder = (priorita) => {
     switch (priorita) {
       case "alta": return '#ef4444';
-      case "media": return '#d97706';
+      case "media": return '#f59e0b';
       default: return '#1535a8';
     }
   };
@@ -141,7 +141,7 @@ export default function NotificationBell() {
           backgroundColor: 'white',
           borderRadius: '12px',
           boxShadow: '0 10px 40px rgba(0,0,0,0.25)',
-          border: '1px solid #e5e7eb',
+          border: '1px solid #dce8f4',
           zIndex: 99999,
           maxHeight: '70vh',
           overflow: 'hidden',
@@ -151,7 +151,7 @@ export default function NotificationBell() {
           {/* Header */}
           <div style={{
             padding: '14px 16px',
-            borderBottom: '1px solid #e5e7eb',
+            borderBottom: '1px solid #dce8f4',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -192,14 +192,14 @@ export default function NotificationBell() {
                 display: 'flex'
               }}
             >
-              <X size={18} style={{ color: '#6b7280' }} />
+              <X size={18} style={{ color: '#6080a0' }} />
             </button>
           </div>
 
           {/* Alerts List */}
           <div style={{ overflowY: 'auto', flex: 1 }}>
             {loading ? (
-              <div style={{ padding: '24px', textAlign: 'center', color: '#6b7280' }}>
+              <div style={{ padding: '24px', textAlign: 'center', color: '#6080a0' }}>
                 Caricamento...
               </div>
             ) : alerts.length === 0 ? (
@@ -243,7 +243,7 @@ export default function NotificationBell() {
                         <p style={{ 
                           margin: '4px 0 0', 
                           fontSize: '12px', 
-                          color: '#6b7280',
+                          color: '#6080a0',
                           display: '-webkit-box',
                           WebkitLineClamp: 2,
                           WebkitBoxOrient: 'vertical',
@@ -303,7 +303,7 @@ export default function NotificationBell() {
           {alerts.length > 0 && (
             <div style={{
               padding: '10px 16px',
-              borderTop: '1px solid #e5e7eb',
+              borderTop: '1px solid #dce8f4',
               background: '#f8fafc'
             }}>
               <button

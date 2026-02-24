@@ -123,7 +123,7 @@ export default function CentriCosto() {
         <KPICard 
           label="Centri Supporto" 
           value={stats.supporto} 
-          color="#1d4ed8" 
+          color="#1535a8" 
           bgColor="#eff6ff" 
           borderColor="#93c5fd" 
         />
@@ -229,7 +229,7 @@ function CDCCard({ centro }) {
           {centro.nome}
         </h3>
         
-        <p style={{ fontSize: 13, color: '#6b7280', margin: '0 0 16px 0' }}>
+        <p style={{ fontSize: 13, color: '#6080a0', margin: '0 0 16px 0' }}>
           {centro.descrizione}
         </p>
         

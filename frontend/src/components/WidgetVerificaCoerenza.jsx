@@ -77,7 +77,7 @@ export default function WidgetVerificaCoerenza({ anno, mostraDettaglio = false }
 
   // Se ci sono discrepanze, mostra alert
   if (verifica.has_discrepanze) {
-    const severityColor = verifica.critical_count > 0 ? '#dc2626' : '#d97706';
+    const severityColor = verifica.critical_count > 0 ? '#dc2626' : '#f59e0b';
     const severityBg = verifica.critical_count > 0 ? '#fef2f2' : '#fffbeb';
     const severityBorder = verifica.critical_count > 0 ? '#fecaca' : '#fde68a';
 
@@ -103,7 +103,7 @@ export default function WidgetVerificaCoerenza({ anno, mostraDettaglio = false }
             {verifica.critical_count > 0 ? (
               <XCircle size={20} color="#dc2626" />
             ) : (
-              <AlertTriangle size={20} color="#d97706" />
+              <AlertTriangle size={20} color="#f59e0b" />
             )}
             <div>
               <div style={{ fontWeight: 'bold', color: severityColor, fontSize: 14 }}>
@@ -261,7 +261,7 @@ export function BadgeVerificaCoerenza({ anno }) {
         borderRadius: 12,
         fontSize: 11,
         fontWeight: 'bold',
-        background: critical > 0 ? '#dc2626' : '#d97706',
+        background: critical > 0 ? '#dc2626' : '#f59e0b',
         color: 'white'
       }}
       title={`${count} discrepanze nei dati${critical > 0 ? ` (${critical} critiche)` : ''}`}

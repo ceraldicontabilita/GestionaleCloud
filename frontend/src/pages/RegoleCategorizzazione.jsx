@@ -15,7 +15,7 @@ const CATEGORIA_COLORS = {
   noleggi: { bg: '#fda4af', text: '#9f1239', label: 'Noleggi' },
   telefonia: { bg: '#c4b5fd', text: '#5b21b6', label: 'Telefonia' },
   pubblicita: { bg: '#fde68a', text: '#92400e', label: 'Pubblicità' },
-  non_categorizzato: { bg: '#e5e7eb', text: '#374151', label: 'Non Categorizzato' }
+  non_categorizzato: { bg: '#dce8f4', text: '#374151', label: 'Non Categorizzato' }
 };
 
 // Stat Card Component
@@ -25,11 +25,11 @@ const StatCard = ({ label, value, color, icon }) => (
     borderRadius: 12,
     padding: 16,
     boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-    border: '1px solid #e5e7eb'
+    border: '1px solid #dce8f4'
   }}>
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
       {icon && <span style={{ fontSize: 18 }}>{icon}</span>}
-      <span style={{ fontSize: 12, color: '#6b7280', textTransform: 'uppercase', fontWeight: 500 }}>{label}</span>
+      <span style={{ fontSize: 12, color: '#6080a0', textTransform: 'uppercase', fontWeight: 500 }}>{label}</span>
     </div>
     <div style={{ fontSize: 28, fontWeight: 700, color: color }}>{value}</div>
   </div>
@@ -177,7 +177,7 @@ export default function RegoleCategorizzazione() {
     return (
       <div style={{ padding: 24, textAlign: 'center', paddingTop: 100 }}>
         <div style={{ fontSize: 32, marginBottom: 16 }}>⏳</div>
-        <div style={{ color: '#6b7280' }}>Caricamento regole...</div>
+        <div style={{ color: '#6080a0' }}>Caricamento regole...</div>
       </div>
     );
   }
@@ -220,8 +220,8 @@ export default function RegoleCategorizzazione() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 24 }}>
         <StatCard label="Regole Fornitori" value={regole?.regole_fornitori?.length || 0} color="#1535a8" icon="🏢" />
         <StatCard label="Regole Descrizioni" value={regole?.regole_descrizioni?.length || 0} color="#8b5cf6" icon="📝" />
-        <StatCard label="Categorie" value={totaleCategorie} color="#15803d" icon="📁" />
-        <StatCard label="Totale Regole" value={totaleRegole} color="#d97706" icon="📊" />
+        <StatCard label="Categorie" value={totaleCategorie} color="#10b981" icon="📁" />
+        <StatCard label="Totale Regole" value={totaleRegole} color="#f59e0b" icon="📊" />
       </div>
 
       {/* Azioni */}
@@ -238,7 +238,7 @@ export default function RegoleCategorizzazione() {
           onClick={handleDownloadExcel}
           style={{
             padding: '10px 20px',
-            background: 'linear-gradient(135deg, #15803d, #059669)',
+            background: 'linear-gradient(135deg, #10b981, #059669)',
             color: 'white',
             border: 'none',
             borderRadius: 8,
@@ -254,7 +254,7 @@ export default function RegoleCategorizzazione() {
         
         <label style={{
           padding: '10px 20px',
-          background: uploading ? '#9ca3af' : 'linear-gradient(135deg, #1535a8, #1d4ed8)',
+          background: uploading ? '#9ca3af' : 'linear-gradient(135deg, #1535a8, #1535a8)',
           color: 'white',
           borderRadius: 8,
           cursor: uploading ? 'wait' : 'pointer',
@@ -290,7 +290,7 @@ export default function RegoleCategorizzazione() {
           onClick={() => setShowAddForm(!showAddForm)}
           style={{
             padding: '10px 20px',
-            background: 'linear-gradient(135deg, #d97706, #d97706)',
+            background: 'linear-gradient(135deg, #f59e0b, #d97706)',
             color: 'white',
             border: 'none',
             borderRadius: 8,
@@ -309,7 +309,7 @@ export default function RegoleCategorizzazione() {
       {showAddForm && (
         <div style={{
           background: 'white',
-          border: '1px solid #e5e7eb',
+          border: '1px solid #dce8f4',
           borderRadius: 12,
           padding: 20,
           marginBottom: 20
@@ -337,7 +337,7 @@ export default function RegoleCategorizzazione() {
               onClick={handleAddRule}
               style={{
                 padding: '10px 20px',
-                background: '#15803d',
+                background: '#10b981',
                 color: 'white',
                 border: 'none',
                 borderRadius: 8,
@@ -350,7 +350,7 @@ export default function RegoleCategorizzazione() {
               onClick={() => setShowAddForm(false)}
               style={{
                 padding: '10px 20px',
-                background: '#6b7280',
+                background: '#6080a0',
                 color: 'white',
                 border: 'none',
                 borderRadius: 8,
@@ -397,7 +397,7 @@ export default function RegoleCategorizzazione() {
       </div>
 
       {/* Tab Content */}
-      <div style={{ background: 'white', borderRadius: 12, border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+      <div style={{ background: 'white', borderRadius: 12, border: '1px solid #dce8f4', overflow: 'hidden' }}>
         
         {/* Tab Associazioni */}
         {activeTab === 'associazioni' && (
@@ -406,11 +406,11 @@ export default function RegoleCategorizzazione() {
               {Object.entries(associazioni).map(([categoria, data]) => {
                 const style = getCategoryStyle(categoria);
                 return (
-                  <div key={categoria} style={{ border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
+                  <div key={categoria} style={{ border: '1px solid #dce8f4', borderRadius: 12, overflow: 'hidden' }}>
                     <div style={{ 
                       padding: '12px 16px', 
                       background: style.bg, 
-                      borderBottom: '1px solid #e5e7eb',
+                      borderBottom: '1px solid #dce8f4',
                       display: 'flex',
                       justifyContent: 'space-between',
                       alignItems: 'center'
@@ -423,7 +423,7 @@ export default function RegoleCategorizzazione() {
                     <div style={{ padding: 12 }}>
                       {data.fornitori.length > 0 && (
                         <div style={{ marginBottom: 8 }}>
-                          <span style={{ fontSize: 11, color: '#6b7280', textTransform: 'uppercase' }}>Fornitori:</span>
+                          <span style={{ fontSize: 11, color: '#6080a0', textTransform: 'uppercase' }}>Fornitori:</span>
                           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
                             {data.fornitori.map((r, i) => (
                               <span key={i} style={{
@@ -449,7 +449,7 @@ export default function RegoleCategorizzazione() {
                       )}
                       {data.descrizioni.length > 0 && (
                         <div>
-                          <span style={{ fontSize: 11, color: '#6b7280', textTransform: 'uppercase' }}>Descrizioni:</span>
+                          <span style={{ fontSize: 11, color: '#6080a0', textTransform: 'uppercase' }}>Descrizioni:</span>
                           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
                             {data.descrizioni.map((r, i) => (
                               <span key={i} style={{
@@ -485,10 +485,10 @@ export default function RegoleCategorizzazione() {
         {activeTab === 'fornitori' && (
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
-              <tr style={{ background: '#f9fafb' }}>
-                <th style={{ padding: 14, textAlign: 'left', fontSize: 12, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', borderBottom: '1px solid #e5e7eb' }}>Pattern</th>
-                <th style={{ padding: 14, textAlign: 'left', fontSize: 12, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', borderBottom: '1px solid #e5e7eb' }}>Categoria</th>
-                <th style={{ padding: 14, textAlign: 'center', fontSize: 12, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', borderBottom: '1px solid #e5e7eb' }}>Azioni</th>
+              <tr style={{ background: '#f2f6fd' }}>
+                <th style={{ padding: 14, textAlign: 'left', fontSize: 12, fontWeight: 600, color: '#6080a0', textTransform: 'uppercase', borderBottom: '1px solid #dce8f4' }}>Pattern</th>
+                <th style={{ padding: 14, textAlign: 'left', fontSize: 12, fontWeight: 600, color: '#6080a0', textTransform: 'uppercase', borderBottom: '1px solid #dce8f4' }}>Categoria</th>
+                <th style={{ padding: 14, textAlign: 'center', fontSize: 12, fontWeight: 600, color: '#6080a0', textTransform: 'uppercase', borderBottom: '1px solid #dce8f4' }}>Azioni</th>
               </tr>
             </thead>
             <tbody>
@@ -528,10 +528,10 @@ export default function RegoleCategorizzazione() {
         {activeTab === 'descrizioni' && (
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
-              <tr style={{ background: '#f9fafb' }}>
-                <th style={{ padding: 14, textAlign: 'left', fontSize: 12, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', borderBottom: '1px solid #e5e7eb' }}>Pattern</th>
-                <th style={{ padding: 14, textAlign: 'left', fontSize: 12, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', borderBottom: '1px solid #e5e7eb' }}>Categoria</th>
-                <th style={{ padding: 14, textAlign: 'center', fontSize: 12, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', borderBottom: '1px solid #e5e7eb' }}>Azioni</th>
+              <tr style={{ background: '#f2f6fd' }}>
+                <th style={{ padding: 14, textAlign: 'left', fontSize: 12, fontWeight: 600, color: '#6080a0', textTransform: 'uppercase', borderBottom: '1px solid #dce8f4' }}>Pattern</th>
+                <th style={{ padding: 14, textAlign: 'left', fontSize: 12, fontWeight: 600, color: '#6080a0', textTransform: 'uppercase', borderBottom: '1px solid #dce8f4' }}>Categoria</th>
+                <th style={{ padding: 14, textAlign: 'center', fontSize: 12, fontWeight: 600, color: '#6080a0', textTransform: 'uppercase', borderBottom: '1px solid #dce8f4' }}>Azioni</th>
               </tr>
             </thead>
             <tbody>
