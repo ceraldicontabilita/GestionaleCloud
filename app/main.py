@@ -387,6 +387,8 @@ app.include_router(dashboard.router, prefix="/api/dashboard", tags=["Dashboard"]
 
 # --- Core Routers ---
 app.include_router(suppliers_router, prefix="/api/suppliers", tags=["Suppliers"])
+# Alias italiano per compatibilità frontend
+app.include_router(suppliers_router, prefix="/api/fornitori", tags=["Fornitori"])
 app.include_router(cash.router, prefix="/api/cash", tags=["Cash Register"])
 app.include_router(chart_of_accounts.router, prefix="/api/chart-of-accounts", tags=["Chart of Accounts"])
 app.include_router(notifications.router, prefix="/api/notifications", tags=["Notifications"])
