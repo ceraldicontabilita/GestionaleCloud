@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-async def get_invoice_service() -> InvoiceService:
+async def get_invoice_service() -> InvoiceServiceV2:
     """Get invoice service."""
     db = Database.get_db()
     invoice_repo = InvoiceRepository(db[Collections.INVOICES])
