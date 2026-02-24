@@ -642,8 +642,8 @@ function Ferie({ dips }) {
               </tr>
             </thead>
             <tbody>
-              {ferie.map(f => (
-                <tr key={f.id} style={{ borderTop: "1px solid #e5e7eb" }}>
+              {ferie.map((f, idx) => (
+                <tr key={f.id || `ferie-${idx}`} style={{ borderTop: "1px solid #e5e7eb" }}>
                   <td style={{ padding: "12px 16px", fontWeight: 600 }}>{getNomeDip(f.dipendente_id)}</td>
                   <td style={{ padding: "12px 16px", color: "#6b7280" }}>{f.tipo}</td>
                   <td style={{ padding: "12px 16px" }}>{fmt(f.dal)}</td>
