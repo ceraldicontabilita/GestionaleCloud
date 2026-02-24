@@ -386,8 +386,8 @@ export default function ArchivioFatture() {
             <div style={{ fontSize: 24, fontWeight: 'bold', color: '#ef4444' }}>{stats.num_scadenze_aperte || 0}</div>
             <div style={{ fontSize: 12, color: '#64748b' }}>Scadenze Aperte</div>
           </div>
-          <div style={{ background: 'linear-gradient(135deg, #f59e0b15, #f59e0b08)', borderRadius: 12, padding: 16, border: '1px solid #f59e0b30' }}>
-            <div style={{ fontSize: 18, fontWeight: 'bold', color: '#f59e0b' }}>{formatEuro(stats.totale_debito_aperto || 0)}</div>
+          <div style={{ background: 'linear-gradient(135deg, #d9770615, #d9770608)', borderRadius: 12, padding: 16, border: '1px solid #d9770630' }}>
+            <div style={{ fontSize: 18, fontWeight: 'bold', color: '#d97706' }}>{formatEuro(stats.totale_debito_aperto || 0)}</div>
             <div style={{ fontSize: 12, color: '#64748b' }}>Debito Aperto</div>
           </div>
           <div style={{ background: 'linear-gradient(135deg, #10b98115, #10b98108)', borderRadius: 12, padding: 16, border: '1px solid #10b98130' }}>
