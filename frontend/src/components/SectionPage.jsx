@@ -1,5 +1,4 @@
-import React, { useState, lazy, Suspense } from 'react';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import React, { useState, Suspense } from 'react';
 
 const SectionLoading = () => (
   <div style={{ padding: 32, textAlign: 'center', color: '#94a3b8' }}>
@@ -11,20 +10,19 @@ const SectionLoading = () => (
       animation: 'spin 1s linear infinite',
       margin: '0 auto 12px'
     }} />
-    Caricamento sezione...
+    Caricamento...
   </div>
 );
 
 export function SectionPage({ title, subtitle, icon, sections, defaultOpen, actions }) {
-  const [openSections, setOpenSections] = useState(() => {
-    if (defaultOpen) return { [defaultOpen]: true };
-    if (sections.length > 0) return { [sections[0].id]: true };
-    return {};
+  // Active section - starts with defaultOpen or first section
+  const [activeSection, setActiveSection] = useState(() => {
+    if (defaultOpen) return defaultOpen;
+    if (sections.length > 0) return sections[0].id;
+    return null;
   });
 
-  const toggle = (id) => {
-    setOpenSections(prev => ({ ...prev, [id]: !prev[id] }));
-  };
+  const activeContent = sections.find(s => s.id === activeSection);
 
   return (
     <div data-testid="section-page" style={{ minHeight: '100vh', background: '#f8fafc' }}>
@@ -32,7 +30,7 @@ export function SectionPage({ title, subtitle, icon, sections, defaultOpen, acti
       <div style={{
         background: 'white',
         borderBottom: '1px solid #e2e8f0',
-        padding: '20px 24px',
+        padding: '16px 24px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
@@ -40,7 +38,7 @@ export function SectionPage({ title, subtitle, icon, sections, defaultOpen, acti
       }}>
         <div>
           <h1 data-testid="section-page-title" style={{
-            fontSize: 22,
+            fontSize: 20,
             fontWeight: 700,
             color: '#0f172a',
             display: 'flex',
@@ -52,13 +50,13 @@ export function SectionPage({ title, subtitle, icon, sections, defaultOpen, acti
             {title}
           </h1>
           {subtitle && (
-            <p style={{ fontSize: 13, color: '#64748b', margin: '4px 0 0' }}>{subtitle}</p>
+            <p style={{ fontSize: 12, color: '#64748b', margin: '4px 0 0' }}>{subtitle}</p>
           )}
         </div>
         {actions && <div style={{ display: 'flex', gap: 8 }}>{actions}</div>}
       </div>
 
-      {/* Section Navigation - Quick Jump */}
+      {/* Tab Navigation */}
       <div style={{
         background: 'white',
         borderBottom: '1px solid #e2e8f0',
@@ -72,18 +70,16 @@ export function SectionPage({ title, subtitle, icon, sections, defaultOpen, acti
           <button
             key={s.id}
             data-testid={`section-nav-${s.id}`}
-            onClick={() => {
-              setOpenSections(prev => ({ ...prev, [s.id]: true }));
-              document.getElementById(`section-${s.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }}
+            onClick={() => setActiveSection(s.id)}
             style={{
-              padding: '6px 14px',
-              fontSize: 12,
+              padding: '8px 16px',
+              fontSize: 13,
               fontWeight: 600,
-              border: '1px solid #e2e8f0',
-              borderRadius: 20,
-              background: openSections[s.id] ? '#1e293b' : '#f1f5f9',
-              color: openSections[s.id] ? 'white' : '#475569',
+              border: '1px solid',
+              borderColor: activeSection === s.id ? '#1e293b' : '#e2e8f0',
+              borderRadius: 8,
+              background: activeSection === s.id ? '#1e293b' : 'white',
+              color: activeSection === s.id ? 'white' : '#475569',
               cursor: 'pointer',
               transition: 'all 0.2s',
               whiteSpace: 'nowrap',
@@ -92,77 +88,40 @@ export function SectionPage({ title, subtitle, icon, sections, defaultOpen, acti
               gap: 6
             }}
           >
-            {s.icon && <span style={{ opacity: 0.8 }}>{s.icon}</span>}
+            {s.icon && <span style={{ opacity: 0.9 }}>{s.icon}</span>}
             {s.label}
+            {s.badge && (
+              <span style={{
+                padding: '1px 8px',
+                fontSize: 10,
+                fontWeight: 700,
+                background: activeSection === s.id ? 'rgba(255,255,255,0.2)' : '#dbeafe',
+                color: activeSection === s.id ? 'white' : '#2563eb',
+                borderRadius: 10,
+                marginLeft: 4
+              }}>{s.badge}</span>
+            )}
           </button>
         ))}
       </div>
 
-      {/* Sections */}
-      <div style={{ padding: '16px 24px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {sections.map(s => (
-          <div
-            key={s.id}
-            id={`section-${s.id}`}
-            data-testid={`section-${s.id}`}
-            style={{
-              background: 'white',
-              borderRadius: 10,
-              border: '1px solid #e2e8f0',
-              overflow: 'hidden',
-              transition: 'box-shadow 0.2s',
-              boxShadow: openSections[s.id] ? '0 2px 12px rgba(0,0,0,0.06)' : 'none'
-            }}
-          >
-            {/* Section Header - Clickable */}
-            <button
-              data-testid={`section-toggle-${s.id}`}
-              onClick={() => toggle(s.id)}
-              style={{
-                width: '100%',
-                padding: '14px 20px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 12,
-                background: openSections[s.id] ? '#f8fafc' : 'white',
-                border: 'none',
-                borderBottom: openSections[s.id] ? '1px solid #e2e8f0' : 'none',
-                cursor: 'pointer',
-                textAlign: 'left',
-                transition: 'background 0.2s'
+      {/* Content - Direct render without collapsible */}
+      <div style={{ padding: '16px 24px' }}>
+        {activeContent && (
+          <Suspense fallback={<SectionLoading />}>
+            <div 
+              data-testid={`section-content-${activeSection}`}
+              style={{ 
+                background: 'white', 
+                borderRadius: 10, 
+                border: '1px solid #e2e8f0',
+                minHeight: 200 
               }}
             >
-              {openSections[s.id]
-                ? <ChevronDown size={18} style={{ color: '#3b82f6', flexShrink: 0 }} />
-                : <ChevronRight size={18} style={{ color: '#94a3b8', flexShrink: 0 }} />
-              }
-              {s.icon && <span style={{ fontSize: 18, flexShrink: 0 }}>{s.icon}</span>}
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>{s.label}</div>
-                {s.desc && <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>{s.desc}</div>}
-              </div>
-              {s.badge && (
-                <span style={{
-                  padding: '2px 10px',
-                  fontSize: 11,
-                  fontWeight: 600,
-                  background: '#dbeafe',
-                  color: '#2563eb',
-                  borderRadius: 12
-                }}>{s.badge}</span>
-              )}
-            </button>
-
-            {/* Section Content */}
-            {openSections[s.id] && (
-              <Suspense fallback={<SectionLoading />}>
-                <div style={{ minHeight: 200 }}>
-                  {s.component}
-                </div>
-              </Suspense>
-            )}
-          </div>
-        ))}
+              {activeContent.component}
+            </div>
+          </Suspense>
+        )}
       </div>
     </div>
   );
