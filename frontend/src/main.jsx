@@ -88,7 +88,7 @@ const router = createBrowserRouter([
   { path: "/gestione-riservata", element: <LazyPage><GestioneRiservata /></LazyPage> },
   {
     path: "/",
-    element: <RequireAuth><App /></RequireAuth>,
+    element: <App />,  // DISABILITATO RequireAuth - Login rimandato al deploy
     children: [
       // === DASHBOARD ===
       { index: true, element: <LazyPage><DashboardHub /></LazyPage> },
