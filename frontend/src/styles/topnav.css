@@ -204,6 +204,14 @@
   font-weight: 600;
 }
 
+/* Dropdown Grid per "Altro" */
+.topnav-dropdown-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  min-width: 280px;
+  gap: 2px;
+}
+
 /* Right Side Utilities */
 .topnav-right {
   margin-left: auto;
