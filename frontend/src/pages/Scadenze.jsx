@@ -592,6 +592,28 @@ export default function Scadenze() {
           </div>
         ) : (
           <div style={{ maxHeight: '60vh', overflow: 'auto' }}>
+            {/* Intestazioni colonne */}
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: 12, 
+              padding: '8px 16px',
+              fontSize: 11,
+              fontWeight: 700,
+              color: '#64748b',
+              textTransform: 'uppercase',
+              letterSpacing: 0.5,
+              borderBottom: '2px solid #e2e8f0',
+              background: '#f8fafc'
+            }}>
+              <span style={{ minWidth: 55, textAlign: 'center' }}>Tipo</span>
+              <span style={{ minWidth: 80, textAlign: 'right' }}>Importo</span>
+              <span style={{ minWidth: 55 }}>Data</span>
+              <span style={{ minWidth: 50, textAlign: 'center' }}>Giorni</span>
+              <span style={{ flex: 1 }}>Descrizione</span>
+              <span style={{ minWidth: 80, textAlign: 'right' }}>Azioni</span>
+            </div>
+            
             {scadenze.map((s, idx) => {
               const style = getPriorityStyle(s.priorita, s.urgente);
               const isPassata = s.giorni_mancanti !== undefined && s.giorni_mancanti < 0;
