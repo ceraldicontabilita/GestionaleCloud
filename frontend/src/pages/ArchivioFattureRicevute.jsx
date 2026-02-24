@@ -3,7 +3,6 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { formatEuro, formatDateIT, STYLES, COLORS, button, badge } from '../lib/utils';
-import { PageLayout } from '../components/PageLayout';
 
 const MESI = [
   { value: '', label: 'Tutti i mesi' },
