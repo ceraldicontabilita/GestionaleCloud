@@ -384,3 +384,5 @@ test_plan:
 agent_communication:
     - agent: "testing"
       message: "Completed comprehensive OpenClaw-3.0 backend testing. ALL TESTS PASSED (13/13 - 100% success rate). Key findings: ✅ /api/suppliers returns exactly 316 suppliers as required ✅ MongoDB Atlas connected with 94,088 documents ✅ All response times under 2s ✅ Real data returned (not mocked) ✅ No 404/500 errors ✅ Proper data structure with ragione_sociale, partita_iva, fatture fields ✅ Backend is stable and ready for production use."
+    - agent: "testing"
+      message: "Starting frontend E2E testing for OpenClaw-3.0. Will test: Dashboard load, year selector (2026), sidebar navigation, Fornitori page with 316 suppliers, stats cards, supplier list, navigation between pages, performance (<3s), and UI layout. Frontend URL: https://ceraldi-erp.preview.emergentagent.com"
