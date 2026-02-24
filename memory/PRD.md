@@ -48,15 +48,22 @@ L'utente ha richiesto di ricreare un sistema ERP con:
 - Magazzino
 - Scadenze
 
-### 🔄 In Progress
-- Code refactoring (pulizia codice morto)
-- Standardizzazione API routing (rimozione alias)
+### ✅ Completed (Additional - Feb 24, 2026)
+
+#### Filtro Anno Verificato
+- Tutti i moduli principali usano correttamente `useAnnoGlobale()`
+- Pagine verificate: Fatture, Cedolini, F24, Presenze, Prima Nota
+- Il selector anno (2026) nella top-nav aggiorna tutte le pagine
+- I fornitori e dipendenti non filtrano per anno (entità permanenti)
+
+#### API Routing Verificato
+- Frontend usa correttamente `/api/suppliers` (inglese)
+- Nessun alias temporaneo trovato nel backend
+- Routing consistente tra frontend e backend
 
 ### 📋 Backlog
 
-#### P1 - Next
-- Verifica filtri dati per `anno` su tutti i moduli
-- Pulizia chiamate API (da italiano a inglese standardizzato)
+#### P2 - Future
 
 #### P2 - Future
 - Re-implementazione autenticazione (richiesta al deployment)
