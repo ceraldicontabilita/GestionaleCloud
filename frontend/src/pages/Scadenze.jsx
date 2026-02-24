@@ -713,49 +713,45 @@ export default function Scadenze() {
                         }}
                         disabled={loadingInvoice}
                         style={{
-                          padding: '6px 12px',
+                          padding: '4px 8px',
                           background: loadingInvoice ? '#9ca3af' : '#3b82f6',
                           color: 'white',
                           border: 'none',
-                          borderRadius: 6,
+                          borderRadius: 4,
                           cursor: loadingInvoice ? 'wait' : 'pointer',
-                          fontSize: 12,
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 4
+                          fontSize: 10
                         }}
                         title="Visualizza Dettagli Fattura"
                         data-testid={`view-invoice-${s.fattura_id || s.id}`}
                       >
-                        {loadingInvoice ? '⏳' : '👁️'} Dettagli
+                        {loadingInvoice ? '⏳' : '👁️'}
                       </button>
                       <a
                         href={`/api/fatture-ricevute/fattura/${s.fattura_id || s.id}/view-assoinvoice`}
                         target="_blank"
                         rel="noopener noreferrer"
                         style={{
-                          padding: '6px 12px',
+                          padding: '4px 8px',
                           background: '#10b981',
                           color: 'white',
                           border: 'none',
-                          borderRadius: 6,
-                          cursor: 'pointer',
-                          fontSize: 12,
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 4,
+                          borderRadius: 4,
+                          fontSize: 10,
                           textDecoration: 'none'
                         }}
                         title="Visualizza PDF Fattura"
                         data-testid={`pdf-invoice-${s.fattura_id || s.id}`}
                       >
-                        📄 PDF
+                        📄
                       </a>
                     </div>
                   )}
-                </div>
+                  </td>
+                </tr>
               );
             })}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
