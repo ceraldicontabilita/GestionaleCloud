@@ -684,6 +684,7 @@ export default function App() {
         @media (min-width: 768px) {
           .content {
             padding-bottom: 24px;
+            margin-left: 220px;
           }
         }
       `}</style>
