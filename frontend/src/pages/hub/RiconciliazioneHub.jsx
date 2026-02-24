@@ -1,6 +1,5 @@
-import React, { lazy } from 'react';
-import { SectionPage } from '../../components/SectionPage';
-import { RefreshCw, CreditCard, FileCheck, Archive, AlertTriangle } from 'lucide-react';
+import React, { lazy, Suspense } from 'react';
+import { useLocation } from 'react-router-dom';
 
 const RiconciliazioneContent = lazy(() => import('../RiconciliazioneUnificata.jsx'));
 const PaypalContent = lazy(() => import('../RiconciliazionePaypal.jsx'));
@@ -8,44 +7,47 @@ const AssegniContent = lazy(() => import('../GestioneAssegni.jsx'));
 const BonificiContent = lazy(() => import('../ArchivioBonifici.jsx'));
 const CoerenzaPOSContent = lazy(() => import('../CoerenzaPOSCorrispettivi.jsx'));
 
-export default function RiconciliazioneHub() {
-  const sections = [
-    {
-      id: 'pos-corrispettivi',
-      label: 'Coerenza POS/Corrispettivi',
-      icon: <AlertTriangle size={16} />,
-      desc: 'Verifica coerenza tra POS e corrispettivi XML (Normativa 2026)',
-      component: <CoerenzaPOSContent />
-    },
-    {
-      id: 'banca',
-      label: 'Riconciliazione Bancaria',
-      icon: <RefreshCw size={16} />,
-      desc: 'Confronto estratto conto vs prima nota',
-      component: <RiconciliazioneContent />
-    },
-    {
-      id: 'paypal',
-      label: 'PayPal MSR/CSR',
-      icon: <CreditCard size={16} />,
-      desc: 'Riconciliazione movimenti PayPal',
-      component: <PaypalContent />
-    },
-    {
-      id: 'assegni',
-      label: 'Gestione Assegni',
-      icon: <FileCheck size={16} />,
-      desc: 'Registro assegni emessi e ricevuti',
-      component: <AssegniContent />
-    },
-    {
-      id: 'bonifici',
-      label: 'Archivio Bonifici',
-      icon: <Archive size={16} />,
-      desc: 'Storico bonifici e distinte',
-      component: <BonificiContent />
-    }
-  ];
+const Loading = () => (
+  <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>
+    <div style={{
+      width: 32, height: 32,
+      border: '3px solid #e2e8f0',
+      borderTop: '3px solid #2563eb',
+      borderRadius: '50%',
+      animation: 'spin 1s linear infinite',
+      margin: '0 auto 12px'
+    }} />
+    Caricamento...
+  </div>
+);
 
-  return <SectionPage title="Riconciliazione & Pagamenti" icon={<RefreshCw size={22} />} sections={sections} defaultOpen="pos-corrispettivi" />;
+export default function RiconciliazioneHub() {
+  const location = useLocation();
+  const path = location.pathname;
+
+  // Determina quale contenuto mostrare
+  const getContent = () => {
+    if (path.includes('/archivio-bonifici')) {
+      return <BonificiContent />;
+    }
+    if (path.includes('/gestione-assegni') || path.includes('/assegni')) {
+      return <AssegniContent />;
+    }
+    if (path.includes('/paypal')) {
+      return <PaypalContent />;
+    }
+    if (path.includes('/coerenza-pos')) {
+      return <CoerenzaPOSContent />;
+    }
+    // Default: riconciliazione bancaria
+    return <RiconciliazioneContent />;
+  };
+
+  return (
+    <div style={{ padding: '16px 24px', minHeight: '100vh', background: '#f8fafc' }}>
+      <Suspense fallback={<Loading />}>
+        {getContent()}
+      </Suspense>
+    </div>
+  );
 }
