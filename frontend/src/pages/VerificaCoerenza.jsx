@@ -43,9 +43,9 @@ export default function VerificaCoerenza() {
     setError(null);
     try {
       const [completa, iva, bonif] = await Promise.all([
-        api.get(`/api/verifica-coerenza/completa/${anno}`),
-        api.get(`/api/verifica-coerenza/confronto-iva-completo/${anno}`),
-        api.get(`/api/verifica-coerenza/verifica-bonifici-vs-banca/${anno}`)
+        api.get(`/api/verifica-coerenza/completa/${anno}`).catch(e => ({ data: null })),
+        api.get(`/api/verifica-coerenza/confronto-iva-completo/${anno}`).catch(e => ({ data: null })),
+        api.get(`/api/verifica-coerenza/verifica-bonifici-vs-banca/${anno}`).catch(e => ({ data: null }))
       ]);
       setVerificaCompleta(completa.data);
       setConfrontoIva(iva.data);
