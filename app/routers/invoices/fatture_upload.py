@@ -148,6 +148,92 @@ async def ensure_supplier_exists(db, parsed_invoice: Dict[str, Any]) -> Dict[str
     return result
 
 
+async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upload.xml") -> Dict[str, Any]:
+    """
+    Processa e salva una fattura parsata nel database.
+    Usata da documenti.py per l'import automatico.
+    
+    Args:
+        db: Database connection
+        parsed: Dati fattura parsati da parse_fattura_xml
+        filename: Nome file originale
+        
+    Returns:
+        Dict con dati fattura salvata
+    """
+    if parsed.get("error"):
+        raise HTTPException(status_code=400, detail=parsed["error"])
+    
+    invoice_key = generate_invoice_key(
+        parsed.get("invoice_number", ""),
+        parsed.get("supplier_vat", ""),
+        parsed.get("invoice_date", "")
+    )
+    
+    # Controlla duplicati
+    existing = await db[Collections.INVOICES].find_one({"invoice_key": invoice_key})
+    if existing:
+        return {
+            "status": "duplicate",
+            "invoice_number": parsed.get("invoice_number"),
+            "message": f"Fattura già presente: {parsed.get('invoice_number')}"
+        }
+    
+    # Assicura che il fornitore esista
+    supplier_result = await ensure_supplier_exists(db, parsed)
+    supplier_id = supplier_result.get("supplier_id")
+    metodo_pagamento = supplier_result.get("metodo_pagamento") or "bonifico"
+    
+    # Calcola data scadenza
+    data_fattura_str = parsed.get("invoice_date", "")
+    data_scadenza = None
+    if data_fattura_str:
+        try:
+            data_fattura = datetime.strptime(data_fattura_str, "%Y-%m-%d")
+            data_scadenza = (data_fattura + timedelta(days=30)).strftime("%Y-%m-%d")
+        except (ValueError, TypeError):
+            pass
+    
+    # Crea documento fattura
+    invoice = {
+        "id": str(uuid.uuid4()),
+        "invoice_key": invoice_key,
+        "supplier_id": supplier_id,
+        "invoice_number": parsed.get("invoice_number", ""),
+        "invoice_date": parsed.get("invoice_date", ""),
+        "data_scadenza": data_scadenza,
+        "tipo_documento": parsed.get("tipo_documento", ""),
+        "supplier_name": parsed.get("supplier_name", ""),
+        "supplier_vat": parsed.get("supplier_vat", ""),
+        "total_amount": parsed.get("total_amount", 0),
+        "imponibile": parsed.get("imponibile", 0),
+        "iva": parsed.get("iva", 0),
+        "divisa": parsed.get("divisa", "EUR"),
+        "fornitore": parsed.get("fornitore", {}),
+        "cliente": parsed.get("cliente", {}),
+        "linee": parsed.get("linee", []),
+        "riepilogo_iva": parsed.get("riepilogo_iva", []),
+        "metodo_pagamento": metodo_pagamento,
+        "status": "imported",
+        "source": "xml_upload",
+        "filename": filename,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "cedente_piva": parsed.get("supplier_vat", ""),
+        "cedente_denominazione": parsed.get("supplier_name", ""),
+        "numero_fattura": parsed.get("invoice_number", ""),
+        "data_fattura": parsed.get("invoice_date", ""),
+        "importo_totale": parsed.get("total_amount", 0),
+        "anno": int(parsed.get("invoice_date", "2024")[:4]) if parsed.get("invoice_date") else 2024
+    }
+    
+    await db[Collections.INVOICES].insert_one(invoice.copy())
+    invoice.pop("_id", None)
+    
+    logger.info(f"Fattura importata: {invoice.get('invoice_number')} - {invoice.get('supplier_name')}")
+    
+    return invoice
+
+
 async def find_check_numbers_for_invoice(db, importo: float, data_fattura: str, fornitore: str) -> Optional[Dict[str, Any]]:
     """
     Cerca nell'estratto conto i numeri degli assegni che corrispondono all'importo della fattura.
