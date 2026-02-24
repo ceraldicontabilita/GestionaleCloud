@@ -256,9 +256,12 @@ async def get_statistiche(anno: Optional[int] = Query(None)) -> Dict[str, Any]:
     
     query = {}
     if anno:
+        # Supporta tutti i formati di data e campo anno diretto
         query["$or"] = [
+            {"anno": anno},
             {"data_documento": {"$regex": f"^{anno}"}},
-            {"invoice_date": {"$regex": f"^{anno}"}}
+            {"invoice_date": {"$regex": f"^{anno}"}},
+            {"data_fattura": {"$regex": f"^{anno}"}}
         ]
     
     pipeline = [
@@ -274,6 +277,9 @@ async def get_statistiche(anno: Optional[int] = Query(None)) -> Dict[str, Any]:
     
     result = await db[COL_FATTURE_RICEVUTE].aggregate(pipeline).to_list(1)
     stats = result[0] if result else {"totale_fatture": 0, "importo_totale": 0, "pagate": 0, "importo_pagato": 0}
+    
+    # Rimuovi _id se presente
+    stats.pop("_id", None)
     
     stats["da_pagare"] = stats["totale_fatture"] - stats["pagate"]
     stats["importo_da_pagare"] = round(stats["importo_totale"] - stats["importo_pagato"], 2)
