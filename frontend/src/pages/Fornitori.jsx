@@ -1377,9 +1377,9 @@ export default function Fornitori() {
         {/* Stats */}
         <div style={{ 
           display: 'grid', 
-          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
-          gap: '16px', 
-          marginBottom: '24px' 
+          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', 
+          gap: '12px', 
+          marginBottom: '16px' 
         }}>
           <StatCard icon={Users} label="Totale Fornitori" value={stats.total} color="#1e3a5f" bgColor="#eef2ff" />
           <StatCard icon={FileText} label="Con Fatture" value={stats.withInvoices} color="#10b981" bgColor="#d1fae5" />
