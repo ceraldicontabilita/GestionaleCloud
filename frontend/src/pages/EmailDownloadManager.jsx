@@ -75,10 +75,10 @@ export default function EmailDownloadManager() {
     fetchStats();
     fetchDocuments();
     
-    // Poll status every 5 seconds if download in progress
+    // Poll status every 30 seconds if download in progress (ridotto per evitare problemi)
     const interval = setInterval(() => {
       fetchStatus();
-    }, 5000);
+    }, 30000);
     
     return () => clearInterval(interval);
   }, [fetchStatus, fetchStats, fetchDocuments]);
