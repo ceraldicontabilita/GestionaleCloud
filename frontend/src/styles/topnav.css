@@ -36,7 +36,7 @@
 }
 
 .topnav-layout .page-content {
-  padding: 24px 28px 60px;
+  padding: 8px 16px 40px;
   min-height: calc(100vh - var(--total-header-height));
   overflow-y: auto;
 }
