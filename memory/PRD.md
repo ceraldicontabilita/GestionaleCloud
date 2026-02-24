@@ -80,14 +80,19 @@ L'utente ha richiesto di ricreare un sistema ERP con:
 - Fix statistiche fatture ricevute (mostra 0 invece dei totali reali)
 - Fix warning React key in HRGestionale (minore)
 
-### ✅ Testing E2E Completo (Feb 24, 2026)
-- **100% PASS** su tutti i test
-- Verificate tutte le pagine principali
-- Anno selector funzionante e visibile
-- Dati caricano correttamente da MongoDB
-- **Tabelle scadenze** con testo CENTRATO in tutte le colonne
-- Fix warning React key in HRGestionale
-- **Ridotto polling** da 5s a 15-30s per evitare problemi di performance
+### ✅ Normalizzazione Collezioni MongoDB (Feb 24, 2026)
+- Creato `/app/app/utils/field_normalizer.py` con classe `FieldNormalizer` per normalizzare campi inconsistenti
+- Aggiornato `/app/app/database/collections.py` con 150+ collezioni standardizzate
+- Fix API fatture per supportare tutti i formati di campo (`numero_fattura`/`numero_documento`, `data_fattura`/`data_documento`, etc.)
+- Fix statistiche fatture: ora mostra correttamente 10 fatture, € 27.951,65
+
+### API Audit Completato
+- ✅ Fatture Ricevute: 10 fatture, € 27.951,65
+- ✅ Fornitori: funzionante
+- ✅ Dipendenti: 1 dipendente
+- ✅ Prima Nota Banca: 931 movimenti 2024
+- ✅ Verifica Coerenza: Stato CRITICO
+- ✅ Corrispettivi: funzionante
 
 ## Architecture
 
