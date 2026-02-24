@@ -395,32 +395,6 @@ export default function ArchivioFatture() {
       {/* ==================== TAB: ARCHIVIO ==================== */}
       {activeTab === 'archivio' && (
         <>
-          {/* Header Archivio */}
-          <div style={{ 
-            display: 'flex', 
-            justifyContent: 'space-between', 
-            alignItems: 'center', 
-            marginBottom: 20,
-            padding: '15px 20px',
-            background: 'linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%)',
-            borderRadius: 12,
-            color: 'white',
-            flexWrap: 'wrap',
-            gap: 10
-          }}>
-            <div>
-              <h2 style={{ margin: 0, fontSize: 18, fontWeight: 'bold' }}>📋 Archivio Fatture Ricevute</h2>
-              <p style={{ margin: '4px 0 0 0', fontSize: 12, opacity: 0.9 }}>Gestione fatture passive con controllo duplicati</p>
-            </div>
-            <button
-              onClick={() => navigate('/import-unificato')}
-              style={{ ...btnPrimary, display: 'flex', alignItems: 'center', gap: 8 }}
-              data-testid="btn-import-unificato"
-            >
-              📤 Vai a Import Unificato
-            </button>
-          </div>
-
           {/* Statistiche */}
           {statistiche && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 12, marginBottom: 20 }}>
