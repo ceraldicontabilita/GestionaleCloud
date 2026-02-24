@@ -1,88 +1,44 @@
 import React from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { Bell, Calendar, Search, ChevronDown } from 'lucide-react';
+import { Calendar, ChevronDown } from 'lucide-react';
 import { AnnoSelector } from '../../contexts/AnnoContext';
 import NotificationBell from '../NotificationBell';
 
-// Navigazione principale - items con sottomenu
-const NAV_GROUPS = [
+// Navigazione principale - link diretti (no dropdown tranne "Altro")
+const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', icon: '⊞' },
-  { 
-    label: 'Fatture', 
-    icon: '🧾',
-    badge: true,
-    children: [
-      { to: '/fatture-ricevute', label: 'Ciclo Passivo' },
-      { to: '/corrispettivi', label: 'Corrispettivi' },
-      { to: '/archivio-fatture-ricevute', label: 'Archivio' },
-    ]
-  },
+  { to: '/fatture-ricevute', label: 'Fatture', icon: '🧾', badge: '180' },
   { to: '/prima-nota', label: 'Prima Nota', icon: '📒' },
-  { 
-    label: 'Banca', 
-    icon: '🏦',
-    dot: true,
-    children: [
-      { to: '/riconciliazione', label: 'Riconciliazione' },
-      { to: '/archivio-bonifici', label: 'Archivio Bonifici' },
-      { to: '/gestione-assegni', label: 'Gestione Assegni' },
-    ]
-  },
-  { 
-    label: 'Fisco', 
-    icon: '📋',
-    children: [
-      { to: '/f24', label: 'F24' },
-      { to: '/iva', label: 'Liquidazione IVA' },
-      { to: '/fisco', label: 'Fisco & Tributi' },
-    ]
-  },
+  { to: '/riconciliazione', label: 'Banca', icon: '🏦', dot: true },
+  { to: '/fisco', label: 'Fisco', icon: '📋' },
   { to: '/fornitori', label: 'Fornitori', icon: '🏢' },
-  { 
-    label: 'HR', 
-    icon: '👥',
-    children: [
-      { to: '/dipendenti', label: 'Dipendenti' },
-      { to: '/cedolini', label: 'Cedolini' },
-      { to: '/attendance', label: 'Presenze' },
-    ]
-  },
-  { 
-    label: 'Altro', 
-    icon: '⋯',
-    children: [
-      { to: '/bilancio', label: 'Bilancio' },
-      { to: '/mutui', label: 'Mutui' },
-      { to: '/contabilita-hub', label: 'Contabilità' },
-      { to: '/magazzino', label: 'Magazzino' },
-      { to: '/cucina', label: 'Cucina' },
-      { to: '/scadenze', label: 'Scadenze' },
-      { to: '/todo', label: 'To-Do' },
-      { to: '/import-documenti', label: 'Import Documenti' },
-      { to: '/documenti', label: 'Documenti' },
-      { to: '/strumenti', label: 'Strumenti' },
-      { to: '/integrazioni', label: 'Integrazioni' },
-      { to: '/admin', label: 'Admin' },
-    ]
-  },
+  { to: '/dipendenti', label: 'HR', icon: '👥' },
+];
+
+// Solo "Altro" ha dropdown perché ha molti items
+const ALTRO_ITEMS = [
+  { to: '/bilancio', label: 'Bilancio' },
+  { to: '/mutui', label: 'Mutui' },
+  { to: '/contabilita-hub', label: 'Contabilità' },
+  { to: '/magazzino', label: 'Magazzino' },
+  { to: '/cucina', label: 'Cucina' },
+  { to: '/scadenze', label: 'Scadenze' },
+  { to: '/todo', label: 'To-Do' },
+  { to: '/import-documenti', label: 'Import Documenti' },
+  { to: '/documenti', label: 'Documenti' },
+  { to: '/strumenti', label: 'Strumenti' },
+  { to: '/integrazioni', label: 'Integrazioni' },
+  { to: '/admin', label: 'Admin' },
 ];
 
 export default function TopNav() {
   const location = useLocation();
-  const [openDropdown, setOpenDropdown] = React.useState(null);
+  const [showAltro, setShowAltro] = React.useState(false);
   
-  const isActive = (item) => {
-    if (item.to) {
-      return location.pathname === item.to || 
-        (item.to !== '/' && location.pathname.startsWith(item.to));
-    }
-    if (item.children) {
-      return item.children.some(child => 
-        location.pathname === child.to || location.pathname.startsWith(child.to)
-      );
-    }
-    return false;
-  };
+  // Check if current path is in "Altro" section
+  const isAltroActive = ALTRO_ITEMS.some(item => 
+    location.pathname === item.to || location.pathname.startsWith(item.to)
+  );
 
   return (
     <nav className="topnav-primary" data-testid="topnav-primary">
@@ -92,64 +48,73 @@ export default function TopNav() {
         <span className="brand-name">Ceraldi ERP</span>
       </div>
 
-      {/* Navigation Items */}
+      {/* Navigation Items - Link diretti */}
       <div className="topnav-items">
-        {NAV_GROUPS.map((item, idx) => (
-          item.children ? (
-            <div 
-              key={idx}
-              className={`topnav-dropdown ${isActive(item) ? 'active' : ''}`}
-              onMouseEnter={() => setOpenDropdown(idx)}
-              onMouseLeave={() => setOpenDropdown(null)}
-            >
-              <button className={`topnav-item ${isActive(item) ? 'active' : ''}`}>
-                <span className="topnav-icon">{item.icon}</span>
-                <span className="topnav-label">{item.label}</span>
-                {item.badge && <span className="topnav-badge">180</span>}
-                {item.dot && <span className="topnav-dot" />}
-                <ChevronDown size={12} className="topnav-arrow" />
-              </button>
-              {openDropdown === idx && (
-                <div className="topnav-dropdown-menu">
-                  {item.children.map((child, cidx) => (
-                    <NavLink 
-                      key={cidx}
-                      to={child.to}
-                      className={({ isActive }) => `topnav-dropdown-item ${isActive ? 'active' : ''}`}
-                      onClick={() => setOpenDropdown(null)}
-                    >
-                      {child.label}
-                    </NavLink>
-                  ))}
-                </div>
-              )}
-            </div>
-          ) : (
-            <NavLink
-              key={idx}
-              to={item.to}
-              end={item.to === '/'}
-              className={({ isActive }) => `topnav-item ${isActive ? 'active' : ''}`}
-            >
-              <span className="topnav-icon">{item.icon}</span>
-              <span className="topnav-label">{item.label}</span>
-            </NavLink>
-          )
+        {NAV_ITEMS.map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            end={item.to === '/'}
+            className={({ isActive }) => `topnav-item ${isActive ? 'active' : ''}`}
+            data-testid={`nav-${item.label.toLowerCase()}`}
+          >
+            <span className="topnav-icon">{item.icon}</span>
+            <span className="topnav-label">{item.label}</span>
+            {item.badge && <span className="topnav-badge">{item.badge}</span>}
+            {item.dot && <span className="topnav-dot" />}
+          </NavLink>
         ))}
+        
+        {/* Solo "Altro" ha dropdown */}
+        <div 
+          className={`topnav-dropdown ${isAltroActive ? 'active' : ''}`}
+          onMouseEnter={() => setShowAltro(true)}
+          onMouseLeave={() => setShowAltro(false)}
+        >
+          <button className={`topnav-item ${isAltroActive ? 'active' : ''}`}>
+            <span className="topnav-icon">⋯</span>
+            <span className="topnav-label">Altro</span>
+            <ChevronDown size={12} className="topnav-arrow" />
+          </button>
+          {showAltro && (
+            <div className="topnav-dropdown-menu topnav-dropdown-grid">
+              {ALTRO_ITEMS.map((item) => (
+                <NavLink 
+                  key={item.to}
+                  to={item.to}
+                  className={({ isActive }) => `topnav-dropdown-item ${isActive ? 'active' : ''}`}
+                  onClick={() => setShowAltro(false)}
+                >
+                  {item.label}
+                </NavLink>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Right Side - Utilities */}
       <div className="topnav-right">
-        <div className="topnav-anno">
+        {/* Anno Selector con etichetta */}
+        <div className="topnav-anno" data-testid="anno-selector">
+          <span style={{ 
+            fontSize: 11, 
+            fontWeight: 600, 
+            color: '#64748b',
+            marginRight: 6,
+            textTransform: 'uppercase',
+            letterSpacing: 0.5
+          }}>Anno</span>
           <AnnoSelector style={{ 
             background: 'white',
             border: '1.5px solid #b3d2f5',
             borderRadius: 7,
-            padding: '4px 10px',
-            fontSize: 12,
-            fontWeight: 600,
+            padding: '4px 12px',
+            fontSize: 13,
+            fontWeight: 700,
             color: '#1a40b5',
             minHeight: 32,
+            cursor: 'pointer',
           }} />
         </div>
         
