@@ -53,13 +53,19 @@ L'utente ha richiesto di ricreare un sistema ERP con:
 #### UI Cleanup (Feb 24, 2026)
 - **Rimosse tutte le emoji 💰** da tutte le pagine per UI più pulita
 - **Layout scadenze compatto**: informazioni su una singola riga (Tipo | Importo | Data | Giorni | Descrizione)
+- **Ridotto padding** tra navbar e contenuto (da 24px a 8px)
 - Rimossi emoji da: Scadenze, Dashboard, RiconciliazioneUnificata, PrimaNota, GestioneDipendenti, Documenti, ecc.
+
+#### Anno Selector Esteso
+- Ora include anni dal **2018 al 2027**
+- Permette di vedere i dati storici dell'estratto conto bancario (es. 2020: 27 movimenti)
 
 #### Prima Nota - Verificato Funzionante
 - La pagina Prima Nota funziona correttamente
 - Sezione CASSA: nessun dato inserito (vuota) - comportamento normale
-- Sezione BANCA: mostra 161 movimenti dall'estratto conto
-- Il problema segnalato era un falso positivo: la pagina non era bloccata, semplicemente non c'erano dati nella collezione
+- Sezione BANCA: 
+  - 2024: 931 movimenti, saldo € 980,74
+  - 2020: 27 movimenti, saldo € -10.924,87
 
 ### 📋 Backlog
 
