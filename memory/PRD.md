@@ -134,4 +134,5 @@ Based on `layout-A-topnav.html`:
 - **2026-02-24**: Rimossi tab duplicati dai file Hub
 - **2026-02-24**: TopNav refactoring: link diretti (no dropdown tranne Altro)
 - **2026-02-24**: Anno selector con etichetta "ANNO"
-- **2026-02-24**: Test E2E iteration_2: 100% backend, 100% frontend
+- **2026-02-24**: Rimosse cornici blu duplicate da: RiconciliazioneUnificata, ArchivioBonifici, Fornitori
+- **2026-02-24**: Test E2E iteration_3: 100% - tutte le pagine senza header duplicati
