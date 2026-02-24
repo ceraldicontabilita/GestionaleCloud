@@ -1273,28 +1273,27 @@ export default function Fornitori() {
       
       <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
         
-        {/* Header con Gradiente */}
+        {/* Header con Gradiente - Nuovo Design */}
         <div style={{ 
           display: 'flex', 
           justifyContent: 'space-between', 
           alignItems: 'center', 
-          marginBottom: 24,
-          padding: '15px 20px',
-          background: 'linear-gradient(135deg, #1535a8 0%, #2050e8 100%)',
-          borderRadius: 12,
+          marginBottom: 32,
+          padding: '32px 40px',
+          background: 'linear-gradient(135deg, #2563eb 0%, #1e40af 100%)',
+          borderRadius: 0,
           color: 'white',
           flexWrap: 'wrap',
-          gap: 10
+          gap: 16,
+          boxShadow: '0 4px 12px rgba(37, 99, 235, 0.15)'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 15 }}>
-            {/* Page Info Card spostata a sinistra nel header */}            <div>
-              <h1 style={{ margin: 0, fontSize: 22, fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 10 }}>
-                <Building2 size={24} /> Gestione Fornitori
-              </h1>
-              <p style={{ margin: '4px 0 0 0', fontSize: 13, opacity: 0.9 }}>
-                Anagrafica completa • Metodi di pagamento
-              </p>
-            </div>
+          <div>
+            <h1 style={{ margin: 0, fontSize: 32, fontWeight: '700', display: 'flex', alignItems: 'center', gap: 16, marginBottom: 8 }}>
+              <Building2 size={36} /> Gestione Fornitori
+            </h1>
+            <p style={{ margin: 0, fontSize: 16, opacity: 0.9, fontWeight: '400' }}>
+              Anagrafica completa • Metodi di pagamento
+            </p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <button 
