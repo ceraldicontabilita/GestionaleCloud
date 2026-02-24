@@ -338,19 +338,10 @@ export default function ArchivioFatture() {
   // ==================== RENDER ====================
 
   return (
-    <PageLayout title="Ciclo Passivo - Fatture Ricevute" subtitle={`Gestione fatture anno ${anno}`}>
+    <PageLayout title="Fatture Ricevute" subtitle={`Anno ${anno}`}>
     <div style={{ maxWidth: 1600, margin: '0 auto', position: 'relative' }} data-testid="ciclo-passivo-unificato">
-      {/* Page Info Card */}      
-      {/* Header con Tabs */}
+      {/* Tabs */}
       <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 700, color: '#1e293b', margin: '0 0 8px' }}>
-          📄 Ciclo Passivo - Fatture Ricevute ({anno})
-        </h1>
-        <p style={{ margin: '0 0 16px', color: '#64748b', fontSize: 14 }}>
-          Import → Magazzino → Prima Nota → Scadenziario → Riconciliazione
-        </p>
-        
-        {/* Tabs */}
         <div style={{ display: 'flex', gap: 4, borderBottom: '2px solid #e5e7eb', overflowX: 'auto', paddingBottom: 2 }}>
           {TABS.map(tab => (
             <button
