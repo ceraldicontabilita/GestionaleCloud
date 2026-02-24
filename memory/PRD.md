@@ -85,8 +85,9 @@ L'utente ha richiesto di ricreare un sistema ERP con:
 - Verificate tutte le pagine principali
 - Anno selector funzionante e visibile
 - Dati caricano correttamente da MongoDB
-- **Tabelle scadenze** con intestazioni allineate (TIPO | IMPORTO | DATA | GIORNI | DESCRIZIONE | AZIONI)
+- **Tabelle scadenze** con testo CENTRATO in tutte le colonne
 - Fix warning React key in HRGestionale
+- **Ridotto polling** da 5s a 15-30s per evitare problemi di performance
 
 ## Architecture
 
