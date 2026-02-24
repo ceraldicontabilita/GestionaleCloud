@@ -1576,108 +1576,104 @@ function ScadenzeWidget({ scadenze }) {
         )}
       </div>
       
-      {/* Intestazioni colonne */}
-      <div style={{ 
-        display: 'flex', 
-        alignItems: 'center', 
-        gap: 8, 
-        padding: '4px 10px',
-        fontSize: 10,
-        fontWeight: 600,
-        color: '#94a3b8',
-        textTransform: 'uppercase',
-        letterSpacing: 0.5
-      }}>
-        <span style={{ minWidth: 50, textAlign: 'center' }}>Tipo</span>
-        <span style={{ minWidth: 65, textAlign: 'right' }}>Importo</span>
-        <span style={{ minWidth: 50 }}>Data</span>
-        <span style={{ minWidth: 35 }}>Giorni</span>
-        <span style={{ flex: 1 }}>Descrizione</span>
-        <span style={{ minWidth: 40 }}>Azioni</span>
-      </div>
-      
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        {scadenze.scadenze.slice(0, 6).map((s, idx) => {
-          const colors = getPriorityColor(s.priorita, s.urgente);
-          return (
-            <div 
-              key={idx}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                padding: '6px 10px',
-                background: colors.bg,
-                borderRadius: 6,
-                borderLeft: `3px solid ${colors.border}`
-              }}
-            >
-              {/* Tipo badge compatto */}
-              <span style={{ 
-                padding: '2px 6px', 
-                background: colors.border + '30', 
-                borderRadius: 4,
-                color: colors.text,
-                fontWeight: '600',
-                fontSize: 10,
-                minWidth: 50,
-                textAlign: 'center'
-              }}>
-                {s.tipo}
-              </span>
-              
-              {/* Importo */}
-              <span style={{ 
-                fontWeight: 'bold', 
-                fontSize: 12, 
-                color: colors.text,
-                minWidth: 65,
-                textAlign: 'right'
-              }}>
-                {s.importo > 0 ? formatEuro(s.importo) : '-'}
-              </span>
-              
-              {/* Data e giorni compatti */}
-              <span style={{ fontSize: 11, color: '#6b7280', minWidth: 50 }}>
-                {formatDate(s.data)}
-              </span>
-              <span style={{ 
-                fontSize: 10, 
-                fontWeight: 'bold',
-                color: s.giorni_mancanti <= 3 ? '#dc2626' : '#6b7280',
-                minWidth: 35
-              }}>
-                {s.giorni_mancanti === 0 ? 'OGGI' :
-                 s.giorni_mancanti === 1 ? '1g' :
-                 s.giorni_mancanti < 0 ? `${s.giorni_mancanti}g` :
-                 `${s.giorni_mancanti}g`}
-              </span>
-              
-              {/* Descrizione/Fornitore - prende il resto dello spazio */}
-              <div style={{ flex: 1, minWidth: 0, fontSize: 11, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {s.fornitore || s.descrizione || s.numero_fattura || ''}
-              </div>
-              
-              {/* Pulsanti azioni compatti */}
-              <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
-                {(s.fattura_id || s.source === 'fattura') && (
-                  <a
-                    href={`/api/fatture-ricevute/fattura/${s.fattura_id || s.id}/view-assoinvoice`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      padding: '3px 6px',
-                      background: '#3b82f6',
-                      color: 'white',
-                      borderRadius: 4,
-                      fontSize: 10,
-                      textDecoration: 'none'
-                    }}
-                    title="Vedi"
-                  >
-                    📄
-                  </a>
-                )}
+      {/* Tabella scadenze */}
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+        <thead>
+          <tr style={{ borderBottom: '2px solid #e2e8f0', background: '#f8fafc' }}>
+            <th style={{ padding: '6px 8px', textAlign: 'center', fontWeight: 600, fontSize: 10, color: '#64748b', textTransform: 'uppercase', width: 60 }}>Tipo</th>
+            <th style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600, fontSize: 10, color: '#64748b', textTransform: 'uppercase', width: 70 }}>Importo</th>
+            <th style={{ padding: '6px 8px', textAlign: 'center', fontWeight: 600, fontSize: 10, color: '#64748b', textTransform: 'uppercase', width: 55 }}>Data</th>
+            <th style={{ padding: '6px 8px', textAlign: 'center', fontWeight: 600, fontSize: 10, color: '#64748b', textTransform: 'uppercase', width: 45 }}>Giorni</th>
+            <th style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 600, fontSize: 10, color: '#64748b', textTransform: 'uppercase' }}>Descrizione</th>
+            <th style={{ padding: '6px 8px', textAlign: 'center', fontWeight: 600, fontSize: 10, color: '#64748b', textTransform: 'uppercase', width: 50 }}>Azioni</th>
+          </tr>
+        </thead>
+        <tbody>
+          {scadenze.scadenze.slice(0, 6).map((s, idx) => {
+            const colors = getPriorityColor(s.priorita, s.urgente);
+            return (
+              <tr 
+                key={s.id || `scad-${idx}`}
+                style={{
+                  background: colors.bg,
+                  borderLeft: `3px solid ${colors.border}`,
+                  borderBottom: '1px solid #f1f5f9'
+                }}
+              >
+                <td style={{ padding: '6px 8px', textAlign: 'center' }}>
+                  <span style={{ 
+                    padding: '2px 6px', 
+                    background: colors.border + '30', 
+                    borderRadius: 4,
+                    color: colors.text,
+                    fontWeight: '600',
+                    fontSize: 10
+                  }}>
+                    {s.tipo}
+                  </span>
+                </td>
+                <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 'bold', color: colors.text }}>
+                  {s.importo > 0 ? formatEuro(s.importo) : '-'}
+                </td>
+                <td style={{ padding: '6px 8px', textAlign: 'center', color: '#6b7280' }}>
+                  {formatDate(s.data)}
+                </td>
+                <td style={{ 
+                  padding: '6px 8px', 
+                  textAlign: 'center',
+                  fontWeight: 'bold',
+                  color: s.giorni_mancanti <= 3 ? '#dc2626' : '#6b7280'
+                }}>
+                  {s.giorni_mancanti === 0 ? 'OGGI' :
+                   s.giorni_mancanti === 1 ? '1g' :
+                   s.giorni_mancanti < 0 ? `${s.giorni_mancanti}g` :
+                   `${s.giorni_mancanti}g`}
+                </td>
+                <td style={{ padding: '6px 8px', color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 150 }}>
+                  {s.fornitore || s.descrizione || s.numero_fattura || ''}
+                </td>
+                <td style={{ padding: '6px 8px', textAlign: 'center' }}>
+                  <div style={{ display: 'flex', gap: 3, justifyContent: 'center' }}>
+                    {(s.fattura_id || s.source === 'fattura') && (
+                      <a
+                        href={`/api/fatture-ricevute/fattura/${s.fattura_id || s.id}/view-assoinvoice`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          padding: '3px 6px',
+                          background: '#3b82f6',
+                          color: 'white',
+                          borderRadius: 4,
+                          fontSize: 10,
+                          textDecoration: 'none'
+                        }}
+                        title="Vedi"
+                      >
+                        📄
+                      </a>
+                    )}
+                    <button
+                      onClick={() => setPagaModal(s)}
+                      style={{
+                        padding: '3px 6px',
+                        background: '#10b981',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: 4,
+                        fontSize: 10,
+                        cursor: 'pointer'
+                      }}
+                      title="Paga"
+                    >
+                      ✓
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
                 <button
                   onClick={() => setPagaModal(s)}
                   style={{
