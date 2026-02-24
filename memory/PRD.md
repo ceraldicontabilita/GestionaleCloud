@@ -116,6 +116,8 @@ Based on `layout-A-topnav.html`:
 - Backend: 100% pass rate
 - Frontend: 100% pass rate
 - Test reports: `/app/test_reports/iteration_1.json`
+- Filtro anno: Verificato su tutte le pagine principali
+- API routing: Verificato consistente
 
 ## Known Issues
 - Chat toggle può sovrapporsi al menu mobile (LOW priority)
@@ -124,3 +126,5 @@ Based on `layout-A-topnav.html`:
 - **2026-02-24**: Implementato layout top-navigation
 - **2026-02-24**: Rimosso layout sidebar
 - **2026-02-24**: Test E2E completati con successo
+- **2026-02-24**: Verificato filtro anno su tutti i moduli
+- **2026-02-24**: Verificato API routing consistente
