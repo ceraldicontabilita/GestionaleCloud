@@ -611,7 +611,6 @@ export default function RiconciliazioneUnificata() {
             filename="riconciliazione_movimenti"
             format="csv"
           />
-        </div>
       </div>
 
       {/* Pannello Filtri Avanzati */}
