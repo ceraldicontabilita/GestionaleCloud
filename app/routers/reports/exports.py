@@ -30,7 +30,7 @@ async def get_invoice_service() -> InvoiceService:
     invoice_repo = InvoiceRepository(db[Collections.INVOICES])
     supplier_repo = SupplierRepository(db[Collections.SUPPLIERS])
     # Pass None for other services as export doesn't need them
-    return InvoiceService(invoice_repo, supplier_repo)
+    return InvoiceServiceV2(invoice_repo, supplier_repo)
 
 
 async def get_warehouse_service() -> WarehouseService:
@@ -77,7 +77,7 @@ async def export_excel_generic(
 )
 async def export_invoices_excel(
     current_user: Dict[str, Any] = Depends(get_current_user),
-    service: InvoiceService = Depends(get_invoice_service),
+    service: InvoiceServiceV2 = Depends(get_invoice_service),
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
     payment_status: Optional[str] = None
@@ -226,7 +226,7 @@ async def export_employees_excel(
 async def export_accounting_excel(
     month: str = Query(..., description="Month in format YYYY-MM"),
     current_user: Dict[str, Any] = Depends(get_current_user),
-    invoice_service: InvoiceService = Depends(get_invoice_service)
+    invoice_service: InvoiceServiceV2 = Depends(get_invoice_service)
 ) -> StreamingResponse:
     """
     Export monthly accounting report to Excel.

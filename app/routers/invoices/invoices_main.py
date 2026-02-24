@@ -56,7 +56,7 @@ async def get_invoice_service() -> InvoiceService:
     accounting_service = AccountingEntriesService(entries_repo, chart_repo)
     cash_service = CashService(cash_repo, corrispettivi_repo)
     
-    return InvoiceService(
+    return InvoiceServiceV2(
         invoice_repo=invoice_repo, 
         supplier_repo=supplier_repo,
         warehouse_service=warehouse_service,
@@ -75,7 +75,7 @@ async def get_invoice_service() -> InvoiceService:
 async def create_invoice(
     invoice_data: InvoiceCreate,
     current_user: Dict[str, Any] = Depends(get_current_user),
-    invoice_service: InvoiceService = Depends(get_invoice_service)
+    invoice_service: InvoiceServiceV2 = Depends(get_invoice_service)
 ) -> Dict[str, str]:
     """
     Create a new invoice.
@@ -209,7 +209,7 @@ async def list_invoices(
 async def get_unpaid_invoices(
     current_user: Dict[str, Any] = Depends(get_current_user),
     pagination: Dict[str, Any] = Depends(pagination_params),
-    invoice_service: InvoiceService = Depends(get_invoice_service)
+    invoice_service: InvoiceServiceV2 = Depends(get_invoice_service)
 ) -> List[Dict[str, Any]]:
     """
     Get unpaid and partially paid invoices.
@@ -234,7 +234,7 @@ async def get_unpaid_invoices(
 async def get_overdue_invoices(
     current_user: Dict[str, Any] = Depends(get_current_user),
     pagination: Dict[str, Any] = Depends(pagination_params),
-    invoice_service: InvoiceService = Depends(get_invoice_service)
+    invoice_service: InvoiceServiceV2 = Depends(get_invoice_service)
 ) -> List[Dict[str, Any]]:
     """
     Get overdue invoices (unpaid and past due date).
@@ -260,7 +260,7 @@ async def search_invoices(
     q: str = Query(..., description="Search query"),
     current_user: Dict[str, Any] = Depends(get_current_user),
     pagination: Dict[str, Any] = Depends(pagination_params),
-    invoice_service: InvoiceService = Depends(get_invoice_service)
+    invoice_service: InvoiceServiceV2 = Depends(get_invoice_service)
 ) -> List[Dict[str, Any]]:
     """
     Search invoices by supplier name or invoice number.
@@ -287,7 +287,7 @@ async def search_invoices(
 async def get_invoice_stats(
     current_user: Dict[str, Any] = Depends(get_current_user),
     month_year: Optional[str] = Query(None, description="Filter by month (MM-YYYY)"),
-    invoice_service: InvoiceService = Depends(get_invoice_service)
+    invoice_service: InvoiceServiceV2 = Depends(get_invoice_service)
 ) -> Dict[str, Any]:
     """
     Get invoice statistics.
@@ -313,7 +313,7 @@ async def get_invoice_stats(
 )
 async def get_archived_months(
     current_user: Dict[str, Any] = Depends(get_current_user),
-    invoice_service: InvoiceService = Depends(get_invoice_service)
+    invoice_service: InvoiceServiceV2 = Depends(get_invoice_service)
 ) -> List[Dict[str, Any]]:
     """
     Get list of months that have archived invoices.
@@ -374,7 +374,7 @@ async def get_archived_months(
 )
 async def get_bank_pending_invoices(
     current_user: Dict[str, Any] = Depends(get_current_user),
-    invoice_service: InvoiceService = Depends(get_invoice_service)
+    invoice_service: InvoiceServiceV2 = Depends(get_invoice_service)
 ) -> Dict[str, Any]:
     """Get invoices pending bank payment."""
     db = Database.get_db()
@@ -480,7 +480,7 @@ async def paga_fatture_anno(
 )
 async def get_invoice(
     invoice_id: str,
-    invoice_service: InvoiceService = Depends(get_invoice_service)
+    invoice_service: InvoiceServiceV2 = Depends(get_invoice_service)
 ) -> Dict[str, Any]:
     """
     Get invoice details by ID.
@@ -500,7 +500,7 @@ async def update_invoice(
     invoice_id: str,
     update_data: InvoiceUpdate,
     current_user: Dict[str, Any] = Depends(get_current_user),
-    invoice_service: InvoiceService = Depends(get_invoice_service)
+    invoice_service: InvoiceServiceV2 = Depends(get_invoice_service)
 ) -> Dict[str, str]:
     """
     Update invoice information.
@@ -526,7 +526,7 @@ async def record_payment(
     amount: float = Query(..., gt=0, description="Payment amount"),
     payment_method: Optional[str] = Query(None, description="Payment method"),
     current_user: Dict[str, Any] = Depends(get_current_user),
-    invoice_service: InvoiceService = Depends(get_invoice_service)
+    invoice_service: InvoiceServiceV2 = Depends(get_invoice_service)
 ) -> Dict[str, Any]:
     """
     Record a payment for an invoice.
@@ -553,7 +553,7 @@ async def record_payment(
 async def archive_invoice(
     invoice_id: str,
     current_user: Dict[str, Any] = Depends(get_current_user),
-    invoice_service: InvoiceService = Depends(get_invoice_service)
+    invoice_service: InvoiceServiceV2 = Depends(get_invoice_service)
 ) -> Dict[str, str]:
     """
     Archive an invoice.
@@ -575,7 +575,7 @@ async def reconcile_with_bank(
     invoice_id: str,
     bank_transaction_id: str = Query(..., description="Bank transaction ID"),
     current_user: Dict[str, Any] = Depends(get_current_user),
-    invoice_service: InvoiceService = Depends(get_invoice_service)
+    invoice_service: InvoiceServiceV2 = Depends(get_invoice_service)
 ) -> Dict[str, str]:
     """
     Mark invoice as reconciled with a bank transaction.
@@ -603,7 +603,7 @@ async def get_invoices_by_state(
     skip: int = Query(0, ge=0, description="Records to skip"),
     limit: int = Query(100, ge=1, le=1000, description="Max records"),
     current_user: Dict[str, Any] = Depends(get_current_user),
-    invoice_service: InvoiceService = Depends(get_invoice_service)
+    invoice_service: InvoiceServiceV2 = Depends(get_invoice_service)
 ) -> Dict[str, Any]:
     """
     Get invoices filtered by payment state.
@@ -826,7 +826,7 @@ from fastapi import HTTPException
 async def upload_invoice(
     file: UploadFile = File(...),
     current_user: Dict[str, Any] = Depends(get_current_user),
-    invoice_service: InvoiceService = Depends(get_invoice_service)
+    invoice_service: InvoiceServiceV2 = Depends(get_invoice_service)
 ) -> Dict[str, Any]:
     """Upload single invoice XML."""
     contents = await file.read()
@@ -857,7 +857,7 @@ async def upload_bulk_invoices(
     files: List[UploadFile] = File(None),
     file: UploadFile = File(None), # Single file field name 'file'
     current_user: Dict[str, Any] = Depends(get_current_user),
-    invoice_service: InvoiceService = Depends(get_invoice_service)
+    invoice_service: InvoiceServiceV2 = Depends(get_invoice_service)
 ) -> Dict[str, Any]:
     """Upload multiple invoices (ZIP or multiple XML)."""
     user_id = current_user["user_id"]
@@ -970,7 +970,7 @@ async def export_invoices_to_excel(
     year: int = Query(None),
     month: int = Query(None),
     current_user: Dict[str, Any] = Depends(get_current_user),
-    invoice_service: InvoiceService = Depends(get_invoice_service)
+    invoice_service: InvoiceServiceV2 = Depends(get_invoice_service)
 ) -> StreamingResponse:
     """Export invoices to Excel file."""
     user_id = current_user["user_id"]
