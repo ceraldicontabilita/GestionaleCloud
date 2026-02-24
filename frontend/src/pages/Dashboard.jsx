@@ -1576,7 +1576,7 @@ function ScadenzeWidget({ scadenze }) {
         )}
       </div>
       
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         {scadenze.scadenze.slice(0, 6).map((s, idx) => {
           const colors = getPriorityColor(s.priorita, s.urgente);
           return (
@@ -1585,101 +1585,91 @@ function ScadenzeWidget({ scadenze }) {
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: 10,
-                padding: '10px 12px',
+                gap: 8,
+                padding: '6px 10px',
                 background: colors.bg,
-                borderRadius: 8,
-                borderLeft: `4px solid ${colors.border}`
+                borderRadius: 6,
+                borderLeft: `3px solid ${colors.border}`
               }}
             >
-              <span style={{ fontSize: 18 }}>{getTipoIcon(s.tipo)}</span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                {/* Tipo e numero documento */}
-                <div style={{ 
-                  fontWeight: '600', 
-                  fontSize: 13,
-                  color: '#1e293b',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6
-                }}>
-                  <span>{s.tipo}</span>
-                  {s.numero_fattura && <span style={{ color: '#3b82f6' }}>#{s.numero_fattura}</span>}
-                </div>
-                {/* Nome fornitore */}
-                {s.fornitore && (
-                  <div style={{ 
-                    fontSize: 12,
-                    color: '#64748b',
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    maxWidth: 180
-                  }}>
-                    {s.fornitore}
-                  </div>
-                )}
-                {/* Importo */}
-                {s.importo > 0 && (
-                  <div style={{ fontSize: 13, color: colors.text, fontWeight: 'bold' }}>
-                    {formatEuro(s.importo)}
-                  </div>
-                )}
+              {/* Tipo badge compatto */}
+              <span style={{ 
+                padding: '2px 6px', 
+                background: colors.border + '30', 
+                borderRadius: 4,
+                color: colors.text,
+                fontWeight: '600',
+                fontSize: 10,
+                minWidth: 50,
+                textAlign: 'center'
+              }}>
+                {s.tipo}
+              </span>
+              
+              {/* Importo */}
+              <span style={{ 
+                fontWeight: 'bold', 
+                fontSize: 12, 
+                color: colors.text,
+                minWidth: 65,
+                textAlign: 'right'
+              }}>
+                {s.importo > 0 ? formatEuro(s.importo) : '-'}
+              </span>
+              
+              {/* Data e giorni compatti */}
+              <span style={{ fontSize: 11, color: '#6b7280', minWidth: 50 }}>
+                {formatDate(s.data)}
+              </span>
+              <span style={{ 
+                fontSize: 10, 
+                fontWeight: 'bold',
+                color: s.giorni_mancanti <= 3 ? '#dc2626' : '#6b7280',
+                minWidth: 35
+              }}>
+                {s.giorni_mancanti === 0 ? 'OGGI' :
+                 s.giorni_mancanti === 1 ? '1g' :
+                 s.giorni_mancanti < 0 ? `${s.giorni_mancanti}g` :
+                 `${s.giorni_mancanti}g`}
+              </span>
+              
+              {/* Descrizione/Fornitore - prende il resto dello spazio */}
+              <div style={{ flex: 1, minWidth: 0, fontSize: 11, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {s.fornitore || s.descrizione || s.numero_fattura || ''}
               </div>
-              {/* Data e giorni */}
-              <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                <div style={{ fontSize: 12, fontWeight: 'bold', color: colors.text }}>
-                  {formatDate(s.data)}
-                </div>
-                <div style={{ fontSize: 10, color: '#6b7280' }}>
-                  {s.giorni_mancanti === 0 ? 'Oggi' :
-                   s.giorni_mancanti === 1 ? 'Domani' :
-                   s.giorni_mancanti < 0 ? 'Scaduta' :
-                   `${s.giorni_mancanti}g`}
-                </div>
-              </div>
-              {/* Pulsanti azioni */}
-              <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-                {/* Pulsante Vedi (solo per fatture) */}
+              
+              {/* Pulsanti azioni compatti */}
+              <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
                 {(s.fattura_id || s.source === 'fattura') && (
                   <a
                     href={`/api/fatture-ricevute/fattura/${s.fattura_id || s.id}/view-assoinvoice`}
                     target="_blank"
                     rel="noopener noreferrer"
                     style={{
-                      padding: '4px 8px',
+                      padding: '3px 6px',
                       background: '#3b82f6',
                       color: 'white',
                       borderRadius: 4,
-                      fontSize: 11,
-                      fontWeight: 600,
-                      textDecoration: 'none',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 3
+                      fontSize: 10,
+                      textDecoration: 'none'
                     }}
-                    title="Visualizza documento"
+                    title="Vedi"
                   >
                     📄
                   </a>
                 )}
-                {/* Pulsante Paga */}
                 <button
                   onClick={() => setPagaModal(s)}
                   style={{
-                    padding: '4px 8px',
+                    padding: '3px 6px',
                     background: '#10b981',
                     color: 'white',
                     border: 'none',
                     borderRadius: 4,
-                    fontSize: 11,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 3
+                    fontSize: 10,
+                    cursor: 'pointer'
                   }}
-                  title="Registra pagamento"
+                  title="Paga"
                 >
                   ✓
                 </button>
