@@ -1,165 +1,515 @@
 <analysis>**original_problem_statement:**
-The user wants to recreate an ERP system from a GitHub repository: . The initial goal was to replicate the entire system without the login functionality. During the process, the user provided several course corrections and new requirements:
-1.  Use a specific UI design from a screenshot, which was different from the original repository's design.
-2.  Connect the application to a user-provided MongoDB Atlas database.
-3.  Adhere to a specific design system provided in an HTML file (), including brand colors.
-4.  Switch to a more stable version of the application from a different repository: .
-5.  Fix numerous backend errors, data loading issues, and UI bugs. The main data issue was that the application was connected to a richly populated database, but no data was being displayed.
-6.  Make the UI more compact to reduce scrolling.
-7.  Perform a serious refactoring and run end-to-end tests.
-8.  A key (but missed) requirement was to implement a top-navigation layout as specified in another HTML file (), which differs from the currently implemented sidebar layout.
+The user wants to recreate an ERP system from a GitHub repository, , with a custom UI and connected to their MongoDB Atlas database. The initial goal was to fix data loading issues and align the UI with user-provided designs.
+
+During this session, the user's requests evolved to include:
+1.  A complete UI overhaul from a sidebar to a top-navigation layout.
+2.  Extensive UI cleanup to remove duplicate titles, collapsible sections, and content frames to reduce scrolling.
+3.  Refactoring the main navigation to use direct links instead of dropdown menus.
+4.  Implementing a new Universal Learning Machine feature that analyzes data from all modules (invoices, suppliers, payroll, etc.) to find patterns and provide insights.
+5.  Fixing numerous bugs related to data filtering, API imports, and inconsistent UI behavior.
+6.  The login functionality remains disabled, to be re-implemented before deployment.
 
 **User's preferred language**: Italiano
 
 **what currently exists?**
-A full-stack ERP application cloned from the  repository. The frontend is built with React/Vite, and the backend with FastAPI. The application is successfully connected to the user's MongoDB Atlas instance () and now correctly displays the real data (e.g., 316 suppliers, financial data on the dashboard). The login feature has been disabled as requested. The UI has been made more compact to improve data visibility. Both backend and frontend have passed a round of automated tests.
+A full-stack ERP application with a React/Vite frontend and a FastAPI backend, connected to the user's live MongoDB Atlas database.
+
+The application now features:
+- A completely refactored **top-navigation layout** as per the user's original request, replacing the old sidebar.
+- A simplified and compact UI across all pages, with redundant titles, content frames (blue boxes), and collapsible sections removed.
+- A new **Universal Learning Machine** module accessible from the Altro menu. This feature can be trained on all application data (invoices, suppliers, payroll, etc.) and displays learned patterns for modules like Suppliers, Seasonality, and Checks.
+- A main navigation bar with direct links to major modules (Fatture, Fisco, HR, etc.), with less critical items grouped under an Altro dropdown.
+- A more visible year selector in the top navigation bar.
+- Numerous backend and frontend bugs have been fixed, allowing data to be correctly displayed on most pages.
 
 **Last working item**:
-    - Last item agent was working: The agent was fulfilling a three-part user request: 1) Make the UI more compact to reduce scrolling, 2) Perform a serious refactoring, and 3) Run end-to-end tests. The agent compacted the UI and successfully ran both backend and frontend tests.
-    - Status: USER VERIFICATION PENDING
-    - Agent Testing Done: Y
-    - Which testing method agent to use? NA (Testing for the last item is complete).
+    - Last item agent was working: The user reported that the Prima Nota (First Entry / General Ledger) page is broken. It gets stuck on a loading screen and does not display any data for any selected year.
+    - Status: IN PROGRESS
+    - Agent Testing Done: N
+    - Which testing method agent to use? backend testing agent. The next agent should first investigate the frontend behavior using browser developer tools (checking the Network tab for API calls and the Console for errors) and then check the backend logs (==> /var/log/supervisor/backend.err.log <==
+WARNING:  WatchFiles detected changes in 'tests/test_erp_api.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [88]
+INFO:     Started server process [2868]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  WatchFiles detected changes in 'tests/test_erp_api.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [2868]
+WARNING:  WatchFiles detected changes in 'tests/test_erp_api.py'. Reloading...
+INFO:     Started server process [2998]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [2998]
+INFO:     Stopping reloader process [46]
+INFO:     Will watch for changes in these directories: ['/app/backend']
+INFO:     Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)
+INFO:     Started reloader process [6703] using WatchFiles
+INFO:     Started server process [6705]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [6705]
+INFO:     Stopping reloader process [6703]
+INFO:     Will watch for changes in these directories: ['/app/backend']
+INFO:     Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)
+INFO:     Started reloader process [13831] using WatchFiles
+INFO:     Started server process [13833]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [13833]
+INFO:     Stopping reloader process [13831]
+INFO:     Will watch for changes in these directories: ['/app/backend']
+INFO:     Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)
+INFO:     Started reloader process [14255] using WatchFiles
+INFO:     Started server process [14257]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [14257]
+INFO:     Stopping reloader process [14255]
+INFO:     Will watch for changes in these directories: ['/app/backend']
+INFO:     Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)
+INFO:     Started reloader process [15204] using WatchFiles
+INFO:     Started server process [15206]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Will watch for changes in these directories: ['/app/backend']
+INFO:     Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)
+INFO:     Started reloader process [46] using WatchFiles
+INFO:     Started server process [87]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+
+==> /var/log/supervisor/backend.out.log <==
+{"timestamp": "2026-02-24T21:55:45.649573+00:00", "level": "ERROR", "logger": "app.routers.documenti", "message": "Errore processing fattura: cannot import name 'process_fattura_to_db' from 'app.routers.invoices.fatture_upload' (/app/app/routers/invoices/fatture_upload.py)", "module": "documenti", "function": "upload_documento_automatico", "line": 2732}
+{"timestamp": "2026-02-24T21:56:02.578363+00:00", "level": "INFO", "logger": "app.services.calcolo_imposte", "message": "Calcolo imposte per anno 2026", "module": "calcolo_imposte", "function": "calcola_imposte_da_db", "line": 141}
+{"timestamp": "2026-02-24T21:56:03.339877+00:00", "level": "INFO", "logger": "app.services.calcolo_imposte", "message": "Calcolo imposte per anno 2026", "module": "calcolo_imposte", "function": "calcola_imposte_da_db", "line": 141}
+{"timestamp": "2026-02-24T21:57:01.302312+00:00", "level": "INFO", "logger": "app.services.calcolo_imposte", "message": "Calcolo imposte per anno 2026", "module": "calcolo_imposte", "function": "calcola_imposte_da_db", "line": 141}
+{"timestamp": "2026-02-24T21:57:02.060688+00:00", "level": "INFO", "logger": "app.services.calcolo_imposte", "message": "Calcolo imposte per anno 2026", "module": "calcolo_imposte", "function": "calcola_imposte_da_db", "line": 141}
+{"timestamp": "2026-02-24T21:58:02.951472+00:00", "level": "INFO", "logger": "app.services.calcolo_imposte", "message": "Calcolo imposte per anno 2026", "module": "calcolo_imposte", "function": "calcola_imposte_da_db", "line": 141}
+{"timestamp": "2026-02-24T21:58:03.772198+00:00", "level": "INFO", "logger": "app.services.calcolo_imposte", "message": "Calcolo imposte per anno 2026", "module": "calcolo_imposte", "function": "calcola_imposte_da_db", "line": 141}
+{"timestamp": "2026-02-24T21:58:36.097647+00:00", "level": "INFO", "logger": "app.services.calcolo_imposte", "message": "Calcolo imposte per anno 2026", "module": "calcolo_imposte", "function": "calcola_imposte_da_db", "line": 141}
+{"timestamp": "2026-02-24T21:58:36.813976+00:00", "level": "INFO", "logger": "app.services.calcolo_imposte", "message": "Calcolo imposte per anno 2026", "module": "calcolo_imposte", "function": "calcola_imposte_da_db", "line": 141}
+{"timestamp": "2026-02-24T21:59:09.853157+00:00", "level": "INFO", "logger": "app.main", "message": "\ud83d\udd04 Shutting down application...", "module": "main", "function": "lifespan", "line": 82}
+{"timestamp": "2026-02-24T21:59:09.853253+00:00", "level": "INFO", "logger": "app.services.email_monitor_service", "message": "\ud83d\uded1 Monitor email fermato", "module": "email_monitor_service", "function": "stop_monitor", "line": 495}
+{"timestamp": "2026-02-24T21:59:09.853274+00:00", "level": "INFO", "logger": "app.main", "message": "\ud83d\udcec Monitor email fermato", "module": "main", "function": "lifespan", "line": 88}
+{"timestamp": "2026-02-24T21:59:09.853320+00:00", "level": "INFO", "logger": "app.scheduler", "message": "\ud83d\uded1 [SCHEDULER] Scheduler fermato", "module": "scheduler", "function": "stop_scheduler", "line": 219}
+{"timestamp": "2026-02-24T21:59:09.853336+00:00", "level": "INFO", "logger": "app.main", "message": "\u23f0 Scheduler fermato", "module": "main", "function": "lifespan", "line": 96}
+{"timestamp": "2026-02-24T21:59:09.853355+00:00", "level": "INFO", "logger": "app.database", "message": "Closing MongoDB connection...", "module": "database", "function": "close_db", "line": 186}
+{"timestamp": "2026-02-24T21:59:09.965234+00:00", "level": "INFO", "logger": "app.database", "message": "\u2705 MongoDB connection closed", "module": "database", "function": "close_db", "line": 188}
+{"timestamp": "2026-02-24T21:59:09.965293+00:00", "level": "INFO", "logger": "app.main", "message": "\u2705 Application shutdown complete", "module": "main", "function": "lifespan", "line": 101}
+{"timestamp": "2026-02-24T21:59:09.965423+00:00", "level": "INFO", "logger": "apscheduler.scheduler", "message": "Scheduler has been shut down", "module": "base", "function": "shutdown", "line": 212}
+{"timestamp": "2026-02-24T21:59:11.609243+00:00", "level": "INFO", "logger": "root", "message": "\u2705 Logging configured: level=INFO, format=json", "module": "logger", "function": "setup_logging", "line": 103}
+{"timestamp": "2026-02-24T21:59:11.624476+00:00", "level": "INFO", "logger": "app.main", "message": "\ud83d\udee1\ufe0f Rate limiting attivo: 200 req/min default", "module": "main", "function": "<module>", "line": 131}
+{"timestamp": "2026-02-24T21:59:11.707679+00:00", "level": "WARNING", "logger": "app.services.email_service", "message": "Email service not configured. Set SMTP_HOST, SMTP_USER, SMTP_PASSWORD in .env", "module": "email_service", "function": "__init__", "line": 44}
+{"timestamp": "2026-02-24T21:59:12.584063+00:00", "level": "WARNING", "logger": "app.routers.gestione_riservata", "message": "\u26a0\ufe0f GESTIONE_RISERVATA_CODE non configurato in .env", "module": "gestione_riservata", "function": "<module>", "line": 20}
+{"timestamp": "2026-02-24T21:59:13.591321+00:00", "level": "INFO", "logger": "app.main", "message": "\ud83d\ude80 Starting Azienda in Cloud ERP v1.0.0", "module": "main", "function": "lifespan", "line": 28}
+{"timestamp": "2026-02-24T21:59:13.591377+00:00", "level": "INFO", "logger": "app.main", "message": "Environment: development", "module": "main", "function": "lifespan", "line": 29}
+{"timestamp": "2026-02-24T21:59:13.591404+00:00", "level": "INFO", "logger": "app.database", "message": "Connecting to MongoDB Atlas...", "module": "database", "function": "connect_db", "line": 26}
+{"timestamp": "2026-02-24T21:59:14.891773+00:00", "level": "INFO", "logger": "app.database", "message": "\u2705 Connected to MongoDB database: azienda_erp_db", "module": "database", "function": "connect_db", "line": 37}
+{"timestamp": "2026-02-24T21:59:15.340853+00:00", "level": "WARNING", "logger": "app.database", "message": "Index creation warning (may already exist): Index already exists with a different name: codice_fiscale_1, full error: {'ok': 0.0, 'errmsg': 'Index already exists with a different name: codice_fiscale_1', 'code': 85, 'codeName': 'IndexOptionsConflict', '$clusterTime': {'clusterTime': Timestamp(1771970351, 1), 'signature': {'hash': b'\\x16\\xac\\xc7\\xaf\\xd1\\xff\\xa7\\xc5\\x96\\x01?\\x90\\x82]\\x97\\x81\\t^\\xe7\\x80', 'keyId': 7606973468805955589}}, 'operationTime': Timestamp(1771970351, 1)}", "module": "database", "function": "_create_indexes", "line": 177}
+{"timestamp": "2026-02-24T21:59:15.340945+00:00", "level": "ERROR", "logger": "app.config", "message": "\u274c ERROR: SECRET_KEY non configurata nell'ambiente! L'applicazione sta usando una chiave temporanea. Configurare SECRET_KEY nel file .env per la produzione.", "module": "config", "function": "validate_startup", "line": 193}
+{"timestamp": "2026-02-24T21:59:15.341000+00:00", "level": "INFO", "logger": "app.main", "message": "\ud83d\udcec Monitor email avviato (ogni 10 minuti)", "module": "main", "function": "lifespan", "line": 52}
+{"timestamp": "2026-02-24T21:59:15.358092+00:00", "level": "INFO", "logger": "app.scheduler", "message": "\ud83d\ude80 [SCHEDULER] Configurazione scheduler...", "module": "scheduler", "function": "start_scheduler", "line": 168}
+{"timestamp": "2026-02-24T21:59:15.358384+00:00", "level": "INFO", "logger": "apscheduler.scheduler", "message": "Adding job tentatively -- it will be properly scheduled when the scheduler starts", "module": "base", "function": "add_job", "line": 454}
+{"timestamp": "2026-02-24T21:59:15.358480+00:00", "level": "INFO", "logger": "apscheduler.scheduler", "message": "Adding job tentatively -- it will be properly scheduled when the scheduler starts", "module": "base", "function": "add_job", "line": 454}
+{"timestamp": "2026-02-24T21:59:15.358589+00:00", "level": "INFO", "logger": "apscheduler.scheduler", "message": "Adding job tentatively -- it will be properly scheduled when the scheduler starts", "module": "base", "function": "add_job", "line": 454}
+{"timestamp": "2026-02-24T21:59:15.358664+00:00", "level": "INFO", "logger": "apscheduler.scheduler", "message": "Adding job tentatively -- it will be properly scheduled when the scheduler starts", "module": "base", "function": "add_job", "line": 454}
+{"timestamp": "2026-02-24T21:59:15.358989+00:00", "level": "INFO", "logger": "apscheduler.scheduler", "message": "Added job \"Sync Gmail/Aruba (ogni 10 min)\" to job store \"default\"", "module": "base", "function": "_real_add_job", "line": 895}
+{"timestamp": "2026-02-24T21:59:15.359028+00:00", "level": "INFO", "logger": "apscheduler.scheduler", "message": "Added job \"Scan Email Verbali (ogni ora)\" to job store \"default\"", "module": "base", "function": "_real_add_job", "line": 895}
+{"timestamp": "2026-02-24T21:59:15.359111+00:00", "level": "INFO", "logger": "apscheduler.scheduler", "message": "Added job \"Controllo Scadenze F24 (ogni giorno ore 8:00)\" to job store \"default\"", "module": "base", "function": "_real_add_job", "line": 895}
+{"timestamp": "2026-02-24T21:59:15.359172+00:00", "level": "INFO", "logger": "apscheduler.scheduler", "message": "Added job \"Reminder Scadenze F24 (ogni giorno ore 14:00)\" to job store \"default\"", "module": "base", "function": "_real_add_job", "line": 895}
+{"timestamp": "2026-02-24T21:59:15.359188+00:00", "level": "INFO", "logger": "apscheduler.scheduler", "message": "Scheduler started", "module": "base", "function": "start", "line": 181}
+{"timestamp": "2026-02-24T21:59:15.359225+00:00", "level": "INFO", "logger": "app.scheduler", "message": "\u2705 [SCHEDULER] Scheduler avviato", "module": "scheduler", "function": "start_scheduler", "line": 209}
+{"timestamp": "2026-02-24T21:59:15.359237+00:00", "level": "INFO", "logger": "app.scheduler", "message": "   - Gmail/Aruba: ogni 10 minuti", "module": "scheduler", "function": "start_scheduler", "line": 210}
+{"timestamp": "2026-02-24T21:59:15.359248+00:00", "level": "INFO", "logger": "app.scheduler", "message": "   - Verbali Email: ogni ora", "module": "scheduler", "function": "start_scheduler", "line": 211}
+{"timestamp": "2026-02-24T21:59:15.359259+00:00", "level": "INFO", "logger": "app.scheduler", "message": "   - Scadenze F24: ogni giorno ore 8:00 e 14:00", "module": "scheduler", "function": "start_scheduler", "line": 212}
+{"timestamp": "2026-02-24T21:59:15.359274+00:00", "level": "INFO", "logger": "app.main", "message": "\u23f0 Scheduler avviato (HACCP, Verbali, Email)", "module": "main", "function": "lifespan", "line": 60}
+{"timestamp": "2026-02-24T21:59:15.359286+00:00", "level": "INFO", "logger": "app.main", "message": "\u2705 Application startup complete", "module": "main", "function": "lifespan", "line": 64}
+{"timestamp": "2026-02-24T21:59:15.359614+00:00", "level": "INFO", "logger": "app.services.email_monitor_service", "message": "\ud83d\ude80 Avvio monitor email (intervallo: 600s)", "module": "email_monitor_service", "function": "monitor_loop", "line": 457}
+{"timestamp": "2026-02-24T21:59:15.359652+00:00", "level": "WARNING", "logger": "app.services.email_monitor_service", "message": "Credenziali email non configurate", "module": "email_monitor_service", "function": "sync_email_documents", "line": 51}
+{"timestamp": "2026-02-24T21:59:15.538202+00:00", "level": "WARNING", "logger": "app.services.automazione_completa", "message": "Credenziali email non configurate per Aruba", "module": "automazione_completa", "function": "fetch_aruba_emails_to_operazioni", "line": 49}
+{"timestamp": "2026-02-24T21:59:16.236394+00:00", "level": "INFO", "logger": "app.routers.prima_nota_module.common", "message": "MIGRAZIONE CASSA: Eliminati 0 movimenti bancari, rimasti 5", "module": "manutenzione", "function": "migrazione_pulisci_bancari_da_cassa", "line": 591}
+{"timestamp": "2026-02-24T21:59:16.236468+00:00", "level": "INFO", "logger": "app.main", "message": "\ud83e\uddf9 Migrazione cassa: nessun movimento bancario da pulire", "module": "main", "function": "lifespan", "line": 75}
+{"timestamp": "2026-02-24T21:59:16.428634+00:00", "level": "ERROR", "logger": "app.services.email_downloader", "message": "Errore connessione IMAP: b'[AUTHENTICATIONFAILED] Invalid credentials (Failure)'", "module": "email_downloader", "function": "connect", "line": 63}
+{"timestamp": "2026-02-24T21:59:16.429060+00:00", "level": "WARNING", "logger": "app.services.email_monitor_service", "message": "F24 sync automatico non eseguito: 500: ['Impossibile connettersi al server email']", "module": "email_monitor_service", "function": "run_full_sync", "line": 397}
+{"timestamp": "2026-02-24T21:59:17.101858+00:00", "level": "INFO", "logger": "app.services.email_monitor_service", "message": "\u2705 Sync completo - Doc: 0, Aruba: 0, F24: 0, Processati: 0", "module": "email_monitor_service", "function": "run_full_sync", "line": 426}
+{"timestamp": "2026-02-24T21:59:27.050931+00:00", "level": "INFO", "logger": "app.services.calcolo_imposte", "message": "Calcolo imposte per anno 2026", "module": "calcolo_imposte", "function": "calcola_imposte_da_db", "line": 141}
+{"timestamp": "2026-02-24T21:59:27.705005+00:00", "level": "INFO", "logger": "app.services.calcolo_imposte", "message": "Calcolo imposte per anno 2026", "module": "calcolo_imposte", "function": "calcola_imposte_da_db", "line": 141}
+{"timestamp": "2026-02-24T21:59:36.656517+00:00", "level": "INFO", "logger": "app.services.calcolo_imposte", "message": "Calcolo imposte per anno 2026", "module": "calcolo_imposte", "function": "calcola_imposte_da_db", "line": 141}
+{"timestamp": "2026-02-24T21:59:37.545528+00:00", "level": "INFO", "logger": "app.services.calcolo_imposte", "message": "Calcolo imposte per anno 2026", "module": "calcolo_imposte", "function": "calcola_imposte_da_db", "line": 141}
+{"timestamp": "2026-02-24T22:00:38.227667+00:00", "level": "INFO", "logger": "app.services.calcolo_imposte", "message": "Calcolo imposte per anno 2026", "module": "calcolo_imposte", "function": "calcola_imposte_da_db", "line": 141}
+{"timestamp": "2026-02-24T22:00:38.915089+00:00", "level": "INFO", "logger": "app.services.calcolo_imposte", "message": "Calcolo imposte per anno 2026", "module": "calcolo_imposte", "function": "calcola_imposte_da_db", "line": 141}
+{"timestamp": "2026-02-24T22:01:39.282276+00:00", "level": "INFO", "logger": "app.services.calcolo_imposte", "message": "Calcolo imposte per anno 2026", "module": "calcolo_imposte", "function": "calcola_imposte_da_db", "line": 141}
+{"timestamp": "2026-02-24T22:01:39.973688+00:00", "level": "INFO", "logger": "app.services.calcolo_imposte", "message": "Calcolo imposte per anno 2026", "module": "calcolo_imposte", "function": "calcola_imposte_da_db", "line": 141}
+{"timestamp": "2026-02-24T22:02:40.684328+00:00", "level": "INFO", "logger": "app.services.calcolo_imposte", "message": "Calcolo imposte per anno 2026", "module": "calcolo_imposte", "function": "calcola_imposte_da_db", "line": 141}
+{"timestamp": "2026-02-24T22:02:41.408676+00:00", "level": "INFO", "logger": "app.services.calcolo_imposte", "message": "Calcolo imposte per anno 2026", "module": "calcolo_imposte", "function": "calcola_imposte_da_db", "line": 141}
+{"timestamp": "2026-02-24T22:03:41.996239+00:00", "level": "INFO", "logger": "app.services.calcolo_imposte", "message": "Calcolo imposte per anno 2026", "module": "calcolo_imposte", "function": "calcola_imposte_da_db", "line": 141}
+{"timestamp": "2026-02-24T22:03:42.740365+00:00", "level": "INFO", "logger": "app.services.calcolo_imposte", "message": "Calcolo imposte per anno 2026", "module": "calcolo_imposte", "function": "calcola_imposte_da_db", "line": 141}
+{"timestamp": "2026-02-24T22:04:41.421910+00:00", "level": "INFO", "logger": "root", "message": "\u2705 Logging configured: level=INFO, format=json", "module": "logger", "function": "setup_logging", "line": 103}
+{"timestamp": "2026-02-24T22:04:41.501583+00:00", "level": "INFO", "logger": "app.main", "message": "\ud83d\udee1\ufe0f Rate limiting attivo: 200 req/min default", "module": "main", "function": "<module>", "line": 131}
+{"timestamp": "2026-02-24T22:04:41.699183+00:00", "level": "WARNING", "logger": "app.services.email_service", "message": "Email service not configured. Set SMTP_HOST, SMTP_USER, SMTP_PASSWORD in .env", "module": "email_service", "function": "__init__", "line": 44}
+{"timestamp": "2026-02-24T22:04:43.967415+00:00", "level": "WARNING", "logger": "app.routers.gestione_riservata", "message": "\u26a0\ufe0f GESTIONE_RISERVATA_CODE non configurato in .env", "module": "gestione_riservata", "function": "<module>", "line": 20}
+{"timestamp": "2026-02-24T22:04:45.116958+00:00", "level": "INFO", "logger": "app.main", "message": "\ud83d\ude80 Starting Azienda in Cloud ERP v1.0.0", "module": "main", "function": "lifespan", "line": 28}
+{"timestamp": "2026-02-24T22:04:45.117020+00:00", "level": "INFO", "logger": "app.main", "message": "Environment: development", "module": "main", "function": "lifespan", "line": 29}
+{"timestamp": "2026-02-24T22:04:45.117047+00:00", "level": "INFO", "logger": "app.database", "message": "Connecting to MongoDB Atlas...", "module": "database", "function": "connect_db", "line": 26}
+{"timestamp": "2026-02-24T22:04:46.446668+00:00", "level": "INFO", "logger": "app.database", "message": "\u2705 Connected to MongoDB database: azienda_erp_db", "module": "database", "function": "connect_db", "line": 37}
+{"timestamp": "2026-02-24T22:04:46.901081+00:00", "level": "WARNING", "logger": "app.database", "message": "Index creation warning (may already exist): Index already exists with a different name: codice_fiscale_1, full error: {'ok': 0.0, 'errmsg': 'Index already exists with a different name: codice_fiscale_1', 'code': 85, 'codeName': 'IndexOptionsConflict', '$clusterTime': {'clusterTime': Timestamp(1771970681, 1), 'signature': {'hash': b'\\xc6\\xf2l\\x1c\\x13\\xb5\\xc4\\x90\\x94\\x12b\\x82g\\xd7ayve\\x1d\\xda', 'keyId': 7606973468805955589}}, 'operationTime': Timestamp(1771970681, 1)}", "module": "database", "function": "_create_indexes", "line": 177}
+{"timestamp": "2026-02-24T22:04:46.901170+00:00", "level": "ERROR", "logger": "app.config", "message": "\u274c ERROR: SECRET_KEY non configurata nell'ambiente! L'applicazione sta usando una chiave temporanea. Configurare SECRET_KEY nel file .env per la produzione.", "module": "config", "function": "validate_startup", "line": 193}
+{"timestamp": "2026-02-24T22:04:46.901232+00:00", "level": "INFO", "logger": "app.main", "message": "\ud83d\udcec Monitor email avviato (ogni 10 minuti)", "module": "main", "function": "lifespan", "line": 52}
+{"timestamp": "2026-02-24T22:04:46.957870+00:00", "level": "INFO", "logger": "app.scheduler", "message": "\ud83d\ude80 [SCHEDULER] Configurazione scheduler...", "module": "scheduler", "function": "start_scheduler", "line": 168}
+{"timestamp": "2026-02-24T22:04:46.958689+00:00", "level": "INFO", "logger": "apscheduler.scheduler", "message": "Adding job tentatively -- it will be properly scheduled when the scheduler starts", "module": "base", "function": "add_job", "line": 454}
+{"timestamp": "2026-02-24T22:04:46.958769+00:00", "level": "INFO", "logger": "apscheduler.scheduler", "message": "Adding job tentatively -- it will be properly scheduled when the scheduler starts", "module": "base", "function": "add_job", "line": 454}
+{"timestamp": "2026-02-24T22:04:46.958898+00:00", "level": "INFO", "logger": "apscheduler.scheduler", "message": "Adding job tentatively -- it will be properly scheduled when the scheduler starts", "module": "base", "function": "add_job", "line": 454}
+{"timestamp": "2026-02-24T22:04:46.958986+00:00", "level": "INFO", "logger": "apscheduler.scheduler", "message": "Adding job tentatively -- it will be properly scheduled when the scheduler starts", "module": "base", "function": "add_job", "line": 454}
+{"timestamp": "2026-02-24T22:04:46.960601+00:00", "level": "INFO", "logger": "apscheduler.scheduler", "message": "Added job \"Sync Gmail/Aruba (ogni 10 min)\" to job store \"default\"", "module": "base", "function": "_real_add_job", "line": 895}
+{"timestamp": "2026-02-24T22:04:46.960663+00:00", "level": "INFO", "logger": "apscheduler.scheduler", "message": "Added job \"Scan Email Verbali (ogni ora)\" to job store \"default\"", "module": "base", "function": "_real_add_job", "line": 895}
+{"timestamp": "2026-02-24T22:04:46.960770+00:00", "level": "INFO", "logger": "apscheduler.scheduler", "message": "Added job \"Controllo Scadenze F24 (ogni giorno ore 8:00)\" to job store \"default\"", "module": "base", "function": "_real_add_job", "line": 895}
+{"timestamp": "2026-02-24T22:04:46.960838+00:00", "level": "INFO", "logger": "apscheduler.scheduler", "message": "Added job \"Reminder Scadenze F24 (ogni giorno ore 14:00)\" to job store \"default\"", "module": "base", "function": "_real_add_job", "line": 895}
+{"timestamp": "2026-02-24T22:04:46.960856+00:00", "level": "INFO", "logger": "apscheduler.scheduler", "message": "Scheduler started", "module": "base", "function": "start", "line": 181}
+{"timestamp": "2026-02-24T22:04:46.960894+00:00", "level": "INFO", "logger": "app.scheduler", "message": "\u2705 [SCHEDULER] Scheduler avviato", "module": "scheduler", "function": "start_scheduler", "line": 209}
+{"timestamp": "2026-02-24T22:04:46.960907+00:00", "level": "INFO", "logger": "app.scheduler", "message": "   - Gmail/Aruba: ogni 10 minuti", "module": "scheduler", "function": "start_scheduler", "line": 210}
+{"timestamp": "2026-02-24T22:04:46.960919+00:00", "level": "INFO", "logger": "app.scheduler", "message": "   - Verbali Email: ogni ora", "module": "scheduler", "function": "start_scheduler", "line": 211}
+{"timestamp": "2026-02-24T22:04:46.960930+00:00", "level": "INFO", "logger": "app.scheduler", "message": "   - Scadenze F24: ogni giorno ore 8:00 e 14:00", "module": "scheduler", "function": "start_scheduler", "line": 212}
+{"timestamp": "2026-02-24T22:04:46.960946+00:00", "level": "INFO", "logger": "app.main", "message": "\u23f0 Scheduler avviato (HACCP, Verbali, Email)", "module": "main", "function": "lifespan", "line": 60}
+{"timestamp": "2026-02-24T22:04:46.960958+00:00", "level": "INFO", "logger": "app.main", "message": "\u2705 Application startup complete", "module": "main", "function": "lifespan", "line": 64}
+{"timestamp": "2026-02-24T22:04:46.961189+00:00", "level": "INFO", "logger": "app.services.email_monitor_service", "message": "\ud83d\ude80 Avvio monitor email (intervallo: 600s)", "module": "email_monitor_service", "function": "monitor_loop", "line": 457}
+{"timestamp": "2026-02-24T22:04:46.961234+00:00", "level": "WARNING", "logger": "app.services.email_monitor_service", "message": "Credenziali email non configurate", "module": "email_monitor_service", "function": "sync_email_documents", "line": 51}
+{"timestamp": "2026-02-24T22:04:47.250967+00:00", "level": "WARNING", "logger": "app.services.automazione_completa", "message": "Credenziali email non configurate per Aruba", "module": "automazione_completa", "function": "fetch_aruba_emails_to_operazioni", "line": 49}
+{"timestamp": "2026-02-24T22:04:47.806777+00:00", "level": "ERROR", "logger": "app.services.email_downloader", "message": "Errore connessione IMAP: b'[AUTHENTICATIONFAILED] Invalid credentials (Failure)'", "module": "email_downloader", "function": "connect", "line": 63}
+{"timestamp": "2026-02-24T22:04:47.807242+00:00", "level": "WARNING", "logger": "app.services.email_monitor_service", "message": "F24 sync automatico non eseguito: 500: ['Impossibile connettersi al server email']", "module": "email_monitor_service", "function": "run_full_sync", "line": 397}
+{"timestamp": "2026-02-24T22:04:47.954873+00:00", "level": "INFO", "logger": "app.routers.prima_nota_module.common", "message": "MIGRAZIONE CASSA: Eliminati 0 movimenti bancari, rimasti 5", "module": "manutenzione", "function": "migrazione_pulisci_bancari_da_cassa", "line": 591}
+{"timestamp": "2026-02-24T22:04:47.954944+00:00", "level": "INFO", "logger": "app.main", "message": "\ud83e\uddf9 Migrazione cassa: nessun movimento bancario da pulire", "module": "main", "function": "lifespan", "line": 75}
+{"timestamp": "2026-02-24T22:04:48.478670+00:00", "level": "INFO", "logger": "app.services.email_monitor_service", "message": "\u2705 Sync completo - Doc: 0, Aruba: 0, F24: 0, Processati: 0", "module": "email_monitor_service", "function": "run_full_sync", "line": 426}) for any errors related to the Prima Nota API endpoints.
     - User Testing Done: N
 
 **All Pending/In progress Issue list**:
-  - Issue 1: Mismatched application layout (P0)
-  - Issue 2: Inconsistent API routing calls (P1)
+  - Issue 1: Prima Nota page is broken (P0)
+  - Issue 2: Minor UI bug in Learning Machine tabs (P2)
 
   Issues Detail:
   - Issue 1:
-     - **Description**: The current application has a sidebar navigation, which comes from the  repository. However, the user explicitly requested a **top-navigation layout** (as shown in the  file they provided in message 515). This is a major UI/UX discrepancy that was missed.
-     - Attempted fixes: None. The agent acknowledged the top-nav requirement but then proceeded with a different repository that had a sidebar, and this discrepancy was never addressed.
+     - **Description**: The  page is non-functional. It remains on a Caricamento... (Loading...) screen indefinitely and fails to load data, whereas it was working previously. This is a critical regression.
+     - Attempted fixes: The agent has only taken a screenshot to confirm the issue. No debugging has been performed yet.
      - Next debug checklist:
-        1.  Analyze the  file provided by the user to understand the structure of the top navigation and the overall page layout.
-        2.  Identify the main layout components in the frontend codebase (, ).
-        3.  Refactor the main layout components to replace the current sidebar with a top navigation bar.
-        4.  Ensure all navigation links work correctly in the new top-nav structure.
-        5.  Adjust the content area of all pages to correctly position itself under the new top-nav.
-     - Why fix this issue and what will be achieved with the fix?: To align the application's UI with the user's explicit design requirements, delivering the correct user experience.
+        1.  Navigate to the Prima Nota page and open the browser's developer tools.
+        2.  Check the **Network** tab to see which API call is pending, failing, or returning an unexpected response (e.g., 404, 500).
+        3.  Check the **Console** tab for any JavaScript errors that might be halting execution.
+        4.  Based on the failing API endpoint, examine the corresponding backend logs for errors using ==> /var/log/supervisor/backend.err.log <==
+WARNING:  WatchFiles detected changes in 'tests/test_erp_api.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [88]
+INFO:     Started server process [2868]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  WatchFiles detected changes in 'tests/test_erp_api.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [2868]
+WARNING:  WatchFiles detected changes in 'tests/test_erp_api.py'. Reloading...
+INFO:     Started server process [2998]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [2998]
+INFO:     Stopping reloader process [46]
+INFO:     Will watch for changes in these directories: ['/app/backend']
+INFO:     Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)
+INFO:     Started reloader process [6703] using WatchFiles
+INFO:     Started server process [6705]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [6705]
+INFO:     Stopping reloader process [6703]
+INFO:     Will watch for changes in these directories: ['/app/backend']
+INFO:     Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)
+INFO:     Started reloader process [13831] using WatchFiles
+INFO:     Started server process [13833]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [13833]
+INFO:     Stopping reloader process [13831]
+INFO:     Will watch for changes in these directories: ['/app/backend']
+INFO:     Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)
+INFO:     Started reloader process [14255] using WatchFiles
+INFO:     Started server process [14257]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [14257]
+INFO:     Stopping reloader process [14255]
+INFO:     Will watch for changes in these directories: ['/app/backend']
+INFO:     Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)
+INFO:     Started reloader process [15204] using WatchFiles
+INFO:     Started server process [15206]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Will watch for changes in these directories: ['/app/backend']
+INFO:     Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)
+INFO:     Started reloader process [46] using WatchFiles
+INFO:     Started server process [87]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+
+==> /var/log/supervisor/backend.out.log <==
+{"timestamp": "2026-02-24T21:55:45.649573+00:00", "level": "ERROR", "logger": "app.routers.documenti", "message": "Errore processing fattura: cannot import name 'process_fattura_to_db' from 'app.routers.invoices.fatture_upload' (/app/app/routers/invoices/fatture_upload.py)", "module": "documenti", "function": "upload_documento_automatico", "line": 2732}
+{"timestamp": "2026-02-24T21:56:02.578363+00:00", "level": "INFO", "logger": "app.services.calcolo_imposte", "message": "Calcolo imposte per anno 2026", "module": "calcolo_imposte", "function": "calcola_imposte_da_db", "line": 141}
+{"timestamp": "2026-02-24T21:56:03.339877+00:00", "level": "INFO", "logger": "app.services.calcolo_imposte", "message": "Calcolo imposte per anno 2026", "module": "calcolo_imposte", "function": "calcola_imposte_da_db", "line": 141}
+{"timestamp": "2026-02-24T21:57:01.302312+00:00", "level": "INFO", "logger": "app.services.calcolo_imposte", "message": "Calcolo imposte per anno 2026", "module": "calcolo_imposte", "function": "calcola_imposte_da_db", "line": 141}
+{"timestamp": "2026-02-24T21:57:02.060688+00:00", "level": "INFO", "logger": "app.services.calcolo_imposte", "message": "Calcolo imposte per anno 2026", "module": "calcolo_imposte", "function": "calcola_imposte_da_db", "line": 141}
+{"timestamp": "2026-02-24T21:58:02.951472+00:00", "level": "INFO", "logger": "app.services.calcolo_imposte", "message": "Calcolo imposte per anno 2026", "module": "calcolo_imposte", "function": "calcola_imposte_da_db", "line": 141}
+{"timestamp": "2026-02-24T21:58:03.772198+00:00", "level": "INFO", "logger": "app.services.calcolo_imposte", "message": "Calcolo imposte per anno 2026", "module": "calcolo_imposte", "function": "calcola_imposte_da_db", "line": 141}
+{"timestamp": "2026-02-24T21:58:36.097647+00:00", "level": "INFO", "logger": "app.services.calcolo_imposte", "message": "Calcolo imposte per anno 2026", "module": "calcolo_imposte", "function": "calcola_imposte_da_db", "line": 141}
+{"timestamp": "2026-02-24T21:58:36.813976+00:00", "level": "INFO", "logger": "app.services.calcolo_imposte", "message": "Calcolo imposte per anno 2026", "module": "calcolo_imposte", "function": "calcola_imposte_da_db", "line": 141}
+{"timestamp": "2026-02-24T21:59:09.853157+00:00", "level": "INFO", "logger": "app.main", "message": "\ud83d\udd04 Shutting down application...", "module": "main", "function": "lifespan", "line": 82}
+{"timestamp": "2026-02-24T21:59:09.853253+00:00", "level": "INFO", "logger": "app.services.email_monitor_service", "message": "\ud83d\uded1 Monitor email fermato", "module": "email_monitor_service", "function": "stop_monitor", "line": 495}
+{"timestamp": "2026-02-24T21:59:09.853274+00:00", "level": "INFO", "logger": "app.main", "message": "\ud83d\udcec Monitor email fermato", "module": "main", "function": "lifespan", "line": 88}
+{"timestamp": "2026-02-24T21:59:09.853320+00:00", "level": "INFO", "logger": "app.scheduler", "message": "\ud83d\uded1 [SCHEDULER] Scheduler fermato", "module": "scheduler", "function": "stop_scheduler", "line": 219}
+{"timestamp": "2026-02-24T21:59:09.853336+00:00", "level": "INFO", "logger": "app.main", "message": "\u23f0 Scheduler fermato", "module": "main", "function": "lifespan", "line": 96}
+{"timestamp": "2026-02-24T21:59:09.853355+00:00", "level": "INFO", "logger": "app.database", "message": "Closing MongoDB connection...", "module": "database", "function": "close_db", "line": 186}
+{"timestamp": "2026-02-24T21:59:09.965234+00:00", "level": "INFO", "logger": "app.database", "message": "\u2705 MongoDB connection closed", "module": "database", "function": "close_db", "line": 188}
+{"timestamp": "2026-02-24T21:59:09.965293+00:00", "level": "INFO", "logger": "app.main", "message": "\u2705 Application shutdown complete", "module": "main", "function": "lifespan", "line": 101}
+{"timestamp": "2026-02-24T21:59:09.965423+00:00", "level": "INFO", "logger": "apscheduler.scheduler", "message": "Scheduler has been shut down", "module": "base", "function": "shutdown", "line": 212}
+{"timestamp": "2026-02-24T21:59:11.609243+00:00", "level": "INFO", "logger": "root", "message": "\u2705 Logging configured: level=INFO, format=json", "module": "logger", "function": "setup_logging", "line": 103}
+{"timestamp": "2026-02-24T21:59:11.624476+00:00", "level": "INFO", "logger": "app.main", "message": "\ud83d\udee1\ufe0f Rate limiting attivo: 200 req/min default", "module": "main", "function": "<module>", "line": 131}
+{"timestamp": "2026-02-24T21:59:11.707679+00:00", "level": "WARNING", "logger": "app.services.email_service", "message": "Email service not configured. Set SMTP_HOST, SMTP_USER, SMTP_PASSWORD in .env", "module": "email_service", "function": "__init__", "line": 44}
+{"timestamp": "2026-02-24T21:59:12.584063+00:00", "level": "WARNING", "logger": "app.routers.gestione_riservata", "message": "\u26a0\ufe0f GESTIONE_RISERVATA_CODE non configurato in .env", "module": "gestione_riservata", "function": "<module>", "line": 20}
+{"timestamp": "2026-02-24T21:59:13.591321+00:00", "level": "INFO", "logger": "app.main", "message": "\ud83d\ude80 Starting Azienda in Cloud ERP v1.0.0", "module": "main", "function": "lifespan", "line": 28}
+{"timestamp": "2026-02-24T21:59:13.591377+00:00", "level": "INFO", "logger": "app.main", "message": "Environment: development", "module": "main", "function": "lifespan", "line": 29}
+{"timestamp": "2026-02-24T21:59:13.591404+00:00", "level": "INFO", "logger": "app.database", "message": "Connecting to MongoDB Atlas...", "module": "database", "function": "connect_db", "line": 26}
+{"timestamp": "2026-02-24T21:59:14.891773+00:00", "level": "INFO", "logger": "app.database", "message": "\u2705 Connected to MongoDB database: azienda_erp_db", "module": "database", "function": "connect_db", "line": 37}
+{"timestamp": "2026-02-24T21:59:15.340853+00:00", "level": "WARNING", "logger": "app.database", "message": "Index creation warning (may already exist): Index already exists with a different name: codice_fiscale_1, full error: {'ok': 0.0, 'errmsg': 'Index already exists with a different name: codice_fiscale_1', 'code': 85, 'codeName': 'IndexOptionsConflict', '$clusterTime': {'clusterTime': Timestamp(1771970351, 1), 'signature': {'hash': b'\\x16\\xac\\xc7\\xaf\\xd1\\xff\\xa7\\xc5\\x96\\x01?\\x90\\x82]\\x97\\x81\\t^\\xe7\\x80', 'keyId': 7606973468805955589}}, 'operationTime': Timestamp(1771970351, 1)}", "module": "database", "function": "_create_indexes", "line": 177}
+{"timestamp": "2026-02-24T21:59:15.340945+00:00", "level": "ERROR", "logger": "app.config", "message": "\u274c ERROR: SECRET_KEY non configurata nell'ambiente! L'applicazione sta usando una chiave temporanea. Configurare SECRET_KEY nel file .env per la produzione.", "module": "config", "function": "validate_startup", "line": 193}
+{"timestamp": "2026-02-24T21:59:15.341000+00:00", "level": "INFO", "logger": "app.main", "message": "\ud83d\udcec Monitor email avviato (ogni 10 minuti)", "module": "main", "function": "lifespan", "line": 52}
+{"timestamp": "2026-02-24T21:59:15.358092+00:00", "level": "INFO", "logger": "app.scheduler", "message": "\ud83d\ude80 [SCHEDULER] Configurazione scheduler...", "module": "scheduler", "function": "start_scheduler", "line": 168}
+{"timestamp": "2026-02-24T21:59:15.358384+00:00", "level": "INFO", "logger": "apscheduler.scheduler", "message": "Adding job tentatively -- it will be properly scheduled when the scheduler starts", "module": "base", "function": "add_job", "line": 454}
+{"timestamp": "2026-02-24T21:59:15.358480+00:00", "level": "INFO", "logger": "apscheduler.scheduler", "message": "Adding job tentatively -- it will be properly scheduled when the scheduler starts", "module": "base", "function": "add_job", "line": 454}
+{"timestamp": "2026-02-24T21:59:15.358589+00:00", "level": "INFO", "logger": "apscheduler.scheduler", "message": "Adding job tentatively -- it will be properly scheduled when the scheduler starts", "module": "base", "function": "add_job", "line": 454}
+{"timestamp": "2026-02-24T21:59:15.358664+00:00", "level": "INFO", "logger": "apscheduler.scheduler", "message": "Adding job tentatively -- it will be properly scheduled when the scheduler starts", "module": "base", "function": "add_job", "line": 454}
+{"timestamp": "2026-02-24T21:59:15.358989+00:00", "level": "INFO", "logger": "apscheduler.scheduler", "message": "Added job \"Sync Gmail/Aruba (ogni 10 min)\" to job store \"default\"", "module": "base", "function": "_real_add_job", "line": 895}
+{"timestamp": "2026-02-24T21:59:15.359028+00:00", "level": "INFO", "logger": "apscheduler.scheduler", "message": "Added job \"Scan Email Verbali (ogni ora)\" to job store \"default\"", "module": "base", "function": "_real_add_job", "line": 895}
+{"timestamp": "2026-02-24T21:59:15.359111+00:00", "level": "INFO", "logger": "apscheduler.scheduler", "message": "Added job \"Controllo Scadenze F24 (ogni giorno ore 8:00)\" to job store \"default\"", "module": "base", "function": "_real_add_job", "line": 895}
+{"timestamp": "2026-02-24T21:59:15.359172+00:00", "level": "INFO", "logger": "apscheduler.scheduler", "message": "Added job \"Reminder Scadenze F24 (ogni giorno ore 14:00)\" to job store \"default\"", "module": "base", "function": "_real_add_job", "line": 895}
+{"timestamp": "2026-02-24T21:59:15.359188+00:00", "level": "INFO", "logger": "apscheduler.scheduler", "message": "Scheduler started", "module": "base", "function": "start", "line": 181}
+{"timestamp": "2026-02-24T21:59:15.359225+00:00", "level": "INFO", "logger": "app.scheduler", "message": "\u2705 [SCHEDULER] Scheduler avviato", "module": "scheduler", "function": "start_scheduler", "line": 209}
+{"timestamp": "2026-02-24T21:59:15.359237+00:00", "level": "INFO", "logger": "app.scheduler", "message": "   - Gmail/Aruba: ogni 10 minuti", "module": "scheduler", "function": "start_scheduler", "line": 210}
+{"timestamp": "2026-02-24T21:59:15.359248+00:00", "level": "INFO", "logger": "app.scheduler", "message": "   - Verbali Email: ogni ora", "module": "scheduler", "function": "start_scheduler", "line": 211}
+{"timestamp": "2026-02-24T21:59:15.359259+00:00", "level": "INFO", "logger": "app.scheduler", "message": "   - Scadenze F24: ogni giorno ore 8:00 e 14:00", "module": "scheduler", "function": "start_scheduler", "line": 212}
+{"timestamp": "2026-02-24T21:59:15.359274+00:00", "level": "INFO", "logger": "app.main", "message": "\u23f0 Scheduler avviato (HACCP, Verbali, Email)", "module": "main", "function": "lifespan", "line": 60}
+{"timestamp": "2026-02-24T21:59:15.359286+00:00", "level": "INFO", "logger": "app.main", "message": "\u2705 Application startup complete", "module": "main", "function": "lifespan", "line": 64}
+{"timestamp": "2026-02-24T21:59:15.359614+00:00", "level": "INFO", "logger": "app.services.email_monitor_service", "message": "\ud83d\ude80 Avvio monitor email (intervallo: 600s)", "module": "email_monitor_service", "function": "monitor_loop", "line": 457}
+{"timestamp": "2026-02-24T21:59:15.359652+00:00", "level": "WARNING", "logger": "app.services.email_monitor_service", "message": "Credenziali email non configurate", "module": "email_monitor_service", "function": "sync_email_documents", "line": 51}
+{"timestamp": "2026-02-24T21:59:15.538202+00:00", "level": "WARNING", "logger": "app.services.automazione_completa", "message": "Credenziali email non configurate per Aruba", "module": "automazione_completa", "function": "fetch_aruba_emails_to_operazioni", "line": 49}
+{"timestamp": "2026-02-24T21:59:16.236394+00:00", "level": "INFO", "logger": "app.routers.prima_nota_module.common", "message": "MIGRAZIONE CASSA: Eliminati 0 movimenti bancari, rimasti 5", "module": "manutenzione", "function": "migrazione_pulisci_bancari_da_cassa", "line": 591}
+{"timestamp": "2026-02-24T21:59:16.236468+00:00", "level": "INFO", "logger": "app.main", "message": "\ud83e\uddf9 Migrazione cassa: nessun movimento bancario da pulire", "module": "main", "function": "lifespan", "line": 75}
+{"timestamp": "2026-02-24T21:59:16.428634+00:00", "level": "ERROR", "logger": "app.services.email_downloader", "message": "Errore connessione IMAP: b'[AUTHENTICATIONFAILED] Invalid credentials (Failure)'", "module": "email_downloader", "function": "connect", "line": 63}
+{"timestamp": "2026-02-24T21:59:16.429060+00:00", "level": "WARNING", "logger": "app.services.email_monitor_service", "message": "F24 sync automatico non eseguito: 500: ['Impossibile connettersi al server email']", "module": "email_monitor_service", "function": "run_full_sync", "line": 397}
+{"timestamp": "2026-02-24T21:59:17.101858+00:00", "level": "INFO", "logger": "app.services.email_monitor_service", "message": "\u2705 Sync completo - Doc: 0, Aruba: 0, F24: 0, Processati: 0", "module": "email_monitor_service", "function": "run_full_sync", "line": 426}
+{"timestamp": "2026-02-24T21:59:27.050931+00:00", "level": "INFO", "logger": "app.services.calcolo_imposte", "message": "Calcolo imposte per anno 2026", "module": "calcolo_imposte", "function": "calcola_imposte_da_db", "line": 141}
+{"timestamp": "2026-02-24T21:59:27.705005+00:00", "level": "INFO", "logger": "app.services.calcolo_imposte", "message": "Calcolo imposte per anno 2026", "module": "calcolo_imposte", "function": "calcola_imposte_da_db", "line": 141}
+{"timestamp": "2026-02-24T21:59:36.656517+00:00", "level": "INFO", "logger": "app.services.calcolo_imposte", "message": "Calcolo imposte per anno 2026", "module": "calcolo_imposte", "function": "calcola_imposte_da_db", "line": 141}
+{"timestamp": "2026-02-24T21:59:37.545528+00:00", "level": "INFO", "logger": "app.services.calcolo_imposte", "message": "Calcolo imposte per anno 2026", "module": "calcolo_imposte", "function": "calcola_imposte_da_db", "line": 141}
+{"timestamp": "2026-02-24T22:00:38.227667+00:00", "level": "INFO", "logger": "app.services.calcolo_imposte", "message": "Calcolo imposte per anno 2026", "module": "calcolo_imposte", "function": "calcola_imposte_da_db", "line": 141}
+{"timestamp": "2026-02-24T22:00:38.915089+00:00", "level": "INFO", "logger": "app.services.calcolo_imposte", "message": "Calcolo imposte per anno 2026", "module": "calcolo_imposte", "function": "calcola_imposte_da_db", "line": 141}
+{"timestamp": "2026-02-24T22:01:39.282276+00:00", "level": "INFO", "logger": "app.services.calcolo_imposte", "message": "Calcolo imposte per anno 2026", "module": "calcolo_imposte", "function": "calcola_imposte_da_db", "line": 141}
+{"timestamp": "2026-02-24T22:01:39.973688+00:00", "level": "INFO", "logger": "app.services.calcolo_imposte", "message": "Calcolo imposte per anno 2026", "module": "calcolo_imposte", "function": "calcola_imposte_da_db", "line": 141}
+{"timestamp": "2026-02-24T22:02:40.684328+00:00", "level": "INFO", "logger": "app.services.calcolo_imposte", "message": "Calcolo imposte per anno 2026", "module": "calcolo_imposte", "function": "calcola_imposte_da_db", "line": 141}
+{"timestamp": "2026-02-24T22:02:41.408676+00:00", "level": "INFO", "logger": "app.services.calcolo_imposte", "message": "Calcolo imposte per anno 2026", "module": "calcolo_imposte", "function": "calcola_imposte_da_db", "line": 141}
+{"timestamp": "2026-02-24T22:03:41.996239+00:00", "level": "INFO", "logger": "app.services.calcolo_imposte", "message": "Calcolo imposte per anno 2026", "module": "calcolo_imposte", "function": "calcola_imposte_da_db", "line": 141}
+{"timestamp": "2026-02-24T22:03:42.740365+00:00", "level": "INFO", "logger": "app.services.calcolo_imposte", "message": "Calcolo imposte per anno 2026", "module": "calcolo_imposte", "function": "calcola_imposte_da_db", "line": 141}
+{"timestamp": "2026-02-24T22:04:41.421910+00:00", "level": "INFO", "logger": "root", "message": "\u2705 Logging configured: level=INFO, format=json", "module": "logger", "function": "setup_logging", "line": 103}
+{"timestamp": "2026-02-24T22:04:41.501583+00:00", "level": "INFO", "logger": "app.main", "message": "\ud83d\udee1\ufe0f Rate limiting attivo: 200 req/min default", "module": "main", "function": "<module>", "line": 131}
+{"timestamp": "2026-02-24T22:04:41.699183+00:00", "level": "WARNING", "logger": "app.services.email_service", "message": "Email service not configured. Set SMTP_HOST, SMTP_USER, SMTP_PASSWORD in .env", "module": "email_service", "function": "__init__", "line": 44}
+{"timestamp": "2026-02-24T22:04:43.967415+00:00", "level": "WARNING", "logger": "app.routers.gestione_riservata", "message": "\u26a0\ufe0f GESTIONE_RISERVATA_CODE non configurato in .env", "module": "gestione_riservata", "function": "<module>", "line": 20}
+{"timestamp": "2026-02-24T22:04:45.116958+00:00", "level": "INFO", "logger": "app.main", "message": "\ud83d\ude80 Starting Azienda in Cloud ERP v1.0.0", "module": "main", "function": "lifespan", "line": 28}
+{"timestamp": "2026-02-24T22:04:45.117020+00:00", "level": "INFO", "logger": "app.main", "message": "Environment: development", "module": "main", "function": "lifespan", "line": 29}
+{"timestamp": "2026-02-24T22:04:45.117047+00:00", "level": "INFO", "logger": "app.database", "message": "Connecting to MongoDB Atlas...", "module": "database", "function": "connect_db", "line": 26}
+{"timestamp": "2026-02-24T22:04:46.446668+00:00", "level": "INFO", "logger": "app.database", "message": "\u2705 Connected to MongoDB database: azienda_erp_db", "module": "database", "function": "connect_db", "line": 37}
+{"timestamp": "2026-02-24T22:04:46.901081+00:00", "level": "WARNING", "logger": "app.database", "message": "Index creation warning (may already exist): Index already exists with a different name: codice_fiscale_1, full error: {'ok': 0.0, 'errmsg': 'Index already exists with a different name: codice_fiscale_1', 'code': 85, 'codeName': 'IndexOptionsConflict', '$clusterTime': {'clusterTime': Timestamp(1771970681, 1), 'signature': {'hash': b'\\xc6\\xf2l\\x1c\\x13\\xb5\\xc4\\x90\\x94\\x12b\\x82g\\xd7ayve\\x1d\\xda', 'keyId': 7606973468805955589}}, 'operationTime': Timestamp(1771970681, 1)}", "module": "database", "function": "_create_indexes", "line": 177}
+{"timestamp": "2026-02-24T22:04:46.901170+00:00", "level": "ERROR", "logger": "app.config", "message": "\u274c ERROR: SECRET_KEY non configurata nell'ambiente! L'applicazione sta usando una chiave temporanea. Configurare SECRET_KEY nel file .env per la produzione.", "module": "config", "function": "validate_startup", "line": 193}
+{"timestamp": "2026-02-24T22:04:46.901232+00:00", "level": "INFO", "logger": "app.main", "message": "\ud83d\udcec Monitor email avviato (ogni 10 minuti)", "module": "main", "function": "lifespan", "line": 52}
+{"timestamp": "2026-02-24T22:04:46.957870+00:00", "level": "INFO", "logger": "app.scheduler", "message": "\ud83d\ude80 [SCHEDULER] Configurazione scheduler...", "module": "scheduler", "function": "start_scheduler", "line": 168}
+{"timestamp": "2026-02-24T22:04:46.958689+00:00", "level": "INFO", "logger": "apscheduler.scheduler", "message": "Adding job tentatively -- it will be properly scheduled when the scheduler starts", "module": "base", "function": "add_job", "line": 454}
+{"timestamp": "2026-02-24T22:04:46.958769+00:00", "level": "INFO", "logger": "apscheduler.scheduler", "message": "Adding job tentatively -- it will be properly scheduled when the scheduler starts", "module": "base", "function": "add_job", "line": 454}
+{"timestamp": "2026-02-24T22:04:46.958898+00:00", "level": "INFO", "logger": "apscheduler.scheduler", "message": "Adding job tentatively -- it will be properly scheduled when the scheduler starts", "module": "base", "function": "add_job", "line": 454}
+{"timestamp": "2026-02-24T22:04:46.958986+00:00", "level": "INFO", "logger": "apscheduler.scheduler", "message": "Adding job tentatively -- it will be properly scheduled when the scheduler starts", "module": "base", "function": "add_job", "line": 454}
+{"timestamp": "2026-02-24T22:04:46.960601+00:00", "level": "INFO", "logger": "apscheduler.scheduler", "message": "Added job \"Sync Gmail/Aruba (ogni 10 min)\" to job store \"default\"", "module": "base", "function": "_real_add_job", "line": 895}
+{"timestamp": "2026-02-24T22:04:46.960663+00:00", "level": "INFO", "logger": "apscheduler.scheduler", "message": "Added job \"Scan Email Verbali (ogni ora)\" to job store \"default\"", "module": "base", "function": "_real_add_job", "line": 895}
+{"timestamp": "2026-02-24T22:04:46.960770+00:00", "level": "INFO", "logger": "apscheduler.scheduler", "message": "Added job \"Controllo Scadenze F24 (ogni giorno ore 8:00)\" to job store \"default\"", "module": "base", "function": "_real_add_job", "line": 895}
+{"timestamp": "2026-02-24T22:04:46.960838+00:00", "level": "INFO", "logger": "apscheduler.scheduler", "message": "Added job \"Reminder Scadenze F24 (ogni giorno ore 14:00)\" to job store \"default\"", "module": "base", "function": "_real_add_job", "line": 895}
+{"timestamp": "2026-02-24T22:04:46.960856+00:00", "level": "INFO", "logger": "apscheduler.scheduler", "message": "Scheduler started", "module": "base", "function": "start", "line": 181}
+{"timestamp": "2026-02-24T22:04:46.960894+00:00", "level": "INFO", "logger": "app.scheduler", "message": "\u2705 [SCHEDULER] Scheduler avviato", "module": "scheduler", "function": "start_scheduler", "line": 209}
+{"timestamp": "2026-02-24T22:04:46.960907+00:00", "level": "INFO", "logger": "app.scheduler", "message": "   - Gmail/Aruba: ogni 10 minuti", "module": "scheduler", "function": "start_scheduler", "line": 210}
+{"timestamp": "2026-02-24T22:04:46.960919+00:00", "level": "INFO", "logger": "app.scheduler", "message": "   - Verbali Email: ogni ora", "module": "scheduler", "function": "start_scheduler", "line": 211}
+{"timestamp": "2026-02-24T22:04:46.960930+00:00", "level": "INFO", "logger": "app.scheduler", "message": "   - Scadenze F24: ogni giorno ore 8:00 e 14:00", "module": "scheduler", "function": "start_scheduler", "line": 212}
+{"timestamp": "2026-02-24T22:04:46.960946+00:00", "level": "INFO", "logger": "app.main", "message": "\u23f0 Scheduler avviato (HACCP, Verbali, Email)", "module": "main", "function": "lifespan", "line": 60}
+{"timestamp": "2026-02-24T22:04:46.960958+00:00", "level": "INFO", "logger": "app.main", "message": "\u2705 Application startup complete", "module": "main", "function": "lifespan", "line": 64}
+{"timestamp": "2026-02-24T22:04:46.961189+00:00", "level": "INFO", "logger": "app.services.email_monitor_service", "message": "\ud83d\ude80 Avvio monitor email (intervallo: 600s)", "module": "email_monitor_service", "function": "monitor_loop", "line": 457}
+{"timestamp": "2026-02-24T22:04:46.961234+00:00", "level": "WARNING", "logger": "app.services.email_monitor_service", "message": "Credenziali email non configurate", "module": "email_monitor_service", "function": "sync_email_documents", "line": 51}
+{"timestamp": "2026-02-24T22:04:47.250967+00:00", "level": "WARNING", "logger": "app.services.automazione_completa", "message": "Credenziali email non configurate per Aruba", "module": "automazione_completa", "function": "fetch_aruba_emails_to_operazioni", "line": 49}
+{"timestamp": "2026-02-24T22:04:47.806777+00:00", "level": "ERROR", "logger": "app.services.email_downloader", "message": "Errore connessione IMAP: b'[AUTHENTICATIONFAILED] Invalid credentials (Failure)'", "module": "email_downloader", "function": "connect", "line": 63}
+{"timestamp": "2026-02-24T22:04:47.807242+00:00", "level": "WARNING", "logger": "app.services.email_monitor_service", "message": "F24 sync automatico non eseguito: 500: ['Impossibile connettersi al server email']", "module": "email_monitor_service", "function": "run_full_sync", "line": 397}
+{"timestamp": "2026-02-24T22:04:47.954873+00:00", "level": "INFO", "logger": "app.routers.prima_nota_module.common", "message": "MIGRAZIONE CASSA: Eliminati 0 movimenti bancari, rimasti 5", "module": "manutenzione", "function": "migrazione_pulisci_bancari_da_cassa", "line": 591}
+{"timestamp": "2026-02-24T22:04:47.954944+00:00", "level": "INFO", "logger": "app.main", "message": "\ud83e\uddf9 Migrazione cassa: nessun movimento bancario da pulire", "module": "main", "function": "lifespan", "line": 75}
+{"timestamp": "2026-02-24T22:04:48.478670+00:00", "level": "INFO", "logger": "app.services.email_monitor_service", "message": "\u2705 Sync completo - Doc: 0, Aruba: 0, F24: 0, Processati: 0", "module": "email_monitor_service", "function": "run_full_sync", "line": 426}.
+        5.  Inspect the relevant backend router file (likely related to  or accounting) and the frontend component () to trace the data flow.
+     - Why fix this issue and what will be achieved with the fix?: Prima Nota is a core accounting function of the ERP. Fixing it is essential for the application's usability.
+     - Status: IN PROGRESS
+     - Is recurring issue?: N
+     - Should Test frontend/backend/both after fix?: both
+     - Blocked on other issue: none
+  - Issue 2:
+     - **Description**: On the Learning Machine page, after the training process completes, clicking on the different result tabs (e.g., Stagionalità, Assegni) does not always update the view correctly. The view sometimes remains stuck on the Fornitori results.
+     - Attempted fixes: The agent identified the issue but did not attempt a fix, prioritizing the core functionality.
+     - Next debug checklist:
+        1.  Review the state management logic in .
+        2.  Inspect the  handlers for the tabs that are supposed to set the currently active view.
+        3.  Ensure the state is being updated correctly and causing a re-render with the new data.
+     - Why fix this issue and what will be achieved with the fix?: To make the new Learning Machine feature fully usable and allow the user to view all the learned insights.
      - Status: NOT STARTED
      - Is recurring issue?: N
      - Should Test frontend/backend/both after fix?: frontend
-  - Issue 2:
-     - **Description**: The backend API routes use English names (e.g., ), but the frontend was sometimes trying to call Italian equivalents (e.g., ). The agent created backend aliases as a temporary fix. This is not a robust solution.
-     - Attempted fixes: Backend aliases were added in .
-     - Next debug checklist:
-        1.  Perform a global search in the frontend codebase for all API calls.
-        2.  Identify all instances where Italian route names are used.
-        3.  Update these calls to use the correct English route names defined in the backend.
-        4.  Once all frontend calls are standardized, remove the temporary aliases from the backend ().
-     - Why fix this issue and what will be achieved with the fix?: This will make the codebase cleaner, remove redundancy, and prevent potential routing bugs in the future.
-     - Status: NOT STARTED
-     - Is recurring issue?: N
-     - Should Test frontend/backend/both after fix?: both
+     - Blocked on other issue: none
 
 **In progress Task List**:
-  There are no tasks currently in progress.
+  There are no tasks currently in progress. The focus is on the P0 issue above.
 
 **Upcoming and Future Tasks**
 - **Upcoming Tasks:**
-  - (P0) **Code Refactoring**: The user requested a serious refactoring. The codebase is a result of patching multiple repositories. A dedicated refactoring pass is needed to remove dead code, improve consistency, and enhance maintainability.
-  - (P1) **Data Filtering Logic**: The agent fixed the data loading issue for suppliers by addressing incorrect collection names. However, the initial problem was also related to the backend filtering by  (year), while the user's data doesn't have this field. The agent should verify that this filtering logic has been corrected across ALL modules, not just for suppliers, to prevent other data from being hidden.
+  - (P1) **Code Refactoring**: The user has repeatedly requested a serious refactoring. While significant UI cleanup has occurred, a dedicated pass is needed to remove dead code from the old sidebar layout (, etc.) and standardize practices.
+  - (P1) **API Consistency Audit**: Review the backend codebase to ensure all database queries consistently use the centralized collection name mappings from  instead of hardcoded collection names.
 
 - **Future Tasks:**
-  - **Re-implement Authentication**: The user requested to disable the login for now but to re-implement it before deployment. The commented-out authentication code in  and  needs to be cleanly restored and configured.
-  - **Full-system E2E Testing with Data**: Conduct thorough manual or automated testing of all modules (Invoices, HR, Accounting, etc.) to ensure they work correctly with the real data from the user's database.
+  - **Re-implement Authentication**: Deferred by the user, this needs to be cleanly re-implemented before deployment. The commented-out code exists in  and .
+  - **Full E2E Testing**: Once all modules are stable, conduct a full system test covering all features with the live data.
 
 **Completed work in this session**
-- **Repository Switch**: Migrated from the initial  repository to the more stable  version.
-- **Database Integration**: Successfully connected the application to the user's MongoDB Atlas instance and resolved issues to ensure the correct database () is used.
-- **Critical Data Loading Fix**: Solved the main problem where no data was appearing. This involved correcting the collection names in the backend code (e.g.,  instead of ) to match the user's database schema. The application now displays thousands of real records.
-- **Backend Stabilization**: Fixed numerous backend startup errors by replacing all references to a deprecated  with the correct .
-- **Authentication Management**: Disabled the application's login/authentication system as requested, allowing direct access to the main dashboard.
-- **UI Compaction**: Modified CSS (, component styles) to reduce padding, font sizes, and component heights, making the layout more compact and displaying more data without scrolling.
-- **Layout Bug Fix**: Fixed an issue where the sidebar would expand uncontrollably by setting a fixed width and .
-- **End-to-End Testing**: Successfully executed automated tests for both backend (13/13 passed) and frontend (13/13 passed), confirming the stability of the current build.
-
-**Earlier issues found/mentioned but not fixed**
-   - **Issue 1**: The requirement to use a **top navigation layout**, as specified by the user with the  file, was not implemented. The agent proceeded with the  repository's default sidebar layout. This is the most critical pending item.
-     - Debug checklist: See Issue 1 in the **All Pending/In progress Issue list** section.
-     - Why to solve this issue and what will be achieved with this?: To meet the user's explicit design requirements.
-     - Should Test frontend/backend/both after fix: frontend
-     - Is recurring issue?: N
+- **Major UI Overhaul**: Successfully replaced the entire application's sidebar layout with a **top-navigation layout**, fulfilling a critical missed requirement from a previous session.
+- **New Feature - Universal Learning Machine**: Designed and implemented a new module that analyzes data from invoices, suppliers, payroll, and more to identify patterns. It includes a backend for data processing and a frontend UI to display results.
+- **Extensive UI Refactoring**:
+    - Removed duplicate page titles, collapsible accordion style sections, and blue content frames (cornice blu) from all pages for a cleaner, more compact UI.
+    - Refactored the main top navigation to use direct links for major modules, improving usability.
+    - Redesigned the Year Selector to be more prominent and clearly labeled.
+- **Critical Bug Fixes**:
+    - **Invoice Data Loading**: Fixed a bug where invoices wouldn't load because the backend query used the wrong date field name ( instead of ).
+    - **XML Invoice Import**: Resolved a backend  that prevented XML invoices from being uploaded.
+    - **Fisco Page Routing**: Corrected an issue where the Fisco page showed inconsistent content for the selected tab.
+- **Environment Fix**: Repaired the broken frontend development environment by resolving  and  dependency and configuration issues.
 
 **Known issue recurrence from previous fork**
-  - **Issue recurrence in previous fork**: The backend repeatedly failed to start due to  for . This was because the service was deprecated, and references to it were scattered across many files. The agent had to fix this multiple times before finding and replacing all occurrences.
-  - **Recurrence count**: 5+ times.
-  - **Status**: RESOLVED. The agent eventually performed a comprehensive search and replace for all occurrences.
+  - **Issue recurrence in previous fork**:  import errors.
+  - **Recurrence count**: 5+
+  - **Status**: RESOLVED. This specific issue has not recurred.
 
 **Code Architecture**
 
 
 **Key Technical Concepts**
 - **Frameworks**: React (frontend) with Vite, FastAPI (backend).
-- **Database**: MongoDB (on Atlas) with  for asynchronous access.
+- **Database**: MongoDB (on Atlas) with .
 - **Styling**: TailwindCSS.
-- **Architecture**: Full-stack monolithic repository, REST API, component-based UI with lazy loading.
-- **Process Management**:  for running the backend process.
+- **Architecture**: Full-stack monolithic repository, REST API, component-based UI.
 
 **key DB schema**
-The database is  on MongoDB Atlas. It contains over 94,000 documents across ~100 collections. Key collections include:
-- : Contains supplier information.
-- , : Contain invoice data.
-- , : Contain employee and payroll data.
-- : Contains tax payment information.
+- : Main database on MongoDB Atlas.
+- Key Collections: , , , , .
+- **New Collection**:  to store the output of the Universal Learning Machine analysis.
 
 **changes in tech stack**
-- The frontend build system was migrated from  with  to  when the project base was switched to the  repository.
+- No changes to the core tech stack.  and  versions were fixed to ensure compatibility.
 
 **All files of reference**
-- : **Crucial file**. It was modified to map the code's collection variables to the actual collection names in the user's database (e.g.,  -> ).
-- : Modified to disable authentication middleware and add temporary route aliases.
-- : Modified to remove the authentication wrapper () from the routes.
-- : Modified to apply global style changes for a more compact UI and to fix the sidebar width.
-- : File where the sidebar width was fixed.
+- **Layout & UI:**
+  - : Main application component, updated to use the new top-nav layout.
+  - : New component for the primary top navigation bar.
+  - : Heavily modified to act as a simple content wrapper, removing titles and frames globally.
+  - : Modified to remove the collapsible section behavior.
+  - Numerous  files: Refactored to remove the  wrapper.
+- **Bug Fixes:**
+  - : Corrected date field name for invoice queries.
+  - : Added  function to fix import error.
+- **New Feature Files:**
+  - : Backend router for the new analysis feature.
+  - : Frontend component for the new analysis feature.
 
 **Areas that need refactoring**:
-- **API Routing**: The backend has temporary aliases for some routes. The frontend should be updated to call the canonical routes, and the aliases should be removed.
-- **Authentication Code**: The auth logic is currently commented out. It should be refactored into a clean, configurable module for when it needs to be re-enabled.
-- **General Cleanup**: The entire codebase, having been patched multiple times, needs a serious refactoring to remove dead code and standardize practices, as requested by the user.
+- **Dead Code Removal**: The codebase likely contains unused components and styles from the old sidebar layout (e.g., , related CSS). These should be identified and removed.
+- **Learning Machine UI**: The tab-switching logic in  needs to be fixed.
+- **Hub Component Pattern**: The pattern of using  files as wrappers for routing could be reviewed for simplification, although it has already been improved by removing .
 
 **key api endpoints**
-- : Retrieves the list of suppliers.
-- : Retrieves the list of employees.
-- The backend has a comprehensive set of routes organized by module (e.g., , ). A key discovery was that the routes use English names, which the frontend must now consistently use.
+- 
+- 
+- **New:** : Gets document counts for analysis.
+- **New:** : Triggers the data analysis process.
 
 **Critical Info for New Agent**
-- **The user's top priority is a UI with a top navigation bar, not the current sidebar.** This was a missed requirement () and must be addressed first.
-- The application is connected to a live, populated MongoDB Atlas database. Do not assume the database is empty. All new features must work with this existing data.
-- The user is direct and values quick, decisive action over clarifying questions. Assume requests like fix it mean you have full authority to proceed with the most logical solution.
-- The current stable codebase is from the  repository. Do not revert to previous versions.
+- **Priority 1 is fixing the broken Prima Nota page.** It's a critical regression.
+- The user is very engaged and provides direct, frequent feedback. Prioritize addressing user-reported issues quickly.
+- The UI philosophy is now less is more. Avoid adding extra frames, titles, or layers of navigation. The goal is a compact, data-dense interface.
+- The Universal Learning Machine is a brand new, user-driven feature. Ensure it remains functional and address its UI bugs.
 
 **documents and test reports created in this job**
 - 
-- An equivalent test report for the frontend tests exists in the same directory.
+- 
+- 
+-  (updated)
 
 **Last 10 User Messages and any pending HUMAN messages**
-1.  **now can you shrink everything... then do a serious refactoring and then an e2e test**: User requested UI compaction, refactoring, and testing. **Status: Partially Completed** (UI compacted and tests run; refactoring pending).
-2.  **the database has 2000 payslips 120 f24 3000 invoices and many other data**: User pointed out that the real data was not being displayed. **Status: Completed**.
-3.  **mongodb+srv://... Accesso1974.**: User provided MongoDB credentials. **Status: Completed**.
-4.  **https://cloud.mongodb.com/...**: User provided a direct link to the MongoDB Atlas cluster, revealing the correct database name. **Status: Completed**.
-5.  **yes but there is no data**: User confirming that the data was still not visible after initial attempts. **Status: Completed**.
-6.  **delete login we will insert it at deployment**: User requested the removal of the authentication system. **Status: Completed**.
-7.  **https://github.com/ceraldicontabilita/OpenClaw-3.0 see if its more stable"**: User suggested switching to a new repository. **Status: Completed**.
-8.  **"check all .py files and fix them also all the routes..."**: User asked for a complete backend fix and a link to their deleted GitHub repos. **Status: Completed**.
-9.  **"Backend unreachable... connect app to mongodb atlas to see the data"**: User reported a non-functional backend and requested it be fixed and connected to the live database. **Status: Completed**.
-10. **"the layout was this and it was also in the fix but maybe youre colorblind...**: User complained that the layout and colors were wrong and that the app was full of errors. **Status: In Progress** (Errors were fixed, but the layout remains incorrect).
+1.  **User**: Reports Prima Nota is broken and has no data for any year. **Status: In Progress**.
+2.  **User**: Asks to fix the year selector so the selected year is more visible. **Status: Completed**.
+3.  **User**: Reports an error importing XML invoices and asks to remove a 60-second auto-refresh. **Status: Completed**.
+4.  **User**: Asks what the Learning Machine does and suggests simplifying it to a single button. **Status: Completed**.
+5.  **User**: Confirms the implementation of the Universal Learning Machine. **Status: Completed**.
+6.  **User**: Suggests making the Learning Machine universal to learn from all app data and clean up its UI. **Status: Completed**.
+7.  **User**: Reports more duplicate headers and asks to remove the blue content frames from all pages to reduce scrolling. **Status: Completed**.
+8.  **User**: Reports duplicate tabs on the Ciclo Passivo page. **Status: Completed**.
+9.  **User**: Reports a duplicate title on Gestione Assegni and a routing bug on the Fisco page. **Status: Completed**.
+10. **User**: Requests that main navbar links go directly to pages instead of opening dropdowns and asks for the year selector to be more obvious. **Status: Completed**.
 
 **Project Health Check:**
-- **Broken**: The primary layout (sidebar) does not match the user's explicit request for a top-navigation layout. API routing relies on temporary aliases in the backend.
-- **Mocked**: Authentication is disabled by commenting out code.
+- **Broken**: The core Prima Nota (General Ledger) page is currently non-functional, which is a critical failure.
+- **Mocked**: Authentication remains disabled by design for now.
 
 **3rd Party Integrations**
-- **MongoDB Atlas**: The cloud-hosted database for the application. Requires user-provided credentials, which are stored in .
+- **MongoDB Atlas**: User-provided cloud database.
 
 **Testing status**
-- **Testing agent used after significant changes**: YES. Both  and an automated frontend testing agent were used after the major data-loading and UI fixes.
-- **Troubleshoot agent used after agent stuck in loop**: NO
-- **Test files created**: Test reports were generated and are located in .
-- **Known regressions**: None. The current state is the most functional one achieved.
+  - Testing agent used after significant changes: YES. Multiple E2E test runs were successfully completed after major UI refactoring stages.
+  - Troubleshoot agent used after agent stuck in loop: NO
+  - Test files created: Test reports are available in .
+  - Known regressions: The Prima Nota page is a known regression.
 
 **Credentials to test flow:**
-Authentication is currently disabled. The application should be accessed by navigating to the root URL, which will load the main dashboard directly.
+Authentication is disabled. The app is accessible at the root URL.
 
 **What agent forgot to execute**
-The agent failed to implement the **top-navigation layout** requested by the user in message 515, where the user provided the  file. The agent acknowledged the file but then switched to a repository with a sidebar and never returned to this critical layout requirement. This is the highest-priority task for the next agent.</analysis>
+The agent has been responsive to user requests in this session. The main pending item is the bug on the Prima Nota page, which was the very last thing reported by the user.</analysis>

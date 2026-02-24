@@ -10,7 +10,7 @@ BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
 if not BASE_URL:
     # Fallback for testing environment
-    BASE_URL = "https://openclaw-ui-revamp.preview.emergentagent.com"
+    BASE_URL = "https://erp-unified.preview.emergentagent.com"
 
 
 class TestHealthEndpoints:
