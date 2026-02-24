@@ -1278,39 +1278,40 @@ export default function Fornitori() {
           display: 'flex', 
           justifyContent: 'space-between', 
           alignItems: 'center', 
-          marginBottom: 24,
-          padding: '15px 20px',
+          marginBottom: 16,
+          padding: '12px 16px',
           background: 'linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%)',
-          borderRadius: 12,
+          borderRadius: 8,
           color: 'white',
           flexWrap: 'wrap',
-          gap: 10
+          gap: 8
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 15 }}>
-            {/* Page Info Card spostata a sinistra nel header */}            <div>
-              <h1 style={{ margin: 0, fontSize: 22, fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 10 }}>
-                <Building2 size={24} /> Gestione Fornitori
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div>
+              <h1 style={{ margin: 0, fontSize: 18, fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Building2 size={20} /> Gestione Fornitori
               </h1>
-              <p style={{ margin: '4px 0 0 0', fontSize: 13, opacity: 0.9 }}>
+              <p style={{ margin: '2px 0 0 0', fontSize: 12, opacity: 0.9 }}>
                 Anagrafica completa • Metodi di pagamento
               </p>
             </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <button 
               onClick={reloadData}
               disabled={loading}
               style={{ 
-                padding: '10px 20px',
+                padding: '8px 16px',
                 background: 'rgba(255,255,255,0.9)',
                 color: '#1e3a5f',
                 border: 'none',
-                borderRadius: 8,
+                borderRadius: 6,
                 cursor: loading ? 'wait' : 'pointer',
                 fontWeight: '600',
+                fontSize: '13px',
                 display: 'flex',
                 alignItems: 'center',
-                gap: 6
+                gap: 5
               }}
             >
               🔄 {loading ? 'Caricamento...' : 'Aggiorna'}
