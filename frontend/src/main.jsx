@@ -278,9 +278,8 @@ const router = createBrowserRouter([
       
       // === STRUMENTI ===
       { path: "strumenti", element: <LazyPage><StrumentiHub /></LazyPage> },
-      { path: "verifica-coerenza", element: <LazyPage><StrumentiHub /></LazyPage> },
-      { path: "verifica-coerenza/:tab", element: <LazyPage><StrumentiHub /></LazyPage> },
-      { path: "verifica-coerenza/:entita", element: <LazyPage><StrumentiHub /></LazyPage> },
+      { path: "verifica-coerenza", element: <LazyPage><VerificaCoerenza /></LazyPage> },
+      { path: "verifica-coerenza/:tab", element: <LazyPage><VerificaCoerenza /></LazyPage> },
       { path: "commercialista", element: <LazyPage><StrumentiHub /></LazyPage> },
       { path: "commercialista/:anno/:mese", element: <LazyPage><StrumentiHub /></LazyPage> },
       { path: "pianificazione", element: <LazyPage><StrumentiHub /></LazyPage> },
