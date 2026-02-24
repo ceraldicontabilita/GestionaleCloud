@@ -1405,28 +1405,6 @@ export default function Fornitori() {
               <Plus size={20} /> Nuovo Fornitore
             </button>
           </div>
-              data-testid="btn-aggiorna-openapi-bulk"
-            >
-              <RefreshCw size={18} /> Aggiorna da OpenAPI
-            </button>
-            <button 
-              onClick={() => { setCurrentSupplier(null); setModalOpen(true); }}
-              style={{ 
-                padding: '10px 20px',
-                background: '#10b981',
-                color: 'white',
-                border: 'none',
-                borderRadius: 8,
-                cursor: 'pointer',
-                fontWeight: '600',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6
-              }}
-            >
-              <Plus size={18} /> Nuovo Fornitore
-            </button>
-          </div>
         </div>
 
         {/* Stats */}
