@@ -512,35 +512,7 @@ export default function RiconciliazioneUnificata() {
           </span>
         )}
         
-        {/* Pulsante Carica F24 */}
-        <button
-          onClick={async () => {
-            setProcessing('f24');
-            try {
-              const res = await api.get('/api/operazioni-da-confermare/smart/cerca-f24');
-              setF24Pendenti(res.data?.f24 || []);
-              setStats(prev => ({ ...prev, f24: res.data?.f24?.length || 0 }));
-            } catch (e) {
-                console.error('Errore caricamento F24:', e);
-              } finally {
-                setProcessing(null);
-              }
-            }}
-            disabled={processing === 'f24'}
-            data-testid="btn-load-f24"
-            style={{
-              padding: '10px 16px',
-              background: processing === 'f24' ? '#9ca3af' : '#f59e0b',
-              color: 'white',
-              border: 'none',
-              borderRadius: 8,
-              fontWeight: 600,
-              cursor: processing === 'f24' ? 'wait' : 'pointer'
-            }}
-          >
-            {processing === 'f24' ? '⏳ Caricamento...' : '📋 Carica F24'}
-          </button>
-          
+        {/* Pulsante Auto-Riconcilia */}
           <button
             onClick={handleAutoRiconcilia}
             disabled={processing}
@@ -587,20 +559,6 @@ export default function RiconciliazioneUnificata() {
           >
             🔍 Filtri {showFilters ? '▲' : '▼'}
           </button>
-          
-          {/* Export movimenti banca */}
-          <ExportButton
-            data={movimentiBancaFiltrati}
-            columns={[
-              { key: 'data', label: 'Data' },
-              { key: 'descrizione', label: 'Descrizione' },
-              { key: 'importo', label: 'Importo' },
-              { key: 'tipo', label: 'Tipo' },
-              { key: 'stato', label: 'Stato' }
-            ]}
-            filename="riconciliazione_movimenti"
-            format="csv"
-          />
       </div>
 
       {/* Pannello Filtri Avanzati */}
