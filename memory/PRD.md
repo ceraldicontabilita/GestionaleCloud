@@ -129,4 +129,9 @@ Based on `layout-A-topnav.html`:
 - **2026-02-24**: Verificato filtro anno su tutti i moduli
 - **2026-02-24**: Verificato API routing consistente
 - **2026-02-24**: Fix filtro anno in fatture-ricevute (aggiunto supporto campo `anno` e `data_fattura`)
-- **2026-02-24**: Rimossi titoli duplicati nelle pagine (Ciclo Passivo, Prima Nota)
+- **2026-02-24**: Rimossi titoli duplicati nelle pagine (Ciclo Passivo, Prima Nota, Gestione Assegni)
+- **2026-02-24**: Rimossi menu collassabili da SectionPage
+- **2026-02-24**: Rimossi tab duplicati dai file Hub
+- **2026-02-24**: TopNav refactoring: link diretti (no dropdown tranne Altro)
+- **2026-02-24**: Anno selector con etichetta "ANNO"
+- **2026-02-24**: Test E2E iteration_2: 100% backend, 100% frontend
