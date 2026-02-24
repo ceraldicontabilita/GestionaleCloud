@@ -361,7 +361,7 @@ export default function ArchivioFatture() {
               }}
               style={{
                 padding: '12px 16px',
-                background: activeTab === tab.id ? '#3b82f6' : 'transparent',
+                background: activeTab === tab.id ? '#1535a8' : 'transparent',
                 color: activeTab === tab.id ? 'white' : '#64748b',
                 border: 'none',
                 borderRadius: '8px 8px 0 0',
