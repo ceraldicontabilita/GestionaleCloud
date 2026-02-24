@@ -253,44 +253,6 @@ export default function ClassificazioneDocumenti() {
         </button>
       </div>
 
-      {/* Info Card */}
-      <div style={{ 
-        background: '#eff6ff', 
-        borderRadius: 12, 
-        padding: 16, 
-        marginBottom: 20,
-        borderLeft: '4px solid #6366f1'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-          <Zap style={{ width: 20, height: 20, color: '#6366f1', flexShrink: 0, marginTop: 2 }} />
-          <div>
-            <h3 style={{ margin: 0, fontWeight: 600, color: '#312e81' }}>Sistema di Classificazione Intelligente</h3>
-            <p style={{ margin: '4px 0 0 0', fontSize: 13, color: '#4338ca' }}>
-              Scansiona le email e le classifica in base a {rules.length} regole predefinite.
-              Ogni categoria viene associata alla sezione corretta del gestionale.
-            </p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 12 }}>
-              {Object.entries(GESTIONALE_SECTIONS).slice(0, 5).map(([name, config]) => (
-                <span 
-                  key={name}
-                  style={{ 
-                    fontSize: 11, 
-                    padding: '4px 10px', 
-                    borderRadius: 12,
-                    background: config.color + '20', 
-                    color: config.color,
-                    fontWeight: 500
-                  }}
-                >
-                  {name}
-                </span>
-              ))}
-              <span style={{ fontSize: 11, color: '#6366f1', padding: '4px 0' }}>+{Object.keys(GESTIONALE_SECTIONS).length - 5} altre</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
       {/* Statistiche */}
       {stats && (
         <div style={{ 
