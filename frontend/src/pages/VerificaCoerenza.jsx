@@ -153,8 +153,19 @@ export default function VerificaCoerenza() {
         </div>
       )}
 
+      {loading && (
+        <div style={{ 
+          padding: 40, 
+          textAlign: 'center', 
+          color: '#64748b',
+          fontSize: 14
+        }}>
+          ⏳ Caricamento verifica coerenza dati...
+        </div>
+      )}
+
       {/* Stato Generale Card */}
-      {verificaCompleta && (
+      {!loading && verificaCompleta && (
         <div style={{ 
           ...cardStyle,
           marginBottom: 16, 
