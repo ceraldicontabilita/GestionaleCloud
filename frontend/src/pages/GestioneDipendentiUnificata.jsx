@@ -695,7 +695,7 @@ function TabRetribuzione({ cedolini, dipendente, anno }) {
       </div>
       
       {cedolini.length === 0 ? (
-        <EmptyState icon="💰" text={`Nessun cedolino per ${anno}`} />
+        <EmptyState icon="📄" text={`Nessun cedolino per ${anno}`} />
       ) : (
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
@@ -1276,7 +1276,7 @@ function TabGiustificativi({ dipendente, anno, selectedCategoria = 'tutti', onCa
                   <td style={{ ...tdStyle, fontWeight: 600, color: '#1e3a5f' }}>{g.codice}</td>
                   <td style={tdStyle}>
                     {g.descrizione}
-                    {g.retribuito && <span style={{ marginLeft: 6, fontSize: 10, color: '#059669' }}>💰 Retribuito</span>}
+                    {g.retribuito && <span style={{ marginLeft: 6, fontSize: 10, color: '#059669' }}>Retribuito</span>}
                   </td>
                   <td style={{ ...tdStyle, textAlign: 'center' }}>
                     {g.limite_annuale_ore != null ? `${g.limite_annuale_ore}h` : '-'}
