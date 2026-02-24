@@ -542,6 +542,11 @@ app.include_router(websocket_realtime.router, prefix="/api", tags=["WebSocket Re
 app.include_router(learning_machine.router, prefix="/api/learning-machine", tags=["Learning Machine"])
 app.include_router(learning_machine_cdc.router, prefix="/api", tags=["Learning Machine CDC"])
 app.include_router(fornitori_learning.router, prefix="/api", tags=["Fornitori Learning"])
+
+# --- Learning Machine Universale ---
+from app.routers import learning_universal
+app.include_router(learning_universal.router, prefix="/api/learning-universal", tags=["Learning Machine Universale"])
+
 app.include_router(magazzino_avanzato.router, prefix="/api", tags=["Magazzino Avanzato"])
 app.include_router(odoo_integration.router, prefix="/api/odoo", tags=["Odoo Integration"])
 app.include_router(accounting_engine.router, prefix="/api/accounting", tags=["Accounting Engine"])
