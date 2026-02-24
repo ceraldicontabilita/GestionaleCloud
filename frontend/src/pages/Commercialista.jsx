@@ -658,7 +658,7 @@ export default function Commercialista() {
       {/* Alert Banner */}
       {alertStatus?.show_alert && (
         <div style={{
-          background: 'linear-gradient(135deg, #ff9800 0%, #f57c00 100%)',
+          background: 'linear-gradient(135deg, #d97706 0%, #f57c00 100%)',
           color: 'white',
           padding: 20,
           borderRadius: 12,
@@ -841,7 +841,7 @@ export default function Commercialista() {
             boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
           }}>
             <div style={{
-              background: 'linear-gradient(135deg, #1535a8 0%, #2563eb 100%)',
+              background: 'linear-gradient(135deg, #1535a8 0%, #1535a8 100%)',
               color: 'white',
               padding: 20
             }}>
@@ -938,7 +938,7 @@ export default function Commercialista() {
             boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
           }}>
             <div style={{
-              background: 'linear-gradient(135deg, #ff9800 0%, #f57c00 100%)',
+              background: 'linear-gradient(135deg, #d97706 0%, #f57c00 100%)',
               color: 'white',
               padding: 20
             }}>

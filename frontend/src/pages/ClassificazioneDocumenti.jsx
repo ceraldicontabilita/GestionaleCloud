@@ -9,7 +9,7 @@ import { useAnnoGlobale } from '../contexts/AnnoContext';
 // Mapping categorie -> colori e icone
 const CATEGORY_CONFIG = {
   verbali: { bg: '#fef3c7', text: '#92400e', icon: FileText, label: 'Verbali/Multe', section: 'Noleggio Auto' },
-  dimissioni: { bg: '#dbeafe', text: '#1e40af', icon: FileText, label: 'Dimissioni', section: 'Anagrafica Dipendenti' },
+  dimissioni: { bg: '#dbeafe', text: '#1535a8', icon: FileText, label: 'Dimissioni', section: 'Anagrafica Dipendenti' },
   cartelle_esattoriali: { bg: '#fee2e2', text: '#dc2626', icon: AlertCircle, label: 'Cartelle Esattoriali', section: 'Commercialista' },
   inps_fonsi: { bg: '#f3e8ff', text: '#7c3aed', icon: FileText, label: 'Delibere FONSI', section: 'INPS Documenti' },
   inps_dilazioni: { bg: '#e0e7ff', text: '#4338ca', icon: FileText, label: 'Dilazioni INPS', section: 'INPS Documenti' },
@@ -44,12 +44,12 @@ const CATEGORIE_CORREZIONE = [
 
 // Mapping sezioni gestionale
 const GESTIONALE_SECTIONS = {
-  'Noleggio Auto': { path: '/noleggio-auto', color: '#f59e0b' },
-  'Anagrafica Dipendenti': { path: '/dipendenti', color: '#3b82f6' },
+  'Noleggio Auto': { path: '/noleggio-auto', color: '#d97706' },
+  'Anagrafica Dipendenti': { path: '/dipendenti', color: '#1535a8' },
   'Commercialista': { path: '/commercialista', color: '#ef4444' },
   'INPS Documenti': { path: '/documenti', color: '#8b5cf6' },
   'Prima Nota Salari': { path: '/prima-nota-salari', color: '#ec4899' },
-  'Gestione F24': { path: '/f24', color: '#10b981' },
+  'Gestione F24': { path: '/f24', color: '#15803d' },
   'Cedolini': { path: '/cedolini', color: '#06b6d4' },
   'Banca': { path: '/riconciliazione', color: '#6366f1' },
   'Ciclo Passivo': { path: '/fatture-ricevute', color: '#22c55e' },
@@ -339,10 +339,10 @@ export default function ClassificazioneDocumenti() {
               borderRadius: 8, 
               padding: '10px 12px', 
               boxShadow: '0 1px 4px rgba(0,0,0,0.06)', 
-              borderLeft: '3px solid #f59e0b' 
+              borderLeft: '3px solid #d97706' 
             }}>
               <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>⏳ Da Processare</div>
-              <div style={{ fontSize: 18, fontWeight: 'bold', color: '#f59e0b' }}>{stats.da_processare || 0}</div>
+              <div style={{ fontSize: 18, fontWeight: 'bold', color: '#d97706' }}>{stats.da_processare || 0}</div>
             </div>
             <div style={{ 
               background: 'white', 
@@ -822,7 +822,7 @@ export default function ClassificazioneDocumenti() {
                               style={{
                                 padding: '6px 12px',
                                 fontSize: 11,
-                                background: '#3b82f6',
+                                background: '#1535a8',
                                 color: 'white',
                                 border: 'none',
                                 borderRadius: 6,
@@ -864,7 +864,7 @@ export default function ClassificazioneDocumenti() {
                               style={{
                                 padding: '6px 12px',
                                 fontSize: 11,
-                                background: '#f59e0b',
+                                background: '#d97706',
                                 color: 'white',
                                 border: 'none',
                                 borderRadius: 6,

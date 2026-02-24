@@ -102,7 +102,7 @@ export default function LiquidazioneIVA() {
           Parametri Calcolo
         </h3>
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <div style={{ padding: '10px 16px', background: '#dbeafe', borderRadius: 8, color: '#1e40af', fontWeight: 600, fontSize: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ padding: '10px 16px', background: '#dbeafe', borderRadius: 8, color: '#1535a8', fontWeight: 600, fontSize: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
             📅 Anno: {anno}
           </div>
           
@@ -208,7 +208,7 @@ export default function LiquidazioneIVA() {
                 <p style={{ fontSize: 13, color: '#64748b', marginBottom: 4 }}>
                   {result.iva_da_versare > 0 ? 'IVA da Versare' : 'Credito da Riportare'}
                 </p>
-                <p style={{ fontSize: 28, fontWeight: 'bold', color: result.iva_da_versare > 0 ? '#f59e0b' : '#3b82f6', margin: '0 0 4px 0' }} data-testid="saldo-iva">
+                <p style={{ fontSize: 28, fontWeight: 'bold', color: result.iva_da_versare > 0 ? '#d97706' : '#1535a8', margin: '0 0 4px 0' }} data-testid="saldo-iva">
                   {formatEuro(result.iva_da_versare > 0 ? result.iva_da_versare : result.credito_da_riportare)}
                 </p>
                 <p style={{ fontSize: 13, color: '#6b7280' }}>{result.stato}</p>
@@ -414,10 +414,10 @@ export default function LiquidazioneIVA() {
                     <td style={{ fontWeight: 500 }}>{m.mese_nome}</td>
                     <td style={{ textAlign: 'right', color: '#dc2626' }}>{formatEuro(m.iva_debito || 0)}</td>
                     <td style={{ textAlign: 'right', color: '#16a34a' }}>{formatEuro(m.iva_credito || 0)}</td>
-                    <td style={{ textAlign: 'right', color: '#f59e0b', fontWeight: 600 }}>
+                    <td style={{ textAlign: 'right', color: '#d97706', fontWeight: 600 }}>
                       {m.iva_da_versare > 0 ? formatEuro(m.iva_da_versare) : '-'}
                     </td>
-                    <td style={{ textAlign: 'right', color: '#3b82f6' }}>
+                    <td style={{ textAlign: 'right', color: '#1535a8' }}>
                       {m.credito_da_riportare > 0 ? formatEuro(m.credito_da_riportare) : '-'}
                     </td>
                     <td style={{ textAlign: 'center' }}>

@@ -242,7 +242,7 @@ export default function RiconciliazioneF24() {
     if (f24.sezione_erario?.length > 0) {
       sections.push(
         <div key="erario" style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: 11, fontWeight: 600, color: '#1e40af', marginBottom: 6 }}>💰 SEZIONE ERARIO</div>
+          <div style={{ fontSize: 11, fontWeight: 600, color: '#1535a8', marginBottom: 6 }}>💰 SEZIONE ERARIO</div>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
               <tr style={{ background: '#dbeafe' }}>
@@ -431,13 +431,13 @@ export default function RiconciliazioneF24() {
           </button>
           <label style={{ cursor: uploading ? 'not-allowed' : 'pointer' }}>
             <input type="file" accept=".pdf" multiple style={{ display: 'none' }} onChange={handleUploadF24} disabled={uploading} />
-            <span style={{ padding: '8px 16px', background: '#3b82f6', color: 'white', borderRadius: 8, display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 500, opacity: uploading ? 0.6 : 1 }}>
+            <span style={{ padding: '8px 16px', background: '#1535a8', color: 'white', borderRadius: 8, display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 500, opacity: uploading ? 0.6 : 1 }}>
               {uploading ? '⏳' : '📤'} Carica F24
             </span>
           </label>
           <label style={{ cursor: uploading ? 'not-allowed' : 'pointer' }}>
             <input type="file" accept=".pdf" multiple style={{ display: 'none' }} onChange={handleUploadQuietanza} disabled={uploading} />
-            <span style={{ padding: '8px 16px', background: '#10b981', color: 'white', borderRadius: 8, display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 500, opacity: uploading ? 0.6 : 1 }}>
+            <span style={{ padding: '8px 16px', background: '#15803d', color: 'white', borderRadius: 8, display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 500, opacity: uploading ? 0.6 : 1 }}>
               📄 Carica Quietanze
             </span>
           </label>
@@ -459,7 +459,7 @@ export default function RiconciliazioneF24() {
             title="F24 Pagati"
             value={dashboard.f24_commercialista?.pagato || 0}
             subtitle="Clicca per dettagli"
-            color="#10b981"
+            color="#15803d"
             icon="✅"
             onClick={() => openModal('pagati')}
           />
@@ -467,7 +467,7 @@ export default function RiconciliazioneF24() {
             title="Quietanze"
             value={dashboard.quietanze_caricate || 0}
             subtitle={formatEuro(dashboard.totale_pagato_quietanze)}
-            color="#3b82f6"
+            color="#1535a8"
             icon="📄"
             onClick={() => openModal('quietanze')}
           />
@@ -500,7 +500,7 @@ export default function RiconciliazioneF24() {
               borderRadius: 6,
               cursor: 'pointer',
               fontWeight: filterStatus === tab.key ? 600 : 400,
-              color: filterStatus === tab.key ? '#3b82f6' : '#6b7280',
+              color: filterStatus === tab.key ? '#1535a8' : '#6b7280',
               boxShadow: filterStatus === tab.key ? '0 1px 2px rgba(0,0,0,0.05)' : 'none',
               display: 'flex',
               alignItems: 'center',
@@ -561,7 +561,7 @@ export default function RiconciliazioneF24() {
                   {/* Tributi badges */}
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                     {(f24.sezione_erario?.length || 0) > 0 && (
-                      <span style={{ padding: '2px 6px', background: '#dbeafe', color: '#1e40af', borderRadius: 4, fontSize: 11 }}>
+                      <span style={{ padding: '2px 6px', background: '#dbeafe', color: '#1535a8', borderRadius: 4, fontSize: 11 }}>
                         ERARIO: {f24.sezione_erario.length}
                       </span>
                     )}
@@ -606,7 +606,7 @@ export default function RiconciliazioneF24() {
                     {f24.status === 'da_pagare' && (
                       <button
                         onClick={() => handleMarkAsPaid(f24.id)}
-                        style={{ padding: '6px 10px', background: '#10b981', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}
+                        style={{ padding: '6px 10px', background: '#15803d', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}
                         title="Segna come pagato"
                       >
                         ✅
@@ -614,7 +614,7 @@ export default function RiconciliazioneF24() {
                     )}
                     <button
                       onClick={() => setEditingF24(f24)}
-                      style={{ padding: '6px 10px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}
+                      style={{ padding: '6px 10px', background: '#1535a8', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}
                       title="Modifica"
                     >
                       <Edit size={12} />
@@ -660,9 +660,9 @@ export default function RiconciliazioneF24() {
       <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 12, padding: 16, marginTop: 24 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
           <span>ℹ️</span>
-          <strong style={{ color: '#1e40af' }}>Come funziona</strong>
+          <strong style={{ color: '#1535a8' }}>Come funziona</strong>
         </div>
-        <ol style={{ margin: 0, paddingLeft: 20, color: '#1e40af', fontSize: 13 }}>
+        <ol style={{ margin: 0, paddingLeft: 20, color: '#1535a8', fontSize: 13 }}>
           <li><strong>Carica F24:</strong> Carica i PDF dalla commercialista (anche multipli)</li>
           <li><strong>Carica Quietanze:</strong> Carica le quietanze dall&apos;Agenzia delle Entrate</li>
           <li><strong>Riconcilia:</strong> Associa automaticamente F24 e Quietanze per importo</li>
@@ -721,16 +721,16 @@ export default function RiconciliazioneF24() {
                     <div key={f24.id} style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 16, background: '#f9fafb' }}>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 16, alignItems: 'start' }}>
                         <div style={{ background: 'white', borderRadius: 8, padding: 12, border: '1px solid #dbeafe' }}>
-                          <div style={{ fontSize: 11, color: '#3b82f6', fontWeight: 600, marginBottom: 8 }}>📤 F24 COMMERCIALISTA</div>
+                          <div style={{ fontSize: 11, color: '#1535a8', fontWeight: 600, marginBottom: 8 }}>📤 F24 COMMERCIALISTA</div>
                           <div style={{ fontWeight: 600 }}>{f24.file_name || 'F24'}</div>
                           <div style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>Scadenza: {formatDateIT(f24.dati_generali?.data_versamento) || '-'}</div>
-                          <div style={{ fontSize: 16, fontWeight: 700, color: '#1e40af', marginTop: 8 }}>{formatEuro(f24.totali?.saldo_netto || 0)}</div>
+                          <div style={{ fontSize: 16, fontWeight: 700, color: '#1535a8', marginTop: 8 }}>{formatEuro(f24.totali?.saldo_netto || 0)}</div>
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px 0' }}>
                           <div style={{ fontSize: 24 }}>🔗</div>
                         </div>
                         <div style={{ background: 'white', borderRadius: 8, padding: 12, border: '1px solid #d1fae5' }}>
-                          <div style={{ fontSize: 11, color: '#10b981', fontWeight: 600, marginBottom: 8 }}>📄 QUIETANZA ADE</div>
+                          <div style={{ fontSize: 11, color: '#15803d', fontWeight: 600, marginBottom: 8 }}>📄 QUIETANZA ADE</div>
                           {quietanza ? (
                             <>
                               <div style={{ fontWeight: 600 }}>{quietanza.filename || 'Quietanza'}</div>
@@ -762,7 +762,7 @@ export default function RiconciliazioneF24() {
                           </div>
                         )}
                       </div>
-                      <div style={{ fontSize: 18, fontWeight: 700, color: '#3b82f6' }}>
+                      <div style={{ fontSize: 18, fontWeight: 700, color: '#1535a8' }}>
                         {formatEuro(q.saldo || 0)}
                       </div>
                     </div>
@@ -912,7 +912,7 @@ export default function RiconciliazioneF24() {
               </button>
               <button
                 onClick={() => handleUpdateF24(editingF24.id, { note: editingF24.note })}
-                style={{ padding: '10px 20px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer' }}
+                style={{ padding: '10px 20px', background: '#1535a8', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer' }}
               >
                 Salva
               </button>

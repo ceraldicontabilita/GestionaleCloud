@@ -145,7 +145,7 @@ export default function GestioneInvoiceTronic() {
             disabled={sincronizzaLoading || !status?.connected}
             style={{ 
               padding: '10px 20px',
-              background: (sincronizzaLoading || !status?.connected) ? '#9ca3af' : '#10b981',
+              background: (sincronizzaLoading || !status?.connected) ? '#9ca3af' : '#15803d',
               color: 'white',
               border: 'none',
               borderRadius: 8,
@@ -200,7 +200,7 @@ export default function GestioneInvoiceTronic() {
           padding: 12, 
           background: '#fef3c7', 
           borderRadius: 8, 
-          borderLeft: '4px solid #f59e0b',
+          borderLeft: '4px solid #d97706',
           fontSize: 13,
           color: '#92400e',
           marginBottom: 20
@@ -229,10 +229,10 @@ export default function GestioneInvoiceTronic() {
             borderRadius: 8, 
             padding: '10px 12px', 
             boxShadow: '0 1px 4px rgba(0,0,0,0.06)', 
-            borderLeft: '3px solid #3b82f6' 
+            borderLeft: '3px solid #1535a8' 
           }}>
             <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>📄 Fatture Ricevute</div>
-            <div style={{ fontSize: 18, fontWeight: 'bold', color: '#3b82f6' }} data-testid="stats-totali">{fatture.length}</div>
+            <div style={{ fontSize: 18, fontWeight: 'bold', color: '#1535a8' }} data-testid="stats-totali">{fatture.length}</div>
           </div>
           <div style={{ 
             background: 'white', 

@@ -5,7 +5,7 @@ import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { PageLayout } from '../components/PageLayout';
 
 const CATEGORY_COLORS = {
-  f24: { bg: '#dbeafe', text: '#1e40af', icon: '📋', label: 'F24' },
+  f24: { bg: '#dbeafe', text: '#1535a8', icon: '📋', label: 'F24' },
   fattura: { bg: '#dcfce7', text: '#166534', icon: '🧾', label: 'Fatture' },
   busta_paga: { bg: '#fef3c7', text: '#92400e', icon: '💰', label: 'Buste Paga' },
   estratto_conto: { bg: '#f3e8ff', text: '#7c3aed', icon: '🏦', label: 'Estratti Conto' },
@@ -462,7 +462,7 @@ export default function Documenti() {
             borderRadius: 8,
             cursor: 'pointer',
             fontWeight: activeTab === 'email' ? 600 : 400,
-            color: activeTab === 'email' ? '#1e40af' : '#6b7280',
+            color: activeTab === 'email' ? '#1535a8' : '#6b7280',
             boxShadow: activeTab === 'email' ? '0 2px 4px rgba(0,0,0,0.1)' : 'none',
             display: 'flex',
             alignItems: 'center',
@@ -502,8 +502,8 @@ export default function Documenti() {
             <div style={{ fontSize: 11, color: '#6b7280' }}>Documenti Totali</div>
           </div>
           <div style={{ ...cardStyle, background: '#dbeafe', padding: '10px 12px' }}>
-            <div style={{ fontSize: 20, fontWeight: 'bold', color: '#1e40af' }}>{stats.nuovi}</div>
-            <div style={{ fontSize: 11, color: '#1e40af' }}>Da Processare</div>
+            <div style={{ fontSize: 20, fontWeight: 'bold', color: '#1535a8' }}>{stats.nuovi}</div>
+            <div style={{ fontSize: 11, color: '#1535a8' }}>Da Processare</div>
           </div>
           <div style={{ ...cardStyle, background: '#dcfce7', padding: '10px 12px' }}>
             <div style={{ fontSize: 20, fontWeight: 'bold', color: '#166534' }}>{stats.processati}</div>
@@ -517,7 +517,7 @@ export default function Documenti() {
       )}
 
       {/* Azione Download Email */}
-      <div style={{ ...cardStyle, marginBottom: 24, background: 'linear-gradient(135deg, #1e40af, #7c3aed)' }}>
+      <div style={{ ...cardStyle, marginBottom: 24, background: 'linear-gradient(135deg, #1535a8, #7c3aed)' }}>
         <div style={{ padding: 24 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'white', flexWrap: 'wrap', gap: 16 }}>
             <div>
@@ -542,7 +542,7 @@ export default function Documenti() {
                 onClick={handleDownloadFromEmail}
                 disabled={downloading}
                 style={{
-                  ...buttonStyle('white', '#1e40af'),
+                  ...buttonStyle('white', '#1535a8'),
                   padding: '12px 24px'
                 }}
                 data-testid="btn-download-email"
@@ -607,7 +607,7 @@ export default function Documenti() {
                         borderRadius: 20,
                         border: paroleChiaveSelezionate.includes(kw.id) ? '2px solid #1535a8' : '1px solid #e2e8f0',
                         background: paroleChiaveSelezionate.includes(kw.id) ? '#dbeafe' : 'white',
-                        color: paroleChiaveSelezionate.includes(kw.id) ? '#1e40af' : '#6b7280',
+                        color: paroleChiaveSelezionate.includes(kw.id) ? '#1535a8' : '#6b7280',
                         cursor: 'pointer',
                         fontSize: 13,
                         fontWeight: paroleChiaveSelezionate.includes(kw.id) ? 'bold' : 'normal'
@@ -755,7 +755,7 @@ export default function Documenti() {
                 ⏳
               </div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 'bold', fontSize: 16, color: '#1e40af', marginBottom: 4 }}>
+                <div style={{ fontWeight: 'bold', fontSize: 16, color: '#1535a8', marginBottom: 4 }}>
                   📧 Download Email in corso...
                 </div>
                 <div style={{ fontSize: 13, color: '#1535a8' }}>
@@ -773,7 +773,7 @@ export default function Documenti() {
                 borderRadius: 20,
                 fontSize: 12,
                 fontWeight: 'bold',
-                color: '#1e40af'
+                color: '#1535a8'
               }}>
                 {taskStatus.status === 'pending' ? '⏳ In attesa' : 
                  taskStatus.status === 'in_progress' ? '🔄 In esecuzione' : 
@@ -950,7 +950,7 @@ export default function Documenti() {
                                 borderRadius: 4,
                                 padding: '5px 10px',
                                 cursor: 'pointer',
-                                color: '#1e40af',
+                                color: '#1535a8',
                                 fontSize: 11,
                                 fontWeight: 500
                               }}
@@ -1328,7 +1328,7 @@ export default function Documenti() {
                         </td>
                         <td style={{ padding: 12, textAlign: 'center' }}>
                           {doc.ocr_used ? (
-                            <span style={{ color: '#ff9800' }}>📷 Sì</span>
+                            <span style={{ color: '#d97706' }}>📷 Sì</span>
                           ) : (
                             <span style={{ color: '#16a34a' }}>✓ No</span>
                           )}
@@ -1362,7 +1362,7 @@ export default function Documenti() {
                                   cursor: 'pointer',
                                   fontSize: 11,
                                   fontWeight: 500,
-                                  color: '#1e40af'
+                                  color: '#1535a8'
                                 }}
                                 title="Visualizza PDF"
                               >

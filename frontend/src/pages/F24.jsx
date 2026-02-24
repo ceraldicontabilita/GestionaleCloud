@@ -187,7 +187,7 @@ export default function F24() {
     if (f.tributi_erario?.length > 0) {
       sections.push(
         <div key="erario" style={{ marginBottom: 15 }}>
-          <h4 style={{ margin: '0 0 8px 0', color: '#1e40af', fontSize: 13 }}>📋 ERARIO</h4>
+          <h4 style={{ margin: '0 0 8px 0', color: '#1535a8', fontSize: 13 }}>📋 ERARIO</h4>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
               <tr style={{ background: '#dbeafe' }}>
@@ -343,9 +343,9 @@ export default function F24() {
             <div style={{ fontSize: 'clamp(20px, 5vw, 28px)', fontWeight: 'bold', color: '#15803d' }}>{dashboard.pagati?.count || 0}</div>
             <div style={{ fontSize: 'clamp(9px, 2vw, 11px)', color: '#666' }}>{formatEuro(dashboard.pagati?.totale)}</div>
           </div>
-          <div style={{ background: '#fff3e0', padding: 'clamp(10px, 3vw, 15px)', borderRadius: 8, borderLeft: '4px solid #ff9800' }}>
+          <div style={{ background: '#fff3e0', padding: 'clamp(10px, 3vw, 15px)', borderRadius: 8, borderLeft: '4px solid #d97706' }}>
             <div style={{ fontSize: 'clamp(10px, 2.5vw, 12px)', color: '#666' }}>⏳ Da Pagare</div>
-            <div style={{ fontSize: 'clamp(20px, 5vw, 28px)', fontWeight: 'bold', color: '#ff9800' }}>{dashboard.da_pagare?.count || 0}</div>
+            <div style={{ fontSize: 'clamp(20px, 5vw, 28px)', fontWeight: 'bold', color: '#d97706' }}>{dashboard.da_pagare?.count || 0}</div>
             <div style={{ fontSize: 'clamp(9px, 2vw, 11px)', color: '#666' }}>{formatEuro(dashboard.da_pagare?.totale)}</div>
           </div>
           <div style={{ 
@@ -443,7 +443,7 @@ export default function F24() {
       <div style={{ background: 'white', borderRadius: 8, padding: 20, boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
         <h3 style={{ marginTop: 0 }}>📋 Modelli F24 Registrati ({f24List.length})</h3>
         <p style={{ color: '#666', fontSize: 13, marginBottom: 15 }}>
-          Per importare nuovi F24, usa la sezione <a href="/import-export" style={{ color: '#3b82f6' }}>Import/Export</a>
+          Per importare nuovi F24, usa la sezione <a href="/import-export" style={{ color: '#1535a8' }}>Import/Export</a>
         </p>
         {loading ? (
           <div style={{ textAlign: 'center', padding: 40, color: '#666' }}>Caricamento...</div>
@@ -505,7 +505,7 @@ export default function F24() {
                                 borderRadius: 4, 
                                 fontSize: 11, 
                                 background: '#dbeafe', 
-                                color: '#1e40af' 
+                                color: '#1535a8' 
                               }}>
                                 ERARIO: {f.tributi_erario.length}
                               </span>
@@ -557,7 +557,7 @@ export default function F24() {
                           borderRadius: 12,
                           fontSize: 11,
                           fontWeight: 'bold',
-                          background: (f.status === 'paid' || f.pagato) ? '#15803d' : '#ff9800',
+                          background: (f.status === 'paid' || f.pagato) ? '#15803d' : '#d97706',
                           color: 'white'
                         }}>
                           {(f.status === 'paid' || f.pagato) ? '✓ PAGATO' : '⏳ PENDING'}
@@ -843,7 +843,7 @@ export default function F24() {
               </button>
               <button
                 onClick={() => handleUpdateF24(editingF24.id, editingF24)}
-                style={{ padding: '10px 20px', background: '#ff9800', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer' }}
+                style={{ padding: '10px 20px', background: '#d97706', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer' }}
               >
                 Salva Modifiche
               </button>

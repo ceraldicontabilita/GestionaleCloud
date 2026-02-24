@@ -80,7 +80,7 @@ export default function AuthCallback() {
         <div style={{
           width: 48,
           height: 48,
-          border: '3px solid #3b82f6',
+          border: '3px solid #1535a8',
           borderTopColor: 'transparent',
           borderRadius: '50%',
           animation: 'spin 1s linear infinite',

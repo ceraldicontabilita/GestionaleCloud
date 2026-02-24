@@ -314,7 +314,7 @@ export default function DettaglioVerbale() {
                   style={{ 
                     marginTop: 12,
                     padding: '8px 16px', 
-                    background: '#f59e0b', 
+                    background: '#d97706', 
                     color: 'white', 
                     border: 'none', 
                     borderRadius: 6, 

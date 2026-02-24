@@ -159,16 +159,16 @@ const styles = {
     gap: '8px',
     transition: 'all 0.2s',
     ...(variant === 'primary' ? {
-      background: '#3b82f6',
+      background: '#1535a8',
       color: 'white'
     } : variant === 'success' ? {
-      background: '#10b981',
+      background: '#15803d',
       color: 'white'
     } : variant === 'danger' ? {
       background: '#ef4444',
       color: 'white'
     } : variant === 'warning' ? {
-      background: '#f59e0b',
+      background: '#d97706',
       color: 'white'
     } : {
       background: '#f1f5f9',
@@ -186,7 +186,7 @@ const styles = {
     background: '#f8fafc'
   },
   uploadZoneActive: {
-    borderColor: '#3b82f6',
+    borderColor: '#1535a8',
     background: '#eff6ff'
   },
   input: {
@@ -481,16 +481,16 @@ export default function CicloPassivoIntegrato() {
           <p style={styles.statValue('#ef4444')}>{stats.num_scadenze_aperte || 0}</p>
           <p style={styles.statLabel}>Scadenze Aperte</p>
         </div>
-        <div style={styles.statCard('#f59e0b')}>
-          <p style={styles.statValue('#f59e0b')}>{formatEuro(stats.totale_debito_aperto || 0)}</p>
+        <div style={styles.statCard('#d97706')}>
+          <p style={styles.statValue('#d97706')}>{formatEuro(stats.totale_debito_aperto || 0)}</p>
           <p style={styles.statLabel}>Debito Aperto</p>
         </div>
-        <div style={styles.statCard('#10b981')}>
-          <p style={styles.statValue('#10b981')}>{stats.num_scadenze_saldate || 0}</p>
+        <div style={styles.statCard('#15803d')}>
+          <p style={styles.statValue('#15803d')}>{stats.num_scadenze_saldate || 0}</p>
           <p style={styles.statLabel}>Scadenze Saldate</p>
         </div>
-        <div style={styles.statCard('#3b82f6')}>
-          <p style={styles.statValue('#3b82f6')}>{formatEuro(stats.totale_pagato || 0)}</p>
+        <div style={styles.statCard('#1535a8')}>
+          <p style={styles.statValue('#1535a8')}>{formatEuro(stats.totale_pagato || 0)}</p>
           <p style={styles.statLabel}>Totale Pagato</p>
         </div>
         <div style={styles.statCard('#8b5cf6')}>
@@ -551,7 +551,7 @@ export default function CicloPassivoIntegrato() {
                 </p>
               </div>
               <div style={{ padding: '16px', background: '#eff6ff', borderRadius: '8px', border: '1px solid #bfdbfe' }}>
-                <strong style={{ color: '#1e40af' }}>2. Prima Nota</strong>
+                <strong style={{ color: '#1535a8' }}>2. Prima Nota</strong>
                 <p style={{ margin: '8px 0 0 0', fontSize: '13px', color: '#1d4ed8' }}>
                   Scritture contabili Dare/Avere
                 </p>
@@ -594,7 +594,7 @@ export default function CicloPassivoIntegrato() {
               {uploading ? (
                 <div>
                   <div style={{ fontSize: '48px', marginBottom: '16px' }}>⏳</div>
-                  <p style={{ fontSize: '18px', color: '#3b82f6', fontWeight: '500' }}>
+                  <p style={{ fontSize: '18px', color: '#1535a8', fontWeight: '500' }}>
                     Elaborazione in corso...
                   </p>
                 </div>
@@ -721,10 +721,10 @@ export default function CicloPassivoIntegrato() {
                         <strong style={{ color: '#dc2626' }}>{formatEuro(s.importo_totale)}</strong>
                       </td>
                       <td style={styles.td}>
-                        <span style={styles.badge('#3b82f6')}>{s.metodo_descrizione || s.metodo_pagamento}</span>
+                        <span style={styles.badge('#1535a8')}>{s.metodo_descrizione || s.metodo_pagamento}</span>
                       </td>
                       <td style={styles.td}>
-                        <span style={styles.badge('#f59e0b')}>Da pagare</span>
+                        <span style={styles.badge('#d97706')}>Da pagare</span>
                       </td>
                       <td style={styles.td}>
                         <div style={{ display: 'flex', gap: '8px' }}>
@@ -859,13 +859,13 @@ export default function CicloPassivoIntegrato() {
                             <td style={styles.td}>
                               <strong>{formatEuro(m.importo)}</strong>
                               {m.diff_importo > 0 && (
-                                <span style={{ fontSize: '11px', color: '#f59e0b', display: 'block' }}>
+                                <span style={{ fontSize: '11px', color: '#d97706', display: 'block' }}>
                                   Diff: {formatEuro(m.diff_importo)}
                                 </span>
                               )}
                             </td>
                             <td style={styles.td}>
-                              <span style={styles.badge(m.match_score < 50 ? '#10b981' : m.match_score < 200 ? '#f59e0b' : '#ef4444')}>
+                              <span style={styles.badge(m.match_score < 50 ? '#15803d' : m.match_score < 200 ? '#d97706' : '#ef4444')}>
                                 {m.match_score < 50 ? '⭐ Ottimo' : m.match_score < 200 ? '🔸 Buono' : '⚠️ Incerto'}
                               </span>
                             </td>
@@ -910,7 +910,7 @@ export default function CicloPassivoIntegrato() {
             <h3 style={styles.cardTitle}>
               <span>✅</span> Storico Pagamenti Effettuati
             </h3>
-            <span style={styles.badge('#10b981')}>
+            <span style={styles.badge('#15803d')}>
               {dashboard?.scadenze_saldate?.length || 0} pagamenti
             </span>
           </div>
@@ -936,16 +936,16 @@ export default function CicloPassivoIntegrato() {
                       <td style={styles.td}>{s.fornitore_nome}</td>
                       <td style={styles.td}>{s.numero_fattura}</td>
                       <td style={styles.td}>
-                        <strong style={{ color: '#10b981' }}>{formatEuro(s.importo_totale)}</strong>
+                        <strong style={{ color: '#15803d' }}>{formatEuro(s.importo_totale)}</strong>
                       </td>
                       <td style={styles.td}>
-                        <span style={styles.badge('#3b82f6')}>{s.metodo_descrizione || s.metodo_pagamento}</span>
+                        <span style={styles.badge('#1535a8')}>{s.metodo_descrizione || s.metodo_pagamento}</span>
                       </td>
                       <td style={styles.td}>
                         {s.riconciliato ? (
-                          <span style={styles.badge('#10b981')}>✓ Sì</span>
+                          <span style={styles.badge('#15803d')}>✓ Sì</span>
                         ) : (
-                          <span style={styles.badge('#f59e0b')}>Manuale</span>
+                          <span style={styles.badge('#d97706')}>Manuale</span>
                         )}
                       </td>
                     </tr>

@@ -4,7 +4,7 @@ import { STYLES, COLORS, button, badge, formatEuro, formatDateIT } from '../lib/
 import { PageLayout } from '../components/PageLayout';
 
 const CATEGORIA_COLORS = {
-  acquisti_merci: { bg: '#dbeafe', text: '#1e40af', label: 'Acquisti Merci' },
+  acquisti_merci: { bg: '#dbeafe', text: '#1535a8', label: 'Acquisti Merci' },
   acquisti_servizi: { bg: '#fef3c7', text: '#92400e', label: 'Servizi' },
   utenze: { bg: '#fce7f3', text: '#9d174d', label: 'Utenze' },
   affitti: { bg: '#d1fae5', text: '#065f46', label: 'Affitti' },
@@ -206,7 +206,7 @@ export default function RegoleCategorizzazione() {
           borderRadius: 8,
           marginBottom: 20,
           background: message.type === 'success' ? '#dcfce7' : message.type === 'error' ? '#fee2e2' : '#dbeafe',
-          color: message.type === 'success' ? '#166534' : message.type === 'error' ? '#991b1b' : '#1e40af',
+          color: message.type === 'success' ? '#166534' : message.type === 'error' ? '#991b1b' : '#1535a8',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center'
@@ -218,10 +218,10 @@ export default function RegoleCategorizzazione() {
 
       {/* Statistiche */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 24 }}>
-        <StatCard label="Regole Fornitori" value={regole?.regole_fornitori?.length || 0} color="#3b82f6" icon="🏢" />
+        <StatCard label="Regole Fornitori" value={regole?.regole_fornitori?.length || 0} color="#1535a8" icon="🏢" />
         <StatCard label="Regole Descrizioni" value={regole?.regole_descrizioni?.length || 0} color="#8b5cf6" icon="📝" />
-        <StatCard label="Categorie" value={totaleCategorie} color="#10b981" icon="📁" />
-        <StatCard label="Totale Regole" value={totaleRegole} color="#f59e0b" icon="📊" />
+        <StatCard label="Categorie" value={totaleCategorie} color="#15803d" icon="📁" />
+        <StatCard label="Totale Regole" value={totaleRegole} color="#d97706" icon="📊" />
       </div>
 
       {/* Azioni */}
@@ -238,7 +238,7 @@ export default function RegoleCategorizzazione() {
           onClick={handleDownloadExcel}
           style={{
             padding: '10px 20px',
-            background: 'linear-gradient(135deg, #10b981, #059669)',
+            background: 'linear-gradient(135deg, #15803d, #059669)',
             color: 'white',
             border: 'none',
             borderRadius: 8,
@@ -254,7 +254,7 @@ export default function RegoleCategorizzazione() {
         
         <label style={{
           padding: '10px 20px',
-          background: uploading ? '#9ca3af' : 'linear-gradient(135deg, #3b82f6, #1d4ed8)',
+          background: uploading ? '#9ca3af' : 'linear-gradient(135deg, #1535a8, #1d4ed8)',
           color: 'white',
           borderRadius: 8,
           cursor: uploading ? 'wait' : 'pointer',
@@ -290,7 +290,7 @@ export default function RegoleCategorizzazione() {
           onClick={() => setShowAddForm(!showAddForm)}
           style={{
             padding: '10px 20px',
-            background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+            background: 'linear-gradient(135deg, #d97706, #d97706)',
             color: 'white',
             border: 'none',
             borderRadius: 8,
@@ -337,7 +337,7 @@ export default function RegoleCategorizzazione() {
               onClick={handleAddRule}
               style={{
                 padding: '10px 20px',
-                background: '#10b981',
+                background: '#15803d',
                 color: 'white',
                 border: 'none',
                 borderRadius: 8,
@@ -385,7 +385,7 @@ export default function RegoleCategorizzazione() {
                 borderRadius: 6,
                 cursor: 'pointer',
                 fontWeight: activeTab === tab ? 600 : 400,
-                color: activeTab === tab ? '#3b82f6' : '#64748b',
+                color: activeTab === tab ? '#1535a8' : '#64748b',
                 boxShadow: activeTab === tab ? '0 1px 2px rgba(0,0,0,0.05)' : 'none',
                 textTransform: 'capitalize'
               }}
@@ -600,9 +600,9 @@ export default function RegoleCategorizzazione() {
       <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 12, padding: 16, marginTop: 24 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
           <span>ℹ️</span>
-          <strong style={{ color: '#1e40af' }}>Come funziona</strong>
+          <strong style={{ color: '#1535a8' }}>Come funziona</strong>
         </div>
-        <ul style={{ margin: 0, paddingLeft: 20, color: '#1e40af', fontSize: 13 }}>
+        <ul style={{ margin: 0, paddingLeft: 20, color: '#1535a8', fontSize: 13 }}>
           <li><strong>Regole Fornitori:</strong> Associa un fornitore ad una categoria (es. "ENEL" → "utenze")</li>
           <li><strong>Regole Descrizioni:</strong> Associa una descrizione prodotto ad una categoria</li>
           <li><strong>Applica alle Fatture:</strong> Ricategorizza tutte le fatture esistenti con le nuove regole</li>

@@ -148,7 +148,7 @@ export default function GestioneCespiti() {
         <TabsContent value="cespiti" style={{ marginTop: 8 }}>
           {riepilogoCespiti && (
             <div style={{ ...styles.grid4, marginBottom: 12 }}>
-              <div style={styles.statBox('#eff6ff')}><p style={styles.statLabel('#1535a8')}>Cespiti</p><p style={styles.statValue('#1e40af')}>{riepilogoCespiti.totali.num_cespiti}</p></div>
+              <div style={styles.statBox('#eff6ff')}><p style={styles.statLabel('#1535a8')}>Cespiti</p><p style={styles.statValue('#1535a8')}>{riepilogoCespiti.totali.num_cespiti}</p></div>
               <div style={styles.statBox('#f0fdf4')}><p style={styles.statLabel('#16a34a')}>Val. Acq.</p><p style={styles.statValue('#166534')}>{fmt(riepilogoCespiti.totali.valore_acquisto)}</p></div>
               <div style={styles.statBox('#fffbeb')}><p style={styles.statLabel('#d97706')}>Fondo</p><p style={styles.statValue('#b45309')}>{fmt(riepilogoCespiti.totali.fondo_ammortamento)}</p></div>
               <div style={styles.statBox('#faf5ff')}><p style={styles.statLabel('#9333ea')}>Netto</p><p style={styles.statValue('#7c3aed')}>{fmt(riepilogoCespiti.totali.valore_netto_contabile)}</p></div>
@@ -278,7 +278,7 @@ export default function GestioneCespiti() {
             <>
               <div style={{ ...styles.grid4, marginBottom: 12 }}>
                 <div style={styles.statBox('#f8fafc')}><p style={styles.statLabel('#475569')}>Fatture</p><p style={{ fontSize: 18, fontWeight: 'bold' }}>{scadenzario.riepilogo.totale_fatture}</p></div>
-                <div style={styles.statBox('#eff6ff')}><p style={styles.statLabel('#1535a8')}>Da Pagare</p><p style={styles.statValue('#1e40af')}>{fmt(scadenzario.riepilogo.totale_da_pagare)}</p></div>
+                <div style={styles.statBox('#eff6ff')}><p style={styles.statLabel('#1535a8')}>Da Pagare</p><p style={styles.statValue('#1535a8')}>{fmt(scadenzario.riepilogo.totale_da_pagare)}</p></div>
                 <div style={styles.statBox('#fef2f2')}><p style={styles.statLabel('#dc2626')}>Scaduto</p><p style={styles.statValue('#b91c1c')}>{fmt(scadenzario.riepilogo.totale_scaduto)}</p></div>
                 <div style={styles.statBox('#fffbeb')}><p style={styles.statLabel('#d97706')}>7gg</p><p style={styles.statValue('#b45309')}>{scadenzario.riepilogo.num_prossimi_7gg}</p></div>
               </div>

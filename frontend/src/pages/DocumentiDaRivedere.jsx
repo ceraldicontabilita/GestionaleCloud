@@ -78,7 +78,7 @@ export default function DocumentiDaRivedere() {
   };
 
   const getTypeColor = (type) => ({
-    fattura: { bg: '#dbeafe', color: '#1e40af' },
+    fattura: { bg: '#dbeafe', color: '#1535a8' },
     f24: { bg: '#fee2e2', color: '#dc2626' },
     busta_paga: { bg: '#dcfce7', color: '#166534' },
     altro: { bg: '#f3f4f6', color: '#6b7280' }
@@ -99,7 +99,7 @@ export default function DocumentiDaRivedere() {
   return (
     <PageLayout
       title="Documenti Da Rivedere"
-      icon={<AlertCircle size={28} color="#f59e0b" />}
+      icon={<AlertCircle size={28} color="#d97706" />}
       subtitle="Documenti che richiedono classificazione manuale o verifica dei dati estratti dall'AI"
       actions={
         <div style={{ display: 'flex', gap: 10 }}>
@@ -116,8 +116,8 @@ export default function DocumentiDaRivedere() {
     >
       {/* KPI */}
       <PageGrid cols={5} gap={12}>
-        <KPICard label="Da Rivedere" value={stats.needs_review || documents.length} color="#f59e0b" icon={<AlertCircle size={20} />} />
-        <KPICard label="Processati AI" value={stats.total_parsed || 0} color="#2563eb" icon={<Brain size={20} />} />
+        <KPICard label="Da Rivedere" value={stats.needs_review || documents.length} color="#d97706" icon={<AlertCircle size={20} />} />
+        <KPICard label="Processati AI" value={stats.total_parsed || 0} color="#1535a8" icon={<Brain size={20} />} />
         <KPICard label="Classificati Auto" value={stats.auto_classified || 0} color="#16a34a" icon={<CheckCircle size={20} />} />
         <KPICard label="In Attesa" value={stats.pending_processing || 0} color="#8b5cf6" icon={<Clock size={20} />} />
         <KPICard label="Tasso Classif." value={`${stats.classification_rate || 0}%`} color="#06b6d4" icon={<Tag size={20} />} />

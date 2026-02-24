@@ -266,10 +266,10 @@ export default function ChiusuraEsercizio() {
               <Unlock size={32} color="#1535a8" />
             )}
             <div>
-              <div style={{ fontSize: 20, fontWeight: 700, color: stato?.stato === 'chiuso' ? '#166534' : '#1e40af' }}>
+              <div style={{ fontSize: 20, fontWeight: 700, color: stato?.stato === 'chiuso' ? '#166534' : '#1535a8' }}>
                 Esercizio {anno}
               </div>
-              <div style={{ color: stato?.stato === 'chiuso' ? '#15803d' : '#3b82f6', marginTop: 4 }}>
+              <div style={{ color: stato?.stato === 'chiuso' ? '#15803d' : '#1535a8', marginTop: 4 }}>
                 {stato?.stato === 'chiuso' ? 'Chiuso' : 'Aperto'}
                 {stato?.data_chiusura && ` il ${formatDateIT(stato.data_chiusura)}`}
               </div>
@@ -363,7 +363,7 @@ export default function ChiusuraEsercizio() {
                   height: '100%',
                   width: `${verifica?.punteggio_completezza || 0}%`,
                   background: verifica?.punteggio_completezza >= 80 ? '#22c55e' : 
-                             verifica?.punteggio_completezza >= 50 ? '#f59e0b' : '#ef4444',
+                             verifica?.punteggio_completezza >= 50 ? '#d97706' : '#ef4444',
                   borderRadius: 4,
                   transition: 'width 0.5s ease'
                 }} />

@@ -142,8 +142,8 @@ export default function ToDo() {
     const diffGiorni = Math.ceil((dataScadenza - oggi) / (1000 * 60 * 60 * 24));
     
     if (diffGiorni < 0) return { label: 'Scaduto', color: '#ef4444', bg: '#fef2f2' };
-    if (diffGiorni === 0) return { label: 'Oggi', color: '#f59e0b', bg: '#fefce8' };
-    if (diffGiorni <= 3) return { label: `Tra ${diffGiorni}g`, color: '#f59e0b', bg: '#fefce8' };
+    if (diffGiorni === 0) return { label: 'Oggi', color: '#d97706', bg: '#fefce8' };
+    if (diffGiorni <= 3) return { label: `Tra ${diffGiorni}g`, color: '#d97706', bg: '#fefce8' };
     return { label: formatDateIT(scadenza), color: '#64748b', bg: 'transparent' };
   };
   
@@ -180,9 +180,9 @@ export default function ToDo() {
         gap: 16, 
         marginBottom: 24 
       }}>
-        <StatCard label="Da Fare" value={stats.da_fare || 0} color="#3b82f6" />
+        <StatCard label="Da Fare" value={stats.da_fare || 0} color="#1535a8" />
         <StatCard label="Completati" value={stats.completati || 0} color="#22c55e" />
-        <StatCard label="Urgenti" value={stats.urgenti || 0} color="#f59e0b" />
+        <StatCard label="Urgenti" value={stats.urgenti || 0} color="#d97706" />
         <StatCard label="Scaduti" value={stats.scaduti || 0} color="#ef4444" />
       </div>
       

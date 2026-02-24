@@ -65,7 +65,7 @@ export default function Login() {
             lineHeight: 1.1,
             marginBottom: 16,
           }}>
-            Ceraldi<span style={{ color: '#3b82f6' }}>.</span>
+            Ceraldi<span style={{ color: '#1535a8' }}>.</span>
           </div>
           <div style={{
             fontSize: 22,
@@ -182,7 +182,7 @@ export default function Login() {
                   transition: 'border-color 0.2s',
                   boxSizing: 'border-box',
                 }}
-                onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
+                onFocus={(e) => e.target.style.borderColor = '#1535a8'}
                 onBlur={(e) => e.target.style.borderColor = 'rgba(148,163,184,0.2)'}
               />
             </div>
@@ -215,7 +215,7 @@ export default function Login() {
                   transition: 'border-color 0.2s',
                   boxSizing: 'border-box',
                 }}
-                onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
+                onFocus={(e) => e.target.style.borderColor = '#1535a8'}
                 onBlur={(e) => e.target.style.borderColor = 'rgba(148,163,184,0.2)'}
               />
             </div>
@@ -227,7 +227,7 @@ export default function Login() {
               style={{
                 width: '100%',
                 padding: '14px',
-                background: loading ? '#1e40af' : '#3b82f6',
+                background: loading ? '#1535a8' : '#1535a8',
                 color: '#fff',
                 border: 'none',
                 borderRadius: 8,
@@ -238,7 +238,7 @@ export default function Login() {
                 opacity: loading ? 0.7 : 1,
               }}
               onMouseEnter={(e) => { if (!loading) e.target.style.background = '#1535a8'; }}
-              onMouseLeave={(e) => { if (!loading) e.target.style.background = '#3b82f6'; }}
+              onMouseLeave={(e) => { if (!loading) e.target.style.background = '#1535a8'; }}
             >
               {loading ? '⏳ Accesso in corso...' : 'Accedi →'}
             </button>
@@ -303,7 +303,7 @@ export default function Login() {
             Non hai un account?{' '}
             <Link 
               to="/register" 
-              style={{ color: '#3b82f6', textDecoration: 'none', fontWeight: 500 }}
+              style={{ color: '#1535a8', textDecoration: 'none', fontWeight: 500 }}
               data-testid="goto-register-link"
             >
               Registrati

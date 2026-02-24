@@ -65,7 +65,7 @@ const styles = {
   },
   btnPrimary: {
     padding: '6px 12px',
-    background: '#3b82f6',
+    background: '#1535a8',
     color: 'white',
     border: 'none',
     borderRadius: 6,
@@ -75,7 +75,7 @@ const styles = {
   },
   btnSuccess: {
     padding: '6px 12px',
-    background: '#10b981',
+    background: '#15803d',
     color: 'white',
     border: 'none',
     borderRadius: 6,
@@ -375,7 +375,7 @@ export default function OrdiniFornitori() {
   const getStatusStyle = (status) => {
     const map = {
       "bozza": { bg: "#f1f5f9", color: "#64748b" },
-      "inviato": { bg: "#dbeafe", color: "#1e40af" },
+      "inviato": { bg: "#dbeafe", color: "#1535a8" },
       "confermato": { bg: "#fef3c7", color: "#92400e" },
       "consegnato": { bg: "#dcfce7", color: "#166534" },
       "annullato": { bg: "#fef2f2", color: "#dc2626" }
@@ -561,7 +561,7 @@ export default function OrdiniFornitori() {
             <div style={{ fontSize: 13, color: '#64748b' }}>In Bozza</div>
           </div>
           <div style={styles.statCard}>
-            <div style={{ fontSize: 28, fontWeight: 'bold', color: '#1e40af' }}>{orders.filter(o => o.status === "inviato").length}</div>
+            <div style={{ fontSize: 28, fontWeight: 'bold', color: '#1535a8' }}>{orders.filter(o => o.status === "inviato").length}</div>
             <div style={{ fontSize: 13, color: '#64748b' }}>Inviati</div>
           </div>
           <div style={styles.statCard}>
@@ -614,7 +614,7 @@ export default function OrdiniFornitori() {
             </div>
             
             <div style={{ padding: 15, borderTop: '1px solid #eee', display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-              <button onClick={() => handleDownloadPDF(selectedOrder)} style={{ ...styles.btnSecondary, background: '#dbeafe', color: '#1e40af' }} data-testid="modal-download-pdf">📄 Scarica PDF</button>
+              <button onClick={() => handleDownloadPDF(selectedOrder)} style={{ ...styles.btnSecondary, background: '#dbeafe', color: '#1535a8' }} data-testid="modal-download-pdf">📄 Scarica PDF</button>
               <button onClick={() => handlePrintOrder(selectedOrder)} style={{ ...styles.btnSecondary, background: '#f3e8ff', color: '#7c3aed' }}>🖨️ Stampa</button>
               <button onClick={() => handleSendEmail(selectedOrder)} disabled={sendingEmail === selectedOrder.id} style={{ ...styles.btnSecondary, background: '#dcfce7', color: '#166534' }} data-testid="modal-send-email">
                 {sendingEmail === selectedOrder.id ? "Invio..." : "📧 Invia Email"}

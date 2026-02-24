@@ -102,7 +102,7 @@ export default function VerificaCoerenza() {
     padding: '10px 16px',
     borderRadius: 8,
     border: 'none',
-    background: isActive ? '#3b82f6' : 'transparent',
+    background: isActive ? '#1535a8' : 'transparent',
     color: isActive ? 'white' : '#64748b',
     fontWeight: 500,
     cursor: 'pointer',
@@ -126,7 +126,7 @@ export default function VerificaCoerenza() {
             padding: '8px 16px',
             borderRadius: 8,
             border: 'none',
-            background: '#3b82f6',
+            background: '#1535a8',
             color: 'white',
             fontWeight: 500,
             cursor: loading ? 'not-allowed' : 'pointer',
@@ -184,7 +184,7 @@ export default function VerificaCoerenza() {
                   <div style={{ fontSize: 11, color: '#64748b' }}>Critiche</div>
                 </div>
                 <div>
-                  <div style={{ fontSize: 24, fontWeight: 'bold', color: '#f59e0b' }}>
+                  <div style={{ fontSize: 24, fontWeight: 'bold', color: '#d97706' }}>
                     {verificaCompleta.riepilogo?.warning || 0}
                   </div>
                   <div style={{ fontSize: 11, color: '#64748b' }}>Avvisi</div>
@@ -243,7 +243,7 @@ export default function VerificaCoerenza() {
                     fontWeight: 'bold'
                   }}>
                     <span style={{ fontSize: 13 }}>Saldo IVA</span>
-                    <span style={{ color: verificaCompleta.verifiche.iva_annuale.saldo_iva > 0 ? '#92400e' : '#1e40af' }}>
+                    <span style={{ color: verificaCompleta.verifiche.iva_annuale.saldo_iva > 0 ? '#92400e' : '#1535a8' }}>
                       {verificaCompleta.verifiche.iva_annuale.saldo_iva > 0 ? 'Da versare ' : 'A credito '}
                       {formatEuro(Math.abs(verificaCompleta.verifiche.iva_annuale.saldo_iva))}
                     </span>
@@ -422,7 +422,7 @@ export default function VerificaCoerenza() {
                             padding: '2px 6px', 
                             borderRadius: 4, 
                             background: '#dbeafe', 
-                            color: '#1e40af',
+                            color: '#1535a8',
                             fontSize: 10
                           }}>
                             Credito {formatEuro(m.a_credito)}
@@ -482,7 +482,7 @@ export default function VerificaCoerenza() {
                             borderRadius: 4,
                             fontSize: 10,
                             fontWeight: 'bold',
-                            background: d.severita === 'critical' ? '#dc2626' : '#f59e0b',
+                            background: d.severita === 'critical' ? '#dc2626' : '#d97706',
                             color: 'white'
                           }}>
                             {d.severita.toUpperCase()}
@@ -521,7 +521,7 @@ export default function VerificaCoerenza() {
                         borderRadius: 6,
                         fontSize: 12,
                         color: '#64748b',
-                        borderLeft: '3px solid #3b82f6'
+                        borderLeft: '3px solid #1535a8'
                       }}>
                         💡 <strong>Suggerimento:</strong> {d.suggerimento}
                       </div>

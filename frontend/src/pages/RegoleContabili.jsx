@@ -21,7 +21,7 @@ export default function RegoleContabili() {
       id: 'ciclo-passivo',
       titolo: '📥 Ciclo Passivo (Fatture Fornitori)',
       icona: '📥',
-      colore: '#3b82f6',
+      colore: '#1535a8',
       sottosezioni: [
         {
           titolo: 'Determinazione Metodo Pagamento Effettivo',
@@ -114,7 +114,7 @@ export default function RegoleContabili() {
       id: 'riconciliazione',
       titolo: '🔄 Riconciliazione Bancaria',
       icona: '🔄',
-      colore: '#10b981',
+      colore: '#15803d',
       sottosezioni: [
         {
           titolo: 'Criteri di Match',
@@ -172,7 +172,7 @@ export default function RegoleContabili() {
       id: 'corrispettivi',
       titolo: '🧾 Corrispettivi e POS',
       icona: '🧾',
-      colore: '#f59e0b',
+      colore: '#d97706',
       sottosezioni: [
         {
           titolo: 'Dati Provvisori vs XML',

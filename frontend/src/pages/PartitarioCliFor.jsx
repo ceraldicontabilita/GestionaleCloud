@@ -413,7 +413,7 @@ export default function PartitarioCliFor() {
 
         {/* Nota HORECA */}
         <div style={{ marginTop: 24, padding: 16, background: '#eff6ff', borderRadius: 8, border: '1px solid #bfdbfe' }}>
-          <p style={{ margin: 0, fontSize: 12, color: '#1e40af' }}>
+          <p style={{ margin: 0, fontSize: 12, color: '#1535a8' }}>
             <strong>Nota HORECA:</strong> Per le attività al dettaglio (ristoranti, bar) i clienti sono prevalentemente anonimi. 
             I corrispettivi rappresentano vendite con incasso contestuale, quindi Dare = Avere (saldo zero). 
             Le eventuali fatture emesse a clienti sono già incluse nei corrispettivi e servono solo per la detrazione IVA del cliente.

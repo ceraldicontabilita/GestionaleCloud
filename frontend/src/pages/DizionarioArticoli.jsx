@@ -250,10 +250,10 @@ export default function DizionarioArticoli() {
           gap: 12, 
           marginBottom: 24 
         }}>
-          <StatCard label="Totale Articoli" value={stats.totale_articoli} color="#3b82f6" />
-          <StatCard label="Mappati Manualmente" value={stats.mappature_manuali} color="#10b981" />
+          <StatCard label="Totale Articoli" value={stats.totale_articoli} color="#1535a8" />
+          <StatCard label="Mappati Manualmente" value={stats.mappature_manuali} color="#15803d" />
           <StatCard label="Alta Confidenza" value={stats.confidenza?.alta || 0} color="#22c55e" />
-          <StatCard label="Media Confidenza" value={stats.confidenza?.media || 0} color="#f59e0b" />
+          <StatCard label="Media Confidenza" value={stats.confidenza?.media || 0} color="#d97706" />
           <StatCard label="Non Classificati" value={stats.confidenza?.non_classificati || 0} color="#ef4444" />
         </div>
       )}
@@ -273,7 +273,7 @@ export default function DizionarioArticoli() {
           disabled={generating}
           style={{
             padding: '10px 20px',
-            background: generating ? '#9ca3af' : 'linear-gradient(135deg, #3b82f6, #1d4ed8)',
+            background: generating ? '#9ca3af' : 'linear-gradient(135deg, #1535a8, #1d4ed8)',
             color: 'white',
             border: 'none',
             borderRadius: 8,
@@ -289,7 +289,7 @@ export default function DizionarioArticoli() {
           disabled={applying}
           style={{
             padding: '10px 20px',
-            background: applying ? '#9ca3af' : 'linear-gradient(135deg, #10b981, #059669)',
+            background: applying ? '#9ca3af' : 'linear-gradient(135deg, #15803d, #059669)',
             color: 'white',
             border: 'none',
             borderRadius: 8,
@@ -342,7 +342,7 @@ export default function DizionarioArticoli() {
           onClick={handleSearch}
           style={{
             padding: '10px 16px',
-            background: '#3b82f6',
+            background: '#1535a8',
             color: 'white',
             border: 'none',
             borderRadius: 8,
@@ -441,7 +441,7 @@ export default function DizionarioArticoli() {
                             marginLeft: 6,
                             fontSize: 10,
                             color: art.rischio_haccp === 'alto' ? '#dc2626' : 
-                                   art.rischio_haccp === 'medio' ? '#f59e0b' : '#22c55e'
+                                   art.rischio_haccp === 'medio' ? '#d97706' : '#22c55e'
                           }}>
                             ({art.rischio_haccp})
                           </span>
@@ -659,7 +659,7 @@ export default function DizionarioArticoli() {
                   padding: '10px 20px',
                   borderRadius: 8,
                   border: 'none',
-                  background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)',
+                  background: 'linear-gradient(135deg, #1535a8, #1d4ed8)',
                   color: 'white',
                   cursor: 'pointer',
                   fontWeight: 600

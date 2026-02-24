@@ -126,7 +126,7 @@ export default function MotoreContabile() {
           alignItems: 'center', 
           padding: 60 
         }}>
-          <Loader2 className="animate-spin" style={{ width: 40, height: 40, color: '#3b82f6' }} />
+          <Loader2 className="animate-spin" style={{ width: 40, height: 40, color: '#1535a8' }} />
         </div>
       )}
       

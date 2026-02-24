@@ -234,7 +234,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                       padding: '10px 12px',
                       border: 'none',
                       borderRadius: '8px',
-                      background: loadingOpenAPI ? '#9ca3af' : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                      background: loadingOpenAPI ? '#9ca3af' : 'linear-gradient(135deg, #15803d 0%, #059669 100%)',
                       color: 'white',
                       cursor: loadingOpenAPI || !form.partita_iva ? 'not-allowed' : 'pointer',
                       display: 'flex',
@@ -449,7 +449,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                   type="checkbox"
                   checked={form.esclude_magazzino || false}
                   onChange={(e) => handleChange('esclude_magazzino', e.target.checked)}
-                  style={{ width: '18px', height: '18px', accentColor: '#f59e0b' }}
+                  style={{ width: '18px', height: '18px', accentColor: '#d97706' }}
                 />
                 <div>
                   <div style={{ fontSize: '14px', fontWeight: 600, color: '#374151' }}>
@@ -619,7 +619,7 @@ function SupplierCard({ supplier, onEdit, onDelete, onViewInvoices, onChangeMeto
       <div style={{ 
         height: '4px', 
         background: hasIncomplete 
-          ? 'linear-gradient(90deg, #f59e0b, #fbbf24)' 
+          ? 'linear-gradient(90deg, #d97706, #fbbf24)' 
           : 'linear-gradient(90deg, #1535a8, #2050e8)'
       }} />
       
@@ -1969,7 +1969,7 @@ export default function Fornitori() {
                               {f.is_nota_credito ? (
                                 <span style={{ background: '#fecaca', color: '#991b1b', padding: '2px 8px', borderRadius: 4, fontSize: 11 }}>NC</span>
                               ) : (
-                                <span style={{ background: '#dbeafe', color: '#1e40af', padding: '2px 8px', borderRadius: 4, fontSize: 11 }}>{f.tipo_documento}</span>
+                                <span style={{ background: '#dbeafe', color: '#1535a8', padding: '2px 8px', borderRadius: 4, fontSize: 11 }}>{f.tipo_documento}</span>
                               )}
                             </td>
                             <td style={{ padding: '10px 12px', textAlign: 'right' }}>{formatEuro((f.imponibile || 0))}</td>
@@ -1983,18 +1983,18 @@ export default function Fornitori() {
                                 borderRadius: 4, 
                                 fontSize: 11,
                                 background: f.metodo_pagamento === 'cassa' || f.metodo_pagamento === 'contanti' ? '#dcfce7' : '#dbeafe',
-                                color: f.metodo_pagamento === 'cassa' || f.metodo_pagamento === 'contanti' ? '#166534' : '#1e40af'
+                                color: f.metodo_pagamento === 'cassa' || f.metodo_pagamento === 'contanti' ? '#166534' : '#1535a8'
                               }}>
                                 {f.metodo_pagamento || '-'}
                               </span>
                             </td>
                             <td style={{ padding: '10px 12px', textAlign: 'center' }}>
                               {f.riconciliato ? (
-                                <span style={{ background: '#10b981', color: 'white', padding: '2px 8px', borderRadius: 12, fontSize: 10, fontWeight: 600 }}>✓ RICONCILIATA</span>
+                                <span style={{ background: '#15803d', color: 'white', padding: '2px 8px', borderRadius: 12, fontSize: 10, fontWeight: 600 }}>✓ RICONCILIATA</span>
                               ) : f.pagato ? (
                                 <span style={{ background: '#22c55e', color: 'white', padding: '2px 8px', borderRadius: 12, fontSize: 10 }}>Pagata</span>
                               ) : (
-                                <span style={{ background: '#f59e0b', color: 'white', padding: '2px 8px', borderRadius: 12, fontSize: 10 }}>Da pagare</span>
+                                <span style={{ background: '#d97706', color: 'white', padding: '2px 8px', borderRadius: 12, fontSize: 10 }}>Da pagare</span>
                               )}
                             </td>
                           </tr>
@@ -2142,7 +2142,7 @@ export default function Fornitori() {
                             target="_blank"
                             rel="noopener noreferrer"
                             style={{
-                              padding: '8px 16px', background: '#3b82f6', color: 'white',
+                              padding: '8px 16px', background: '#1535a8', color: 'white',
                               borderRadius: 6, textDecoration: 'none', fontSize: 13, fontWeight: 500
                             }}
                           >

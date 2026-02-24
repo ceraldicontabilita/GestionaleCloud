@@ -54,9 +54,9 @@ export default function CoerenzaPOSCorrispettivi() {
 
   const getStatoIcon = (stato) => {
     switch (stato) {
-      case 'ok': return <CheckCircle size={16} color="#10b981" />;
+      case 'ok': return <CheckCircle size={16} color="#15803d" />;
       case 'mancante': return <XCircle size={16} color="#ef4444" />;
-      case 'differenza': return <AlertTriangle size={16} color="#f59e0b" />;
+      case 'differenza': return <AlertTriangle size={16} color="#d97706" />;
       case 'extra': return <FileWarning size={16} color="#8b5cf6" />;
       default: return null;
     }
@@ -86,7 +86,7 @@ export default function CoerenzaPOSCorrispettivi() {
   if (loading) {
     return (
       <div style={{ padding: 40, textAlign: 'center' }}>
-        <RefreshCw size={32} style={{ animation: 'spin 1s linear infinite', color: '#3b82f6' }} />
+        <RefreshCw size={32} style={{ animation: 'spin 1s linear infinite', color: '#1535a8' }} />
         <p style={{ marginTop: 12, color: '#64748b' }}>Analisi coerenza POS/Corrispettivi...</p>
       </div>
     );
@@ -118,8 +118,8 @@ export default function CoerenzaPOSCorrispettivi() {
             </div>
           </div>
           <div style={{ background: '#eff6ff', padding: 16, borderRadius: 10, border: '1px solid #bfdbfe' }}>
-            <div style={{ fontSize: 11, color: '#1e40af', marginBottom: 4 }}>POS da XML</div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: '#1e40af' }}>
+            <div style={{ fontSize: 11, color: '#1535a8', marginBottom: 4 }}>POS da XML</div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: '#1535a8' }}>
               {formatEuro(dati.riepilogo.totale_elettronico_xml)}
             </div>
           </div>
@@ -379,7 +379,7 @@ export default function CoerenzaPOSCorrispettivi() {
                       onClick={() => handleRiconcilia(a.data)}
                       style={{
                         padding: '6px 12px',
-                        background: '#3b82f6',
+                        background: '#1535a8',
                         color: 'white',
                         border: 'none',
                         borderRadius: 6,

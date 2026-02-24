@@ -386,7 +386,7 @@ export default function ArchivioBonifici() {
             href="/import-export"
             style={{ 
               padding: "10px 20px",
-              background: "#3b82f6",
+              background: "#1535a8",
               color: "white",
               fontWeight: "bold",
               borderRadius: 8,
@@ -402,7 +402,7 @@ export default function ArchivioBonifici() {
             onClick={handleSyncIbanToAnagrafica}
             style={{
               padding: "10px 20px",
-              background: "#10b981",
+              background: "#15803d",
               color: "white",
               fontWeight: "bold",
               border: "none",
@@ -510,18 +510,18 @@ export default function ArchivioBonifici() {
                   transition: 'all 0.2s'
                 }}
                 onClick={() => handleDownloadZip(year)}
-                onMouseOver={(e) => e.currentTarget.style.borderColor = '#3b82f6'}
+                onMouseOver={(e) => e.currentTarget.style.borderColor = '#1535a8'}
                 onMouseOut={(e) => e.currentTarget.style.borderColor = '#e2e8f0'}
               >
                 <div style={{ fontWeight: 'bold', color: '#1535a8', display: 'flex', alignItems: 'center', gap: 8 }}>
                   {year}
-                  <span style={{ fontSize: 12, color: '#3b82f6' }}>📥</span>
+                  <span style={{ fontSize: 12, color: '#1535a8' }}>📥</span>
                 </div>
                 <div style={{ fontSize: 12, color: '#64748b' }}>{data.count} bonifici • {formatEuro(data.total)}</div>
               </div>
             ))}
           </div>
-          {downloadingZip && <div style={{ marginTop: 8, fontSize: 12, color: '#3b82f6' }}>⏳ Preparazione ZIP in corso...</div>}
+          {downloadingZip && <div style={{ marginTop: 8, fontSize: 12, color: '#1535a8' }}>⏳ Preparazione ZIP in corso...</div>}
         </div>
       )}
 
@@ -551,7 +551,7 @@ export default function ArchivioBonifici() {
           style={{
             padding: '8px 16px',
             borderRadius: 8,
-            background: '#3b82f6',
+            background: '#1535a8',
             color: 'white',
             border: 'none',
             cursor: 'pointer',
@@ -777,7 +777,7 @@ export default function ArchivioBonifici() {
                             onClick={() => toggleAssociaDropdown(t.id)}
                             style={{
                               padding: '4px 10px',
-                              background: associaDropdown === t.id ? '#3b82f6' : '#f1f5f9',
+                              background: associaDropdown === t.id ? '#1535a8' : '#f1f5f9',
                               color: associaDropdown === t.id ? 'white' : '#475569',
                               border: 'none',
                               borderRadius: 6,

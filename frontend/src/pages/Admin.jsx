@@ -1013,7 +1013,7 @@ export default function Admin() {
                       alert('Errore: ' + (e.response?.data?.detail || e.message));
                     }
                   }}
-                  style={{ ...buttonStyle('#ff9800'), width: '100%', marginBottom: 8 }}
+                  style={{ ...buttonStyle('#d97706'), width: '100%', marginBottom: 8 }}
                 >
                   🔄 Ricostruisci Dati Fatture
                 </button>
@@ -1300,7 +1300,7 @@ function FattureAdminTab() {
             <div style={{ display: 'grid', gap: 8, fontSize: 13 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #f1f5f9' }}>
                 <span style={{ fontWeight: 600 }}>Totale Fatture:</span>
-                <span style={{ fontWeight: 700, color: '#1e40af' }}>{fattureStats.totale}</span>
+                <span style={{ fontWeight: 700, color: '#1535a8' }}>{fattureStats.totale}</span>
               </div>
               
               {fattureStats.metodi_pagamento?.map((m, i) => (

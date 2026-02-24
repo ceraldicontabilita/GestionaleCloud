@@ -432,7 +432,7 @@ function PrimaNotaDesktop() {
             disabled={syncing}
             style={{
               padding: '6px 12px',
-              background: syncing ? '#999' : '#ff9800',
+              background: syncing ? '#999' : '#d97706',
               color: 'white',
               border: 'none',
               borderRadius: 6,
@@ -552,7 +552,7 @@ function PrimaNotaDesktop() {
 
           {/* Dettaglio - Compatto */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8, marginBottom: 16 }}>
-            <TinyStatCard title="Corrispettivi" value={formatEuro(totaleCorrispettivi)} color="#ff9800" />
+            <TinyStatCard title="Corrispettivi" value={formatEuro(totaleCorrispettivi)} color="#d97706" />
             <TinyStatCard title="POS" value={formatEuro(totalePOS)} color="#1535a8" />
             <TinyStatCard title="Versamenti" value={formatEuro(totaleVersamenti)} color="#15803d" />
             <TinyStatCard title="Fatture" value={formatEuro(totaleFattureCassa)} color="#ef4444" />
@@ -585,7 +585,7 @@ function PrimaNotaDesktop() {
               
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginTop: 12 }}>
                 {/* Corrispettivo - Ultra compatto */}
-                <div style={{ background: 'white', borderRadius: 8, padding: 10, borderLeft: '3px solid #ff9800' }}>
+                <div style={{ background: 'white', borderRadius: 8, padding: 10, borderLeft: '3px solid #d97706' }}>
                   <div style={{ fontSize: 11, fontWeight: 'bold', color: '#92400e', marginBottom: 6 }}>📊 Corrispettivo</div>
                   <div style={{ display: 'flex', gap: 4 }}>
                     <input type="date" value={corrispettivo.data} onChange={(e) => setCorrispettivo({...corrispettivo, data: e.target.value})} style={{ ...inputStyleCompact, flex: 1, padding: '4px 6px', fontSize: 11 }} />
@@ -723,9 +723,9 @@ function PrimaNotaDesktop() {
           <div style={{ background: '#eff6ff', border: '1px solid #1535a8', borderRadius: 12, padding: 16, marginBottom: 20 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
               <span style={{ fontSize: 20 }}>ℹ️</span>
-              <strong style={{ color: '#1e40af' }}>Estratto Conto Bancario</strong>
+              <strong style={{ color: '#1535a8' }}>Estratto Conto Bancario</strong>
             </div>
-            <p style={{ margin: 0, fontSize: 13, color: '#1e40af' }}>
+            <p style={{ margin: 0, fontSize: 13, color: '#1535a8' }}>
               Questa sezione visualizza i movimenti importati dall'<strong>estratto conto bancario</strong>. Per importare nuovi movimenti, vai alla pagina <strong>Import/Export</strong> e carica il file CSV dell'estratto conto.
             </p>
           </div>
@@ -1236,7 +1236,7 @@ function MovementsTable({ movimenti, tipo, loading, formatEuro, formatDate, onDe
                         padding: '6px 12px',
                         background: '#fef3c7',
                         color: '#92400e',
-                        border: '1px solid #ff9800',
+                        border: '1px solid #d97706',
                         borderRadius: 6,
                         fontSize: 11,
                         fontWeight: 'bold'

@@ -66,7 +66,7 @@ export default function Finanziaria() {
           background: '#dbeafe', 
           padding: '10px 20px', 
           borderRadius: 8, 
-          color: '#1e40af', 
+          color: '#1535a8', 
           fontWeight: 600,
           fontSize: 14
         }}>

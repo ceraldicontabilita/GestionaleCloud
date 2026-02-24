@@ -124,10 +124,10 @@ const pageStyle = {
     gap: '6px',
     transition: 'all 0.2s',
     ...(variant === 'primary' ? {
-      background: '#3b82f6',
+      background: '#1535a8',
       color: 'white'
     } : variant === 'success' ? {
-      background: '#10b981',
+      background: '#15803d',
       color: 'white'
     } : variant === 'danger' ? {
       background: '#ef4444',
@@ -344,20 +344,20 @@ export default function Riconciliazione() {
       {/* Stats Cards */}
       {stats && (
         <div style={pageStyle.statsGrid}>
-          <div style={pageStyle.statCard('#3b82f6')}>
-            <p style={pageStyle.statValue('#3b82f6')}>{stats.estratto_conto?.totali || 0}</p>
+          <div style={pageStyle.statCard('#1535a8')}>
+            <p style={pageStyle.statValue('#1535a8')}>{stats.estratto_conto?.totali || 0}</p>
             <p style={pageStyle.statLabel}>Movimenti Totali EC</p>
           </div>
-          <div style={pageStyle.statCard('#10b981')}>
-            <p style={pageStyle.statValue('#10b981')}>{stats.estratto_conto?.riconciliati || 0}</p>
+          <div style={pageStyle.statCard('#15803d')}>
+            <p style={pageStyle.statValue('#15803d')}>{stats.estratto_conto?.riconciliati || 0}</p>
             <p style={pageStyle.statLabel}>Riconciliati</p>
           </div>
           <div style={pageStyle.statCard('#8b5cf6')}>
             <p style={pageStyle.statValue('#8b5cf6')}>{stats.estratto_conto?.automatici || 0}</p>
             <p style={pageStyle.statLabel}>Automatici</p>
           </div>
-          <div style={pageStyle.statCard('#f59e0b')}>
-            <p style={pageStyle.statValue('#f59e0b')}>{stats.operazioni_da_confermare || 0}</p>
+          <div style={pageStyle.statCard('#d97706')}>
+            <p style={pageStyle.statValue('#d97706')}>{stats.operazioni_da_confermare || 0}</p>
             <p style={pageStyle.statLabel}>Da Confermare</p>
           </div>
         </div>
@@ -472,7 +472,7 @@ export default function Riconciliazione() {
                 {selectedMovimento ? 'Fatture Compatibili' : 'Seleziona un movimento'}
               </h2>
               {selectedMovimento && (
-                <span style={pageStyle.badge('#3b82f6')}>
+                <span style={pageStyle.badge('#1535a8')}>
                   {formatEuro(Math.abs(selectedMovimento.importo))}
                 </span>
               )}

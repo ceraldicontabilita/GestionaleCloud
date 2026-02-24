@@ -122,7 +122,7 @@ export default function CodiciTributari() {
             />
             <button 
               type="submit" 
-              style={{ padding: '8px 16px', background: '#10b981', color: 'white', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: '600' }}
+              style={{ padding: '8px 16px', background: '#15803d', color: 'white', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: '600' }}
               data-testid="search-codice-btn"
             >
               🔍 Cerca

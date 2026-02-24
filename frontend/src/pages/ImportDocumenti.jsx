@@ -179,7 +179,7 @@ export default function ImportDocumenti() {
       estratto_conto: '#059669',
       estratto_conto_pdf: '#15803d',
       bonifici: '#06b6d4',
-      quietanza_f24: '#ff9800',
+      quietanza_f24: '#d97706',
       corrispettivi: '#84cc16',
       pos: '#a855f7',
     };
@@ -221,8 +221,8 @@ export default function ImportDocumenti() {
           alignItems: 'flex-start',
           gap: 12
         }}>
-          <Sparkles size={20} color="#3b82f6" style={{ flexShrink: 0, marginTop: 2 }} />
-          <div style={{ fontSize: 13, color: '#1e40af' }}>
+          <Sparkles size={20} color="#1535a8" style={{ flexShrink: 0, marginTop: 2 }} />
+          <div style={{ fontSize: 13, color: '#1535a8' }}>
             <strong>Riconoscimento Automatico</strong><br/>
             Carica qualsiasi documento: F24, Libro Unico, Fatture XML, Estratti Conto, Bonifici, ecc.<br/>
             Il sistema riconosce il tipo e lo elabora con il workflow completo.
@@ -238,7 +238,7 @@ export default function ImportDocumenti() {
           data-testid="drop-zone"
           style={{
             background: dragOver ? '#dbeafe' : 'white',
-            border: dragOver ? '3px dashed #3b82f6' : '3px dashed #d1d5db',
+            border: dragOver ? '3px dashed #1535a8' : '3px dashed #d1d5db',
             borderRadius: 16, 
             padding: 50, 
             textAlign: 'center', 
@@ -256,7 +256,7 @@ export default function ImportDocumenti() {
             style={{ display: 'none' }} 
             data-testid="file-input" 
           />
-          <FolderUp size={56} style={{ marginBottom: 12, opacity: 0.5, color: dragOver ? '#3b82f6' : '#6b7280' }} />
+          <FolderUp size={56} style={{ marginBottom: 12, opacity: 0.5, color: dragOver ? '#1535a8' : '#6b7280' }} />
           <div style={{ fontSize: 17, fontWeight: 600, color: '#374151', marginBottom: 6 }}>
             {dragOver ? 'Rilascia qui i file' : 'Trascina i file o clicca per selezionare'}
           </div>
@@ -281,7 +281,7 @@ export default function ImportDocumenti() {
             disabled={uploading}
             style={{ 
               padding: '10px 20px', 
-              background: '#f59e0b', 
+              background: '#d97706', 
               color: 'white', 
               border: 'none', 
               borderRadius: 8, 
@@ -342,7 +342,7 @@ export default function ImportDocumenti() {
                   data-testid="upload-btn"
                   style={{ 
                     padding: '8px 20px', 
-                    background: uploading ? '#9ca3af' : '#3b82f6', 
+                    background: uploading ? '#9ca3af' : '#1535a8', 
                     color: 'white', 
                     border: 'none', 
                     borderRadius: 6, 
@@ -374,7 +374,7 @@ export default function ImportDocumenti() {
                   <div style={{ 
                     height: '100%', 
                     width: `${(uploadProgress.current / uploadProgress.total) * 100}%`, 
-                    background: 'linear-gradient(90deg, #3b82f6, #1d4ed8)', 
+                    background: 'linear-gradient(90deg, #1535a8, #1d4ed8)', 
                     borderRadius: 3, 
                     transition: 'width 0.3s ease' 
                   }} />
@@ -412,7 +412,7 @@ export default function ImportDocumenti() {
                     flexShrink: 0 
                   }}>
                     {f.status === 'uploading' ? (
-                      <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} color="#3b82f6" />
+                      <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} color="#1535a8" />
                     ) : f.status === 'success' ? (
                       <CheckCircle size={16} color="#16a34a" />
                     ) : f.status === 'duplicate' ? (
@@ -594,7 +594,7 @@ export default function ImportDocumenti() {
               { label: 'Libro Unico (LUL)', color: '#8b5cf6' },
               { label: 'Fatture XML', color: '#ec4899' },
               { label: 'Estratti Conto', color: '#059669' },
-              { label: 'Quietanze F24', color: '#ff9800' },
+              { label: 'Quietanze F24', color: '#d97706' },
               { label: 'Bonifici', color: '#06b6d4' },
               { label: 'Corrispettivi', color: '#84cc16' },
               { label: 'POS', color: '#a855f7' },

@@ -145,7 +145,7 @@ export default function IntegrazioniOpenAPI() {
               SDI (Fatturazione Elettronica) & XBRL (Bilanci)
             </p>
           </div>
-          <button onClick={loadStatus} style={button('#3b82f6')}>
+          <button onClick={loadStatus} style={button('#1535a8')}>
             🔄 Aggiorna Stato
           </button>
         </div>
@@ -208,7 +208,7 @@ export default function IntegrazioniOpenAPI() {
                   <button 
                     onClick={riceviFatture}
                     disabled={ricezioneLoading}
-                    style={{ ...button('#10b981'), width: '100%' }}
+                    style={{ ...button('#15803d'), width: '100%' }}
                   >
                     {ricezioneLoading ? '⏳ Caricamento...' : '📥 Ricevi Fatture SDI'}
                   </button>
@@ -228,7 +228,7 @@ export default function IntegrazioniOpenAPI() {
                   </p>
                   <button 
                     onClick={() => alert('Vai su Fatture Emesse per inviare singole fatture')}
-                    style={{ ...button('#3b82f6'), width: '100%' }}
+                    style={{ ...button('#1535a8'), width: '100%' }}
                   >
                     📤 Gestione Invii
                   </button>
@@ -242,7 +242,7 @@ export default function IntegrazioniOpenAPI() {
                   </p>
                   <button 
                     onClick={loadNotifiche}
-                    style={{ ...button('#f59e0b'), width: '100%' }}
+                    style={{ ...button('#d97706'), width: '100%' }}
                   >
                     🔔 Carica Notifiche
                   </button>
@@ -334,7 +334,7 @@ export default function IntegrazioniOpenAPI() {
                   <button 
                     onClick={richiediXbrl}
                     disabled={xbrlLoading}
-                    style={{ ...button('#10b981'), height: 42 }}
+                    style={{ ...button('#15803d'), height: 42 }}
                     data-testid="richiedi-xbrl-btn"
                   >
                     {xbrlLoading ? '⏳ Invio...' : '📤 Richiedi Bilancio'}
@@ -387,7 +387,7 @@ export default function IntegrazioniOpenAPI() {
                           <td style={{ padding: 10, textAlign: 'center' }}>
                             <button 
                               onClick={() => checkXbrlStatus(r.id)}
-                              style={{ ...button('#3b82f6'), padding: '4px 10px', fontSize: 11 }}
+                              style={{ ...button('#1535a8'), padding: '4px 10px', fontSize: 11 }}
                             >
                               Verifica
                             </button>
@@ -396,7 +396,7 @@ export default function IntegrazioniOpenAPI() {
                                 href={r.download_url} 
                                 target="_blank" 
                                 rel="noreferrer"
-                                style={{ marginLeft: 8, ...button('#10b981'), padding: '4px 10px', fontSize: 11, textDecoration: 'none' }}
+                                style={{ marginLeft: 8, ...button('#15803d'), padding: '4px 10px', fontSize: 11, textDecoration: 'none' }}
                               >
                                 📥 Download
                               </a>
@@ -458,7 +458,7 @@ export default function IntegrazioniOpenAPI() {
                     onClick={richiediXbrl}
                     disabled={xbrlLoading || !xbrlPiva}
                     style={{
-                      ...button('#10b981'),
+                      ...button('#15803d'),
                       minWidth: 120,
                       height: 40
                     }}
@@ -524,7 +524,7 @@ export default function IntegrazioniOpenAPI() {
                               <button
                                 onClick={() => checkXbrlStatus(req.id)}
                                 style={{
-                                  ...button('#3b82f6'),
+                                  ...button('#1535a8'),
                                   fontSize: 11,
                                   padding: '4px 8px'
                                 }}

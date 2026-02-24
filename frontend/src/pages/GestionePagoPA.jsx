@@ -132,7 +132,7 @@ export default function GestionePagoPA() {
             disabled={autoAssociaLoading}
             style={{ 
               padding: '10px 20px',
-              background: '#10b981',
+              background: '#15803d',
               color: 'white',
               border: 'none',
               borderRadius: 8,
@@ -162,10 +162,10 @@ export default function GestionePagoPA() {
               borderRadius: 8, 
               padding: '10px 12px', 
               boxShadow: '0 1px 4px rgba(0,0,0,0.06)', 
-              borderLeft: '3px solid #3b82f6' 
+              borderLeft: '3px solid #1535a8' 
             }}>
               <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>📄 Ricevute Totali</div>
-              <div style={{ fontSize: 18, fontWeight: 'bold', color: '#3b82f6' }} data-testid="stats-totali">{stats.totale_ricevute || 0}</div>
+              <div style={{ fontSize: 18, fontWeight: 'bold', color: '#1535a8' }} data-testid="stats-totali">{stats.totale_ricevute || 0}</div>
             </div>
             <div style={{ 
               background: 'white', 
@@ -207,9 +207,9 @@ export default function GestionePagoPA() {
         padding: 12, 
         background: '#eff6ff', 
         borderRadius: 8, 
-        borderLeft: '4px solid #3b82f6',
+        borderLeft: '4px solid #1535a8',
         fontSize: 13,
-        color: '#1e40af',
+        color: '#1535a8',
         marginBottom: 20
       }}>
         <strong>ℹ️ Come funziona:</strong> Il sistema cerca nei movimenti bancari il codice CBILL (bollettino) 
@@ -243,11 +243,11 @@ export default function GestionePagoPA() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
                 <span style={{ fontSize: 24 }}>🏛️</span>
                 <div>
-                  <h4 style={{ margin: 0, fontWeight: 600, color: '#1e40af' }}>Rateizzi INPS</h4>
-                  <p style={{ margin: 0, fontSize: 12, color: '#3b82f6' }}>Dilazioni contributive</p>
+                  <h4 style={{ margin: 0, fontWeight: 600, color: '#1535a8' }}>Rateizzi INPS</h4>
+                  <p style={{ margin: 0, fontSize: 12, color: '#1535a8' }}>Dilazioni contributive</p>
                 </div>
               </div>
-              <ul style={{ fontSize: 13, color: '#1e40af', margin: 0, paddingLeft: 16 }}>
+              <ul style={{ fontSize: 13, color: '#1535a8', margin: 0, paddingLeft: 16 }}>
                 <li>Rateizzazione contributi</li>
                 <li>Avvisi di addebito</li>
                 <li>Sanzioni INPS</li>
@@ -292,7 +292,7 @@ export default function GestionePagoPA() {
                 <span style={{ fontSize: 24 }}>🗑️</span>
                 <div>
                   <h4 style={{ margin: 0, fontWeight: 600, color: '#92400e' }}>TARI</h4>
-                  <p style={{ margin: 0, fontSize: 12, color: '#f59e0b' }}>Tassa rifiuti</p>
+                  <p style={{ margin: 0, fontSize: 12, color: '#d97706' }}>Tassa rifiuti</p>
                 </div>
               </div>
               <ul style={{ fontSize: 13, color: '#92400e', margin: 0, paddingLeft: 16 }}>

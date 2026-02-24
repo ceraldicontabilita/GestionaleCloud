@@ -141,7 +141,7 @@ export default function Scadenze() {
           onClick={() => setShowModal(true)}
           style={{
             padding: '10px 20px',
-            background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+            background: 'linear-gradient(135deg, #1535a8 0%, #1535a8 100%)',
             color: 'white',
             border: 'none',
             borderRadius: 8,
@@ -392,7 +392,7 @@ export default function Scadenze() {
       {/* Riepilogo IVA - Trimestrale e Mensile */}
       {(scadenzeIva || scadenzeIvaMensili) && (
         <div style={{ 
-          background: 'linear-gradient(135deg, #1e40af 0%, #1e3a8a 100%)',
+          background: 'linear-gradient(135deg, #1535a8 0%, #1e3a8a 100%)',
           borderRadius: 12,
           padding: 20,
           marginBottom: 20,
@@ -654,7 +654,7 @@ export default function Scadenze() {
                         onClick={() => handleCompleta(s.id)}
                         style={{
                           padding: '6px 12px',
-                          background: '#10b981',
+                          background: '#15803d',
                           color: 'white',
                           border: 'none',
                           borderRadius: 6,
@@ -708,7 +708,7 @@ export default function Scadenze() {
                         disabled={loadingInvoice}
                         style={{
                           padding: '6px 12px',
-                          background: loadingInvoice ? '#9ca3af' : '#3b82f6',
+                          background: loadingInvoice ? '#9ca3af' : '#1535a8',
                           color: 'white',
                           border: 'none',
                           borderRadius: 6,
@@ -729,7 +729,7 @@ export default function Scadenze() {
                         rel="noopener noreferrer"
                         style={{
                           padding: '6px 12px',
-                          background: '#10b981',
+                          background: '#15803d',
                           color: 'white',
                           border: 'none',
                           borderRadius: 6,
@@ -870,7 +870,7 @@ export default function Scadenze() {
                 onClick={handleCreaScadenza}
                 style={{
                   padding: '10px 20px',
-                  background: '#3b82f6',
+                  background: '#1535a8',
                   color: 'white',
                   border: 'none',
                   borderRadius: 6,

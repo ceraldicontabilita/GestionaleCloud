@@ -79,7 +79,7 @@ export default function Register() {
         {/* Left side - Branding */}
         <div style={{ flex: 1, display: 'none', '@media (min-width: 768px)': { display: 'block' } }} className="hidden md:block">
           <h1 style={{ fontSize: 42, fontWeight: 700, color: '#f8fafc', marginBottom: 8 }}>
-            Ceraldi<span style={{ color: '#3b82f6' }}>.</span>
+            Ceraldi<span style={{ color: '#1535a8' }}>.</span>
           </h1>
           <p style={{ color: '#94a3b8', fontSize: 18, marginBottom: 32 }}>
             Impresa Semplice Online
@@ -246,7 +246,7 @@ export default function Register() {
                 style={{
                   width: '100%',
                   padding: '14px',
-                  background: loading ? '#1e40af' : '#3b82f6',
+                  background: loading ? '#1535a8' : '#1535a8',
                   color: '#fff',
                   border: 'none',
                   borderRadius: 8,
@@ -265,7 +265,7 @@ export default function Register() {
                 Hai già un account?{' '}
                 <Link 
                   to="/login" 
-                  style={{ color: '#3b82f6', textDecoration: 'none' }}
+                  style={{ color: '#1535a8', textDecoration: 'none' }}
                   data-testid="goto-login-link"
                 >
                   Accedi

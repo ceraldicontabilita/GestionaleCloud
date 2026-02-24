@@ -143,7 +143,7 @@ export default function Inventario() {
           onClick={nuovoInventario}
           style={{
             padding: '12px 24px',
-            background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+            background: 'linear-gradient(135deg, #15803d 0%, #059669 100%)',
             color: 'white',
             border: 'none',
             borderRadius: '10px',
@@ -192,7 +192,7 @@ export default function Inventario() {
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: '24px', fontWeight: 700, color: '#10b981' }}>
+                    <div style={{ fontSize: '24px', fontWeight: 700, color: '#15803d' }}>
                       {formatEuro(inv.importo_totale || 0)}
                     </div>
                     {inv.importo_target > 0 && (
@@ -214,7 +214,7 @@ export default function Inventario() {
           {/* Header Creazione */}
           <div style={{ 
             padding: '20px 24px', 
-            background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
+            background: 'linear-gradient(135deg, #1535a8 0%, #1d4ed8 100%)',
             color: 'white'
           }}>
             <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 600 }}>Nuovo Inventario</h2>
@@ -257,7 +257,7 @@ export default function Inventario() {
               <div style={{ flex: 1, minWidth: '300px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#64748b', marginBottom: '6px' }}>
                   <span>Progresso: {formatEuro(totaleCorrente)} / {formatEuro(parseFloat(importoTarget))}</span>
-                  <span style={{ color: percentualeRaggiunta >= 100 ? '#10b981' : '#f59e0b' }}>
+                  <span style={{ color: percentualeRaggiunta >= 100 ? '#15803d' : '#d97706' }}>
                     {percentualeRaggiunta.toFixed(1)}%
                   </span>
                 </div>
@@ -265,12 +265,12 @@ export default function Inventario() {
                   <div style={{
                     height: '100%',
                     width: `${Math.min(percentualeRaggiunta, 100)}%`,
-                    background: percentualeRaggiunta >= 100 ? '#10b981' : 'linear-gradient(90deg, #3b82f6, #8b5cf6)',
+                    background: percentualeRaggiunta >= 100 ? '#15803d' : 'linear-gradient(90deg, #1535a8, #8b5cf6)',
                     transition: 'width 0.3s'
                   }} />
                 </div>
                 {importoTarget > 0 && (
-                  <div style={{ fontSize: '12px', marginTop: '4px', color: differenza > 0 ? '#f59e0b' : '#10b981' }}>
+                  <div style={{ fontSize: '12px', marginTop: '4px', color: differenza > 0 ? '#d97706' : '#15803d' }}>
                     {differenza > 0 ? `Mancano ${formatEuro(differenza)}` : `Superato di ${formatEuro(Math.abs(differenza))}`}
                   </div>
                 )}
@@ -441,7 +441,7 @@ export default function Inventario() {
               disabled={saving || prodottiInventario.length === 0}
               style={{
                 padding: '10px 24px',
-                background: saving ? '#9ca3af' : '#10b981',
+                background: saving ? '#9ca3af' : '#15803d',
                 color: 'white',
                 border: 'none',
                 borderRadius: '8px',

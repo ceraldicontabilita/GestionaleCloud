@@ -198,7 +198,7 @@ export default function RicercaProdotti() {
   const smallStyle = { fontSize: 13, color: '#64748b' };
   const rowStyle = { display: 'flex', alignItems: 'center' };
   const gridStyle = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 16 };
-  const btnPrimary = { padding: '10px 18px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: '600' };
+  const btnPrimary = { padding: '10px 18px', background: '#1535a8', color: 'white', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: '600' };
 
   return (
     <PageLayout title="Ordini Fornitori" subtitle="Cerca prodotti, confronta prezzi per fornitore e crea ordini raggruppati">

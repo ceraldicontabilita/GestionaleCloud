@@ -190,7 +190,7 @@ export default function ContabilitaAvanzata() {
 
             {/* Cards Riepilogo */}
             <div style={styles.grid4}>
-              <div style={styles.cardGradient('#1535a8', '#1e40af')}><p style={styles.statLabel('#bfdbfe')}>Utile Civilistico</p><p style={styles.statValue} data-testid="utile-civilistico">{formatEuro(imposte.utile_civilistico)}</p></div>
+              <div style={styles.cardGradient('#1535a8', '#1535a8')}><p style={styles.statLabel('#bfdbfe')}>Utile Civilistico</p><p style={styles.statValue} data-testid="utile-civilistico">{formatEuro(imposte.utile_civilistico)}</p></div>
               <div style={styles.cardGradient('#ea580c', '#c2410c')}><p style={styles.statLabel('#fed7aa')}>IRES (24%)</p><p style={styles.statValue} data-testid="ires-dovuta">{formatEuro(imposte.ires.imposta_dovuta)}</p></div>
               <div style={styles.cardGradient('#9333ea', '#7c3aed')}><p style={styles.statLabel('#e9d5ff')}>IRAP ({imposte.irap.aliquota}%)</p><p style={styles.statValue} data-testid="irap-dovuta">{formatEuro(imposte.irap.imposta_dovuta)}</p></div>
               <div style={styles.cardGradient('#dc2626', '#b91c1c')}><p style={styles.statLabel('#fecaca')}>Totale Imposte</p><p style={styles.statValue} data-testid="totale-imposte">{formatEuro(imposte.totale_imposte)}</p><p style={{ color: '#fecaca', fontSize: 12, marginTop: 4 }}>Aliquota effettiva: {imposte.aliquota_effettiva}%</p></div>

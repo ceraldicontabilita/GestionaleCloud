@@ -86,7 +86,7 @@ export default function Visure() {
             alignItems: 'center',
             gap: 12
           }}>
-            <Building2 size={28} style={{ color: '#3b82f6' }} />
+            <Building2 size={28} style={{ color: '#1535a8' }} />
             {data.companyName}
           </h2>
           <p style={{ 
@@ -126,7 +126,7 @@ export default function Visure() {
           border: '1px solid #e2e8f0'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-            <MapPin size={18} style={{ color: '#3b82f6' }} />
+            <MapPin size={18} style={{ color: '#1535a8' }} />
             <span style={{ fontWeight: 600, color: '#374151' }}>Sede Legale</span>
           </div>
           <p style={{ margin: 0, color: '#4b5563', fontSize: 14, lineHeight: 1.6 }}>
@@ -143,7 +143,7 @@ export default function Visure() {
           border: '1px solid #e2e8f0'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-            <Mail size={18} style={{ color: '#3b82f6' }} />
+            <Mail size={18} style={{ color: '#1535a8' }} />
             <span style={{ fontWeight: 600, color: '#374151' }}>Contatti</span>
           </div>
           <p style={{ margin: 0, color: '#4b5563', fontSize: 14, lineHeight: 1.6 }}>
@@ -160,7 +160,7 @@ export default function Visure() {
           border: '1px solid #e2e8f0'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-            <FileText size={18} style={{ color: '#3b82f6' }} />
+            <FileText size={18} style={{ color: '#1535a8' }} />
             <span style={{ fontWeight: 600, color: '#374151' }}>Attività</span>
           </div>
           <p style={{ margin: 0, color: '#4b5563', fontSize: 14, lineHeight: 1.6 }}>
@@ -202,9 +202,9 @@ export default function Visure() {
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                 <Users size={18} style={{ color: '#1535a8' }} />
-                <span style={{ fontWeight: 600, color: '#1e40af' }}>Dipendenti</span>
+                <span style={{ fontWeight: 600, color: '#1535a8' }}>Dipendenti</span>
               </div>
-              <p style={{ margin: 0, fontSize: 22, fontWeight: 700, color: '#1e40af' }}>
+              <p style={{ margin: 0, fontSize: 22, fontWeight: 700, color: '#1535a8' }}>
                 {mappedData.numero_dipendenti}
               </p>
             </div>
@@ -226,7 +226,7 @@ export default function Visure() {
           disabled={loading}
           style={{
             padding: '12px 24px',
-            background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+            background: 'linear-gradient(135deg, #15803d 0%, #059669 100%)',
             color: 'white',
             border: 'none',
             borderRadius: 10,
@@ -275,9 +275,9 @@ export default function Visure() {
             onClick={() => setSearchType('piva')}
             style={{
               padding: '10px 20px',
-              border: searchType === 'piva' ? '2px solid #3b82f6' : '2px solid #e5e7eb',
+              border: searchType === 'piva' ? '2px solid #1535a8' : '2px solid #e5e7eb',
               background: searchType === 'piva' ? '#eff6ff' : 'white',
-              color: searchType === 'piva' ? '#3b82f6' : '#6b7280',
+              color: searchType === 'piva' ? '#1535a8' : '#6b7280',
               borderRadius: 10,
               cursor: 'pointer',
               fontWeight: 600
@@ -289,9 +289,9 @@ export default function Visure() {
             onClick={() => setSearchType('nome')}
             style={{
               padding: '10px 20px',
-              border: searchType === 'nome' ? '2px solid #3b82f6' : '2px solid #e5e7eb',
+              border: searchType === 'nome' ? '2px solid #1535a8' : '2px solid #e5e7eb',
               background: searchType === 'nome' ? '#eff6ff' : 'white',
-              color: searchType === 'nome' ? '#3b82f6' : '#6b7280',
+              color: searchType === 'nome' ? '#1535a8' : '#6b7280',
               borderRadius: 10,
               cursor: 'pointer',
               fontWeight: 600
@@ -323,7 +323,7 @@ export default function Visure() {
             disabled={loading}
             style={{
               padding: '14px 28px',
-              background: loading ? '#9ca3af' : 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+              background: loading ? '#9ca3af' : 'linear-gradient(135deg, #1535a8 0%, #1535a8 100%)',
               color: 'white',
               border: 'none',
               borderRadius: 12,

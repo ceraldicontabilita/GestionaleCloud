@@ -717,7 +717,7 @@ export default function ControlloMensile() {
             </div>
           )}
         </div>
-        <div style={{ background: 'linear-gradient(135deg, #ff9800 0%, #d97706 100%)', borderRadius: 12, padding: 14, color: 'white' }}>
+        <div style={{ background: 'linear-gradient(135deg, #d97706 0%, #d97706 100%)', borderRadius: 12, padding: 14, color: 'white' }}>
           <div style={{ fontSize: 11, opacity: 0.9 }}>Corrisp. Auto (XML)</div>
           <div style={{ fontSize: 18, fontWeight: 'bold' }}>{formatEuro(yearTotals.corrispettiviAuto)}</div>
         </div>
@@ -791,7 +791,7 @@ export default function ControlloMensile() {
         (viewMode === 'mese' && dailyComparison.some(d => d.hasDiscrepancy))) && (
         <div style={{ 
           background: '#fef3c7', 
-          border: '2px solid #ff9800', 
+          border: '2px solid #d97706', 
           borderRadius: 8, 
           padding: 15, 
           marginBottom: 20,
@@ -1091,7 +1091,7 @@ export default function ControlloMensile() {
             <strong style={{ color: '#8b5cf6' }}>POS Reale (Tuo)</strong> = Σ prima_nota_cassa WHERE categoria="POS"
           </div>
           <div>
-            <strong style={{ color: '#ff9800' }}>Corrisp. Auto</strong> = Σ corrispettivi.totale (da XML)
+            <strong style={{ color: '#d97706' }}>Corrisp. Auto</strong> = Σ corrispettivi.totale (da XML)
           </div>
           <div>
             <strong style={{ color: '#15803d' }}>Corrisp. Man.</strong> = Σ prima_nota_cassa WHERE categoria="Corrispettivi" AND tipo="entrata"

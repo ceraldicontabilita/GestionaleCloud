@@ -91,7 +91,7 @@ export default function IVA() {
       {/* Controlli */}
       <PageSection title="Filtri" icon={<Calendar size={16} />}>
         <div style={{ display: "flex", alignItems: "center", gap: 15, flexWrap: 'wrap' }}>
-          <div style={{ background: '#dbeafe', padding: '8px 16px', borderRadius: 8, color: '#1e40af', fontWeight: 600 }}>
+          <div style={{ background: '#dbeafe', padding: '8px 16px', borderRadius: 8, color: '#1535a8', fontWeight: 600 }}>
             📅 Anno: {selectedYear}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

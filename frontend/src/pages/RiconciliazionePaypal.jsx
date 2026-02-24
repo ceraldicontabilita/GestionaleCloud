@@ -30,11 +30,11 @@ const TIPO_LABELS = {
 
 const TIPO_COLORS = {
   express_checkout: '#ef4444',
-  pagamento_utenza: '#f59e0b',
+  pagamento_utenza: '#d97706',
   pagamento_web: '#8b5cf6',
   pagamento: '#dc2626',
   accredito: '#22c55e',
-  bonifico_paypal: '#3b82f6',
+  bonifico_paypal: '#1535a8',
   rimborso: '#06b6d4',
   conversione_valuta: '#6b7280',
   prelievo: '#f97316',
@@ -156,7 +156,7 @@ export default function RiconciliazionePaypal() {
             { label: 'Transazioni', value: dashboard?.total_transactions, color: '#6366f1' },
             { label: 'Totale Speso', value: formatEuro(Math.abs(dashboard?.totale_speso || 0)), color: '#ef4444', isText: true },
             { label: 'Riconciliati Banca', value: dashboard?.riconciliati_banca, color: '#22c55e' },
-            { label: 'Movimenti Banca', value: dashboard?.movimenti_banca_paypal, color: '#f59e0b' },
+            { label: 'Movimenti Banca', value: dashboard?.movimenti_banca_paypal, color: '#d97706' },
           ].map((s, i) => (
             <div key={i} style={{ background: 'white', borderRadius: 10, padding: 16, boxShadow: '0 1px 4px rgba(0,0,0,0.06)', borderLeft: `3px solid ${s.color}` }}>
               <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>{s.label}</div>
@@ -375,7 +375,7 @@ export default function RiconciliazionePaypal() {
                 {statements.map((s, i) => (
                   <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
                     <td style={{ padding: '8px 12px' }}>
-                      <span style={{ padding: '2px 8px', borderRadius: 10, fontSize: 11, background: s.tipo_documento === 'CSR' ? '#fef3c7' : '#eff6ff', color: s.tipo_documento === 'CSR' ? '#92400e' : '#1e40af' }}>
+                      <span style={{ padding: '2px 8px', borderRadius: 10, fontSize: 11, background: s.tipo_documento === 'CSR' ? '#fef3c7' : '#eff6ff', color: s.tipo_documento === 'CSR' ? '#92400e' : '#1535a8' }}>
                         {s.tipo_documento}
                       </span>
                     </td>

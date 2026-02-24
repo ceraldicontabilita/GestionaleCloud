@@ -149,7 +149,7 @@ export default function Mutui() {
             </div>
             
             <div data-testid="stat-completamento" style={{ 
-              background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)', 
+              background: 'linear-gradient(135deg, #1535a8 0%, #1535a8 100%)', 
               padding: 20, 
               borderRadius: 12, 
               color: 'white' 
@@ -277,7 +277,7 @@ export default function Mutui() {
                   </div>
                   <div>
                     <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 2 }}>Riconciliazione</div>
-                    <div style={{ fontSize: 16, fontWeight: 600, color: '#3b82f6' }}>
+                    <div style={{ fontSize: 16, fontWeight: 600, color: '#1535a8' }}>
                       {mutuo.percentuale_riconciliazione?.toFixed(1) || 0}%
                     </div>
                     <div style={{ fontSize: 11, color: '#9ca3af' }}>

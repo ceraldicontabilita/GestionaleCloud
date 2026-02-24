@@ -18,9 +18,9 @@ import { PageLayout } from '../components/PageLayout';
  */
 
 const TABS = [
-  { id: 'dashboard', label: '📊 Dashboard', color: '#3b82f6' },
-  { id: 'banca', label: '🏦 Banca', color: '#10b981' },
-  { id: 'assegni', label: '📝 Assegni', color: '#f59e0b' },
+  { id: 'dashboard', label: '📊 Dashboard', color: '#1535a8' },
+  { id: 'banca', label: '🏦 Banca', color: '#15803d' },
+  { id: 'assegni', label: '📝 Assegni', color: '#d97706' },
   { id: 'f24', label: '📄 F24', color: '#ef4444' },
   { id: 'aruba', label: '🧾 Fatture Aruba', color: '#8b5cf6' },
   { id: 'stipendi', label: '👤 Stipendi', color: '#06b6d4' },
@@ -557,7 +557,7 @@ export default function RiconciliazioneUnificata() {
             data-testid="btn-load-f24"
             style={{
               padding: '10px 16px',
-              background: processing === 'f24' ? '#9ca3af' : '#f59e0b',
+              background: processing === 'f24' ? '#9ca3af' : '#d97706',
               color: 'white',
               border: 'none',
               borderRadius: 8,
@@ -573,7 +573,7 @@ export default function RiconciliazioneUnificata() {
             disabled={processing}
             style={{
               padding: '10px 20px',
-              background: '#10b981',
+              background: '#15803d',
               color: 'white',
               border: 'none',
               borderRadius: 8,
@@ -604,7 +604,7 @@ export default function RiconciliazioneUnificata() {
             onClick={() => setShowFilters(!showFilters)}
             style={{
               padding: '10px 16px',
-              background: showFilters ? '#3b82f6' : '#f1f5f9',
+              background: showFilters ? '#1535a8' : '#f1f5f9',
               color: showFilters ? 'white' : '#374151',
               border: 'none',
               borderRadius: 8,
@@ -829,7 +829,7 @@ export default function RiconciliazioneUnificata() {
             disabled={loadingMore}
             style={{
               padding: '12px 28px',
-              background: loadingMore ? '#94a3b8' : '#3b82f6',
+              background: loadingMore ? '#94a3b8' : '#1535a8',
               color: 'white',
               border: 'none',
               borderRadius: 8,
@@ -857,7 +857,7 @@ function DashboardTab({ stats, autoMatchStats }) {
     <div style={{ padding: 24, textAlign: 'center' }}>
       <div style={{ 
         padding: 40, 
-        background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)', 
+        background: 'linear-gradient(135deg, #1535a8, #8b5cf6)', 
         borderRadius: 16, 
         color: 'white',
         maxWidth: 500,
@@ -1003,7 +1003,7 @@ function MovimentoCard({ movimento, onConferma, onIgnora, onElimina, processing,
             <div style={{ 
               marginTop: 4, 
               fontSize: 11, 
-              color: '#f59e0b',
+              color: '#d97706',
               display: 'flex',
               flexWrap: 'wrap',
               gap: 8,
@@ -1012,10 +1012,10 @@ function MovimentoCard({ movimento, onConferma, onIgnora, onElimina, processing,
               <span>📝 Assegno N. {movimento.numero_assegno}</span>
               <span>• Stato: {movimento.stato || 'N/D'}</span>
               {movimento.beneficiario && (
-                <span style={{ color: '#3b82f6', fontWeight: 600 }}>• 👤 {movimento.beneficiario}</span>
+                <span style={{ color: '#1535a8', fontWeight: 600 }}>• 👤 {movimento.beneficiario}</span>
               )}
               {movimento.fornitore && !movimento.beneficiario && (
-                <span style={{ color: '#3b82f6', fontWeight: 600 }}>• 👤 {movimento.fornitore}</span>
+                <span style={{ color: '#1535a8', fontWeight: 600 }}>• 👤 {movimento.fornitore}</span>
               )}
             </div>
           )}
@@ -1056,7 +1056,7 @@ function MovimentoCard({ movimento, onConferma, onIgnora, onElimina, processing,
                   padding: '4px 8px',
                   background: '#dbeafe',
                   borderRadius: 4,
-                  color: '#1e40af'
+                  color: '#1535a8'
                 }}>
                   📊 <b>Pagamento in {movimento.info_rate.numero_rate} rate</b>: 
                   Totale rate {formatEuro(movimento.info_rate.totale_rate)} 
@@ -1086,7 +1086,7 @@ function MovimentoCard({ movimento, onConferma, onIgnora, onElimina, processing,
             <div style={{ 
               marginTop: 2, 
               fontSize: 11, 
-              color: '#f59e0b'
+              color: '#d97706'
             }}>
               👤 Beneficiario: {movimento.beneficiario}
             </div>
@@ -1112,7 +1112,7 @@ function MovimentoCard({ movimento, onConferma, onIgnora, onElimina, processing,
             disabled={processing}
             style={{
               padding: '8px 16px',
-              background: '#10b981',
+              background: '#15803d',
               color: 'white',
               border: 'none',
               borderRadius: 6,
@@ -1343,7 +1343,7 @@ function F24Tab({ f24, onConfermaF24, processing }) {
                   <div style={{ display: 'flex', gap: 4, marginTop: 8, justifyContent: 'flex-end' }}>
                     <button
                       onClick={() => confermaF24Singolo(f, 'banca')}
-                      style={{ padding: '4px 8px', background: '#10b981', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 11 }}
+                      style={{ padding: '4px 8px', background: '#15803d', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 11 }}
                       title="Conferma pagamento F24 tramite Banca"
                     >
                       🏦 Paga con Banca
@@ -1543,7 +1543,7 @@ function ArubaTab({ fatture, onConferma, processing, fornitori = [], onRefresh, 
               <select 
                 value={metodoBatch}
                 onChange={e => setMetodoBatch(e.target.value)}
-                style={{ padding: '8px 12px', border: '1px solid #10b981', borderRadius: 6, fontSize: 13, background: '#d1fae5' }}
+                style={{ padding: '8px 12px', border: '1px solid #15803d', borderRadius: 6, fontSize: 13, background: '#d1fae5' }}
               >
                 <option value="cassa">💰 Cassa</option>
                 <option value="bonifico">🏦 Bonifico</option>
@@ -1556,7 +1556,7 @@ function ArubaTab({ fatture, onConferma, processing, fornitori = [], onRefresh, 
                 disabled={salvandoBatch}
                 style={{ 
                   padding: '8px 16px', 
-                  background: '#10b981', 
+                  background: '#15803d', 
                   color: 'white', 
                   border: 'none', 
                   borderRadius: 6, 
@@ -1595,7 +1595,7 @@ function ArubaTab({ fatture, onConferma, processing, fornitori = [], onRefresh, 
                     height: 18, 
                     marginTop: 2,
                     cursor: 'pointer',
-                    accentColor: '#10b981'
+                    accentColor: '#15803d'
                   }}
                 />
                 
@@ -1610,7 +1610,7 @@ function ArubaTab({ fatture, onConferma, processing, fornitori = [], onRefresh, 
                       marginTop: 8,
                       padding: '4px 10px',
                       background: preferenze[op.fornitore] ? '#dcfce7' : '#dbeafe',
-                      color: preferenze[op.fornitore] ? '#166534' : '#1e40af',
+                      color: preferenze[op.fornitore] ? '#166534' : '#1535a8',
                       borderRadius: 4,
                       fontSize: 11,
                       fontWeight: 600
@@ -1644,7 +1644,7 @@ function ArubaTab({ fatture, onConferma, processing, fornitori = [], onRefresh, 
                   disabled={processing === op.id}
                   style={metodoBtn(
                     metodoPreferito === 'bonifico' ? '#dcfce7' : '#dbeafe', 
-                    metodoPreferito === 'bonifico' ? '#166534' : '#1e40af',
+                    metodoPreferito === 'bonifico' ? '#166534' : '#1535a8',
                     metodoPreferito === 'bonifico'
                   )}
                 >
@@ -1685,7 +1685,7 @@ const metodoBtn = (bg, color, isPreferred = false) => ({
   padding: '10px 16px',
   background: bg,
   color: color,
-  border: isPreferred ? '2px solid #10b981' : 'none',
+  border: isPreferred ? '2px solid #15803d' : 'none',
   borderRadius: 6,
   fontWeight: 600,
   cursor: 'pointer',
@@ -1778,7 +1778,7 @@ function DocumentiTab({ documenti, stats, onRefresh, processing }) {
   
   const getCategoryColor = (category) => {
     const colors = {
-      'fattura': '#3b82f6',
+      'fattura': '#1535a8',
       'f24': '#ef4444',
       'busta_paga': '#22c55e',
       'verbale': '#f97316',

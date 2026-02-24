@@ -10,7 +10,7 @@ const CATEGORIE = {
   passivo: { nome: "PASSIVO", color: "#f44336", icon: "📉" },
   patrimonio_netto: { nome: "PATRIMONIO NETTO", color: "#9c27b0", icon: "💎" },
   ricavi: { nome: "RICAVI", color: "#15803d", icon: "📈" },
-  costi: { nome: "COSTI", color: "#ff9800", icon: "💸" }
+  costi: { nome: "COSTI", color: "#d97706", icon: "💸" }
 };
 
 export default function PianoDeiConti() {
@@ -148,7 +148,7 @@ export default function PianoDeiConti() {
               {formatEuro(bilancio.conto_economico.ricavi.totale)}
             </div>
           </div>
-          <div style={{ background: '#fff3e0', borderRadius: 12, padding: 15, borderLeft: '4px solid #ff9800' }}>
+          <div style={{ background: '#fff3e0', borderRadius: 12, padding: 15, borderLeft: '4px solid #d97706' }}>
             <div style={{ fontSize: 12, color: '#e65100', marginBottom: 5 }}>Totale Costi</div>
             <div style={{ fontSize: 24, fontWeight: 'bold', color: '#bf360c' }}>
               {formatEuro(bilancio.conto_economico.costi.totale)}
@@ -315,7 +315,7 @@ export default function PianoDeiConti() {
               data-testid="new-regola-btn"
               style={{
                 padding: '10px 20px',
-                background: '#ff9800',
+                background: '#d97706',
                 color: 'white',
                 border: 'none',
                 borderRadius: 8,
@@ -551,7 +551,7 @@ export default function PianoDeiConti() {
               <button onClick={() => setShowNewRegola(false)} style={{ padding: '10px 20px', background: '#9e9e9e', color: 'white', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
                 Annulla
               </button>
-              <button onClick={handleCreateRegola} style={{ padding: '10px 20px', background: '#ff9800', color: 'white', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 'bold' }}>
+              <button onClick={handleCreateRegola} style={{ padding: '10px 20px', background: '#d97706', color: 'white', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 'bold' }}>
                 ⚙️ Crea Regola
               </button>
             </div>

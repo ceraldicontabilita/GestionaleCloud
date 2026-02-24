@@ -144,7 +144,7 @@ const styles = {
   btnOutlineActive: {
     background: '#eff6ff',
     color: '#1535a8',
-    border: '2px solid #2563eb'
+    border: '2px solid #1535a8'
   },
   message: {
     padding: '12px',
@@ -197,7 +197,7 @@ const MENU_ITEMS = [
   { id: 'corrispettivi', label: 'Corrispettivi', icon: Banknote, color: '#22c55e', bg: '#dcfce7' },
   { id: 'versamenti', label: 'Versamenti Banca', icon: Building2, color: '#1535a8', bg: '#dbeafe' },
   { id: 'apporto', label: 'Apporto Soci', icon: Users, color: '#8b5cf6', bg: '#ede9fe' },
-  { id: 'fatture', label: 'Fatture Ricevute', icon: FileText, color: '#f59e0b', bg: '#fef3c7' },
+  { id: 'fatture', label: 'Fatture Ricevute', icon: FileText, color: '#d97706', bg: '#fef3c7' },
   { id: 'acconti', label: 'Acconti Dipendenti', icon: Wallet, color: '#ec4899', bg: '#fce7f3' },
   { id: 'presenze', label: 'Presenze', icon: Users, color: '#06b6d4', bg: '#cffafe' }
 ];
@@ -576,7 +576,7 @@ export default function InserimentoRapido() {
   const renderFattureList = () => (
     <div style={styles.form}>
       <h3 style={styles.formTitle}>
-        <FileText size={20} color="#f59e0b" />
+        <FileText size={20} color="#d97706" />
         Fatture da Pagare
       </h3>
       
@@ -727,7 +727,7 @@ export default function InserimentoRapido() {
         <div style={{display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px'}}>
           {[
             { id: 'PRESENTE', label: 'Presente', color: '#22c55e' },
-            { id: 'FERIE', label: 'Ferie', color: '#f59e0b' },
+            { id: 'FERIE', label: 'Ferie', color: '#d97706' },
             { id: 'MALATTIA', label: 'Malattia', color: '#ef4444' },
             { id: 'PERMESSO', label: 'Permesso', color: '#8b5cf6' }
           ].map(tipo => (

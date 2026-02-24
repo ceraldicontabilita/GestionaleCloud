@@ -453,7 +453,7 @@ export default function LearningMachine() {
                   label="F24 Classificati"
                   value={`${dashboardStats?.percentuale_f24 || 0}%`}
                   subValue={`${dashboardStats?.f24_classificati || 0}/${dashboardStats?.totale_f24 || 0}`}
-                  color="#f59e0b"
+                  color="#d97706"
                   bgGradient="linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%)"
                 />
               </div>
@@ -578,7 +578,7 @@ export default function LearningMachine() {
               icon={AlertCircle}
               label="Da Classificare"
               value={fornitoriNonClassificati.length}
-              color="#f59e0b"
+              color="#d97706"
               bgGradient="linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%)"
             />
             <StatCard 
@@ -604,7 +604,7 @@ export default function LearningMachine() {
               {/* Lista fornitori non classificati */}
               <div style={{ background: 'white', borderRadius: 12, padding: 20, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
                 <h3 style={{ margin: '0 0 16px 0', fontSize: 16, fontWeight: 600, color: '#1535a8', display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <AlertCircle size={18} color="#f59e0b" /> Da Classificare ({fornitoriNonClassificati.length})
+                  <AlertCircle size={18} color="#d97706" /> Da Classificare ({fornitoriNonClassificati.length})
                 </h3>
                 
                 <div style={{ maxHeight: 500, overflowY: 'auto' }}>
@@ -878,7 +878,7 @@ export default function LearningMachine() {
                 icon={AlertCircle}
                 label="Non Associati"
                 value={assegniStats.non_associati || 0}
-                color="#f59e0b"
+                color="#d97706"
               />
             </div>
           )}
@@ -918,7 +918,7 @@ export default function LearningMachine() {
             {/* Card: Associa Intelligente */}
             <div style={{ background: 'white', borderRadius: 12, padding: 20, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
               <h3 style={{ margin: '0 0 12px 0', fontSize: 16, fontWeight: 600, color: '#1535a8', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Zap size={18} color="#f59e0b" /> Associazione Intelligente
+                <Zap size={18} color="#d97706" /> Associazione Intelligente
               </h3>
               <p style={{ color: '#6b7280', fontSize: 13, marginBottom: 16 }}>
                 Usa i pattern appresi per associare automaticamente gli assegni alle fatture.
@@ -930,7 +930,7 @@ export default function LearningMachine() {
                   ...button('primary'),
                   width: '100%',
                   justifyContent: 'center',
-                  background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)'
+                  background: 'linear-gradient(135deg, #d97706 0%, #d97706 100%)'
                 }}
               >
                 <Zap size={16} /> {assegniLoading ? 'Associazione...' : 'Associa Automaticamente'}
@@ -1042,7 +1042,7 @@ export default function LearningMachine() {
                     icon={TrendingUp}
                     label="Feedback Ricevuti"
                     value={documentiStats.feedback_count || 0}
-                    color="#f59e0b"
+                    color="#d97706"
                   />
                 </div>
               )}

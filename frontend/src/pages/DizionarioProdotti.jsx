@@ -152,15 +152,15 @@ export default function DizionarioProdotti() {
           </div>
           <div style={{ background: 'white', padding: '16px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
             <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '4px' }}>CON PREZZO/KG</div>
-            <div style={{ fontSize: '24px', fontWeight: 700, color: '#10b981' }}>{stats.con_prezzo_al_kg?.toLocaleString()}</div>
+            <div style={{ fontSize: '24px', fontWeight: 700, color: '#15803d' }}>{stats.con_prezzo_al_kg?.toLocaleString()}</div>
           </div>
           <div style={{ background: 'white', padding: '16px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
             <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '4px' }}>SENZA PREZZO</div>
-            <div style={{ fontSize: '24px', fontWeight: 700, color: '#f59e0b' }}>{(stats.totale_prodotti - stats.con_prezzo_al_kg)?.toLocaleString()}</div>
+            <div style={{ fontSize: '24px', fontWeight: 700, color: '#d97706' }}>{(stats.totale_prodotti - stats.con_prezzo_al_kg)?.toLocaleString()}</div>
           </div>
           <div style={{ background: 'white', padding: '16px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
             <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '4px' }}>COMPLETEZZA</div>
-            <div style={{ fontSize: '24px', fontWeight: 700, color: stats.completezza_percentuale > 50 ? '#10b981' : '#f59e0b' }}>
+            <div style={{ fontSize: '24px', fontWeight: 700, color: stats.completezza_percentuale > 50 ? '#15803d' : '#d97706' }}>
               {stats.completezza_percentuale?.toFixed(1)}%
             </div>
           </div>
@@ -174,7 +174,7 @@ export default function DizionarioProdotti() {
           disabled={scanning}
           style={{
             padding: '10px 20px',
-            background: scanning ? '#9ca3af' : '#3b82f6',
+            background: scanning ? '#9ca3af' : '#1535a8',
             color: 'white',
             border: 'none',
             borderRadius: '8px',
@@ -496,7 +496,7 @@ export default function DizionarioProdotti() {
                 padding: '20px', 
                 background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', 
                 borderRadius: '12px',
-                border: '2px solid #f59e0b'
+                border: '2px solid #d97706'
               }}>
                 <label style={{ display: 'block', fontSize: '14px', fontWeight: 700, color: '#92400e', marginBottom: '8px' }}>
                   💰 PREZZO AL KG (€/kg)
@@ -513,7 +513,7 @@ export default function DizionarioProdotti() {
                   style={{
                     width: '100%',
                     padding: '14px',
-                    border: '2px solid #f59e0b',
+                    border: '2px solid #d97706',
                     borderRadius: '8px',
                     fontSize: '18px',
                     fontWeight: 600,
@@ -540,7 +540,7 @@ export default function DizionarioProdotti() {
                 disabled={saving}
                 style={{
                   padding: '10px 24px',
-                  background: saving ? '#9ca3af' : '#10b981',
+                  background: saving ? '#9ca3af' : '#15803d',
                   color: 'white',
                   border: 'none',
                   borderRadius: '8px',

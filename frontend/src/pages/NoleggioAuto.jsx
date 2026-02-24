@@ -31,7 +31,7 @@ export default function NoleggioAuto() {
     { key: 'pedaggio', label: 'Pedaggio', icon: '🛣️', color: '#2196f3' },
     { key: 'verbali', label: 'Verbali', icon: '⚠️', color: '#f44336' },
     { key: 'bollo', label: 'Bollo', icon: '📄', color: '#9c27b0' },
-    { key: 'costi_extra', label: 'Costi Extra', icon: '💳', color: '#ff9800' },
+    { key: 'costi_extra', label: 'Costi Extra', icon: '💳', color: '#d97706' },
     { key: 'riparazioni', label: 'Riparazioni', icon: '🔧', color: '#795548' }
   ];
 
@@ -326,7 +326,7 @@ export default function NoleggioAuto() {
               }}
               style={{
                 padding: '4px 10px',
-                background: '#f59e0b',
+                background: '#d97706',
                 color: 'white',
                 border: 'none',
                 borderRadius: 4,
@@ -355,7 +355,7 @@ export default function NoleggioAuto() {
               padding: '8px 16px', 
               background: '#dbeafe', 
               borderRadius: '8px 8px 0 0',
-              color: '#1e40af',
+              color: '#1535a8',
               fontWeight: 'bold',
               fontSize: 14
             }}>

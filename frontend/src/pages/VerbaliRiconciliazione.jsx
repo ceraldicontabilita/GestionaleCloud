@@ -10,8 +10,8 @@ const STATI_VERBALE = {
   'da_scaricare': { label: 'Da Scaricare', color: COLORS.warning, bg: '#fef3c7', icon: '📧' },
   'salvato': { label: 'Salvato', color: '#6366f1', bg: '#e0e7ff', icon: '💾' },
   'fattura_ricevuta': { label: 'Fattura Ricevuta', color: COLORS.info, bg: '#dbeafe', icon: '📄' },
-  'pagato': { label: 'Pagato', color: '#10b981', bg: '#d1fae5', icon: '💳' },
-  'pagato_attesa_fattura': { label: 'Pagato (att. fattura)', color: '#f59e0b', bg: '#fef3c7', icon: '⏳' },
+  'pagato': { label: 'Pagato', color: '#15803d', bg: '#d1fae5', icon: '💳' },
+  'pagato_attesa_fattura': { label: 'Pagato (att. fattura)', color: '#d97706', bg: '#fef3c7', icon: '⏳' },
   'riconciliato': { label: 'Riconciliato', color: COLORS.success, bg: '#a7f3d0', icon: '✅' },
   'sconosciuto': { label: 'Sconosciuto', color: COLORS.gray, bg: '#f3f4f6', icon: '❓' }
 };
@@ -380,7 +380,7 @@ export default function VerbaliRiconciliazione() {
           </div>
           <div style={{ ...cardStyle, background: '#fff7ed', textAlign: 'center' }}>
             <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 4 }}>Da Riconciliare</div>
-            <div style={{ fontSize: 32, fontWeight: 'bold', color: '#f59e0b' }}>{dashboard.riepilogo?.da_riconciliare || 0}</div>
+            <div style={{ fontSize: 32, fontWeight: 'bold', color: '#d97706' }}>{dashboard.riepilogo?.da_riconciliare || 0}</div>
           </div>
           <div style={{ ...cardStyle, background: '#f0fdf4', textAlign: 'center' }}>
             <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 4 }}>Riconciliati</div>
@@ -539,7 +539,7 @@ export default function VerbaliRiconciliazione() {
                               👤 {v.driver_nome || v.driver}
                             </span>
                           ) : (
-                            <span style={{ color: '#f59e0b', fontStyle: 'italic', fontSize: 12 }}>Da associare</span>
+                            <span style={{ color: '#d97706', fontStyle: 'italic', fontSize: 12 }}>Da associare</span>
                           )}
                         </td>
                         <td style={{ padding: '14px' }}>
@@ -573,7 +573,7 @@ export default function VerbaliRiconciliazione() {
                             onClick={(e) => { e.stopPropagation(); handleRiconcilia(v.numero_verbale); }}
                             style={{
                               padding: '8px 14px',
-                              background: v.stato === 'riconciliato' ? '#e5e7eb' : '#3b82f6',
+                              background: v.stato === 'riconciliato' ? '#e5e7eb' : '#1535a8',
                               color: v.stato === 'riconciliato' ? '#9ca3af' : 'white',
                               border: 'none',
                               borderRadius: 6,
@@ -659,7 +659,7 @@ export default function VerbaliRiconciliazione() {
                 <h4 style={{ margin: '0 0 8px 0', fontSize: 14, fontWeight: '600', color: '#1535a8' }}>📄 Fattura Associata</h4>
                 <div style={{ background: '#dbeafe', borderRadius: 8, padding: 12 }}>
                   <div style={{ fontWeight: 'bold' }}>{selectedVerbale.fattura_numero}</div>
-                  <div style={{ fontSize: 12, color: '#3b82f6' }}>{selectedVerbale.fornitore}</div>
+                  <div style={{ fontSize: 12, color: '#1535a8' }}>{selectedVerbale.fornitore}</div>
                 </div>
               </div>
             )}
@@ -682,7 +682,7 @@ export default function VerbaliRiconciliazione() {
                 style={{
                   flex: 1,
                   padding: '12px',
-                  background: selectedVerbale.stato === 'riconciliato' ? '#e5e7eb' : '#3b82f6',
+                  background: selectedVerbale.stato === 'riconciliato' ? '#e5e7eb' : '#1535a8',
                   color: selectedVerbale.stato === 'riconciliato' ? '#9ca3af' : 'white',
                   border: 'none',
                   borderRadius: 8,
