@@ -387,7 +387,7 @@ function DashboardGestioneRiservata({ onLogout }) {
                 onChange={(e) => setFormData({...formData, tipo: e.target.value})}
                 style={{ width: "100%", padding: 10, border: "1px solid #e2e8f0", borderRadius: 6 }}
               >
-                <option value="incasso">💰 Incasso</option>
+                <option value="incasso">Incasso</option>
                 <option value="spesa">💸 Spesa</option>
               </select>
             </div>
@@ -502,7 +502,7 @@ function DashboardGestioneRiservata({ onLogout }) {
                       background: mov.tipo === "incasso" ? "#d1fae5" : "#fee2e2",
                       color: mov.tipo === "incasso" ? "#065f46" : "#991b1b"
                     }}>
-                      {mov.tipo === "incasso" ? "💰 Incasso" : "💸 Spesa"}
+                      {mov.tipo === "incasso" ? "Incasso" : "Spesa"}
                     </span>
                   </td>
                   <td style={{ padding: "12px 16px" }}>{mov.descrizione}</td>

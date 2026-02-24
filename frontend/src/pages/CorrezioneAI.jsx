@@ -106,7 +106,7 @@ export default function CorrezioneAI() {
     switch (tipo) {
       case 'fattura': return '📄';
       case 'f24': return '📋';
-      case 'busta_paga': return '💰';
+      case 'busta_paga': return '📄';
       default: return '📁';
     }
   };

@@ -1608,7 +1608,7 @@ function ArubaTab({ fatture, onConferma, processing, fornitori = [], onRefresh, 
                     metodoPreferito === 'cassa'
                   )}
                 >
-                  💰 Cassa {metodoPreferito === 'cassa' && '⭐'}
+                  Cassa {metodoPreferito === 'cassa' && '⭐'}
                 </button>
                 <button
                   onClick={() => onConferma(op, 'bonifico')}

@@ -193,7 +193,7 @@ export default function GestionePagoPA() {
               padding: '10px 12px', 
               color: 'white'
             }}>
-              <div style={{ fontSize: 11, opacity: 0.9, marginBottom: 4 }}>💰 Importo Totale</div>
+              <div style={{ fontSize: 11, opacity: 0.9, marginBottom: 4 }}>Importo Totale</div>
               <div style={{ fontSize: 18, fontWeight: 'bold' }} data-testid="stats-importo">
                 {formatEuro((stats.importo_totale || 0))}
               </div>

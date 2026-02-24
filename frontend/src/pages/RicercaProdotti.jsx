@@ -187,7 +187,7 @@ export default function RicercaProdotti() {
         return `📦 ${supplier}: ${items.length} prodotti - €${tot.toFixed(2)}`;
       }).join('\n');
       
-      alert(`📋 Riepilogo Ordine:\n\n${riepilogo}\n\n💰 TOTALE: €${cartTotal.toFixed(2)}\n\n(Funzione salvataggio ordine in sviluppo)`);
+      alert(`📋 Riepilogo Ordine:\n\n${riepilogo}\n\nTOTALE: €${cartTotal.toFixed(2)}\n\n(Funzione salvataggio ordine in sviluppo)`);
     } finally {
       setSendingOrder(false);
     }
