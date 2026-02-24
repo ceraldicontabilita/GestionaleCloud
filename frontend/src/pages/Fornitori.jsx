@@ -1392,12 +1392,12 @@ export default function Fornitori() {
                 transition: 'all 0.2s'
               }}
               onMouseEnter={(e) => {
-                e.target.style.background = '#16a34a';
+                e.target.style.background = '#166534';
                 e.target.style.transform = 'translateY(-2px)';
                 e.target.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
               }}
               onMouseLeave={(e) => {
-                e.target.style.background = '#22c55e';
+                e.target.style.background = '#15803d';
                 e.target.style.transform = 'translateY(0)';
                 e.target.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)';
               }}
