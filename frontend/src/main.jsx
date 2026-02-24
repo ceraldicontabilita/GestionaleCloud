@@ -1,0 +1,329 @@
+import React, { Suspense, lazy, Component } from "react";
+import ReactDOM from "react-dom/client";
+import { createBrowserRouter, RouterProvider, Navigate } from "react-router-dom";
+import { QueryClientProvider } from "@tanstack/react-query";
+import "./index.css";
+import App from "./App.jsx";
+import { AnnoProvider } from "./contexts/AnnoContext.jsx";
+import { AuthProvider, RequireAuth } from "./contexts/AuthContext.jsx";
+import { queryClient } from "./lib/queryClient.js";
+import { ConfirmProvider } from "./components/ui/ConfirmDialog.jsx";
+import Login from "./pages/Login.jsx";
+import Register from "./pages/Register.jsx";
+import AuthCallback from "./pages/AuthCallback.jsx";
+
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, errorInfo) {
+    console.error('ErrorBoundary caught an error:', error, errorInfo);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: 40, textAlign: 'center', background: '#fef2f2', borderRadius: 12, margin: 20, border: '1px solid #fca5a5' }}>
+          <h2 style={{ color: '#dc2626', marginBottom: 16 }}>Si è verificato un errore</h2>
+          <p style={{ color: '#7f1d1d', marginBottom: 20 }}>{this.state.error?.message || 'Errore sconosciuto'}</p>
+          <button onClick={() => window.location.reload()} style={{ padding: '10px 20px', background: '#2563eb', color: 'white', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 600 }}>
+            Ricarica Pagina
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+const PageLoader = () => (
+  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh', flexDirection: 'column', gap: 16 }}>
+    <div style={{ width: 48, height: 48, border: '4px solid #e2e8f0', borderTop: '4px solid #2563eb', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+    <span style={{ color: '#64748b', fontSize: 14 }}>Caricamento...</span>
+    <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+  </div>
+);
+
+// === HUB PAGES (consolidated) ===
+const DashboardHub = lazy(() => import("./pages/hub/DashboardHub.jsx"));
+const CicloPassivoHub = lazy(() => import("./pages/hub/CicloPassivoHub.jsx"));
+const FornitoriHub = lazy(() => import("./pages/hub/FornitoriHub.jsx"));
+const PrimaNotaHub = lazy(() => import("./pages/hub/PrimaNotaHub.jsx"));
+const RiconciliazioneHub = lazy(() => import("./pages/hub/RiconciliazioneHub.jsx"));
+const PagheHub = lazy(() => import("./pages/hub/PagheHub.jsx"));
+const VeicoliHub = lazy(() => import("./pages/hub/VeicoliHub.jsx"));
+const FiscoHub = lazy(() => import("./pages/hub/FiscoHub.jsx"));
+const BilancioHub = lazy(() => import("./pages/hub/BilancioHub.jsx"));
+const ContabilitaHub = lazy(() => import("./pages/hub/ContabilitaHub.jsx"));
+const MagazzinoHub = lazy(() => import("./pages/hub/MagazzinoHub.jsx"));
+const CucinaHub = lazy(() => import("./pages/hub/CucinaHub.jsx"));
+const ImportDocumentiHub = lazy(() => import("./pages/hub/ImportDocumentiHub.jsx"));
+const DocumentiHub = lazy(() => import("./pages/hub/DocumentiHub.jsx"));
+const StrumentiHub = lazy(() => import("./pages/hub/StrumentiHub.jsx"));
+const IntegrazioniHub = lazy(() => import("./pages/hub/IntegrazioniHub.jsx"));
+const AdminHub = lazy(() => import("./pages/hub/AdminHub.jsx"));
+
+// === STANDALONE PAGES ===
+const InserimentoRapido = lazy(() => import("./pages/InserimentoRapido.jsx"));
+const Scadenze = lazy(() => import("./pages/Scadenze.jsx"));
+const ToDo = lazy(() => import("./pages/ToDo.jsx"));
+const GestioneRiservata = lazy(() => import("./pages/GestioneRiservata.jsx"));
+const DettaglioVerbale = lazy(() => import("./pages/DettaglioVerbale.jsx"));
+const ImpostazioniF24Email = lazy(() => import("./pages/ImpostazioniF24Email.jsx"));
+const Mutui = lazy(() => import("./pages/Mutui.jsx"));
+
+// DIPENDENTI IN CLOUD - MODULO HR SEPARATO CON LAYOUT DEDICATO
+const DipendentiCloudApp = lazy(() => import("./pages/dipendenti-cloud/DipendentiCloudApp.jsx"));
+
+const LazyPage = ({ children }) => (
+  <Suspense fallback={<PageLoader />}>{children}</Suspense>
+);
+
+// AUTH DISABLED FOR DEVELOPMENT
+const AUTH_DISABLED = true;
+
+const router = createBrowserRouter([
+  { path: "/auth/callback", element: <AuthCallback /> },
+  { path: "/login", element: AUTH_DISABLED ? <Navigate to="/" replace /> : <Login /> },
+  { path: "/register", element: AUTH_DISABLED ? <Navigate to="/" replace /> : <Register /> },
+  { path: "/gestione-riservata", element: <LazyPage><GestioneRiservata /></LazyPage> },
+  
+  // DIPENDENTI IN CLOUD - ROUTE SEPARATA CON LAYOUT DEDICATO
+  // Questo modulo ha la sua sidebar blu scuro indipendente dall'ERP
+  { path: "/dipendenti", element: <LazyPage><DipendentiCloudApp /></LazyPage> },
+  { path: "/dipendenti/:page", element: <LazyPage><DipendentiCloudApp /></LazyPage> },
+  
+  {
+    path: "/",
+    element: AUTH_DISABLED ? <App /> : <RequireAuth><App /></RequireAuth>,
+    children: [
+      // === DASHBOARD ===
+      { index: true, element: <LazyPage><DashboardHub /></LazyPage> },
+      { path: "dashboard", element: <LazyPage><DashboardHub /></LazyPage> },
+      { path: "dashboard/:anno", element: <LazyPage><DashboardHub /></LazyPage> },
+      { path: "analytics", element: <LazyPage><DashboardHub /></LazyPage> },
+      { path: "analytics/:periodo", element: <LazyPage><DashboardHub /></LazyPage> },
+      
+      // === INSERIMENTO RAPIDO ===
+      { path: "rapido", element: <LazyPage><InserimentoRapido /></LazyPage> },
+      
+      // === CICLO PASSIVO & VENDITE ===
+      { path: "ciclo-passivo", element: <LazyPage><CicloPassivoHub /></LazyPage> },
+      { path: "fatture-ricevute", element: <LazyPage><CicloPassivoHub /></LazyPage> },
+      { path: "fatture-ricevute/:fornitore", element: <LazyPage><CicloPassivoHub /></LazyPage> },
+      { path: "fatture-ricevute/:fornitore/:fattura", element: <LazyPage><CicloPassivoHub /></LazyPage> },
+      { path: "archivio-fatture-ricevute", element: <LazyPage><CicloPassivoHub /></LazyPage> },
+      { path: "corrispettivi", element: <LazyPage><CicloPassivoHub /></LazyPage> },
+      { path: "corrispettivi/:anno/:mese", element: <LazyPage><CicloPassivoHub /></LazyPage> },
+      
+      // === FORNITORI ===
+      { path: "fornitori", element: <LazyPage><FornitoriHub /></LazyPage> },
+      { path: "fornitori/:nome", element: <LazyPage><FornitoriHub /></LazyPage> },
+      { path: "fornitori/:nome/:tab", element: <LazyPage><FornitoriHub /></LazyPage> },
+      { path: "ordini-fornitori", element: <LazyPage><FornitoriHub /></LazyPage> },
+      { path: "ordini-fornitori/:fornitore", element: <LazyPage><FornitoriHub /></LazyPage> },
+      { path: "previsioni-acquisti", element: <LazyPage><FornitoriHub /></LazyPage> },
+      { path: "previsioni-acquisti/:categoria", element: <LazyPage><FornitoriHub /></LazyPage> },
+      
+      // === PRIMA NOTA ===
+      { path: "prima-nota", element: <LazyPage><PrimaNotaHub /></LazyPage> },
+      { path: "prima-nota/:tipo", element: <LazyPage><PrimaNotaHub /></LazyPage> },
+      { path: "prima-nota/:tipo/:anno/:mese", element: <LazyPage><PrimaNotaHub /></LazyPage> },
+      { path: "dati-provvisori", element: <LazyPage><PrimaNotaHub /></LazyPage> },
+      
+      // === RICONCILIAZIONE ===
+      { path: "riconciliazione", element: <LazyPage><RiconciliazioneHub /></LazyPage> },
+      { path: "riconciliazione/:tab", element: <LazyPage><RiconciliazioneHub /></LazyPage> },
+      { path: "riconciliazione/:tab/:id", element: <LazyPage><RiconciliazioneHub /></LazyPage> },
+      { path: "riconciliazione-intelligente", element: <Navigate to="/riconciliazione" replace /> },
+      { path: "riconciliazione-paypal", element: <LazyPage><RiconciliazioneHub /></LazyPage> },
+      { path: "gestione-assegni", element: <LazyPage><RiconciliazioneHub /></LazyPage> },
+      { path: "gestione-assegni/:stato", element: <LazyPage><RiconciliazioneHub /></LazyPage> },
+      { path: "archivio-bonifici", element: <LazyPage><RiconciliazioneHub /></LazyPage> },
+      { path: "archivio-bonifici/:tab", element: <LazyPage><RiconciliazioneHub /></LazyPage> },
+      { path: "archivio-bonifici/:anno/:mese", element: <LazyPage><RiconciliazioneHub /></LazyPage> },
+      
+      // === PAGHE & RETRIBUZIONI ===
+      { path: "paghe", element: <LazyPage><PagheHub /></LazyPage> },
+      { path: "cedolini", element: <LazyPage><PagheHub /></LazyPage> },
+      { path: "cedolini/:anno", element: <LazyPage><PagheHub /></LazyPage> },
+      { path: "cedolini/:anno/:mese", element: <LazyPage><PagheHub /></LazyPage> },
+      { path: "cedolini/:nome/:dettaglio", element: <LazyPage><PagheHub /></LazyPage> },
+      { path: "cedolini-calcolo", element: <LazyPage><PagheHub /></LazyPage> },
+      { path: "cedolini-calcolo/:nome/:dettaglio", element: <LazyPage><PagheHub /></LazyPage> },
+      { path: "prima-nota-salari", element: <LazyPage><PagheHub /></LazyPage> },
+      { path: "prima-nota-salari/:anno/:mese", element: <LazyPage><PagheHub /></LazyPage> },
+      { path: "tfr", element: <LazyPage><PagheHub /></LazyPage> },
+      { path: "tfr/:tab", element: <LazyPage><PagheHub /></LazyPage> },
+      { path: "tfr/:dipendente", element: <LazyPage><PagheHub /></LazyPage> },
+      
+      // === VEICOLI ===
+      { path: "veicoli", element: <LazyPage><VeicoliHub /></LazyPage> },
+      { path: "noleggio-auto", element: <LazyPage><VeicoliHub /></LazyPage> },
+      { path: "noleggio-auto/:targa", element: <LazyPage><VeicoliHub /></LazyPage> },
+      { path: "verbali-noleggio/:numeroVerbale", element: <LazyPage><DettaglioVerbale /></LazyPage> },
+      { path: "verbali-noleggio/:prefisso/:numero", element: <LazyPage><DettaglioVerbale /></LazyPage> },
+      { path: "verbali-riconciliazione", element: <LazyPage><VeicoliHub /></LazyPage> },
+      { path: "verbali-riconciliazione/:verbaleId", element: <LazyPage><VeicoliHub /></LazyPage> },
+      
+      // === FISCO & TRIBUTI ===
+      { path: "fisco", element: <LazyPage><FiscoHub /></LazyPage> },
+      { path: "iva", element: <LazyPage><FiscoHub /></LazyPage> },
+      { path: "iva/calcolo", element: <LazyPage><FiscoHub /></LazyPage> },
+      { path: "iva/liquidazione", element: <LazyPage><FiscoHub /></LazyPage> },
+      { path: "iva/:anno/:trimestre", element: <LazyPage><FiscoHub /></LazyPage> },
+      { path: "liquidazione-iva", element: <LazyPage><FiscoHub /></LazyPage> },
+      { path: "liquidazione-iva/:anno/:mese", element: <LazyPage><FiscoHub /></LazyPage> },
+      { path: "f24", element: <LazyPage><FiscoHub /></LazyPage> },
+      { path: "f24/modelli", element: <LazyPage><FiscoHub /></LazyPage> },
+      { path: "f24/riconciliazione", element: <LazyPage><FiscoHub /></LazyPage> },
+      { path: "f24/:anno", element: <LazyPage><FiscoHub /></LazyPage> },
+      { path: "f24/:anno/:mese", element: <LazyPage><FiscoHub /></LazyPage> },
+      { path: "riconciliazione-f24", element: <LazyPage><FiscoHub /></LazyPage> },
+      { path: "riconciliazione-f24/:anno", element: <LazyPage><FiscoHub /></LazyPage> },
+      { path: "codici-tributari", element: <LazyPage><FiscoHub /></LazyPage> },
+      { path: "codici-tributari/:codice", element: <LazyPage><FiscoHub /></LazyPage> },
+      { path: "contabilita", element: <LazyPage><FiscoHub /></LazyPage> },
+      { path: "contabilita/:sezione", element: <LazyPage><FiscoHub /></LazyPage> },
+      
+      // === BILANCIO ===
+      { path: "bilancio", element: <LazyPage><BilancioHub /></LazyPage> },
+      { path: "bilancio/:tab", element: <LazyPage><BilancioHub /></LazyPage> },
+      { path: "bilancio/:anno", element: <LazyPage><BilancioHub /></LazyPage> },
+      { path: "bilancio-verifica", element: <LazyPage><BilancioHub /></LazyPage> },
+      { path: "partitario", element: <LazyPage><BilancioHub /></LazyPage> },
+      { path: "partitario/:tab", element: <LazyPage><BilancioHub /></LazyPage> },
+      { path: "budget-previsionale", element: <LazyPage><BilancioHub /></LazyPage> },
+      { path: "budget-previsionale/:tab", element: <LazyPage><BilancioHub /></LazyPage> },
+      
+      // === MUTUI ===
+      { path: "mutui", element: <LazyPage><Mutui /></LazyPage> },
+      
+      // === CONTABILITÀ ===
+      { path: "contabilita-hub", element: <LazyPage><ContabilitaHub /></LazyPage> },
+      { path: "piano-dei-conti", element: <LazyPage><ContabilitaHub /></LazyPage> },
+      { path: "piano-dei-conti/:tab", element: <LazyPage><ContabilitaHub /></LazyPage> },
+      { path: "piano-dei-conti/:conto", element: <LazyPage><ContabilitaHub /></LazyPage> },
+      { path: "controllo-mensile", element: <LazyPage><ContabilitaHub /></LazyPage> },
+      { path: "controllo-mensile/:anno/:mese", element: <LazyPage><ContabilitaHub /></LazyPage> },
+      { path: "motore-contabile", element: <LazyPage><ContabilitaHub /></LazyPage> },
+      { path: "calendario-fiscale", element: <LazyPage><ContabilitaHub /></LazyPage> },
+      { path: "cespiti", element: <LazyPage><ContabilitaHub /></LazyPage> },
+      { path: "cespiti/:tab", element: <LazyPage><ContabilitaHub /></LazyPage> },
+      { path: "cespiti/:cespite", element: <LazyPage><ContabilitaHub /></LazyPage> },
+      { path: "finanziaria", element: <LazyPage><ContabilitaHub /></LazyPage> },
+      { path: "finanziaria/:anno", element: <LazyPage><ContabilitaHub /></LazyPage> },
+      { path: "chiusura-esercizio", element: <LazyPage><ContabilitaHub /></LazyPage> },
+      { path: "chiusura-esercizio/:anno", element: <LazyPage><ContabilitaHub /></LazyPage> },
+      
+      // === MAGAZZINO ===
+      { path: "magazzino", element: <LazyPage><MagazzinoHub /></LazyPage> },
+      { path: "magazzino/:tab", element: <LazyPage><MagazzinoHub /></LazyPage> },
+      { path: "magazzino/:categoria", element: <LazyPage><MagazzinoHub /></LazyPage> },
+      { path: "inventario", element: <LazyPage><MagazzinoHub /></LazyPage> },
+      { path: "inventario/:data", element: <LazyPage><MagazzinoHub /></LazyPage> },
+      { path: "ricerca-prodotti", element: <LazyPage><MagazzinoHub /></LazyPage> },
+      { path: "ricerca-prodotti/:query", element: <LazyPage><MagazzinoHub /></LazyPage> },
+      { path: "dizionario-articoli", element: <LazyPage><MagazzinoHub /></LazyPage> },
+      { path: "dizionario-articoli/:articolo", element: <LazyPage><MagazzinoHub /></LazyPage> },
+      { path: "magazzino-dv", element: <LazyPage><MagazzinoHub /></LazyPage> },
+      
+      // === CUCINA ===
+      { path: "cucina", element: <LazyPage><CucinaHub /></LazyPage> },
+      { path: "dizionario-prodotti", element: <LazyPage><CucinaHub /></LazyPage> },
+      { path: "dizionario-prodotti/:prodotto", element: <LazyPage><CucinaHub /></LazyPage> },
+      { path: "centri-costo", element: <LazyPage><CucinaHub /></LazyPage> },
+      { path: "centri-costo/:centro", element: <LazyPage><CucinaHub /></LazyPage> },
+      { path: "utile-obiettivo", element: <LazyPage><CucinaHub /></LazyPage> },
+      { path: "utile-obiettivo/:anno", element: <LazyPage><CucinaHub /></LazyPage> },
+      { path: "learning-machine", element: <LazyPage><CucinaHub /></LazyPage> },
+      { path: "learning-machine/:tab", element: <LazyPage><CucinaHub /></LazyPage> },
+      
+      // === SCADENZE ===
+      { path: "scadenze", element: <LazyPage><Scadenze /></LazyPage> },
+      { path: "scadenze/:anno", element: <LazyPage><Scadenze /></LazyPage> },
+      { path: "scadenze/:anno/:mese", element: <LazyPage><Scadenze /></LazyPage> },
+      
+      // === TO-DO ===
+      { path: "todo", element: <LazyPage><ToDo /></LazyPage> },
+      { path: "todo/:stato", element: <LazyPage><ToDo /></LazyPage> },
+      
+      // === IMPORT DOCUMENTI (centralizzato) ===
+      { path: "import-documenti", element: <LazyPage><ImportDocumentiHub /></LazyPage> },
+      { path: "import-unificato", element: <LazyPage><ImportDocumentiHub /></LazyPage> },
+      { path: "import-unificato/:tipo", element: <LazyPage><ImportDocumentiHub /></LazyPage> },
+      { path: "import-export", element: <LazyPage><ImportDocumentiHub /></LazyPage> },
+      { path: "import-ai", element: <LazyPage><ImportDocumentiHub /></LazyPage> },
+      { path: "ai-parser", element: <LazyPage><ImportDocumentiHub /></LazyPage> },
+      { path: "ai-parser/:tipo", element: <LazyPage><ImportDocumentiHub /></LazyPage> },
+      { path: "lettura-documenti", element: <LazyPage><ImportDocumentiHub /></LazyPage> },
+      { path: "correzione-ai", element: <LazyPage><ImportDocumentiHub /></LazyPage> },
+      { path: "correzione-ai/:documento", element: <LazyPage><ImportDocumentiHub /></LazyPage> },
+      
+      // === DOCUMENTI ===
+      { path: "documenti", element: <LazyPage><DocumentiHub /></LazyPage> },
+      { path: "documenti/:tipo", element: <LazyPage><DocumentiHub /></LazyPage> },
+      { path: "documenti-email", element: <LazyPage><DocumentiHub /></LazyPage> },
+      { path: "da-rivedere", element: <LazyPage><DocumentiHub /></LazyPage> },
+      { path: "da-rivedere/:stato", element: <LazyPage><DocumentiHub /></LazyPage> },
+      { path: "classificazione-email", element: <LazyPage><DocumentiHub /></LazyPage> },
+      { path: "classificazione-email/:tab", element: <LazyPage><DocumentiHub /></LazyPage> },
+      { path: "regole-categorizzazione", element: <LazyPage><DocumentiHub /></LazyPage> },
+      { path: "fornitori-learning", element: <Navigate to="/fornitori" replace /> },
+      
+      // === STRUMENTI ===
+      { path: "strumenti", element: <LazyPage><StrumentiHub /></LazyPage> },
+      { path: "verifica-coerenza", element: <LazyPage><StrumentiHub /></LazyPage> },
+      { path: "verifica-coerenza/:tab", element: <LazyPage><StrumentiHub /></LazyPage> },
+      { path: "verifica-coerenza/:entita", element: <LazyPage><StrumentiHub /></LazyPage> },
+      { path: "commercialista", element: <LazyPage><StrumentiHub /></LazyPage> },
+      { path: "commercialista/:anno/:mese", element: <LazyPage><StrumentiHub /></LazyPage> },
+      { path: "pianificazione", element: <LazyPage><StrumentiHub /></LazyPage> },
+      { path: "pianificazione/:anno", element: <LazyPage><StrumentiHub /></LazyPage> },
+      { path: "email-download", element: <LazyPage><StrumentiHub /></LazyPage> },
+      { path: "email-download/:casella", element: <LazyPage><StrumentiHub /></LazyPage> },
+      { path: "visure", element: <LazyPage><StrumentiHub /></LazyPage> },
+      { path: "impostazioni-f24-email", element: <LazyPage><ImpostazioniF24Email /></LazyPage> },
+      
+      // === INTEGRAZIONI ===
+      { path: "integrazioni", element: <LazyPage><IntegrazioniHub /></LazyPage> },
+      { path: "integrazioni-openapi", element: <LazyPage><IntegrazioniHub /></LazyPage> },
+      { path: "integrazioni-openapi/:tab", element: <LazyPage><IntegrazioniHub /></LazyPage> },
+      { path: "pagopa", element: <LazyPage><IntegrazioniHub /></LazyPage> },
+      { path: "pagopa/:pratica", element: <LazyPage><IntegrazioniHub /></LazyPage> },
+      { path: "invoicetronic", element: <LazyPage><IntegrazioniHub /></LazyPage> },
+      { path: "invoicetronic/:fattura", element: <LazyPage><IntegrazioniHub /></LazyPage> },
+      
+      // === ADMIN ===
+      { path: "admin", element: <LazyPage><AdminHub /></LazyPage> },
+      { path: "admin/:sezione", element: <LazyPage><AdminHub /></LazyPage> },
+      { path: "regole-contabili", element: <LazyPage><AdminHub /></LazyPage> },
+      { path: "regole-contabili/:regola", element: <LazyPage><AdminHub /></LazyPage> },
+      { path: "batch-reprocessing", element: <LazyPage><AdminHub /></LazyPage> },
+      { path: "batch-processor", element: <LazyPage><AdminHub /></LazyPage> },
+      
+      // === AI (redirect to OpenClaw) ===
+      { path: "assistente-ai", element: <Navigate to="/api/openclaw/ui/" replace /> },
+      { path: "claude", element: <Navigate to="/api/openclaw/ui/" replace /> },
+    ]
+  }
+]);
+
+ReactDOM.createRoot(document.getElementById("root")).render(
+  <React.StrictMode>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <AnnoProvider>
+            <ConfirmProvider>
+              <RouterProvider router={router} />
+            </ConfirmProvider>
+          </AnnoProvider>
+        </AuthProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
+  </React.StrictMode>
+);
