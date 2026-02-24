@@ -16,7 +16,7 @@ from app.repositories import (
     WarehouseRepository,
     EmployeeRepository
 )
-from app.services import InvoiceService, WarehouseService, EmployeeService
+from app.services import InvoiceServiceV2 as InvoiceService, WarehouseService, EmployeeService
 from app.utils.dependencies import get_current_user
 from app.utils.excel_exporter import excel_exporter
 
