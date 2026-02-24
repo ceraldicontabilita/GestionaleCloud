@@ -481,73 +481,56 @@ export default function RiconciliazioneUnificata() {
   }
 
   return (
-    <PageLayout title="Riconciliazione Unificata" subtitle="Dashboard riepilogo e riconciliazione automatica">
-    <div style={{ position: 'relative' }}>
+    <div style={{ position: 'relative', padding: '16px' }}>
       
-      {/* Header con Gradiente */}
+      {/* Action Bar - senza cornice blu */}
       <div style={{ 
-        marginBottom: 20, 
+        marginBottom: 16, 
         display: 'flex', 
-        justifyContent: 'space-between', 
+        justifyContent: 'flex-end', 
         alignItems: 'center', 
         flexWrap: 'wrap', 
-        gap: 12,
-        padding: '15px 20px',
-        background: 'linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%)',
-        borderRadius: 12,
-        color: 'white'
+        gap: 8
       }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: 'clamp(18px, 4vw, 22px)', fontWeight: 'bold' }}>
-            🔗 Riconciliazione Unificata
-          </h1>
-          <p style={{ margin: '4px 0 0', opacity: 0.9, fontSize: 13 }}>
-            Associa movimenti bancari a fatture, F24, stipendi e assegni
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {/* Pulsante Auto-Riparazione */}
-          <button
-            onClick={eseguiAutoRiparazione}
-            disabled={autoRepairRunning}
-            data-testid="btn-auto-repair"
-            style={{
-              padding: '10px 16px',
-              background: autoRepairRunning ? '#9ca3af' : 'linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%)',
-              color: 'white',
-              border: 'none',
-              borderRadius: 8,
-              fontWeight: 600,
-              cursor: autoRepairRunning ? 'wait' : 'pointer',
-              boxShadow: '0 2px 4px rgba(102,126,234,0.3)'
-            }}
-          >
-            {autoRepairRunning ? '⏳ Riparazione...' : '🔧 Auto-Ripara'}
-          </button>
-          {autoRepairStatus && autoRepairStatus.riconciliazioni_auto > 0 && (
-            <span style={{ 
-              padding: '6px 10px', 
-              background: '#dcfce7', 
-              color: '#16a34a', 
-              borderRadius: 6, 
-              fontSize: 11,
-              fontWeight: 600,
-              display: 'flex',
-              alignItems: 'center'
-            }}>
-              ✓ {autoRepairStatus.riconciliazioni_auto} riparazioni
-            </span>
-          )}
-          
-          {/* Pulsante Carica F24 */}
-          <button
-            onClick={async () => {
-              setProcessing('f24');
-              try {
-                const res = await api.get('/api/operazioni-da-confermare/smart/cerca-f24');
-                setF24Pendenti(res.data?.f24 || []);
-                setStats(prev => ({ ...prev, f24: res.data?.f24?.length || 0 }));
-              } catch (e) {
+        <button
+          onClick={eseguiAutoRiparazione}
+          disabled={autoRepairRunning}
+          data-testid="btn-auto-repair"
+          style={{
+            padding: '8px 14px',
+            background: autoRepairRunning ? '#9ca3af' : '#1e3a5f',
+            color: 'white',
+            border: 'none',
+            borderRadius: 8,
+            fontWeight: 600,
+            fontSize: 13,
+            cursor: autoRepairRunning ? 'wait' : 'pointer',
+          }}
+        >
+          {autoRepairRunning ? '⏳ Riparazione...' : '🔧 Auto-Ripara'}
+        </button>
+        {autoRepairStatus && autoRepairStatus.riconciliazioni_auto > 0 && (
+          <span style={{ 
+            padding: '6px 10px', 
+            background: '#dcfce7', 
+            color: '#16a34a', 
+            borderRadius: 6, 
+            fontSize: 11,
+            fontWeight: 600,
+          }}>
+            ✓ {autoRepairStatus.riconciliazioni_auto} riparazioni
+          </span>
+        )}
+        
+        {/* Pulsante Carica F24 */}
+        <button
+          onClick={async () => {
+            setProcessing('f24');
+            try {
+              const res = await api.get('/api/operazioni-da-confermare/smart/cerca-f24');
+              setF24Pendenti(res.data?.f24 || []);
+              setStats(prev => ({ ...prev, f24: res.data?.f24?.length || 0 }));
+            } catch (e) {
                 console.error('Errore caricamento F24:', e);
               } finally {
                 setProcessing(null);
