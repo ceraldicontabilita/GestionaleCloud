@@ -576,7 +576,7 @@ export default function ArchivioFatture() {
                               <span 
                                 style={{ 
                                   padding: '6px 10px', 
-                                  background: '#10b981', 
+                                  background: '#15803d', 
                                   color: 'white', 
                                   borderRadius: 6, 
                                   fontSize: 11, 
@@ -592,7 +592,7 @@ export default function ArchivioFatture() {
                               href={`/api/fatture-ricevute/fattura/${f.id}/view-assoinvoice`}
                               target="_blank"
                               rel="noopener noreferrer"
-                              style={{ padding: '8px 12px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: '600', textDecoration: 'none' }}
+                              style={{ padding: '8px 12px', background: '#1535a8', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: '600', textDecoration: 'none' }}
                               title="Visualizza fattura"
                             >
                               📄 Vedi
@@ -653,7 +653,7 @@ export default function ArchivioFatture() {
                               }}
                               style={{ 
                                 padding: '8px 14px', 
-                                background: isRiconciliata ? '#e5e7eb' : (isPaid && metodoPagEffettivo === 'cassa') ? '#10b981' : '#f0fdf4',
+                                background: isRiconciliata ? '#e5e7eb' : (isPaid && metodoPagEffettivo === 'cassa') ? '#15803d' : '#f0fdf4',
                                 color: isRiconciliata ? '#9ca3af' : (isPaid && metodoPagEffettivo === 'cassa') ? 'white' : '#16a34a',
                                 border: isRiconciliata ? 'none' : (isPaid && metodoPagEffettivo === 'cassa') ? 'none' : '2px solid #16a34a', 
                                 borderRadius: 6, 
@@ -723,9 +723,9 @@ export default function ArchivioFatture() {
                               }}
                               style={{ 
                                 padding: '8px 14px', 
-                                background: isRiconciliata ? '#e5e7eb' : (isPaid && metodoPagEffettivo === 'banca') ? '#3b82f6' : '#eff6ff',
+                                background: isRiconciliata ? '#e5e7eb' : (isPaid && metodoPagEffettivo === 'banca') ? '#1535a8' : '#eff6ff',
                                 color: isRiconciliata ? '#9ca3af' : (isPaid && metodoPagEffettivo === 'banca') ? 'white' : '#1535a8',
-                                border: isRiconciliata ? 'none' : (isPaid && metodoPagEffettivo === 'banca') ? 'none' : '2px solid #2563eb', 
+                                border: isRiconciliata ? 'none' : (isPaid && metodoPagEffettivo === 'banca') ? 'none' : '2px solid #1535a8', 
                                 borderRadius: 6, 
                                 cursor: isRiconciliata ? 'not-allowed' : (isPaid && metodoPagEffettivo === 'banca') ? 'default' : 'pointer',
                                 fontSize: 12, 
@@ -793,10 +793,10 @@ export default function ArchivioFatture() {
                         <strong style={{ color: '#dc2626' }}>{formatEuro(s.importo_totale)}</strong>
                       </td>
                       <td style={styles.td}>
-                        <span style={styles.badge('#3b82f6')}>{s.metodo_descrizione || s.metodo_pagamento}</span>
+                        <span style={styles.badge('#1535a8')}>{s.metodo_descrizione || s.metodo_pagamento}</span>
                       </td>
                       <td style={styles.td}>
-                        <span style={styles.badge('#f59e0b')}>Da pagare</span>
+                        <span style={styles.badge('#d97706')}>Da pagare</span>
                       </td>
                       <td style={styles.td}>
                         <div style={{ display: 'flex', gap: 8, alignItems: 'center', position: 'relative' }}>
@@ -818,7 +818,7 @@ export default function ArchivioFatture() {
                             <button 
                               style={{
                                 ...styles.button('primary'),
-                                background: payingScadenza === s.id ? '#9ca3af' : '#10b981',
+                                background: payingScadenza === s.id ? '#9ca3af' : '#15803d',
                                 display: 'flex',
                                 alignItems: 'center',
                                 gap: 4
@@ -1008,13 +1008,13 @@ export default function ArchivioFatture() {
                             <td style={styles.td}>
                               <strong>{formatEuro(m.importo)}</strong>
                               {m.diff_importo > 0 && (
-                                <span style={{ fontSize: 11, color: '#f59e0b', display: 'block' }}>
+                                <span style={{ fontSize: 11, color: '#d97706', display: 'block' }}>
                                   Diff: {formatEuro(m.diff_importo)}
                                 </span>
                               )}
                             </td>
                             <td style={styles.td}>
-                              <span style={styles.badge(m.match_score < 50 ? '#10b981' : m.match_score < 200 ? '#f59e0b' : '#ef4444')}>
+                              <span style={styles.badge(m.match_score < 50 ? '#15803d' : m.match_score < 200 ? '#d97706' : '#ef4444')}>
                                 {m.match_score < 50 ? '⭐ Ottimo' : m.match_score < 200 ? '🔸 Buono' : '⚠️ Incerto'}
                               </span>
                             </td>
@@ -1058,7 +1058,7 @@ export default function ArchivioFatture() {
             <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: '#1e293b', display: 'flex', alignItems: 'center', gap: 8 }}>
               <span>✅</span> Storico Pagamenti Effettuati
             </h3>
-            <span style={styles.badge('#10b981')}>{dashboard?.scadenze_saldate?.length || 0} pagamenti</span>
+            <span style={styles.badge('#15803d')}>{dashboard?.scadenze_saldate?.length || 0} pagamenti</span>
           </div>
           <div style={{ overflowX: 'auto' }}>
             {loading ? (
@@ -1082,16 +1082,16 @@ export default function ArchivioFatture() {
                       <td style={styles.td}>{s.fornitore_nome}</td>
                       <td style={styles.td}>{s.numero_fattura}</td>
                       <td style={styles.td}>
-                        <strong style={{ color: '#10b981' }}>{formatEuro(s.importo_totale)}</strong>
+                        <strong style={{ color: '#15803d' }}>{formatEuro(s.importo_totale)}</strong>
                       </td>
                       <td style={styles.td}>
-                        <span style={styles.badge('#3b82f6')}>{s.metodo_descrizione || s.metodo_pagamento}</span>
+                        <span style={styles.badge('#1535a8')}>{s.metodo_descrizione || s.metodo_pagamento}</span>
                       </td>
                       <td style={styles.td}>
                         {s.riconciliato ? (
-                          <span style={styles.badge('#10b981')}>✓ Sì</span>
+                          <span style={styles.badge('#15803d')}>✓ Sì</span>
                         ) : (
-                          <span style={styles.badge('#f59e0b')}>Manuale</span>
+                          <span style={styles.badge('#d97706')}>Manuale</span>
                         )}
                       </td>
                     </tr>
