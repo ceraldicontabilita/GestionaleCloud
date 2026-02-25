@@ -40,14 +40,23 @@ async def list_f24_models(anno: int = None) -> Dict[str, Any]:
     
     try:
         # Primary: quietanze_f24 (ha dati completi con pagamenti reali)
+        q_filter = {}
+        if anno:
+            q_filter["data_pagamento"] = {"$regex": f"^{anno}"}
         quietanze = await db["quietanze_f24"].find(
-            {},
+            q_filter,
             {"_id": 0, "pdf_data": 0}
         ).sort("created_at", -1).to_list(500)
         
         # Secondary: f24_unificato (per eventuali F24 non ancora pagati)
+        u_filter = {"status": {"$ne": "eliminato"}}
+        if anno:
+            u_filter["$or"] = [
+                {"data_pagamento": {"$regex": f"^{anno}"}},
+                {"data_versamento": {"$regex": f"^{anno}"}},
+            ]
         f24_uni = await db[F24_COLLECTION].find(
-            {"status": {"$ne": "eliminato"}},
+            u_filter,
             {"_id": 0, "pdf_data": 0}
         ).sort("created_at", -1).to_list(100)
         
