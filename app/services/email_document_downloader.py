@@ -710,15 +710,19 @@ async def download_documents_from_email(
     folder: str = "INBOX",
     max_emails: int = 200,
     search_keywords: List[str] = None,
-    allowed_senders: List[str] = None
+    allowed_senders: List[str] = None,
+    keyword_senders: List[Tuple[str, List[str]]] = None
 ) -> Dict[str, Any]:
     """
     Funzione principale per scaricare documenti da email.
-    Salva i metadati nel database.
+    
+    DIZIONARIO EMAIL: Usa una collezione MongoDB (email_message_index) per tracciare
+    i Message-ID già scaricati, evitando di riscaricare email già elaborate.
     
     Args:
         search_keywords: Lista di parole chiave da cercare nell'oggetto email.
-        allowed_senders: Lista di mittenti autorizzati. Solo email da questi mittenti vengono scaricate.
+        allowed_senders: Lista di mittenti autorizzati (filtra per FROM).
+        keyword_senders: Lista di (email, keywords) per mittenti che cambiano indirizzo.
     """
     from datetime import timedelta
     
@@ -736,73 +740,130 @@ async def download_documents_from_email(
         }
     
     try:
-        documents, stats = downloader.download_all_attachments(
+        # === DIZIONARIO EMAIL: carica Message-IDs già visti ===
+        seen_message_ids = set()
+        try:
+            seen_docs = await db["email_message_index"].find(
+                {}, {"_id": 0, "message_id": 1}
+            ).to_list(None)
+            seen_message_ids = {s["message_id"] for s in seen_docs if s.get("message_id")}
+            logger.info(f"Dizionario email: {len(seen_message_ids)} messaggi già visti")
+        except Exception as e:
+            logger.warning(f"Errore caricamento dizionario email: {e}")
+        
+        # Ottieni lista email IDs dal server (già ordinati per data - più recente prima)
+        downloader.connection.select(folder)
+        all_email_ids = downloader.search_emails_with_attachments(
             folder=folder,
             since_date=since_date,
             limit=max_emails,
             search_keywords=search_keywords,
-            allowed_senders=allowed_senders
+            allowed_senders=allowed_senders,
+            keyword_senders=keyword_senders
         )
+        
+        # === FILTRAGGIO CON DIZIONARIO: controlla Message-ID prima di scaricare ===
+        new_email_ids = []
+        skipped_by_dict = 0
+        
+        for email_id in all_email_ids:
+            msg_id = downloader.fetch_message_id(email_id)
+            if msg_id and msg_id in seen_message_ids:
+                skipped_by_dict += 1
+                logger.debug(f"Già nel dizionario: {msg_id}")
+            else:
+                new_email_ids.append((email_id, msg_id))
+        
+        logger.info(f"Email da scaricare: {len(new_email_ids)}, già nel dizionario: {skipped_by_dict}")
+        
+        # Scarica allegati solo per email nuove
+        all_docs_raw = []
+        for email_id, msg_id in new_email_ids:
+            docs = downloader.download_attachments_from_email(
+                email_id, 
+                search_keywords=search_keywords
+            )
+            # Aggiungi message_id a ogni documento
+            for doc in docs:
+                doc["email_message_id"] = msg_id or doc.get("email_message_id", "")
+            all_docs_raw.extend(docs)
+            
+            # Aggiungi al dizionario anche se non ha allegati (per non ri-controllare)
+            if msg_id:
+                subject = ""
+                sender = ""
+                if docs:
+                    subject = docs[0].get("email_subject", "")
+                    sender = docs[0].get("email_from", "")
+                try:
+                    await db["email_message_index"].update_one(
+                        {"message_id": msg_id},
+                        {"$set": {
+                            "message_id": msg_id,
+                            "seen_at": datetime.now(timezone.utc).isoformat(),
+                            "allegati": len(docs),
+                            "subject": subject[:100],
+                            "from": sender[:100]
+                        }},
+                        upsert=True
+                    )
+                    seen_message_ids.add(msg_id)
+                except Exception as e:
+                    logger.debug(f"Errore salvataggio dizionario: {e}")
+        
+        stats = {
+            "emails_found": len(all_email_ids),
+            "skipped_by_dict": skipped_by_dict,
+            "new_emails": len(new_email_ids),
+            "documents_found": len(all_docs_raw),
+            "by_category": {}
+        }
+        for doc in all_docs_raw:
+            cat = doc.get("category", "altro")
+            stats["by_category"][cat] = stats["by_category"].get(cat, 0) + 1
         
         # Salva nel database evitando duplicati con logica intelligente
         new_documents = []
         duplicates = 0
         period_duplicates = 0
         
-        for doc in documents:
+        for doc in all_docs_raw:
             is_duplicate = False
-            duplicate_reason = None
             
             # METODO 1: Controllo hash (file identico byte per byte)
             existing_hash = await db["documents_inbox"].find_one({"file_hash": doc["file_hash"]})
             if existing_hash:
                 is_duplicate = True
-                duplicate_reason = "hash_identico"
             
             # METODO 2: Controllo periodo (stesso documento per stesso periodo)
-            # Questo è il caso: "estratto_conto.pdf" di gennaio vs "estratto_conto.pdf" di febbraio
-            # Stesso nome file ma periodi diversi → NON è un duplicato
-            # Stesso nome file E stesso periodo → È un duplicato
             if not is_duplicate and doc.get("identificatore_periodo"):
                 existing_period = await db["documents_inbox"].find_one({
                     "category": doc["category"],
                     "identificatore_periodo": doc["identificatore_periodo"],
-                    # Escludi documenti con hash diverso (potrebbero essere versioni corrette)
-                    # Ma includi se il filename originale è simile
                     "$or": [
                         {"filename": doc["filename"]},
                         {"filename": {"$regex": doc["filename"].replace(".pdf", "").replace(".PDF", ""), "$options": "i"}}
                     ]
                 })
                 if existing_period:
-                    # Verifica che non sia un aggiornamento/correzione (dimensione molto diversa)
                     size_diff = abs(existing_period.get("size_bytes", 0) - doc["size_bytes"])
                     size_ratio = size_diff / max(existing_period.get("size_bytes", 1), doc["size_bytes"])
-                    
-                    if size_ratio < 0.1:  # Differenza < 10% = probabilmente stesso documento
+                    if size_ratio < 0.1:
                         is_duplicate = True
-                        duplicate_reason = "stesso_periodo"
                         period_duplicates += 1
-                        logger.info(f"⏭️ Documento {doc['filename']} periodo {doc['identificatore_periodo']} già presente, saltato")
-                    else:
-                        # Dimensione molto diversa = probabilmente versione aggiornata, accetta
-                        logger.info(f"📝 Documento {doc['filename']} periodo {doc['identificatore_periodo']} aggiornato (size diff: {size_ratio:.0%})")
             
             if is_duplicate:
                 duplicates += 1
                 continue
             
-            # Crea copia per database (evita che insert_one modifichi l'originale con _id)
             doc_to_insert = dict(doc)
             await db["documents_inbox"].insert_one(doc_to_insert.copy())
             
-            # Log dettagliato per documenti nuovi
             if doc.get("identificatore_periodo"):
-                logger.info(f"✅ Nuovo documento: {doc['filename']} - Periodo: {doc.get('periodo_raw', 'N/D')} - Categoria: {doc['category']}")
+                logger.info(f"Nuovo documento: {doc['filename']} - Periodo: {doc.get('periodo_raw', 'N/D')} - Cat: {doc['category']}")
             else:
-                logger.info(f"✅ Nuovo documento: {doc['filename']} - Categoria: {doc['category']} (periodo non estratto)")
+                logger.info(f"Nuovo documento: {doc['filename']} - Cat: {doc['category']}")
             
-            # Appendi documento senza _id per risposta JSON
             new_documents.append(doc)
         
         stats["new_documents"] = len(new_documents)
@@ -811,27 +872,23 @@ async def download_documents_from_email(
         stats["search_keywords"] = search_keywords
         
         # === PARSING AUTOMATICO CON AI ===
-        # Processa automaticamente i nuovi documenti con il parser AI
         ai_parsed = 0
         ai_errors = 0
         
         try:
             from app.services.ai_integration_service import process_document_with_ai
-            import base64
             
             for doc in new_documents:
                 try:
-                    # Determina tipo documento dalla categoria email
                     category = doc.get("category", "altro")
                     doc_type = "auto"
                     if category == "fattura":
                         doc_type = "fattura"
-                    elif category == "f24" or category == "quietanza":
+                    elif category in ("f24", "quietanza"):
                         doc_type = "f24"
                     elif category == "busta_paga":
                         doc_type = "busta_paga"
                     
-                    # Decodifica PDF
                     pdf_data = base64.b64decode(doc.get("pdf_data", ""))
                     
                     if pdf_data:
@@ -842,19 +899,14 @@ async def download_documents_from_email(
                             document_type=doc_type,
                             collection="documents_inbox"
                         )
-                        
                         if result.get("success"):
                             ai_parsed += 1
-                            logger.info(f"🧠 AI parsed: {doc['filename']} -> {result.get('detected_type')}")
-                        else:
-                            ai_errors += 1
-                            
                 except Exception as e:
                     ai_errors += 1
-                    logger.warning(f"AI parsing error for {doc.get('filename')}: {e}")
+                    logger.warning(f"AI parsing error per {doc.get('filename')}: {e}")
                     
-        except ImportError as e:
-            logger.warning(f"AI parser non disponibile: {e}")
+        except ImportError:
+            pass
         
         stats["ai_parsed"] = ai_parsed
         stats["ai_errors"] = ai_errors
