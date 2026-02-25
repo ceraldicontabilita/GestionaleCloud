@@ -597,7 +597,8 @@ async def download_documents_from_email(
     since_days: int = 30,
     folder: str = "INBOX",
     max_emails: int = 200,
-    search_keywords: List[str] = None
+    search_keywords: List[str] = None,
+    allowed_senders: List[str] = None
 ) -> Dict[str, Any]:
     """
     Funzione principale per scaricare documenti da email.
@@ -605,7 +606,7 @@ async def download_documents_from_email(
     
     Args:
         search_keywords: Lista di parole chiave da cercare nell'oggetto email.
-                        Se None, scarica tutti i documenti senza filtro.
+        allowed_senders: Lista di mittenti autorizzati. Solo email da questi mittenti vengono scaricate.
     """
     from datetime import timedelta
     
