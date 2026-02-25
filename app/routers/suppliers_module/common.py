@@ -17,13 +17,15 @@ PAYMENT_METHODS = {
     "assegno": {"label": "Assegno", "prima_nota": "banca"},
     "riba": {"label": "Ri.Ba.", "prima_nota": "banca"},
     "carta": {"label": "Carta di Credito", "prima_nota": "banca"},
+    "carta_credito": {"label": "Carta di Credito/POS", "prima_nota": "banca"},  # Alias
     "sepa": {"label": "Addebito SEPA", "prima_nota": "banca"},
     "mav": {"label": "MAV", "prima_nota": "banca"},
     "rav": {"label": "RAV", "prima_nota": "banca"},
     "rid": {"label": "RID", "prima_nota": "banca"},
     "f24": {"label": "F24", "prima_nota": "banca"},
     "compensazione": {"label": "Compensazione", "prima_nota": "altro"},
-    "misto": {"label": "Misto (Cassa + Banca)", "prima_nota": "misto"}
+    "misto": {"label": "Misto (Cassa + Banca)", "prima_nota": "misto"},
+    "pos": {"label": "POS", "prima_nota": "banca"},  # Alias
 }
 
 # Termini di pagamento predefiniti
