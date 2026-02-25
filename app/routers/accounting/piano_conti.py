@@ -119,7 +119,7 @@ async def get_piano_conti() -> Dict[str, Any]:
         "01.02.01": round(ricavi_res[0]["totale"], 2) if ricavi_res else 0,
         "01.04.01": round(costi_res[0]["iva"], 2) if costi_res else 0,
         "02.01.01": round(costi_res[0]["totale"], 2) if costi_res else 0,
-        "02.02.01": round(ricavi_res[0]["iva"], 2) if ricavi_res else 0,
+        "02.03.01": round(ricavi_res[0]["iva"], 2) if ricavi_res else 0,
         "04.01.01": round(ricavi_res[0]["imponibile"], 2) if ricavi_res else 0,
         "05.01.01": round(costi_res[0]["imponibile"], 2) if costi_res else 0,
     }
