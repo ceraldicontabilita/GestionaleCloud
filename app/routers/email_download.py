@@ -761,3 +761,73 @@ async def pulisci_duplicati() -> Dict[str, Any]:
         "success": True,
         "duplicati_rimossi": deleted_count
     }
+
+
+# ============================================
+# Gestione Mittenti Email
+# ============================================
+
+@router.get("/mittenti")
+async def list_mittenti() -> Dict[str, Any]:
+    """Lista tutti i mittenti email configurati."""
+    db = Database.get_db()
+    mittenti = await db["mittenti_email"].find({}, {"_id": 0}).to_list(100)
+    return {"mittenti": mittenti, "count": len(mittenti)}
+
+
+@router.post("/mittenti")
+async def add_mittente(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Aggiunge un nuovo mittente email."""
+    db = Database.get_db()
+    email = payload.get("email", "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="Email obbligatoria")
+    
+    existing = await db["mittenti_email"].find_one({"email": email})
+    if existing:
+        raise HTTPException(status_code=409, detail="Mittente già presente")
+    
+    doc = {
+        "email": email,
+        "categoria": payload.get("categoria", "altro"),
+        "attivo": True,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db["mittenti_email"].insert_one(doc)
+    return {"success": True, "message": f"Mittente {email} aggiunto"}
+
+
+@router.delete("/mittenti/{email}")
+async def delete_mittente(email: str) -> Dict[str, Any]:
+    """Rimuove un mittente email."""
+    db = Database.get_db()
+    result = await db["mittenti_email"].delete_one({"email": email})
+    return {"success": True, "deleted": result.deleted_count}
+
+
+@router.put("/mittenti/{email}")
+async def update_mittente(email: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Aggiorna un mittente email (attivo/categoria)."""
+    db = Database.get_db()
+    update = {}
+    if "attivo" in payload:
+        update["attivo"] = payload["attivo"]
+    if "categoria" in payload:
+        update["categoria"] = payload["categoria"]
+    
+    result = await db["mittenti_email"].update_one({"email": email}, {"$set": update})
+    return {"success": True, "modified": result.modified_count}
+
+
+@router.post("/sync-email-now")
+async def trigger_email_sync(background_tasks: BackgroundTasks) -> Dict[str, Any]:
+    """Trigger manuale per il sync email."""
+    db = Database.get_db()
+    
+    async def run_sync():
+        from app.services.email_monitor_service import sync_email_documents
+        return await sync_email_documents(db, giorni=30)
+    
+    background_tasks.add_task(run_sync)
+    return {"success": True, "message": "Sync email avviato in background"}
+
