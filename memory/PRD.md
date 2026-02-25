@@ -15,11 +15,12 @@ Full-stack Italian ERP application (React + FastAPI + MongoDB) for business mana
 3. Cespiti (asset management with auto-XML scan)
 4. Piano dei Conti (chart of accounts with real saldi)
 5. Bilancio (balance sheet)
-6. F24 (tax payments)
-7. Corrispettivi (daily receipts)
-8. Magazzino (warehouse)
-9. Dipendenti/Veicoli (employees/vehicles)
-10. Fisco/IVA (tax calculations)
+6. Prima Nota (cash and bank ledger)
+7. F24 (tax payments)
+8. Corrispettivi (daily receipts)
+9. Magazzino (warehouse)
+10. Dipendenti/Presenze (HR, attendance, payslips)
+11. Fisco/IVA (tax calculations)
 
 ## What's Been Implemented
 
@@ -29,39 +30,53 @@ Full-stack Italian ERP application (React + FastAPI + MongoDB) for business mana
 - Invoice data enrichment (imponibile, IVA fields)
 - Corrispettivi matricola fix
 - Magazzino module overhaul + maintenance products
-- Auto-refresh removal across all pages
-- Invoice view improvements
-- "Mark as Paid" button
+- Auto-refresh removal across pages (Dashboard, Documenti)
+- Invoice view improvements, "Mark as Paid" button
 - Dashboard POS calendar removal
 - Page crash fixes (Strumenti, Integrazioni)
 
-### Session 2 (Current - Feb 25, 2026)
-- **Fatture table headers**: Fixed white text to dark text (#1e293b) on light background (#f1f5f9)
-- **Cespiti auto-scan**: Created POST /api/cespiti/scan-fatture endpoint that extracts 21 assets from dettaglio_righe_fatture (€60,124.58 total). Added "Scan Fatture XML" button to frontend.
-- **Volume Affari fix**: Fixed backend field names (importo_totale vs totale_fattura, corrispettivi data field vs anno). Now shows Fatturato €71,953.90 + Corrispettivi €31,395.51 = €103,349.41.
-- **Bilancio Istantaneo fix**: Fixed invoice query to use `anno` field instead of `data_ricezione` regex. Corrispettivi count now shows 14 (was 0).
-- **Contabilità Hub**: Updated Piano dei Conti to compute real saldi from invoices and corrispettivi data (Attivo €2.67M, Passivo €314K, Ricavi €2.43M).
-- **React key fix**: Fixed duplicate key warning in fatture table.
+### Session 2 (Feb 25, 2026)
+- **Fatture table headers**: Fixed white text to dark (#1e293b on #f1f5f9)
+- **Cespiti auto-scan**: POST /api/cespiti/scan-fatture - extracts 21 assets (€60,124.58)
+- **Volume Affari CORRECTED**: fatturato = corrispettivi only (€31,395.51). Fatture ricevute are COSTS, not revenue. Fatture emesse already in corrispettivi.
+- **Bilancio Istantaneo**: Fixed invoice query to use anno field. Corrispettivi count fixed.
+- **Contabilità Hub**: Piano dei Conti computes real saldi from invoices/corrispettivi
+- **Prima Nota Cassa**: Fixed datetime vs string date type mismatch - now uses anno field
+- **Dipendenti/Presenze**: Fixed to load 35 real employees from dipendenti collection
+- **Auto-refresh FULLY removed**: useData.js refetchInterval, NotificheScadenze 30-min interval
+- **Component cleanup**: Removed 20 unused components/pages
 
-## Pending/Known Issues
-- P1: Imposte page - user reported "mancano calcoli" (needs clarification)
-- P2: Dead code removal (old sidebar, unused components)
-- P2: E2E test coverage improvement
+## Key Business Logic
+- **Volume Affari** = corrispettivi ONLY (fatture emesse are included in corrispettivi as scontrini)
+- **Fatture ricevute** (invoices collection) = COSTS/PURCHASES, not revenue
+- **Cespiti** auto-extracted from dettaglio_righe_fatture using keyword classification
 
 ## Key API Endpoints
-- GET /api/fatture-ricevute/archivio/{anno}
-- GET /api/gestione-riservata/volume-affari-reale?anno=2026
-- GET /api/dashboard/bilancio-istantaneo?anno=2026
-- GET /api/cespiti/?attivi=true
-- POST /api/cespiti/scan-fatture?soglia_valore=200&dry_run=false
-- GET /api/piano-conti/
-- GET /api/piano-conti/bilancio
-- GET /api/contabilita/calcolo-imposte?regione=campania&anno=2026
+- GET /api/gestione-riservata/volume-affari-reale?anno=2026 → fatturato=corrispettivi
+- GET /api/dashboard/bilancio-istantaneo?anno=2026 → ricavi/costi/iva
+- GET /api/prima-nota/cassa?anno=2026 → cash movements (5 records)
+- GET /api/prima-nota/banca?anno=2026 → bank movements (161 records)
+- GET /api/employees?limit=200 → 35 real employees from dipendenti collection
+- GET /api/cespiti/?attivi=true → 21 auto-extracted assets
+- POST /api/cespiti/scan-fatture → scan XML invoices for assets
+- GET /api/piano-conti/ → chart of accounts with computed saldi
+- GET /api/piano-conti/bilancio → full balance sheet
 
 ## Key Database Collections
-- invoices: 74 documents (fields: anno, importo_totale, importo_imponibile, importo_iva)
-- corrispettivi: 1051 documents (fields: data string "YYYY-MM-DD", totale)
-- cespiti: 21 documents (auto-populated from dettaglio_righe_fatture)
-- dettaglio_righe_fatture: 11,192 documents (invoice line items from XML)
-- piano_conti: chart of accounts
-- quietanze_f24: F24 tax payment receipts
+- invoices: 74 docs (fatture RICEVUTE = COSTS, fields: anno, importo_totale, importo_imponibile, importo_iva)
+- corrispettivi: 1051 docs (REVENUE, fields: data string "YYYY-MM-DD", totale)
+- cespiti: 21 docs (auto-populated from dettaglio_righe_fatture)
+- prima_nota_cassa: 5 docs (fields: data datetime, anno int, tipo, importo)
+- prima_nota_banca: 1581 docs
+- estratto_conto_movimenti: 4261 docs
+- dipendenti: 35 docs (employees)
+- presenze: 20957 docs (attendance records)
+- cedolini: payslips
+- dettaglio_righe_fatture: 11192 docs (invoice line items from XML)
+
+## Pending Issues
+- P1: Imposte page - user reported "mancano calcoli" (needs clarification)
+- P2: Improve E2E test coverage
+
+## Collections Mapping
+- Collections.EMPLOYEES = "dipendenti" (changed from "employees")
