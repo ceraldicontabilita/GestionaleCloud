@@ -14,7 +14,7 @@ import json
 from datetime import datetime
 
 # Configuration
-BACKEND_URL = "https://cash-ledger-update.preview.emergentagent.com"
+BACKEND_URL = "https://bilancio-patch.preview.emergentagent.com"
 API_BASE = f"{BACKEND_URL}/api"
 TIMEOUT = 10  # seconds
 MAX_RESPONSE_TIME = 2  # seconds as required

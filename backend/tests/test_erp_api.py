@@ -10,7 +10,7 @@ BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
 if not BASE_URL:
     # Fallback for testing environment
-    BASE_URL = "https://cash-ledger-update.preview.emergentagent.com"
+    BASE_URL = "https://bilancio-patch.preview.emergentagent.com"
 
 
 class TestHealthEndpoints:

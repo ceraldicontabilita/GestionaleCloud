@@ -6,7 +6,7 @@ import pytest
 import requests
 import os
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://cash-ledger-update.preview.emergentagent.com')
+BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://bilancio-patch.preview.emergentagent.com')
 
 class TestBilancioAPI:
     """Test Bilancio endpoints - Stato Patrimoniale and Conto Economico"""
