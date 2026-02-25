@@ -143,7 +143,16 @@ function SezioneBustePaga({ anno }) {
                   >
                     <td style={{ padding: '12px 14px', fontWeight: 600 }}>{b.dipendente_nome || b.codice_fiscale}</td>
                     <td style={{ padding: '12px 14px', color: '#6b7280' }}>
-                      {b.periodo ? `${MESI[parseInt(b.periodo.split('-')[1])]} ${b.periodo.split('-')[0]}` : '—'}
+                      {(() => {
+                        if (!b.periodo) return '—';
+                        const parts = b.periodo.includes('/') ? b.periodo.split('/') : b.periodo.split('-');
+                        if (parts.length === 2) {
+                          const mese = b.periodo.includes('/') ? parseInt(parts[0]) : parseInt(parts[1]);
+                          const anno = b.periodo.includes('/') ? parts[1] : parts[0];
+                          return `${MESI[mese] || mese} ${anno}`;
+                        }
+                        return b.periodo;
+                      })()}
                     </td>
                     <td style={{ padding: '12px 14px', fontWeight: 700 }}>{formatEuro(b.netto_mese)}</td>
                     <td style={{ padding: '12px 14px' }}><BadgeStato stato={b.stato_pagamento} /></td>
