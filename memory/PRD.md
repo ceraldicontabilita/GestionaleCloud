@@ -76,6 +76,21 @@ Applicazione ERP full-stack italiana (React + FastAPI + MongoDB) per gestione az
 - presenze: 20957 (registri presenze)
 - cedolini: 841 (buste paga, 14 per 2026)
 
+## Sessione 4 (25 Feb 2026 - Corrente)
+- **Nuovi mittenti email aggiunti** (7 nuovi):
+  - solleciti.pl.napoli@pec.it (sollecito)
+  - pagamenti.online@autostrade.it (autostrade)
+  - dimissionitelematiche@pec.lavoro.gov.it (lavoro)
+  - preavvisodiaccertamento.napoli@inps.it (KEYWORD search - INPS può usare mittenti diversi)
+  - (già presenti: INPSComunica, no_reply@agenziariscossione, inpscomunica)
+- **Dizionario email (Message-ID Index)**: Collezione `email_message_index` - traccia i Message-ID già scaricati per evitare ri-download. Indici MongoDB creati per performance.
+- **Ordinamento per data**: Email ordinate per INTERNALDATE (più recente prima) via `sort_email_ids_by_date()`
+- **Ricerca per keyword**: Mittenti con `cerca_per_oggetto=True` vengono cercati per parole chiave nel soggetto/corpo anziché per FROM (gestisce mittenti che cambiano indirizzo)
+- **Nuovi endpoint**: GET /api/email-download/dizionario-email, DELETE /api/email-download/dizionario-email/reset
+- **PUT /api/email-download/mittenti/{email}**: Ora supporta anche `cerca_per_oggetto` e `parole_chiave_ricerca`
+
 ## Problemi in sospeso
-- P1: Pagina Imposte - "mancano calcoli" (necessita chiarimento)
+- P0: Credenziali Gmail non valide (IMAP_PASSWORD nel .env) - BLOCCANTE per funzionalità email
+- P1: Completare logica elaborazione fatture XML (xml_invoice_processor.py è completo ma non testato con email reali)
+- P1: Integrare UI gestione mittenti (MittentiManager.jsx non collegato a pagina)
 - P2: Migliorare copertura test E2E
