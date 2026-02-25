@@ -114,6 +114,21 @@ export default function GestioneCespiti() {
     try { const r = await api.post(`/api/cespiti/registra/${anno}`); alert(r.data.messaggio); loadCespiti(); } catch (e) { alert('Errore'); }
   };
 
+  const handleScanFatture = async () => {
+    try {
+      setLoading(true);
+      const r = await api.post('/api/cespiti/scan-fatture?soglia_valore=200&dry_run=false');
+      if (r.data.cespiti_creati > 0) {
+        alert(`${r.data.messaggio}\nValore totale: EUR ${r.data.valore_totale?.toLocaleString('it-IT')}`);
+      } else {
+        alert('Nessun nuovo cespite trovato nelle fatture XML.');
+      }
+      loadCespiti();
+    } catch (e) { alert('Errore scan: ' + (e.response?.data?.detail || e.message)); }
+    finally { setLoading(false); }
+  };
+
+
   const handleEditCespite = (cespite) => {
     setEditingCespite(cespite.id);
     setEditData({ descrizione: cespite.descrizione, fornitore: cespite.fornitore || '', note: cespite.note || '', valore_acquisto: cespite.valore_acquisto, data_acquisto: cespite.data_acquisto });
