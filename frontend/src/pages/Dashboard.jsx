@@ -1517,7 +1517,11 @@ function ScadenzeWidget({ scadenze }) {
       }
       
       setPagaModal(null);
-      window.location.reload();
+      // Refresh scadenze data without full page reload
+      try {
+        const scadenzeRes = await api.get(`/api/scadenze/prossime?anno=${anno}&limit=20`);
+        setScadenzeData(scadenzeRes.data);
+      } catch (_) {}
     } catch (e) {
       alert('Errore: ' + (e.response?.data?.detail || e.message));
     } finally {
