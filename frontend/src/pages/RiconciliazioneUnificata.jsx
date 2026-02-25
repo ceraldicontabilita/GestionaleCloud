@@ -1171,7 +1171,7 @@ function F24Tab({ f24, onConfermaF24, processing }) {
           tipo: 'f24'
         }]
       });
-      window.location.reload();
+      loadAllData();
     } catch (e) {
       alert('Errore: ' + (e.response?.data?.detail || e.message));
     }
