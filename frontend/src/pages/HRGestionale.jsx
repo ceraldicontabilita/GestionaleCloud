@@ -975,7 +975,7 @@ function TabVeicoli() {
   const loadVeicoli = async () => {
     setLoading(true);
     try {
-      const res = await api.get('/api/noleggio-auto/veicoli');
+      const res = await api.get('/api/noleggio/veicoli');
       setVeicoli(res.data?.veicoli || res.data || []);
     } catch (e) {
       console.error('Errore caricamento veicoli:', e);
