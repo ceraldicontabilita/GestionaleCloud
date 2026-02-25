@@ -14,7 +14,6 @@ import uuid
 import base64
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional, Tuple
-import email as email_module
 import logging
 from pathlib import Path
 import hashlib
