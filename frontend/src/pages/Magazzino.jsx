@@ -381,9 +381,9 @@ export default function Magazzino() {
                       <tr key={p.id || i} style={{ borderBottom: "1px solid #f1f5f9" }}>
                         <td style={{ padding: 12, fontFamily: 'monospace' }}>{p.code || p.codice_articolo || "-"}</td>
                         <td style={{ padding: 12, fontWeight: 500 }}>{p.name || p.nome || "-"}</td>
-                        <td style={{ padding: 12, textAlign: 'right' }}>{p.quantity} {p.unit}</td>
-                        <td style={{ padding: 12, textAlign: 'right', color: '#16a34a' }}>{formatEuro(p.unit_price || 0)}</td>
-                        <td style={{ padding: 12 }}>{p.category || "-"}</td>
+                        <td style={{ padding: 12, textAlign: 'right' }}>{p.quantity || p.giacenza || 0} {p.unit || p.unita_misura || ""}</td>
+                        <td style={{ padding: 12, textAlign: 'right', color: '#16a34a' }}>{formatEuro(p.unit_price || p.prezzi?.avg || 0)}</td>
+                        <td style={{ padding: 12 }}>{p.category || p.categoria || "-"}</td>
                         <td style={{ padding: 12, textAlign: 'center' }}>
                           <button onClick={() => handleDelete(p.id)} style={{ padding: '6px 10px', background: '#fef2f2', color: '#dc2626', border: 'none', borderRadius: 6, cursor: 'pointer' }}>
                             <Trash2 size={14} />
