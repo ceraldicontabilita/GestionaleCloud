@@ -76,12 +76,48 @@ async def sync_email_documents(db, giorni: int = 30) -> Dict[str, Any]:
         new_docs = stats.get("new_documents", 0)
         duplicates = stats.get("duplicates_skipped", 0)
         
-        logger.info(f"📬 Email sync: {new_docs} nuovi, {duplicates} duplicati saltati")
+        logger.info(f"Email sync: {new_docs} nuovi, {duplicates} duplicati saltati")
+        
+        # Processa automaticamente fatture XML scaricate
+        xml_processed = 0
+        try:
+            from app.services.xml_invoice_processor import process_xml_invoice
+            xml_docs = await db["documents_inbox"].find(
+                {"filename": {"$regex": r"\.(xml|p7m)$", "$options": "i"}, "xml_processed": {"$ne": True}},
+                {"_id": 0, "id": 1, "filename": 1, "file_path": 1, "content": 1}
+            ).to_list(100)
+            
+            for doc in xml_docs:
+                try:
+                    content = doc.get("content")
+                    if not content and doc.get("file_path"):
+                        import pathlib
+                        fp = pathlib.Path(doc["file_path"])
+                        if fp.exists():
+                            content = fp.read_bytes()
+                    if content:
+                        if isinstance(content, str):
+                            content = content.encode("utf-8")
+                        res = await process_xml_invoice(db, content, doc.get("filename", ""))
+                        if res.get("success"):
+                            xml_processed += 1
+                            await db["documents_inbox"].update_one(
+                                {"id": doc["id"]},
+                                {"$set": {"xml_processed": True, "xml_result": res}}
+                            )
+                except Exception as ex:
+                    logger.debug(f"Errore XML {doc.get('filename')}: {ex}")
+            
+            if xml_processed > 0:
+                logger.info(f"Processate {xml_processed} fatture XML")
+        except Exception as e:
+            logger.debug(f"Errore processing XML: {e}")
         
         return {
             "success": True,
             "new_documents": new_docs,
             "duplicates_skipped": duplicates,
+            "xml_processed": xml_processed,
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
     except Exception as e:
