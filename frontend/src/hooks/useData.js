@@ -89,12 +89,12 @@ export function useFetch(url, options = {}) {
     fetchData();
   }, [fetchData]);
   
-  // Auto-refresh
-  useEffect(() => {
-    if (!refetchInterval) return;
-    const interval = setInterval(fetchData, refetchInterval);
-    return () => clearInterval(interval);
-  }, [fetchData, refetchInterval]);
+  // Auto-refresh disabled - manual refresh only
+  // useEffect(() => {
+  //   if (!refetchInterval) return;
+  //   const interval = setInterval(fetchData, refetchInterval);
+  //   return () => clearInterval(interval);
+  // }, [fetchData, refetchInterval]);
   
   return { data, loading, error, refetch: fetchData };
 }
