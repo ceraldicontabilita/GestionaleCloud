@@ -39,8 +39,9 @@ async def sync_email_documents(db, giorni: int = 30) -> Dict[str, Any]:
     Scarica documenti dalla posta in modo SICURO.
     - Filtra solo mittenti configurati
     - NON sovrascrive mai documenti esistenti
-    - Salta sempre i duplicati
+    - Salta sempre i duplicati (via dizionario Message-ID + hash)
     - Processa fatture XML e inserisce in Prima Nota Banca se metodo SEPA/banca/carta
+    - Mittenti con cerca_per_oggetto=True vengono cercati per parole chiave
     """
     from app.services.email_document_downloader import download_documents_from_email
     
@@ -53,14 +54,25 @@ async def sync_email_documents(db, giorni: int = 30) -> Dict[str, Any]:
         return {"success": False, "error": "Credenziali email non configurate"}
     
     # Carica mittenti autorizzati dal DB
-    mittenti = await db["mittenti_email"].find(
-        {"attivo": True}, {"_id": 0, "email": 1}
-    ).to_list(100)
-    mittenti_emails = [m["email"] for m in mittenti]
+    mittenti_docs = await db["mittenti_email"].find(
+        {"attivo": True}, {"_id": 0}
+    ).to_list(200)
     
-    if not mittenti_emails:
+    if not mittenti_docs:
         logger.warning("Nessun mittente configurato")
         return {"success": False, "error": "Nessun mittente configurato"}
+    
+    # Separa mittenti standard da mittenti con ricerca per parole chiave
+    mittenti_from = []        # Lista indirizzi per ricerca FROM standard
+    mittenti_keyword = []     # Lista tuple (email, keywords) per ricerca testuale
+    
+    for m in mittenti_docs:
+        if m.get("cerca_per_oggetto") and m.get("parole_chiave_ricerca"):
+            mittenti_keyword.append((m["email"], m["parole_chiave_ricerca"]))
+        else:
+            mittenti_from.append(m["email"])
+    
+    logger.info(f"Mittenti FROM: {len(mittenti_from)}, Mittenti keyword: {len(mittenti_keyword)}")
     
     try:
         result = await download_documents_from_email(
@@ -69,14 +81,16 @@ async def sync_email_documents(db, giorni: int = 30) -> Dict[str, Any]:
             email_password=email_password,
             since_days=giorni,
             max_emails=200,
-            allowed_senders=mittenti_emails
+            allowed_senders=mittenti_from if mittenti_from else None,
+            keyword_senders=mittenti_keyword if mittenti_keyword else None
         )
         
         stats = result.get("stats", {})
         new_docs = stats.get("new_documents", 0)
         duplicates = stats.get("duplicates_skipped", 0)
+        skipped_dict = stats.get("skipped_by_dict", 0)
         
-        logger.info(f"Email sync: {new_docs} nuovi, {duplicates} duplicati saltati")
+        logger.info(f"Email sync: {new_docs} nuovi, {duplicates} duplicati contenuto, {skipped_dict} saltati dal dizionario")
         
         # Processa automaticamente fatture XML scaricate
         xml_processed = 0
@@ -117,6 +131,7 @@ async def sync_email_documents(db, giorni: int = 30) -> Dict[str, Any]:
             "success": True,
             "new_documents": new_docs,
             "duplicates_skipped": duplicates,
+            "skipped_by_dict": skipped_dict,
             "xml_processed": xml_processed,
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
