@@ -123,16 +123,24 @@ async def get_stato_patrimoniale(
     if banca_result:
         saldo_banca = banca_result[0].get("entrate", 0) - banca_result[0].get("uscite", 0)
     
-    # Crediti (fatture emesse non pagate)
-    crediti = await db[Collections.INVOICES].aggregate([
-        {"$match": {
-            "tipo_documento": {"$in": ["TD01", "TD24", "TD26"]},  # Fatture emesse
-            "status": {"$ne": "paid"},
-            "invoice_date": {"$lte": data_fine}
-        }},
-        {"$group": {"_id": None, "totale": {"$sum": "$total_amount"}}}
-    ]).to_list(1)
-    totale_crediti = crediti[0]["totale"] if crediti else 0
+    # Crediti (fatture emesse non pagate - dalla collection fatture_emesse)
+    # NOTA: La collection 'invoices' contiene solo fatture RICEVUTE (da fornitori = DEBITI)
+    # I crediti vs clienti derivano da fatture EMESSE (vendite a credito)
+    try:
+        crediti = await db["fatture_emesse"].aggregate([
+            {"$match": {
+                "status": {"$nin": STATI_PAGATI},
+                "pagato": {"$ne": True},
+                "$or": [
+                    {"data_emissione": {"$lte": data_fine}},
+                    {"invoice_date": {"$lte": data_fine}}
+                ]
+            }},
+            {"$group": {"_id": None, "totale": {"$sum": {"$ifNull": ["$total_amount", {"$ifNull": ["$importo_totale", 0]}]}}}}
+        ]).to_list(1)
+        totale_crediti = crediti[0]["totale"] if crediti else 0
+    except Exception:
+        totale_crediti = 0
     
     # === PASSIVO ===
     
