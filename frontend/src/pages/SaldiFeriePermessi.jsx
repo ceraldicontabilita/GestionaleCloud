@@ -3,7 +3,7 @@ import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { PageLayout, PageSection, PageGrid, PageEmpty, PageLoading, PageError } from '../components/PageLayout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Button } from '../components/ui/button';
-import { Users, Calendar, Clock, AlertCircle, CheckCircle, RefreshCw, Search, Edit } from 'lucide-react';
+import { Users, Calendar, Clock, AlertCircle, CheckCircle, RefreshCw, Search, Edit, Trash2 } from 'lucide-react';
 import api from '../api';
 
 export default function SaldiFeriePermessi() {
