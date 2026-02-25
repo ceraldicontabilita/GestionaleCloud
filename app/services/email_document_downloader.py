@@ -665,7 +665,8 @@ async def download_documents_from_email(
             folder=folder,
             since_date=since_date,
             limit=max_emails,
-            search_keywords=search_keywords
+            search_keywords=search_keywords,
+            allowed_senders=allowed_senders
         )
         
         # Salva nel database evitando duplicati con logica intelligente
