@@ -1,82 +1,81 @@
 # Ceraldi ERP - Product Requirements Document
 
-## Problem Statement
-Full-stack Italian ERP application (React + FastAPI + MongoDB) for business management including invoicing, accounting, tax management, asset tracking, and financial reporting.
+## Descrizione
+Applicazione ERP full-stack italiana (React + FastAPI + MongoDB) per gestione aziendale: fatturazione, contabilità, gestione fiscale, cespiti, e reportistica finanziaria.
 
-## Architecture
-- **Frontend**: React (Vite), deployed on port 3000
-- **Backend**: FastAPI, deployed on port 8001
+## Architettura
+- **Frontend**: React (Vite), porta 3000
+- **Backend**: FastAPI, porta 8001
 - **Database**: MongoDB Atlas (azienda_erp_db)
-- **Auth**: Disabled (no authentication required)
+- **Auth**: Disabilitata
 
-## Core Modules
+## Moduli principali
 1. Dashboard (fatture, bilancio, volume affari, imposte)
-2. Fatture Ricevute (invoice management)
-3. Cespiti (asset management with auto-XML scan)
-4. Piano dei Conti (chart of accounts with real saldi)
-5. Bilancio (balance sheet)
-6. Prima Nota (cash and bank ledger)
-7. F24 (tax payments)
-8. Corrispettivi (daily receipts)
-9. Magazzino (warehouse)
-10. Dipendenti/Presenze (HR, attendance, payslips)
-11. Fisco/IVA (tax calculations)
+2. Fatture Ricevute (gestione fatture)
+3. Cespiti (gestione beni ammortizzabili con scan XML automatico)
+4. Piano dei Conti (con saldi calcolati in tempo reale)
+5. Bilancio (stato patrimoniale)
+6. Prima Nota (cassa e banca)
+7. F24 (pagamenti fiscali)
+8. Corrispettivi (incassi giornalieri)
+9. Magazzino (inventario)
+10. Dipendenti/Presenze (HR, presenze, cedolini, ferie)
+11. Fisco/IVA (calcoli fiscali)
 
-## What's Been Implemented
+## Logica aziendale chiave
+- **Volume Affari** = SOLO corrispettivi (le fatture emesse sono GIA incluse nei corrispettivi come scontrini)
+- **Fatture ricevute** (collezione invoices) = COSTI/ACQUISTI, NON ricavi
+- **Cespiti** estratti automaticamente da dettaglio_righe_fatture con classificazione keyword
 
-### Session 1 (Previous)
-- Critical accounting fixes (Bilancio, Veicoli)
-- F24 data source correction (quietanze_f24)
-- Invoice data enrichment (imponibile, IVA fields)
-- Corrispettivi matricola fix
-- Magazzino module overhaul + maintenance products
-- Auto-refresh removal across pages (Dashboard, Documenti)
-- Invoice view improvements, "Mark as Paid" button
-- Dashboard POS calendar removal
-- Page crash fixes (Strumenti, Integrazioni)
+## Sessione 1 (Precedente)
+- Fix contabilità critica (Bilancio, Veicoli)
+- Correzione sorgente dati F24 (quietanze_f24)
+- Arricchimento dati fatture (imponibile, IVA)
+- Fix matricola corrispettivi
+- Ristrutturazione modulo Magazzino + prodotti manutenzione
+- Rimozione auto-refresh (Dashboard, Documenti)
+- Miglioramenti vista fattura, pulsante "Segna come Pagata"
+- Rimozione calendario POS, fix crash pagine
 
-### Session 2 (Feb 25, 2026)
-- **Fatture table headers**: Fixed white text to dark (#1e293b on #f1f5f9)
-- **Cespiti auto-scan**: POST /api/cespiti/scan-fatture - extracts 21 assets (€60,124.58)
-- **Volume Affari CORRECTED**: fatturato = corrispettivi only (€31,395.51). Fatture ricevute are COSTS, not revenue. Fatture emesse already in corrispettivi.
-- **Bilancio Istantaneo**: Fixed invoice query to use anno field. Corrispettivi count fixed.
-- **Contabilità Hub**: Piano dei Conti computes real saldi from invoices/corrispettivi
-- **Prima Nota Cassa**: Fixed datetime vs string date type mismatch - now uses anno field
-- **Dipendenti/Presenze**: Fixed to load 35 real employees from dipendenti collection
-- **Auto-refresh FULLY removed**: useData.js refetchInterval, NotificheScadenze 30-min interval
-- **Component cleanup**: Removed 20 unused components/pages
+## Sessione 2 (25 Feb 2026)
+- Fix intestazioni tabella fatture (testo scuro su sfondo chiaro)
+- Auto-scan cespiti: POST /api/cespiti/scan-fatture (21 beni, €60.124,58)
+- Volume Affari CORRETTO: fatturato = solo corrispettivi (€31.395,51)
+- Bilancio Istantaneo: query fatture con campo anno, conteggio corrispettivi corretto
+- Contabilità Hub: Piano dei Conti con saldi reali
+- Prima Nota Cassa: fix mismatch tipo data (datetime vs string)
+- Dipendenti/Presenze: 34 dipendenti reali dalla collezione dipendenti
 
-## Key Business Logic
-- **Volume Affari** = corrispettivi ONLY (fatture emesse are included in corrispettivi as scontrini)
-- **Fatture ricevute** (invoices collection) = COSTS/PURCHASES, not revenue
-- **Cespiti** auto-extracted from dettaglio_righe_fatture using keyword classification
+## Sessione 3 (25 Feb 2026 - Corrente)
+- **Route /attendance → /presenze**: Rinominata URL, aggiornati tutti i link
+- **Dipendente duplicato unificato**: Orosco/Orozco Posligua → unico record con CF
+- **Toggle "In carico"**: Aggiunto pulsante cliccabile nella tabella Anagrafica
+- **Cedolini con dati reali**: PagheHub ora carica da /api/cedolini (14 buste per 2026)
+- **Ferie - Elimina e Modifica**: Aggiunti pulsanti "Elimina richiesta" e "Modifica periodo"
+- **Auto-refresh eliminato completamente**: useData.js refetchInterval, NotificheScadenze
+- **Pulizia componenti**: Rimossi 20 file inutilizzati
+- **Fix db["employees"] → db["dipendenti"]**: Corretto in tutti i router
 
-## Key API Endpoints
-- GET /api/gestione-riservata/volume-affari-reale?anno=2026 → fatturato=corrispettivi
-- GET /api/dashboard/bilancio-istantaneo?anno=2026 → ricavi/costi/iva
-- GET /api/prima-nota/cassa?anno=2026 → cash movements (5 records)
-- GET /api/prima-nota/banca?anno=2026 → bank movements (161 records)
-- GET /api/employees?limit=200 → 35 real employees from dipendenti collection
-- GET /api/cespiti/?attivi=true → 21 auto-extracted assets
-- POST /api/cespiti/scan-fatture → scan XML invoices for assets
-- GET /api/piano-conti/ → chart of accounts with computed saldi
-- GET /api/piano-conti/bilancio → full balance sheet
+## Endpoint API chiave
+- GET /api/gestione-riservata/volume-affari-reale?anno=2026
+- GET /api/dashboard/bilancio-istantaneo?anno=2026
+- GET /api/prima-nota/cassa?anno=2026 → 5 movimenti
+- GET /api/employees?limit=200 → 34 dipendenti reali
+- GET /api/cedolini?anno=2026 → 14 cedolini
+- GET /api/cespiti/?attivi=true → 21 cespiti
+- POST /api/cespiti/scan-fatture → scan fatture XML
+- DELETE /api/giustificativi/saldi-finali/{id}?anno=2026
+- PUT /api/giustificativi/saldi-finali/{id}/periodo
 
-## Key Database Collections
-- invoices: 74 docs (fatture RICEVUTE = COSTS, fields: anno, importo_totale, importo_imponibile, importo_iva)
-- corrispettivi: 1051 docs (REVENUE, fields: data string "YYYY-MM-DD", totale)
-- cespiti: 21 docs (auto-populated from dettaglio_righe_fatture)
-- prima_nota_cassa: 5 docs (fields: data datetime, anno int, tipo, importo)
-- prima_nota_banca: 1581 docs
-- estratto_conto_movimenti: 4261 docs
-- dipendenti: 35 docs (employees)
-- presenze: 20957 docs (attendance records)
-- cedolini: payslips
-- dettaglio_righe_fatture: 11192 docs (invoice line items from XML)
+## Collezioni DB chiave
+- invoices: 74 (fatture RICEVUTE = COSTI)
+- corrispettivi: 1051 (RICAVI)
+- cespiti: 21 (auto-popolati)
+- prima_nota_cassa: 5 (data: datetime, anno: int)
+- dipendenti: 34 (dipendenti reali)
+- presenze: 20957 (registri presenze)
+- cedolini: 841 (buste paga, 14 per 2026)
 
-## Pending Issues
-- P1: Imposte page - user reported "mancano calcoli" (needs clarification)
-- P2: Improve E2E test coverage
-
-## Collections Mapping
-- Collections.EMPLOYEES = "dipendenti" (changed from "employees")
+## Problemi in sospeso
+- P1: Pagina Imposte - "mancano calcoli" (necessita chiarimento)
+- P2: Migliorare copertura test E2E
