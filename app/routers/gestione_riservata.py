@@ -210,27 +210,8 @@ async def get_volume_affari_reale(
     """
     db = Database.get_db()
     
-    # 1. Fatturato ufficiale (fatture emesse)
-    fatture_match = {"anno": anno}
-    if mese:
-        fatture_match["mese"] = mese
-    
-    fatture_pipeline = [
-        {"$match": fatture_match},
-        {"$group": {"_id": None, "totale": {"$sum": "$importo_totale"}}}
-    ]
-    fatture_result = await db["invoices"].aggregate(fatture_pipeline).to_list(1)
-    fatturato_ufficiale = fatture_result[0]["totale"] if fatture_result else 0
-    
-    # Also check fatture_emesse
-    fe_pipeline = [
-        {"$match": fatture_match},
-        {"$group": {"_id": None, "totale": {"$sum": {"$ifNull": ["$importo_totale", "$totale"]}}}}
-    ]
-    fe_result = await db["fatture_emesse"].aggregate(fe_pipeline).to_list(1)
-    fatturato_ufficiale += fe_result[0]["totale"] if fe_result else 0
-    
-    # 2. Corrispettivi (data is string "YYYY-MM-DD", totale is the field name)
+    # 1. Fatturato ufficiale = corrispettivi (le fatture emesse sono già incluse nei corrispettivi)
+    # Le fatture ricevute (invoices) sono COSTI, non ricavi
     corr_match = {"data": {"$regex": f"^{anno}"}}
     if mese:
         corr_match["data"] = {"$regex": f"^{anno}-{str(mese).zfill(2)}"}
@@ -240,9 +221,10 @@ async def get_volume_affari_reale(
         {"$group": {"_id": None, "totale": {"$sum": "$totale"}}}
     ]
     corr_result = await db["corrispettivi"].aggregate(corr_pipeline).to_list(1)
-    corrispettivi = corr_result[0]["totale"] if corr_result else 0
+    fatturato_ufficiale = corr_result[0]["totale"] if corr_result else 0
+    corrispettivi = fatturato_ufficiale  # stessi dati (fatture emesse = corrispettivi)
     
-    # 3. Incassi/Spese non fatturati
+    # 2. Incassi/Spese non fatturati
     riservata_query = {"entity_status": {"$ne": "deleted"}, "anno": anno}
     if mese:
         riservata_query["mese"] = mese
@@ -264,8 +246,8 @@ async def get_volume_affari_reale(
         elif r["_id"] == "spesa":
             spese_extra = r["totale"]
     
-    # Calcolo finale
-    totale_ufficiale = fatturato_ufficiale + corrispettivi
+    # Calcolo finale - Volume Affari = corrispettivi + extras
+    totale_ufficiale = fatturato_ufficiale
     volume_reale = totale_ufficiale + incassi_extra - spese_extra
     
     return {
