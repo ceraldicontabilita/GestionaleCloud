@@ -630,17 +630,12 @@ async def get_bilancio_istantaneo(
         
         # COSTI: Fatture ricevute
         costi_res = await db[Collections.INVOICES].aggregate([
-            {"$match": {
-                "$or": [
-                    {"data_ricezione": {"$regex": f"^{anno}"}},
-                    {"invoice_date": {"$regex": f"^{anno}"}}
-                ]
-            }},
+            {"$match": {"anno": anno}},
             {"$group": {
                 "_id": None,
-                "imponibile": {"$sum": "$imponibile"},
-                "iva": {"$sum": "$iva"},
-                "totale": {"$sum": "$total_amount"}
+                "imponibile": {"$sum": {"$ifNull": ["$importo_imponibile", {"$ifNull": ["$imponibile", 0]}]}},
+                "iva": {"$sum": {"$ifNull": ["$importo_iva", {"$ifNull": ["$iva", 0]}]}},
+                "totale": {"$sum": {"$ifNull": ["$importo_totale", {"$ifNull": ["$total_amount", 0]}]}}
             }}
         ]).to_list(1)
         
@@ -659,12 +654,7 @@ async def get_bilancio_istantaneo(
         saldo_iva = iva_debito - iva_credito
         
         # Conta documenti
-        num_fatture_ricevute = await db[Collections.INVOICES].count_documents({
-            "$or": [
-                {"data_ricezione": {"$regex": f"^{anno}"}},
-                {"invoice_date": {"$regex": f"^{anno}"}}
-            ]
-        })
+        num_fatture_ricevute = await db[Collections.INVOICES].count_documents({"anno": anno})
         num_corrispettivi = await db["corrispettivi"].count_documents({"data": {"$regex": f"^{anno}"}})
         
         return {
