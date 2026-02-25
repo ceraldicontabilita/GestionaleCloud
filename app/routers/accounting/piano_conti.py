@@ -98,16 +98,38 @@ STRUTTURA_BASE = {
 @router.get("/")
 @handle_errors
 async def get_piano_conti() -> Dict[str, Any]:
-    """Ottiene il piano dei conti completo."""
+    """Ottiene il piano dei conti completo con saldi calcolati dai dati reali."""
     db = Database.get_db()
     
     conti = await db[COLLECTION_PIANO_CONTI].find({}, {"_id": 0}).sort("codice", 1).to_list(1000)
     
-    # Se non esistono conti, inizializza con struttura base
     if not conti:
         conti = await inizializza_piano_conti_base(db)
     
-    # Raggruppa per categoria
+    # Compute real saldi from invoices and corrispettivi
+    costi_res = await db["invoices"].aggregate([
+        {"$group": {"_id": None, "totale": {"$sum": "$importo_totale"}, "imponibile": {"$sum": "$importo_imponibile"}, "iva": {"$sum": "$importo_iva"}}}
+    ]).to_list(1)
+    ricavi_res = await db["corrispettivi"].aggregate([
+        {"$match": {"entity_status": {"$ne": "deleted"}}},
+        {"$group": {"_id": None, "totale": {"$sum": "$totale"}, "imponibile": {"$sum": "$totale_imponibile"}, "iva": {"$sum": "$totale_iva"}}}
+    ]).to_list(1)
+    
+    real_saldi = {
+        "01.02.01": round(ricavi_res[0]["totale"], 2) if ricavi_res else 0,
+        "01.04.01": round(costi_res[0]["iva"], 2) if costi_res else 0,
+        "02.01.01": round(costi_res[0]["totale"], 2) if costi_res else 0,
+        "02.02.01": round(ricavi_res[0]["iva"], 2) if ricavi_res else 0,
+        "04.01.01": round(ricavi_res[0]["imponibile"], 2) if ricavi_res else 0,
+        "05.01.01": round(costi_res[0]["imponibile"], 2) if costi_res else 0,
+    }
+    
+    # Inject real saldi into conti
+    for conto in conti:
+        codice = conto.get("codice", "")
+        if codice in real_saldi:
+            conto["saldo"] = real_saldi[codice]
+    
     grouped = {
         "attivo": [],
         "passivo": [],
