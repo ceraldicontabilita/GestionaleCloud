@@ -31,7 +31,8 @@ async def list_prima_nota_cassa(
     }
     
     if anno:
-        query["data"] = {"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31"}
+        # data field can be either datetime or string, use anno field for reliable filtering
+        query["anno"] = anno
     
     if data_da:
         query.setdefault("data", {})["$gte"] = data_da
