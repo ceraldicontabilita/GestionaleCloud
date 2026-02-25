@@ -467,7 +467,7 @@ async def monitor_loop(db, interval_seconds: int = 600):
         await asyncio.sleep(interval_seconds)
 
 
-def start_monitor(db, interval_seconds: int = 600):
+def start_monitor(db, interval_seconds: int = 3600):
     """
     Avvia il monitor in background.
     """
