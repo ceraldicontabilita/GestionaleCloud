@@ -1493,28 +1493,16 @@ function ScadenzeWidget({ scadenze }) {
   const handlePaga = async (scadenza, metodo) => {
     setProcessing(true);
     try {
-      // Registra pagamento in prima nota (usa l'endpoint corretto)
-      const endpoint = metodo === 'cassa' ? '/api/prima-nota/cassa' : '/api/prima-nota/banca';
-      await api.post(endpoint, {
-        data: new Date().toISOString().split('T')[0],
-        tipo: 'uscita',
-        categoria: 'pagamento_fornitore',
-        descrizione: `Pag. ${scadenza.tipo} ${scadenza.numero_fattura || ''} - ${scadenza.fornitore || ''}`,
-        importo: Math.abs(scadenza.importo),
-        fornitore: scadenza.fornitore,
+      // Usa l'endpoint unificato che crea movimento in Prima Nota + aggiorna fattura
+      await api.post('/api/fatture-ricevute/paga-manuale', {
         fattura_id: scadenza.fattura_id || scadenza.id,
-        direzione: 'uscita'
+        scadenza_id: scadenza.id,
+        importo: Math.abs(scadenza.importo),
+        metodo: metodo,
+        data_pagamento: new Date().toISOString().split('T')[0],
+        fornitore: scadenza.fornitore || '',
+        numero_fattura: scadenza.numero_fattura || ''
       });
-      
-      // Segna la fattura come pagata
-      if (scadenza.fattura_id) {
-        await api.put(`/api/fatture-ricevute/fattura/${scadenza.fattura_id}`, {
-          pagato: true,
-          data_pagamento: new Date().toISOString().split('T')[0],
-          metodo_pagamento: metodo === 'cassa' ? 'contanti' : 'bonifico',
-          riconciliato: metodo === 'cassa'  // Cassa = subito riconciliato, Banca = aspetta match
-        });
-      }
       
       setPagaModal(null);
       // Refresh scadenze data without full page reload
