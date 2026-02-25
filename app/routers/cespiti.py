@@ -588,3 +588,165 @@ async def elimina_cespite(cespite_id: str) -> Dict[str, Any]:
             "valore_acquisto": cespite.get("valore_acquisto", 0)
         }
     }
+
+
+# ============================================
+# AUTO-SCAN: Estrai cespiti da righe fatture XML
+# ============================================
+
+# Mappatura keyword → categoria cespiti
+KEYWORD_CATEGORY_MAP = [
+    (["forno", "piastra cottura"], "forni"),
+    (["frigo", "congelator", "abbattitore"], "frigoriferi"),
+    (["computer", "stampante", "monitor", "pc ", "notebook", "tablet"], "macchine_ufficio"),
+    (["sfogliatric", "planetaria", "impastatric", "pastocrema"], "impianti_cucina"),
+    (["lavastoviglie", "lavapiatti", "lavabicchier", "lavaoggetti"], "attrezzature"),
+    (["mobile", "arredo", "poltroncin", "sedia", "tavol", "banco", "armadio", "vetrina"], "mobili_arredi"),
+    (["impianto", "climatizz", "condizionat"], "impianti_generici"),
+    (["insegn", "pubblicita"], "insegne"),
+    (["software", "licenz"], "software"),
+]
+
+# Items to exclude (consumables, not assets)
+EXCLUDE_KEYWORDS = [
+    "caffe", "caffè", "kimbo", "grani", "capsul", "omaggio", "storno",
+    "acconto", "anticip", "consulenz", "compensi", "noleggio",
+    "canone", "abbonament", "rifatturaz", "penalita", "sinistro",
+    "manutenzione ordinaria", "riparazion", "intervento lavori",
+    "wi-fi", "sim ", "telefon", "cover", "custodia"
+]
+
+
+def classify_asset(descrizione: str, prezzo: float) -> str | None:
+    """Classifica un item come cespite basandosi sulla descrizione."""
+    desc_lower = descrizione.lower()
+    
+    # Escludi consumabili e servizi
+    for excl in EXCLUDE_KEYWORDS:
+        if excl in desc_lower:
+            return None
+    
+    # Cerca match con categorie
+    for keywords, categoria in KEYWORD_CATEGORY_MAP:
+        for kw in keywords:
+            if kw in desc_lower:
+                return categoria
+    
+    # Se il prezzo è molto alto e contiene keyword generici di beni
+    if prezzo >= 2000:
+        for kw in ["supporto", "cappa", "banco", "scaffal", "contenitor"]:
+            if kw in desc_lower:
+                return "attrezzature"
+    
+    return None
+
+
+@router.post("/scan-fatture")
+@handle_errors
+async def scan_fatture_per_cespiti(
+    soglia_valore: float = Query(200, description="Valore minimo per considerare un item come cespite"),
+    dry_run: bool = Query(False, description="Se True, mostra solo il preview senza salvare")
+) -> Dict[str, Any]:
+    """
+    Scansiona le righe delle fatture XML per identificare potenziali cespiti.
+    Estrae automaticamente beni ammortizzabili (attrezzature, macchinari, arredi, ecc.)
+    """
+    db = Database.get_db()
+    
+    # Cerca righe fatture con valore superiore alla soglia
+    righe = await db["dettaglio_righe_fatture"].find(
+        {"prezzo_totale": {"$gt": soglia_valore}},
+        {"_id": 0}
+    ).sort("prezzo_totale", -1).to_list(5000)
+    
+    # Cespiti esistenti per evitare duplicati
+    existing = await db["cespiti"].find({}, {"_id": 0, "descrizione": 1, "valore_acquisto": 1}).to_list(5000)
+    existing_set = {(c["descrizione"], c["valore_acquisto"]) for c in existing}
+    
+    nuovi_cespiti = []
+    seen = set()  # Per evitare duplicati nella stessa scansione
+    
+    for riga in righe:
+        descrizione = riga.get("descrizione", "")
+        prezzo = riga.get("prezzo_totale", 0)
+        
+        if not descrizione or prezzo <= 0:
+            continue
+        
+        # Classifica
+        categoria = classify_asset(descrizione, prezzo)
+        if not categoria:
+            continue
+        
+        # Deduplicazione: stessa descrizione + stesso prezzo = stesso bene
+        dedup_key = (descrizione.strip()[:100], round(prezzo, 2))
+        if dedup_key in seen or dedup_key in existing_set:
+            continue
+        seen.add(dedup_key)
+        
+        # Estrai data dalla riga
+        created_at = riga.get("created_at", "")
+        data_acquisto = created_at[:10] if created_at else "2025-01-01"
+        try:
+            anno_acquisto = int(data_acquisto[:4])
+        except (ValueError, IndexError):
+            anno_acquisto = 2025
+        
+        cat_info = CATEGORIE_CESPITI.get(categoria, {"descrizione": categoria, "coefficiente": 15, "vita_utile": 7})
+        coeff = cat_info["coefficiente"]
+        
+        # Tronca descrizione se troppo lunga
+        desc_short = descrizione.strip()[:200]
+        
+        cespite = {
+            "id": str(uuid4()),
+            "descrizione": desc_short,
+            "categoria": categoria,
+            "categoria_descrizione": cat_info["descrizione"],
+            "coefficiente_ammortamento": coeff,
+            "vita_utile_anni": cat_info["vita_utile"],
+            "data_acquisto": data_acquisto,
+            "anno_acquisto": anno_acquisto,
+            "valore_acquisto": round(prezzo, 2),
+            "valore_residuo": round(prezzo, 2),
+            "fondo_ammortamento": 0,
+            "fornitore": None,
+            "numero_fattura": None,
+            "fattura_riga_id": riga.get("id"),
+            "fattura_id": riga.get("fattura_id"),
+            "ubicazione": None,
+            "note": f"Auto-estratto da fattura XML",
+            "stato": "attivo",
+            "ammortamento_completato": False,
+            "piano_ammortamento": [],
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        nuovi_cespiti.append(cespite)
+    
+    if dry_run:
+        return {
+            "preview": True,
+            "num_potenziali_cespiti": len(nuovi_cespiti),
+            "valore_totale": round(sum(c["valore_acquisto"] for c in nuovi_cespiti), 2),
+            "per_categoria": {},
+            "cespiti": [
+                {
+                    "descrizione": c["descrizione"][:80],
+                    "categoria": c["categoria"],
+                    "valore_acquisto": c["valore_acquisto"],
+                    "data_acquisto": c["data_acquisto"]
+                }
+                for c in nuovi_cespiti
+            ]
+        }
+    
+    # Salva nel database
+    if nuovi_cespiti:
+        await db["cespiti"].insert_many([c.copy() for c in nuovi_cespiti])
+    
+    return {
+        "success": True,
+        "cespiti_creati": len(nuovi_cespiti),
+        "valore_totale": round(sum(c["valore_acquisto"] for c in nuovi_cespiti), 2),
+        "messaggio": f"Estratti {len(nuovi_cespiti)} cespiti dalle fatture XML"
+    }
