@@ -143,9 +143,9 @@ const router = createBrowserRouter([
       { path: "dipendenti/:tab", element: <LazyPage><HRGestionale /></LazyPage> },
       { path: "dipendenti/:tab/:subtab", element: <LazyPage><HRGestionale /></LazyPage> },
       { path: "dipendenti/:nome/:tab", element: <LazyPage><HRGestionale /></LazyPage> },
-      { path: "attendance", element: <LazyPage><DipendentiHub /></LazyPage> },
-      { path: "attendance/:dipendente", element: <LazyPage><DipendentiHub /></LazyPage> },
-      { path: "attendance/:dipendente/:mese", element: <LazyPage><DipendentiHub /></LazyPage> },
+      { path: "presenze", element: <LazyPage><DipendentiHub /></LazyPage> },
+      { path: "presenze/:dipendente", element: <LazyPage><DipendentiHub /></LazyPage> },
+      { path: "presenze/:dipendente/:mese", element: <LazyPage><DipendentiHub /></LazyPage> },
       { path: "saldi-ferie-permessi", element: <LazyPage><DipendentiHub /></LazyPage> },
       
       // === PAGHE & RETRIBUZIONI → ora in /dipendenti/paghe ===
