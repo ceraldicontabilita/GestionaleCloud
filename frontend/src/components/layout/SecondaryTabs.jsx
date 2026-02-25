@@ -24,7 +24,7 @@ const TAB_CONFIGS = {
   '/dipendenti': [
     { to: '/dipendenti', label: 'Anagrafica', exact: true },
     { to: '/cedolini', label: 'Cedolini' },
-    { to: '/attendance', label: 'Presenze' },
+    { to: '/presenze', label: 'Presenze' },
     { to: '/tfr', label: 'TFR' },
   ],
   '/contabilita': [
@@ -58,7 +58,7 @@ export default function SecondaryTabs() {
     if (path.startsWith('/f24') || path.startsWith('/iva')) {
       return TAB_CONFIGS['/fisco'];
     }
-    if (path.startsWith('/cedolini') || path.startsWith('/attendance') || path.startsWith('/tfr')) {
+    if (path.startsWith('/cedolini') || path.startsWith('/presenze') || path.startsWith('/attendance') || path.startsWith('/tfr')) {
       return TAB_CONFIGS['/dipendenti'];
     }
     if (path.startsWith('/bilancio') || path.startsWith('/piano-dei-conti') || path.startsWith('/cespiti')) {
