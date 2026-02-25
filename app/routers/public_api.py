@@ -399,10 +399,15 @@ async def create_supplier(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
 # ============== WAREHOUSE ==============
 
 @router.get("/warehouse/products")
-async def list_warehouse_products(skip: int = 0, limit: int = 5000) -> List[Dict[str, Any]]:
-    """Lista prodotti magazzino."""
+async def list_warehouse_products(skip: int = 0, limit: int = 5000, category: Optional[str] = None, source: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Lista prodotti magazzino con filtri opzionali."""
     db = Database.get_db()
-    return await db[Collections.WAREHOUSE_PRODUCTS].find({}, {"_id": 0}).skip(skip).limit(limit).to_list(limit)
+    query = {}
+    if category:
+        query["category"] = category
+    if source:
+        query["source"] = source
+    return await db[Collections.WAREHOUSE_PRODUCTS].find(query, {"_id": 0}).skip(skip).limit(limit).to_list(limit)
 
 
 @router.post("/warehouse/products")
