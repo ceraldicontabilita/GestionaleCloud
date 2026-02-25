@@ -150,8 +150,7 @@ async def salva_allegato_pdf(db, fattura_id: str, allegato: Dict) -> Optional[st
 
 
 def generate_invoice_html(fattura: Dict, righe_fattura: List[Dict] = None) -> str:
-    """Genera HTML preview della fattura stile AssoInvoice."""
-    # Supporta entrambi i formati di campi (XML import e legacy)
+    """Genera HTML preview della fattura stile AssoInvoice - layout intuitivo e leggibile."""
     fornitore = (fattura.get("fornitore_ragione_sociale") or 
                  fattura.get("supplier_name") or 
                  fattura.get("cedente_denominazione") or 
@@ -160,10 +159,15 @@ def generate_invoice_html(fattura: Dict, righe_fattura: List[Dict] = None) -> st
             fattura.get("supplier_vat") or 
             fattura.get("cedente_piva") or 
             fattura.get("fornitore", {}).get("partita_iva") or "N/A")
+    cf = (fattura.get("fornitore_codice_fiscale") or 
+          fattura.get("cedente_cf") or 
+          fattura.get("fornitore", {}).get("codice_fiscale") or "")
+    indirizzo_fornitore = (fattura.get("fornitore_indirizzo") or 
+                           fattura.get("cedente_indirizzo") or 
+                           fattura.get("fornitore", {}).get("indirizzo") or "")
     numero = fattura.get("numero_documento") or fattura.get("invoice_number") or fattura.get("numero") or "N/A"
     data = fattura.get("data_documento") or fattura.get("invoice_date") or fattura.get("data") or "N/A"
     
-    # Converti sempre in float per evitare errori di formattazione
     def safe_float(val):
         if val is None:
             return 0.0
@@ -175,116 +179,219 @@ def generate_invoice_html(fattura: Dict, righe_fattura: List[Dict] = None) -> st
     importo = safe_float(fattura.get("importo_totale") or fattura.get("total_amount"))
     imponibile = safe_float(fattura.get("imponibile"))
     iva = safe_float(fattura.get("imposta") or fattura.get("iva"))
-    stato = fattura.get("stato_pagamento") or fattura.get("stato") or "non_pagata"
-    metodo = fattura.get("metodo_pagamento") or "N/A"
+    # Calcola imponibile/IVA se mancanti
+    if imponibile == 0 and iva == 0 and importo > 0:
+        # Try to compute from righe
+        if righe_fattura:
+            imponibile = sum(safe_float(r.get('prezzo_totale', 0)) for r in righe_fattura)
+            iva = importo - imponibile if imponibile > 0 else 0
+        if imponibile == 0:
+            imponibile = round(importo / 1.22, 2)
+            iva = round(importo - imponibile, 2)
     
-    # Se le righe sono nel documento stesso, usale
+    is_paid = fattura.get("pagato", False) or fattura.get("stato_pagamento") == "pagata"
+    stato = fattura.get("stato_pagamento") or fattura.get("stato") or ("pagata" if is_paid else "non_pagata")
+    metodo = fattura.get("metodo_pagamento") or "Non specificato"
+    data_pagamento = fattura.get("data_pagamento") or ""
+    fattura_id = fattura.get("id", "")
+    
     if not righe_fattura and fattura.get("linee"):
         righe_fattura = fattura.get("linee", [])
     
-    stato_badge = {
-        "pagata": '<span style="background:#22c55e;color:white;padding:4px 12px;border-radius:4px;">PAGATA</span>',
-        "pagato": '<span style="background:#22c55e;color:white;padding:4px 12px;border-radius:4px;">PAGATA</span>',
-        "non_pagata": '<span style="background:#ef4444;color:white;padding:4px 12px;border-radius:4px;">NON PAGATA</span>',
-        "parziale": '<span style="background:#f59e0b;color:white;padding:4px 12px;border-radius:4px;">PARZIALE</span>'
-    }.get(stato, f'<span style="background:#6b7280;color:white;padding:4px 12px;border-radius:4px;">{str(stato).upper()}</span>')
+    stato_badge_html = {
+        "pagata": '<span class="badge badge-green">PAGATA</span>',
+        "pagato": '<span class="badge badge-green">PAGATA</span>',
+        "non_pagata": '<span class="badge badge-red">DA PAGARE</span>',
+        "importata": '<span class="badge badge-red">DA PAGARE</span>',
+        "parziale": '<span class="badge badge-yellow">PARZIALE</span>'
+    }.get(stato, f'<span class="badge badge-gray">{str(stato).upper()}</span>')
     
     righe_html = ""
     if righe_fattura:
-        for r in righe_fattura:
-            # Safe conversions per le righe
+        for idx, r in enumerate(righe_fattura):
             prezzo_unit = safe_float(r.get('prezzo_unitario', 0))
             prezzo_tot = safe_float(r.get('prezzo_totale', 0))
             qta = safe_float(r.get('quantita', 1))
             aliq = safe_float(r.get('aliquota_iva', 22))
+            bg = '#f8fafc' if idx % 2 == 0 else 'white'
             righe_html += f"""
-            <tr>
-                <td style="padding:8px;border-bottom:1px solid #e5e7eb;">{r.get('numero_linea', '')}</td>
-                <td style="padding:8px;border-bottom:1px solid #e5e7eb;">{r.get('descrizione', '')[:80]}</td>
-                <td style="padding:8px;border-bottom:1px solid #e5e7eb;text-align:right;">{qta:.0f}</td>
-                <td style="padding:8px;border-bottom:1px solid #e5e7eb;text-align:right;">€{prezzo_unit:.2f}</td>
-                <td style="padding:8px;border-bottom:1px solid #e5e7eb;text-align:right;">{aliq:.0f}%</td>
-                <td style="padding:8px;border-bottom:1px solid #e5e7eb;text-align:right;">€{prezzo_tot:.2f}</td>
+            <tr style="background:{bg}">
+                <td class="td-center">{r.get('numero_linea', idx+1)}</td>
+                <td class="td-desc">{r.get('descrizione', '')[:100]}</td>
+                <td class="td-right">{qta:g}</td>
+                <td class="td-right">{prezzo_unit:,.2f}</td>
+                <td class="td-center">{aliq:g}%</td>
+                <td class="td-right"><strong>{prezzo_tot:,.2f}</strong></td>
             </tr>"""
     
-    html = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="UTF-8">
-        <title>Fattura {numero}</title>
-        <style>
-            body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 20px; background: #f3f4f6; }}
-            .container {{ max-width: 800px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }}
-            .header {{ background: linear-gradient(135deg, #1e40af, #3b82f6); color: white; padding: 24px; border-radius: 8px 8px 0 0; }}
-            .content {{ padding: 24px; }}
-            .grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px; }}
-            .section {{ background: #f9fafb; padding: 16px; border-radius: 8px; }}
-            .label {{ font-size: 12px; color: #6b7280; text-transform: uppercase; margin-bottom: 4px; }}
-            .value {{ font-size: 16px; font-weight: 500; color: #111827; }}
-            table {{ width: 100%; border-collapse: collapse; }}
-            th {{ background: #f3f4f6; padding: 12px 8px; text-align: left; font-weight: 600; }}
-            .totals {{ background: #1e40af; color: white; padding: 16px; border-radius: 8px; margin-top: 24px; }}
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <div class="header">
-                <div style="display:flex;justify-content:space-between;align-items:center;">
-                    <div>
-                        <h1 style="margin:0;font-size:24px;">Fattura #{numero}</h1>
-                        <p style="margin:8px 0 0;opacity:0.9;">Data: {data}</p>
-                    </div>
-                    <div>{stato_badge}</div>
-                </div>
-            </div>
-            <div class="content">
-                <div class="grid">
-                    <div class="section">
-                        <div class="label">Fornitore</div>
-                        <div class="value">{fornitore}</div>
-                        <div style="margin-top:8px;color:#6b7280;">P.IVA: {piva}</div>
-                    </div>
-                    <div class="section">
-                        <div class="label">Metodo Pagamento</div>
-                        <div class="value">{metodo}</div>
-                    </div>
-                </div>
-                
-                <h3 style="margin-bottom:16px;">Dettaglio Righe</h3>
-                <table>
-                    <thead>
-                        <tr>
-                            <th style="width:50px;">#</th>
-                            <th>Descrizione</th>
-                            <th style="text-align:right;width:80px;">Qtà</th>
-                            <th style="text-align:right;width:100px;">Prezzo</th>
-                            <th style="text-align:right;width:60px;">IVA</th>
-                            <th style="text-align:right;width:100px;">Totale</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {righe_html if righe_html else '<tr><td colspan="6" style="padding:16px;text-align:center;color:#9ca3af;">Nessun dettaglio righe disponibile</td></tr>'}
-                    </tbody>
-                </table>
-                
-                <div class="totals">
-                    <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
-                        <span>Imponibile:</span>
-                        <span>€{imponibile:.2f}</span>
-                    </div>
-                    <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
-                        <span>IVA:</span>
-                        <span>€{iva:.2f}</span>
-                    </div>
-                    <div style="display:flex;justify-content:space-between;font-size:20px;font-weight:bold;border-top:1px solid rgba(255,255,255,0.3);padding-top:8px;margin-top:8px;">
-                        <span>TOTALE:</span>
-                        <span>€{importo:.2f}</span>
-                    </div>
-                </div>
+    # Mark as Paid buttons (only if not already paid)
+    pay_buttons = ""
+    if not is_paid and fattura_id:
+        pay_buttons = f"""
+        <div class="pay-section">
+            <h3 style="margin:0 0 12px;font-size:15px;color:#1e293b;">Segna come Pagata</h3>
+            <div style="display:flex;gap:12px;flex-wrap:wrap;">
+                <button onclick="pagaFattura('{fattura_id}', 'cassa', {importo}, '{data}', '{fornitore.replace(chr(39), "")}', '{numero}')" class="btn btn-green">
+                    Paga in CASSA
+                </button>
+                <button onclick="pagaFattura('{fattura_id}', 'banca', {importo}, '{data}', '{fornitore.replace(chr(39), "")}', '{numero}')" class="btn btn-blue">
+                    Paga in BANCA
+                </button>
             </div>
         </div>
-    </body>
-    </html>
-    """
+        """
+    
+    html = f"""<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fattura {numero} - {fornitore}</title>
+    <style>
+        * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: #f1f5f9; padding: 20px; color: #1e293b; }}
+        .invoice {{ max-width: 860px; margin: 0 auto; background: white; border-radius: 12px; box-shadow: 0 4px 24px rgba(0,0,0,0.08); overflow: hidden; }}
+        .header {{ background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%); color: white; padding: 28px 32px; }}
+        .header-top {{ display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; }}
+        .header h1 {{ font-size: 26px; font-weight: 700; margin-bottom: 4px; }}
+        .header .subtitle {{ opacity: 0.85; font-size: 14px; }}
+        .badge {{ display: inline-block; padding: 6px 16px; border-radius: 6px; font-size: 13px; font-weight: 700; letter-spacing: 0.5px; }}
+        .badge-green {{ background: #22c55e; color: white; }}
+        .badge-red {{ background: #ef4444; color: white; }}
+        .badge-yellow {{ background: #f59e0b; color: white; }}
+        .badge-gray {{ background: #94a3b8; color: white; }}
+        .body {{ padding: 28px 32px; }}
+        .info-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 28px; }}
+        .info-box {{ background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 18px; }}
+        .info-box .label {{ font-size: 11px; color: #94a3b8; text-transform: uppercase; font-weight: 600; letter-spacing: 0.8px; margin-bottom: 6px; }}
+        .info-box .value {{ font-size: 16px; font-weight: 600; color: #0f172a; }}
+        .info-box .detail {{ font-size: 13px; color: #64748b; margin-top: 4px; }}
+        .amounts {{ display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 28px; }}
+        .amount-card {{ text-align: center; padding: 18px 12px; border-radius: 10px; }}
+        .amount-card .amount-label {{ font-size: 11px; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px; margin-bottom: 6px; }}
+        .amount-card .amount-value {{ font-size: 22px; font-weight: 700; }}
+        .amount-imponibile {{ background: #f0f9ff; border: 1px solid #bae6fd; }}
+        .amount-imponibile .amount-label {{ color: #0369a1; }}
+        .amount-imponibile .amount-value {{ color: #0c4a6e; }}
+        .amount-iva {{ background: #fef3c7; border: 1px solid #fde68a; }}
+        .amount-iva .amount-label {{ color: #92400e; }}
+        .amount-iva .amount-value {{ color: #78350f; }}
+        .amount-totale {{ background: #1e3a5f; }}
+        .amount-totale .amount-label {{ color: rgba(255,255,255,0.7); }}
+        .amount-totale .amount-value {{ color: white; }}
+        table {{ width: 100%; border-collapse: collapse; margin-bottom: 20px; }}
+        th {{ background: #1e3a5f; color: white; padding: 12px 14px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }}
+        th:first-child {{ border-radius: 8px 0 0 8px; }}
+        th:last-child {{ border-radius: 0 8px 8px 0; }}
+        td {{ padding: 10px 14px; font-size: 13px; border-bottom: 1px solid #f1f5f9; }}
+        .td-center {{ text-align: center; }}
+        .td-right {{ text-align: right; font-family: 'SF Mono', 'Menlo', monospace; }}
+        .td-desc {{ max-width: 300px; }}
+        .section-title {{ font-size: 15px; font-weight: 600; color: #1e293b; margin-bottom: 14px; padding-bottom: 8px; border-bottom: 2px solid #e2e8f0; }}
+        .pay-section {{ background: #fef3c7; border: 2px solid #fbbf24; border-radius: 10px; padding: 18px; margin-top: 24px; }}
+        .btn {{ padding: 10px 24px; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; }}
+        .btn-green {{ background: #16a34a; color: white; }}
+        .btn-green:hover {{ background: #15803d; }}
+        .btn-blue {{ background: #2563eb; color: white; }}
+        .btn-blue:hover {{ background: #1d4ed8; }}
+        .empty-rows {{ padding: 32px; text-align: center; color: #94a3b8; font-style: italic; }}
+        @media (max-width: 600px) {{
+            .info-grid, .amounts {{ grid-template-columns: 1fr; }}
+            .body {{ padding: 20px 16px; }}
+            .header {{ padding: 20px 16px; }}
+        }}
+    </style>
+</head>
+<body>
+    <div class="invoice">
+        <div class="header">
+            <div class="header-top">
+                <div>
+                    <h1>Fattura {numero}</h1>
+                    <div class="subtitle">Data documento: {data}</div>
+                </div>
+                <div>{stato_badge_html}</div>
+            </div>
+        </div>
+        <div class="body">
+            <div class="info-grid">
+                <div class="info-box">
+                    <div class="label">Fornitore / Cedente</div>
+                    <div class="value">{fornitore}</div>
+                    <div class="detail">P.IVA: {piva}</div>
+                    {'<div class="detail">C.F.: ' + cf + '</div>' if cf and cf != piva else ''}
+                    {'<div class="detail">' + indirizzo_fornitore + '</div>' if indirizzo_fornitore else ''}
+                </div>
+                <div class="info-box">
+                    <div class="label">Dettagli Pagamento</div>
+                    <div class="value">{metodo.replace('_', ' ').title()}</div>
+                    {'<div class="detail">Pagata il: ' + data_pagamento + '</div>' if data_pagamento else ''}
+                </div>
+            </div>
+            
+            <div class="amounts">
+                <div class="amount-card amount-imponibile">
+                    <div class="amount-label">Imponibile</div>
+                    <div class="amount-value">&euro; {imponibile:,.2f}</div>
+                </div>
+                <div class="amount-card amount-iva">
+                    <div class="amount-label">IVA</div>
+                    <div class="amount-value">&euro; {iva:,.2f}</div>
+                </div>
+                <div class="amount-card amount-totale">
+                    <div class="amount-label">Totale Fattura</div>
+                    <div class="amount-value">&euro; {importo:,.2f}</div>
+                </div>
+            </div>
+            
+            <div class="section-title">Dettaglio Righe</div>
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width:50px;text-align:center">#</th>
+                        <th>Descrizione</th>
+                        <th style="text-align:right;width:70px">Qta</th>
+                        <th style="text-align:right;width:100px">Prezzo Unit.</th>
+                        <th style="text-align:center;width:60px">IVA %</th>
+                        <th style="text-align:right;width:110px">Totale</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {righe_html if righe_html else '<tr><td colspan="6" class="empty-rows">Nessun dettaglio righe disponibile</td></tr>'}
+                </tbody>
+            </table>
+            
+            {pay_buttons}
+        </div>
+    </div>
+    <script>
+    async function pagaFattura(fatturaId, metodo, importo, data, fornitore, numero) {{
+        if (!confirm('Confermi il pagamento in ' + metodo.toUpperCase() + ' di EUR ' + importo.toFixed(2) + '?')) return;
+        try {{
+            const res = await fetch('/api/fatture-ricevute/paga-manuale', {{
+                method: 'POST',
+                headers: {{ 'Content-Type': 'application/json' }},
+                body: JSON.stringify({{
+                    fattura_id: fatturaId,
+                    importo: importo,
+                    metodo: metodo,
+                    data_pagamento: data,
+                    fornitore: fornitore,
+                    numero_fattura: numero
+                }})
+            }});
+            const result = await res.json();
+            if (result.success) {{
+                alert('Pagamento registrato in ' + metodo.toUpperCase() + '!\\nMovimento creato in Prima Nota.');
+                location.reload();
+            }} else {{
+                alert('Errore: ' + (result.detail || 'Errore sconosciuto'));
+            }}
+        }} catch (e) {{
+            alert('Errore: ' + e.message);
+        }}
+    }}
+    </script>
+</body>
+</html>"""
     return html
