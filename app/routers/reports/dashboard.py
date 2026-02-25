@@ -665,7 +665,7 @@ async def get_bilancio_istantaneo(
                 {"invoice_date": {"$regex": f"^{anno}"}}
             ]
         })
-        num_corrispettivi = await db["corrispettivi"].count_documents({"anno": anno})
+        num_corrispettivi = await db["corrispettivi"].count_documents({"data": {"$regex": f"^{anno}"}})
         
         return {
             "anno": anno,
