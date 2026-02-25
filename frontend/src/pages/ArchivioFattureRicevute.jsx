@@ -518,7 +518,7 @@ export default function ArchivioFatture() {
                       const isRiconciliata = f.riconciliato === true;
                       
                       return (
-                      <tr key={f.id} style={{ 
+                      <tr key={f.id || `fattura-${idx}`} style={{ 
                         background: idx % 2 === 0 ? 'white' : '#f8fafc', 
                         boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
                         transition: 'background 0.2s'
