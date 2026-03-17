@@ -178,7 +178,7 @@ export function formatDateIT(dateStr) {
     const datePart = dateStr.includes("T") ? dateStr.split("T")[0] : dateStr;
     const parts = datePart.split("-");
     if (parts.length === 3) {
-      return `${parts[2]}/${parts[1]}/${parts[0]}`;
+      return `${parts[2]}-${parts[1]}-${parts[0]}`;
     }
     return dateStr;
   } catch {
