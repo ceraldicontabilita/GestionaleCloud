@@ -403,7 +403,7 @@ async def get_movimenti(
     categoria: Optional[str] = Query(None),
     fornitore: Optional[str] = Query(None),
     tipo: Optional[str] = Query(None),  # "entrata" | "uscita"
-    limit: int = Query(500, le=5000),
+    limit: int = Query(500, le=6000),
     offset: int = Query(0)
 ) -> Dict[str, Any]:
     """
