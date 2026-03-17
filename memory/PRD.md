@@ -89,6 +89,15 @@ Applicazione ERP full-stack italiana (React + FastAPI + MongoDB) per gestione az
 - **Nuovi endpoint**: GET /api/email-download/dizionario-email, DELETE /api/email-download/dizionario-email/reset
 - **PUT /api/email-download/mittenti/{email}**: Ora supporta anche `cerca_per_oggetto` e `parole_chiave_ricerca`
 
+## Sessione 6 (17 Marzo 2026 - Corrente)
+- **Force Reimport**: Nuovo endpoint POST `/api/estratto-conto-movimenti/force-reimport` - cancella tutti i record degli anni del CSV e reinserisce tutto senza deduplicazione (corregge commissioni €1 ripetute)
+- **Fix frontend import**: Button "Forza Aggiornamento" (rosso) nella sezione Banca di Prima Nota usa il nuovo endpoint. Button "Importa CSV" (blu) usa endpoint incrementale
+- **Correzione import vecchio**: Import precedente bloccava commissioni €1 duplicate (stesso giorno/importo/descrizione). Ora risolto con force-reimport
+- **Saldo progressivo corretto**: Calcolo saldo progressivo nella tabella cambiato da backward (total→first) a forward (first→total). Ora parte da 0 e accumula correttamente
+- **Saldo cumulativo nascosto**: "Saldo Cumulativo" e "Riporto Anni Prec." ora mostrati solo se saldo_precedente > 0 (nasconde valori negativi da dati storici)
+- **Dati 2025**: 2923 records, saldo=€2.839,08, 127 commissioni €1 ✓
+- **Dati 2026 (fino 16/03)**: 477 records, saldo=€3.899,37, 52 commissioni €1 ✓
+
 ## Problemi in sospeso
 - P2: Credenziali Gmail non valide (IMAP_PASSWORD nel .env) - blocca automazione email (NON priorità corrente)
 

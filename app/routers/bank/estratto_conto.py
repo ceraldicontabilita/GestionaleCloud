@@ -418,6 +418,192 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
     }
 
 
+@router.post("/force-reimport")
+@handle_errors
+async def force_reimport_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
+    """
+    Reimport FORZATO dell'estratto conto.
+    - Cancella TUTTI i record degli anni presenti nel CSV
+    - Inserisce TUTTE le righe del CSV senza deduplicazione
+    - Preserva i dati di anni NON presenti nel CSV
+    
+    Utile quando il CSV ha righe duplicate volute (es. commissioni €1 ripetute)
+    o quando si vuole sincronizzare esattamente con il file bancario.
+    """
+    import hashlib as _hashlib
+    import uuid as _uuid
+
+    db = Database.get_db()
+    
+    filename = file.filename.lower()
+    contents = await file.read()
+    
+    if not filename.endswith('.csv'):
+        raise HTTPException(status_code=400, detail="Formato non supportato. Usa CSV.")
+    
+    # Decode
+    text = None
+    for encoding in ['utf-8-sig', 'utf-8', 'latin-1', 'cp1252']:
+        try:
+            text = contents.decode(encoding)
+            break
+        except (UnicodeDecodeError, Exception):
+            continue
+    
+    if not text:
+        raise HTTPException(status_code=400, detail="Impossibile decodificare il file CSV")
+    
+    reader = csv.DictReader(io.StringIO(text), delimiter=';')
+    movimenti = []
+    
+    for row in reader:
+        ragione_sociale = row.get('Ragione Sociale', '') or row.get('"Ragione Sociale"', '')
+        
+        data_contabile = (
+            row.get('Data contabile', '') or 
+            row.get('"Data contabile"', '') or
+            row.get('Data', '')
+        ).strip().strip('"')
+        
+        data_valuta = (
+            row.get('Data valuta', '') or 
+            row.get('"Data valuta"', '') or
+            row.get('Data valut.', '')
+        ).strip().strip('"')
+        
+        banca = (row.get('Banca', '') or row.get('"Banca"', '')).strip().strip('"')
+        rapporto = (row.get('Rapporto', '') or row.get('"Rapporto"', '')).strip().strip('"')
+        
+        importo_str = (row.get('Importo', '0') or row.get('"Importo"', '0')).strip().strip('"')
+        importo_str = importo_str.replace('.', '').replace(',', '.')
+        try:
+            importo = float(importo_str)
+        except (ValueError, TypeError):
+            continue
+        
+        divisa = (row.get('Divisa', 'EUR') or row.get('"Divisa"', 'EUR')).strip().strip('"')
+        
+        descrizione = (
+            row.get('Descrizione', '') or 
+            row.get('"Descrizione"', '') or
+            row.get('Descrizion', '')
+        ).strip().strip('"')
+        
+        categoria = (
+            row.get('Categoria/sottocategoria', '') or 
+            row.get('"Categoria/sottocategoria"', '') or
+            row.get('Categoria', '') or
+            row.get('"Categoria"', '')
+        ).strip().strip('"')
+        
+        hashtag = (row.get('Hashtag', '') or row.get('"Hashtag"', '')).strip().strip('"')
+        
+        try:
+            if '/' in data_contabile:
+                parts = data_contabile.split('/')
+                data_obj = date(int(parts[2]), int(parts[1]), int(parts[0]))
+            else:
+                continue
+        except (ValueError, TypeError, IndexError):
+            continue
+        
+        data_pagamento = None
+        try:
+            if '/' in data_valuta:
+                parts = data_valuta.split('/')
+                data_pagamento = date(int(parts[2]), int(parts[1]), int(parts[0]))
+        except (ValueError, TypeError, IndexError):
+            pass
+        
+        movimenti.append({
+            "data": data_obj,
+            "ragione_sociale": ragione_sociale.strip().strip('"') if ragione_sociale else None,
+            "fornitore": estrai_fornitore_pulito(descrizione),
+            "importo": importo,
+            "numero_fattura": estrai_numero_fattura(descrizione),
+            "data_pagamento": data_pagamento,
+            "categoria": categoria,
+            "descrizione_originale": descrizione,
+            "banca": banca,
+            "rapporto": rapporto,
+            "divisa": divisa,
+            "hashtag": hashtag,
+            "tipo": "uscita" if importo < 0 else "entrata"
+        })
+    
+    if not movimenti:
+        raise HTTPException(status_code=400, detail="Nessun movimento valido trovato nel CSV")
+    
+    # Identifica gli anni presenti nel CSV
+    anni_nel_csv = sorted(set(mov["data"].year for mov in movimenti))
+    
+    # Cancella TUTTI i record per quegli anni
+    cancellati = 0
+    for anno in anni_nel_csv:
+        result = await db["estratto_conto_movimenti"].delete_many({
+            "data": {"$regex": f"^{anno}"}
+        })
+        cancellati += result.deleted_count
+    
+    # Ordina per data contabile ascendente
+    movimenti.sort(key=lambda x: x["data"].isoformat()[:10])
+    
+    # Inserisce TUTTI senza dedup
+    records = []
+    for mov in movimenti:
+        data_str = mov["data"].isoformat()[:10]
+        importo_abs = abs(mov["importo"])
+        desc_raw = (mov.get("descrizione_originale") or "")[:80]
+        
+        tipo_mov = "entrata" if mov["importo"] >= 0 else "uscita"
+        if any(kw in desc_raw.upper() for kw in ["DISPOSIZIONE", "VS.DISP", "ADD.TOT", "I24 AGENZIA ENTRATE", "BOLL.CBILL", "PAG. UTENZE"]):
+            tipo_mov = "uscita"
+        
+        row_uuid = str(_uuid.uuid4())
+        fingerprint = _hashlib.md5(f"{data_str}|{importo_abs:.2f}|{desc_raw}|{row_uuid}".encode()).hexdigest()
+        mov_id = f"EC-{data_str}-{importo_abs:.2f}-{fingerprint[:8]}"
+        
+        record = {
+            "id": mov_id,
+            "data": data_str,
+            "ragione_sociale": mov.get("ragione_sociale"),
+            "fornitore": mov.get("fornitore"),
+            "importo": importo_abs,
+            "numero_fattura": mov.get("numero_fattura"),
+            "data_pagamento": mov["data_pagamento"].isoformat() if mov.get("data_pagamento") else None,
+            "categoria": mov.get("categoria", ""),
+            "descrizione_originale": mov["descrizione_originale"],
+            "descrizione": mov.get("descrizione_originale"),
+            "banca": mov.get("banca"),
+            "rapporto": mov.get("rapporto"),
+            "divisa": mov.get("divisa", "EUR"),
+            "hashtag": mov.get("hashtag"),
+            "tipo": tipo_mov,
+            "descrizione_hash": desc_raw[:50],
+            "fingerprint": fingerprint,
+            "riconciliato": False,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        records.append(record)
+    
+    if records:
+        await db["estratto_conto_movimenti"].insert_many(records)
+    
+    # Calcola statistiche per la risposta
+    entrate = sum(r["importo"] for r in records if r["tipo"] == "entrata")
+    uscite = sum(r["importo"] for r in records if r["tipo"] == "uscita")
+    
+    return {
+        "message": f"Reimport forzato completato: anni {anni_nel_csv}",
+        "anni_aggiornati": anni_nel_csv,
+        "record_cancellati": cancellati,
+        "movimenti_importati": len(records),
+        "totale_entrate": round(entrate, 2),
+        "totale_uscite": round(uscite, 2),
+        "saldo": round(entrate - uscite, 2)
+    }
+
+
 @router.get("/movimenti")
 @handle_errors
 async def get_movimenti(

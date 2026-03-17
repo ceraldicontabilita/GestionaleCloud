@@ -180,7 +180,7 @@ function PrimaNotaDesktop() {
   // === I movimenti di cassa si inseriscono manualmente (corrispettivi, POS, versamenti) ===
   // === L'estratto conto bancario si importa dalla sezione Estratto Conto ===
 
-  // Import CSV Prima Nota Banca
+  // Import CSV estratto conto (aggiornamento incrementale - salta duplicati)
   const handleImportCSVBanca = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -189,14 +189,44 @@ function PrimaNotaDesktop() {
     try {
       const formData = new FormData();
       formData.append("file", file);
-      const res = await api.post("/api/prima-nota/banca/import-csv", formData);
-      alert(`${res.data.message}\nEntrate: € ${res.data.totale_entrate?.toLocaleString('it-IT')}\nUscite: € ${res.data.totale_uscite?.toLocaleString('it-IT')}`);
+      const res = await api.post("/api/estratto-conto-movimenti/import", formData);
+      const msg = `${res.data.message}\nInseriti: ${res.data.movimenti_importati || res.data.inseriti || 0}\nDuplicati saltati: ${res.data.duplicati_saltati || 0}`;
+      alert(msg);
       loadAllData();
     } catch (error) {
       alert('Errore import: ' + (error.response?.data?.detail || error.message));
     } finally {
       setImportingCSV(false);
       if (bancaCSVRef.current) bancaCSVRef.current.value = "";
+    }
+  };
+
+  // FORZA REIMPORT: cancella anni del CSV e reinserisce tutto (per correggere saldo)
+  const bancaForceReimportRef = useRef(null);
+  const [forceReimporting, setForceReimporting] = useState(false);
+  
+  const handleForceReimportBanca = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    if (!window.confirm('⚠️ ATTENZIONE: Questa operazione cancellerà tutti i movimenti degli anni presenti nel CSV e li reinserirà completamente (incluse commissioni duplicate).\n\nContinuare?')) {
+      if (bancaForceReimportRef.current) bancaForceReimportRef.current.value = "";
+      return;
+    }
+    
+    setForceReimporting(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await api.post("/api/estratto-conto-movimenti/force-reimport", formData);
+      const d = res.data;
+      alert(`✅ ${d.message}\n\nAnni aggiornati: ${d.anni_aggiornati?.join(', ')}\nRecord cancellati: ${d.record_cancellati}\nMovimenti importati: ${d.movimenti_importati}\n\nEntrate: € ${d.totale_entrate?.toLocaleString('it-IT')}\nUscite: € ${d.totale_uscite?.toLocaleString('it-IT')}\nSaldo: € ${d.saldo?.toLocaleString('it-IT')}`);
+      loadAllData();
+    } catch (error) {
+      alert('Errore reimport: ' + (error.response?.data?.detail || error.message));
+    } finally {
+      setForceReimporting(false);
+      if (bancaForceReimportRef.current) bancaForceReimportRef.current.value = "";
     }
   };
 
@@ -715,10 +745,10 @@ function PrimaNotaDesktop() {
               icon="📊"
               subtitle={`Accrediti - Pagamenti ${selectedYear}`}
             />
-            {bancaData.saldo_precedente !== undefined && bancaData.saldo_precedente !== 0 && (
+            {bancaData.saldo_precedente !== undefined && bancaData.saldo_precedente !== 0 && bancaData.saldo_precedente > 0 && (
               <SummaryCard title="Saldo Cumulativo" value={formatEuro(bancaData.saldo)} color="#1e3a5f" icon="🏦" subtitle="Saldo totale complessivo" highlight />
             )}
-            {bancaData.saldo_precedente !== undefined && bancaData.saldo_precedente !== 0 && (
+            {bancaData.saldo_precedente !== undefined && bancaData.saldo_precedente !== 0 && bancaData.saldo_precedente > 0 && (
               <SummaryCard title="Riporto Anni Prec." value={formatEuro(bancaData.saldo_precedente)} color="#6b7280" icon="📅" subtitle="Saldo al 31/12 anno prec." />
             )}
           </div>
@@ -726,6 +756,65 @@ function PrimaNotaDesktop() {
           {/* Nota banca */}
           <div style={{ background: '#fefce8', border: '1px solid #ca8a04', borderRadius: 10, padding: '10px 16px', marginBottom: 14, fontSize: 13, color: '#854d0e' }}>
             ⚠️ <strong>Nota contabile:</strong> Gli "Accrediti" mostrano tutti i movimenti in entrata sul conto bancario (POS, bonifici, depositi, finanziamenti). <strong>I ricavi reali dell'azienda sono nei Corrispettivi</strong>, visibili nella sezione Cassa. Alcuni accrediti (es. bonifici interni, finanziamenti) non sono ricavi.
+          </div>
+
+          {/* Import CSV toolbar */}
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 14px' }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Estratto Conto:</span>
+            
+            {/* Import incrementale */}
+            <input
+              ref={bancaCSVRef}
+              type="file"
+              accept=".csv"
+              style={{ display: 'none' }}
+              onChange={handleImportCSVBanca}
+              data-testid="input-import-csv-banca"
+            />
+            <button
+              data-testid="btn-import-csv-banca"
+              onClick={() => bancaCSVRef.current?.click()}
+              disabled={importingCSV}
+              style={{
+                padding: '7px 14px',
+                background: importingCSV ? '#9ca3af' : '#3b82f6',
+                color: 'white', border: 'none', borderRadius: 7,
+                cursor: importingCSV ? 'not-allowed' : 'pointer',
+                fontWeight: 600, fontSize: 12
+              }}
+              title="Aggiorna incrementalmente: salta movimenti già presenti"
+            >
+              {importingCSV ? '...' : '📥 Importa CSV'}
+            </button>
+
+            {/* Force reimport */}
+            <input
+              ref={bancaForceReimportRef}
+              type="file"
+              accept=".csv"
+              style={{ display: 'none' }}
+              onChange={handleForceReimportBanca}
+              data-testid="input-force-reimport-banca"
+            />
+            <button
+              data-testid="btn-force-reimport-banca"
+              onClick={() => bancaForceReimportRef.current?.click()}
+              disabled={forceReimporting}
+              style={{
+                padding: '7px 14px',
+                background: forceReimporting ? '#9ca3af' : '#dc2626',
+                color: 'white', border: 'none', borderRadius: 7,
+                cursor: forceReimporting ? 'not-allowed' : 'pointer',
+                fontWeight: 600, fontSize: 12
+              }}
+              title="Cancella e reimporta completamente gli anni del CSV (mantiene commissioni duplicate)"
+            >
+              {forceReimporting ? '...' : '🔄 Forza Aggiornamento'}
+            </button>
+
+            <span style={{ fontSize: 11, color: '#6b7280', marginLeft: 4 }}>
+              <strong>Forza Aggiornamento</strong> = cancella e reimporta gli anni del CSV (corregge saldo e commissioni)
+            </span>
           </div>
 
           {/* Filter - Bottoni Mesi */}
@@ -775,7 +864,7 @@ function PrimaNotaDesktop() {
             onEdit={(updated) => handleEditMovimento('banca', updated)}
             onSposta={handleSpostaMovimento}
             readOnly={false}
-            saldoPrecedente={bancaData.saldo_precedente || 0}
+            saldoPrecedente={0}
           />
         </section>
       )}
@@ -938,14 +1027,14 @@ function MovementsTable({ movimenti, tipo, loading, formatEuro, formatDate, onDe
   const start = (currentPage - 1) * itemsPerPage;
   const _currentMovimenti = movimentiFiltrati.slice(start, start + itemsPerPage);
 
-  // Calculate running balance using reduce - parte dal saldo anni precedenti
+  // Calculate running balance using reduce - parte dal saldo anni precedenti, avanza in ordine cronologico
   const saldoIniziale = saldoPrecedente || 0;
-  const movimentiWithBalance = [...movimentiFiltrati].reverse().reduce((acc, m) => {
+  const movimentiWithBalance = movimentiFiltrati.reduce((acc, m) => {
     const prevBalance = acc.length > 0 ? acc[acc.length - 1].saldoProgressivo : saldoIniziale;
     const newBalance = m.tipo === 'entrata' ? prevBalance + m.importo : prevBalance - m.importo;
     acc.push({ ...m, saldoProgressivo: newBalance });
     return acc;
-  }, []).reverse();
+  }, []);
 
   const currentWithBalance = movimentiWithBalance.slice(start, start + itemsPerPage);
   
