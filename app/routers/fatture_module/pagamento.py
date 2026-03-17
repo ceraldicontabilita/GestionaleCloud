@@ -12,7 +12,9 @@ from .common import COL_FORNITORI, COL_FATTURE_RICEVUTE, logger
 
 
 async def paga_fattura_manuale(payload: Dict[str, Any]) -> Dict[str, Any]:
-    """Registra pagamento manuale di una fattura (Cassa o Banca)."""
+    """Registra pagamento manuale di una fattura (Cassa o Banca).
+    Se metodo=banca, marca automaticamente come riconciliata.
+    """
     db = Database.get_db()
     
     fattura_id = payload.get("fattura_id")
@@ -28,35 +30,44 @@ async def paga_fattura_manuale(payload: Dict[str, Any]) -> Dict[str, Any]:
     
     if metodo not in ["cassa", "banca"]:
         raise HTTPException(status_code=400, detail="metodo deve essere 'cassa' o 'banca'")
-    
-    risultato = {"success": True, "movimento_id": None, "metodo": metodo, "importo": importo}
+
+    # Se metodo=banca → riconciliazione automatica
+    auto_riconciliato = (metodo == "banca")
+
+    risultato = {"success": True, "movimento_id": None, "metodo": metodo, "importo": importo, "riconciliato": auto_riconciliato}
     
     try:
-        movimento_id = str(uuid.uuid4())
-        movimento = {
-            "id": movimento_id,
-            "data": data_pagamento,
-            "descrizione": f"Pagamento Fatt. {numero_fattura} - {fornitore}",
-            "causale": "Pagamento fattura fornitore",
-            "importo": importo,
-            "tipo": "uscita",
-            "categoria": "fornitori",
-            "stato": "confermato",
-            "fattura_id": fattura_id,
-            "fattura_collegata": fattura_id,
-            "fattura_numero": numero_fattura,
-            "fornitore": fornitore,
-            "metodo_pagamento": metodo,
-            "provvisorio": True,
-            "riconciliato": False,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "source": "pagamento_manuale"
-        }
-        
         collection = "prima_nota_cassa" if metodo == "cassa" else "prima_nota_banca"
-        await db[collection].insert_one(movimento)
-        risultato["movimento_id"] = movimento_id
-        risultato["collection"] = collection
+
+        # DEDUPLICAZIONE: evita doppio inserimento se già esiste un movimento per questa fattura
+        existing_mov = await db[collection].find_one({"fattura_id": fattura_id})
+        if existing_mov:
+            risultato["movimento_id"] = existing_mov.get("id")
+            risultato["message"] = "Movimento già presente, aggiornato stato riconciliazione"
+        else:
+            movimento_id = str(uuid.uuid4())
+            movimento = {
+                "id": movimento_id,
+                "data": data_pagamento,
+                "descrizione": f"Pagamento Fatt. {numero_fattura} - {fornitore}",
+                "causale": "Pagamento fattura fornitore",
+                "importo": importo,
+                "tipo": "uscita",
+                "categoria": "fornitori",
+                "stato": "confermato",
+                "fattura_id": fattura_id,
+                "fattura_collegata": fattura_id,
+                "fattura_numero": numero_fattura,
+                "fornitore": fornitore,
+                "metodo_pagamento": metodo,
+                "provvisorio": False,
+                "riconciliato": auto_riconciliato,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "source": "pagamento_manuale"
+            }
+            await db[collection].insert_one(movimento)
+            risultato["movimento_id"] = movimento_id
+            risultato["collection"] = collection
         
         if scadenza_id:
             await db[COL_SCADENZIARIO].update_one(
@@ -65,7 +76,7 @@ async def paga_fattura_manuale(payload: Dict[str, Any]) -> Dict[str, Any]:
                     "stato": "pagato",
                     "data_pagamento": data_pagamento,
                     "metodo_effettivo": metodo,
-                    "movimento_id": movimento_id,
+                    "movimento_id": risultato["movimento_id"],
                     "updated_at": datetime.now(timezone.utc).isoformat()
                 }}
             )
@@ -74,29 +85,31 @@ async def paga_fattura_manuale(payload: Dict[str, Any]) -> Dict[str, Any]:
             "status": "paid",
             "pagato": True,
             "stato_pagamento": "pagata",
+            "riconciliato": auto_riconciliato,
             "data_pagamento": data_pagamento,
             "metodo_pagamento_effettivo": metodo,
             "metodo_pagamento": metodo,
-            "metodo_pagamento_modificato_manualmente": True,
-            "provvisorio": True,
             "updated_at": datetime.now(timezone.utc).isoformat()
         }
         
         if metodo == "cassa":
-            update_fields["prima_nota_cassa_id"] = movimento_id
+            update_fields["prima_nota_cassa_id"] = risultato["movimento_id"]
             update_fields["prima_nota_banca_id"] = None
         else:
-            update_fields["prima_nota_banca_id"] = movimento_id
+            update_fields["prima_nota_banca_id"] = risultato["movimento_id"]
             update_fields["prima_nota_cassa_id"] = None
         
+        # Aggiorna in entrambe le collection (indice_documenti e invoices per retrocompat.)
         await db[COL_FATTURE_RICEVUTE].update_one({"id": fattura_id}, {"$set": update_fields})
-        logger.info(f"Pagamento manuale registrato: {fattura_id} -> {collection}, €{importo}")
+        await db["invoices"].update_one({"id": fattura_id}, {"$set": update_fields})
+        logger.info(f"Pagamento {'e riconciliazione ' if auto_riconciliato else ''}registrato: {fattura_id} -> {collection}, €{importo}")
         
     except Exception as e:
         logger.error(f"Errore pagamento manuale: {e}")
         raise HTTPException(status_code=500, detail=str(e))
     
     return risultato
+
 
 
 async def cambia_metodo_pagamento_fattura(payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -253,29 +266,56 @@ async def verifica_incoerenze_estratto_conto() -> Dict[str, Any]:
 
 
 async def aggiorna_metodi_pagamento_da_fornitori() -> Dict[str, Any]:
-    """Aggiorna metodi pagamento fatture dal fornitore."""
+    """Aggiorna metodi pagamento fatture dal fornitore.
+    Se il fornitore ha metodo_pagamento=banca/bonifico/sepa, 
+    marca automaticamente le fatture come riconciliate.
+    """
     db = Database.get_db()
     
     fatture = await db[COL_FATTURE_RICEVUTE].find(
-        {"metodo_pagamento": {"$in": [None, "", "da_configurare"]}, "metodo_pagamento_modificato_manualmente": {"$ne": True}},
-        {"_id": 0, "id": 1, "fornitore_partita_iva": 1, "supplier_vat": 1}
+        {"metodo_pagamento": {"$in": [None, "", "da_configurare"]}},
+        {"_id": 0, "id": 1, "fornitore_partita_iva": 1, "supplier_vat": 1, "fornitore_piva": 1}
     ).to_list(10000)
     
     aggiornate = 0
+    riconciliate = 0
+    METODI_BANCA = {"banca", "bonifico", "sepa", "bonifico bancario", "bonif.", "mp05", "mp19"}
+
     for f in fatture:
-        piva = f.get("fornitore_partita_iva") or f.get("supplier_vat")
+        piva = f.get("fornitore_partita_iva") or f.get("supplier_vat") or f.get("fornitore_piva")
         if not piva:
             continue
         
-        fornitore = await db[COL_FORNITORI].find_one({"partita_iva": piva}, {"_id": 0, "metodo_pagamento": 1})
-        if fornitore and fornitore.get("metodo_pagamento"):
-            await db[COL_FATTURE_RICEVUTE].update_one(
-                {"id": f["id"]},
-                {"$set": {"metodo_pagamento": fornitore["metodo_pagamento"], "updated_at": datetime.now(timezone.utc).isoformat()}}
-            )
-            aggiornate += 1
+        fornitore = await db[COL_FORNITORI].find_one(
+            {"$or": [{"partita_iva": piva}, {"piva": piva}]},
+            {"_id": 0, "metodo_pagamento": 1}
+        )
+        if not fornitore:
+            continue
+        
+        metodo = (fornitore.get("metodo_pagamento") or "").lower()
+        if not metodo:
+            continue
+
+        update = {
+            "metodo_pagamento": metodo,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }
+        # Auto-riconciliazione per pagamenti banca
+        if any(m in metodo for m in METODI_BANCA):
+            update["riconciliato"] = True
+            riconciliate += 1
+
+        await db[COL_FATTURE_RICEVUTE].update_one({"id": f["id"]}, {"$set": update})
+        aggiornate += 1
     
-    return {"success": True, "fatture_aggiornate": aggiornate, "totale_analizzate": len(fatture)}
+    return {
+        "success": True,
+        "fatture_aggiornate": aggiornate,
+        "fatture_riconciliate_auto": riconciliate,
+        "totale_analizzate": len(fatture)
+    }
+
 
 
 async def riconcilia_fatture_paypal() -> Dict[str, Any]:

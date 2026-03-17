@@ -322,48 +322,65 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
     else:
         raise HTTPException(status_code=400, detail="Formato non supportato. Usa CSV o Excel.")
     
-    # Salva nel database, evitando duplicati
+    # Salva nel database, evitando duplicati tramite fingerprint MD5
+    import hashlib as _hashlib
     inserted = 0
     duplicates = 0
     
     for mov in movimenti:
-        # Crea ID univoco basato su data + importo + primi 50 char descrizione
-        desc_hash = (mov["descrizione_originale"] or "")[:50]
-        mov_id = f"EC-{mov['data'].isoformat()}-{mov['importo']:.2f}-{hash(desc_hash) % 100000:05d}"
+        desc_raw = (mov.get("descrizione_originale") or mov.get("descrizione") or "")[:80]
+        data_str = mov["data"].isoformat()[:10]
+        importo_abs = abs(mov["importo"])
+        # Fingerprint univoco: data + importo_assoluto + primi 80 char descrizione
+        fingerprint = _hashlib.md5(f"{data_str}|{importo_abs:.2f}|{desc_raw}".encode()).hexdigest()
+        desc_hash = desc_raw[:50]
+        mov_id = f"EC-{data_str}-{importo_abs:.2f}-{fingerprint[:8]}"
         
-        # Controlla duplicati
+        # Controlla duplicati con fingerprint (più affidabile)
         existing = await db["estratto_conto_movimenti"].find_one({
-            "data": mov["data"].isoformat(),
-            "importo": mov["importo"],
-            "descrizione_hash": desc_hash
+            "$or": [
+                {"fingerprint": fingerprint},
+                {"id": mov_id},
+                {"data": data_str, "importo": importo_abs, "descrizione_hash": desc_hash}
+            ]
         })
         
         if existing:
             duplicates += 1
             continue
         
+        # Determina tipo da segno importo
+        tipo_mov = "entrata" if mov["importo"] >= 0 else "uscita"
+        # Override: VOSTRA DISPOSIZIONE = sempre uscita
+        if any(kw in desc_raw.upper() for kw in ["DISPOSIZIONE", "VS.DISP", "ADD.TOT"]):
+            tipo_mov = "uscita"
+        
         # Salva
         record = {
             "id": mov_id,
-            "data": mov["data"].isoformat(),
+            "data": data_str,
             "ragione_sociale": mov.get("ragione_sociale"),
             "fornitore": mov["fornitore"],
-            "importo": mov["importo"],
+            "importo": importo_abs,
             "numero_fattura": mov["numero_fattura"],
             "data_pagamento": mov["data_pagamento"].isoformat() if mov["data_pagamento"] else None,
             "categoria": mov["categoria"],
             "descrizione_originale": mov["descrizione_originale"],
+            "descrizione": mov.get("descrizione") or mov["descrizione_originale"],
             "banca": mov.get("banca"),
             "rapporto": mov.get("rapporto"),
             "divisa": mov.get("divisa", "EUR"),
             "hashtag": mov.get("hashtag"),
-            "tipo": mov["tipo"],
+            "tipo": tipo_mov,
             "descrizione_hash": desc_hash,
+            "fingerprint": fingerprint,
+            "riconciliato": False,
             "created_at": datetime.now(timezone.utc).isoformat()
         }
         
         await db["estratto_conto_movimenti"].insert_one(record.copy())
         inserted += 1
+
     
     # ===== RICONCILIAZIONE AUTOMATICA =====
     # Dopo l'import, avvia la riconciliazione automatica
