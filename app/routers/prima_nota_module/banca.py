@@ -15,7 +15,7 @@ from .common import (
 
 async def list_prima_nota_banca(
     skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=2500),
+    limit: int = Query(100, ge=1, le=6000),
     anno: Optional[int] = Query(None, description="Anno (es. 2024, 2025)"),
     data_da: Optional[str] = Query(None),
     data_a: Optional[str] = Query(None),

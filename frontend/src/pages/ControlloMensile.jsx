@@ -382,7 +382,7 @@ export default function ControlloMensile() {
       });
 
       const [cassaRes, corrispRes] = await Promise.all([
-        api.get(`/api/prima-nota/cassa?${params}&limit=2000`).catch(() => ({ data: { movimenti: [] } })),
+        api.get(`/api/prima-nota/cassa?${params}&limit=6000`).catch(() => ({ data: { movimenti: [] } })),
         api.get(`/api/corrispettivi?data_da=${startDate}&data_a=${endDate}&limit=500`).catch(() => ({ data: [] }))
       ]);
 

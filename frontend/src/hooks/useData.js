@@ -282,7 +282,7 @@ export function usePrimaNota(tipo = 'cassa', filters = {}) {
       const params = new URLSearchParams();
       if (filters.year) params.append('anno', filters.year);
       if (filters.month) params.append('mese', filters.month);
-      params.append('limit', filters.limit || '1000');
+      params.append('limit', filters.limit || '6000');
       
       const endpoint = tipo === 'cassa' ? '/api/prima-nota/cassa' : '/api/prima-nota/banca';
       const res = await api.get(`${endpoint}?${params}`);

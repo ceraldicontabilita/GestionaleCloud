@@ -101,7 +101,7 @@ function PrimaNotaDesktop() {
     try {
       setLoading(true);
       const params = new URLSearchParams();
-      params.append('limit', '2000');
+      params.append('limit', '6000');
       params.append('anno', selectedYear.toString());
       
       // Se è selezionato un mese specifico, aggiungi filtro date
@@ -114,7 +114,7 @@ function PrimaNotaDesktop() {
 
       // Parametri per estratto conto
       const ecParams = new URLSearchParams();
-      ecParams.append('limit', '2000');
+      ecParams.append('limit', '6000');
       ecParams.append('anno', selectedYear.toString());
       if (selectedMonth !== null) {
         ecParams.append('mese', String(selectedMonth + 1));
