@@ -143,158 +143,175 @@ async def registra_fattura_prima_nota(
     }
 
 
-async def sync_corrispettivi_to_prima_nota() -> Dict:
+async def rebuild_prima_nota_cassa_da_corrispettivi(anno: int = None) -> Dict:
     """
-    Sincronizza corrispettivi con Prima Nota Cassa.
+    RICOSTRUISCE COMPLETAMENTE la Prima Nota Cassa dai corrispettivi telematici.
     
-    LOGICA CORRETTA:
-    - In Prima Nota CASSA va SOLO il pagato_contanti (denaro fisico in cassa)
-    - Il pagato_elettronico NON va in cassa (arriva in banca tramite accredito POS)
-    - I dati completi restano nella collection 'corrispettivi' per i confronti
+    LOGICA CORRETTA (DEFINITIVA):
+    ─────────────────────────────────────────────────────────────────────────────
+    Per ogni corrispettivo giornaliero dell'anno selezionato (o tutti):
+    
+      DARE  (entrata) = totale (PagatoContanti + PagatoElettronico, IVA INCLUSA)
+                        → Ricavi lordi della giornata
+    
+      AVERE (uscita)  = pagato_elettronico (POS/Carte/Bancomat)
+                        → Pagamenti elettronici che transitano in Banca
+    
+      SALDO CASSA     = totale - pagato_elettronico = pagato_contanti
+                        → Contanti fisici rimasti in cassa
+    
+    NOTA XML: I campi nel file XML del Registratore Telematico:
+      - DatiRT > Totali > PagatoContanti  → contanti rimasti in cassa
+      - DatiRT > Totali > PagatoElettronico → va in banca
+      - Somma dei Riepilogo.ImportoParziale → totale = DARE
+    ─────────────────────────────────────────────────────────────────────────────
+    OPERAZIONE: Cancella i movimenti corrispettivi/POS dell'anno e reinserisce.
+    I pagamenti fornitori manuali vengono PRESERVATI.
     """
     db = Database.get_db()
     
-    corrispettivi = await db["corrispettivi"].find({}, {"_id": 0}).to_list(10000)
+    if anno:
+        date_start = f"{anno}-01-01"
+        date_end = f"{anno + 1}-01-01"
+        # Cancella TUTTI i record dell'anno (usa regex per gestire date con/senza timestamp)
+        await db[COLLECTION_PRIMA_NOTA_CASSA].delete_many({
+            "$or": [
+                {"data": {"$gte": date_start, "$lt": date_end}},          # formato ISO senza tempo
+                {"data": {"$regex": f"^{anno}"}},                          # qualsiasi formato che inizia con l'anno
+                {"anno": anno}                                             # campo anno esplicito
+            ]
+        })
+        corrispettivi = await db["corrispettivi"].find(
+            {"data": {"$gte": date_start, "$lt": date_end}, "entity_status": {"$ne": "deleted"}},
+            {"_id": 0}
+        ).sort("data", 1).to_list(10000)
+    else:
+        # Cancella TUTTO
+        await db[COLLECTION_PRIMA_NOTA_CASSA].delete_many({})
+        corrispettivi = await db["corrispettivi"].find(
+            {"entity_status": {"$ne": "deleted"}},
+            {"_id": 0}
+        ).sort("data", 1).to_list(50000)
     
-    created = 0
-    skipped = 0
-    skipped_zero = 0
-    errors = []
+    if not corrispettivi:
+        return {"message": "Nessun corrispettivo trovato", "inseriti": 0, "anno": anno}
+    
+    now_iso = datetime.now(timezone.utc).isoformat()
+    records = []
     
     for corr in corrispettivi:
-        corr_id = corr.get("id") or corr.get("corrispettivo_key")
-        if not corr_id:
-            continue
-        
-        existing = await db[COLLECTION_PRIMA_NOTA_CASSA].find_one({"corrispettivo_id": corr_id})
-        if existing:
-            skipped += 1
-            continue
-        
-        contanti = float(corr.get("pagato_contanti", 0) or 0)
-        elettronico = float(corr.get("pagato_elettronico", 0) or 0)
-        
-        # Solo contanti in cassa - l'elettronico arriva in banca
-        if contanti <= 0:
-            skipped_zero += 1
-            continue
-        
-        data_corr = corr.get("data") or corr.get("data_ora", "")[:10]
-        if not data_corr:
+        corr_id = corr.get("id") or corr.get("corrispettivo_key") or ""
+        data_str = str(corr.get("data", ""))[:10]
+        if not data_str or len(data_str) < 10:
             continue
         
         try:
-            movimento = {
+            anno_mov = int(data_str[:4])
+            mese_mov = int(data_str[5:7])
+        except (ValueError, IndexError):
+            continue
+        
+        totale = round(float(corr.get("totale") or corr.get("totale_corrispettivi") or 0), 2)
+        pagato_elettronico = round(float(corr.get("pagato_elettronico", 0) or 0), 2)
+        pagato_contanti = round(float(corr.get("pagato_contanti", 0) or 0), 2)
+        
+        # Verifica coerenza: totale = contanti + elettronico
+        if totale <= 0:
+            # Prova a ricostruire da contanti + elettronico
+            totale = round(pagato_contanti + pagato_elettronico, 2)
+        
+        if totale <= 0:
+            continue
+        
+        matricola = corr.get("matricola_rt", "")
+        
+        # ── RIGA DARE: Totale ricavi (con IVA) ─────────────────────────────
+        dare = {
+            "id": str(uuid.uuid4()),
+            "data": data_str,
+            "anno": anno_mov,
+            "mese": mese_mov,
+            "tipo": "entrata",
+            "importo": totale,
+            "descrizione": f"Corrispettivo {data_str} - RT {matricola}",
+            "categoria": "Corrispettivi",
+            "riferimento": f"CORR-{corr_id}",
+            "corrispettivo_id": corr_id,
+            "dettaglio": {
+                "totale_lordo": totale,
+                "pagato_contanti": pagato_contanti,
+                "pagato_elettronico": pagato_elettronico,
+                "totale_imponibile": corr.get("totale_imponibile", 0),
+                "totale_iva": corr.get("totale_iva", 0),
+                "numero_documenti": corr.get("numero_documenti", 0),
+                "matricola_rt": matricola
+            },
+            "source": "rebuild_corrispettivi",
+            "created_at": now_iso
+        }
+        records.append(dare)
+        
+        # ── RIGA AVERE: Pagamenti elettronici (POS → Banca) ────────────────
+        if pagato_elettronico > 0:
+            avere = {
                 "id": str(uuid.uuid4()),
-                "data": data_corr,
-                "tipo": "entrata",
-                "importo": contanti,  # SOLO CONTANTI in cassa
-                "descrizione": f"Corrispettivo contanti {data_corr} - RT {corr.get('matricola_rt', '')}",
-                "categoria": "Corrispettivi",
+                "data": data_str,
+                "anno": anno_mov,
+                "mese": mese_mov,
+                "tipo": "uscita",
+                "importo": pagato_elettronico,
+                "descrizione": f"Incasso POS {data_str} → Banca (RT {matricola})",
+                "categoria": "Incasso POS/Elettronico",
+                "riferimento": f"POS-{corr_id}",
                 "corrispettivo_id": corr_id,
                 "dettaglio": {
-                    "contanti": contanti,
-                    "elettronico": elettronico,
-                    "totale_corrispettivo": contanti + elettronico
+                    "totale_lordo_corrispettivo": totale,
+                    "saldo_cassa_atteso": round(pagato_contanti, 2),
+                    "matricola_rt": matricola
                 },
-                "source": "sync_corrispettivi",
-                "created_at": datetime.now(timezone.utc).isoformat()
+                "source": "rebuild_corrispettivi",
+                "created_at": now_iso
             }
-            
-            await db[COLLECTION_PRIMA_NOTA_CASSA].insert_one(movimento.copy())
-            created += 1
-        except Exception as e:
-            errors.append(f"Errore corr {corr_id}: {str(e)}")
+            records.append(avere)
+    
+    if records:
+        await db[COLLECTION_PRIMA_NOTA_CASSA].insert_many(records)
+    
+    # Statistiche di riepilogo
+    n_dare = sum(1 for r in records if r["tipo"] == "entrata")
+    n_avere = sum(1 for r in records if r["tipo"] == "uscita")
+    tot_dare = round(sum(r["importo"] for r in records if r["tipo"] == "entrata"), 2)
+    tot_avere = round(sum(r["importo"] for r in records if r["tipo"] == "uscita"), 2)
     
     return {
-        "message": f"Sincronizzazione completata: {created} corrispettivi contanti aggiunti in cassa",
-        "created": created,
-        "skipped_existing": skipped,
-        "skipped_no_contanti": skipped_zero,
-        "nota": "Solo pagato_contanti va in cassa. Il pagato_elettronico arriva in banca tramite accredito POS.",
-        "errors": errors[:10]
+        "message": f"Prima Nota Cassa ricostruita correttamente",
+        "anno": anno or "tutti",
+        "corrispettivi_processati": len(corrispettivi),
+        "righe_inserite": len(records),
+        "righe_dare": n_dare,
+        "righe_avere": n_avere,
+        "totale_dare": tot_dare,
+        "totale_avere": tot_avere,
+        "saldo_cassa": round(tot_dare - tot_avere, 2),
+        "logica": {
+            "DARE": "totale corrispettivo (contanti + POS, con IVA)",
+            "AVERE": "pagato_elettronico (POS → transita in Banca)",
+            "SALDO": "totale - pagato_elettronico = pagato_contanti"
+        }
     }
+
+
+async def sync_corrispettivi_to_prima_nota() -> Dict:
+    """Wrapper compatibilità → chiama rebuild per tutti gli anni."""
+    return await rebuild_prima_nota_cassa_da_corrispettivi(anno=None)
 
 
 async def sync_corrispettivi_anno(anno: int = Query(...)) -> Dict:
     """
-    Sincronizza corrispettivi di un anno specifico.
-    SOLO pagato_contanti va in Prima Nota Cassa.
-    Il pagato_elettronico resta in collection corrispettivi per confronti.
+    Sincronizza corrispettivi di un anno specifico con la nuova logica.
+    DARE = totale (con IVA), AVERE = pagato_elettronico.
     """
-    db = Database.get_db()
-    
-    date_start = f"{anno}-01-01"
-    date_end = f"{anno}-12-31"
-    
-    corrispettivi = await db["corrispettivi"].find(
-        {"data": {"$gte": date_start, "$lte": date_end}},
-        {"_id": 0}
-    ).to_list(10000)
-    
-    if not corrispettivi:
-        return {"message": "Nessun corrispettivo trovato", "importati": 0}
-    
-    existing = await db[COLLECTION_PRIMA_NOTA_CASSA].find(
-        {"categoria": "Corrispettivi", "data": {"$gte": date_start, "$lte": date_end}},
-        {"riferimento": 1, "_id": 0}
-    ).to_list(10000)
-    existing_refs = set(e.get("riferimento") for e in existing if e.get("riferimento"))
-    
-    importati = 0
-    totale_importato = 0
-    skipped_no_contanti = 0
-    
-    for corr in corrispettivi:
-        corr_id = corr.get("id", "")
-        ref = f"CORR-{corr_id}"
-        
-        if ref in existing_refs:
-            continue
-        
-        contanti = float(corr.get("pagato_contanti", 0) or 0)
-        elettronico = float(corr.get("pagato_elettronico", 0) or 0)
-        
-        # Solo contanti in cassa - l'elettronico arriva in banca
-        if contanti <= 0:
-            skipped_no_contanti += 1
-            continue
-        
-        data_str = str(corr.get("data", ""))
-        anno_movimento = int(data_str[:4]) if data_str and len(data_str) >= 4 else anno
-        mese_movimento = int(data_str[5:7]) if data_str and len(data_str) >= 7 else 1
-
-        movimento = {
-            "id": str(uuid.uuid4()),
-            "data": data_str,
-            "anno": anno_movimento,
-            "mese": mese_movimento,
-            "tipo": "entrata",
-            "importo": contanti,  # SOLO CONTANTI
-            "descrizione": f"Corrispettivo contanti {data_str}",
-            "categoria": "Corrispettivi",
-            "riferimento": ref,
-            "dettaglio": {
-                "contanti": contanti,
-                "elettronico": elettronico,
-                "totale_corrispettivo": contanti + elettronico
-            },
-            "source": "sync_corrispettivi",
-            "created_at": datetime.now(timezone.utc).isoformat()
-        }
-        
-        await db[COLLECTION_PRIMA_NOTA_CASSA].insert_one(movimento.copy())
-        importati += 1
-        totale_importato += contanti
-    
-    return {
-        "message": f"Sincronizzazione completata: {importati} corrispettivi contanti importati",
-        "importati": importati,
-        "totale_contanti_importato": round(totale_importato, 2),
-        "skipped_no_contanti": skipped_no_contanti,
-        "corrispettivi_anno": len(corrispettivi),
-        "nota": "Solo pagato_contanti in cassa. Elettronico arriva in banca."
-    }
+    return await rebuild_prima_nota_cassa_da_corrispettivi(anno=anno)
 
 
 async def sync_fatture_pagate(anno: int = Query(...)) -> Dict:

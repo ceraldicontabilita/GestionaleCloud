@@ -19,6 +19,82 @@ export default function PrimaNota() {
   return <PrimaNotaDesktop />;
 }
 
+/**
+ * CassaRebuildBar - Toolbar per ricostruire Prima Nota Cassa dai corrispettivi.
+ * Logica: DARE = totale (con IVA), AVERE = pagato_elettronico (POS → banca)
+ */
+function CassaRebuildBar({ selectedYear, onRebuild }) {
+  const [loading, setLoading] = React.useState(false);
+  const [lastResult, setLastResult] = React.useState(null);
+
+  const handleRebuild = async (tuttiAnni = false) => {
+    const msg = tuttiAnni
+      ? `⚠️ Ricostruisce TUTTI gli anni della Prima Nota Cassa.\nI pagamenti fornitori manuali vengono preservati.\n\nContinuare?`
+      : `⚠️ Ricostruisce Prima Nota Cassa per l'anno ${selectedYear}.\nI movimenti corrispettivi/POS esistenti verranno sostituiti.\n\nContinuare?`;
+    if (!window.confirm(msg)) return;
+
+    setLoading(true);
+    setLastResult(null);
+    try {
+      const params = tuttiAnni ? {} : { anno: selectedYear };
+      const res = await api.post('/api/prima-nota/cassa/rebuild-da-corrispettivi', null, { params });
+      const d = res.data;
+      setLastResult(d);
+      alert(
+        `✅ ${d.message}\n\nAnno: ${d.anno}\nCorrispettivi processati: ${d.corrispettivi_processati}\nRighe inserite: ${d.righe_inserite}\n\nDAR€ (Ricavi lordi): €${d.totale_dare?.toLocaleString('it-IT', {minimumFractionDigits: 2})}\nAVERE (POS → Banca): €${d.totale_avere?.toLocaleString('it-IT', {minimumFractionDigits: 2})}\nSALDO CASSA: €${d.saldo_cassa?.toLocaleString('it-IT', {minimumFractionDigits: 2})}`
+      );
+      onRebuild();
+    } catch (err) {
+      alert('Errore: ' + (err.response?.data?.detail || err.message));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{
+      background: '#f0fdf4', border: '1px solid #86efac',
+      borderRadius: 10, padding: '10px 14px', marginBottom: 14,
+      display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap'
+    }}>
+      <div style={{ fontSize: 12, color: '#15803d', fontWeight: 600 }}>
+        📊 Prima Nota Cassa — Logica:
+        <span style={{ fontWeight: 400 }}>
+          {' '}DARE = Totale corrispettivo (IVA inclusa) | AVERE = POS/Elettronico (→ Banca)
+          | Saldo = Contanti in cassa
+        </span>
+      </div>
+      <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
+        <button
+          data-testid="btn-rebuild-cassa-anno"
+          onClick={() => handleRebuild(false)}
+          disabled={loading}
+          style={{
+            padding: '7px 14px', background: loading ? '#9ca3af' : '#16a34a',
+            color: 'white', border: 'none', borderRadius: 7,
+            cursor: loading ? 'not-allowed' : 'pointer', fontWeight: 600, fontSize: 12
+          }}
+        >
+          {loading ? '...' : `🔄 Ricostruisci ${selectedYear}`}
+        </button>
+        <button
+          data-testid="btn-rebuild-cassa-tutti"
+          onClick={() => handleRebuild(true)}
+          disabled={loading}
+          style={{
+            padding: '7px 14px', background: loading ? '#9ca3af' : '#dc2626',
+            color: 'white', border: 'none', borderRadius: 7,
+            cursor: loading ? 'not-allowed' : 'pointer', fontWeight: 600, fontSize: 12
+          }}
+        >
+          {loading ? '...' : '🗑️ Ricostruisci Tutti gli Anni'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+
 function PrimaNotaDesktop() {
   const { anno: selectedYear } = useAnnoGlobale();
   const currentYear = new Date().getFullYear();
@@ -572,6 +648,9 @@ function PrimaNotaDesktop() {
               <MiniCard title="Saldo Cumulativo" value={formatEuro(cassaData.saldo)} color="#1e3a5f" highlight />
             )}
           </div>
+
+          {/* Logica Corrispettivi - Toolbar Ricostruzione */}
+          <CassaRebuildBar selectedYear={selectedYear} onRebuild={loadAllData} />
 
           {/* Dettaglio - Compatto */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8, marginBottom: 16 }}>

@@ -98,6 +98,16 @@ Applicazione ERP full-stack italiana (React + FastAPI + MongoDB) per gestione az
 - **Dati 2025**: 2923 records, saldo=€2.839,08, 127 commissioni €1 ✓
 - **Dati 2026 (fino 16/03)**: 477 records, saldo=€3.899,37, 52 commissioni €1 ✓
 
+## Sessione 7 (17 Marzo 2026 - Corrente)
+- **Prima Nota Cassa — Nuova Logica Definitiva**:
+  - DARE = `totale` corrispettivo (PagatoContanti + PagatoElettronico, **IVA inclusa**)
+  - AVERE = `pagato_elettronico` (POS → transita in Banca)
+  - SALDO CASSA = totale - pagato_elettronico = pagato_contanti ✓
+- **Endpoint rebuild**: POST `/api/prima-nota/cassa/rebuild-da-corrispettivi?anno=XXXX`
+- **Dati verificati**: 2024=€367.258,60 | 2025=€359.056,59 | 2026=€14.361,17 (tutti corrispondono a pagato_contanti)
+- **Bottoni UI**: "Ricostruisci ANNO" (verde) e "Ricostruisci Tutti gli Anni" (rosso) in Prima Nota Cassa
+- **Documentazione**: `/app/backend/docs/prima_nota_cassa_logica.md` + ZIP scaricabile
+
 ## Problemi in sospeso
 - P2: Credenziali Gmail non valide (IMAP_PASSWORD nel .env) - blocca automazione email (NON priorità corrente)
 
