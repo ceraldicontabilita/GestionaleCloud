@@ -422,9 +422,10 @@ azienda_erp_db
 - **File importato**: `ElencoEntrateUsciteAndamento_17-03-2026_06.35.38.csv`
 - **Formato**: CSV con separatore `;`, encoding UTF-8-BOM
 - **Colonne**: Ragione Sociale, Data contabile, Data valuta, Banca, Rapporto, Importo, Divisa, Descrizione, Categoria/sottocategoria, Hashtag
-- **Risultato import**: 3.370 nuovi movimenti inseriti, 30 duplicati saltati (de-duplicazione MD5 attiva)
-- **Totale movimenti in DB dopo import**: 7.868 record in `estratto_conto_movimenti`
-- **De-duplicazione**: tramite fingerprint MD5 (`data + importo + descrizione`)
+- **Risultato import**: 1.255 nuovi movimenti inseriti, 2.145 duplicati saltati (deduplicazione robusta data+importo+descrizione_originale)
+- **Totale movimenti in DB dopo import e de-duplicazione**: 4.667 record in `estratto_conto_movimenti`
+- **Distribuzione**: 2026: 470 record | 2025: 3.128 record | 2024: 881 record
+- **Nota**: Il CSV conteneva dati storici dal 2025 al 17/03/2026. La de-duplicazione controlla sia `descrizione_originale` che `descrizione` per gestire record storici con formato diverso
 
 ### 13.2 Calcolo Totali Banca per Anno vs Cumulativo
 L'API `/api/estratto-conto-movimenti/movimenti?anno=ANNO` ora restituisce:
@@ -438,11 +439,16 @@ L'API `/api/estratto-conto-movimenti/movimenti?anno=ANNO` ora restituisce:
 | `saldo` | Saldo complessivo (saldo_precedente + saldo_anno) |
 
 **Esempio anno 2026** (dopo import 17/03/2026):
-- Entrate 2026: €450.244,40
-- Uscite 2026: €439.936,61
-- Saldo 2026: €10.307,79
-- Saldo anni precedenti: €1.060.035,43
-- Saldo complessivo: €1.070.343,22
+- Entrate 2026 (gen-17 mar): €225.799,77
+- Uscite 2026 (gen-17 mar): €220.976,10
+- Saldo 2026: €4.823,67
+- Saldo anni precedenti (riporto): €1.206.190,67
+- Saldo complessivo: €1.211.014,34
+
+**Esempio anno 2025** (completo):
+- Entrate 2025: €2.010.797,27
+- Uscite 2025: €789.955,78
+- Saldo 2025: €1.220.841,49
 
 ### 13.3 Filtri Avanzati Prima Nota
 Aggiunti nella barra filtri della tabella movimenti (sia Cassa che Banca):

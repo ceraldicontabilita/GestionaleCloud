@@ -336,12 +336,13 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
         desc_hash = desc_raw[:50]
         mov_id = f"EC-{data_str}-{importo_abs:.2f}-{fingerprint[:8]}"
         
-        # Controlla duplicati con fingerprint (più affidabile)
+        # Controlla duplicati: fingerprint, id, o data+importo+descrizione_originale
         existing = await db["estratto_conto_movimenti"].find_one({
             "$or": [
                 {"fingerprint": fingerprint},
                 {"id": mov_id},
-                {"data": data_str, "importo": importo_abs, "descrizione_hash": desc_hash}
+                {"data": data_str, "importo": importo_abs, "descrizione_originale": desc_raw},
+                {"data": data_str, "importo": importo_abs, "descrizione": desc_raw}
             ]
         })
         
