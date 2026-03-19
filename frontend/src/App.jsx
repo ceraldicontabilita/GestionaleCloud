@@ -127,8 +127,7 @@ export default function App() {
   return (
     <UploadProvider>
       <div className="topnav-layout" data-testid="topnav-layout">
-        {/* Browser Notifications */}
-        <NotificheScadenze showBanner={true} />
+        {/* Banner notifiche browser rimosso */}
         
         {/* Upload Status Bar */}
         <UploadStatusBar />

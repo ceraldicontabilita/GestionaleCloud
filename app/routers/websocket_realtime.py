@@ -101,13 +101,13 @@ async def websocket_dashboard(
             "timestamp": datetime.now(timezone.utc).isoformat()
         }, websocket)
         
-        # Loop per aggiornamenti periodici e gestione messaggi
+        # Loop per gestione messaggi - nessun aggiornamento automatico periodico
         while True:
             try:
-                # Attendi messaggio dal client o timeout
+                # Attendi messaggio dal client (solo su richiesta esplicita)
                 message = await asyncio.wait_for(
                     websocket.receive_json(),
-                    timeout=30.0  # Aggiorna ogni 30 secondi
+                    timeout=300.0  # Timeout lungo - non inviare aggiornamenti automatici
                 )
                 
                 # Gestisci comandi dal client
@@ -127,13 +127,14 @@ async def websocket_dashboard(
                     }, websocket)
                     
             except asyncio.TimeoutError:
-                # Timeout - invia aggiornamento periodico
-                kpi = await calculate_live_kpi(db, anno)
-                await ws_manager.send_personal_message({
-                    "type": "kpi_update",
-                    "data": kpi,
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                }, websocket)
+                # Timeout keepalive - invia solo pong, NON aggiornamenti KPI automatici
+                try:
+                    await ws_manager.send_personal_message({
+                        "type": "pong",
+                        "timestamp": datetime.now(timezone.utc).isoformat()
+                    }, websocket)
+                except Exception:
+                    break
                 
     except WebSocketDisconnect:
         logger.info("WebSocket dashboard disconnesso")
