@@ -18,44 +18,55 @@ const FLUSSI = {
     titolo: "Prima Nota Cassa",
     icona: "💵",
     colore: "#16a34a",
-    sottotitolo: "Il registro del denaro fisico e degli incassi giornalieri",
+    sottotitolo: "Il registro di ogni euro fisico che entra ed esce dalla cassa aziendale",
     entraDA: [
       {
-        label: "XML Corrispettivi RT",
+        label: "File XML Corrispettivi (Registratore di Cassa)",
         fonte: "Import Documenti (caricamento manuale)",
-        dettaglio: "File XML giornalieri generati dal Registratore Telematico. Ogni giorno, dopo la chiusura, il file viene scaricato dal RT e caricato manualmente nella pagina Import Documenti. Il sistema li legge in automatico."
+        dettaglio: "File XML obbligatorio per legge, emesso dal registratore di cassa e trasmesso automaticamente all'Agenzia delle Entrate. Viene importato dalla pagina Import Documenti — il sistema lo legge e carica automaticamente gli incassi giornalieri suddivisi per tipologia: contanti, carta/POS, ticket."
+      },
+      {
+        label: "Inserimenti Manuali Piccola Cassa",
+        fonte: "Inserimento diretto operatore in Prima Nota",
+        dettaglio: "Spese piccole pagate in contanti (consumo ufficio, piccole forniture, mance ecc.) che non transitano su fattura o POS. L'operatore le registra manualmente con causale e importo."
       }
     ],
     fa: [
-      "Legge l'XML ed estrae l'Ammontare lordo (IVA inclusa) e il PagatoElettronico (POS) per ogni giornata di lavoro.",
+      "Registra ogni movimento di denaro fisico: entrate (incassi del bar/ristorante) e uscite (fornitori pagati cash, spese varie).",
+      "Ogni riga ha: data, causale, importo e segno contabile (DARE = entrata in cassa, AVERE = uscita dalla cassa).",
       "DARE = Ricavi Lordi totali (PagatoContanti + PagatoElettronico) — IVA inclusa. È l'intero incasso della giornata.",
-      "AVERE = Pagato Elettronico (POS) — è il denaro che fisicamente uscirà dalla cassa verso la banca tramite accredito.",
-      "SALDO CASSA = rimane in cassa solo il contante fisico (DARE - AVERE)."
+      "AVERE = Pagato Elettronico (POS/carta) — denaro che fisicamente uscirà dalla cassa verso la banca tramite accredito.",
+      "SALDO CASSA = DARE - AVERE = rimane solo il contante fisico effettivamente presente in cassa."
     ],
     alimenta: [
       {
         label: "Bilancio",
-        percorso: "→ Sezione Ricavi",
-        dettaglio: "I totali mensili degli incassi vengono sommati e portati nel Bilancio alla voce Ricavi. Questo valore è la base del Volume d'Affari."
+        percorso: "→ Sezione Ricavi (voce Corrispettivi)",
+        dettaglio: "I totali mensili degli incassi alimentano la sezione Ricavi del Bilancio e il Conto Economico alla voce ricavi operativi. La somma annua è la base del Volume d'Affari."
       },
       {
-        label: "Prima Nota Banca",
-        percorso: "→ Entrata POS attesa sull'estratto conto",
-        dettaglio: "L'importo POS registrato in cassa diventa un'entrata attesa sul conto corrente. Quando arriva il CSV della banca, il sistema sa già che ci deve essere un accredito corrispondente."
+        label: "Conto Economico",
+        percorso: "→ Ricavi Operativi",
+        dettaglio: "La somma annua dei corrispettivi è la principale voce di ricavo del Conto Economico e determina il Volume d'Affari mostrato in Dashboard e ContabilitaHub."
+      },
+      {
+        label: "Coerenza POS / Corrispettivi",
+        percorso: "→ Isolamento pagamenti carta per verifica banca",
+        dettaglio: "Il sistema isola i pagamenti con carta/POS dall'importo totale per confrontarli con gli accrediti che arrivano sul conto bancario il giorno lavorativo successivo. Serve per rilevare discrepanze prima della chiusura del periodo."
       }
     ],
     aspetta: [
       {
-        label: "Estratto Conto Bancario (CSV Banco BPM)",
-        tipo: "Riconciliazione POS",
-        urgenza: "alta",
-        motivo: "Verifica che l'accredito POS accreditato sul conto corrente sia UGUALE al POS nell'XML dei corrispettivi. Se c'è differenza, segnala un'anomalia: il giorno successivo bisogna recuperare o scalare l'importo discordante."
+        label: "Chiusura Fisarmonica del POS (inserita manualmente la sera)",
+        tipo: "Verifica Fiscale Anti-Sanzione",
+        urgenza: "critica",
+        motivo: "L'operatore inserisce a fine giornata il totale dalla chiusura fisica del POS. Il sistema confronta con il POS nell'XML corrispettivi. Se c'è differenza → qualcuno ha premuto il tasto sbagliato o c'è un errore da recuperare il giorno dopo. Obiettivo: evitare sanzioni per corrispettivi non dichiarati e garantire che POS fisico = XML = accredito banca."
       },
       {
-        label: "Chiusura Manuale POS sera (inserimento operatore)",
-        tipo: "Verifica Fiscale Anti-sanzione",
-        urgenza: "critica",
-        motivo: "L'operatore inserisce manualmente l'importo della chiusura POS a fine giornata. Il sistema confronta questo dato con il POS dell'XML. Se sono DIVERSI: o c'è un errore nel RT (rischio sanzione), oppure il giorno dopo c'è un importo sospeso da bilanciare. Questo controllo previene le contestazioni dell'Agenzia delle Entrate."
+        label: "Estratto Conto Bancario (via Riconciliazione)",
+        tipo: "Riconciliazione POS → Accredito Banca",
+        urgenza: "alta",
+        motivo: "L'importo dei pagamenti elettronici (POS carta) registrati in Prima Nota Cassa deve corrispondere all'accredito che arriva sul conto bancario solitamente il giorno lavorativo successivo. Se non coincide, la Riconciliazione segnala l'anomalia e indica se c'è un importo da recuperare il giorno seguente."
       }
     ]
   },
@@ -64,56 +75,70 @@ const FLUSSI = {
     titolo: "Prima Nota Banca",
     icona: "🏦",
     colore: "#1d4ed8",
-    sottotitolo: "Il registro di tutto ciò che entra ed esce dal conto corrente",
+    sottotitolo: "Il libro mastro di tutto ciò che transita sul conto corrente aziendale",
     entraDA: [
       {
-        label: "CSV Estratto Conto Banco BPM",
-        fonte: "Import Documenti (caricamento manuale) oppure direttamente da Prima Nota",
-        dettaglio: "Il file CSV si scarica dall'home banking Banco BPM. Contiene ogni singolo movimento bancario con data valuta, data operazione, importo e causale. Viene caricato dal pulsante 'Force Reimport' in Prima Nota Banca."
+        label: "Estratto Conto Bancario (PDF/CSV Banco BPM)",
+        fonte: "Import Documenti (caricamento manuale) oppure download automatico da Gmail",
+        dettaglio: "Il file PDF o CSV dell'estratto conto viene importato dalla pagina Import Documenti — il sistema lo legge riga per riga e riconosce ogni movimento: accrediti, addebiti, bonifici, commissioni, F24, stipendi."
+      },
+      {
+        label: "Riconciliazione Automatica",
+        fonte: "Modulo Riconciliazione (dopo import estratto conto)",
+        dettaglio: "La riconciliazione abbina i movimenti bancari alle fatture già registrate nel Ciclo Passivo. Ogni riga abbinata viene classificata automaticamente con la causale contabile corretta."
+      },
+      {
+        label: "Inserimento Manuale",
+        fonte: "Operatore in Prima Nota Banca",
+        dettaglio: "Per operazioni non abbinabili automaticamente: commissioni bancarie fisse, interessi attivi/passivi, operazioni atipiche. L'operatore inserisce data, causale, importo e classificazione contabile."
       }
     ],
     fa: [
-      "Registra TUTTI i movimenti del conto corrente: accrediti POS, bonifici in entrata, pagamenti fornitori, F24, stipendi, commissioni bancarie.",
-      "Calcola il saldo progressivo giornaliero, così in ogni momento sai esattamente quanto c'è sul conto.",
-      "Le commissioni bancarie da 1€ (o altri importi fissi) sono movimenti validi e vengono inclusi — non scartati.",
-      "Ogni movimento rimane 'in attesa di abbinamento' finché la Riconciliazione non lo collega a un documento."
+      "Tiene il libro mastro di tutti i movimenti sul conto corrente bancario: incassi da clienti, pagamenti a fornitori, bonifici stipendi, rate mutui, F24, commissioni banca.",
+      "Ogni riga è classificata con causale contabile (costo, ricavo, partita di giro, tributo).",
+      "Calcola il saldo progressivo giornaliero — in ogni momento sai esattamente quanto c'è sul conto.",
+      "Le commissioni bancarie ripetute (es. €1 fisso per operazione) sono movimenti validi e vengono incluse — non scartate."
     ],
     alimenta: [
       {
-        label: "Riconciliazione",
-        percorso: "→ Ogni movimento cerca il documento corrispondente",
-        dettaglio: "Ogni riga dell'estratto conto entra nella coda di riconciliazione. Il sistema cerca automaticamente a quale fattura, F24, cedolino o corrispettivo appartiene."
+        label: "Bilancio",
+        percorso: "→ Attivo: Saldo Cassa in Banca (Disponibilità Liquide)",
+        dettaglio: "Il saldo finale del conto corrente alimenta la sezione Attivo Circolante dello Stato Patrimoniale alla voce Disponibilità Liquide."
       },
       {
-        label: "Bilancio",
-        percorso: "→ Voce Disponibilità Liquide",
-        dettaglio: "Il saldo finale del conto corrente alimenta la sezione Attivo del Bilancio (disponibilità liquide)."
+        label: "Riconciliazione Fornitori",
+        percorso: "→ Chiusura fatture: Da pagare → Pagata",
+        dettaglio: "Quando entra un pagamento a fornitore, la Riconciliazione aggiorna lo stato della fattura corrispondente da 'Da pagare' a 'Pagata' e rimuove la scadenza dallo Scadenzario."
+      },
+      {
+        label: "ContabilitaHub (KPI Saldo Banca)",
+        percorso: "→ Saldo banca in tempo reale",
+        dettaglio: "Il saldo del conto corrente è uno dei KPI principali mostrati nel ContabilitaHub e nella Dashboard generale — aggiornato ad ogni import dell'estratto conto."
+      },
+      {
+        label: "Verifica Coerenza POS",
+        percorso: "→ Conferma o smentisce Prima Nota Cassa",
+        dettaglio: "Gli accrediti POS sul conto confermano o smentiscono quanto registrato in Prima Nota Cassa. Una differenza segnala un'anomalia da correggere prima della chiusura del periodo."
       }
     ],
     aspetta: [
       {
-        label: "POS da Prima Nota Cassa",
-        tipo: "Verifica Accredito POS",
+        label: "Fatture Ricevute (Ciclo Passivo)",
+        tipo: "Riconciliazione Pagamento Fornitori",
         urgenza: "alta",
-        motivo: "Ogni accredito POS sull'estratto conto deve corrispondere esattamente al POS registrato nell'XML dei corrispettivi di quella data. Se l'accredito arriva il giorno dopo (come spesso avviene), il sistema tiene traccia della data di riferimento per abbinarlo correttamente."
+        motivo: "Per ogni uscita bancaria, il sistema cerca la fattura fornitore corrispondente e la 'chiude' registrando il pagamento. Se non trova corrispondenza, il movimento rimane 'non riconciliato' in attesa di abbinamento manuale da parte dell'operatore."
       },
       {
-        label: "Fatture Fornitori (Ciclo Passivo)",
-        tipo: "Verifica Pagamento Fornitori",
-        urgenza: "media",
-        motivo: "Ogni uscita bancaria per fornitore (bonifico SEPA) deve corrispondere a una fattura nel Ciclo Passivo. La riconciliazione abbina l'uscita alla fattura e la marca come 'pagata'."
+        label: "Prima Nota Cassa (accrediti POS)",
+        tipo: "Verifica Quadratura POS → Banca",
+        urgenza: "alta",
+        motivo: "Il sistema aspetta che l'accredito POS in banca (solitamente +1 giorno lavorativo) coincida con il totale pagamenti carta registrato in Prima Nota Cassa. Differenze indicano: pagamenti non processati, anomalie POS o giorni festivi che spostano l'accredito."
       },
       {
-        label: "Modelli F24 (Fisco)",
-        tipo: "Verifica Versamenti Tributari",
+        label: "F24 Pagati (Modulo Fisco)",
+        tipo: "Classificazione Uscite Fiscali",
         urgenza: "media",
-        motivo: "I pagamenti F24 (IVA, IRPEF dipendenti, contributi) appaiono come uscite nell'estratto conto. Devono essere abbinati ai modelli F24 del modulo Fisco per confermare che il versamento è andato a buon fine."
-      },
-      {
-        label: "Cedolini Stipendi (Prima Nota Salari)",
-        tipo: "Verifica Bonifici Dipendenti",
-        urgenza: "media",
-        motivo: "Ogni bonifico stipendio uscito dalla banca deve corrispondere all'importo netto del cedolino del dipendente per quel mese. La differenza tra lordo e netto è già stata versata come F24 contributi."
+        motivo: "Ogni uscita fiscale sull'estratto conto deve trovare un modello F24 registrato nel Modulo Fisco. Se non c'è corrispondenza, il movimento rimane 'uscita non classificata' e potrebbe falsare il Bilancio — va investigato e abbinato manualmente."
       }
     ]
   },
@@ -779,6 +804,42 @@ const FLUSSI = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Tech Stack Ceraldi ERP
+// ─────────────────────────────────────────────────────────────────────────────
+const TECH_STACK = {
+  backend: [
+    { nome: "FastAPI", desc: "Web framework Python asincrono", colore: "#059669" },
+    { nome: "Pydantic", desc: "Validazione dati e modelli", colore: "#0891b2" },
+    { nome: "Motor", desc: "Driver MongoDB asincrono", colore: "#16a34a" },
+    { nome: "MongoDB Atlas", desc: "Database NoSQL cloud", colore: "#15803d" },
+    { nome: "Python IMAP", desc: "Integrazione email Gmail per fatture", colore: "#dc2626" },
+    { nome: "xml.etree", desc: "Parser fatture XML SDI e RT", colore: "#7c3aed" },
+    { nome: "Uvicorn", desc: "ASGI server produzione", colore: "#374151" },
+  ],
+  frontend: [
+    { nome: "React 19", desc: "UI library", colore: "#0ea5e9" },
+    { nome: "React Router v7", desc: "Routing SPA", colore: "#e11d48" },
+    { nome: "Vite", desc: "Build tool ultra-veloce", colore: "#a855f7" },
+    { nome: "Shadcn/UI", desc: "Componenti UI", colore: "#1e293b" },
+    { nome: "Tailwind CSS", desc: "Styling utility-first", colore: "#0891b2" },
+    { nome: "Recharts", desc: "Grafici e KPI", colore: "#f97316" },
+    { nome: "Mermaid.js", desc: "Diagrammi di flusso interattivi", colore: "#16a34a" },
+    { nome: "Axios", desc: "HTTP client", colore: "#5b21b6" },
+    { nome: "Lucide React", desc: "Icone", colore: "#475569" },
+  ],
+  database: [
+    { nome: "estratto_conto_movimenti", desc: "Movimenti CSV Banco BPM (7.800+ record)", colore: "#1d4ed8" },
+    { nome: "prima_nota_cassa", desc: "Registro cassa da XML corrispettivi", colore: "#16a34a" },
+    { nome: "corrispettivi", desc: "Incassi giornalieri RT (1.051 record)", colore: "#dc2626" },
+    { nome: "invoices", desc: "Fatture fornitori ricevute (74 record)", colore: "#7c3aed" },
+    { nome: "dipendenti", desc: "Anagrafica personale (34 dipendenti)", colore: "#0369a1" },
+    { nome: "cedolini", desc: "Buste paga archivio (841 record)", colore: "#b45309" },
+    { nome: "cespiti", desc: "Beni strumentali con ammortamento (21 cespiti)", colore: "#475569" },
+    { nome: "mittenti", desc: "Lista mittenti email autorizzati", colore: "#374151" },
+  ]
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Diagramma Mermaid del flusso dati
 // ─────────────────────────────────────────────────────────────────────────────
 const DIAGRAMMA_DEFAULT = `flowchart TD
@@ -1209,6 +1270,19 @@ export default function MappaGestionale() {
         >
           {showEditor ? '✕ Chiudi Editor' : '✏️ Modifica Diagramma'}
         </button>
+        <a
+          href="/api/download/ceraldi_erp_flussi_completo.md"
+          download="ceraldi_erp_flussi_completo.md"
+          style={{
+            padding: '8px 16px', background: 'rgba(255,255,255,0.15)',
+            color: 'white', border: '1px solid rgba(255,255,255,0.3)',
+            borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600,
+            textDecoration: 'none', transition: 'all 0.2s'
+          }}
+          data-testid="download-doc-btn"
+        >
+          ⬇ Scarica Documento
+        </a>
       </div>
 
       <div style={{ display: 'flex', gap: 0 }}>
@@ -1337,6 +1411,123 @@ export default function MappaGestionale() {
                     onClick={() => setActiveSezione(k)}
                   />
                 ))}
+              </div>
+            </div>
+
+            {/* ── TECH STACK ── */}
+            <div style={{ marginTop: 40 }}>
+              <div style={{
+                background: '#1e293b', borderRadius: 16, padding: '24px 28px',
+                marginBottom: 20
+              }}>
+                <h2 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 800, color: 'white' }}>
+                  Stack Tecnologico
+                </h2>
+                <p style={{ margin: 0, fontSize: 13, color: '#94a3b8' }}>
+                  Tecnologie e librerie utilizzate nel Gestionale Ceraldi ERP
+                </p>
+              </div>
+
+              {/* Backend */}
+              <div style={{ marginBottom: 24 }}>
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12
+                }}>
+                  <div style={{
+                    background: '#059669', color: 'white', borderRadius: 8,
+                    padding: '4px 12px', fontSize: 12, fontWeight: 700, letterSpacing: 0.5
+                  }}>Backend</div>
+                  <span style={{ fontSize: 12, color: '#94a3b8' }}>FastAPI · Python · MongoDB</span>
+                </div>
+                <div style={{
+                  display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10
+                }}>
+                  {TECH_STACK.backend.map((t, i) => (
+                    <div key={i} style={{
+                      background: 'white', borderRadius: 10, padding: '12px 16px',
+                      border: `1px solid ${t.colore}30`,
+                      display: 'flex', alignItems: 'center', gap: 12,
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.05)'
+                    }}>
+                      <div style={{
+                        width: 8, height: 8, borderRadius: '50%', background: t.colore, flexShrink: 0
+                      }} />
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: 13, color: '#1e293b' }}>{t.nome}</div>
+                        <div style={{ fontSize: 11, color: '#64748b', marginTop: 1 }}>{t.desc}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Frontend */}
+              <div style={{ marginBottom: 24 }}>
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12
+                }}>
+                  <div style={{
+                    background: '#0ea5e9', color: 'white', borderRadius: 8,
+                    padding: '4px 12px', fontSize: 12, fontWeight: 700, letterSpacing: 0.5
+                  }}>Frontend</div>
+                  <span style={{ fontSize: 12, color: '#94a3b8' }}>React · Vite · Shadcn/UI</span>
+                </div>
+                <div style={{
+                  display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10
+                }}>
+                  {TECH_STACK.frontend.map((t, i) => (
+                    <div key={i} style={{
+                      background: 'white', borderRadius: 10, padding: '12px 16px',
+                      border: `1px solid ${t.colore}30`,
+                      display: 'flex', alignItems: 'center', gap: 12,
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.05)'
+                    }}>
+                      <div style={{
+                        width: 8, height: 8, borderRadius: '50%', background: t.colore, flexShrink: 0
+                      }} />
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: 13, color: '#1e293b' }}>{t.nome}</div>
+                        <div style={{ fontSize: 11, color: '#64748b', marginTop: 1 }}>{t.desc}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Database / Collezioni */}
+              <div>
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12
+                }}>
+                  <div style={{
+                    background: '#15803d', color: 'white', borderRadius: 8,
+                    padding: '4px 12px', fontSize: 12, fontWeight: 700, letterSpacing: 0.5
+                  }}>Database</div>
+                  <span style={{ fontSize: 12, color: '#94a3b8' }}>MongoDB Atlas · Collezioni principali</span>
+                </div>
+                <div style={{
+                  display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 10
+                }}>
+                  {TECH_STACK.database.map((t, i) => (
+                    <div key={i} style={{
+                      background: 'white', borderRadius: 10, padding: '12px 16px',
+                      border: `1px solid ${t.colore}20`,
+                      display: 'flex', alignItems: 'center', gap: 12,
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
+                    }}>
+                      <div style={{
+                        width: 8, height: 8, borderRadius: '50%', background: t.colore, flexShrink: 0
+                      }} />
+                      <div>
+                        <div style={{
+                          fontFamily: "'Fira Code', monospace",
+                          fontWeight: 700, fontSize: 12, color: t.colore
+                        }}>{t.nome}</div>
+                        <div style={{ fontSize: 11, color: '#64748b', marginTop: 1 }}>{t.desc}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
