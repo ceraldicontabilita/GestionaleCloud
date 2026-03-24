@@ -1405,7 +1405,7 @@ function AlertGiustificativiWidget({ data }) {
       {data.totale_alerts > 5 && (
         <div style={{ marginTop: 10, textAlign: 'center' }}>
           <Link 
-            to="/dipendenti/giustificativi"
+            to="/presenze?tab=giustificativi"
             style={{ 
               fontSize: 12, 
               color: '#3b82f6', 

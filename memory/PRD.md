@@ -108,8 +108,20 @@ Applicazione ERP full-stack italiana (React + FastAPI + MongoDB) per gestione az
 - **Bottoni UI**: "Ricostruisci ANNO" (verde) e "Ricostruisci Tutti gli Anni" (rosso) in Prima Nota Cassa
 - **Documentazione**: `/app/backend/docs/prima_nota_cassa_logica.md` + ZIP scaricabile
 
+## Sessione 9 (24 Marzo 2026 - Performance & Fix)
+- **Performance P0 RISOLTO**: Dashboard carica in 1.88s (era 30-45s)
+  - `alert-limiti`: 10.9s → 0.71s (N+1 queries → bulk aggregation, 102 query → 3 query)
+  - `saldo-ferie`: 3.0s → 0.73s (12+ sequential → 2 bulk aggregations)
+  - Dashboard.jsx: `alert-limiti` caricato separatamente dal Promise.all (non blocca altri widget)
+- **CSV Import P1 RISOLTO**: Commissioni ≤€2 ora importate anche se "duplicate" (fix dedup in estratto_conto.py)
+- **Saldo progressivo P2 CORRETTO**: PrimaNota.jsx calcola forward (ASC cronologico) e mostra DESC
+- **Cedolini P2**: Aggiunto controllo dedup CF+mese+anno in employees_payroll.py
+- **Dipendenti P2**: Deduplicazione per CF in list_dipendenti e report ferie-permessi
+- **Fix routing**: Dashboard widget link /dipendenti/giustificativi → /presenze?tab=giustificativi
+
 ## Problemi in sospeso
 - P2: Credenziali Gmail non valide (IMAP_PASSWORD nel .env) - blocca automazione email (NON priorità corrente)
+
 
 ## Sessione 5 (17 Marzo 2026)
 - **Import CSV BPM**: Importati 3.370 nuovi movimenti bancari (da ElencoEntrateUsciteAndamento_17-03-2026), 30 duplicati saltati. Totale in DB: 7.868 record.
