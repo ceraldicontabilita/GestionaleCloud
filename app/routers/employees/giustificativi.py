@@ -19,6 +19,7 @@ import uuid
 import tempfile
 import os
 import base64
+import asyncio
 
 from app.database import Database
 
@@ -648,24 +649,72 @@ async def get_saldo_ferie_dipendente(
     rol_maturati = (ore_rol_annuali / 12) * mese_corrente
     exf_maturati = (ore_ex_festivita_annuali / 12) * mese_corrente
     
-    # Calcola godute
-    ferie_godute = await _calcola_ore_giustificativo(db, employee_id, "FER", anno)
-    rol_goduti = await _calcola_ore_giustificativo(db, employee_id, "ROL", anno)
-    exf_godute = await _calcola_ore_giustificativo(db, employee_id, "EXF", anno)
-    permessi_goduti = await _calcola_ore_giustificativo(db, employee_id, "PER", anno)
+    # BULK QUERY 1: ore godute per anno (tutti i codici in una sola aggregazione)
+    codici_target = ["FER", "ROL", "EXF", "PER", "fer", "rol", "exf", "per"]
+    bulk_anno = await db["presenze_mensili"].aggregate([
+        {"$match": {
+            "employee_id": employee_id,
+            "data": {"$gte": f"{anno}-01-01", "$lt": f"{anno+1}-01-01"},
+            "stato": {"$in": codici_target}
+        }},
+        {"$group": {
+            "_id": {"$toUpper": "$stato"},
+            "ore": {"$sum": {"$ifNull": ["$ore", 8]}}
+        }}
+    ]).to_list(20)
     
-    # Recupera anno precedente per riporto
-    ferie_anno_prec = await _calcola_ore_giustificativo(db, employee_id, "FER", anno - 1)
-    rol_anno_prec = await _calcola_ore_giustificativo(db, employee_id, "ROL", anno - 1)
+    # BULK QUERY 2: ore godute per mese (dettaglio mensile in una sola aggregazione)
+    bulk_mesi = await db["presenze_mensili"].aggregate([
+        {"$match": {
+            "employee_id": employee_id,
+            "data": {"$gte": f"{anno}-01-01", "$lt": f"{anno+1}-01-01"},
+            "stato": {"$in": ["FER", "ROL", "fer", "rol"]}
+        }},
+        {"$addFields": {"mese_num": {"$month": {"$toDate": "$data"}}}},
+        {"$group": {
+            "_id": {"mese": "$mese_num", "stato": {"$toUpper": "$stato"}},
+            "ore": {"$sum": {"$ifNull": ["$ore", 8]}}
+        }}
+    ]).to_list(100)
     
-    # Calcola riporto (ferie non godute anno precedente)
-    # Semplificato: assumiamo che il riporto sia già calcolato
-    riporto_ferie = await db["riporti_ferie"].find_one(
-        {"employee_id": employee_id, "anno": anno},
-        {"_id": 0}
+    # BULK QUERY 3: richieste_assenza anno corrente
+    bulk_richieste = await db["richieste_assenza"].find({
+        "employee_id": employee_id,
+        "stato": "approved",
+        "data_inizio": {"$gte": f"{anno}-01-01", "$lt": f"{anno+1}-01-01"}
+    }, {"_id": 0, "tipo": 1, "ore_totali": 1}).to_list(200)
+    
+    # BULK QUERY 4: riporto ferie e anno precedente (3 query in parallelo)
+    riporto_ferie, bulk_anno_prec = await asyncio.gather(
+        db["riporti_ferie"].find_one({"employee_id": employee_id, "anno": anno}, {"_id": 0}),
+        db["presenze_mensili"].aggregate([
+            {"$match": {
+                "employee_id": employee_id,
+                "data": {"$gte": f"{anno-1}-01-01", "$lt": f"{anno}-01-01"},
+                "stato": {"$in": ["FER", "ROL", "fer", "rol"]}
+            }},
+            {"$group": {"_id": {"$toUpper": "$stato"}, "ore": {"$sum": {"$ifNull": ["$ore", 8]}}}}
+        ]).to_list(10)
     )
-    ferie_riportate = float(riporto_ferie.get("ferie_riportate", 0)) if riporto_ferie else 0
-    rol_riportati = float(riporto_ferie.get("rol_riportati", 0)) if riporto_ferie else 0
+    
+    # Elabora dati in memoria
+    ore_anno_map = {item["_id"]: item["ore"] for item in bulk_anno}
+    
+    # Aggiungi ore da richieste_assenza approvate
+    for r in bulk_richieste:
+        tipo = (r.get("tipo") or "").upper()
+        if tipo in ore_anno_map:
+            ore_anno_map[tipo] = ore_anno_map.get(tipo, 0) + float(r.get("ore_totali", 0))
+        else:
+            ore_anno_map[tipo] = float(r.get("ore_totali", 0))
+    
+    ferie_godute = ore_anno_map.get("FER", 0)
+    rol_goduti = ore_anno_map.get("ROL", 0)
+    exf_godute = ore_anno_map.get("EXF", 0)
+    permessi_goduti = ore_anno_map.get("PER", 0)
+    
+    ferie_riportate = float((riporto_ferie or {}).get("ferie_riportate", 0))
+    rol_riportati = float((riporto_ferie or {}).get("rol_riportati", 0))
     
     # Calcola residui
     ferie_totali = ferie_maturate + ferie_riportate
@@ -676,16 +725,22 @@ async def get_saldo_ferie_dipendente(
     rol_residui = rol_totali - rol_goduti
     exf_residue = exf_totali - exf_godute
     
-    # Dettaglio mensile
+    # Dettaglio mensile (da bulk_mesi - già caricato sopra)
+    mesi_map = {}
+    for item in bulk_mesi:
+        m = item["_id"]["mese"]
+        stato = item["_id"]["stato"]
+        if m not in mesi_map:
+            mesi_map[m] = {}
+        mesi_map[m][stato] = item["ore"]
+    
     dettaglio_mensile = []
     for m in range(1, mese_corrente + 1):
-        ferie_mese = await _calcola_ore_giustificativo(db, employee_id, "FER", anno, m)
-        rol_mese = await _calcola_ore_giustificativo(db, employee_id, "ROL", anno, m)
-        
+        mese_data = mesi_map.get(m, {})
         dettaglio_mensile.append({
             "mese": m,
-            "ferie_godute": ferie_mese,
-            "rol_goduti": rol_mese,
+            "ferie_godute": mese_data.get("FER", 0),
+            "rol_goduti": mese_data.get("ROL", 0),
             "ferie_maturate": ore_ferie_annuali / 12,
             "rol_maturati": ore_rol_annuali / 12
         })
@@ -845,40 +900,66 @@ async def get_alert_limiti_giustificativi(
     alerts = []
     dipendenti_set = set()
     
-    for dip in dipendenti:
-        emp_id = dip.get("id")
-        if not emp_id:
-            continue
-        
-        nome = dip.get("nome_completo") or f"{dip.get('nome', '')} {dip.get('cognome', '')}".strip()
-        
-        # Recupera limiti custom per questo dipendente
-        limiti_custom = await db["giustificativi_dipendente"].find_one(
-            {"employee_id": emp_id, "anno": anno},
-            {"_id": 0, "limiti": 1}
-        )
-        limiti_per_codice = limiti_custom.get("limiti", {}) if limiti_custom else {}
-        
-        # Aggregazione ore anno per tutti i codici
-        presenze_anno = await db["presenze_mensili"].aggregate([
-            {"$match": {
-                "employee_id": emp_id,
-                "data": {"$gte": data_inizio_anno, "$lt": data_fine_anno}
-            }},
-            {"$group": {"_id": "$stato", "ore": {"$sum": {"$ifNull": ["$ore", 8]}}}}
-        ]).to_list(100)
-        
-        # Aggregazione ore mese corrente
-        presenze_mese = await db["presenze_mensili"].aggregate([
-            {"$match": {
-                "employee_id": emp_id,
-                "data": {"$gte": data_inizio_mese, "$lt": data_fine_mese}
-            }},
-            {"$group": {"_id": "$stato", "ore": {"$sum": {"$ifNull": ["$ore", 8]}}}}
-        ]).to_list(100)
-        
-        ore_anno = {p["_id"]: p["ore"] for p in presenze_anno if p["_id"]}
-        ore_mese = {p["_id"]: p["ore"] for p in presenze_mese if p["_id"]}
+    # --- BULK QUERY: una singola aggregazione per tutte le ore anno (tutti dipendenti) ---
+    emp_ids = [d["id"] for d in dipendenti if d.get("id")]
+    
+    bulk_anno = await db["presenze_mensili"].aggregate([
+        {"$match": {
+            "employee_id": {"$in": emp_ids},
+            "data": {"$gte": data_inizio_anno, "$lt": data_fine_anno}
+        }},
+        {"$group": {
+            "_id": {"emp": "$employee_id", "stato": "$stato"},
+            "ore": {"$sum": {"$ifNull": ["$ore", 8]}}
+        }}
+    ]).to_list(5000)
+    
+    # --- BULK QUERY: una singola aggregazione per tutte le ore mese corrente ---
+    bulk_mese = await db["presenze_mensili"].aggregate([
+        {"$match": {
+            "employee_id": {"$in": emp_ids},
+            "data": {"$gte": data_inizio_mese, "$lt": data_fine_mese}
+        }},
+        {"$group": {
+            "_id": {"emp": "$employee_id", "stato": "$stato"},
+            "ore": {"$sum": {"$ifNull": ["$ore", 8]}}
+        }}
+    ]).to_list(5000)
+    
+    # --- BULK QUERY: tutti i limiti custom in una sola query ---
+    limiti_tutti = await db["giustificativi_dipendente"].find(
+        {"employee_id": {"$in": emp_ids}, "anno": anno},
+        {"_id": 0, "employee_id": 1, "limiti": 1}
+    ).to_list(500)
+    
+    # Mappa dati in strutture veloci
+    ore_anno_map = {}   # {emp_id: {stato: ore}}
+    for item in bulk_anno:
+        emp = item["_id"]["emp"]
+        stato = item["_id"]["stato"] or ""
+        if emp not in ore_anno_map:
+            ore_anno_map[emp] = {}
+        ore_anno_map[emp][stato] = item["ore"]
+        ore_anno_map[emp][stato.lower()] = item["ore"]
+    
+    ore_mese_map = {}   # {emp_id: {stato: ore}}
+    for item in bulk_mese:
+        emp = item["_id"]["emp"]
+        stato = item["_id"]["stato"] or ""
+        if emp not in ore_mese_map:
+            ore_mese_map[emp] = {}
+        ore_mese_map[emp][stato] = item["ore"]
+        ore_mese_map[emp][stato.lower()] = item["ore"]
+    
+    limiti_map = {l["employee_id"]: l.get("limiti", {}) for l in limiti_tutti}
+    dip_nomi = {d["id"]: (d.get("nome_completo") or f"{d.get('nome','')} {d.get('cognome','')}".strip()) for d in dipendenti if d.get("id")}
+    
+    # Calcola alert in memoria (0 query aggiuntive)
+    for emp_id in emp_ids:
+        nome = dip_nomi.get(emp_id, emp_id)
+        limiti_per_codice = limiti_map.get(emp_id, {})
+        ore_anno = ore_anno_map.get(emp_id, {})
+        ore_mese = ore_mese_map.get(emp_id, {})
         
         for giust in giustificativi:
             codice = giust["codice"]

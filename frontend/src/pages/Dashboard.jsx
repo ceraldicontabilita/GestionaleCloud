@@ -110,26 +110,24 @@ export default function Dashboard() {
         // Carica dati secondari DOPO i primari (non bloccanti)
         setLoading(false);
         
-        // Grafici avanzati caricati in background
+        // Grafici avanzati caricati in background (senza alert-limiti che è lento)
         Promise.all([
           api.get(`/api/dashboard/spese-per-categoria?anno=${anno}`).catch(() => ({ data: null })),
           api.get(`/api/dashboard/confronto-annuale?anno=${anno}`).catch(() => ({ data: null })),
           api.get(`/api/dashboard/stato-riconciliazione?anno=${anno}`).catch(() => ({ data: null })),
           api.get(`/api/contabilita/calcolo-imposte?regione=campania&anno=${anno}`).catch(() => ({ data: null })),
           api.get(`/api/f24-public/scadenze-prossime?giorni=60&limit=5`).catch(() => ({ data: null })),
-          api.get(`/api/giustificativi/alert-limiti?soglia_percentuale=80&anno=${anno}`).catch(() => ({ data: null })),
           api.get(`/api/fornitori-learning/stats`).catch(() => ({ data: null })),
           Promise.all([
             api.get('/api/paghe/buste-paga?stato=DA_PAGARE').catch(() => ({ data: { data: [], count: 0 } })),
             api.get('/api/paghe/distinte-f24?stato=DA_PAGARE').catch(() => ({ data: { data: [], count: 0 } }))
           ]).catch(() => null)
-        ]).then(([speseRes, confrontoRes, riconcRes, imposteRes, f24Res, giustRes, learningRes, pagheResults]) => {
+        ]).then(([speseRes, confrontoRes, riconcRes, imposteRes, f24Res, learningRes, pagheResults]) => {
           setSpeseCategoria(speseRes.data);
           setConfrontoAnnuale(confrontoRes.data);
           setStatoRiconciliazione(riconcRes.data);
           setImposteData(imposteRes.data);
           setScadenzeF24(f24Res.data);
-          setAlertGiustificativi(giustRes.data);
           setLearningStats(learningRes.data);
           if (pagheResults) {
             const [busteRes, f24AlertRes] = pagheResults;
@@ -142,6 +140,11 @@ export default function Dashboard() {
             }
           }
         }).catch(e => console.warn('Errore grafici secondari:', e));
+        
+        // alert-limiti caricato SEPARATAMENTE perché può essere lento (non blocca gli altri)
+        api.get(`/api/giustificativi/alert-limiti?soglia_percentuale=80&anno=${anno}`)
+          .then(res => setAlertGiustificativi(res.data))
+          .catch(() => {});
         
       } catch (e) {
         console.error("Dashboard error:", e);

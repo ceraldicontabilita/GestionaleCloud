@@ -479,6 +479,17 @@ async def upload_payslip_pdf(file: UploadFile = File(...)) -> Dict[str, Any]:
                     pdf_filename = file.filename
 
                 # Save in cedolini (collection unificata) con tutti i dati estratti
+                # Controlla duplicati per CF + mese + anno prima di inserire
+                dup_check = None
+                if cf and mese and anno:
+                    dup_check = await db["cedolini"].find_one({
+                        "codice_fiscale": cf,
+                        "mese": int(mese) if mese else None,
+                        "anno": int(anno) if anno else None
+                    })
+                if dup_check:
+                    logger.info(f"Cedolino già presente per CF={cf} mese={mese}/{anno}, skip")
+                    continue
                 cedolino_doc = {
                     "id": payslip_id,
                     "dipendente_id": emp_id,

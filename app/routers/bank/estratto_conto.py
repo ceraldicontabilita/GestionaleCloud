@@ -350,16 +350,21 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
         mov_id = f"EC-{data_str}-{importo_abs:.2f}-{fingerprint[:8]}"
         
         # Controlla duplicati SOLO contro il DB (non dentro il CSV)
-        existing = await db["estratto_conto_movimenti"].find_one({
-            "$or": [
-                {"data": data_str, "importo": importo_abs, "descrizione_originale": desc_raw},
-                {"data": data_str, "importo": importo_abs, "descrizione": desc_raw}
-            ]
-        })
+        # ECCEZIONE: commissioni piccole (≤2€) possono essere duplicate nello stesso giorno
+        # (es: commissioni bancarie €1 che appaiono più volte per operazioni diverse)
+        is_commissione = importo_abs <= 2.00
         
-        if existing:
-            duplicates += 1
-            continue
+        if not is_commissione:
+            existing = await db["estratto_conto_movimenti"].find_one({
+                "$or": [
+                    {"data": data_str, "importo": importo_abs, "descrizione_originale": desc_raw},
+                    {"data": data_str, "importo": importo_abs, "descrizione": desc_raw}
+                ]
+            })
+            
+            if existing:
+                duplicates += 1
+                continue
         
         # Salva
         record = {

@@ -61,7 +61,19 @@ async def list_dipendenti(
             {"codice_fiscale": {"$regex": search, "$options": "i"}}
         ]
     
-    dipendenti = await db[Collections.EMPLOYEES].find(query, {"_id": 0}).sort("nome_completo", 1).skip(skip).limit(limit).to_list(limit)
+    dipendenti_raw = await db[Collections.EMPLOYEES].find(query, {"_id": 0}).sort("nome_completo", 1).skip(skip).limit(limit).to_list(limit)
+    
+    # Deduplicazione per codice fiscale (prevenzione duplicati accidentali)
+    seen_cf = set()
+    dipendenti = []
+    for d in dipendenti_raw:
+        cf_key = (d.get("codice_fiscale") or "").upper().strip()
+        if cf_key and cf_key in seen_cf:
+            continue
+        if cf_key:
+            seen_cf.add(cf_key)
+        dipendenti.append(d)
+    
     return dipendenti
 
 
@@ -119,10 +131,23 @@ async def genera_report_ferie_permessi_tutti(
         anno = datetime.now().year
     
     # Recupera tutti i dipendenti con progressivi
-    dipendenti = await db[Collections.EMPLOYEES].find(
+    dipendenti_raw = await db[Collections.EMPLOYEES].find(
         {"progressivi": {"$exists": True}},
         {"_id": 0, "nome_completo": 1, "name": 1, "cognome": 1, "nome": 1, "codice_fiscale": 1, "progressivi": 1, "attivo": 1}
     ).sort("nome_completo", 1).to_list(100)
+    
+    # Deduplicazione per codice fiscale (prevenzione duplicati)
+    seen_cf = set()
+    dipendenti = []
+    for d in dipendenti_raw:
+        cf_key = d.get("codice_fiscale", "").upper().strip()
+        nome_key = (d.get("nome_completo") or d.get("name") or "").lower().strip()
+        dedup_key = cf_key if cf_key else nome_key
+        if dedup_key and dedup_key not in seen_cf:
+            seen_cf.add(dedup_key)
+            dipendenti.append(d)
+        elif not dedup_key:
+            dipendenti.append(d)
     
     if not dipendenti:
         raise HTTPException(status_code=404, detail="Nessun dipendente con progressivi trovato")

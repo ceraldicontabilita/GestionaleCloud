@@ -1106,14 +1106,21 @@ function MovementsTable({ movimenti, tipo, loading, formatEuro, formatDate, onDe
   const start = (currentPage - 1) * itemsPerPage;
   const _currentMovimenti = movimentiFiltrati.slice(start, start + itemsPerPage);
 
-  // Calculate running balance using reduce - parte dal saldo anni precedenti, avanza in ordine cronologico
+  // Calculate running balance using reduce - ordina FORWARD (cronologico ASC) per calcolo corretto
   const saldoIniziale = saldoPrecedente || 0;
-  const movimentiWithBalance = movimentiFiltrati.reduce((acc, m) => {
-    const prevBalance = acc.length > 0 ? acc[acc.length - 1].saldoProgressivo : saldoIniziale;
-    const newBalance = m.tipo === 'entrata' ? prevBalance + m.importo : prevBalance - m.importo;
-    acc.push({ ...m, saldoProgressivo: newBalance });
-    return acc;
-  }, []);
+  // Crea copia ordinata cronologicamente (ASC) per il calcolo del saldo progressivo
+  const movimentiForward = [...movimentiFiltrati].sort((a, b) => (a.data || '').localeCompare(b.data || ''));
+  const balanceMap = {};
+  movimentiForward.reduce((prevBal, m) => {
+    const newBal = m.tipo === 'entrata' ? prevBal + (m.importo || 0) : prevBal - (m.importo || 0);
+    balanceMap[m.id || m.data + m.importo] = newBal;
+    return newBal;
+  }, saldoIniziale);
+  // Applica il saldo progressivo ai movimenti nell'ordine originale (DESC per display)
+  const movimentiWithBalance = movimentiFiltrati.map(m => ({
+    ...m,
+    saldoProgressivo: balanceMap[m.id || m.data + m.importo] ?? saldoIniziale
+  }));
 
   const currentWithBalance = movimentiWithBalance.slice(start, start + itemsPerPage);
   
