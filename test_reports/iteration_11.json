@@ -1,0 +1,73 @@
+{
+  "summary": "Iteration 11 - Fix validation + full P0/P1 module verification with real MongoDB Atlas data. 22/22 backend tests passed. Both new fixes confirmed working: (1) Salari anno filter uses 'anno' field returning 100 movimenti 2025; (2) Cedolini $or anno filter returns 15 cedolini 2026 and 253+ cedolini 2025. All P0/P1 modules verified with real data.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Fornitori page (SupplierCard component)",
+        "issues": ["React warning: missing unique 'key' prop in SupplierCard list render (Fornitori.jsx line ~920). Non-blocking, cosmetic warning only."]
+      }
+    ]
+  },
+  "fix_verification": {
+    "FIX_1_salari_anno_field": {
+      "description": "Prima Nota Salari filter now uses campo 'anno' (int) instead of 'data' (regex)",
+      "status": "CONFIRMED WORKING",
+      "details": "GET /api/prima-nota/salari?anno=2025 returns 100 movimenti (expected 64+). GET ?anno=2024 also returns data.",
+      "test": "TestPrimaNotaSalari::test_prima_nota_salari_2025_fix_anno_field - PASSED"
+    },
+    "FIX_2_cedolini_anno_int_string": {
+      "description": "Cedolini anno filter uses $or [int, string] to handle both int(2026) and string('2026')",
+      "status": "CONFIRMED WORKING",
+      "details": "GET /api/cedolini?anno=2026 returns 15 cedolini. GET ?anno=2025 returns 253+ cedolini.",
+      "test": "TestCedolini::test_cedolini_2026_fix_anno_int_string - PASSED, TestCedolini::test_cedolini_2025_returns_253_plus - PASSED"
+    }
+  },
+  "p0_p1_verification": {
+    "prima_nota_cassa_2025": "PASS - returns real movimenti, saldo positivo (~€359k)",
+    "prima_nota_cassa_2026": "PASS - 28 movimenti, saldo €14.361,17 visible on frontend",
+    "prima_nota_banca_2026": "PASS - 100+ movimenti returned",
+    "prima_nota_banca_2025": "PASS - data returned",
+    "prima_nota_salari_2025": "PASS (FIX VERIFIED) - 100 movimenti returned",
+    "prima_nota_salari_2024": "PASS - data returned",
+    "fornitori_200": "PASS - 323 fornitori returned (200+ expected)",
+    "invoices_with_date": "PASS - fatture with invoice_date returned",
+    "invoices_2026_filter": "PASS - 199 fatture del 2026",
+    "dipendenti_34_no_dups": "PASS - 34 dipendenti, 0 CF duplicates",
+    "cedolini_2026_15_records": "PASS (FIX VERIFIED) - 15 cedolini returned",
+    "cedolini_2025_253_plus": "PASS - 253+ cedolini returned",
+    "dashboard_bilancio_2026": "PASS - ricavi=€31.395,51, costi=€171.949,44",
+    "dashboard_bilancio_2025": "PASS - ricavi=€922.090,27, costi=€0 (no fatture 2025 - correct)",
+    "frontend_prima_nota": "PASS - CASSA 2026 shows 28 movimenti, saldo €14.361,17",
+    "frontend_fornitori": "PASS - 323 fornitori shown",
+    "frontend_dipendenti": "PASS - 34 dipendenti, 31 attivi, 3 cessati"
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration11_fixes.py",
+    "/app/test_reports/pytest/pytest_results_iter11.xml"
+  ],
+  "action_items": [
+    "MINOR: Add unique 'key' prop to SupplierCard list in Fornitori.jsx (~line 920) to fix React warning"
+  ],
+  "critical_code_review_comments": [
+    "Both fixes correctly implemented: cedolini.py $or query at lines 191-192 and 618-619; salari.py 'anno' field at lines 33-34",
+    "Fornitori.jsx SupplierCard missing React key prop in list render - minor React warning, non-blocking"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration11_fixes.py"
+  ],
+  "success_rate": {
+    "backend": "100% (22/22 tests passed)",
+    "frontend": "100% (all 3 pages load correctly with real data)"
+  },
+  "seed_data_creation": "",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Both new fixes verified (iter 11): (1) salari anno filter returns 100 movimenti 2025 via 'anno' field; (2) cedolini $or filter returns 15/2026 and 253+/2025. All P0/P1 modules working with real Atlas data. Minor: Fornitori.jsx SupplierCard missing key prop (console warning only). Previous perf fixes from iter 10 still active (alert-limiti <3s, saldo-ferie <2s). Test file: /app/backend/tests/test_iteration11_fixes.py 22 tests.",
+  "rca_of_issue": "FIX 1 (Salari): Records in prima_nota_salari collection store year in 'anno' integer field, not via date string regex. Previous filter used data regex (YYYY pattern) which failed to match int fields. Fix: query['anno'] = anno. FIX 2 (Cedolini): Records in cedolini collection have 'anno' stored as either int or string depending on import source. Previous filter used exact int match which missed string-stored records. Fix: $or query handles both types."
+}

@@ -30,7 +30,8 @@ async def get_prima_nota_salari(
     if dipendente:
         query["nome_dipendente"] = {"$regex": dipendente, "$options": "i"}
     if anno:
-        query["data"] = {"$regex": f"^{anno}"}
+        # I record di prima_nota_salari usano il campo 'anno' (int) non 'data'
+        query["anno"] = anno
     
     movimenti = await db[COLLECTION_PRIMA_NOTA_SALARI].find(
         query, {"_id": 0}

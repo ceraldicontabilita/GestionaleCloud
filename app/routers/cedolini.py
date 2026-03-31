@@ -188,7 +188,8 @@ async def lista_cedolini(
     
     query = {}
     if anno:
-        query["anno"] = anno
+        # Gestisce sia anno come int (2026) sia come stringa ("2026")
+        query["$or"] = [{"anno": anno}, {"anno": str(anno)}]
     if mese:
         query["mese"] = mese
     if dipendente_id:
@@ -615,7 +616,7 @@ async def cedolini_dipendente(dipendente_id: str, anno: Optional[int] = None) ->
     # Query cedolini
     query = {"dipendente_id": dipendente_id}
     if anno:
-        query["anno"] = anno
+        query["$or"] = [{"anno": anno}, {"anno": str(anno)}]
     
     cedolini = await db["cedolini"].find(
         query,
