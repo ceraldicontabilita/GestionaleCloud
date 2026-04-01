@@ -11,7 +11,7 @@ import uuid
 
 from app.database import Database
 
-router = APIRouter(prefix="/cucina/prodotti-vendita", tags=["Cucina Prodotti Vendita"])
+router = APIRouter(prefix="/prodotti-vendita", tags=["Cucina Prodotti Vendita"])
 
 
 class ProdottoVendita(BaseModel):
@@ -48,15 +48,14 @@ class ProdottoVendita(BaseModel):
     immagine_url: Optional[str] = None
 
 
-@router.get("/")
-async def get_prodotti_vendita(solo_attivi: bool = True, categoria: Optional[str] = None):
+@router.get("/lista")
+async def get_prodotti_vendita(solo_attivi: bool = False, categoria: Optional[str] = None, limit: int = 100):
     db = Database.get_db()
     query = {}
-    if solo_attivi:
-        query["attivo"] = True
     if categoria:
         query["categoria"] = categoria
-    prodotti = await db["prodotti_vendita"].find(query, {"_id": 0}).to_list(1000)
+    cursor = db["prodotti_vendita"].find(query, {"_id": 0, "nome": 1, "categoria": 1, "prezzo_vendita": 1, "costo_produzione": 1, "iva": 1, "attivo": 1, "unita_misura": 1}).limit(limit)
+    prodotti = await cursor.to_list(limit)
     for p in prodotti:
         pv = float(p.get("prezzo_vendita", 0) or 0)
         cp = float(p.get("costo_produzione", 0) or 0)

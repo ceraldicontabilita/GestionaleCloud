@@ -30,7 +30,7 @@ export default function ProdottiVendita() {
     setLoading(true);
     try {
       const [r1, r2] = await Promise.all([
-        api.get("/api/cucina/prodotti-vendita/?solo_attivi=false"),
+        api.get("/api/cucina/prodotti-vendita/lista?solo_attivi=false&limit=200"),
         api.get("/api/cucina/prodotti-vendita/categorie"),
       ]);
       setProdotti(r1.data);

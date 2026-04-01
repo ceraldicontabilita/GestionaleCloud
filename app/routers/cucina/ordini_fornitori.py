@@ -8,7 +8,7 @@ from typing import Optional
 
 from app.database import Database
 
-router = APIRouter(prefix="/cucina/ordini-fornitori", tags=["Cucina Ordini Fornitori"])
+router = APIRouter(prefix="/ordini-fornitori", tags=["Cucina Ordini Fornitori"])
 
 
 @router.get("/prodotti-suggeriti")

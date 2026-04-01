@@ -674,10 +674,10 @@ from app.routers.cucina.ricette import router as r_cu_ricette
 from app.routers.cucina.food_cost import router as r_cu_foodcost
 from app.routers.cucina.prodotti_vendita import router as r_cu_prodotti
 from app.routers.cucina.ordini_fornitori import router as r_cu_ord_fornitori
-app.include_router(r_cu_ricette, prefix="/api", tags=["Cucina Ricette"])
-app.include_router(r_cu_foodcost, prefix="/api", tags=["Cucina Food Cost"])
-app.include_router(r_cu_prodotti, prefix="/api", tags=["Cucina Prodotti Vendita"])
-app.include_router(r_cu_ord_fornitori, prefix="/api", tags=["Cucina Ordini Fornitori"])
+app.include_router(r_cu_ricette, prefix="/api/cucina", tags=["Cucina Ricette"])
+app.include_router(r_cu_foodcost, prefix="/api/cucina", tags=["Cucina Food Cost"])
+app.include_router(r_cu_prodotti, prefix="/api/cucina", tags=["Cucina Prodotti Vendita"])
+app.include_router(r_cu_ord_fornitori, prefix="/api/cucina", tags=["Cucina Ordini Fornitori"])
 
 # Mount static files for downloads
 docs_path = "./docs"

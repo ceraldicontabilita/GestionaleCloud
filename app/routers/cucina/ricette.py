@@ -12,7 +12,7 @@ import os, uuid, re, shutil, mimetypes
 
 from app.database import Database
 
-router = APIRouter(prefix="/cucina", tags=["Cucina Ricette"])
+router = APIRouter(prefix="", tags=["Cucina Ricette"])
 
 # ─── Modelli ──────────────────────────────────────────────────────────────────
 class Ricetta(BaseModel):

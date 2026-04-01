@@ -11,7 +11,7 @@ import re, uuid
 
 from app.database import Database
 
-router = APIRouter(prefix="/cucina/food-cost", tags=["Cucina Food Cost"])
+router = APIRouter(prefix="/food-cost", tags=["Cucina Food Cost"])
 
 
 # ─── Modelli ──────────────────────────────────────────────────────────────────
