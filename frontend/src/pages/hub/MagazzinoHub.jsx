@@ -5,7 +5,7 @@ const MagazzinoContent = lazy(() => import('../Magazzino.jsx'));
 const InventarioContent = lazy(() => import('../Inventario.jsx'));
 const ArticoliContent = lazy(() => import('../DizionarioArticoli.jsx'));
 const RicercaContent = lazy(() => import('../RicercaProdotti.jsx'));
-const DoppiaVeritaContent = lazy(() => import('../MagazzinoDoppiaVerita.jsx'));
+// MagazzinoDoppiaVerita rimosso (Blocco J2)
 
 const Loading = () => (
   <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>
@@ -29,7 +29,6 @@ export default function MagazzinoHub() {
     if (path.includes('/inventario')) return <InventarioContent />;
     if (path.includes('/articoli') || path.includes('/dizionario')) return <ArticoliContent />;
     if (path.includes('/ricerca-prodotti')) return <RicercaContent />;
-    if (path.includes('/doppia-verita')) return <DoppiaVeritaContent />;
     return <MagazzinoContent />;
   };
 

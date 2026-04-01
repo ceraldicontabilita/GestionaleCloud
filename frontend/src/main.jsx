@@ -307,8 +307,6 @@ const router = createBrowserRouter([
       // === ADMIN ===
       { path: "admin", element: <LazyPage><AdminHub /></LazyPage> },
       { path: "admin/:sezione", element: <LazyPage><AdminHub /></LazyPage> },
-      { path: "regole-contabili", element: <LazyPage><AdminHub /></LazyPage> },
-      { path: "regole-contabili/:regola", element: <LazyPage><AdminHub /></LazyPage> },
       { path: "batch-reprocessing", element: <LazyPage><AdminHub /></LazyPage> },
       { path: "batch-processor", element: <LazyPage><AdminHub /></LazyPage> },
       

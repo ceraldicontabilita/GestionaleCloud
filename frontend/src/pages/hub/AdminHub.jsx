@@ -2,7 +2,6 @@ import React, { lazy, Suspense } from 'react';
 import { useLocation } from 'react-router-dom';
 
 const AdminContent = lazy(() => import('../Admin.jsx'));
-const RegoleContent = lazy(() => import('../RegoleContabili.jsx'));
 const BatchContent = lazy(() => import('../BatchReprocessing.jsx'));
 const BatchProcContent = lazy(() => import('../BatchProcessor.jsx'));
 
@@ -25,7 +24,6 @@ export default function AdminHub() {
   const path = location.pathname;
 
   const getContent = () => {
-    if (path.includes('/regole-contabili')) return <RegoleContent />;
     if (path.includes('/batch-reprocessing')) return <BatchContent />;
     if (path.includes('/batch-processor')) return <BatchProcContent />;
     return <AdminContent />;
