@@ -336,3 +336,17 @@ Applicazione ERP full-stack italiana (React + FastAPI + MongoDB) per gestione az
   - Prima Nota Cassa: DARE=Ricavi Lordi, AVERE=POS→Banca, aspetta estratto conto + chiusura POS sera
   - Prima Nota Banca: aspetta POS cassa, bonifici fornitori, F24, cedolini stipendi
   - Prima Nota Salari: genera F24 contributi + bonifici attesi in banca
+
+## Sessione 2 Aprile 2026 — TopNav + Fix Banca
+
+### TopNav ALTRO_ITEMS
+- Aggiunto in `TopNav.jsx`: Ricettario, Food Cost, Catalogo Ordini, Prodotti Vendita (prima di Admin)
+
+### Bug Fix: Banca non trova associazioni
+- **Root cause 1**: `banca_veloce` usava proiezione MongoDB limitata (escludeva `ragione_sociale`, `fornitore`, `categoria` ecc.) → restituiva movimenti "vuoti"
+- **Root cause 2**: `rapidfuzz` non installato → `analizza_movimenti_smart` crashava con ModuleNotFoundError
+- **Fix**: installato `rapidfuzz==3.14.3` (aggiunto a requirements.txt); rimossa proiezione limitata da `banca_veloce`; cambiato `loadAllData` nel frontend da `banca-veloce` a `analizza` (con fallback assegni da banca-veloce)
+
+### Bug Fix: Loop 30s pagina banca
+- **Root cause**: richiesta F24 in background (`cerca-f24`) prendeva ~35s e causava un re-render visivo della pagina al completamento
+- **Fix**: rimosso il caricamento automatico F24; aggiunto pulsante manuale "Carica F24 pendenti" nel tab F24 di `RiconciliazioneUnificata.jsx`

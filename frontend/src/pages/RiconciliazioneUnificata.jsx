@@ -161,15 +161,16 @@ export default function RiconciliazioneUnificata() {
   const loadAllData = async (limit = 50) => {
     setLoading(true);
     try {
-      // Carica dati primari velocemente (F24 caricato separatamente per non bloccare)
-      const [bancaRes, arubaRes, stipendiRes] = await Promise.all([
-        api.get(`/api/operazioni-da-confermare/smart/banca-veloce?limit=${limit}`).catch(() => ({ data: { movimenti: [], stats: {}, assegni: [] } })),
+      // Carica dati primari: usa /smart/analizza per suggerimenti + assegni da banca-veloce
+      const [analizzaRes, assegniRes, arubaRes, stipendiRes] = await Promise.all([
+        api.get(`/api/operazioni-da-confermare/smart/analizza?limit=${limit}`).catch(() => ({ data: { movimenti: [], stats: {} } })),
+        api.get(`/api/operazioni-da-confermare/smart/banca-veloce?limit=50`).catch(() => ({ data: { movimenti: [], stats: {}, assegni: [] } })),
         api.get('/api/operazioni-da-confermare/aruba-pendenti').catch(() => ({ data: { operazioni: [] } })),
         api.get('/api/operazioni-da-confermare/smart/cerca-stipendi').catch(() => ({ data: { stipendi: [] } }))
       ]);
 
-      const movimenti = bancaRes.data?.movimenti || [];
-      const assegniDaApi = (bancaRes.data?.assegni || []).map(a => ({
+      const movimenti = analizzaRes.data?.movimenti || [];
+      const assegniDaApi = (assegniRes.data?.assegni || []).map(a => ({
         ...a,
         numero_assegno: a.numero_assegno || a.numero,
         data: a.data || a.data_emissione,
@@ -178,7 +179,7 @@ export default function RiconciliazioneUnificata() {
       
       setHasMore(movimenti.length >= limit);
       setCurrentLimit(limit);
-      setStats(bancaRes.data?.stats || {});
+      setStats(assegniRes.data?.stats || analizzaRes.data?.stats || {});
       
       // Movimenti banca (escludi prelievi assegno)
       setMovimentiBanca(movimenti.filter(m => !m.descrizione?.toUpperCase()?.includes('PRELIEVO ASSEGNO')));
@@ -192,34 +193,28 @@ export default function RiconciliazioneUnificata() {
       setStipendiPendenti(stipendi);
       setFattureAruba(aruba);
       
-      // Aggiorna stats iniziali (F24 caricato dopo)
+      // Aggiorna stats iniziali (F24 caricato su richiesta)
       setStats({
         totale: movimenti.length,
         banca: movimenti.length,
         assegni: assegniDaApi.length,
-        f24: 0,  // Caricato dopo
+        f24: 0,  // Caricato su richiesta manuale
         aruba: aruba.length,
         stipendi: stipendi.length,
         documenti: 0, // Caricato dopo
-        fatture_da_pagare: bancaRes.data?.stats?.fatture_da_pagare || 0
+        fatture_da_pagare: assegniRes.data?.stats?.fatture_da_pagare || 0
       });
       
-      // Auto-match stats
+      // Auto-match stats (da analizza)
       setAutoMatchStats({
-        matched: bancaRes.data?.stats?.riconciliati || 0,
-        pending: bancaRes.data?.stats?.non_riconciliati || 0
+        matched: analizzaRes.data?.stats?.riconciliati || assegniRes.data?.stats?.riconciliati || 0,
+        pending: analizzaRes.data?.stats?.non_riconciliati || assegniRes.data?.stats?.non_riconciliati || 0
       });
       
       setLoading(false);
       
-      // Carica F24 in background (lento, ~35s) - non blocca UI
-      api.get(`/api/operazioni-da-confermare/smart/cerca-f24?anno=${anno}`).then(f24Res => {
-        const f24 = f24Res.data?.f24 || [];
-        setF24Pendenti(f24);
-        setStats(prev => ({ ...prev, f24: f24.length }));
-      }).catch(() => {
-        console.warn('F24 non caricati');
-      });
+      // F24: RIMOSSO dal caricamento automatico (prendeva ~35s e causava un "reload visivo")
+      // Caricato solo quando l'utente apre il tab F24 — vedi loadF24OnDemand()
       
       // Carica Documenti Non Associati in background
       api.get('/api/documenti-non-associati/lista?limit=100').then(docsRes => {
@@ -269,6 +264,23 @@ export default function RiconciliazioneUnificata() {
   };
 
   // Auto-riconcilia tutti i movimenti con match esatto
+  const [f24Loading, setF24Loading] = useState(false);
+
+  // Carica F24 solo su richiesta esplicita (evita il "reload visivo" da ~35s)
+  const loadF24OnDemand = async () => {
+    setF24Loading(true);
+    try {
+      const f24Res = await api.get(`/api/operazioni-da-confermare/smart/cerca-f24?anno=${anno}`);
+      const f24 = f24Res.data?.f24 || [];
+      setF24Pendenti(f24);
+      setStats(prev => ({ ...prev, f24: f24.length }));
+    } catch (e) {
+      console.warn('F24 non caricati:', e);
+    } finally {
+      setF24Loading(false);
+    }
+  };
+
   const handleAutoRiconcilia = async () => {
     setProcessing('auto');
     let matched = 0;
@@ -718,7 +730,7 @@ export default function RiconciliazioneUnificata() {
           />
         )}
         {activeTab === 'f24' && (
-          <F24Tab f24={f24Pendenti} processing={processing} />
+          <F24Tab f24={f24Pendenti} processing={processing} onLoadF24={loadF24OnDemand} f24Loading={f24Loading} />
         )}
         {activeTab === 'aruba' && (
           <ArubaTab 
@@ -1092,7 +1104,7 @@ function MovimentoCard({ movimento, onConferma, onIgnora, onElimina, processing,
   );
 }
 
-function F24Tab({ f24, onConfermaF24, processing }) {
+function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading }) {
   const [selezionati, setSelezionati] = useState(new Set());
   const [metodoBatch, setMetodoBatch] = useState('banca');
   const [salvandoBatch, setSalvandoBatch] = useState(false);
@@ -1105,6 +1117,16 @@ function F24Tab({ f24, onConfermaF24, processing }) {
       <div style={{ padding: 60, textAlign: 'center', color: '#94a3b8' }}>
         <div style={{ fontSize: 48, marginBottom: 12, opacity: 0.5 }}>📄</div>
         <div>Nessun F24 pendente da pagare</div>
+        {onLoadF24 && (
+          <button
+            data-testid="btn-carica-f24"
+            onClick={onLoadF24}
+            disabled={f24Loading}
+            style={{ marginTop: 16, padding: '10px 20px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: 8, cursor: f24Loading ? 'wait' : 'pointer', fontWeight: 600 }}
+          >
+            {f24Loading ? '⏳ Caricamento F24...' : '🔍 Carica F24 pendenti'}
+          </button>
+        )}
       </div>
     );
   }

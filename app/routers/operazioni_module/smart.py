@@ -22,7 +22,7 @@ async def banca_veloce(
     
     movimenti = await db.estratto_conto_movimenti.find(
         query,
-        {"_id": 0, "id": 1, "data": 1, "importo": 1, "descrizione": 1, "descrizione_originale": 1, "riconciliato": 1}
+        {"_id": 0}
     ).sort("data", -1).limit(limit).to_list(limit)
     
     assegni = await db.assegni.find(
