@@ -196,6 +196,11 @@ export default function OrdiniFornitori() {
   const [filtroFornitore, setFiltroFornitore] = useState("");
   const [expandedRows, setExpandedRows] = useState({});
 
+  // Tab "Bozze da Tracciabilità"
+  const [bozze, setBozze] = useState([]);
+  const [loadingBozze, setLoadingBozze] = useState(false);
+  const [inviandoBozza, setInviandoBozza] = useState(null);
+
   useEffect(() => {
     loadData();
   }, []);
@@ -203,6 +208,9 @@ export default function OrdiniFornitori() {
   useEffect(() => {
     if (activeTab === "tracciabilita") {
       loadOrdiniTracciabilita(giorniTrac);
+    }
+    if (activeTab === "bozze") {
+      loadBozze();
     }
   }, [activeTab, giorniTrac]);
 
@@ -221,6 +229,41 @@ export default function OrdiniFornitori() {
 
   function toggleRow(id) {
     setExpandedRows(prev => ({ ...prev, [id]: !prev[id] }));
+  }
+
+  async function loadBozze() {
+    setLoadingBozze(true);
+    try {
+      const res = await api.get("/api/ordini-fornitori/bozze");
+      setBozze(res.data || []);
+    } catch (e) {
+      console.error("Errore caricamento bozze:", e);
+      setBozze([]);
+    } finally {
+      setLoadingBozze(false);
+    }
+  }
+
+  async function inviaBozzaWhatsApp(bozza) {
+    const prodotti = bozza.ricette_da_produrre || bozza.items || [];
+    let txt = `*Ordine Tracciabilità* — ${new Date().toLocaleDateString("it-IT")}\n`;
+    if (bozza.reparto) txt += `Reparto: ${bozza.reparto}\n`;
+    if (bozza.note_operatore) txt += `Note: ${bozza.note_operatore}\n\n`;
+    prodotti.forEach(p => {
+      const nome = typeof p === "string" ? p : p.nome || p.ricetta || p.prodotto || JSON.stringify(p);
+      txt += `• ${nome}\n`;
+    });
+    window.open("https://wa.me/?text=" + encodeURIComponent(txt), "_blank");
+
+    setInviandoBozza(bozza.id);
+    try {
+      await api.post(`/api/ordini-fornitori/${bozza.id}/invia`);
+      setBozze(prev => prev.filter(b => b.id !== bozza.id));
+    } catch (e) {
+      console.error("Errore invio bozza:", e);
+    } finally {
+      setInviandoBozza(null);
+    }
   }
 
   async function loadData() {
@@ -436,6 +479,7 @@ export default function OrdiniFornitori() {
           {[
             { id: "storico", label: "📋 Storico Ordini" },
             { id: "tracciabilita", label: "🔍 Da Tracciabilità" },
+            { id: "bozze", label: "📬 Bozze da Tracciabilità" },
           ].map(tab => (
             <button
               key={tab.id}
@@ -774,6 +818,77 @@ export default function OrdiniFornitori() {
               </div>
             );
           })()}
+        </div>
+      )}
+
+      {/* TAB: BOZZE DA TRACCIABILITÀ */}
+      {activeTab === "bozze" && (
+        <div style={styles.card}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <h2 style={styles.header}>Bozze da Tracciabilità</h2>
+            <button
+              onClick={loadBozze}
+              style={styles.btnSecondary}
+              data-testid="btn-ricarica-bozze"
+            >Ricarica</button>
+          </div>
+          {loadingBozze ? (
+            <div style={{ textAlign: 'center', padding: 40, color: '#64748b' }}>Caricamento bozze...</div>
+          ) : bozze.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 40, color: '#64748b' }}>
+              Nessuna bozza in attesa
+            </div>
+          ) : (
+            <table style={styles.table}>
+              <thead>
+                <tr>
+                  <th style={styles.th}>Data</th>
+                  <th style={styles.th}>Reparto</th>
+                  <th style={styles.th}>Prodotti</th>
+                  <th style={styles.th}>Note Operatore</th>
+                  <th style={{ ...styles.th, textAlign: 'center' }}>Azioni</th>
+                </tr>
+              </thead>
+              <tbody>
+                {bozze.map(b => {
+                  const prodotti = b.ricette_da_produrre || b.items || [];
+                  const data = b.data_ordine || b.created_at || "";
+                  const dataFmt = data ? new Date(data).toLocaleDateString("it-IT") : "—";
+                  return (
+                    <tr key={b.id} data-testid={`riga-bozza-${b.id}`}>
+                      <td style={styles.td}>{dataFmt}</td>
+                      <td style={styles.td}>{b.reparto || "—"}</td>
+                      <td style={styles.td}>
+                        <div style={{ fontSize: 12 }}>
+                          {prodotti.slice(0, 3).map((p, i) => (
+                            <span key={i} style={{ display: 'inline-block', background: '#f1f5f9', borderRadius: 4, padding: '2px 6px', marginRight: 4, marginBottom: 2 }}>
+                              {typeof p === "string" ? p : p.nome || p.ricetta || "—"}
+                            </span>
+                          ))}
+                          {prodotti.length > 3 && (
+                            <span style={{ fontSize: 11, color: '#64748b' }}>+{prodotti.length - 3} altri</span>
+                          )}
+                        </div>
+                      </td>
+                      <td style={{ ...styles.td, fontSize: 12, color: '#475569', maxWidth: 180 }}>
+                        {b.note_operatore || "—"}
+                      </td>
+                      <td style={{ ...styles.td, textAlign: 'center' }}>
+                        <button
+                          onClick={() => inviaBozzaWhatsApp(b)}
+                          disabled={inviandoBozza === b.id}
+                          style={{ ...styles.btnSecondary, background: '#dcfce7', color: '#166534', fontSize: 12 }}
+                          data-testid={`btn-invia-bozza-${b.id}`}
+                        >
+                          {inviandoBozza === b.id ? "Invio..." : "Invia WhatsApp"}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
         </div>
       )}
 

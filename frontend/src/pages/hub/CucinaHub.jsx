@@ -5,6 +5,10 @@ const ProdottiContent = lazy(() => import('../DizionarioProdotti.jsx'));
 const CentriCostoContent = lazy(() => import('../CentriCosto.jsx'));
 const UtileContent = lazy(() => import('../UtileObiettivo.jsx'));
 const LearningContent = lazy(() => import('../LearningMachine.jsx'));
+const RicettarioAdmin  = lazy(() => import('../RicettarioAdmin.jsx'));
+const FoodCostAdmin    = lazy(() => import('../FoodCostAdmin.jsx'));
+const CatalogoOrdini   = lazy(() => import('../CatalogoOrdini.jsx'));
+const ProdottiVendita  = lazy(() => import('../ProdottiVendita.jsx'));
 
 const Loading = () => (
   <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>
@@ -28,6 +32,10 @@ export default function CucinaHub() {
     if (path.includes('/centri-costo')) return <CentriCostoContent />;
     if (path.includes('/utile-obiettivo')) return <UtileContent />;
     if (path.includes('/learning')) return <LearningContent />;
+    if (path.includes('/ricettario'))       return <RicettarioAdmin />;
+    if (path.includes('/food-cost'))        return <FoodCostAdmin />;
+    if (path.includes('/catalogo-ordini'))  return <CatalogoOrdini />;
+    if (path.includes('/prodotti-vendita')) return <ProdottiVendita />;
     return <ProdottiContent />;
   };
 

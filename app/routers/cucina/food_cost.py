@@ -65,8 +65,13 @@ def converti_in_kg(quantita: float, unita: str) -> float:
         return quantita / 1000
 
 
-def trova_prodotto_dizionario(nome: str, dizionario: dict) -> Optional[dict]:
+def trova_prodotto_dizionario(nome, dizionario: dict) -> Optional[dict]:
     if not nome:
+        return None
+    # Gestisce sia stringhe che dizionari {"nome": "..."}
+    if isinstance(nome, dict):
+        nome = nome.get("nome") or nome.get("ingrediente") or ""
+    if not nome or not isinstance(nome, str):
         return None
     n = nome.lower().strip()
     # Ricerca esatta
@@ -235,7 +240,8 @@ async def get_ricette_con_costi():
         else:
             ingredienti_totali = len(ricetta.get("ingredienti", []))
             for nome in ricetta.get("ingredienti", []):
-                if trova_prodotto_dizionario(nome, dizionario):
+                nome_str = nome.get("nome", "") if isinstance(nome, dict) else str(nome)
+                if trova_prodotto_dizionario(nome_str, dizionario):
                     ingredienti_con_prezzo += 1
 
         porzioni = ricetta.get("porzioni", 1) or 1
