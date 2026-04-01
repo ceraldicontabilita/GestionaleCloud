@@ -238,7 +238,8 @@ function TabPEC() {
     setLoading(true);
     setRisultato(null);
     try {
-      const res = await api.post(`/api/email-download/processa-fatture-email?giorni=${giorni}`);
+      // Endpoint corretto: POST /api/email-download/pec/download-fatture-sync
+      const res = await api.post(`/api/email-download/pec/download-fatture-sync?since_days=${giorni}`);
       setRisultato(res.data);
       await checkStatus();
       alert('✅ Download PEC completato');
@@ -252,8 +253,9 @@ function TabPEC() {
   const avviaFullDownload = async () => {
     setLoading(true);
     try {
-      await api.post('/api/email-download/start-full-download?process_aruba=true');
-      alert('✅ Download completo avviato in background');
+      // Download background (più giorni in parallelo)
+      await api.post('/api/email-download/pec/download-fatture?since_days=90');
+      alert('✅ Download completo avviato in background (90 giorni). Controlla tra qualche minuto.');
       await checkStatus();
     } catch (e) {
       alert('❌ Errore: ' + (e.response?.data?.detail || e.message));

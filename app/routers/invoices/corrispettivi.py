@@ -1479,14 +1479,15 @@ def generate_corrispettivo_html(corrispettivo: Dict, movimento: Dict = None) -> 
         }}
         .print-btn:hover {{ background: #059669; }}
         @media print {{ 
-            .print-btn {{ display: none; }} 
-            body {{ background: white; padding: 0; }}
-            .scontrino {{ box-shadow: none; border: none; }}
+            .print-btn {{ display: none !important; }} 
+            body {{ background: white !important; padding: 0 !important; display: block !important; }}
+            .scontrino {{ box-shadow: none !important; border: none !important; max-width: 100% !important; margin: 0 auto; }}
+            * {{ -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }}
         }}
     </style>
 </head>
 <body>
-    <button class="print-btn" onclick="window.print()">🖨️ Stampa</button>
+    <button id="print-btn" class="print-btn">&#128424;&#65039; Stampa</button>
     
     <div class="scontrino">
         <div class="header">
@@ -1552,6 +1553,18 @@ def generate_corrispettivo_html(corrispettivo: Dict, movimento: Dict = None) -> 
             <div class="data-ora">{fmt_data(data)}</div>
         </div>
     </div>
+<script>
+(function() {{
+  var btn = document.getElementById('print-btn');
+  if (btn) {{
+    btn.onclick = function() {{
+      window.focus();
+      window.print();
+      return false;
+    }};
+  }}
+}})();
+</script>
 </body>
 </html>"""
     
