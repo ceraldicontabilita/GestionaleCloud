@@ -27,6 +27,19 @@ Applicazione ERP full-stack italiana (React + FastAPI + MongoDB) per gestione az
 - **Fatture ricevute** (collezione invoices) = COSTI/ACQUISTI, NON ricavi
 - **Cespiti** estratti automaticamente da dettaglio_righe_fatture con classificazione keyword
 
+## REGOLA FONDAMENTALE — Anno Globale (AnnoContext)
+> **OGNI saldo, totale, lista o calcolo nell'app DEVE filtrare per l'anno (e opzionalmente il mese) impostato nel selettore globale `AnnoSelector`.**
+>
+> - Il valore dell'anno globale è fornito da `useAnnoGlobale()` (hook React) → variabile `anno`
+> - Il backend riceve l'anno come query param `?anno=XXXX` (e `?mese=XX` quando applicabile)
+> - **NESSUN endpoint deve restituire dati di tutti gli anni mischiati** a meno che non sia esplicitamente richiesto (es. export cumulativo)
+> - Esempi corretti:
+>   - `GET /api/prima-nota/cassa?anno=2025` → solo movimenti 2025
+>   - `GET /api/finanziaria/summary?anno=2025` → saldo calcolato solo sui movimenti 2025
+>   - `GET /api/cedolini?anno=2025&mese=3` → solo cedolini marzo 2025
+> - **Quando si crea un nuovo endpoint** che restituisce saldi o liste, aggiungere SEMPRE il filtro `anno` (e `mese` se la granularità lo richiede)
+> - **Quando si crea un nuovo componente React** che mostra dati finanziari, passare SEMPRE `anno` dall'AnnoContext all'API call
+
 ## Sessione 1 (Precedente)
 - Fix contabilità critica (Bilancio, Veicoli)
 - Correzione sorgente dati F24 (quietanze_f24)
