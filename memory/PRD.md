@@ -299,7 +299,25 @@ Applicazione ERP full-stack italiana (React + FastAPI + MongoDB) per gestione az
 - P2: Credenziali Gmail non valide (IMAP_PASSWORD nel .env) - blocca automazione email (NON priorità corrente)
 
 
-## Sessione 5 (17 Marzo 2026)
+## Sessione corrente (1 Aprile 2026 — Passo 7 + Ciclo Passivo)
+
+### Passo 7 — Widget Cucina in Dashboard
+- **Dashboard.jsx**: aggiunti 3 state (`ordiniCount`, `ricetteCount`, `ricetteTotali`) e useEffect separato che chiama:
+  - `GET /api/ordini-fornitori/bozze/count` → Ordini in attesa
+  - `GET /api/cucina/ricette/stats` → Ricette da approvare + totali
+- Widget "Cucina & Ordini" in fondo alla Dashboard: 3 card cliccabili link a `/ordini-fornitori` e `/ricettario`
+- Dati live: 0 bozze, 206 ricette da approvare, 207 ricette totali
+- Design: solo inline CSS da `lib/utils.js` (COLORS/STYLES, zero Tailwind/Shadcn)
+
+### Ciclo Passivo — CicloPassivoAdmin.jsx
+- **frontend/src/pages/CicloPassivoAdmin.jsx**: nuovo file con 3 tab:
+  - Tab "Upload XML": drop zone + import singolo/batch via `/api/ciclo-passivo/import-integrato[-batch]`
+  - Tab "Scarica PEC": connette a Aruba PEC via `/api/email-download/processa-fatture-email`
+  - Tab "Fatture Importate": tabella fatture da `/api/fatture-ricevute/archivio`
+- **frontend/src/main.jsx**: aggiunto lazy import + route `ciclo-passivo/import`
+- **frontend/src/components/layout/TopNav.jsx**: aggiunta voce `📥 Import Fatture` nel menu "Altro"
+
+
 - **Import CSV BPM**: Importati 3.370 nuovi movimenti bancari (da ElencoEntrateUsciteAndamento_17-03-2026), 30 duplicati saltati. Totale in DB: 7.868 record.
 - **Totali Prima Nota Banca per anno + cumulativo**: L'API `/movimenti` ora restituisce `saldo_anno`, `saldo_precedente`, `saldo` (cumulativo). La UI mostra 5 card: Entrate Anno, Uscite Anno, Saldo Anno, Saldo Cumulativo, Riporto Anni Prec.
 - **Filtri avanzati Prima Nota**: Aggiunti filtri Data Da/A e Importo Min/Max (client-side) alla tabella movimenti sia Cassa che Banca

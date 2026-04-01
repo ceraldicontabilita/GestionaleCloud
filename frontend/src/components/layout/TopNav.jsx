@@ -30,6 +30,7 @@ const ALTRO_ITEMS = [
   { to: '/learning-machine', label: 'Learning Machine' },
   { to: '/strumenti', label: 'Strumenti' },
   { to: '/integrazioni', label: 'Integrazioni' },
+  { to: '/ciclo-passivo/import', label: '📥 Import Fatture' },
   { to: '/admin', label: 'Admin' },
   { to: '/mappa-gestionale', label: 'Come Funziona' },
 ];

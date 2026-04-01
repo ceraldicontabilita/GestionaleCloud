@@ -50,6 +50,7 @@ const PageLoader = () => (
 // === HUB PAGES (consolidated) ===
 const DashboardHub = lazy(() => import("./pages/hub/DashboardHub.jsx"));
 const CicloPassivoHub = lazy(() => import("./pages/hub/CicloPassivoHub.jsx"));
+const CicloPassivoAdmin = lazy(() => import("./pages/CicloPassivoAdmin.jsx"));
 const FornitoriHub = lazy(() => import("./pages/hub/FornitoriHub.jsx"));
 const PrimaNotaHub = lazy(() => import("./pages/hub/PrimaNotaHub.jsx"));
 const RiconciliazioneHub = lazy(() => import("./pages/hub/RiconciliazioneHub.jsx"));
@@ -108,6 +109,7 @@ const router = createBrowserRouter([
       
       // === CICLO PASSIVO & VENDITE ===
       { path: "ciclo-passivo", element: <LazyPage><CicloPassivoHub /></LazyPage> },
+      { path: "ciclo-passivo/import", element: <LazyPage><CicloPassivoAdmin /></LazyPage> },
       { path: "fatture-ricevute", element: <LazyPage><CicloPassivoHub /></LazyPage> },
       { path: "fatture-ricevute/:fornitore", element: <LazyPage><CicloPassivoHub /></LazyPage> },
       { path: "fatture-ricevute/:fornitore/:fattura", element: <LazyPage><CicloPassivoHub /></LazyPage> },
