@@ -134,6 +134,23 @@ Applicazione ERP full-stack italiana (React + FastAPI + MongoDB) per gestione az
 - **Dipendenti P2**: Deduplicazione per CF in list_dipendenti e report ferie-permessi
 - **Fix routing**: Dashboard widget link /dipendenti/giustificativi → /presenze?tab=giustificativi
 
+## Sessione 16 (1 Aprile 2026 - Verifica Flusso Email→XML→Prima Nota)
+
+### Risultati verifica flusso completo
+- **Bug trovato e risolto #1**: Il contenuto degli allegati XML era salvato nel campo `pdf_data` (base64) invece di `content` o `file_path` → aggiornato il monitor per usare `pdf_data` come fallback
+- **Bug trovato e risolto #2**: La regex `/\.(xml|p7m)$/` non matchava file con nomi come `IT...xml.p7m - FPR 8.pdf` (rinominati dal downloader) → estesa la regex per cercare anche `\.xml\.p7m` ovunque nel filename
+- **Bug trovato e risolto #3**: File `.p7m` contengono XML embedded in struttura PKCS#7 → aggiunto `extract_xml_from_p7m()` che trova `<?xml` nell'header binario
+- **Aggiunta `is_p7m_content()`**: riconosce `.p7m` anche quando rinominati con `.pdf`
+- **Aggiunta `decode_content()`**: gestisce base64 stringa o bytes direttamente
+- **Non FatturaPA skip**: `daticert.xml`, `_MT_` e altri file di sistema saltati automaticamente
+
+### Stato sistema confermato
+- ✅ 2 FatturaPA XML reali processate (OMNITECH €150, ELAGLAMOUR €47)
+- ✅ 1 inserita automaticamente in Prima Nota Banca (ELAGLAMOUR - Bonifico MP05)
+- ✅ 21 file non-FatturaPA (daticert, metadati) skippati correttamente
+- ❌ 4 FPR PDF salvati con nome XML → fail graceful (PDF non contiene XML)
+- Sincronizzazione ogni 10 min attiva, credenziali OK
+
 ## Sessione 15 (1 Aprile 2026 - Ottimizzazione Polling Admin + Layout Fix)
 
 ### Ottimizzazioni Admin Page

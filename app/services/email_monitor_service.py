@@ -113,30 +113,53 @@ async def sync_email_documents(db, giorni: int = 30) -> Dict[str, Any]:
         # Processa automaticamente fatture XML scaricate
         xml_processed = 0
         try:
-            from app.services.xml_invoice_processor import process_xml_invoice
+            from app.services.xml_invoice_processor import process_xml_invoice, is_fatturapa_filename, decode_content
             xml_docs = await db["documents_inbox"].find(
-                {"filename": {"$regex": r"\.(xml|p7m)$", "$options": "i"}, "xml_processed": {"$ne": True}},
-                {"_id": 0, "id": 1, "filename": 1, "file_path": 1, "content": 1}
+                {
+                    "$and": [
+                        {"xml_processed": {"$ne": True}},
+                        {"$or": [
+                            {"filename": {"$regex": r"\.(xml|p7m)$", "$options": "i"}},
+                            {"filename": {"$regex": r"\.xml\.p7m", "$options": "i"}},  # es. "IT123.xml.p7m - FPR 8.pdf"
+                            {"filename": {"$regex": r"IT[0-9]{11}_[A-Za-z0-9]+\.xml", "$options": "i"}},  # FatturaPA pattern
+                        ]}
+                    ]
+                },
+                {"_id": 0, "id": 1, "filename": 1, "file_path": 1, "content": 1, "pdf_data": 1}
             ).to_list(100)
             
             for doc in xml_docs:
+                fname = doc.get("filename", "")
+                # Salta subito i file non-FatturaPA
+                if not is_fatturapa_filename(fname):
+                    await db["documents_inbox"].update_one(
+                        {"id": doc["id"]},
+                        {"$set": {"xml_processed": True, "xml_result": {"skipped": True, "reason": "non_fatturapa"}}}
+                    )
+                    continue
                 try:
+                    # Priorità: content → file_path → pdf_data (base64)
                     content = doc.get("content")
                     if not content and doc.get("file_path"):
                         import pathlib
                         fp = pathlib.Path(doc["file_path"])
                         if fp.exists():
                             content = fp.read_bytes()
+                    if not content and doc.get("pdf_data"):
+                        content = decode_content(doc["pdf_data"])
                     if content:
                         if isinstance(content, str):
                             content = content.encode("utf-8")
-                        res = await process_xml_invoice(db, content, doc.get("filename", ""))
+                        res = await process_xml_invoice(db, content, fname)
                         if res.get("success"):
                             xml_processed += 1
-                            await db["documents_inbox"].update_one(
-                                {"id": doc["id"]},
-                                {"$set": {"xml_processed": True, "xml_result": res}}
-                            )
+                            logger.info(f"Fattura XML processata: {fname} → {res.get('fornitore')} €{res.get('importo')}")
+                        else:
+                            logger.debug(f"XML skip {fname}: {res.get('error')}")
+                        await db["documents_inbox"].update_one(
+                            {"id": doc["id"]},
+                            {"$set": {"xml_processed": True, "xml_result": res}}
+                        )
                 except Exception as ex:
                     logger.debug(f"Errore XML {doc.get('filename')}: {ex}")
             

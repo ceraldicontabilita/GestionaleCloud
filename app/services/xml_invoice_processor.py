@@ -5,6 +5,7 @@ inserisce automaticamente in Prima Nota Banca per pagamenti SEPA/banca/carta.
 """
 import xml.etree.ElementTree as ET
 import logging
+import base64
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -22,6 +23,62 @@ PAGAMENTO_BANCARIO_CODES = {
     "MP21": "SEPA Direct Debit B2B",
     "MP23": "PagoPA",
 }
+
+# File da ignorare (non sono FatturaPA)
+FILENAME_SKIP_PATTERNS = ["daticert", "_MT_", "receipt", "segnatura"]
+
+
+def is_fatturapa_filename(filename: str) -> bool:
+    """Verifica che il filename sia una FatturaPA (non metadati/ricevute)."""
+    fn_lower = filename.lower()
+    for pattern in FILENAME_SKIP_PATTERNS:
+        if pattern.lower() in fn_lower:
+            return False
+    # Accetta se il filename contiene il pattern FatturaPA (IT + PIVA + _HASH + .xml/.p7m)
+    import re
+    if re.search(r'IT\d{11}_[A-Za-z0-9]+\.xml', fn_lower):
+        return True
+    if fn_lower.endswith('.xml') or fn_lower.endswith('.p7m'):
+        return True
+    return False
+
+
+def is_p7m_content(filename: str) -> bool:
+    """Verifica se il file è un .p7m (anche se rinominato con .pdf)."""
+    return '.xml.p7m' in filename.lower() or filename.lower().endswith('.p7m')
+
+
+def extract_xml_from_p7m(data: bytes) -> bytes:
+    """
+    Estrae l'XML FatturaPA embedded in un file .p7m (PKCS#7/CMS SignedData).
+    L'XML è incluso nel payload CMS e inizia con '<?xml'.
+    """
+    # Cerca <?xml nel payload
+    idx = data.find(b'<?xml')
+    if idx >= 0:
+        xml_bytes = data[idx:]
+        # Cerca la fine del documento XML - l'ultimo tag di chiusura
+        for closing_tag in [b'</FatturaElettronica>', b'</ns2:FatturaElettronica>', b'</p:FatturaElettronica>']:
+            end_idx = xml_bytes.rfind(closing_tag)
+            if end_idx >= 0:
+                return xml_bytes[:end_idx + len(closing_tag)]
+        # Se non trova il tag di chiusura, restituisce tutto dal <?xml
+        return xml_bytes
+    return None
+
+
+def decode_content(raw_content) -> bytes:
+    """Decodifica il contenuto da base64 o bytes."""
+    if raw_content is None:
+        return None
+    if isinstance(raw_content, bytes):
+        return raw_content
+    if isinstance(raw_content, str):
+        try:
+            return base64.b64decode(raw_content)
+        except Exception:
+            return raw_content.encode("utf-8")
+    return None
 
 
 def parse_fattura_xml(xml_content: bytes) -> dict:
@@ -118,10 +175,28 @@ def parse_fattura_xml(xml_content: bytes) -> dict:
 async def process_xml_invoice(db, xml_content: bytes, filename: str) -> dict:
     """
     Processa una fattura XML:
-    1. Analizza il contenuto
-    2. Inserisce/aggiorna i dati fornitore
-    3. Se il metodo di pagamento è SEPA/banca/carta, inserisce in Prima Nota Banca
+    1. Estrae XML da .p7m se necessario
+    2. Analizza il contenuto FatturaPA
+    3. Inserisce/aggiorna i dati fornitore
+    4. Se il metodo di pagamento è SEPA/banca/carta, inserisce in Prima Nota Banca
     """
+    # Salta file non-FatturaPA (daticert, metadati, ecc.)
+    if not is_fatturapa_filename(filename):
+        return {"success": False, "error": f"File ignorato (non FatturaPA): {filename}"}
+
+    # Decodifica base64 se necessario
+    xml_content = decode_content(xml_content)
+    if not xml_content:
+        return {"success": False, "error": "Contenuto vuoto"}
+
+    # Estrai XML da .p7m (anche se il file è rinominato con estensione diversa)
+    if is_p7m_content(filename):
+        extracted = extract_xml_from_p7m(xml_content)
+        if extracted:
+            xml_content = extracted
+        else:
+            return {"success": False, "error": "Impossibile estrarre XML da .p7m"}
+
     parsed = parse_fattura_xml(xml_content)
     if not parsed:
         return {"success": False, "error": "Impossibile analizzare il file XML"}
