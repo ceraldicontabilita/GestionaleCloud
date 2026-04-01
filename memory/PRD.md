@@ -134,6 +134,20 @@ Applicazione ERP full-stack italiana (React + FastAPI + MongoDB) per gestione az
 - **Dipendenti P2**: Deduplicazione per CF in list_dipendenti e report ferie-permessi
 - **Fix routing**: Dashboard widget link /dipendenti/giustificativi → /presenze?tab=giustificativi
 
+## Sessione 14 (1 Aprile 2026 - Fix Gmail IMAP + Email Integration)
+
+### Fix Integrazione Gmail
+- **Bug P0 risolto**: Email `ceraldigroupsr@gmail.com` (mancava "l") → corretta in `ceraldigroupsrl@gmail.com` in tutti i punti:
+  - Collezione MongoDB `email_accounts`
+  - Collezione MongoDB `settings` (chiave=gmail)
+  - File `.env` (IMAP_USER, EMAIL_USER, EMAIL_ADDRESS)
+- **Fix email_f24.py**: Le credenziali ora lette da `settings` Pydantic invece di `os.environ.get()` (che non leggeva .env)
+- **Tutti e 3 i servizi IMAP ora funzionanti**: `email_document_downloader`, `email_downloader`, `aruba_invoice_parser`
+- **Download PDF confermato**: F24 ravv 1040 2025.pdf e CU 2026 avv Carini.pdf scaricati
+- **Fix UI mittenti**: `ImpostazioniF24Email.jsx` normalizza ora i mittenti stringa in oggetti con `{email, nome, tipo, parole_chiave}`
+- **XML processor già implementato**: `xml_invoice_processor.py` - parsing FatturaPA, inserimento automatico in Prima Nota Banca per pagamenti SEPA/bancari
+- **Admin page**: Confermata stabile, nessun loop di refresh
+
 ## Sessione 13 (1 Aprile 2026 - Widget Dashboard + Portale + Gmail Settings)
 
 #### Widget Agenti in Dashboard

@@ -183,7 +183,16 @@ export default function ImpostazioniF24Email() {
         api.get('/api/f24-email-settings/stato-sistema'),
         api.get('/api/f24-email-settings/log-scansioni?limit=10')
       ]);
-      setSettings(settingsRes.data);
+      // Normalizza mittenti: se sono stringhe, convertili in oggetti
+      const rawSettings = settingsRes.data;
+      if (rawSettings && Array.isArray(rawSettings.mittenti)) {
+        rawSettings.mittenti = rawSettings.mittenti.map(m =>
+          typeof m === 'string'
+            ? { email: m, nome: m, tipo: 'altro', categoria_f24: 'generico', attivo: true, parole_chiave: [] }
+            : m
+        );
+      }
+      setSettings(rawSettings);
       setStato(statoRes.data);
       setLogs(logsRes.data.logs || []);
     } catch (err) {

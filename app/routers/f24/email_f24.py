@@ -12,13 +12,14 @@ from app.services.f24_parser import parse_quietanza_f24
 from app.services.codici_tributo_db import get_info_codice_tributo
 import os
 import logging
+from app.config import settings
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-# Credenziali email (da .env in produzione)
-EMAIL_ADDRESS = os.environ.get("EMAIL_ADDRESS", "ceraldigroupsrl@gmail.com")
-EMAIL_PASSWORD = os.environ.get("EMAIL_PASSWORD", "okzo nmhl wrnq jlcf")
+# Credenziali email - legge da Pydantic settings (che carica .env)
+EMAIL_ADDRESS = settings.EMAIL_ADDRESS or settings.IMAP_USER or settings.EMAIL_USER or "ceraldigroupsrl@gmail.com"
+EMAIL_PASSWORD = settings.EMAIL_PASSWORD or settings.IMAP_PASSWORD or settings.EMAIL_APP_PASSWORD or ""
 
 # Collections
 COLL_EMAIL_LOG = "email_download_log"
