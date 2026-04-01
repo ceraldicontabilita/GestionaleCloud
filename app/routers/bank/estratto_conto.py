@@ -1040,7 +1040,7 @@ async def riconcilia_stipendi_automatico(anno: Optional[int] = Query(None)) -> D
     if anno:
         query["data"] = {"$regex": f"^{anno}"}
     
-    bonifici = await db["estratto_conto"].find(query, {"_id": 0}).to_list(5000)
+    bonifici = await db["estratto_conto_movimenti"].find(query, {"_id": 0}).to_list(5000)
     
     riconciliati = 0
     non_trovati = []
@@ -1098,7 +1098,7 @@ async def riconcilia_stipendi_automatico(anno: Optional[int] = Query(None)) -> D
         
         if dip_trovato:
             # Aggiorna l'estratto conto
-            await db["estratto_conto"].update_one(
+            await db["estratto_conto_movimenti"].update_one(
                 {"id": bonifico.get("id")},
                 {"$set": {
                     "riconciliato_salario": True,
@@ -1177,7 +1177,7 @@ async def get_movimenti_stipendi(
             {"riconciliato_salario": False}
         ]
     
-    movimenti = await db["estratto_conto"].find(query, {"_id": 0}).sort("data", -1).to_list(1000)
+    movimenti = await db["estratto_conto_movimenti"].find(query, {"_id": 0}).sort("data", -1).to_list(1000)
     
     # Raggruppa per dipendente se riconciliato
     per_dipendente = {}

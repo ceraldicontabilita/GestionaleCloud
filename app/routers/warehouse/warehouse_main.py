@@ -815,7 +815,7 @@ async def pulizia_fornitori_esclusi(
             })
         
         # Cerca anche in fornitori
-        fornitori_cursor = db["suppliers"].find(
+        fornitori_cursor = db["fornitori"].find(
             {"esclude_magazzino": True},
             {"_id": 0, "ragione_sociale": 1, "partita_iva": 1, "id": 1}
         )
@@ -949,7 +949,7 @@ async def get_fornitori_esclusi_magazzino(
             })
         
         # Cerca in fornitori
-        async for f in db["suppliers"].find({"esclude_magazzino": True}, {"_id": 0}):
+        async for f in db["fornitori"].find({"esclude_magazzino": True}, {"_id": 0}):
             nome = f.get("ragione_sociale", "")
             # Evita duplicati
             if any(x["ragione_sociale"] == nome for x in fornitori_esclusi):

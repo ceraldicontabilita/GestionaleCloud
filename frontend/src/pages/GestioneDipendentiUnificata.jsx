@@ -1991,7 +1991,7 @@ function TabVeicoli() {
   const load = async () => {
     setLoading(true);
     try {
-      const res = await api.get('/api/noleggio-auto/veicoli');
+      const res = await api.get('/api/noleggio/veicoli');
       setVeicoli(res.data?.veicoli || res.data || []);
     } catch (e) {
       console.error(e);
@@ -2005,7 +2005,7 @@ function TabVeicoli() {
     if (!form.targa) { toast.error('Inserisci la targa'); return; }
     setSaving(true);
     try {
-      await api.post('/api/noleggio-auto/veicoli', form);
+      await api.post('/api/noleggio/veicoli', form);
       toast.success('Veicolo aggiunto');
       setShowForm(false);
       setForm({ targa: '', marca: '', modello: '', anno: '', data_scadenza_noleggio: '', note: '' });

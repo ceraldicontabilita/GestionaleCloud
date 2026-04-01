@@ -657,7 +657,7 @@ async def collega_driver_massivo() -> Dict[str, Any]:
                     ]
                 })
                 if not dipendente:
-                    dipendente = await db["anagrafica_dipendenti"].find_one({
+                    dipendente = await db["employees"].find_one({
                         "$or": [
                             {"veicolo_targa": targa},
                             {"targa_assegnata": targa}
@@ -677,7 +677,7 @@ async def collega_driver_massivo() -> Dict[str, Any]:
                 desc = (verbale.get("descrizione") or verbale.get("note") or "").upper()
                 if desc:
                     # Prendi tutti i dipendenti attivi e cerca nome/cognome nel testo
-                    all_dip = await db["anagrafica_dipendenti"].find(
+                    all_dip = await db["employees"].find(
                         {"stato": {"$ne": "cessato"}},
                         {"_id": 0, "id": 1, "cognome": 1, "nome": 1, "nome_completo": 1}
                     ).to_list(200)

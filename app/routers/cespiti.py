@@ -524,6 +524,22 @@ async def registra_ammortamenti_anno(anno: int) -> Dict[str, Any]:
     }
     await db["movimenti_contabili"].insert_one(movimento.copy())
     
+    # G1: Registra anche in prima_nota_cassa
+    from uuid import uuid4
+    mov_ammort = {
+        "id": str(uuid4()),
+        "tipo": "uscita",
+        "importo": calcolo["totale_ammortamenti"],
+        "data": f"{anno}-12-31",
+        "descrizione": f"Ammortamenti cespiti {anno} ({len(calcolo['ammortamenti'])} beni)",
+        "categoria": "Ammortamenti",
+        "source": "ammortamento_cespiti",
+        "anno": anno,
+        "riconciliato": True,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db["prima_nota_cassa"].insert_one(mov_ammort.copy())
+    
     return {
         "success": True,
         "anno": anno,
@@ -604,6 +620,24 @@ async def dismetti_cespite(input_data: DismissioneInput) -> Dict[str, Any]:
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db["movimenti_contabili"].insert_one(movimento.copy())
+    
+    # G1: Registra plus/minusvalenza in prima nota
+    if abs(plusminusvalenza) > 0:
+        coll_pn = "prima_nota_banca" if input_data.tipo == "vendita" and prezzo_vendita else "prima_nota_cassa"
+        mov_dis = {
+            "id": str(uuid4()),
+            "tipo": "entrata" if plusminusvalenza > 0 else "uscita",
+            "importo": abs(plusminusvalenza),
+            "data": input_data.data_dismissione,
+            "descrizione": f"{'Plusvalenza' if plusminusvalenza > 0 else 'Minusvalenza'} cessione {cespite.get('descrizione','')}",
+            "categoria": "Plusvalenza cespiti" if plusminusvalenza > 0 else "Minusvalenza cespiti",
+            "source": "dismissione_cespite",
+            "cespite_id": input_data.cespite_id,
+            "riconciliato": False,
+            "anno": int(input_data.data_dismissione[:4]),
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        await db[coll_pn].insert_one(mov_dis.copy())
     
     return {
         "success": True,

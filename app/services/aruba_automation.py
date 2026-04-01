@@ -173,7 +173,7 @@ async def find_supplier(db, fornitore_nome: str) -> Optional[Dict[str, Any]]:
                 return supplier
             
             # Fallback su fornitori (già unificata)
-            supplier = await db["suppliers"].find_one(
+            supplier = await db["fornitori"].find_one(
                 {"$or": [
                     {"ragione_sociale": {"$regex": word, "$options": "i"}},
                     {"denominazione": {"$regex": word, "$options": "i"}}

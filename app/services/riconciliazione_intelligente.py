@@ -705,6 +705,14 @@ class RiconciliazioneIntelligente:
             {"$set": update_fattura}
         )
         
+        # E: Propaga su scadenzario_fornitori
+        await self.db["scadenziario_fornitori"].update_many(
+            {"fattura_id": fattura_id, "pagato": {"$ne": True}},
+            {"$set": {"pagato": True, "data_pagamento": data_pagamento,
+                      "metodo_pagamento": metodo, "prima_nota_id": movimento_id,
+                      "updated_at": datetime.now(timezone.utc).isoformat()}}
+        )
+        
         risultato["success"] = True
         risultato["stato_riconciliazione"] = nuovo_stato
         

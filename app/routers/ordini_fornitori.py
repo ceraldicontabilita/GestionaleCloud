@@ -337,7 +337,7 @@ async def send_order_email(order_id: str, data: Dict[str, Any] = Body(default={}
     supplier_email = data.get('email')
     if not supplier_email:
         # Cerca email nel database fornitori
-        supplier = await db["suppliers"].find_one({"partita_iva": order.get('supplier_vat')})
+        supplier = await db["fornitori"].find_one({"partita_iva": order.get('supplier_vat')})
         if supplier:
             supplier_email = supplier.get('email')
     

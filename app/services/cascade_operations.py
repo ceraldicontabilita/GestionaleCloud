@@ -195,8 +195,8 @@ class CascadeOperations:
             risultato["entita_eliminate"]["fatture_segnate"] = r.modified_count
             
             # 5. Elimina il fornitore
-            r1 = await db["suppliers"].delete_one({"id": fornitore_id})
-            r2 = await db["suppliers"].delete_one({"id": fornitore_id})
+            r1 = await db["fornitori"].delete_one({"id": fornitore_id})
+            r2 = await db["fornitori"].delete_one({"id": fornitore_id})
             risultato["entita_eliminate"]["fornitore"] = r1.deleted_count + r2.deleted_count
             
             logger.info(f"CASCADE DELETE fornitore {fornitore_id}: {risultato['entita_eliminate']}")

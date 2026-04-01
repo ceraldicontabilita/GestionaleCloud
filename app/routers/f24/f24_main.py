@@ -704,7 +704,7 @@ async def riconcilia_f24(
     if not f24:
         return {"success": False, "error": "F24 non trovato"}
     
-    movimento = await db["bank_statements"].find_one({"id": movimento_bancario_id}, {"_id": 0})
+    movimento = await db["estratto_conto_movimenti"].find_one({"id": movimento_bancario_id}, {"_id": 0})
     if not movimento:
         return {"success": False, "error": "Movimento bancario non trovato"}
     
@@ -730,7 +730,7 @@ async def riconcilia_f24(
         }}
     )
     
-    await db["bank_statements"].update_one(
+    await db["estratto_conto_movimenti"].update_one(
         {"id": movimento_bancario_id},
         {"$set": {
             "reconciled": True,

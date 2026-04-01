@@ -63,7 +63,7 @@ async def schede_per_fornitore(fornitore_id: str) -> Dict[str, Any]:
     db = Database.get_db()
     
     # Verifica che il fornitore esista
-    fornitore = await db["suppliers"].find_one(
+    fornitore = await db["fornitori"].find_one(
         {"id": fornitore_id},
         {"_id": 0, "id": 1, "nome": 1, "ragione_sociale": 1}
     )

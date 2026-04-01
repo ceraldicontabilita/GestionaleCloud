@@ -140,6 +140,33 @@ async def import_fattura_xml(file: UploadFile = File(...)) -> Dict[str, Any]:
     
     await db[COL_FATTURE_RICEVUTE].insert_one(fattura.copy())
     
+    # F: Gestione Note di Credito TD04/TD08 — storna fattura originale
+    NOTE_CREDITO = ["TD04", "TD08"]
+    tipo_documento_nc = parsed.get("tipo_documento", "TD01")
+    if tipo_documento_nc in NOTE_CREDITO:
+        rif_numero = parsed.get("dati_generali", {}).get("numero_fattura_riferimento")
+        if rif_numero and partita_iva:
+            fattura_orig = await db[COL_FATTURE_RICEVUTE].find_one({
+                "$or": [
+                    {"numero_documento": rif_numero, "fornitore_partita_iva": partita_iva},
+                    {"invoice_number": rif_numero, "supplier_vat": partita_iva}
+                ]
+            })
+            if fattura_orig:
+                importo_nc = float(parsed.get("total_amount", 0))
+                importo_orig = float(fattura_orig.get("importo_totale") or fattura_orig.get("total_amount", 0))
+                await db[COL_FATTURE_RICEVUTE].update_one(
+                    {"id": fattura_orig["id"]},
+                    {"$set": {"ha_nota_credito": True,
+                              "importo_stornato": importo_nc,
+                              "importo_residuo": round(importo_orig - importo_nc, 2),
+                              "updated_at": datetime.now(timezone.utc).isoformat()}}
+                )
+                await db["scadenziario_fornitori"].update_many(
+                    {"fattura_id": fattura_orig["id"], "pagato": {"$ne": True}},
+                    {"$inc": {"importo": -importo_nc}}
+                )
+    
     num_righe = await salva_dettaglio_righe(db, fattura_id, parsed.get("linee", []))
     
     allegati_salvati = []

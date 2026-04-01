@@ -199,7 +199,7 @@ async def get_riconciliazione_pos_mensile(
     # Ottieni movimenti bancari POS del mese (e primi giorni mese successivo per sfasamento)
     data_fine_banca = (date(anno, mese, ultimo_giorno) + timedelta(days=5)).isoformat()
     
-    movimenti_banca = await db["estratto_conto"].find({
+    movimenti_banca = await db["estratto_conto_movimenti"].find({
         "data": {"$gte": data_inizio, "$lte": data_fine_banca},
         "$or": [
             {"descrizione": {"$regex": "POS|PDV|INCAS.*P\\.O\\.S", "$options": "i"}},

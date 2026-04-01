@@ -38,7 +38,7 @@ router = APIRouter()
 
 # ==================== COLLECTIONS ====================
 COL_FATTURE = "invoices"  # Consolidato: usa invoices come collezione principale
-COL_FORNITORI = "suppliers"
+COL_FORNITORI = "fornitori"
 COL_RIGHE = "dettaglio_righe_fatture"
 COL_MAGAZZINO = "warehouse_stocks"
 COL_MOVIMENTI_MAG = "warehouse_movements"

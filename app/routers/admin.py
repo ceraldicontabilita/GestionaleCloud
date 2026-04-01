@@ -23,7 +23,7 @@ async def get_stats(
     
     stats = {
         "invoices": await db["invoices"].count_documents({}),
-        "suppliers": await db["suppliers"].count_documents({}),
+        "suppliers": await db["fornitori"].count_documents({}),
         "products": await db["warehouse_inventory"].count_documents({}),
         "employees": await db["employees"].count_documents({}),
         "prima_nota_cassa": await db["prima_nota_cassa"].count_documents({}),

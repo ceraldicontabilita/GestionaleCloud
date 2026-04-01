@@ -36,7 +36,7 @@ async def calcola_indici_bilancio(anno: int) -> Dict[str, Any]:
     disponibilita_liquide_cassa = saldo_cassa.get("saldo_finale", 0) if saldo_cassa else 0
     
     # Banca (estratto conto)
-    saldo_banca = await db["estratto_conto"].aggregate([
+    saldo_banca = await db["estratto_conto_movimenti"].aggregate([
         {"$match": {"data": {"$lte": data_fine}}},
         {"$sort": {"data": -1}},
         {"$limit": 1}

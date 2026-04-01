@@ -181,7 +181,7 @@ async def process_scheda_tecnica_from_pdf(
         
         # Se trovato fornitore, aggiungi alla lista schede del fornitore
         if fornitore_info:
-            await db["suppliers"].update_one(
+            await db["fornitori"].update_one(
                 {"id": fornitore_info["id"]},
                 {
                     "$push": {
@@ -256,7 +256,7 @@ async def find_fornitore_from_email(db, email_from: str) -> Optional[Dict[str, A
         email_clean = email_match.group(1).lower()
     
     # Cerca per email esatta
-    fornitore = await db["suppliers"].find_one(
+    fornitore = await db["fornitori"].find_one(
         {"email": {"$regex": email_clean, "$options": "i"}},
         {"_id": 0, "id": 1, "nome": 1, "ragione_sociale": 1}
     )
@@ -271,7 +271,7 @@ async def find_fornitore_from_email(db, email_from: str) -> Optional[Dict[str, A
     domain_match = re.search(r'@([^.]+)', email_clean)
     if domain_match:
         domain = domain_match.group(1)
-        fornitore = await db["suppliers"].find_one(
+        fornitore = await db["fornitori"].find_one(
             {"$or": [
                 {"nome": {"$regex": domain, "$options": "i"}},
                 {"ragione_sociale": {"$regex": domain, "$options": "i"}}

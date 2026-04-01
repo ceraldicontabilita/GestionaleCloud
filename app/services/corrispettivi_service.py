@@ -39,7 +39,7 @@ class CorrispettiviService:
         self.db = db or Database.get_db()
         self.corrispettivi = self.db["corrispettivi"]
         self.cash_movements = self.db["prima_nota_cassa"]  # Usa collection corretta
-        self.prima_nota = self.db["prima_nota"]
+        self.db["prima_nota_cassa"] = self.db["prima_nota_cassa"]
     
     # ==================== CREATE ====================
     
@@ -385,7 +385,7 @@ class CorrispettiviService:
                 **movement_doc,
                 "id": self._generate_id()  # ID diverso per prima_nota
             }
-            await self.prima_nota.insert_one(prima_nota_doc.copy())
+            await self.db["prima_nota_cassa"].insert_one(prima_nota_doc.copy())
             
             return movement_id
         except Exception as e:

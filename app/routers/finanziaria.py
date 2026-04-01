@@ -198,6 +198,10 @@ async def get_financial_summary(
                 "count": fatt_count,
                 "iva": round(iva_credito, 2)
             },
+            # Campi H1 richiesti dalla specifica
+            "saldo_cassa": round(cassa_entrate - cassa_uscite, 2),
+            "saldo_banca": round(banca_entrate - banca_uscite, 2),
+            "saldo_totale": round((cassa_entrate - cassa_uscite) + (banca_entrate - banca_uscite), 2),
             # Payables/Receivables
             "payables": round(payables, 2),
             "receivables": 0  # Non gestiamo fatture attive per ora

@@ -290,7 +290,7 @@ async def sync_iban_from_invoices() -> Dict[str, Any]:
         supplier = await db[Collections.SUPPLIERS].find_one({"partita_iva": piva})
         
         if not supplier:
-            supplier = await db["suppliers"].find_one({"partita_iva": piva})
+            supplier = await db["fornitori"].find_one({"partita_iva": piva})
             if supplier:
                 supplier["source"] = "fornitori"
         

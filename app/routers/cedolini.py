@@ -785,7 +785,7 @@ async def download_cedolino_pdf(cedolino_id: str):
     
     # Fallback 2: Cerca in payslips legacy
     if not pdf_data:
-        payslip = await db["payslips"].find_one({"id": cedolino_id}, {"pdf_data": 1, "filename": 1})
+        payslip = await db["cedolini"].find_one({"id": cedolino_id}, {"pdf_data": 1, "filename": 1})
         if payslip and payslip.get("pdf_data"):
             pdf_data = payslip["pdf_data"]
             filename = payslip.get("filename")

@@ -608,7 +608,7 @@ async def crea_scrittura(db, data: str, ref: str, righe: List[Dict], tipo: str =
     if abs(total_dare - total_avere) > 0.01:
         raise HTTPException(status_code=400, detail=f"Non bilanciato: DARE {total_dare} ≠ AVERE {total_avere}")
     
-    await db["prima_nota"].insert_one({
+    await db["prima_nota_cassa"].insert_one({
         "id": move_id, "date": data, "ref": ref, "journal_type": tipo,
         "total_debit": round_currency(total_dare), "total_credit": round_currency(total_avere),
         "state": "posted", "created_at": now
@@ -1081,7 +1081,7 @@ async def registra_f24(f24: F24Create) -> Dict[str, Any]:
         "move_id": move_id,
         "created_at": now
     }
-    await db["f24"].insert_one(doc)
+    await db["f24_unificato"].insert_one(doc)
     
     # Aggiorna scadenze calendario
     for tributo in f24.tributi:
@@ -1110,7 +1110,7 @@ async def storico_f24(anno: int = Query(None)) -> Dict[str, Any]:
     if anno:
         query["data_versamento"] = {"$regex": f"^{anno}"}
     
-    f24s = await db["f24"].find(query, {"_id": 0}).sort("data_versamento", -1).to_list(500)
+    f24s = await db["f24_unificato"].find(query, {"_id": 0}).sort("data_versamento", -1).to_list(500)
     
     totale_versato = sum(f.get("totale_versato", 0) for f in f24s)
     totale_compensato = sum(f.get("totale_compensato", 0) for f in f24s)

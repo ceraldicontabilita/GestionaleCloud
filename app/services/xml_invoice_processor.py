@@ -137,7 +137,7 @@ async def process_xml_invoice(db, xml_content: bytes, filename: str) -> dict:
         else:
             supplier_filter["codice_fiscale"] = fornitore["codice_fiscale"]
 
-        await db["suppliers"].update_one(
+        await db["fornitori"].update_one(
             supplier_filter,
             {"$set": {
                 "denominazione": fornitore["denominazione"],

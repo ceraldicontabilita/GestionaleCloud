@@ -132,7 +132,7 @@ class DataPropagationService:
         supplier_id = invoice.get("supplier_id")
         if supplier_id:
             try:
-                await self.db["suppliers"].update_one(
+                await self.db["fornitori"].update_one(
                     {"id": supplier_id},
                     {
                         "$inc": {"saldo_aperto": -payment_amount},
@@ -225,7 +225,7 @@ class DataPropagationService:
         result = await self.db[Collections.INVOICES].aggregate(pipeline).to_list(1)
         saldo = result[0]["totale"] if result else 0
         
-        await self.db["suppliers"].update_one(
+        await self.db["fornitori"].update_one(
             {"id": supplier_id},
             {"$set": {
                 "saldo_aperto": saldo,
@@ -237,7 +237,7 @@ class DataPropagationService:
     
     async def recalculate_all_supplier_balances(self) -> Dict[str, Any]:
         """Ricalcola i saldi di tutti i fornitori."""
-        suppliers = await self.db["suppliers"].find({}, {"id": 1, "_id": 0}).to_list(1000)
+        suppliers = await self.db["fornitori"].find({}, {"id": 1, "_id": 0}).to_list(1000)
         
         updated = 0
         for s in suppliers:
@@ -304,11 +304,11 @@ class DataPropagationService:
         
         name = invoice.get("supplier_name") or invoice.get("cedente_denominazione") or ""
         
-        existing = await self.db["suppliers"].find_one({"vat_number": vat})
+        existing = await self.db["fornitori"].find_one({"vat_number": vat})
         
         if existing:
             # Aggiorna statistiche
-            await self.db["suppliers"].update_one(
+            await self.db["fornitori"].update_one(
                 {"vat_number": vat},
                 {
                     "$inc": {"fatture_count": 1},
@@ -334,7 +334,7 @@ class DataPropagationService:
             "created_at": datetime.now(timezone.utc).isoformat()
         }
         
-        await self.db["suppliers"].insert_one(supplier.copy())
+        await self.db["fornitori"].insert_one(supplier.copy())
         logger.info(f"Created supplier {supplier_id} from invoice")
         
         return supplier_id

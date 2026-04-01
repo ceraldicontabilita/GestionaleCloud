@@ -87,8 +87,8 @@ async def get_learning_status():
         # Conta documenti per ogni collezione
         stats = {
             "fatture": await db.invoices.count_documents({}),
-            "fornitori": await db.suppliers.count_documents({}),
-            "cedolini": await db.payslips.count_documents({}),
+            "fornitori": await db["fornitori"].count_documents({}),
+            "cedolini": await db["cedolini"].count_documents({}),
             "f24": await db.f24_payments.count_documents({}),
             "corrispettivi": await db.corrispettivi.count_documents({}),
             "assegni": await db.assegni.count_documents({}),
@@ -198,7 +198,7 @@ async def learn_supplier_patterns(db) -> Dict:
     
     try:
         # Analizza fornitori
-        suppliers = await db.suppliers.find({}).to_list(1000)
+        suppliers = await db["fornitori"].find({}).to_list(1000)
         patterns["total_analyzed"] = len(suppliers)
         
         # Raggruppa per metodo pagamento

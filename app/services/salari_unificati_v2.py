@@ -257,7 +257,7 @@ async def processa_cedolino_v2(
                     dati_extra[mapped_key] = float(val)
         
         # --- 1. Anagrafica dipendente ---
-        dipendente = await db["anagrafica_dipendenti"].find_one({"codice_fiscale": cf})
+        dipendente = await db["employees"].find_one({"codice_fiscale": cf})
         
         if dipendente:
             dipendente_id = dipendente.get("id")
@@ -293,7 +293,7 @@ async def processa_cedolino_v2(
             if iban and iban != dipendente.get("iban"):
                 update_anagrafica["iban"] = iban
             
-            await db["anagrafica_dipendenti"].update_one(
+            await db["employees"].update_one(
                 {"codice_fiscale": cf},
                 {"$set": update_anagrafica}
             )
@@ -319,7 +319,7 @@ async def processa_cedolino_v2(
                 "source": "auto_cedolino_v2",
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
-            await db["anagrafica_dipendenti"].insert_one(dict(nuova).copy())
+            await db["employees"].insert_one(dict(nuova).copy())
         
         result["dipendente_id"] = dipendente_id
         
@@ -591,7 +591,7 @@ async def get_saldo_completo_dipendente(
     else:
         return {"errore": "Specificare codice_fiscale o dipendente_id"}
     
-    dipendente = await db["anagrafica_dipendenti"].find_one(query_dip, {"_id": 0})
+    dipendente = await db["employees"].find_one(query_dip, {"_id": 0})
     if not dipendente:
         return {"errore": "Dipendente non trovato"}
     
@@ -703,7 +703,7 @@ async def get_riepilogo_salari_tutti(db, anno: int = None) -> Dict[str, Any]:
     if not anno:
         anno = datetime.now().year
     
-    dipendenti = await db["anagrafica_dipendenti"].find(
+    dipendenti = await db["employees"].find(
         {"stato": {"$ne": "cessato"}},
         {"_id": 0}
     ).sort("cognome", 1).to_list(200)

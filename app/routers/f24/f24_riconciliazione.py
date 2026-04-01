@@ -187,6 +187,33 @@ async def upload_f24_commercialista(
     
     await db[COLL_F24_COMMERCIALISTA].insert_one(documento.copy())
     
+    # D: Crea movimento in prima_nota_banca all'upload F24
+    data_vers = parsed.get("dati_generali", {}).get("data_versamento")
+    saldo = float(parsed.get("totali", {}).get("saldo_netto", 0) or
+                  parsed.get("totali", {}).get("saldo_finale", 0))
+    if saldo > 0:
+        codici = parsed.get("codici_univoci", [])[:4]
+        desc = f"F24 {data_vers[:7] if data_vers else ''} - {', '.join(codici) if codici else 'vari'}"
+        mov_f24 = {
+            "id": str(uuid.uuid4()),
+            "tipo": "uscita",
+            "importo": saldo,
+            "data": (data_vers or datetime.now().strftime("%Y-%m-%d"))[:10],
+            "descrizione": desc,
+            "categoria": "F24",
+            "source": "f24_upload",
+            "riferimento_id": file_id,
+            "f24_id": file_id,
+            "codici_tributo": parsed.get("codici_univoci", []),
+            "has_ravvedimento": parsed.get("has_ravvedimento", False),
+            "riconciliato": False,
+            "anno": int(data_vers[:4]) if data_vers and len(data_vers) >= 4 else datetime.now().year,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        await db["prima_nota_banca"].insert_one(mov_f24.copy())
+        await db[COLL_F24_COMMERCIALISTA].update_one(
+            {"id": file_id}, {"$set": {"prima_nota_banca_id": mov_f24["id"]}})
+    
     # Se è un ravvedimento che sostituisce un F24 precedente, crea alert
     if is_ravvedimento_update and f24_precedente:
         alert = {
@@ -274,6 +301,14 @@ async def riconcilia_con_quietanza(
                     "updated_at": datetime.now(timezone.utc).isoformat()
                 }}
             )
+            # D: Riconcilia il movimento prima_nota_banca associato
+            pnb_id = f24.get("prima_nota_banca_id")
+            if pnb_id:
+                await db["prima_nota_banca"].update_one(
+                    {"id": pnb_id},
+                    {"$set": {"riconciliato": True, "quietanza_id": quietanza_id,
+                              "data_riconciliazione": datetime.now(timezone.utc).isoformat()}}
+                )
             
             risultati["f24_riconciliati"].append({
                 "f24_id": f24["id"],

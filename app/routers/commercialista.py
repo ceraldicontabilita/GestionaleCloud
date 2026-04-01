@@ -156,7 +156,7 @@ async def get_prima_nota_cassa_mensile(anno: int, mese: int) -> Dict[str, Any]:
     
     # If empty, try prima_nota collection with tipo_conto = cassa
     if not movements:
-        cursor = db["prima_nota"].find({
+        cursor = db["prima_nota_cassa"].find({
             "tipo_conto": "cassa",
             "$or": [
                 {"data": {"$regex": f"^{month_prefix}"}},
@@ -698,7 +698,7 @@ Generato il {datetime.now().strftime('%d/%m/%Y %H:%M')}
         zf.writestr(f'riepilogo_iva_{mese_str}.txt', riepilogo)
         
         # 5. DIPENDENTI (se ci sono buste paga)
-        buste_paga = await db["buste_paga"].find({
+        buste_paga = await db["cedolini"].find({
             "mese": mese,
             "anno": anno
         }, {"_id": 0}).to_list(500)
@@ -1077,7 +1077,7 @@ async def schedula_export_mensile(data: Dict[str, Any] = Body(...)) -> Dict[str,
                 "data": {"$gte": data_inizio, "$lte": data_fine}
             }, {"_id": 0}).to_list(100)
             
-            prima_nota = await db["prima_nota"].find({
+            prima_nota = await db["prima_nota_cassa"].find({
                 "data": {"$gte": data_inizio, "$lte": data_fine}
             }, {"_id": 0}).to_list(1000)
             

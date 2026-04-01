@@ -17,7 +17,8 @@ Endpoints:
 from fastapi import APIRouter, HTTPException, status, Query, Depends
 from fastapi.responses import JSONResponse
 from typing import List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+import uuid
 from bson import ObjectId
 import logging
 
@@ -376,6 +377,34 @@ async def riconcilia_mutui_con_estratto_conto(
                         "data_movimento": data_movimento,
                         "status": "riconciliato_automaticamente"
                     })
+                    
+                    # G2: Crea movimento prima_nota_banca per la rata pagata
+                    try:
+                        mov_mutuo = {
+                            "id": str(uuid.uuid4()),
+                            "tipo": "uscita",
+                            "importo": rata["importo_totale"],
+                            "data": data_movimento,
+                            "descrizione": (f"Rata mutuo {mutuo.get('nome', mutuo_id)} n.{rata['numero_rata']} "
+                                            f"(cap: {rata.get('quota_capitale', 0):.2f} | "
+                                            f"int: {rata.get('quota_interessi', 0):.2f})"),
+                            "categoria": "Rata mutuo",
+                            "source": "mutuo_rata",
+                            "mutuo_id": mutuo_id,
+                            "rata_numero": rata["numero_rata"],
+                            "quota_capitale": rata.get("quota_capitale", 0),
+                            "quota_interessi": rata.get("quota_interessi", 0),
+                            "riconciliato": True,
+                            "anno": int(data_movimento[:4]) if data_movimento else datetime.now().year,
+                            "created_at": datetime.now(timezone.utc).isoformat()
+                        }
+                        await db["prima_nota_banca"].insert_one(mov_mutuo.copy())
+                        await db.mutui.update_one(
+                            {"mutuo_id": mutuo_id, "rate.numero_rata": rata["numero_rata"]},
+                            {"$set": {"rate.$.prima_nota_banca_id": mov_mutuo["id"]}}
+                        )
+                    except Exception as e_mutuo:
+                        logger.warning(f"Prima nota mutuo fallita: {e_mutuo}")
                     
                 else:
                     # Nessun match - richiede riconciliazione manuale

@@ -3,7 +3,8 @@ Invoice service.
 Handles invoice import, management, and business logic.
 """
 from typing import Dict, Any, List, Optional
-from datetime import datetime, date
+from datetime import datetime, date, timezone
+import uuid
 import hashlib
 import logging
 
@@ -510,6 +511,39 @@ class InvoiceService:
         
         # Return updated invoice
         updated_invoice = await self.get_invoice(invoice_id)
+        
+        # E: Propaga pagamento su prima_nota e scadenzario
+        try:
+            metodi_cassa = ["contanti", "cassa", "contante", "cash"]
+            collection_pn = "prima_nota_cassa" if (payment_method or "").lower() in metodi_cassa \
+                else "prima_nota_banca"
+            fattura = await self.db["invoices"].find_one({"id": invoice_id}, {"_id": 0})
+            if fattura:
+                mov = {
+                    "id": str(uuid.uuid4()),
+                    "tipo": "uscita",
+                    "importo": amount,
+                    "data": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+                    "descrizione": f"Pag. fatt. {fattura.get('invoice_number','N/D')} - {(fattura.get('supplier_name') or '')[:30]}",
+                    "categoria": "Pagamento fornitore",
+                    "source": "pagamento_fattura",
+                    "riferimento_id": invoice_id,
+                    "fornitore_piva": fattura.get("supplier_vat") or fattura.get("fornitore_partita_iva"),
+                    "metodo_pagamento": payment_method,
+                    "riconciliato": False,
+                    "anno": datetime.now().year,
+                    "created_at": datetime.now(timezone.utc).isoformat()
+                }
+                await self.db[collection_pn].insert_one(mov.copy())
+                await self.db["scadenziario_fornitori"].update_many(
+                    {"fattura_id": invoice_id, "pagato": {"$ne": True}},
+                    {"$set": {"pagato": True, "data_pagamento": mov["data"],
+                              "metodo_pagamento": payment_method,
+                              "prima_nota_id": mov["id"],
+                              "updated_at": datetime.now(timezone.utc).isoformat()}}
+                )
+        except Exception as e:
+            logger.warning(f"Propagazione prima nota fallita per {invoice_id}: {e}")
         
         logger.info(
             f"✅ Payment recorded: {invoice_id} - "

@@ -288,7 +288,7 @@ async def match_fatture_con_estratto_conto(db) -> Dict[str, Any]:
         
         # Cerca in estratto conto per importo (negativo = uscita) e fornitore in descrizione
         # Tolleranza importo: ±1€
-        movimento = await db["estratto_conto"].find_one({
+        movimento = await db["estratto_conto_movimenti"].find_one({
             "$and": [
                 {"tipo": "uscita"},
                 {"importo": {"$gte": importo - 1, "$lte": importo + 1}},
@@ -313,7 +313,7 @@ async def match_fatture_con_estratto_conto(db) -> Dict[str, Any]:
                 }}
             )
             
-            await db["estratto_conto"].update_one(
+            await db["estratto_conto_movimenti"].update_one(
                 {"id": movimento["id"]},
                 {"$set": {
                     "fattura_id": fattura["id"],

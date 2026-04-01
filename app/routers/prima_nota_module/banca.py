@@ -28,7 +28,11 @@ async def list_prima_nota_banca(
     query = {"status": {"$nin": ["deleted", "archived"]}}
     
     if anno:
-        query["data"] = {"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31"}
+        query["$or"] = [
+            {"anno": anno},
+            {"anno": {"$exists": False}, "data": {"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31"}},
+            {"anno": None, "data": {"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31"}}
+        ]
     
     if data_da:
         query.setdefault("data", {})["$gte"] = data_da

@@ -476,6 +476,65 @@ async def run_full_sync(db) -> Dict[str, Any]:
         except Exception as e:
             logger.error(f"Errore aggiornamento ricette: {e}")
         
+        # Step 7 (I): Alert fatture scadute
+        try:
+            from datetime import date as _date
+            oggi_str = _date.today().isoformat()
+            scadute = await db["scadenziario_fornitori"].count_documents({
+                "pagato": {"$ne": True}, "data_scadenza": {"$lt": oggi_str}
+            })
+            if scadute > 0:
+                await db["scadenziario_fornitori"].update_many(
+                    {"pagato": {"$ne": True}, "data_scadenza": {"$lt": oggi_str}},
+                    {"$set": {"stato": "scaduta", "urgente": True}}
+                )
+                results["fatture_scadute"] = scadute
+                logger.warning(f"⚠️ {scadute} fatture scadute non pagate")
+        except Exception as e:
+            logger.error(f"Errore controllo scadenze: {e}")
+        
+        # Step 8 (I): Riconcilia POS Nexi con accrediti bancari (±3 giorni, ±1€)
+        try:
+            from datetime import date as _date2, timedelta, datetime as _dt
+            pos_pendenti = await db["prima_nota_banca"].find({
+                "source": "corrispettivo_pos",
+                "riconciliato": {"$ne": True},
+                "data": {"$gte": (_date2.today() - timedelta(days=7)).isoformat()}
+            }, {"_id": 0}).to_list(100)
+            pos_ric = 0
+            for pos in pos_pendenti:
+                importo = float(pos.get("importo", 0))
+                data_pos = pos.get("data", "")
+                if not importo or not data_pos:
+                    continue
+                data_base = _dt.strptime(data_pos, "%Y-%m-%d")
+                data_min = (data_base - timedelta(days=1)).strftime("%Y-%m-%d")
+                data_max = (data_base + timedelta(days=4)).strftime("%Y-%m-%d")
+                accredito = await db["estratto_conto_movimenti"].find_one({
+                    "data": {"$gte": data_min, "$lte": data_max},
+                    "importo": {"$gte": importo - 1, "$lte": importo + 1},
+                    "riconciliato": {"$ne": True},
+                    "descrizione": {"$regex": "NEXI|POS|PAGAMENTI ELETTRONICI", "$options": "i"}
+                })
+                if accredito:
+                    await db["prima_nota_banca"].update_one(
+                        {"id": pos["id"]},
+                        {"$set": {"riconciliato": True,
+                                  "data_riconciliazione": _date2.today().isoformat(),
+                                  "movimento_estratto_conto_id": str(accredito.get("id", ""))}}
+                    )
+                    await db["estratto_conto_movimenti"].update_one(
+                        {"_id": accredito["_id"]},
+                        {"$set": {"riconciliato": True, "riconciliato_con": "pos_nexi",
+                                  "prima_nota_id": pos["id"]}}
+                    )
+                    pos_ric += 1
+            if pos_ric > 0:
+                results["pos_riconciliati"] = pos_ric
+                logger.info(f"📱 POS riconciliati automaticamente: {pos_ric}")
+        except Exception as e:
+            logger.error(f"Errore riconciliazione POS: {e}")
+        
         _last_sync = results["timestamp"]
         _sync_stats["total_syncs"] += 1
         _sync_stats["documents_downloaded"] += results["email_sync"].get("new_documents", 0)

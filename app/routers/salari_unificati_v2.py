@@ -258,7 +258,7 @@ async def get_ferie_rol_tutti(
     if not anno:
         anno = dt.now().year
     
-    dipendenti = await db["anagrafica_dipendenti"].find(
+    dipendenti = await db["employees"].find(
         {"stato": {"$ne": "cessato"}},
         {"_id": 0}
     ).sort("cognome", 1).to_list(200)

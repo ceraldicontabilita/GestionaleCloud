@@ -57,7 +57,7 @@ async def export_suppliers(
     """Export fornitori in Excel o JSON."""
     db = Database.get_db()
     
-    suppliers = await db["suppliers"].find({}, {"_id": 0}).sort("denominazione", 1).to_list(5000)
+    suppliers = await db["fornitori"].find({}, {"_id": 0}).sort("denominazione", 1).to_list(5000)
     
     if format == "json":
         return {"suppliers": suppliers, "count": len(suppliers)}

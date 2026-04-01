@@ -299,7 +299,7 @@ async def create_journal_entry(entry: JournalEntry) -> Dict[str, Any]:
         "state": "posted",
         "created_at": now
     }
-    await db["prima_nota"].insert_one(move_doc.copy())
+    await db["prima_nota_cassa"].insert_one(move_doc.copy())
     
     # Salva righe
     line_docs = []

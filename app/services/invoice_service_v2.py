@@ -42,7 +42,7 @@ class InvoiceServiceV2:
     def __init__(self, db=None):
         self.db = db or Database.get_db()
         self.invoices = self.db["invoices"]
-        self.suppliers = self.db["suppliers"]  # Unificato su fornitori
+        self.db["fornitori"] = self.db["fornitori"]  # Unificato su fornitori
         self.warehouse_movements = self.db["warehouse_movements"]
         self.accounting_entries = self.db["accounting_entries"]
         self.cash_movements = self.db["prima_nota_cassa"]  # Usa collection corretta
@@ -351,7 +351,7 @@ class InvoiceServiceV2:
         
         # 6. Aggiorna saldo fornitore
         if invoice.get("supplier_id"):
-            await self.suppliers.update_one(
+            await self.db["fornitori"].update_one(
                 {"id": invoice["supplier_id"]},
                 {"$inc": {"saldo_aperto": -amount}}
             )
@@ -373,11 +373,11 @@ class InvoiceServiceV2:
         if not vat:
             return None
         
-        existing = await self.suppliers.find_one({"vat_number": vat})
+        existing = await self.db["fornitori"].find_one({"vat_number": vat})
         
         if existing:
             # Aggiorna statistiche
-            await self.suppliers.update_one(
+            await self.db["fornitori"].update_one(
                 {"vat_number": vat},
                 {
                     "$inc": {"fatture_count": 1},
@@ -398,7 +398,7 @@ class InvoiceServiceV2:
             "created_at": datetime.now(timezone.utc).isoformat()
         }
         
-        await self.suppliers.insert_one(supplier_doc.copy())
+        await self.db["fornitori"].insert_one(supplier_doc.copy())
         return supplier_doc["id"]
     
     def _generate_id(self) -> str:

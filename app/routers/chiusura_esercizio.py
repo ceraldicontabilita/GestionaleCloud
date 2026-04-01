@@ -117,7 +117,7 @@ async def verifica_preliminare_chiusura(anno: int) -> Dict[str, Any]:
         completamenti.append(f"Ammortamenti registrati per {ammortamenti_anno} cespiti")
     
     # 6. Verifica riconciliazione bancaria
-    movimenti_banca = await db["estratto_conto"].count_documents({
+    movimenti_banca = await db["estratto_conto_movimenti"].count_documents({
         "data": {"$regex": f"^{anno}"}
     })
     if movimenti_banca == 0:

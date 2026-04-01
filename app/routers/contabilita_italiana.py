@@ -352,7 +352,7 @@ async def crea_scrittura_contabile(db, data: str, ref: str, righe: List[Dict], t
         raise HTTPException(status_code=400, detail=f"Scrittura non bilanciata: DARE {total_dare} ≠ AVERE {total_avere}")
     
     # Header
-    await db["prima_nota"].insert_one({
+    await db["prima_nota_cassa"].insert_one({
         "id": move_id,
         "date": data,
         "ref": ref,

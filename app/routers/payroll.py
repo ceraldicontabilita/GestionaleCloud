@@ -26,7 +26,7 @@ async def get_prima_nota(
 ) -> List[Dict[str, Any]]:
     """Get prima nota entries."""
     db = Database.get_db()
-    entries = await db["prima_nota"].find({}, {"_id": 0}).sort("date", -1).to_list(500)
+    entries = await db["prima_nota_cassa"].find({}, {"_id": 0}).sort("date", -1).to_list(500)
     return entries
 
 
@@ -43,7 +43,7 @@ async def create_prima_nota(
     db = Database.get_db()
     data["id"] = str(uuid4())
     data["created_at"] = datetime.now(timezone.utc)
-    await db["prima_nota"].insert_one(data.copy())
+    await db["prima_nota_cassa"].insert_one(data.copy())
     return {"message": "Entry created", "id": data["id"]}
 
 
@@ -58,7 +58,7 @@ async def update_note(
 ) -> Dict[str, str]:
     """Update prima nota entry note."""
     db = Database.get_db()
-    await db["prima_nota"].update_one({"id": entry_id}, {"$set": {"note": note}})
+    await db["prima_nota_cassa"].update_one({"id": entry_id}, {"$set": {"note": note}})
     return {"message": "Note updated"}
 
 
@@ -71,7 +71,7 @@ async def delete_all_prima_nota(
 ) -> Dict[str, str]:
     """Delete all prima nota entries."""
     db = Database.get_db()
-    result = await db["prima_nota"].delete_many({})
+    result = await db["prima_nota_cassa"].delete_many({})
     return {"message": f"Deleted {result.deleted_count} entries"}
 
 
@@ -201,7 +201,7 @@ async def import_excel(
             "source": "excel_import"
         }
         
-        await db["prima_nota"].insert_one(doc.copy())
+        await db["prima_nota_cassa"].insert_one(doc.copy())
         imported_count += 1
         
     return {

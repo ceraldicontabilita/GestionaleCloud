@@ -419,7 +419,7 @@ async def get_buste_paga(
     periodo = f"{anno}-{mese}"
     
     # Cerca buste paga esistenti
-    buste = await db["buste_paga"].find(
+    buste = await db["cedolini"].find(
         {"periodo": periodo},
         {"_id": 0}
     ).to_list(1000)
@@ -439,7 +439,7 @@ async def create_busta_paga(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
             raise HTTPException(status_code=400, detail=f"Campo {field} obbligatorio")
     
     # Cerca busta esistente
-    existing = await db["buste_paga"].find_one({
+    existing = await db["cedolini"].find_one({
         "dipendente_id": data["dipendente_id"],
         "periodo": data["periodo"]
     })
@@ -458,7 +458,7 @@ async def create_busta_paga(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     }
     
     if existing:
-        await db["buste_paga"].update_one(
+        await db["cedolini"].update_one(
             {"id": existing["id"]},
             {"$set": busta}
         )
@@ -466,7 +466,7 @@ async def create_busta_paga(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     else:
         busta["id"] = str(uuid.uuid4())
         busta["created_at"] = datetime.now(timezone.utc).isoformat()
-        await db["buste_paga"].insert_one(busta.copy())
+        await db["cedolini"].insert_one(busta.copy())
     
     busta.pop("_id", None)
     return busta

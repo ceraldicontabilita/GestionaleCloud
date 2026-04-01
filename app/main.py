@@ -187,6 +187,7 @@ from app.routers.invoices import (
 )
 # Fatture Ricevute modularizzato
 from app.routers.fatture_module import router as fatture_ricevute_router
+from app.routers.fatture_module.api_tracciabilita import router as r_api_tracciabilita
 
 # --- Sync Relazionale ---
 from app.routers import sync_relazionale
@@ -362,6 +363,7 @@ app.include_router(invoices_main.router, prefix="/api/invoices", tags=["Invoices
 app.include_router(invoices_export.router, prefix="/api/invoices", tags=["Invoices Export"])
 app.include_router(fatture_upload.router, prefix="/api/fatture", tags=["Fatture Upload"])
 app.include_router(fatture_ricevute_router, prefix="/api/fatture-ricevute", tags=["Fatture Ricevute"])
+app.include_router(r_api_tracciabilita, prefix="/api", tags=["API Tracciabilita"])
 app.include_router(corrispettivi.router, prefix="/api/corrispettivi", tags=["Corrispettivi"])
 
 # --- Ciclo Passivo Integrato (XML → Magazzino → Prima Nota → Scadenziario → Riconciliazione) ---
@@ -387,6 +389,7 @@ app.include_router(dashboard.router, prefix="/api/dashboard", tags=["Dashboard"]
 
 # --- Core Routers ---
 app.include_router(suppliers_router, prefix="/api/suppliers", tags=["Suppliers"])
+app.include_router(suppliers_router, prefix="/api/fornitori", tags=["Fornitori"])  # alias canonico
 app.include_router(cash.router, prefix="/api/cash", tags=["Cash Register"])
 app.include_router(chart_of_accounts.router, prefix="/api/chart-of-accounts", tags=["Chart of Accounts"])
 app.include_router(notifications.router, prefix="/api/notifications", tags=["Notifications"])

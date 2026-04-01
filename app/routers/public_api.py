@@ -603,7 +603,7 @@ async def create_cash(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
 async def list_bank(skip: int = 0, limit: int = 10000) -> List[Dict[str, Any]]:
     """Lista movimenti banca."""
     db = Database.get_db()
-    return await db["bank_statements"].find({}, {"_id": 0}).sort("date", -1).skip(skip).limit(limit).to_list(limit)
+    return await db["estratto_conto_movimenti"].find({}, {"_id": 0}).sort("date", -1).skip(skip).limit(limit).to_list(limit)
 
 
 @router.post("/bank/statements")
@@ -619,7 +619,7 @@ async def create_bank(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
         "category": data.get("category", ""),
         "created_at": datetime.now(timezone.utc).isoformat()
     }
-    await db["bank_statements"].insert_one(bank.copy())
+    await db["estratto_conto_movimenti"].insert_one(bank.copy())
     bank.pop("_id", None)
     return bank
 
@@ -1172,7 +1172,7 @@ async def api_v1_movimenti(
     if data_a:
         query.setdefault("data", {})["$lte"] = data_a
     
-    movimenti = await db["prima_nota"].find(query, {"_id": 0}).sort("data", -1).limit(limit).to_list(limit)
+    movimenti = await db["prima_nota_cassa"].find(query, {"_id": 0}).sort("data", -1).limit(limit).to_list(limit)
     return {"data": movimenti, "total": len(movimenti)}
 
 
@@ -1190,6 +1190,6 @@ async def api_v1_stats(
         "anno": anno,
         "fatture_ricevute": await db["invoices"].count_documents({"data_ricezione": {"$regex": f"^{anno}"}}),
         "fatture_emesse": await db["fatture_emesse"].count_documents({"data_fattura": {"$regex": f"^{anno}"}}),
-        "movimenti": await db["prima_nota"].count_documents({"data": {"$regex": f"^{anno}"}}),
+        "movimenti": await db["prima_nota_cassa"].count_documents({"data": {"$regex": f"^{anno}"}}),
         "dipendenti_attivi": await db["employees"].count_documents({"status": {"$in": ["active", "attivo"]}})
     }

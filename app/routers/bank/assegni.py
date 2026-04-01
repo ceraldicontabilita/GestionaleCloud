@@ -642,26 +642,100 @@ async def emetti_assegno(
         }}
     )
     
+    # C1: Registra movimento in prima_nota_banca all'emissione
+    assegno_upd = await db[COLLECTION_ASSEGNI].find_one(
+        {"$or": [{"id": assegno_id}, {"numero": assegno_id}]}, {"_id": 0}
+    )
+    if assegno_upd and assegno_upd.get("importo"):
+        numero = assegno_upd.get("numero", assegno_id)
+        parti = [f"Assegno n.{numero}"]
+        if assegno_upd.get("numero_fattura"):
+            parti.append(f"Fatt.{assegno_upd['numero_fattura']}")
+        if assegno_upd.get("beneficiario"):
+            parti.append(assegno_upd["beneficiario"][:30])
+        mov = {
+            "id": str(uuid.uuid4()),
+            "tipo": "uscita",
+            "importo": float(assegno_upd["importo"]),
+            "data": data_emissione,
+            "descrizione": " - ".join(parti),
+            "categoria": "Addebito assegno",
+            "source": "assegno_emesso",
+            "riferimento_id": assegno_upd.get("id"),
+            "assegno_numero": numero,
+            "fattura_id": assegno_upd.get("fattura_collegata"),
+            "fornitore_piva": assegno_upd.get("fornitore_piva"),
+            "riconciliato": False,
+            "anno": int(data_emissione[:4]),
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        await db["prima_nota_banca"].insert_one(mov.copy())
+        await db[COLLECTION_ASSEGNI].update_one(
+            {"$or": [{"id": assegno_id}, {"numero": assegno_id}]},
+            {"$set": {"prima_nota_banca_id": mov["id"]}}
+        )
+    
     return {"message": "Assegno emesso"}
 
 
 @router.post("/{assegno_id}/incassa")
-async def incassa_assegno(assegno_id: str) -> Dict[str, str]:
-    """Segna assegno come incassato."""
+async def incassa_assegno(
+    assegno_id: str,
+    data_incasso: Optional[str] = Body(None),
+    movimento_estratto_conto_id: Optional[str] = Body(None)
+) -> Dict[str, Any]:
+    """Segna assegno come incassato e propaga su fattura, scadenzario, prima nota."""
     db = Database.get_db()
-    
-    result = await db[COLLECTION_ASSEGNI].update_one(
-        {"$or": [{"id": assegno_id}, {"numero": assegno_id}]},
-        {"$set": {
-            "stato": "incassato",
-            "updated_at": datetime.now(timezone.utc).isoformat()
-        }}
+    assegno = await db[COLLECTION_ASSEGNI].find_one(
+        {"$or": [{"id": assegno_id}, {"numero": assegno_id}]}
     )
-    
-    if result.matched_count == 0:
+    if not assegno:
         raise HTTPException(status_code=404, detail="Assegno non trovato")
     
-    return {"message": "Assegno incassato"}
+    data_incasso = data_incasso or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    
+    # 1. Aggiorna stato assegno
+    await db[COLLECTION_ASSEGNI].update_one(
+        {"id": assegno["id"]},
+        {"$set": {"stato": "incassato", "data_incasso": data_incasso,
+                  "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    # 2. Prima nota banca → riconciliata
+    if assegno.get("prima_nota_banca_id"):
+        await db["prima_nota_banca"].update_one(
+            {"id": assegno["prima_nota_banca_id"]},
+            {"$set": {"riconciliato": True, "data_riconciliazione": data_incasso,
+                      "movimento_estratto_conto_id": movimento_estratto_conto_id,
+                      "updated_at": datetime.now(timezone.utc).isoformat()}}
+        )
+    # 3. Fattura → pagata
+    if assegno.get("fattura_collegata"):
+        fid = assegno["fattura_collegata"]
+        await db["invoices"].update_one(
+            {"id": fid},
+            {"$set": {"pagato": True, "data_pagamento": data_incasso,
+                      "metodo_pagamento_effettivo": "assegno",
+                      "assegno_numero": assegno.get("numero"),
+                      "updated_at": datetime.now(timezone.utc).isoformat()}}
+        )
+        # 4. Scadenzario → chiuso
+        await db["scadenziario_fornitori"].update_many(
+            {"fattura_id": fid, "pagato": {"$ne": True}},
+            {"$set": {"pagato": True, "data_pagamento": data_incasso,
+                      "metodo_pagamento": "assegno",
+                      "updated_at": datetime.now(timezone.utc).isoformat()}}
+        )
+    # 5. Estratto conto → riconciliato
+    if movimento_estratto_conto_id:
+        await db["estratto_conto_movimenti"].update_one(
+            {"id": movimento_estratto_conto_id},
+            {"$set": {"riconciliato": True, "riconciliato_con": "assegno",
+                      "assegno_id": assegno["id"],
+                      "riconciliato_at": datetime.now(timezone.utc).isoformat()}}
+        )
+    return {"message": "Assegno incassato",
+            "fattura_chiusa": bool(assegno.get("fattura_collegata")),
+            "prima_nota_riconciliata": bool(assegno.get("prima_nota_banca_id"))}
 
 
 @router.post("/{assegno_id}/annulla")
@@ -1234,6 +1308,37 @@ async def sync_assegni_da_estratto_conto() -> Dict[str, Any]:
             risultati["assegni_esistenti"] += 1
             continue
         
+        # C3: Prima cerca nel carnet se già compilato/emesso
+        assegno_carnet = await db[COLLECTION_ASSEGNI].find_one({
+            "$or": [
+                {"numero": {"$regex": numero_assegno[-8:] if len(numero_assegno) >= 8 else numero_assegno, "$options": "i"}},
+                {"numero": numero_assegno}
+            ],
+            "stato": {"$in": ["compilato", "emesso"]}
+        })
+        if assegno_carnet:
+            data = mov.get("data") or mov.get("data_pagamento")
+            await db[COLLECTION_ASSEGNI].update_one(
+                {"id": assegno_carnet["id"]},
+                {"$set": {"stato": "incassato", "data_incasso": data,
+                          "movimento_estratto_conto_id": mov.get("id"),
+                          "updated_at": datetime.now().isoformat()}}
+            )
+            if assegno_carnet.get("fattura_collegata"):
+                fid = assegno_carnet["fattura_collegata"]
+                await db["invoices"].update_one({"id": fid},
+                    {"$set": {"pagato": True, "data_pagamento": data}})
+                await db["scadenziario_fornitori"].update_many(
+                    {"fattura_id": fid, "pagato": {"$ne": True}},
+                    {"$set": {"pagato": True, "data_pagamento": data}})
+            if assegno_carnet.get("prima_nota_banca_id"):
+                await db["prima_nota_banca"].update_one(
+                    {"id": assegno_carnet["prima_nota_banca_id"]},
+                    {"$set": {"riconciliato": True, "data_riconciliazione": data,
+                              "movimento_estratto_conto_id": mov.get("id")}})
+            risultati["assegni_riconciliati"] = risultati.get("assegni_riconciliati", 0) + 1
+            continue
+        
         # Crea assegno
         importo = abs(float(mov.get("importo", 0)))
         data = mov.get("data") or mov.get("data_pagamento")
@@ -1317,7 +1422,7 @@ async def ricostruisci_dati_assegni() -> Dict[str, Any]:
         "total_amount": 1, "importo_totale": 1, "pagato": 1
     }).to_list(10000)
     
-    fornitori = await db.suppliers.find({}, {
+    fornitori = await db["fornitori"].find({}, {
         "_id": 0, "denominazione": 1, "ragione_sociale": 1, "partita_iva": 1
     }).to_list(10000)
     
@@ -1543,7 +1648,7 @@ async def associa_beneficiari_robusto() -> Dict[str, Any]:
             fatture_by_importo[importo].append(f)
     
     # 3. Carica fornitori per nome
-    fornitori = await db.suppliers.find({}, {"_id": 0}).to_list(10000)
+    fornitori = await db["fornitori"].find({}, {"_id": 0}).to_list(10000)
     fornitori_idx = {}
     for f in fornitori:
         nome = (f.get("ragione_sociale") or f.get("denominazione") or "").upper()

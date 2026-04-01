@@ -380,7 +380,7 @@ async def verifica_metodo_fattura(fattura_id: str) -> Dict:
     fornitore_piva = fattura.get("supplier_vat") or fattura.get("cedente_piva")
     fornitore_info = None
     if fornitore_piva:
-        fornitore_info = await db["suppliers"].find_one(
+        fornitore_info = await db["fornitori"].find_one(
             {"partita_iva": fornitore_piva},
             {"_id": 0, "nome": 1, "metodo_pagamento": 1}
         )

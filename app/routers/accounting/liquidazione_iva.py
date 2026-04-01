@@ -34,7 +34,7 @@ Se negativo = credito da riportare al mese successivo
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from typing import Dict, Any
-from datetime import date
+from datetime import date, datetime, timezone
 import logging
 import io
 
@@ -127,6 +127,52 @@ async def calcola_liquidazione_iva(
             corrispettivi=corrispettivi,
             prev_credit_carry=credito_precedente
         )
+        
+        # G3: Se c'è IVA da versare, crea scadenza F24 automatica
+        saldo_da_versare = result.get("iva_da_versare", 0) or result.get("da_versare", 0)
+        if saldo_da_versare and saldo_da_versare > 0:
+            import calendar
+            mese_scad = (mese % 12) + 1
+            anno_scad = anno + 1 if mese == 12 else anno
+            data_scad = f"{anno_scad}-{mese_scad:02d}-16"
+            esistente_f24 = await db["f24_unificato"].find_one({
+                "codice_tributo": "6006",
+                "periodo_riferimento": f"{mese:02d}/{anno}",
+                "status": {"$ne": "eliminato"}
+            })
+            if not esistente_f24:
+                import uuid
+                scadenza_f24 = {
+                    "id": str(uuid.uuid4()),
+                    "codice_tributo": "6006",
+                    "descrizione": f"IVA mensile {mese:02d}/{anno}",
+                    "periodo_riferimento": f"{mese:02d}/{anno}",
+                    "importo": round(saldo_da_versare, 2),
+                    "data_scadenza": data_scad,
+                    "status": "da_pagare",
+                    "source": "liquidazione_iva_automatica",
+                    "anno": anno, "mese": mese,
+                    "riconciliato": False,
+                    "created_at": datetime.now(timezone.utc).isoformat()
+                }
+                await db["f24_unificato"].insert_one(scadenza_f24.copy())
+                mov_iva = {
+                    "id": str(uuid.uuid4()),
+                    "tipo": "uscita",
+                    "importo": round(saldo_da_versare, 2),
+                    "data": data_scad,
+                    "descrizione": f"IVA da versare {mese:02d}/{anno} - cod.6006",
+                    "categoria": "F24",
+                    "source": "liquidazione_iva",
+                    "f24_id": scadenza_f24["id"],
+                    "codici_tributo": ["6006"],
+                    "riconciliato": False,
+                    "anno": anno_scad,
+                    "created_at": datetime.now(timezone.utc).isoformat()
+                }
+                await db["prima_nota_banca"].insert_one(mov_iva.copy())
+                result["f24_creato"] = True
+                result["f24_scadenza"] = data_scad
         
         return result
         

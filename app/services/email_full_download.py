@@ -967,7 +967,7 @@ async def populate_payslips_pdf_data(db: AsyncIOMotorDatabase) -> Dict[str, int]
     logger.warning("populate_payslips_pdf_data è DEPRECATO. I nuovi flussi usano pdf_data direttamente.")
     
     # Cerca payslips che hanno solo pdf_data mancante (per migrazione)
-    cursor = db["payslips"].find({
+    cursor = db["cedolini"].find({
         "$or": [
             {"pdf_data": None},
             {"pdf_data": ""},

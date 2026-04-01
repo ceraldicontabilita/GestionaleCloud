@@ -108,7 +108,7 @@ async def find_bank_match(db, importo: float, data_documento: str, fornitore: st
                 pass
         
         # Cerca match
-        cursor = db["estratto_conto"].find(query, {"_id": 0}).limit(10)
+        cursor = db["estratto_conto_movimenti"].find(query, {"_id": 0}).limit(10)
         matches = await cursor.to_list(10)
         
         if not matches:
@@ -174,7 +174,7 @@ async def find_multiple_checks_match(db, importo: float, data_documento: str, fo
         if data_min and data_max:
             query["data"] = {"$gte": data_min, "$lte": data_max}
         
-        cursor = db["estratto_conto"].find(query, {"_id": 0}).limit(100)
+        cursor = db["estratto_conto_movimenti"].find(query, {"_id": 0}).limit(100)
         assegni = await cursor.to_list(100)
         
         if not assegni:
@@ -435,7 +435,7 @@ async def fetch_aruba_invoices(
                 email_date = msg.get("Date", "")
                 
                 # Cerca fornitore nel database per proporre metodo pagamento
-                fornitore_db = await db["suppliers"].find_one({
+                fornitore_db = await db["fornitori"].find_one({
                     "$or": [
                         {"ragione_sociale": {"$regex": invoice_data["fornitore"][:30], "$options": "i"}},
                         {"ragione_sociale": {"$regex": invoice_data["fornitore"].split()[0], "$options": "i"}}

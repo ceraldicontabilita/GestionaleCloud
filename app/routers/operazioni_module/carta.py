@@ -141,7 +141,7 @@ async def esegui_supervisione() -> Dict[str, Any]:
     })
     
     # 4. Fornitori senza metodo pagamento
-    fornitori_senza_metodo = await db.suppliers.count_documents({
+    fornitori_senza_metodo = await db["fornitori"].count_documents({
         "$or": [
             {"metodo_pagamento": {"$exists": False}},
             {"metodo_pagamento": {"$in": [None, "", "da_configurare"]}}

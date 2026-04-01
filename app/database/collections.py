@@ -17,7 +17,7 @@ class Collections:
     NOTE_CREDITO = "note_credito"
     
     # === FORNITORI ===
-    FORNITORI = "suppliers"  # Collection UNICA per fornitori
+    FORNITORI = "fornitori"  # Collection UNICA per fornitori (canonica)
     FORNITORI_LEARNING = "fornitori_learning"  # Keywords per classificazione
     SUPPLIER_PAYMENT_HISTORY = "supplier_payment_history"
     SUPPLIER_PAYMENT_METHODS = "supplier_payment_methods"

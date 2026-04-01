@@ -21,7 +21,7 @@ async def lista_operazioni(
     """Lista operazioni da confermare."""
     db = Database.get_db()
     
-    fornitori_cursor = await db["suppliers"].find(
+    fornitori_cursor = await db["fornitori"].find(
         {"metodo_pagamento": {"$exists": True, "$nin": [None, "", "da_confermare", "cassa_da_confermare"]}},
         {"_id": 0, "partita_iva": 1, "vat_number": 1, "metodo_pagamento": 1}
     ).to_list(10000)
@@ -108,7 +108,7 @@ async def conferma_operazione(
     # Aggiorna anche il fornitore nel dizionario
     supplier_vat = fattura.get("supplier_vat") or fattura.get("cedente_piva")
     if supplier_vat:
-        await db["suppliers"].update_one(
+        await db["fornitori"].update_one(
             {"partita_iva": supplier_vat},
             {"$set": {
                 "metodo_pagamento": metodo_pagamento,
@@ -184,7 +184,7 @@ async def get_fornitore_preferenza(fornitore: str) -> Dict[str, Any]:
     """Ottiene preferenza metodo pagamento per fornitore."""
     db = Database.get_db()
     
-    fornitore_doc = await db["suppliers"].find_one(
+    fornitore_doc = await db["fornitori"].find_one(
         {"$or": [
             {"ragione_sociale": {"$regex": fornitore, "$options": "i"}},
             {"denominazione": {"$regex": fornitore, "$options": "i"}},

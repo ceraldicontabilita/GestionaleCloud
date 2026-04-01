@@ -271,7 +271,7 @@ async def find_check_numbers_for_invoice(db, importo: float, data_fattura: str, 
         if data_min and data_max:
             query["data"] = {"$gte": data_min, "$lte": data_max}
         
-        match = await db["estratto_conto"].find_one(query, {"_id": 0})
+        match = await db["estratto_conto_movimenti"].find_one(query, {"_id": 0})
         
         if match:
             # Estrai numero assegno dalla descrizione
@@ -307,7 +307,7 @@ async def find_check_numbers_for_invoice(db, importo: float, data_fattura: str, 
         if data_min and data_max:
             query_multi["data"] = {"$gte": data_min, "$lte": data_max}
         
-        assegni = await db["estratto_conto"].find(query_multi, {"_id": 0}).limit(50).to_list(50)
+        assegni = await db["estratto_conto_movimenti"].find(query_multi, {"_id": 0}).limit(50).to_list(50)
         
         if len(assegni) >= 2:
             for num in [2, 3, 4]:
@@ -399,7 +399,7 @@ async def riconcilia_con_estratto_conto(db, importo: float, data_fattura: str, f
         }
         
         # Cerca nell'estratto conto (senza limite di data)
-        movimenti = await db["estratto_conto"].find(query, {"_id": 0}).limit(50).to_list(50)
+        movimenti = await db["estratto_conto_movimenti"].find(query, {"_id": 0}).limit(50).to_list(50)
         
         best_match = None
         best_score = 0
@@ -1216,13 +1216,13 @@ async def categorize_all_movements() -> Dict[str, Any]:
     
     # Categorizza anche estratto conto
     ec_updated = 0
-    ec_movements = await db["estratto_conto"].find({}).to_list(10000)
+    ec_movements = await db["estratto_conto_movimenti"].find({}).to_list(10000)
     for mov in ec_movements:
         desc = mov.get("descrizione", "") or mov.get("causale", "")
         fornitore = mov.get("fornitore", "")
         categoria = categorize_description(desc, fornitore)
         
-        await db["estratto_conto"].update_one(
+        await db["estratto_conto_movimenti"].update_one(
             {"_id": mov["_id"]},
             {"$set": {"categoria": categoria}}
         )

@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 # Collections
 COL_FATTURE = "invoices"
-COL_FORNITORI = "suppliers"
+COL_FORNITORI = "fornitori"
 COL_EMAIL_DOCS = "documents_inbox"
 COL_PRIMA_NOTA_BANCA = "prima_nota_banca"
 COL_PRIMA_NOTA_CASSA = "prima_nota_cassa"

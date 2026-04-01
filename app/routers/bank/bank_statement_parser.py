@@ -273,7 +273,7 @@ async def import_bank_statement(
                 skipped += 1
                 continue
             
-            existing = await db["prima_nota"].find_one({
+            existing = await db["prima_nota_cassa"].find_one({
                 "data": data_contabile,
                 "importo": importo,
                 "tipo": "banca"
@@ -301,7 +301,7 @@ async def import_bank_statement(
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
             
-            await db["prima_nota"].insert_one(prima_nota_record.copy())
+            await db["prima_nota_cassa"].insert_one(prima_nota_record.copy())
             imported += 1
             
         except Exception as e:
