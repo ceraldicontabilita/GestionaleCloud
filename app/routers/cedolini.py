@@ -149,14 +149,22 @@ async def crea_cedolino(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
             raise HTTPException(status_code=400, detail=f"Campo obbligatorio mancante: {field}")
     
     # Validazione mese e anno
-    mese_val = int(data["mese"])
-    anno_val = int(data["anno"])
+    try:
+        mese_val = int(data["mese"])
+        anno_val = int(data["anno"])
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Mese e anno devono essere valori numerici")
+    
     if mese_val < 1 or mese_val > 12:
         raise HTTPException(status_code=400, detail="Mese deve essere compreso tra 1 e 12")
     if anno_val < 2020 or anno_val > 2030:
         raise HTTPException(status_code=400, detail="Anno non valido")
     
-    netto_val = float(data["netto"])
+    try:
+        netto_val = float(data["netto"])
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Il netto deve essere un valore numerico valido")
+    
     if netto_val < 0:
         raise HTTPException(status_code=400, detail="Il netto non può essere negativo")
     
