@@ -23,7 +23,7 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
 
-from app.database import Database
+from app.database import Database, Collections
 from app.utils.error_handler import handle_errors
 
 logger = logging.getLogger(__name__)
@@ -44,6 +44,14 @@ async def create_ordine(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     """Crea nuovo ordine fornitore."""
     db = Database.get_db()
     
+    # Verifica che il fornitore non sia disattivato/escluso
+    supplier_vat = data.get("supplier_vat", "")
+    supplier_name = data.get("fornitore_nome", data.get("supplier_name", ""))
+    if supplier_vat:
+        fornitore = await db[Collections.SUPPLIERS].find_one({"partita_iva": supplier_vat}, {"attivo": 1, "escluso": 1})
+        if fornitore and (fornitore.get("attivo") is False or fornitore.get("escluso") is True):
+            raise HTTPException(status_code=400, detail=f"Fornitore {supplier_name or supplier_vat} disattivato. Riattivalo prima di creare ordini.")
+
     # Numero progressivo
     last = await db["ordini_fornitori"].find_one({}, {"order_number": 1}, sort=[("order_number", -1)])
     try:

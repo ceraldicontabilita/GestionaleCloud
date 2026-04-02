@@ -345,8 +345,15 @@ async def import_fatture_from_pec(
         ids = ids[-max_messages:] if len(ids) > max_messages else ids
         
         # ==================== 2. CARICA FORNITORI ESCLUSI ====================
-        fornitori_esclusi_docs = await db.fornitori.find({"escluso": True}, {"nome": 1}).to_list(5000)
-        fornitori_esclusi = [f["nome"].lower() for f in fornitori_esclusi_docs]
+        fornitori_esclusi_docs = await db.fornitori.find(
+            {"$or": [{"escluso": True}, {"escludi_da_tracciabilita": True}]},
+            {"nome": 1, "denominazione": 1, "ragione_sociale": 1}
+        ).to_list(5000)
+        fornitori_esclusi = []
+        for f in fornitori_esclusi_docs:
+            for campo in ["nome", "denominazione", "ragione_sociale"]:
+                if f.get(campo):
+                    fornitori_esclusi.append(f[campo].lower())
         
         # ==================== 3. PROCESSA OGNI EMAIL ====================
         for msg_id in ids:
