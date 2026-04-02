@@ -85,3 +85,7 @@ backend/docs/mongo_backup_ceraldi_20260317_1626.zip
 
 # Credentials file (non esporre in repo pubblici)
 memory/test_credentials.md
+-e 
+# Environment files
+*.env
+*.env.*
