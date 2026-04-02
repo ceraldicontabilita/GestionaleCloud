@@ -25,7 +25,7 @@ export default function CentriCosto() {
   async function loadCentri() {
     setLoading(true);
     try {
-      const res = await api.get('/api/centri-costo/centri-costo');
+      const res = await api.get('/api/centri-costo');
       const data = res.data || [];
       setCentri(data);
       

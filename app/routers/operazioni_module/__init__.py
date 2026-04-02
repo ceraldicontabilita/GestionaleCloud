@@ -67,3 +67,21 @@ async def _conferma_operazione_wrapper(
 
 router.add_api_route("/{operazione_id}/conferma", _conferma_operazione_wrapper, methods=["POST"])
 router.add_api_route("/{operazione_id}", elimina_operazione, methods=["DELETE"])
+
+
+# Ignora movimento (marca come da non processare)
+async def _ignora_movimento(data: dict = Body(...)):
+    from app.database import Database
+    from datetime import datetime, timezone
+    db = Database.get_db()
+    mov_id = data.get("movimento_id")
+    if not mov_id:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="movimento_id richiesto")
+    await db["bank_movements"].update_one(
+        {"id": mov_id},
+        {"$set": {"ignorato": True, "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    return {"message": "Movimento ignorato", "movimento_id": mov_id}
+
+router.add_api_route("/smart/ignora", _ignora_movimento, methods=["POST"])

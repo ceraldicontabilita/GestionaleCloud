@@ -46,7 +46,7 @@ export default function DocumentiDaRivedere() {
 
   const fetchCentriCosto = async () => {
     try {
-      const res = await api.get('/api/centri-costo/centri-costo');
+      const res = await api.get('/api/centri-costo');
       setCentriCosto(res.data || []);
     } catch (err) {
       console.error('Errore caricamento CDC:', err);

@@ -189,8 +189,8 @@ export default function LearningMachine() {
     setDocumentiLoading(true);
     try {
       const [statsRes, regoleRes] = await Promise.all([
-        api.get('/api/learning-machine/stats').catch(() => ({ data: null })),
-        api.get('/api/learning-machine/regole').catch(() => ({ data: [] }))
+        api.get('/api/learning-machine/dashboard').catch(() => ({ data: null })),
+        api.get('/api/learning-machine/regole-apprese').catch(() => ({ data: [] }))
       ]);
       setDocumentiStats(statsRes.data);
       setRegoleApprese(regoleRes.data || []);

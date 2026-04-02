@@ -1353,13 +1353,13 @@ export default function Admin() {
               </p>
               <div style={{ display: 'grid', gap: 8 }}>
                 <button 
-                  onClick={() => window.open(`${api.defaults.baseURL}/api/exports/prima-nota-cassa?anno=${anno}`, '_blank')}
+                  onClick={() => window.open(`${api.defaults.baseURL}/api/exports/cash?anno=${anno}`, '_blank')}
                   style={{ ...buttonStyle('#e5e7eb', '#374151'), width: '100%' }}
                 >
                   📥 Prima Nota Cassa
                 </button>
                 <button 
-                  onClick={() => window.open(`${api.defaults.baseURL}/api/exports/prima-nota-banca?anno=${anno}`, '_blank')}
+                  onClick={() => window.open(`${api.defaults.baseURL}/api/exports/bank?anno=${anno}`, '_blank')}
                   style={{ ...buttonStyle('#e5e7eb', '#374151'), width: '100%' }}
                 >
                   📥 Prima Nota Banca
