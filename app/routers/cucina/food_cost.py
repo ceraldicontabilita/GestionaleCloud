@@ -18,14 +18,16 @@ async def ricette_riepilogo() -> List[Dict[str, Any]]:
     ricette = await db["ricette"].find({}, {"_id": 0}).sort("nome", 1).to_list(1000)
     risultati = []
     for r in ricette:
-        ingredienti = r.get("ingredienti", [])
+        ingredienti = r.get("ingredienti", []) or []
         costo_totale = 0.0
         for ing in ingredienti:
             try:
-                costo_totale += float(ing.get("costo", ing.get("prezzo", 0)) or 0) * float(ing.get("quantita", 1) or 1)
-            except (TypeError, ValueError):
+                q = float(str(ing.get("quantita", 1) or 1).replace(",", "."))
+                c = float(str(ing.get("costo", ing.get("prezzo_kg", ing.get("prezzo", 0))) or 0).replace(",", "."))
+                costo_totale += c * q
+            except (TypeError, ValueError, AttributeError):
                 pass
-        porzioni = r.get("porzioni", 1) or 1
+        porzioni = max(1, int(r.get("porzioni", 1) or 1))
         costo_porzione = round(costo_totale / porzioni, 3)
         risultati.append({
             "id": r.get("id"),
