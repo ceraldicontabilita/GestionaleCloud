@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { formatEuro, formatDateIT, STYLES, COLORS, button, badge } from '../lib/utils';
@@ -7,6 +8,7 @@ import InvoiceXMLViewer from '../components/InvoiceXMLViewer';
 
 export default function Scadenze() {
   const { anno } = useAnnoGlobale();
+  const navigate = useNavigate();
   const [scadenze, setScadenze] = useState([]);
   const [scadenzeIva, setScadenzeIva] = useState(null);
   const [scadenzeIvaMensili, setScadenzeIvaMensili] = useState(null);
@@ -171,7 +173,7 @@ export default function Scadenze() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
               {alertWidget.libretti_sanitari?.scaduti > 0 && (
                 <div 
-                  onClick={() => window.location.href = '/dipendenti'}
+                  onClick={() => navigate('/dipendenti')}
                   style={{
                     background: 'rgba(255,255,255,0.15)',
                     padding: 12,
@@ -188,7 +190,7 @@ export default function Scadenze() {
             )}
             {alertWidget.libretti_sanitari?.in_scadenza_30gg > 0 && (
               <div 
-                onClick={() => window.location.href = '/dipendenti'}
+                onClick={() => navigate('/dipendenti')}
                 style={{
                   background: 'rgba(255,255,255,0.15)',
                   padding: 12,
@@ -205,7 +207,7 @@ export default function Scadenze() {
             )}
             {alertWidget.contratti?.in_scadenza_60gg > 0 && (
               <div 
-                onClick={() => window.location.href = '/dipendenti'}
+                onClick={() => navigate('/dipendenti')}
                 style={{
                   background: 'rgba(255,255,255,0.15)',
                   padding: 12,
@@ -222,7 +224,7 @@ export default function Scadenze() {
             )}
             {alertWidget.f24?.da_pagare_30gg > 0 && (
               <div 
-                onClick={() => window.location.href = '/f24'}
+                onClick={() => navigate('/fisco/f24')}
                 style={{
                   background: 'rgba(255,255,255,0.15)',
                   padding: 12,
@@ -269,7 +271,7 @@ export default function Scadenze() {
             {/* Verbali in attesa di fattura */}
             {documentiRiconciliare.verbali?.in_attesa_fattura > 0 && (
               <div 
-                onClick={() => window.location.href = '/noleggio-auto'}
+                onClick={() => navigate('/noleggio/flotta')}
                 style={{
                   background: 'rgba(255,255,255,0.15)',
                   padding: 15,
@@ -293,7 +295,7 @@ export default function Scadenze() {
             {/* Fatture in attesa di verbale (PDF) */}
             {documentiRiconciliare.verbali?.estratti_da_fatture - documentiRiconciliare.verbali?.con_pdf_scaricato > 0 && (
               <div 
-                onClick={() => window.location.href = '/noleggio-auto'}
+                onClick={() => navigate('/noleggio/flotta')}
                 style={{
                   background: 'rgba(255,255,255,0.15)',
                   padding: 15,

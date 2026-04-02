@@ -3,6 +3,7 @@
  * Gestione completa estratti conto PayPal: import PDF, transazioni, report, riconciliazione banca.
  */
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import {
@@ -43,6 +44,7 @@ const TIPO_COLORS = {
 
 export default function RiconciliazionePaypal() {
   const { anno } = useAnnoGlobale();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [dashboard, setDashboard] = useState(null);
   const [transactions, setTransactions] = useState([]);
@@ -142,7 +144,7 @@ export default function RiconciliazionePaypal() {
               <option value="" style={{ color: '#333' }}>Tutti gli anni</option>
               {[...Array(5)].map((_, i) => { const y = new Date().getFullYear() - i; return <option key={y} value={y} style={{ color: '#333' }}>{y}</option>; })}
             </select>
-            <button onClick={() => { window.location.href = '/import-documenti'; }}
+            <button onClick={() => navigate('/documenti/import')}
               style={{ padding: '8px 14px', background: 'rgba(255,255,255,0.2)', color: 'white', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}>
               + Importa PDF
             </button>

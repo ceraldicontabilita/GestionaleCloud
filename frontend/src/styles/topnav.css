@@ -37,7 +37,7 @@
 
 .topnav-layout .page-content {
   padding: 8px 16px 40px;
-  padding-top: calc(var(--topnav-height) + 8px);
+  padding-top: calc(var(--total-header-height) + 8px);
   min-height: calc(100vh - var(--total-header-height));
   overflow-y: auto;
 }
@@ -120,10 +120,10 @@
 }
 
 .topnav-item.active {
-  background: rgba(255, 255, 255, 0.18);
-  color: #ffffff;
+  background: white;
+  color: var(--ceraldi-primary);
   font-weight: 700;
-  border-color: rgba(255, 255, 255, 0.4);
+  border-color: rgba(255, 255, 255, 0.6);
   box-shadow: none;
 }
 
@@ -325,10 +325,11 @@
   padding: 0 24px;
   gap: 2px;
   height: var(--secondary-tabs-height);
-  position: sticky;
+  position: fixed;
   top: var(--topnav-height);
+  left: 0;
+  right: 0;
   z-index: 99;
-  margin-top: var(--topnav-height);
 }
 
 .secondary-tab {
