@@ -695,6 +695,16 @@ try:
     from app.routers.tracciabilita.stampa import router as r_tr_stampa
     from app.routers.tracciabilita.manuale_haccp import router as r_tr_manuale
     from app.routers.tracciabilita.haccp_manuale_auto import router as r_tr_haccp_man
+    # Router aggiuntivi (19 router copiati dal repo originale)
+    from app.routers.tracciabilita.ricette import router as r_tr_ricette
+    from app.routers.tracciabilita.backup import router as r_tr_backup
+    from app.routers.tracciabilita.controllo_olio import router as r_tr_olio
+    from app.routers.tracciabilita.prodotti_vendita import router as r_tr_prodotti_v
+    from app.routers.tracciabilita.food_cost import router as r_tr_fc
+    from app.routers.tracciabilita.normalizzazione import router as r_tr_norm
+    from app.routers.tracciabilita.materie_prime import router as r_tr_materie
+    from app.routers.tracciabilita.ordini_fornitori import router as r_tr_ord_forn
+    from app.routers.tracciabilita.temperature_cottura import router as r_tr_temp_cott
     _TR_ROUTERS = [
         r_tr_lotti, r_tr_lotti_forn, r_tr_lotti_prod, r_tr_produzioni,
         r_tr_temp_neg, r_tr_temp_pos, r_tr_san, r_tr_dis,
@@ -702,6 +712,8 @@ try:
         r_tr_chiusure, r_tr_attr, r_tr_costi, r_tr_acquaviva, r_tr_colazione,
         r_tr_vendita, r_tr_fornitori_tr, r_tr_sconti, r_tr_ricezione,
         r_tr_stampa, r_tr_manuale, r_tr_haccp_man,
+        r_tr_ricette, r_tr_backup, r_tr_olio, r_tr_prodotti_v,
+        r_tr_fc, r_tr_norm, r_tr_materie, r_tr_ord_forn, r_tr_temp_cott,
     ]
     for _r in _TR_ROUTERS:
         app.include_router(_r, prefix="/api/tr")
