@@ -7,12 +7,12 @@
 :root {
   --ceraldi-primary: #1a40b5;
   --ceraldi-primary-dark: #1336a0;
-  --ceraldi-primary-light: #daeafc;
-  --ceraldi-secondary: #b3d2f5;
+  --ceraldi-primary-light: #1a40b5;
+  --ceraldi-secondary: #1336a0;
   --ceraldi-bg: #fff;
   --ceraldi-text: #0d1829;
   --ceraldi-text-muted: #7a9ab8;
-  --ceraldi-text-nav: #2a4a80;
+  --ceraldi-text-nav: #ffffff;
   --ceraldi-border: #e2eef8;
   --ceraldi-border-light: #cee2f8;
   --ceraldi-success: #16a34a;
@@ -37,22 +37,25 @@
 
 .topnav-layout .page-content {
   padding: 8px 16px 40px;
+  padding-top: calc(var(--topnav-height) + 8px);
   min-height: calc(100vh - var(--total-header-height));
   overflow-y: auto;
 }
 
 /* ─── TOP NAV PRIMARY ─────────────────────────────────────────── */
 .topnav-primary {
-  background: var(--ceraldi-primary-light);
-  border-bottom: 2px solid var(--ceraldi-secondary);
+  background: var(--ceraldi-primary);
+  border-bottom: 2px solid var(--ceraldi-primary-dark);
   height: var(--topnav-height);
   display: flex;
   align-items: center;
   padding: 0 24px;
   gap: 8px;
-  position: sticky;
+  position: fixed !important;
   top: 0;
-  z-index: 100;
+  left: 0;
+  right: 0;
+  z-index: 1000;
 }
 
 /* Brand */
@@ -81,7 +84,7 @@
   font-family: 'Syne', sans-serif;
   font-weight: 800;
   font-size: 16px;
-  color: var(--ceraldi-primary);
+  color: #ffffff;
   letter-spacing: -0.4px;
 }
 
@@ -102,7 +105,7 @@
   border-radius: 7px;
   font-size: 13px;
   font-weight: 500;
-  color: var(--ceraldi-text-nav);
+  color: rgba(255, 255, 255, 0.85);
   cursor: pointer;
   transition: all 0.14s ease;
   white-space: nowrap;
@@ -112,15 +115,16 @@
 }
 
 .topnav-item:hover {
-  background: rgba(255, 255, 255, 0.65);
+  background: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
 }
 
 .topnav-item.active {
-  background: white;
-  color: var(--ceraldi-primary);
-  font-weight: 600;
-  border-color: var(--ceraldi-primary);
-  box-shadow: 0 1px 4px rgba(26, 64, 181, 0.12);
+  background: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+  font-weight: 700;
+  border-color: rgba(255, 255, 255, 0.4);
+  box-shadow: none;
 }
 
 .topnav-icon {
@@ -134,13 +138,13 @@
 .topnav-dot {
   width: 6px;
   height: 6px;
-  background: var(--ceraldi-error-light);
+  background: #ffdd00;
   border-radius: 50%;
 }
 
 .topnav-badge {
-  background: var(--ceraldi-primary);
-  color: white;
+  background: #ff4444;
+  color: #ffffff;
   font-size: 10px;
   font-weight: 700;
   padding: 1px 5px;
@@ -181,13 +185,13 @@
   padding: 8px 12px;
   border-radius: 6px;
   font-size: 13px;
-  color: var(--ceraldi-text-nav);
+  color: #0d1829;
   text-decoration: none;
   transition: all 0.12s ease;
 }
 
 .topnav-dropdown-item:hover {
-  background: var(--ceraldi-primary-light);
+  background: #f0f4ff;
   color: var(--ceraldi-primary);
 }
 
@@ -204,10 +208,11 @@
   min-width: 280px;
   gap: 2px;
   padding: 6px;
-  background: white;
+  background: #ffffff;
+  color: #0d1829;
   border: 1.5px solid var(--ceraldi-border);
   border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
 }
 
 /* Right Side Utilities */
@@ -222,24 +227,42 @@
   margin-right: 8px;
 }
 
+/* FIX 6 — Anno Selector su sfondo blu */
+.topnav-anno select {
+  background: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  font-weight: 700;
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 13px;
+  cursor: pointer;
+  outline: none;
+}
+
+.topnav-anno select option {
+  color: #0d1829;
+  background: #ffffff;
+}
+
 .topnav-icon-btn {
   width: 32px;
   height: 32px;
   border-radius: 8px;
-  background: white;
-  border: 1.5px solid var(--ceraldi-secondary);
+  background: rgba(255, 255, 255, 0.15);
+  border: 1.5px solid rgba(255, 255, 255, 0.3);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   transition: all 0.14s ease;
   position: relative;
-  color: var(--ceraldi-primary);
+  color: rgba(255, 255, 255, 0.85);
 }
 
 .topnav-icon-btn:hover {
-  border-color: #4a90e2;
-  background: #ecf4ff;
+  border-color: rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.25);
 }
 
 .topnav-icon-btn .badge {
@@ -266,13 +289,13 @@
 }
 
 .topnav-user:hover {
-  background: #c7dff9;
+  background: rgba(255, 255, 255, 0.15);
 }
 
 .topnav-avatar {
   width: 28px;
   height: 28px;
-  background: var(--ceraldi-primary);
+  background: rgba(255, 255, 255, 0.25);
   border-radius: 7px;
   color: white;
   font-size: 11px;
@@ -285,12 +308,12 @@
 .topnav-user-name {
   font-size: 12px;
   font-weight: 600;
-  color: var(--ceraldi-primary);
+  color: #ffffff;
 }
 
 .topnav-user-role {
   font-size: 10px;
-  color: var(--ceraldi-text-muted);
+  color: rgba(255, 255, 255, 0.7);
 }
 
 /* ─── SECONDARY TABS ─────────────────────────────────────────── */
@@ -305,6 +328,7 @@
   position: sticky;
   top: var(--topnav-height);
   z-index: 99;
+  margin-top: var(--topnav-height);
 }
 
 .secondary-tab {
