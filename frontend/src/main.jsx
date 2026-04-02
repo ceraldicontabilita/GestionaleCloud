@@ -43,6 +43,7 @@ const DocumentiHub = lazy(() => import("./pages/hub/DocumentiHub.jsx"));
 const StrumentiHub = lazy(() => import("./pages/hub/StrumentiHub.jsx"));
 const IntegrazioniHub = lazy(() => import("./pages/hub/IntegrazioniHub.jsx"));
 const AdminHub = lazy(() => import("./pages/hub/AdminHub.jsx"));
+const FattureHub = lazy(() => import("./pages/hub/FattureHub.jsx"));
 const LearningMachineUniversale = lazy(() => import("./pages/LearningMachineUniversale.jsx"));
 const LearningMachine = lazy(() => import("./pages/LearningMachine.jsx"));
 const RiconciliazioneUnificata = lazy(() => import("./pages/RiconciliazioneUnificata.jsx"));
@@ -91,12 +92,12 @@ const router = createBrowserRouter([
       // === CICLO PASSIVO & VENDITE ===
       { path: "ciclo-passivo", element: <LazyPage><CicloPassivoHub /></LazyPage> },
       { path: "ciclo-passivo/import", element: <LazyPage><CicloPassivoAdmin /></LazyPage> },
-      { path: "fatture", element: <LazyPage><CicloPassivoHub /></LazyPage> },
-      { path: "fatture/:tab", element: <LazyPage><CicloPassivoHub /></LazyPage> },
+      { path: "fatture", element: <LazyPage><FattureHub /></LazyPage> },
+      { path: "fatture/:tab", element: <LazyPage><FattureHub /></LazyPage> },
       { path: "fatture-ricevute", element: <Navigate to="/fatture" replace /> },
       { path: "fatture-ricevute/:fornitore", element: <Navigate to="/fatture" replace /> },
       { path: "fatture-ricevute/:fornitore/:fattura", element: <Navigate to="/fatture" replace /> },
-      { path: "archivio-fatture-ricevute", element: <LazyPage><CicloPassivoHub /></LazyPage> },
+      { path: "archivio-fatture-ricevute", element: <LazyPage><FattureHub /></LazyPage> },
       { path: "corrispettivi", element: <LazyPage><CicloPassivoHub /></LazyPage> },
       { path: "corrispettivi/:anno/:mese", element: <LazyPage><CicloPassivoHub /></LazyPage> },
       
@@ -158,6 +159,7 @@ const router = createBrowserRouter([
       // === VEICOLI/NOLEGGIO ===
       { path: "noleggio", element: <LazyPage><VeicoliHub /></LazyPage> },
       { path: "noleggio/:tab", element: <LazyPage><VeicoliHub /></LazyPage> },
+      { path: "noleggio/verbali/:id", element: <LazyPage><VeicoliHub /></LazyPage> },
       { path: "veicoli", element: <Navigate to="/noleggio" replace /> },
       { path: "noleggio-auto", element: <Navigate to="/noleggio" replace /> },
       { path: "noleggio-auto/:targa", element: <LazyPage><VeicoliHub /></LazyPage> },
@@ -168,20 +170,22 @@ const router = createBrowserRouter([
       
       // === FISCO & TRIBUTI ===
       { path: "fisco", element: <LazyPage><FiscoHub /></LazyPage> },
-      { path: "iva", element: <LazyPage><FiscoHub /></LazyPage> },
-      { path: "iva/calcolo", element: <LazyPage><FiscoHub /></LazyPage> },
-      { path: "iva/liquidazione", element: <LazyPage><FiscoHub /></LazyPage> },
+      { path: "fisco/:tab", element: <LazyPage><FiscoHub /></LazyPage> },
+      // Redirect vecchi path diretti → /fisco/tab
+      { path: "iva", element: <Navigate to="/fisco/iva" replace /> },
+      { path: "iva/calcolo", element: <Navigate to="/fisco/iva" replace /> },
+      { path: "iva/liquidazione", element: <Navigate to="/fisco/iva" replace /> },
       { path: "iva/:anno/:trimestre", element: <LazyPage><FiscoHub /></LazyPage> },
-      { path: "liquidazione-iva", element: <LazyPage><FiscoHub /></LazyPage> },
+      { path: "liquidazione-iva", element: <Navigate to="/fisco/iva" replace /> },
       { path: "liquidazione-iva/:anno/:mese", element: <LazyPage><FiscoHub /></LazyPage> },
-      { path: "f24", element: <LazyPage><FiscoHub /></LazyPage> },
-      { path: "f24/modelli", element: <LazyPage><FiscoHub /></LazyPage> },
-      { path: "f24/riconciliazione", element: <LazyPage><FiscoHub /></LazyPage> },
+      { path: "f24", element: <Navigate to="/fisco/f24" replace /> },
+      { path: "f24/modelli", element: <Navigate to="/fisco/f24" replace /> },
+      { path: "f24/riconciliazione", element: <Navigate to="/fisco/ric-f24" replace /> },
       { path: "f24/:anno", element: <LazyPage><FiscoHub /></LazyPage> },
       { path: "f24/:anno/:mese", element: <LazyPage><FiscoHub /></LazyPage> },
-      { path: "riconciliazione-f24", element: <LazyPage><FiscoHub /></LazyPage> },
+      { path: "riconciliazione-f24", element: <Navigate to="/fisco/ric-f24" replace /> },
       { path: "riconciliazione-f24/:anno", element: <LazyPage><FiscoHub /></LazyPage> },
-      { path: "codici-tributari", element: <LazyPage><FiscoHub /></LazyPage> },
+      { path: "codici-tributari", element: <Navigate to="/fisco/codici" replace /> },
       { path: "codici-tributari/:codice", element: <LazyPage><FiscoHub /></LazyPage> },
       { path: "contabilita", element: <LazyPage><ContabilitaHub /></LazyPage> },
       { path: "contabilita/:sezione", element: <LazyPage><ContabilitaHub /></LazyPage> },

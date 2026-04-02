@@ -2,20 +2,14 @@ import React, { lazy, Suspense, useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAnnoGlobale } from '../../contexts/AnnoContext';
 
-const IVAContent          = lazy(() => import('../LiquidazioneIVA.jsx'));
-const F24Content          = lazy(() => import('../F24.jsx'));
-const RicF24Content       = lazy(() => import('../RiconciliazioneF24.jsx'));
-const CodiciContent       = lazy(() => import('../CodiciTributari.jsx'));
-const CespitiContent      = lazy(() => import('../GestioneCespiti.jsx'));
-const ScadenzeContent     = lazy(() => import('../Scadenze.jsx'));
+const ArchivioContent    = lazy(() => import('../ArchivioFattureRicevute.jsx'));
+const ImportContent      = lazy(() => import('../CicloPassivoAdmin.jsx'));
+const CorrispettiviContent = lazy(() => import('../Corrispettivi.jsx'));
 
 const TABS = [
-  { id: 'iva',      label: '📊 IVA',               color: '#3b82f6' },
-  { id: 'f24',      label: '📄 F24',               color: '#ef4444' },
-  { id: 'ric-f24',  label: '✅ Ric. F24',          color: '#10b981' },
-  { id: 'codici',   label: '📚 Codici Tributari',  color: '#f59e0b' },
-  { id: 'cespiti',  label: '🏢 Cespiti',           color: '#8b5cf6' },
-  { id: 'scadenze', label: '📅 Scadenze Fiscali',  color: '#06b6d4' },
+  { id: 'archivio',       label: '📋 Archivio Fatture', color: '#3b82f6' },
+  { id: 'import',         label: '📥 Import / PEC',     color: '#8b5cf6' },
+  { id: 'corrispettivi',  label: '🧾 Corrispettivi',    color: '#10b981' },
 ];
 
 const Loading = () => (
@@ -23,7 +17,7 @@ const Loading = () => (
     <div style={{
       width: 32, height: 32,
       border: '3px solid #e2e8f0',
-      borderTop: '3px solid #ef4444',
+      borderTop: '3px solid #3b82f6',
       borderRadius: '50%',
       animation: 'spin 1s linear infinite',
       margin: '0 auto 12px'
@@ -34,21 +28,16 @@ const Loading = () => (
 );
 
 const getTabFromPath = (pathname) => {
-  if (pathname.includes('/f24') && pathname.includes('ric')) return 'ric-f24';
-  if (pathname.includes('riconciliazione-f24')) return 'ric-f24';
-  if (pathname.includes('/f24')) return 'f24';
-  if (pathname.includes('/iva') || pathname.includes('/liquidazione')) return 'iva';
-  if (pathname.includes('/codici')) return 'codici';
-  if (pathname.includes('/cespiti')) return 'cespiti';
-  if (pathname.includes('/scadenze')) return 'scadenze';
-  if (pathname.includes('/fisco/')) {
-    const m = pathname.match(/\/fisco\/([\w-]+)/);
+  if (pathname.includes('/import') || pathname.includes('/ciclo-passivo/import')) return 'import';
+  if (pathname.includes('/corrispettivi')) return 'corrispettivi';
+  if (pathname.includes('/fatture/')) {
+    const m = pathname.match(/\/fatture\/(\w[\w-]*)/);
     if (m && TABS.find(t => t.id === m[1])) return m[1];
   }
-  return 'iva';
+  return 'archivio';
 };
 
-export default function FiscoHub() {
+export default function FattureHub() {
   const { anno } = useAnnoGlobale();
   const navigate = useNavigate();
   const location = useLocation();
@@ -63,7 +52,7 @@ export default function FiscoHub() {
   const handleTabChange = (tabId) => {
     setError(null);
     setActiveTab(tabId);
-    navigate(tabId === 'iva' ? '/fisco' : `/fisco/${tabId}`);
+    navigate(tabId === 'archivio' ? '/fatture' : `/fatture/${tabId}`);
   };
 
   return (
@@ -77,7 +66,7 @@ export default function FiscoHub() {
         {TABS.map(tab => (
           <button
             key={tab.id}
-            data-testid={`tab-fisco-${tab.id}`}
+            data-testid={`tab-fatture-${tab.id}`}
             onClick={() => handleTabChange(tab.id)}
             style={{
               padding: '9px 18px',
@@ -105,12 +94,9 @@ export default function FiscoHub() {
           </div>
         )}
         <Suspense fallback={<Loading />}>
-          {activeTab === 'iva'      && <IVAContent />}
-          {activeTab === 'f24'      && <F24Content />}
-          {activeTab === 'ric-f24'  && <RicF24Content />}
-          {activeTab === 'codici'   && <CodiciContent />}
-          {activeTab === 'cespiti'  && <CespitiContent />}
-          {activeTab === 'scadenze' && <ScadenzeContent />}
+          {activeTab === 'archivio'      && <ArchivioContent />}
+          {activeTab === 'import'        && <ImportContent />}
+          {activeTab === 'corrispettivi' && <CorrispettiviContent />}
         </Suspense>
       </div>
     </div>
