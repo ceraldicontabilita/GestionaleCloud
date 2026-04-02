@@ -78,10 +78,14 @@ async def _ignora_movimento(data: dict = Body(...)):
     if not mov_id:
         from fastapi import HTTPException
         raise HTTPException(status_code=400, detail="movimento_id richiesto")
-    await db["bank_movements"].update_one(
-        {"id": mov_id},
-        {"$set": {"ignorato": True, "updated_at": datetime.now(timezone.utc).isoformat()}}
-    )
+    # Aggiorna in ENTRAMBE le collection (movimenti possono essere in una o l'altra)
+    ts = datetime.now(timezone.utc).isoformat()
+    update = {"$set": {"ignorato": True, "updated_at": ts}}
+    r1 = await db["estratto_conto_movimenti"].update_one({"id": mov_id}, update)
+    r2 = await db["bank_movements"].update_one({"id": mov_id}, update)
+    if r1.matched_count == 0 and r2.matched_count == 0:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Movimento non trovato")
     return {"message": "Movimento ignorato", "movimento_id": mov_id}
 
 router.add_api_route("/smart/ignora", _ignora_movimento, methods=["POST"])
