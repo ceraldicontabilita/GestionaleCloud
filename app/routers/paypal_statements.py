@@ -159,8 +159,9 @@ async def import_paypal_pdf(file: UploadFile = File(...)):
     if not file.filename.lower().endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Solo file PDF accettati")
     
-    # Salva file
-    file_path = os.path.join(UPLOAD_DIR, file.filename)
+    # Salva file (sanitize filename to prevent path traversal)
+    safe_filename = os.path.basename(file.filename)
+    file_path = os.path.join(UPLOAD_DIR, safe_filename)
     with open(file_path, 'wb') as f:
         shutil.copyfileobj(file.file, f)
     

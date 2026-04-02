@@ -54,10 +54,12 @@ async def ensure_supplier_exists(db, parsed_invoice: Dict[str, Any]) -> Dict[str
     
     # Se non trovato per P.IVA, cerca per denominazione (potrebbe essere stato creato da Aruba)
     if not existing and supplier_name:
+        import re as _re
+        safe_name = _re.escape(supplier_name[:30])
         existing = await db[Collections.SUPPLIERS].find_one(
             {"$or": [
-                {"denominazione": {"$regex": f"^{supplier_name[:30]}", "$options": "i"}},
-                {"ragione_sociale": {"$regex": f"^{supplier_name[:30]}", "$options": "i"}}
+                {"denominazione": {"$regex": f"^{safe_name}", "$options": "i"}},
+                {"ragione_sociale": {"$regex": f"^{safe_name}", "$options": "i"}}
             ]},
             {"_id": 0}
         )

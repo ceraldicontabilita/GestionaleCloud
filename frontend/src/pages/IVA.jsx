@@ -221,7 +221,7 @@ export default function IVA() {
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                     <thead><tr style={{ borderBottom: "2px solid #e5e7eb", background: '#f9fafb' }}><th style={{ padding: 10, textAlign: 'left' }}>Giorno</th><th style={{ padding: 10, textAlign: 'right' }}>Debito</th><th style={{ padding: 10, textAlign: 'right' }}>Credito</th><th style={{ padding: 10, textAlign: 'right' }}>Saldo</th></tr></thead>
                     <tbody>
-                      {monthlyData.giorni.filter(g => g.iva_debito > 0 || g.iva_credito > 0).map((g, idx) => (
+                      {(monthlyData.giorni || []).filter(g => g.iva_debito > 0 || g.iva_credito > 0).map((g, idx) => (
                         <tr key={idx} style={{ borderBottom: '1px solid #f3f4f6' }}>
                           <td style={{ padding: 10 }}>{g.giorno}/{selectedMonth}/{selectedYear}</td>
                           <td style={{ padding: 10, textAlign: 'right', color: '#ea580c' }}>{formatEuro(g.iva_debito)}</td>

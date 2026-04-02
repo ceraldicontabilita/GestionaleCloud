@@ -230,10 +230,12 @@ async def get_catalogo_prodotti(
             {"fornitore_piva": fornitore}
         ]
     if search:
+        import re as _re
+        safe_search = _re.escape(search)
         query["$or"] = [
-            {"nome": {"$regex": search, "$options": "i"}},
-            {"descrizione": {"$regex": search, "$options": "i"}},
-            {"codice": {"$regex": search, "$options": "i"}}
+            {"nome": {"$regex": safe_search, "$options": "i"}},
+            {"descrizione": {"$regex": safe_search, "$options": "i"}},
+            {"codice": {"$regex": safe_search, "$options": "i"}}
         ]
     
     total = await db[Collections.WAREHOUSE_PRODUCTS].count_documents(query)

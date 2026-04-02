@@ -28,18 +28,20 @@ async def list_transfers(
     if job_id:
         query['job_id'] = job_id
     
+    import re as _re
     ands = []
     if search:
+        safe_s = _re.escape(search)
         ands.append({'$or': [
-            {'ordinante.nome': {'$regex': search, '$options': 'i'}},
-            {'beneficiario.nome': {'$regex': search, '$options': 'i'}},
-            {'causale': {'$regex': search, '$options': 'i'}},
-            {'cro_trn': {'$regex': search, '$options': 'i'}},
+            {'ordinante.nome': {'$regex': safe_s, '$options': 'i'}},
+            {'beneficiario.nome': {'$regex': safe_s, '$options': 'i'}},
+            {'causale': {'$regex': safe_s, '$options': 'i'}},
+            {'cro_trn': {'$regex': safe_s, '$options': 'i'}},
         ]})
     if ordinante:
-        ands.append({'ordinante.nome': {'$regex': ordinante, '$options': 'i'}})
+        ands.append({'ordinante.nome': {'$regex': _re.escape(ordinante), '$options': 'i'}})
     if beneficiario:
-        ands.append({'beneficiario.nome': {'$regex': beneficiario, '$options': 'i'}})
+        ands.append({'beneficiario.nome': {'$regex': _re.escape(beneficiario), '$options': 'i'}})
     if year:
         ands.append({'data': {'$regex': f'^{year}-'}})
     

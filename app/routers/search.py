@@ -2,6 +2,7 @@
 from fastapi import APIRouter, Query
 from typing import Dict, Any
 import logging
+import re
 
 from app.database import Database, Collections
 
@@ -25,14 +26,15 @@ async def global_search(
     db = Database.get_db()
     results = []
     per_limit = min(limit // 4 + 1, 10)  # Divide limit tra le categorie
-    
+    safe_q = re.escape(q)  # Prevent regex injection
+
     # Search invoices (fatture)
     invoice_results = await db[Collections.INVOICES].find(
         {"$or": [
-            {"cedente_denominazione": {"$regex": q, "$options": "i"}},
-            {"supplier_name": {"$regex": q, "$options": "i"}},
-            {"numero_fattura": {"$regex": q, "$options": "i"}},
-            {"invoice_number": {"$regex": q, "$options": "i"}}
+            {"cedente_denominazione": {"$regex": safe_q, "$options": "i"}},
+            {"supplier_name": {"$regex": safe_q, "$options": "i"}},
+            {"numero_fattura": {"$regex": safe_q, "$options": "i"}},
+            {"invoice_number": {"$regex": safe_q, "$options": "i"}}
         ]},
         {"_id": 0, "id": 1, "invoice_key": 1, "numero_fattura": 1, "invoice_number": 1, 
          "cedente_denominazione": 1, "supplier_name": 1, "importo_totale": 1, "total_amount": 1,
@@ -55,10 +57,10 @@ async def global_search(
     # Search suppliers (fornitori)
     supplier_results = await db[Collections.SUPPLIERS].find(
         {"$or": [
-            {"denominazione": {"$regex": q, "$options": "i"}},
-            {"name": {"$regex": q, "$options": "i"}},
-            {"partita_iva": {"$regex": q, "$options": "i"}},
-            {"vat_number": {"$regex": q, "$options": "i"}}
+            {"denominazione": {"$regex": safe_q, "$options": "i"}},
+            {"name": {"$regex": safe_q, "$options": "i"}},
+            {"partita_iva": {"$regex": safe_q, "$options": "i"}},
+            {"vat_number": {"$regex": safe_q, "$options": "i"}}
         ]},
         {"_id": 0, "id": 1, "denominazione": 1, "name": 1, "partita_iva": 1, "vat_number": 1}
     ).limit(per_limit).to_list(per_limit)
@@ -77,10 +79,10 @@ async def global_search(
     # Search products (prodotti magazzino)
     product_results = await db[Collections.WAREHOUSE_PRODUCTS].find(
         {"$or": [
-            {"nome": {"$regex": q, "$options": "i"}},
-            {"name": {"$regex": q, "$options": "i"}},
-            {"codice": {"$regex": q, "$options": "i"}},
-            {"code": {"$regex": q, "$options": "i"}}
+            {"nome": {"$regex": safe_q, "$options": "i"}},
+            {"name": {"$regex": safe_q, "$options": "i"}},
+            {"codice": {"$regex": safe_q, "$options": "i"}},
+            {"code": {"$regex": safe_q, "$options": "i"}}
         ]},
         {"_id": 0, "id": 1, "nome": 1, "name": 1, "codice": 1, "code": 1, 
          "giacenza": 1, "quantity": 1, "prezzo": 1, "price": 1}
@@ -102,11 +104,11 @@ async def global_search(
     # Search employees (dipendenti)
     employee_results = await db[Collections.EMPLOYEES].find(
         {"$or": [
-            {"nome": {"$regex": q, "$options": "i"}},
-            {"cognome": {"$regex": q, "$options": "i"}},
-            {"name": {"$regex": q, "$options": "i"}},
-            {"codice_fiscale": {"$regex": q, "$options": "i"}},
-            {"fiscal_code": {"$regex": q, "$options": "i"}}
+            {"nome": {"$regex": safe_q, "$options": "i"}},
+            {"cognome": {"$regex": safe_q, "$options": "i"}},
+            {"name": {"$regex": safe_q, "$options": "i"}},
+            {"codice_fiscale": {"$regex": safe_q, "$options": "i"}},
+            {"fiscal_code": {"$regex": safe_q, "$options": "i"}}
         ]},
         {"_id": 0, "id": 1, "nome": 1, "cognome": 1, "name": 1, 
          "codice_fiscale": 1, "fiscal_code": 1, "mansione": 1, "role": 1}

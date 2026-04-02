@@ -56,9 +56,11 @@ async def list_dipendenti(
     if mansione:
         query["mansione"] = mansione
     if search:
+        import re as _re
+        safe_search = _re.escape(search)
         query["$or"] = [
-            {"nome_completo": {"$regex": search, "$options": "i"}},
-            {"codice_fiscale": {"$regex": search, "$options": "i"}}
+            {"nome_completo": {"$regex": safe_search, "$options": "i"}},
+            {"codice_fiscale": {"$regex": safe_search, "$options": "i"}}
         ]
     
     dipendenti_raw = await db[Collections.EMPLOYEES].find(query, {"_id": 0}).sort("nome_completo", 1).skip(skip).limit(limit).to_list(limit)

@@ -190,10 +190,10 @@ export default function BatchReprocessing() {
                   {status.result.errors?.length > 0 && (
                     <details className="mt-4">
                       <summary className="cursor-pointer text-red-600 font-medium">
-                        Mostra {status.result.errors.length} errori
+                        Mostra {status.result.errors?.length || 0} errori
                       </summary>
                       <div className="mt-2 max-h-40 overflow-y-auto text-sm bg-red-50 p-3 rounded">
-                        {status.result.errors.map((err, i) => (
+                        {(status.result.errors || []).map((err, i) => (
                           <div key={i} className="mb-1 pb-1 border-b border-red-100">
                             [{err.type}] {err.collection}: {err.error}
                           </div>
