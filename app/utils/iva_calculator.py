@@ -101,8 +101,9 @@ async def calculate_daily_iva(db, date_str: str) -> Dict[str, Any]:
                         iva_linea = prezzo_totale - imponibile
                         iva_fattura += iva_linea
             else:
-                # Fallback: stima IVA 22% sul totale
-                iva_fattura = totale_fattura - (totale_fattura / 1.22)
+                # Fallback: usa aliquota fattura o 22% ordinaria
+                aliq = float(f.get('aliquota_iva', 0) or f.get('vat_rate', 0) or 22)
+                iva_fattura = totale_fattura - (totale_fattura / (1 + aliq / 100))
             
             result["iva_credito"] += iva_fattura
             result["fatture"]["totale_fatturato"] += totale_fattura
@@ -227,6 +228,7 @@ async def calculate_annual_iva_report(db, year: int) -> Dict[str, Any]:
             ]
             fatt_result = await db["invoices"].aggregate(fatt_pipeline).to_list(1)
             totale_fatture = fatt_result[0]["totale"] if fatt_result else 0
+            # Stima IVA credito con aliquota media acquisti (22% ordinaria)
             iva_credito = totale_fatture - (totale_fatture / 1.22) if totale_fatture > 0 else 0
             
             saldo = iva_debito - iva_credito

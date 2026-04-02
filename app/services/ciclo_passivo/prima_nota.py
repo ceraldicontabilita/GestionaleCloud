@@ -39,8 +39,9 @@ async def genera_scrittura_prima_nota(
     
     # Se totale già include IVA, calcola imponibile
     if iva == 0 and totale > 0:
-        # Stima IVA 22% se non presente
-        iva = round(totale - (totale / 1.22), 2)
+        # Usa aliquota della fattura o 22% ordinaria per acquisti
+        aliq = float(fattura.get("aliquota_iva", 0) or fattura.get("vat_rate", 0) or 22)
+        iva = round(totale - (totale / (1 + aliq / 100)), 2)
         imponibile = totale - iva
     
     # Determina conto dare in base alla categoria

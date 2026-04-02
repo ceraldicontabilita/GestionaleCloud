@@ -117,11 +117,13 @@ async def get_iva_daily(date_param: str) -> Dict[str, Any]:
                 imponibile = float(f.get('imponibile', 0) or f.get('taxable_amount', 0) or 0)
                 total = float(f.get('total_amount', 0) or f.get('importo_totale', 0) or 0)
                 
-                # Fallback estremo: stima IVA al 22% solo se mancante
+                # Fallback: stima IVA da aliquota fattura o 22% ordinaria per acquisti
+                aliquota = float(f.get('aliquota_iva', 0) or f.get('vat_rate', 0) or 22)
+                divisore = 1 + aliquota / 100
                 if f_iva == 0 and total > 0:
-                    f_iva = total - (total / 1.22)
+                    f_iva = total - (total / divisore)
                 if imponibile == 0 and total > 0:
-                    imponibile = total / 1.22
+                    imponibile = total / divisore
             
             total = float(f.get('total_amount', 0) or f.get('importo_totale', 0) or 0)
             
@@ -266,10 +268,12 @@ async def get_iva_monthly(year: int, month: int) -> Dict[str, Any]:
                     f_imponibile = float(f.get('imponibile', 0) or f.get('taxable_amount', 0) or 0)
                     total = float(f.get('total_amount', 0) or f.get('importo_totale', 0) or 0)
                     
+                    aliquota = float(f.get('aliquota_iva', 0) or f.get('vat_rate', 0) or 22)
+                    divisore = 1 + aliquota / 100
                     if f_iva == 0 and total > 0:
-                        f_iva = total - (total / 1.22)
+                        f_iva = total - (total / divisore)
                     if f_imponibile == 0 and total > 0:
-                        f_imponibile = total / 1.22
+                        f_imponibile = total / divisore
                 
                 if is_nota_credito:
                     iva_nc += f_iva

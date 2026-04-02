@@ -770,14 +770,14 @@ def genera_xml_fatturapa(fattura: Dict) -> str:
       <DettaglioLinee>
         <NumeroLinea>1</NumeroLinea>
         <Descrizione>{fattura.get('description', 'Servizi')[:100]}</Descrizione>
-        <PrezzoUnitario>{fattura.get('taxable_amount', fattura.get('total_amount', 0) / 1.22):.2f}</PrezzoUnitario>
-        <PrezzoTotale>{fattura.get('taxable_amount', fattura.get('total_amount', 0) / 1.22):.2f}</PrezzoTotale>
-        <AliquotaIVA>22.00</AliquotaIVA>
+        <PrezzoUnitario>{fattura.get('taxable_amount', fattura.get('total_amount', 0) / 1.10):.2f}</PrezzoUnitario>
+        <PrezzoTotale>{fattura.get('taxable_amount', fattura.get('total_amount', 0) / 1.10):.2f}</PrezzoTotale>
+        <AliquotaIVA>{fattura.get('aliquota_iva', '10.00')}</AliquotaIVA>
       </DettaglioLinee>
       <DatiRiepilogo>
-        <AliquotaIVA>22.00</AliquotaIVA>
-        <ImponibileImporto>{fattura.get('taxable_amount', fattura.get('total_amount', 0) / 1.22):.2f}</ImponibileImporto>
-        <Imposta>{fattura.get('vat_amount', fattura.get('total_amount', 0) * 0.22 / 1.22):.2f}</Imposta>
+        <AliquotaIVA>{fattura.get('aliquota_iva', '10.00')}</AliquotaIVA>
+        <ImponibileImporto>{fattura.get('taxable_amount', fattura.get('total_amount', 0) / 1.10):.2f}</ImponibileImporto>
+        <Imposta>{fattura.get('vat_amount', fattura.get('total_amount', 0) * 0.10 / 1.10):.2f}</Imposta>
       </DatiRiepilogo>
     </DatiBeniServizi>
     <DatiPagamento>
