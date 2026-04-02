@@ -103,11 +103,11 @@ const router = createBrowserRouter([
       
       // === FORNITORI ===
       { path: "fornitori", element: <LazyPage><FornitoriHub /></LazyPage> },
-      { path: "fornitori/:nome", element: <LazyPage><FornitoriHub /></LazyPage> },
-      { path: "fornitori/:nome/:tab", element: <LazyPage><FornitoriHub /></LazyPage> },
-      { path: "ordini-fornitori", element: <LazyPage><FornitoriHub /></LazyPage> },
+      { path: "fornitori/:tab", element: <LazyPage><FornitoriHub /></LazyPage> },
+      { path: "fornitori/:nome/:dettaglio", element: <LazyPage><FornitoriHub /></LazyPage> },
+      { path: "ordini-fornitori", element: <Navigate to="/fornitori/ordini" replace /> },
       { path: "ordini-fornitori/:fornitore", element: <LazyPage><FornitoriHub /></LazyPage> },
-      { path: "previsioni-acquisti", element: <LazyPage><FornitoriHub /></LazyPage> },
+      { path: "previsioni-acquisti", element: <Navigate to="/fornitori/previsioni" replace /> },
       { path: "previsioni-acquisti/:categoria", element: <LazyPage><FornitoriHub /></LazyPage> },
       
       // === PRIMA NOTA ===
@@ -280,17 +280,18 @@ const router = createBrowserRouter([
       
       // === STRUMENTI ===
       { path: "strumenti", element: <LazyPage><StrumentiHub /></LazyPage> },
-      { path: "verifica-coerenza", element: <LazyPage><VerificaCoerenza /></LazyPage> },
-      { path: "verifica-coerenza/:tab", element: <LazyPage><VerificaCoerenza /></LazyPage> },
+      { path: "strumenti/:tab", element: <LazyPage><StrumentiHub /></LazyPage> },
+      { path: "verifica-coerenza", element: <Navigate to="/strumenti/verifica" replace /> },
+      { path: "verifica-coerenza/:tab", element: <LazyPage><StrumentiHub /></LazyPage> },
       { path: "agenti", element: <LazyPage><AgentiPage /></LazyPage> },
       // portale è già definito a root level (fuori dall'App layout)
-      { path: "commercialista", element: <LazyPage><StrumentiHub /></LazyPage> },
+      { path: "commercialista", element: <Navigate to="/strumenti/commercialista" replace /> },
       { path: "commercialista/:anno/:mese", element: <LazyPage><StrumentiHub /></LazyPage> },
-      { path: "pianificazione", element: <LazyPage><StrumentiHub /></LazyPage> },
+      { path: "pianificazione", element: <Navigate to="/strumenti/pianificazione" replace /> },
       { path: "pianificazione/:anno", element: <LazyPage><StrumentiHub /></LazyPage> },
-      { path: "email-download", element: <LazyPage><StrumentiHub /></LazyPage> },
+      { path: "email-download", element: <Navigate to="/strumenti/email" replace /> },
       { path: "email-download/:casella", element: <LazyPage><StrumentiHub /></LazyPage> },
-      { path: "visure", element: <LazyPage><StrumentiHub /></LazyPage> },
+      { path: "visure", element: <Navigate to="/strumenti/visure" replace /> },
       { path: "impostazioni-f24-email", element: <LazyPage><ImpostazioniF24Email /></LazyPage> },
       
       // === INTEGRAZIONI ===
