@@ -118,11 +118,11 @@ def calcola_irpef_annua(reddito_annuo: float) -> float:
 
 
 def calcola_detrazioni_lavoro(reddito_annuo: float) -> float:
-    """Calcola detrazioni lavoro dipendente (semplificato)"""
+    """Calcola detrazioni lavoro dipendente (Art. 13 TUIR, riforma 2024-2025)"""
     if reddito_annuo <= 15000:
-        return DETRAZIONE_BASE
+        return DETRAZIONE_BASE  # 1955
     elif reddito_annuo <= 28000:
-        return DETRAZIONE_BASE * (28000 - reddito_annuo) / 13000
+        return 1910 + 1190 * (28000 - reddito_annuo) / 13000
     elif reddito_annuo <= 50000:
         return 1190 * (50000 - reddito_annuo) / 22000
     else:

@@ -71,26 +71,34 @@ PIVA_AZIENDA = "04523831214"
 @handle_errors
 async def get_stato_patrimoniale(
     anno: int = Query(None, description="Anno di riferimento"),
+    mese: int = Query(None, description="Mese di riferimento (1-12)"),
     data_a: str = Query(None, description="Data fine (YYYY-MM-DD)")
 ) -> Dict[str, Any]:
     """
     Genera lo Stato Patrimoniale.
-    
+
     ATTIVO:
     - Cassa (saldo prima nota cassa)
     - Banca (saldo prima nota banca)
     - Crediti vs clienti (fatture emesse non pagate)
-    
+
     PASSIVO:
     - Debiti vs fornitori (fatture ricevute non pagate)
     - Capitale e riserve
     """
     db = Database.get_db()
-    
+
     if not anno:
         anno = datetime.now().year
-    
-    data_fine = data_a or f"{anno}-12-31"
+
+    if data_a:
+        data_fine = data_a
+    elif mese:
+        import calendar
+        ultimo_giorno = calendar.monthrange(anno, mese)[1]
+        data_fine = f"{anno}-{mese:02d}-{ultimo_giorno:02d}"
+    else:
+        data_fine = f"{anno}-12-31"
     data_inizio = f"{anno}-01-01"
     
     # === ATTIVO ===

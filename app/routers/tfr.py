@@ -90,7 +90,7 @@ async def get_situazione_tfr(dipendente_id: str) -> Dict[str, Any]:
         {"_id": 0}
     ).sort("data", -1).to_list(100)
     
-    totale_liquidato = sum(l.get("importo_netto", 0) for l in liquidazioni)
+    totale_liquidato = sum(l.get("importo_lordo", 0) for l in liquidazioni)
     
     return {
         "dipendente_id": dipendente_id,
@@ -131,7 +131,8 @@ async def registra_accantonamento_tfr(input_data: AccantonamentoTFRInput) -> Dic
     
     # Calcola rivalutazione sul TFR accumulato precedente
     tfr_precedente = float(dipendente.get("tfr_accantonato", 0))
-    tasso_rivalutazione = (RIVALUTAZIONE_FISSA + input_data.indice_istat) / 100
+    # Art. 2120 c.c.: 1.5% fisso + 75% dell'indice ISTAT
+    tasso_rivalutazione = (RIVALUTAZIONE_FISSA + input_data.indice_istat * 0.75) / 100
     rivalutazione = tfr_precedente * tasso_rivalutazione
     
     # Totale accantonamento anno
