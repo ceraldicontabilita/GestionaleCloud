@@ -143,13 +143,23 @@ async def crea_cedolino(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     for field in required:
         if field not in data:
             raise HTTPException(status_code=400, detail=f"Campo obbligatorio mancante: {field}")
-    
+
+    mese_val = int(data["mese"])
+    anno_val = int(data["anno"])
+    netto_val = float(data["netto"])
+    if mese_val < 1 or mese_val > 12:
+        raise HTTPException(status_code=400, detail="Mese deve essere compreso tra 1 e 12")
+    if anno_val < 2020 or anno_val > 2030:
+        raise HTTPException(status_code=400, detail="Anno non valido")
+    if netto_val < 0:
+        raise HTTPException(status_code=400, detail="Il netto non puo essere negativo")
+
     cedolino = {
         "id": str(uuid.uuid4()),
         "employee_id": data["employee_id"],
-        "mese": data["mese"],
-        "anno": int(data["anno"]),
-        "netto": float(data["netto"]),
+        "mese": mese_val,
+        "anno": anno_val,
+        "netto": netto_val,
         "data_emissione": data.get("data_emissione", datetime.now(timezone.utc).isoformat()[:10]),
         "note": data.get("note", ""),
         "source": "manual",
@@ -187,20 +197,24 @@ async def lista_cedolini(
     limit = min(limit, 500)
     
     query = {}
+    and_conditions = []
     if anno:
-        # Gestisce sia anno come int (2026) sia come stringa ("2026")
-        query["$or"] = [{"anno": anno}, {"anno": str(anno)}]
+        and_conditions.append({"$or": [{"anno": anno}, {"anno": str(anno)}]})
     if mese:
         query["mese"] = mese
     if dipendente_id:
         query["dipendente_id"] = dipendente_id
-    
+
     # Filtra cedolini incompleti se richiesto
     if solo_completi:
-        query["$or"] = [
-            {"lordo": {"$exists": True, "$gt": 0}},
-            {"lordo_totale": {"$exists": True, "$gt": 0}}
-        ]
+        and_conditions.append({
+            "$or": [
+                {"lordo": {"$exists": True, "$gt": 0}},
+                {"lordo_totale": {"$exists": True, "$gt": 0}}
+            ]
+        })
+    if and_conditions:
+        query["$and"] = and_conditions
     
     cedolini = await db["cedolini"].find(
         query,

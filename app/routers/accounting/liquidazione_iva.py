@@ -135,8 +135,10 @@ async def calcola_liquidazione_iva(
             mese_scad = (mese % 12) + 1
             anno_scad = anno + 1 if mese == 12 else anno
             data_scad = f"{anno_scad}-{mese_scad:02d}-16"
+            # Codice tributo IVA mensile: da 6001 (gennaio) a 6012 (dicembre)
+            codice_tributo_iva = f"600{mese}" if mese < 10 else f"60{mese}"
             esistente_f24 = await db["f24_unificato"].find_one({
-                "codice_tributo": "6006",
+                "codice_tributo": codice_tributo_iva,
                 "periodo_riferimento": f"{mese:02d}/{anno}",
                 "status": {"$ne": "eliminato"}
             })
@@ -144,7 +146,7 @@ async def calcola_liquidazione_iva(
                 import uuid
                 scadenza_f24 = {
                     "id": str(uuid.uuid4()),
-                    "codice_tributo": "6006",
+                    "codice_tributo": codice_tributo_iva,
                     "descrizione": f"IVA mensile {mese:02d}/{anno}",
                     "periodo_riferimento": f"{mese:02d}/{anno}",
                     "importo": round(saldo_da_versare, 2),
@@ -161,11 +163,11 @@ async def calcola_liquidazione_iva(
                     "tipo": "uscita",
                     "importo": round(saldo_da_versare, 2),
                     "data": data_scad,
-                    "descrizione": f"IVA da versare {mese:02d}/{anno} - cod.6006",
+                    "descrizione": f"IVA da versare {mese:02d}/{anno} - cod.{codice_tributo_iva}",
                     "categoria": "F24",
                     "source": "liquidazione_iva",
                     "f24_id": scadenza_f24["id"],
-                    "codici_tributo": ["6006"],
+                    "codici_tributo": [codice_tributo_iva],
                     "riconciliato": False,
                     "anno": anno_scad,
                     "created_at": datetime.now(timezone.utc).isoformat()
@@ -412,7 +414,8 @@ async def dettaglio_fatture_liquidazione(
         
         # Verifica criteri
         same_month = period_start <= op_date <= period_end and reg_date <= period_end
-        deroga_15 = prev_start <= op_date <= prev_end and reg_date <= fifteenth and prev_y == anno and mese != 1
+        # Deroga 15 giorni: valida anche per gennaio (fatture dicembre anno precedente)
+        deroga_15 = prev_start <= op_date <= prev_end and reg_date <= fifteenth
         deroga_12 = within_12_days_rule(op_date, reg_date, anno, mese)
         
         if same_month or deroga_15 or deroga_12:
