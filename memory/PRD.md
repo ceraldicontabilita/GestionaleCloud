@@ -17,19 +17,15 @@ Sistema ERP full-stack (React Vite + FastAPI + MongoDB) per la gestione aziendal
 
 ## Cosa è stato implementato (CHANGELOG)
 
-### 2026-04-02 - Sessione corrente
-- ✅ HMR disabilitato (vite.config.js: `hmr: false`) → stop ricaricamento 30s
-- ✅ Endpoint `POST /api/commercialista/segna-inviata` → segna prima nota come inviata manualmente
-- ✅ App.jsx: link "Vai a Commercialista" ora passa ?mese=&anno= → pre-seleziona il mese corretto
-- ✅ Commercialista.jsx: useSearchParams per pre-selezionare mese/anno da URL + bottone "Segna come inviata"
-- ✅ Supplier flag `escludi_da_tracciabilita` → aggiunto a form, card, e create_supplier
-- ✅ Supplier card: badge "Escluso Magazzino" e "Escluso Tracciabilità" visibili
-- ✅ Upload immagini tracciabilità: fixed dir a `/app/app/static/tracciabilita/uploads/`
-- ✅ Router audit tracciabilità: import `from routers.xxx` → `from app.routers.tracciabilita.xxx`
-- ✅ Fallback DB `'test_database'` → `'azienda_erp_db'` in tutti i router tracciabilità
-- ✅ 4 nuovi router registrati: fatture, supervisor_operativo, utils, codici_cun
-- ✅ CRA mini-site ricompilata: fix URL doppio `/api/` in SupervisoreBadge, RegistroAllergeniView
-- ✅ Vecchi file build rimossi
+### 2026-04-02 - Sessione corrente (continuazione)
+- ✅ WebSocket keepalive plugin in vite.config.js (ping ogni 20s → previene disconnect proxy Kubernetes 30s)
+- ✅ `hmr: false` mantenuto + keepalive plugin aggiunto
+- ✅ SupervisoreBadge: fix null-safety su `totale_alert` (mostrava "undefined alert")
+- ✅ CRA mini-site ricompilata (3a volta): fix URL doppie api/xxx → xxx
+- ✅ Conferma eliminazione fornitore: aggiunto `window.confirm()` con nome fornitore
+- ✅ Fix import errati nei router tracciabilità (`from routers.xxx` → `from app.routers.tracciabilita.xxx`)
+- ✅ Tutti i 40+ endpoint API testati: 200 OK
+- ✅ Endpoint `segna-inviata` commercialista funzionante
 
 ### Sessioni precedenti
 - Integrazione mini-sito Tracciabilità (CRA build → FastAPI StaticFiles → iframe)

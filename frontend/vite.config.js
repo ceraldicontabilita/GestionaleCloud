@@ -5,8 +5,24 @@ import { fileURLToPath } from 'url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
+// Plugin keepalive: invia WebSocket ping ogni 20s
+// per evitare che il proxy Kubernetes (timeout 30s) chiuda la connessione
+const wsKeepalivePlugin = {
+  name: 'ws-keepalive',
+  configureServer(server) {
+    const iv = setInterval(() => {
+      try {
+        server.ws.clients.forEach(client => {
+          if (client.readyState === 1) client.ping();
+        });
+      } catch (_) {}
+    }, 20000);
+    server.httpServer?.on('close', () => clearInterval(iv));
+  }
+};
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), wsKeepalivePlugin],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'src'),
