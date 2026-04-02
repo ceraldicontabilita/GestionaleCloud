@@ -34,20 +34,16 @@ const GestioneDipendentiUnificata = lazy(() => import("./pages/GestioneDipendent
 const PagheHub = lazy(() => import("./pages/hub/PagheHub.jsx"));
 const VeicoliHub = lazy(() => import("./pages/hub/VeicoliHub.jsx"));
 const FiscoHub = lazy(() => import("./pages/hub/FiscoHub.jsx"));
-const BilancioHub = lazy(() => import("./pages/hub/BilancioHub.jsx"));
 const ContabilitaHub = lazy(() => import("./pages/hub/ContabilitaHub.jsx"));
 const MagazzinoHub = lazy(() => import("./pages/hub/MagazzinoHub.jsx"));
 const CucinaHub = lazy(() => import("./pages/hub/CucinaHub.jsx"));
-const ImportDocumentiHub = lazy(() => import("./pages/hub/ImportDocumentiHub.jsx"));
 const DocumentiHub = lazy(() => import("./pages/hub/DocumentiHub.jsx"));
 const StrumentiHub = lazy(() => import("./pages/hub/StrumentiHub.jsx"));
 const IntegrazioniHub = lazy(() => import("./pages/hub/IntegrazioniHub.jsx"));
 const AdminHub = lazy(() => import("./pages/hub/AdminHub.jsx"));
 const FattureHub = lazy(() => import("./pages/hub/FattureHub.jsx"));
-const LearningMachineUniversale = lazy(() => import("./pages/LearningMachineUniversale.jsx"));
 const LearningMachine = lazy(() => import("./pages/LearningMachine.jsx"));
 const RiconciliazioneUnificata = lazy(() => import("./pages/RiconciliazioneUnificata.jsx"));
-const MappaGestionale = lazy(() => import("./pages/MappaGestionale.jsx"));
 
 // === STANDALONE PAGES ===
 const InserimentoRapido = lazy(() => import("./pages/InserimentoRapido.jsx"));
@@ -56,8 +52,7 @@ const ToDo = lazy(() => import("./pages/ToDo.jsx"));
 const GestioneRiservata = lazy(() => import("./pages/GestioneRiservata.jsx"));
 const DettaglioVerbale = lazy(() => import("./pages/DettaglioVerbale.jsx"));
 const ImpostazioniF24Email = lazy(() => import("./pages/ImpostazioniF24Email.jsx"));
-const Mutui = lazy(() => import("./pages/Mutui.jsx"));
-const VerificaCoerenza = lazy(() => import("./pages/VerificaCoerenza.jsx"));
+const MappaGestionale = lazy(() => import("./pages/MappaGestionale.jsx"));
 const AgentiPage = lazy(() => import("./pages/Agenti.jsx"));
 const Portale = lazy(() => import("./pages/Portale.jsx"));
 const TracciabilitaPage = lazy(() => import("./pages/TracciabilitaPage.jsx"));
@@ -98,8 +93,8 @@ const router = createBrowserRouter([
       { path: "fatture-ricevute/:fornitore", element: <Navigate to="/fatture" replace /> },
       { path: "fatture-ricevute/:fornitore/:fattura", element: <Navigate to="/fatture" replace /> },
       { path: "archivio-fatture-ricevute", element: <LazyPage><FattureHub /></LazyPage> },
-      { path: "corrispettivi", element: <LazyPage><CicloPassivoHub /></LazyPage> },
-      { path: "corrispettivi/:anno/:mese", element: <LazyPage><CicloPassivoHub /></LazyPage> },
+      { path: "corrispettivi", element: <Navigate to="/fatture/corrispettivi" replace /> },
+      { path: "corrispettivi/:anno/:mese", element: <LazyPage><FattureHub /></LazyPage> },
       
       // === FORNITORI ===
       { path: "fornitori", element: <LazyPage><FornitoriHub /></LazyPage> },
@@ -218,20 +213,19 @@ const router = createBrowserRouter([
       { path: "cespiti/:cespite", element: <LazyPage><ContabilitaHub /></LazyPage> },
       { path: "finanziaria", element: <Navigate to="/contabilita/finanziaria" replace /> },
       { path: "finanziaria/:anno", element: <LazyPage><ContabilitaHub /></LazyPage> },
-      { path: "chiusura-esercizio", element: <LazyPage><ContabilitaHub /></LazyPage> },
+      { path: "chiusura-esercizio", element: <Navigate to="/contabilita/chiusura" replace /> },
       { path: "chiusura-esercizio/:anno", element: <LazyPage><ContabilitaHub /></LazyPage> },
       
       // === MAGAZZINO ===
       { path: "magazzino", element: <LazyPage><MagazzinoHub /></LazyPage> },
       { path: "magazzino/:tab", element: <LazyPage><MagazzinoHub /></LazyPage> },
-      { path: "magazzino/:categoria", element: <LazyPage><MagazzinoHub /></LazyPage> },
-      { path: "inventario", element: <LazyPage><MagazzinoHub /></LazyPage> },
+      { path: "inventario", element: <Navigate to="/magazzino/inventario" replace /> },
       { path: "inventario/:data", element: <LazyPage><MagazzinoHub /></LazyPage> },
-      { path: "ricerca-prodotti", element: <LazyPage><MagazzinoHub /></LazyPage> },
+      { path: "ricerca-prodotti", element: <Navigate to="/magazzino/ricerca" replace /> },
       { path: "ricerca-prodotti/:query", element: <LazyPage><MagazzinoHub /></LazyPage> },
-      { path: "dizionario-articoli", element: <LazyPage><MagazzinoHub /></LazyPage> },
+      { path: "dizionario-articoli", element: <Navigate to="/magazzino/articoli" replace /> },
       { path: "dizionario-articoli/:articolo", element: <LazyPage><MagazzinoHub /></LazyPage> },
-      { path: "magazzino-dv", element: <LazyPage><MagazzinoHub /></LazyPage> },
+      { path: "magazzino-dv", element: <Navigate to="/magazzino" replace /> },
       
       // === CUCINA ===
       { path: "cucina", element: <LazyPage><CucinaHub /></LazyPage> },
