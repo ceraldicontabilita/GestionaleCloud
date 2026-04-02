@@ -169,11 +169,6 @@ export default function Dashboard() {
   useEffect(() => {
     api.get('/api/ordini-fornitori/bozze/count')
        .then(r => setOrdiniCount(r.data.count || 0)).catch(() => {});
-    api.get('/api/cucina/ricette/stats')
-       .then(r => {
-         setRicetteCount(r.data.da_approvare || 0);
-         setRicetteTotali(r.data.totale || 0);
-       }).catch(() => {});
   }, []);
 
   // Carica Volume Affari Reale quando toggle attivato

@@ -16,6 +16,12 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 3000,
     allowedHosts: true,
+    hmr: {
+      // Mantiene il WebSocket HMR vivo oltre i timeout del proxy (30s)
+      // Invia un ping ogni 20 secondi per evitare disconnect
+      clientPort: 443,
+      timeout: 120000,
+    },
     proxy: {
       '/api': {
         target: process.env.VITE_BACKEND_URL || 'http://localhost:8001',
