@@ -130,7 +130,7 @@ export const STYLES_NEW = {
   statCardLabel: {
     fontSize: '14px',
     fontWeight: '500',
-    opacity: 0.8'
+    opacity: 0.8,
   },
   
   // Buttons

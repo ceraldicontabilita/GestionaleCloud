@@ -184,9 +184,9 @@ class TestFornitori:
         assert r.status_code == 200, f"GET supplier: {r.text}"
         data = r.json()
         # Verifica campi critici
-        assert data.get('escludi_da_tracciabilita') == True, \
+        assert data.get('escludi_da_tracciabilita'), \
             f"escludi_da_tracciabilita non persistito: {data.get('escludi_da_tracciabilita')}"
-        assert data.get('esclude_magazzino') == True, \
+        assert data.get('esclude_magazzino'), \
             f"esclude_magazzino non persistito: {data.get('esclude_magazzino')}"
 
     def test_update_supplier(self, session, test_supplier_id):

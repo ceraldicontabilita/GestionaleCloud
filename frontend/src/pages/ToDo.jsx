@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import api from '../api';
 import { formatDateIT, STYLES, COLORS, button, badge } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
@@ -40,13 +40,7 @@ export default function ToDo() {
   // Categorie disponibili
   const [categorie, setCategorie] = useState([]);
   
-  // Carica dati
-  useEffect(() => {
-    loadTasks();
-    loadCategorie();
-  }, [filtroStato, filtroPriorita, filtroCategoria, cerca]);
-  
-  const loadTasks = async () => {
+  const loadTasks = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
@@ -65,16 +59,21 @@ export default function ToDo() {
     } finally {
       setLoading(false);
     }
-  };
-  
-  const loadCategorie = async () => {
+  }, [filtroStato, filtroPriorita, filtroCategoria, cerca]);
+
+  const loadCategorie = useCallback(async () => {
     try {
       const res = await api.get('/api/todo/categorie');
       setCategorie(res.data.categorie || []);
     } catch (e) {
       console.error('Errore caricamento categorie:', e);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadTasks();
+    loadCategorie();
+  }, [loadTasks, loadCategorie]);
   
   const handleCreaTask = async (e) => {
     e.preventDefault();

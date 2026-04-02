@@ -1184,20 +1184,16 @@ export default function MappaGestionale() {
     }
   }, []);
 
+  const [svgContent, setSvgContent] = React.useState('');
+
   const renderDiagram = useCallback(async (code) => {
-    if (!diagramRef.current) return;
     try {
       setErrore(null);
       const id = `mermaid-${Date.now()}`;
       const { svg } = await mermaid.render(id, code);
-      if (diagramRef.current) {
-        diagramRef.current.innerHTML = svg;
-        const svgEl = diagramRef.current.querySelector('svg');
-        if (svgEl) {
-          svgEl.style.maxWidth = '100%';
-          svgEl.style.height = 'auto';
-        }
-      }
+      // Applica stili inline al SVG prima di salvarlo
+      const styledSvg = svg.replace('<svg ', '<svg style="max-width:100%;height:auto;" ');
+      setSvgContent(styledSvg);
       setSezioniAttive(parseNodiDiagramma(code));
     } catch (e) {
       setErrore('Errore nel diagramma: ' + (e.message?.substring(0, 120) || 'sintassi non valida'));
@@ -1346,6 +1342,7 @@ export default function MappaGestionale() {
                 display: 'flex', justifyContent: 'center', alignItems: 'flex-start',
                 minHeight: 180, overflowX: 'auto'
               }}
+              dangerouslySetInnerHTML={{ __html: svgContent }}
             />
           </div>
 

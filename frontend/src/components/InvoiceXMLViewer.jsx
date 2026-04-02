@@ -89,56 +89,53 @@ export default function InvoiceXMLViewer({ invoice: rawInvoice, onClose }) {
   // Genera PDF/Stampa
   const generatePDFFromHTML = () => {
     if (!invoice) return;
-    const printWindow = window.open('', '_blank');
     const isMinisteriale = viewMode === 'ministeriale';
-    
-    // Costruisce HTML per stampa in base al viewMode
+
     let bodyContent = '';
-    
     if (isMinisteriale) {
       bodyContent = buildMinisterialeHTML();
     } else {
       bodyContent = buildAssoSoftwareHTML();
     }
-    
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Fattura ${invoice.invoice_number}</title>
-        <style>
-          * { margin: 0; padding: 0; box-sizing: border-box; }
-          body { 
-            font-family: ${isMinisteriale ? "'Times New Roman', serif" : "'Arial', sans-serif"}; 
-            padding: 20px; 
-            max-width: 800px; 
-            margin: 0 auto;
-            color: #333;
-            line-height: 1.4;
-            font-size: 11px;
-          }
-          table { width: 100%; border-collapse: collapse; margin: 10px 0; }
-          th, td { padding: 6px 8px; text-align: left; border: 1px solid #ccc; }
-          th { background: #f0f0f0; font-weight: bold; font-size: 10px; }
-          .header-box { border: 2px solid #333; padding: 15px; margin-bottom: 15px; }
-          .section { margin-bottom: 15px; }
-          .section-title { font-weight: bold; font-size: 12px; margin-bottom: 8px; padding: 5px; background: #e8e8e8; }
-          .row { display: flex; margin-bottom: 4px; }
-          .label { width: 150px; font-weight: bold; color: #555; }
-          .value { flex: 1; }
-          .total-box { border: 2px solid #333; padding: 10px; margin-top: 15px; }
-          .total-row { display: flex; justify-content: space-between; padding: 4px 0; }
-          .total-row.main { font-weight: bold; font-size: 14px; border-top: 2px solid #333; padding-top: 8px; margin-top: 8px; }
-          @media print { body { padding: 0; } }
-        </style>
-      </head>
-      <body>
-        ${bodyContent}
-        <script>window.onload = function() { window.print(); }</script>
-      </body>
-      </html>
-    `);
-    printWindow.document.close();
+
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+  <title>Fattura ${invoice.invoice_number}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: ${isMinisteriale ? "'Times New Roman', serif" : "'Arial', sans-serif"};
+      padding: 20px; max-width: 800px; margin: 0 auto;
+      color: #333; line-height: 1.4; font-size: 11px;
+    }
+    table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+    th, td { padding: 6px 8px; text-align: left; border: 1px solid #ccc; }
+    th { background: #f0f0f0; font-weight: bold; font-size: 10px; }
+    .header-box { border: 2px solid #333; padding: 15px; margin-bottom: 15px; }
+    .section { margin-bottom: 15px; }
+    .section-title { font-weight: bold; font-size: 12px; margin-bottom: 8px; padding: 5px; background: #e8e8e8; }
+    .row { display: flex; margin-bottom: 4px; }
+    .label { width: 150px; font-weight: bold; color: #555; }
+    .value { flex: 1; }
+    .total-box { border: 2px solid #333; padding: 10px; margin-top: 15px; }
+    .total-row { display: flex; justify-content: space-between; padding: 4px 0; }
+    .total-row.main { font-weight: bold; font-size: 14px; border-top: 2px solid #333; padding-top: 8px; margin-top: 8px; }
+    @media print { body { padding: 0; } }
+  </style>
+</head>
+<body>
+  ${bodyContent}
+  <script>window.onload = function() { window.print(); }<\/script>
+</body>
+</html>`;
+
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const printWindow = window.open(url, '_blank');
+    if (printWindow) {
+      printWindow.addEventListener('load', () => URL.revokeObjectURL(url));
+    }
   };
 
   // Costruisce HTML formato AssoSoftware (semplificata/completa)

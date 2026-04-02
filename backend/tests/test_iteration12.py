@@ -46,8 +46,8 @@ class TestCommercialista:
         assert "mese_pendente" in data, f"Missing 'mese_pendente' in response: {data}"
         assert "anno_pendente" in data, f"Missing 'anno_pendente' in response: {data}"
         assert isinstance(data["show_alert"], bool), f"'show_alert' should be bool, got {type(data['show_alert'])}"
-        assert isinstance(data["mese_pendente"], int), f"'mese_pendente' should be int"
-        assert isinstance(data["anno_pendente"], int), f"'anno_pendente' should be int"
+        assert isinstance(data["mese_pendente"], int), "'mese_pendente' should be int"
+        assert isinstance(data["anno_pendente"], int), "'anno_pendente' should be int"
         print(f"✓ alert-status: show_alert={data['show_alert']}, mese_pendente={data['mese_pendente']}, anno_pendente={data['anno_pendente']}")
 
     def test_segna_inviata_returns_success(self):
@@ -59,7 +59,7 @@ class TestCommercialista:
         )
         assert resp.status_code == 200
         data = resp.json()
-        assert data.get("success") == True, f"Expected success:true, got: {data}"
+        assert data.get("success"), f"Expected success:true, got: {data}"
         assert "message" in data
         print(f"✓ segna-inviata: {data['message']}")
 
@@ -84,7 +84,7 @@ class TestCommercialista:
         assert resp3.status_code == 200
         data = resp3.json()
         # show_alert should be False because we just marked it as sent
-        assert data.get("show_alert") == False, f"Expected show_alert:false after segna-inviata, got: {data}"
+        assert not data.get("show_alert"), f"Expected show_alert:false after segna-inviata, got: {data}"
         print(f"✓ alert-status after segna-inviata: show_alert={data['show_alert']}")
 
     def test_segna_inviata_missing_body_returns_400(self):
@@ -132,7 +132,7 @@ class TestTracciabilita:
         assert "alerts" in data, f"Missing 'alerts' in response: {data}"
         assert data["semaforo"] in ["verde", "arancione", "rosso"], \
             f"semaforo should be verde/arancione/rosso, got: {data['semaforo']}"
-        assert isinstance(data["alerts"], list), f"'alerts' should be a list"
+        assert isinstance(data["alerts"], list), "'alerts' should be a list"
         print(f"✓ supervisor/stato: semaforo={data['semaforo']}, alerts={data['totale_alert']}")
 
     def test_tr_lotti_create_and_delete(self):
@@ -223,14 +223,14 @@ class TestTracciabilita:
         fake_id = str(uuid.uuid4())
         resp = requests.delete(f"{BASE_URL}/api/tr/lotti/{fake_id}", timeout=15)
         assert resp.status_code == 404, f"Expected 404 for nonexistent lotto, got {resp.status_code}"
-        print(f"✓ DELETE nonexistent lotto: 404")
+        print("✓ DELETE nonexistent lotto: 404")
 
     def test_tr_produzioni_delete_nonexistent_returns_404(self):
         """DELETE /api/tr/produzioni/{nonexistent} returns 404"""
         fake_id = str(uuid.uuid4())
         resp = requests.delete(f"{BASE_URL}/api/tr/produzioni/{fake_id}", timeout=15)
         assert resp.status_code == 404, f"Expected 404 for nonexistent produzione, got {resp.status_code}"
-        print(f"✓ DELETE nonexistent produzione: 404")
+        print("✓ DELETE nonexistent produzione: 404")
 
     def test_tr_codici_cun_exists(self):
         """GET /api/tr/codici-cun/ returns list"""
@@ -264,7 +264,7 @@ class TestFornitori:
         if data:
             s = data[0]
             assert "id" in s, f"Missing 'id' in supplier: {s.keys()}"
-            assert "ragione_sociale" in s or "denominazione" in s, f"Missing name field in supplier"
+            assert "ragione_sociale" in s or "denominazione" in s, "Missing name field in supplier"
             print(f"✓ Fornitore fields present: {list(s.keys())[:8]}")
 
     def test_supplier_has_escludi_da_tracciabilita_via_put(self):
@@ -290,7 +290,7 @@ class TestFornitori:
         get_resp = requests.get(f"{BASE_URL}/api/suppliers/{supplier_id}", timeout=15)
         assert get_resp.status_code == 200
         supplier_data = get_resp.json()
-        assert supplier_data.get("escludi_da_tracciabilita") == True, \
+        assert supplier_data.get("escludi_da_tracciabilita"), \
             f"escludi_da_tracciabilita should be True after PUT, got: {supplier_data.get('escludi_da_tracciabilita')}"
         print(f"✓ escludi_da_tracciabilita=True persisted via PUT for supplier {supplier_id}")
 
@@ -332,7 +332,7 @@ class TestFornitori:
             # Expected behavior: field should be True
             # Actual: field is None/not stored
             print(f"✓ escludi_da_tracciabilita after create: {flag} (expected True) [BUG if None]")
-            if flag is None or flag is False:
+            if not flag:
                 print("⚠️ BUG: create_supplier in public_api.py does not persist escludi_da_tracciabilita")
 
         # Cleanup
@@ -350,5 +350,5 @@ class TestViteConfig:
         config_path = "/app/frontend/vite.config.js"
         with open(config_path) as f:
             content = f.read()
-        assert "hmr: false" in content, f"hmr: false not found in vite.config.js"
-        print(f"✓ vite.config.js has hmr: false")
+        assert "hmr: false" in content, "hmr: false not found in vite.config.js"
+        print("✓ vite.config.js has hmr: false")

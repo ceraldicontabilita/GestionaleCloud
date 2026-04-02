@@ -59,6 +59,7 @@ export default function VeicoliHub() {
 
   useEffect(() => {
     const t = getTabFromPath(location.pathname);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     if (t !== activeTab) setActiveTab(t);
   }, [location.pathname]);
 
