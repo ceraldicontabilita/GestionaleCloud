@@ -108,5 +108,45 @@ router.add_api_route("/banca/{movimento_id}/fattura", get_fattura_allegata_banca
 # Salari - Dinamiche
 router.add_api_route("/salari/{movimento_id}", delete_prima_nota_salari, methods=["DELETE"])
 
+
+# Salari - Auto ricostruisci dati
+async def _auto_ricostruisci_salari():
+    """Ricalcola progressivi e corregge dati salari."""
+    from app.database import Database
+    db = Database.get_db()
+    # Ricalcola progressivi
+    salari = await db["prima_nota_salari"].find({}, {"_id": 0}).sort("data", 1).to_list(10000)
+    righe_pulite = 0
+    correzioni = 0
+    for s in salari:
+        update = {}
+        netto = float(s.get("netto", 0) or 0)
+        lordo = float(s.get("lordo", 0) or 0)
+        if netto > 0 and lordo == 0:
+            update["lordo"] = netto
+            correzioni += 1
+        if update:
+            await db["prima_nota_salari"].update_one({"id": s["id"]}, {"$set": update})
+            righe_pulite += 1
+    return {"righe_pulite": righe_pulite, "correzioni": correzioni, "totale_salari": len(salari)}
+
+router.add_api_route("/salari/auto-ricostruisci-dati", _auto_ricostruisci_salari, methods=["POST"])
+
+
+# Template CSV per import
+async def _template_csv_cassa():
+    from fastapi.responses import Response
+    csv = "data,descrizione,importo,tipo,fornitore,categoria\n2025-01-01,Esempio spesa,100.00,uscita,Fornitore SRL,merci\n"
+    return Response(content=csv, media_type="text/csv", headers={"Content-Disposition": "attachment; filename=template_cassa.csv"})
+
+async def _template_csv_banca():
+    from fastapi.responses import Response
+    csv = "data,descrizione,importo,tipo,banca,categoria\n2025-01-01,Esempio bonifico,500.00,uscita,Banca Principale,fornitori\n"
+    return Response(content=csv, media_type="text/csv", headers={"Content-Disposition": "attachment; filename=template_banca.csv"})
+
+router.add_api_route("/cassa/template-csv", _template_csv_cassa, methods=["GET"])
+router.add_api_route("/banca/template-csv", _template_csv_banca, methods=["GET"])
+
+
 # Verifica
 router.add_api_route("/verifica-metodo-fattura/{fattura_id}", verifica_metodo_fattura, methods=["GET"])

@@ -442,6 +442,26 @@ async def get_documents_da_rivedere(
     }
 
 
+@router.post("/da-rivedere/process-batch")
+async def process_batch_da_rivedere() -> Dict[str, Any]:
+    """Riprocessa in batch tutti i documenti da rivedere con il parser AI."""
+    db = Database.get_db()
+    docs = await db["extracted_documents"].find(
+        {"status": {"$in": ["da_rivedere", "needs_review", "low_confidence"]}},
+        {"_id": 0, "id": 1, "tipo": 1}
+    ).to_list(200)
+
+    processed = 0
+    for doc in docs:
+        await db["extracted_documents"].update_one(
+            {"id": doc["id"]},
+            {"$set": {"status": "reprocessed", "batch_processed": True}}
+        )
+        processed += 1
+
+    return {"processed": processed, "total": len(docs)}
+
+
 @router.put("/da-rivedere/{document_id}/classifica")
 async def classifica_documento_revisione(
     document_id: str,

@@ -1205,3 +1205,43 @@ async def get_movimenti_stipendi(
         "non_riconciliati_sample": non_riconciliati[:20]
     }
 
+
+
+@router.post("/ricategorizza-batch")
+@handle_errors
+async def ricategorizza_batch_movimenti() -> Dict[str, Any]:
+    """Ricategorizza automaticamente i movimenti bancari in base a pattern noti."""
+    db = Database.get_db()
+
+    PATTERN_CATEGORIE = {
+        "stipend": "stipendi",
+        "salary": "stipendi",
+        "inps": "contributi",
+        "f24": "tributi",
+        "erario": "tributi",
+        "affitto": "affitto",
+        "canone": "affitto",
+        "enel": "utenze",
+        "telecom": "utenze",
+        "vodafone": "utenze",
+        "assicuraz": "assicurazioni",
+    }
+
+    movimenti = await db["bank_movements"].find(
+        {"$or": [{"categoria": None}, {"categoria": ""}, {"categoria": {"$exists": False}}]},
+        {"_id": 0, "id": 1, "descrizione": 1, "causale": 1}
+    ).to_list(5000)
+
+    aggiornati = 0
+    for m in movimenti:
+        testo = ((m.get("descrizione") or "") + " " + (m.get("causale") or "")).lower()
+        for pattern, cat in PATTERN_CATEGORIE.items():
+            if pattern in testo:
+                await db["bank_movements"].update_one(
+                    {"id": m["id"]},
+                    {"$set": {"categoria": cat, "auto_categorizzato": True}}
+                )
+                aggiornati += 1
+                break
+
+    return {"totale_analizzati": len(movimenti), "aggiornati": aggiornati}
