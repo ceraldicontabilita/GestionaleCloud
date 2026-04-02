@@ -81,7 +81,7 @@ const LibroUnicoTab = memo(function LibroUnicoTab({
   }, [monthYear]);
 
   const handleDelete = useCallback((salaryId) => {
-    { // No confirm needed
+    if (window.confirm('Sei sicuro di voler eliminare questo record?')) {
       deleteMutation.mutate(salaryId);
     }
   }, [deleteMutation]);

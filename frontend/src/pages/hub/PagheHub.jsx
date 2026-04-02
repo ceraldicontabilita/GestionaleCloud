@@ -297,7 +297,7 @@ function SezioneF24({ anno }) {
 
 // ====== MAIN COMPONENT ======
 export default function PagheHub() {
-  const { annoGlobale } = useAnnoGlobale();
+  const { anno: annoGlobale } = useAnnoGlobale();
   const anno = annoGlobale || new Date().getFullYear();
 
   return (

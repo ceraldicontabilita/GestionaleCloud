@@ -74,7 +74,7 @@ const LibrettiSanitariTab = memo(function LibrettiSanitariTab() {
   }, [formData, createMutation]);
 
   const handleDelete = useCallback((librettoId) => {
-    { // No confirm needed
+    if (window.confirm('Sei sicuro di voler eliminare questo libretto sanitario?')) {
       deleteMutation.mutate(librettoId);
     }
   }, [deleteMutation]);

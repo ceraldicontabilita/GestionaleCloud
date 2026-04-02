@@ -311,6 +311,37 @@ async def get_drivers() -> Dict[str, Any]:
     return {"drivers": dipendenti}
 
 
+@router.post("/veicoli")
+@handle_errors
+async def create_veicolo(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    """Crea un nuovo veicolo a noleggio."""
+    db = Database.get_db()
+    targa = (data.get("targa") or "").upper().strip()
+    if not targa:
+        raise HTTPException(status_code=400, detail="Targa obbligatoria")
+
+    existing = await db[COLLECTION].find_one({"targa": targa})
+    if existing:
+        raise HTTPException(status_code=409, detail=f"Veicolo {targa} già esistente")
+
+    veicolo = {
+        "targa": targa,
+        "marca": data.get("marca", ""),
+        "modello": data.get("modello", ""),
+        "driver_id": data.get("driver_id"),
+        "driver_nome": data.get("driver_nome", ""),
+        "fornitore_piva": data.get("fornitore_piva", ""),
+        "data_inizio": data.get("data_inizio"),
+        "data_fine": data.get("data_fine"),
+        "canone_mensile": float(data.get("canone_mensile", 0) or 0),
+        "note": data.get("note", ""),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db[COLLECTION].insert_one(veicolo.copy())
+    veicolo.pop("_id", None)
+    return veicolo
+
+
 @router.put("/veicoli/{targa}")
 @handle_errors
 async def update_veicolo(
