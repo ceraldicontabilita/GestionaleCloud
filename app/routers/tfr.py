@@ -238,16 +238,33 @@ async def liquida_tfr(input_data: LiquidazioneTFRInput) -> Dict[str, Any]:
     tfr_disponibile = float(dipendente.get("tfr_accantonato", 0))
     
     # Determina importo da liquidare
-    if input_data.importo_richiesto:
-        # Per anticipi TFR: massimo 70% del TFR maturato (Art. 2120 c.c.)
-        if input_data.motivo == "anticipo":
-            max_anticipo = tfr_disponibile * 0.70
-            if input_data.importo_richiesto > max_anticipo:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Anticipo TFR max 70%: richiesto €{input_data.importo_richiesto:.2f}, "
-                           f"massimo consentito €{max_anticipo:.2f} (Art. 2120 c.c.)"
-                )
+    # Per anticipo è obbligatorio indicare un importo richiesto positivo.
+    if input_data.motivo == "anticipo":
+        if input_data.importo_richiesto is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Per anticipo TFR è obbligatorio specificare un importo richiesto"
+            )
+        if input_data.importo_richiesto <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Per anticipo TFR l'importo richiesto deve essere maggiore di zero"
+            )
+
+        max_anticipo = tfr_disponibile * 0.70
+        if input_data.importo_richiesto > max_anticipo:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Anticipo TFR max 70%: richiesto €{input_data.importo_richiesto:.2f}, "
+                       f"massimo consentito €{max_anticipo:.2f} (Art. 2120 c.c.)"
+            )
+        importo_lordo = min(input_data.importo_richiesto, tfr_disponibile)
+    elif input_data.importo_richiesto is not None:
+        if input_data.importo_richiesto <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail="L'importo richiesto deve essere maggiore di zero"
+            )
         importo_lordo = min(input_data.importo_richiesto, tfr_disponibile)
     else:
         importo_lordo = tfr_disponibile
