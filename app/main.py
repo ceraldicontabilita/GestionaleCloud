@@ -2,9 +2,10 @@
 Azienda in Cloud ERP - Main Application Entry Point
 FastAPI application with MongoDB Atlas - Refactored Modular Architecture
 """
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, JSONResponse
 from contextlib import asynccontextmanager
 import os
 
@@ -671,8 +672,14 @@ app.include_router(r_cu_ord_mod.router,        prefix="/api", tags=["Cucina Ordi
 # =============================================================================
 
 @app.get("/")
-async def root():
-    """Health check endpoint."""
+async def root(request: Request):
+    """Serve il frontend React o health check JSON in base al client."""
+    accept = request.headers.get("accept", "")
+    if "text/html" in accept:
+        # Richiesta browser: serve index.html del frontend
+        _idx = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist", "index.html")
+        if os.path.isfile(_idx):
+            return FileResponse(_idx)
     return {
         "app": settings.APP_NAME,
         "version": settings.APP_VERSION,
@@ -793,6 +800,41 @@ _tracciabilita_static = os.path.join(os.path.dirname(__file__), "static", "tracc
 if os.path.isdir(_tracciabilita_static):
     app.mount("/api/tracciabilita", StaticFiles(directory=_tracciabilita_static, html=True), name="tracciabilita")
     logger.info("✅ Mini-sito Tracciabilità montato su /api/tracciabilita")
+
+# =============================================================================
+# SPA FRONTEND SERVING
+# Serve il frontend React per tutti i path non-API.
+# Necessario per il routing lato client (React Router) in produzione:
+# ogni refresh/navigazione diretta a /dipendenti, /fatture, ecc.
+# riceve index.html e React Router gestisce il routing client-side.
+# =============================================================================
+_FRONTEND_DIST = os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "frontend", "dist"))
+
+if os.path.isdir(_FRONTEND_DIST):
+    # Serve file statici (JS, CSS, assets) direttamente
+    app.mount("/assets", StaticFiles(directory=os.path.join(_FRONTEND_DIST, "assets")), name="frontend-assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_spa(request: Request, full_path: str) -> FileResponse:
+        """
+        Catch-all handler: serve index.html per qualsiasi route non-API.
+        Permette a React Router di gestire la navigazione client-side.
+        """
+        # Le route /api/ non esistenti restituiscono 404 JSON (non index.html)
+        if full_path.startswith("api/") or full_path == "api":
+            return JSONResponse({"detail": "Not found"}, status_code=404)
+        # Prova a servire un file statico esistente (favicon, logo, ecc.)
+        # Protezione path traversal: normalizza il path
+        safe_path = os.path.normpath(full_path).lstrip("/\\")
+        static_file = os.path.join(_FRONTEND_DIST, safe_path)
+        if full_path and os.path.isfile(static_file) and static_file.startswith(_FRONTEND_DIST):
+            return FileResponse(static_file)
+        # Per tutte le altre route, serve index.html (SPA fallback)
+        return FileResponse(os.path.join(_FRONTEND_DIST, "index.html"))
+
+    logger.info("✅ Frontend React montato da %s (SPA routing attivo)", _FRONTEND_DIST)
+else:
+    logger.warning("⚠️ Frontend dist non trovato in %s — SPA routing non attivo", _FRONTEND_DIST)
 
 
 if __name__ == "__main__":

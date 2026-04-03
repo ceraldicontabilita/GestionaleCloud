@@ -15,7 +15,7 @@ const wsKeepalivePlugin = {
         server.ws.clients.forEach(client => {
           if (client.readyState === 1) client.ping();
         });
-      } catch (_) {}
+      } catch (_) { }
     }, 20000);
     server.httpServer?.on('close', () => clearInterval(iv));
   }
@@ -55,5 +55,8 @@ export default defineConfig({
         changeOrigin: true,
       }
     }
+  },
+  build: {
+    chunkSizeWarningLimit: 700
   }
 })

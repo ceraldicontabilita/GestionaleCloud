@@ -414,8 +414,9 @@ async def dettaglio_fatture_liquidazione(
         
         # Verifica criteri
         same_month = period_start <= op_date <= period_end and reg_date <= period_end
-        # Deroga 15 giorni: valida anche per gennaio (fatture dicembre anno precedente)
-        deroga_15 = prev_start <= op_date <= prev_end and reg_date <= fifteenth
+        # Deroga 15 giorni: valida anche per gennaio, ma solo se la registrazione
+        # avviene nel mese corrente entro il giorno 15.
+        deroga_15 = prev_start <= op_date <= prev_end and period_start <= reg_date <= fifteenth
         deroga_12 = within_12_days_rule(op_date, reg_date, anno, mese)
         
         if same_month or deroga_15 or deroga_12:

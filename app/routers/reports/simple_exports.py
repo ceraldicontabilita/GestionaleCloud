@@ -1,5 +1,8 @@
 """
-Simple Export Router - Export data without authentication
+Simple Export Router - Esportazioni dati semplificate.
+
+NOTA: Questi endpoint sono protetti dal middleware JWT di autenticazione.
+Richiedono un token Bearer valido come tutti gli endpoint /api/.
 """
 from fastapi import APIRouter, Query
 from fastapi.responses import StreamingResponse

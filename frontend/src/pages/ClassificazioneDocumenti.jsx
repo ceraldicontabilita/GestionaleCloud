@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import api from '../api';
 import { FileText, Mail, CheckCircle, AlertCircle, Trash2, RefreshCw, Settings, Search, ArrowRight, Zap, Brain, FolderOpen, Eye, Download, Edit2, X } from 'lucide-react';
 import { STYLES, COLORS, button, badge, formatEuro, formatDateIT } from '../lib/utils';
@@ -59,7 +59,7 @@ export default function ClassificazioneDocumenti() {
   // Leggi tab iniziale da URL params
   const [searchParams] = useSearchParams();
   const initialTab = searchParams.get('tab') || 'classificazione';
-  
+
   const [activeTab, setActiveTab] = useState(initialTab);
   const [stats, setStats] = useState(null);
   const [rules, setRules] = useState([]);
@@ -68,14 +68,14 @@ export default function ClassificazioneDocumenti() {
   const [loading, setLoading] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [processing, setProcessing] = useState(false);
-  
+
   // Stato per modale correzione
   const [showCorrezioneModal, setShowCorrezioneModal] = useState(false);
   const [docToCorrect, setDocToCorrect] = useState(null);
   const [nuovaCategoria, setNuovaCategoria] = useState('');
   const [keywordsNuove, setKeywordsNuove] = useState('');
   const [salvandoCorrezione, setSalvandoCorrezione] = useState(false);
-  
+
   // Impostazioni scansione
   const [scanSettings, setScanSettings] = useState({
     cartella: 'INBOX',
@@ -83,7 +83,7 @@ export default function ClassificazioneDocumenti() {
     delete_unmatched: false,
     dry_run: true
   });
-  
+
   useEffect(() => {
     loadData();
     loadStats();
@@ -171,43 +171,43 @@ export default function ClassificazioneDocumenti() {
     setLoading(true);
     try {
       const res = await api.delete(`/api/documenti-smart/cleanup-unmatched?cartella=${scanSettings.cartella}&giorni=${scanSettings.giorni}&confirm=${confirm}`);
-      
-  // Funzione per aprire il modale di correzione
-  const handleOpenCorrezione = (doc) => {
-    setDocToCorrect(doc);
-    setNuovaCategoria(doc.categoria || doc.tipo || '');
-    setKeywordsNuove('');
-    setShowCorrezioneModal(true);
-  };
-  
-  // Funzione per salvare la correzione (feedback)
-  const handleSalvaCorrezione = async () => {
-    if (!docToCorrect || !nuovaCategoria) return;
-    
-    setSalvandoCorrezione(true);
-    try {
-      const keywords = keywordsNuove.split(',').map(k => k.trim().toLowerCase()).filter(k => k.length > 0);
-      
-      await api.post('/api/learning-machine/feedback', {
-        document_id: docToCorrect._key || docToCorrect.id || docToCorrect._id,
-        categoria_corretta: nuovaCategoria,
-        keywords_nuove: keywords.length > 0 ? keywords : null,
-        note: `Correzione manuale da ${docToCorrect.categoria || docToCorrect.tipo || 'N/D'} a ${nuovaCategoria}`
-      });
-      
-      alert(`✅ Correzione salvata!\n\nIl sistema ha appreso questa correzione e migliorerà le classificazioni future.`);
-      setShowCorrezioneModal(false);
-      setDocToCorrect(null);
-      loadData(); // Ricarica documenti
-    } catch (error) {
-      console.error('Errore salvataggio correzione:', error);
-      alert('Errore: ' + (error.response?.data?.detail || error.message));
-    } finally {
-      setSalvandoCorrezione(false);
-    }
-  };
-      alert(confirm 
-        ? `Eliminate ${res.data.eliminati} email non rilevanti` 
+
+      // Funzione per aprire il modale di correzione
+      const handleOpenCorrezione = (doc) => {
+        setDocToCorrect(doc);
+        setNuovaCategoria(doc.categoria || doc.tipo || '');
+        setKeywordsNuove('');
+        setShowCorrezioneModal(true);
+      };
+
+      // Funzione per salvare la correzione (feedback)
+      const handleSalvaCorrezione = async () => {
+        if (!docToCorrect || !nuovaCategoria) return;
+
+        setSalvandoCorrezione(true);
+        try {
+          const keywords = keywordsNuove.split(',').map(k => k.trim().toLowerCase()).filter(k => k.length > 0);
+
+          await api.post('/api/learning-machine/feedback', {
+            document_id: docToCorrect._key || docToCorrect.id || docToCorrect._id,
+            categoria_corretta: nuovaCategoria,
+            keywords_nuove: keywords.length > 0 ? keywords : null,
+            note: `Correzione manuale da ${docToCorrect.categoria || docToCorrect.tipo || 'N/D'} a ${nuovaCategoria}`
+          });
+
+          alert(`✅ Correzione salvata!\n\nIl sistema ha appreso questa correzione e migliorerà le classificazioni future.`);
+          setShowCorrezioneModal(false);
+          setDocToCorrect(null);
+          loadData(); // Ricarica documenti
+        } catch (error) {
+          console.error('Errore salvataggio correzione:', error);
+          alert('Errore: ' + (error.response?.data?.detail || error.message));
+        } finally {
+          setSalvandoCorrezione(false);
+        }
+      };
+      alert(confirm
+        ? `Eliminate ${res.data.eliminati} email non rilevanti`
         : `Preview: ${res.data.email_da_eliminare} email verrebbero eliminate`
       );
     } catch (error) {
@@ -218,25 +218,25 @@ export default function ClassificazioneDocumenti() {
   };
 
   const getCategoryConfig = (category) => {
-    return CATEGORY_CONFIG[category] || { 
-      bg: '#f1f5f9', text: '#475569', icon: FileText, label: category, section: 'Altro' 
+    return CATEGORY_CONFIG[category] || {
+      bg: '#f1f5f9', text: '#475569', icon: FileText, label: category, section: 'Altro'
     };
   };
 
   return (
     <div style={{ maxWidth: 1400, margin: '0 auto', padding: '16px' }} data-testid="classificazione-documenti-page">
       {/* Action Bar - senza cornice blu */}
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'flex-end', 
-        alignItems: 'center', 
+      <div style={{
+        display: 'flex',
+        justifyContent: 'flex-end',
+        alignItems: 'center',
         marginBottom: 16,
         gap: 10
       }}>
         <button
           onClick={() => { loadData(); loadStats(); }}
           disabled={loading}
-          style={{ 
+          style={{
             padding: '8px 14px',
             background: '#f1f5f9',
             color: '#1e3a5f',
@@ -255,58 +255,58 @@ export default function ClassificazioneDocumenti() {
 
       {/* Statistiche */}
       {stats && (
-        <div style={{ 
-          background: 'white', 
-          borderRadius: 12, 
-          padding: 16, 
-          boxShadow: '0 2px 8px rgba(0,0,0,0.08)', 
-          marginBottom: 20 
+        <div style={{
+          background: 'white',
+          borderRadius: 12,
+          padding: 16,
+          boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+          marginBottom: 20
         }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12 }}>
-            <div style={{ 
-              background: 'white', 
-              borderRadius: 8, 
-              padding: '10px 12px', 
-              boxShadow: '0 1px 4px rgba(0,0,0,0.06)', 
-              borderLeft: '3px solid #6366f1' 
+            <div style={{
+              background: 'white',
+              borderRadius: 8,
+              padding: '10px 12px',
+              boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+              borderLeft: '3px solid #6366f1'
             }}>
               <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>📊 Classificati</div>
               <div style={{ fontSize: 18, fontWeight: 'bold', color: '#6366f1' }}>{stats.totale_classificati || 0}</div>
             </div>
-            <div style={{ 
-              background: 'white', 
-              borderRadius: 8, 
-              padding: '10px 12px', 
-              boxShadow: '0 1px 4px rgba(0,0,0,0.06)', 
-              borderLeft: '3px solid #22c55e' 
+            <div style={{
+              background: 'white',
+              borderRadius: 8,
+              padding: '10px 12px',
+              boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+              borderLeft: '3px solid #22c55e'
             }}>
               <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>✅ Processati</div>
               <div style={{ fontSize: 18, fontWeight: 'bold', color: '#22c55e' }}>{stats.processati || 0}</div>
             </div>
-            <div style={{ 
-              background: 'white', 
-              borderRadius: 8, 
-              padding: '10px 12px', 
-              boxShadow: '0 1px 4px rgba(0,0,0,0.06)', 
-              borderLeft: '3px solid #f59e0b' 
+            <div style={{
+              background: 'white',
+              borderRadius: 8,
+              padding: '10px 12px',
+              boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+              borderLeft: '3px solid #f59e0b'
             }}>
               <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>⏳ Da Processare</div>
               <div style={{ fontSize: 18, fontWeight: 'bold', color: '#f59e0b' }}>{stats.da_processare || 0}</div>
             </div>
-            <div style={{ 
-              background: 'white', 
-              borderRadius: 8, 
-              padding: '10px 12px', 
-              boxShadow: '0 1px 4px rgba(0,0,0,0.06)', 
-              borderLeft: '3px solid #ef4444' 
+            <div style={{
+              background: 'white',
+              borderRadius: 8,
+              padding: '10px 12px',
+              boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+              borderLeft: '3px solid #ef4444'
             }}>
               <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>❌ Errori</div>
               <div style={{ fontSize: 18, fontWeight: 'bold', color: '#ef4444' }}>{stats.errori || 0}</div>
             </div>
-            <div style={{ 
-              background: '#1e3a5f', 
-              borderRadius: 8, 
-              padding: '10px 12px', 
+            <div style={{
+              background: '#1e3a5f',
+              borderRadius: 8,
+              padding: '10px 12px',
               color: 'white'
             }}>
               <div style={{ fontSize: 11, opacity: 0.9, marginBottom: 4 }}>📧 Email Scansite</div>
@@ -350,22 +350,22 @@ export default function ClassificazioneDocumenti() {
       {activeTab === 'classificazione' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
           {/* Scansione Email */}
-          <div style={{ 
-            background: 'white', 
-            borderRadius: 12, 
-            padding: 20, 
+          <div style={{
+            background: 'white',
+            borderRadius: 12,
+            padding: 20,
             boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
           }}>
             <h3 style={{ margin: '0 0 16px 0', fontSize: 16, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
               📧 Scansione Email
             </h3>
-            
+
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 16 }}>
               <div>
                 <label style={{ display: 'block', fontSize: 14, color: '#6b7280', marginBottom: 4 }}>Cartella</label>
                 <select
                   value={scanSettings.cartella}
-                  onChange={(e) => setScanSettings({...scanSettings, cartella: e.target.value})}
+                  onChange={(e) => setScanSettings({ ...scanSettings, cartella: e.target.value })}
                   style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 8, padding: '8px 12px' }}
                   data-testid="select-cartella"
                 >
@@ -374,48 +374,48 @@ export default function ClassificazioneDocumenti() {
                   <option value="[Gmail]/Posta in arrivo">Posta in arrivo</option>
                 </select>
               </div>
-              
+
               <div>
                 <label style={{ display: 'block', fontSize: 14, color: '#6b7280', marginBottom: 4 }}>Ultimi giorni</label>
                 <input
                   type="number"
                   value={scanSettings.giorni}
-                  onChange={(e) => setScanSettings({...scanSettings, giorni: parseInt(e.target.value) || 30})}
+                  onChange={(e) => setScanSettings({ ...scanSettings, giorni: parseInt(e.target.value) || 30 })}
                   style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 8, padding: '8px 12px' }}
                   min="1"
                   max="365"
                   data-testid="input-giorni"
                 />
               </div>
-              
+
               <div style={{ display: 'flex', alignItems: 'end', gap: 8 }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
                   <input
                     type="checkbox"
                     checked={scanSettings.dry_run}
-                    onChange={(e) => setScanSettings({...scanSettings, dry_run: e.target.checked})}
+                    onChange={(e) => setScanSettings({ ...scanSettings, dry_run: e.target.checked })}
                     style={{ width: 16, height: 16 }}
                     data-testid="checkbox-dryrun"
                   />
                   <span style={{ fontSize: 14 }}>Solo anteprima</span>
                 </label>
               </div>
-              
+
               <div style={{ display: 'flex', alignItems: 'end' }}>
                 <button
                   onClick={handleScan}
                   disabled={scanning}
                   data-testid="btn-scan"
-                  style={{ 
-                    width: '100%', 
-                    padding: '8px 16px', 
-                    background: scanning ? '#9ca3af' : '#4f46e5', 
-                    color: 'white', 
+                  style={{
+                    width: '100%',
+                    padding: '8px 16px',
+                    background: scanning ? '#9ca3af' : '#4f46e5',
+                    color: 'white',
                     border: 'none',
-                    borderRadius: 8, 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    justifyContent: 'center', 
+                    borderRadius: 8,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
                     gap: 8,
                     cursor: scanning ? 'not-allowed' : 'pointer'
                   }}
@@ -434,7 +434,7 @@ export default function ClassificazioneDocumenti() {
             {scanResults && (
               <div style={{ marginTop: 24, borderTop: '1px solid #e5e7eb', paddingTop: 16 }} data-testid="scan-results">
                 <h4 style={{ fontWeight: 500, marginBottom: 12 }}>Risultati Scansione</h4>
-                
+
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
                   <div style={{ background: '#f9fafb', borderRadius: 8, padding: 12, textAlign: 'center' }}>
                     <div style={{ fontSize: 20, fontWeight: 'bold' }}>{scanResults.email_totali}</div>
@@ -462,24 +462,24 @@ export default function ClassificazioneDocumenti() {
                       {Object.entries(scanResults.per_categoria).map(([cat, data]) => {
                         const config = getCategoryConfig(cat);
                         return (
-                          <div 
+                          <div
                             key={cat}
-                            style={{ 
-                              padding: '8px 12px', 
-                              borderRadius: 8, 
-                              display: 'flex', 
-                              alignItems: 'center', 
+                            style={{
+                              padding: '8px 12px',
+                              borderRadius: 8,
+                              display: 'flex',
+                              alignItems: 'center',
                               gap: 8,
-                              backgroundColor: config.bg, 
-                              color: config.text 
+                              backgroundColor: config.bg,
+                              color: config.text
                             }}
                           >
                             <span style={{ fontWeight: 500 }}>{config.label}</span>
-                            <span style={{ 
-                              background: 'rgba(255,255,255,0.5)', 
-                              padding: '2px 8px', 
-                              borderRadius: 4, 
-                              fontSize: 14 
+                            <span style={{
+                              background: 'rgba(255,255,255,0.5)',
+                              padding: '2px 8px',
+                              borderRadius: 4,
+                              fontSize: 14
                             }}>{data.count}</span>
                             <ArrowRight style={{ width: 12, height: 12 }} />
                             <span style={{ fontSize: 12 }}>{data.gestionale_section}</span>
@@ -497,14 +497,14 @@ export default function ClassificazioneDocumenti() {
                       onClick={handleProcess}
                       disabled={processing}
                       data-testid="btn-process"
-                      style={{ 
-                        padding: '8px 16px', 
-                        background: processing ? '#9ca3af' : '#16a34a', 
-                        color: 'white', 
+                      style={{
+                        padding: '8px 16px',
+                        background: processing ? '#9ca3af' : '#16a34a',
+                        color: 'white',
                         border: 'none',
-                        borderRadius: 8, 
-                        display: 'flex', 
-                        alignItems: 'center', 
+                        borderRadius: 8,
+                        display: 'flex',
+                        alignItems: 'center',
                         gap: 8,
                         cursor: processing ? 'not-allowed' : 'pointer'
                       }}
@@ -516,14 +516,14 @@ export default function ClassificazioneDocumenti() {
                       onClick={handleAssociaTutti}
                       disabled={processing}
                       data-testid="btn-associa"
-                      style={{ 
-                        padding: '8px 16px', 
-                        background: processing ? '#9ca3af' : '#9333ea', 
-                        color: 'white', 
+                      style={{
+                        padding: '8px 16px',
+                        background: processing ? '#9ca3af' : '#9333ea',
+                        color: 'white',
                         border: 'none',
-                        borderRadius: 8, 
-                        display: 'flex', 
-                        alignItems: 'center', 
+                        borderRadius: 8,
+                        display: 'flex',
+                        alignItems: 'center',
                         gap: 8,
                         cursor: processing ? 'not-allowed' : 'pointer'
                       }}
@@ -536,12 +536,12 @@ export default function ClassificazioneDocumenti() {
 
                 {/* Cleanup */}
                 {scanResults.email_non_classificate > 0 && (
-                  <div style={{ 
-                    marginTop: 16, 
-                    padding: 12, 
-                    background: '#fef2f2', 
-                    border: '1px solid #fecaca', 
-                    borderRadius: 8 
+                  <div style={{
+                    marginTop: 16,
+                    padding: 12,
+                    background: '#fef2f2',
+                    border: '1px solid #fecaca',
+                    borderRadius: 8
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                       <div>
@@ -555,11 +555,11 @@ export default function ClassificazioneDocumenti() {
                       <div style={{ display: 'flex', gap: 8 }}>
                         <button
                           onClick={() => handleCleanup(false)}
-                          style={{ 
-                            padding: '6px 12px', 
-                            fontSize: 14, 
-                            border: '1px solid #fca5a5', 
-                            color: '#b91c1c', 
+                          style={{
+                            padding: '6px 12px',
+                            fontSize: 14,
+                            border: '1px solid #fca5a5',
+                            color: '#b91c1c',
                             background: 'transparent',
                             borderRadius: 8,
                             cursor: 'pointer'
@@ -570,15 +570,15 @@ export default function ClassificazioneDocumenti() {
                         <button
                           onClick={() => handleCleanup(true)}
                           data-testid="btn-cleanup"
-                          style={{ 
-                            padding: '6px 12px', 
-                            fontSize: 14, 
-                            background: '#dc2626', 
-                            color: 'white', 
+                          style={{
+                            padding: '6px 12px',
+                            fontSize: 14,
+                            background: '#dc2626',
+                            color: 'white',
                             border: 'none',
-                            borderRadius: 8, 
-                            display: 'flex', 
-                            alignItems: 'center', 
+                            borderRadius: 8,
+                            display: 'flex',
+                            alignItems: 'center',
                             gap: 4,
                             cursor: 'pointer'
                           }}
@@ -596,30 +596,30 @@ export default function ClassificazioneDocumenti() {
 
           {/* Mapping Gestionale */}
           {stats?.mapping_gestionale && Object.keys(stats.mapping_gestionale).length > 0 && (
-            <div style={{ 
-              background: 'white', 
-              borderRadius: 12, 
-              padding: 20, 
+            <div style={{
+              background: 'white',
+              borderRadius: 12,
+              padding: 20,
               boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
             }}>
               <h3 style={{ margin: '0 0 16px 0', fontSize: 16, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
                 <FolderOpen style={{ width: 20, height: 20, color: '#4f46e5' }} />
                 Mapping Sezioni Gestionale
               </h3>
-              
+
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
                 {Object.entries(stats.mapping_gestionale).map(([section, data]) => {
                   const sectionConfig = GESTIONALE_SECTIONS[section];
                   return (
-                    <a
+                    <Link
                       key={section}
-                      href={sectionConfig?.path || '#'}
-                      style={{ 
-                        border: '1px solid #e5e7eb', 
-                        borderRadius: 8, 
-                        padding: 16, 
-                        display: 'flex', 
-                        alignItems: 'center', 
+                      to={sectionConfig?.path || '#'}
+                      style={{
+                        border: '1px solid #e5e7eb',
+                        borderRadius: 8,
+                        padding: 16,
+                        display: 'flex',
+                        alignItems: 'center',
                         justifyContent: 'space-between',
                         textDecoration: 'none',
                         color: 'inherit'
@@ -629,16 +629,16 @@ export default function ClassificazioneDocumenti() {
                         <div style={{ fontWeight: 500 }}>{section}</div>
                         <div style={{ fontSize: 14, color: '#6b7280' }}>{data.categoria}</div>
                       </div>
-                      <div 
-                        style={{ 
-                          fontSize: 24, 
+                      <div
+                        style={{
+                          fontSize: 24,
                           fontWeight: 'bold',
                           color: sectionConfig?.color || '#6366f1'
                         }}
                       >
                         {data.documenti}
                       </div>
-                    </a>
+                    </Link>
                   );
                 })}
               </div>
@@ -650,8 +650,8 @@ export default function ClassificazioneDocumenti() {
       {/* Tab: Documenti */}
       {activeTab === 'documenti' && (
         <div style={{ background: 'white', borderRadius: 12, border: '1px solid #e5e7eb', overflow: 'hidden' }}>
-          <div style={{ 
-            padding: '16px 20px', 
+          <div style={{
+            padding: '16px 20px',
             borderBottom: '1px solid #e5e7eb',
             display: 'flex',
             alignItems: 'center',
@@ -682,7 +682,7 @@ export default function ClassificazioneDocumenti() {
               </button>
             </div>
           </div>
-          
+
           {loading ? (
             <div style={{ padding: 40, textAlign: 'center', color: '#6b7280' }}>Caricamento...</div>
           ) : documents.length === 0 ? (
@@ -712,15 +712,15 @@ export default function ClassificazioneDocumenti() {
                       <tr key={doc._id || idx} style={{ borderBottom: '1px solid #e5e7eb' }}>
                         <td style={{ padding: '12px 16px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                            <div 
-                              style={{ 
-                                width: 40, 
-                                height: 40, 
-                                borderRadius: 8, 
-                                display: 'flex', 
-                                alignItems: 'center', 
+                            <div
+                              style={{
+                                width: 40,
+                                height: 40,
+                                borderRadius: 8,
+                                display: 'flex',
+                                alignItems: 'center',
                                 justifyContent: 'center',
-                                background: config.bg 
+                                background: config.bg
                               }}
                             >
                               <IconComponent style={{ width: 20, height: 20, color: config.text }} />
@@ -736,14 +736,14 @@ export default function ClassificazioneDocumenti() {
                           </div>
                         </td>
                         <td style={{ padding: '12px 16px' }}>
-                          <span 
-                            style={{ 
-                              padding: '4px 10px', 
-                              borderRadius: 20, 
-                              fontSize: 11, 
+                          <span
+                            style={{
+                              padding: '4px 10px',
+                              borderRadius: 20,
+                              fontSize: 11,
                               fontWeight: 500,
-                              background: config.bg, 
-                              color: config.text 
+                              background: config.bg,
+                              color: config.text
                             }}
                           >
                             {config.label}
@@ -784,7 +784,7 @@ export default function ClassificazioneDocumenti() {
                             >
                               <Eye style={{ width: 12, height: 12 }} /> Vedi
                             </button>
-                            
+
                             {/* Tasto Scarica */}
                             <button
                               onClick={() => window.open(`${import.meta.env.VITE_BACKEND_URL || ''}/api/documenti-smart/download/${doc._id || doc.id}`, '_blank')}
@@ -805,7 +805,7 @@ export default function ClassificazioneDocumenti() {
                             >
                               <Download style={{ width: 12, height: 12 }} /> Scarica
                             </button>
-                            
+
                             {/* Tasto Correggi Categoria */}
                             <button
                               onClick={() => handleOpenCorrezione(doc)}
@@ -837,7 +837,7 @@ export default function ClassificazioneDocumenti() {
           )}
         </div>
       )}
-      
+
       {/* Modale Correzione Categoria */}
       {showCorrezioneModal && docToCorrect && (
         <div style={{
@@ -871,7 +871,7 @@ export default function ClassificazioneDocumenti() {
                 <X style={{ width: 20, height: 20, color: '#9ca3af' }} />
               </button>
             </div>
-            
+
             <div style={{ marginBottom: 16, padding: 12, background: '#f8fafc', borderRadius: 8 }}>
               <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Documento:</div>
               <div style={{ fontWeight: 500, fontSize: 14 }}>{docToCorrect.filename || docToCorrect.subject || 'N/D'}</div>
@@ -879,7 +879,7 @@ export default function ClassificazioneDocumenti() {
                 Classificato come: <strong>{docToCorrect.categoria || docToCorrect.tipo || 'N/D'}</strong>
               </div>
             </div>
-            
+
             <div style={{ marginBottom: 16 }}>
               <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 6 }}>
                 Categoria Corretta *
@@ -902,7 +902,7 @@ export default function ClassificazioneDocumenti() {
                 ))}
               </select>
             </div>
-            
+
             <div style={{ marginBottom: 20 }}>
               <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 6 }}>
                 Keywords aggiuntive (opzionale)
@@ -924,7 +924,7 @@ export default function ClassificazioneDocumenti() {
                 Aggiungi parole chiave per migliorare il riconoscimento futuro
               </div>
             </div>
-            
+
             <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
               <button
                 onClick={() => setShowCorrezioneModal(false)}
@@ -984,7 +984,7 @@ export default function ClassificazioneDocumenti() {
               Queste regole determinano come le email vengono classificate e associate al gestionale.
             </p>
           </div>
-          
+
           <div className="divide-y">
             {rules.map((rule, idx) => {
               const config = getCategoryConfig(rule.category);
@@ -992,7 +992,7 @@ export default function ClassificazioneDocumenti() {
                 <div key={idx} className="p-4">
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
-                      <span 
+                      <span
                         className="px-2 py-1 rounded text-sm font-medium"
                         style={{ backgroundColor: config.bg, color: config.text }}
                       >
@@ -1005,7 +1005,7 @@ export default function ClassificazioneDocumenti() {
                       {rule.gestionale_section}
                     </div>
                   </div>
-                  
+
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
                     <div>
                       <span className="text-gray-500">Keywords:</span>

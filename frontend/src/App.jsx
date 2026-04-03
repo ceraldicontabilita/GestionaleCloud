@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import api from "./api";
+import api, { setAuthToken } from "./api";
 import ErrorBoundary from "./components/ErrorBoundary";
 import TopNav from "./components/layout/TopNav";
 import SecondaryTabs from "./components/layout/SecondaryTabs";
@@ -54,6 +54,7 @@ export default function App() {
   const [showF24Sync, setShowF24Sync] = useState(false);
   const [processingGoogleAuth, setProcessingGoogleAuth] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
 
   // Google OAuth processing
   useEffect(() => {
@@ -69,8 +70,11 @@ export default function App() {
             const response = await api.post('/api/auth/google/session', { session_id: sessionId });
             if (response.data.success) {
               console.log('[App] Google OAuth completato:', response.data.user?.email);
+              if (response.data.access_token) {
+                setAuthToken(response.data.access_token);
+              }
               window.history.replaceState(null, '', window.location.pathname);
-              window.location.reload();
+              navigate('/', { replace: true });
             }
           } catch (error) {
             console.error('[App] Errore Google OAuth:', error);
@@ -133,10 +137,10 @@ export default function App() {
     <UploadProvider>
       <div className="topnav-layout" data-testid="topnav-layout">
         {/* Banner notifiche browser rimosso */}
-        
+
         {/* Upload Status Bar */}
         <UploadStatusBar />
-        
+
         {/* F24 Email Sync Popup */}
         {showF24Sync && (
           <F24EmailSync onClose={() => setShowF24Sync(false)} />
@@ -144,7 +148,7 @@ export default function App() {
 
         {/* TOP NAVIGATION - Primary */}
         <TopNav />
-        
+
         {/* SECONDARY TABS - Context-sensitive */}
         <SecondaryTabs />
 
@@ -152,8 +156,8 @@ export default function App() {
         <nav className="mobile-nav-topnav" data-testid="mobile-nav">
           {MOBILE_NAV.map((item) => (
             item.isMenu ? (
-              <button 
-                key="menu" 
+              <button
+                key="menu"
                 className="mobile-nav-item"
                 onClick={() => setShowMobileMenu(!showMobileMenu)}
                 data-testid="mobile-menu-toggle"
@@ -162,9 +166,9 @@ export default function App() {
                 <span className="mobile-nav-label">{item.label}</span>
               </button>
             ) : (
-              <NavLink 
-                key={item.to} 
-                to={item.to} 
+              <NavLink
+                key={item.to}
+                to={item.to}
                 className={({ isActive }) => `mobile-nav-item ${isActive ? "active" : ""}`}
                 onClick={() => setShowMobileMenu(false)}
               >
@@ -177,8 +181,8 @@ export default function App() {
 
         {/* Mobile Menu Overlay */}
         {showMobileMenu && (
-          <div 
-            className="mobile-menu-overlay" 
+          <div
+            className="mobile-menu-overlay"
             onClick={() => setShowMobileMenu(false)}
             data-testid="mobile-menu-overlay"
           >
@@ -186,7 +190,7 @@ export default function App() {
               <div className="mobile-menu-header">
                 <div className="brand-square">CG</div>
                 <span style={{ fontWeight: 700, fontSize: 16, color: '#1a40b5' }}>Ceraldi ERP</span>
-                <button 
+                <button
                   className="mobile-menu-close"
                   onClick={() => setShowMobileMenu(false)}
                 >
@@ -195,8 +199,8 @@ export default function App() {
               </div>
               <div className="mobile-menu-items">
                 {ALL_NAV_ITEMS.map((item) => (
-                  <NavLink 
-                    key={item.to} 
+                  <NavLink
+                    key={item.to}
                     to={item.to}
                     end={item.to === '/'}
                     className={({ isActive }) => `mobile-menu-item ${isActive ? "active" : ""}`}
@@ -229,7 +233,7 @@ export default function App() {
               <div style={{ flex: 1 }}>
                 <strong>{alertCommercialista.message}</strong>
               </div>
-              <NavLink 
+              <NavLink
                 to={`/commercialista?mese=${alertCommercialista?.mese_pendente || ''}&anno=${alertCommercialista?.anno_pendente || ''}`}
                 style={{
                   padding: '8px 16px',
@@ -271,7 +275,7 @@ export default function App() {
               </button>
             </div>
           )}
-          
+
           <ErrorBoundary message="Errore nel caricamento della pagina. Prova a ricaricare.">
             <Outlet />
           </ErrorBoundary>
