@@ -620,12 +620,15 @@ async def cedolini_dipendente(dipendente_id: str, anno: Optional[int] = None) ->
     """
     db = Database.get_db()
     
-    # Verifica dipendente
+    # Verifica dipendente — controlla prima 'employees' poi 'dipendenti' (due collezioni in uso)
     dipendente = await db["employees"].find_one({"id": dipendente_id}, {"_id": 0, "nome_completo": 1, "nome": 1})
     if not dipendente:
-        raise HTTPException(status_code=404, detail="Dipendente non trovato")
+        dipendente = await db["dipendenti"].find_one({"id": dipendente_id}, {"_id": 0, "nome_completo": 1, "nome": 1, "cognome": 1})
+    if not dipendente:
+        # Dipendente non trovato in nessuna collection — restituisce lista vuota senza 404
+        return {"dipendente_id": dipendente_id, "nome": "", "cedolini": [], "totale_lordo": 0, "totale_netto": 0, "anno_filtro": anno}
     
-    nome = dipendente.get("nome_completo") or dipendente.get("nome", "")
+    nome = dipendente.get("nome_completo") or f"{dipendente.get('nome', '')} {dipendente.get('cognome', '')}".strip() or ""
     
     # Query cedolini
     query = {"dipendente_id": dipendente_id}

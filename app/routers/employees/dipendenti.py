@@ -494,6 +494,28 @@ async def create_busta_paga(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
 # La gestione salari/prima nota è stata spostata in /app/app/routers/prima_nota_salari.py
 # Endpoints disponibili: /api/prima-nota-salari/*
 
+# ============== GESTIONE CONTRATTI - lista (must be BEFORE /{dipendente_id}) ==============
+
+@router.get("/contratti")
+@handle_errors
+async def list_contratti_proxy(
+    dipendente_id: Optional[str] = Query(None),
+    tipo: Optional[str] = Query(None),
+    stato: Optional[str] = Query(None)
+) -> List[Dict[str, Any]]:
+    """Lista tutti i contratti (proxy pre-routing per evitare conflitto con /{dipendente_id})."""
+    db = Database.get_db()
+    query = {}
+    if dipendente_id:
+        query["dipendente_id"] = dipendente_id
+    if tipo:
+        query["tipo_contratto"] = tipo
+    if stato:
+        query["stato"] = stato
+    contratti = await db["contratti_dipendenti"].find(query, {"_id": 0}).sort("data_inizio", -1).to_list(500)
+    return contratti
+
+
 # ============== DIPENDENTE DETAIL (must be after specific routes) ==============
 
 @router.get("/{dipendente_id}")
