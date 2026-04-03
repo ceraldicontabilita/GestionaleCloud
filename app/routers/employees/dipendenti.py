@@ -1460,7 +1460,17 @@ async def create_contratto(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     
     if not dipendente:
         raise HTTPException(status_code=404, detail="Dipendente non trovato")
-    
+
+    # Validazioni business sui dati del contratto
+    retribuzione = data.get("retribuzione_lorda")
+    if retribuzione is not None and float(retribuzione) < 0:
+        raise HTTPException(status_code=422, detail="retribuzione_lorda non può essere negativa")
+
+    data_inizio = data.get("data_inizio")
+    data_fine = data.get("data_fine")
+    if data_inizio and data_fine and str(data_fine) < str(data_inizio):
+        raise HTTPException(status_code=422, detail="data_fine non può essere precedente a data_inizio")
+
     contratto = {
         "id": str(uuid.uuid4()),
         "dipendente_id": dipendente.get("id"),
@@ -1500,8 +1510,15 @@ async def create_contratto(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
 @router.put("/contratti/{contratto_id}")
 @handle_errors
 async def update_contratto(contratto_id: str, data: Dict[str, Any] = Body(...)) -> Dict[str, str]:
-    """Aggiorna contratto esistente."""
+    """Aggiorna contratto esistente. Non permette modifiche su contratti terminati."""
     db = Database.get_db()
+
+    # Blocca modifiche su contratti terminati
+    existing = await db["contratti_dipendenti"].find_one({"id": contratto_id}, {"_id": 0, "stato": 1})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Contratto non trovato")
+    if existing.get("stato") == "terminato":
+        raise HTTPException(status_code=409, detail="Impossibile modificare un contratto terminato")
     
     data.pop("id", None)
     data.pop("created_at", None)
@@ -1554,6 +1571,17 @@ async def termina_contratto(
     )
     
     return {"message": "Contratto terminato"}
+
+
+@router.delete("/contratti/{contratto_id}")
+@handle_errors
+async def delete_contratto(contratto_id: str) -> Dict[str, str]:
+    """Elimina un contratto. Solo contratti in stato 'bozza' o creati per errore possono essere eliminati."""
+    db = Database.get_db()
+    result = await db["contratti_dipendenti"].delete_one({"id": contratto_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Contratto non trovato")
+    return {"message": "Contratto eliminato"}
 
 
 @router.get("/contratti/scadenze")

@@ -101,6 +101,10 @@ async def create_prima_nota_cassa(data: Dict[str, Any] = Body(...)) -> Dict[str,
     
     if data["tipo"] not in TIPO_MOVIMENTO:
         raise HTTPException(status_code=400, detail="Tipo deve essere 'entrata' o 'uscita'")
+
+    importo = float(data.get("importo", 0))
+    if importo <= 0:
+        raise HTTPException(status_code=422, detail="importo deve essere > 0")
     
     # Validazione: rifiuta movimenti chiaramente bancari
     desc_upper = (data.get("descrizione") or "").upper()

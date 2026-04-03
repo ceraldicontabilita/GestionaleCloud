@@ -3,7 +3,7 @@ Router Cedolini - Gestione semplificata buste paga
 Calcola stima cedolino da ore/giorni lavoro e costo azienda totale
 """
 from fastapi import APIRouter, HTTPException, Body
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 import uuid
@@ -48,7 +48,7 @@ DETRAZIONE_BASE = 1955  # Annuale per redditi fino a 15.000€
 
 class CedolinoInput(BaseModel):
     dipendente_id: str
-    mese: int  # 1-12
+    mese: int = Field(..., ge=1, le=12, description="Mese (1-12)")  # 1-12
     anno: int
     ore_lavorate: Optional[float] = None  # Per paga oraria
     giorni_lavorati: Optional[float] = None  # Per paga giornaliera
@@ -375,6 +375,8 @@ async def calcola_stima_cedolino(input_data: CedolinoInput) -> CedolinoStima:
     )
     
     # Dati retributivi (da contratto o default, con possibile override)
+    if input_data.paga_oraria is not None and input_data.paga_oraria <= 0:
+        raise HTTPException(status_code=422, detail="paga_oraria deve essere > 0 se specificata")
     if input_data.paga_oraria and input_data.paga_oraria > 0:
         paga_oraria = input_data.paga_oraria
     elif contratto:

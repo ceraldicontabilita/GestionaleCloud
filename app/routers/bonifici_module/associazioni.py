@@ -23,6 +23,10 @@ async def associa_fattura_a_bonifico(
     """Associa una fattura a un bonifico. Supporta sia bonifici_transfers (UUID) sia archivio_bonifici (ObjectId)."""
     db = Database.get_db()
 
+    # Validazione: fattura_id non può essere vuoto
+    if not fattura_id or not fattura_id.strip():
+        raise HTTPException(status_code=422, detail="fattura_id non può essere vuoto")
+
     aggiornamento = {
         "fattura_associata_id": fattura_id,
         "fattura_collection": collection,
@@ -31,6 +35,14 @@ async def associa_fattura_a_bonifico(
     }
 
     # 1) Prova prima su bonifici_transfers (collection moderna, ID stringa UUID)
+    # Controlla se il bonifico è già associato a un'altra fattura (blocca doppia associazione)
+    existing = await db["bonifici_transfers"].find_one({"id": bonifico_id}, {"_id": 0, "fattura_associata_id": 1})
+    if existing and existing.get("fattura_associata_id") and existing["fattura_associata_id"] != fattura_id:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Bonifico già associato alla fattura {existing['fattura_associata_id']}. Disassocia prima."
+        )
+
     result = await db["bonifici_transfers"].update_one(
         {"id": bonifico_id},
         {"$set": aggiornamento}
