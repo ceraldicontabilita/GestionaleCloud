@@ -3,7 +3,7 @@ Router Cedolini - Gestione semplificata buste paga
 Calcola stima cedolino da ore/giorni lavoro e costo azienda totale
 """
 from fastapi import APIRouter, HTTPException, Body
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 import uuid
@@ -48,7 +48,7 @@ DETRAZIONE_BASE = 1955  # Annuale per redditi fino a 15.000€
 
 class CedolinoInput(BaseModel):
     dipendente_id: str
-    mese: int = Field(..., ge=1, le=12, description="Mese (1-12)")  # 1-12
+    mese: int  # 1-12
     anno: int
     ore_lavorate: Optional[float] = None  # Per paga oraria
     giorni_lavorati: Optional[float] = None  # Per paga giornaliera
@@ -136,24 +136,38 @@ def calcola_detrazioni_lavoro(reddito_annuo: float) -> float:
 @router.post("")
 @handle_errors
 async def crea_cedolino(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
-    """Crea un cedolino manuale."""
+    """
+    Crea un cedolino manuale.
+    
+    Valida i campi obbligatori e il range del mese (1-12).
+    """
     db = Database.get_db()
     
     required = ["employee_id", "mese", "anno", "netto"]
     for field in required:
         if field not in data:
             raise HTTPException(status_code=400, detail=f"Campo obbligatorio mancante: {field}")
-
-    mese_val = int(data["mese"])
-    anno_val = int(data["anno"])
-    netto_val = float(data["netto"])
+    
+    # Validazione mese e anno
+    try:
+        mese_val = int(data["mese"])
+        anno_val = int(data["anno"])
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Mese e anno devono essere valori numerici")
+    
     if mese_val < 1 or mese_val > 12:
         raise HTTPException(status_code=400, detail="Mese deve essere compreso tra 1 e 12")
     if anno_val < 2020 or anno_val > 2030:
         raise HTTPException(status_code=400, detail="Anno non valido")
+    
+    try:
+        netto_val = float(data["netto"])
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Il netto deve essere un valore numerico valido")
+    
     if netto_val < 0:
-        raise HTTPException(status_code=400, detail="Il netto non puo essere negativo")
-
+        raise HTTPException(status_code=400, detail="Il netto non può essere negativo")
+    
     cedolino = {
         "id": str(uuid.uuid4()),
         "employee_id": data["employee_id"],
@@ -196,15 +210,17 @@ async def lista_cedolini(
     # Limita il massimo a 500
     limit = min(limit, 500)
     
-    query = {}
-    and_conditions = []
+    query: dict = {}
+    and_conditions: list = []
+    
     if anno:
+        # Gestisce sia anno come int (2026) sia come stringa ("2026")
         and_conditions.append({"$or": [{"anno": anno}, {"anno": str(anno)}]})
     if mese:
         query["mese"] = mese
     if dipendente_id:
         query["dipendente_id"] = dipendente_id
-
+    
     # Filtra cedolini incompleti se richiesto
     if solo_completi:
         and_conditions.append({
@@ -213,6 +229,7 @@ async def lista_cedolini(
                 {"lordo_totale": {"$exists": True, "$gt": 0}}
             ]
         })
+    
     if and_conditions:
         query["$and"] = and_conditions
     
@@ -354,16 +371,11 @@ async def calcola_stima_cedolino(input_data: CedolinoInput) -> CedolinoStima:
     """
     db = Database.get_db()
     
-    # Recupera dati dipendente — controlla prima 'employees' poi 'dipendenti'
+    # Recupera dati dipendente
     dipendente = await db["employees"].find_one(
         {"id": input_data.dipendente_id},
         {"_id": 0}
     )
-    if not dipendente:
-        dipendente = await db["dipendenti"].find_one(
-            {"id": input_data.dipendente_id},
-            {"_id": 0}
-        )
     
     if not dipendente:
         raise HTTPException(status_code=404, detail="Dipendente non trovato")
@@ -375,8 +387,6 @@ async def calcola_stima_cedolino(input_data: CedolinoInput) -> CedolinoStima:
     )
     
     # Dati retributivi (da contratto o default, con possibile override)
-    if input_data.paga_oraria is not None and input_data.paga_oraria <= 0:
-        raise HTTPException(status_code=422, detail="paga_oraria deve essere > 0 se specificata")
     if input_data.paga_oraria and input_data.paga_oraria > 0:
         paga_oraria = input_data.paga_oraria
     elif contratto:
@@ -627,15 +637,12 @@ async def cedolini_dipendente(dipendente_id: str, anno: Optional[int] = None) ->
     """
     db = Database.get_db()
     
-    # Verifica dipendente — controlla prima 'employees' poi 'dipendenti' (due collezioni in uso)
+    # Verifica dipendente
     dipendente = await db["employees"].find_one({"id": dipendente_id}, {"_id": 0, "nome_completo": 1, "nome": 1})
     if not dipendente:
-        dipendente = await db["dipendenti"].find_one({"id": dipendente_id}, {"_id": 0, "nome_completo": 1, "nome": 1, "cognome": 1})
-    if not dipendente:
-        # Dipendente non trovato in nessuna collection — restituisce lista vuota senza 404
-        return {"dipendente_id": dipendente_id, "nome": "", "cedolini": [], "totale_lordo": 0, "totale_netto": 0, "anno_filtro": anno}
+        raise HTTPException(status_code=404, detail="Dipendente non trovato")
     
-    nome = dipendente.get("nome_completo") or f"{dipendente.get('nome', '')} {dipendente.get('cognome', '')}".strip() or ""
+    nome = dipendente.get("nome_completo") or dipendente.get("nome", "")
     
     # Query cedolini
     query = {"dipendente_id": dipendente_id}

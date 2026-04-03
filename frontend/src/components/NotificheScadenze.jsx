@@ -36,7 +36,13 @@ export function useScadenzeNotifiche() {
     notification.onclick = () => {
       window.focus();
       if (options.url) {
-        window.location.href = options.url;
+        const isInternalRoute = options.url.startsWith('/') && !options.url.startsWith('/api/');
+        if (isInternalRoute) {
+          window.history.pushState({}, '', options.url);
+          window.dispatchEvent(new PopStateEvent('popstate'));
+        } else {
+          window.location.href = options.url;
+        }
       }
       notification.close();
     };
@@ -49,7 +55,7 @@ export function useScadenzeNotifiche() {
     try {
       const res = await api.get('/api/scadenze/prossime?giorni=3');
       const scadenze = res.data?.scadenze || res.data || [];
-      
+
       const urgenti = scadenze.filter(s => {
         const dataScadenza = new Date(s.data_scadenza);
         const oggi = new Date();
@@ -71,13 +77,13 @@ export function useScadenzeNotifiche() {
           sendNotification(
             '⚠️ Scadenze OGGI!',
             `Hai ${scadenzaOggi.length} scadenz${scadenzaOggi.length > 1 ? 'e' : 'a'} in scadenza oggi`,
-            { urgent: true, tag: 'scadenza-oggi', url: '/scadenzario' }
+            { urgent: true, tag: 'scadenza-oggi', url: '/scadenze' }
           );
         } else if (urgenti.length > 0) {
           sendNotification(
             '📅 Scadenze imminenti',
             `${urgenti.length} scadenz${urgenti.length > 1 ? 'e' : 'a'} nei prossimi 3 giorni`,
-            { tag: 'scadenza-prossima', url: '/scadenzario' }
+            { tag: 'scadenza-prossima', url: '/scadenze' }
           );
         }
       }
@@ -127,7 +133,7 @@ export function NotificheScadenze({ showBanner = true }) {
   };
 
   if (!isSupported || dismissed) return null;
-  
+
   // Non mostrare se permesso già concesso o negato
   if (permission !== 'default') return null;
 

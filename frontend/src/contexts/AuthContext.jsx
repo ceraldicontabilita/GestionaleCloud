@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { Navigate } from 'react-router-dom';
 import api, { setAuthToken, clearAuthToken, getAuthToken } from '../api';
 
 const AuthContext = createContext(null);
@@ -43,7 +44,6 @@ export function AuthProvider({ children }) {
   const logout = useCallback(() => {
     clearAuthToken();
     setUser(null);
-    window.location.href = '/login';
   }, []);
 
   const isAuthenticated = !!user;
@@ -76,8 +76,7 @@ export function RequireAuth({ children }) {
   }
 
   if (!isAuthenticated) {
-    window.location.href = '/login';
-    return null;
+    return <Navigate to="/login" replace />;
   }
 
   return children;

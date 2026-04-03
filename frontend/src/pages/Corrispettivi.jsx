@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { Link } from 'react-router-dom';
 import api from "../api";
 import { formatDateIT, formatEuro } from '../lib/utils';
 import { useAnnoGlobale } from "../contexts/AnnoContext";
@@ -54,9 +55,9 @@ export default function Corrispettivi() {
   const totaleImponibile = corrispettivi.reduce((sum, c) => sum + (c.totale_imponibile || 0), 0);
 
   const KPICard = ({ icon: Icon, label, value, subtext, color, bgColor }) => (
-    <div style={{ 
-      background: bgColor || '#fff', 
-      borderRadius: 12, 
+    <div style={{
+      background: bgColor || '#fff',
+      borderRadius: 12,
       padding: 20,
       border: '1px solid #e2e8f0'
     }}>
@@ -80,9 +81,9 @@ export default function Corrispettivi() {
       subtitle={`Corrispettivi giornalieri dal registratore telematico - Anno ${selectedYear}`}
       actions={
         <div style={{ display: 'flex', gap: 10 }}>
-          <a 
-            href="/import-documenti"
-            style={{ 
+          <Link
+            to="/import-documenti"
+            style={{
               padding: '10px 16px',
               background: '#16a34a',
               color: 'white',
@@ -96,11 +97,11 @@ export default function Corrispettivi() {
             }}
           >
             <Upload size={16} /> Importa
-          </a>
-          <button 
+          </Link>
+          <button
             onClick={loadCorrispettivi}
             disabled={loading}
-            style={{ 
+            style={{
               padding: '10px 16px',
               background: '#f1f5f9',
               color: '#475569',
@@ -131,27 +132,27 @@ export default function Corrispettivi() {
           {/* KPI Cards */}
           {corrispettivi.length > 0 && (
             <PageGrid cols={4} gap={16}>
-              <KPICard 
+              <KPICard
                 icon={Receipt}
                 label="Totale Corrispettivi"
                 value={formatEuro(totaleGiornaliero)}
                 color="#1e3a5f"
               />
-              <KPICard 
+              <KPICard
                 icon={Banknote}
                 label="Pagato Cassa"
                 value={formatEuro(totaleCassa)}
                 color="#16a34a"
                 bgColor="#f0fdf4"
               />
-              <KPICard 
+              <KPICard
                 icon={CreditCard}
                 label="Pagato POS"
                 value={formatEuro(totaleElettronico)}
                 color="#7c3aed"
                 bgColor="#f5f3ff"
               />
-              <KPICard 
+              <KPICard
                 icon={Percent}
                 label="IVA 10%"
                 value={formatEuro(totaleIVA)}
@@ -165,21 +166,21 @@ export default function Corrispettivi() {
           {/* Dettaglio selezionato */}
           {selectedItem && (
             <PageSection title={`Dettaglio Corrispettivo ${selectedItem.data}`} icon="📋" style={{ marginTop: 20 }}>
-              <button 
-                onClick={() => setSelectedItem(null)} 
-                style={{ 
-                  position: 'absolute', 
-                  top: 16, 
-                  right: 16, 
-                  background: 'none', 
-                  border: 'none', 
+              <button
+                onClick={() => setSelectedItem(null)}
+                style={{
+                  position: 'absolute',
+                  top: 16,
+                  right: 16,
+                  background: 'none',
+                  border: 'none',
                   cursor: 'pointer',
                   padding: 4
                 }}
               >
                 <X size={20} color="#64748b" />
               </button>
-              
+
               <PageGrid cols={3} gap={20}>
                 <div>
                   <h4 style={{ margin: '0 0 12px 0', fontSize: 13, color: '#64748b', fontWeight: 600 }}>Dati Generali</h4>
@@ -208,7 +209,7 @@ export default function Corrispettivi() {
                   </div>
                 </div>
               </PageGrid>
-              
+
               {selectedItem.riepilogo_iva && selectedItem.riepilogo_iva.length > 0 && (
                 <div style={{ marginTop: 20 }}>
                   <h4 style={{ margin: '0 0 12px 0', fontSize: 13, color: '#64748b', fontWeight: 600 }}>
@@ -240,21 +241,21 @@ export default function Corrispettivi() {
           )}
 
           {/* Lista Corrispettivi */}
-          <PageSection 
-            title={`Elenco Corrispettivi (${corrispettivi.length})`} 
-            icon="📋" 
+          <PageSection
+            title={`Elenco Corrispettivi (${corrispettivi.length})`}
+            icon="📋"
             style={{ marginTop: 20, padding: 0 }}
           >
             {corrispettivi.length === 0 ? (
               <div style={{ padding: 40 }}>
-                <PageEmpty 
-                  icon="🧾" 
-                  message="Nessun corrispettivo registrato per questo anno" 
+                <PageEmpty
+                  icon="🧾"
+                  message="Nessun corrispettivo registrato per questo anno"
                 />
                 <div style={{ textAlign: 'center', marginTop: 16 }}>
-                  <a href="/import-documenti" style={{ color: '#2563eb', fontSize: 14 }}>
+                  <Link to="/import-documenti" style={{ color: '#2563eb', fontSize: 14 }}>
                     Vai a Import Documenti per caricare i corrispettivi
-                  </a>
+                  </Link>
                 </div>
               </div>
             ) : (
@@ -273,9 +274,9 @@ export default function Corrispettivi() {
                   </thead>
                   <tbody>
                     {corrispettivi.map((c, i) => (
-                      <tr 
-                        key={c.id || i} 
-                        style={{ 
+                      <tr
+                        key={c.id || i}
+                        style={{
                           borderBottom: '1px solid #f1f5f9',
                           transition: 'background 0.15s'
                         }}
@@ -301,30 +302,30 @@ export default function Corrispettivi() {
                           {formatEuro(c.totale_iva)}
                         </td>
                         <td style={{ padding: '14px 16px', textAlign: 'center' }}>
-                          <button 
+                          <button
                             onClick={() => setSelectedItem(c)}
-                            style={{ 
-                              padding: '6px 10px', 
-                              background: '#eff6ff', 
-                              color: '#2563eb', 
-                              border: 'none', 
-                              borderRadius: 6, 
-                              cursor: 'pointer', 
+                            style={{
+                              padding: '6px 10px',
+                              background: '#eff6ff',
+                              color: '#2563eb',
+                              border: 'none',
+                              borderRadius: 6,
+                              cursor: 'pointer',
                               marginRight: 6
                             }}
                             title="Vedi dettaglio"
                           >
                             <Eye size={14} />
                           </button>
-                          <button 
+                          <button
                             onClick={() => handleDelete(c.id)}
-                            style={{ 
-                              padding: '6px 10px', 
-                              background: '#fef2f2', 
-                              color: '#dc2626', 
-                              border: 'none', 
-                              borderRadius: 6, 
-                              cursor: 'pointer' 
+                            style={{
+                              padding: '6px 10px',
+                              background: '#fef2f2',
+                              color: '#dc2626',
+                              border: 'none',
+                              borderRadius: 6,
+                              cursor: 'pointer'
                             }}
                             title="Elimina"
                           >

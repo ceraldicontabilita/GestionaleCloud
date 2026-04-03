@@ -197,7 +197,7 @@ class InvoiceMetadataTemplate(BaseModel):
     """Template metadata."""
     template_name: str = Field(..., min_length=3, description="Nome template")
     description: Optional[str] = Field(None, description="Descrizione")
-    fields: List[InvoiceMetadataField] = Field(..., min_items=1, description="Campi template")
+    fields: List[InvoiceMetadataField] = Field(..., min_length=1, description="Campi template")
     apply_to_supplier: Optional[str] = Field(None, description="Applica automaticamente a fornitore")
 
 

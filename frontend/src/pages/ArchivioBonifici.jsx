@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { formatEuro, formatDateIT, STYLES, COLORS, button, badge } from '../lib/utils';
@@ -32,20 +32,20 @@ export default function ArchivioBonifici() {
   // URL Tab Support
   const navigate = useNavigate();
   const location = useLocation();
-  
+
   const getTabFromPath = () => {
     const path = location.pathname;
     const match = path.match(/\/archivio-bonifici\/([\w-]+)/);
     return match ? match[1] : 'da_associare';
   };
-  
+
   const [activeTab, setActiveTab] = useState(getTabFromPath());
-  
+
   const handleTabChange = (tabId) => {
     setActiveTab(tabId);
     navigate(`/archivio-bonifici/${tabId}`);
   };
-  
+
   useEffect(() => {
     const tab = getTabFromPath();
     if (tab !== activeTab) setActiveTab(tab);
@@ -64,7 +64,7 @@ export default function ArchivioBonifici() {
         setFattureCompatibili([]);
       }
     };
-    
+
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
@@ -73,7 +73,7 @@ export default function ArchivioBonifici() {
   useEffect(() => {
     if (initialized.current) return;
     initialized.current = true;
-    
+
     loadTransfers();
     loadSummary();
     loadCount();
@@ -99,7 +99,7 @@ export default function ArchivioBonifici() {
       if (yearFilter) params.append('year', yearFilter);
       if (ordinanteFilter) params.append('ordinante', ordinanteFilter);
       if (beneficiarioFilter) params.append('beneficiario', beneficiarioFilter);
-      
+
       const res = await api.get(`/api/archivio-bonifici/transfers?${params.toString()}`);
       setTransfers(res.data || []);
     } catch (error) {
@@ -137,23 +137,23 @@ export default function ArchivioBonifici() {
   };
 
   const handleRiconcilia = async () => {
-    
-    
+
+
     setRiconciliando(true);
     try {
       // Avvia in background
       const res = await api.post('/api/archivio-bonifici/riconcilia?background=true');
-      
+
       if (res.data.background && res.data.task_id) {
         // Poll per lo stato
         const taskId = res.data.task_id;
         let attempts = 0;
         const maxAttempts = 60; // 2 minuti max
-        
+
         const pollStatus = async () => {
           try {
             const statusRes = await api.get(`/api/archivio-bonifici/riconcilia/task/${taskId}`);
-            
+
             if (statusRes.data.status === 'completed') {
               const result = statusRes.data.result;
               alert(`✅ Riconciliazione completata!\n\nRiconciliati: ${result.riconciliati}\nNon trovati: ${result.non_riconciliati}`);
@@ -174,7 +174,7 @@ export default function ArchivioBonifici() {
             setRiconciliando(false);
           }
         };
-        
+
         setTimeout(pollStatus, 1000);
       } else {
         // Fallback sincrono
@@ -190,7 +190,7 @@ export default function ArchivioBonifici() {
 
   // Elimina bonifico
   const handleDelete = async (id) => {
-    
+
     try {
       await api.delete(`/api/archivio-bonifici/transfers/${id}`);
       loadTransfers();
@@ -233,7 +233,7 @@ export default function ArchivioBonifici() {
 
   // Sincronizza IBAN dai bonifici all'anagrafica dipendenti
   const handleSyncIbanToAnagrafica = async () => {
-    
+
     try {
       const res = await api.post('/api/archivio-bonifici/sync-iban-anagrafica');
       alert(`✅ Sincronizzazione completata!\n\nDipendenti aggiornati: ${res.data.dipendenti_aggiornati}\nBonifici analizzati: ${res.data.totale_bonifici_analizzati}`);
@@ -265,7 +265,7 @@ export default function ArchivioBonifici() {
     // Chiudi dropdown fatture se aperto
     setAssociaFatturaDropdown(null);
     setFattureCompatibili([]);
-    
+
     if (associaDropdown === bonifico_id) {
       setAssociaDropdown(null);
       setOperazioniCompatibili([]);
@@ -291,12 +291,12 @@ export default function ArchivioBonifici() {
   // Disassocia bonifico da salario (DOPPIA CONFERMA)
   const handleDisassocia = async (bonifico_id, dipendente_nome) => {
     const msg1 = `Rimuovere associazione con "${dipendente_nome || 'salario'}"?`;
-    
-    
+
+
     // Seconda conferma
     const msg2 = `⚠️ CONFERMA RIMOZIONE\n\nQuesta azione rimuoverà l'associazione tra il bonifico e il salario.\n\nSei sicuro di voler procedere?`;
-    
-    
+
+
     try {
       await api.delete(`/api/archivio-bonifici/disassocia-salario/${bonifico_id}`);
       loadTransfers();
@@ -322,7 +322,7 @@ export default function ArchivioBonifici() {
     // Chiudi dropdown salari se aperto
     setAssociaDropdown(null);
     setOperazioniCompatibili([]);
-    
+
     if (associaFatturaDropdown === bonifico_id) {
       setAssociaFatturaDropdown(null);
       setFattureCompatibili([]);
@@ -345,12 +345,12 @@ export default function ArchivioBonifici() {
 
   const handleDisassociaFattura = async (bonifico_id, fattura_numero) => {
     const msg1 = `Rimuovere associazione con fattura "${fattura_numero || 'N/D'}"?`;
-    
-    
+
+
     // Seconda conferma
     const msg2 = `⚠️ CONFERMA RIMOZIONE\n\nQuesta azione rimuoverà l'associazione tra il bonifico e la fattura.\n\nSei sicuro di voler procedere?`;
-    
-    
+
+
     try {
       await api.delete(`/api/archivio-bonifici/disassocia-fattura/${bonifico_id}`);
       loadTransfers();
@@ -361,11 +361,11 @@ export default function ArchivioBonifici() {
 
   // Calcola totali e filtra per tab
   const totaleImporto = transfers.reduce((sum, t) => sum + (t.importo || 0), 0);
-  
+
   // Separa bonifici associati da non associati
   const bonificiDaAssociare = transfers.filter(t => !t.salario_associato && !t.fattura_associata);
   const bonificiAssociati = transfers.filter(t => t.salario_associato || t.fattura_associata);
-  
+
   // Dati da mostrare in base al tab
   const transfersToShow = activeTab === 'da_associare' ? bonificiDaAssociare : bonificiAssociati;
 
@@ -373,9 +373,9 @@ export default function ArchivioBonifici() {
     <div style={{ maxWidth: 1400, margin: '0 auto', padding: '16px' }} ref={dropdownRef}>
       {/* Action bar senza titolo duplicato */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: 16, gap: 10, flexWrap: 'wrap' }}>
-        <a 
-          href="/import-export"
-          style={{ 
+        <Link
+          to="/import-export"
+          style={{
             padding: "8px 14px",
             background: "#3b82f6",
             color: "white",
@@ -389,7 +389,7 @@ export default function ArchivioBonifici() {
           }}
         >
           📥 Importa
-        </a>
+        </Link>
         <button
           onClick={handleSyncIbanToAnagrafica}
           style={{
@@ -451,10 +451,10 @@ export default function ArchivioBonifici() {
       </div>
 
       {/* Pulsante Riconciliazione */}
-      <div style={{ 
-        background: 'linear-gradient(135deg, #0ea5e9, #0369a1)', 
-        padding: 16, 
-        borderRadius: 12, 
+      <div style={{
+        background: 'linear-gradient(135deg, #0ea5e9, #0369a1)',
+        padding: 16,
+        borderRadius: 12,
         marginBottom: 24,
         display: 'flex',
         justifyContent: 'space-between',
@@ -492,11 +492,11 @@ export default function ArchivioBonifici() {
           <h3 style={{ fontSize: 14, fontWeight: 'bold', marginBottom: 12, color: '#475569' }}>📊 Riepilogo per Anno (clicca per scaricare ZIP)</h3>
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
             {Object.entries(summary).sort(([a], [b]) => b.localeCompare(a)).map(([year, data]) => (
-              <div 
-                key={year} 
-                style={{ 
-                  background: 'white', 
-                  padding: '8px 16px', 
+              <div
+                key={year}
+                style={{
+                  background: 'white',
+                  padding: '8px 16px',
                   borderRadius: 8,
                   border: '1px solid #e2e8f0',
                   cursor: 'pointer',
@@ -519,10 +519,10 @@ export default function ArchivioBonifici() {
       )}
 
       {/* Filters */}
-      <div style={{ 
-        background: 'white', 
-        padding: 16, 
-        borderRadius: 12, 
+      <div style={{
+        background: 'white',
+        padding: 16,
+        borderRadius: 12,
         border: '1px solid #e2e8f0',
         marginBottom: 24,
         display: 'flex',
@@ -598,7 +598,7 @@ export default function ArchivioBonifici() {
             ✕ Reset
           </button>
         )}
-        
+
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
           <button
             onClick={() => handleExport('xlsx')}
@@ -692,9 +692,9 @@ export default function ArchivioBonifici() {
       </div>
 
       {/* Table */}
-      <div style={{ 
-        background: 'white', 
-        borderRadius: '0 12px 12px 12px', 
+      <div style={{
+        background: 'white',
+        borderRadius: '0 12px 12px 12px',
         border: '1px solid #e2e8f0',
         overflow: 'hidden'
       }}>
@@ -702,8 +702,8 @@ export default function ArchivioBonifici() {
           <div style={{ padding: 40, textAlign: 'center', color: '#64748b' }}>⏳ Caricamento...</div>
         ) : transfersToShow.length === 0 ? (
           <div style={{ padding: 40, textAlign: 'center', color: '#64748b' }}>
-            {activeTab === 'da_associare' 
-              ? '🎉 Tutti i bonifici sono stati associati!' 
+            {activeTab === 'da_associare'
+              ? '🎉 Tutti i bonifici sono stati associati!'
               : 'Nessun bonifico associato. Seleziona il tab "Da Associare" per iniziare.'}
           </div>
         ) : (
@@ -746,11 +746,11 @@ export default function ArchivioBonifici() {
                     <td style={{ padding: 8, position: 'relative' }}>
                       {t.salario_associato ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <span style={{ 
-                            background: '#dcfce7', 
-                            color: '#16a34a', 
-                            padding: '4px 8px', 
-                            borderRadius: 6, 
+                          <span style={{
+                            background: '#dcfce7',
+                            color: '#16a34a',
+                            padding: '4px 8px',
+                            borderRadius: 6,
                             fontSize: 10,
                             fontWeight: 500
                           }}>
@@ -799,9 +799,9 @@ export default function ArchivioBonifici() {
                             }}>
                               {/* Banner IBAN Match */}
                               {dipendenteIbanMatch && !loadingOperazioni && (
-                                <div style={{ 
-                                  background: '#ecfdf5', 
-                                  borderBottom: '2px solid #16a34a', 
+                                <div style={{
+                                  background: '#ecfdf5',
+                                  borderBottom: '2px solid #16a34a',
                                   padding: '8px 12px',
                                   fontSize: 10
                                 }}>
@@ -817,8 +817,8 @@ export default function ArchivioBonifici() {
                                 <div style={{ padding: 16, textAlign: 'center', color: '#6b7280' }}>⏳ Caricamento...</div>
                               ) : operazioniCompatibili.length === 0 ? (
                                 <div style={{ padding: 16, textAlign: 'center', color: '#6b7280', fontSize: 11 }}>
-                                  {dipendenteIbanMatch 
-                                    ? `Nessuna operazione in Prima Nota Salari per ${dipendenteIbanMatch.nome_display}` 
+                                  {dipendenteIbanMatch
+                                    ? `Nessuna operazione in Prima Nota Salari per ${dipendenteIbanMatch.nome_display}`
                                     : 'Nessuna operazione salari compatibile trovata'}
                                 </div>
                               ) : (
@@ -843,18 +843,18 @@ export default function ArchivioBonifici() {
                                       </span>
                                       <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                                         {op.iban_match && (
-                                          <span style={{ 
-                                            background: '#16a34a', 
-                                            color: 'white', 
-                                            padding: '2px 6px', 
-                                            borderRadius: 4, 
-                                            fontSize: 8, 
-                                            fontWeight: 600 
+                                          <span style={{
+                                            background: '#16a34a',
+                                            color: 'white',
+                                            padding: '2px 6px',
+                                            borderRadius: 4,
+                                            fontSize: 8,
+                                            fontWeight: 600
                                           }}>
                                             IBAN ✓
                                           </span>
                                         )}
-                                        <span style={{ 
+                                        <span style={{
                                           background: op.compatibilita_score >= 70 ? '#dcfce7' : op.compatibilita_score >= 40 ? '#fef3c7' : '#fee2e2',
                                           color: op.compatibilita_score >= 70 ? '#16a34a' : op.compatibilita_score >= 40 ? '#d97706' : '#dc2626',
                                           padding: '2px 6px',
@@ -882,11 +882,11 @@ export default function ArchivioBonifici() {
                     <td style={{ padding: 8, position: 'relative' }}>
                       {t.fattura_associata ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <span style={{ 
-                            background: '#dbeafe', 
-                            color: '#1d4ed8', 
-                            padding: '4px 8px', 
-                            borderRadius: 6, 
+                          <span style={{
+                            background: '#dbeafe',
+                            color: '#1d4ed8',
+                            padding: '4px 8px',
+                            borderRadius: 6,
                             fontSize: 10,
                             fontWeight: 500
                           }}>
@@ -957,7 +957,7 @@ export default function ArchivioBonifici() {
                                       <span style={{ fontWeight: 500, fontSize: 11 }}>
                                         {f.numero_fattura || 'N/A'} - {f.fornitore?.substring(0, 20) || ''}
                                       </span>
-                                      <span style={{ 
+                                      <span style={{
                                         background: f.compatibilita_score >= 70 ? '#dcfce7' : f.compatibilita_score >= 40 ? '#fef3c7' : '#fee2e2',
                                         color: f.compatibilita_score >= 70 ? '#16a34a' : f.compatibilita_score >= 40 ? '#d97706' : '#dc2626',
                                         padding: '2px 6px',
@@ -993,7 +993,7 @@ export default function ArchivioBonifici() {
                           <button onClick={() => { setEditingNote(null); setNoteText(''); }} style={{ padding: '2px 6px', background: '#94a3b8', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 10 }}>✗</button>
                         </div>
                       ) : (
-                        <div 
+                        <div
                           onClick={() => { setEditingNote(t.id); setNoteText(t.note || ''); }}
                           style={{ cursor: 'pointer', color: t.note ? '#1e3a5f' : '#94a3b8', fontSize: 11 }}
                           title="Clicca per modificare"
@@ -1005,10 +1005,10 @@ export default function ArchivioBonifici() {
                     <td style={{ padding: 8, textAlign: 'center' }}>
                       <button
                         onClick={() => handleDelete(t.id)}
-                        style={{ 
-                          background: 'none', 
-                          border: 'none', 
-                          cursor: 'pointer', 
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
                           fontSize: 14,
                           opacity: 0.6
                         }}

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import api from '../api';
 import { formatEuro } from '../lib/utils';
 import { AlertTriangle, CheckCircle, XCircle, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
@@ -35,9 +36,9 @@ export default function WidgetVerificaCoerenza({ anno, mostraDettaglio = false }
 
   if (loading) {
     return (
-      <div style={{ 
-        padding: 10, 
-        background: '#f1f5f9', 
+      <div style={{
+        padding: 10,
+        background: '#f1f5f9',
         borderRadius: 8,
         display: 'flex',
         alignItems: 'center',
@@ -58,9 +59,9 @@ export default function WidgetVerificaCoerenza({ anno, mostraDettaglio = false }
   // Se non ci sono discrepanze, mostra solo un badge verde (opzionale)
   if (!verifica.has_discrepanze && !mostraDettaglio) {
     return (
-      <div style={{ 
-        padding: '8px 12px', 
-        background: '#dcfce7', 
+      <div style={{
+        padding: '8px 12px',
+        background: '#dcfce7',
         borderRadius: 8,
         display: 'flex',
         alignItems: 'center',
@@ -82,17 +83,17 @@ export default function WidgetVerificaCoerenza({ anno, mostraDettaglio = false }
     const severityBorder = verifica.critical_count > 0 ? '#fecaca' : '#fde68a';
 
     return (
-      <div style={{ 
-        background: severityBg, 
+      <div style={{
+        background: severityBg,
         borderRadius: 8,
         border: `1px solid ${severityBorder}`,
         marginBottom: 16
       }}>
         {/* Header */}
-        <div 
+        <div
           onClick={() => setExpanded(!expanded)}
-          style={{ 
-            padding: '12px 16px', 
+          style={{
+            padding: '12px 16px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -118,11 +119,11 @@ export default function WidgetVerificaCoerenza({ anno, mostraDettaglio = false }
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <button
               onClick={(e) => { e.stopPropagation(); loadVerifica(); }}
-              style={{ 
-                background: 'none', 
-                border: 'none', 
+              style={{
+                background: 'none',
+                border: 'none',
                 cursor: 'pointer',
-                padding: 4 
+                padding: 4
               }}
               title="Ricarica"
             >
@@ -134,12 +135,12 @@ export default function WidgetVerificaCoerenza({ anno, mostraDettaglio = false }
 
         {/* Dettaglio discrepanze */}
         {expanded && (
-          <div style={{ 
+          <div style={{
             padding: '0 16px 16px',
             borderTop: '1px solid ' + severityBorder
           }}>
             {verifica.discrepanze?.map((d, idx) => (
-              <div 
+              <div
                 key={idx}
                 style={{
                   padding: 12,
@@ -151,8 +152,8 @@ export default function WidgetVerificaCoerenza({ anno, mostraDettaglio = false }
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <div>
-                    <div style={{ 
-                      fontWeight: 'bold', 
+                    <div style={{
+                      fontWeight: 'bold',
                       color: d.severita === 'critical' ? '#dc2626' : '#d97706',
                       fontSize: 13
                     }}>
@@ -172,8 +173,8 @@ export default function WidgetVerificaCoerenza({ anno, mostraDettaglio = false }
                     <div style={{ fontWeight: 'bold', color: '#059669' }}>{formatEuro(d.valore_atteso)}</div>
                     <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>Trovato</div>
                     <div style={{ fontWeight: 'bold', color: '#dc2626' }}>{formatEuro(d.valore_trovato)}</div>
-                    <div style={{ 
-                      fontSize: 13, 
+                    <div style={{
+                      fontSize: 13,
                       fontWeight: 'bold',
                       color: d.differenza > 0 ? '#dc2626' : '#2563eb',
                       marginTop: 4,
@@ -186,10 +187,10 @@ export default function WidgetVerificaCoerenza({ anno, mostraDettaglio = false }
                   </div>
                 </div>
                 {d.suggerimento && (
-                  <div style={{ 
-                    marginTop: 8, 
-                    padding: 8, 
-                    background: '#f8fafc', 
+                  <div style={{
+                    marginTop: 8,
+                    padding: 8,
+                    background: '#f8fafc',
                     borderRadius: 4,
                     fontSize: 12,
                     color: '#64748b'
@@ -201,8 +202,8 @@ export default function WidgetVerificaCoerenza({ anno, mostraDettaglio = false }
             ))}
 
             {verifica.totale_discrepanze > 5 && (
-              <div style={{ 
-                textAlign: 'center', 
+              <div style={{
+                textAlign: 'center',
                 marginTop: 12,
                 padding: 8,
                 background: '#f1f5f9',
@@ -211,12 +212,12 @@ export default function WidgetVerificaCoerenza({ anno, mostraDettaglio = false }
                 color: '#64748b'
               }}>
                 E altre {verifica.totale_discrepanze - 5} discrepanze...
-                <a 
-                  href="/verifica-coerenza" 
+                <Link
+                  to="/verifica-coerenza"
                   style={{ marginLeft: 8, color: '#2563eb', textDecoration: 'none' }}
                 >
                   Vedi tutte →
-                </a>
+                </Link>
               </div>
             )}
           </div>
@@ -252,7 +253,7 @@ export function BadgeVerificaCoerenza({ anno }) {
   if (count === 0) return null;
 
   return (
-    <span 
+    <span
       style={{
         display: 'inline-flex',
         alignItems: 'center',

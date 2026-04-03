@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { Link } from 'react-router-dom';
 import api from "../api";
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { ChevronDown, ChevronRight, Trash2, Edit, Eye, X } from "lucide-react";
@@ -14,7 +15,7 @@ export default function F24() {
   const [expandedRows, setExpandedRows] = useState({});
   const [editingF24, setEditingF24] = useState(null);
   const [viewingPdf, setViewingPdf] = useState(null);
-  
+
   // Stato per auto-riparazione
   const [autoRepairStatus, setAutoRepairStatus] = useState(null);
   const [autoRepairRunning, setAutoRepairRunning] = useState(false);
@@ -57,7 +58,7 @@ export default function F24() {
       setLoading(true);
       const res = await api.get(`/api/f24-public/models?anno=${anno}`);
       const f24s = res.data?.f24s || [];
-      
+
       // Add unique keys
       const combined = f24s.map((f, idx) => ({
         ...f,
@@ -67,7 +68,7 @@ export default function F24() {
         scadenza: f.data_scadenza,
         descrizione: `ERARIO: ${f.tributi_erario?.length || 0}, INPS: ${f.tributi_inps?.length || 0}`
       }));
-      
+
       setF24List(combined);
     } catch (e) {
       console.error("Error loading F24:", e);
@@ -95,7 +96,7 @@ export default function F24() {
   }
 
   async function handleDeleteF24(f24Id) {
-    
+
     try {
       await api.delete(`/api/f24-public/models/${f24Id}`);
       loadF24();
@@ -117,7 +118,7 @@ export default function F24() {
   }
 
   async function handleMarkAsPaid(f24Id) {
-    
+
     try {
       await api.put(`/api/f24-public/models/${f24Id}/pagato`);
       loadF24();
@@ -133,10 +134,10 @@ export default function F24() {
       // Costruisci URL completo per il PDF
       const baseUrl = window.location.origin;
       const pdfUrl = `${baseUrl}/api/f24-public/pdf/${f24.id}`;
-      setViewingPdf({ 
-        url: pdfUrl, 
-        name: f24.file_name || f24.filename || `F24_${f24.data_scadenza || 'sconosciuto'}.pdf`, 
-        f24 
+      setViewingPdf({
+        url: pdfUrl,
+        name: f24.file_name || f24.filename || `F24_${f24.data_scadenza || 'sconosciuto'}.pdf`,
+        f24
       });
     } catch (e) {
       alert("Impossibile visualizzare il PDF: " + e.message);
@@ -168,13 +169,13 @@ export default function F24() {
   };
 
   const hasTributi = (f) => {
-    return f.tributi_erario?.length > 0 || f.tributi_inps?.length > 0 || 
-           f.tributi_regioni?.length > 0 || f.tributi_imu?.length > 0;
+    return f.tributi_erario?.length > 0 || f.tributi_inps?.length > 0 ||
+      f.tributi_regioni?.length > 0 || f.tributi_imu?.length > 0;
   };
 
   const renderTributiDetails = (f) => {
     const sections = [];
-    
+
     if (f.tributi_erario?.length > 0) {
       sections.push(
         <div key="erario" style={{ marginBottom: 15 }}>
@@ -202,7 +203,7 @@ export default function F24() {
         </div>
       );
     }
-    
+
     if (f.tributi_inps?.length > 0) {
       sections.push(
         <div key="inps" style={{ marginBottom: 15 }}>
@@ -232,7 +233,7 @@ export default function F24() {
         </div>
       );
     }
-    
+
     if (f.tributi_regioni?.length > 0) {
       sections.push(
         <div key="regioni" style={{ marginBottom: 15 }}>
@@ -260,7 +261,7 @@ export default function F24() {
         </div>
       );
     }
-    
+
     if (f.tributi_imu?.length > 0) {
       sections.push(
         <div key="imu" style={{ marginBottom: 15 }}>
@@ -290,17 +291,17 @@ export default function F24() {
         </div>
       );
     }
-    
+
     return <div style={{ padding: 10 }}>{sections}</div>;
   };
 
   return (
-    <PageLayout 
-      title="Modelli F24" 
-      icon="📋" 
+    <PageLayout
+      title="Modelli F24"
+      icon="📋"
       subtitle="Visualizzazione e gestione modelli F24"
       actions={
-        <button 
+        <button
           onClick={() => { loadF24(); loadAlerts(); loadDashboard(); }}
           data-testid="refresh-f24-btn"
           style={{
@@ -339,11 +340,11 @@ export default function F24() {
             <div style={{ fontSize: 'clamp(20px, 5vw, 28px)', fontWeight: 'bold', color: '#ff9800' }}>{dashboard.da_pagare?.count || 0}</div>
             <div style={{ fontSize: 'clamp(9px, 2vw, 11px)', color: '#666' }}>{formatEuro(dashboard.da_pagare?.totale)}</div>
           </div>
-          <div style={{ 
-            background: dashboard.alert_attivi > 0 ? '#ffebee' : '#f5f5f5', 
-            padding: 15, 
-            borderRadius: 8, 
-            borderLeft: `4px solid ${dashboard.alert_attivi > 0 ? '#f44336' : '#9e9e9e'}` 
+          <div style={{
+            background: dashboard.alert_attivi > 0 ? '#ffebee' : '#f5f5f5',
+            padding: 15,
+            borderRadius: 8,
+            borderLeft: `4px solid ${dashboard.alert_attivi > 0 ? '#f44336' : '#9e9e9e'}`
           }}>
             <div style={{ fontSize: 12, color: '#666' }}>🔔 Alert Attivi</div>
             <div style={{ fontSize: 28, fontWeight: 'bold', color: dashboard.alert_attivi > 0 ? '#f44336' : '#9e9e9e' }}>
@@ -355,12 +356,12 @@ export default function F24() {
 
       {/* Alerts Section */}
       {alerts.length > 0 && (
-        <div 
+        <div
           data-testid="f24-alerts-section"
-          style={{ 
-            background: 'linear-gradient(135deg, #ff5252 0%, #d32f2f 100%)', 
-            borderRadius: 12, 
-            padding: 20, 
+          style={{
+            background: 'linear-gradient(135deg, #ff5252 0%, #d32f2f 100%)',
+            borderRadius: 12,
+            padding: 20,
             marginBottom: 25,
             color: 'white'
           }}
@@ -370,10 +371,10 @@ export default function F24() {
           </h2>
           <div style={{ display: 'grid', gap: 10 }}>
             {alerts.map((alert, idx) => (
-              <div 
+              <div
                 key={alert.f24_id || idx}
                 data-testid={`f24-alert-${idx}`}
-                style={{ 
+                style={{
                   background: getSeverityBg(alert.severity),
                   borderRadius: 8,
                   padding: 15,
@@ -434,7 +435,7 @@ export default function F24() {
       <div style={{ background: 'white', borderRadius: 8, padding: 20, boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
         <h3 style={{ marginTop: 0 }}>📋 Modelli F24 Registrati ({f24List.length})</h3>
         <p style={{ color: '#666', fontSize: 13, marginBottom: 15 }}>
-          Per importare nuovi F24, usa la sezione <a href="/import-export" style={{ color: '#3b82f6' }}>Import/Export</a>
+          Per importare nuovi F24, usa la sezione <Link to="/import-export" style={{ color: '#3b82f6' }}>Import/Export</Link>
         </p>
         {loading ? (
           <div style={{ textAlign: 'center', padding: 40, color: '#666' }}>Caricamento...</div>
@@ -460,7 +461,7 @@ export default function F24() {
                 {f24List.map((f, i) => (
                   <React.Fragment key={f._uniqueKey || `f24_${i}`}>
                     <tr style={{ borderBottom: "1px solid #eee", cursor: hasTributi(f) ? 'pointer' : 'default' }}>
-                      <td 
+                      <td
                         style={{ padding: 12 }}
                         onClick={() => hasTributi(f) && toggleRowExpand(f.id || i)}
                       >
@@ -470,66 +471,66 @@ export default function F24() {
                           </span>
                         )}
                       </td>
-                      <td 
+                      <td
                         style={{ padding: 12, fontFamily: 'monospace' }}
                         onClick={() => hasTributi(f) && toggleRowExpand(f.id || i)}
                       >
-                        {f.scadenza ? formatDateIT(f.scadenza) : 
-                         f.data_scadenza ? formatDateIT(f.data_scadenza) :
-                         f.date || "-"}
+                        {f.scadenza ? formatDateIT(f.scadenza) :
+                          f.data_scadenza ? formatDateIT(f.data_scadenza) :
+                            f.date || "-"}
                       </td>
-                      <td 
+                      <td
                         style={{ padding: 12 }}
                         onClick={() => hasTributi(f) && toggleRowExpand(f.id || i)}
                       >
                         {f.tipo || "F24"}
                       </td>
-                      <td 
+                      <td
                         style={{ padding: 12 }}
                         onClick={() => hasTributi(f) && toggleRowExpand(f.id || i)}
                       >
                         {hasTributi(f) ? (
                           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                             {(f.tributi_erario?.length > 0) && (
-                              <span style={{ 
-                                padding: '2px 8px', 
-                                borderRadius: 4, 
-                                fontSize: 11, 
-                                background: '#dbeafe', 
-                                color: '#1e40af' 
+                              <span style={{
+                                padding: '2px 8px',
+                                borderRadius: 4,
+                                fontSize: 11,
+                                background: '#dbeafe',
+                                color: '#1e40af'
                               }}>
                                 ERARIO: {f.tributi_erario.length}
                               </span>
                             )}
                             {(f.tributi_inps?.length > 0) && (
-                              <span style={{ 
-                                padding: '2px 8px', 
-                                borderRadius: 4, 
-                                fontSize: 11, 
-                                background: '#dcfce7', 
-                                color: '#166534' 
+                              <span style={{
+                                padding: '2px 8px',
+                                borderRadius: 4,
+                                fontSize: 11,
+                                background: '#dcfce7',
+                                color: '#166534'
                               }}>
                                 INPS: {f.tributi_inps.length}
                               </span>
                             )}
                             {(f.tributi_regioni?.length > 0) && (
-                              <span style={{ 
-                                padding: '2px 8px', 
-                                borderRadius: 4, 
-                                fontSize: 11, 
-                                background: '#fef3c7', 
-                                color: '#92400e' 
+                              <span style={{
+                                padding: '2px 8px',
+                                borderRadius: 4,
+                                fontSize: 11,
+                                background: '#fef3c7',
+                                color: '#92400e'
                               }}>
                                 REGIONI: {f.tributi_regioni.length}
                               </span>
                             )}
                             {(f.tributi_imu?.length > 0) && (
-                              <span style={{ 
-                                padding: '2px 8px', 
-                                borderRadius: 4, 
-                                fontSize: 11, 
-                                background: '#f3e8ff', 
-                                color: '#7c3aed' 
+                              <span style={{
+                                padding: '2px 8px',
+                                borderRadius: 4,
+                                fontSize: 11,
+                                background: '#f3e8ff',
+                                color: '#7c3aed'
                               }}>
                                 IMU: {f.tributi_imu.length}
                               </span>
@@ -646,10 +647,10 @@ export default function F24() {
           </div>
         )}
       </div>
-      
+
       {/* PDF Viewer Modal */}
       {viewingPdf && (
-        <div 
+        <div
           style={{
             position: 'fixed',
             top: 0, left: 0, right: 0, bottom: 0,
@@ -661,7 +662,7 @@ export default function F24() {
           }}
           onClick={() => setViewingPdf(null)}
         >
-          <div 
+          <div
             style={{
               background: 'white',
               borderRadius: 8,
@@ -673,12 +674,12 @@ export default function F24() {
             }}
             onClick={e => e.stopPropagation()}
           >
-            <div style={{ 
-              padding: '12px 20px', 
-              borderBottom: '1px solid #eee', 
-              display: 'flex', 
-              justifyContent: 'space-between', 
-              alignItems: 'center' 
+            <div style={{
+              padding: '12px 20px',
+              borderBottom: '1px solid #eee',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
             }}>
               <h3 style={{ margin: 0 }}>📄 {viewingPdf.name}</h3>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -730,11 +731,11 @@ export default function F24() {
               </div>
             </div>
             <div style={{ flex: 1, padding: 10, position: 'relative' }}>
-              <iframe 
+              <iframe
                 src={viewingPdf.url}
-                style={{ 
-                  width: '100%', 
-                  height: '100%', 
+                style={{
+                  width: '100%',
+                  height: '100%',
                   border: '1px solid #ddd',
                   borderRadius: 4,
                   background: '#f5f5f5'
@@ -745,10 +746,10 @@ export default function F24() {
           </div>
         </div>
       )}
-      
+
       {/* Edit F24 Modal */}
       {editingF24 && (
-        <div 
+        <div
           style={{
             position: 'fixed',
             top: 0, left: 0, right: 0, bottom: 0,
@@ -760,7 +761,7 @@ export default function F24() {
           }}
           onClick={() => setEditingF24(null)}
         >
-          <div 
+          <div
             style={{
               background: 'white',
               borderRadius: 8,
@@ -771,60 +772,60 @@ export default function F24() {
             onClick={e => e.stopPropagation()}
           >
             <h2 style={{ marginTop: 0 }}>✏️ Modifica F24</h2>
-            
+
             <div style={{ display: 'grid', gap: 15 }}>
               <div>
                 <label style={{ display: 'block', marginBottom: 5, fontWeight: 'bold' }}>Contribuente</label>
                 <input
                   type="text"
                   value={editingF24.contribuente || ''}
-                  onChange={(e) => setEditingF24({...editingF24, contribuente: e.target.value})}
+                  onChange={(e) => setEditingF24({ ...editingF24, contribuente: e.target.value })}
                   style={{ padding: 10, width: '100%', borderRadius: 4, border: '1px solid #ddd' }}
                 />
               </div>
-              
+
               <div>
                 <label style={{ display: 'block', marginBottom: 5, fontWeight: 'bold' }}>Scadenza</label>
                 <input
                   type="date"
                   value={editingF24.data_scadenza || ''}
-                  onChange={(e) => setEditingF24({...editingF24, data_scadenza: e.target.value})}
+                  onChange={(e) => setEditingF24({ ...editingF24, data_scadenza: e.target.value })}
                   style={{ padding: 10, width: '100%', borderRadius: 4, border: '1px solid #ddd' }}
                 />
               </div>
-              
+
               <div>
                 <label style={{ display: 'block', marginBottom: 5, fontWeight: 'bold' }}>Banca</label>
                 <input
                   type="text"
                   value={editingF24.banca || ''}
-                  onChange={(e) => setEditingF24({...editingF24, banca: e.target.value})}
+                  onChange={(e) => setEditingF24({ ...editingF24, banca: e.target.value })}
                   style={{ padding: 10, width: '100%', borderRadius: 4, border: '1px solid #ddd' }}
                 />
               </div>
-              
+
               <div>
                 <label style={{ display: 'block', marginBottom: 5, fontWeight: 'bold' }}>Note</label>
                 <textarea
                   value={editingF24.note || ''}
-                  onChange={(e) => setEditingF24({...editingF24, note: e.target.value})}
+                  onChange={(e) => setEditingF24({ ...editingF24, note: e.target.value })}
                   rows={3}
                   style={{ padding: 10, width: '100%', borderRadius: 4, border: '1px solid #ddd' }}
                 />
               </div>
-              
+
               <div>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <input
                     type="checkbox"
                     checked={editingF24.pagato || false}
-                    onChange={(e) => setEditingF24({...editingF24, pagato: e.target.checked})}
+                    onChange={(e) => setEditingF24({ ...editingF24, pagato: e.target.checked })}
                   />
                   <span>Segnato come pagato</span>
                 </label>
               </div>
             </div>
-            
+
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
               <button
                 onClick={() => setEditingF24(null)}

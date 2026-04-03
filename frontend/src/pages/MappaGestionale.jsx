@@ -8,7 +8,6 @@
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import mermaid from 'mermaid';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Struttura dati flussi ERP
@@ -1150,6 +1149,14 @@ function FlowCard({ sezioneKey, isActive, onClick }) {
 // Componente principale
 // ─────────────────────────────────────────────────────────────────────────────
 let mermaidInitialized = false;
+let mermaidImportPromise = null;
+
+async function getMermaidInstance() {
+  if (!mermaidImportPromise) {
+    mermaidImportPromise = import('mermaid').then((m) => m.default);
+  }
+  return mermaidImportPromise;
+}
 
 export default function MappaGestionale() {
   const [codice, setCodice] = useState(DIAGRAMMA_DEFAULT);
@@ -1160,45 +1167,62 @@ export default function MappaGestionale() {
   const [showEditor, setShowEditor] = useState(false);
   const diagramRef = useRef(null);
   const timeoutRef = useRef(null);
-
-  useEffect(() => {
-    if (!mermaidInitialized) {
-      mermaid.initialize({
-        startOnLoad: false,
-        theme: 'base',
-        themeVariables: {
-          primaryColor: '#1a40b5',
-          primaryTextColor: '#fff',
-          primaryBorderColor: '#1a40b5',
-          lineColor: '#64748b',
-          secondaryColor: '#f1f5f9',
-          tertiaryColor: '#f8fafc',
-          background: '#ffffff',
-          mainBkg: '#1a40b5',
-          fontSize: '13px'
-        },
-        flowchart: { htmlLabels: true, curve: 'basis', padding: 15 },
-        securityLevel: 'loose'
-      });
-      mermaidInitialized = true;
-    }
-  }, []);
+  const mermaidRef = useRef(null);
 
   const [svgContent, setSvgContent] = React.useState('');
 
-  const renderDiagram = useCallback(async (code) => {
+  const renderDiagram = useCallback(async (code, mermaidInstance = mermaidRef.current) => {
     try {
       setErrore(null);
+      setSezioniAttive(parseNodiDiagramma(code));
+      if (!mermaidInstance) return;
       const id = `mermaid-${Date.now()}`;
-      const { svg } = await mermaid.render(id, code);
+      const { svg } = await mermaidInstance.render(id, code);
       // Applica stili inline al SVG prima di salvarlo
       const styledSvg = svg.replace('<svg ', '<svg style="max-width:100%;height:auto;" ');
       setSvgContent(styledSvg);
-      setSezioniAttive(parseNodiDiagramma(code));
     } catch (e) {
       setErrore('Errore nel diagramma: ' + (e.message?.substring(0, 120) || 'sintassi non valida'));
     }
   }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const setupMermaid = async () => {
+      const mermaid = await getMermaidInstance();
+      if (!mermaidInitialized) {
+        mermaid.initialize({
+          startOnLoad: false,
+          theme: 'base',
+          themeVariables: {
+            primaryColor: '#1a40b5',
+            primaryTextColor: '#fff',
+            primaryBorderColor: '#1a40b5',
+            lineColor: '#64748b',
+            secondaryColor: '#f1f5f9',
+            tertiaryColor: '#f8fafc',
+            background: '#ffffff',
+            mainBkg: '#1a40b5',
+            fontSize: '13px'
+          },
+          flowchart: { htmlLabels: true, curve: 'basis', padding: 15 },
+          securityLevel: 'loose'
+        });
+        mermaidInitialized = true;
+      }
+
+      if (!isMounted) return;
+      mermaidRef.current = mermaid;
+      renderDiagram(codice, mermaid);
+    };
+
+    setupMermaid();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [renderDiagram]);
 
   useEffect(() => {
     renderDiagram(codice);
@@ -1383,7 +1407,7 @@ export default function MappaGestionale() {
                 <h2 style={{ margin: '0 0 14px', fontSize: 15, fontWeight: 700, color: '#1e293b' }}>
                   Dettaglio: {FLUSSI[activeSezione].titolo}
                 </h2>
-                <FlowCard sezioneKey={activeSezione} isActive={true} onClick={() => {}} />
+                <FlowCard sezioneKey={activeSezione} isActive={true} onClick={() => { }} />
               </div>
             )}
 
