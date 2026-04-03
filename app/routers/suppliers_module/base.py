@@ -137,8 +137,11 @@ async def list_suppliers(
     suppliers_map = {}
     
     suppliers_query = {}
+    if attivo is not None:
+        suppliers_query["attivo"] = attivo
     if search and search.strip():
-        search_lower = search.strip()
+        import re as _re
+        search_lower = _re.escape(search.strip())
         suppliers_query["$or"] = [
             {"denominazione": {"$regex": search_lower, "$options": "i"}},
             {"ragione_sociale": {"$regex": search_lower, "$options": "i"}},
@@ -374,26 +377,52 @@ async def update_supplier(supplier_id: str, data: Dict[str, Any] = Body(...)) ->
 
 @router.post("/{supplier_id}/toggle-active")
 async def toggle_supplier_active(supplier_id: str) -> Dict[str, Any]:
-    """Attiva/disattiva fornitore."""
+    """Attiva/disattiva fornitore con sync cross-system."""
     db = Database.get_db()
-    
+
     supplier = await db[Collections.SUPPLIERS].find_one(
         {"$or": [{"id": supplier_id}, {"partita_iva": supplier_id}]}
     )
-    
+
     if not supplier:
         raise HTTPException(status_code=404, detail="Fornitore non trovato")
-    
+
     new_status = not supplier.get("attivo", True)
-    
+
+    # Check fatture non pagate quando si disattiva
+    fatture_non_pagate = 0
+    if not new_status:
+        piva = supplier.get("partita_iva", "")
+        nome = supplier.get("denominazione") or supplier.get("ragione_sociale") or ""
+        fatture_non_pagate = await db["invoices"].count_documents({
+            "$or": [{"supplier_vat": piva}, {"cedente_denominazione": {"$regex": f"^{nome[:20]}", "$options": "i"}}],
+            "status": {"$nin": ["paid", "pagata", "pagato"]}
+        }) if (piva or nome) else 0
+
     await db[Collections.SUPPLIERS].update_one(
         {"_id": supplier["_id"]},
         {"$set": {"attivo": new_status, "updated_at": datetime.now(timezone.utc).isoformat()}}
     )
-    
+
+    # Sync con tracciabilita: imposta escluso in base ad attivo
+    nome_fornitore = supplier.get("denominazione") or supplier.get("ragione_sociale") or ""
+    if nome_fornitore:
+        await db[Collections.SUPPLIERS].update_many(
+            {"nome": {"$regex": f"^{nome_fornitore[:30]}", "$options": "i"}},
+            {"$set": {"escluso": not new_status}}
+        )
+
     await cache.clear_pattern(SUPPLIERS_CACHE_KEY)
-    
-    return {"message": f"Fornitore {'attivato' if new_status else 'disattivato'}", "attivo": new_status}
+
+    result = {
+        "message": f"Fornitore {'attivato' if new_status else 'disattivato'}",
+        "attivo": new_status,
+    }
+    if fatture_non_pagate > 0:
+        result["warning"] = f"Attenzione: {fatture_non_pagate} fatture non pagate per questo fornitore"
+        result["fatture_non_pagate"] = fatture_non_pagate
+
+    return result
 
 
 @router.delete("/{supplier_id}")

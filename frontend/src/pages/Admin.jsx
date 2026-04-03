@@ -347,11 +347,11 @@ export default function Admin() {
   }
   
   async function impostaFattureBanca() {
-    
+
     setSyncLoading(true);
     try {
-      const r = await api.post("/api/sync/match-fatture-banca");
-      alert(`Aggiornate ${r.data.updated} fatture`);
+      const r = await api.post("/api/admin/fatture-set-metodo-pagamento", { metodo_pagamento: "Bonifico" });
+      alert(`Aggiornate ${r.data.updated || r.data.modified_count || 0} fatture`);
       await loadSyncStatus();
     } catch (e) {
       console.error("Error:", e);

@@ -20,7 +20,7 @@ class LottoCreate(BaseModel):
     data_scadenza: str
     numero_lotto: str
     etichetta: str = ""
-    quantita: float = 1
+    quantita: float = Field(default=1, gt=0, description="Quantità deve essere > 0")
     unita_misura: str = "pz"
 
 class Lotto(LottoCreate):

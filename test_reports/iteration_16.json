@@ -1,0 +1,256 @@
+{
+  "summary": "Iteration 16 — Deep Audit Level 5/6: Negative testing, duplicati, boundary values, cascade, logica inversa su 9 moduli ERP. 81/82 pytest pass (1 data mismatch non-code bug). Identificati 10 bug/problemi attivi. Tutti i dati TEST_QA_ puliti tranne 24 contratti (no DELETE /contratti endpoint).",
+
+  "test_results": {
+    "total": 82,
+    "passed": 81,
+    "failed": 1,
+    "failure_detail": "test_m2_l4_real_baba_lotto: lotto ID 705d070a-1720-4d51-9325-02122deffa01 restituisce 404. I lotti babà esistono ma con ID diversi (7e0149a2, 116e4654). L'ID fornito nel test spec è obsoleto."
+  },
+
+  "observed_behaviors_by_module": {
+    "M1_CUCINA": {
+      "L1_happy_path": "PASS — TEST_QA_Tiramisù creato, food cost €6.90=0.5*10+3*0.30+0.2*5 verificato ✓, porzione=€1.15 ✓, appare in riepilogo ✓",
+      "L2_duplicato": "PERMESSO — Sistema permette ricette con nome identico (no unique constraint su nome). 2 ricette 'TEST_QA_Tiramisù' create correttamente",
+      "L3_boundary_porzioni_zero": "HANDLED — porzioni=0 salvata ma food-cost la forza a max(1,0)=1 per evitare divisione per zero ✓",
+      "L3_boundary_costo_negativo": "BUG — Ingrediente con costo=-5.0 accettato. food_cost restituisce costo_totale=-5.0 (negativo). Nessuna validazione",
+      "L3_boundary_zero_ingredienti": "PASS — 0 ingredienti → costo_totale=0.00 ✓",
+      "L4_inverso_update_prezzo": "PASS — Aggiornamento prezzo mascarpone 10→20: costo aggiornato da €6.90 a €11.90 (0.5*20+3*0.30+0.2*5) ✓",
+      "L4_cascata_eliminazione": "PASS — Ricetta eliminata: 404 in GET, non appare più in riepilogo ✓",
+      "L5_arancino_real": "BUG CRITICO — GET /api/cucina/food-cost/calcola/123a6aaa → HTTP 500. Arancino ha ingredienti come lista di STRINGHE (non dict). food_cost.py chiama ing.get('costo') su stringa → AttributeError"
+    },
+    "M2_LOTTI": {
+      "L1_happy_path": "PASS — Lotto creato, GET/{id} verifica tutti i campi ✓, stato=attivo ✓",
+      "L2_duplicato": "PERMESSO — Sistema permette lotti con prodotto/numero identici. 2 lotti duplicati creati senza errore",
+      "L3_quantita_zero": "BUG — quantita=0 accettata (nessuna validazione, dovrebbe essere >0)",
+      "L3_quantita_negativa": "BUG — quantita=-10 accettata (nessuna validazione)",
+      "L3_data_passato": "PERMESSA — data_scadenza='1900-01-01' accettata (comportamento corretto per dati storici)",
+      "L3_data_futuro": "PASS — data_scadenza='2099-12-31' accettata ✓",
+      "L4_baba_reale": "DATA ISSUE — Lotto babà ID 705d070a → 404. I lotti babà esistono ma con ID diversi (7e0149a2, 116e4654). ID nel spec obsoleto",
+      "L5_cascade_count": "PASS — Count: 9 before, 10 after create, 9 after delete ✓"
+    },
+    "M3_CONTRATTI": {
+      "L1_happy_path": "PASS — Contratto Vincenzo Vespa creato, stato=attivo ✓, appare in lista ✓",
+      "L2_duplicato": "PERMESSO — Secondo contratto per stesso dipendente/stesso periodo accettato senza errore (nessuna validazione overlap date)",
+      "L3_retribuzione_zero": "PERMESSA — retribuzione_lorda=0 accettata (potrebbe essere valido per tirocini)",
+      "L3_retribuzione_negativa": "BUG — retribuzione_lorda=-1000 accettata (nessuna validazione, salary negativo non ha senso)",
+      "L3_date_invertite": "BUG — data_fine < data_inizio accettata (es. inizio=2025-12-31, fine=2025-01-01). Nessuna validazione date ordering",
+      "L4_termina": "PASS — POST /contratti/{id}/termina: stato=terminato ✓",
+      "L4_put_terminato": "BUG — PUT su contratto con stato='terminato' accettato senza errore. Sistema non blocca modifiche su contratti terminati",
+      "L5_cedolino_math": "PASS — lordo=1500, netto=1296.92, ritenute=203.08, diff=0.0 ✓",
+      "L5_conferma_422": "WARN — POST /api/cedolini/conferma richiede payload completo con tutti i campi calcolati (dipendente_nome, retribuzione_base, straordinari, etc.). Non accetta solo dipendente_id+anno+mese+paga_oraria",
+      "L6_stima_paga_zero": "BUG — paga_oraria=0 → stima usa paga_oraria_usata=10.0 (DEFAULT!) e calcola lordo=1760. Dovrebbe essere 0 o 422",
+      "L6_stima_paga_negativa": "BUG — paga_oraria=-10 → stima usa paga_oraria_usata=10.0 (DEFAULT!) e calcola lordo=1760. Dovrebbe essere 422",
+      "L6_stima_anno_futuro": "INFO — anno=2099 accettato (comportamento design choice)",
+      "L6_stima_mese_13": "BUG — mese=13 accettato da POST /api/cedolini/stima. Calcola cedolino per mese inesistente"
+    },
+    "M4_PRIMA_NOTA": {
+      "L1_happy_path": "PASS — ENTRATA €500 creata, saldo aumentato da 1284276.91 a 1284776.91 (diff=0.0000) ✓",
+      "L2_duplicato": "PERMESSO — Sistema permette voci duplicate (stessa data, importo, descrizione). Saldo aumenta del doppio",
+      "L3_importo_zero": "PERMESSO — importo=0 accettato (nessuna validazione)",
+      "L3_importo_negativo": "BUG — ENTRATA con importo=-100 accettata. Saldo DECRESCE di €100 invece di aumentare (delta=-100). Un'ENTRATA negativa ha comportamento di USCITA",
+      "L3_importo_enorme": "PERMESSO — importo=1e20 accettato (nessun overflow, MongoDB gestisce numeri grandi)",
+      "L4_inverso": "PASS — ENTRATA €1000 + USCITA €1000: saldo invariato (diff=0.0000) ✓. Cleanup: saldo ripristinato ✓"
+    },
+    "M5_BONIFICI": {
+      "L1_happy_path": "PASS — Transfer 5ef0bd7f (€22632.97) associato a fattura 696b754392cbbd1f60ac1539. stato=associato ✓",
+      "L2_doppia_associazione": "BUG CRITICO — Doppia associazione PERMESSA. Secondo POST /associa-fattura sovrascrive silenziosamente la prima associazione. Un bonifico può essere associato a più fatture senza blocco",
+      "L3_disassocia": "PASS — Disassocia: stato ritorna a non_riconciliato ✓",
+      "L3_disassocia_non_associato": "PASS — Disassocia su transfer non-associato → 404 (corretto)",
+      "L5_invalid_id": "PASS — bonifico_id inesistente → 404 ✓",
+      "L5_path_traversal": "PASS — '../../../../etc/passwd' come bonifico_id → 404 ✓",
+      "L5_empty_fattura_id": "BUG — fattura_id='' (empty string) → HTTP 200! Sistema associa il bonifico con stringa vuota. Manca validazione"
+    },
+    "M6_FATTURE": {
+      "L1_archivio": "PASS — 1000 voci (limite paginazione). Statistiche: 3753 fatture totali, importo=€1,733,821.43",
+      "L1_stats_consistency": "WARN — Archivio restituisce max 1000 items ma statistiche mostrano 3753. Nessun NaN nei valori ✓",
+      "L2_detail": "PASS — Fattura 696b754392cbbd1f60ac1539: importo=€3750.0, fornitore=CIERVO FABIANA ✓",
+      "L3_invalid_id": "PASS — ID inesistente → 404 ✓",
+      "L3_invalid_format": "PASS — ID formato invalido → 404 ✓"
+    },
+    "M7_ORDINI": {
+      "L1_happy_path": "PASS — Ordine bozza creato, counter bozze incrementato (6→7) ✓",
+      "L2_duplicato": "PERMESSO — Secondo ordine identico accettato",
+      "L3_tracciabilita": "PASS — GET /api/ordini-fornitori/tracciabilita → lista 4 elementi ✓"
+    },
+    "M8_BILANCIO": {
+      "L1_stato_patrimoniale": "PASS — totale_attivo=1418229.41 = totale_passivo=1418229.41 (debiti=63776.73 + PN=1354452.68) ✓",
+      "L2_conto_economico": "PASS — ricavi=33240.47, costi=128049.00, utile=-94808.53 (perdita). Math: 33240.47-128049.00=-94808.53 ✓. No NaN/Infinity ✓",
+      "L3_dashboard": "PASS — bilancio-istantaneo restituisce dati coerenti, no NaN/Infinity ✓"
+    },
+    "M9_SECURITY": {
+      "xss": "INFO — XSS salvato come stringa nel MongoDB (no esecuzione). Deve essere sanitizzato nel frontend",
+      "sql_injection": "PASS — SQL-like strings salvate come stringhe. MongoDB non vulnerabile a SQL injection. Tutte le ricette ancora presenti ✓",
+      "path_traversal_cassa": "INFO — Descrizione '../../../etc/passwd' salvata come stringa normale (no filesystem access)",
+      "overflow_1e20": "WARN — importo=1e20 accettato come float Python (no errore overflow). MongoDB gestisce il numero"
+    }
+  },
+
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "GET /api/cucina/food-cost/calcola/{ricetta_id}",
+        "issue": "HTTP 500 quando ricetta ha ingredienti come lista di STRINGHE (es. Arancino ID 123a6aaa). food_cost.py line 111: `ing.get('costo')` su stringa → AttributeError: 'str' object has no attribute 'get'. Fix: controllare `isinstance(ing, dict)` prima di chiamare .get()",
+        "priority": "CRITICAL",
+        "rca": "La ricetta Arancino (e probabilmente altre dal sistema TR) ha ingredienti come lista di stringhe ['Riso Carnaroli', 'Brodo...'] invece di lista di dict [{'nome':...,'costo':...}]. food_cost.py assume sempre dict",
+        "file": "/app/app/routers/cucina/food_cost.py",
+        "line": 111
+      },
+      {
+        "endpoint": "POST /api/archivio-bonifici/associa-fattura",
+        "issue": "Doppia associazione PERMESSA. Se transfer è già associato a fattura X e si chiama di nuovo con fattura Y, la nuova associazione sovrascrive senza blocco. BUG: un bonifico deve essere associabile a una sola fattura",
+        "priority": "CRITICAL",
+        "rca": "associazioni.py usa $set senza verificare se il campo fattura_associata_id è già valorizzato. Fix: aggiungere check pre-update o $setOnInsert con condizione"
+      },
+      {
+        "endpoint": "POST /api/archivio-bonifici/associa-fattura (empty fattura_id)",
+        "issue": "fattura_id='' (stringa vuota) restituisce HTTP 200 success. Transfer associato con ID vuoto",
+        "priority": "HIGH",
+        "rca": "Nessuna validazione sul parametro fattura_id. Fix: aggiungere `if not fattura_id: raise HTTPException(422, ...)`"
+      }
+    ],
+    "high": [
+      {
+        "endpoint": "POST /api/cedolini/stima",
+        "issue": "paga_oraria=0 o paga_oraria<0 → stima usa paga_oraria_usata=10.0 (DEFAULT silenzioso). Calcola cedolino con lordo=1760 invece di 0/errore. Utente non sa che la sua paga_oraria è stata ignorata",
+        "priority": "HIGH"
+      },
+      {
+        "endpoint": "POST /api/cedolini/stima",
+        "issue": "mese=13 accettato (fuori range 1-12). Nessuna validazione del mese",
+        "priority": "HIGH"
+      },
+      {
+        "endpoint": "PUT /api/dipendenti/contratti/{id}",
+        "issue": "Modifica di contratto con stato='terminato' PERMESSA. Nessun blocco su stato. Business rule: contratto terminato dovrebbe essere immutabile",
+        "priority": "HIGH"
+      },
+      {
+        "endpoint": "POST /api/dipendenti/contratti",
+        "issue": "data_fine < data_inizio accettata (date invertite). BUG: nessuna validazione dell'ordinamento delle date",
+        "priority": "HIGH"
+      },
+      {
+        "endpoint": "POST /api/dipendenti/contratti",
+        "issue": "retribuzione_lorda=-1000 (negativa) accettata. Salary negativo non ha senso di business",
+        "priority": "HIGH"
+      }
+    ],
+    "medium": [
+      {
+        "endpoint": "POST /api/tr/lotti",
+        "issue": "quantita=0 e quantita=-10 accettate. Nessuna validazione (quantita dovrebbe essere >0)",
+        "priority": "MEDIUM"
+      },
+      {
+        "endpoint": "POST /api/cucina/ricette (ingredienti costo)",
+        "issue": "Ingrediente con costo=-5 accettato. food_cost può essere negativo",
+        "priority": "MEDIUM"
+      },
+      {
+        "endpoint": "POST /api/prima-nota/cassa",
+        "issue": "importo=-100 con tipo='entrata' accettato. Un'entrata negativa SOTTRAE dal saldo invece di aumentarlo. Comportamento semanticamente errato",
+        "priority": "MEDIUM"
+      },
+      {
+        "endpoint": "DELETE /api/dipendenti/contratti/{id}",
+        "issue": "ENDPOINT MANCANTE — 405 Method Not Allowed. Impossibile eliminare contratti via API. 24 contratti TEST_QA_ rimasti nel DB. Necessario per cleanup e gestione errori inserimento",
+        "priority": "MEDIUM"
+      }
+    ],
+    "minor": [
+      {
+        "note": "Prima nota importo=0 accettato. Saldo non cambia ma crea voce inutile",
+        "priority": "LOW"
+      },
+      {
+        "note": "Duplicati permessi ovunque: ricette (nome), lotti (prodotto+numero_lotto), contratti (dipendente+periodo), prima nota (data+importo+descrizione), ordini. Comportamento by-design ma rischioso",
+        "priority": "LOW"
+      },
+      {
+        "note": "Archivio fatture limit=1000 ma statistiche mostrano 3753 totali. Nessun metodo per ottenere tutte le fatture in una chiamata",
+        "priority": "LOW"
+      }
+    ]
+  },
+
+  "frontend_issues": {
+    "note": "Testing solo backend in questa iterazione"
+  },
+
+  "math_verifications": {
+    "food_cost_tiramisu": "€6.90 = 0.5*10 + 3.0*0.30 + 0.2*5 ✓ (costo_porzione=€1.15 ✓)",
+    "food_cost_update": "€11.90 = 0.5*20 + 3.0*0.30 + 0.2*5 dopo update mascarpone ✓",
+    "cedolino_math": "lordo=1500 = netto=1296.92 + ritenute=203.08 (diff=0.0) ✓",
+    "bilancio_attivo_passivo": "totale_attivo=1418229.41 = debiti(63776.73) + PN(1354452.68) ✓",
+    "conto_economico": "utile=-94808.53 = ricavi(33240.47) - costi(128049.00) ✓",
+    "prima_nota_inverso": "ENTRATA €1000 + USCITA €1000 → saldo invariato (diff=0.0) ✓"
+  },
+
+  "cleanup_status": {
+    "ricette_TEST_QA": "PULITO — 0 rimanenti",
+    "lotti_TEST_QA": "PULITO — 0 rimanenti",
+    "contratti_TEST_QA": "NON PULITO — 24 contratti rimanenti per Vincenzo Vespa. DELETE /api/dipendenti/contratti/{id} restituisce 405 (endpoint mancante)",
+    "transfer_5ef0bd7f": "RIPRISTINATO — stato=non_riconciliato ✓",
+    "cedolini_TEST": "Non eliminabili individualmente via semplice API"
+  },
+
+  "test_report_links": [
+    "/app/backend/tests/test_iteration16_deep_audit.py",
+    "/app/test_reports/pytest/pytest_results_iter16.xml"
+  ],
+
+  "action_items": [
+    "FIX CRITICAL: food_cost.py calcola_food_cost — aggiungere check isinstance(ing, dict) per gestire ingredienti come stringhe (es. ricetta Arancino). Fix: `if not isinstance(ing, dict): continue`",
+    "FIX CRITICAL: associazioni.py associa-fattura — bloccare doppia associazione: verificare che fattura_associata_id sia vuoto/None prima di aggiornare. Oppure aggiungere endpoint PUT separato per update",
+    "FIX HIGH: associazioni.py — validare fattura_id non vuoto prima di aggiornare",
+    "FIX HIGH: cedolini.py stima — validare paga_oraria>0 con HTTPException(422). Non usare default silenzioso quando paga_oraria=0 o negativa",
+    "FIX HIGH: cedolini.py stima — validare 1<=mese<=12 con HTTPException(422)",
+    "FIX HIGH: dipendenti.py contratti — validare data_fine >= data_inizio (se data_fine presente)",
+    "FIX HIGH: dipendenti.py contratti — validare retribuzione_lorda >= 0",
+    "FIX HIGH: dipendenti.py contratti — bloccare PUT su contratti con stato='terminato'",
+    "ADD ENDPOINT: DELETE /api/dipendenti/contratti/{id} — attualmente 405. Necessario per cleanup e gestione contratti creati per errore",
+    "FIX MEDIUM: tracciabilita/lotti.py — validare quantita > 0 (Pydantic Field con gt=0)",
+    "FIX MEDIUM: prima_nota/cassa.py — validare importo > 0 (importo negativo come entrata ha comportamento errato sul saldo)"
+  ],
+
+  "critical_code_review_comments": [
+    "food_cost.py: Missing type check for ingredienti elements. ricetta Arancino (e altre dal modulo TR) salvano ingredienti come stringhe, non dict. Crash a runtime con 500.",
+    "associazioni.py: Nessun check idempotenza su associa-fattura. UPDATE $set non controlla se già associato → sovrascrittura silente. BUG di business logic critico.",
+    "cedolini.py stima: Fallback silenzioso a paga_oraria=10 quando input è 0 o negativo — utente non viene informato. Questo causa calcoli errati mostrati all'utente.",
+    "dipendenti.py contratti: Mancano tutte le validazioni business: date ordering, salary >=0, stato guard su PUT terminated. Pydantic model dovrebbe avere questi vincoli.",
+    "dipendenti.py: Manca DELETE /contratti/{id}. Presenza senza delete causa data leak test → production.",
+    "Prima nota cassa: importo negativo accettato con tipo='entrata' produce comportamento semanticamente sbagliato (entrata che sottrae). Aggiungere validazione importo > 0."
+  ],
+
+  "updated_files": [
+    "/app/backend/tests/test_iteration16_deep_audit.py (nuovo file)"
+  ],
+
+  "success_rate": {
+    "backend": "98.8% (81/82 tests pass, 1 failure per ID obsoleto del lotto babà - non un bug del codice)"
+  },
+
+  "seed_data_creation": "24 contratti TEST_QA_ rimasti in DB (impossibile eliminarli, DELETE /contratti non implementato). Tutti gli altri dati TEST_QA_ eliminati.",
+
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+
+  "context_for_next_testing_agent": "Iteration 16 deep audit completato. Bug principali: (1) food_cost.py 500 su Arancino (ingredienti come stringhe), (2) doppia associazione bonifici permessa, (3) cedolini stima paga_oraria=0 usa default 10 silenziosamente, (4) mese=13 accettato, (5) contratti: date invertite/salary negativo/PUT terminato permessi, (6) DELETE /contratti non esiste. 24 contratti TEST_QA_ nel DB per Vincenzo Vespa - non eliminabili senza endpoint DELETE.",
+
+  "rca_bugs": {
+    "food_cost_500": {
+      "root_cause": "food_cost.py line 111: `costo_unit = float(ing.get('costo', ing.get('prezzo', 0)) or 0)` — se ing è una stringa (es. 'Riso Carnaroli') invece di dict, .get() fallisce con AttributeError",
+      "affected_ricette": "Tutte le ricette con ingredienti salvati come lista di stringhe invece di lista di dict (es. Arancino ID 123a6aaa, e probabilmente tutte le ricette importate dal modulo TR/HACCP)",
+      "fix": "In calcola_food_cost: aggiungere `if not isinstance(ing, dict): continue` all'inizio del loop ingredienti. Stessa fix nel riepilogo in ricette_riepilogo (lines 23-29)"
+    },
+    "double_association": {
+      "root_cause": "associazioni.py: `db['bonifici_transfers'].update_one({'id': bonifico_id}, {'$set': aggiornamento})` — nessun check se fattura_associata_id è già valorizzato. L'operazione $set sovrascrive sempre",
+      "fix": "Modificare query a `{'id': bonifico_id, '$or': [{'fattura_associata_id': {'$exists': False}}, {'fattura_associata_id': ''}]}` oppure fare GET prima e lanciare HTTPException(409) se già associato"
+    },
+    "stima_paga_oraria_zero": {
+      "root_cause": "cedolini.py stima: il codice ha un meccanismo di fallback che usa paga_oraria contratto se paga_oraria input è 0 o None — il problema è che 0 viene trattato come 'non fornito' per via del falsy check. `paga_oraria = paga_oraria or contratto_paga` — con paga_oraria=0, 0 è falsy in Python, quindi usa il contratto",
+      "fix": "Cambiare la logica: `paga_oraria = paga_oraria if paga_oraria is not None and paga_oraria > 0 else contratto_paga`. Meglio ancora: aggiungere validazione Pydantic con gt=0"
+    }
+  }
+}

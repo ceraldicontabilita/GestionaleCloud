@@ -61,7 +61,7 @@ export default function Dashboard() {
       // Esegue riparazioni
       const [fatRes, ricRes] = await Promise.all([
         api.post('/api/fatture-ricevute/auto-ricostruisci-dati').catch(() => ({ data: {} })),
-        api.post('/api/fatture-ricevute/auto-ricostruisci-dati').catch(() => ({ data: {} }))
+        api.post('/api/batch/auto-riconcilia-tutto').catch(() => ({ data: {} }))
       ]);
       
       const totaleCorrezioni = 
@@ -1523,9 +1523,14 @@ function AlertGiustificativiWidget({ data }) {
 function ScadenzeWidget({ scadenze }) {
   const [pagaModal, setPagaModal] = useState(null);
   const [processing, setProcessing] = useState(false);
+  const [paidIds, setPaidIds] = useState(new Set()); // Track locally paid items
   
   if (!scadenze || !scadenze.scadenze || scadenze.scadenze.length === 0) return null;
   
+  // Filter out locally paid items immediately
+  const visibleScadenze = scadenze.scadenze.filter(s => !paidIds.has(s.id));
+  const urgenti = visibleScadenze.filter(s => s.urgente);
+
   const getPriorityColor = (priorita, urgente) => {
     if (urgente) return { bg: '#fef2f2', border: '#fecaca', text: '#dc2626' };
     switch (priorita) {
@@ -1555,7 +1560,6 @@ function ScadenzeWidget({ scadenze }) {
   const handlePaga = async (scadenza, metodo) => {
     setProcessing(true);
     try {
-      // Usa l'endpoint unificato che crea movimento in Prima Nota + aggiorna fattura
       await api.post('/api/fatture-ricevute/paga-manuale', {
         fattura_id: scadenza.fattura_id || scadenza.id,
         scadenza_id: scadenza.id,
@@ -1565,21 +1569,17 @@ function ScadenzeWidget({ scadenze }) {
         fornitore: scadenza.fornitore || '',
         numero_fattura: scadenza.numero_fattura || ''
       });
-      
       setPagaModal(null);
-      // Refresh scadenze data without full page reload
-      try {
-        const scadenzeRes = await api.get(`/api/scadenze/prossime?anno=${anno}&limit=20`);
-        setScadenzeData(scadenzeRes.data);
-      } catch (_) {}
+      // Rimuovi immediatamente dalla lista locale — nessun reload
+      setPaidIds(prev => new Set([...prev, scadenza.id]));
     } catch (e) {
-      alert('Errore: ' + (e.response?.data?.detail || e.message));
+      alert('Errore pagamento: ' + (e.response?.data?.detail || e.message));
     } finally {
       setProcessing(false);
     }
   };
-  
-  const urgenti = scadenze.scadenze.filter(s => s.urgente);
+
+  if (visibleScadenze.length === 0) return null;
   
   return (
     <div style={{ 
@@ -1640,7 +1640,7 @@ function ScadenzeWidget({ scadenze }) {
           </tr>
         </thead>
         <tbody>
-          {scadenze.scadenze.slice(0, 6).map((s, idx) => {
+          {visibleScadenze.slice(0, 6).map((s, idx) => {
             const colors = getPriorityColor(s.priorita, s.urgente);
             return (
               <tr 

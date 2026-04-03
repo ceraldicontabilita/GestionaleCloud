@@ -1,4 +1,5 @@
 # Ceraldi Group ERP — PRD
+## Ultimo aggiornamento: 2026-04-03
 
 ## Obiettivo
 ERP full-stack (React + FastAPI + MongoDB Atlas) per Ceraldi Group Srl.
@@ -144,3 +145,84 @@ Tutti registrati in `/api/cucina/` (cartella: `/app/app/routers/cucina/`):
 | Food Cost | `food-cost` | FoodCostAdmin.jsx |
 | Catalogo Ordini | `catalogo-ordini` | CatalogoOrdini.jsx |
 | Prodotti Vendita | `prodotti-vendita` | ProdottiVendita.jsx |
+
+
+---
+
+## Portale Dipendenti (Completato 2026-04-03)
+
+**Route:** `/portale`
+**Auth:** Google Auth tramite auth.emergentagent.com (Emergent-managed)
+**File:** `frontend/src/pages/Portale.jsx`
+
+### Funzionalità implementate:
+- Login con Google (redirect a auth.emergentagent.com)
+- Visualizzazione cedolini paga con download PDF
+- Visualizzazione contratti (da firmare / firmati)
+- **Firma Elettronica Semplice (FES) art.3 eIDAS:**
+  - Step 1: Lettura contratto (scroll tracking)
+  - Step 2: Canvas firma touchscreen (funziona su tablet/cellulare con touch events)
+  - Digitazione nome completo (validazione fuzzy con thefuzz)
+  - 2 checkbox obbligatorie (ho letto, accetto)
+  - Timer lettura (minimo 5 secondi)
+  - Hash firma univoco (SHA-256) + timestamp + IP
+  - Salvataggio in `documenti_firmati` e aggiornamento `employee_contracts`
+  - Notifica admin in `agenti_segnalazioni`
+
+### Backend (`app/routers/portal.py`):
+- `POST /api/portal/portale/firma/{documento_id}` — firma con canvas
+- `GET /api/portal/portale/cedolini` — cedolini dipendente autenticato
+- `GET /api/portal/portale/cedolini/{id}/pdf` — download PDF
+- `GET /api/portal/portale/contratti` — contratti dipendente
+- `POST /api/portal/collega-google` — collega account Google
+- `POST /api/portal/genera-invito/{dipendente_id}` — genera codice invito
+
+### Pulizia effettuata (2026-04-03):
+- Rimossi 5 endpoint stub inutilizzati da portal.py (login-password, forgot, reset-password, register-from-invite, send-invites)
+
+---
+
+## Task Pendenti (Backlog)
+
+### P0
+- Pulizia chirurgica router inutilizzati in main.py (richiede analisi profonda per evitare regressioni)
+- Verifica globale bottoni azione (Cestino) — test approfondito
+
+### P1
+- Passo 7: Widget Cucina in DashboardHub (StatCard: Ordini in attesa, Ricette da approvare)
+- Gestione Ciclo Passivo (da ISTRUZIONI_CICLO_PASSIVO.md)
+
+### P2
+- Sicurezza auth backend (Cookies HTTP-Only)
+- Email integration fix (credenziali Gmail App Password scadute)
+
+
+---
+
+## Fix 2026-04-03 (sessione corrente)
+
+### BUG CRITICO RISOLTO — Reload ogni 30 secondi
+**Causa:** Uvicorn `--reload` monitorava `/app/backend/tests/`. Il testing agent creava file `.py` lì → WatchFiles riavviava il backend ogni pochi secondi → frontend perdeva lo stato.
+**Fix:** Test spostati in `/app/test_reports/backend_tests/`. Creato `.watchfilesignore`.
+**REGOLA:** NON creare mai file .py in `/app/backend/tests/` — i test vanno in `/app/test_reports/backend_tests/`.
+
+### Bug risolti
+1. **Dashboard Prossime Scadenze — Icona Vedi (404)**: `view-assoinvoice` cerca ora anche in `invoices` oltre a `indice_documenti`
+2. **Dashboard Prossime Scadenze — Pagamento non sparisce**: `setScadenzeData` era undefined in `ScadenzeWidget` (fuori scope); ora usa `paidIds` state locale — la scadenza sparisce immediatamente
+
+### Nuove funzionalità
+- **Scanner PagoPA Quietanze** (`/app/app/services/pagopa_scanner.py`):
+  - 3 mittenti: partenopay@ext.comune.napoli.it, noreply-checkout@ricevute.pagopa.it, notifica.pl.napoli@pec.it
+  - Cerca numero verbale nel CORPO dell'email (pattern B/A + 10-12 cifre)
+  - PDF allegato salvato o generato dal corpo con reportlab
+  - Endpoint: `POST /api/verbali-riconciliazione/scan-pagopa?days_back=N`
+  - Endpoint: `GET /api/verbali-riconciliazione/quietanze-verbale/{numero_verbale}`
+  - Endpoint: `GET /api/verbali-riconciliazione/quietanze-verbale/{numero_verbale}/pdf`
+- **Riconciliazione verbali migliorata**: cerca in body, note, oggetto, subject, items (non solo descrizione)
+
+### Task aggiornati
+- P0 Bottoni azione: risolto (ScadenzeWidget paidIds)
+- Passo 7 Widget Cucina: BACKLOG
+- Ciclo Passivo: BACKLOG
+- Email integration Gmail: OPERATIVA (credenziali valide in .env)
+- Sicurezza backend HTTP-Only: da fare

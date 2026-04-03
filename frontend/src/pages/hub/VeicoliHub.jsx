@@ -56,15 +56,20 @@ export default function VeicoliHub() {
   const navigate = useNavigate();
   const location = useLocation();
   const [activeTab, setActiveTab] = useState(() => getTabFromPath(location.pathname));
+  // Traccia i tab già visitati — non smontiamo mai un componente già caricato
+  const [loadedTabs, setLoadedTabs] = useState(() => new Set([getTabFromPath(location.pathname)]));
 
   useEffect(() => {
     const t = getTabFromPath(location.pathname);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    if (t !== activeTab) setActiveTab(t);
+    if (t !== activeTab) {
+      setActiveTab(t);
+      setLoadedTabs(prev => new Set([...prev, t]));
+    }
   }, [location.pathname]);
 
   const handleTabChange = (tabId) => {
     setActiveTab(tabId);
+    setLoadedTabs(prev => new Set([...prev, tabId]));
     navigate(tabId === 'flotta' ? '/noleggio' : `/noleggio/${tabId}`);
   };
 
@@ -99,12 +104,23 @@ export default function VeicoliHub() {
         ))}
       </div>
 
-      {/* Tab Content */}
+      {/* Tab Content - usa display:none per preservare lo stato dei componenti già caricati */}
       <div style={{ padding: '16px 24px' }}>
         <Suspense fallback={<Loading />}>
-          {activeTab === 'flotta'  && <FlottaContent />}
-          {activeTab === 'verbali' && <VerbaliContent />}
-          {activeTab === 'costi'   && <RiepilogoCosti anno={anno} />}
+          {/* Flotta: carica solo se visitato, poi mantieni montato */}
+          {loadedTabs.has('flotta') && (
+            <div style={{ display: activeTab === 'flotta' ? 'block' : 'none' }}>
+              <FlottaContent />
+            </div>
+          )}
+          {/* Verbali: carica solo se visitato, poi mantieni montato */}
+          {loadedTabs.has('verbali') && (
+            <div style={{ display: activeTab === 'verbali' ? 'block' : 'none' }}>
+              <VerbaliContent />
+            </div>
+          )}
+          {/* Costi: sempre leggero, ok rimontare */}
+          {activeTab === 'costi' && <RiepilogoCosti anno={anno} />}
         </Suspense>
       </div>
     </div>

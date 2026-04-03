@@ -72,20 +72,30 @@ async def get_summary(
             return await db[Collections.EMPLOYEES].count_documents({})
         
         # Esegui in parallelo
+        async def get_reconciled_count():
+            return await db["estratto_conto_movimenti"].count_documents({
+                "riconciliato": True,
+                "$or": [
+                    {"data": {"$gte": data_inizio, "$lte": data_fine}},
+                    {"data_operazione": {"$gte": data_inizio, "$lte": data_fine}}
+                ]
+            })
+
         results = await asyncio.gather(
             get_invoices_count(),
             get_invoices_amount(),
             get_suppliers_count(),
             get_products_count(),
             get_haccp_count(),
-            get_employees_count()
+            get_employees_count(),
+            get_reconciled_count()
         )
-        
+
         response = {
             "anno": anno,
             "invoices_total": results[0],
             "invoices_amount": round(results[1] or 0, 2),
-            "reconciled": 0,
+            "reconciled": results[6],
             "products": results[3],
             "haccp_items": results[4],
             "suppliers": results[2],

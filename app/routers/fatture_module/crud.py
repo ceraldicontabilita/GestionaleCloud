@@ -109,12 +109,19 @@ async def view_fattura_assoinvoice(fattura_id: str) -> HTMLResponse:
     from bson.errors import InvalidId
     db = Database.get_db()
     
-    # Cerca prima per id (UUID), poi per _id (ObjectId)
+    # 1. Cerca in indice_documenti per id (UUID)
     fattura = await db[COL_FATTURE_RICEVUTE].find_one({"id": fattura_id}, {"_id": 0})
+    
+    # 2. Fallback: cerca in invoices (le scadenze dashboard vengono da lì)
     if not fattura:
-        # Prova con ObjectId
+        fattura = await db["invoices"].find_one({"id": fattura_id}, {"_id": 0})
+    
+    # 3. Fallback ObjectId
+    if not fattura:
         try:
             fattura = await db[COL_FATTURE_RICEVUTE].find_one({"_id": ObjectId(fattura_id)})
+            if not fattura:
+                fattura = await db["invoices"].find_one({"_id": ObjectId(fattura_id)})
             if fattura:
                 fattura_id = fattura.get("id", fattura_id)
                 fattura.pop("_id", None)

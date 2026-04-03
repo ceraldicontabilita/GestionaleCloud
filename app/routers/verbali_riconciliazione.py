@@ -389,35 +389,45 @@ async def scan_fatture_per_verbali() -> Dict[str, Any]:
     db = Database.get_db()
     
     try:
-        # Fornitori noleggio tipici
+        # Fornitori noleggio tipici (se vuoto cerca in tutte le fatture)
         fornitori_noleggio = ["ALD", "LEASYS", "ARVAL", "LEASEPLAN", "ALPHABET"]
         
-        # Trova fatture dei noleggiatori
+        # Trova fatture dei noleggiatori E tutte quelle con numeri verbale
         fatture = await db["invoices"].find({
             "$or": [
                 {"supplier_name": {"$regex": "|".join(fornitori_noleggio), "$options": "i"}},
-                {"fornitore": {"$regex": "|".join(fornitori_noleggio), "$options": "i"}}
+                {"fornitore": {"$regex": "|".join(fornitori_noleggio), "$options": "i"}},
+                # Cerca anche nelle fatture con pattern verbale nei testi
+                {"descrizione": {"$regex": r"[AB]\d{8,12}", "$options": "i"}},
+                {"body": {"$regex": r"[AB]\d{8,12}", "$options": "i"}},
+                {"note": {"$regex": r"[AB]\d{8,12}", "$options": "i"}},
+                {"oggetto": {"$regex": r"[AB]\d{8,12}", "$options": "i"}},
             ]
-        }).to_list(2000)
+        }).to_list(5000)
         
         verbali_trovati = 0
         associazioni_create = 0
         
         for fattura in fatture:
-            # Cerca numero verbale nella descrizione o items
-            descrizione = fattura.get("descrizione", "") or ""
+            # Costruisci testo completo della fattura cercando in tutti i campi
+            campi_testo = [
+                fattura.get("descrizione", "") or "",
+                fattura.get("body", "") or "",
+                fattura.get("note", "") or "",
+                fattura.get("notes", "") or "",
+                fattura.get("oggetto", "") or "",
+                fattura.get("subject", "") or "",
+                fattura.get("invoice_number", "") or "",
+            ]
+            # Aggiungi tutti gli items
             items = fattura.get("items", [])
+            for item in items:
+                campi_testo.append(item.get("descrizione", "") or item.get("description", "") or "")
             
-            # Cerca in descrizione principale
-            numero_verbale = extract_verbale_from_description(descrizione)
+            testo_completo = " ".join(campi_testo)
             
-            # Cerca negli items
-            if not numero_verbale:
-                for item in items:
-                    item_desc = item.get("descrizione", "") or item.get("description", "") or ""
-                    numero_verbale = extract_verbale_from_description(item_desc)
-                    if numero_verbale:
-                        break
+            # Cerca numero verbale nel testo completo
+            numero_verbale = extract_verbale_from_description(testo_completo)
             
             if numero_verbale:
                 verbali_trovati += 1
@@ -496,6 +506,11 @@ async def riconcilia_verbale(numero_verbale: str) -> Dict[str, Any]:
             fattura = await db["invoices"].find_one({
                 "$or": [
                     {"descrizione": {"$regex": numero_verbale, "$options": "i"}},
+                    {"body": {"$regex": numero_verbale, "$options": "i"}},
+                    {"note": {"$regex": numero_verbale, "$options": "i"}},
+                    {"notes": {"$regex": numero_verbale, "$options": "i"}},
+                    {"oggetto": {"$regex": numero_verbale, "$options": "i"}},
+                    {"subject": {"$regex": numero_verbale, "$options": "i"}},
                     {"items.descrizione": {"$regex": numero_verbale, "$options": "i"}},
                     {"items.description": {"$regex": numero_verbale, "$options": "i"}}
                 ]
@@ -1676,3 +1691,70 @@ async def get_scheduler_status() -> Dict[str, Any]:
             "note": "Scheduler non disponibile"
         }
 
+
+
+# ===== SCAN PAGOPA QUIETANZE =====
+
+@router.post("/scan-pagopa")
+@handle_errors
+async def scan_pagopa_quietanze(days_back: int = 365) -> Dict[str, Any]:
+    """
+    Scansiona Gmail per email PagoPA dai 3 mittenti ufficiali:
+    - partenopay@ext.comune.napoli.it
+    - noreply-checkout@ricevute.pagopa.it
+    - notifica.pl.napoli@pec.it
+
+    Cerca il numero verbale nel CORPO dell'email, salva il PDF allegato
+    o genera un PDF dal corpo se non presente, e aggiorna il verbale in DB.
+    """
+    db = Database.get_db()
+    try:
+        from app.services.pagopa_scanner import scan_pagopa_email
+        risultato = await scan_pagopa_email(db, days_back=days_back)
+        return risultato
+    except Exception as e:
+        logger.error(f"Errore scan PagoPA: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/quietanze-verbale/{numero_verbale}")
+@handle_errors
+async def get_quietanze_verbale(numero_verbale: str) -> Dict[str, Any]:
+    """
+    Restituisce tutte le quietanze PagoPA trovate per un dato verbale.
+    """
+    db = Database.get_db()
+    cursor = db["quietanze_verbali"].find(
+        {"verbale_numero": numero_verbale.upper()},
+        {"_id": 0, "pdf_base64": 0}  # Escludi il PDF dalla risposta JSON
+    ).sort("salvata_at", -1)
+    quietanze = await cursor.to_list(length=50)
+    return {
+        "verbale": numero_verbale.upper(),
+        "quietanze": quietanze,
+        "totale": len(quietanze),
+    }
+
+
+@router.get("/quietanze-verbale/{numero_verbale}/pdf")
+@handle_errors
+async def download_quietanza_pdf(numero_verbale: str):
+    """
+    Scarica il PDF della quietanza PagoPA per un verbale.
+    """
+    from fastapi.responses import Response as FastAPIResponse
+    db = Database.get_db()
+    q = await db["quietanze_verbali"].find_one(
+        {"verbale_numero": numero_verbale.upper(), "pdf_base64": {"$exists": True}},
+        {"_id": 0},
+    )
+    if not q or not q.get("pdf_base64"):
+        raise HTTPException(404, "Nessun PDF disponibile per questo verbale")
+    import base64
+    pdf_bytes = base64.b64decode(q["pdf_base64"])
+    filename = q.get("pdf_filename", f"quietanza_{numero_verbale}.pdf")
+    return FastAPIResponse(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{filename}"'}
+    )

@@ -1,0 +1,90 @@
+{
+  "summary": "Test completo sistema firma elettronica (FirmaModal canvas), Portale Dipendenti login, bottoni eliminazione e backend portal endpoints. 21/21 backend tests passati. FirmaModal funziona correttamente con tutti gli elementi richiesti. 2 bug identificati.",
+
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "POST /api/portal/portale/firma/{documento_id}",
+        "issue": "Il frontend usa e.response?.data?.detail nel catch block, ma il custom error handler restituisce e.response?.data?.message. Risultato: messaggi di errore dal backend non vengono mostrati all'utente (usa sempre il fallback generico 'Errore durante la firma. Riprova.')",
+        "priority": "MEDIUM"
+      }
+    ]
+  },
+
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "FirmaModal - Portale.jsx",
+        "issue": "scrollOk non viene verificato al mount. Per documenti brevi (contenuto < 260px altezza), la scroll event non scatta mai e scrollOk rimane False. L'utente non può procedere alla firma. Fix: aggiungere useEffect su scrollRef per settare scrollOk=true se scrollHeight <= clientHeight+20",
+        "selector": "[data-testid='btn-vai-a-firma']",
+        "priority": "MEDIUM"
+      },
+      {
+        "component": "FirmaModal - catch block",
+        "issue": "Usa e.response?.data?.detail ma il custom error handler del backend restituisce {message, error, request_id} senza campo 'detail'. Fix: usare e.response?.data?.message || e.response?.data?.detail",
+        "selector": "N/A",
+        "priority": "MEDIUM"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Dashboard",
+        "issues": ["Recharts: console warning 'width(-1) and height(-1) of chart should be greater than 0' - charts non ancora visibili ma layout funzionale"]
+      }
+    ]
+  },
+
+  "test_report_links": [
+    "/app/backend/tests/test_iteration17_portal.py",
+    "/app/test_reports/pytest/pytest_results_iter17.xml"
+  ],
+
+  "action_items": [
+    "FIX (Portale.jsx line ~177): Cambiare e.response?.data?.detail con e.response?.data?.message || e.response?.data?.detail || 'Errore durante la firma. Riprova.'",
+    "FIX (FirmaModal, dopo scrollRef.current): Aggiungere useEffect per controllare se il documento è già visibile senza scorrimento: if (el.scrollHeight <= el.clientHeight + 20) setScrollOk(true)"
+  ],
+
+  "critical_code_review_comments": [
+    "Portale.jsx line 177: catch block usa data?.detail ma backend restituisce data?.message - errori backend non mostrati",
+    "FirmaModal: scrollOk non impostato se contenuto documento < 260px - utente bloccato su step 1",
+    "portal.py line 237-239: fallback se 'thefuzz' non installato usa match case-insensitive esatto invece di fuzzy - ok ma verifica che 'thefuzz' sia in requirements"
+  ],
+
+  "updated_files": [
+    "/app/backend/tests/test_iteration17_portal.py"
+  ],
+
+  "success_rate": {
+    "backend": "100% (21/21 test passati)",
+    "frontend": "90% (FirmaModal funzionante con tutti gli elementi, 2 bug minori identificati)"
+  },
+
+  "test_credentials": {
+    "portale_dipendenti": "Usa Google Auth (auth.emergentagent.com) - non testabile automaticamente. Login page verificata visivamente. Mock localStorage usato per testare il portale interno."
+  },
+
+  "seed_data_creation": "Nessun dato creato. Tutti i test backend usano ID non esistenti (404 atteso). Tests frontend usati con mock API route intercept.",
+
+  "retest_needed": true,
+
+  "should_main_agent_self_test": true,
+
+  "context_for_next_testing_agent": "Il Portale usa Emergent Google Auth. Per testare il portale autenticato, usare page.evaluate per impostare localStorage('portal_token') con token valido e intercettare le API calls con page.route(). FirmaModal testato con successo usando mock API route. Il backend usa custom error handler che restituisce {message, error, request_id} invece del format standard FastAPI {detail}. I bottoni Elimina in RicettarioAdmin funzionano senza full page reload (confermato con dialog intercept). 21 backend tests sono in /app/backend/tests/test_iteration17_portal.py.",
+
+  "rca_issues": [
+    {
+      "issue": "FirmaModal error messages non mostrati",
+      "root_cause": "Il custom exception handler in /app/app/middleware/error_handler.py intercetta StarletteHTTPException e ritorna {message: exc.detail, error: 'HTTPException', request_id: ...} invece del formato standard FastAPI {detail: exc.detail}. Il frontend FirmaModal usa e.response?.data?.detail che è undefined.",
+      "reproduction": "1. Aprire FirmaModal con un contratto da firmare. 2. Cliccare 'Firma e Invia' con dati invalidi (nome sbagliato). 3. Il messaggio di errore mostrato è sempre il fallback generico.",
+      "mitigation": "Cambiare la riga 177 di Portale.jsx: setErrore(e.response?.data?.message || e.response?.data?.detail || 'Errore durante la firma. Riprova.')"
+    },
+    {
+      "issue": "FirmaModal scrollOk bloccato per documenti brevi",
+      "root_cause": "Il controllo scrollOk dipende dall'evento onScroll che non scatta se il contenuto è più corto dell'area visibile (260px). La condizione sarebbe True al mount ma non viene verificata.",
+      "reproduction": "1. Aprire FirmaModal con un contratto con contenuto breve (< 260px). 2. Il tasto 'Procedi alla Firma' rimane grigio e non cliccabile.",
+      "mitigation": "Aggiungere in FirmaModal dopo la dichiarazione dello scrollRef: useEffect(() => { const el = scrollRef.current; if (el && el.scrollHeight <= el.clientHeight + 20) setScrollOk(true); }, [contratto]);"
+    }
+  ]
+}

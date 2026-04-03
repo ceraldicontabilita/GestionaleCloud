@@ -34,6 +34,7 @@ router = APIRouter(prefix="/backup", tags=["Backup"])
 BACKUP_DIR  = "/app/backups/db"
 MAX_BACKUPS = 7
 LOG         = logging.getLogger("backup")
+DB_NAME     = os.environ.get('DB_NAME', 'azienda_erp_db')
 
 
 def _esegui_backup_sync() -> dict:

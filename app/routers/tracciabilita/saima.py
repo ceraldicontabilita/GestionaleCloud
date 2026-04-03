@@ -7,7 +7,6 @@ from app.routers.tracciabilita.server import db
 from datetime import datetime, timezone
 import uuid, re, asyncio, httpx
 from bs4 import BeautifulSoup
-from db import database as db
 
 router = APIRouter(prefix="/saima", tags=["saima"])
 

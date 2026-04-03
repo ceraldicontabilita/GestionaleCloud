@@ -107,6 +107,8 @@ async def calcola_food_cost(ricetta_id: str) -> Dict[str, Any]:
     costo_totale = 0.0
     dettaglio = []
     for ing in ingredienti:
+        if not isinstance(ing, dict):
+            continue  # Salta ingredienti salvati come stringhe invece di dict
         try:
             costo_unit = float(ing.get("costo", ing.get("prezzo", 0)) or 0)
             qty = float(ing.get("quantita", 1) or 1)

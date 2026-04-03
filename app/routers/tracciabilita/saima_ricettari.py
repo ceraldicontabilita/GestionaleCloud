@@ -7,7 +7,6 @@ from app.routers.tracciabilita.server import db
 from pydantic import BaseModel
 import httpx
 from bs4 import BeautifulSoup
-from db import database as db
 from datetime import datetime, timezone
 
 router = APIRouter(prefix="/saima/ricettari", tags=["saima"])

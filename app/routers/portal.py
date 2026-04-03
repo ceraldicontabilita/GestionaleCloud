@@ -1,5 +1,5 @@
 """Portal router - Portal/invitation functionality + Portale Dipendenti."""
-from fastapi import APIRouter, Depends, status, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from typing import Dict, Any
 import logging
 import uuid
@@ -14,63 +14,6 @@ from app.database import Database
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-
-@router.post(
-    "/login-password",
-    summary="Login with password"
-)
-async def login_password(
-    data: Dict[str, Any]
-) -> Dict[str, Any]:
-    """Portal login with password."""
-    return {"message": "Login successful", "token": ""}
-
-
-@router.post(
-    "/forgot",
-    summary="Forgot password"
-)
-async def forgot_password(
-    data: Dict[str, Any]
-) -> Dict[str, str]:
-    """Request password reset."""
-    return {"message": "Reset email sent if account exists"}
-
-
-@router.post(
-    "/reset-password",
-    summary="Reset password"
-)
-async def reset_password(
-    data: Dict[str, Any]
-) -> Dict[str, str]:
-    """Reset password with token."""
-    return {"message": "Password reset successful"}
-
-
-@router.post(
-    "/register-from-invite",
-    status_code=status.HTTP_201_CREATED,
-    summary="Register from invitation"
-)
-async def register_from_invite(
-    data: Dict[str, Any]
-) -> Dict[str, str]:
-    """Register new user from invitation."""
-    return {"message": "Registration successful"}
-
-
-@router.post(
-    "/send-invites",
-    summary="Send invitations"
-)
-async def send_invites(
-    data: Dict[str, Any],
-    current_user: Dict[str, Any] = Depends(get_current_user)
-) -> Dict[str, Any]:
-    """Send portal invitations."""
-    return {"message": "Invitations sent", "sent_count": 0}
 
 
 # ===== PORTALE DIPENDENTI =====
@@ -236,61 +179,162 @@ async def firma_documento(
     current_user=Depends(get_current_user)
 ):
     """
-    Firma elettronica semplice FES (legalmente valida art.3 eIDAS).
-    Registra: timestamp + IP + email + hash documento.
+    Firma Elettronica Semplice (FES) conforme art.3 eIDAS.
+    Registra: nome_digitato validato, timestamp, IP, user-agent, hash documento,
+    tempo_lettura, doppio checkbox, certificato hash univoco.
     """
     db = Database.get_db()
+
+    # Leggi body JSON dalla request
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    nome_digitato = (body.get("nome_digitato") or "").strip()
+    checkbox_lettura = body.get("checkbox_lettura", False)
+    checkbox_accettazione = body.get("checkbox_accettazione", False)
+    scroll_completato = body.get("scroll_completato", False)
+    tempo_lettura_secondi = int(body.get("tempo_lettura_secondi", 0))
+    firma_canvas_base64 = (body.get("firma_canvas_base64") or "").strip()
+
+    # --- Validazioni obbligatorie ---
+    if not checkbox_lettura or not checkbox_accettazione:
+        raise HTTPException(422, "Devi spuntare entrambe le caselle di conferma lettura e accettazione")
+    if not scroll_completato:
+        raise HTTPException(422, "Devi leggere il documento fino in fondo prima di firmarlo")
+    if not nome_digitato:
+        raise HTTPException(422, "Devi digitare il tuo nome e cognome completo per firmare")
+    if tempo_lettura_secondi < 5:
+        raise HTTPException(422, "Tempo di lettura insufficiente. Leggi il documento con attenzione")
+    if not firma_canvas_base64 or len(firma_canvas_base64) < 100:
+        raise HTTPException(422, "La firma disegnata è obbligatoria e non può essere vuota")
+
+    # --- Carica dipendente tramite google_email ---
     dip = await db["employees"].find_one(
         {"google_email": current_user["email"]}, {"_id": 0}
     )
     if not dip:
-        raise HTTPException(403, "Accesso negato")
+        # Fallback su collection dipendenti
+        dip = await db["dipendenti"].find_one(
+            {"google_email": current_user["email"]}, {"_id": 0}
+        )
+    if not dip:
+        raise HTTPException(403, "Accesso negato: utente non collegato a nessun dipendente")
 
+    # --- Valida il nome digitato (match fuzzy nome+cognome) ---
+    nome_dip = dip.get("nome_completo") or f"{dip.get('nome','').strip()} {dip.get('cognome','').strip()}".strip()
+    try:
+        from thefuzz import fuzz
+        score = fuzz.token_sort_ratio(nome_digitato.lower(), nome_dip.lower())
+        if score < 75:
+            raise HTTPException(
+                422,
+                f"Il nome digitato non corrisponde al tuo nome registrato. "
+                f"Digita esattamente: {nome_dip}"
+            )
+    except ImportError:
+        # Senza fuzz: match case-insensitive semplice
+        if nome_digitato.lower() != nome_dip.lower():
+            raise HTTPException(422, f"Digita esattamente: {nome_dip}")
+
+    # --- Carica documento ---
     doc = await db["employee_contracts"].find_one({"id": documento_id})
     if not doc or doc.get("dipendente_id") != dip["id"]:
-        raise HTTPException(404, "Documento non trovato")
+        raise HTTPException(404, "Documento non trovato o non autorizzato")
+    if doc.get("firmato"):
+        raise HTTPException(409, "Documento già firmato in precedenza")
 
+    # --- Genera hash del documento e certificato firma ---
     pdf_b64 = doc.get("pdf_data", "")
     pdf_bytes = base64.b64decode(pdf_b64) if pdf_b64 else b""
-    hash_doc = hashlib.sha256(pdf_bytes).hexdigest()
+    hash_documento = hashlib.sha256(pdf_bytes).hexdigest() if pdf_bytes else hashlib.sha256(documento_id.encode()).hexdigest()
+
+    timestamp_firma = datetime.now(timezone.utc).isoformat()
+    ip_firma = request.client.host if request.client else "N/D"
+
+    # Hash univoco della firma: doc_id + email + timestamp + nome_digitato
+    hash_firma = hashlib.sha256(
+        f"{documento_id}|{current_user['email']}|{timestamp_firma}|{nome_digitato}".encode()
+    ).hexdigest()
 
     firma = {
         "id": str(uuid.uuid4()),
         "dipendente_id": dip["id"],
         "dipendente_email": current_user["email"],
-        "dipendente_nome": dip.get("nome_completo", ""),
+        "dipendente_nome_sistema": nome_dip,
+        "nome_digitato_dalla_firma": nome_digitato,
         "documento_id": documento_id,
-        "documento_tipo": doc.get("tipo", ""),
-        "hash_documento": hash_doc,
-        "firma_timestamp": datetime.now(timezone.utc).isoformat(),
-        "firma_ip": request.client.host if request.client else "N/D",
-        "firma_user_agent": request.headers.get("user-agent", "")[:200],
-        "accettazione_testuale": "Ho letto e accetto il documento",
+        "documento_tipo": doc.get("tipo", "Contratto"),
+        "hash_documento": hash_documento,
+        "hash_firma": hash_firma,
+        "firma_timestamp": timestamp_firma,
+        "firma_ip": ip_firma,
+        "firma_user_agent": request.headers.get("user-agent", "")[:300],
+        "firma_canvas_base64": firma_canvas_base64,
+        "scroll_completato": scroll_completato,
+        "tempo_lettura_secondi": tempo_lettura_secondi,
+        "checkbox_lettura": True,
+        "checkbox_accettazione": True,
+        "accettazione_testuale": (
+            f"Io sottoscritto/a {nome_digitato} dichiaro di aver letto "
+            f"integralmente e di accettare tutte le clausole del documento "
+            f"'{doc.get('tipo','Contratto')}' in data {timestamp_firma[:10]}."
+        ),
         "valida": True,
-        "created_at": datetime.now(timezone.utc).isoformat()
+        "created_at": timestamp_firma,
     }
-    await db["documenti_firmati"].insert_one(firma)
+    await db["documenti_firmati"].insert_one({k: v for k, v in firma.items() if k != "_id"})
 
     await db["employee_contracts"].update_one(
         {"id": documento_id},
         {"$set": {
             "firmato": True,
             "firma_id": firma["id"],
-            "firmato_at": firma["firma_timestamp"],
-            "firma_ip": firma["firma_ip"]
+            "firmato_at": timestamp_firma,
+            "firma_ip": ip_firma,
+            "hash_firma": hash_firma,
         }}
     )
 
-    await db["agenti_segnalazioni"].insert_one({
-        "id": str(uuid.uuid4()),
-        "agente": "PortaleDipendente",
-        "tipo": "info",
-        "titolo": f"Documento firmato — {dip.get('nome_completo', '')}",
-        "descrizione": f"{dip.get('nome_completo', '')} ha firmato: {doc.get('tipo', '')}.",
-        "letta": False,
-        "risolta": False,
-        "dati_riferimento": {"dipendente_id": dip["id"], "documento_id": documento_id},
-        "created_at": datetime.now(timezone.utc).isoformat()
-    })
+    # Notifica all'admin
+    try:
+        await db["agenti_segnalazioni"].insert_one({
+            "id": str(uuid.uuid4()),
+            "agente": "PortaleDipendente",
+            "tipo": "info",
+            "titolo": f"Contratto firmato — {nome_dip}",
+            "descrizione": (
+                f"{nome_dip} ha firmato il documento '{doc.get('tipo','')}' "
+                f"il {timestamp_firma[:10]} alle {timestamp_firma[11:16]} UTC. "
+                f"IP: {ip_firma}. Hash firma: {hash_firma[:16]}..."
+            ),
+            "letta": False,
+            "risolta": False,
+            "dati_riferimento": {
+                "dipendente_id": dip["id"],
+                "documento_id": documento_id,
+                "hash_firma": hash_firma
+            },
+            "created_at": timestamp_firma
+        })
+    except Exception:
+        pass
 
-    return {"message": "Documento firmato con successo", "firma_id": firma["id"]}
+    return {
+        "message": "Documento firmato con successo",
+        "firma_id": firma["id"],
+        "hash_firma": hash_firma,
+        "timestamp": timestamp_firma,
+        "certificato": {
+            "firmato_da": nome_dip,
+            "email": current_user["email"],
+            "documento": doc.get("tipo", "Contratto"),
+            "data_firma": timestamp_firma[:10],
+            "ora_firma": timestamp_firma[11:16] + " UTC",
+            "ip": ip_firma,
+            "hash_documento": hash_documento[:32] + "...",
+            "hash_firma": hash_firma,
+            "valida_art3_eidas": True,
+        }
+    }
