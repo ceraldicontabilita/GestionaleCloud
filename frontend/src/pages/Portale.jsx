@@ -148,6 +148,17 @@ function FirmaModal({ contratto, onClose, onFirmato, token }) {
     return () => clearInterval(timerRef.current);
   }, []);
 
+  // Auto-scroll check: se il documento è breve, non serve scorrere
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const el = scrollRef.current;
+      if (el && el.scrollHeight <= el.clientHeight + 20) {
+        setScrollOk(true);
+      }
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [contratto]);
+
   // Scroll tracking
   const handleScroll = () => {
     const el = scrollRef.current;
@@ -175,7 +186,7 @@ function FirmaModal({ contratto, onClose, onFirmato, token }) {
       });
       setFirmataOk(res.data);
     } catch (e) {
-      setErrore(e.response?.data?.detail || 'Errore durante la firma. Riprova.');
+      setErrore(e.response?.data?.message || e.response?.data?.detail || 'Errore durante la firma. Riprova.');
     } finally {
       setLoading(false);
     }

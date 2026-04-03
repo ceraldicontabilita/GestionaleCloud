@@ -12,6 +12,14 @@
 - DB: azienda_erp_db
 - Connection via MONGO_URL env var
 
+## Portale Dipendenti
+- URL: https://food-cost-portal.preview.emergentagent.com/portale
+- Auth: Google Auth (Emergent-managed - auth.emergentagent.com)
+- Dopo login Google: token salvato in localStorage come 'portal_token'
+- Collection dipendenti: employees (con campo google_email)
+- Collection contratti: employee_contracts
+- Collection firme: documenti_firmati
+
 ## Tracciabilità Mini-site
 - URL: https://food-cost-portal.preview.emergentagent.com/api/tracciabilita/
 
