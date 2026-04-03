@@ -221,7 +221,10 @@ Tutti registrati in `/api/cucina/` (cartella: `/app/app/routers/cucina/`):
 - **Riconciliazione verbali migliorata**: cerca in body, note, oggetto, subject, items (non solo descrizione)
 
 ### Task aggiornati
-- P0 Bottoni azione: risolto (ScadenzeWidget paidIds)
+- P0 Bottoni azione: **RISOLTI DEFINITIVAMENTE** (2026-04-03 pomeriggio)
+  - `get_archivio_fatture` proiezione MongoDB: ora legge `pagato`, `prima_nota_cassa_id`, ecc. dal DB (era hardcoded False)
+  - `paga_fattura_manuale` auto_riconciliato: ora `False` (era `metodo == 'banca'` che bloccava il bottone Banca)
+  - `/app/backend/tests/` reso read-only (chmod 555) per prevenire reload loop uvicorn
 - Passo 7 Widget Cucina: BACKLOG
 - Ciclo Passivo: BACKLOG
 - Email integration Gmail: OPERATIVA (credenziali valide in .env)

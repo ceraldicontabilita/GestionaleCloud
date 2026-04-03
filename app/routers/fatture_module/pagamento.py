@@ -31,8 +31,9 @@ async def paga_fattura_manuale(payload: Dict[str, Any]) -> Dict[str, Any]:
     if metodo not in ["cassa", "banca"]:
         raise HTTPException(status_code=400, detail="metodo deve essere 'cassa' o 'banca'")
 
-    # Se metodo=banca → riconciliazione automatica
-    auto_riconciliato = (metodo == "banca")
+    # La riconciliazione è un processo separato (estratto conto bancario).
+    # Il pagamento manuale via banca NON deve auto-riconciliare la fattura.
+    auto_riconciliato = False
 
     risultato = {"success": True, "movimento_id": None, "metodo": metodo, "importo": importo, "riconciliato": auto_riconciliato}
     
