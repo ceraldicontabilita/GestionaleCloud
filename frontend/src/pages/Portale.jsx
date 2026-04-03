@@ -349,7 +349,7 @@ export default function Portale() {
                   {contratti.map(c => (
                     <div key={c.id} style={{
                       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      padding: '12px 16px', background: '#fff', borderRadius: 10,
+                      padding: '12px 16px', borderRadius: 10,
                       border: `1px solid ${c.firmato ? '#bbf7d0' : '#e2e8f0'}`,
                       background: c.firmato ? '#f0fdf4' : '#fff',
                     }}>
