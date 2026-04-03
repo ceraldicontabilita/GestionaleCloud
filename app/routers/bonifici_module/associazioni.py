@@ -20,51 +20,71 @@ async def associa_fattura_a_bonifico(
     fattura_id: str = Query(...),
     collection: str = Query("invoices")
 ) -> Dict[str, Any]:
-    """Associa una fattura a un bonifico."""
+    """Associa una fattura a un bonifico. Supporta sia bonifici_transfers (UUID) sia archivio_bonifici (ObjectId)."""
     db = Database.get_db()
+
+    aggiornamento = {
+        "fattura_associata_id": fattura_id,
+        "fattura_collection": collection,
+        "stato_riconciliazione": "associato",
+        "data_associazione": datetime.now(timezone.utc).isoformat()
+    }
+
+    # 1) Prova prima su bonifici_transfers (collection moderna, ID stringa UUID)
+    result = await db["bonifici_transfers"].update_one(
+        {"id": bonifico_id},
+        {"$set": aggiornamento}
+    )
+    if result.modified_count > 0:
+        return {"success": True, "message": "Fattura associata al bonifico (transfers)"}
+
+    # 2) Fallback su archivio_bonifici (collection legacy, MongoDB ObjectId)
     from bson import ObjectId
-    
     try:
-        result = await db["archivio_bonifici"].update_one(
+        result2 = await db["archivio_bonifici"].update_one(
             {"_id": ObjectId(bonifico_id)},
-            {"$set": {
-                "fattura_associata_id": fattura_id,
-                "fattura_collection": collection,
-                "stato_riconciliazione": "associato",
-                "data_associazione": datetime.now(timezone.utc)
-            }}
+            {"$set": aggiornamento}
         )
-        if result.modified_count == 0:
-            raise HTTPException(404, "Bonifico non trovato")
-        return {"success": True, "message": "Fattura associata al bonifico"}
-    except Exception as e:
-        if "InvalidId" in str(type(e).__name__):
-            raise HTTPException(400, "ID non valido")
-        raise
+        if result2.modified_count > 0:
+            return {"success": True, "message": "Fattura associata al bonifico (archivio)"}
+    except Exception:
+        pass
+
+    raise HTTPException(404, "Bonifico non trovato in nessuna collection")
 
 
 @router.delete("/disassocia-fattura/{bonifico_id}")
 async def disassocia_fattura(bonifico_id: str) -> Dict[str, Any]:
-    """Rimuove l'associazione fattura da un bonifico."""
+    """Rimuove l'associazione fattura da un bonifico. Supporta entrambe le collection."""
     db = Database.get_db()
+
+    rimozione = {
+        "fattura_associata_id": "",
+        "fattura_collection": "",
+        "data_associazione": ""
+    }
+
+    # 1) Prova bonifici_transfers
+    result = await db["bonifici_transfers"].update_one(
+        {"id": bonifico_id},
+        {"$unset": rimozione, "$set": {"stato_riconciliazione": "non_riconciliato"}}
+    )
+    if result.modified_count > 0:
+        return {"success": True, "message": "Associazione fattura rimossa (transfers)"}
+
+    # 2) Fallback archivio_bonifici
     from bson import ObjectId
-    
     try:
-        result = await db["archivio_bonifici"].update_one(
+        result2 = await db["archivio_bonifici"].update_one(
             {"_id": ObjectId(bonifico_id)},
-            {"$unset": {
-                "fattura_associata_id": "",
-                "fattura_collection": "",
-                "data_associazione": ""
-            }, "$set": {"stato_riconciliazione": "non_riconciliato"}}
+            {"$unset": rimozione, "$set": {"stato_riconciliazione": "non_riconciliato"}}
         )
-        if result.modified_count == 0:
-            raise HTTPException(404, "Bonifico non trovato")
-        return {"success": True, "message": "Associazione fattura rimossa"}
-    except Exception as e:
-        if "InvalidId" in str(type(e).__name__):
-            raise HTTPException(400, "ID non valido")
-        raise
+        if result2.modified_count > 0:
+            return {"success": True, "message": "Associazione fattura rimossa (archivio)"}
+    except Exception:
+        pass
+
+    raise HTTPException(404, "Bonifico non trovato")
 
 
 @router.post("/associa-salario")
