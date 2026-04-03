@@ -1,5 +1,5 @@
 """Portal router - Portal/invitation functionality + Portale Dipendenti."""
-from fastapi import APIRouter, Depends, status, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from typing import Dict, Any
 import logging
 import uuid
@@ -14,63 +14,6 @@ from app.database import Database
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-
-@router.post(
-    "/login-password",
-    summary="Login with password"
-)
-async def login_password(
-    data: Dict[str, Any]
-) -> Dict[str, Any]:
-    """Portal login with password."""
-    return {"message": "Login successful", "token": ""}
-
-
-@router.post(
-    "/forgot",
-    summary="Forgot password"
-)
-async def forgot_password(
-    data: Dict[str, Any]
-) -> Dict[str, str]:
-    """Request password reset."""
-    return {"message": "Reset email sent if account exists"}
-
-
-@router.post(
-    "/reset-password",
-    summary="Reset password"
-)
-async def reset_password(
-    data: Dict[str, Any]
-) -> Dict[str, str]:
-    """Reset password with token."""
-    return {"message": "Password reset successful"}
-
-
-@router.post(
-    "/register-from-invite",
-    status_code=status.HTTP_201_CREATED,
-    summary="Register from invitation"
-)
-async def register_from_invite(
-    data: Dict[str, Any]
-) -> Dict[str, str]:
-    """Register new user from invitation."""
-    return {"message": "Registration successful"}
-
-
-@router.post(
-    "/send-invites",
-    summary="Send invitations"
-)
-async def send_invites(
-    data: Dict[str, Any],
-    current_user: Dict[str, Any] = Depends(get_current_user)
-) -> Dict[str, Any]:
-    """Send portal invitations."""
-    return {"message": "Invitations sent", "sent_count": 0}
 
 
 # ===== PORTALE DIPENDENTI =====
@@ -253,6 +196,7 @@ async def firma_documento(
     checkbox_accettazione = body.get("checkbox_accettazione", False)
     scroll_completato = body.get("scroll_completato", False)
     tempo_lettura_secondi = int(body.get("tempo_lettura_secondi", 0))
+    firma_canvas_base64 = (body.get("firma_canvas_base64") or "").strip()
 
     # --- Validazioni obbligatorie ---
     if not checkbox_lettura or not checkbox_accettazione:
@@ -261,8 +205,10 @@ async def firma_documento(
         raise HTTPException(422, "Devi leggere il documento fino in fondo prima di firmarlo")
     if not nome_digitato:
         raise HTTPException(422, "Devi digitare il tuo nome e cognome completo per firmare")
-    if tempo_lettura_secondi < 10:
+    if tempo_lettura_secondi < 5:
         raise HTTPException(422, "Tempo di lettura insufficiente. Leggi il documento con attenzione")
+    if not firma_canvas_base64 or len(firma_canvas_base64) < 100:
+        raise HTTPException(422, "La firma disegnata è obbligatoria e non può essere vuota")
 
     # --- Carica dipendente tramite google_email ---
     dip = await db["employees"].find_one(
@@ -325,6 +271,7 @@ async def firma_documento(
         "firma_timestamp": timestamp_firma,
         "firma_ip": ip_firma,
         "firma_user_agent": request.headers.get("user-agent", "")[:300],
+        "firma_canvas_base64": firma_canvas_base64,
         "scroll_completato": scroll_completato,
         "tempo_lettura_secondi": tempo_lettura_secondi,
         "checkbox_lettura": True,
