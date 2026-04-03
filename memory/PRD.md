@@ -1,5 +1,5 @@
 # Ceraldi Group ERP — PRD
-## Ultimo aggiornamento: 2026-04-03
+## Ultimo aggiornamento: 2026-04-03 (sessione pomeriggio)
 
 ## Obiettivo
 ERP full-stack (React + FastAPI + MongoDB Atlas) per Ceraldi Group Srl.

@@ -62,7 +62,17 @@ async def get_archivio_fatture(
         "importo": 1,
         "fornitore": 1, "fornitore_piva": 1,
         "email_associata": 1, "pdf_associati": 1,
-        "updated_at": 1
+        "updated_at": 1,
+        # Campi pagamento (aggiornati da paga_fattura_manuale)
+        "pagato": 1,
+        "status": 1,
+        "stato_pagamento": 1,
+        "riconciliato": 1,
+        "prima_nota_cassa_id": 1,
+        "prima_nota_banca_id": 1,
+        "metodo_pagamento": 1,
+        "metodo_pagamento_effettivo": 1,
+        "data_pagamento": 1,
     }
 
     fatture = await db[COL_FATTURE_RICEVUTE].find(query, projection).sort(
@@ -79,6 +89,8 @@ async def get_archivio_fatture(
             importo_totale = 0
         imponibile = round(importo_totale / 1.22, 2) if importo_totale > 0 else 0
         iva = round(importo_totale - imponibile, 2) if importo_totale > 0 else 0
+        # Determina stato pagamento dai campi reali nel DB
+        pagato = bool(f.get("pagato") or f.get("status") == "paid" or f.get("stato_pagamento") == "pagata")
         normalized.append({
             "id": f.get("id", ""),
             "numero_documento": f.get("numero"),
@@ -88,16 +100,18 @@ async def get_archivio_fatture(
             "iva": iva,
             "fornitore_ragione_sociale": f.get("fornitore"),
             "fornitore_partita_iva": f.get("fornitore_piva"),
-            "stato": "importata",
-            "metodo_pagamento": None,
-            "pagato": False,
-            "riconciliato": False,
-            "prima_nota_cassa_id": None,
-            "prima_nota_banca_id": None,
+            "stato": "pagata" if pagato else "importata",
+            "metodo_pagamento": f.get("metodo_pagamento_effettivo") or f.get("metodo_pagamento"),
+            "metodo_pagamento_effettivo": f.get("metodo_pagamento_effettivo") or f.get("metodo_pagamento"),
+            "pagato": pagato,
+            "riconciliato": bool(f.get("riconciliato")),
+            "prima_nota_cassa_id": f.get("prima_nota_cassa_id"),
+            "prima_nota_banca_id": f.get("prima_nota_banca_id"),
             "has_pdf": bool(f.get("pdf_associati") and f.get("pdf_associati") != "[]"),
             "email_associata": f.get("email_associata"),
             "anno": int(str(f.get("data", ""))[:4]) if f.get("data") else None,
             "created_at": f.get("updated_at"),
+            "data_pagamento": f.get("data_pagamento"),
         })
 
     return {"fatture": normalized, "total": total, "limit": limit, "skip": skip}
