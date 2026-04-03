@@ -5,7 +5,7 @@ FastAPI application with MongoDB Atlas - Refactored Modular Architecture
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from contextlib import asynccontextmanager
 import os
 
@@ -808,7 +808,7 @@ if os.path.isdir(_tracciabilita_static):
 # ogni refresh/navigazione diretta a /dipendenti, /fatture, ecc.
 # riceve index.html e React Router gestisce il routing client-side.
 # =============================================================================
-_FRONTEND_DIST = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
+_FRONTEND_DIST = os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "frontend", "dist"))
 
 if os.path.isdir(_FRONTEND_DIST):
     # Serve file statici (JS, CSS, assets) direttamente
@@ -820,9 +820,14 @@ if os.path.isdir(_FRONTEND_DIST):
         Catch-all handler: serve index.html per qualsiasi route non-API.
         Permette a React Router di gestire la navigazione client-side.
         """
+        # Le route /api/ non esistenti restituiscono 404 JSON (non index.html)
+        if full_path.startswith("api/") or full_path == "api":
+            return JSONResponse({"detail": "Not found"}, status_code=404)
         # Prova a servire un file statico esistente (favicon, logo, ecc.)
-        static_file = os.path.join(_FRONTEND_DIST, full_path)
-        if full_path and os.path.isfile(static_file):
+        # Protezione path traversal: normalizza il path
+        safe_path = os.path.normpath(full_path).lstrip("/\\")
+        static_file = os.path.join(_FRONTEND_DIST, safe_path)
+        if full_path and os.path.isfile(static_file) and static_file.startswith(_FRONTEND_DIST):
             return FileResponse(static_file)
         # Per tutte le altre route, serve index.html (SPA fallback)
         return FileResponse(os.path.join(_FRONTEND_DIST, "index.html"))
