@@ -201,6 +201,11 @@ Tutti registrati in `/api/cucina/` (cartella: `/app/app/routers/cucina/`):
 
 ## Fix 2026-04-03 (sessione corrente)
 
+### BUG CRITICO RISOLTO — Reload ogni 30 secondi
+**Causa:** Uvicorn `--reload` monitorava `/app/backend/tests/`. Il testing agent creava file `.py` lì → WatchFiles riavviava il backend ogni pochi secondi → frontend perdeva lo stato.
+**Fix:** Test spostati in `/app/test_reports/backend_tests/`. Creato `.watchfilesignore`.
+**REGOLA:** NON creare mai file .py in `/app/backend/tests/` — i test vanno in `/app/test_reports/backend_tests/`.
+
 ### Bug risolti
 1. **Dashboard Prossime Scadenze — Icona Vedi (404)**: `view-assoinvoice` cerca ora anche in `invoices` oltre a `indice_documenti`
 2. **Dashboard Prossime Scadenze — Pagamento non sparisce**: `setScadenzeData` era undefined in `ScadenzeWidget` (fuori scope); ora usa `paidIds` state locale — la scadenza sparisce immediatamente
