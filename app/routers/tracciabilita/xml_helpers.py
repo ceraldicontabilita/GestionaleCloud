@@ -4,7 +4,10 @@ e le utility di normalizzazione testo.
 """
 import re
 import xml.etree.ElementTree as ET
-from fuzzywuzzy import fuzz
+try:
+    from thefuzz import fuzz
+except ImportError:
+    from fuzzywuzzy import fuzz
 
 
 def parse_fattura_xml(xml_content: bytes) -> dict:
