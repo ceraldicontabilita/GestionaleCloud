@@ -5,15 +5,172 @@ Calcola stima cedolino da ore/giorni lavoro e costo azienda totale
 from fastapi import APIRouter, HTTPException, Body
 from pydantic import BaseModel
 from typing import Dict, Any, List, Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import uuid
 import logging
+import asyncio
+import os
 
 from app.database import Database
 from app.utils.error_handler import handle_errors
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+# ============================================================
+# IMPORT GMAIL CEDOLINI — Funzione SINCRONA (gira in thread)
+# ============================================================
+
+def _decode_mime_header(header_value: str) -> str:
+    """Decodifica header MIME."""
+    if not header_value:
+        return ""
+    from email.header import decode_header
+    decoded_parts = decode_header(header_value)
+    result = []
+    for part, encoding in decoded_parts:
+        if isinstance(part, bytes):
+            result.append(part.decode(encoding or 'utf-8', errors='replace'))
+        else:
+            result.append(str(part))
+    return ''.join(result)
+
+
+def _parse_filename_periodo(filename: str):
+    """Estrae mese e anno da nomi tipo 'Busta paga - Nome - Aprile 2023.pdf'"""
+    import re as _re
+    _MESI_IT = {
+        'gennaio': 1, 'febbraio': 2, 'marzo': 3, 'aprile': 4,
+        'maggio': 5, 'giugno': 6, 'luglio': 7, 'agosto': 8,
+        'settembre': 9, 'ottobre': 10, 'novembre': 11, 'dicembre': 12
+    }
+    name = filename.lower().replace('.pdf', '').replace('.xlsx', '')
+    mese = None
+    anno_val = None
+    for mese_nome, mese_num in _MESI_IT.items():
+        if mese_nome in name:
+            mese = mese_num
+            m = _re.search(rf'{mese_nome}\s+(\d{{4}})', name)
+            if m:
+                anno_val = int(m.group(1))
+            break
+    if not anno_val:
+        m = _re.search(r'(\d{4})', name)
+        if m:
+            anno_val = int(m.group(1))
+    return mese, anno_val
+
+
+def _fetch_cedolini_gmail_sync(email_user: str, email_pass: str, since_days: int = 180) -> List[dict]:
+    """
+    Funzione SINCRONA per scaricare cedolini da Gmail via IMAP.
+    DEVE essere chiamata con asyncio.to_thread() per non bloccare FastAPI.
+    NON contiene chiamate async.
+    """
+    import imaplib
+    import email as email_lib
+    import base64
+    import hashlib
+    import re
+    import os as _os
+
+    since_date = (datetime.now() - timedelta(days=since_days)).strftime("%d-%b-%Y")
+    results = []
+
+    try:
+        imap = imaplib.IMAP4_SSL("imap.gmail.com", 993)
+        imap.login(email_user, email_pass)
+    except Exception as e:
+        logger.error(f"[Gmail Import] Connessione IMAP fallita: {e}")
+        return []
+
+    keywords = ["cedolino", "busta paga", "libro unico", "paghe", "buste paga"]
+    collected_ids: set = set()
+    all_ids: list = []
+
+    try:
+        imap.select("INBOX")
+        for kw in keywords:
+            try:
+                status, msgs = imap.search(None, f'SINCE {since_date} SUBJECT "{kw}"')
+                if status == "OK" and msgs[0]:
+                    for mid in msgs[0].split():
+                        if mid not in collected_ids:
+                            collected_ids.add(mid)
+                            all_ids.append(mid)
+            except Exception:
+                pass
+
+        # Anche corpo email
+        for kw in ["cedolino", "busta paga"]:
+            try:
+                status, msgs = imap.search(None, f'SINCE {since_date} BODY "{kw}"')
+                if status == "OK" and msgs[0]:
+                    for mid in msgs[0].split():
+                        if mid not in collected_ids:
+                            collected_ids.add(mid)
+                            all_ids.append(mid)
+            except Exception:
+                pass
+
+        logger.info(f"[Gmail Import] Trovate {len(all_ids)} email candidate")
+
+        for email_id in all_ids:
+            try:
+                status, msg_data = imap.fetch(email_id, "(RFC822)")
+                if status != "OK":
+                    continue
+                for part_data in msg_data:
+                    if not isinstance(part_data, tuple):
+                        continue
+                    msg = email_lib.message_from_bytes(part_data[1])
+                    subject = _decode_mime_header(msg.get("Subject", ""))
+                    sender = _decode_mime_header(msg.get("From", ""))
+                    date_str = msg.get("Date", "")
+                    try:
+                        email_date = email_lib.utils.parsedate_to_datetime(date_str)
+                    except Exception:
+                        email_date = datetime.now(timezone.utc)
+
+                    for msg_part in msg.walk():
+                        if msg_part.get_content_maintype() == "multipart":
+                            continue
+                        filename = msg_part.get_filename()
+                        if not filename:
+                            continue
+                        filename = _decode_mime_header(filename)
+                        ext = _os.path.splitext(filename)[1].lower()
+                        if ext not in [".pdf", ".xlsx", ".xls"]:
+                            continue
+                        content = msg_part.get_payload(decode=True)
+                        if not content:
+                            continue
+                        file_hash = hashlib.md5(content).hexdigest()
+                        pdf_b64 = base64.b64encode(content).decode("utf-8")
+                        results.append({
+                            "id": str(uuid.uuid4()),
+                            "filename": filename,
+                            "pdf_data": pdf_b64,
+                            "file_hash": file_hash,
+                            "size_bytes": len(content),
+                            "email_subject": subject[:200],
+                            "email_from": sender[:150],
+                            "email_date": email_date.isoformat(),
+                            "source": "gmail",
+                            "stato": "importato",
+                            "created_at": datetime.now(timezone.utc).isoformat(),
+                        })
+                        logger.info(f"[Gmail Import] Allegato trovato: {filename} da '{sender}'")
+            except Exception as e:
+                logger.debug(f"[Gmail Import] Errore email {email_id}: {e}")
+    finally:
+        try:
+            imap.logout()
+        except Exception:
+            pass
+
+    return results
 
 # ============================================
 # COSTANTI CONTRIBUTIVE 2025
@@ -982,3 +1139,73 @@ async def get_cedolini_problematici() -> Dict[str, Any]:
         "dettagli": problemi
     }
 
+
+
+# ============================================================
+# IMPORT GMAIL — Endpoint asincrono sicuro
+# ============================================================
+
+@router.post("/import-gmail")
+@handle_errors
+async def import_cedolini_da_gmail(
+    since_days: int = 180
+) -> Dict[str, Any]:
+    """
+    Scarica i cedolini (buste paga PDF) da Gmail via IMAP.
+    
+    La funzione IMAP è sincrona (imaplib) e viene eseguita
+    in asyncio.to_thread() per NON bloccare il server FastAPI.
+    
+    Args:
+        since_days: quanti giorni indietro cercare (default 180 = 6 mesi)
+    """
+    db = Database.get_db()
+
+    email_user = os.environ.get("IMAP_USER") or os.environ.get("EMAIL_USER")
+    email_pass = os.environ.get("IMAP_PASSWORD") or os.environ.get("EMAIL_PASSWORD")
+
+    if not email_user or not email_pass:
+        raise HTTPException(
+            status_code=500,
+            detail="Credenziali IMAP non configurate nel .env (IMAP_USER / IMAP_PASSWORD)"
+        )
+
+    # Esegui IMAP in thread separato — NON blocca l'event loop
+    logger.info(f"[Gmail Import] Avvio import cedolini per {email_user} (ultimi {since_days} giorni)")
+    raw_docs = await asyncio.to_thread(_fetch_cedolini_gmail_sync, email_user, email_pass, since_days)
+
+    imported = 0
+    skipped_duplicates = 0
+
+    for doc in raw_docs:
+        # Controlla duplicato per hash file
+        existing = await db["cedolini"].find_one(
+            {"file_hash": doc["file_hash"]},
+            {"_id": 0, "id": 1}
+        )
+        if existing:
+            skipped_duplicates += 1
+            continue
+
+        # Parse mese/anno dal nome file
+        mese, anno = _parse_filename_periodo(doc.get("filename", ""))
+        doc["mese"] = mese
+        doc["anno"] = anno
+
+        doc_to_insert = dict(doc)
+        await db["cedolini"].insert_one(doc_to_insert)
+        imported += 1
+
+    logger.info(f"[Gmail Import] Completato: {imported} importati, {skipped_duplicates} duplicati saltati")
+
+    return {
+        "success": True,
+        "trovati": len(raw_docs),
+        "importati": imported,
+        "duplicati_saltati": skipped_duplicates,
+        "messaggio": (
+            f"Importazione completata: {imported} cedolini nuovi importati"
+            if imported > 0
+            else f"Nessun cedolino nuovo trovato ({skipped_duplicates} già presenti)"
+        )
+    }

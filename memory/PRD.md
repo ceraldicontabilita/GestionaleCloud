@@ -87,8 +87,10 @@ ERP full-stack (React + FastAPI + MongoDB) con gravi problemi di stabilità:
 
 ## Backlog Priorità
 
-### P0 — Blocker
-- Nessuno al momento
+### P0 — Completato (Apr 2026)
+- ✅ Import Gmail Cedolini sicuro — `asyncio.to_thread()` in `/api/cedolini/import-gmail`
+- ✅ HRCedolini.jsx aggiornata: chiama `/api/cedolini`, pulsante "Importa da Gmail"
+- ✅ 271 cedolini da Gmail già presenti in DB, aggiornati con mese/anno da filename
 
 ### P1 — Importante
 - Riabilitazione sicura scheduler email con `asyncio.run_in_executor()` per wrappare imaplib
