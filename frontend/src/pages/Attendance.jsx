@@ -34,8 +34,7 @@ import {
 } from '../components/attendance/helpers';
 
 // Importa componenti estratti
-import { TurniSection } from '../components/attendance/TurniSection';
-import { TabSaldoFerie } from '../components/attendance/TabSaldoFerie';
+
 
 export default function Attendance() {
   const { anno: annoGlobale } = useAnnoGlobale();
