@@ -37,6 +37,7 @@ export default defineConfig({
       '/api': {
         target: process.env.VITE_BACKEND_URL || 'http://localhost:8001',
         changeOrigin: true,
+        ws: true,  // Abilita proxy WebSocket per /api/ws/*
       },
       '/health': {
         target: process.env.VITE_BACKEND_URL || 'http://localhost:8001',

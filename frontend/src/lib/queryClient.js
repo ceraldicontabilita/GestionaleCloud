@@ -13,8 +13,8 @@ export const queryClient = new QueryClient({
       gcTime: 30 * 60 * 1000,
       // Retry 2 volte in caso di errore
       retry: 2,
-      // Non refetch automaticamente quando la finestra torna in focus
-      refetchOnWindowFocus: false,
+      // Refetch automatico quando la finestra torna in focus (staleTime: 5min previene abusi)
+      refetchOnWindowFocus: true,
       // Refetch in background quando i dati sono stale
       refetchOnMount: true,
     },

@@ -65,6 +65,18 @@ async def sync_gmail_aruba_task():
         
         logger.info(f"📧 [SCHEDULER] Sync completato: {nuove_operazioni} nuove operazioni da {totale_processate} email")
         
+        # Notifica WebSocket real-time se ci sono nuove operazioni
+        if nuove_operazioni > 0:
+            try:
+                from app.services.websocket_manager import notify_data_change
+                await notify_data_change("email_sync", {
+                    "nuove_operazioni": nuove_operazioni,
+                    "emails_processate": totale_processate
+                }, "notifications")
+                logger.info("🔔 [SCHEDULER] WebSocket notifica email_sync inviata")
+            except Exception as e:
+                logger.warning(f"🔔 [SCHEDULER] WebSocket non disponibile: {e}")
+        
         # Notifica Telegram se ci sono nuove operazioni
         if nuove_operazioni > 0 and is_configured():
             from datetime import datetime
@@ -112,8 +124,22 @@ async def scan_verbali_email_task():
         logger.info(f"   - PDF trovati: {fase1.get('pdf_trovati', 0)}/{fase1.get('pdf_cercati', 0)}")
         logger.info(f"   - Nuovi verbali: {fase2.get('verbali_nuovi', 0)}")
         
+        verbali_nuovi = fase2.get("verbali_nuovi", 0)
+        
+        # Notifica WebSocket real-time se ci sono nuovi verbali
+        if verbali_nuovi > 0:
+            try:
+                from app.services.websocket_manager import notify_data_change
+                await notify_data_change("verbali_scan", {
+                    "verbali_nuovi": verbali_nuovi,
+                    "quietanze_trovate": fase1.get("quietanze_trovate", 0)
+                }, "notifications")
+                logger.info("🔔 [SCHEDULER] WebSocket notifica verbali_scan inviata")
+            except Exception as e:
+                logger.warning(f"🔔 [SCHEDULER] WebSocket non disponibile: {e}")
+        
         # Se ci sono nuovi verbali, prova a inviarli via Telegram
-        if fase2.get("verbali_nuovi", 0) > 0:
+        if verbali_nuovi > 0:
             try:
                 from app.services.telegram_notifications import is_configured, send_notification
                 
@@ -156,6 +182,16 @@ async def check_scadenze_f24_task():
         if n_scadenze > 0:
             logger.info(f"📅 [SCHEDULER] Scadenze F24: {n_scadenze} trovate, "
                        f"Telegram: {n_telegram}, Email: {n_email}")
+            # Notifica WebSocket real-time
+            try:
+                from app.services.websocket_manager import notify_data_change
+                await notify_data_change("f24_scadenze", {
+                    "scadenze_trovate": n_scadenze,
+                    "notifiche_telegram": n_telegram
+                }, "notifications")
+                logger.info("🔔 [SCHEDULER] WebSocket notifica f24_scadenze inviata")
+            except Exception as e:
+                logger.warning(f"🔔 [SCHEDULER] WebSocket non disponibile: {e}")
         else:
             logger.info("📅 [SCHEDULER] Nessuna scadenza F24 imminente")
     
