@@ -28,9 +28,10 @@ const CicloPassivoAdmin = lazy(() => import("./pages/CicloPassivoAdmin.jsx"));
 const FornitoriHub = lazy(() => import("./pages/hub/FornitoriHub.jsx"));
 const PrimaNotaHub = lazy(() => import("./pages/hub/PrimaNotaHub.jsx"));
 const RiconciliazioneHub = lazy(() => import("./pages/hub/RiconciliazioneHub.jsx"));
-const DipendentiHub = lazy(() => import("./pages/hub/DipendentiHub.jsx"));
-const GestioneDipendentiUnificata = lazy(() => import("./pages/GestioneDipendentiUnificata.jsx"));
-const PagheHub = lazy(() => import("./pages/hub/PagheHub.jsx"));
+const DipendentiHub = lazy(() => import("./pages/hr/HRPresenze.jsx"));
+const HRDipendenti = lazy(() => import("./pages/hr/HRDipendenti.jsx"));
+const HRCedolini = lazy(() => import("./pages/hr/HRCedolini.jsx"));
+const HRTFR = lazy(() => import("./pages/hr/HRTFR.jsx"));
 const VeicoliHub = lazy(() => import("./pages/hub/VeicoliHub.jsx"));
 const FiscoHub = lazy(() => import("./pages/hub/FiscoHub.jsx"));
 const ContabilitaHub = lazy(() => import("./pages/hub/ContabilitaHub.jsx"));
@@ -127,29 +128,24 @@ const router = createBrowserRouter([
       { path: "archivio-bonifici/:anno/:mese", element: <LazyPage><RiconciliazioneHub /></LazyPage> },
       
       // === DIPENDENTI ===
-      { path: "dipendenti", element: <LazyPage><GestioneDipendentiUnificata /></LazyPage> },
-      { path: "dipendenti/:tab", element: <LazyPage><GestioneDipendentiUnificata /></LazyPage> },
-      { path: "dipendenti/:tab/:subtab", element: <LazyPage><GestioneDipendentiUnificata /></LazyPage> },
-      { path: "dipendenti/:nome/:tab", element: <LazyPage><GestioneDipendentiUnificata /></LazyPage> },
+      { path: "dipendenti", element: <LazyPage><HRDipendenti /></LazyPage> },
+      { path: "dipendenti/:tab", element: <LazyPage><HRDipendenti /></LazyPage> },
+      { path: "dipendenti/:tab/:subtab", element: <LazyPage><HRDipendenti /></LazyPage> },
       { path: "presenze", element: <LazyPage><DipendentiHub /></LazyPage> },
       { path: "presenze/:dipendente", element: <LazyPage><DipendentiHub /></LazyPage> },
       { path: "presenze/:dipendente/:mese", element: <LazyPage><DipendentiHub /></LazyPage> },
       { path: "saldi-ferie-permessi", element: <LazyPage><DipendentiHub /></LazyPage> },
       
-      // === PAGHE & RETRIBUZIONI → ora in /dipendenti/paghe ===
-      { path: "paghe", element: <Navigate to="/dipendenti/paghe" replace /> },
-      { path: "cedolini", element: <LazyPage><PagheHub /></LazyPage> },
-      { path: "cedolini/:anno", element: <LazyPage><PagheHub /></LazyPage> },
-      { path: "cedolini/:anno/:mese", element: <LazyPage><PagheHub /></LazyPage> },
-      { path: "cedolini/:nome/:dettaglio", element: <LazyPage><PagheHub /></LazyPage> },
-      { path: "cedolini-calcolo", element: <LazyPage><PagheHub /></LazyPage> },
-      { path: "cedolini-calcolo/:nome/:dettaglio", element: <LazyPage><PagheHub /></LazyPage> },
-      { path: "prima-nota-salari", element: <LazyPage><PagheHub /></LazyPage> },
-      { path: "prima-nota-salari/:anno/:mese", element: <LazyPage><PagheHub /></LazyPage> },
-      // TFR → ora tab in /dipendenti/tfr
-      { path: "tfr", element: <Navigate to="/dipendenti/tfr" replace /> },
-      { path: "tfr/:tab", element: <Navigate to="/dipendenti/tfr" replace /> },
-      { path: "tfr/:dipendente", element: <Navigate to="/dipendenti/tfr" replace /> },
+      // === CEDOLINI & TFR ===
+      { path: "paghe", element: <Navigate to="/cedolini" replace /> },
+      { path: "cedolini", element: <LazyPage><HRCedolini /></LazyPage> },
+      { path: "cedolini/:anno", element: <LazyPage><HRCedolini /></LazyPage> },
+      { path: "cedolini/:anno/:mese", element: <LazyPage><HRCedolini /></LazyPage> },
+      { path: "cedolini-calcolo", element: <LazyPage><HRCedolini /></LazyPage> },
+      { path: "prima-nota-salari", element: <LazyPage><HRCedolini /></LazyPage> },
+      { path: "prima-nota-salari/:anno/:mese", element: <LazyPage><HRCedolini /></LazyPage> },
+      { path: "tfr", element: <LazyPage><HRTFR /></LazyPage> },
+      { path: "tfr/:tab", element: <LazyPage><HRTFR /></LazyPage> },
       
       // === VEICOLI/NOLEGGIO ===
       { path: "noleggio", element: <LazyPage><VeicoliHub /></LazyPage> },

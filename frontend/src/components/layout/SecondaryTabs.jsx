@@ -26,8 +26,7 @@ const TAB_CONFIGS = {
     { to: '/cedolini', label: 'Cedolini' },
     { to: '/presenze', label: 'Presenze' },
     { to: '/tfr', label: 'TFR' },
-  ],
-  '/contabilita': [
+  ],  '/contabilita': [
     { to: '/piano-dei-conti', label: 'Piano Conti' },
     { to: '/bilancio', label: 'Bilancio' },
     { to: '/cespiti', label: 'Cespiti' },
