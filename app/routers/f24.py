@@ -10,7 +10,7 @@ from typing import Optional
 import hashlib, logging
 
 from app.database import get_database
-from app.parsers.f24_pdf import parse_f24_pdf
+from app.parsers.f24 import parse_f24_pdf
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
