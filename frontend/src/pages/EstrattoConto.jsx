@@ -19,7 +19,7 @@ export default function EstrattoConto() {
       icon={Landmark}
       acceptExt=".pdf"
       uploadUrl="/api/estratto-conto/upload-pdf"
-      listUrl="/api/estratto-conto/movimenti"
+      listUrl="/api/estratto-conto"
       columns={columns}
     />
   )
