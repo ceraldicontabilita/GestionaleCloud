@@ -3,14 +3,15 @@ Estratto Conto — Upload PDF BPM, parse, salva movimenti.
 Collection: estratto_conto_movimenti
 Prefix: /api/estratto-conto
 """
-from fastapi import APIRouter, HTTPException, UploadFile, File, Depends, Query
+from fastapi import APIRouter, HTTPException, UploadFile, File, Depends
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from datetime import datetime
 from typing import Optional
+import hashlib
 import logging
 
 from app.database import get_database
-from app.parsers.estratto_conto_csv import parse_estratto_conto_pdf_bytes
+from app.parsers.estratto_conto_bpm import parse_estratto_conto_pdf
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -23,15 +24,19 @@ def _oid(doc):
     return doc
 
 
+def _chiave(mov: dict) -> str:
+    raw = f"{mov['data_operazione']}|{mov['descrizione'][:30]}|{mov['importo']}"
+    return hashlib.md5(raw.encode()).hexdigest()
+
+
 @router.post("/upload-pdf")
 async def upload_estratto_conto(file: UploadFile = File(...), db: AsyncIOMotorDatabase = Depends(get_database)):
-    """Upload PDF estratto conto BPM, parsa e salva movimenti."""
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(400, "Solo PDF")
     content = await file.read()
 
     try:
-        parsed = parse_estratto_conto_pdf_bytes(content)
+        parsed = parse_estratto_conto_pdf(pdf_bytes=content)
     except Exception as e:
         raise HTTPException(400, f"Errore parsing PDF: {e}")
 
@@ -43,8 +48,9 @@ async def upload_estratto_conto(file: UploadFile = File(...), db: AsyncIOMotorDa
     duplicati = 0
 
     for mov in movimenti:
-        existing = await db[COLL].find_one({"chiave": mov["chiave"]})
-        if existing:
+        mov["chiave"] = _chiave(mov)
+        mov["riconciliato"] = False
+        if await db[COLL].find_one({"chiave": mov["chiave"]}):
             duplicati += 1
             continue
         mov["filename"] = file.filename
@@ -52,23 +58,19 @@ async def upload_estratto_conto(file: UploadFile = File(...), db: AsyncIOMotorDa
         await db[COLL].insert_one(mov)
         importati += 1
 
+    totale_entrate = round(sum(m["avere"] for m in movimenti), 2)
+    totale_uscite = round(sum(m["dare"] for m in movimenti), 2)
+
     return {
         "ok": True,
         "importati": importati,
         "duplicati": duplicati,
-        "totale_entrate": parsed["totale_entrate"],
-        "totale_uscite": parsed["totale_uscite"],
-        "saldo_netto": parsed["saldo_netto"],
+        "totale_entrate": totale_entrate,
+        "totale_uscite": totale_uscite,
+        "saldo_netto": round(totale_entrate - totale_uscite, 2),
         "saldo_iniziale": parsed.get("saldo_iniziale", 0),
         "saldo_finale": parsed.get("saldo_finale", 0),
     }
-
-
-# Mantieni anche upload-csv per backward compat (accetta PDF)
-@router.post("/upload-csv")
-async def upload_estratto_conto_csv(file: UploadFile = File(...), db: AsyncIOMotorDatabase = Depends(get_database)):
-    """Alias /upload-pdf — BPM esporta PDF, non CSV."""
-    return await upload_estratto_conto(file=file, db=db)
 
 
 @router.get("")
@@ -98,10 +100,11 @@ async def lista_movimenti(
 @router.get("/saldo")
 async def saldo_banca(db: AsyncIOMotorDatabase = Depends(get_database)):
     pipeline = [
-        {"$group": {"_id": None, "saldo": {"$sum": "$importo"},
-                     "entrate": {"$sum": {"$cond": [{"$gt": ["$importo", 0]}, "$importo", 0]}},
-                     "uscite": {"$sum": {"$cond": [{"$lt": ["$importo", 0]}, {"$abs": "$importo"}, 0]}},
-                     "n_movimenti": {"$sum": 1}}}
+        {"$group": {"_id": None,
+                    "saldo": {"$sum": "$importo"},
+                    "entrate": {"$sum": {"$cond": [{"$gt": ["$importo", 0]}, "$importo", 0]}},
+                    "uscite": {"$sum": {"$cond": [{"$lt": ["$importo", 0]}, {"$abs": "$importo"}, 0]}},
+                    "n_movimenti": {"$sum": 1}}}
     ]
     agg = await db[COLL].aggregate(pipeline).to_list(1)
     r = agg[0] if agg else {}
