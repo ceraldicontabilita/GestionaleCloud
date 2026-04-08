@@ -30,7 +30,7 @@ Endpoints:
   GET  /api/tributi/{id}/f24-pdf    → scarica F24 pre-compilato per stampa
 """
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from bson import ObjectId
 from datetime import datetime, date
