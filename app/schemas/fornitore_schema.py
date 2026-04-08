@@ -1,7 +1,7 @@
 """
 Schema MongoDB — Collection "fornitori" (Ceraldi ERP)
 ======================================================
-REGOLA: collection si chiama "fornitori" (MAI "suppliers").
+REGOLA: collection si chiama "fornitori".
 Ogni fornitore aggrega dati da 5 fonti:
   1. XML fatture elettroniche SDI (auto-popolamento anagrafica)
   2. Web scraping URL (schede tecniche prodotti)
