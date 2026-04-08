@@ -90,6 +90,7 @@ VOCE_MAP = {
     'F09600': 'irpef_liquidazione',
     'F09630': 'add_comunale',
     'ZP9960': 'arrotondamento',
+    '000025': 'ticket_restaurant',      # Ticket restaurant — valore negativo in COMPETENZE = trattenuta
     # INFORMATIVI (solo importo base — non in totali)
     'F02000': None, 'F02010': None, 'F02500': None,
     'F06000': None, 'F06010': None,
@@ -188,13 +189,25 @@ def parse_cedolino_pdf(pdf_path: str = None, pdf_bytes: bytes = None) -> List[Di
             pages_299.append(page)
 
     if not pages_299:
-        # Fallback: usa tutte le pagine
-        pages_299 = list(doc.pages())
+        # Fallback: usa tutte le pagine ma solo se hanno dati retributivi
+        pages_299 = [
+            p for p in doc.pages()
+            if any(k in p.get_text() for k in [
+                'NETTOsDELsMESE', 'NETTO DEL MESE', 'TOTALEsCOMPETENZE',
+                'TOTALE COMPETENZE', 'Retribuzione', 'IRPEF'
+            ])
+        ]
+        if not pages_299:
+            pages_299 = list(doc.pages())
 
     cedolini = []
     for page in pages_299:
         ced = _parse_cedolino_page(page)
         if ced and (ced.get("codice_fiscale") or ced.get("codice_dipendente")):
+            # Scarta pagine Aut.301 (foglio presenze): hanno CF ma nessun dato paga
+            if ced.get("netto", 0) == 0 and ced.get("totale_competenze", 0) == 0 and ced.get("retribuzione", 0) == 0:
+                logger.debug("Pagina scartata (nessun dato retributivo — probabile Aut.301)")
+                continue
             cedolini.append(ced)
 
     doc.close()
@@ -241,6 +254,7 @@ def _parse_cedolino_page(page) -> Optional[Dict[str, Any]]:
         "totale_competenze": 0.0,
         # Trattenute
         "recupero_acconto": 0.0,      # 000306 acconto dato
+        "ticket_restaurant": 0.0,      # 000025 ticket (valore negativo competenze)
         "contributi_inps": 0.0,
         "fis": 0.0,
         "fondo_pensione": 0.0,
@@ -382,8 +396,8 @@ def _parse_cedolino_page(page) -> Optional[Dict[str, Any]]:
             # Trattenuta
             if importi_trattenute:
                 result[campo] = round(result.get(campo, 0.0) + importi_trattenute[-1], 2)
-            elif importi_competenze and campo == 'recupero_acconto':
-                # Caso edge: l'importo potrebbe essere classificato diversamente
+            elif importi_competenze and campo in ('recupero_acconto', 'ticket_restaurant'):
+                # Caso edge: importo in colonna competenze ma è trattenuta (es. ticket, recupero acconto)
                 result[campo] = round(result.get(campo, 0.0) + importi_competenze[-1], 2)
 
     # ── Totali per coordinate (testo usa 's' come separatore) ──────────
