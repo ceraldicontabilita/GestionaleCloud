@@ -66,14 +66,10 @@ except ImportError:
 from app.parsers.f24_parser import _parse_euro
 
 
-CF_AZIENDA = "04523831214"
-
-# Mappa CF noti della famiglia Ceraldi
-CF_NOTI = {
-    "CRLMHL50R01F352F": {"nome": "Ceraldi Michele", "relazione": "familiare"},
-    "CRLNNT75M55F352C": {"nome": "Ceraldi Antonietta", "relazione": "familiare"},
-    "04523831214": {"nome": "Ceraldi Group SRL", "relazione": "azienda"},
-}
+from app.privati_config import (
+    CF_AZIENDA, PRIVATI_CF, is_privato, get_info_privato,
+    collezione_da_cf, nome_da_cf
+)
 
 CODICI_TARI = {
     "3944": "TARI — Tassa Rifiuti (tributo locale Comune Napoli)",
@@ -100,7 +96,7 @@ def _determina_collezione(cf: str) -> str:
 
 def _determina_intestatario(cf: str) -> dict:
     """Ritorna info sul contribuente dal CF."""
-    info = CF_NOTI.get(cf, {"nome": f"CF {cf}", "relazione": "sconosciuto"})
+    info = get_info_privato(cf) or {"nome": f"CF {cf}", "relazione": "sconosciuto"}
     return {
         "cf": cf,
         "nome": info["nome"],
