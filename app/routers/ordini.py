@@ -1,21 +1,26 @@
 """
 Router Ordini Fornitori — Ceraldi ERP gestionale2
 =================================================
-PREFIX: /api/ordini
+PREFIX: nessuno (ogni endpoint ha già /api/ordini nel path)
 
-Flusso:
-  1. Operatore (pasticcere/barista) crea bozza ordine scegliendo prodotti
-  2. Sistema mostra prezzi migliori dalle ultime 4 fatture per prodotto
-  3. Admin rivede, modifica, approva
-  4. Sistema invia ordine al fornitore (email / testo WhatsApp)
+Endpoints:
+  GET  /api/ordini/prezzi/{nome}         → comparazione prezzi da fatture_passive
+  POST /api/ordini                        → crea bozza ordine
+  GET  /api/ordini                        → lista ordini
+  GET  /api/ordini/{id}                  → dettaglio ordine
+  PUT  /api/ordini/{id}                  → modifica/approva
+  DELETE /api/ordini/{id}               → elimina
+  GET  /api/ordini/{id}/testo-invio      → genera testo email/WhatsApp
 
 Collections usate:
-  - fatture_passive  → storico prezzi per comparazione
-  - fornitori        → anagrafica (email, pec, telefono)
-  - ordini_ceraldi   → ordini creati (non la collection di ceraldiapp.it)
+  - fatture_passive   → campi: fornitore_denominazione, data, linee[].descrizione,
+                        linee[].prezzo_unitario, linee[].quantita, linee[].unita_misura
+  - fornitori         → campi: anagrafica.ragione_sociale, anagrafica.email,
+                        anagrafica.pec, anagrafica.telefono
+  - ordini_ceraldi    → ordini creati dall'operatore
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Body
+from fastapi import APIRouter, Depends, HTTPException, Query
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from datetime import datetime, timezone
 from typing import Optional, List
@@ -26,63 +31,53 @@ from app.database import get_database
 
 router = APIRouter()
 
-AZIENDA_ID = "b0295759-35ce-4b34-a6b4-f01b883234ad"
-N_FATTURE_COMPARAZIONE = 4  # quante fatture recenti usare per il prezzo medio
-
-
-# ─── MODELLI ─────────────────────────────────────────────────────────────────
-
-class RigaOrdine(BaseModel):
-    nome: str                        # nome prodotto (testo libero dell'operatore)
-    quantita: float = 1.0
-    unita: str = "kg"
-    note: str = ""
-    fornitore_selezionato: str = ""  # fornitore scelto dall'admin dopo comparazione
-
-
-class OrdineCreate(BaseModel):
-    operatore: str = ""              # chi ha creato l'ordine
-    reparto: str = ""                # pasticceria / bar / cucina / deposito
-    righe: List[RigaOrdine]
-    note: str = ""
-
-
-class OrdineUpdate(BaseModel):
-    righe: Optional[List[RigaOrdine]] = None
-    note: Optional[str] = None
-    stato: Optional[str] = None      # bozza | approvato | inviato | completato
+N_FATTURE = 4  # quante fatture recenti per fornitore per la comparazione
 
 
 # ─── NORMALIZZAZIONE NOMI ──────────────────────────────────────────────────────
 
-def _normalizza(testo: str) -> str:
-    """Normalizza nome prodotto per matching fuzzy."""
+def _norm(testo: str) -> str:
     t = testo.lower().strip()
-    # Rimuovi unità di misura, numeri, punteggiatura
-    t = re.sub(r'\b\d+[\.,]?\d*\s*(kg|g|lt|l|cl|ml|pz|cf|ct|nr|n\b)', '', t)
+    t = re.sub(r'\b\d+[\.,]?\d*\s*(kg|g|lt|l|cl|ml|pz|cf|ct|nr|n)\b', ' ', t)
     t = re.sub(r'[^a-zàèéìòù\s]', ' ', t)
-    t = re.sub(r'\s+', ' ', t).strip()
-    return t
+    return re.sub(r'\s+', ' ', t).strip()
 
+STOP = {'tipo','per','con','del','della','dei','degli','alla','alle','dai','dalle',
+        'prodotto','prodotti','misc','vari','conf','confezione','cartone'}
 
-def _parole_chiave(testo: str) -> list[str]:
-    """Estrae parole chiave significative (> 3 caratteri)."""
-    stop = {'tipo', 'per', 'con', 'del', 'della', 'dei', 'degli', 'alla',
-            'alle', 'dai', 'dalle', 'prodotto', 'prodotti', 'misc', 'vari'}
-    return [p for p in _normalizza(testo).split() if len(p) > 3 and p not in stop]
+def _parole(testo: str) -> list:
+    return [p for p in _norm(testo).split() if len(p) > 3 and p not in STOP]
 
-
-def _score_match(cerca: str, descrizione_fattura: str) -> float:
-    """Score 0-1 di similarità tra nome cercato e descrizione fattura."""
-    parole = _parole_chiave(cerca)
-    if not parole:
-        return 0.0
-    desc_norm = _normalizza(descrizione_fattura)
-    hits = sum(1 for p in parole if p in desc_norm)
+def _score(cerca: str, desc_fattura: str) -> float:
+    parole = _parole(cerca)
+    if not parole: return 0.0
+    desc = _norm(desc_fattura)
+    hits = sum(1 for p in parole if p in desc)
     return hits / len(parole)
 
 
-# ─── ENDPOINT: COMPARAZIONE PREZZI ────────────────────────────────────────────
+# ─── MODELLI ──────────────────────────────────────────────────────────────────
+
+class RigaOrdine(BaseModel):
+    nome: str
+    quantita: float = 1.0
+    unita: str = "kg"
+    note: str = ""
+    fornitore_selezionato: str = ""
+
+class OrdineCreate(BaseModel):
+    operatore: str = ""
+    reparto: str = ""
+    righe: List[RigaOrdine]
+    note: str = ""
+
+class OrdineUpdate(BaseModel):
+    righe: Optional[List[RigaOrdine]] = None
+    note: Optional[str] = None
+    stato: Optional[str] = None
+
+
+# ─── COMPARAZIONE PREZZI ──────────────────────────────────────────────────────
 
 @router.get("/api/ordini/prezzi/{nome_prodotto}")
 async def get_prezzi_prodotto(
@@ -91,93 +86,85 @@ async def get_prezzi_prodotto(
 ):
     """
     Cerca nelle ultime N fatture passive di tutti i fornitori il prodotto
-    indicato e restituisce il prezzo per fornitore (migliore evidenziato).
-
-    Logica matching:
-    1. Cerca per parole chiave (es. "farina 00" → trova "FARINA TIPO 00 CAPUTO 25KG")
-    2. Raggruppa per fornitore con media delle ultime 4 fatture
-    3. Ordina per prezzo crescente (il primo = il migliore)
+    indicato e restituisce il prezzo medio per fornitore.
+    Usa i campi reali di fatture_passive:
+      - fornitore_denominazione (stringa)
+      - data (stringa ISO)
+      - linee[].descrizione, .prezzo_unitario, .quantita, .unita_misura
     """
-    # Carica tutte le fatture recenti (ultime 200)
+    # Carica le ultime 300 fatture ordinate per data DESC
     fatture = await db["fatture_passive"].find(
         {},
-        {"cedente": 1, "data": 1, "linee": 1}
-    ).sort("data", -1).limit(200).to_list(200)
+        {"fornitore_denominazione": 1, "data": 1, "linee": 1, "_id": 0}
+    ).sort("data", -1).limit(300).to_list(300)
 
-    # Raggruppa per fornitore → ultime N fatture
-    fatture_per_fornitore: dict[str, list] = {}
+    # Raggruppa per fornitore → max N_FATTURE più recenti
+    per_fornitore: dict[str, list] = {}
     for fat in fatture:
-        fornitore = fat.get("cedente", {}).get("denominazione", "").strip()
-        if not fornitore:
+        forn = (fat.get("fornitore_denominazione") or "").strip()
+        if not forn:
             continue
-        if fornitore not in fatture_per_fornitore:
-            fatture_per_fornitore[fornitore] = []
-        if len(fatture_per_fornitore[fornitore]) < N_FATTURE_COMPARAZIONE:
-            fatture_per_fornitore[fornitore].append(fat)
+        if forn not in per_fornitore:
+            per_fornitore[forn] = []
+        if len(per_fornitore[forn]) < N_FATTURE:
+            per_fornitore[forn].append(fat)
 
     risultati = []
 
-    for fornitore, fatts in fatture_per_fornitore.items():
-        prezzi_trovati = []
+    for fornitore, fatts in per_fornitore.items():
+        migliori: list[dict] = []
 
         for fat in fatts:
             for linea in (fat.get("linee") or []):
-                desc = linea.get("descrizione") or linea.get("descrizione", "")
+                desc = (linea.get("descrizione") or "").strip()
                 prezzo = float(linea.get("prezzo_unitario") or 0)
-                qty = float(linea.get("quantita") or 1)
                 um = linea.get("unita_misura") or "PZ"
-
                 if prezzo <= 0 or not desc:
                     continue
-
-                score = _score_match(nome_prodotto, desc)
-                if score >= 0.4:  # almeno 40% parole chiave in comune
-                    prezzi_trovati.append({
-                        "descrizione_fattura": desc,
-                        "prezzo_unitario": prezzo,
-                        "quantita": qty,
+                score = _score(nome_prodotto, desc)
+                if score >= 0.4:
+                    migliori.append({
+                        "descrizione": desc,
+                        "prezzo": prezzo,
                         "unita_misura": um,
-                        "data_fattura": fat.get("data", ""),
-                        "score": round(score, 2),
+                        "data": fat.get("data", ""),
+                        "score": score,
                     })
 
-        if not prezzi_trovati:
+        if not migliori:
             continue
 
-        # Prendi il match migliore per score, poi media prezzi
-        prezzi_trovati.sort(key=lambda x: -x["score"])
-        miglior_desc = prezzi_trovati[0]["descrizione_fattura"]
+        # Ordina per score desc, prendi il match migliore
+        migliori.sort(key=lambda x: -x["score"])
+        desc_top = migliori[0]["descrizione"]
 
-        # Filtra solo righe con la stessa descrizione (o simile)
-        prezzi_stessa_desc = [p["prezzo_unitario"] for p in prezzi_trovati
-                              if _score_match(miglior_desc, p["descrizione_fattura"]) >= 0.7]
-        prezzo_medio = sum(prezzi_stessa_desc) / len(prezzi_stessa_desc)
+        # Media prezzi righe con la stessa descrizione (o simile)
+        prezzi_simili = [m["prezzo"] for m in migliori
+                         if _score(desc_top, m["descrizione"]) >= 0.7]
+        prezzo_medio = sum(prezzi_simili) / len(prezzi_simili)
 
-        # Recupera dati anagrafica fornitore (email, pec, telefono)
+        # Cerca dati contatto fornitore in collection fornitori
         doc_forn = await db["fornitori"].find_one(
-            {"anagrafica.ragione_sociale": {"$regex": fornitore[:15], "$options": "i"}},
-            {"anagrafica": 1}
+            {"anagrafica.ragione_sociale": {"$regex": re.escape(fornitore[:15]), "$options": "i"}},
+            {"anagrafica": 1, "_id": 0}
         )
-        anagrafica = doc_forn.get("anagrafica", {}) if doc_forn else {}
+        ana = (doc_forn or {}).get("anagrafica", {})
 
         risultati.append({
             "fornitore": fornitore,
-            "fornitore_id": str(doc_forn.get("_id", "")) if doc_forn else "",
-            "email": anagrafica.get("email") or anagrafica.get("pec", ""),
-            "pec": anagrafica.get("pec", ""),
-            "telefono": anagrafica.get("telefono", ""),
-            "descrizione_fattura": miglior_desc,
-            "prezzo_medio_ultime_fatture": round(prezzo_medio, 4),
-            "num_fatture": len(prezzi_stessa_desc),
-            "score_match": prezzi_trovati[0]["score"],
-            "ultima_data": prezzi_trovati[0]["data_fattura"],
-            "unita_misura": prezzi_trovati[0]["unita_misura"],
+            "email": ana.get("email") or ana.get("pec", ""),
+            "pec": ana.get("pec", ""),
+            "telefono": ana.get("telefono", ""),
+            "descrizione_fattura": desc_top,
+            "prezzo_medio": round(prezzo_medio, 4),
+            "num_fatture": len(prezzi_simili),
+            "score_match": round(migliori[0]["score"], 2),
+            "ultima_data": migliori[0]["data"],
+            "unita_misura": migliori[0]["unita_misura"],
         })
 
-    # Ordina per prezzo crescente (migliore per primo)
-    risultati.sort(key=lambda x: x["prezzo_medio_ultime_fatture"])
-
-    # Marca il migliore
+    # Ordina per prezzo crescente → il primo è il migliore
+    risultati.sort(key=lambda x: x["prezzo_medio"])
     if risultati:
         risultati[0]["e_il_migliore"] = True
 
@@ -188,15 +175,10 @@ async def get_prezzi_prodotto(
     }
 
 
-# ─── ENDPOINT: CATALOGO PRODOTTI (per selezione rapida) ───────────────────────
-
-# ─── CRUD ORDINI ─────────────────────────────────────────────────────────────
+# ─── CRUD ORDINI ──────────────────────────────────────────────────────────────
 
 @router.post("/api/ordini")
-async def crea_ordine(
-    payload: OrdineCreate,
-    db: AsyncIOMotorDatabase = Depends(get_database)
-):
+async def crea_ordine(payload: OrdineCreate, db: AsyncIOMotorDatabase = Depends(get_database)):
     """Crea nuovo ordine in stato 'bozza'."""
     doc = {
         "id": str(uuid.uuid4()),
@@ -219,13 +201,10 @@ async def lista_ordini(
     limit: int = Query(50),
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
-    """Lista ordini, filtrabili per stato."""
     filtro = {}
     if stato:
         filtro["stato"] = stato
-    ordini = await db["ordini_ceraldi"].find(filtro, {"_id": 0}).sort(
-        "created_at", -1
-    ).limit(limit).to_list(limit)
+    ordini = await db["ordini_ceraldi"].find(filtro, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
     return ordini
 
 
@@ -238,12 +217,7 @@ async def get_ordine(ordine_id: str, db: AsyncIOMotorDatabase = Depends(get_data
 
 
 @router.put("/api/ordini/{ordine_id}")
-async def aggiorna_ordine(
-    ordine_id: str,
-    payload: OrdineUpdate,
-    db: AsyncIOMotorDatabase = Depends(get_database)
-):
-    """Admin modifica/approva un ordine."""
+async def aggiorna_ordine(ordine_id: str, payload: OrdineUpdate, db: AsyncIOMotorDatabase = Depends(get_database)):
     upd: dict = {"updated_at": datetime.now(timezone.utc).isoformat()}
     if payload.righe is not None:
         upd["righe"] = [r.model_dump() for r in payload.righe]
@@ -263,26 +237,22 @@ async def elimina_ordine(ordine_id: str, db: AsyncIOMotorDatabase = Depends(get_
     return {"success": True}
 
 
-# ─── GENERAZIONE TESTO ORDINE (per email / WhatsApp) ─────────────────────────
+# ─── GENERA TESTO INVIO ───────────────────────────────────────────────────────
 
 @router.get("/api/ordini/{ordine_id}/testo-invio")
 async def genera_testo_invio(
     ordine_id: str,
-    fornitore: str = Query(..., description="Nome fornitore a cui inviare"),
+    fornitore: str = Query(...),
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
-    """
-    Genera il testo dell'ordine da inviare al fornitore via email o WhatsApp.
-    Filtra solo le righe destinate a questo fornitore.
-    """
+    """Genera testo ordine per email / WhatsApp filtrato per fornitore."""
     doc = await db["ordini_ceraldi"].find_one({"id": ordine_id}, {"_id": 0})
     if not doc:
         raise HTTPException(404, "Ordine non trovato")
 
-    # Filtra righe per questo fornitore (o tutte se fornitore_selezionato vuoto)
     righe = [r for r in (doc.get("righe") or [])
              if not r.get("fornitore_selezionato")
-             or r.get("fornitore_selezionato", "").lower() == fornitore.lower()]
+             or r["fornitore_selezionato"].lower() == fornitore.lower()]
 
     if not righe:
         raise HTTPException(400, f"Nessuna riga per il fornitore '{fornitore}'")
@@ -298,7 +268,6 @@ async def genera_testo_invio(
     ])
 
     oggetto = f"Ordine Ceraldi Group S.R.L. del {oggi}"
-
     corpo = f"""Gentili {fornitore},
 
 Vi inviamo il nostro ordine del {oggi}.
@@ -319,19 +288,19 @@ Email: ceraldigroupsrl@gmail.com
 Cordiali saluti,
 Ceraldi Group S.R.L."""
 
-    # Recupera dati contatto fornitore
+    # Dati contatto fornitore
     doc_forn = await db["fornitori"].find_one(
-        {"anagrafica.ragione_sociale": {"$regex": fornitore[:15], "$options": "i"}},
-        {"anagrafica": 1}
+        {"anagrafica.ragione_sociale": {"$regex": re.escape(fornitore[:15]), "$options": "i"}},
+        {"anagrafica": 1, "_id": 0}
     )
-    anagrafica = doc_forn.get("anagrafica", {}) if doc_forn else {}
+    ana = (doc_forn or {}).get("anagrafica", {})
 
     return {
         "oggetto": oggetto,
         "corpo": corpo,
-        "email_fornitore": anagrafica.get("email") or anagrafica.get("pec", ""),
-        "pec_fornitore": anagrafica.get("pec", ""),
-        "telefono_fornitore": anagrafica.get("telefono", ""),
+        "email_fornitore": ana.get("email") or ana.get("pec", ""),
+        "pec_fornitore": ana.get("pec", ""),
+        "telefono_fornitore": ana.get("telefono", ""),
         "whatsapp_testo": f"*{oggetto}*\n\n{righe_testo}\n\nCeraldi Group S.R.L., Napoli",
         "righe": righe,
     }
