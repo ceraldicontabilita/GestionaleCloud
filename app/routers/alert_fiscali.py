@@ -357,7 +357,7 @@ async def _calcola_alert_avvisi_bonari(db) -> list:
             doc_correlato = await db["fatture_passive"].find_one({"codice_atto": codice_atto})
             if not doc_correlato:
                 # Cerca in avvisi bonari (se collection esiste)
-                doc_correlato = await db.get_collection("avvisi_bonari").find_one(
+                doc_correlato = await db["avvisi_bonari"].find_one(
                     {"$or": [{"codice_atto": codice_atto}, {"numero": codice_atto}]}
                 )
 
