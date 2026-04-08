@@ -90,6 +90,12 @@ CODICI_ERARIO = {
     # 8906 = sanzione ravvedimento tributi erario
     # 8948 = interessi ravvedimento ritenute
     "8906": "Sanzione ravvedimento — tributi erario",
+    "8947": "Interessi ravvedimento — addizionale regionale IRPEF",
+    "8949": "Interessi ravvedimento — addizionale comunale IRPEF",
+    "9001": "Somme da comunicazione di irregolarità art.36-bis — IRPEF/IRES",
+    "9002": "Somme da comunicazione di irregolarità art.36-bis — IVA",
+    "1703": "Addizionale comunale IRPEF — saldo (credito compensazione)",
+    "1671": "Credito tributi locali in compensazione",
     "8907": "Sanzione ravvedimento — IRAP (sezione Regioni)",
     # ── Diritti e tasse ───────────────────────────────────────
     "6494": "Diritto annuale CCIAA (Camera di Commercio)",
@@ -116,6 +122,7 @@ CODICI_IMU = {
     "3851": "IMU — aree fabbricabili (vecchio codice)",
     # Crediti compensazione
     "3796": "IRAP — credito in compensazione (sezione Regioni)",
+    "8950": "IRAP — interessi ravvedimento (sezione Regioni)",
     "3797": "IMU — credito in compensazione",
 }
 # ══════════════════════════════════════════════════════════════
@@ -141,6 +148,8 @@ CODICI_INPS = {
     "DM10": "Contributi INPS — DM10 aziende",
     "F24": "Contributi INPS — gestione separata",
     "GPJA": "Contributi INPS — gestione separata professionisti",
+    "RC01": "Contributi INPS — rateazione/concordato preventivo",
+    "COS":  "Contributo di solidarietà INPS",
 }
 ENTI_NOTI = {
     "F839": "Comune di Napoli (F839)",
@@ -365,8 +374,10 @@ def parse_f24_pdf(pdf_bytes: bytes, filename: str = "") -> list[dict]:
             
             for r in doc["sezione_erario"]:
                 doc["tributi_flat"].append({"sezione": "ERARIO", **r})
-                if r["codice_tributo"] in ("1713", "1668"):
+                if r["codice_tributo"] in ("1713", "1668", "8947", "8948", "8949", "8906", "1993", "8907", "8950", "8952", "9001", "9002"):
                     doc["note_ravvedimento"] = True
+                if r["codice_tributo"] in ("9001", "9002"):
+                    doc["note_avviso_bonario"] = True
             
             # ── Sezione INPS ──────────────────────────────────────
             inps_text = _extract_section_text(text, "SEZIONE INPS", "SEZIONE REGIONI")
@@ -498,7 +509,7 @@ def _parse_erario_text(text: str) -> list[dict]:
         if not importo: continue
         
         # Codici che compaiono tipicamente a credito in F24 Ceraldi
-        CODICI_TIPICAMENTE_CREDITO = {"1701", "1704", "1631", "3796", "3797", "6099"}
+        CODICI_TIPICAMENTE_CREDITO = {"1701", "1703", "1704", "1631", "3796", "3797", "6099", "1671"}
         if cod in CODICI_TIPICAMENTE_CREDITO:
             deb, cred = 0.0, importo
         else:
