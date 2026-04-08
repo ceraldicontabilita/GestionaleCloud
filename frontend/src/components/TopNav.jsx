@@ -31,6 +31,7 @@ const links = [
   { to: '/estratto-conto', label: 'EC',         icon: Landmark },
   { to: '/distinte', label: 'Distinte',         icon: Banknote },
   { to: '/alert-fiscali', label: '⚠️ Alert Fiscali', icon: Shield },
+  { to: '/tributi', label: '🏠 Tributi', icon: Home },
   { to: '/f24', label: 'F24',                   icon: FileCheck },
   { to: '/f24-privati', label: 'F24 Privati',       icon: Shield },
   { to: '/corrispettivi', label: 'Corrispettivi', icon: CreditCard },
