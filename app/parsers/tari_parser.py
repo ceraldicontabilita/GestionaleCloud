@@ -70,7 +70,7 @@ CF_AZIENDA = "04523831214"
 
 # Mappa CF noti della famiglia Ceraldi
 CF_NOTI = {
-    "CRLMHL50R01F352F": {"nome": "Ceraldi Michele", "relazione": "titolare"},
+    "CRLMHL50R01F352F": {"nome": "Ceraldi Michele", "relazione": "familiare"},
     "CRLNNT75M55F352C": {"nome": "Ceraldi Antonietta", "relazione": "familiare"},
     "04523831214": {"nome": "Ceraldi Group SRL", "relazione": "azienda"},
 }
