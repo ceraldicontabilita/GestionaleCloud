@@ -151,7 +151,7 @@ def parse_avviso_tari_text(text: str, filename: str = "") -> Optional[dict]:
         doc["cod_contribuente"] = m.group(1)
 
     # ── CF contribuente ─────────────────────────────────────────
-    # Formato CF persona fisica: CRLNNT75M55F352C (16 char alfanumerico)
+    # Formato CF persona fisica: LLLLLL00L00L000L (16 char alfanumerico)
     m = re.search(r"P\.IVA/C\.F\.?\s+([A-Z0-9]{16})", text)
     if not m:
         m = re.search(r"\b([A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z])\b", text)
