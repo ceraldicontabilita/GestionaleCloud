@@ -25,10 +25,10 @@ Endpoints:
   GET  /api/learning/documenti        → documenti non classificati
 """
 
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, BackgroundTasks
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from bson import ObjectId
-from datetime import datetime, date, timedelta
+from datetime import datetime, timedelta
 import httpx, os, json
 
 from app.database import get_database
