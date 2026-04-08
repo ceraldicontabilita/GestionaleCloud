@@ -41,8 +41,10 @@ app.add_middleware(
 
 # === ROUTERS ===
 from app.routers import dipendenti, health, fatture, cedolini, estratto_conto, f24, corrispettivi, distinte, verbali
+from app.routers import import_hub
 
 app.include_router(health.router, prefix="/api", tags=["health"])
+app.include_router(import_hub.router, prefix="/api/import", tags=["import"])
 app.include_router(dipendenti.router, prefix="/api/dipendenti", tags=["dipendenti"])
 app.include_router(fatture.router, prefix="/api/fatture", tags=["fatture"])
 app.include_router(cedolini.router, prefix="/api/cedolini", tags=["cedolini"])
