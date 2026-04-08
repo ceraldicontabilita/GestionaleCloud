@@ -15,7 +15,7 @@ Endpoints:
 """
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import FileResponse
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from bson import ObjectId
 from datetime import datetime
@@ -112,7 +112,7 @@ async def lista_f24(
     mese: int = None,
     sezione: str = None,
     codice_tributo: str = None,
-    includi_scartati: bool = False,
+    includi_scartati: bool = Query(False, description="Includi F24 scartati"),
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
     q = {"azienda_id": AZIENDA_ID, "stato": {"$ne": "scartato"}} if not includi_scartati else {"azienda_id": AZIENDA_ID}
