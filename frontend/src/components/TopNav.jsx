@@ -1,7 +1,7 @@
 import React from 'react'
-import { Link, useLocation } from 'react-router-dom'
-import { Users, Gavel, Home, FileText, Receipt, Landmark, FileCheck, CreditCard, Car, Banknote, Inbox, Mail } from 'lucide-react'
-import { colors, font } from '../lib/utils'
+import { Shield, Link, useLocation } from 'react-router-dom'
+import { Shield, Users, Gavel, Home, FileText, Receipt, Landmark, FileCheck, CreditCard, Car, Banknote, Inbox, Mail } from 'lucide-react'
+import { Shield, colors, font } from '../lib/utils'
 
 const navStyle = {
   background: colors.primary, padding: '0 20px', display: 'flex',
@@ -31,6 +31,7 @@ const links = [
   { to: '/estratto-conto', label: 'EC',         icon: Landmark },
   { to: '/distinte', label: 'Distinte',         icon: Banknote },
   { to: '/f24', label: 'F24',                   icon: FileCheck },
+  { to: '/f24-privati', label: 'F24 Privati',       icon: Shield },
   { to: '/corrispettivi', label: 'Corrispettivi', icon: CreditCard },
   { to: '/verbali', label: 'Verbali',           icon: Car },
 ]
