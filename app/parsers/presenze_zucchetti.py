@@ -244,9 +244,6 @@ def parse_presenze_pdf(pdf_path: str = None, pdf_bytes: bytes = None) -> Optiona
     # Pattern footer: "Ore ordinarie  93,20hm  AI  Ass.za ingiustif.  40,00hm  FE  Ferie  26,40hm"
     totali = {}
     legenda = {}
-        r'(?:Ore\s+ordinarie|([\w]+))\s+([\d,]+)hm(?:\s+([\w]+)\s+([^\d\n,]+?)(?=\s+[\d,]+hm|$))?',
-        text
-    )
 
     # Metodo più robusto: cerca "Ore ordinarie X,XXhm" poi coppie "CODICE Descrizione X,XXhm"
     m = re.search(r'Ore\s+ordinarie\s+([\d,]+)hm', text, re.I)
