@@ -72,7 +72,7 @@ async def get_omaggi_acquaviva(
     # 1. Carica tutte le fatture del fornitore ordinate per data ASC
     fatture = await db["fatture_passive"].find(
         {"fornitore_denominazione": {"$regex": fornitore, "$options": "i"}},
-        {"_id": 0, "cedente": 1, "dati_generali": 1, "linee": 1, "numero": 1, "data": 1}
+        {"_id": 0, "fornitore_denominazione": 1, "numero": 1, "data": 1, "linee": 1}
     ).sort("data", 1).to_list(500)
 
     if not fatture:
