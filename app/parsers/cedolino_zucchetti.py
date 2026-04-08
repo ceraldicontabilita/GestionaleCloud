@@ -429,10 +429,11 @@ def _parse_cedolino_page(page) -> Optional[Dict[str, Any]]:
     m = re.search(r'IRPEF\s+pagata\s+([\d.]+,\d{2})', text, re.I)
     if m:
         result["irpef_pagata_anno"] = _parse_importo(m.group(1))
-    # Imp. INAIL progressivo
-    m = re.search(r'Imp\.\s*INAIL\s+([\d.]+,\d{2})', text, re.I)
-    if m:
-        result["imp_inail_anno"] = _parse_importo(m.group(1))
+    # Imp. INAIL progressivo — appare 2 volte: importo mese + progressivo
+    # Prendiamo il valore MAX (il progressivo è sempre >= del mese)
+    inail_matches = re.findall(r'Imp\.\s*INAIL\s+([\d.]+,\d{2})', text, re.I)
+    if inail_matches:
+        result["imp_inail_anno"] = max(_parse_importo(v) for v in inail_matches)
 
     # TFR dalla sezione PROGRESSIVI in fondo al cedolino
     # Layout riga: "F.do 31/12  <fondo>   Rivalutaz.  <rival>  Imp.rival.  <imp>  Quota anno  <quota>"
@@ -452,6 +453,27 @@ def _parse_cedolino_page(page) -> Optional[Dict[str, Any]]:
         result["tredicesima"] + result["quattordicesima"] + result["straordinario"] +
         result["indennita"] + result["esonero_ivs"], 2
     )
+
+    # Fallback regex per addizionale comunale (F09130)
+    # Il layout Zucchetti mette il codice F09130 e il testo su y leggermente diversi
+    # causando problemi nel raggruppamento per riga; usiamo regex sul testo grezzo
+    if result["add_comunale"] == 0.0:
+        # Cerca pattern: F09130 ... importo (ultima colonna = trattenuta)
+        m = re.search(
+            r'F09130[^\d\n]+(\d+,\d{2})[^\d\n]*(\d+,\d{2})',
+            text, re.I
+        )
+        if m:
+            # Il secondo importo è la trattenuta effettiva
+            result["add_comunale"] = _parse_importo(m.group(2))
+        else:
+            # Cerca "Addizionale comunale ... Residuo XX,XX XX,XX"
+            m = re.search(
+                r'Addizionale\s+comunale[^\n]*\n[^\n]*Residuo\s+[\d,]+\s+([\d,]+)',
+                text, re.I
+            )
+            if m:
+                result["add_comunale"] = _parse_importo(m.group(1))
 
     result["dedup_key"] = f"{result['codice_fiscale']}_{result['mese']:02d}_{result['anno']}"
     return result
