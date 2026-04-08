@@ -155,15 +155,18 @@ async def import_da_xml(
             res = await db["fornitori"].insert_one(fornitore)
             fid_str = str(res.inserted_id)
 
-        # Registra la fattura anche in archivio (se collection esiste)
+        # Registra la fattura in fatture_passive con struttura standard (compatibile con fatture.py)
+        numero_fatt = parsed["fattura"].get("numero", "")
         await db["fatture_passive"].update_one(
-            {"numero_fattura": parsed["fattura"]["numero"], "piva_fornitore": piva},
+            {"numero": numero_fatt, "fornitore_piva": piva},
             {"$set": {
-                **parsed["fattura"],
-                "piva_fornitore": piva,
-                "fornitore_id": fid_str,
+                "numero": numero_fatt,
+                "fornitore_piva": piva,
+                "fornitore_denominazione": parsed["anagrafica"].get("ragione_sociale", ""),
+                "data": parsed["fattura"].get("data", ""),
+                "anno": int(parsed["fattura"].get("data", "2000")[:4]) if parsed["fattura"].get("data") else 0,
+                "importo_totale": parsed["fattura"].get("totale", 0),
                 "metodo_pagamento": metodo,
-                "azienda_id": AZIENDA_ID,
                 "updated_at": datetime.utcnow(),
             }},
             upsert=True
