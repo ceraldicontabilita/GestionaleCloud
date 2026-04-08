@@ -25,7 +25,7 @@ description: |
 - Mai file alias/wrapper — correggere sempre l'import nel file originale
 
 ## Persone fisiche note
-- Ceraldi Michele: CF `CRLMHL50R01F352F` — titolare — nato 01/10/1950 Mondragone
+- Ceraldi Michele: CF `CRLMHL50R01F352F` — **familiare** (non titolare) — nato 01/10/1950 Mondragone CE
 - Ceraldi Antonietta: CF `CRLNNT75M55F352C` — familiare — nata 15/08/1975 Mondragone
 
 ## Codici tributo appresi (F24)
