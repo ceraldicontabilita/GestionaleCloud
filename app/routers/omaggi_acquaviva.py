@@ -71,7 +71,7 @@ async def get_omaggi_acquaviva(
     """
     # 1. Carica tutte le fatture del fornitore ordinate per data ASC
     fatture = await db["fatture_passive"].find(
-        {"cedente.denominazione": {"$regex": fornitore, "$options": "i"}},
+        {"fornitore_denominazione": {"$regex": fornitore, "$options": "i"}},
         {"_id": 0, "cedente": 1, "dati_generali": 1, "linee": 1, "numero": 1, "data": 1}
     ).sort("data", 1).to_list(500)
 
@@ -94,9 +94,9 @@ async def get_omaggi_acquaviva(
 
     for fat in fatture:
         linee = fat.get("linee") or []
-        numero = fat.get("numero") or fat.get("dati_generali", {}).get("numero", "?")
-        data = fat.get("data") or fat.get("dati_generali", {}).get("data", "?")
-        cedente = fat.get("cedente", {}).get("denominazione", fornitore)
+        numero = fat.get("numero") or fat.get("numero", "?")
+        data = fat.get("data") or fat.get("data", "?")
+        cedente = fat.get("fornitore_denominazione", fornitore)
 
         # Separa righe prodotti normali (prezzo > 0) da omaggi (prezzo = 0)
         righe_normali = []
