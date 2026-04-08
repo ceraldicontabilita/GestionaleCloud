@@ -45,10 +45,7 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 CF_AZIENDA = "04523831214"
 
-CF_PRIVATI_NOTI = {
-    "CRLMHL50R01F352F": "Ceraldi Michele (familiare)",
-    "CRLNNT75M55F352C": "Ceraldi Antonietta",
-}
+CF_PRIVATI_NOTI = {cf: v["nome"] for cf, v in PRIVATI_CF.items()}
 
 
 def _oid(doc):
