@@ -67,8 +67,7 @@ from app.parsers.f24_parser import _parse_euro
 
 
 from app.privati_config import (
-    CF_AZIENDA, PRIVATI_CF, is_privato, get_info_privato,
-    collezione_da_cf, nome_da_cf
+    CF_AZIENDA, get_info_privato, collezione_da_cf
 )
 
 CODICI_TARI = {
