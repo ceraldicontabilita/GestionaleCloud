@@ -30,14 +30,23 @@ async def upload_corrispettivo(file: UploadFile = File(...), db: AsyncIOMotorDat
     if parsed.get("errore"):
         raise HTTPException(400, parsed["errore"])
 
-    existing = await db["corrispettivi"].find_one({"chiave": parsed["chiave"]})
+    # Il parser ritorna 'dedup_key', non 'chiave'
+    dedup = parsed.get("dedup_key", "")
+    existing = await db["corrispettivi"].find_one({"dedup_key": dedup})
     if existing:
         return {"ok": True, "stato": "duplicato"}
 
     parsed["filename"] = file.filename
     parsed["imported_at"] = datetime.utcnow()
     await db["corrispettivi"].insert_one(parsed)
-    return {"ok": True, "stato": "importato", "data": parsed["data"], "totale": parsed["totale_incassato"]}
+
+    # Il parser ritorna 'totale_corrispettivi', non 'totale_incassato'
+    return {
+        "ok": True,
+        "stato": "importato",
+        "data": parsed.get("data", ""),
+        "totale": parsed.get("totale_corrispettivi", 0),
+    }
 
 
 @router.get("")
@@ -60,8 +69,7 @@ async def stats_corrispettivi(anno: Optional[int] = None, db: AsyncIOMotorDataba
     pipeline = [
         {"$match": filtro},
         {"$group": {"_id": {"$substr": ["$data", 0, 7]},
-                    "totale": {"$sum": "$totale_incassato"},
-                    "iva": {"$sum": "$iva_totale"},
+                    "totale": {"$sum": "$totale_corrispettivi"},
                     "n": {"$sum": 1}}},
         {"$sort": {"_id": 1}},
     ]
