@@ -494,7 +494,6 @@ def _parse_erario_text(text: str) -> list[dict]:
     erario_text = _extract_section_text(text, "SEZIONE ERARIO", "SEZIONE INPS")
     
     # Leggo i totali per capire quale importo è debito e quale è credito
-    m_tot = re.search(r"TOTALE\s+A\s+([\d\.\s]+).*?([\d\.\s]+)\s*\+", erario_text, re.S)
     
     for m in re.finditer(
         r"(\d{4})\s+(\d{4})\s+(\d{4})\s+([\d\.\s]+)",
