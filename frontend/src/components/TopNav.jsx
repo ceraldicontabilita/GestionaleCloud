@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom'
 import {
   Shield, Users, Gavel, Home, FileText, Receipt, Landmark,
   FileCheck, CreditCard, Car, Banknote, Inbox, Mail, Building2,
-  Thermometer, Sparkles, Bug
+  Thermometer, Sparkles, Bug, LayoutDashboard
 } from 'lucide-react'
 import { colors, font } from '../lib/utils'
 
@@ -41,6 +41,7 @@ const links = [
   { to: '/f24-privati',            label: 'F24 Privati',     icon: Shield },
   { to: '/corrispettivi',          label: 'Corrispettivi',   icon: CreditCard },
   { to: '/verbali',                label: 'Verbali',         icon: Car },
+  { to: '/haccp/dashboard',     label: '📊 Dashboard',       icon: LayoutDashboard },
   { to: '/haccp/temperature',      label: '🌡️ Temp',         icon: Thermometer },
   { to: '/haccp/sanificazione',    label: '✨ Sanif.',       icon: Sparkles },
   { to: '/haccp/disinfestazione',  label: '🐀 Disinfest.',  icon: Bug },
