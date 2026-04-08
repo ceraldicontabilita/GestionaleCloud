@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { FileText, RefreshCw, Upload, AlertCircle, CheckCircle, Clock, Wifi } from 'lucide-react'
-import { s, colors, formatEuro } from '../lib/utils'
+import { s, colors, shadow, formatEuro } from '../lib/utils'
+import VisFattura from '../components/VisFattura'
 
 const columns = [
   { key: 'data', label: 'Data' },
@@ -31,6 +32,7 @@ export default function Fatture() {
   const [syncLog, setSyncLog] = useState([])
   const [showLog, setShowLog] = useState(false)
   const [tab, setTab] = useState('fatture') // 'fatture' | 'log'
+  const [fatturaAperta, setFatturaAperta] = useState(null)
   const fileRef = useRef()
   const anno = new Date().getFullYear()
 
@@ -251,7 +253,8 @@ export default function Fatture() {
                       <th key={c.key} style={{ ...s.th, ...(c.align === 'right' ? { textAlign: 'right' } : {}) }}>
                         {c.label}
                       </th>
-                    ))}</tr>
+                    ))}
+                    <th style={{ ...s.th, width: 100, textAlign: 'right' }}>Anteprima</th></tr>
                   </thead>
                   <tbody>
                     {items.map((item, idx) => (
@@ -267,6 +270,14 @@ export default function Fatture() {
                             {c.render ? c.render(item) : (item[c.key] ?? '—')}
                           </td>
                         ))}
+                        <td style={{ ...s.td, textAlign: 'right', width: 100 }}>
+                          <button
+                            onClick={e => { e.stopPropagation(); setFatturaAperta(item._id) }}
+                            style={{ ...s.btn, ...s.btnGhost, ...s.btnXSmall, fontSize: 11 }}
+                          >
+                            Visualizza
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -279,6 +290,8 @@ export default function Fatture() {
       <style>{`
         @keyframes spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }
       `}</style>
+
+      <VisFattura fatturaId={fatturaAperta} onClose={() => setFatturaAperta(null)} />
     </div>
   )
 }
