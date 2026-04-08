@@ -18,7 +18,7 @@ except ImportError:
 
 from app.parsers.f24_parser import (
     CODICI_ERARIO, CODICI_REGIONI, CODICI_INPS,
-    CODICI_TIPICAMENTE_CREDITO, _parse_euro,
+    _parse_euro,
 )
 
 CODICI_TRIB_LOCALI_Q = {
