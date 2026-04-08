@@ -16,7 +16,7 @@ Endpoints:
   GET  /api/quietanze/non-riconciliate → quietanze senza F24 corrispondente
 """
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import FileResponse
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from bson import ObjectId
