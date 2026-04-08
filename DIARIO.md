@@ -250,6 +250,23 @@ Nuovo ente locale trovato in Q12 (oltre a F839=Napoli). Gestito nel parser.
 
 ---
 
+
+## Fix errori — Chat 4 (08/04/2026)
+
+Scan completo eseguito su tutti i 44 file Python del backend.
+
+| File | Errore | Fix applicato |
+|------|--------|---------------|
+| `app/main.py` | SyntaxError riga 52: virgola isolata + indentazione errata righe 63/68-72 | Riscritto pulito con tutti i router allineati |
+| `app/parsers/tari_parser.py` | CF privato in commento di esempio | Sostituito con formato generico `LLLLLL00L00L000L` |
+| `app/routers/tributi.py` | `CF_PRIVATI_NOTI` con CF hardcoded | Generato dinamicamente da `PRIVATI_CF` (privati_config.py) |
+| `app/routers/fornitori.py` | "suppliers" in docstring | Rimosso riferimento |
+| `app/routers/dipendenti.py` | "employees" in docstring riga 3 | Sostituito con "dipendenti" |
+| `app/routers/f24_privati.py` | CF e dati anagrafici hardcoded | Import da `privati_config.py`, dati in MongoDB |
+| `app/schemas/fornitore_schema.py` | "suppliers" in docstring | Rimosso riferimento |
+
+**Risultato finale:** 44/44 file ✅ — nessun errore sintattico, nessun CF privato hardcoded, nessun termine vietato.
+
 ## Prossimi sviluppi suggeriti
 
 - [ ] Frontend pagina `/fornitori` completa con 5 tab
@@ -269,4 +286,4 @@ Nuovo ente locale trovato in Q12 (oltre a F839=Napoli). Gestito nel parser.
 3. Aggiorna questo file a fine chat con tutto quello che è cambiato
 4. Rispondi sempre in italiano
 
-*Ultimo aggiornamento: Chat 4 — 08/04/2026*
+*Ultimo aggiornamento: Chat 4 — 08/04/2026 (dopo scan errori)*
