@@ -196,6 +196,8 @@ async def _process(tipo: str, content: bytes, filename: str, db: AsyncIOMotorDat
         if not cedolini:
             return {"errore": "Nessun cedolino trovato nel PDF"}
 
+        from app.routers.cedolini import aggiorna_dipendente_da_cedolino
+
         inserite = incompleti = 0
         for ced in cedolini:
             cf, mese, anno = ced.get("codice_fiscale"), ced.get("mese"), ced.get("anno")
@@ -203,21 +205,13 @@ async def _process(tipo: str, content: bytes, filename: str, db: AsyncIOMotorDat
                 incompleti += 1
                 continue
             ced.update({"filename": filename, "imported_at": datetime.utcnow(), "riconciliato": False})
+            # 1) Upsert cedolino — sempre
             await db["cedolini"].update_one(
                 {"codice_fiscale": cf, "mese": mese, "anno": anno},
                 {"$set": ced, "$setOnInsert": {"created_at": datetime.utcnow()}},
                 upsert=True)
-            if cf:
-                update = {"updated_at": datetime.utcnow(), "ultimo_cedolino": f"{mese}/{anno}"}
-                if ced.get("netto"):
-                    update["ultimo_netto"] = ced["netto"]
-                await db["dipendenti"].update_one(
-                    {"codice_fiscale": cf},
-                    {"$set": update,
-                     "$setOnInsert": {"nome": ced.get("nome", ""), "cognome": ced.get("cognome", ""),
-                                      "codice_fiscale": cf, "stato": "attivo",
-                                      "created_at": datetime.utcnow()}},
-                    upsert=True)
+            # 2) Aggiorna dipendente con logica competenza (import misto sicuro)
+            await aggiorna_dipendente_da_cedolino(db, ced)
             inserite += 1
         return {"collection": "cedolini", "inserite": inserite, "duplicate": 0, "incompleti": incompleti}
 
@@ -356,3 +350,4 @@ async def import_detect(file: UploadFile = File(...)):
         "filename": file.filename,
         "riconosciuto": tipo != "sconosciuto",
     }
+
