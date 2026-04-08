@@ -17,6 +17,9 @@ import Verbali from './pages/Verbali'
 import Distinte from './pages/Distinte'
 import ImportaDocumenti from './pages/ImportaDocumenti'
 import Mittenti from './pages/Mittenti'
+import TemperatureHACCP from './pages/TemperatureHACCP'
+import SanificazioneHACCP from './pages/SanificazioneHACCP'
+import DisinfestazioneHACCP from './pages/DisinfestazioneHACCP'
 import { s } from './lib/utils'
 
 export default function App() {
@@ -43,6 +46,9 @@ export default function App() {
             <Route path="/verbali" element={<Verbali />} />
             <Route path="/distinte" element={<Distinte />} />
             <Route path="/mittenti" element={<Mittenti />} />
+            <Route path="/haccp/temperature" element={<TemperatureHACCP />} />
+            <Route path="/haccp/sanificazione" element={<SanificazioneHACCP />} />
+            <Route path="/haccp/disinfestazione" element={<DisinfestazioneHACCP />} />
           </Routes>
         </div>
       </div>
