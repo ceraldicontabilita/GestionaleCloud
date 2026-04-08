@@ -9,7 +9,7 @@ from datetime import datetime
 import logging
 
 from app.database import get_database
-from app.parsers.distinta_bpm import parse_distinta_bpm
+from app.parsers.distinta_bpm import parse_distinta_pdf  # nome corretto
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -26,33 +26,41 @@ async def upload_distinta(file: UploadFile = File(...), db: AsyncIOMotorDatabase
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(400, "Solo PDF")
     content = await file.read()
-    parsed = parse_distinta_bpm(pdf_bytes=content)
-    if parsed.get("errore"):
-        raise HTTPException(400, parsed["errore"])
 
+    try:
+        parsed = parse_distinta_pdf(pdf_bytes=content)
+    except Exception as e:
+        raise HTTPException(400, f"Errore parsing PDF: {e}")
+
+    # Il parser ritorna: numero_bonifici, bonifici[], totale, data_disposizione
     parsed["filename"] = file.filename
     parsed["imported_at"] = datetime.utcnow()
     result = await db["distinte_pagamento"].insert_one(parsed)
 
-    # Riconcilia pagamenti con dipendenti (per IBAN)
+    # Riconcilia bonifici con dipendenti per IBAN
     riconciliati = 0
-    for pag in parsed.get("pagamenti", []):
-        iban = pag.get("iban")
+    bonifici = parsed.get("bonifici", [])
+    for bon in bonifici:
+        iban = bon.get("iban")
         if iban:
             dip = await db["dipendenti"].find_one({"iban": iban})
             if dip:
-                pag["dipendente_id"] = str(dip["_id"])
-                pag["dipendente_nome"] = f"{dip.get('cognome', '')} {dip.get('nome', '')}"
+                bon["dipendente_id"] = str(dip["_id"])
+                bon["dipendente_nome"] = f"{dip.get('cognome', '')} {dip.get('nome', '')}"
                 riconciliati += 1
 
     if riconciliati > 0:
         await db["distinte_pagamento"].update_one(
             {"_id": result.inserted_id},
-            {"$set": {"pagamenti": parsed["pagamenti"], "riconciliati": riconciliati}}
+            {"$set": {"bonifici": bonifici, "riconciliati": riconciliati}}
         )
 
-    return {"ok": True, "n_pagamenti": parsed["n_pagamenti"], "totale": parsed["totale"],
-            "riconciliati_dipendenti": riconciliati}
+    return {
+        "ok": True,
+        "n_bonifici": parsed.get("numero_bonifici", 0),
+        "totale": parsed.get("totale", 0),
+        "riconciliati_dipendenti": riconciliati,
+    }
 
 
 @router.get("")
