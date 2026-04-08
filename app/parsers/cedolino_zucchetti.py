@@ -265,6 +265,8 @@ def _parse_cedolino_page(page) -> Optional[Dict[str, Any]]:
         "ore_ordinarie": 0.0,
         "ore_straordinario": 0.0,
         # Dedup
+        "paga_base": 0.0,
+        "imp_inail_anno": 0.0,
         "dedup_key": "",
     }
 
@@ -330,7 +332,7 @@ def _parse_cedolino_page(page) -> Optional[Dict[str, Any]]:
             pass
 
     # ── Parse voci per coordinate X ──────────────────────────────────
-    rows = _group_by_row(words, y_tolerance=3)
+    rows = _group_by_row(words, y_tolerance=5)
 
     for row in rows:
         if not row:
@@ -411,6 +413,12 @@ def _parse_cedolino_page(page) -> Optional[Dict[str, Any]]:
         if m:
             result["netto"] = _parse_importo(m.group(1))
 
+    # Paga base oraria (da intestazione elementi retribuzione)
+    # Layout: "PAGA BASE\n5,46494" oppure "PAGA BASE 5,46494"
+    m = re.search(r'PAGA\s+BASE[^\d]+(\d+,\d{5})', text, re.I)
+    if m:
+        result["paga_base"] = _parse_importo(m.group(1))
+
     # Progressivi anno
     m = re.search(r'Imp\.\s*INPS\s+([\d.]+,\d{2})', text, re.I)
     if m:
@@ -421,6 +429,22 @@ def _parse_cedolino_page(page) -> Optional[Dict[str, Any]]:
     m = re.search(r'IRPEF\s+pagata\s+([\d.]+,\d{2})', text, re.I)
     if m:
         result["irpef_pagata_anno"] = _parse_importo(m.group(1))
+    # Imp. INAIL progressivo
+    m = re.search(r'Imp\.\s*INAIL\s+([\d.]+,\d{2})', text, re.I)
+    if m:
+        result["imp_inail_anno"] = _parse_importo(m.group(1))
+
+    # TFR dalla sezione PROGRESSIVI in fondo al cedolino
+    # Layout riga: "F.do 31/12  <fondo>   Rivalutaz.  <rival>  Imp.rival.  <imp>  Quota anno  <quota>"
+    m = re.search(r'F\.do\s+31/12[^\d]+(\d[\d.]+,\d{2})', text, re.I)
+    if m:
+        result["tfr_fondo_31_12"] = _parse_importo(m.group(1))
+    m = re.search(r'Quota\s+anno[^\d]+(\d[\d.]+,\d{2})', text, re.I)
+    if m:
+        result["tfr_quota_anno"] = _parse_importo(m.group(1))
+    m = re.search(r'Rivalutaz\.\s+(\d[\d.]+,\d{2})', text, re.I)
+    if m:
+        result["tfr_rivalutazione"] = _parse_importo(m.group(1))
 
     # Lordo = totale_competenze se disponibile
     result["lordo"] = result["totale_competenze"] if result["totale_competenze"] > 0 else round(
