@@ -41,6 +41,7 @@ app.add_middleware(
 
 # === ROUTERS ===
 from app.routers import (
+    tributi,
     alert_fiscali,
     quietanze,
     dipendenti, health, fatture, cedolini,
@@ -64,6 +65,7 @@ app.include_router(verbali.router,       prefix="/api/verbali",     tags=["verba
 app.include_router(presenze.router,      prefix="/api/presenze",    tags=["presenze"])
     app.include_router(quietanze.router, prefix="/api/quietanze", tags=["quietanze"])
     app.include_router(alert_fiscali.router, prefix="/api/alert-fiscali", tags=["alert-fiscali"])
+    app.include_router(tributi.router, prefix="/api/tributi", tags=["tributi"])
 
 # === STATIC FILES (React build) ===
 frontend_dist = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
