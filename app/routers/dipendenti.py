@@ -1,6 +1,6 @@
 """
 Dipendenti router — CRUD + Pignoramenti
-Collection: dipendenti (MAI "employees")
+Collection: dipendenti (MAI "dipendenti")
 """
 from fastapi import APIRouter, HTTPException, UploadFile, File, Depends
 from motor.motor_asyncio import AsyncIOMotorDatabase
