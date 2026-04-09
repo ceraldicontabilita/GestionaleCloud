@@ -215,3 +215,118 @@ omaggi_acquaviva, ordini
 - Testare omaggi Acquaviva con fatture reali (ceraldiapp.it attualmente 500)
 - Pagina tablet Cucina: operatori rosticceria/pasticceria → ceraldiapp.it/api/tablet/{reparto}
 - Verificare riconciliazione cedolini con estratto conto (categoria "stipendio")
+
+---
+
+## Chat 7 — 2026-04-09
+
+### Stato sistema al riavvio chat
+
+**Questa chat è la Chat 7.** La prossima sarà Chat 8.
+
+### Variabili di sistema complete (snapshot 2026-04-09)
+
+#### Infrastruttura
+- **Repo:** `github.com/ceraldicontabilita/gestionale2` branch `main`
+- **Token GitHub:** `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`
+- **Backend:** FastAPI + Motor, porta `:8001`, prefix `/api/...`
+- **Frontend:** React 18 + Vite, porta `:3000`
+- **Process manager:** Supervisor
+- **DB:** MongoDB Atlas, cluster `cluster0.vofh7iz`, db=`Gestionale`, utente `Ceraldidatabase`
+- **Supabase:** progetto EU `tvnrymgeyilhpkawhgjy`
+
+#### Collections MongoDB
+| Collection | Note |
+|---|---|
+| `dipendenti` | MAI "employees" |
+| `fornitori` | MAI "suppliers" |
+| `cedolini` | upsert per dipendente_id+anno+mese |
+| `fatture_passive` | campi: fornitore_denominazione, fornitore_piva, numero, data, anno, importo_totale, linee[] |
+| `ordini_ceraldi` | ordini interni gestionale2 |
+| `tributi_privati` | Michele + Antonietta (familiari), MAI in contabilità aziendale |
+| `lotti`, `lotti_fornitori`, `produzioni`, `ricette`, `dizionario_prodotti`, `ricezioni_merce`, `materie_prime` | Tracciabilità ceraldiapp.it |
+
+#### Campi critici MongoDB
+```
+fatture_passive:
+  fornitore_denominazione (NON cedente.denominazione)
+  fornitore_piva (NON piva_fornitore)
+  numero (NON numero_fattura)
+  linee[].prezzo_unitario, linee[].unita_misura
+
+dipendenti:
+  iban_cedolino (NON iban)
+  paga_base, livello, ferie_saldo_gg, permessi_saldo_ore
+  progressivi.{anno}.{imp_inps,imp_irpef,irpef_pagata,imp_inail}
+  tfr.{anno}.{fondo_31_12,quota_anno,rivalutazione}
+  pignoramenti[]
+
+fornitori:
+  anagrafica.ragione_sociale
+  anagrafica.piva (NON denominazione/partita_iva a livello flat)
+  anagrafica.email, anagrafica.pec
+```
+
+#### Router backend attivi (main.py al 2026-04-08)
+`health, import_hub, mittenti, dipendenti, fatture, cedolini,
+estratto_conto, f24, f24_privati, corrispettivi, distinte, verbali,
+presenze, quietanze, alert_fiscali, tributi, learning, fornitori,
+omaggi_acquaviva, ordini`
+
+#### Prefix API
+`/api/dipendenti`, `/api/cedolini`, `/api/giustificativi`,
+`/api/archivio-bonifici`, `/api/estratto-conto-movimenti`,
+`/api/prima-nota`, `/api/f24`, `/api/attendance`, `/api/cucina`, `/api/tr`
+
+#### Route frontend attive
+`/dipendenti /fatture /cedolini /estratto-conto /f24 /f24-privati
+/corrispettivi /tributi /fornitori /alert-fiscali /verbali /distinte
+/presenze /sconti-merce /ordini
+/haccp/dashboard /haccp/temperature /haccp/sanificazione /haccp/disinfestazione`
+
+#### Design system
+- File: `frontend/src/lib/utils.js`
+- Font: Plus Jakarta Sans
+- Colori: primary=#5D29C7, bg=#F0F4FA, card=#FFFFFF, sidebar=#1E1B4B
+- success=#00B884, warning=#FF9800, danger=#F44336, info=#2196F3
+- Card: radius=16, shadow viola
+- Btn primary: gradiente viola
+- Table th: uppercase 11px, Badge: radius=20
+- MAI Tailwind, MAI Shadcn, MAI hardcoded
+
+#### Regole di sviluppo assolute
+- IMAP sempre in `asyncio.to_thread()`
+- CSS inline tramite `lib/utils.js`
+- Icone: solo `lucide-react`
+- `SecondaryTabs`: link sempre a route reali, mai `Navigate` redirect
+- Tab interni: `useState`, non `navigate()`
+- Nessun file alias o wrapper — correggere sempre l'import nel file originale
+
+#### PEC Aruba
+- IMAP: `imaps.pec.aruba.it` porta 993, user `fatturazioneceraldi@pec.it`
+- SMTP: `smtps.pec.aruba.it` porta 465
+- Bug noto fixato: `aruba_automation.py` riga 312 aveva `imap.gmail.com` → corretto in `imaps.pec.aruba.it`
+
+#### Gmail
+- Account: `ceraldigroupsrl@gmail.com`
+- SMTP porta 587 con TLS
+- Da Gmail arrivano: SDI (@pec.fatturapa.it), cedolini Ferrantini+Marotta, PagoPA Napoli, INPS, INAIL, PayPal
+- I corrispettivi arrivano SOLO via import manuale XML (dal registratore telematico)
+
+#### Persone speciali
+- **CERALDI Michele** (CF CRLMHL50R01F352F) → `tributi_privati`, MAI contabilità aziendale
+- **Ceraldi Antonietta** (CF CRLNNT75M55F352C) → `tributi_privati`, MAI contabilità aziendale
+
+#### API esterna ceraldiapp.it
+HACCP e sconti usano ceraldiapp.it come API esterna. Ordini: catalogo da ceraldiapp.it, CRUD e prezzi da gestionale2 locale.
+
+#### Modulo Tracciabilità (`/api/tr`)
+Flusso: fattura XML → `lotti_fornitori` → `registra-produzione-lotto` (FIFO per scadenza) → scala qty → `db.lotti` + `db.produzioni`.
+Registro HACCP: `/api/tr/registro-lotti/{anno}/{mese}`
+
+### TODO Chat 7
+1. Portare rinomina inline colonne frigo/congelatore da TemperaturePositiveView originale in TemperatureHACCP.jsx
+2. Pagina tablet Cucina: GET ceraldiapp.it/api/tablet/{reparto} per operatori rosticceria/pasticceria
+3. Testare omaggi Acquaviva con fatture reali
+4. Verificare riconciliazione cedolini (categoria "stipendio" in estratto conto)
+
