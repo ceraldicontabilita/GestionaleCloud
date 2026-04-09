@@ -32,7 +32,8 @@ from .base import (
     unifica_fornitori_collection, verifica_unificazione_stato,
     get_supplier, update_supplier, toggle_supplier_active, delete_supplier,
     get_supplier_fatturato, get_supplier_iban_from_invoices,
-    update_supplier_payment_method, update_supplier_nome, get_fatture_fornitore
+    update_supplier_payment_method, update_supplier_nome,
+    get_fatture_fornitore, get_dati_da_fatture
 )
 
 # === ROTTE STATICHE (devono venire PRIMA delle dinamiche) ===
@@ -77,4 +78,5 @@ router.add_api_route("/{supplier_id}/iban-from-invoices", get_supplier_iban_from
 router.add_api_route("/{supplier_id}/metodo-pagamento", update_supplier_payment_method, methods=["PUT"])
 router.add_api_route("/{supplier_id}/nome", update_supplier_nome, methods=["PUT"])
 router.add_api_route("/{supplier_id}/fatture", get_fatture_fornitore, methods=["GET"])
+router.add_api_route("/{supplier_id}/dati-da-fatture", get_dati_da_fatture, methods=["GET"])
 

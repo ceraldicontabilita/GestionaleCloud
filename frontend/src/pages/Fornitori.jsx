@@ -70,6 +70,53 @@ const emptySupplier = {
   note: ''
 };
 
+// Componente: recupera dati anagrafici dalle fatture XML
+function RecuperaDaFattureXML({ supplierId, onDati }) {
+  const [loading, setLoading] = useState(false);
+  const [stato, setStato] = useState(null); // 'ok' | 'nessuna' | null
+
+  const recupera = async () => {
+    if (!supplierId) return;
+    setLoading(true);
+    try {
+      const res = await api.get(`/api/suppliers/${supplierId}/dati-da-fatture`);
+      if (res.data.trovato) {
+        onDati(res.data.dati);
+        setStato('ok');
+      } else {
+        setStato('nessuna');
+      }
+    } catch { setStato('nessuna'); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <div style={{
+      background: stato === 'ok' ? '#f0fdf4' : stato === 'nessuna' ? '#fef9c3' : '#eff6ff',
+      border: `1px solid ${stato === 'ok' ? '#86efac' : stato === 'nessuna' ? '#fde047' : '#bfdbfe'}`,
+      borderRadius: 8, padding: '10px 14px', marginBottom: 16,
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8
+    }}>
+      <span style={{ fontSize: 13, color: '#374151' }}>
+        {stato === 'ok'
+          ? '✅ Dati recuperati dalle fatture XML'
+          : stato === 'nessuna'
+            ? '⚠️ Nessuna fattura XML trovata per questo fornitore'
+            : '📄 Compila automaticamente con i dati dalle fatture XML ricevute'}
+      </span>
+      {stato !== 'nessuna' && (
+        <button type="button" onClick={recupera} disabled={loading} style={{
+          padding: '6px 14px', fontSize: 12, fontWeight: 600,
+          background: '#1e3a5f', color: 'white', border: 'none',
+          borderRadius: 6, cursor: loading ? 'wait' : 'pointer', whiteSpace: 'nowrap'
+        }}>
+          {loading ? '...' : stato === 'ok' ? '🔄 Ricarica' : '📥 Recupera da XML'}
+        </button>
+      )}
+    </div>
+  );
+}
+
 // Modale Fornitore
 function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
   const [form, setForm] = useState(emptySupplier);
@@ -79,7 +126,13 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
   
   useEffect(() => {
     if (isOpen && supplier) {
-      setForm({ ...emptySupplier, ...supplier });
+      // Mappa i campi DB (nome, piva) sui campi del form (ragione_sociale, partita_iva)
+      setForm({
+        ...emptySupplier,
+        ...supplier,
+        ragione_sociale: supplier.ragione_sociale || supplier.nome || supplier.denominazione || '',
+        partita_iva:     supplier.partita_iva     || supplier.piva || '',
+      });
     } else if (isOpen) {
       setForm(emptySupplier);
     }
@@ -189,6 +242,22 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
 
         {/* Form */}
         <div style={{ padding: '24px', overflowY: 'auto', maxHeight: 'calc(85vh - 140px)' }}>
+          {/* Banner recupero da fatture (solo in modifica) */}
+          {!isNew && (
+            <RecuperaDaFattureXML supplierId={supplier?.id} onDati={(dati) => {
+              setForm(prev => ({
+                ...prev,
+                ragione_sociale: prev.ragione_sociale || dati.ragione_sociale || '',
+                partita_iva:     prev.partita_iva     || dati.partita_iva     || '',
+                codice_fiscale:  prev.codice_fiscale  || dati.codice_fiscale  || '',
+                indirizzo:       prev.indirizzo        || dati.indirizzo       || '',
+                cap:             prev.cap              || dati.cap             || '',
+                comune:          prev.comune           || dati.comune          || '',
+                provincia:       prev.provincia        || dati.provincia       || '',
+                nazione:         prev.nazione          || dati.nazione         || 'IT',
+              }));
+            }} />
+          )}
           <div style={{ display: 'grid', gap: '16px' }}>
             {/* Ragione Sociale */}
             <div>

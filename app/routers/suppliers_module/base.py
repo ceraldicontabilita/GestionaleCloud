@@ -683,16 +683,26 @@ async def get_fatture_fornitore(
     
     try:
         fornitore = await db[Collections.SUPPLIERS].find_one(
-            {"$or": [{"id": supplier_id}, {"partita_iva": supplier_id}]},
+            {"$or": [{"id": supplier_id}, {"partita_iva": supplier_id}, {"piva": supplier_id}]},
             {"_id": 0}
         )
         
         if not fornitore:
             raise HTTPException(status_code=404, detail="Fornitore non trovato")
         
-        partita_iva = fornitore.get("partita_iva")
+        # Il DB usa sia 'piva' che 'partita_iva' come campo
+        partita_iva = fornitore.get("partita_iva") or fornitore.get("piva")
         
-        query = {
+        if not partita_iva:
+            return {
+                "fornitore": {"id": fornitore.get("id"), "partita_iva": None, "ragione_sociale": fornitore.get("nome", "")},
+                "estratto": [],
+                "totali": {"numero_documenti": 0, "importo_totale": 0},
+                "pagination": {"total": 0, "limit": limit, "skip": skip}
+            }
+
+        # Filtro fornitore — deve sempre restare in AND con gli altri filtri
+        supplier_filter = {
             "$or": [
                 {"fornitore_partita_iva": partita_iva},
                 {"supplier_vat": partita_iva},
@@ -700,17 +710,42 @@ async def get_fatture_fornitore(
             ]
         }
         
+        # Filtri aggiuntivi da combinare in $and
+        extra_filters = []
+
         if anno:
-            query["$or"] = [
-                {"data_documento": {"$regex": f"^{anno}"}},
-                {"invoice_date": {"$regex": f"^{anno}"}}
-            ]
-        
+            extra_filters.append({
+                "$or": [
+                    {"data_documento": {"$regex": f"^{anno}"}},
+                    {"invoice_date": {"$regex": f"^{anno}"}}
+                ]
+            })
+
+        if data_da:
+            extra_filters.append({"$or": [
+                {"data_documento": {"$gte": data_da}},
+                {"invoice_date": {"$gte": data_da}}
+            ]})
+        if data_a:
+            extra_filters.append({"$or": [
+                {"data_documento": {"$lte": data_a}},
+                {"invoice_date": {"$lte": data_a}}
+            ]})
+        if importo_min:
+            extra_filters.append({"importo_totale": {"$gte": importo_min}})
+        if importo_max:
+            extra_filters.append({"importo_totale": {"$lte": importo_max}})
+
         if tipo and tipo != "tutti":
             if tipo == "nota_credito":
-                query["tipo_documento"] = {"$in": ["TD04", "TD05", "NC"]}
+                extra_filters.append({"tipo_documento": {"$in": ["TD04", "TD05", "NC"]}})
             elif tipo == "fattura":
-                query["tipo_documento"] = {"$nin": ["TD04", "TD05", "NC"]}
+                extra_filters.append({"tipo_documento": {"$nin": ["TD04", "TD05", "NC"]}})
+
+        if extra_filters:
+            query = {"$and": [supplier_filter] + extra_filters}
+        else:
+            query = supplier_filter
         
         fatture = await db["invoices"].find(query, {"_id": 0}).sort("data_documento", -1).skip(skip).limit(limit).to_list(limit)
         totale = await db["invoices"].count_documents(query)
@@ -733,7 +768,7 @@ async def get_fatture_fornitore(
             "fornitore": {
                 "id": fornitore.get("id"),
                 "partita_iva": partita_iva,
-                "ragione_sociale": fornitore.get("ragione_sociale") or fornitore.get("denominazione")
+                "ragione_sociale": fornitore.get("ragione_sociale") or fornitore.get("nome") or fornitore.get("denominazione", "")
             },
             "estratto": estratto,
             "totali": {
@@ -748,3 +783,72 @@ async def get_fatture_fornitore(
     except Exception as e:
         logger.error(f"Errore recupero fatture fornitore {supplier_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+
+@router.get("/{supplier_id}/dati-da-fatture")
+async def get_dati_da_fatture(supplier_id: str) -> Dict[str, Any]:
+    """Estrae i dati anagrafici del fornitore dalla sua prima fattura XML disponibile."""
+    db = Database.get_db()
+
+    fornitore = await db[Collections.SUPPLIERS].find_one(
+        {"$or": [{"id": supplier_id}, {"partita_iva": supplier_id}, {"piva": supplier_id}]},
+        {"_id": 0}
+    )
+    if not fornitore:
+        raise HTTPException(status_code=404, detail="Fornitore non trovato")
+
+    # Prova entrambi i campi PIVA (il DB ha sia 'piva' troncata che 'partita_iva' completa)
+    piva_options = list(filter(None, [
+        fornitore.get("partita_iva"),
+        fornitore.get("piva")
+    ]))
+    if not piva_options:
+        return {"trovato": False, "dati": {}}
+
+    piva = piva_options[0]  # priorità a partita_iva (campo completo)
+
+    # Cerca nella collection invoices i dati del cedente/fornitore
+    invoice = await db["invoices"].find_one(
+        {"$or": [
+            {"cedente_piva": {"$in": piva_options}},
+            {"fornitore_partita_iva": {"$in": piva_options}},
+            {"supplier_vat": {"$in": piva_options}}
+        ]},
+        {"_id": 0}
+    )
+
+    if not invoice:
+        return {"trovato": False, "dati": {}}
+
+    dati = {
+        "ragione_sociale": (
+            invoice.get("cedente_denominazione") or
+            invoice.get("supplier_name") or
+            fornitore.get("nome") or ""
+        ),
+        "partita_iva": invoice.get("cedente_piva") or piva or "",
+        "codice_fiscale": invoice.get("cedente_codice_fiscale") or "",
+        "indirizzo": (
+            invoice.get("cedente_indirizzo") or
+            invoice.get("cedente_sede_indirizzo") or ""
+        ),
+        "cap": (
+            invoice.get("cedente_cap") or
+            invoice.get("cedente_sede_cap") or ""
+        ),
+        "comune": (
+            invoice.get("cedente_comune") or
+            invoice.get("cedente_sede_comune") or ""
+        ),
+        "provincia": (
+            invoice.get("cedente_provincia") or
+            invoice.get("cedente_sede_provincia") or ""
+        ),
+        "nazione": (
+            invoice.get("cedente_nazione") or
+            invoice.get("cedente_sede_nazione") or "IT"
+        ),
+    }
+
+    return {"trovato": True, "dati": dati}
