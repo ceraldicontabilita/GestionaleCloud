@@ -224,3 +224,17 @@ async def popola(start_anno: int = 2022, end_anno: int = 2025,
             await db["sanificazione_schede"].update_one({"mese": mese, "anno": anno}, {"$set": scheda}, upsert=True)
             cnt += 1
     return {"success": True, "schede_aggiornate": cnt}
+
+# Alias per compatibilità con vecchio frontend
+@router.post("/haccp/popola-sanificazione")
+async def popola_alias(anno: int = Query(2025), mese: int = Query(None),
+                        db: AsyncIOMotorDatabase = Depends(get_database)):
+    """Alias — il frontend chiama questo path."""
+    return await popola(start_anno=anno, end_anno=anno, db=db)
+
+@router.post("/scheda/{anno}/{mese}/giorno-completo")
+async def giorno_completo_path(anno: int, mese: int, giorno: int = Query(...),
+                                operatore: str = Query(default=""),
+                                db: AsyncIOMotorDatabase = Depends(get_database)):
+    """Alias con anno/mese nel path — usato dal frontend."""
+    return await giorno_completo(anno=anno, mese=mese, giorno=giorno, operatore=operatore, db=db)

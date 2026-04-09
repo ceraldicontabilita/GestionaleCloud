@@ -156,3 +156,72 @@ async def riepilogo_fornitori(anno: Optional[int]=None, mese: Optional[int]=None
     result = await db["sconti_merce"].aggregate(pipeline).to_list(100)
     for r in result: r["fornitore"]=r.pop("_id",""); r["valore_totale"]=round(r["valore_totale"],2)
     return result
+
+
+@router.get("/prodotti-fornitore")
+async def prodotti_fornitore(fornitore: Optional[str] = Query(None),
+                              db: AsyncIOMotorDatabase = Depends(get_database)):
+    """Lista prodotti trovati nelle fatture per un fornitore (per datalist form)."""
+    if not fornitore or not fornitore.strip():
+        return []
+    forn = fornitore.strip().lower()
+    # Cerca in fatture (formato tracciabilita)
+    pipeline = [
+        {"$match": {"fornitore": {"$regex": forn, "$options": "i"}}},
+        {"$unwind": "$prodotti"},
+        {"$group": {"_id": "$prodotti.descrizione"}},
+        {"$match": {"_id": {"$ne": None, "$ne": ""}}},
+        {"$sort": {"_id": 1}}, {"$limit": 500}
+    ]
+    docs = await db["fatture"].aggregate(pipeline).to_list(500)
+    if not docs:
+        # Fallback: fatture_passive (formato gestionale2)
+        pipeline2 = [
+            {"$match": {"fornitore_denominazione": {"$regex": forn, "$options": "i"}}},
+            {"$unwind": "$linee"},
+            {"$group": {"_id": "$linee.descrizione"}},
+            {"$match": {"_id": {"$ne": None, "$ne": ""}}},
+            {"$sort": {"_id": 1}}, {"$limit": 500}
+        ]
+        docs = await db["fatture_passive"].aggregate(pipeline2).to_list(500)
+    return sorted({d["_id"].strip() for d in docs if d.get("_id") and d["_id"].strip()})
+
+
+@router.post("/valorizza-da-fatture")
+async def valorizza(db: AsyncIOMotorDatabase = Depends(get_database)):
+    """Per sconti con valore_totale=0, cerca il prezzo nelle fatture dello stesso fornitore."""
+    sconti = await db["sconti_merce"].find({"valore_totale": 0}, {"_id": 0}).to_list(5000)
+    aggiornati = non_trovati = 0
+    for s in sconti:
+        forn = s.get("fornitore", "")
+        nome = s.get("prodotto", "").strip().upper()
+        qty = float(s.get("cartoni", 0) or s.get("pezzi_totali", 0) or 0)
+        if not nome:
+            non_trovati += 1
+            continue
+        # Cerca prezzo in fatture
+        pipeline = [
+            {"$match": {"fornitore": {"$regex": re.escape(forn[:15]), "$options": "i"}}},
+            {"$unwind": "$prodotti"},
+            {"$match": {"prodotti.prezzo": {"$gt": 0}}},
+            {"$group": {"_id": {"$toUpper": "$prodotti.descrizione"},
+                        "prezzo": {"$avg": {"$toDouble": "$prodotti.prezzo"}}}},
+        ]
+        prezzi = await db["fatture"].aggregate(pipeline).to_list(2000)
+        pm = {d["_id"]: d["prezzo"] for d in prezzi if d.get("_id")}
+        vu = pm.get(nome, 0)
+        if not vu:
+            # Match prime 2 parole
+            w = nome.split()[:2]
+            for k, v in pm.items():
+                if k.split()[:2] == w:
+                    vu = v
+                    break
+        if vu > 0:
+            vt = round(vu * qty, 2) if qty else vu
+            await db["sconti_merce"].update_one({"id": s["id"]},
+                {"$set": {"valore_unitario": vu, "valore_totale": vt}})
+            aggiornati += 1
+        else:
+            non_trovati += 1
+    return {"success": True, "aggiornati": aggiornati, "non_trovati": non_trovati}
