@@ -167,8 +167,8 @@ export default function Dashboard() {
 
   // Carica dati widget cucina
   useEffect(() => {
-    // Ordini in attesa (bozze da tracciabilità)
-    api.get('/api/ordini-fornitori/bozze/count')
+    // Ordini in attesa (bozze cucina)
+    api.get('/api/cucina/ordini-fornitori/bozze/count')
        .then(r => setOrdiniCount(r.data.count || 0)).catch(() => {});
 
     // Ricette: usa l'endpoint stats che ritorna totale e da_approvare
@@ -1196,7 +1196,7 @@ export default function Dashboard() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
           {/* Ordini in attesa */}
           <Link
-            to="/ordini-fornitori"
+            to="/cucina"
             data-testid="stat-ordini-attesa"
             style={{ textDecoration: 'none' }}
           >
@@ -1214,7 +1214,7 @@ export default function Dashboard() {
                 {ordiniCount}
               </div>
               <div style={{ fontSize: 13, fontWeight: 600, color: COLORS.primary, marginTop: 2 }}>Ordini in attesa</div>
-              <div style={{ fontSize: 11, color: COLORS.gray, marginTop: 2 }}>Bozze da tracciabilità</div>
+              <div style={{ fontSize: 11, color: COLORS.gray, marginTop: 2 }}>Bozze cucina</div>
             </div>
           </Link>
 

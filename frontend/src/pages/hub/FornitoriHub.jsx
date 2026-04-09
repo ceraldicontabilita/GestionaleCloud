@@ -3,11 +3,9 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAnnoGlobale } from '../../contexts/AnnoContext';
 
 const FornitoriContent   = lazy(() => import('../Fornitori.jsx'));
-const OrdiniContent      = lazy(() => import('../OrdiniFornitori.jsx'));
 
 const TABS = [
-  { id: 'lista',  label: '🏢 Fornitori',        color: '#3b82f6' },
-  { id: 'ordini', label: '📦 Ordini Fornitori', color: '#8b5cf6' },
+  { id: 'lista',  label: '🏢 Fornitori', color: '#3b82f6' },
 ];
 
 const Loading = () => (
@@ -26,7 +24,6 @@ const Loading = () => (
 );
 
 const getTabFromPath = (pathname) => {
-  if (pathname.includes('/ordini-fornitori') || pathname.includes('/fornitori/ordini')) return 'ordini';
   return 'lista';
 };
 
@@ -84,7 +81,6 @@ export default function FornitoriHub() {
         )}
         <Suspense fallback={<Loading />}>
           {activeTab === 'lista'  && <FornitoriContent />}
-          {activeTab === 'ordini' && <OrdiniContent />}
         </Suspense>
       </div>
     </div>

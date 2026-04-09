@@ -220,7 +220,7 @@ from app.routers import (
     config, search, ocr_assegni, portal,
     finanziaria, public_api,
     comparatore, gestione_riservata, commercialista, scadenze,
-    riconciliazione_fornitori, ordini_fornitori, payroll,
+    riconciliazione_fornitori, payroll,
     pianificazione, admin, verifica_coerenza, documenti,
     cedolini, tfr, cespiti, scadenzario_fornitori,
     controllo_gestione, indici_bilancio, chiusura_esercizio,
@@ -453,7 +453,6 @@ app.include_router(gestione_riservata.router, prefix="/api/gestione-riservata", 
 app.include_router(commercialista.router, prefix="/api/commercialista", tags=["Commercialista"])
 app.include_router(scadenze.router, prefix="/api/scadenze", tags=["Scadenze e Notifiche"])
 app.include_router(riconciliazione_fornitori.router, prefix="/api/riconciliazione-fornitori", tags=["Riconciliazione Fornitori"])
-app.include_router(ordini_fornitori.router, prefix="/api/ordini-fornitori", tags=["Ordini Fornitori"])
 app.include_router(pianificazione.router, prefix="/api/pianificazione", tags=["Pianificazione"])
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
 app.include_router(verifica_coerenza.router, prefix="/api/verifica-coerenza", tags=["Verifica Coerenza Dati"])
