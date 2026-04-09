@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, memo } from 'react';
+import React, { useState, useRef, useCallback, memo, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, FileText, BookOpen, Building2,
@@ -27,6 +27,7 @@ const ALTRO_ITEMS = [
   { to: '/cucina', label: 'Cucina', Icon: UtensilsCrossed },
   { to: '/documenti', label: 'Documenti', Icon: BookMarked },
   { to: '/noleggio', label: 'Noleggio', Icon: Car },
+  { to: '/gestione-email', label: 'Email', Icon: Settings },
   { to: '/strumenti', label: 'Strumenti', Icon: Wrench },
   { to: '/admin', label: 'Admin', Icon: Settings },
 ];
@@ -172,27 +173,27 @@ const S = {
 /* ─── Dropdown "Altro" — memoizzato separatamente per evitare re-render del nav ─── */
 const AltroDropdown = memo(function AltroDropdown({ isAltroActive }) {
   const [open, setOpen] = useState(false);
-  const closeRef = useRef(null);
+  const wrapRef = useRef(null);
 
-  const onEnter = useCallback(() => {
-    if (closeRef.current) { clearTimeout(closeRef.current); closeRef.current = null; }
-    setOpen(true);
-  }, []);
-
-  const onLeave = useCallback(() => {
-    closeRef.current = setTimeout(() => setOpen(false), 180);
-  }, []);
+  // Chiudi se si clicca fuori
+  useEffect(() => {
+    if (!open) return;
+    const handle = (e) => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handle);
+    return () => document.removeEventListener('mousedown', handle);
+  }, [open]);
 
   return (
-    <div style={S.dropdownWrap} onMouseEnter={onEnter} onMouseLeave={onLeave}>
+    <div ref={wrapRef} style={S.dropdownWrap}>
       <button
-        style={S.navItem(isAltroActive)}
+        style={S.navItem(isAltroActive || open)}
         data-testid="nav-altro-btn"
         aria-expanded={open}
+        onClick={() => setOpen(v => !v)}
       >
-        <span style={{ fontSize: 13 }}>...</span>
+        <span style={{ fontSize: 13 }}>···</span>
         <span>Altro</span>
-        <ChevronDown size={11} style={{ opacity: 0.7, marginLeft: 1 }} />
+        <ChevronDown size={11} style={{ opacity: 0.7, marginLeft: 1, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
       </button>
       {open && (
         <div style={S.dropdownMenu} data-testid="nav-altro-menu">
