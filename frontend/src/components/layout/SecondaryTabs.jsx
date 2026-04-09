@@ -10,6 +10,7 @@ const TAB_CONFIGS = {
     { to: '/fatture-ricevute', label: 'Fatture Ricevute' },
     { to: '/corrispettivi', label: 'Corrispettivi' },
     { to: '/archivio-fatture-ricevute', label: 'Archivio' },
+    { to: '/ciclo-passivo/import', label: 'Import XML' },
   ],
   '/riconciliazione': [
     { to: '/riconciliazione', label: 'Riconciliazione', exact: true },
@@ -51,7 +52,7 @@ export default function SecondaryTabs() {
     }
     
     // Check specific route patterns
-    if (path.startsWith('/fatture-ricevute') || path.startsWith('/corrispettivi')) {
+    if (path.startsWith('/fatture-ricevute') || path.startsWith('/corrispettivi') || path.startsWith('/archivio-fatture-ricevute') || path.startsWith('/ciclo-passivo')) {
       return TAB_CONFIGS['/fatture'];
     }
     if (path.startsWith('/f24') || path.startsWith('/iva')) {
