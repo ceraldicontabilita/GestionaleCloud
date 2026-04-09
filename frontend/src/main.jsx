@@ -51,6 +51,7 @@ const Scadenze = lazy(() => import("./pages/Scadenze.jsx"));
 const ToDo = lazy(() => import("./pages/ToDo.jsx"));
 const GestioneRiservata = lazy(() => import("./pages/GestioneRiservata.jsx"));
 const DettaglioVerbale = lazy(() => import("./pages/DettaglioVerbale.jsx"));
+const GestioneEmailMittenti = lazy(() => import("./pages/GestioneEmailMittenti.jsx"));
 const ImpostazioniF24Email = lazy(() => import("./pages/ImpostazioniF24Email.jsx"));
 const MappaGestionale = lazy(() => import("./pages/MappaGestionale.jsx"));
 const AgentiPage = lazy(() => import("./pages/Agenti.jsx"));
@@ -286,6 +287,7 @@ const router = createBrowserRouter([
       { path: "email-download/:casella", element: <LazyPage><StrumentiHub /></LazyPage> },
       { path: "visure", element: <Navigate to="/strumenti/visure" replace /> },
       { path: "impostazioni-f24-email", element: <LazyPage><ImpostazioniF24Email /></LazyPage> },
+      { path: "gestione-email", element: <LazyPage><GestioneEmailMittenti /></LazyPage> },
       
       // === INTEGRAZIONI ===
       { path: "integrazioni", element: <LazyPage><IntegrazioniHub /></LazyPage> },
