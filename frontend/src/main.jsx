@@ -27,7 +27,6 @@ const CicloPassivoHub = lazy(() => import("./pages/hub/CicloPassivoHub.jsx"));
 const CicloPassivoAdmin = lazy(() => import("./pages/CicloPassivoAdmin.jsx"));
 const FornitoriHub = lazy(() => import("./pages/hub/FornitoriHub.jsx"));
 const PrimaNotaHub = lazy(() => import("./pages/hub/PrimaNotaHub.jsx"));
-const RiconciliazioneHub = lazy(() => import("./pages/hub/RiconciliazioneHub.jsx"));
 const DipendentiHub = lazy(() => import("./pages/hr/HRPresenze.jsx"));
 const HRDipendenti = lazy(() => import("./pages/hr/HRDipendenti.jsx"));
 const HRCedolini = lazy(() => import("./pages/hr/HRCedolini.jsx"));
@@ -43,7 +42,6 @@ const IntegrazioniHub = lazy(() => import("./pages/hub/IntegrazioniHub.jsx"));
 const AdminHub = lazy(() => import("./pages/hub/AdminHub.jsx"));
 const FattureHub = lazy(() => import("./pages/hub/FattureHub.jsx"));
 const LearningMachine = lazy(() => import("./pages/LearningMachine.jsx"));
-const RiconciliazioneUnificata = lazy(() => import("./pages/RiconciliazioneUnificata.jsx"));
 
 // === STANDALONE PAGES ===
 const InserimentoRapido = lazy(() => import("./pages/InserimentoRapido.jsx"));
@@ -111,22 +109,6 @@ const router = createBrowserRouter([
       { path: "prima-nota/:tipo", element: <LazyPage><PrimaNotaHub /></LazyPage> },
       { path: "prima-nota/:tipo/:anno/:mese", element: <LazyPage><PrimaNotaHub /></LazyPage> },
       { path: "dati-provvisori", element: <LazyPage><PrimaNotaHub /></LazyPage> },
-      
-      // === RICONCILIAZIONE ===
-      // Nuova rotta principale (unificata con PayPal)
-      { path: "riconciliazione-unificata", element: <LazyPage><RiconciliazioneUnificata /></LazyPage> },
-      { path: "riconciliazione-unificata/:tab", element: <LazyPage><RiconciliazioneUnificata /></LazyPage> },
-      // Redirect vecchi URL → nuova rotta
-      { path: "riconciliazione", element: <Navigate to="/riconciliazione-unificata" replace /> },
-      { path: "riconciliazione/:tab", element: <Navigate to="/riconciliazione-unificata" replace /> },
-      { path: "riconciliazione/:tab/:id", element: <Navigate to="/riconciliazione-unificata" replace /> },
-      { path: "riconciliazione-intelligente", element: <Navigate to="/riconciliazione-unificata" replace /> },
-      { path: "riconciliazione-paypal", element: <Navigate to="/riconciliazione-unificata/paypal" replace /> },
-      { path: "gestione-assegni", element: <Navigate to="/riconciliazione-unificata/assegni" replace /> },
-      { path: "gestione-assegni/:stato", element: <Navigate to="/riconciliazione-unificata/assegni" replace /> },
-      { path: "archivio-bonifici", element: <LazyPage><RiconciliazioneHub /></LazyPage> },
-      { path: "archivio-bonifici/:tab", element: <LazyPage><RiconciliazioneHub /></LazyPage> },
-      { path: "archivio-bonifici/:anno/:mese", element: <LazyPage><RiconciliazioneHub /></LazyPage> },
       
       // === DIPENDENTI ===
       { path: "dipendenti", element: <LazyPage><HRDipendenti /></LazyPage> },

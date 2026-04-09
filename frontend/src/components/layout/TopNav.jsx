@@ -14,7 +14,6 @@ const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', Icon: LayoutDashboard },
   { to: '/fatture', label: 'Fatture', Icon: FileText },
   { to: '/prima-nota', label: 'Prima Nota', Icon: BookOpen },
-  { to: '/riconciliazione-unificata', label: 'Banca', Icon: Building2 },
   { to: '/fisco', label: 'Fisco', Icon: Landmark },
   { to: '/fornitori', label: 'Fornitori', Icon: Building2 },
   { to: '/dipendenti', label: 'HR', Icon: Users },
