@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom'
 import {
   Shield, Users, Gavel, Home, FileText, Receipt, Landmark,
   FileCheck, CreditCard, Car, Banknote, Inbox, Mail, Building2,
-  ClipboardList
+  ClipboardList, BookOpen
 } from 'lucide-react'
 import { colors, font } from '../lib/utils'
 
@@ -34,6 +34,7 @@ const links = [
   { to: '/cedolini',               label: 'Cedolini',        icon: Receipt },
   { to: '/estratto-conto',         label: 'EC',              icon: Landmark },
   { to: '/distinte',               label: 'Distinte',        icon: Banknote },
+  { to: '/prima-nota',            label: '📓 Prima Nota',   icon: BookOpen },
   { to: '/alert-fiscali',          label: '⚠️ Alert',        icon: Shield },
   { to: '/tributi',                label: '🏠 Tributi',      icon: Home },
   { to: '/fornitori',              label: '🏭 Fornitori',    icon: Building2 },
