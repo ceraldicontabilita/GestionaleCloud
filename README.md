@@ -143,3 +143,85 @@ Il gestionale2 coesiste con il repo `tracciabilita` (ceraldiapp.it):
 - Tab interni: useState, non navigate()
 - Nessun file alias/wrapper: correggere l'import nel file originale
 - PEC Aruba: imaps.pec.aruba.it porta 993, user fatturazioneceraldi@pec.it
+
+---
+
+## Autenticazione (aggiunta in Chat 7)
+
+Sistema multi-livello aggiunto da Emergent sopra il codice esistente.
+Nessun router o pagina esistente modificata.
+
+### Livelli di accesso
+
+| Livello | Tipo login | Accesso | JWT |
+|---------|-----------|---------|-----|
+| Admin | username + password | Tutto il gestionale | 1 mese |
+| Tracciabilità | PIN reparto | /haccp/*, /ordini, /sconti-merce | Nessuna scadenza |
+| Operatore | PIN personale | Solo scarico banco + magazzino | Nessuna scadenza |
+
+### Schermata iniziale
+```
+Ceraldi Group
+      |
+┌─────┴──────┬────────────┐
+Amministrazione  Tracciabilità  Operatore
+      |              |              |
+  user+pass    PIN reparto    PIN personale
+                    |
+          Pasticceria/Rosticceria/Extra
+```
+
+### Collection log_operatori (nuova)
+```
+operatore, tipo_operazione, prodotto,
+quantita, reparto, data, ora
+```
+Visibile solo all'admin con filtri e export CSV.
+
+### Dipendenti con PIN (campo "pin" in collection dipendenti)
+PIN salvati come hash bcrypt — MAI in chiaro.
+Moscato/Parisi/Vespa/Capezzuto/Carotenuto/Murolo/
+Lisina/Russo/Viviana/Guarino/Taiano/Kikko
+
+---
+
+## Deploy (Chat 7)
+
+### Piattaforma
+Emergent.sh — agente E-2, modalità App Full Stack
+
+### Flusso
+```
+GitHub ceraldicontabilita/gestionale2 (branch main)
+        ↓ import Emergent
+   npm run build (frontend/)
+        ↓
+   FastAPI :8001 serve React build + tutte le API
+        ↓
+   Emergent hosting → dominio custom (da configurare)
+        ↓
+   MongoDB Atlas cluster0.vofh7iz (invariato)
+```
+
+### Variabili d'ambiente (solo nel pannello Emergent — mai nel codice)
+```
+MONGODB_ATLAS_URI
+DB_NAME              = Gestionale
+ADMIN_PASSWORD
+ADMIN_EMAIL
+PEC_HOST             = imaps.pec.aruba.it
+PEC_USER             = fatturazioneceraldi@pec.it
+PEC_PASSWORD
+GMAIL_USER           = ceraldigroupsrl@gmail.com
+GMAIL_APP_PASSWORD
+ANTHROPIC_API_KEY
+PIN_PASTICCERIA      = 1234
+PIN_ROSTICCERIA      = 5678
+PIN_EXTRA            = 9999
+SECRET_KEY           (generata da Emergent)
+```
+
+### Sicurezza post-deploy
+- Revocare token GitHub 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
+- Creare nuovo token sola lettura per aggiornamenti futuri
+- Credenziali solo nel pannello Environment Variables Emergent
