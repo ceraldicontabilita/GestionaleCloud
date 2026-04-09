@@ -272,6 +272,7 @@ from app.routers import google_auth  # Google OAuth - Login con Google
 from app.routers import openclaw  # OpenClaw/MoltBot AI Assistant
 from app.routers.agenti import router as r_agenti  # Agenti AI
 from app.routers import settings_router  # Impostazioni Gestionale
+from app.routers.erp_bridge import router as erp_bridge_router  # Ponte Tracciabilità → Gestionale
 
 
 # =============================================================================
@@ -287,6 +288,7 @@ app.include_router(google_auth.router, prefix="/api", tags=["Google OAuth"])
 app.include_router(openclaw.router, prefix="/api", tags=["OpenClaw AI Assistant"])
 app.include_router(r_agenti, prefix="/api", tags=["Agenti AI"])
 app.include_router(settings_router.router, prefix="/api", tags=["Impostazioni"])
+app.include_router(erp_bridge_router)  # Ponte Tracciabilità → Gestionale (/api/erp/ponte)
 
 # --- F24 Module ---
 app.include_router(f24_main.router, prefix="/api/f24", tags=["F24"])

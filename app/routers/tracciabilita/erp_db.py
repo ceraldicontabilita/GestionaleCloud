@@ -1,16 +1,15 @@
 """
-Connessione dedicata a azienda_erp_db (MongoDB Atlas - stesso cluster).
+Connessione dedicata al DB Gestionale (MongoDB Atlas - stesso cluster).
+ERP_DB_NAME ora punta a 'Gestionale' (aggiornato da azienda_erp_db).
 Usare `erp_db` in tutti i router /api/erp/*.
 """
 import os
-import re
 from motor.motor_asyncio import AsyncIOMotorClient
-from pathlib import Path
 
 
 _MONGO_URL = os.environ['MONGO_URL']
-_ERP_DB_NAME = os.environ.get('ERP_DB_NAME', 'azienda_erp_db')
-# Usa lo stesso cluster Atlas ma DB diverso
+# Default aggiornato: il DB di produzione si chiama "Gestionale"
+_ERP_DB_NAME = os.environ.get('ERP_DB_NAME', 'Gestionale')
 _erp_client = AsyncIOMotorClient(_MONGO_URL)
 erp_db = _erp_client[_ERP_DB_NAME]
 
