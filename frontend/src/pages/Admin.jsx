@@ -4,6 +4,7 @@ import api from "../api";
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { STYLES, COLORS, button, badge, formatEuro } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
+import { useHashState } from '../hooks/useHashState';
 
 export default function Admin() {
   const { anno } = useAnnoGlobale();
@@ -11,27 +12,27 @@ export default function Admin() {
   const [loading, setLoading] = useState(true);
   const [dbStatus, setDbStatus] = useState(null);
   const [schedulerStatus, setSchedulerStatus] = useState(null);
-  // URL Tab Support
   const navigate = useNavigate();
   const location = useLocation();
-  
+
+  // Deep link: tab sincronizzato con URL hash (#tab=email, #tab=system, ecc.)
   const getTabFromPath = () => {
-    const path = location.pathname;
-    const match = path.match(/\/admin\/([\w-]+)/);
+    const match = location.pathname.match(/\/admin\/([\w-]+)/);
     return match ? match[1] : 'email';
   };
-  
-  const [activeTab, setActiveTab] = useState(getTabFromPath());
-  
+
+  const [hs, setHs] = useHashState({ tab: getTabFromPath() });
+  const activeTab = hs.tab;
+
   const handleTabChange = (tabId) => {
-    setActiveTab(tabId);
+    setHs('tab', tabId);
     navigate(`/admin/${tabId}`);
   };
-  
+
   useEffect(() => {
     const tab = getTabFromPath();
-    if (tab !== activeTab) setActiveTab(tab);
-  }, [location.pathname]);
+    if (tab !== activeTab) setHs('tab', tab);
+  }, [location.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
   const [triggerLoading, setTriggerLoading] = useState(false);
   
   // Email accounts

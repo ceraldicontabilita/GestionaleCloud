@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { formatEuro, formatDateIT, STYLES, COLORS, button, badge } from '../lib/utils';
+import { useHashState } from '../hooks/useHashState';
 
 const MESI = [
   { value: '', label: 'Tutti i mesi' },
@@ -80,20 +81,26 @@ const styles = {
 
 export default function ArchivioFatture() {
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
   const { anno } = useAnnoGlobale();
 
-  // Dati archivio
+  // Deep link: filtri sincronizzati con URL hash
+  // es: /archivio-fatture-ricevute#mese=3&stato=da_pagare&search=rossi
+  const [hs, setHs, setHsMany] = useHashState({
+    mese: '',
+    fornitore: '',
+    stato: '',
+    search: '',
+  });
+  const mese     = hs.mese;
+  const fornitore = hs.fornitore;
+  const stato    = hs.stato;
+  const search   = hs.search;
+
+  // Dati
   const [fatture, setFatture] = useState([]);
   const [fornitori, setFornitori] = useState([]);
   const [statistiche, setStatistiche] = useState(null);
   const [loading, setLoading] = useState(true);
-
-  // Filtri (anno viene dal contesto globale)
-  const [mese, setMese] = useState(searchParams.get('mese') || '');
-  const [fornitore, setFornitore] = useState(searchParams.get('fornitore') || searchParams.get('fornitore_piva') || '');
-  const [stato, setStato] = useState(searchParams.get('stato') || '');
-  const [search, setSearch] = useState(searchParams.get('search') || '');
 
   // ==================== FETCH FUNCTIONS ====================
   
@@ -220,13 +227,13 @@ export default function ArchivioFatture() {
               </div>
               <div>
                 <label style={{ fontSize: 11, color: '#6b7280', display: 'block', marginBottom: 4 }}>Mese</label>
-                <select value={mese} onChange={(e) => setMese(e.target.value)} style={{ ...selectStyle, minWidth: 110, fontSize: 13 }}>
+                <select value={mese} onChange={(e) => setHs('mese', e.target.value)} style={{ ...selectStyle, minWidth: 110, fontSize: 13 }}>
                   {MESI.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
                 </select>
               </div>
               <div>
                 <label style={{ fontSize: 11, color: '#6b7280', display: 'block', marginBottom: 4 }}>Fornitore</label>
-                <select value={fornitore} onChange={(e) => setFornitore(e.target.value)} style={{ ...selectStyle, minWidth: 180, fontSize: 13 }}>
+                <select value={fornitore} onChange={(e) => setHs('fornitore', e.target.value)} style={{ ...selectStyle, minWidth: 180, fontSize: 13 }}>
                   <option value="">Tutti i fornitori</option>
                   {fornitori.map(f => (
                     <option key={f.partita_iva} value={f.partita_iva}>
@@ -237,7 +244,7 @@ export default function ArchivioFatture() {
               </div>
               <div>
                 <label style={{ fontSize: 11, color: '#6b7280', display: 'block', marginBottom: 4 }}>Stato</label>
-                <select value={stato} onChange={(e) => setStato(e.target.value)} style={{ ...selectStyle, minWidth: 100, fontSize: 13 }}>
+                <select value={stato} onChange={(e) => setHs('stato', e.target.value)} style={{ ...selectStyle, minWidth: 100, fontSize: 13 }}>
                   <option value="">Tutti</option>
                   <option value="importata">Importate</option>
                   <option value="anomala">Anomale</option>
@@ -250,7 +257,7 @@ export default function ArchivioFatture() {
                   type="text"
                   placeholder="Numero fattura, fornitore..."
                   value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                  onChange={(e) => setHs('search', e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && fetchFatture()}
                   style={{ ...inputStyle, width: '100%', fontSize: 13 }}
                 />

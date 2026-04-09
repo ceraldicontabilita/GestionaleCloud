@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useHashState } from '../hooks/useHashState';
 import api from '../api';
 import { COLORS, STYLES, button, badge } from '../lib/utils';
 import { PageLayout, PageSection, PageEmpty, PageLoading } from '../components/PageLayout';
@@ -120,7 +121,9 @@ function PatternCard({ p }) {
 
 // ---- PAGINA PRINCIPALE ----
 export default function AgentiPage() {
-  const [activeTab, setActiveTab] = useState('agenti');
+  const [hs, setHs] = useHashState({ tab: 'agenti' });
+  const activeTab = hs.tab;
+  const setActiveTab = (t) => setHs('tab', t);
   const [stati, setStati] = useState([]);
   const [segnalazioni, setSegnalazioni] = useState([]);
   const [pattern, setPattern] = useState([]);

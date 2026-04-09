@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useHashState } from '../hooks/useHashState';
 import { Link } from 'react-router-dom';
 import api from "../api";
 import { formatDateIT, formatEuro } from '../lib/utils';
@@ -16,7 +17,10 @@ export default function Corrispettivi() {
   const [corrispettivi, setCorrispettivi] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
-  const [selectedItem, setSelectedItem] = useState(null);
+
+  // Deep link: item selezionato sincronizzato con hash (#selected=2026-04-08)
+  const [hs, setHs] = useHashState({ selected: '' });
+  const selectedItem = corrispettivi.find(c => c.data === hs.selected) || null;
 
   useEffect(() => {
     loadCorrispettivi();
@@ -167,7 +171,7 @@ export default function Corrispettivi() {
           {selectedItem && (
             <PageSection title={`Dettaglio Corrispettivo ${selectedItem.data}`} icon="📋" style={{ marginTop: 20 }}>
               <button
-                onClick={() => setSelectedItem(null)}
+                onClick={() => setHs('selected', '')}
                 style={{
                   position: 'absolute',
                   top: 16,
@@ -303,7 +307,7 @@ export default function Corrispettivi() {
                         </td>
                         <td style={{ padding: '14px 16px', textAlign: 'center' }}>
                           <button
-                            onClick={() => setSelectedItem(c)}
+                            onClick={() => setHs('selected', c.data || '')}
                             style={{
                               padding: '6px 10px',
                               background: '#eff6ff',

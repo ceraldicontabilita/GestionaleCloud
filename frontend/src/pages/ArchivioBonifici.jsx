@@ -4,8 +4,9 @@ import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { formatEuro, formatDateIT, STYLES, COLORS, button, badge } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
+import { useHashState } from '../hooks/useHashState';
 
-const formatDate = formatDateIT; // Alias per retrocompatibilità
+const formatDate = formatDateIT;
 
 export default function ArchivioBonifici() {
   const { anno } = useAnnoGlobale();
@@ -22,34 +23,40 @@ export default function ArchivioBonifici() {
   const [editingNote, setEditingNote] = useState(null);
   const [noteText, setNoteText] = useState('');
   const [downloadingZip, setDownloadingZip] = useState(false);
-  const [associaDropdown, setAssociaDropdown] = useState(null); // ID bonifico con dropdown aperto
+  const [associaDropdown, setAssociaDropdown] = useState(null);
   const [operazioniCompatibili, setOperazioniCompatibili] = useState([]);
   const [loadingOperazioni, setLoadingOperazioni] = useState(false);
   const [fattureCompatibili, setFattureCompatibili] = useState([]);
   const [associaFatturaDropdown, setAssociaFatturaDropdown] = useState(null);
   const [loadingFatture, setLoadingFatture] = useState(false);
   const [dipendenteIbanMatch, setDipendenteIbanMatch] = useState(null);
-  // URL Tab Support
+
   const navigate = useNavigate();
   const location = useLocation();
 
   const getTabFromPath = () => {
-    const path = location.pathname;
-    const match = path.match(/\/archivio-bonifici\/([\w-]+)/);
+    const match = location.pathname.match(/\/archivio-bonifici\/([\w-]+)/);
     return match ? match[1] : 'da_associare';
   };
 
-  const [activeTab, setActiveTab] = useState(getTabFromPath());
+  // Deep link: tab + filtri sincronizzati con URL hash
+  const [hs, setHs, setHsMany] = useHashState({
+    tab: getTabFromPath(),
+    search: '',
+    ordinante: '',
+    beneficiario: '',
+  });
+  const activeTab = hs.tab;
 
   const handleTabChange = (tabId) => {
-    setActiveTab(tabId);
+    setHs('tab', tabId);
     navigate(`/archivio-bonifici/${tabId}`);
   };
 
   useEffect(() => {
     const tab = getTabFromPath();
-    if (tab !== activeTab) setActiveTab(tab);
-  }, [location.pathname]); // 'da_associare' | 'associati'
+    if (tab !== activeTab) setHs('tab', tab);
+  }, [location.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
   const initialized = useRef(false);
   const dropdownRef = useRef(null);
 

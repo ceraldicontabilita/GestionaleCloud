@@ -1,6 +1,7 @@
 import React, { lazy, Suspense, useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAnnoGlobale } from '../../contexts/AnnoContext';
+import { useHashState } from '../../hooks/useHashState';
 
 const PianoContiContent    = lazy(() => import('../PianoDeiConti.jsx'));
 const BilancioContent      = lazy(() => import('../Bilancio.jsx'));
@@ -69,17 +70,19 @@ export default function ContabilitaHub() {
   const { anno } = useAnnoGlobale();
   const navigate  = useNavigate();
   const location  = useLocation();
-  const [activeTab, setActiveTab] = useState(() => getTabFromPath(location.pathname));
-  const [error, setError]         = useState(null);
+  const [error, setError] = useState(null);
+
+  // Deep link: hash riflette il tab attivo — la route PATH è il meccanismo primario
+  const [hs, setHs] = useHashState({ tab: getTabFromPath(location.pathname) });
+  const activeTab = getTabFromPath(location.pathname); // path ha la precedenza
 
   useEffect(() => {
-    const t = getTabFromPath(location.pathname);
-    if (t !== activeTab) setActiveTab(t);
-  }, [location.pathname]);
+    setHs('tab', getTabFromPath(location.pathname));
+  }, [location.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleTabChange = (tabId) => {
     setError(null);
-    setActiveTab(tabId);
+    setHs('tab', tabId);
     navigate(tabId === 'piano-conti' ? '/contabilita' : `/contabilita/${tabId}`);
   };
 
