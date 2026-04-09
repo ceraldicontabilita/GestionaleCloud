@@ -6,10 +6,10 @@ Mittente attendibile: @pec.fatturapa.it
 
 Flusso:
   1. IMAP → INBOX PEC Aruba
-  2. Filtra email da @pec.fatturapa.it non ancora processate
+  2. Filtra email da @pec.fatturapa.it
   3. Estrae allegati XML (o ZIP con XML dentro)
   4. Chiama parse_fattura_xml + upsert in DB
-  5. Marca email come letta (flag \Seen)
+  5. Marca email come letta (flag \\Seen)
 
 REGOLA ASSOLUTA: IMAP sempre in asyncio.to_thread()
 """
@@ -35,7 +35,6 @@ SDI_SENDERS = [
 
 
 def _decode_str(s) -> str:
-    """Decodifica header email (potenzialmente encoded)."""
     if s is None:
         return ""
     parts = decode_header(s)
@@ -62,7 +61,6 @@ def _extract_xml_from_attachment(part) -> Optional[bytes]:
 
     fname_lower = filename.lower()
 
-    # ZIP contenente XML
     if fname_lower.endswith(".zip"):
         try:
             with zipfile.ZipFile(io.BytesIO(payload)) as zf:
@@ -73,15 +71,10 @@ def _extract_xml_from_attachment(part) -> Optional[bytes]:
             logger.warning(f"ZIP parse error: {e}")
         return None
 
-    # XML diretto
     if fname_lower.endswith(".xml"):
         return payload
 
-    # P7M (firmato) — estrai il contenuto DER/XML interno
     if fname_lower.endswith(".p7m"):
-        # Tenta di estrarre XML grezzo dal P7M (non verifica firma)
-        # Il payload .p7m è un envelope CMS — l'XML è spesso leggibile
-        # come fallback restituiamo il payload così com'è al parser
         return payload
 
     return None
@@ -93,9 +86,16 @@ def _fetch_fatture_from_pec_sync(
     user: str,
     password: str,
     mark_seen: bool = True,
+    only_unread: bool = True,
+    since_date: str = None,
 ) -> List[Dict[str, Any]]:
     """
     Connessione IMAP sincrona (da chiamare in asyncio.to_thread).
+
+    Args:
+        only_unread: Se True cerca solo UNSEEN, se False cerca TUTTE le email
+        since_date: Filtra email da questa data in poi (formato "01-Jan-2026")
+
     Ritorna lista di {filename, xml_bytes, subject, from, date, message_id}.
     """
     results = []
@@ -104,16 +104,27 @@ def _fetch_fatture_from_pec_sync(
     mail.login(user, password)
     mail.select("INBOX")
 
-    # Cerca email NON lette da SDI
-    # Prima prova solo UNSEEN, poi filtra per mittente
-    status, message_ids = mail.search(None, "UNSEEN")
+    # Costruisci criteri di ricerca IMAP
+    criteria = []
+    if only_unread:
+        criteria.append("UNSEEN")
+    if since_date:
+        criteria.append(f'SINCE "{since_date}"')
+
+    if criteria:
+        search_str = " ".join(criteria)
+    else:
+        search_str = "ALL"
+
+    logger.info(f"PEC IMAP search: {search_str}")
+    status, message_ids = mail.search(None, search_str)
     if status != "OK":
         logger.warning("IMAP search failed")
         mail.logout()
         return results
 
     ids = message_ids[0].split()
-    logger.info(f"PEC: {len(ids)} email non lette in INBOX")
+    logger.info(f"PEC: {len(ids)} email trovate con criteri [{search_str}]")
 
     for mid in ids:
         try:
@@ -131,7 +142,6 @@ def _fetch_fatture_from_pec_sync(
 
             # Filtra per mittente SDI
             if not _is_sdi_sender(from_addr):
-                logger.debug(f"Skip non-SDI: {from_addr}")
                 continue
 
             logger.info(f"SDI email: {subject[:60]} | from: {from_addr}")
@@ -159,7 +169,7 @@ def _fetch_fatture_from_pec_sync(
                     xml_found = True
                     logger.info(f"  → XML estratto: {filename} ({len(xml_bytes)} bytes)")
 
-            # Marca come letta solo se abbiamo estratto XML
+            # Marca come letta solo se richiesto e abbiamo estratto XML
             if xml_found and mark_seen:
                 mail.store(mid, "+FLAGS", "\\Seen")
 
@@ -176,9 +186,11 @@ async def fetch_fatture_from_pec(
     user: str,
     password: str,
     mark_seen: bool = True,
+    only_unread: bool = True,
+    since_date: str = None,
 ) -> List[Dict[str, Any]]:
     """Versione async — wrappa la chiamata IMAP sincrona."""
     return await asyncio.to_thread(
         _fetch_fatture_from_pec_sync,
-        host, port, user, password, mark_seen
+        host, port, user, password, mark_seen, only_unread, since_date
     )
