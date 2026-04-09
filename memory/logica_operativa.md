@@ -50,36 +50,56 @@ ARUBA_PEC_PASSWORD = L)9*kd5+78]?%LmF
 
 ## 2. FLUSSO EMAIL → DOCUMENTI
 
-### 2.1 Mittenti Autorizzati (`mittenti_email`, 16 record)
-- `email`: indirizzo mittente
-- `attivo`: bool
-- `cerca_per_oggetto`: bool — se true, usa `parole_chiave_ricerca` invece di FROM
-- API: `GET/POST/DELETE /api/mittenti`
+### 2.1 Mittenti Autorizzati (`mittenti_email`, 11 record — Aprile 2026)
 
-### 2.2 Download Automatico
-`email_monitor_service.py` → ogni 3600s → `sync_email_documents()` → `download_documents_from_email()`
+| Canale | Pattern | Tipo Documento | Builtin |
+|---|---|---|---|
+| pec | @pec.fatturapa.it | fattura_xml | ✓ |
+| pec | sdi@pec.fatturapa.it | fattura_xml | ✓ |
+| gmail | f.ferrantini@cedolino | cedolino | ✓ |
+| gmail | rosaria.marotta@cedolino | cedolino | ✓ |
+| gmail | partenopay@ext.comune.napoli.it | pagopa | ✓ |
+| gmail | inpscomunica@postacert.inps.gov.it | inps | ✓ |
+| gmail | notifica.acc.campania@pec.agenziariscossione.gov.it | cartella_esattoriale | ✓ |
+| gmail | no_reply@agenziariscossione.gov.it | cartella_esattoriale | ✓ |
+| gmail | auto_napoli@massivo.pec.inail.it | inail | ✓ |
+| gmail | assistenza@paypal.it | paypal | ✓ |
+| gmail | noreply-checkout@ricevute.pagopa.it | pagopa | ✓ |
 
-**AVVERTIMENTO CRITICO**: `imaplib` è SINCRONO. Qualsiasi chiamata IMAP dentro FastAPI
-DEVE usare `asyncio.to_thread()` o `run_in_executor()` per non bloccare il server.
+**Regola match**: `if pattern in from_addr.lower()` (contenimento stringa)
+**Builtin**: non eliminabili, solo disattivabili
 
-```python
-# Pattern CORRETTO (non blocca l'event loop)
-raw_docs = await asyncio.to_thread(funzione_sincrona_imap, user, password)
+### 2.2 API Mittenti
+```
+GET    /api/email-download/mittenti                                  → lista completa (pec + gmail)
+GET    /api/email-download/mittenti/check?from_addr=...&canale=pec  → check attendibilità
+POST   /api/email-download/mittenti                                  → aggiunge mittente custom
+PUT    /api/email-download/mittenti/{id}                            → aggiorna (builtin: solo attivo/descrizione)
+DELETE /api/email-download/mittenti/{id}                            → elimina (builtin: BLOCCA)
 ```
 
-### 2.3 De-duplicazione
-| Meccanismo | Collection | Campo |
-|---|---|---|
-| Message-ID email | `email_message_index` (278 record) | header univoco |
-| Hash contenuto | `documents_inbox.file_hash` | MD5/SHA-256 file |
+### 2.3 Routing per tipo_documento
+| tipo_documento | Azione |
+|---|---|
+| fattura_xml | Parser XML → `invoices` |
+| cedolino | Salva PDF in `documents_inbox` (no parser auto) |
+| pagopa | Documento generico in `documents_inbox`, categoria=pagopa |
+| inps | Documento generico, categoria=inps |
+| inail | Documento generico, categoria=inail |
+| paypal | Documento generico, categoria=paypal |
+| cartella_esattoriale | Documento generico + alert |
 
-### 2.4 Import Cedolini da Gmail
-Endpoint: `POST /api/cedolini/import-gmail?since_days=180`
-- Cerca email con "cedolino", "busta paga", "libro unico" in oggetto e corpo
-- Scarica allegati PDF/XLSX in `asyncio.to_thread()`
-- Salva in collection `cedolini` con `file_hash` per deduplicazione
-- Parsare mese/anno dal filename (es. "Busta paga - Nome - Aprile 2026.pdf")
-- 271 cedolini Gmail già importati (Apr 2026)
+### 2.4 Download PEC (Aruba)
+- Endpoint sincrono: `POST /api/email-download/pec/download-fatture-sync?since_days=365`
+- Funzione IMAP: `_pec_fetch_xml_sync()` in thread (`asyncio.to_thread()`)
+- 54 email SDI trovate, 38 fatture importate (Apr 2026)
+- Deduplicazione via `xml_hash` (MD5)
+
+### 2.5 Download Gmail (Monitor)
+- Endpoint: `POST /api/email-download/sync-email-now`
+- `sync_email_documents()` in `email_monitor_service.py`
+- Pattern matching su mittenti canale=gmail
+- Import cedolini: `POST /api/cedolini/import-gmail?since_days=180`
 
 ---
 

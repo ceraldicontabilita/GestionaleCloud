@@ -769,59 +769,129 @@ async def pulisci_duplicati() -> Dict[str, Any]:
 
 @router.get("/mittenti")
 async def list_mittenti() -> Dict[str, Any]:
-    """Lista tutti i mittenti email configurati."""
+    """Lista tutti i mittenti configurati (PEC + Gmail)."""
     db = Database.get_db()
-    mittenti = await db["mittenti_email"].find({}, {"_id": 0}).to_list(100)
-    return {"mittenti": mittenti, "count": len(mittenti)}
+    mittenti = await db["mittenti_email"].find({}, {"_id": 0}).to_list(200)
+    return {
+        "mittenti": mittenti,
+        "count": len(mittenti),
+        "pec":   [m for m in mittenti if m.get("canale") == "pec"],
+        "gmail": [m for m in mittenti if m.get("canale") == "gmail"],
+    }
+
+
+@router.get("/mittenti/check")
+async def check_mittente(from_addr: str, canale: str = "gmail") -> Dict[str, Any]:
+    """
+    Verifica se un indirizzo email è attendibile.
+    Match: if pattern in from_addr.lower() (contenimento stringa).
+    
+    Args:
+        from_addr: indirizzo mittente completo
+        canale:    'pec' o 'gmail'
+    """
+    db = Database.get_db()
+    from_lower = from_addr.lower()
+
+    mittenti = await db["mittenti_email"].find(
+        {"canale": canale, "attivo": True}, {"_id": 0}
+    ).to_list(200)
+
+    for m in mittenti:
+        pattern = m.get("pattern", "").lower()
+        if pattern and pattern in from_lower:
+            return {
+                "attendibile": True,
+                "tipo_documento": m.get("tipo_documento", "generico"),
+                "pattern":        m["pattern"],
+                "descrizione":    m.get("descrizione", ""),
+                "canale":         canale,
+            }
+
+    return {"attendibile": False, "tipo_documento": None, "pattern": None, "canale": canale}
 
 
 @router.post("/mittenti")
 async def add_mittente(payload: Dict[str, Any]) -> Dict[str, Any]:
-    """Aggiunge un nuovo mittente email."""
+    """Aggiunge un nuovo mittente personalizzato."""
+    import uuid
     db = Database.get_db()
-    email_addr = payload.get("email", "").strip().lower()
-    if not email_addr:
-        raise HTTPException(status_code=400, detail="Email obbligatoria")
-    
-    existing = await db["mittenti_email"].find_one({"email": email_addr})
+
+    pattern = payload.get("pattern", "").strip().lower()
+    canale  = payload.get("canale", "gmail").lower()
+    tipo    = payload.get("tipo_documento", "generico")
+
+    if not pattern:
+        raise HTTPException(status_code=400, detail="Campo 'pattern' obbligatorio")
+    if canale not in ("pec", "gmail"):
+        raise HTTPException(status_code=400, detail="canale deve essere 'pec' o 'gmail'")
+
+    existing = await db["mittenti_email"].find_one({"pattern": pattern, "canale": canale})
     if existing:
-        raise HTTPException(status_code=409, detail="Mittente già presente")
-    
+        raise HTTPException(status_code=409, detail="Pattern già presente per questo canale")
+
     doc = {
-        "email": email_addr,
-        "categoria": payload.get("categoria", "altro"),
-        "attivo": True,
-        "created_at": datetime.now(timezone.utc).isoformat()
+        "id":             str(uuid.uuid4()),
+        "pattern":        pattern,
+        "canale":         canale,
+        "tipo_documento": tipo,
+        "descrizione":    payload.get("descrizione", ""),
+        "attivo":         True,
+        "builtin":        False,
+        "created_at":     datetime.now(timezone.utc).isoformat(),
     }
-    # Campi opzionali per mittenti speciali
-    if "cerca_per_oggetto" in payload:
-        doc["cerca_per_oggetto"] = bool(payload["cerca_per_oggetto"])
-    if "parole_chiave_ricerca" in payload:
-        doc["parole_chiave_ricerca"] = payload["parole_chiave_ricerca"]
-    
     await db["mittenti_email"].insert_one(doc)
-    return {"success": True, "message": f"Mittente {email_addr} aggiunto"}
+    return {"success": True, "mittente": {k: v for k, v in doc.items()}}
 
 
-@router.delete("/mittenti/{email}")
-async def delete_mittente(email: str) -> Dict[str, Any]:
-    """Rimuove un mittente email."""
+@router.delete("/mittenti/{mittente_id}")
+async def delete_mittente(mittente_id: str) -> Dict[str, Any]:
+    """Elimina un mittente. I builtin non possono essere eliminati."""
     db = Database.get_db()
-    result = await db["mittenti_email"].delete_one({"email": email})
-    return {"success": True, "deleted": result.deleted_count}
+
+    doc = await db["mittenti_email"].find_one(
+        {"$or": [{"id": mittente_id}, {"pattern": mittente_id}]}, {"_id": 0}
+    )
+    if not doc:
+        raise HTTPException(status_code=404, detail="Mittente non trovato")
+    if doc.get("builtin"):
+        raise HTTPException(status_code=403, detail="I mittenti builtin non possono essere eliminati. Puoi solo disattivarli.")
+
+    await db["mittenti_email"].delete_one({"id": doc["id"]})
+    return {"success": True, "eliminato": doc["pattern"]}
 
 
-@router.put("/mittenti/{email}")
-async def update_mittente(email: str, payload: Dict[str, Any]) -> Dict[str, Any]:
-    """Aggiorna un mittente email (attivo/categoria/cerca_per_oggetto)."""
+@router.put("/mittenti/{mittente_id}")
+async def update_mittente(mittente_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Aggiorna un mittente (attivo, descrizione). I builtin non possono cambiare pattern/tipo."""
     db = Database.get_db()
-    update = {}
-    for field in ["attivo", "categoria", "cerca_per_oggetto", "parole_chiave_ricerca"]:
+
+    doc = await db["mittenti_email"].find_one(
+        {"$or": [{"id": mittente_id}, {"pattern": mittente_id}]}, {"_id": 0}
+    )
+    if not doc:
+        raise HTTPException(status_code=404, detail="Mittente non trovato")
+
+    update: Dict[str, Any] = {}
+
+    # Campi sempre modificabili
+    for field in ["attivo", "descrizione"]:
         if field in payload:
             update[field] = payload[field]
-    
-    result = await db["mittenti_email"].update_one({"email": email}, {"$set": update})
-    return {"success": True, "modified": result.modified_count}
+
+    # Campi modificabili solo per non-builtin
+    if not doc.get("builtin"):
+        for field in ["tipo_documento", "canale", "pattern"]:
+            if field in payload:
+                update[field] = payload[field]
+
+    if update:
+        await db["mittenti_email"].update_one(
+            {"$or": [{"id": mittente_id}, {"pattern": mittente_id}]},
+            {"$set": update}
+        )
+
+    return {"success": True, "modificato": doc["pattern"], "fields": list(update.keys())}
 
 
 @router.get("/dizionario-email")

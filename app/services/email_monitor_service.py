@@ -34,19 +34,76 @@ _sync_stats = {
 }
 
 
+async def _check_mittente(db, from_addr: str, canale: str) -> Optional[Dict]:
+    """
+    Verifica se un mittente è attendibile via pattern matching (if pattern in from_addr).
+    Restituisce il documento mittente se trovato, None altrimenti.
+    """
+    from_lower = from_addr.lower()
+    mittenti = await db["mittenti_email"].find(
+        {"canale": canale, "attivo": True}, {"_id": 0}
+    ).to_list(200)
+    for m in mittenti:
+        pattern = m.get("pattern", "").lower()
+        if pattern and pattern in from_lower:
+            return m
+    return None
+
+
+async def _salva_documento_generico(db, from_addr: str, subject: str, tipo: str, attachments: list, email_date: str = None):
+    """
+    Salva in documents_inbox i documenti non-XML (pagopa, inps, inail, paypal, cartella_esattoriale, cedolino).
+    """
+    import uuid, hashlib
+    from datetime import datetime, timezone
+    for att in attachments:
+        content = att.get("content") or b""
+        filename = att.get("filename", "allegato")
+        content_hash = hashlib.md5(content).hexdigest() if content else None
+
+        if content_hash:
+            existing = await db["documents_inbox"].find_one({"file_hash": content_hash}, {"_id": 0, "id": 1})
+            if existing:
+                continue
+
+        doc = {
+            "id":           str(uuid.uuid4()),
+            "filename":     filename,
+            "file_hash":    content_hash,
+            "tipo_documento": tipo,
+            "email_from":   from_addr,
+            "email_subject": subject,
+            "email_date":   email_date,
+            "fonte":        "gmail_monitor",
+            "stato":        "importato",
+            "categoria":    tipo,
+            "created_at":   datetime.now(timezone.utc).isoformat(),
+        }
+        if content:
+            import base64
+            doc["pdf_data"] = base64.b64encode(content).decode()
+
+        await db["documents_inbox"].insert_one(doc)
+        logger.info(f"[Gmail] Salvato documento {tipo}: {filename} da {from_addr}")
+
+
 async def sync_email_documents(db, giorni: int = 30) -> Dict[str, Any]:
     """
-    Scarica documenti dalla posta in modo SICURO.
-    - Filtra solo mittenti configurati
-    - NON sovrascrive mai documenti esistenti
-    - Salta sempre i duplicati (via dizionario Message-ID + hash)
-    - Processa fatture XML e inserisce in Prima Nota Banca se metodo SEPA/banca/carta
-    - Mittenti con cerca_per_oggetto=True vengono cercati per parole chiave
+    Scarica documenti dalla Gmail con routing intelligente per tipo_documento.
+    
+    Flusso:
+    1. Scarica email dai mittenti attendibili (pattern matching canale=gmail)
+    2. Per ogni email → check mittente → tipo_documento
+    3. fattura_xml → parser XML → invoices
+    4. cedolino → salva PDF in documents_inbox (no parser auto)
+    5. pagopa/inps/inail/paypal/cartella_esattoriale → documento generico/alert
+
+    IMAP sincrono girato in asyncio.to_thread() per non bloccare il server.
     """
     from app.services.email_document_downloader import download_documents_from_email
     from app.config import settings
 
-    # Leggi credenziali prima da MongoDB (impostazioni UI), poi da .env
+    # ── Credenziali Gmail ────────────────────────────────────────────────────
     email_user = None
     email_password = None
     imap_host = settings.IMAP_HOST or "imap.gmail.com"
@@ -57,41 +114,30 @@ async def sync_email_documents(db, giorni: int = 30) -> Dict[str, Any]:
             email_user = gmail_cfg["imap_user"]
             email_password = gmail_cfg["gmail_app_password"]
             imap_host = gmail_cfg.get("imap_host", imap_host)
-            logger.info("Credenziali IMAP caricate da MongoDB settings")
-    except Exception as e:
-        logger.warning(f"Impossibile leggere settings MongoDB: {e}")
+    except Exception:
+        pass
 
-    # Fallback a .env
     if not email_user:
         email_user = settings.IMAP_USER or settings.EMAIL_USER
     if not email_password:
         email_password = settings.IMAP_PASSWORD or settings.EMAIL_PASSWORD
-    
+
     if not email_user or not email_password:
-        logger.warning("Credenziali email non configurate")
-        return {"success": False, "error": "Credenziali email non configurate"}
-    
-    # Carica mittenti autorizzati dal DB
-    mittenti_docs = await db["mittenti_email"].find(
-        {"attivo": True}, {"_id": 0}
+        return {"success": False, "error": "Credenziali Gmail non configurate"}
+
+    # ── Carica mittenti Gmail attivi ─────────────────────────────────────────
+    mittenti_gmail = await db["mittenti_email"].find(
+        {"canale": "gmail", "attivo": True}, {"_id": 0}
     ).to_list(200)
-    
-    if not mittenti_docs:
-        logger.warning("Nessun mittente configurato")
-        return {"success": False, "error": "Nessun mittente configurato"}
-    
-    # Separa mittenti standard da mittenti con ricerca per parole chiave
-    mittenti_from = []        # Lista indirizzi per ricerca FROM standard
-    mittenti_keyword = []     # Lista tuple (email, keywords) per ricerca testuale
-    
-    for m in mittenti_docs:
-        if m.get("cerca_per_oggetto") and m.get("parole_chiave_ricerca"):
-            mittenti_keyword.append((m["email"], m["parole_chiave_ricerca"]))
-        else:
-            mittenti_from.append(m["email"])
-    
-    logger.info(f"Mittenti FROM: {len(mittenti_from)}, Mittenti keyword: {len(mittenti_keyword)}")
-    
+
+    if not mittenti_gmail:
+        return {"success": False, "error": "Nessun mittente Gmail configurato"}
+
+    # Per il downloader usiamo i pattern come allowed_senders (match parziale)
+    allowed_patterns = [m["pattern"] for m in mittenti_gmail]
+    logger.info(f"[Gmail] Sync con {len(allowed_patterns)} pattern mittenti")
+
+    # ── Download IMAP (in thread, non blocca) ───────────────────────────────
     try:
         result = await download_documents_from_email(
             db=db,
@@ -99,86 +145,93 @@ async def sync_email_documents(db, giorni: int = 30) -> Dict[str, Any]:
             email_password=email_password,
             since_days=giorni,
             max_emails=200,
-            allowed_senders=mittenti_from if mittenti_from else None,
-            keyword_senders=mittenti_keyword if mittenti_keyword else None
+            allowed_senders=allowed_patterns,
         )
-        
-        stats = result.get("stats", {})
-        new_docs = stats.get("new_documents", 0)
-        duplicates = stats.get("duplicates_skipped", 0)
-        skipped_dict = stats.get("skipped_by_dict", 0)
-        
-        logger.info(f"Email sync: {new_docs} nuovi, {duplicates} duplicati contenuto, {skipped_dict} saltati dal dizionario")
-        
-        # Processa automaticamente fatture XML scaricate
-        xml_processed = 0
-        try:
-            from app.services.xml_invoice_processor import process_xml_invoice, is_fatturapa_filename, decode_content
-            xml_docs = await db["documents_inbox"].find(
-                {
-                    "$and": [
-                        {"xml_processed": {"$ne": True}},
-                        {"$or": [
-                            {"filename": {"$regex": r"\.(xml|p7m)$", "$options": "i"}},
-                            {"filename": {"$regex": r"\.xml\.p7m", "$options": "i"}},  # es. "IT123.xml.p7m - FPR 8.pdf"
-                            {"filename": {"$regex": r"IT[0-9]{11}_[A-Za-z0-9]+\.xml", "$options": "i"}},  # FatturaPA pattern
-                        ]}
-                    ]
-                },
-                {"_id": 0, "id": 1, "filename": 1, "file_path": 1, "content": 1, "pdf_data": 1}
-            ).to_list(100)
-            
-            for doc in xml_docs:
-                fname = doc.get("filename", "")
-                # Salta subito i file non-FatturaPA
+    except Exception as e:
+        logger.error(f"[Gmail] Errore download: {e}")
+        return {"success": False, "error": str(e)}
+
+    stats = result.get("stats", {})
+    new_docs = stats.get("new_documents", 0)
+    xml_processed = 0
+
+    # ── Routing documenti per tipo ───────────────────────────────────────────
+    # Recupera documenti non ancora processati dal download appena avvenuto
+    unprocessed = await db["documents_inbox"].find(
+        {"xml_processed": {"$ne": True}, "fonte": {"$in": ["gmail_monitor", "email_sync", None]}},
+        {"_id": 0, "id": 1, "filename": 1, "file_path": 1, "content": 1,
+         "pdf_data": 1, "email_from": 1, "email_subject": 1, "tipo_documento": 1}
+    ).to_list(200)
+
+    for doc in unprocessed:
+        from_addr = doc.get("email_from", "")
+        mittente = await _check_mittente(db, from_addr, "gmail")
+
+        if not mittente:
+            # Mittente non riconosciuto → skip silenzioso
+            await db["documents_inbox"].update_one(
+                {"id": doc["id"]},
+                {"$set": {"xml_processed": True, "xml_result": {"skipped": True, "reason": "mittente_non_riconosciuto"}}}
+            )
+            continue
+
+        tipo = mittente.get("tipo_documento", "generico")
+
+        if tipo == "fattura_xml":
+            # ── Processo XML FatturaPA ────────────────────────────────────────
+            fname = doc.get("filename", "")
+            try:
+                from app.services.xml_invoice_processor import process_xml_invoice, is_fatturapa_filename, decode_content
                 if not is_fatturapa_filename(fname):
                     await db["documents_inbox"].update_one(
                         {"id": doc["id"]},
                         {"$set": {"xml_processed": True, "xml_result": {"skipped": True, "reason": "non_fatturapa"}}}
                     )
                     continue
-                try:
-                    # Priorità: content → file_path → pdf_data (base64)
-                    content = doc.get("content")
-                    if not content and doc.get("file_path"):
-                        import pathlib
-                        fp = pathlib.Path(doc["file_path"])
-                        if fp.exists():
-                            content = fp.read_bytes()
-                    if not content and doc.get("pdf_data"):
-                        content = decode_content(doc["pdf_data"])
-                    if content:
-                        if isinstance(content, str):
-                            content = content.encode("utf-8")
-                        res = await process_xml_invoice(db, content, fname)
-                        if res.get("success"):
-                            xml_processed += 1
-                            logger.info(f"Fattura XML processata: {fname} → {res.get('fornitore')} €{res.get('importo')}")
-                        else:
-                            logger.debug(f"XML skip {fname}: {res.get('error')}")
-                        await db["documents_inbox"].update_one(
-                            {"id": doc["id"]},
-                            {"$set": {"xml_processed": True, "xml_result": res}}
-                        )
-                except Exception as ex:
-                    logger.debug(f"Errore XML {doc.get('filename')}: {ex}")
-            
-            if xml_processed > 0:
-                logger.info(f"Processate {xml_processed} fatture XML")
-        except Exception as e:
-            logger.debug(f"Errore processing XML: {e}")
-        
-        return {
-            "success": True,
-            "new_documents": new_docs,
-            "duplicates_skipped": duplicates,
-            "skipped_by_dict": skipped_dict,
-            "xml_processed": xml_processed,
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        }
-    except Exception as e:
-        logger.error(f"Errore sync email: {e}")
-        return {"success": False, "error": str(e)}
+
+                content = doc.get("content")
+                if not content and doc.get("file_path"):
+                    import pathlib
+                    fp = pathlib.Path(doc["file_path"])
+                    if fp.exists():
+                        content = fp.read_bytes()
+                if not content and doc.get("pdf_data"):
+                    content = decode_content(doc["pdf_data"])
+                if content:
+                    if isinstance(content, str):
+                        content = content.encode("utf-8")
+                    res = await process_xml_invoice(db, content, fname)
+                    if res.get("success"):
+                        xml_processed += 1
+                    await db["documents_inbox"].update_one(
+                        {"id": doc["id"]},
+                        {"$set": {"xml_processed": True, "xml_result": res, "tipo_documento": "fattura_xml"}}
+                    )
+            except Exception as ex:
+                logger.debug(f"[Gmail] Errore XML {fname}: {ex}")
+
+        else:
+            # ── cedolino / pagopa / inps / inail / paypal / cartella ──────────
+            await db["documents_inbox"].update_one(
+                {"id": doc["id"]},
+                {"$set": {
+                    "xml_processed": True,
+                    "tipo_documento": tipo,
+                    "categoria": tipo,
+                    "mittente_pattern": mittente.get("pattern"),
+                    "xml_result": {"routed": True, "tipo": tipo}
+                }}
+            )
+            logger.info(f"[Gmail] Documento {tipo}: {doc.get('filename','?')} da {from_addr}")
+
+    logger.info(f"[Gmail] Sync OK: {new_docs} nuovi, {xml_processed} XML processati")
+    return {
+        "success": True,
+        "new_documents": new_docs,
+        "duplicates_skipped": stats.get("duplicates_skipped", 0),
+        "xml_processed": xml_processed,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 async def ricategorizza_documenti(db) -> Dict[str, Any]:
