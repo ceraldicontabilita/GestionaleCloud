@@ -9,7 +9,7 @@ import base64
 import calendar
 
 from app.database import Database
-from .common import COL_FORNITORI, COL_FATTURE_RICEVUTE, COL_DETTAGLIO_RIGHE, COL_ALLEGATI
+from .common import COL_FORNITORI, COL_FATTURE_RICEVUTE, COL_DETTAGLIO_RIGHE, COL_ALLEGATI, logger
 from .helpers import generate_invoice_html
 
 
@@ -227,39 +227,84 @@ async def get_archivio_fatture(
 
 
 async def view_fattura_assoinvoice(fattura_id: str) -> HTMLResponse:
-    """Visualizza fattura in stile AssoInvoice."""
-    from bson import ObjectId
-    from bson.errors import InvalidId
+    """
+    Visualizza fattura nel formato ASSO Software (FoglioStileAssoSoftware.xsl).
+    1. Cerca la fattura in `invoices` (poi fallback `indice_documenti`)
+    2. Legge il file XML dal disco (gestisce .p7m estraendo l'XML interno)
+    3. Applica la trasformazione XSLT con il foglio ASSO
+    4. Restituisce l'HTML trasformato
+    """
+    import os
+    from lxml import etree as LET
+
     db = Database.get_db()
-    
-    # 1. Cerca in indice_documenti per id (UUID)
-    fattura = await db[COL_FATTURE_RICEVUTE].find_one({"id": fattura_id}, {"_id": 0})
-    
-    # 2. Fallback: cerca in invoices (le scadenze dashboard vengono da lì)
+
+    # ── Trova fattura ────────────────────────────────────────────────────────
+    fattura = await db["invoices"].find_one({"id": fattura_id}, {"_id": 0})
     if not fattura:
-        fattura = await db["invoices"].find_one({"id": fattura_id}, {"_id": 0})
-    
-    # 3. Fallback ObjectId
-    if not fattura:
-        try:
-            fattura = await db[COL_FATTURE_RICEVUTE].find_one({"_id": ObjectId(fattura_id)})
-            if not fattura:
-                fattura = await db["invoices"].find_one({"_id": ObjectId(fattura_id)})
-            if fattura:
-                fattura_id = fattura.get("id", fattura_id)
-                fattura.pop("_id", None)
-        except Exception:
-            pass
-    
+        fattura = await db[COL_FATTURE_RICEVUTE].find_one({"id": fattura_id}, {"_id": 0})
     if not fattura:
         raise HTTPException(status_code=404, detail="Fattura non trovata")
-    
+
+    xml_file_path = fattura.get("xml_file_path")
+    xml_raw_content = fattura.get("xml_raw")  # stringa XML se già estratta
+
+    xml_bytes: bytes | None = None
+
+    # ── Prova a leggere XML dal disco ────────────────────────────────────────
+    if xml_file_path and os.path.exists(xml_file_path):
+        with open(xml_file_path, "rb") as f:
+            raw = f.read()
+
+        filename = xml_file_path.lower()
+        if filename.endswith(".p7m"):
+            # Estrai XML dall'envelope P7M cercando il tag <?xml
+            xml_start = raw.find(b"<?xml")
+            if xml_start == -1:
+                xml_start = raw.find(b"<FatturaElettronica")
+            if xml_start != -1:
+                xml_bytes = raw[xml_start:]
+                # Taglia il trailing padding/footer DER
+                xml_end = xml_bytes.rfind(b">")
+                if xml_end != -1:
+                    xml_bytes = xml_bytes[: xml_end + 1]
+            else:
+                xml_bytes = raw
+        else:
+            xml_bytes = raw
+
+    elif xml_raw_content:
+        xml_bytes = xml_raw_content.encode("utf-8") if isinstance(xml_raw_content, str) else xml_raw_content
+
+    # ── Applica ASSO XSL se abbiamo l'XML ────────────────────────────────────
+    if xml_bytes:
+        try:
+            xsl_path = "/app/app/static/FoglioStileAssoSoftware.xsl"
+            xsl_doc = LET.parse(xsl_path)
+            transform = LET.XSLT(xsl_doc)
+
+            # Parse XML (tolera namespace con p7m cleanup)
+            xml_doc = LET.fromstring(xml_bytes)
+            html_result = transform(xml_doc)
+            html_str = LET.tostring(html_result, pretty_print=True, encoding="unicode")
+
+            # Inietta un wrapper minimal se l'XSL non emette <html>
+            if "<html" not in html_str[:200].lower():
+                html_str = (
+                    "<!DOCTYPE html><html><head>"
+                    "<meta charset='UTF-8'>"
+                    "<style>body{font-family:Arial,sans-serif;font-size:12px;margin:20px;}</style>"
+                    "</head><body>" + html_str + "</body></html>"
+                )
+
+            return HTMLResponse(content=html_str)
+        except Exception as xsl_err:
+            logger.warning(f"Errore XSLT per {fattura_id}: {xsl_err} — fallback HTML generico")
+
+    # ── Fallback: HTML generico se XML non disponibile ────────────────────────
     righe = await db[COL_DETTAGLIO_RIGHE].find({"fattura_id": fattura_id}, {"_id": 0}).to_list(1000)
-    
-    # Se non ci sono righe in dettaglio_righe, usa le linee dalla fattura stessa
     if not righe and fattura.get("linee"):
         righe = fattura.get("linee", [])
-    
     html = generate_invoice_html(fattura, righe)
     return HTMLResponse(content=html)
 

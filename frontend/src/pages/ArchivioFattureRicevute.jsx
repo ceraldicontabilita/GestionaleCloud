@@ -561,147 +561,83 @@ export default function ArchivioFatture() {
                               📄 Vedi
                             </a>
                             
-                            {/* Pulsante Cassa - verde se attivo, grigio se non selezionato - PULSANTE GRANDE */}
-                            {/* DISABILITATO se riconciliata */}
+                            {/* Pulsante CASSA — nascosto se fattura già pagata in Banca */}
+                            {!(isPaid && metodoPagEffettivo === 'banca') && (
                             <button
                               disabled={isRiconciliata}
                               onClick={async () => {
-                                if (isRiconciliata) {
-                                  alert('⛔ FATTURA RICONCILIATA: Questa fattura è stata riconciliata con l\'estratto conto bancario e non può essere modificata.');
-                                  return;
-                                }
-                                const importo = f.total_amount || f.importo_totale || 0;
-                                const dataDoc = f.invoice_date || f.data_documento;
-                                const fornitoreNome = f.supplier_name || f.fornitore_ragione_sociale || 'Fornitore';
-                                const numFattura = f.invoice_number || f.numero_documento || '';
-                                
-                                if (isPaid && metodoPagEffettivo === 'cassa') {
-                                  return; // Già in cassa, non fare nulla
-                                }
-                                
-                                if (isPaid && metodoPagEffettivo === 'banca') {
-                                  // Sposta da banca a cassa DIRETTAMENTE
-                                  try {
-                                    await api.post('/api/fatture-ricevute/cambia-metodo-pagamento', {
-                                      fattura_id: f.id,
-                                      importo: importo,
-                                      metodo_vecchio: 'banca',
-                                      metodo_nuovo: 'cassa',
-                                      data_pagamento: dataDoc,
-                                      fornitore: fornitoreNome,
-                                      numero_fattura: numFattura
-                                    });
-                                    fetchFatture();
-                                  } catch (error) {
-                                    alert(`❌ Errore: ${error.response?.data?.detail || error.message}`);
-                                  }
-                                } else {
-                                  // Non pagata - registra nuovo pagamento in cassa (senza conferma)
-                                  try {
-                                    const scrollPos = window.scrollY;
-                                    await api.post('/api/fatture-ricevute/paga-manuale', {
-                                      fattura_id: f.id,
-                                      importo: importo,
-                                      metodo: 'cassa',
-                                      data_pagamento: dataDoc,
-                                      fornitore: fornitoreNome,
-                                      numero_fattura: numFattura
-                                    });
-                                    await fetchFatture();
-                                    setTimeout(() => window.scrollTo(0, scrollPos), 100);
-                                  } catch (error) {
-                                    alert(`❌ Errore: ${error.response?.data?.detail || error.message}`);
-                                  }
+                                if (isRiconciliata) return;
+                                if (isPaid && metodoPagEffettivo === 'cassa') return;
+                                const importo = f.importo_totale || 0;
+                                const dataDoc = f.data_documento || f.invoice_date;
+                                const fornitoreNome = f.fornitore_ragione_sociale || f.supplier_name || 'Fornitore';
+                                const numFattura = f.numero_documento || f.invoice_number || '';
+                                try {
+                                  const scrollPos = window.scrollY;
+                                  await api.post('/api/fatture-ricevute/paga-manuale', {
+                                    fattura_id: f.id, importo, metodo: 'cassa',
+                                    data_pagamento: dataDoc, fornitore: fornitoreNome, numero_fattura: numFattura
+                                  });
+                                  await fetchFatture();
+                                  setTimeout(() => window.scrollTo(0, scrollPos), 100);
+                                } catch (err) {
+                                  alert(`❌ Errore Cassa: ${err.response?.data?.detail || err.message}`);
                                 }
                               }}
-                              style={{ 
-                                padding: '8px 14px', 
+                              style={{
+                                padding: '8px 14px',
                                 background: isRiconciliata ? '#e5e7eb' : (isPaid && metodoPagEffettivo === 'cassa') ? '#10b981' : '#f0fdf4',
                                 color: isRiconciliata ? '#9ca3af' : (isPaid && metodoPagEffettivo === 'cassa') ? 'white' : '#16a34a',
-                                border: isRiconciliata ? 'none' : (isPaid && metodoPagEffettivo === 'cassa') ? 'none' : '2px solid #16a34a', 
-                                borderRadius: 6, 
-                                cursor: isRiconciliata ? 'not-allowed' : (isPaid && metodoPagEffettivo === 'cassa') ? 'default' : 'pointer',
-                                fontSize: 12, 
-                                fontWeight: '600',
-                                minWidth: 70,
-                                transition: 'all 0.2s',
+                                border: isRiconciliata ? 'none' : (isPaid && metodoPagEffettivo === 'cassa') ? 'none' : '2px solid #16a34a',
+                                borderRadius: 6, cursor: isRiconciliata ? 'not-allowed' : 'pointer',
+                                fontSize: 12, fontWeight: '600', minWidth: 70, transition: 'all 0.2s',
                                 opacity: isRiconciliata ? 0.5 : 1
                               }}
-                              title={isRiconciliata ? '⛔ Riconciliata - non modificabile' : isPaid && metodoPagEffettivo === 'cassa' ? 'Pagata in Cassa' : isPaid ? 'Sposta in Cassa' : 'Paga in Cassa'}
+                              title={(isPaid && metodoPagEffettivo === 'cassa') ? 'Pagata in Cassa' : 'Registra pagamento in Cassa'}
                               data-testid={`btn-cassa-${f.id}`}
                             >
-                              💵 {(isPaid && metodoPagEffettivo === 'cassa') ? '✓' : 'Cassa'}
+                              💵 {(isPaid && metodoPagEffettivo === 'cassa') ? '✓ Cassa' : 'Cassa'}
                             </button>
-                            
-                            {/* Pulsante Banca - blu se attivo, grigio se non selezionato - PULSANTE GRANDE */}
-                            {/* DISABILITATO se riconciliata */}
+                            )}
+
+                            {/* Pulsante BANCA — nascosto se fattura già pagata in Cassa */}
+                            {!(isPaid && metodoPagEffettivo === 'cassa') && (
                             <button
                               disabled={isRiconciliata}
                               onClick={async () => {
-                                if (isRiconciliata) {
-                                  alert('⛔ FATTURA RICONCILIATA: Questa fattura è stata riconciliata con l\'estratto conto bancario e non può essere modificata.');
-                                  return;
-                                }
-                                const importo = f.total_amount || f.importo_totale || 0;
-                                const dataDoc = f.invoice_date || f.data_documento;
-                                const fornitoreNome = f.supplier_name || f.fornitore_ragione_sociale || 'Fornitore';
-                                const numFattura = f.invoice_number || f.numero_documento || '';
-                                
-                                if (isPaid && metodoPagEffettivo === 'banca') {
-                                  return; // Già in banca, non fare nulla
-                                }
-                                
-                                if (isPaid && metodoPagEffettivo === 'cassa') {
-                                  // Sposta da cassa a banca DIRETTAMENTE
-                                  try {
-                                    await api.post('/api/fatture-ricevute/cambia-metodo-pagamento', {
-                                      fattura_id: f.id,
-                                      importo: importo,
-                                      metodo_vecchio: 'cassa',
-                                      metodo_nuovo: 'banca',
-                                      data_pagamento: dataDoc,
-                                      fornitore: fornitoreNome,
-                                      numero_fattura: numFattura
-                                    });
-                                    fetchFatture();
-                                  } catch (error) {
-                                    alert(`❌ Errore: ${error.response?.data?.detail || error.message}`);
-                                  }
-                                } else {
-                                  // Non pagata - registra nuovo pagamento in banca
-                                  try {
-                                    await api.post('/api/fatture-ricevute/paga-manuale', {
-                                      fattura_id: f.id,
-                                      importo: importo,
-                                      metodo: 'banca',
-                                      data_pagamento: dataDoc,
-                                      fornitore: fornitoreNome,
-                                      numero_fattura: numFattura
-                                    });
-                                    fetchFatture();
-                                  } catch (error) {
-                                    alert(`❌ Errore: ${error.response?.data?.detail || error.message}`);
-                                  }
+                                if (isRiconciliata) return;
+                                if (isPaid && metodoPagEffettivo === 'banca') return;
+                                const importo = f.importo_totale || 0;
+                                const dataDoc = f.data_documento || f.invoice_date;
+                                const fornitoreNome = f.fornitore_ragione_sociale || f.supplier_name || 'Fornitore';
+                                const numFattura = f.numero_documento || f.invoice_number || '';
+                                try {
+                                  const scrollPos = window.scrollY;
+                                  await api.post('/api/fatture-ricevute/paga-manuale', {
+                                    fattura_id: f.id, importo, metodo: 'banca',
+                                    data_pagamento: dataDoc, fornitore: fornitoreNome, numero_fattura: numFattura
+                                  });
+                                  await fetchFatture();
+                                  setTimeout(() => window.scrollTo(0, scrollPos), 100);
+                                } catch (err) {
+                                  alert(`❌ Errore Banca: ${err.response?.data?.detail || err.message}`);
                                 }
                               }}
-                              style={{ 
-                                padding: '8px 14px', 
+                              style={{
+                                padding: '8px 14px',
                                 background: isRiconciliata ? '#e5e7eb' : (isPaid && metodoPagEffettivo === 'banca') ? '#3b82f6' : '#eff6ff',
                                 color: isRiconciliata ? '#9ca3af' : (isPaid && metodoPagEffettivo === 'banca') ? 'white' : '#2563eb',
-                                border: isRiconciliata ? 'none' : (isPaid && metodoPagEffettivo === 'banca') ? 'none' : '2px solid #2563eb', 
-                                borderRadius: 6, 
-                                cursor: isRiconciliata ? 'not-allowed' : (isPaid && metodoPagEffettivo === 'banca') ? 'default' : 'pointer',
-                                fontSize: 12, 
-                                fontWeight: '600',
-                                minWidth: 70,
-                                transition: 'all 0.2s',
+                                border: isRiconciliata ? 'none' : (isPaid && metodoPagEffettivo === 'banca') ? 'none' : '2px solid #2563eb',
+                                borderRadius: 6, cursor: isRiconciliata ? 'not-allowed' : 'pointer',
+                                fontSize: 12, fontWeight: '600', minWidth: 70, transition: 'all 0.2s',
                                 opacity: isRiconciliata ? 0.5 : 1
                               }}
-                              title={isRiconciliata ? '⛔ Riconciliata - non modificabile' : isPaid && metodoPagEffettivo === 'banca' ? 'Pagata in Banca' : isPaid ? 'Sposta in Banca' : 'Paga in Banca'}
+                              title={(isPaid && metodoPagEffettivo === 'banca') ? 'Pagata in Banca' : 'Registra pagamento in Banca'}
                               data-testid={`btn-banca-${f.id}`}
                             >
-                              🏦 {(isPaid && metodoPagEffettivo === 'banca') ? '✓' : 'Banca'}
+                              🏦 {(isPaid && metodoPagEffettivo === 'banca') ? '✓ Banca' : 'Banca'}
                             </button>
+                            )}
                           </div>
                         </td>
                       </tr>
