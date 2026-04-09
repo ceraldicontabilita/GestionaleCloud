@@ -705,18 +705,6 @@ async def upload_fattura_xml(file: UploadFile = File(...)) -> Dict[str, Any]:
         except Exception as e:
             logger.warning(f"Errore popolamento tracciabilità: {e}")
         
-        # === REGISTRAZIONE ACQUISTI PER PREVISIONI ===
-        acquisti_registrati = 0
-        try:
-            from app.routers.previsioni_acquisti import registra_acquisto_da_fattura
-            acquisti_registrati = await registra_acquisto_da_fattura(db, {
-                **parsed,
-                "id": invoice["id"]
-            })
-            logger.info(f"Acquisti registrati per previsioni: {acquisti_registrati}")
-        except Exception as e:
-            logger.warning(f"Errore registrazione acquisti: {e}")
-        
         prima_nota_result = {"cassa": None, "banca": None}
         # Registra in Prima Nota SOLO se non è stato già riconciliato automaticamente
         # O se il metodo non è misto

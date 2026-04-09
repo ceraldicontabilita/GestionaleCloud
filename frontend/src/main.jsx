@@ -103,8 +103,6 @@ const router = createBrowserRouter([
       { path: "fornitori/:nome/:dettaglio", element: <LazyPage><FornitoriHub /></LazyPage> },
       { path: "ordini-fornitori", element: <Navigate to="/fornitori/ordini" replace /> },
       { path: "ordini-fornitori/:fornitore", element: <LazyPage><FornitoriHub /></LazyPage> },
-      { path: "previsioni-acquisti", element: <Navigate to="/fornitori/previsioni" replace /> },
-      { path: "previsioni-acquisti/:categoria", element: <LazyPage><FornitoriHub /></LazyPage> },
       
       // === PRIMA NOTA ===
       { path: "prima-nota", element: <LazyPage><PrimaNotaHub /></LazyPage> },

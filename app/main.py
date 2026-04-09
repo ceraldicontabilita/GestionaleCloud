@@ -222,7 +222,6 @@ from app.routers import (
     comparatore, gestione_riservata, commercialista, scadenze,
     riconciliazione_fornitori, ordini_fornitori, payroll,
     pianificazione, admin, verifica_coerenza, documenti,
-    previsioni_acquisti,
     cedolini, tfr, cespiti, scadenzario_fornitori,
     controllo_gestione, indici_bilancio, chiusura_esercizio,
     gestione_iva_speciale, configurazioni, alerts, import_templates,
@@ -460,7 +459,6 @@ app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
 app.include_router(verifica_coerenza.router, prefix="/api/verifica-coerenza", tags=["Verifica Coerenza Dati"])
 app.include_router(documenti.router, prefix="/api/documenti", tags=["Gestione Documenti Email"])
 app.include_router(operazioni_router, prefix="/api/operazioni-da-confermare", tags=["Operazioni da Confermare"])
-app.include_router(previsioni_acquisti.router, prefix="/api/previsioni-acquisti", tags=["Previsioni Acquisti"])
 app.include_router(cedolini.router, prefix="/api/cedolini", tags=["Cedolini Paga"])
 app.include_router(cedolini_riconciliazione.router, prefix="/api/cedolini", tags=["Cedolini Riconciliazione"])
 

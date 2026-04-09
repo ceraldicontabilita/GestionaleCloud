@@ -167,8 +167,16 @@ export default function Dashboard() {
 
   // Carica dati widget cucina
   useEffect(() => {
+    // Ordini in attesa (bozze da tracciabilità)
     api.get('/api/ordini-fornitori/bozze/count')
        .then(r => setOrdiniCount(r.data.count || 0)).catch(() => {});
+
+    // Ricette: usa l'endpoint stats che ritorna totale e da_approvare
+    api.get('/api/cucina/ricette/stats')
+       .then(r => {
+         setRicetteCount(r.data.da_approvare || 0);
+         setRicetteTotali(r.data.totale || 0);
+       }).catch(() => {});
   }, []);
 
   // Carica Volume Affari Reale quando toggle attivato
