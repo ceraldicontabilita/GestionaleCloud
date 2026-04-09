@@ -9,7 +9,7 @@ import { formatEuro, formatDateIT, STYLES, COLORS, button, badge } from '../lib/
 import { 
   Search, Edit2, Trash2, Plus, FileText, Building2, 
   Phone, Mail, MapPin, CreditCard, AlertCircle, Check,
-  Users, X, TrendingUp, Brain, ExternalLink, RefreshCw
+  Users, X, TrendingUp, RefreshCw
 } from 'lucide-react';
 
 
@@ -1437,55 +1437,6 @@ export default function Fornitori() {
         </div>
 
         {/* Tabs */}
-        <div style={{ 
-          display: 'flex', 
-          gap: '4px', 
-          marginBottom: '24px',
-          background: '#f1f5f9',
-          padding: '4px',
-          borderRadius: '10px',
-          width: 'fit-content'
-        }} data-testid="fornitori-tabs">
-          <button
-            style={{
-              padding: '10px 20px',
-              borderRadius: '8px',
-              border: 'none',
-              fontWeight: '500',
-              fontSize: '14px',
-              background: 'white',
-              color: '#1e293b',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px'
-            }}
-            data-testid="tab-anagrafica"
-          >
-            <Building2 size={16} /> Anagrafica Fornitori
-          </button>
-          <Link
-            to="/learning-machine"
-            style={{
-              padding: '10px 20px',
-              borderRadius: '8px',
-              textDecoration: 'none',
-              fontWeight: '500',
-              fontSize: '14px',
-              transition: 'all 0.2s',
-              background: 'linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%)',
-              color: 'white',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              boxShadow: '0 2px 4px rgba(30,58,95,0.3)'
-            }}
-            data-testid="link-learning-machine"
-          >
-            <Brain size={16} /> Learning Machine <ExternalLink size={14} />
-          </Link>
-        </div>
-
         {/* Search & Filters */}
         <div style={{ 
           backgroundColor: 'white', 
