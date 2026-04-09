@@ -17,12 +17,8 @@ import Verbali from './pages/Verbali'
 import Distinte from './pages/Distinte'
 import ImportaDocumenti from './pages/ImportaDocumenti'
 import Mittenti from './pages/Mittenti'
-import DashboardHACCP from './pages/DashboardHACCP'
-import ScontiMerce from './pages/ScontiMerce'
-import OrdiniFornitore from './pages/OrdiniFornitore'
-import TemperatureHACCP from './pages/TemperatureHACCP'
-import SanificazioneHACCP from './pages/SanificazioneHACCP'
-import DisinfestazioneHACCP from './pages/DisinfestazioneHACCP'
+import Tracciabilita from './pages/Tracciabilita'
+import PrimaNota from './pages/PrimaNota'
 import { s } from './lib/utils'
 
 export default function App() {
@@ -49,12 +45,8 @@ export default function App() {
             <Route path="/verbali" element={<Verbali />} />
             <Route path="/distinte" element={<Distinte />} />
             <Route path="/mittenti" element={<Mittenti />} />
-            <Route path="/haccp/dashboard" element={<DashboardHACCP />} />
-            <Route path="/sconti-merce" element={<ScontiMerce />} />
-            <Route path="/ordini" element={<OrdiniFornitore />} />
-            <Route path="/haccp/temperature" element={<TemperatureHACCP />} />
-            <Route path="/haccp/sanificazione" element={<SanificazioneHACCP />} />
-            <Route path="/haccp/disinfestazione" element={<DisinfestazioneHACCP />} />
+            <Route path="/tracciabilita" element={<Tracciabilita />} />
+            <Route path="/prima-nota" element={<PrimaNota />} />
           </Routes>
         </div>
       </div>

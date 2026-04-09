@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Thermometer, Snowflake, ChevronLeft, ChevronRight, RefreshCw, Printer, AlertTriangle } from 'lucide-react'
 import { s, colors, font } from '../lib/utils'
 
-const API = 'https://ceraldiapp.it/api'
+const API = '/api/tr'
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno',
                'Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
 
@@ -102,7 +102,7 @@ function PannelloTemperature({ tipo }) {
         nomiMap[i + 1] = d[keyNome] || (isPos ? `F${i+1}` : `C${i+1}`)
       })
       setSchede(map); setNomi(nomiMap)
-    } catch { setErrore('Errore connessione a ceraldiapp.it') }
+    } catch { setErrore('Errore connessione API tracciabilità') }
     setLoading(false)
   }, [anno, endpoint, keyNome, isPos])
 

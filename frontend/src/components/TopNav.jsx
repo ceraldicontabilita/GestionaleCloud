@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom'
 import {
   Shield, Users, Gavel, Home, FileText, Receipt, Landmark,
   FileCheck, CreditCard, Car, Banknote, Inbox, Mail, Building2,
-  Thermometer, Sparkles, Bug, LayoutDashboard
+  ClipboardList, BookOpen
 } from 'lucide-react'
 import { colors, font } from '../lib/utils'
 
@@ -34,6 +34,7 @@ const links = [
   { to: '/cedolini',               label: 'Cedolini',        icon: Receipt },
   { to: '/estratto-conto',         label: 'EC',              icon: Landmark },
   { to: '/distinte',               label: 'Distinte',        icon: Banknote },
+  { to: '/prima-nota',            label: '📓 Prima Nota',   icon: BookOpen },
   { to: '/alert-fiscali',          label: '⚠️ Alert',        icon: Shield },
   { to: '/tributi',                label: '🏠 Tributi',      icon: Home },
   { to: '/fornitori',              label: '🏭 Fornitori',    icon: Building2 },
@@ -41,12 +42,7 @@ const links = [
   { to: '/f24-privati',            label: 'F24 Privati',     icon: Shield },
   { to: '/corrispettivi',          label: 'Corrispettivi',   icon: CreditCard },
   { to: '/verbali',                label: 'Verbali',         icon: Car },
-  { to: '/ordini',         label: '🛒 Ordini',          icon: ShoppingBag },
-  { to: '/sconti-merce',         label: '🎁 Sconti',          icon: Tag },
-  { to: '/haccp/dashboard',     label: '📊 Dashboard',       icon: LayoutDashboard },
-  { to: '/haccp/temperature',      label: '🌡️ Temp',         icon: Thermometer },
-  { to: '/haccp/sanificazione',    label: '✨ Sanif.',       icon: Sparkles },
-  { to: '/haccp/disinfestazione',  label: '🐀 Disinfest.',  icon: Bug },
+  { to: '/tracciabilita',    label: '📋 Tracciabilità',  icon: ClipboardList },
 ]
 
 export default function TopNav() {
@@ -72,3 +68,4 @@ export default function TopNav() {
     </nav>
   )
 }
+

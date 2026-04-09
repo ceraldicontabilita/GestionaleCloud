@@ -154,9 +154,9 @@ async def _process(tipo: str, content: bytes, filename: str, db: AsyncIOMotorDat
             await db["fatture_passive"].insert_one(doc)
             if f["cedente"].get("partita_iva"):
                 await db["fornitori"].update_one(
-                    {"partita_iva": f["cedente"]["partita_iva"]},
-                    {"$set": {"denominazione": f["cedente"]["denominazione"],
-                              "partita_iva": f["cedente"]["partita_iva"],
+                    {"anagrafica.piva": f["cedente"]["partita_iva"]},
+                    {"$set": {"anagrafica.ragione_sociale": f["cedente"].get("denominazione", ""),
+                              "anagrafica.piva": f["cedente"]["partita_iva"],
                               "updated_at": datetime.utcnow()},
                      "$setOnInsert": {"created_at": datetime.utcnow()}},
                     upsert=True)
@@ -261,7 +261,9 @@ async def _process(tipo: str, content: bytes, filename: str, db: AsyncIOMotorDat
         riconciliati = 0
         for bon in parsed.get("bonifici", []):
             if bon.get("iban"):
-                dip = await db["dipendenti"].find_one({"iban": bon["iban"]})
+                dip = await db["dipendenti"].find_one({"iban_cedolino": bon["iban"]})
+                if not dip:
+                    dip = await db["dipendenti"].find_one({"iban": bon["iban"]})
                 if dip:
                     bon["dipendente_nome"] = f"{dip.get('cognome','')} {dip.get('nome','')}".strip()
                     riconciliati += 1
@@ -390,4 +392,5 @@ async def import_detect(file: UploadFile = File(...)):
         "filename": file.filename,
         "riconosciuto": tipo != "sconosciuto",
     }
+
 

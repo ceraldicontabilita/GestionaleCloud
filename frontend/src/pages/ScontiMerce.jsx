@@ -11,7 +11,7 @@ import {
 } from 'lucide-react'
 import { s, colors, font, formatEuro } from '../lib/utils'
 
-const API = 'https://ceraldiapp.it/api'
+const API = '/api/tr'
 const MESI = ['', 'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
   'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre']
 const ANNO = new Date().getFullYear()

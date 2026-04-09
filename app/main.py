@@ -21,7 +21,25 @@ async def lifespan(app: FastAPI):
         await Database.connect_db()
     except Exception as e:
         logger.error(f"Database connection failed: {e}")
+
+    # Avvia scheduler se abilitato
+    if settings.SCHEDULER_ENABLED:
+        try:
+            from app.routers.scheduler import start_scheduler
+            start_scheduler()
+            logger.info("Scheduler avviato")
+        except Exception as e:
+            logger.warning(f"Scheduler non avviato: {e}")
+
     yield
+
+    # Ferma scheduler
+    try:
+        from app.routers.scheduler import stop_scheduler
+        stop_scheduler()
+    except Exception:
+        pass
+
     await Database.close_db()
 
 
@@ -39,12 +57,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# === ROUTERS ===
+# ═══════════════════════════════════════════════════════════════════════════════
+#  ROUTERS — Contabilità / Gestionale
+# ═══════════════════════════════════════════════════════════════════════════════
 from app.routers import (
     fornitori, learning, tributi, alert_fiscali, quietanze,
     dipendenti, health, fatture, cedolini,
     estratto_conto, f24, corrispettivi, distinte, verbali,
-    import_hub, mittenti, presenze, f24_privati, omaggi_acquaviva, ordini
+    import_hub, mittenti, presenze, f24_privati, omaggi_acquaviva, ordini,
+    prima_nota,
 )
 
 app.include_router(health.router,            prefix="/api",                 tags=["health"])
@@ -65,10 +86,34 @@ app.include_router(alert_fiscali.router,     prefix="/api/alert-fiscali",   tags
 app.include_router(tributi.router,           prefix="/api/tributi",         tags=["tributi"])
 app.include_router(learning.router,          prefix="/api/learning",        tags=["learning"])
 app.include_router(fornitori.router,         prefix="/api/fornitori",       tags=["fornitori"])
-app.include_router(omaggi_acquaviva.router,                                      tags=["omaggi-acquaviva"])
-app.include_router(ordini.router,                                                    tags=["ordini"])
+app.include_router(omaggi_acquaviva.router,                                  tags=["omaggi-acquaviva"])
+app.include_router(ordini.router,                                            tags=["ordini"])
+app.include_router(prima_nota.router,        prefix="/api/prima-nota",      tags=["prima-nota"])
 
-# === STATIC FILES (React build) ===
+# ═══════════════════════════════════════════════════════════════════════════════
+#  ROUTERS — Tracciabilità (ex ceraldiapp.it, ora locali)
+# ═══════════════════════════════════════════════════════════════════════════════
+from app.routers import (
+    tr_temperature, tr_sanificazione, tr_disinfestazione,
+    tr_dashboard, tr_sconti, tr_ordini_fornitori,
+)
+
+app.include_router(tr_temperature.router,       prefix="/api/tr",     tags=["tracciabilita"])
+app.include_router(tr_sanificazione.router,      prefix="/api/tr",     tags=["tracciabilita"])
+app.include_router(tr_disinfestazione.router,    prefix="/api/tr",     tags=["tracciabilita"])
+app.include_router(tr_dashboard.router,          prefix="/api/tr",     tags=["tracciabilita"])
+app.include_router(tr_sconti.router,             prefix="/api/tr",     tags=["tracciabilita"])
+app.include_router(tr_ordini_fornitori.router,   prefix="/api/tr",     tags=["tracciabilita"])
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  ROUTER — Scheduler
+# ═══════════════════════════════════════════════════════════════════════════════
+from app.routers import scheduler
+app.include_router(scheduler.router,             prefix="/api/scheduler", tags=["scheduler"])
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  STATIC FILES (React build)
+# ═══════════════════════════════════════════════════════════════════════════════
 frontend_dist = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
 if os.path.isdir(frontend_dist):
     app.mount("/assets", StaticFiles(directory=os.path.join(frontend_dist, "assets")), name="assets")

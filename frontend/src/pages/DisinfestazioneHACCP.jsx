@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Bug, ChevronLeft, ChevronRight, RefreshCw, Check, AlertTriangle, Plus, Edit, Save, X, Printer } from 'lucide-react'
 import { s, colors, font } from '../lib/utils'
 
-const API = 'https://ceraldiapp.it/api'
+const API = '/api/tr'
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno',
                'Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
 

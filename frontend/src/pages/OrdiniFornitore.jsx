@@ -25,7 +25,7 @@ import {
 import { s, colors, font, formatEuro } from '../lib/utils'
 
 const API = '/api'
-const HACCP_API = 'https://ceraldiapp.it/api'
+const HACCP_API = '/api/tr'
 
 const REPARTI = ['Pasticceria', 'Rosticceria', 'Bar', 'Deposito', 'Cucina']
 const STATI_COLOR = {
