@@ -46,11 +46,6 @@ export default function Dashboard() {
   // Stato per Learning Machine
   const [learningStats, setLearningStats] = useState(null);
 
-  // Widget Cucina
-  const [ordiniCount, setOrdiniCount] = useState(0);
-  const [ricetteCount, setRicetteCount] = useState(0);
-  const [ricetteTotali, setRicetteTotali] = useState(0);
-
   /**
    * LOGICA INTELLIGENTE: Esegue auto-riparazione dei dati.
    * Ora avviabile manualmente con pulsante.
@@ -164,20 +159,6 @@ export default function Dashboard() {
       controller.abort();
     };
   }, [anno]);
-
-  // Carica dati widget cucina
-  useEffect(() => {
-    // Ordini in attesa (bozze cucina)
-    api.get('/api/cucina/ordini-fornitori/bozze/count')
-       .then(r => setOrdiniCount(r.data.count || 0)).catch(() => {});
-
-    // Ricette: usa l'endpoint stats che ritorna totale e da_approvare
-    api.get('/api/cucina/ricette/stats')
-       .then(r => {
-         setRicetteCount(r.data.da_approvare || 0);
-         setRicetteTotali(r.data.totale || 0);
-       }).catch(() => {});
-  }, []);
 
   // Carica Volume Affari Reale quando toggle attivato
   async function loadVolumeReale() {
@@ -1180,89 +1161,6 @@ export default function Dashboard() {
               📦 Report Magazzino
             </a>
           </div>
-        </div>
-      </div>
-
-      {/* ========================== */}
-      {/* WIDGET CUCINA & ORDINI     */}
-      {/* ========================== */}
-      <div
-        data-testid="widget-cucina"
-        style={{ ...STYLES.card, marginTop: 16, marginBottom: 8 }}
-      >
-        <h3 style={{ margin: '0 0 14px', fontSize: 15, fontWeight: 700, color: COLORS.primary }}>
-          Cucina &amp; Ordini
-        </h3>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
-          {/* Ordini in attesa */}
-          <Link
-            to="/cucina"
-            data-testid="stat-ordini-attesa"
-            style={{ textDecoration: 'none' }}
-          >
-            <div style={{
-              background: ordiniCount > 0 ? '#fff7ed' : COLORS.grayBg,
-              border: `1px solid ${ordiniCount > 0 ? '#fcd34d' : COLORS.grayLight}`,
-              borderLeft: `4px solid ${ordiniCount > 0 ? COLORS.warning : COLORS.grayLight}`,
-              borderRadius: 10,
-              padding: '14px 16px',
-              cursor: 'pointer',
-              transition: 'box-shadow 0.2s'
-            }}>
-              <div style={{ fontSize: 22 }}>🛒</div>
-              <div style={{ fontSize: 26, fontWeight: 800, color: ordiniCount > 0 ? COLORS.warning : COLORS.gray, marginTop: 4 }}>
-                {ordiniCount}
-              </div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: COLORS.primary, marginTop: 2 }}>Ordini in attesa</div>
-              <div style={{ fontSize: 11, color: COLORS.gray, marginTop: 2 }}>Bozze cucina</div>
-            </div>
-          </Link>
-
-          {/* Ricette da approvare */}
-          <Link
-            to="/ricettario"
-            data-testid="stat-ricette-approvare"
-            style={{ textDecoration: 'none' }}
-          >
-            <div style={{
-              background: ricetteCount > 0 ? '#eff6ff' : COLORS.grayBg,
-              border: `1px solid ${ricetteCount > 0 ? '#bfdbfe' : COLORS.grayLight}`,
-              borderLeft: `4px solid ${ricetteCount > 0 ? COLORS.info : COLORS.grayLight}`,
-              borderRadius: 10,
-              padding: '14px 16px',
-              cursor: 'pointer'
-            }}>
-              <div style={{ fontSize: 22 }}>📖</div>
-              <div style={{ fontSize: 26, fontWeight: 800, color: ricetteCount > 0 ? COLORS.info : COLORS.gray, marginTop: 4 }}>
-                {ricetteCount}
-              </div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: COLORS.primary, marginTop: 2 }}>Ricette da approvare</div>
-              <div style={{ fontSize: 11, color: COLORS.gray, marginTop: 2 }}>In attesa di revisione</div>
-            </div>
-          </Link>
-
-          {/* Ricette totali */}
-          <Link
-            to="/ricettario"
-            data-testid="stat-ricette-totali"
-            style={{ textDecoration: 'none' }}
-          >
-            <div style={{
-              background: COLORS.grayBg,
-              border: `1px solid ${COLORS.grayLight}`,
-              borderLeft: `4px solid ${COLORS.primary}`,
-              borderRadius: 10,
-              padding: '14px 16px',
-              cursor: 'pointer'
-            }}>
-              <div style={{ fontSize: 22 }}>🍽️</div>
-              <div style={{ fontSize: 26, fontWeight: 800, color: COLORS.primary, marginTop: 4 }}>
-                {ricetteTotali}
-              </div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: COLORS.primary, marginTop: 2 }}>Ricette totali</div>
-              <div style={{ fontSize: 11, color: COLORS.gray, marginTop: 2 }}>Nel ricettario</div>
-            </div>
-          </Link>
         </div>
       </div>
 
