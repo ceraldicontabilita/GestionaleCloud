@@ -416,3 +416,96 @@ ANTHROPIC_API_KEY, PIN_PASTICCERIA, PIN_ROSTICCERIA, PIN_EXTRA, SECRET_KEY
 - Rinomina inline colonne frigo/congelatore in TemperatureHACCP.jsx
 - Portare online su dominio custom dopo build Emergent
 - Verificare riconciliazione cedolini con estratto conto
+
+---
+
+## Chat 8 — 2026-04-09
+
+### Cosa è stato fatto
+
+#### 1. Tracciabilità — da ceraldiapp.it a locale
+Le 6 pagine HACCP/sconti/ordini chiamavano `ceraldiapp.it` come API esterna.
+Copiati i router dal repo `tracciabilita`, adattati al pattern gestionale2
+(`Depends(get_database)` al posto di connessione MongoDB diretta).
+
+**Nuovi file backend creati:**
+- `app/tr_utils.py` — utility date, chiusure, calcolo Pasqua
+- `app/routers/tr_temperature.py` — temperature positive (frigo 0/+4°C) + negative (congelatori -22/-18°C)
+- `app/routers/tr_sanificazione.py` — sanificazione attrezzature + apparecchi refrigeranti
+- `app/routers/tr_disinfestazione.py` — ANTHIRAT CONTROL, intervento il 15 di ogni mese
+- `app/routers/tr_dashboard.py` — produzioni, vendita banco, lotti, chiusure, acquaviva magazzino, tablet
+- `app/routers/tr_sconti.py` — sconti merce (importa/valorizza da fatture)
+- `app/routers/tr_ordini_fornitori.py` — catalogo prodotti suggeriti + CRUD ordini
+
+Tutti montati sotto `/api/tr/*` in main.py.
+
+**Frontend modificato:**
+- Tutte le pagine HACCP: `const API = 'https://ceraldiapp.it/api'` → `const API = '/api/tr'`
+- TopNav: rimossi 6+ link HACCP, aggiunto un solo "📋 Tracciabilità"
+- `Tracciabilita.jsx` — NUOVA pagina wrapper con 6 tab interni (Dashboard, Temperature, Sanificazione, Disinfestazione, Sconti, Ordini)
+
+#### 2. Prima Nota — cassa + banca + provvisoria
+**Nuovo router:** `app/routers/prima_nota.py`
+- 3 sezioni: cassa, banca, provvisoria
+- CRUD manuale movimenti
+- Auto-alimentazione: corrispettivi→cassa, estratto conto→banca, F24→banca, fatture passive→provvisoria
+- Conferma in blocco, saldi mensili, riepilogo annuale
+- Collection: `prima_nota` (campo `sezione`)
+
+**Nuova pagina:** `PrimaNota.jsx`
+- 3 card saldo (cassa/banca/provvisoria)
+- Tab per sezione con tabella movimenti
+- Form inserimento manuale
+- Bottone "Genera da documenti"
+
+#### 3. Scheduler — PEC + HACCP notturno + Prima Nota
+**Nuovo router:** `app/routers/scheduler.py`
+- Job PEC: ogni ora alle :05, scarica fatture XML da PEC Aruba SDI
+- Job HACCP: alle 02:00, popola temperature (24 apparecchi) e sanificazione giornaliera
+- Job Prima Nota: alle 02:15, genera movimenti da documenti importati
+- Endpoint manuale: `/api/scheduler/run-pec-now`, `run-haccp-now`, `run-prima-nota-now`
+- Endpoint storico: `/api/scheduler/import-pec-storico?since=01-Jan-2026` (tutte le email, lette + non lette)
+- Si avvia automaticamente al boot (lifespan in main.py)
+
+**PEC service aggiornato:** `app/services/pec_fatture_service.py`
+- Aggiunto parametro `only_unread` (True/False)
+- Aggiunto parametro `since_date` (formato IMAP "01-Jan-2026")
+- Connessione verificata OK — password PEC funziona
+
+#### 4. Patch Chat 7 applicate (erano rimaste in sospeso)
+- `EstrattoConto.jsx` → versione con 3 tab (Saldo/Stipendi/Movimenti)
+- `estratto_conto.py` → aggiunto `/stipendi` e `/riconcilia-stipendi`
+- `TabletCucina.jsx` → nuova pagina, route `/tablet-cucina`, API locale `/api/tr/tablet/{reparto}`
+
+#### 5. Bug fixati
+- **5 prefix doppi** in main.py: alert_fiscali, f24, fornitori, learning, quietanze avevano prefix sia nel router che in main.py → risultava `/api/xxx/api/xxx/`. Rimosso prefix da main.py.
+- **import_hub.py**: upsert fornitori flat → nested (`anagrafica.piva`), iban → iban_cedolino
+- **DettaglioDipendente.jsx**: JSX rotto, `</div>}` sbilanciato nel blocco pignoramenti
+- **3 endpoint mancanti** per frontend: popola-sanificazione alias, giorno-completo con path params, prodotti-fornitore, valorizza-da-fatture
+
+#### 6. Cleanup
+- Eliminata cartella `claude-patches/` (4 cartelle patch vecchie, già applicate)
+- Eliminati `learning_hook.py`, `learning_seed.py`, `schemas/fornitore_schema.py` (mai importati)
+- Eliminato `F24Page.jsx` (file orfano)
+
+#### Config aggiornato
+`app/config.py` — aggiunti:
+- PEC_IMAP_HOST, PEC_IMAP_PORT, PEC_SMTP_HOST, PEC_SMTP_PORT, PEC_USER, PEC_PASSWORD
+- GMAIL_USER, GMAIL_PASSWORD, GMAIL_IMAP_HOST, GMAIL_SMTP_HOST, GMAIL_SMTP_PORT
+- SCHEDULER_ENABLED
+
+### Router in main.py (28 totali)
+**Contabilità (20):** health, import_hub, mittenti, dipendenti, fatture, cedolini, estratto_conto, f24, f24_privati, corrispettivi, distinte, verbali, presenze, quietanze, alert_fiscali, tributi, learning, fornitori, omaggi_acquaviva, ordini
+**Nuovi (8):** prima_nota, tr_temperature, tr_sanificazione, tr_disinfestazione, tr_dashboard, tr_sconti, tr_ordini_fornitori, scheduler
+
+### Route frontend in App.jsx
+`/ /importa /dipendenti /dipendenti/:id /pignoramenti /fatture /cedolini /estratto-conto /f24 /f24-privati /alert-fiscali /tributi /fornitori /corrispettivi /verbali /distinte /mittenti /tracciabilita /tablet-cucina /prima-nota`
+
+### TopNav finale
+Importa → Dipendenti → Pignoramenti → Fatture → Cedolini → EC → Distinte → 📓 Prima Nota → ⚠️ Alert → 🏠 Tributi → 🏢 Fornitori → F24 → F24 Privati → Corrispettivi → Verbali → 📋 Tracciabilità → Mittenti
+
+### TODO Chat 9
+- Testare import PEC storico (endpoint pronto, serve redeploy Emergent)
+- Pagina admin gestione PIN dipendenti
+- Dominio custom dopo build Emergent
+- Verificare tutte le pagine sul deploy live
