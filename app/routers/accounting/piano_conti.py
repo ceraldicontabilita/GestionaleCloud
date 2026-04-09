@@ -513,76 +513,171 @@ async def get_movimenti_per_conto(
     anno: str = None,
 ) -> Dict[str, Any]:
     """
-    Ritorna i movimenti dell'estratto conto banca rilevanti per un dato conto.
-    Logica di mapping categoria→conto:
-      - categorie RICAVI   → tipo=entrata
-      - categorie COSTI    → tipo=uscita
-      - categorie ATTIVO   → tipo=entrata (accrediti)
-      - categorie PASSIVO  → tipo=uscita  (addebiti)
-    Filtra anche per keyword parziale sul nome del conto nella categoria estratto.
+    Dettaglio movimenti per un conto del piano dei conti.
+    Logica SEMANTICA per conto — nessun fuzzy matching inaffidabile:
+      - 01.01.01 (Cassa)          → prima_nota_cassa
+      - 01.01.02 (Banca c/c)      → estratto_conto_movimenti (tutti)
+      - 01.02.* (Crediti)         → fatture_ricevute non incassate
+      - 02.01.* (Debiti fornitori) → fatture_ricevute non pagate
+      - categoria=costi            → fatture_ricevute pagate
+      - categoria=ricavi           → prima_nota_banca tipo=entrata
+      - altri                      → info conto senza movimenti
     """
     db = Database.get_db()
 
-    # Recupera il conto per sapere la categoria
     conto = await db["piano_conti"].find_one({"codice": codice}, {"_id": 0})
     if not conto:
         raise HTTPException(status_code=404, detail=f"Conto {codice} non trovato")
 
-    cat = conto.get("categoria", "").lower()   # attivo / passivo / ricavi / costi / patrimonio
-    nome_conto = conto.get("nome", "")
+    cat  = conto.get("categoria", "").lower()
+    nome = conto.get("nome", "")
 
-    # Determina il tipo di movimento atteso
-    tipo_map = {
-        "ricavi": "entrata",
-        "attivo": "entrata",
-        "costi": "uscita",
-        "passivo": "uscita",
-        "patrimonio": None,          # entrambi
-    }
-    tipo_atteso = tipo_map.get(cat)
+    movimenti: list = []
+    fonte: str      = "nessuna"
 
-    query: dict = {}
-    if tipo_atteso:
-        query["tipo"] = tipo_atteso
-
-    # Filtro anno
-    if anno:
-        query["data"] = {"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31"}
-
-    # Keyword matching: cerca il nome del conto (o prime parole) nella categoria
-    keywords = [w for w in nome_conto.split() if len(w) > 3]
-    if keywords:
-        query["categoria"] = {"$regex": "|".join(keywords[:3]), "$options": "i"}
-
-    # Esegui query sull'estratto conto
-    movimenti = await db["estratto_conto_movimenti"].find(
-        query, {"_id": 0}
-    ).sort("data", -1).limit(limit).to_list(limit)
-
-    # Se keyword troppo stringente → fallback senza keyword ma con tipo
-    if not movimenti and tipo_atteso:
-        fallback_q = {"tipo": tipo_atteso}
+    # ── CASSA ────────────────────────────────────────────────────────────────
+    if codice == "01.01.01" or "cassa" in nome.lower():
+        q_cassa: dict = {}
         if anno:
-            fallback_q["data"] = query["data"]
-        movimenti = await db["estratto_conto_movimenti"].find(
-            fallback_q, {"_id": 0}
+            q_cassa["data"] = {"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31"}
+        docs = await db["prima_nota"].find(
+            q_cassa, {"_id": 0}
         ).sort("data", -1).limit(limit).to_list(limit)
+        movimenti = [
+            {"data": d.get("data"),
+             "descrizione": d.get("causale") or d.get("descrizione") or d.get("riferimento") or "—",
+             "importo": abs(d.get("importo", 0)),
+             "tipo": d.get("tipo") or ("entrata" if (d.get("importo", 0) or 0) >= 0 else "uscita"),
+             "categoria": d.get("categoria", ""),
+             "fonte": "Prima Nota Cassa"}
+            for d in docs
+        ]
+        fonte = "prima_nota"
 
-    # Prima nota banca (generico)
-    pn_banca = await db["prima_nota_banca"].find(
-        {} if not anno else {"data": {"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31"}},
-        {"_id": 0}
-    ).sort("data", -1).limit(20).to_list(20)
+    # ── BANCA C/C ─────────────────────────────────────────────────────────────
+    elif codice in ("01.01.02", "01.01.03") or "banca" in nome.lower():
+        # Prima prova prima_nota_banca (movimenti manuali confermati)
+        q_banca: dict = {}
+        if anno:
+            q_banca["data"] = {"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31"}
+        docs = await db["prima_nota_banca"].find(
+            q_banca, {"_id": 0}
+        ).sort("data", -1).limit(limit).to_list(limit)
+        if not docs:
+            # Fallback: movimenti_bancari (estratto conto completo)
+            docs = await db["movimenti_bancari"].find(
+                {}, {"_id": 0, "data_contabile": 1, "descrizione": 1, "importo": 1, "tipo": 1, "categoria": 1}
+            ).sort("data_contabile", -1).limit(limit).to_list(limit)
+            movimenti = [
+                {"data": d.get("data_contabile"),
+                 "descrizione": d.get("descrizione") or "—",
+                 "importo": abs(d.get("importo", 0)),
+                 "tipo": d.get("tipo", "uscita"),
+                 "categoria": d.get("categoria", ""),
+                 "fonte": "Estratto Conto"}
+                for d in docs
+            ]
+            fonte = "movimenti_bancari"
+        else:
+            movimenti = [
+                {"data": d.get("data"),
+                 "descrizione": d.get("descrizione") or d.get("causale") or "—",
+                 "importo": abs(d.get("importo", 0)),
+                 "tipo": d.get("tipo", "uscita"),
+                 "categoria": d.get("categoria", ""),
+                 "fonte": "Prima Nota Banca"}
+                for d in docs
+            ]
+            fonte = "prima_nota_banca"
 
-    totale_movimenti = sum(m.get("importo", 0) for m in movimenti)
+    # ── CREDITI V/CLIENTI ─────────────────────────────────────────────────────
+    elif codice.startswith("01.02") or "crediti" in nome.lower():
+        q_crediti: dict = {}
+        if anno:
+            q_crediti["data_fattura"] = {"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31"}
+        docs = await db["fatture"].find(
+            q_crediti, {"_id": 0, "fornitore": 1, "numero_fattura": 1, "data_fattura": 1, "importo_totale": 1}
+        ).sort("data_fattura", -1).limit(limit).to_list(limit)
+        movimenti = [
+            {"data": d.get("data_fattura"),
+             "descrizione": f"Fatt. {d.get('numero_fattura', '')} — {d.get('fornitore', '')}",
+             "importo": abs(d.get("importo_totale") or 0),
+             "tipo": "entrata", "categoria": "fattura",
+             "fonte": "Fatture"}
+            for d in docs
+        ]
+        fonte = "fatture"
+
+    # ── DEBITI V/FORNITORI ────────────────────────────────────────────────────
+    elif codice.startswith("02.01") or "debiti" in nome.lower():
+        q_debiti: dict = {}
+        if anno:
+            q_debiti["anno"] = int(anno)
+        docs = await db["fatture_passive"].find(
+            q_debiti,
+            {"_id": 0, "fornitore_denominazione": 1, "numero": 1, "data": 1, "importo_totale": 1, "stato": 1}
+        ).sort("data", -1).limit(limit).to_list(limit)
+        movimenti = [
+            {"data": d.get("data"),
+             "descrizione": f"Fatt. {d.get('numero', '')} — {d.get('fornitore_denominazione', '')}",
+             "importo": abs(d.get("importo_totale") or 0),
+             "tipo": "uscita", "categoria": d.get("stato", ""),
+             "fonte": "Fatture Passive"}
+            for d in docs
+        ]
+        fonte = "fatture_passive"
+
+    # ── COSTI / ACQUISTI ──────────────────────────────────────────────────────
+    elif cat in ("costi",):
+        q_costi: dict = {}
+        if anno:
+            q_costi["anno"] = int(anno)
+        docs = await db["fatture_passive"].find(
+            q_costi,
+            {"_id": 0, "fornitore_denominazione": 1, "numero": 1, "data": 1, "importo_totale": 1, "stato": 1}
+        ).sort("data", -1).limit(limit).to_list(limit)
+        movimenti = [
+            {"data": d.get("data"),
+             "descrizione": f"Fatt. {d.get('numero', '')} — {d.get('fornitore_denominazione', '')}",
+             "importo": abs(d.get("importo_totale") or 0),
+             "tipo": "uscita", "categoria": d.get("stato", ""),
+             "fonte": "Fatture Passive"}
+            for d in docs
+        ]
+        fonte = "fatture_passive"
+
+    # ── RICAVI ────────────────────────────────────────────────────────────────
+    elif cat in ("ricavi",):
+        q_ricavi: dict = {}
+        if anno:
+            q_ricavi["anno"] = int(anno)
+        docs_corr = await db["corrispettivi"].find(
+            q_ricavi, {"_id": 0, "data": 1, "descrizione": 1, "importo": 1, "totale": 1, "totale_imponibile": 1}
+        ).sort("data", -1).limit(limit).to_list(limit)
+        movimenti = [
+            {"data": d.get("data"),
+             "descrizione": d.get("descrizione") or "Corrispettivo",
+             "importo": abs(d.get("importo") or d.get("totale") or 0),
+             "tipo": "entrata", "categoria": "corrispettivo",
+             "fonte": "Corrispettivi"}
+            for d in docs_corr
+        ]
+        fonte = "corrispettivi"
+
+    totale_importo = sum(m.get("importo", 0) for m in movimenti)
 
     return {
         "conto": conto,
         "movimenti": movimenti,
         "totale_movimenti": len(movimenti),
-        "totale_importo": round(totale_movimenti, 2),
-        "prima_nota_banca": pn_banca,
-        "keyword_usata": keywords[:3] if keywords else [],
+        "totale_importo": round(totale_importo, 2),
+        "fonte": fonte,
+        "nota": (
+            "Movimenti contabili diretti non disponibili — "
+            "i dati mostrati provengono dalla fonte più rilevante per questo conto."
+        ) if movimenti else (
+            "Nessun movimento disponibile. Il saldo è calcolato dalle fatture importate."
+        ),
     }
 
 

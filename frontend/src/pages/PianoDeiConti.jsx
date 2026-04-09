@@ -675,9 +675,9 @@ export default function PianoDeiConti() {
             ) : contoDetail ? (
               <>
                 {/* Riepilogo */}
-                <div style={{ display: 'flex', gap: 10, marginBottom: 18 }}>
+                <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
                   {[
-                    { label: 'Movimenti trovati', val: contoDetail.totale_movimenti },
+                    { label: 'Movimenti', val: contoDetail.totale_movimenti },
                     { label: 'Totale periodo', val: formatEuro(contoDetail.totale_importo) },
                   ].map(({ label, val }) => (
                     <div key={label} style={{ flex: 1, background: '#f8fafc', borderRadius: 8, padding: 12, textAlign: 'center' }}>
@@ -687,11 +687,18 @@ export default function PianoDeiConti() {
                   ))}
                 </div>
 
-                {/* Tabella movimenti estratto conto */}
+                {/* Fonte dati */}
+                {contoDetail.fonte && contoDetail.fonte !== 'nessuna' && (
+                  <div style={{ fontSize: 11, color: '#888', background: '#f0f4ff', borderRadius: 6, padding: '6px 10px', marginBottom: 12 }}>
+                    Fonte: <strong>{contoDetail.fonte}</strong>
+                  </div>
+                )}
+
+                {/* Tabella movimenti */}
                 {contoDetail.movimenti?.length > 0 ? (
                   <>
                     <div style={{ fontWeight: 600, fontSize: 13, color: '#444', marginBottom: 8 }}>
-                      Movimenti bancari correlati ({new Date().getFullYear()})
+                      Movimenti ({new Date().getFullYear()})
                     </div>
                     <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
@@ -706,14 +713,15 @@ export default function PianoDeiConti() {
                           {contoDetail.movimenti.map((mov, i) => (
                             <tr key={i} style={{ borderTop: '1px solid #f0f0f0', background: i % 2 === 0 ? 'white' : '#fafafa' }}>
                               <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: 12, whiteSpace: 'nowrap' }}>
-                                {mov.data?.slice(0, 10)}
+                                {String(mov.data || '—').slice(0, 10)}
                               </td>
-                              <td style={{ padding: '8px 12px', color: '#333', maxWidth: 250 }}>
-                                <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={mov.descrizione_originale || mov.descrizione}>
-                                  {(mov.descrizione_originale || mov.descrizione || '—').slice(0, 60)}
+                              <td style={{ padding: '8px 12px', color: '#333', maxWidth: 260 }}>
+                                <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                                     title={mov.descrizione}>
+                                  {(mov.descrizione || '—').slice(0, 65)}
                                 </div>
                                 {mov.categoria && (
-                                  <div style={{ fontSize: 10, color: '#999', marginTop: 2 }}>{mov.categoria}</div>
+                                  <div style={{ fontSize: 10, color: '#aaa', marginTop: 2 }}>{mov.categoria}</div>
                                 )}
                               </td>
                               <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 'bold',
@@ -727,8 +735,9 @@ export default function PianoDeiConti() {
                     </div>
                   </>
                 ) : (
-                  <div style={{ textAlign: 'center', padding: 30, color: '#bbb', fontSize: 14 }}>
-                    Nessun movimento bancario trovato per questo conto nel {new Date().getFullYear()}
+                  <div style={{ textAlign: 'center', padding: 28, color: '#bbb', fontSize: 13,
+                    background: '#f8fafc', borderRadius: 8 }}>
+                    {contoDetail.nota || 'Nessun movimento disponibile per questo conto.'}
                   </div>
                 )}
               </>
