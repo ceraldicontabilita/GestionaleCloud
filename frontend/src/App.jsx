@@ -18,6 +18,7 @@ import Distinte from './pages/Distinte'
 import ImportaDocumenti from './pages/ImportaDocumenti'
 import Mittenti from './pages/Mittenti'
 import Tracciabilita from './pages/Tracciabilita'
+import TabletCucina from './pages/TabletCucina'
 import PrimaNota from './pages/PrimaNota'
 import { s } from './lib/utils'
 
@@ -46,6 +47,7 @@ export default function App() {
             <Route path="/distinte" element={<Distinte />} />
             <Route path="/mittenti" element={<Mittenti />} />
             <Route path="/tracciabilita" element={<Tracciabilita />} />
+            <Route path="/tablet-cucina" element={<TabletCucina />} />
             <Route path="/prima-nota" element={<PrimaNota />} />
           </Routes>
         </div>

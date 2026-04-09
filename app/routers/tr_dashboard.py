@@ -254,3 +254,33 @@ async def magazzino_congelatore(db: AsyncIOMotorDatabase = Depends(get_database)
                 sorted(entrate_desc.items(), key=lambda x: -x[1]["pz_totali"])]
     return {"anno": anno, "totale_pezzi_entrati": tot_entrate, "totale_pezzi_usciti": tot_uscite,
             "saldo_congelatore": max(0, tot_entrate - tot_uscite), "prodotti": prodotti}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  TABLET — Lista prodotti per reparto
+# ══════════════════════════════════════════════════════════════════════════════
+
+@router.get("/tablet/{reparto}")
+async def get_tablet(reparto: str, db: AsyncIOMotorDatabase = Depends(get_database)):
+    """Lista prodotti per tablet (rosticceria/pasticceria)."""
+    prodotti = []
+    ricette = await db["ricette"].find(
+        {"$or": [{"reparto": reparto}, {"reparto": {"$exists": False}}]},
+        {"_id": 0, "id": 1, "nome": 1, "foto_url": 1, "reparto": 1, "note": 1, "pezzi_produzione": 1}
+    ).to_list(200)
+    for r in ricette:
+        prodotti.append({
+            "id": r.get("id", ""), "nome": r.get("nome", ""),
+            "foto_url": r.get("foto_url", ""), "reparto": r.get("reparto", reparto),
+            "note": r.get("note", ""), "pezzi_default": r.get("pezzi_produzione", 1),
+        })
+    if not prodotti:
+        pvs = await db["prodotti_vendita"].find(
+            {"reparto": {"$regex": reparto, "$options": "i"}}, {"_id": 0}
+        ).to_list(200)
+        for p in pvs:
+            prodotti.append({
+                "id": p.get("id", ""), "nome": p.get("nome_display", p.get("nome", "")),
+                "foto_url": p.get("foto_url", ""), "reparto": reparto,
+            })
+    return prodotti
