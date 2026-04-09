@@ -322,20 +322,46 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
     else:
         raise HTTPException(status_code=400, detail="Formato non supportato. Usa CSV o Excel.")
     
-    # Salva nel database, evitando duplicati solo contro il DB (no dedup interna al CSV)
-    # Ogni riga del CSV va inserita come è (anche doppioni interni al file sono voluti)
+    # Salva nel database, evitando duplicati con un singolo query bulk
     import hashlib as _hashlib
     import uuid as _uuid
     inserted = 0
     duplicates = 0
     
+    if not movimenti:
+        return {
+            "success": True,
+            "stats": {"nuovi": 0, "duplicati": 0, "totale_letti": 0},
+            "message": "Nessun movimento trovato nel file."
+        }
+    
     # Ordina per data contabile ASCENDENTE prima di inserire
     movimenti.sort(key=lambda x: x["data"].isoformat()[:10] if hasattr(x["data"], "isoformat") else str(x["data"]))
     
+    # Recupera tutte le chiavi dedup già in DB nel range di date del CSV (1 sola query)
+    date_nel_csv = sorted(set(
+        m["data"].isoformat()[:10] if hasattr(m["data"], "isoformat") else str(m["data"])[:10]
+        for m in movimenti
+    ))
+    data_min, data_max = date_nel_csv[0], date_nel_csv[-1]
+    
+    # Carica le chiavi dedup esistenti per quel range
+    existing_cursor = db["estratto_conto_movimenti"].find(
+        {"data": {"$gte": data_min, "$lte": data_max}},
+        {"data": 1, "importo": 1, "descrizione_originale": 1, "descrizione": 1, "_id": 0}
+    )
+    existing_keys: set = set()
+    async for rec in existing_cursor:
+        dstr = rec.get("data", "")[:10]
+        imp  = abs(float(rec.get("importo", 0)))
+        desc = (rec.get("descrizione_originale") or rec.get("descrizione") or "")[:80]
+        existing_keys.add((dstr, round(imp, 2), desc))
+    
+    records_to_insert = []
     for mov in movimenti:
-        desc_raw = (mov.get("descrizione_originale") or mov.get("descrizione") or "")[:80]
-        data_str = mov["data"].isoformat()[:10] if hasattr(mov["data"], "isoformat") else str(mov["data"])[:10]
+        data_str    = mov["data"].isoformat()[:10] if hasattr(mov["data"], "isoformat") else str(mov["data"])[:10]
         importo_abs = abs(mov["importo"])
+        desc_raw    = (mov.get("descrizione_originale") or mov.get("descrizione") or "")[:80]
         
         # Determina tipo da segno importo
         tipo_mov = "entrata" if mov["importo"] >= 0 else "uscita"
@@ -344,30 +370,23 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
         if any(kw in desc_raw.upper() for kw in ["I24 AGENZIA ENTRATE", "BOLL.CBILL", "PAG. UTENZE"]):
             tipo_mov = "uscita"
         
-        # Fingerprint univoco per riga (include uuid per non deduplicare dentro il CSV)
-        row_uuid = str(_uuid.uuid4())
-        fingerprint = _hashlib.md5(f"{data_str}|{importo_abs:.2f}|{desc_raw}|{row_uuid}".encode()).hexdigest()
-        mov_id = f"EC-{data_str}-{importo_abs:.2f}-{fingerprint[:8]}"
-        
-        # Controlla duplicati SOLO contro il DB (non dentro il CSV)
-        # ECCEZIONE: commissioni piccole (≤2€) possono essere duplicate nello stesso giorno
-        # (es: commissioni bancarie €1 che appaiono più volte per operazioni diverse)
+        # Dedup: commissioni piccole (≤2€) sempre inserite
         is_commissione = importo_abs <= 2.00
+        dedup_key = (data_str, round(importo_abs, 2), desc_raw)
         
+        if not is_commissione and dedup_key in existing_keys:
+            duplicates += 1
+            continue
+        
+        # Aggiungi la chiave al set per evitare doppioni dentro lo stesso file
         if not is_commissione:
-            existing = await db["estratto_conto_movimenti"].find_one({
-                "$or": [
-                    {"data": data_str, "importo": importo_abs, "descrizione_originale": desc_raw},
-                    {"data": data_str, "importo": importo_abs, "descrizione": desc_raw}
-                ]
-            })
-            
-            if existing:
-                duplicates += 1
-                continue
+            existing_keys.add(dedup_key)
         
-        # Salva
-        record = {
+        row_uuid    = str(_uuid.uuid4())
+        fingerprint = _hashlib.md5(f"{data_str}|{importo_abs:.2f}|{desc_raw}|{row_uuid}".encode()).hexdigest()
+        mov_id      = f"EC-{data_str}-{importo_abs:.2f}-{fingerprint[:8]}"
+        
+        records_to_insert.append({
             "id": mov_id,
             "data": data_str,
             "ragione_sociale": mov.get("ragione_sociale"),
@@ -387,10 +406,12 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
             "fingerprint": fingerprint,
             "riconciliato": False,
             "created_at": datetime.now(timezone.utc).isoformat()
-        }
-        
-        await db["estratto_conto_movimenti"].insert_one(record.copy())
-        inserted += 1
+        })
+    
+    # Inserimento bulk unico
+    if records_to_insert:
+        await db["estratto_conto_movimenti"].insert_many(records_to_insert, ordered=False)
+        inserted = len(records_to_insert)
 
     
     # ===== RICONCILIAZIONE AUTOMATICA =====
@@ -413,12 +434,19 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
         riconciliazione_paghe = {"error": str(e)}
     
     return {
+        "success": True,
         "message": "Importazione estratto conto completata",
         "movimenti_trovati": len(movimenti),
         "movimenti_importati": inserted,
         "inseriti": inserted,
         "duplicati_saltati": duplicates,
+        "stats": {
+            "nuovi": inserted,
+            "duplicati": duplicates,
+            "totale_letti": len(movimenti),
+        },
         "riconciliazione_automatica": riconciliazione_results,
+        "riconciliazione_summary": (riconciliazione_results or {}).get("summary"),
         "riconciliazione_paghe": riconciliazione_paghe
     }
 

@@ -2599,7 +2599,6 @@ async def upload_documento_automatico(
         if tipo_rilevato == 'corrispettivo':
             # Import corrispettivo telematico COR10
             from app.parsers.corrispettivi_parser import parse_corrispettivo_xml
-            from datetime import timezone
             
             xml_content = None
             for enc in ['utf-8', 'utf-8-sig', 'latin-1', 'iso-8859-1']:
@@ -2762,25 +2761,34 @@ async def upload_documento_automatico(
                 result["message"] = f"Errore import distinte: {str(e)}"
                 
         elif tipo_rilevato == 'estratto_conto':
-            # Import estratto conto - salva in MongoDB per processamento
-            import base64 as b64
-            
-            doc_id = f"ec_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
-            estratto_doc = {
-                "id": doc_id,
-                "filename": filename,
-                "pdf_data": b64.b64encode(content).decode('utf-8'),  # MongoDB-only
-                "category": "estratto_conto",
-                "status": "da_processare",
-                "processed": False,
-                "source": "upload_manuale",
-                "created_at": datetime.now(timezone.utc).isoformat()
-            }
-            await db["documents_inbox"].insert_one(dict(estratto_doc).copy())
-            
-            result["message"] = "Estratto conto salvato in MongoDB. Usa la pagina Import Estratto Conto per processarlo."
-            result["doc_id"] = doc_id
-            result["azione_richiesta"] = "Vai a Banca > Import Estratto Conto"
+            # Import diretto estratto conto CSV Banco BPM → estratto_conto_movimenti
+            from app.routers.bank.estratto_conto import import_estratto_conto
+
+            _orig_filename = filename
+            _orig_content  = content
+
+            class _FakeUpload:
+                filename = _orig_filename
+                async def read(self):
+                    return _orig_content
+
+            try:
+                ec_result = await import_estratto_conto(_FakeUpload())
+                stats = ec_result.get("stats", {})
+                nuovi = stats.get("nuovi", 0)
+                dup   = stats.get("duplicati", 0)
+                result["message"] = (
+                    f"Estratto conto importato: {nuovi} movimenti nuovi, "
+                    f"{dup} duplicati saltati."
+                )
+                result["movimenti_nuovi"]     = nuovi
+                result["duplicati_saltati"]   = dup
+                result["totale_letti"]        = stats.get("totale_letti", nuovi + dup)
+                result["riconciliazione"]     = ec_result.get("riconciliazione_summary")
+            except Exception as ec_err:
+                logger.error(f"Import estratto conto fallito: {ec_err}")
+                result["success"] = False
+                result["message"] = f"Errore import estratto conto: {str(ec_err)}"
             
         elif tipo_rilevato == 'bonifici':
             # Salva per archivio bonifici in MongoDB

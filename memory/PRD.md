@@ -70,6 +70,8 @@ Aggiornamenti richiesti tramite file CERALDI_MASTER_ZIP.zip e ISTRUZIONI_CORRETT
 - **RIMOSSA pagina `/fisco`** e hub FiscoHub.jsx — eliminati 6 file: FiscoHub, MotoreContabile, LiquidazioneIVA, RiconciliazioneF24, CodiciTributari, F24.jsx
 - **RIMOSSO tab `/contabilita/motore`** (MotoreContabile) dalla ContabilitaHub — duplicato di BilancioVerifica
 - Voce "Fisco" rimossa dal TopNav, SecondaryTabs, App.jsx
+- **FIX CRITICO UnboundLocalError `timezone`**: `from datetime import timezone` era DENTRO la funzione `upload_documento_automatico` (documenti.py:2602) — causava errore su ogni upload estratto conto CSV
+- **Import estratto conto ottimizzato**: da ~3400 query MongoDB singole (timeout 60s) a 1 query bulk + insert_many (2.5s). Import diretto dall'upload-auto senza step intermedio.
 
 ## Backlog / Task futuri
 - **P3**: Auth backend con Cookies HTTP-Only
