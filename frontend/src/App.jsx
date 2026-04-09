@@ -1,57 +1,24 @@
-import React from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import TopNav from './components/TopNav'
-import Dipendenti from './pages/Dipendenti'
-import DettaglioDipendente from './pages/DettaglioDipendente'
-import Pignoramenti from './pages/Pignoramenti'
-import Fatture from './pages/Fatture'
-import Cedolini from './pages/Cedolini'
-import EstrattoConto from './pages/EstrattoConto'
-import F24Page from './pages/F24'
-import AlertFiscali from './pages/AlertFiscali'
-import TributiPrivati from './pages/TributiPrivati'
-import Fornitori from './pages/Fornitori'
-import F24PrivatiPage from './pages/F24Privati'
-import Corrispettivi from './pages/Corrispettivi'
-import Verbali from './pages/Verbali'
-import Distinte from './pages/Distinte'
-import ImportaDocumenti from './pages/ImportaDocumenti'
-import Mittenti from './pages/Mittenti'
-import Tracciabilita from './pages/Tracciabilita'
-import TabletCucina from './pages/TabletCucina'
-import PrimaNota from './pages/PrimaNota'
-import { s } from './lib/utils'
-
 export default function App() {
+  const url = import.meta.env.VITE_TRACCIABILITA_URL || 'https://food-cost-calc-14.preview.emergentagent.com'
   return (
-    <BrowserRouter>
-      <div style={s.page}>
-        <TopNav />
-        <div style={s.container}>
-          <Routes>
-            <Route path="/" element={<Navigate to="/importa" replace />} />
-            <Route path="/importa" element={<ImportaDocumenti />} />
-            <Route path="/dipendenti" element={<Dipendenti />} />
-            <Route path="/dipendenti/:id" element={<DettaglioDipendente />} />
-            <Route path="/pignoramenti" element={<Pignoramenti />} />
-            <Route path="/fatture" element={<Fatture />} />
-            <Route path="/cedolini" element={<Cedolini />} />
-            <Route path="/estratto-conto" element={<EstrattoConto />} />
-            <Route path="/f24" element={<F24Page />} />
-            <Route path="/f24-privati" element={<F24PrivatiPage />} />
-            <Route path="/alert-fiscali" element={<AlertFiscali />} />
-            <Route path="/tributi" element={<TributiPrivati />} />
-            <Route path="/fornitori" element={<Fornitori />} />
-            <Route path="/corrispettivi" element={<Corrispettivi />} />
-            <Route path="/verbali" element={<Verbali />} />
-            <Route path="/distinte" element={<Distinte />} />
-            <Route path="/mittenti" element={<Mittenti />} />
-            <Route path="/tracciabilita" element={<Tracciabilita />} />
-            <Route path="/tablet-cucina" element={<TabletCucina />} />
-            <Route path="/prima-nota" element={<PrimaNota />} />
-          </Routes>
-        </div>
-      </div>
-    </BrowserRouter>
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0f0f0f' }}>
+      <a
+        href={url}
+        style={{
+          display: 'inline-block',
+          padding: '20px 48px',
+          background: '#5D29C7',
+          color: '#fff',
+          textDecoration: 'none',
+          borderRadius: '12px',
+          fontSize: '22px',
+          fontWeight: '700',
+          letterSpacing: '0.5px',
+          fontFamily: 'Plus Jakarta Sans, sans-serif',
+        }}
+      >
+        Tracciabilità
+      </a>
+    </div>
   )
 }
