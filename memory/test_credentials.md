@@ -11,12 +11,12 @@
 ---
 
 ## 2. MongoDB Atlas
-- URI: mongodb+srv://Ceraldidatabase:Ceraldi1974@cluster0.vofh7iz.mongodb.net/?retryWrites=true&w=majority
+- URI: mongodb+srv://Ceraldidatabase:Accesso1974@cluster0.vofh7iz.mongodb.net/?retryWrites=true&w=majority
 - Database: Gestionale
 - User: Ceraldidatabase
-- Password: Ceraldi1974
+- Password: Accesso1974
 - Cluster: cluster0.vofh7iz
-- Stato: PASSWORD DA AGGIORNARE SU ATLAS (AuthenticationFailed - Apr 2026)
+- Stato: CONNESSO (Apr 2026)
 
 ---
 
