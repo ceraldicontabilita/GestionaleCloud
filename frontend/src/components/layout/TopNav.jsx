@@ -2,7 +2,7 @@ import React, { useState, useRef, useCallback, memo, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, FileText, BookOpen, Building2,
-  Landmark, Users, FlaskConical, ChevronDown,
+  Users, FlaskConical, ChevronDown,
   Bell, Calendar, Warehouse, UtensilsCrossed,
   Settings, Wrench, FileBarChart, BookMarked, Car
 } from 'lucide-react';
@@ -14,7 +14,6 @@ const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', Icon: LayoutDashboard },
   { to: '/fatture', label: 'Fatture', Icon: FileText },
   { to: '/prima-nota', label: 'Prima Nota', Icon: BookOpen },
-  { to: '/fisco', label: 'Fisco', Icon: Landmark },
   { to: '/fornitori', label: 'Fornitori', Icon: Building2 },
   { to: '/dipendenti', label: 'HR', Icon: Users },
   { to: null, href: 'https://www.ceraldiapp.it', label: 'Tracciabilità', Icon: FlaskConical, external: true },

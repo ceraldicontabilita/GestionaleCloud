@@ -7,7 +7,6 @@ const PianoContiContent    = lazy(() => import('../PianoDeiConti.jsx'));
 const BilancioContent      = lazy(() => import('../Bilancio.jsx'));
 const BilancioVerContent   = lazy(() => import('../BilancioVerifica.jsx'));
 const ControlloContent     = lazy(() => import('../ControlloMensile.jsx'));
-const MotoreContent        = lazy(() => import('../MotoreContabile.jsx'));
 const CalendarioContent    = lazy(() => import('../CalendarioFiscale.jsx'));
 const CespitiContent       = lazy(() => import('../GestioneCespiti.jsx'));
 const FinanziariaContent   = lazy(() => import('../Finanziaria.jsx'));
@@ -21,7 +20,6 @@ const TABS = [
   { id: 'bilancio',      label: '📈 Bilancio',            color: '#10b981' },
   { id: 'verifica',      label: '✅ Verifica Bilancio',   color: '#06b6d4' },
   { id: 'controllo',     label: '🔍 Controllo Mensile',   color: '#3b82f6' },
-  { id: 'motore',        label: '⚙️ Motore Contabile',    color: '#6366f1' },
   { id: 'calendario',    label: '📅 Calendario Fiscale',  color: '#f59e0b' },
   { id: 'cespiti',       label: '🏢 Cespiti',             color: '#8b5cf6' },
   { id: 'finanziaria',   label: '💰 Finanziaria',         color: '#ec4899' },
@@ -51,7 +49,6 @@ const getTabFromPath = (pathname) => {
   if (pathname.includes('/bilancio-verifica') || pathname.includes('/contabilita/verifica')) return 'verifica';
   if (pathname.includes('/bilancio'))          return 'bilancio';
   if (pathname.includes('/controllo-mensile') || pathname.includes('/contabilita/controllo')) return 'controllo';
-  if (pathname.includes('/motore-contabile') || pathname.includes('/contabilita/motore')) return 'motore';
   if (pathname.includes('/calendario-fiscale') || pathname.includes('/contabilita/calendario')) return 'calendario';
   if (pathname.includes('/cespiti'))           return 'cespiti';
   if (pathname.includes('/finanziaria'))       return 'finanziaria';
@@ -126,7 +123,6 @@ export default function ContabilitaHub() {
           {activeTab === 'bilancio'    && <BilancioContent />}
           {activeTab === 'verifica'    && <BilancioVerContent />}
           {activeTab === 'controllo'   && <ControlloContent />}
-          {activeTab === 'motore'      && <MotoreContent />}
           {activeTab === 'calendario'  && <CalendarioContent />}
           {activeTab === 'cespiti'     && <CespitiContent />}
           {activeTab === 'finanziaria' && <FinanziariaContent />}

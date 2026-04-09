@@ -31,7 +31,6 @@ const HRDipendenti = lazy(() => import("./pages/hr/HRDipendenti.jsx"));
 const HRCedolini = lazy(() => import("./pages/hr/HRCedolini.jsx"));
 const HRTFR = lazy(() => import("./pages/hr/HRTFR.jsx"));
 const VeicoliHub = lazy(() => import("./pages/hub/VeicoliHub.jsx"));
-const FiscoHub = lazy(() => import("./pages/hub/FiscoHub.jsx"));
 const ContabilitaHub = lazy(() => import("./pages/hub/ContabilitaHub.jsx"));
 const MagazzinoHub = lazy(() => import("./pages/hub/MagazzinoHub.jsx"));
 const CucinaHub = lazy(() => import("./pages/hub/CucinaHub.jsx"));
@@ -140,30 +139,10 @@ const router = createBrowserRouter([
       { path: "verbali-riconciliazione", element: <LazyPage><VeicoliHub /></LazyPage> },
       { path: "verbali-riconciliazione/:verbaleId", element: <LazyPage><VeicoliHub /></LazyPage> },
       
-      // === FISCO & TRIBUTI ===
-      { path: "fisco", element: <LazyPage><FiscoHub /></LazyPage> },
-      { path: "fisco/:tab", element: <LazyPage><FiscoHub /></LazyPage> },
-      // Redirect vecchi path diretti → /fisco/tab
-      { path: "iva", element: <Navigate to="/fisco/iva" replace /> },
-      { path: "iva/calcolo", element: <Navigate to="/fisco/iva" replace /> },
-      { path: "iva/liquidazione", element: <Navigate to="/fisco/iva" replace /> },
-      { path: "iva/:anno/:trimestre", element: <LazyPage><FiscoHub /></LazyPage> },
-      { path: "liquidazione-iva", element: <Navigate to="/fisco/iva" replace /> },
-      { path: "liquidazione-iva/:anno/:mese", element: <LazyPage><FiscoHub /></LazyPage> },
-      { path: "f24", element: <Navigate to="/fisco/f24" replace /> },
-      { path: "f24/modelli", element: <Navigate to="/fisco/f24" replace /> },
-      { path: "f24/riconciliazione", element: <Navigate to="/fisco/ric-f24" replace /> },
-      { path: "f24/:anno", element: <LazyPage><FiscoHub /></LazyPage> },
-      { path: "f24/:anno/:mese", element: <LazyPage><FiscoHub /></LazyPage> },
-      { path: "riconciliazione-f24", element: <Navigate to="/fisco/ric-f24" replace /> },
-      { path: "riconciliazione-f24/:anno", element: <LazyPage><FiscoHub /></LazyPage> },
-      { path: "codici-tributari", element: <Navigate to="/fisco/codici" replace /> },
-      { path: "codici-tributari/:codice", element: <LazyPage><FiscoHub /></LazyPage> },
+      // === CONTABILITÀ ===
       { path: "contabilita", element: <LazyPage><ContabilitaHub /></LazyPage> },
       { path: "contabilita/:sezione", element: <LazyPage><ContabilitaHub /></LazyPage> },
       { path: "contabilita-hub", element: <Navigate to="/contabilita" replace /> },
-      
-      // === BILANCIO → tab in /contabilita/bilancio ===
       { path: "bilancio", element: <Navigate to="/contabilita/bilancio" replace /> },
       { path: "bilancio/:tab", element: <LazyPage><ContabilitaHub /></LazyPage> },
       { path: "bilancio/:anno", element: <LazyPage><ContabilitaHub /></LazyPage> },
@@ -176,13 +155,11 @@ const router = createBrowserRouter([
       // === MUTUI → tab in /contabilita/mutui ===
       { path: "mutui", element: <Navigate to="/contabilita/mutui" replace /> },
 
-      // === CONTABILITÀ ===
       { path: "piano-dei-conti", element: <Navigate to="/contabilita/piano-conti" replace /> },
       { path: "piano-dei-conti/:tab", element: <LazyPage><ContabilitaHub /></LazyPage> },
       { path: "piano-dei-conti/:conto", element: <LazyPage><ContabilitaHub /></LazyPage> },
       { path: "controllo-mensile", element: <Navigate to="/contabilita/controllo" replace /> },
       { path: "controllo-mensile/:anno/:mese", element: <LazyPage><ContabilitaHub /></LazyPage> },
-      { path: "motore-contabile", element: <Navigate to="/contabilita/motore" replace /> },
       { path: "calendario-fiscale", element: <Navigate to="/contabilita/calendario" replace /> },
       { path: "cespiti", element: <Navigate to="/contabilita/cespiti" replace /> },
       { path: "cespiti/:tab", element: <LazyPage><ContabilitaHub /></LazyPage> },

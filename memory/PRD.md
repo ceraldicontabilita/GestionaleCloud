@@ -67,6 +67,9 @@ Aggiornamenti richiesti tramite file CERALDI_MASTER_ZIP.zip e ISTRUZIONI_CORRETT
 - **SCHEDULER PEC**: task orario `pec_hourly_download_task` aggiunto allo scheduler (APScheduler)
 - **FIX sync PEC timeout**: endpoint background corretto (`await` rimosso da `Database.get_db()`). GestioneEmailMittenti e CicloPassivoAdmin ora usano background endpoint (risposta in <0.3s invece di timeout a 33s)
 - **Scheduler riabilitato** in `main.py`: PEC ogni ora, Gmail ogni 10min, Verbali ogni ora, F24 alle 8/14
+- **RIMOSSA pagina `/fisco`** e hub FiscoHub.jsx — eliminati 6 file: FiscoHub, MotoreContabile, LiquidazioneIVA, RiconciliazioneF24, CodiciTributari, F24.jsx
+- **RIMOSSO tab `/contabilita/motore`** (MotoreContabile) dalla ContabilitaHub — duplicato di BilancioVerifica
+- Voce "Fisco" rimossa dal TopNav, SecondaryTabs, App.jsx
 
 ## Backlog / Task futuri
 - **P3**: Auth backend con Cookies HTTP-Only

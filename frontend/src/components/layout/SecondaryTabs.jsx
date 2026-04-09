@@ -16,11 +16,6 @@ const TAB_CONFIGS = {
     { to: '/archivio-bonifici', label: 'Bonifici' },
     { to: '/gestione-assegni', label: 'Assegni' },
   ],
-  '/fisco': [
-    { to: '/f24', label: 'F24' },
-    { to: '/iva', label: 'Liquidazione IVA' },
-    { to: '/fisco', label: 'Calcolo IVA' },
-  ],
   '/dipendenti': [
     { to: '/dipendenti', label: 'Dipendenti', exact: true },
     { to: '/cedolini', label: 'Cedolini' },
@@ -53,9 +48,6 @@ export default function SecondaryTabs() {
     // Check specific route patterns
     if (path.startsWith('/fatture-ricevute') || path.startsWith('/corrispettivi') || path.startsWith('/archivio-fatture-ricevute')) {
       return TAB_CONFIGS['/fatture'];
-    }
-    if (path.startsWith('/f24') || path.startsWith('/iva')) {
-      return TAB_CONFIGS['/fisco'];
     }
     if (path.startsWith('/cedolini') || path.startsWith('/presenze') || path.startsWith('/attendance') || path.startsWith('/tfr')) {
       return TAB_CONFIGS['/dipendenti'];
