@@ -72,7 +72,7 @@ async def processa_cedolino_completo(
         # ============================================
         # 1. ANAGRAFICA DIPENDENTE
         # ============================================
-        dipendente = await db["employees"].find_one(
+        dipendente = await db["dipendenti"].find_one(
             {"codice_fiscale": cf}
         )
         
@@ -91,7 +91,7 @@ async def processa_cedolino_completo(
             if iban and iban != dipendente.get("iban"):
                 update_data["iban"] = iban
             
-            await db["employees"].update_one(
+            await db["dipendenti"].update_one(
                 {"codice_fiscale": cf},
                 {"$set": update_data}
             )
@@ -126,7 +126,7 @@ async def processa_cedolino_completo(
                 "updated_at": datetime.now(timezone.utc).isoformat()
             }
             
-            await db["employees"].insert_one(dict(nuova_anagrafica).copy())
+            await db["dipendenti"].insert_one(dict(nuova_anagrafica).copy())
             result["anagrafica_creata"] = True
             logger.info(f"📋 Nuova anagrafica dipendente creata: {nome} ({cf})")
         
@@ -434,7 +434,7 @@ async def get_anagrafica_dipendenti(db, attivi_solo: bool = True) -> List[Dict[s
     if attivi_solo:
         filtro["stato"] = "attivo"
     
-    dipendenti = await db["employees"].find(
+    dipendenti = await db["dipendenti"].find(
         filtro,
         {"_id": 0}
     ).sort("cognome", 1).to_list(500)
@@ -446,7 +446,7 @@ async def get_riepilogo_dipendente(db, codice_fiscale: str) -> Dict[str, Any]:
     """Restituisce il riepilogo completo di un dipendente."""
     
     # Anagrafica
-    anagrafica = await db["employees"].find_one(
+    anagrafica = await db["dipendenti"].find_one(
         {"codice_fiscale": codice_fiscale},
         {"_id": 0}
     )

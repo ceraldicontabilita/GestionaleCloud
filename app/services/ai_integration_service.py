@@ -136,7 +136,7 @@ async def process_document_with_ai(
             # Cerca dipendente e aggiorna progressivi automaticamente
             cf = dipendente.get("codice_fiscale")
             if cf:
-                dip_db = await db["employees"].find_one(
+                dip_db = await db["dipendenti"].find_one(
                     {"codice_fiscale": cf},
                     {"_id": 0, "id": 1, "nome": 1, "cognome": 1}
                 )
@@ -146,7 +146,7 @@ async def process_document_with_ai(
                     # Aggiorna automaticamente i progressivi del dipendente
                     progressivi_update = convert_ai_busta_paga_to_dipendente_update(parsed)
                     
-                    await db["employees"].update_one(
+                    await db["dipendenti"].update_one(
                         {"id": dip_db["id"]},
                         {"$set": {
                             "progressivi": progressivi_update["progressivi"],

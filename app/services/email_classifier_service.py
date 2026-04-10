@@ -517,10 +517,10 @@ async def process_classified_documents(db) -> Dict[str, Any]:
                 cf = extract_codice_fiscale(doc.get("subject", "") + doc.get("filename", ""))
                 if cf:
                     # Trova dipendente
-                    dipendente = await db["employees"].find_one({"codice_fiscale": cf.upper()})
+                    dipendente = await db["dipendenti"].find_one({"codice_fiscale": cf.upper()})
                     if dipendente:
                         # Estrai data dimissione se possibile
-                        await db["employees"].update_one(
+                        await db["dipendenti"].update_one(
                             {"_id": dipendente["_id"]},
                             {"$set": {
                                 "stato": "dimesso",

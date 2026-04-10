@@ -66,7 +66,7 @@ async def calcola_indici_bilancio(anno: int) -> Dict[str, Any]:
     debiti_fornitori = debiti[0]["totale"] if debiti else 0
     
     # Fondo TFR
-    tfr = await db["employees"].aggregate([
+    tfr = await db["dipendenti"].aggregate([
         {"$match": {"status": {"$in": ["attivo", "active"]}}},
         {"$group": {"_id": None, "totale": {"$sum": "$tfr_accantonato"}}}
     ]).to_list(1)

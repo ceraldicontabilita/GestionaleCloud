@@ -133,7 +133,7 @@ async def save_busta_paga_to_gestionale(db, data: Dict[str, Any], source_info: D
         
         # Aggiorna/crea anagrafica dipendente
         if dipendente.get("codice_fiscale"):
-            await db["employees"].update_one(
+            await db["dipendenti"].update_one(
                 {"codice_fiscale": dipendente.get("codice_fiscale")},
                 {
                     "$set": {

@@ -22,7 +22,7 @@ async def get_dashboard_summary() -> Dict[str, Any]:
             return {
                 "invoices": await db["invoices"].count_documents({}),
                 "suppliers": await db["fornitori"].count_documents({}),
-                "employees": await db["employees"].count_documents({}),
+                "employees": await db["dipendenti"].count_documents({}),
                 "prima_nota_cassa": await db["prima_nota_cassa"].count_documents({}),
                 "prima_nota_banca": await db["prima_nota_banca"].count_documents({}),
                 "f24": await db["f24_unificato"].count_documents({}),
@@ -99,7 +99,7 @@ async def get_stats(
         "invoices": await db["invoices"].count_documents({}),
         "suppliers": await db["fornitori"].count_documents({}),
         "products": await db["warehouse_inventory"].count_documents({}),
-        "employees": await db["employees"].count_documents({}),
+        "employees": await db["dipendenti"].count_documents({}),
         "prima_nota_cassa": await db["prima_nota_cassa"].count_documents({}),
         "prima_nota_banca": await db["prima_nota_banca"].count_documents({}),
         "f24": await db["f24_unificato"].count_documents({})

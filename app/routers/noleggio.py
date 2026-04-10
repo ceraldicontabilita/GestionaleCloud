@@ -301,7 +301,7 @@ async def get_drivers() -> Dict[str, Any]:
     db = Database.get_db()
     
     dipendenti = []
-    cursor = db["employees"].find({}, {"_id": 0, "id": 1, "nome": 1, "cognome": 1})
+    cursor = db["dipendenti"].find({}, {"_id": 0, "id": 1, "nome": 1, "cognome": 1})
     async for d in cursor:
         dipendenti.append({
             "id": d.get("id"),
@@ -353,7 +353,7 @@ async def update_veicolo(
     
     # Verifica driver se passato
     if data.get("driver_id"):
-        dipendente = await db["employees"].find_one(
+        dipendente = await db["dipendenti"].find_one(
             {"id": data["driver_id"]}, 
             {"_id": 0, "id": 1, "nome": 1, "cognome": 1}
         )

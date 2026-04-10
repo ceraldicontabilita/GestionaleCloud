@@ -21,7 +21,7 @@ async def collega_targa_driver(
     db = Database.get_db()
 
     # Verifica che il dipendente esista
-    dipendente = await db["employees"].find_one({"id": driver_id}, {"_id": 0, "id": 1, "nome_completo": 1, "nome": 1, "cognome": 1})
+    dipendente = await db["dipendenti"].find_one({"id": driver_id}, {"_id": 0, "id": 1, "nome_completo": 1, "nome": 1, "cognome": 1})
     if not dipendente:
         raise HTTPException(status_code=404, detail="Dipendente non trovato")
 

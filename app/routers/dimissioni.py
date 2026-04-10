@@ -324,7 +324,7 @@ async def associa_dimissioni_dipendenti() -> Dict[str, Any]:
     risultati["dimissioni_analizzate"] = len(dimissioni)
     
     # Carica tutti i dipendenti
-    dipendenti = await db["employees"].find({}).to_list(length=1000)
+    dipendenti = await db["dipendenti"].find({}).to_list(length=1000)
     
     for dim in dimissioni:
         codice_fiscale = dim.get("codice_fiscale")
@@ -349,7 +349,7 @@ async def associa_dimissioni_dipendenti() -> Dict[str, Any]:
                     data_iso = data_dimissioni
                 
                 # Aggiorna dipendente
-                await db["employees"].update_one(
+                await db["dipendenti"].update_one(
                     {"_id": dipendente["_id"]},
                     {
                         "$set": {
@@ -398,7 +398,7 @@ async def get_stats_dimissioni() -> Dict[str, Any]:
     totale_dimissioni = await db[COLLECTION_DIMISSIONI].count_documents({})
     
     # Conta dipendenti dimessi
-    dipendenti_dimessi = await db["employees"].count_documents({"stato": "dimesso"})
+    dipendenti_dimessi = await db["dipendenti"].count_documents({"stato": "dimesso"})
     
     return {
         "notifiche_dimissioni": totale_dimissioni,

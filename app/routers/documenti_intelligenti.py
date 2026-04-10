@@ -354,9 +354,9 @@ async def associa_tutti_documenti() -> Dict[str, Any]:
                 match = re.search(r'([A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z])', (subject + filename).upper())
                 if match:
                     cf = match.group(1)
-                    dipendente = await db["employees"].find_one({"codice_fiscale": cf})
+                    dipendente = await db["dipendenti"].find_one({"codice_fiscale": cf})
                     if dipendente:
-                        await db["employees"].update_one(
+                        await db["dipendenti"].update_one(
                             {"_id": dipendente["_id"]},
                             {"$set": {"stato": "dimesso", "documento_dimissioni": filename}}
                         )

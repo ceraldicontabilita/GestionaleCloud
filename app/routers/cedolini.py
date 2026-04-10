@@ -529,7 +529,7 @@ async def calcola_stima_cedolino(input_data: CedolinoInput) -> CedolinoStima:
     db = Database.get_db()
     
     # Recupera dati dipendente
-    dipendente = await db["employees"].find_one(
+    dipendente = await db["dipendenti"].find_one(
         {"id": input_data.dipendente_id},
         {"_id": 0}
     )
@@ -735,7 +735,7 @@ async def conferma_cedolino(stima: CedolinoStima) -> Dict[str, Any]:
     await db["prima_nota_salari"].insert_one(movimento_salario.copy())
     
     # Aggiorna TFR dipendente
-    await db["employees"].update_one(
+    await db["dipendenti"].update_one(
         {"id": stima.dipendente_id},
         {"$inc": {"tfr_accantonato": stima.tfr_mese}}
     )
@@ -798,7 +798,7 @@ async def cedolini_dipendente(dipendente_id: str, anno: Optional[int] = None) ->
     dipendente = await db["dipendenti"].find_one({"id": dipendente_id}, {"_id": 0, "nome_completo": 1, "nome": 1, "cognome": 1})
     if not dipendente:
         # Fallback alla collection legacy
-        dipendente = await db["employees"].find_one({"id": dipendente_id}, {"_id": 0, "nome_completo": 1, "nome": 1})
+        dipendente = await db["dipendenti"].find_one({"id": dipendente_id}, {"_id": 0, "nome_completo": 1, "nome": 1})
     if not dipendente:
         raise HTTPException(status_code=404, detail="Dipendente non trovato")
     

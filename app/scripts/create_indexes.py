@@ -88,10 +88,10 @@ async def create_indexes():
         # ============================================
         # DIPENDENTI
         # ============================================
-        await safe_create_index(db["employees"], "codice_fiscale", unique=True, sparse=True)
-        await safe_create_index(db["employees"], "status")
-        await safe_create_index(db["employees"], "nome_completo")
-        await safe_create_index(db["employees"], [("cognome", 1), ("nome", 1)])
+        await safe_create_index(db["dipendenti"], "codice_fiscale", unique=True, sparse=True)
+        await safe_create_index(db["dipendenti"], "status")
+        await safe_create_index(db["dipendenti"], "nome_completo")
+        await safe_create_index(db["dipendenti"], [("cognome", 1), ("nome", 1)])
         indexes_created.append("employees: codice_fiscale (unique), status, nome_completo")
         logger.info("✅ Indici employees creati")
         

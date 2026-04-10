@@ -1547,7 +1547,7 @@ async def sync_buste_paga() -> Dict[str, Any]:
     
     # Cache dipendenti per matching
     dipendenti = {}
-    async for dip in db["employees"].find({}, {"_id": 0, "id": 1, "nome": 1, "cognome": 1, "codice_fiscale": 1}):
+    async for dip in db["dipendenti"].find({}, {"_id": 0, "id": 1, "nome": 1, "cognome": 1, "codice_fiscale": 1}):
         cf = dip.get("codice_fiscale", "").upper()
         if cf:
             dipendenti[cf] = dip

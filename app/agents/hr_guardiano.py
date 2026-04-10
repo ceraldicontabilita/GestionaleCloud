@@ -34,7 +34,7 @@ class HRGuardiano:
             cf_match = re.search(self.CF_PATTERN, testo)
             if cf_match:
                 cf = cf_match.group(1)
-                dip = await db["employees"].find_one(
+                dip = await db["dipendenti"].find_one(
                     {"$or": [{"codice_fiscale": cf}, {"cf": cf}]},
                     {"_id": 0}
                 )
@@ -64,7 +64,7 @@ class HRGuardiano:
                         }
                     )
                     if data_dim:
-                        await db["employees"].update_one(
+                        await db["dipendenti"].update_one(
                             {"id": dip["id"]},
                             {"$set": {
                                 "stato": "in_uscita",
@@ -80,7 +80,7 @@ class HRGuardiano:
     async def _controlla_scadenze_contratti(self, db):
         oggi = date.today()
         tra30 = (oggi + timedelta(days=30)).isoformat()
-        contratti = await db["employees"].find({
+        contratti = await db["dipendenti"].find({
             "tipo_contratto": {"$in": ["Tempo Determinato", "Part-Time Determinato"]},
             "data_fine_contratto": {"$gte": oggi.isoformat(), "$lte": tra30},
             "stato": {"$ne": "cessato"}
@@ -118,7 +118,7 @@ class HRGuardiano:
     async def _controlla_libretti_sanitari(self, db):
         oggi = date.today()
         tra60 = (oggi + timedelta(days=60)).isoformat()
-        dipendenti = await db["employees"].find(
+        dipendenti = await db["dipendenti"].find(
             {
                 "libretto_sanitario_scadenza": {"$gte": oggi.isoformat(), "$lte": tra60},
                 "stato": {"$ne": "cessato"}

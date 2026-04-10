@@ -124,7 +124,7 @@ async def export_employees(
     """Export dipendenti."""
     db = Database.get_db()
     
-    employees = await db["employees"].find({}, {"_id": 0}).sort("nome_completo", 1).to_list(1000)
+    employees = await db["dipendenti"].find({}, {"_id": 0}).sort("nome_completo", 1).to_list(1000)
     
     if format == "json":
         return {"employees": employees, "count": len(employees)}
