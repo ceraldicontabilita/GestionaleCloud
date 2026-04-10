@@ -56,12 +56,12 @@ export function useWebSocketNotifications() {
       ws.onopen = () => {
         retriesRef.current = 0;
         console.info('[WS] Connesso a', url);
-        // Ping ogni 45 secondi (server timeout: 60s)
+        // Ping ogni 20 secondi (proxy Kubernetes timeout: 30s — dobbiamo pingare prima)
         pingTimerRef.current = setInterval(() => {
           if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
             wsRef.current.send(JSON.stringify({ command: 'ping' }));
           }
-        }, 45000);
+        }, 20000);
       };
 
       ws.onmessage = (event) => {

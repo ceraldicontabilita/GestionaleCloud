@@ -8,6 +8,9 @@
  *   Lista fatture → GET /api/fatture-ricevute/archivio
  *   Scarica PEC  → POST /api/email-download/processa-fatture-email
  *   Status PEC   → GET  /api/email-download/processa-fatture-email/status
+ *
+ * NOTA: i tab usano display:none/block (NON conditional rendering &&)
+ * così lo stato (file selezionati, risultati) NON viene perso cambiando tab.
  */
 import React, { useState, useEffect, useRef } from 'react';
 import api from '../api';
@@ -16,12 +19,18 @@ import { PageLayout, PageSection, PageEmpty, PageLoading } from '../components/P
 
 export default function CicloPassivoAdmin() {
   const [activeTab, setActiveTab] = useState('upload');
+  const [visitedTabs, setVisitedTabs] = useState(() => new Set(['upload']));
 
   const tabs = [
-    { id: 'upload',  label: '📤 Upload XML' },
-    { id: 'pec',     label: '📧 Scarica PEC' },
-    { id: 'fatture', label: '📋 Fatture Importate' },
+    { id: 'upload',  label: 'Upload XML' },
+    { id: 'pec',     label: 'Scarica PEC' },
+    { id: 'fatture', label: 'Fatture Importate' },
   ];
+
+  const switchTab = (id) => {
+    setActiveTab(id);
+    setVisitedTabs(prev => new Set([...prev, id]));
+  };
 
   return (
     <PageLayout>
@@ -29,7 +38,7 @@ export default function CicloPassivoAdmin() {
       <div style={STYLES.header}>
         <div>
           <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: '#fff' }}>
-            📥 Ciclo Passivo — Import Fatture
+            Ciclo Passivo — Import Fatture
           </h1>
           <p style={{ margin: '4px 0 0', fontSize: 13, color: 'rgba(255,255,255,0.75)' }}>
             Import XML + Aruba PEC → Magazzino + Prima Nota + Scadenziario automatici
@@ -46,7 +55,7 @@ export default function CicloPassivoAdmin() {
           <button
             key={t.id}
             data-testid={`tab-${t.id}`}
-            onClick={() => setActiveTab(t.id)}
+            onClick={() => switchTab(t.id)}
             style={{
               padding: '8px 18px', border: 'none', cursor: 'pointer',
               fontSize: 14, fontWeight: 600, borderRadius: '6px 6px 0 0',
@@ -58,9 +67,16 @@ export default function CicloPassivoAdmin() {
         ))}
       </div>
 
-      {activeTab === 'upload'  && <TabUploadXML />}
-      {activeTab === 'pec'     && <TabPEC />}
-      {activeTab === 'fatture' && <TabFatture />}
+      {/* Tab content — display:none/block per preservare stato tra tab */}
+      <div style={{ display: activeTab === 'upload' ? 'block' : 'none' }}>
+        <TabUploadXML />
+      </div>
+      <div style={{ display: activeTab === 'pec' ? 'block' : 'none' }}>
+        {visitedTabs.has('pec') && <TabPEC />}
+      </div>
+      <div style={{ display: activeTab === 'fatture' ? 'block' : 'none' }}>
+        {visitedTabs.has('fatture') && <TabFatture />}
+      </div>
     </PageLayout>
   );
 }

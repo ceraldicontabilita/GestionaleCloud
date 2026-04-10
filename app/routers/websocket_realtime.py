@@ -162,7 +162,7 @@ async def websocket_notifications(websocket: WebSocket):
                 # Mantieni la connessione attiva
                 message = await asyncio.wait_for(
                     websocket.receive_json(),
-                    timeout=60.0
+                    timeout=25.0
                 )
                 
                 if message.get("command") == "ping":

@@ -10,6 +10,7 @@ import os
 import re
 import uuid
 import email
+import asyncio
 import imaplib
 import logging
 import httpx
@@ -519,7 +520,8 @@ async def _esegui_ricerca(db, job_id: str, fornitore: dict, prodotti_manuali):
                 # Prova 3: scansione email Gmail (inbox fornitore)
                 if not pdf_url and IMAP_USER and IMAP_PASSWORD:
                     fornitore_nome_str = fornitore.get("ragione_sociale") or fornitore.get("nome", "")
-                    gmail_pdf = _scan_gmail_for_scheda(fornitore_nome_str, prodotto)
+                    # to_thread: la funzione IMAP è sincrona, NON deve bloccare l'event loop
+                    gmail_pdf = await asyncio.to_thread(_scan_gmail_for_scheda, fornitore_nome_str, prodotto)
                     if gmail_pdf:
                         from bson import Binary
                         scheda["pdf_data"] = Binary(gmail_pdf)

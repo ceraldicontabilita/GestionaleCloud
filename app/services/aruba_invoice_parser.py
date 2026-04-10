@@ -4,12 +4,13 @@ Estrae: fornitore, numero fattura, data, importo
 Include riconciliazione automatica con estratto conto bancario
 """
 
+import asyncio
 import imaplib
 import email
 import re
 import hashlib
 from datetime import datetime, timezone, timedelta
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional, Tuple, List
 from bs4 import BeautifulSoup
 import logging
 
@@ -284,6 +285,60 @@ def generate_email_hash(fornitore: str, numero: str, data: str, importo: float) 
     return hashlib.md5(content.encode()).hexdigest()
 
 
+def _fetch_emails_imap_sync(
+    email_user: str,
+    email_password: str,
+    since_days: int
+) -> tuple:
+    """
+    Funzione SINCRONA pura per IMAP — gira in asyncio.to_thread().
+    NON blocca l'event loop FastAPI.
+    Restituisce (lista_email_raw, numero_totale_email_trovate).
+    """
+    result: List[Dict] = []
+    mail = imaplib.IMAP4_SSL("imap.gmail.com")
+    try:
+        mail.login(email_user, email_password)
+        mail.select("INBOX")
+
+        search_criteria = f'FROM "{ARUBA_SENDER}" SUBJECT "{ARUBA_SUBJECT}"'
+        since_date = (datetime.now() - timedelta(days=since_days)).strftime("%d-%b-%Y")
+        search_criteria = f'({search_criteria} SINCE {since_date})'
+
+        _, messages = mail.search(None, search_criteria)
+        email_ids = messages[0].split()
+
+        for eid in email_ids:
+            try:
+                _, msg_data = mail.fetch(eid, "(RFC822)")
+                msg = email.message_from_bytes(msg_data[0][1])
+
+                html_body = None
+                if msg.is_multipart():
+                    for part in msg.walk():
+                        if part.get_content_type() == "text/html":
+                            html_body = part.get_payload(decode=True).decode("utf-8", errors="replace")
+                            break
+                else:
+                    payload = msg.get_payload(decode=True)
+                    if payload:
+                        html_body = payload.decode("utf-8", errors="replace")
+
+                if html_body:
+                    result.append({
+                        "html_body": html_body,
+                        "email_date": msg.get("Date", ""),
+                    })
+            except Exception as e:
+                logger.error(f"Errore fetch singola email IMAP: {e}")
+    finally:
+        try:
+            mail.logout()
+        except Exception:
+            pass
+    return result, len(result)
+
+
 async def fetch_aruba_invoices(
     db,
     email_user: str,
@@ -314,43 +369,17 @@ async def fetch_aruba_invoices(
     }
     
     try:
-        # Connessione IMAP
-        mail = imaplib.IMAP4_SSL("imap.gmail.com")
-        mail.login(email_user, email_password)
-        mail.select("INBOX")
-        
-        # Cerca email da Aruba con subject specifico
-        search_criteria = f'FROM "{ARUBA_SENDER}" SUBJECT "{ARUBA_SUBJECT}"'
-        
-        # Filtra per data
-        since_date = (datetime.now() - timedelta(days=since_days)).strftime("%d-%b-%Y")
-        search_criteria = f'({search_criteria} SINCE {since_date})'
-        
-        _, messages = mail.search(None, search_criteria)
-        email_ids = messages[0].split()
-        
-        stats["emails_checked"] = len(email_ids)
-        logger.info(f"Email Aruba trovate: {len(email_ids)}")
-        
-        for eid in email_ids:
+        # ── IMAP in thread separato (NON blocca l'event loop FastAPI) ──
+        raw_emails, total_checked = await asyncio.to_thread(
+            _fetch_emails_imap_sync, email_user, email_password, since_days
+        )
+        stats["emails_checked"] = total_checked
+        logger.info(f"Email Aruba trovate: {total_checked}")
+
+        for raw in raw_emails:
             try:
-                _, msg_data = mail.fetch(eid, "(RFC822)")
-                msg = email.message_from_bytes(msg_data[0][1])
-                
-                # Estrai corpo HTML
-                html_body = None
-                if msg.is_multipart():
-                    for part in msg.walk():
-                        if part.get_content_type() == "text/html":
-                            html_body = part.get_payload(decode=True).decode('utf-8', errors='replace')
-                            break
-                else:
-                    payload = msg.get_payload(decode=True)
-                    if payload:
-                        html_body = payload.decode('utf-8', errors='replace')
-                
-                if not html_body:
-                    continue
+                html_body = raw["html_body"]
+                email_date = raw["email_date"]
                 
                 # Parsa email
                 invoice_data = parse_aruba_email_body(html_body)
@@ -431,8 +460,8 @@ async def fetch_aruba_invoices(
                     )
                     continue
                 
-                # Data email
-                email_date = msg.get("Date", "")
+                # Data email (viene dal dict raw)
+                email_date = raw["email_date"]
                 
                 # Cerca fornitore nel database per proporre metodo pagamento
                 fornitore_db = await db["fornitori"].find_one({
@@ -563,10 +592,8 @@ async def fetch_aruba_invoices(
                 logger.error(f"Errore processamento email: {e}")
                 stats["errors"] += 1
         
-        mail.logout()
-        
     except Exception as e:
-        logger.error(f"Errore connessione IMAP: {e}")
+        logger.error(f"Errore fetch/processamento email Aruba: {e}")
         raise
     
     return {
