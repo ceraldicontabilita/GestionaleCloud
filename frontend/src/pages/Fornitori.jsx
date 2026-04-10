@@ -68,7 +68,6 @@ const emptySupplier = {
   metodo_pagamento: 'bonifico',
   giorni_pagamento: 30,
   esclude_magazzino: false,
-  escludi_da_tracciabilita: false,
   note: ''
 };
 
@@ -478,30 +477,6 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
               </label>
             </div>
 
-            {/* Escludi da Tracciabilità */}
-            <div style={{ 
-              padding: '14px', 
-              background: form.escludi_da_tracciabilita ? '#ede9fe' : '#f8fafc', 
-              borderRadius: '10px',
-              border: form.escludi_da_tracciabilita ? '1px solid #8b5cf6' : '1px solid #e2e8f0'
-            }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={form.escludi_da_tracciabilita || false}
-                  onChange={(e) => handleChange('escludi_da_tracciabilita', e.target.checked)}
-                  style={{ width: '18px', height: '18px', accentColor: '#8b5cf6' }}
-                />
-                <div>
-                  <div style={{ fontSize: '14px', fontWeight: 600, color: '#374151' }}>
-                    Escludi da Tracciabilità
-                  </div>
-                  <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '2px' }}>
-                    Le fatture di questo fornitore NON verranno importate nel modulo Tracciabilità HACCP
-                  </div>
-                </div>
-              </label>
-            </div>
           </div>
         </div>
 
@@ -781,24 +756,14 @@ function SupplierCard({ supplier, onEdit, onDelete, onViewInvoices, onChangeMeto
         </div>
 
         {/* Flag badges */}
-        {(supplier.esclude_magazzino || supplier.escludi_da_tracciabilita) && (
+        {supplier.esclude_magazzino && (
           <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '10px' }}>
-            {supplier.esclude_magazzino && (
-              <span style={{
-                padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 600,
-                background: '#fef3c7', color: '#92400e', border: '1px solid #fbbf24'
-              }} title="Le fatture di questo fornitore non popolano il magazzino">
-                ⊘ Escluso Magazzino
-              </span>
-            )}
-            {supplier.escludi_da_tracciabilita && (
-              <span style={{
-                padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 600,
-                background: '#ede9fe', color: '#5b21b6', border: '1px solid #8b5cf6'
-              }} title="Le fatture di questo fornitore non vengono importate in Tracciabilità">
-                ⊘ Escluso Tracciabilità
-              </span>
-            )}
+            <span style={{
+              padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 600,
+              background: '#fef3c7', color: '#92400e', border: '1px solid #fbbf24'
+            }} title="Le fatture di questo fornitore non popolano il magazzino">
+              Escluso Magazzino
+            </span>
           </div>
         )}
       </div>
@@ -1383,7 +1348,7 @@ export default function Fornitori() {
   const stats = {
     total: suppliers.length,
     withInvoices: suppliers.filter(s => (s.fatture_count || 0) > 0).length,
-    incomplete: suppliers.filter(s => !s.partita_iva || !s.email).length,
+    incomplete: suppliers.filter(s => !s.partita_iva || !s.comune).length,
     cash: suppliers.filter(s => s.metodo_pagamento === 'contanti').length,
   };
 

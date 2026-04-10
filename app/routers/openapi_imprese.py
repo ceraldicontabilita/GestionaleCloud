@@ -89,8 +89,8 @@ async def aggiorna_fornitore(
     
     db = Database.get_db()
     
-    # Cerca fornitore esistente nella collection corretta "suppliers"
-    fornitore = await db["suppliers"].find_one({
+    # Cerca fornitore esistente nella collection "fornitori" (collection canonica dell'app)
+    fornitore = await db["fornitori"].find_one({
         "$or": [
             {"partita_iva": piva},
             {"piva": piva},
@@ -115,9 +115,10 @@ async def aggiorna_fornitore(
     # Mappa dati
     company_data = result.get("data", {})
     fornitore_update = map_company_to_fornitore(company_data)
-    # "nome" è il campo usato dalla collection suppliers (alias di ragione_sociale)
+    # Aggiunge anche "nome" e "denominazione" come alias di ragione_sociale per compatibilità
     if fornitore_update.get("ragione_sociale"):
         fornitore_update["nome"] = fornitore_update["ragione_sociale"]
+        fornitore_update["denominazione"] = fornitore_update["ragione_sociale"]
     
     # Recupera PEC separatamente se non presente
     if not fornitore_update.get("pec"):
@@ -125,11 +126,13 @@ async def aggiorna_fornitore(
         if pec_result.get("success") and pec_result.get("pec"):
             fornitore_update["pec"] = pec_result.get("pec")
     
+    fornitore_update["openapi_last_update"] = datetime.now(timezone.utc).isoformat()
+    
     if fornitore:
-        # Aggiorna fornitore esistente nella collection suppliers
+        # Aggiorna fornitore esistente nella collection fornitori
         fornitore_update["updated_at"] = datetime.now(timezone.utc).isoformat()
         
-        await db["suppliers"].update_one(
+        await db["fornitori"].update_one(
             {"_id": fornitore["_id"]},
             {"$set": fornitore_update}
         )
@@ -142,14 +145,14 @@ async def aggiorna_fornitore(
             "openapi_data": {k: v for k, v in fornitore_update.items() if k not in ("_id",)}
         }
     else:
-        # Crea nuovo fornitore nella collection suppliers
+        # Crea nuovo fornitore nella collection fornitori
         import uuid
         fornitore_update["id"] = str(uuid.uuid4())
         fornitore_update["created_at"] = datetime.now(timezone.utc).isoformat()
         fornitore_update["updated_at"] = fornitore_update["created_at"]
         fornitore_update["source"] = "openapi"
         
-        await db["suppliers"].insert_one(fornitore_update)
+        await db["fornitori"].insert_one(fornitore_update)
         
         return {
             "success": True,
@@ -197,8 +200,8 @@ async def aggiorna_fornitori_bulk(
                     fornitore_update["nome"] = fornitore_update["ragione_sociale"]
                 fornitore_update["updated_at"] = datetime.now(timezone.utc).isoformat()
                 
-                # Upsert nella collection corretta "suppliers"
-                update_result = await db["suppliers"].update_one(
+                # Aggiorna nella collection corretta "fornitori"
+                update_result = await db["fornitori"].update_one(
                     {"$or": [{"partita_iva": piva}, {"piva": piva}]},
                     {"$set": fornitore_update}
                 )
@@ -341,23 +344,27 @@ async def get_fornitori_da_aggiornare(
     limit: int = Query(100)
 ) -> Dict[str, Any]:
     """
-    Lista fornitori che necessitano aggiornamento da OpenAPI.
-    Legge dalla collection 'suppliers' (collection reale dell'app).
+    Lista fornitori con P.IVA valida e senza comune/dati OpenAPI.
+    Legge dalla collection 'fornitori' (collection canonica dell'app).
     """
     db = Database.get_db()
     
-    # Fornitori con P.IVA valida (11 cifre) e senza dati OpenAPI recenti
-    fornitori = await db["suppliers"].find({
-        "partita_iva": {"$exists": True, "$ne": None, "$ne": "", "$regex": "^\\d{11}$"},
-        "openapi_last_update": {"$exists": False}
-    }, {"_id": 0, "id": 1, "nome": 1, "ragione_sociale": 1, "partita_iva": 1}).limit(limit).to_list(length=limit)
+    # Fornitori con P.IVA valida (11 cifre) e senza comune popolato
+    fornitori = await db["fornitori"].find({
+        "partita_iva": {"$exists": True, "$ne": None, "$ne": ""},
+        "$or": [
+            {"comune": {"$exists": False}},
+            {"comune": None},
+            {"comune": ""}
+        ]
+    }, {"_id": 0, "id": 1, "nome": 1, "ragione_sociale": 1, "denominazione": 1, "partita_iva": 1}).limit(limit).to_list(length=limit)
     
-    # Deduplicazione per P.IVA
+    # Filtra P.IVA valide (11 cifre numeriche) e deduplicazione
     seen = set()
     unique = []
     for f in fornitori:
-        piva = f.get("partita_iva", "")
-        if piva and piva not in seen:
+        piva = str(f.get("partita_iva", "")).strip()
+        if piva and len(piva) == 11 and piva.isdigit() and piva not in seen:
             seen.add(piva)
             unique.append(f)
     
@@ -366,7 +373,7 @@ async def get_fornitori_da_aggiornare(
         "fornitori": [
             {
                 "id": f.get("id"),
-                "ragione_sociale": f.get("nome") or f.get("ragione_sociale", ""),
+                "ragione_sociale": f.get("ragione_sociale") or f.get("nome") or f.get("denominazione", ""),
                 "partita_iva": f.get("partita_iva")
             }
             for f in unique

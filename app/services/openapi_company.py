@@ -199,10 +199,11 @@ def map_company_to_fornitore(company_data: Dict[str, Any]) -> Dict[str, Any]:
         "partita_iva": company_data.get("vatCode"),
         "codice_fiscale": company_data.get("taxCode"),
         
-        # Indirizzo
+        # Indirizzo — comune è il campo usato dalla UI/form
         "indirizzo": registered.get("streetName"),
         "cap": registered.get("zipCode"),
-        "citta": registered.get("town"),
+        "comune": registered.get("town"),
+        "citta": registered.get("town"),   # alias di supporto
         "provincia": registered.get("province"),
         
         # Fatturazione elettronica

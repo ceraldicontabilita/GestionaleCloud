@@ -124,6 +124,11 @@ Aggiornamenti richiesti tramite file CERALDI_MASTER_ZIP.zip e ISTRUZIONI_CORRETT
   - Endpoint `aggiorna-fornitore`: usa collection `suppliers` e mappa `nome` + `ragione_sociale`
 - **Risultato**: 45 fornitori ora visibili (vs 21 prima), bulk aggiornamento recupera 25 fornitori nascosti
 
+### Sessione corrente - Fix Collection + UI Fornitori (Aprile 2026)
+- **Bug critico risolto**: `Collections.SUPPLIERS = "fornitori"` — scoperto che il modulo usa `db["fornitori"]` (168 doc) non `db["suppliers"]` (53 doc inutilizzati). Corretti `openapi_imprese.py`, `schede_tecniche.py`, `manutenzione.py`
+- **Comune popolato**: lanciato bulk OpenAPI update sulla collection corretta → 44/45 fornitori ora hanno comune/indirizzo/provincia/CAP/PEC da Camera di Commercio
+- **UI Fornitori**: rimosso "Escludi da Tracciabilità" da form e card; "Dati Incompleti" ora conta fornitori senza comune (3) invece di senza email (45)
+
 ### Sessione corrente (completato)
 - **Corrispettivi**: rimosso stub vuoto dal DB → pagina mostra correttamente stato vuoto
 - **Widget Cucina Dashboard**: RIMOSSO

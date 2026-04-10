@@ -206,7 +206,7 @@ async def cerca_schede_tecniche(req: RicercaRequest, background: BackgroundTasks
     Legge fatture XML → estrae prodotti → cerca PDF → scarica → archivia.
     """
     db = Database.get_db()
-    fornitore = await db["suppliers"].find_one(
+    fornitore = await db["fornitori"].find_one(
         {"$or": [{"id": req.fornitore_id}, {"partita_iva": req.fornitore_id}]},
         {"_id": 0}
     )
@@ -435,7 +435,7 @@ async def elimina_scheda(scheda_id: str):
 async def get_prodotti_fornitore(fornitore_id: str):
     """Restituisce i prodotti estratti dalle fatture XML per un fornitore."""
     db = Database.get_db()
-    fornitore = await db["suppliers"].find_one(
+    fornitore = await db["fornitori"].find_one(
         {"$or": [{"id": fornitore_id}, {"_id": fornitore_id}]},
         {"_id": 0}
     )
