@@ -39,6 +39,7 @@ const IntegrazioniHub = lazy(() => import("./pages/hub/IntegrazioniHub.jsx"));
 const AdminHub = lazy(() => import("./pages/hub/AdminHub.jsx"));
 const FattureHub = lazy(() => import("./pages/hub/FattureHub.jsx"));
 const LearningMachine = lazy(() => import("./pages/LearningMachine.jsx"));
+const CicloPassivoAdmin = lazy(() => import("./pages/CicloPassivoAdmin.jsx"));
 
 // === STANDALONE PAGES ===
 const InserimentoRapido = lazy(() => import("./pages/InserimentoRapido.jsx"));
@@ -81,7 +82,8 @@ const router = createBrowserRouter([
       { path: "tracciabilita", element: <LazyPage><TracciabilitaPage /></LazyPage> },
       
       // === CICLO PASSIVO & VENDITE ===
-      { path: "ciclo-passivo", element: <Navigate to="/fatture" replace /> },
+      { path: "ciclo-passivo", element: <LazyPage><CicloPassivoAdmin /></LazyPage> },
+      { path: "import-fatture", element: <LazyPage><CicloPassivoAdmin /></LazyPage> },
       { path: "fatture", element: <LazyPage><FattureHub /></LazyPage> },
       { path: "fatture/import", element: <Navigate to="/documenti/import" replace /> },
       { path: "fatture/:tab", element: <LazyPage><FattureHub /></LazyPage> },

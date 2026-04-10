@@ -4,7 +4,7 @@ import {
   LayoutDashboard, FileText, BookOpen, Building2,
   Users, FlaskConical, ChevronDown,
   Bell, Calendar, Warehouse,
-  Settings, Wrench, FileBarChart, BookMarked, Car
+  Settings, Wrench, FileBarChart, BookMarked, Car, Download
 } from 'lucide-react';
 import { AnnoSelector } from '../../contexts/AnnoContext';
 import { COLORS } from '../../lib/utils';
@@ -20,6 +20,7 @@ const NAV_ITEMS = [
 ];
 
 const ALTRO_ITEMS = [
+  { to: '/import-fatture', label: 'Import Fatture', Icon: Download },
   { to: '/contabilita', label: 'Contabilità', Icon: FileBarChart },
   { to: '/magazzino', label: 'Magazzino', Icon: Warehouse },
   { to: '/documenti', label: 'Documenti', Icon: BookMarked },
