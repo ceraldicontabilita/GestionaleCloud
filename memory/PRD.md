@@ -115,6 +115,15 @@ Aggiornamenti richiesti tramite file CERALDI_MASTER_ZIP.zip e ISTRUZIONI_CORRETT
 - Fix errore 409 duplicati corrispettivi COR10
 - Verifica credenziali IMAP Gmail e PEC
 
+### Sessione corrente - Fix OpenAPI (Aprile 2026)
+- **Token OpenAPI aggiornato**: `69d86ebe314b08523b0dceda` — ora funzionante (era 401)
+- **Fix router openapi_imprese.py**:
+  - Corretto db.fornitori → db["suppliers"] in tutti gli endpoint
+  - Endpoint `fornitori-da-aggiornare`: ora filtra P.IVA 11 cifre numeriche, deduplicazione, legge nome da campo corretto
+  - Endpoint `aggiorna-bulk`: rimosso upsert, aggiorna solo esistenti, mappa campo `nome`
+  - Endpoint `aggiorna-fornitore`: usa collection `suppliers` e mappa `nome` + `ragione_sociale`
+- **Risultato**: 45 fornitori ora visibili (vs 21 prima), bulk aggiornamento recupera 25 fornitori nascosti
+
 ### Sessione corrente (completato)
 - **Corrispettivi**: rimosso stub vuoto dal DB → pagina mostra correttamente stato vuoto
 - **Widget Cucina Dashboard**: RIMOSSO
