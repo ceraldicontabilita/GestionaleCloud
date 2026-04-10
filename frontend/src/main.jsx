@@ -36,7 +36,8 @@ const MagazzinoHub = lazy(() => import("./pages/hub/MagazzinoHub.jsx"));
 const DocumentiHub = lazy(() => import("./pages/hub/DocumentiHub.jsx"));
 const StrumentiHub = lazy(() => import("./pages/hub/StrumentiHub.jsx"));
 const IntegrazioniHub = lazy(() => import("./pages/hub/IntegrazioniHub.jsx"));
-const AdminHub = lazy(() => import("./pages/hub/AdminHub.jsx"));
+const AdminHub     = lazy(() => import("./pages/hub/AdminHub.jsx"));
+const TabletCucina = lazy(() => import("./pages/TabletCucina.jsx"));
 const FattureHub = lazy(() => import("./pages/hub/FattureHub.jsx"));
 
 // === STANDALONE PAGES ===
@@ -255,6 +256,7 @@ const router = createBrowserRouter([
       { path: "admin", element: <LazyPage><AdminHub /></LazyPage> },
       { path: "admin/:sezione", element: <LazyPage><AdminHub /></LazyPage> },
       { path: "admin/pin", element: <LazyPage><AdminHub /></LazyPage> },
+      { path: "tablet-cucina", element: <LazyPage><TabletCucina /></LazyPage> },
       { path: "batch-reprocessing", element: <LazyPage><AdminHub /></LazyPage> },
       { path: "batch-processor", element: <LazyPage><AdminHub /></LazyPage> },
       
