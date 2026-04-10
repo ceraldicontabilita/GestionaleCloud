@@ -217,10 +217,36 @@ class EmailFullDownloader:
         
         # Fallback: parole chiave di default se non configurate
         default_keywords = [
-            "fattura", "fatture", "invoice", "f24", "tribut",
-            "cedolino", "busta paga", "stipendio", "estratto conto",
-            "verbale", "multa", "bonifico", "pagamento", "quietanza",
-            "scadenza", "importo", "scheda tecnica"
+            # Fatture (escluse da Gmail ma utili per categorizzazione)
+            "fattura", "fatture", "invoice",
+            # F24 e tributi
+            "f24", "tribut", "irpef", "imu", "tari", "tarsu", "tasi",
+            "agenzia entrate", "agenzia riscossione", "ader",
+            # Cedolini e lavoro
+            "cedolino", "busta paga", "stipendio", "retribuzione",
+            "libro unico", "paghe", "lul",
+            # Banca e pagamenti
+            "estratto conto", "bonifico", "pagamento", "quietanza",
+            "ricevuta", "versamento", "cro", "disposizione",
+            # Verbali e sanzioni
+            "verbale", "multa", "sanzione", "infrazione",
+            "polizia", "contravvenzione", "obbligazione",
+            # Assicurazioni e noleggio
+            "noleggio", "leasing", "assicurazione", "polizza",
+            "sinistro", "leasys", "arval", "ald",
+            # Utenze
+            "enel", "sorgenia", "fastweb", "tim", "wind",
+            "bolletta", "utenza", "fornitura",
+            # Documenti fiscali
+            "scadenza", "importo", "scheda tecnica",
+            "pago pa", "pagopa", "avviso pagamento",
+            "cartella esattorial", "pignoramento",
+            "inps", "inail", "contribut",
+            # SIAE e altri enti
+            "siae", "suap", "regione", "comune",
+            # Generici documentali
+            "certificato", "contratto", "denuncia",
+            "modello", "dichiarazione"
         ]
         self._cached_keywords = default_keywords
         logger.info(f"Usando {len(default_keywords)} parole chiave di default")
@@ -419,8 +445,14 @@ class EmailFullDownloader:
         # ============================================================
         admin_keywords = await self._load_admin_keywords()
         
-        # Combina testo ricercabile: oggetto + corpo
+        # Combina testo ricercabile: oggetto + corpo + nomi allegati + NOME CARTELLA
+        # Il nome della cartella è fondamentale: se l'utente ha spostato
+        # un'email nella cartella "verbale", quell'email È un verbale
         search_text = f"{subject} {body}".lower()
+        
+        # Aggiungi il nome della cartella di origine al testo di ricerca
+        # Così email nella cartella "verbale" matchano la keyword "verbale"
+        search_text += f" {source_folder}".lower()
         
         # Estrai anche i nomi degli allegati
         attachment_names = []
@@ -437,7 +469,7 @@ class EmailFullDownloader:
         
         if not has_admin_keyword:
             # Email non amministrativa - SALTA
-            logger.debug(f"Email saltata (no keyword): {subject[:50]}")
+            logger.debug(f"Email saltata (no keyword): {subject[:50]} [{source_folder}]")
             return 0
         
         email_info = {
@@ -521,17 +553,25 @@ class EmailFullDownloader:
     ) -> int:
         """
         Scansiona una singola cartella e scarica i documenti amministrativi.
+        Per INBOX usa il filtro SINCE; per le altre cartelle prende TUTTE le email
+        (sono già organizzate dall'utente, e spesso sono storiche).
         Restituisce il numero di PDF salvati.
         """
         pdfs_in_folder = 0
         try:
-            # Seleziona cartella (readonly per sicurezza)
+            # Seleziona cartella
             status, _ = self.connection.select(f'"{folder}"')
             if status != "OK":
                 return 0
             
-            # Cerca email recenti
-            search_criteria = f'(SINCE "{since_date}")'
+            # Per INBOX e cartelle di sistema Gmail: usa filtro data
+            # Per cartelle utente: prendi TUTTO (sono archivi organizzati)
+            gmail_system = ('[Gmail]' in folder or folder == 'INBOX')
+            if gmail_system:
+                search_criteria = f'(SINCE "{since_date}")'
+            else:
+                search_criteria = 'ALL'
+            
             status, messages = self.connection.search(None, search_criteria)
             if status != "OK" or not messages[0]:
                 return 0
