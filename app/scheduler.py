@@ -235,6 +235,46 @@ async def check_scadenze_f24_task():
         logger.error(f"📅 [SCHEDULER] Errore controllo scadenze F24: {e}")
 
 
+async def gmail_full_scan_task():
+    """
+    Task eseguito ogni ora.
+    Scansiona TUTTE le cartelle Gmail per documenti amministrativi.
+    REGOLA: le fatture NON vengono scaricate da Gmail (solo PEC o import manuale).
+    Documenti: cedolini, F24, estratti conto, verbali, quietanze, bonifici,
+    cartelle esattoriali, schede tecniche, certificati medici.
+    """
+    from app.database import Database
+    from app.services.email_full_download import EmailFullDownloader
+
+    logger.info("📧 [SCHEDULER-GMAIL] Avvio scansione multi-cartella Gmail...")
+    try:
+        db = Database.get_db()
+        downloader = EmailFullDownloader(db)
+        result = await downloader.download_all_emails(
+            folder="ALL_FOLDERS",
+            days_back=30,  # Ultimi 30 giorni per il task orario
+            batch_size=50
+        )
+        stats = result.get("stats", {})
+        logger.info(
+            f"[SCHEDULER-GMAIL] Completato: "
+            f"{stats.get('cartelle_scansionate', 0)} cartelle scansite, "
+            f"{stats.get('emails_processed', 0)} email, "
+            f"{stats.get('pdfs_downloaded', 0)} PDF scaricati"
+        )
+        if stats.get("pdfs_downloaded", 0) > 0:
+            try:
+                from app.services.websocket_manager import notify_data_change
+                await notify_data_change("gmail_scan", {
+                    "pdfs_downloaded": stats.get("pdfs_downloaded", 0),
+                    "cartelle": stats.get("cartelle_con_documenti", 0)
+                }, "notifications")
+            except Exception as ws_err:
+                logger.debug(f"[SCHEDULER-GMAIL] WebSocket non disponibile: {ws_err}")
+    except Exception as e:
+        logger.error(f"[SCHEDULER-GMAIL] Errore scansione Gmail: {e}")
+
+
 def start_scheduler():
     """Avvia lo scheduler con i task programmati."""
     logger.info("🚀 [SCHEDULER] Configurazione scheduler...")
@@ -287,10 +327,21 @@ def start_scheduler():
         replace_existing=True
     )
     
+    # Task Gmail Full Scan - ogni ora (tutte le cartelle)
+    scheduler.add_job(
+        gmail_full_scan_task,
+        'interval',
+        hours=1,
+        id="gmail_full_scan",
+        name="Gmail Full Scan Multi-Cartella (ogni ora)",
+        replace_existing=True
+    )
+    
     scheduler.start()
     logger.info("✅ [SCHEDULER] Scheduler avviato")
     logger.info("   - PEC Fatture: ogni ora")
     logger.info("   - Gmail/Aruba: ogni 10 minuti")
+    logger.info("   - Gmail Full Scan (tutte cartelle): ogni ora")
     logger.info("   - Verbali Email: ogni ora")
     logger.info("   - Scadenze F24: ogni giorno ore 8:00 e 14:00")
 

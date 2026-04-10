@@ -384,10 +384,11 @@ class EmailFullDownloader:
         
         return pdfs
     
-    async def process_email(self, email_uid: bytes, msg: email.message.Message) -> int:
+    async def process_email(self, email_uid: bytes, msg: email.message.Message, source_folder: str = "INBOX") -> int:
         """
         Processa una singola email ed estrae i PDF.
         FILTRA: scarica solo email con parole chiave AMMINISTRATIVE dal database.
+        REGOLA: le fatture NON vengono scaricate da Gmail (solo PEC o import manuale).
         """
         pdfs_saved = 0
         
@@ -453,15 +454,21 @@ class EmailFullDownloader:
             # Categorizza
             category = categorize_document(filename, subject, body)
             
+            # REGOLA BUSINESS: le fatture NON si scaricano da Gmail
+            # Le fatture arrivano SOLO via PEC (Aruba) o import manuale XML
+            if category == "fattura":
+                logger.debug(f"[Gmail] Fattura saltata (solo PEC): {filename} da {from_addr}")
+                continue
+            
             # Estrai periodo
             period_info = extract_period_from_text(f"{filename} {subject}")
             
-            # Salva nel database
+            # Salva nel database con cartella di origine
             doc_id = await self.save_pdf_to_db(
                 pdf_content=content,
                 filename=filename,
                 category=category,
-                email_info=email_info,
+                email_info={**email_info, "source_folder": source_folder},
                 period_info=period_info
             )
             
@@ -470,65 +477,159 @@ class EmailFullDownloader:
         
         return pdfs_saved
     
+    def _list_all_folders(self) -> List[str]:
+        """
+        Lista TUTTE le cartelle/label Gmail disponibili.
+        Restituisce i nomi delle cartelle.
+        """
+        try:
+            status, folder_list = self.connection.list()
+            if status != "OK":
+                return ["INBOX"]
+            
+            folders = []
+            for f in folder_list:
+                try:
+                    decoded = f.decode('utf-8', errors='replace')
+                    # Estrai nome cartella dal formato IMAP: (\\flags) "delimiter" "name"
+                    if '"' in decoded:
+                        parts = decoded.split('"')
+                        if len(parts) >= 4:
+                            folder_name = parts[-2]
+                        else:
+                            folder_name = parts[-1].strip()
+                    else:
+                        folder_name = decoded.split()[-1]
+                    
+                    if folder_name and folder_name not in ('[Gmail]',):
+                        folders.append(folder_name)
+                except Exception:
+                    continue
+            
+            logger.info(f"[Gmail] Trovate {len(folders)} cartelle totali")
+            return folders if folders else ["INBOX"]
+            
+        except Exception as e:
+            logger.warning(f"[Gmail] Errore lista cartelle: {e}")
+            return ["INBOX"]
+
+    async def _scan_single_folder(
+        self,
+        folder: str,
+        since_date: str,
+        batch_size: int = 50
+    ) -> int:
+        """
+        Scansiona una singola cartella e scarica i documenti amministrativi.
+        Restituisce il numero di PDF salvati.
+        """
+        pdfs_in_folder = 0
+        try:
+            # Seleziona cartella (readonly per sicurezza)
+            status, _ = self.connection.select(f'"{folder}"')
+            if status != "OK":
+                return 0
+            
+            # Cerca email recenti
+            search_criteria = f'(SINCE "{since_date}")'
+            status, messages = self.connection.search(None, search_criteria)
+            if status != "OK" or not messages[0]:
+                return 0
+            
+            email_ids = messages[0].split()
+            if not email_ids:
+                return 0
+            
+            logger.info(f"[Gmail] 📁 {folder}: {len(email_ids)} email da processare")
+            
+            for email_uid in email_ids[:batch_size]:
+                try:
+                    status, msg_data = self.connection.fetch(email_uid, "(RFC822)")
+                    if status != "OK":
+                        continue
+                    
+                    raw_email = msg_data[0][1]
+                    msg = email.message_from_bytes(raw_email)
+                    
+                    saved = await self.process_email(email_uid, msg, source_folder=folder)
+                    pdfs_in_folder += saved
+                    self.stats["emails_processed"] += 1
+                    
+                except Exception as e:
+                    logger.debug(f"[Gmail] Errore email in {folder}: {e}")
+                    self.stats["errors"].append(f"{folder}: {str(e)[:80]}")
+            
+            if pdfs_in_folder > 0:
+                logger.info(f"[Gmail] ✅ {folder}: {pdfs_in_folder} PDF salvati")
+                
+        except Exception as e:
+            logger.debug(f"[Gmail] Cartella {folder} non accessibile: {e}")
+        
+        return pdfs_in_folder
+
     async def download_all_emails(
         self,
-        folder: str = "INBOX",
+        folder: str = "ALL_FOLDERS",
         days_back: int = 365,
         batch_size: int = 100
     ) -> Dict[str, Any]:
         """
-        Scarica TUTTE le email con PDF degli ultimi N giorni.
+        Scarica documenti amministrativi da Gmail.
+        
+        REGOLE BUSINESS:
+        - Scansiona TUTTE le cartelle (non solo INBOX)
+        - Le FATTURE non vengono scaricate da Gmail (arrivano solo via PEC o import manuale)
+        - Scarica: cedolini, F24, estratti conto, verbali, quietanze, bonifici,
+          cartelle esattoriali, schede tecniche, certificati medici
+        - Filtra per parole chiave amministrative e mittenti attendibili
         """
         if not self.connect():
             return {"success": False, "error": "Connessione IMAP fallita", "stats": self.stats}
         
+        # Aggiungi stats per cartelle
+        self.stats["cartelle_scansionate"] = 0
+        self.stats["cartelle_con_documenti"] = 0
+        self.stats["cartelle_totali"] = 0
+        
         try:
-            # Seleziona cartella
-            status, _ = self.connection.select(folder)
-            if status != "OK":
-                return {"success": False, "error": f"Cartella {folder} non trovata", "stats": self.stats}
-            
-            # Calcola data di inizio
             since_date = (datetime.now() - timedelta(days=days_back)).strftime("%d-%b-%Y")
             
-            # Cerca tutte le email dal periodo
-            search_criteria = f'(SINCE "{since_date}")'
-            status, messages = self.connection.search(None, search_criteria)
-            
-            if status != "OK":
-                return {"success": False, "error": "Ricerca email fallita", "stats": self.stats}
-            
-            email_ids = messages[0].split()
-            total_emails = len(email_ids)
-            logger.info(f"Trovate {total_emails} email da processare")
-            
-            # Processa in batch
-            for i in range(0, total_emails, batch_size):
-                batch = email_ids[i:i + batch_size]
-                logger.info(f"Processando batch {i//batch_size + 1}: {len(batch)} email")
+            if folder == "ALL_FOLDERS":
+                # Scansiona TUTTE le cartelle
+                all_folders = self._list_all_folders()
+                self.stats["cartelle_totali"] = len(all_folders)
                 
-                for email_uid in batch:
-                    try:
-                        # Scarica email
-                        status, msg_data = self.connection.fetch(email_uid, "(RFC822)")
-                        if status != "OK":
-                            continue
-                        
-                        # Parse email
-                        raw_email = msg_data[0][1]
-                        msg = email.message_from_bytes(raw_email)
-                        
-                        # Processa
-                        await self.process_email(email_uid, msg)
-                        self.stats["emails_processed"] += 1
-                        
-                    except Exception as e:
-                        logger.error(f"Errore processing email {email_uid}: {e}")
-                        self.stats["errors"].append(str(e))
+                # INBOX prima, poi le altre
+                if "INBOX" in all_folders:
+                    all_folders.remove("INBOX")
+                    all_folders.insert(0, "INBOX")
                 
-                # Log progresso
-                progress = min(i + batch_size, total_emails)
-                logger.info(f"Progresso: {progress}/{total_emails} email processate")
+                logger.info(f"[Gmail] Avvio scansione di {len(all_folders)} cartelle...")
+                
+                for idx, f_name in enumerate(all_folders):
+                    pdfs = await self._scan_single_folder(f_name, since_date, batch_size)
+                    self.stats["cartelle_scansionate"] += 1
+                    if pdfs > 0:
+                        self.stats["cartelle_con_documenti"] += 1
+                    
+                    # Log progresso ogni 50 cartelle
+                    if (idx + 1) % 50 == 0:
+                        logger.info(
+                            f"[Gmail] Progresso: {idx+1}/{len(all_folders)} cartelle, "
+                            f"{self.stats['pdfs_downloaded']} PDF scaricati"
+                        )
+            else:
+                # Scansiona singola cartella (backward compatibility)
+                self.stats["cartelle_totali"] = 1
+                await self._scan_single_folder(folder, since_date, batch_size)
+                self.stats["cartelle_scansionate"] = 1
+            
+            logger.info(
+                f"[Gmail] ✅ Scansione completata: "
+                f"{self.stats['cartelle_scansionate']} cartelle, "
+                f"{self.stats['emails_processed']} email, "
+                f"{self.stats['pdfs_downloaded']} PDF scaricati"
+            )
             
             return {
                 "success": True,
@@ -544,36 +645,42 @@ class EmailFullDownloader:
     
     async def download_single_day(self, target_date: datetime) -> Dict[str, Any]:
         """
-        Scarica email di un singolo giorno specifico.
+        Scarica email di un singolo giorno specifico da TUTTE le cartelle.
         """
         if not self.connect():
             return {"success": False, "error": "Connessione IMAP fallita"}
         
         try:
-            self.connection.select("INBOX")
-            
-            # Cerca email di quel giorno specifico
             date_str = target_date.strftime("%d-%b-%Y")
             next_date_str = (target_date + timedelta(days=1)).strftime("%d-%b-%Y")
             
-            search_criteria = f'(SINCE "{date_str}" BEFORE "{next_date_str}")'
-            status, messages = self.connection.search(None, search_criteria)
+            all_folders = self._list_all_folders()
+            logger.info(f"[Gmail] Scansione giorno {date_str} su {len(all_folders)} cartelle")
             
-            if status != "OK":
-                return {"success": False, "error": "Ricerca fallita"}
-            
-            email_ids = messages[0].split()
-            logger.info(f"Trovate {len(email_ids)} email per {date_str}")
-            
-            for email_uid in email_ids:
+            for folder in all_folders:
                 try:
-                    status, msg_data = self.connection.fetch(email_uid, "(RFC822)")
-                    if status == "OK":
-                        msg = email.message_from_bytes(msg_data[0][1])
-                        await self.process_email(email_uid, msg)
-                        self.stats["emails_processed"] += 1
-                except Exception as e:
-                    logger.error(f"Errore: {e}")
+                    status, _ = self.connection.select(f'"{folder}"')
+                    if status != "OK":
+                        continue
+                    
+                    search_criteria = f'(SINCE "{date_str}" BEFORE "{next_date_str}")'
+                    status, messages = self.connection.search(None, search_criteria)
+                    
+                    if status != "OK" or not messages[0]:
+                        continue
+                    
+                    email_ids = messages[0].split()
+                    for email_uid in email_ids:
+                        try:
+                            status, msg_data = self.connection.fetch(email_uid, "(RFC822)")
+                            if status == "OK":
+                                msg = email.message_from_bytes(msg_data[0][1])
+                                await self.process_email(email_uid, msg, source_folder=folder)
+                                self.stats["emails_processed"] += 1
+                        except Exception as e:
+                            logger.debug(f"Errore email in {folder}: {e}")
+                except Exception:
+                    continue
             
             return {"success": True, "stats": self.stats}
             

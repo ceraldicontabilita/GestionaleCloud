@@ -1,5 +1,20 @@
 # Logica Operativa — Ceraldi ERP
-> Versione: Aprile 2026 | P.IVA: 04523831214 | DB: azienda_erp_db (MongoDB Atlas)
+> Versione: Aprile 2026 | P.IVA: 04523831214 | DB: Gestionale (MongoDB Atlas)
+
+---
+
+## REGOLE BUSINESS FONDAMENTALI
+
+### Fonti documenti:
+- **FATTURE** → arrivano SOLO via **PEC Aruba** (`fatturazioneceraldi@pec.it`) o **import manuale XML**. MAI da Gmail.
+- **CEDOLINI / BUSTE PAGA** → arrivano via **Gmail** (dal consulente TeamSystem)
+- **F24, ESTRATTI CONTO, VERBALI, QUIETANZE, BONIFICI, CARTELLE ESATTORIALI** → arrivano via **Gmail** (da vari mittenti)
+- **SCHEDE TECNICHE** → via Gmail o ricerca web
+
+### Scansione Email:
+- **Gmail**: scansiona TUTTE le 409+ cartelle (non solo INBOX) — molte contengono documenti organizzati per argomento
+- **PEC**: scansiona INBOX + INBOX.lette — supporta P7M firmati digitalmente (decoder OpenSSL + asn1crypto)
+- **Fatture da Gmail**: vengono ESCLUSE automaticamente (regola business)
 
 ---
 
