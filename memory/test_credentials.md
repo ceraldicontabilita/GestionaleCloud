@@ -67,3 +67,16 @@
 | Guarino | 6543 |
 | Taiano | 3210 |
 | Kikko | 9876 |
+
+---
+
+## 8. OpenAPI Imprese (Camera di Commercio)
+- Token: 69d86ebe314b08523b0dceda
+- Env var: OPENAPI_COMPANY_TOKEN
+- Stato: FUNZIONANTE (Apr 2026)
+
+---
+
+## 9. Emergent LLM Key
+- Key: sk-emergent-dEc590f56Ab0b88Ed6
+- Env var: EMERGENT_LLM_KEY

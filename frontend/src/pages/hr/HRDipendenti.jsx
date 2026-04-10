@@ -447,7 +447,19 @@ export default function HRDipendenti() {
   });
 
   return (
-    <div style={{ height: 'calc(100vh - 110px)', display: 'flex', background: '#f8fafc' }}>
+    <div style={{ minHeight: 'calc(100vh - 110px)', background: COLORS.grayBg }}>
+
+      {/* Header gradiente — coerente con il resto dell'ERP */}
+      <div style={{ ...STYLES.header, borderRadius: 0, marginBottom: 0 }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: COLORS.white }}>Gestione Dipendenti</h1>
+          <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.75)', marginTop: 4 }}>
+            {dipendenti.length} dipendenti registrati
+          </div>
+        </div>
+      </div>
+
+      <div style={{ height: 'calc(100vh - 170px)', display: 'flex' }}>
 
       {/* ── Sidebar lista dipendenti ── */}
       <div style={{ width: isMobile ? '100%' : 280, minWidth: isMobile ? 'unset' : 280, background: 'white', borderRight: isMobile ? 'none' : `1px solid ${COLORS.border}`, borderBottom: isMobile ? `1px solid ${COLORS.border}` : 'none', display: 'flex', flexDirection: 'column' }}>
@@ -575,6 +587,7 @@ export default function HRDipendenti() {
           </>
         )}
       </div>
+    </div>
     </div>
   );
 }

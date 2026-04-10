@@ -23,7 +23,10 @@ export const COLORS = {
   gray: '#6b7280',
   grayLight: '#e5e7eb',
   grayBg: '#f9fafb',
-  white: '#ffffff'
+  white: '#ffffff',
+  text: '#1f2937',
+  textMuted: '#6b7280',
+  border: '#e5e7eb'
 };
 
 /* ---------- SPAZIATURE ---------- */
