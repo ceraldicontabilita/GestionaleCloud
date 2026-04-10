@@ -170,6 +170,11 @@ Aggiornamenti richiesti tramite file CERALDI_MASTER_ZIP.zip e ISTRUZIONI_CORRETT
 - **Schede Tecniche - lista completa**: da 3 → 24 prodotti visibili (tutti gli XML, senza limite); stato "non_cercato" (🔍) per quelli non ancora cercati
 - **Formato italiano**: date in gg/mm/aaaa e valori in formato italiano in Fornitori.jsx, GestionePagoPA, DocumentiDaRivedere, CorrezioneAI, Portale.jsx
 
+### Sessione corrente - Gmail IMAP + Scan Email Schede Tecniche (Aprile 2026)
+- **Gmail IMAP sbloccato**: password `nugg fttp swvx djqd` funzionante, 2955 messaggi accessibili
+- **Scan email per schede tecniche**: job `_esegui_ricerca` ora cerca anche negli allegati Gmail (Prova 3) prima di segnare "non trovato"
+- **PRD aggiornato**: rimossi riferimenti al modulo Cucina, corretti nomi collection, backlog aggiornato
+
 ### Sessione corrente (completato)
 - **Corrispettivi**: rimosso stub vuoto dal DB → pagina mostra correttamente stato vuoto
 - **Widget Cucina Dashboard**: RIMOSSO
