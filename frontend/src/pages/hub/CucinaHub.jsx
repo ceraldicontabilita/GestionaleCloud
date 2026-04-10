@@ -12,7 +12,6 @@ const TABS = [
   { id: 'food-cost',         label: '💰 Food Cost'         },
   { id: 'catalogo-ordini',   label: '🛒 Catalogo Ordini'   },
   { id: 'prodotti-vendita',  label: '🛍️ Prodotti Vendita'  },
-  { id: 'tablet',            label: '📱 Tablet Reparto'    },
 ];
 
 const Loading = () => (
@@ -51,7 +50,6 @@ export default function CucinaHub() {
     setError(null);
     setActiveTab(tabId);
     setVisitedTabs(prev => { const n = new Set(prev); n.add(tabId); return n; });
-    if (tabId === 'tablet') { window.location.href = '/tablet-cucina'; return; }
     navigate(tabId === 'ricettario' ? '/cucina' : `/cucina/${tabId}`);
   };
 
