@@ -55,6 +55,14 @@ async def lifespan(app: FastAPI):
     # except Exception as e:
     #     logger.warning(f"Monitor email non avviato: {e}")
 
+    # Registrazione Event Bus handlers
+    try:
+        from app.core.handlers_registry import registra_tutti_gli_handler
+        registra_tutti_gli_handler()
+        logger.info("🔗 Event Bus: handler registrati")
+    except Exception as e:
+        logger.warning(f"Event Bus non inizializzato: {e}")
+
     # Avvio Scheduler (PEC ogni ora, Gmail ogni 10min, F24 giornaliero)
     # Il PEC usa asyncio.to_thread() quindi NON blocca l'event loop FastAPI
     try:
