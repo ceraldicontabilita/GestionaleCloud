@@ -4,6 +4,7 @@ import { useLocation } from 'react-router-dom';
 const AdminContent = lazy(() => import('../Admin.jsx'));
 const BatchContent = lazy(() => import('../BatchReprocessing.jsx'));
 const BatchProcContent = lazy(() => import('../BatchProcessor.jsx'));
+const GestionePINContent = lazy(() => import('../admin/GestionePIN.jsx'));
 
 const Loading = () => (
   <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>
@@ -23,19 +24,22 @@ export default function AdminHub() {
   const location = useLocation();
   const path = location.pathname;
 
-  const isBatch = path.includes('/batch-reprocessing');
+  const isBatch    = path.includes('/batch-reprocessing');
   const isBatchProc = path.includes('/batch-processor');
-  const isAdmin = !isBatch && !isBatchProc;
+  const isPIN      = path.includes('/admin/pin');
+  const isAdmin    = !isBatch && !isBatchProc && !isPIN;
 
-  const [visitedAdmin, setVisitedAdmin] = useState(isAdmin);
-  const [visitedBatch, setVisitedBatch] = useState(isBatch);
+  const [visitedAdmin,     setVisitedAdmin]     = useState(isAdmin);
+  const [visitedBatch,     setVisitedBatch]     = useState(isBatch);
   const [visitedBatchProc, setVisitedBatchProc] = useState(isBatchProc);
+  const [visitedPIN,       setVisitedPIN]       = useState(isPIN);
 
   useEffect(() => {
-    if (isBatch) setVisitedBatch(true);
+    if (isBatch)     setVisitedBatch(true);
     else if (isBatchProc) setVisitedBatchProc(true);
-    else setVisitedAdmin(true);
-  }, [isBatch, isBatchProc, isAdmin]);
+    else if (isPIN)  setVisitedPIN(true);
+    else             setVisitedAdmin(true);
+  }, [isBatch, isBatchProc, isPIN, isAdmin]);
 
   return (
     <div style={{ padding: '16px 24px', minHeight: '100vh', background: '#f8fafc' }}>
@@ -47,6 +51,9 @@ export default function AdminHub() {
       </div>
       <div style={{ display: isBatchProc ? 'block' : 'none' }}>
         <Suspense fallback={<Loading />}>{visitedBatchProc && <BatchProcContent />}</Suspense>
+      </div>
+      <div style={{ display: isPIN ? 'block' : 'none' }}>
+        <Suspense fallback={<Loading />}>{visitedPIN && <GestionePINContent />}</Suspense>
       </div>
     </div>
   );

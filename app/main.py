@@ -518,6 +518,8 @@ app.include_router(adr.router, prefix="/api/adr", tags=["ADR Definizione Agevola
 
 # --- Dimissioni Dipendenti ---
 app.include_router(dimissioni.router, prefix="/api/dimissioni", tags=["Dimissioni"])
+from app.routers.employees.pin_manager import router as pin_manager_router
+app.include_router(pin_manager_router, prefix="/api/dipendenti", tags=["PIN Operatori"])
 
 # --- Documenti Intelligenti (Classificazione Email) ---
 app.include_router(documenti_intelligenti.router, prefix="/api/documenti-smart", tags=["Documenti Intelligenti"])
