@@ -1330,15 +1330,53 @@ export default function Fornitori() {
   };
 
   // === SCHEDE TECNICHE FUNCTIONS ===
+  const [schedeTecnicheJob, setSchedeTecnicheJob] = useState(null);
+
   const handleViewSchedeTecniche = async (supplier) => {
     setSchedeTecnicheModal({ open: true, fornitore: supplier, schede: [], loading: true });
-    
+    setSchedeTecnicheJob(null);
     try {
       const res = await api.get(`/api/schede-tecniche/fornitore/${supplier.id}`);
-      setSchedeTecnicheModal(prev => ({ ...prev, schede: res.data.schede || [], loading: false }));
+      setSchedeTecnicheModal(prev => ({
+        ...prev,
+        schede: res.data.schede || [],
+        loading: false,
+        trovate: res.data.trovate || 0
+      }));
+      if (res.data.job) setSchedeTecnicheJob(res.data.job);
     } catch (error) {
       console.error('Errore caricamento schede tecniche:', error);
       setSchedeTecnicheModal(prev => ({ ...prev, loading: false }));
+    }
+  };
+
+  const handleCercaSchedeTecniche = async () => {
+    const supplier = schedeTecnicheModal.fornitore;
+    if (!supplier) return;
+    try {
+      setSchedeTecnicheJob({ stato: 'in_corso', prodotti_trovati: [], schede_trovate: 0 });
+      const res = await api.post('/api/schede-tecniche/cerca', { fornitore_id: supplier.id });
+      const jobId = res.data.job_id;
+      // Polling ogni 3s finché completato
+      const poll = setInterval(async () => {
+        try {
+          const jobRes = await api.get(`/api/schede-tecniche/job/${jobId}`);
+          const job = jobRes.data;
+          setSchedeTecnicheJob(job);
+          if (job.stato === 'completato' || job.stato === 'completato_vuoto' || job.stato === 'errore') {
+            clearInterval(poll);
+            // Ricarica le schede
+            const schedeRes = await api.get(`/api/schede-tecniche/fornitore/${supplier.id}`);
+            setSchedeTecnicheModal(prev => ({
+              ...prev,
+              schede: schedeRes.data.schede || [],
+              trovate: schedeRes.data.trovate || 0
+            }));
+          }
+        } catch (e) { clearInterval(poll); }
+      }, 3000);
+    } catch (err) {
+      alert('Errore avvio ricerca: ' + (err.response?.data?.detail || err.message));
     }
   };
 
@@ -2084,56 +2122,97 @@ export default function Fornitori() {
               <div style={{ flex: 1, overflow: 'auto', padding: 24 }}>
                 {schedeTecnicheModal.loading ? (
                   <div style={{ textAlign: 'center', padding: 60, color: '#6b7280' }}>
-                    ⏳ Caricamento schede tecniche...
+                    <div style={{ width: 36, height: 36, border: '3px solid #e2e8f0', borderTop: '3px solid #3b82f6', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 16px' }} />
+                    <style>{`@keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}`}</style>
+                    Caricamento...
                   </div>
-                ) : schedeTecnicheModal.schede.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: 60 }}>
-                    <div style={{ fontSize: 48, marginBottom: 16 }}>📄</div>
-                    <h3 style={{ color: '#374151', margin: '0 0 8px 0' }}>Nessuna scheda tecnica</h3>
-                    <p style={{ color: '#6b7280', margin: 0 }}>
-                      Questo fornitore non ha ancora schede tecniche associate.
-                    </p>
-                    <p style={{ color: '#9ca3af', fontSize: 13, marginTop: 12 }}>
-                      Le schede tecniche vengono importate automaticamente dalle email del fornitore.
-                    </p>
-                  </div>
-                ) : (
-                  <div style={{ display: 'grid', gap: 12 }}>
-                    {schedeTecnicheModal.schede.map((scheda, idx) => (
-                      <div key={scheda.id || idx} style={{
-                        background: '#f9fafb', borderRadius: 12, padding: 16,
-                        border: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', gap: 16
-                      }}>
-                        <div style={{
-                          width: 48, height: 48, borderRadius: 8, background: '#e0e7ff',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24
-                        }}>
-                          📋
-                        </div>
-                        <div style={{ flex: 1 }}>
-                          <h4 style={{ margin: '0 0 4px 0', fontSize: 14, fontWeight: 600, color: '#1e3a5f' }}>
-                            {scheda.nome_prodotto || scheda.nome || 'Scheda Tecnica'}
-                          </h4>
-                          <p style={{ margin: 0, fontSize: 12, color: '#6b7280' }}>
-                            {scheda.codice_articolo && `Cod. ${scheda.codice_articolo} • `}
-                            Caricata: {scheda.created_at ? new Date(scheda.created_at).toLocaleDateString('it-IT') : '-'}
-                          </p>
-                        </div>
-                        {scheda.file_url && (
-                          <a
-                            href={scheda.file_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{
-                              padding: '8px 16px', background: '#3b82f6', color: 'white',
-                              borderRadius: 6, textDecoration: 'none', fontSize: 13, fontWeight: 500
-                            }}
-                          >
-                            📥 Scarica
-                          </a>
+                ) : schedeTecnicheJob?.stato === 'in_corso' ? (
+                  <div style={{ textAlign: 'center', padding: 40 }}>
+                    <div style={{ width: 40, height: 40, border: '4px solid #e2e8f0', borderTop: '4px solid #3b82f6', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 20px' }} />
+                    <h3 style={{ color: '#1e3a5f', margin: '0 0 8px 0', fontSize: 16 }}>Ricerca in corso...</h3>
+                    <p style={{ color: '#6b7280', fontSize: 13 }}>Analisi fatture XML e ricerca PDF sul web</p>
+                    {schedeTecnicheJob?.prodotti_trovati?.length > 0 && (
+                      <div style={{ background: '#f0f9ff', borderRadius: 8, padding: 16, marginTop: 16, textAlign: 'left' }}>
+                        <p style={{ margin: '0 0 8px 0', fontWeight: 600, fontSize: 13, color: '#0369a1' }}>
+                          Prodotti trovati nelle fatture ({schedeTecnicheJob.prodotti_trovati.length}):
+                        </p>
+                        {schedeTecnicheJob.prodotti_trovati.slice(0, 8).map((p, i) => (
+                          <div key={i} style={{ fontSize: 12, color: '#374151', padding: '3px 0' }}>• {p}</div>
+                        ))}
+                        {schedeTecnicheJob.prodotti_trovati.length > 8 && (
+                          <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>...e altri {schedeTecnicheJob.prodotti_trovati.length - 8}</div>
                         )}
                       </div>
-                    ))}
+                    )}
+                  </div>
+                ) : schedeTecnicheModal.schede.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: 40 }}>
+                    <div style={{ fontSize: 52, marginBottom: 16 }}>📄</div>
+                    <h3 style={{ color: '#374151', margin: '0 0 8px 0' }}>Nessuna scheda tecnica</h3>
+                    <p style={{ color: '#6b7280', margin: '0 0 4px 0' }}>Nessuna scheda tecnica associata a questo fornitore.</p>
+                    <p style={{ color: '#9ca3af', fontSize: 13, marginBottom: 24 }}>
+                      Il sistema leggerà le fatture XML, identificherà i prodotti e cercherà
+                      le schede tecniche ufficiali sul sito del produttore.
+                    </p>
+                    {schedeTecnicheJob?.stato === 'completato_vuoto' && (
+                      <div style={{ background: '#fef9c3', borderRadius: 8, padding: 12, marginBottom: 16, fontSize: 13, color: '#92400e' }}>
+                        Nessun prodotto trovato nelle fatture XML di questo fornitore.
+                      </div>
+                    )}
+                    <button
+                      onClick={handleCercaSchedeTecniche}
+                      style={{ background: '#1e3a5f', color: 'white', border: 'none', borderRadius: 8, padding: '12px 24px', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
+                    >
+                      Cerca automaticamente
+                    </button>
+                  </div>
+                ) : (
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                      <span style={{ fontSize: 13, color: '#6b7280' }}>
+                        {schedeTecnicheModal.schede.length} prodotti analizzati •{' '}
+                        <strong style={{ color: '#16a34a' }}>{schedeTecnicheModal.trovate || 0} schede trovate</strong>
+                      </span>
+                      <button
+                        onClick={handleCercaSchedeTecniche}
+                        style={{ background: '#f0f9ff', color: '#0369a1', border: '1px solid #bae6fd', borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                      >
+                        Aggiorna ricerca
+                      </button>
+                    </div>
+                    <div style={{ display: 'grid', gap: 10 }}>
+                      {schedeTecnicheModal.schede.map((scheda, idx) => (
+                        <div key={scheda.id || idx} style={{
+                          background: scheda.stato === 'trovato' ? '#f0fdf4' : scheda.stato === 'url_trovato' ? '#fffbeb' : '#f9fafb',
+                          borderRadius: 10, padding: '14px 16px',
+                          border: `1px solid ${scheda.stato === 'trovato' ? '#86efac' : scheda.stato === 'url_trovato' ? '#fde68a' : '#e5e7eb'}`,
+                          display: 'flex', alignItems: 'flex-start', gap: 14
+                        }}>
+                          <div style={{ width: 40, height: 40, borderRadius: 8, flexShrink: 0, background: scheda.stato === 'trovato' ? '#dcfce7' : scheda.stato === 'url_trovato' ? '#fef3c7' : scheda.stato === 'url_suggerito' ? '#e0e7ff' : '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>
+                            {scheda.stato === 'trovato' ? '✅' : scheda.stato === 'url_trovato' ? '🔗' : scheda.stato === 'url_suggerito' ? '💡' : '❌'}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 600, fontSize: 14, color: '#1e3a5f', marginBottom: 3 }}>
+                              {scheda.prodotto_pulito || scheda.prodotto}
+                            </div>
+                            {scheda.brand && <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 2 }}>Brand: <strong>{scheda.brand}</strong></div>}
+                            {scheda.sito_ufficiale && <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 2 }}>Sito: {scheda.sito_ufficiale}</div>}
+                            <div style={{ fontSize: 11, color: '#9ca3af' }}>
+                              {scheda.stato === 'trovato' && `PDF scaricato • ${Math.round((scheda.dimensione_bytes || 0) / 1024)} KB`}
+                              {scheda.stato === 'url_trovato' && 'URL trovato (PDF non scaricabile direttamente)'}
+                              {scheda.stato === 'url_suggerito' && 'URL suggerito da AI — verifica manuale'}
+                              {scheda.stato === 'non_trovato' && 'Scheda non trovata online'}
+                            </div>
+                          </div>
+                          {(scheda.stato === 'trovato' || scheda.stato === 'url_trovato' || scheda.stato === 'url_suggerito') && (
+                            <a href={scheda.stato === 'trovato' ? `${window.location.origin}/api/schede-tecniche/download/${scheda.id}` : scheda.url_fonte} target="_blank" rel="noopener noreferrer"
+                              style={{ padding: '6px 14px', background: scheda.stato === 'trovato' ? '#3b82f6' : '#6366f1', color: 'white', borderRadius: 6, textDecoration: 'none', fontSize: 12, fontWeight: 500, whiteSpace: 'nowrap' }}>
+                              {scheda.stato === 'trovato' ? 'Scarica PDF' : 'Apri link'}
+                            </a>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
