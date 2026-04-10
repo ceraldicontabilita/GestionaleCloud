@@ -153,3 +153,12 @@ backend/docs/mongo_backup_ceraldi_20260317_1626.zip
 # Environment files
 *.env
 *.env.*
+-e 
+# Environment and credential files
+.env
+.env.*
+*.env
+credentials.json
+*.pem
+*.key
+.credentials
