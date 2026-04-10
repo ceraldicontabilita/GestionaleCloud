@@ -134,9 +134,9 @@ async def create_indexes():
         # ============================================
         # FORNITORI
         # ============================================
-        await safe_create_index(db["suppliers"], "partita_iva", unique=True, sparse=True)
-        await safe_create_index(db["suppliers"], "ragione_sociale")
-        await safe_create_index(db["suppliers"], [("ragione_sociale", "text")])
+        await safe_create_index(db["fornitori"], "partita_iva", unique=True, sparse=True)
+        await safe_create_index(db["fornitori"], "ragione_sociale")
+        await safe_create_index(db["fornitori"], [("ragione_sociale", "text")])
         indexes_created.append("fornitori: partita_iva (unique), ragione_sociale, text search")
         logger.info("✅ Indici fornitori creati")
         

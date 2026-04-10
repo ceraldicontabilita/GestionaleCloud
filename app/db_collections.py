@@ -29,7 +29,7 @@ COLL_FATTURE_EMESSE = "fatture_emesse"  # Da implementare
 COLL_INVOICES_EMESSE = "invoices_emesse"  # Alias legacy
 
 # Fornitori
-COLL_SUPPLIERS = "suppliers"  # 315 docs - Collezione normalizzata inglese
+COLL_SUPPLIERS = "fornitori"  # FIX: ora punta a "fornitori" (canonica). "suppliers" era alias inglese deprecato.
 COLL_FORNITORI = "fornitori"  # 268 docs - Collezione italiana (dati primari)
 COLL_FORNITORI_KEYWORDS = "fornitori_keywords"  # 244 docs - Learning Machine keywords
 COLL_FORNITORI_DIZIONARIO = "fornitori_dizionario"
