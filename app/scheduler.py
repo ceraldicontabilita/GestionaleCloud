@@ -240,8 +240,7 @@ async def gmail_full_scan_task():
     Task eseguito ogni ora.
     Scansiona TUTTE le cartelle Gmail per documenti amministrativi.
     REGOLA: le fatture NON vengono scaricate da Gmail (solo PEC o import manuale).
-    Documenti: cedolini, F24, estratti conto, verbali, quietanze, bonifici,
-    cartelle esattoriali, schede tecniche, certificati medici.
+    Dopo il download, esegue il pipeline di processamento automatico.
     """
     from app.database import Database
     from app.services.email_full_download import EmailFullDownloader
@@ -252,16 +251,25 @@ async def gmail_full_scan_task():
         downloader = EmailFullDownloader(db)
         result = await downloader.download_all_emails(
             folder="ALL_FOLDERS",
-            days_back=30,  # Ultimi 30 giorni per il task orario
+            days_back=30,
             batch_size=50
         )
         stats = result.get("stats", {})
         logger.info(
-            f"[SCHEDULER-GMAIL] Completato: "
-            f"{stats.get('cartelle_scansionate', 0)} cartelle scansite, "
-            f"{stats.get('emails_processed', 0)} email, "
-            f"{stats.get('pdfs_downloaded', 0)} PDF scaricati"
+            f"[SCHEDULER-GMAIL] Download: "
+            f"{stats.get('cartelle_scansionate', 0)} cartelle, "
+            f"{stats.get('pdfs_downloaded', 0)} PDF"
         )
+        
+        # Esegui pipeline post-download (F24, cedolini, verbali, quietanze)
+        if stats.get("pdfs_downloaded", 0) > 0:
+            try:
+                from app.services.post_download_pipeline import esegui_pipeline_completa
+                pipeline_result = await esegui_pipeline_completa(db)
+                logger.info(f"[SCHEDULER-GMAIL] Pipeline: {pipeline_result}")
+            except Exception as pipe_err:
+                logger.error(f"[SCHEDULER-GMAIL] Pipeline errore: {pipe_err}")
+        
         if stats.get("pdfs_downloaded", 0) > 0:
             try:
                 from app.services.websocket_manager import notify_data_change

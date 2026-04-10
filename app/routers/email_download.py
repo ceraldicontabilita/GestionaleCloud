@@ -642,6 +642,25 @@ async def processa_cedolini() -> Dict[str, Any]:
     }
 
 
+
+@router.post("/processa-pipeline")
+async def processa_pipeline_completa() -> Dict[str, Any]:
+    """
+    Esegue il pipeline completo di processamento post-download.
+    Processa: F24, Cedolini, Verbali, Quietanze.
+    Collega verbali a veicoli/dipendenti, crea trattenute busta paga.
+    """
+    from app.services.post_download_pipeline import esegui_pipeline_completa
+    db = Database.get_db()
+    risultati = await esegui_pipeline_completa(db)
+    return {
+        "success": True,
+        "message": "Pipeline post-download completata",
+        "risultati": risultati
+    }
+
+
+
 @router.get("/statistiche")
 async def get_statistiche_allegati() -> Dict[str, Any]:
     """
