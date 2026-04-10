@@ -102,7 +102,7 @@
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
 
-user_problem_statement: "Test completo del backend OpenClaw-3.0: API da testare (GET /api/suppliers - 316 fornitori, GET /api/suppliers?limit=10 - primi 10, verificare ragione_sociale/partita_iva/fatture, GET /api/invoices, MongoDB Atlas azienda_erp_db), verificare Collections.SUPPLIERS=suppliers, 94.088 documenti totali, query senza filtro anno. Aspettative: Status 200, dati reali, response time <2s, nessun errore 404/500."
+user_problem_statement: "Fix errori minori (React key duplicate, Recharts sizing), responsive design universale, verifica PEC download, fix reload pagine, uniformare grafica. App: Ceraldi ERP gestionale (React+FastAPI+MongoDB Atlas db:Gestionale)."
 
 backend:
   - task: "API /api/suppliers - Return 316 suppliers"

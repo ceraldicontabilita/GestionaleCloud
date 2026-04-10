@@ -284,8 +284,8 @@ export default function GestioneEmailMittenti() {
           <table style={STYLES.table}>
             <thead>
               <tr>
-                {['Pattern', 'Tipo documento', 'Descrizione', '', 'Attivo', ''].map(h => (
-                  <th key={h} style={STYLES.th}>{h}</th>
+                {['Pattern', 'Tipo documento', 'Descrizione', 'Origine', 'Attivo', 'Azioni'].map((h, idx) => (
+                  <th key={idx} style={STYLES.th}>{h}</th>
                 ))}
               </tr>
             </thead>

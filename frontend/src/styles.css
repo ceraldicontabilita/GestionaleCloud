@@ -1052,3 +1052,129 @@ code {
     grid-template-columns: 1fr 1fr !important;
   }
 }
+
+/* ============================================================
+   CERALDI ERP — RESPONSIVE UNIVERSALE (v3.0)
+   Elimina tutte le larghezze fisse, adatta a qualsiasi schermo
+   ============================================================ */
+
+/* --- RESET GLOBALE LARGHEZZE FISSE --- */
+* {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+/* Eccezioni per elementi che necessitano overflow */
+img, svg, video, canvas, iframe {
+  max-width: 100%;
+  height: auto;
+}
+
+/* --- TABELLE: overflow automatico universale --- */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: auto;
+}
+
+/* Wrapper universale tabelle - scroll orizzontale */
+div:has(> table) {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* --- CARD UNIFORMI --- */
+.erp-card,
+[style*="boxShadow: '0 2px 8px"] {
+  border-radius: 12px;
+  transition: box-shadow 0.2s ease;
+}
+
+/* --- GRAFICI RECHARTS: dimensioni minime --- */
+.recharts-responsive-container {
+  min-width: 0 !important;
+  min-height: 0 !important;
+}
+
+/* --- RESPONSIVE MEDIUM (tablet) --- */
+@media (max-width: 1024px) {
+  /* Grid: max 2 colonne su tablet */
+  [style*="repeat(3,"] {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+  [style*="repeat(4,"] {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+/* --- RESPONSIVE SMALL (mobile) --- */
+@media (max-width: 768px) {
+  /* Tutte le grid a 1 colonna */
+  [style*="repeat(2,"] {
+    grid-template-columns: 1fr !important;
+  }
+  [style*="repeat(3,"] {
+    grid-template-columns: 1fr !important;
+  }
+  [style*="repeat(4,"] {
+    grid-template-columns: 1fr !important;
+  }
+  
+  /* Grid auto-fit: forza 1 colonna su mobile */
+  [style*="auto-fit"] {
+    grid-template-columns: 1fr !important;
+  }
+  
+  /* Flex wrap su mobile */
+  [style*="display: flex"],
+  [style*="display:'flex'"],
+  [style*="display: 'flex'"] {
+    flex-wrap: wrap !important;
+  }
+  
+  /* Elimina gap eccessivi */
+  [style*="gap: 20"],
+  [style*="gap: 24"],
+  [style*="gap: 30"] {
+    gap: 12px !important;
+  }
+  
+  /* Header compatti su mobile */
+  [style*="linear-gradient"] {
+    flex-direction: column !important;
+    text-align: center !important;
+    padding: 12px !important;
+  }
+
+  /* Modal: full width su mobile */
+  [style*="position: fixed"][style*="background: white"],
+  [style*="position: 'fixed'"][style*="background: 'white'"] {
+    width: 95vw !important;
+    max-height: 90vh !important;
+    overflow-y: auto !important;
+    left: 2.5vw !important;
+    right: 2.5vw !important;
+  }
+}
+
+/* --- RESPONSIVE EXTRA SMALL --- */
+@media (max-width: 480px) {
+  /* Font ancora più compatto */
+  body {
+    font-size: 12px !important;
+  }
+  
+  /* Button più piccoli */
+  button {
+    padding: 8px 12px !important;
+    font-size: 12px !important;
+  }
+  
+  /* Card padding minimo */
+  [style*="padding: 20"],
+  [style*="padding: 24"],
+  [style*="padding: '20px'"],
+  [style*="padding: '24px'"] {
+    padding: 10px !important;
+  }
+}

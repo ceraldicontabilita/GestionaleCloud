@@ -671,7 +671,7 @@ export default function Dashboard() {
       {/* Nuova sezione: Grafici Avanzati */}
       <div style={{ 
         display: 'grid', 
-        gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', 
+        gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 400px), 1fr))', 
         gap: 20, 
         marginTop: 20 
       }}>

@@ -43,8 +43,9 @@ export const SPACING = {
 export const STYLES = {
   page: {
     padding: SPACING.xl,
-    maxWidth: 1400,
-    margin: '0 auto'
+    maxWidth: '100%',
+    margin: '0 auto',
+    boxSizing: 'border-box'
   },
 
   header: {
@@ -88,7 +89,14 @@ export const STYLES = {
 
   table: {
     width: '100%',
-    borderCollapse: 'collapse'
+    borderCollapse: 'collapse',
+    fontSize: 13
+  },
+
+  tableWrap: {
+    overflowX: 'auto',
+    WebkitOverflowScrolling: 'touch',
+    width: '100%'
   },
 
   th: {
