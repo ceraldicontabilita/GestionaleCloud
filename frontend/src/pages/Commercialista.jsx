@@ -4,7 +4,7 @@ import api from '../api';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
-import { formatEuro, STYLES, COLORS, button, badge } from '../lib/utils';
+import { formatEuro, STYLES, COLORS, button, badge, useIsMobile } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
 
 // Funzione per formattare valuta come stringa pura (per PDF)
@@ -19,6 +19,7 @@ const MESI = [
 ];
 
 export default function Commercialista() {
+  const isMobile = useIsMobile();
   const [config, setConfig] = useState({
     email: 'rosaria.marotta@email.it',
     nome: 'Dott.ssa Rosaria Marotta',

@@ -9,7 +9,7 @@ import { Input } from '../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Building2, Users, Calendar, Calculator, AlertTriangle, Plus, Pencil, Trash2, X, Check } from 'lucide-react';
-import { STYLES, COLORS, button, badge, formatEuro, formatDateIT } from '../lib/utils';
+import { STYLES, COLORS, button, badge, formatEuro, formatDateIT, useIsMobile } from '../lib/utils';
 
 const styles = {
   container: { padding: 12, maxWidth: 1200, margin: '0 auto' },
@@ -43,6 +43,7 @@ const styles = {
 };
 
 export default function GestioneCespiti() {
+  const isMobile = useIsMobile();
   const { anno } = useAnnoGlobale();
   // URL Tab Support
   const navigate = useNavigate();

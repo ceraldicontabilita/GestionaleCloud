@@ -43,6 +43,7 @@ const TIPO_COLORS = {
 };
 
 export default function RiconciliazionePaypal() {
+  const isMobile = useIsMobile();
   const { anno } = useAnnoGlobale();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);

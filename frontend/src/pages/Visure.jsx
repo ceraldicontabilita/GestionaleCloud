@@ -4,6 +4,7 @@ import api from '../api';
 import { toast } from 'sonner';
 
 export default function Visure() {
+  const isMobile = useIsMobile();
   const [searchType, setSearchType] = useState('piva'); // piva | nome
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);

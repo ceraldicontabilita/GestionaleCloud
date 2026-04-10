@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api';
-import { formatEuro, formatDateIT } from '../lib/utils';
+import { formatEuro, formatDateIT, useIsMobile } from '../lib/utils';
 import { PageLayout, PageSection, PageGrid, PageLoading, PageEmpty } from '../components/PageLayout';
 import { AlertCircle, Brain, CheckCircle, Clock, Tag, Filter, RefreshCw, FileText, Building2, ChevronDown } from 'lucide-react';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 
 export default function DocumentiDaRivedere() {
+  const isMobile = useIsMobile();
   const [documents, setDocuments] = useState([]);
   const [stats, setStats] = useState({});
   const [loading, setLoading] = useState(true);

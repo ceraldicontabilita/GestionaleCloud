@@ -25,6 +25,7 @@ function Badge({ pagato }) {
 }
 
 export default function HRCedolini() {
+  const isMobile = useIsMobile();
   const [anno, setAnno] = useState(ANNO_CORRENTE);
   const [tab, setTab] = useState('cedolini');
   const [cedolini, setCedolini] = useState([]);

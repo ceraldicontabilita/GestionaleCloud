@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
-import { formatEuro } from '../lib/utils';
+import { formatEuro, useIsMobile } from '../lib/utils';
 import { PageLayout, PageSection, PageGrid, PageLoading } from '../components/PageLayout';
 import { 
   BarChart3, Plus, Trash2, Save, Copy, Download, RefreshCw,
@@ -11,6 +11,7 @@ import {
 const NOMI_MESI = ['', 'Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'];
 
 export default function BudgetPrevisionale() {
+  const isMobile = useIsMobile();
   const { anno } = useAnnoGlobale();
   const [activeTab, setActiveTab] = useState('budget');
   const [budget, setBudget] = useState(null);

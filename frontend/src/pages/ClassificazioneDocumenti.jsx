@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import api from '../api';
 import { FileText, Mail, CheckCircle, AlertCircle, Trash2, RefreshCw, Settings, Search, ArrowRight, Zap, Brain, FolderOpen, Eye, Download, Edit2, X } from 'lucide-react';
-import { STYLES, COLORS, button, badge, formatEuro, formatDateIT } from '../lib/utils';
+import { STYLES, COLORS, button, badge, formatEuro, formatDateIT, useIsMobile } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 
@@ -56,6 +56,7 @@ const GESTIONALE_SECTIONS = {
 };
 
 export default function ClassificazioneDocumenti() {
+  const isMobile = useIsMobile();
   // Leggi tab iniziale da URL params
   const [searchParams] = useSearchParams();
   const initialTab = searchParams.get('tab') || 'classificazione';

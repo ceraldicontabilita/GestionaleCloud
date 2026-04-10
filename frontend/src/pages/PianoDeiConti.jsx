@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import api from '../api';
-import { formatEuro, STYLES, COLORS, button, badge } from '../lib/utils';
+import { formatEuro, STYLES, COLORS, button, badge, useIsMobile } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 
@@ -14,6 +14,7 @@ const CATEGORIE = {
 };
 
 export default function PianoDeiConti() {
+  const isMobile = useIsMobile();
   const [_conti, setConti] = useState([]);
   const [grouped, setGrouped] = useState({});
   const [regole, setRegole] = useState([]);
