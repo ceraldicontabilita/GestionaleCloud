@@ -39,7 +39,7 @@ async def collega_google_dipendente(data: Dict[str, Any]) -> Dict[str, Any]:
     if not invito:
         raise HTTPException(400, "Codice invito non valido o scaduto")
 
-    await db["employees"].update_one(
+    await db["dipendenti"].update_one(
         {"id": invito["dipendente_id"]},
         {"$set": {
             "google_email": email_google,
@@ -65,7 +65,7 @@ async def genera_invito_dipendente(dipendente_id: str) -> Dict[str, Any]:
     Chiamato dal datore dopo aver creato l'anagrafica.
     """
     db = Database.get_db()
-    dip = await db["employees"].find_one({"id": dipendente_id}, {"_id": 0})
+    dip = await db["dipendenti"].find_one({"id": dipendente_id}, {"_id": 0})
     if not dip:
         raise HTTPException(404, "Dipendente non trovato")
 
@@ -102,7 +102,7 @@ async def genera_invito_dipendente(dipendente_id: str) -> Dict[str, Any]:
         except Exception as e:
             logger.warning(f"Email invito non inviata: {e}")
 
-    await db["employees"].update_one(
+    await db["dipendenti"].update_one(
         {"id": dipendente_id},
         {"$set": {
             "portale_invitato": True,
@@ -116,7 +116,7 @@ async def genera_invito_dipendente(dipendente_id: str) -> Dict[str, Any]:
 async def get_miei_cedolini(current_user=Depends(get_current_user)):
     """Cedolini del dipendente loggato (filtrati per google_email)."""
     db = Database.get_db()
-    dip = await db["employees"].find_one(
+    dip = await db["dipendenti"].find_one(
         {"google_email": current_user["email"]}, {"_id": 0}
     )
     if not dip:
@@ -136,7 +136,7 @@ async def scarica_mio_cedolino(cedolino_id: str, current_user=Depends(get_curren
     """Scarica il PDF di un cedolino (solo il proprio)."""
     from fastapi.responses import Response
     db = Database.get_db()
-    dip = await db["employees"].find_one({"google_email": current_user["email"]})
+    dip = await db["dipendenti"].find_one({"google_email": current_user["email"]})
     if not dip:
         raise HTTPException(403, "Accesso negato")
     cedolino = await db["cedolini"].find_one({
@@ -160,7 +160,7 @@ async def scarica_mio_cedolino(cedolino_id: str, current_user=Depends(get_curren
 async def get_miei_contratti(current_user=Depends(get_current_user)):
     """Contratti del dipendente loggato."""
     db = Database.get_db()
-    dip = await db["employees"].find_one(
+    dip = await db["dipendenti"].find_one(
         {"google_email": current_user["email"]}, {"_id": 0}
     )
     if not dip:
@@ -211,7 +211,7 @@ async def firma_documento(
         raise HTTPException(422, "La firma disegnata è obbligatoria e non può essere vuota")
 
     # --- Carica dipendente tramite google_email ---
-    dip = await db["employees"].find_one(
+    dip = await db["dipendenti"].find_one(
         {"google_email": current_user["email"]}, {"_id": 0}
     )
     if not dip:

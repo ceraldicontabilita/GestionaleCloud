@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 # Collection names - STANDARDIZZATE
 COL_FORNITORI = "fornitori"
-COL_FATTURE_RICEVUTE = "indice_documenti"
+COL_FATTURE_RICEVUTE = "invoices"  # FIX: era "indice_documenti", collection canonica è "invoices"
 COL_DETTAGLIO_RIGHE = "dettaglio_righe_fatture"
 COL_ALLEGATI = "allegati_fatture"
 

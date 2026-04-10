@@ -60,7 +60,7 @@ async def registra_timbratura(payload: Dict[str, Any]) -> Dict[str, Any]:
         raise HTTPException(status_code=400, detail=f"tipo deve essere uno di: {tipi_validi}")
     
     # Verifica dipendente esiste
-    employee = await db["employees"].find_one({"id": employee_id}, {"_id": 0, "id": 1, "nome": 1, "cognome": 1})
+    employee = await db["dipendenti"].find_one({"id": employee_id}, {"_id": 0, "id": 1, "nome": 1, "cognome": 1})
     if not employee:
         raise HTTPException(status_code=404, detail="Dipendente non trovato")
     

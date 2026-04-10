@@ -72,7 +72,7 @@ async def processa_cedolino_completo(
         # ============================================
         # 1. ANAGRAFICA DIPENDENTE
         # ============================================
-        dipendente = await db["employees"].find_one(
+        dipendente = await db["dipendenti"].find_one(
             {"codice_fiscale": cf}
         )
         
@@ -91,7 +91,7 @@ async def processa_cedolino_completo(
             if iban and iban != dipendente.get("iban"):
                 update_data["iban"] = iban
             
-            await db["employees"].update_one(
+            await db["dipendenti"].update_one(
                 {"codice_fiscale": cf},
                 {"$set": update_data}
             )
@@ -126,7 +126,7 @@ async def processa_cedolino_completo(
                 "updated_at": datetime.now(timezone.utc).isoformat()
             }
             
-            await db["employees"].insert_one(dict(nuova_anagrafica).copy())
+            await db["dipendenti"].insert_one(dict(nuova_anagrafica).copy())
             result["anagrafica_creata"] = True
             logger.info(f"📋 Nuova anagrafica dipendente creata: {nome} ({cf})")
         
@@ -221,11 +221,28 @@ async def processa_cedolino_completo(
             result["riconciliato"] = riconciliato
         
         result["success"] = True
-        
+
+        # ── EVENTO: pubblica sul Bus per TFR e notifiche automatiche ──
+        try:
+            from app.core.event_bus import bus
+            await bus.publish("cedolino.importato", payload={
+                "cedolino_id":    movimento_id,
+                "dipendente_id":  dipendente_id,
+                "nome_dipendente": nome,
+                "codice_fiscale": cedolino_data.get("codice_fiscale", ""),
+                "mese":           mese,
+                "anno":           anno,
+                "netto":          netto,
+                "lordo":          cedolino_data.get("lordo", 0),
+                "tfr_quota_mese": cedolino_data.get("tfr_quota_mese", 0),
+            }, db=db, save_to_db=False)
+        except Exception as ev_e:
+            logger.debug(f"[CedoliniManager] Event Bus: {ev_e}")
+
     except Exception as e:
         logger.error(f"Errore processamento cedolino: {e}")
         result["errore"] = str(e)
-    
+
     return result
 
 
@@ -434,7 +451,7 @@ async def get_anagrafica_dipendenti(db, attivi_solo: bool = True) -> List[Dict[s
     if attivi_solo:
         filtro["stato"] = "attivo"
     
-    dipendenti = await db["employees"].find(
+    dipendenti = await db["dipendenti"].find(
         filtro,
         {"_id": 0}
     ).sort("cognome", 1).to_list(500)
@@ -446,7 +463,7 @@ async def get_riepilogo_dipendente(db, codice_fiscale: str) -> Dict[str, Any]:
     """Restituisce il riepilogo completo di un dipendente."""
     
     # Anagrafica
-    anagrafica = await db["employees"].find_one(
+    anagrafica = await db["dipendenti"].find_one(
         {"codice_fiscale": codice_fiscale},
         {"_id": 0}
     )

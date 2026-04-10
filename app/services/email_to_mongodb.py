@@ -281,7 +281,7 @@ async def process_cedolino(db: AsyncIOMotorDatabase, doc: Dict, pdf_content: byt
             return
         
         # Cerca dipendente nel database
-        dipendente = await db["employees"].find_one({
+        dipendente = await db["dipendenti"].find_one({
             "$or": [
                 {"nome_completo": {"$regex": parsed.get('dipendente_nome', ''), "$options": "i"}},
                 {"codice_fiscale": parsed.get('codice_fiscale', '')}

@@ -18,7 +18,6 @@ from app.middleware.error_handler import add_exception_handlers
 setup_logging()
 logger = get_logger(__name__)
 
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
@@ -44,16 +43,13 @@ async def lifespan(app: FastAPI):
     if not secrets_status.get('database'):
         logger.critical("⚠️ MONGODB_ATLAS_URI non configurata! Il database non funzionerà.")
     
-    # DISABILITATO: Monitor email automatico ogni 10 minuti
-    # Causa: tentativo IMAP con credenziali non valide blocca l'event loop FastAPI per ~30s
-    # (IMAP timeout default). Riabilitare solo dopo aver configurato credenziali valide.
-    # try:
-    #     from app.services.email_monitor_service import start_monitor
-    #     db = Database.get_db()
-    #     if db is not None:
-    #         start_monitor(db, interval_seconds=600)
-    # except Exception as e:
-    #     logger.warning(f"Monitor email non avviato: {e}")
+    # Registrazione Event Bus handlers
+    try:
+        from app.core.handlers_registry import registra_tutti_gli_handler
+        registra_tutti_gli_handler()
+        logger.info("🔗 Event Bus: handler registrati")
+    except Exception as e:
+        logger.warning(f"Event Bus non inizializzato: {e}")
 
     # Avvio Scheduler (PEC ogni ora, Gmail ogni 10min, F24 giornaliero)
     # Il PEC usa asyncio.to_thread() quindi NON blocca l'event loop FastAPI
@@ -103,7 +99,6 @@ async def lifespan(app: FastAPI):
     await Database.close_db()
     logger.info("✅ Application shutdown complete")
 
-
 # Create FastAPI app
 app = FastAPI(
     title=settings.APP_NAME,
@@ -139,11 +134,9 @@ except ImportError:
 # Add global authentication middleware (safety net for all /api/ endpoints)
 # Richiede token JWT valido per tutti gli endpoint /api/ eccetto /api/auth/* e /api/public/*
 from app.middleware.authentication import AuthenticationMiddleware
-# app.add_middleware(AuthenticationMiddleware)  # DISABILITATO - Login rimandato al deploy
 
 # Add exception handlers
 add_exception_handlers(app)
-
 
 # =============================================================================
 # MODULAR ROUTER IMPORTS
@@ -162,7 +155,6 @@ from app.routers.accounting import (
     regole_categorizzazione, iva_calcolo, liquidazione_iva,
     riconciliazione_automatica, contabilita_gestionale
 )
-# Prima Nota modularizzato
 from app.routers.prima_nota_module import router as prima_nota_router
 
 # --- To-Do Module ---
@@ -174,7 +166,6 @@ from app.routers.bank import (
     bank_statement_parser, estratto_conto, assegni, pos_accredito,
     bank_statement_bulk_import, assegni_learning
 )
-# Archivio Bonifici modularizzato
 from app.routers.bonifici_module import router as archivio_bonifici_router
 from app.routers.bank import riconciliazione_f24_banca
 
@@ -188,7 +179,6 @@ from app.routers.warehouse import (
 from app.routers.invoices import (
     invoices_main, invoices_emesse, invoices_export, fatture_upload, corrispettivi
 )
-# Fatture Ricevute modularizzato
 from app.routers.fatture_module import router as fatture_ricevute_router
 from app.routers.fatture_module.api_tracciabilita import router as r_api_tracciabilita
 
@@ -228,7 +218,6 @@ from app.routers import (
     dizionario_prodotti, inventario, manutenzione, verbali_noleggio_api,
     openapi_it
 )
-# Operazioni da Confermare modularizzato
 from app.routers.operazioni_module import router as operazioni_router
 from app.routers.suppliers_module import router as suppliers_router
 from app.routers import cedolini_riconciliazione
@@ -258,21 +247,16 @@ from app.routers import documenti_non_associati  # Gestione documenti non associ
 from app.routers import fornitori_learning  # Fornitori Learning - Associazione keywords
 from app.routers import ai_parser  # AI Parser - Estrazione intelligente documenti
 from app.routers import upload_ai  # Upload AI - Parsing automatico su upload diretto
-# REMOVED: chat_router - replaced by OpenClaw
 from app.routers import schede_tecniche  # Schede Tecniche Prodotti
-# auto_repair rimosso (Blocco J1)
-# odoo_integration rimosso (Blocco J1)
 from app.routers import accounting_engine  # Motore Contabile Odoo-style
 from app.routers import contabilita_italiana  # Contabilità Italiana Completa
 from app.routers import fiscalita_italiana  # Fiscalità e Calendario Scadenze
-# REMOVED: claude_api - replaced by OpenClaw
 from app.routers import batch_operations  # Operazioni Batch - Riconcilia/Paga N documenti
 from app.routers import google_auth  # Google OAuth - Login con Google
 from app.routers import openclaw  # OpenClaw/MoltBot AI Assistant
 from app.routers.agenti import router as r_agenti  # Agenti AI
 from app.routers import settings_router  # Impostazioni Gestionale
 from app.routers.erp_bridge import router as erp_bridge_router  # Ponte Tracciabilità → Gestionale
-
 
 # =============================================================================
 # ROUTER REGISTRATION
@@ -292,27 +276,22 @@ app.include_router(erp_bridge_router)  # Ponte Tracciabilità → Gestionale (/a
 # --- F24 Module ---
 app.include_router(f24_main.router, prefix="/api/f24", tags=["F24"])
 app.include_router(f24_riconciliazione.router, prefix="/api/f24-riconciliazione", tags=["F24 Riconciliazione"])
-# DISABILITATO: f24_tributi - endpoint duplicati con f24_main
-# app.include_router(f24_tributi.router, prefix="/api/f24", tags=["F24 Tributi"])
 app.include_router(f24_public.router, prefix="/api/f24-public", tags=["F24 Public"])
 app.include_router(quietanze.router, prefix="/api/quietanze-f24", tags=["Quietanze F24"])
 
 # F24 Notifiche Push (scadenze con alert Telegram + Email)
 from app.routers.f24 import f24_notifiche
 app.include_router(f24_notifiche.router, prefix="/api/f24-notifiche", tags=["F24 Notifiche Push"])
+app.include_router(f24_gestione_avanzata.router, prefix="/api/f24-avanzato", tags=["F24 Gestione Avanzata"])
 
 # F24 Email Settings - Impostazioni per download automatico F24 da email
 from app.routers import f24_email_settings
 app.include_router(f24_email_settings.router, prefix="/api/f24-email-settings", tags=["F24 Email Settings"])
-# DISABILITATO: f24_gestione_avanzata - non usato dal frontend
-# app.include_router(f24_gestione_avanzata.router, prefix="/api/f24-avanzato", tags=["F24 Gestione Avanzata"])
 app.include_router(codici_tributari.router, prefix="/api/codici-tributari", tags=["Codici Tributari"])
 
 # --- Accounting Module ---
 app.include_router(accounting_main.router, prefix="/api/accounting", tags=["Accounting"])
 app.include_router(accounting_extended.router, prefix="/api/accounting", tags=["Accounting Extended"])
-# DISABILITATO: accounting_f24 - non usato, duplicato con f24_main
-# app.include_router(accounting_f24.router, prefix="/api/f24", tags=["F24 Accounting"])
 app.include_router(accounting_engine_api.router, prefix="/api/accounting-engine", tags=["Accounting Engine - Partita Doppia"])
 # Prima Nota - Modulo refactorizzato (cassa, banca, salari unificati)
 app.include_router(prima_nota_router, prefix="/api/prima-nota", tags=["Prima Nota"])
@@ -357,11 +336,8 @@ app.include_router(riconciliazione_f24_banca.router, prefix="/api/f24-riconcilia
 app.include_router(warehouse_main.router, prefix="/api/warehouse", tags=["Warehouse"])
 app.include_router(magazzino.router, prefix="/api/magazzino", tags=["Magazzino"])
 app.include_router(magazzino_products.router, prefix="/api/magazzino", tags=["Magazzino Products"])
-# magazzino_doppia_verita rimosso (Blocco J1)
 app.include_router(products.router, prefix="/api/products", tags=["Products"])
 app.include_router(products_catalog.router, prefix="/api/products", tags=["Products Catalog"])
-# lotti rimosso (Blocco J1)
-# tracciabilita rimosso (Blocco J1)
 app.include_router(dizionario_articoli.router, prefix="/api/dizionario-articoli", tags=["Dizionario Articoli"])
 
 # --- Invoices Module ---
@@ -410,7 +386,6 @@ try:
 except Exception as e:
     import logging
     logging.getLogger(__name__).warning(f"Tracciabilita non caricata: {e}")
-# tracciabilita rimosso (Blocco J1)
 app.include_router(corrispettivi.router, prefix="/api/corrispettivi", tags=["Corrispettivi"])
 
 # --- Employees Module ---
@@ -476,7 +451,6 @@ app.include_router(mutui_parser.router, prefix="/api/mutui", tags=["Mutui Parser
 app.include_router(libro_unico_parser.router, prefix="/api/paghe", tags=["Libro Unico Parser"])
 app.include_router(f24_parser.router, prefix="/api/paghe", tags=["F24 Parser"])
 
-# calcolo_iva rimosso - usa liquidazione_iva invece (più completo e corretto)
 app.include_router(controllo_gestione.router, prefix="/api/controllo-gestione", tags=["Controllo Gestione"])
 app.include_router(indici_bilancio.router, prefix="/api/indici-bilancio", tags=["Indici di Bilancio"])
 app.include_router(chiusura_esercizio.router, prefix="/api/chiusura-esercizio", tags=["Chiusura Esercizio"])
@@ -557,7 +531,6 @@ app.include_router(ai_parser.router, prefix="/api/ai-parser", tags=["AI Parser"]
 # --- Upload AI (Parsing automatico su upload diretto) ---
 app.include_router(upload_ai.router, prefix="/api/upload-ai", tags=["Upload AI"])
 
-# REMOVED: Chat Intelligente - replaced by OpenClaw
 from app.routers import chat_router
 app.include_router(chat_router.router, prefix="/api", tags=["Chat Intelligente"])
 
@@ -581,7 +554,7 @@ app.include_router(configurazioni.router, prefix="/api/config", tags=["Configura
 from app.routers import websocket_realtime
 app.include_router(websocket_realtime.router, prefix="/api", tags=["WebSocket Real-time"])
 app.include_router(learning_machine.router, prefix="/api/learning-machine", tags=["Learning Machine"])
-app.include_router(learning_machine_cdc.router, prefix="/api", tags=["Learning Machine CDC"])
+app.include_router(learning_machine_cdc.router, prefix="/api", tags=["Learning Machine CDC"])  # path: /api/learning-cdc/*
 app.include_router(fornitori_learning.router, prefix="/api", tags=["Fornitori Learning"])
 
 # --- Learning Machine Universale ---
@@ -589,31 +562,14 @@ from app.routers import learning_universal
 app.include_router(learning_universal.router, prefix="/api/learning-universal", tags=["Learning Machine Universale"])
 
 app.include_router(magazzino_avanzato.router, prefix="/api", tags=["Magazzino Avanzato"])
-# odoo_integration rimosso (Blocco J1)
-# app.include_router(odoo_integration.router, prefix="/api/odoo", tags=["Odoo Integration"])
 app.include_router(accounting_engine.router, prefix="/api/accounting", tags=["Accounting Engine"])
 app.include_router(contabilita_italiana.router, prefix="/api/contabilita", tags=["Contabilità Italiana"])
 
 # --- Claude AI API (Assistente Contabile Intelligente) ---
-# REMOVED: Claude AI - replaced by OpenClaw
-# app.include_router(claude_api.router, prefix="/api/claude", tags=["Claude AI"])
 
 # --- PayPal Statements (MSR/CSR) ---
 from app.routers import paypal_statements
 app.include_router(paypal_statements.router, prefix="/api/paypal-statements", tags=["PayPal Statements"])
-
-# missing_endpoints, sync_router rimossi (Blocco J1)
-# from app.routers import missing_endpoints
-#from app.routers import sync_router  # Sync email configuration
-#from app.routers import fix_sync_diagnostica  # Diagnostica e sync
-#from app.routers import fix_riconciliazione_endpoints  # Fix riconciliazione 404
-#from app.routers import fix_estratto_conto_batch  # Ricategorizzazione estratto conto
-#app.include_router(missing_endpoints.router, prefix="/api", tags=["Fix Endpoint Mancanti"])
-#app.include_router(fix_endpoints_mancanti.router, prefix="/api", tags=["Fix Endpoint 404"])
-#app.include_router(sync_router.router, prefix="/api", tags=["Sync Email"])
-#app.include_router(fix_sync_diagnostica.router, prefix="/api/sync", tags=["Sync Diagnostica"])
-#app.include_router(fix_riconciliazione_endpoints.router, prefix="/api/riconciliazione-auto", tags=["Fix Riconciliazione"])
-#app.include_router(fix_estratto_conto_batch.router, prefix="/api/estratto-conto-movimenti", tags=["Estratto Conto Fix"])
 
 # --- Archivio Bonifici Associazioni ---
 from app.routers.bonifici_module import associazioni as bonifici_associazioni
@@ -623,14 +579,6 @@ app.include_router(bonifici_associazioni.router, prefix="/api", tags=["Archivio 
 from app.routers import enhanced_parser
 app.include_router(enhanced_parser.router, prefix="/api", tags=["Enhanced Parser"])
 
-# force_sync rimosso (Blocco J1)
-# from app.routers import force_sync
-# app.include_router(force_sync.router, prefix="/api/force-sync", tags=["Force Sync"])
-
-# missing_endpoints_fix rimosso (Blocco J1)
-# from app.routers import missing_endpoints_fix
-# app.include_router(missing_endpoints_fix.router, prefix="/api", tags=["Missing Endpoints Fix"])
-
 # --- Dati Provvisori (NUOVA LOGICA WORKFLOW) ---
 from app.routers import dati_provvisori
 app.include_router(dati_provvisori.router, prefix="/api", tags=["Dati Provvisori"])
@@ -639,11 +587,9 @@ app.include_router(dati_provvisori.router, prefix="/api", tags=["Dati Provvisori
 from app.routers import batch_reprocessing
 app.include_router(batch_reprocessing.router, prefix="/api", tags=["Batch Reprocessing"])
 
-
 # --- POS Corrispettivi Check (Verifica coerenza POS/Corrispettivi XML) ---
 from app.routers import pos_corrispettivi_check
 app.include_router(pos_corrispettivi_check.router, prefix="/api", tags=["POS Corrispettivi Check"])
-
 
 # --- Distinte BPM (Import distinte stipendi da banca BPM) ---
 from app.routers import distinte_bpm
@@ -653,9 +599,7 @@ app.include_router(distinte_bpm.router, prefix="/api/paghe", tags=["Distinte BPM
 from app.routers import veicoli
 app.include_router(veicoli.router, tags=["Veicoli Noleggio"])
 
-
 # --- Cucina rimossa: router non più registrati ---
-
 
 # =============================================================================
 # HEALTH CHECK ENDPOINTS
@@ -677,7 +621,6 @@ async def root(request: Request):
         "environment": settings.ENVIRONMENT
     }
 
-
 @app.get("/health")
 @app.get("/api/health")
 async def health_check():
@@ -692,7 +635,6 @@ async def health_check():
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
 
-
 @app.get("/api/ping")
 async def ping():
     """
@@ -700,7 +642,6 @@ async def ping():
     Use this for periodic health checks to prevent server standby.
     """
     return {"pong": True}
-
 
 @app.get("/api/system/lock-status")
 async def system_lock_status():
@@ -715,7 +656,6 @@ async def system_lock_status():
         "operation": get_current_operation(),
         "can_start_email_operation": not is_email_operation_running()
     }
-
 
 # ─── Tracciabilità Module (mini-sito interno) ─────────────────────────────────
 try:
@@ -825,7 +765,6 @@ if os.path.isdir(_FRONTEND_DIST):
     logger.info("✅ Frontend React montato da %s (SPA routing attivo)", _FRONTEND_DIST)
 else:
     logger.warning("⚠️ Frontend dist non trovato in %s — SPA routing non attivo", _FRONTEND_DIST)
-
 
 if __name__ == "__main__":
     import uvicorn

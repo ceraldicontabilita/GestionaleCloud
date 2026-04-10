@@ -1206,5 +1206,5 @@ async def api_v1_stats(
         "fatture_ricevute": await db["invoices"].count_documents({"data_ricezione": {"$regex": f"^{anno}"}}),
         "fatture_emesse": await db["fatture_emesse"].count_documents({"data_fattura": {"$regex": f"^{anno}"}}),
         "movimenti": await db["prima_nota_cassa"].count_documents({"data": {"$regex": f"^{anno}"}}),
-        "dipendenti_attivi": await db["employees"].count_documents({"status": {"$in": ["active", "attivo"]}})
+        "dipendenti_attivi": await db["dipendenti"].count_documents({"status": {"$in": ["active", "attivo"]}})
     }

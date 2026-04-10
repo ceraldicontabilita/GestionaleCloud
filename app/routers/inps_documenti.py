@@ -507,7 +507,7 @@ async def scansiona_certificati_medici(
     db = Database.get_db()
     
     # Carica dipendenti per match
-    dipendenti = await db["employees"].find(
+    dipendenti = await db["dipendenti"].find(
         {},
         {"_id": 0, "id": 1, "nome": 1, "cognome": 1, "codice_fiscale": 1, "nome_completo": 1}
     ).to_list(500)

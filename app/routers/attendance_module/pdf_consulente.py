@@ -124,7 +124,7 @@ async def genera_pdf_consulente(data: Dict[str, Any]):
     mese = data.get("mese", datetime.now().month)
     
     # Recupera dipendenti in carico (escludi cessati)
-    dipendenti = await db["employees"].find(
+    dipendenti = await db["dipendenti"].find(
         {
             "$and": [
                 {"$or": [{"in_carico": True}, {"in_carico": {"$exists": False}}]},

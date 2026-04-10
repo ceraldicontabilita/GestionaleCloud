@@ -386,7 +386,7 @@ async def import_excel_storico(file: UploadFile = File(...)) -> Dict[str, Any]:
                 continue
             
             # Cerca dipendente
-            dipendente = await db["employees"].find_one({
+            dipendente = await db["dipendenti"].find_one({
                 "$or": [
                     {"nome_completo": {"$regex": nome, "$options": "i"}},
                     {"name": {"$regex": nome, "$options": "i"}}
@@ -570,7 +570,7 @@ async def import_paghe_bonifici(
                     risultato["contanti_assigned"] += 1
             
             # Cerca dipendente
-            dipendente = await db["employees"].find_one({
+            dipendente = await db["dipendenti"].find_one({
                 "$or": [
                     {"nome_completo": {"$regex": nome, "$options": "i"}},
                     {"name": {"$regex": nome, "$options": "i"}}

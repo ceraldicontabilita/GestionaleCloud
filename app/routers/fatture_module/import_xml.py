@@ -196,7 +196,26 @@ async def import_fattura_xml(file: UploadFile = File(...)) -> Dict[str, Any]:
         {"id": fattura_id},
         {"$set": {"integrazione_completata": False, "stato_riconciliazione": "in_attesa_conferma", "updated_at": datetime.now(timezone.utc).isoformat()}}
     )
-    
+
+    # ── EVENTO: pubblica sul Bus per scatenare tutti gli handler automatici ──
+    try:
+        from app.core.event_bus import bus
+        evento_payload = {
+            "fattura_id":      fattura_id,
+            "numero_documento": numero_doc,
+            "data_documento":  parsed.get("invoice_date", ""),
+            "importo_totale":  parsed.get("total_amount", 0),
+            "imponibile":      parsed.get("imponibile", 0),
+            "iva":             parsed.get("iva", 0),
+            "metodo_pagamento": metodo_pagamento_finale or "da_configurare",
+            "fornitore":       fornitore_obj,
+            "righe":           parsed.get("linee", []),
+            "stato":           stato,
+        }
+        await bus.publish("fattura.importata", payload=evento_payload, db=db)
+    except Exception as e:
+        logger.warning(f"[ImportXML] Event Bus non disponibile: {e}")
+
     return {
         "success": True,
         "fattura_id": fattura_id,

@@ -29,7 +29,7 @@ COLL_FATTURE_EMESSE = "fatture_emesse"  # Da implementare
 COLL_INVOICES_EMESSE = "invoices_emesse"  # Alias legacy
 
 # Fornitori
-COLL_SUPPLIERS = "suppliers"  # 315 docs - Collezione normalizzata inglese
+COLL_SUPPLIERS = "fornitori"  # FIX: ora punta a "fornitori" (canonica). "suppliers" era alias inglese deprecato.
 COLL_FORNITORI = "fornitori"  # 268 docs - Collezione italiana (dati primari)
 COLL_FORNITORI_KEYWORDS = "fornitori_keywords"  # 244 docs - Learning Machine keywords
 COLL_FORNITORI_DIZIONARIO = "fornitori_dizionario"
@@ -42,8 +42,8 @@ COLL_CLIENTS = "clients"  # Da implementare
 # ===========================================
 
 # Anagrafica dipendenti
-COLL_EMPLOYEES = "employees"  # 34 docs - Collezione UNICA per dipendenti
-COLL_DIPENDENTI = "dipendenti"  # Alias italiano (deprecata, usare COLL_EMPLOYEES)
+COLL_EMPLOYEES = "dipendenti"  # Regola assoluta: MAI "employees". Era "employees", rinominato.
+COLL_DIPENDENTI = "dipendenti"  # Collection canonica (usa questa, identica a COLL_EMPLOYEES)
 # DEPRECATA: anagrafica_dipendenti - tutti i dati migrati in employees
 
 # Cedolini/Buste paga
@@ -209,7 +209,7 @@ COLL_DOCUMENTS_INBOX = "documents_inbox"  # 803 docs
 COLL_DOCUMENTS_CLASSIFIED = "documents_classified"
 COLL_DOCUMENTI_CLASSIFICATI = "documenti_classificati"  # 1967 docs
 COLL_DOCUMENTI_NON_ASSOCIATI = "documenti_non_associati"  # 285 docs
-COLL_INDICE_DOCUMENTI = "indice_documenti"  # 3815 docs
+COLL_INDICE_DOCUMENTI = "indice_documenti"  # DEPRECATA - dati migrati in invoices. Tenere per email_reconciliation index
 COLL_EXTRACTED_DOCUMENTS = "extracted_documents"
 COLL_PORTAL_DOCUMENTS = "portal_documents"
 

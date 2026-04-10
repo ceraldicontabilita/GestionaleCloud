@@ -273,7 +273,7 @@ async def parse_busta_paga_endpoint(
         if not dipendente_id:
             cf = result.get("dipendente", {}).get("codice_fiscale")
             if cf:
-                dip = await db["employees"].find_one(
+                dip = await db["dipendenti"].find_one(
                     {"codice_fiscale": cf},
                     {"_id": 0, "id": 1}
                 )
@@ -286,7 +286,7 @@ async def parse_busta_paga_endpoint(
             update_data = convert_ai_busta_paga_to_dipendente_update(result)
             
             # Aggiorna progressivi
-            await db["employees"].update_one(
+            await db["dipendenti"].update_one(
                 {"id": dipendente_id},
                 {
                     "$set": {

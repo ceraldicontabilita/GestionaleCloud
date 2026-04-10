@@ -19,6 +19,7 @@ class Collections:
     # === FORNITORI ===
     FORNITORI = "fornitori"  # Collection UNICA per fornitori (canonica)
     FORNITORI_LEARNING = "fornitori_learning"  # Keywords per classificazione
+    SUPPLIERS = "fornitori"  # Alias inglese → punta a fornitori (canonica)
     SUPPLIER_PAYMENT_HISTORY = "supplier_payment_history"
     SUPPLIER_PAYMENT_METHODS = "supplier_payment_methods"
     
@@ -30,7 +31,7 @@ class Collections:
     CALENDARIO_FISCALE = "calendario_fiscale"
     
     # === DIPENDENTI ===
-    DIPENDENTI = "employees"  # Collection UNICA
+    DIPENDENTI = "dipendenti"  # Collection UNICA (regola assoluta - MAI "employees")
     CEDOLINI = "cedolini"
     CEDOLINI_PARSED = "cedolini_parsed"
     CEDOLINI_EMAIL_ATTACHMENTS = "cedolini_email_attachments"

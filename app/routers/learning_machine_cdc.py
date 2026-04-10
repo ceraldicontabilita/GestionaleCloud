@@ -22,7 +22,7 @@ from app.services.learning_machine_cdc import (
 )
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/learning-machine", tags=["Learning Machine"])
+router = APIRouter(prefix="/learning-cdc", tags=["Learning Machine CDC"])
 
 
 @router.get("/centri-costo")

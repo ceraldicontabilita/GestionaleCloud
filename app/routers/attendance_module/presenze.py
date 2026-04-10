@@ -42,9 +42,9 @@ async def get_dipendenti_in_carico() -> Dict[str, Any]:
         {"$sort": {"cognome": 1, "nome": 1}}
     ]
     
-    dipendenti = await db["employees"].aggregate(pipeline).to_list(500)
+    dipendenti = await db["dipendenti"].aggregate(pipeline).to_list(500)
     
-    total = await db["employees"].count_documents({})
+    total = await db["dipendenti"].count_documents({})
     in_carico = len(dipendenti)
     
     return {
@@ -140,7 +140,7 @@ async def get_dashboard_presenze(data: str = Query(None)) -> Dict[str, Any]:
         data = datetime.now().strftime("%Y-%m-%d")
     
     # Dipendenti in carico
-    dipendenti = await db["employees"].find(
+    dipendenti = await db["dipendenti"].find(
         {"$or": [{"in_carico": True}, {"in_carico": {"$exists": False}}]},
         {"_id": 0, "id": 1, "nome": 1, "cognome": 1, "nome_completo": 1}
     ).to_list(500)
@@ -223,7 +223,7 @@ async def crea_richiesta_assenza(payload: Dict[str, Any]) -> Dict[str, Any]:
         raise HTTPException(400, f"tipo deve essere uno di: {tipi_validi}")
     
     # Verifica dipendente
-    employee = await db["employees"].find_one({"id": employee_id}, {"_id": 0, "id": 1, "nome": 1, "cognome": 1})
+    employee = await db["dipendenti"].find_one({"id": employee_id}, {"_id": 0, "id": 1, "nome": 1, "cognome": 1})
     if not employee:
         raise HTTPException(404, "Dipendente non trovato")
     
@@ -512,7 +512,7 @@ async def imposta_tutti_presenti(payload: Dict[str, Any]) -> Dict[str, Any]:
     
     if not employees:
         # Recupera tutti i dipendenti attivi
-        emps = await db["employees"].find(
+        emps = await db["dipendenti"].find(
             {"$or": [{"in_carico": True}, {"in_carico": {"$exists": False}}]},
             {"id": 1}
         ).to_list(500)

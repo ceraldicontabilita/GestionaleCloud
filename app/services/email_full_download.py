@@ -1367,7 +1367,7 @@ async def process_cedolini_to_prima_nota(db: AsyncIOMotorDatabase) -> Dict[str, 
             # Se abbiamo abbastanza dati, crea record in prima_nota_salari
             if parsed_data.get('dipendente_nome') and parsed_data.get('netto'):
                 # Cerca dipendente esistente
-                dipendente = await db["employees"].find_one({
+                dipendente = await db["dipendenti"].find_one({
                     "$or": [
                         {"nome_completo": {"$regex": parsed_data['dipendente_nome'], "$options": "i"}},
                         {"codice_fiscale": parsed_data.get('codice_fiscale', '')}

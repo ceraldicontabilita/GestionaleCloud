@@ -541,7 +541,7 @@ async def riconcilia_verbale(numero_verbale: str) -> Dict[str, Any]:
                     updates["driver_id"] = veicolo["driver_id"]
                     
                     # Trova nome driver
-                    driver = await db["employees"].find_one({"_id": ObjectId(veicolo["driver_id"])})
+                    driver = await db["dipendenti"].find_one({"_id": ObjectId(veicolo["driver_id"])})
                     if driver:
                         updates["driver_nome"] = f"{driver.get('nome', '')} {driver.get('cognome', '')}"
                         messages.append(f"Driver: {updates['driver_nome']}")
@@ -664,7 +664,7 @@ async def collega_driver_massivo() -> Dict[str, Any]:
             
             # === STRATEGIA 4: dipendenti con veicolo assegnato ===
             if not driver_id and not driver_nome:
-                dipendente = await db["employees"].find_one({
+                dipendente = await db["dipendenti"].find_one({
                     "$or": [
                         {"veicolo_targa": targa},
                         {"targa_assegnata": targa},
@@ -672,7 +672,7 @@ async def collega_driver_massivo() -> Dict[str, Any]:
                     ]
                 })
                 if not dipendente:
-                    dipendente = await db["employees"].find_one({
+                    dipendente = await db["dipendenti"].find_one({
                         "$or": [
                             {"veicolo_targa": targa},
                             {"targa_assegnata": targa}
@@ -692,7 +692,7 @@ async def collega_driver_massivo() -> Dict[str, Any]:
                 desc = (verbale.get("descrizione") or verbale.get("note") or "").upper()
                 if desc:
                     # Prendi tutti i dipendenti attivi e cerca nome/cognome nel testo
-                    all_dip = await db["employees"].find(
+                    all_dip = await db["dipendenti"].find(
                         {"stato": {"$ne": "cessato"}},
                         {"_id": 0, "id": 1, "cognome": 1, "nome": 1, "nome_completo": 1}
                     ).to_list(200)
@@ -863,7 +863,7 @@ async def associa_verbale_completo(db, verbale_doc: dict) -> dict:
                 else:
                     # Cerca in dipendenti
                     try:
-                        dipendente = await db["employees"].find_one({"id": veicolo["driver_id"]})
+                        dipendente = await db["dipendenti"].find_one({"id": veicolo["driver_id"]})
                         if dipendente:
                             nome_completo = f"{dipendente.get('nome', '')} {dipendente.get('cognome', '')}".strip()
                             updates["driver"] = nome_completo
@@ -1172,7 +1172,7 @@ async def get_verbali_per_dipendente(driver_id: str) -> Dict[str, Any]:
         # Se non trova, cerca per nome driver
         if not verbali:
             # Trova il nome del driver
-            dipendente = await db["employees"].find_one({"id": driver_id})
+            dipendente = await db["dipendenti"].find_one({"id": driver_id})
             if dipendente:
                 nome = f"{dipendente.get('nome', '')} {dipendente.get('cognome', '')}".strip().upper()
                 verbali = await db["verbali_noleggio"].find(
