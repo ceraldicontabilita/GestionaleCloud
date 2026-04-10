@@ -1,80 +1,90 @@
-# 📓 Diario Ceraldi ERP
-
-Registro cronologico di tutto quello che viene fatto sul gestionale, chat per chat.
-Scritto in linguaggio semplice — non tecnico — per capire a colpo d'occhio lo stato del progetto.
+# DIARIO — Ceraldi ERP
+## Aggiornato: Chat 8/9 — 10 aprile 2026
 
 ---
 
-## Chat 8 — 10 Aprile 2026
+## CHAT 8/9 — Pulizia, Event Bus, Responsive
 
-### Cosa abbiamo fatto
+### Pulizia e normalizzazione (branch pulizia/normalizzazione-v1 → mergato in main)
 
-#### 1. Push del repo su Emergent
-Emergent aveva dei fix locali non ancora caricati su GitHub. Abbiamo istruito Emergent a fare un push completo di tutti i file modificati su `main`, così il repo è tornato allineato con quello che gira in produzione.
+**Fix critici collection MongoDB:**
+- `COL_FATTURE_RICEVUTE` ora punta a `"invoices"` (era `"indice_documenti"` — 3815 fatture invisibili)
+- `Collections.DIPENDENTI` ora punta a `"dipendenti"` (era `"employees"`)
+- `db["employees"]` sostituito con `db["dipendenti"]` in 28 file
+- `Collections.SUPPLIERS` aggiunto (mancava — causava AttributeError silenzioso)
+- `COLL_SUPPLIERS` ora punta a `"fornitori"` (era `"suppliers"`)
 
-#### 2. Mappatura completa del gestionale
-Abbiamo letto tutto il codice del repo e prodotto un riassunto umano di ogni pagina — cosa fa, a cosa serve, dove si trova. Il gestionale è diviso in circa 20 sezioni principali:
+**File eliminati (codice morto):**
+- `app/services/parser_f24_gemini.py` — usava Gemini AI non integrato
+- `app/utils/normalize_fields.py` — zero import rimasti
+- `app/routers/tracciabilita/migrazione_db.py` — script one-shot già eseguito
+- `app/routers/f24/f24_tributi.py` — duplicato di f24_main
+- `app/routers/accounting/accounting_f24.py` — duplicato, collideva con f24_main
+- 33 righe di router commentati rimossi da main.py
 
-- **Dashboard** — la schermata principale con i numeri dell'anno
-- **Inserimento Rapido** — per registrare cose velocemente da mobile
-- **Fatture** — archivio fatture ricevute + corrispettivi giornalieri
-- **Fornitori** — anagrafica e ordini
-- **Prima Nota** — registrazioni contabili manuali
-- **Riconciliazione** — abbinare i movimenti bancari alle fatture (include PayPal)
-- **Dipendenti** — anagrafica, contratti, PIN, IBAN
-- **Presenze** — registro presenze + saldi ferie/permessi
-- **Cedolini** — upload PDF Zucchetti, prima nota salari
-- **TFR** — calcolo trattamento di fine rapporto
-- **Contabilità** — hub con 10 sotto-sezioni (bilancio, cespiti, mutui, budget, ecc.)
-- **Magazzino** — giacenze, inventario, ricerca prodotti, coerenza POS
-- **Noleggio/Veicoli** — auto aziendali, verbali, targhe
-- **Scadenze** — calendario scadenze fiscali
-- **To-Do** — lista attività interne
-- **Documenti** — import XML/PDF, da rivedere, classificazione email, correzione AI
-- **Learning Machine** — sistema che impara a categorizzare le spese automaticamente
-- **Strumenti** — verifica coerenza dati, pacchetti commercialista, download email, visure, pianificazione
-- **Integrazioni** — PagoPA, Invoicetronic (SDI), API esterne
-- **Agenti AI** — automazioni schedulate con alert in tempo reale
-- **Admin** — pannello sistema, batch reprocessing, impostazioni
-
-#### 3. Pulizia duplicati nel menù
-Abbiamo trovato che alcune sezioni apparivano in più punti del menù come voci separate, ma in realtà erano già tab interni di hub esistenti. Esempio: "Verifica Coerenza" era una route standalone ma è anche tab in Strumenti. Stessa cosa per corrispettivi, ordini fornitori, bilancio, mutui, cespiti e tutta la sezione import documenti. Il riassunto è stato rifatto eliminando queste voci doppie.
-
-#### 4. Tracciabilità — eliminato il mini-sito embedded
-**Problema:** La pagina `/tracciabilita` nel gestionale era un iframe che caricava il sito HACCP dentro una cornice. Questo creava confusione, era lento e non aveva senso avere due interfacce sovrapposte.
-
-**Soluzione:** La pagina è stata completamente riscritta. Adesso mostra:
-- Un **bottone grande** "Apri ceraldiapp.it" che apre il sito HACCP in una nuova scheda
-- Un **pannello di stato** che mostra in tempo reale se la sincronizzazione col database funziona, quante fatture sono state già trasferite, le produzioni del giorno e l'orario dell'ultimo controllo
-
-**Come funziona la sincronizzazione (in parole semplici):** I due sistemi — il gestionale e ceraldiapp.it — usano lo stesso database MongoDB. Quando ceraldiapp importa una fattura fornitore dalla PEC, manda automaticamente una notifica al gestionale, che la registra nella sezione Fatture evitando duplicati. Questo "ponte" esisteva già nel codice, ma non era visibile da nessuna parte. Adesso appare nel pannello di stato della pagina Tracciabilità.
+**Fix routing:**
+- Learning Machine CDC prefix `/learning-machine` → `/learning-cdc` (era in conflitto)
+- `f24_gestione_avanzata` abilitato su `/api/f24-avanzato/*` (endpoint unici)
 
 ---
 
-### File modificati in questa chat
+### Event Bus (app/core/)
 
-| File | Cosa è cambiato |
-|---|---|
-| `frontend/src/pages/TracciabilitaPage.jsx` | Riscritto da zero — rimosso iframe, aggiunto bottone + pannello sync |
-| `claude-patches/chat8-tracciabilita/` | Cartella patch con file + istruzioni per Emergent |
-| `DIARIO.md` | Creato (questo file) |
+**`app/core/event_bus.py`** — Bus centrale degli eventi (246 righe)
+- Singleton `bus` importabile ovunque
+- Retry 3 volte su errore con backoff
+- Log in `eventi_sistema` su MongoDB
+- Alert in `agenti_segnalazioni` se handler fallisce 3 volte
 
-### File che NON sono stati toccati
+**`app/core/handlers_registry.py`** — 18 handler su 8 eventi
+- Registrazione automatica all'avvio (lifespan main.py)
 
-- Tutto il backend tracciabilità (`app/routers/tracciabilita/`) — rimane invariato perché serve a ceraldiapp.it
-- Il ponte ERP (`app/routers/erp_bridge.py`) — già funzionante, non modificato
-- Tutte le altre pagine del gestionale
-
----
-
-### Prossimi passi suggeriti (da Chat 8)
-
-1. **Pagina admin gestione PIN dipendenti** — interfaccia per cambiare i PIN senza andare sul DB
-2. **Tablet Cucina** — schermata semplificata per rosticceria/pasticceria (`GET ceraldiapp.it/api/tablet/{reparto}`)
-3. **Rinomina inline frigo** — in TemperatureHACCP.jsx, rinominare le colonne dei frigo direttamente dalla tabella
-4. **Dominio custom** — configurare dopo la build su Emergent
-5. **Verifica riconciliazione cedolini** — controllare che i cedolini caricati combacino con i movimenti in estratto conto
+**Publish attivi nei router:**
+- `fattura.importata` → `import_xml.py`
+- `cedolino.importato` → `cedolini_manager.py`
+- `corrispettivi.importati` → `corrispettivi_service.py`
+- `estratto_conto.importato` → `estratto_conto.py`
+- `fornitore.creato` → `fatture_module/helpers.py`
 
 ---
 
-*Prossima chat: Chat 9*
+### Handler (app/handlers/)
+
+| Handler | Evento | Cosa fa |
+|---|---|---|
+| `magazzino.py` | fattura.importata | Carica righe fattura in warehouse_movements |
+| `scadenziario.py` | fattura.importata | Crea scadenza in scadenziario_fornitori |
+| `learning.py` | fattura.importata | Classifica fattura per centro di costo |
+| `fornitore.py` | fattura.importata / fornitore.creato | Aggiorna fornitori_keywords, check IBAN |
+| `ricette.py` | fattura.importata / ingrediente.prezzo_cambiato | Ricalcola costi e margini ricette |
+| `notifiche.py` | fattura.importata / cedolino.importato | Push WebSocket real-time |
+| `prima_nota.py` | fattura.pagata / cedolino.importato | Scrive prima nota banca/cassa/salari |
+| `tfr.py` | cedolino.importato | Aggiorna accantonamento TFR (art. 2120) |
+| `estratto_conto.py` | estratto_conto.importato | Matching fatture/cedolini/F24/POS (score 0-100%) |
+| `corrispettivi.py` | corrispettivi.importati | Prima nota cassa + check coerenza POS Nexi |
+
+---
+
+### Responsive frontend (27 file)
+
+**`frontend/src/lib/utils.js`** — aggiunte:
+- `useIsMobile(breakpoint)` — hook React auto-aggiornante
+- `rg(isMobile, cols)` — helper grid responsive
+- `RG` — preset col2/col3/col4/kpi/form
+- `pagePad(isMobile)` — padding pagina
+
+**Pagine aggiornate:** Dashboard, Admin, Fornitori, PrimaNota, HRDipendenti, HRCedolini, HRTFR, NoleggioAuto, Scadenze, LearningMachine, Commercialista, IntegrazioniOpenAPI, ClassificazioneDocumenti, BudgetPrevisionale, ArchivioBonifici, RiconciliazioneUnificata, DizionarioProdotti, ArchivioFattureRicevute, Riconciliazione, InserimentoRapido, GestioneCespiti, PianoDeiConti, Inventario, GestioneEmailMittenti, DocumentiDaRivedere + altri
+
+**`frontend/src/styles.css`** — CSS globale mobile: tabelle scrollabili, padding ridotto, input full-width
+
+**Emergent ha poi fixato** (commit 470e968): import utils.js rotti in 13 file + TracciabilitaPage ampliata
+
+---
+
+## TODO prossima chat
+
+- [ ] Aggiungere publish `fornitore.aggiornato` in suppliers_module quando fornitore viene modificato
+- [ ] Aggiungere publish `ingrediente.prezzo_cambiato` quando prezzo in fattura diverso da storico
+- [ ] Pagina admin gestione PIN dipendenti
+- [ ] Tablet Cucina: GET ceraldiapp.it/api/tablet/{reparto}
+- [ ] Rinomina inline colonne frigo in TemperatureHACCP.jsx

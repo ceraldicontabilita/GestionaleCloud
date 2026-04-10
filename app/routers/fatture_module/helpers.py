@@ -64,7 +64,20 @@ async def get_or_create_fornitore(db, parsed_data: Dict) -> Dict[str, Any]:
     
     await db[COL_FORNITORI].insert_one(nuovo_fornitore.copy())
     logger.info(f"Nuovo fornitore creato: {nuovo_fornitore['ragione_sociale']} (P.IVA: {partita_iva})")
-    
+
+    # ── EVENTO: pubblica sul Bus per Learning Machine e check IBAN ──
+    try:
+        from app.core.event_bus import bus
+        await bus.publish("fornitore.creato", payload={
+            "fornitore_id":    nuovo_fornitore["id"],
+            "ragione_sociale": nuovo_fornitore["ragione_sociale"],
+            "partita_iva":     partita_iva,
+            "iban":            nuovo_fornitore.get("iban", ""),
+            "metodo_pagamento": nuovo_fornitore.get("metodo_pagamento", ""),
+        }, db=db, save_to_db=False)
+    except Exception as _ev:
+        logger.debug(f"[Helpers] Event Bus fornitore.creato: {_ev}")
+
     return {
         "fornitore_id": nuovo_fornitore["id"],
         "partita_iva": partita_iva,

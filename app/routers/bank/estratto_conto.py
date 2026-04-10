@@ -433,6 +433,26 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
         logger.error(f"Errore riconciliazione paghe: {e}")
         riconciliazione_paghe = {"error": str(e)}
     
+    # ── EVENTO: pubblica sul Bus per matching automatico ──
+    try:
+        from app.core.event_bus import bus
+        await bus.publish("estratto_conto.importato", payload={
+            "movimenti": [
+                {
+                    "id":          m.get("id"),
+                    "data":        str(m.get("data", ""))[:10],
+                    "importo":     abs(float(m.get("importo", 0))),
+                    "tipo":        m.get("tipo", ""),
+                    "descrizione": m.get("descrizione", ""),
+                }
+                for m in records_to_insert
+            ],
+            "banca":    records_to_insert[0].get("banca", "") if records_to_insert else "",
+            "inseriti": inserted,
+        }, db=db, save_to_db=False)
+    except Exception as _ev:
+        logger.debug(f"[EstrattoContoRouter] Event Bus: {_ev}")
+
     return {
         "success": True,
         "message": "Importazione estratto conto completata",
