@@ -193,7 +193,7 @@ function TabCedolini({ dip }) {
             ))}
           </div>
 
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <div style={{overflowX:'auto'}}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 480 }}>
             <thead>
               <tr style={{ background: '#f8fafc' }}>
                 {['Mese', 'Lordo', 'Netto', 'Contributi', 'Stato'].map(h => (
@@ -216,7 +216,7 @@ function TabCedolini({ dip }) {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         </>
       )}
     </div>
@@ -557,3 +557,4 @@ export default function HRDipendenti() {
     </div>
   );
 }
+

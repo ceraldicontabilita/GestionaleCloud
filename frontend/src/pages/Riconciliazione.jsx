@@ -41,7 +41,7 @@ const pageStyle = {
   },
   statsGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
     gap: '16px',
     marginBottom: '24px'
   },
@@ -434,7 +434,7 @@ export default function Riconciliazione() {
               </span>
             </div>
             <div style={{ maxHeight: '500px', overflow: 'auto' }}>
-              <table style={pageStyle.table}>
+              <div style={{overflowX:'auto'}}><table style={pageStyle.table}>
                 <thead>
                   <tr>
                     <th style={pageStyle.th}>Data</th>
@@ -462,7 +462,7 @@ export default function Riconciliazione() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </table></div>
             </div>
           </div>
 
@@ -488,7 +488,7 @@ export default function Riconciliazione() {
               </div>
             ) : (
               <div style={{ maxHeight: '500px', overflow: 'auto' }}>
-                <table style={pageStyle.table}>
+                <div style={{overflowX:'auto'}}><table style={pageStyle.table}>
                   <thead>
                     <tr>
                       <th style={pageStyle.th}>Fornitore</th>
@@ -530,7 +530,7 @@ export default function Riconciliazione() {
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </table></div>
               </div>
             )}
           </div>
@@ -540,3 +540,4 @@ export default function Riconciliazione() {
     </PageLayout>
   );
 }
+

@@ -220,6 +220,7 @@ export default function Corrispettivi() {
                   <h4 style={{ margin: '0 0 12px 0', fontSize: 13, color: '#64748b', fontWeight: 600 }}>
                     Riepilogo per Aliquota IVA
                   </h4>
+                  <div style={{overflowX:'auto'}}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                     <thead>
                       <tr style={{ borderBottom: '2px solid #e2e8f0' }}>
@@ -240,6 +241,7 @@ export default function Corrispettivi() {
                       ))}
                     </tbody>
                   </table>
+                  </div>
                 </div>
               )}
             </PageSection>
@@ -350,3 +352,4 @@ export default function Corrispettivi() {
     </PageLayout>
   );
 }
+

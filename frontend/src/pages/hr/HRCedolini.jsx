@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { FileText, Download, RefreshCw, Mail, CheckCircle, AlertCircle } from 'lucide-react';
 import api from '../../api';
-import { COLORS } from '../../lib/utils';
+import { COLORS, useIsMobile, formatEuro as fmtEuro } from '../../lib/utils';
 
 const ANNO_CORRENTE = new Date().getFullYear();
 const ANNI = [ANNO_CORRENTE, ANNO_CORRENTE - 1, ANNO_CORRENTE - 2];
@@ -204,7 +204,7 @@ export default function HRCedolini() {
                 </div>
               )
               : (
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <div style={{overflowX:'auto'}}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 500 }}>
                   <thead>
                     <tr style={{ background: '#f8fafc' }}>
                       {['Dipendente / File', 'Mese', 'Lordo', 'Netto', 'Fonte', 'Stato'].map(h => (
@@ -238,7 +238,7 @@ export default function HRCedolini() {
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </table></div>
               )
           )}
 
@@ -246,7 +246,7 @@ export default function HRCedolini() {
             f24.length === 0
               ? <div style={{ padding: 40, textAlign: 'center', color: COLORS.textMuted }}>Nessuna distinta F24 per il {anno}</div>
               : (
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <div style={{overflowX:'auto'}}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 500 }}>
                   <thead>
                     <tr style={{ background: '#f8fafc' }}>
                       {['Riferimento', 'Mese', 'Importo', 'Scadenza', 'Stato'].map(h => (
@@ -265,7 +265,7 @@ export default function HRCedolini() {
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </table></div>
               )
           )}
         </div>
@@ -275,3 +275,4 @@ export default function HRCedolini() {
     </div>
   );
 }
+

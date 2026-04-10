@@ -601,7 +601,7 @@ function PrimaNotaDesktop() {
       {activeSection === 'cassa' && (
         <section>
           {/* Summary Cards Cassa - Compatti */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10, marginBottom: 16 }}>
             <MiniCard title={`Entrate (DARE) ${selectedYear}`} value={formatEuro(cassaData.totale_entrate)} color="#4caf50" />
             <MiniCard title={`Uscite (AVERE) ${selectedYear}`} value={formatEuro(cassaData.totale_uscite)} color="#ef4444" />
             <MiniCard title={`Saldo ${selectedYear}`} value={formatEuro(cassaData.saldo_anno || (cassaData.totale_entrate - cassaData.totale_uscite))} color={(cassaData.saldo_anno || (cassaData.totale_entrate - cassaData.totale_uscite)) >= 0 ? '#4caf50' : '#ef4444'} highlight />
@@ -769,7 +769,7 @@ function PrimaNotaDesktop() {
       {activeSection === 'banca' && (
         <section>
           {/* Summary Cards Banca */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 20 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 16, marginBottom: 20 }}>
             <SummaryCard
               title={`Accrediti ${selectedYear}`}
               value={formatEuro(bancaData.totale_entrate)}
@@ -1273,7 +1273,7 @@ function MovementsTable({ movimenti, tipo, loading, formatEuro, formatDate, onDe
 
       {/* Table */}
       <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 700 }}>
           <thead>
             <tr style={{ background: '#f9fafb', borderBottom: '2px solid #e5e7eb' }}>
               <th style={{ padding: '8px 8px', textAlign: 'left', fontWeight: 600, fontSize: 11 }}>Data</th>
@@ -1786,4 +1786,5 @@ function EditMovimentoModal({ movimento, tipo, onClose, onSave }) {
     </div>
   );
 }
+
 

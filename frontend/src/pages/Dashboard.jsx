@@ -1535,6 +1535,7 @@ function ScadenzeWidget({ scadenze }) {
       </div>
       
       {/* Tabella scadenze */}
+      <div style={{overflowX:'auto'}}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
         <thead>
           <tr style={{ borderBottom: '2px solid #e2e8f0', background: '#f8fafc' }}>
@@ -1632,6 +1633,7 @@ function ScadenzeWidget({ scadenze }) {
           })}
         </tbody>
       </table>
+      </div>
       
       {scadenze.totale > 6 && (
         <div style={{ textAlign: 'center', marginTop: 12 }}>
@@ -1851,3 +1853,4 @@ function AlertPagamentiWidget({ data }) {
     </div>
   );
 }
+

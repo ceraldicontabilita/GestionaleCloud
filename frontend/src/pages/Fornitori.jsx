@@ -1438,7 +1438,7 @@ export default function Fornitori() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#f3f4f6', padding: '16px', position: 'relative' }}>
+    <div style={{ minHeight: '100vh', backgroundColor: '#f3f4f6', padding: isMobile ? '12px 10px' : '16px', position: 'relative' }}>
       
       <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
         
@@ -1650,8 +1650,8 @@ export default function Fornitori() {
         ) : (
           <div style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-            gap: '16px'
+            gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(320px, 1fr))',
+            gap: isMobile ? 12 : 16
           }}>
             {filteredSuppliers.map(supplier => (
               <SupplierCard
@@ -2293,3 +2293,4 @@ export default function Fornitori() {
     </div>
   );
 }
+

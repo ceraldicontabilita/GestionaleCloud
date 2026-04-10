@@ -973,3 +973,82 @@ code {
     padding: 4px 6px !important;
   }
 }
+
+
+/* ============================================================
+   CERALDI ERP — FIX RESPONSIVE GLOBALE (chat-8)
+   Garantisce che tabelle e griglie non escano dallo schermo
+   ============================================================ */
+
+/* Tutte le tabelle scrollabili orizzontalmente su mobile */
+@media (max-width: 768px) {
+  table {
+    min-width: 480px;
+  }
+
+  /* Wrap automatico per contenitori tabella */
+  .table-wrapper,
+  [style*="overflowX"] {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Riduci padding celle su mobile */
+  td, th {
+    padding: 8px 10px !important;
+    font-size: 12px !important;
+  }
+
+  /* Bottoni azioni più compatti */
+  td button, td a {
+    padding: 5px 8px !important;
+    font-size: 11px !important;
+    min-width: unset !important;
+  }
+
+  /* Grid generiche: forza 1 colonna se minmax troppo largo */
+  [style*="minmax(320px"], 
+  [style*="minmax(300px"],
+  [style*="minmax(280px"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Container pagina: riduce padding */
+  .page-content {
+    padding: 8px !important;
+  }
+
+  /* Card: padding ridotto */
+  [style*="padding: 20px"],
+  [style*="padding: 24px"] {
+    padding: 14px !important;
+  }
+
+  /* Header card: compatto */
+  [style*="padding: '24px'"] {
+    padding: 14px !important;
+  }
+
+  /* Nasconde colonne non essenziali nelle tabelle */
+  .col-hide-mobile {
+    display: none !important;
+  }
+
+  /* Bottoni filtro: wrappano */
+  [style*="display: 'flex'"][style*="gap"] {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 480px) {
+  /* Schemi molto piccoli: font ulteriormente ridotto */
+  td, th {
+    padding: 6px 8px !important;
+    font-size: 11px !important;
+  }
+
+  /* KPI card: 2 colonne */
+  .kpi-grid {
+    grid-template-columns: 1fr 1fr !important;
+  }
+}
