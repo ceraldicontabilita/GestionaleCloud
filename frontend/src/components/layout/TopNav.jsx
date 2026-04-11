@@ -287,17 +287,18 @@ const TopNav = memo(function TopNav() {
         <div style={S.right}>
           {/* Selettore Anno */}
           <div style={S.annoWrap} data-testid="anno-selector">
-            <span style={S.annoLabel}>Anno</span>
+            <span style={S.annoLabel}>ANNO</span>
             <AnnoSelector style={{
-              background: 'transparent',
-              border: 'none',
+              background: 'rgba(255,255,255,0.15)',
+              border: '1px solid rgba(255,255,255,0.4)',
+              borderRadius: 6,
               color: '#fff',
               fontWeight: 700,
-              fontSize: 14,
+              fontSize: 16,
               cursor: 'pointer',
-              padding: '2px 4px',
+              padding: '4px 8px',
               outline: 'none',
-              minWidth: 52,
+              minWidth: 70,
             }} />
           </div>
 

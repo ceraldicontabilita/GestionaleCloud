@@ -305,6 +305,98 @@ async def get_corrispettivi_sync_status() -> Dict:
     }
 
 
+
+async def sync_estratto_conto_to_banca(anno: int = Query(...)) -> Dict:
+    """
+    Sincronizza movimenti dall'estratto conto bancario alla prima nota banca.
+    Importa tutti i movimenti dell'anno specificato.
+    """
+    db = Database.get_db()
+    
+    # Trova movimenti dell'anno nell'estratto conto
+    # Le date sono in formato DD/MM/YYYY
+    anno_str = str(anno)
+    
+    # Query: data_contabile contiene l'anno (potrebbe essere DD/MM/YYYY o YYYY-MM-DD)
+    query = {"$or": [
+        {"data_contabile": {"$regex": f"/{anno_str}$"}},  # DD/MM/YYYY
+        {"data_contabile": {"$regex": f"^{anno_str}-"}},   # YYYY-MM-DD
+    ]}
+    
+    movimenti_ec = await db["estratto_conto_movimenti"].find(query, {"_id": 0}).to_list(15000)
+    
+    if not movimenti_ec:
+        return {"message": f"Nessun movimento estratto conto per {anno}", "importati": 0}
+    
+    # Get existing prima nota banca for dedup
+    existing_ids = set()
+    async for pn in db[COLLECTION_PRIMA_NOTA_BANCA].find(
+        {"data": {"$regex": f"^{anno_str}"}},
+        {"_id": 0, "estratto_conto_id": 1, "id": 1}
+    ):
+        if pn.get("estratto_conto_id"):
+            existing_ids.add(pn["estratto_conto_id"])
+    
+    importati = 0
+    batch = []
+    
+    for mov in movimenti_ec:
+        ec_id = mov.get("id", "")
+        if ec_id in existing_ids:
+            continue
+        
+        # Converti data DD/MM/YYYY → YYYY-MM-DD
+        data_raw = mov.get("data_contabile", "")
+        if "/" in data_raw:
+            parts = data_raw.split("/")
+            if len(parts) == 3:
+                data_iso = f"{parts[2]}-{parts[1]}-{parts[0]}"
+            else:
+                data_iso = data_raw
+        else:
+            data_iso = data_raw
+        
+        importo = float(mov.get("importo", 0) or 0)
+        if importo == 0:
+            continue
+        
+        tipo = "entrata" if importo > 0 else "uscita"
+        
+        movimento_pn = {
+            "id": str(uuid.uuid4()),
+            "data": data_iso,
+            "tipo": tipo,
+            "importo": abs(importo),
+            "descrizione": mov.get("descrizione", "")[:200],
+            "categoria": mov.get("categoria", "Bancario"),
+            "causale": mov.get("causale", ""),
+            "beneficiario": mov.get("beneficiario", ""),
+            "estratto_conto_id": ec_id,
+            "source": "estratto_conto_sync",
+            "created_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+        }
+        
+        batch.append(movimento_pn)
+        importati += 1
+        
+        # Insert in batches of 500
+        if len(batch) >= 500:
+            await db[COLLECTION_PRIMA_NOTA_BANCA].insert_many(batch)
+            batch = []
+    
+    if batch:
+        await db[COLLECTION_PRIMA_NOTA_BANCA].insert_many(batch)
+    
+    return {
+        "message": f"Sincronizzati {importati} movimenti estratto conto → prima nota banca {anno}",
+        "anno": anno,
+        "movimenti_estratto_conto": len(movimenti_ec),
+        "gia_sincronizzati": len(existing_ids),
+        "importati": importati,
+    }
+
+
+
 async def import_prima_nota_batch(data: Dict = Body(...)) -> Dict:
     """Importa batch di movimenti."""
     db = Database.get_db()
