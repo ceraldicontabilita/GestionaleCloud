@@ -181,12 +181,14 @@ def parse_fatturapa_xml(xml_content: bytes) -> Optional[Dict[str, Any]]:
                     return (el.text or '').strip()
             return ''
 
-        # Cedente (fornitore)
-        cedente_denominazione = get_by_tag('Denominazione')
+        # Cedente (fornitore) - Cerca SOLO dentro CedentePrestatore
+        cedente_denominazione = ''
         cedente_piva = ''
         cedente_cf = ''
+        cedente_nome = ''
+        cedente_cognome = ''
 
-        # Cerca P.IVA e CF del cedente specificatamente
+        # Cerca P.IVA, CF, Denominazione e Nome/Cognome del cedente
         for el in root.iter():
             tag = el.tag.split('}')[-1]
             if tag == 'CedentePrestatore':
@@ -198,7 +200,15 @@ def parse_fatturapa_xml(xml_content: bytes) -> Optional[Dict[str, Any]]:
                         cedente_cf = (sub.text or '').strip()
                     if stag == 'Denominazione' and not cedente_denominazione:
                         cedente_denominazione = (sub.text or '').strip()
+                    if stag == 'Nome' and not cedente_nome:
+                        cedente_nome = (sub.text or '').strip()
+                    if stag == 'Cognome' and not cedente_cognome:
+                        cedente_cognome = (sub.text or '').strip()
                 break
+        
+        # Persona fisica: usa Cognome Nome se Denominazione è vuota
+        if not cedente_denominazione and (cedente_nome or cedente_cognome):
+            cedente_denominazione = f"{cedente_cognome} {cedente_nome}".strip()
 
         numero_fattura = get_by_tag('Numero')
         data_str = get_by_tag('Data')
