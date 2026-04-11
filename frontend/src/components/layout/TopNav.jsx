@@ -24,6 +24,7 @@ const ALTRO_ITEMS = [
   { to: '/magazzino', label: 'Magazzino', Icon: Warehouse },
   { to: '/documenti', label: 'Documenti', Icon: BookMarked },
   { to: '/noleggio', label: 'Noleggio Auto', Icon: Car },
+  { to: '/riconciliazione', label: 'Riconciliazione', Icon: FileBarChart },
   { to: '/gestione-email', label: 'Email', Icon: Settings },
   { to: '/strumenti', label: 'Strumenti', Icon: Wrench },
   { to: '/admin', label: 'Admin', Icon: Settings },

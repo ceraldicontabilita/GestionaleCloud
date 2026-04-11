@@ -37,6 +37,7 @@ const DocumentiHub = lazy(() => import("./pages/hub/DocumentiHub.jsx"));
 const StrumentiHub = lazy(() => import("./pages/hub/StrumentiHub.jsx"));
 const IntegrazioniHub = lazy(() => import("./pages/hub/IntegrazioniHub.jsx"));
 const AdminHub     = lazy(() => import("./pages/hub/AdminHub.jsx"));
+const RiconciliazioneHub = lazy(() => import("./pages/hub/RiconciliazioneHub.jsx"));
 const FattureHub = lazy(() => import("./pages/hub/FattureHub.jsx"));
 
 // === STANDALONE PAGES ===
@@ -197,6 +198,12 @@ const router = createBrowserRouter([
       { path: "scadenze", element: <LazyPage><Scadenze /></LazyPage> },
       { path: "scadenze/:anno", element: <LazyPage><Scadenze /></LazyPage> },
       { path: "scadenze/:anno/:mese", element: <LazyPage><Scadenze /></LazyPage> },
+      
+      // === RICONCILIAZIONE / ASSEGNI ===
+      { path: "riconciliazione", element: <LazyPage><RiconciliazioneHub /></LazyPage> },
+      { path: "riconciliazione/:tab", element: <LazyPage><RiconciliazioneHub /></LazyPage> },
+      { path: "gestione-assegni", element: <LazyPage><RiconciliazioneHub /></LazyPage> },
+      { path: "assegni", element: <Navigate to="/riconciliazione/assegni" replace /> },
       
       // === TO-DO ===
       { path: "todo", element: <LazyPage><ToDo /></LazyPage> },
