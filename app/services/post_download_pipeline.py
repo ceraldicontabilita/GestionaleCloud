@@ -627,5 +627,186 @@ async def esegui_pipeline_completa(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
         logger.error(f"[PIPELINE] Errore Quietanze: {e}")
         risultati["quietanze"] = {"errore": str(e)}
     
+    # 5. Riconciliazione verbali con banca/PagoPA
+    try:
+        risultati["riconciliazione_verbali"] = await riconcilia_verbali_con_banca(db)
+    except Exception as e:
+        logger.error(f"[PIPELINE] Errore Riconciliazione: {e}")
+        risultati["riconciliazione_verbali"] = {"errore": str(e)}
+    
     logger.info(f"[PIPELINE] ✅ Pipeline completata: {risultati}")
     return risultati
+
+
+# ============================================================
+# 5. RICONCILIAZIONE VERBALI → BANCA / PagoPA / PayPal
+# ============================================================
+
+async def riconcilia_verbali_con_banca(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
+    """
+    Riconcilia verbali con movimenti bancari, PagoPA e PayPal.
+    
+    ALGORITMO:
+    1. Carica verbali non pagati con importo
+    2. Carica movimenti bancari con keyword "comune", "verbale", "multa", "sanzione"
+    3. Match per importo (tolleranza ±0.05€)
+    4. Se match → marca verbale come pagato, salva data/metodo pagamento
+    5. Cerca anche nelle quietanze email (PagoPA, PayPal)
+    6. Se verbale pagato + driver assegnato → crea trattenuta busta paga
+    """
+    stats = {
+        "verbali_da_riconciliare": 0,
+        "riconciliati_banca": 0,
+        "riconciliati_quietanza": 0,
+        "riconciliati_pagopa": 0,
+        "trattenute_create": 0,
+        "non_riconciliati": 0,
+        "errori": 0
+    }
+    
+    # 1. Carica verbali non pagati
+    verbali = await db["verbali_noleggio"].find(
+        {"stato": {"$nin": ["pagato", "riconciliato"]}, "importo": {"$gt": 0}},
+        {"_id": 0}
+    ).to_list(500)
+    
+    stats["verbali_da_riconciliare"] = len(verbali)
+    if not verbali:
+        # Prova anche quelli senza importo ma con numero verbale
+        verbali = await db["verbali_noleggio"].find(
+            {"stato": {"$nin": ["pagato", "riconciliato"]}},
+            {"_id": 0}
+        ).to_list(500)
+        stats["verbali_da_riconciliare"] = len(verbali)
+    
+    logger.info(f"[RICONCILIAZIONE] {len(verbali)} verbali da riconciliare")
+    
+    # 2. Carica movimenti bancari potenzialmente legati a verbali
+    movimenti_verbali = await db["estratto_conto_movimenti"].find(
+        {"$or": [
+            {"descrizione": {"$regex": "comune|verbale|multa|sanzione|pagopa|polizia|infrazione|contravvenzione|MBVT|FAVORE.*[Cc]omune", "$options": "i"}},
+            {"categoria": {"$regex": "multa|sanzione|verbal|tasse", "$options": "i"}},
+            {"causale": {"$regex": "verbal|multa|sanzione", "$options": "i"}},
+        ]},
+        {"_id": 0}
+    ).to_list(1000)
+    
+    logger.info(f"[RICONCILIAZIONE] {len(movimenti_verbali)} movimenti bancari candidati")
+    
+    # 3. Carica quietanze email (PagoPA, PayPal, ricevute)
+    quietanze = await db["quietanze_email_attachments"].find(
+        {},
+        {"_id": 0, "pdf_data": 0}
+    ).to_list(200)
+    
+    # Indice movimenti per importo (con tolleranza)
+    movimenti_usati = set()
+    
+    for verbale in verbali:
+        try:
+            numero = verbale.get("numero_verbale", "")
+            importo = float(verbale.get("importo") or 0)
+            matched = False
+            
+            # --- STRATEGIA 1: Match per numero verbale nella descrizione bancaria ---
+            if numero and len(numero) > 5:
+                for mov in movimenti_verbali:
+                    if mov.get("id") in movimenti_usati:
+                        continue
+                    desc = (mov.get("descrizione", "") + " " + mov.get("causale", "")).lower()
+                    if numero.lower() in desc:
+                        await _marca_verbale_pagato(
+                            db, verbale, 
+                            data_pagamento=mov.get("data_contabile") or mov.get("data_valuta") or mov.get("data"),
+                            metodo="bonifico_bancario",
+                            riferimento_banca=mov.get("id"),
+                            importo_pagato=abs(float(mov.get("importo", 0)))
+                        )
+                        movimenti_usati.add(mov.get("id"))
+                        stats["riconciliati_banca"] += 1
+                        matched = True
+                        break
+            
+            # --- STRATEGIA 2: Match per importo esatto (±0.05€) ---
+            if not matched and importo > 0:
+                for mov in movimenti_verbali:
+                    if mov.get("id") in movimenti_usati:
+                        continue
+                    mov_importo = abs(float(mov.get("importo", 0)))
+                    if abs(mov_importo - importo) <= 0.05:
+                        await _marca_verbale_pagato(
+                            db, verbale,
+                            data_pagamento=mov.get("data_contabile") or mov.get("data_valuta") or mov.get("data"),
+                            metodo="bonifico_bancario",
+                            riferimento_banca=mov.get("id"),
+                            importo_pagato=mov_importo
+                        )
+                        movimenti_usati.add(mov.get("id"))
+                        stats["riconciliati_banca"] += 1
+                        matched = True
+                        break
+            
+            # --- STRATEGIA 3: Match con quietanze email (PagoPA/PayPal) ---
+            if not matched:
+                for q in quietanze:
+                    q_subject = (q.get("email_subject", "") + " " + q.get("filename", "")).lower()
+                    if numero and numero.lower() in q_subject:
+                        await _marca_verbale_pagato(
+                            db, verbale,
+                            data_pagamento=q.get("email_date") or q.get("created_at"),
+                            metodo="pagopa" if "pagopa" in q_subject else "email_quietanza",
+                            riferimento_banca=q.get("id"),
+                            importo_pagato=importo
+                        )
+                        stats["riconciliati_pagopa" if "pagopa" in q_subject else "riconciliati_quietanza"] += 1
+                        matched = True
+                        break
+            
+            if not matched:
+                stats["non_riconciliati"] += 1
+                
+        except Exception as e:
+            logger.error(f"[RICONCILIAZIONE] Errore verbale {numero}: {e}")
+            stats["errori"] += 1
+    
+    logger.info(f"[RICONCILIAZIONE] Completato: {stats}")
+    return stats
+
+
+async def _marca_verbale_pagato(
+    db: AsyncIOMotorDatabase,
+    verbale: dict,
+    data_pagamento: str,
+    metodo: str,
+    riferimento_banca: str = None,
+    importo_pagato: float = 0
+) -> None:
+    """Marca un verbale come pagato e crea trattenuta se ha driver."""
+    
+    update = {
+        "stato": "pagato",
+        "quietanza_ricevuta": True,
+        "data_pagamento": data_pagamento,
+        "metodo_pagamento": metodo,
+        "riferimento_banca": riferimento_banca,
+        "importo_pagato": importo_pagato,
+        "riconciliato_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    if importo_pagato > 0 and not verbale.get("importo"):
+        update["importo"] = importo_pagato
+    
+    await db["verbali_noleggio"].update_one(
+        {"id": verbale["id"]},
+        {"$set": update}
+    )
+    
+    logger.info(
+        f"[RICONCILIAZIONE] ✅ Verbale {verbale.get('numero_verbale','')} → PAGATO "
+        f"| €{importo_pagato} | {metodo} | {data_pagamento}"
+    )
+    
+    # Crea trattenuta busta paga se ha driver
+    if verbale.get("driver_id") and (importo_pagato > 0 or float(verbale.get("importo", 0) or 0) > 0):
+        importo_trattenuta = importo_pagato if importo_pagato > 0 else float(verbale.get("importo", 0))
+        await _crea_trattenuta_verbale(db, {**verbale, "importo": importo_trattenuta}, data_pagamento)

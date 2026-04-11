@@ -691,6 +691,20 @@ async def parse_f24_con_llm(
 
 
 
+@router.post("/riconcilia-verbali")
+async def riconcilia_verbali_banca() -> Dict[str, Any]:
+    """
+    Riconcilia verbali con estratto conto bancario, PagoPA e PayPal.
+    Match per: numero verbale nella descrizione, importo esatto, quietanze email.
+    Crea trattenute busta paga per verbali pagati con driver assegnato.
+    """
+    from app.services.post_download_pipeline import riconcilia_verbali_con_banca
+    db = Database.get_db()
+    stats = await riconcilia_verbali_con_banca(db)
+    return {"success": True, "stats": stats}
+
+
+
 
 @router.get("/statistiche")
 async def get_statistiche_allegati() -> Dict[str, Any]:
