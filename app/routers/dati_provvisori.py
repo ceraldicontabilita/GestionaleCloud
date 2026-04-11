@@ -568,3 +568,71 @@ async def riconcilia_con_estratto_conto() -> Dict[str, Any]:
         "spostati_in_banca": spostati_in_banca,
         "message": f"Riconciliazione completata: {spostati_in_banca} movimenti spostati da cassa a banca"
     }
+
+
+
+# =============================================================================
+# PROPOSTE AUTOMATICHE (Fatture ↔ Banca)
+# =============================================================================
+
+@router.post("/genera-proposte")
+@handle_errors
+async def genera_proposte(anno: int = 2026) -> Dict[str, Any]:
+    """
+    Analizza fatture bonifico non pagate e propone abbinamenti con estratto conto.
+    Le proposte vanno in 'dati_provvisori' con stato 'da_confermare'.
+    L'utente conferma prima dell'inserimento definitivo.
+    """
+    from app.services.dati_provvisori_service import genera_proposte_pagamento
+    db = Database.get_db()
+    return await genera_proposte_pagamento(db, anno)
+
+
+@router.get("/proposte")
+@handle_errors
+async def lista_proposte(stato: str = "da_confermare") -> Dict[str, Any]:
+    """Lista proposte di pagamento da confermare/rifiutare."""
+    db = Database.get_db()
+    
+    query = {"tipo": "pagamento_fattura"}
+    if stato:
+        query["stato"] = stato
+    
+    proposte = await db["dati_provvisori"].find(
+        query, {"_id": 0}
+    ).sort("confidence", -1).to_list(200)
+    
+    totale_importo = sum(float(p.get("fattura_importo", 0)) for p in proposte)
+    
+    return {
+        "proposte": proposte,
+        "totale": len(proposte),
+        "importo_totale": round(totale_importo, 2),
+    }
+
+
+@router.post("/conferma/{proposta_id}")
+@handle_errors
+async def conferma(proposta_id: str) -> Dict[str, Any]:
+    """Conferma una proposta: registra pagamento in Prima Nota Banca."""
+    from app.services.dati_provvisori_service import conferma_proposta
+    db = Database.get_db()
+    return await conferma_proposta(db, proposta_id)
+
+
+@router.post("/conferma-tutte")
+@handle_errors
+async def conferma_tutte_endpoint() -> Dict[str, Any]:
+    """Conferma TUTTE le proposte in sospeso."""
+    from app.services.dati_provvisori_service import conferma_tutte
+    db = Database.get_db()
+    return await conferma_tutte(db)
+
+
+@router.post("/rifiuta/{proposta_id}")
+@handle_errors
+async def rifiuta(proposta_id: str) -> Dict[str, Any]:
+    """Rifiuta una proposta (match errato)."""
+    from app.services.dati_provvisori_service import rifiuta_proposta
+    db = Database.get_db()
+    return await rifiuta_proposta(db, proposta_id)

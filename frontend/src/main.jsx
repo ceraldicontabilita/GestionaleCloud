@@ -48,6 +48,7 @@ const DettaglioVerbale = lazy(() => import("./pages/DettaglioVerbale.jsx"));
 const GestioneEmailMittenti = lazy(() => import("./pages/GestioneEmailMittenti.jsx"));
 const ImpostazioniF24Email = lazy(() => import("./pages/ImpostazioniF24Email.jsx"));
 const MappaGestionale = lazy(() => import("./pages/MappaGestionale.jsx"));
+const DatiProvvisoriPage = lazy(() => import("./pages/DatiProvvisoriPage.jsx"));
 const AgentiPage = lazy(() => import("./pages/Agenti.jsx"));
 const Portale = lazy(() => import("./pages/Portale.jsx"));
 const TracciabilitaPage = lazy(() => import("./pages/TracciabilitaPage.jsx"));
@@ -103,7 +104,7 @@ const router = createBrowserRouter([
       { path: "prima-nota", element: <LazyPage><PrimaNotaHub /></LazyPage> },
       { path: "prima-nota/:tipo", element: <LazyPage><PrimaNotaHub /></LazyPage> },
       { path: "prima-nota/:tipo/:anno/:mese", element: <LazyPage><PrimaNotaHub /></LazyPage> },
-      { path: "dati-provvisori", element: <LazyPage><PrimaNotaHub /></LazyPage> },
+      { path: "dati-provvisori", element: <LazyPage><DatiProvvisoriPage /></LazyPage> },
       
       // === DIPENDENTI ===
       { path: "dipendenti", element: <LazyPage><HRDipendenti /></LazyPage> },
