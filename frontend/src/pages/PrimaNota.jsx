@@ -541,36 +541,37 @@ function PrimaNotaDesktop() {
       
       {/* ===== PROVVISORI ===== */}
       {provvisori.length > 0 && (
-        <div style={{ background: '#fffbeb', border: '2px solid #fbbf24', borderRadius: 12, padding: '16px 20px', marginBottom: 16, position: 'relative', zIndex: 10 }}>
+        <div style={{ background: '#fffbeb', border: '2px solid #fbbf24', borderRadius: 12, padding: '16px', marginBottom: 16, position: 'relative', zIndex: 10 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 20 }}>📋</span>
-              <span style={{ fontWeight: 800, color: '#92400e', fontSize: 16 }}>{provvisori.length} Fatture da Confermare</span>
-            </div>
+            <span style={{ fontWeight: 800, color: '#92400e', fontSize: 16 }}>📋 {provvisori.length} Fatture da Confermare</span>
             <button onClick={async () => { for (const p of provvisori) { try { await api.post('/api/prima-nota/provvisori/conferma', { fattura_id: p.fattura_id, metodo: p.suggerimento }); } catch {} } loadAllData(); }} style={{ padding: '8px 16px', background: '#22c55e', color: 'white', border: 'none', borderRadius: 6, fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
               ✓ Conferma Tutte
             </button>
           </div>
-          <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-            <table style={{ width: '100%', minWidth: 700, borderCollapse: 'collapse', fontSize: 15, background: '#fffbeb' }}>
-              <thead><tr style={{ borderBottom: '2px solid #fbbf24' }}>{['Data', 'Fattura', 'Fornitore', 'Importo', 'Metodo', 'Stato', ''].map((h,i) => (<th key={i} style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, fontSize: 13, color: '#92400e', textTransform: 'uppercase', whiteSpace: 'nowrap', background: '#fffbeb' }}>{h}</th>))}</tr></thead>
-              <tbody>{provvisori.slice(0, 30).map(p => (
-                <tr key={p.fattura_id} style={{ borderBottom: '1px solid #fef3c7', background: '#fffbeb' }}>
-                  <td style={{ padding: '10px 12px', whiteSpace: 'nowrap', background: '#fffbeb' }}>{p.fattura_data}</td>
-                  <td style={{ padding: '10px 12px', fontWeight: 600, whiteSpace: 'nowrap', background: '#fffbeb' }}>{p.fattura_numero}</td>
-                  <td style={{ padding: '10px 12px', background: '#fffbeb' }}>{(p.fornitore || '').substring(0, 30)}</td>
-                  <td style={{ padding: '10px 12px', fontWeight: 700, color: '#059669', fontSize: 16, whiteSpace: 'nowrap', background: '#fffbeb' }}>€ {(p.importo||0).toFixed(2)}</td>
-                  <td style={{ padding: '10px 12px', background: '#fffbeb' }}><span style={{ padding: '4px 12px', borderRadius: 99, fontSize: 13, fontWeight: 700, background: p.suggerimento==='cassa'?'#fef3c7':'#dbeafe', color: p.suggerimento==='cassa'?'#92400e':'#1e40af', whiteSpace: 'nowrap' }}>{p.suggerimento==='cassa'?'🏪 Cassa':'🏦 Banca'}</span></td>
-                  <td style={{ padding: '10px 12px', fontSize: 13, fontWeight: 600, color: p.stato_match==='confermato'?'#16a34a':p.stato_match==='probabile'?'#d97706':'#6b7280', whiteSpace: 'nowrap', background: '#fffbeb' }}>{p.stato_match==='confermato'?'✓ Verificato':p.stato_match==='probabile'?'~ Probabile':'⏳ Attesa'}</td>
-                  <td style={{ padding: '10px 12px', background: '#fffbeb' }}><div style={{ display:'flex', gap:6 }}>
-                    <button onClick={async()=>{try{await api.post('/api/prima-nota/provvisori/conferma',{fattura_id:p.fattura_id,metodo:p.suggerimento});setProvvisori(v=>v.filter(x=>x.fattura_id!==p.fattura_id));}catch(e){alert(e.message)}}} style={{ padding:'6px 14px', background:'#22c55e', color:'white', border:'none', borderRadius:6, fontWeight:700, fontSize:14, cursor:'pointer', whiteSpace:'nowrap' }}>✓ Conferma</button>
-                    <button onClick={async()=>{const m2=p.suggerimento==='cassa'?'banca':'cassa';try{await api.post('/api/prima-nota/provvisori/conferma',{fattura_id:p.fattura_id,metodo:m2});setProvvisori(v=>v.filter(x=>x.fattura_id!==p.fattura_id));}catch(e){alert(e.message)}}} style={{ padding:'6px 14px', background:'#f1f5f9', color:'#475569', border:'1px solid #d1d5db', borderRadius:6, fontSize:13, cursor:'pointer', whiteSpace:'nowrap' }}>→ {p.suggerimento==='cassa'?'Banca':'Cassa'}</button>
-                  </div></td>
-                </tr>
-              ))}</tbody>
-            </table>
-          </div>
-          {provvisori.length > 20 && <div style={{ textAlign: 'center', padding: 8, fontSize: 12, color: '#92400e' }}>...e altri {provvisori.length - 20}</div>}
+          
+          {provvisori.slice(0, 30).map(p => (
+            <div key={p.fattura_id} style={{ background: 'white', borderRadius: 10, padding: '14px 16px', marginBottom: 8, border: '1px solid #fde68a' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 15, color: '#1e3a5f' }}>{(p.fornitore || '').substring(0, 35)}</div>
+                  <div style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>#{p.fattura_numero} · {p.fattura_data}</div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontWeight: 800, fontSize: 18, color: '#059669' }}>€ {(p.importo||0).toFixed(2)}</div>
+                  <span style={{ padding: '2px 10px', borderRadius: 99, fontSize: 12, fontWeight: 700, background: p.suggerimento==='cassa'?'#fef3c7':'#dbeafe', color: p.suggerimento==='cassa'?'#92400e':'#1e40af' }}>{p.suggerimento==='cassa'?'🏪 Cassa':'🏦 Banca'}</span>
+                </div>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: p.stato_match==='confermato'?'#16a34a':p.stato_match==='probabile'?'#d97706':'#6b7280' }}>{p.stato_match==='confermato'?'✓ Verificato in banca':p.stato_match==='probabile'?'~ Probabile':'⏳ In attesa'}</span>
+                <div style={{ display:'flex', gap:8 }}>
+                  <button onClick={async()=>{try{await api.post('/api/prima-nota/provvisori/conferma',{fattura_id:p.fattura_id,metodo:p.suggerimento});setProvvisori(v=>v.filter(x=>x.fattura_id!==p.fattura_id));}catch(e){alert(e.message)}}} style={{ padding:'8px 18px', background:'#22c55e', color:'white', border:'none', borderRadius:8, fontWeight:700, fontSize:14, cursor:'pointer' }}>✓ Conferma</button>
+                  <button onClick={async()=>{const m2=p.suggerimento==='cassa'?'banca':'cassa';try{await api.post('/api/prima-nota/provvisori/conferma',{fattura_id:p.fattura_id,metodo:m2});setProvvisori(v=>v.filter(x=>x.fattura_id!==p.fattura_id));}catch(e){alert(e.message)}}} style={{ padding:'8px 14px', background:'#f1f5f9', color:'#475569', border:'1px solid #d1d5db', borderRadius:8, fontSize:13, cursor:'pointer' }}>→ {p.suggerimento==='cassa'?'Banca':'Cassa'}</button>
+                </div>
+              </div>
+            </div>
+          ))}
+          
+          {provvisori.length > 30 && <div style={{ textAlign: 'center', padding: 8, fontSize: 13, color: '#92400e' }}>...e altre {provvisori.length - 30}</div>}
         </div>
       )}
 
