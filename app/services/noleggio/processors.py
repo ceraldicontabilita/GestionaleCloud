@@ -371,6 +371,8 @@ async def scan_fatture_noleggio(anno: Optional[int] = None) -> Tuple[Dict[str, A
         "supplier_vat": 1,
         "tipo_documento": 1,
         "total_amount": 1,
+        "taxable_amount": 1,
+        "descrizione": 1,
         "pagato": 1,
         "prima_nota_banca_id": 1,
         "linee": 1,
