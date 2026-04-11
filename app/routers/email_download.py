@@ -753,6 +753,28 @@ async def lista_transazioni_paypal(days_back: int = Query(default=31)) -> Dict[s
 
 
 
+@router.post("/riconciliazione-completa")
+async def riconciliazione_completa_endpoint(anno: int = Query(default=2026)) -> Dict[str, Any]:
+    """
+    Riconciliazione completa: PagoPA, Agenzia Entrate, ADER, TARI + Confronto POS.
+    """
+    from app.services.riconciliazione_completa import riconciliazione_completa
+    db = Database.get_db()
+    return {"success": True, "risultati": await riconciliazione_completa(db, anno)}
+
+
+@router.get("/confronto-pos")
+async def confronto_pos_endpoint(anno: int = Query(default=2026)) -> Dict[str, Any]:
+    """
+    Confronta pagamento elettronico corrispettivi vs inserimento manuale serale.
+    Evidenzia discrepanze per evitare sanzioni fiscali.
+    """
+    from app.services.riconciliazione_completa import confronta_pos_corrispettivi
+    db = Database.get_db()
+    return await confronta_pos_corrispettivi(db, anno)
+
+
+
 
 @router.post("/estrai-importi-verbali")
 async def estrai_importi_verbali(

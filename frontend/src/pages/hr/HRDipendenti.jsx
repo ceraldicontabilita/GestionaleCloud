@@ -103,12 +103,15 @@ function TabAnagrafica({ dip, onSaved }) {
         {field('Nome', 'nome')}
         {field('Cognome', 'cognome')}
         {field('Codice Fiscale', 'codice_fiscale')}
+        {field('Numero Matricola', 'numero_matricola')}
         {field('Email', 'email', 'email')}
         {field('Telefono', 'telefono', 'tel')}
         {field('Data Assunzione', 'data_assunzione', 'date')}
+        {field('Fine Contratto', 'fine_contratto', 'date')}
         {field('Mansione', 'mansione')}
         {field('Livello', 'livello')}
         {field('Tipo Contratto', 'tipo_contratto')}
+        {field('Scatto Contingenza', 'scatto_contingenza')}
         {field('IBAN', 'iban')}
         {field('Banca', 'banca')}
         {field('Importo Netto Mensile', 'importo_netto', 'number')}
