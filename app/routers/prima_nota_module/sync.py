@@ -720,7 +720,7 @@ async def collega_fatture_movimenti() -> Dict:
     
     for coll in [COLLECTION_PRIMA_NOTA_CASSA, COLLECTION_PRIMA_NOTA_BANCA]:
         cursor = db[coll].find({
-            "numero_fattura": {"$exists": True, "$ne": None, "$ne": ""},
+            "numero_fattura": {"$exists": True, "$nin": [None, ""]},
             "fattura_id": {"$in": [None, ""]}
         })
         
