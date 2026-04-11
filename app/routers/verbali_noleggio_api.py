@@ -28,11 +28,13 @@ async def get_verbale_dettaglio(numero_verbale: str) -> Dict[str, Any]:
     # Normalizza il numero verbale
     numero_clean = numero_verbale.strip()
     
-    # Cerca in vari modi
+    # Cerca in vari modi (incluso vecchio numero)
     verbale = await db[COLLECTION].find_one({
         "$or": [
             {"numero_verbale": numero_clean},
             {"numero_verbale": numero_clean.upper()},
+            {"numero_verbale_old": numero_clean},
+            {"numero_verbale_old": numero_clean.upper()},
             {"id": numero_clean},
             {"numero_verbale": {"$regex": f"^{numero_clean}$", "$options": "i"}}
         ]
@@ -70,6 +72,47 @@ async def get_verbale_dettaglio(numero_verbale: str) -> Dict[str, Any]:
         if veicolo:
             veicolo.pop("_id", None)
             verbale["veicolo_dettaglio"] = veicolo
+    
+    # Costruisci pdf_disponibili dal pdf_data se non esiste pdf_allegati
+    if not verbale.get("pdf_disponibili"):
+        pdf_list = []
+        if verbale.get("pdf_data"):
+            pdf_list.append({
+                "indice": 0,
+                "filename": verbale.get("pdf_filename", "verbale.pdf"),
+                "tipo": "verbale",
+                "size": verbale.get("pdf_size", 0)
+            })
+        if verbale.get("quietanza_pdf"):
+            pdf_list.append({
+                "indice": 1,
+                "filename": verbale.get("quietanza_filename", "quietanza.pdf"),
+                "tipo": "quietanza",
+                "size": 0
+            })
+        verbale["pdf_disponibili"] = pdf_list
+    
+    # Cerca fattura associata (per noleggiatori come ARVAL, Leasys, ALD)
+    if not verbale.get("fattura_id") and verbale.get("targa"):
+        targa = verbale["targa"]
+        # Cerca fatture con questa targa nella descrizione
+        fattura = await db["invoices"].find_one({
+            "$or": [
+                {"descrizione": {"$regex": targa, "$options": "i"}},
+                {"xml_raw": {"$regex": targa, "$options": "i"} if "xml_raw" in (await db["invoices"].find_one({}, {"xml_raw": 1}) or {}) else None}
+            ]
+        }, {"_id": 1, "id": 1, "supplier_name": 1, "invoice_number": 1, "total_amount": 1, "invoice_date": 1})
+        if fattura:
+            # Usa l'id UUID se disponibile, altrimenti l'ObjectId come stringa
+            fid = fattura.get("id") or str(fattura.get("_id", ""))
+            verbale["fattura_id"] = fid
+            verbale["fattura_fornitore"] = fattura.get("supplier_name")
+            verbale["fattura_numero"] = fattura.get("invoice_number")
+            verbale["fattura_importo"] = fattura.get("total_amount")
+    
+    # Non inviare pdf_data nel response (troppo grande)
+    verbale.pop("pdf_data", None)
+    verbale.pop("quietanza_pdf", None)
     
     return verbale
 
@@ -118,16 +161,18 @@ async def get_verbali_lista(
 @handle_errors
 async def get_verbale_pdf(
     numero_verbale: str,
-    indice: int = Query(0, description="Indice del PDF da scaricare")
+    indice: int = Query(0, description="Indice del PDF: 0=verbale, 1=quietanza")
 ) -> Dict[str, Any]:
     """
     Ottiene il PDF allegato a un verbale.
+    Gestisce sia pdf_allegati (vecchio formato) che pdf_data/quietanza_pdf.
     """
     db = Database.get_db()
     
     verbale = await db[COLLECTION].find_one({
         "$or": [
             {"numero_verbale": numero_verbale},
+            {"numero_verbale_old": numero_verbale},
             {"id": numero_verbale}
         ]
     })
@@ -135,18 +180,32 @@ async def get_verbale_pdf(
     if not verbale:
         raise HTTPException(status_code=404, detail=f"Verbale {numero_verbale} non trovato")
     
+    # Vecchio formato: pdf_allegati array
     pdf_allegati = verbale.get("pdf_allegati", [])
+    if pdf_allegati and indice < len(pdf_allegati):
+        pdf = pdf_allegati[indice]
+        return {
+            "filename": pdf.get("filename"),
+            "content_base64": pdf.get("content_base64"),
+            "content_type": "application/pdf"
+        }
     
-    if not pdf_allegati or indice >= len(pdf_allegati):
-        raise HTTPException(status_code=404, detail="PDF non trovato")
+    # Nuovo formato: pdf_data (verbale) e quietanza_pdf
+    if indice == 0 and verbale.get("pdf_data"):
+        return {
+            "filename": verbale.get("pdf_filename", f"verbale_{numero_verbale}.pdf"),
+            "content_base64": verbale["pdf_data"],
+            "content_type": "application/pdf"
+        }
     
-    pdf = pdf_allegati[indice]
+    if indice == 1 and verbale.get("quietanza_pdf"):
+        return {
+            "filename": verbale.get("quietanza_filename", f"quietanza_{numero_verbale}.pdf"),
+            "content_base64": verbale["quietanza_pdf"],
+            "content_type": "application/pdf"
+        }
     
-    return {
-        "filename": pdf.get("filename"),
-        "content_base64": pdf.get("content_base64"),
-        "content_type": "application/pdf"
-    }
+    raise HTTPException(status_code=404, detail="PDF non trovato per questo verbale")
 
 
 @router.post("/scarica-posta")
