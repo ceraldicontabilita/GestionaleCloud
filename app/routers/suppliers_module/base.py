@@ -191,7 +191,7 @@ async def list_suppliers(
             logger.warning(f"Error loading invoice stats: {e}")
     
     suppliers = list(suppliers_map.values())
-    suppliers.sort(key=lambda x: x.get("fatture_count", 0), reverse=True)
+    suppliers.sort(key=lambda x: (x.get("ragione_sociale") or x.get("supplier_name") or "zzz").lower())
     
     if use_cache and not search and not metodo_pagamento and attivo is None:
         await cache.set(cache_key, suppliers, SUPPLIERS_CACHE_TTL)
