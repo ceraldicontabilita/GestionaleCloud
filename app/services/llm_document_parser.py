@@ -347,3 +347,99 @@ async def batch_parse_f24(db, limit: int = 50) -> Dict[str, Any]:
             stats["errori"] += 1
     
     return stats
+
+
+
+async def batch_extract_importi_verbali(db, limit: int = 76) -> Dict[str, Any]:
+    """
+    Estrae SOLO l'importo dai verbali che hanno PDF ma importo mancante.
+    Usa prima regex sul testo, poi LLM come fallback.
+    Più veloce di batch_parse_verbali perché non cerca targa.
+    """
+    from datetime import datetime, timezone as tz
+    stats = {"processati": 0, "importi_trovati": 0, "errori": 0, "skipped": 0}
+    
+    cursor = db["verbali_noleggio"].find(
+        {
+            "$or": [{"importo": None}, {"importo": 0}, {"importo": {"$exists": False}}],
+            "pdf_data": {"$ne": None}
+        },
+        {"_id": 0}
+    ).limit(limit)
+    
+    async for verbale in cursor:
+        try:
+            pdf_data = verbale.get("pdf_data")
+            if not pdf_data:
+                stats["skipped"] += 1
+                continue
+            
+            pdf_bytes = base64.b64decode(pdf_data)
+            importo = None
+            data_verbale = None
+            
+            # Step 1: Estrai testo e cerca importo con regex
+            text = await _extract_text_from_pdf(pdf_bytes)
+            if text:
+                # Pattern importo in documenti italiani
+                patterns = [
+                    r'(?:importo|sanzione|pagare|dovut[oa]|totale|somma)\s*(?:di)?\s*(?:euro|€)?\s*[:\s]*(\d+[.,]\d{2})',
+                    r'€\s*(\d+[.,]\d{2})',
+                    r'euro\s+(\d+[.,]\d{2})',
+                    r'(\d+[.,]\d{2})\s*(?:euro|€)',
+                    r'importo\s+ridotto[:\s]*(\d+[.,]\d{2})',
+                    r'misura\s+ridotta[:\s]*(\d+[.,]\d{2})',
+                ]
+                for p in patterns:
+                    m = re.search(p, text, re.IGNORECASE)
+                    if m:
+                        importo = float(m.group(1).replace(",", "."))
+                        if importo > 5 and importo < 50000:  # Sanity check
+                            break
+                        importo = None
+                
+                # Cerca data
+                dm = re.search(r'(\d{2})[/.-](\d{2})[/.-](\d{4})', text)
+                if dm:
+                    data_verbale = f"{dm.group(3)}-{dm.group(2)}-{dm.group(1)}"
+            
+            # Step 2: Se regex fallisce, usa LLM
+            if importo is None:
+                prompt = "Estrai SOLO l'importo della sanzione/multa da questo documento. Rispondi con un JSON: {\"importo\": numero, \"data\": \"YYYY-MM-DD\"}. Se non trovi importo, rispondi {\"importo\": null}."
+                llm_resp = await _ask_gemini_with_pdf(pdf_bytes, prompt, verbale.get("pdf_filename", ""))
+                if llm_resp:
+                    try:
+                        clean = llm_resp.strip()
+                        if clean.startswith("```"):
+                            clean = re.sub(r'^```\w*\n?', '', clean)
+                            clean = re.sub(r'\n?```$', '', clean)
+                        data = json.loads(clean)
+                        if data.get("importo") and float(data["importo"]) > 0:
+                            importo = float(data["importo"])
+                        if data.get("data"):
+                            data_verbale = data["data"]
+                    except (json.JSONDecodeError, ValueError):
+                        pass
+            
+            # Aggiorna verbale
+            if importo is not None and importo > 0:
+                update = {"importo": importo}
+                if data_verbale:
+                    update["data_verbale"] = data_verbale
+                update["importo_parsed_at"] = datetime.now(tz.utc).isoformat()
+                
+                await db["verbali_noleggio"].update_one(
+                    {"id": verbale["id"]},
+                    {"$set": update}
+                )
+                stats["importi_trovati"] += 1
+                logger.info(f"[BATCH-IMPORTI] {verbale.get('numero_verbale','')}: €{importo}")
+            
+            stats["processati"] += 1
+            
+        except Exception as e:
+            logger.error(f"[BATCH-IMPORTI] Errore: {e}")
+            stats["errori"] += 1
+    
+    logger.info(f"[BATCH-IMPORTI] Completato: {stats}")
+    return stats

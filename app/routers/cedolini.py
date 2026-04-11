@@ -890,6 +890,144 @@ async def trattenute_dipendente(dipendente_id: str, anno: Optional[int] = None) 
 
 
 
+@router.post("/dipendente/{dipendente_id}/applica-trattenuta/{trattenuta_id}")
+@handle_errors
+async def applica_trattenuta(dipendente_id: str, trattenuta_id: str) -> Dict[str, Any]:
+    """
+    Applica una trattenuta al cedolino del dipendente.
+    Aggiorna lo stato da 'da_applicare' a 'applicata' e registra
+    la deduzione nel cedolino del mese corrispondente.
+    """
+    from datetime import datetime, timezone
+    db = Database.get_db()
+    
+    # Trova trattenuta
+    trattenuta = await db["trattenute_dipendenti"].find_one(
+        {"id": trattenuta_id},
+        {"_id": 0}
+    )
+    if not trattenuta:
+        raise HTTPException(status_code=404, detail="Trattenuta non trovata")
+    
+    if trattenuta.get("stato") == "applicata":
+        return {"success": True, "message": "Trattenuta già applicata", "trattenuta": trattenuta}
+    
+    mese = trattenuta.get("mese")
+    anno = trattenuta.get("anno")
+    importo = float(trattenuta.get("importo", 0))
+    cf = trattenuta.get("dipendente_id") or dipendente_id
+    
+    # Cerca cedolino del mese corrispondente
+    cedolino = await db["cedolini"].find_one({
+        "$or": [{"codice_fiscale": cf}, {"dipendente_id": dipendente_id}],
+        "mese": mese,
+        "anno": anno
+    })
+    
+    if cedolino:
+        # Aggiorna cedolino con la trattenuta
+        altre_trattenute = float(cedolino.get("altre_trattenute", 0) or 0) + importo
+        netto_attuale = float(cedolino.get("netto", 0) or 0)
+        
+        await db["cedolini"].update_one(
+            {"id": cedolino["id"]},
+            {"$set": {
+                "altre_trattenute": altre_trattenute,
+                "trattenute_verbali": float(cedolino.get("trattenute_verbali", 0) or 0) + importo,
+                "netto": netto_attuale - importo,
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            },
+            "$push": {
+                "trattenute_applicate": {
+                    "id": trattenuta_id,
+                    "tipo": trattenuta.get("tipo"),
+                    "importo": importo,
+                    "descrizione": trattenuta.get("descrizione"),
+                    "data_applicazione": datetime.now(timezone.utc).isoformat()
+                }
+            }}
+        )
+    
+    # Aggiorna stato trattenuta
+    await db["trattenute_dipendenti"].update_one(
+        {"id": trattenuta_id},
+        {"$set": {
+            "stato": "applicata",
+            "applicata_at": datetime.now(timezone.utc).isoformat(),
+            "cedolino_id": cedolino["id"] if cedolino else None
+        }}
+    )
+    
+    return {
+        "success": True,
+        "message": f"Trattenuta €{importo:.2f} applicata al cedolino {mese}/{anno}",
+        "cedolino_aggiornato": cedolino is not None
+    }
+
+
+@router.post("/dipendente/{dipendente_id}/applica-tutte-trattenute")
+@handle_errors
+async def applica_tutte_trattenute(dipendente_id: str) -> Dict[str, Any]:
+    """
+    Applica TUTTE le trattenute 'da_applicare' del dipendente.
+    """
+    from datetime import datetime, timezone
+    db = Database.get_db()
+    
+    dip = await db["dipendenti"].find_one(
+        {"$or": [{"id": dipendente_id}, {"codice_fiscale": dipendente_id}]},
+        {"_id": 0, "codice_fiscale": 1}
+    )
+    cf = dip.get("codice_fiscale", dipendente_id) if dip else dipendente_id
+    
+    trattenute = await db["trattenute_dipendenti"].find({
+        "$or": [{"dipendente_id": dipendente_id}, {"dipendente_id": cf}, {"dipendente_cf": cf}],
+        "stato": "da_applicare"
+    }).to_list(100)
+    
+    risultati = {"applicate": 0, "errori": 0}
+    
+    for t in trattenute:
+        try:
+            # Chiama la stessa logica di applica_trattenuta
+            mese = t.get("mese")
+            anno_t = t.get("anno")
+            importo = float(t.get("importo", 0))
+            
+            cedolino = await db["cedolini"].find_one({
+                "$or": [{"codice_fiscale": cf}, {"dipendente_id": dipendente_id}],
+                "mese": mese, "anno": anno_t
+            })
+            
+            if cedolino:
+                await db["cedolini"].update_one(
+                    {"id": cedolino["id"]},
+                    {"$set": {
+                        "altre_trattenute": float(cedolino.get("altre_trattenute", 0) or 0) + importo,
+                        "trattenute_verbali": float(cedolino.get("trattenute_verbali", 0) or 0) + importo,
+                        "netto": float(cedolino.get("netto", 0) or 0) - importo,
+                    },
+                    "$push": {
+                        "trattenute_applicate": {
+                            "id": t["id"], "tipo": t.get("tipo"), "importo": importo,
+                            "descrizione": t.get("descrizione"),
+                            "data_applicazione": datetime.now(timezone.utc).isoformat()
+                        }
+                    }}
+                )
+            
+            await db["trattenute_dipendenti"].update_one(
+                {"id": t["id"]},
+                {"$set": {"stato": "applicata", "applicata_at": datetime.now(timezone.utc).isoformat()}}
+            )
+            risultati["applicate"] += 1
+        except Exception:
+            risultati["errori"] += 1
+    
+    return {"success": True, "risultati": risultati}
+
+
+
 @router.get("/riepilogo-mensile/{anno}/{mese}")
 @handle_errors
 async def riepilogo_mensile(anno: int, mese: int) -> Dict[str, Any]:

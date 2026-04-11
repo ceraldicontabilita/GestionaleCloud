@@ -195,15 +195,42 @@ function TabCedolini({ dip }) {
                 Trattenute da Applicare: {trattenute?.da_applicare || 0}
               </span>
             </div>
-            <span style={{ fontWeight: 700, color: '#dc2626', fontSize: 16 }}>
-              € {(trattenute?.importo_da_applicare || 0).toFixed(2)}
-            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontWeight: 700, color: '#dc2626', fontSize: 16 }}>
+                € {(trattenute?.importo_da_applicare || 0).toFixed(2)}
+              </span>
+              {(trattenute?.da_applicare || 0) > 0 && (
+                <button
+                  onClick={async () => {
+                    if (!window.confirm(`Applicare tutte le ${trattenute.da_applicare} trattenute (€${trattenute.importo_da_applicare.toFixed(2)}) sui cedolini?`)) return;
+                    try {
+                      await api.post(`/api/cedolini/dipendente/${dip.id || dip.codice_fiscale}/applica-tutte-trattenute`);
+                      // Ricarica dati
+                      const [cedRes, trattRes] = await Promise.all([
+                        api.get(`/api/cedolini/dipendente/${dip.id || dip.codice_fiscale}?anno=${anno}`),
+                        api.get(`/api/cedolini/dipendente/${dip.id || dip.codice_fiscale}/trattenute?anno=${anno}`),
+                      ]);
+                      setData(cedRes.data);
+                      setTrattenute(trattRes.data);
+                    } catch (e) {
+                      alert('Errore: ' + (e.response?.data?.detail || e.message));
+                    }
+                  }}
+                  style={{
+                    padding: '6px 14px', borderRadius: 6, border: 'none', cursor: 'pointer',
+                    background: '#dc2626', color: 'white', fontWeight: 700, fontSize: 12
+                  }}
+                >
+                  ✓ Applica Tutte
+                </button>
+              )}
+            </div>
           </div>
           
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
               <tr>
-                {['Tipo', 'Descrizione', 'Importo', 'Mese', 'Stato'].map((h, i) => (
+                {['Tipo', 'Descrizione', 'Importo', 'Mese', 'Stato', ''].map((h, i) => (
                   <th key={i} style={{ padding: '6px 10px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#991b1b', textTransform: 'uppercase', borderBottom: '1px solid #fecaca' }}>{h}</th>
                 ))}
               </tr>
@@ -231,6 +258,29 @@ function TabCedolini({ dip }) {
                     }}>
                       {t.stato === 'applicata' ? '✓ Applicata' : 'Da applicare'}
                     </span>
+                  </td>
+                  <td style={{ padding: '8px 10px' }}>
+                    {t.stato !== 'applicata' && (
+                      <button
+                        onClick={async () => {
+                          try {
+                            await api.post(`/api/cedolini/dipendente/${dip.id || dip.codice_fiscale}/applica-trattenuta/${t.id}`);
+                            const trattRes = await api.get(`/api/cedolini/dipendente/${dip.id || dip.codice_fiscale}/trattenute?anno=${anno}`);
+                            setTrattenute(trattRes.data);
+                            const cedRes = await api.get(`/api/cedolini/dipendente/${dip.id || dip.codice_fiscale}?anno=${anno}`);
+                            setData(cedRes.data);
+                          } catch (e) {
+                            alert('Errore: ' + (e.response?.data?.detail || e.message));
+                          }
+                        }}
+                        style={{
+                          padding: '4px 10px', borderRadius: 4, border: '1px solid #dc2626', cursor: 'pointer',
+                          background: 'white', color: '#dc2626', fontWeight: 600, fontSize: 11
+                        }}
+                      >
+                        Applica
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}

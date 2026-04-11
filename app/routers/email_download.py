@@ -704,6 +704,21 @@ async def riconcilia_verbali_banca() -> Dict[str, Any]:
     return {"success": True, "stats": stats}
 
 
+@router.post("/estrai-importi-verbali")
+async def estrai_importi_verbali(
+    limit: int = Query(default=76, description="Max verbali da processare")
+) -> Dict[str, Any]:
+    """
+    Estrae importi dai verbali PDF che non hanno importo.
+    Usa regex + LLM per estrarre l'importo della sanzione.
+    """
+    from app.services.llm_document_parser import batch_extract_importi_verbali
+    db = Database.get_db()
+    stats = await batch_extract_importi_verbali(db, limit=limit)
+    return {"success": True, "stats": stats}
+
+
+
 
 
 @router.get("/statistiche")
