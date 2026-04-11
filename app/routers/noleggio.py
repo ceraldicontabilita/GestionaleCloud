@@ -576,3 +576,45 @@ async def get_statistiche_persistenza() -> Dict[str, Any]:
         "audit_logs": audit_count,
         "costi_per_tipo": {s["_id"]: {"count": s["count"], "totale": s["totale_importo"]} for s in tipo_stats}
     }
+
+
+
+@router.get("/verbali-dipendente")
+@handle_errors
+async def get_verbali_dipendente(
+    dipendente_id: str = Query(default="", description="ID dipendente"),
+    codice_fiscale: str = Query(default="", description="Codice fiscale dipendente")
+) -> Dict[str, Any]:
+    """
+    Lista verbali/multe associati a un dipendente (tramite driver_id o driver_cf).
+    Usato nella sezione HR → Tab Verbali del dipendente.
+    """
+    db = Database.get_db()
+    
+    if not dipendente_id and not codice_fiscale:
+        return {"verbali": [], "totale": 0}
+    
+    # Cerca verbali per driver_id, driver_cf, o codice_fiscale
+    query_conditions = []
+    if dipendente_id:
+        query_conditions.append({"driver_id": dipendente_id})
+    if codice_fiscale:
+        query_conditions.append({"driver_cf": codice_fiscale})
+    
+    if not query_conditions:
+        return {"verbali": [], "totale": 0}
+    
+    cursor = db["verbali_noleggio"].find(
+        {"$or": query_conditions},
+        {"_id": 0, "pdf_data": 0, "quietanza_pdf": 0}
+    ).sort("created_at", -1)
+    
+    verbali = await cursor.to_list(500)
+    
+    return {
+        "verbali": verbali,
+        "totale": len(verbali),
+        "pagati": sum(1 for v in verbali if v.get("stato") == "pagato"),
+        "da_pagare": sum(1 for v in verbali if v.get("stato") != "pagato"),
+        "importo_totale": sum(float(v.get("importo", 0) or 0) for v in verbali)
+    }

@@ -660,6 +660,37 @@ async def processa_pipeline_completa() -> Dict[str, Any]:
     }
 
 
+@router.post("/parse-verbali-llm")
+async def parse_verbali_con_llm(
+    limit: int = Query(default=50, description="Max verbali da processare")
+) -> Dict[str, Any]:
+    """
+    Parsing LLM dei verbali senza targa.
+    Estrae: targa, importo, data, ente emittente dal PDF.
+    Collega automaticamente a veicolo e dipendente (driver).
+    """
+    from app.services.llm_document_parser import batch_parse_verbali
+    db = Database.get_db()
+    stats = await batch_parse_verbali(db, limit=limit)
+    return {"success": True, "stats": stats}
+
+
+@router.post("/parse-f24-llm")
+async def parse_f24_con_llm(
+    limit: int = Query(default=50, description="Max F24 da processare")
+) -> Dict[str, Any]:
+    """
+    Parsing LLM degli F24 PDF.
+    Estrae: codici tributo, periodi, importi, sezioni.
+    Salva in f24_commercialista per riconciliazione con banca.
+    """
+    from app.services.llm_document_parser import batch_parse_f24
+    db = Database.get_db()
+    stats = await batch_parse_f24(db, limit=limit)
+    return {"success": True, "stats": stats}
+
+
+
 
 @router.get("/statistiche")
 async def get_statistiche_allegati() -> Dict[str, Any]:

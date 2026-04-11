@@ -8,6 +8,7 @@ const TABS = [
   { id: 'anagrafica',   label: 'Anagrafica' },
   { id: 'contratti',    label: 'Contratti' },
   { id: 'cedolini',     label: 'Cedolini' },
+  { id: 'verbali',      label: 'Verbali' },
   { id: 'movimenti',    label: 'Movimenti' },
   { id: 'giustificativi', label: 'Giustificativi' },
 ];
@@ -408,6 +409,110 @@ function TabGiustificativi({ dip }) {
   );
 }
 
+// ─── Verbali / Multe ──────────────────────────────────────────────────────────
+function TabVerbali({ dip }) {
+  const isMobile = useIsMobile();
+  const [verbali, setVerbali] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({ totale: 0, pagati: 0, da_pagare: 0, importo_totale: 0 });
+
+  useEffect(() => {
+    setLoading(true);
+    // Cerca verbali per driver_id o driver_cf
+    const cf = dip.codice_fiscale || '';
+    const id = dip.id || '';
+    api.get(`/api/noleggio/verbali-dipendente?dipendente_id=${id}&codice_fiscale=${cf}`)
+      .then(r => {
+        const list = r.data?.verbali || [];
+        setVerbali(list);
+        const pagati = list.filter(v => v.stato === 'pagato').length;
+        const importo = list.reduce((sum, v) => sum + (parseFloat(v.importo) || 0), 0);
+        setStats({ totale: list.length, pagati, da_pagare: list.length - pagati, importo_totale: importo });
+      })
+      .catch(() => setVerbali([]))
+      .finally(() => setLoading(false));
+  }, [dip.id, dip.codice_fiscale]);
+
+  if (loading) return <div style={{ padding: 40, textAlign: 'center', color: COLORS.textMuted }}>Caricamento…</div>;
+
+  const veicolo = dip.veicolo_aziendale;
+
+  return (
+    <div>
+      {/* Info veicolo */}
+      {veicolo && (
+        <div style={{ background: '#eff6ff', borderRadius: 8, padding: '12px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{ fontSize: 22 }}>🚗</span>
+          <div>
+            <div style={{ fontWeight: 700, color: '#1e40af', fontSize: 14 }}>Veicolo Aziendale: {veicolo}</div>
+            <div style={{ fontSize: 12, color: '#3b82f6' }}>Fringe Benefit</div>
+          </div>
+        </div>
+      )}
+
+      {/* Stats */}
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
+        {[
+          { label: 'Totale Verbali', value: stats.totale, color: COLORS.text },
+          { label: 'Pagati', value: stats.pagati, color: '#16a34a' },
+          { label: 'Da Pagare', value: stats.da_pagare, color: '#dc2626' },
+          { label: 'Importo Totale', value: `€ ${stats.importo_totale.toFixed(2)}`, color: '#d97706' },
+        ].map(s => (
+          <div key={s.label} style={{ background: '#f8fafc', borderRadius: 8, padding: '12px 16px', textAlign: 'center' }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: COLORS.textMuted, textTransform: 'uppercase' }}>{s.label}</div>
+            <div style={{ fontSize: 22, fontWeight: 700, color: s.color, marginTop: 4 }}>{s.value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Lista verbali */}
+      <h3 style={{ margin: '0 0 16px', fontSize: 16, fontWeight: 700, color: COLORS.text }}>Verbali e Multe</h3>
+      {verbali.length === 0
+        ? <div style={{ padding: '24px', textAlign: 'center', color: COLORS.textMuted, background: '#f8fafc', borderRadius: 8 }}>Nessun verbale associato a questo dipendente</div>
+        : <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr>
+                {['N. Verbale', 'Targa', 'Data', 'Importo', 'Stato', 'Pagamento', 'Trattenuta'].map((h, i) => (
+                  <th key={i} style={{ ...STYLES.th, fontSize: 11, padding: '10px 12px' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {verbali.map((v, i) => (
+                <tr key={v.id || i} style={{ borderBottom: `1px solid ${COLORS.border}` }}>
+                  <td style={{ ...STYLES.td, fontWeight: 600, fontFamily: 'monospace', fontSize: 12 }}>{v.numero_verbale || '—'}</td>
+                  <td style={STYLES.td}>{v.targa || '—'}</td>
+                  <td style={STYLES.td}>{v.data_verbale ? formatData(v.data_verbale) : '—'}</td>
+                  <td style={{ ...STYLES.td, fontWeight: 600 }}>{v.importo ? `€ ${parseFloat(v.importo).toFixed(2)}` : '—'}</td>
+                  <td style={STYLES.td}>
+                    <span style={{
+                      padding: '3px 10px', borderRadius: 99, fontSize: 11, fontWeight: 600,
+                      background: v.stato === 'pagato' ? '#dcfce7' : v.stato === 'da_pagare' ? '#fee2e2' : '#fef9c3',
+                      color: v.stato === 'pagato' ? '#16a34a' : v.stato === 'da_pagare' ? '#dc2626' : '#a16207'
+                    }}>
+                      {v.stato === 'pagato' ? '✓ Pagato' : v.stato === 'da_pagare' ? 'Da pagare' : v.stato || 'In attesa'}
+                    </span>
+                  </td>
+                  <td style={{ ...STYLES.td, fontSize: 12 }}>{v.data_pagamento ? formatData(v.data_pagamento) : '—'}</td>
+                  <td style={STYLES.td}>
+                    {v.trattenuta_cedolino
+                      ? <span style={{ padding: '3px 8px', borderRadius: 99, fontSize: 10, fontWeight: 600, background: '#dbeafe', color: '#2563eb' }}>
+                          {v.trattenuta_mese}/{v.trattenuta_anno}
+                        </span>
+                      : '—'
+                    }
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      }
+    </div>
+  );
+}
+
 // ─── Pagina principale ────────────────────────────────────────────────────────
 export default function HRDipendenti() {
   const isMobile = useIsMobile();
@@ -576,6 +681,9 @@ export default function HRDipendenti() {
               </div>
               <div style={{ display: activeTab === 'cedolini' ? 'block' : 'none' }}>
                 {visitedTabs.has('cedolini') && <TabCedolini key={selected?.id + '-ced'} dip={selected} />}
+              </div>
+              <div style={{ display: activeTab === 'verbali' ? 'block' : 'none' }}>
+                {visitedTabs.has('verbali') && <TabVerbali key={selected?.id + '-verb'} dip={selected} />}
               </div>
               <div style={{ display: activeTab === 'movimenti' ? 'block' : 'none' }}>
                 {visitedTabs.has('movimenti') && <TabMovimenti key={selected?.id + '-m'} dip={selected} />}
