@@ -551,30 +551,33 @@ function PrimaNotaDesktop() {
           
           {provvisori.slice(0, 30).map(p => {
             const isCassa = p.suggerimento === 'cassa';
+            const isSospesa = p.suggerimento === 'sospesa';
+            const badgeBg = isCassa ? '#fef3c7' : isSospesa ? '#fee2e2' : '#1e40af';
+            const badgeColor = isCassa ? '#92400e' : isSospesa ? '#dc2626' : 'white';
+            const badgeBorder = isCassa ? '2px solid #f59e0b' : isSospesa ? '2px solid #dc2626' : '2px solid #1e40af';
+            const badgeText = isCassa ? '🏪 CASSA' : isSospesa ? '⏳ SOSPESA' : '🏦 BANCA';
             return (
             <div key={p.fattura_id} style={{ background: 'white', borderRadius: 10, padding: '14px 16px', marginBottom: 8, border: '1px solid #fde68a' }}>
-              {/* Riga 1: Fornitore + Importo + Metodo evidenziato */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, flexWrap: 'wrap', gap: 4 }}>
+                <div style={{ flex: 1, minWidth: 150 }}>
                   <span style={{ fontWeight: 700, fontSize: 15, color: '#1e3a5f' }}>{(p.fornitore || '').substring(0, 30)}</span>
                   <span style={{ fontSize: 12, color: '#94a3b8', marginLeft: 6 }}>#{p.fattura_numero}</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontWeight: 800, fontSize: 18, color: '#059669' }}>€ {(p.importo||0).toFixed(2)}</span>
-                  <span style={{ padding: '4px 12px', borderRadius: 99, fontSize: 13, fontWeight: 800, background: isCassa ? '#fef3c7' : '#1e40af', color: isCassa ? '#92400e' : 'white', border: isCassa ? '2px solid #f59e0b' : '2px solid #1e40af' }}>{isCassa ? '🏪 CASSA' : '🏦 BANCA'}</span>
+                  <span style={{ padding: '4px 12px', borderRadius: 99, fontSize: 13, fontWeight: 800, background: badgeBg, color: badgeColor, border: badgeBorder }}>{badgeText}</span>
                 </div>
               </div>
-              
-              {/* Riga 2: Data + Stato + Bottoni affiancati */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
                 <div>
                   <span style={{ fontSize: 13, color: '#6b7280' }}>{p.fattura_data}</span>
                   <span style={{ fontSize: 12, fontWeight: 600, marginLeft: 8, color: p.stato_match==='confermato'?'#16a34a':p.stato_match==='probabile'?'#d97706':'#6b7280' }}>{p.stato_match==='confermato'?'✓ Verificato':p.stato_match==='probabile'?'~ Probabile':'⏳ Attesa'}</span>
                 </div>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  <button onClick={async()=>{try{await api.post('/api/prima-nota/provvisori/conferma',{fattura_id:p.fattura_id,metodo:p.suggerimento});setProvvisori(v=>v.filter(x=>x.fattura_id!==p.fattura_id));}catch(e){alert(e.message)}}} style={{ padding:'6px 16px', background:'#22c55e', color:'white', border:'none', borderRadius:6, fontWeight:700, fontSize:13, cursor:'pointer' }}>✓ Conferma</button>
-                  <button onClick={async()=>{const m2=isCassa?'banca':'cassa';try{await api.post('/api/prima-nota/provvisori/conferma',{fattura_id:p.fattura_id,metodo:m2});setProvvisori(v=>v.filter(x=>x.fattura_id!==p.fattura_id));}catch(e){alert(e.message)}}} style={{ padding:'6px 12px', background:'#f1f5f9', color:'#475569', border:'1px solid #d1d5db', borderRadius:6, fontSize:12, cursor:'pointer' }}>→ {isCassa?'Banca':'Cassa'}</button>
-                  <button onClick={()=>{const imp=prompt(`Importo CASSA per ${p.fornitore} (totale €${(p.importo||0).toFixed(2)}):`);if(imp&&parseFloat(imp)>0){const cassaImp=parseFloat(imp);const bancaImp=Math.round((p.importo-cassaImp)*100)/100;api.post('/api/pagamenti/registra',{fattura_id:p.fattura_id,importo:cassaImp,metodo:'contanti',data:p.fattura_data,note:`Parziale cassa €${cassaImp} di €${p.importo}`}).then(()=>{if(bancaImp>0){api.post('/api/pagamenti/registra',{fattura_id:p.fattura_id,importo:bancaImp,metodo:'bonifico',data:p.fattura_data,note:`Residuo banca €${bancaImp} di €${p.importo}`})}setProvvisori(v=>v.filter(x=>x.fattura_id!==p.fattura_id));}).catch(e=>alert(e.message))}}} style={{ padding:'6px 10px', background:'#fef3c7', color:'#92400e', border:'1px solid #f59e0b', borderRadius:6, fontSize:11, cursor:'pointer', fontWeight:600 }}>Misto</button>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {!isSospesa && <button onClick={async()=>{try{await api.post('/api/prima-nota/provvisori/conferma',{fattura_id:p.fattura_id,metodo:p.suggerimento});setProvvisori(v=>v.filter(x=>x.fattura_id!==p.fattura_id));}catch(e){alert(e.message)}}} style={{ padding:'6px 16px', background:'#22c55e', color:'white', border:'none', borderRadius:6, fontWeight:700, fontSize:13, cursor:'pointer' }}>✓ Conferma</button>}
+                  <button onClick={async()=>{try{await api.post('/api/prima-nota/provvisori/conferma',{fattura_id:p.fattura_id,metodo:'cassa'});setProvvisori(v=>v.filter(x=>x.fattura_id!==p.fattura_id));}catch(e){alert(e.message)}}} style={{ padding:'6px 12px', background: isCassa ? '#22c55e' : '#f1f5f9', color: isCassa ? 'white' : '#475569', border: isCassa ? 'none' : '1px solid #d1d5db', borderRadius:6, fontSize:12, cursor:'pointer', fontWeight: isCassa ? 700 : 400 }}>🏪 Cassa</button>
+                  <button onClick={async()=>{try{await api.post('/api/prima-nota/provvisori/conferma',{fattura_id:p.fattura_id,metodo:'banca'});setProvvisori(v=>v.filter(x=>x.fattura_id!==p.fattura_id));}catch(e){alert(e.message)}}} style={{ padding:'6px 12px', background: !isCassa && !isSospesa ? '#22c55e' : '#f1f5f9', color: !isCassa && !isSospesa ? 'white' : '#475569', border: !isCassa && !isSospesa ? 'none' : '1px solid #d1d5db', borderRadius:6, fontSize:12, cursor:'pointer', fontWeight: !isCassa && !isSospesa ? 700 : 400 }}>🏦 Banca</button>
+                  <button onClick={()=>{const imp=prompt(`Importo CASSA per ${p.fornitore} (totale €${(p.importo||0).toFixed(2)}):`);if(imp&&parseFloat(imp)>0){const ci=parseFloat(imp);const bi=Math.round((p.importo-ci)*100)/100;api.post('/api/pagamenti/registra',{fattura_id:p.fattura_id,importo:ci,metodo:'contanti',data:p.fattura_data,note:`€${ci} di €${p.importo}`}).then(()=>{if(bi>0)api.post('/api/pagamenti/registra',{fattura_id:p.fattura_id,importo:bi,metodo:'bonifico',data:p.fattura_data,note:`Residuo banca €${bi}`});setProvvisori(v=>v.filter(x=>x.fattura_id!==p.fattura_id));}).catch(e=>alert(e.message))}}} style={{ padding:'6px 10px', background:'#fef3c7', color:'#92400e', border:'1px solid #f59e0b', borderRadius:6, fontSize:11, cursor:'pointer', fontWeight:600 }}>Misto</button>
                 </div>
               </div>
             </div>

@@ -34,7 +34,8 @@ from .sync import (
     registra_fattura_prima_nota, sync_corrispettivi_to_prima_nota,
     sync_corrispettivi_anno, sync_fatture_pagate, get_corrispettivi_sync_status,
     import_prima_nota_batch, create_movimento_generico, collega_fatture_movimenti,
-    sync_estratto_conto_to_banca, get_fatture_provvisorie, conferma_fattura_provvisoria
+    sync_estratto_conto_to_banca, get_fatture_provvisorie, conferma_fattura_provvisoria,
+    sposta_scrittura_prima_nota
 )
 from .manutenzione import (
     fix_tipo_movimento_fatture, recalculate_all_balances, cleanup_orphan_movements,
@@ -103,6 +104,7 @@ router.add_api_route("/cassa/{movimento_id}/fattura", get_fattura_allegata_cassa
 # Provvisori - Fatture da confermare
 router.add_api_route("/provvisori", get_fatture_provvisorie, methods=["GET"])
 router.add_api_route("/provvisori/conferma", conferma_fattura_provvisoria, methods=["POST"])
+router.add_api_route("/sposta-scrittura", sposta_scrittura_prima_nota, methods=["POST"])
 
 # Banca - Sync estratto conto
 router.add_api_route("/banca/sync-estratto-conto", sync_estratto_conto_to_banca, methods=["POST"])

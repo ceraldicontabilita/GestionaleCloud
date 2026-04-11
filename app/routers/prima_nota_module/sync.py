@@ -477,17 +477,22 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
             if metodo_fornitore in ["contanti", "cassa"]:
                 suggerimento = "cassa"
                 stato_match = "confermato"
+            elif metodo_fornitore in ["sospesa", "misto"]:
+                suggerimento = "sospesa"
+                stato_match = "in_attesa"
             else:
+                # bonifico, assegno, riba, carta, sepa → SEMPRE banca
                 suggerimento = "banca"
                 stato_match = "confermato"
         # PRIORITÀ 2: Metodo dal XML della fattura
         elif metodo_xml in ["contanti", "cassa"] or metodo_code in ["MP01", "MP04"]:
             suggerimento = "cassa"
             stato_match = "confermato"
-        elif metodo_xml in ["carta"] or metodo_code in ["MP08", "MP15"]:
-            suggerimento = "cassa"
-            stato_match = "confermato"
+        elif metodo_xml in ["sospesa", "misto", ""] or not metodo_xml:
+            suggerimento = "sospesa"
+            stato_match = "in_attesa"
         else:
+            # bonifico, assegno, riba, carta, sepa, bollettino, rid, domiciliazione → BANCA
             suggerimento = "banca"
             stato_match = "in_attesa"
         
@@ -548,10 +553,9 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
         })
     
     # Auto-conferma SOLO se CERTO:
-    # 1. CASSA: fornitore=contanti o XML=contanti → auto (pagato subito in contanti)
-    # 2. BANCA: trovato in estratto conto (stato_match=confermato) → auto
-    # 3. TUTTO IL RESTO → resta provvisorio (l'utente decide)
-    # Il metodo pagamento lo definisce SOLO l'utente, non il sistema
+    # 1. CASSA: contanti confermato → auto
+    # 2. BANCA: fornitore dice banca + trovato in estratto conto → auto
+    # 3. SOSPESA/MISTO/IN_ATTESA → provvisorio
     auto_confermati = 0
     provvisori_finali = []
     
@@ -563,7 +567,7 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
         
         auto_confirm = False
         
-        # CASSA: contanti = pagato subito, sempre auto-conferma
+        # CONTANTI: sempre auto-conferma in CASSA
         if suggerimento == "cassa" and stato == "confermato":
             auto_confirm = True
         
@@ -571,7 +575,7 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
         elif suggerimento == "banca" and stato == "confermato" and p.get("movimento_banca"):
             auto_confirm = True
         
-        # TUTTO IL RESTO: provvisorio → l'utente conferma
+        # SOSPESA, MISTO, IN_ATTESA → provvisorio (utente decide)
         
         if auto_confirm:
             collection = COLLECTION_PRIMA_NOTA_CASSA if suggerimento == "cassa" else COLLECTION_PRIMA_NOTA_BANCA
@@ -587,6 +591,7 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
                         data_mov = f"{parts[2]}-{parts[1]}-{parts[0]}"
                 
                 pn_id = str(uuid.uuid4())
+                metodo_label = "contanti" if suggerimento == "cassa" else p.get("metodo_xml") or "bonifico"
                 await db[collection].insert_one({
                     "id": pn_id,
                     "data": data_mov,
@@ -596,6 +601,7 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
                     "importo": p["importo"],
                     "riferimento": ref,
                     "fattura_id": fatt_id,
+                    "metodo_pagamento": metodo_label,
                     "source": "auto_conferma",
                     "created_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
                 })
@@ -690,6 +696,71 @@ async def conferma_fattura_provvisoria(data: Dict = Body(...)) -> Dict:
     )
     
     return {"success": True, "metodo": metodo, "importo": importo, "fornitore": fornitore}
+
+
+
+async def sposta_scrittura_prima_nota(data: Dict = Body(...)) -> Dict:
+    """
+    Sposta una scrittura da Cassa a Banca o viceversa.
+    Quando l'utente cambia il metodo di pagamento, il sistema:
+    1. Rimuove dalla collection originale
+    2. Inserisce nella nuova collection
+    3. Aggiorna la fattura collegata
+    """
+    db = Database.get_db()
+    
+    movimento_id = data.get("movimento_id")
+    nuova_destinazione = data.get("destinazione")  # "cassa" o "banca"
+    
+    if nuova_destinazione not in ["cassa", "banca"]:
+        raise HTTPException(status_code=400, detail="Destinazione deve essere 'cassa' o 'banca'")
+    
+    # Cerca il movimento in entrambe le collection
+    movimento = None
+    origine = None
+    for coll in [COLLECTION_PRIMA_NOTA_CASSA, COLLECTION_PRIMA_NOTA_BANCA]:
+        mov = await db[coll].find_one({"id": movimento_id})
+        if mov:
+            movimento = mov
+            origine = "cassa" if "cassa" in coll else "banca"
+            break
+    
+    if not movimento:
+        raise HTTPException(status_code=404, detail="Movimento non trovato")
+    
+    if origine == nuova_destinazione:
+        return {"success": True, "message": "Già nella destinazione corretta"}
+    
+    # Rimuovi dalla collection originale
+    coll_origine = COLLECTION_PRIMA_NOTA_CASSA if origine == "cassa" else COLLECTION_PRIMA_NOTA_BANCA
+    await db[coll_origine].delete_one({"id": movimento_id})
+    
+    # Inserisci nella nuova collection
+    coll_dest = COLLECTION_PRIMA_NOTA_CASSA if nuova_destinazione == "cassa" else COLLECTION_PRIMA_NOTA_BANCA
+    movimento.pop("_id", None)
+    movimento["spostato_da"] = origine
+    movimento["spostato_at"] = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
+    await db[coll_dest].insert_one(movimento)
+    
+    # Aggiorna la fattura collegata
+    fattura_id = movimento.get("fattura_id")
+    if fattura_id:
+        metodo_label = "contanti" if nuova_destinazione == "cassa" else "bonifico"
+        await db["invoices"].update_one(
+            {"id": fattura_id},
+            {"$set": {
+                "prima_nota_tipo": nuova_destinazione,
+                "payment_method": metodo_label,
+            }}
+        )
+    
+    return {
+        "success": True,
+        "spostato": f"{origine} → {nuova_destinazione}",
+        "movimento_id": movimento_id,
+        "importo": movimento.get("importo"),
+    }
+
 
 
 
