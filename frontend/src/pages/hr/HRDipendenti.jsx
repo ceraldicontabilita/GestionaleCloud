@@ -22,7 +22,27 @@ function formatEuro(v) {
 }
 function formatData(d) {
   if (!d) return '—';
-  return new Date(d).toLocaleDateString('it-IT');
+  try {
+    // Se formato ISO (YYYY-MM-DD o YYYY-MM-DDTXX:XX:XX)
+    if (d.includes('-') && d.length >= 10) {
+      const parts = d.split('T')[0].split('-');
+      if (parts.length === 3 && parts[0].length === 4) {
+        return `${parts[2]}/${parts[1]}/${parts[0]}`;
+      }
+    }
+    // Se già formato italiano (DD/MM/YYYY)
+    if (d.includes('/') && d.length >= 8) {
+      return d;
+    }
+    // Fallback
+    const date = new Date(d);
+    if (!isNaN(date.getTime())) {
+      return date.toLocaleDateString('it-IT');
+    }
+    return d;
+  } catch {
+    return d || '—';
+  }
 }
 
 // ─── Anagrafica ───────────────────────────────────────────────────────────────
@@ -664,6 +684,14 @@ export default function HRDipendenti() {
     const nome = `${d.nome || ''} ${d.cognome || ''} ${d.nome_completo || ''}`.toLowerCase();
     const mansione = (d.mansione || '').toLowerCase();
     return nome.includes(q) || mansione.includes(q);
+  }).sort((a, b) => {
+    const cognA = (a.cognome || a.nome_completo || '').toLowerCase();
+    const cognB = (b.cognome || b.nome_completo || '').toLowerCase();
+    if (cognA < cognB) return -1;
+    if (cognA > cognB) return 1;
+    const nomeA = (a.nome || '').toLowerCase();
+    const nomeB = (b.nome || '').toLowerCase();
+    return nomeA < nomeB ? -1 : nomeA > nomeB ? 1 : 0;
   });
 
   return (
