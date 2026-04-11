@@ -397,6 +397,167 @@ async def sync_estratto_conto_to_banca(anno: int = Query(...)) -> Dict:
 
 
 
+async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
+    """
+    Lista fatture NON ancora registrate in Prima Nota.
+    Per ogni fattura, il sistema suggerisce CASSA o BANCA basandosi su:
+    1. Metodo pagamento XML (MP01=contanti→cassa, MP05=bonifico→banca)
+    2. Ricerca importo nell'estratto conto (se trovato → BANCA confermato)
+    """
+    db = Database.get_db()
+    
+    # Fatture dell'anno senza prima_nota_id
+    fatture = await db["invoices"].find(
+        {
+            "invoice_date": {"$regex": f"^{anno}"},
+            "total_amount": {"$gt": 0},
+            "$or": [
+                {"prima_nota_id": None}, {"prima_nota_id": ""},
+                {"prima_nota_id": {"$exists": False}},
+                {"stato_pagamento": {"$ne": "pagata"}}
+            ]
+        },
+        {"_id": 0, "xml_raw": 0, "linee": 0}
+    ).sort("invoice_date", -1).to_list(500)
+    
+    # Movimenti banca per match
+    movimenti_banca = {}
+    async for m in db["estratto_conto_movimenti"].find(
+        {"tipo": "uscita", "data_contabile": {"$regex": f"/{anno}$"}},
+        {"_id": 0, "id": 1, "importo": 1, "descrizione": 1, "data_contabile": 1}
+    ):
+        imp = float(m.get("importo", 0))
+        if imp not in movimenti_banca:
+            movimenti_banca[imp] = []
+        movimenti_banca[imp].append(m)
+    
+    provvisori = []
+    for f in fatture:
+        importo = float(f.get("total_amount", 0))
+        metodo_xml = f.get("payment_method", "")
+        metodo_code = f.get("payment_method_code", "")
+        
+        # Suggerimento basato su metodo XML
+        if metodo_xml in ["contanti", "cassa"] or metodo_code in ["MP01", "MP04"]:
+            suggerimento = "cassa"
+            stato_match = "confermato"
+        elif metodo_xml in ["carta"] or metodo_code in ["MP08", "MP15"]:
+            suggerimento = "cassa"
+            stato_match = "confermato"
+        else:
+            suggerimento = "banca"
+            stato_match = "in_attesa"
+        
+        # Se banca: cerca nell'estratto conto
+        movimento_match = None
+        if suggerimento == "banca":
+            candidati = movimenti_banca.get(importo, [])
+            nome = (f.get("supplier_name") or "").upper()
+            for m in candidati:
+                desc = (m.get("descrizione") or "").upper()
+                nome_parts = nome.split()[:2]
+                if any(p in desc for p in nome_parts if len(p) > 3):
+                    movimento_match = m
+                    stato_match = "confermato"
+                    break
+            if not movimento_match and candidati:
+                # Match solo per importo
+                movimento_match = candidati[0]
+                stato_match = "probabile"
+        
+        provvisori.append({
+            "fattura_id": f.get("id"),
+            "fattura_numero": f.get("invoice_number", ""),
+            "fattura_data": f.get("invoice_date", ""),
+            "fornitore": f.get("supplier_name", ""),
+            "fornitore_piva": f.get("supplier_vat", ""),
+            "importo": importo,
+            "metodo_xml": metodo_xml,
+            "suggerimento": suggerimento,
+            "stato_match": stato_match,
+            "movimento_banca": {
+                "data": movimento_match.get("data_contabile", "") if movimento_match else None,
+                "descrizione": (movimento_match.get("descrizione", "")[:80]) if movimento_match else None,
+                "id": movimento_match.get("id") if movimento_match else None,
+            } if movimento_match else None,
+        })
+    
+    tot_cassa = sum(p["importo"] for p in provvisori if p["suggerimento"] == "cassa")
+    tot_banca = sum(p["importo"] for p in provvisori if p["suggerimento"] == "banca")
+    
+    return {
+        "provvisori": provvisori,
+        "totale": len(provvisori),
+        "totale_cassa": round(tot_cassa, 2),
+        "totale_banca": round(tot_banca, 2),
+        "confermati": sum(1 for p in provvisori if p["stato_match"] == "confermato"),
+        "probabili": sum(1 for p in provvisori if p["stato_match"] == "probabile"),
+        "in_attesa": sum(1 for p in provvisori if p["stato_match"] == "in_attesa"),
+    }
+
+
+async def conferma_fattura_provvisoria(data: Dict = Body(...)) -> Dict:
+    """
+    Conferma una fattura provvisoria: registra in Prima Nota cassa/banca.
+    Body: { fattura_id, metodo: "cassa"|"banca", movimento_banca_id? }
+    """
+    db = Database.get_db()
+    
+    fattura_id = data.get("fattura_id")
+    metodo = data.get("metodo", "banca")
+    
+    fattura = await db["invoices"].find_one({"id": fattura_id}, {"_id": 0})
+    if not fattura:
+        raise HTTPException(status_code=404, detail="Fattura non trovata")
+    
+    importo = float(fattura.get("total_amount", 0))
+    fornitore = fattura.get("supplier_name", "")
+    numero = fattura.get("invoice_number", "")
+    data_fatt = fattura.get("invoice_date", "")
+    
+    pn_id = str(uuid.uuid4())
+    collection = COLLECTION_PRIMA_NOTA_CASSA if metodo == "cassa" else COLLECTION_PRIMA_NOTA_BANCA
+    
+    # Dedup
+    existing = await db[collection].find_one({"riferimento": f"FATT-{fattura_id}"})
+    if existing:
+        # Already registered - just update fattura
+        await db["invoices"].update_one(
+            {"id": fattura_id},
+            {"$set": {"stato_pagamento": "pagata", "prima_nota_tipo": metodo}}
+        )
+        return {"success": True, "message": "Già registrata"}
+    
+    movimento = {
+        "id": pn_id,
+        "data": data_fatt,
+        "tipo": "uscita",
+        "categoria": "Fatture",
+        "descrizione": f"Fatt. {numero} - {fornitore[:30]}",
+        "importo": importo,
+        "riferimento": f"FATT-{fattura_id}",
+        "fattura_id": fattura_id,
+        "source": "conferma_provvisori",
+        "created_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+    }
+    
+    await db[collection].insert_one(movimento)
+    
+    # Update fattura
+    await db["invoices"].update_one(
+        {"id": fattura_id},
+        {"$set": {
+            "stato_pagamento": "pagata",
+            "prima_nota_id": pn_id,
+            "prima_nota_tipo": metodo,
+            "payment_method": "contanti" if metodo == "cassa" else fattura.get("payment_method", "bonifico"),
+        }}
+    )
+    
+    return {"success": True, "metodo": metodo, "importo": importo, "fornitore": fornitore}
+
+
+
 async def import_prima_nota_batch(data: Dict = Body(...)) -> Dict:
     """Importa batch di movimenti."""
     db = Database.get_db()

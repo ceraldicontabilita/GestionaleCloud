@@ -51,6 +51,10 @@ function PrimaNotaDesktop() {
   const [cassaData, setCassaData] = useState({ movimenti: [], saldo: 0, totale_entrate: 0, totale_uscite: 0 });
   const [bancaData, setBancaData] = useState({ movimenti: [], saldo: 0, totale_entrate: 0, totale_uscite: 0 });
   const [loading, setLoading] = useState(true);
+  
+  // Provvisori
+  const [provvisori, setProvvisori] = useState([]);
+  const [provLoading, setProvLoading] = useState(false);
 
   // Quick entry forms - CASSA
   const [corrispettivo, setCorrispettivo] = useState({ data: today, importo: '' });
@@ -128,11 +132,13 @@ function PrimaNotaDesktop() {
         ecParams.append('mese', String(selectedMonth + 1));
       }
 
-      const [cassaRes, estrattoContoRes, bancaManRes] = await Promise.all([
+      const [cassaRes, estrattoContoRes, bancaManRes, provRes] = await Promise.all([
         api.get(`/api/prima-nota/cassa?${params}`),
         api.get(`/api/estratto-conto-movimenti/movimenti?${ecParams}`),
-        api.get(`/api/prima-nota/banca?${params}`)
+        api.get(`/api/prima-nota/banca?${params}`),
+        api.get(`/api/prima-nota/provvisori?anno=${selectedYear}`).catch(() => ({data: {provvisori: []}}))
       ]);
+      setProvvisori(provRes.data?.provvisori || []);
 
       setCassaData(cassaRes.data);
       
@@ -498,24 +504,6 @@ function PrimaNotaDesktop() {
         </div>
         
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <a
-            href="/dati-provvisori"
-            style={{
-              padding: '6px 14px',
-              background: '#7c3aed',
-              color: 'white',
-              border: 'none',
-              borderRadius: 6,
-              fontWeight: '700',
-              fontSize: 12,
-              textDecoration: 'none',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4
-            }}
-          >
-            📋 Dati Provvisori
-          </a>
           <button
             onClick={handleSyncFatture}
             disabled={syncing}
@@ -551,6 +539,39 @@ function PrimaNotaDesktop() {
         </div>
       </div>
       
+      {/* ===== PROVVISORI ===== */}
+      {provvisori.length > 0 && (
+        <div style={{ background: '#fefce8', border: '2px solid #fbbf24', borderRadius: 12, padding: '16px 20px', marginBottom: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 20 }}>📋</span>
+              <span style={{ fontWeight: 800, color: '#92400e', fontSize: 15 }}>{provvisori.length} Fatture da Confermare</span>
+            </div>
+            <button onClick={async () => { for (const p of provvisori) { try { await api.post('/api/prima-nota/provvisori/conferma', { fattura_id: p.fattura_id, metodo: p.suggerimento }); } catch {} } loadAllData(); }} style={{ padding: '6px 14px', background: '#22c55e', color: 'white', border: 'none', borderRadius: 6, fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>✓ Conferma Tutte</button>
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead><tr style={{ borderBottom: '2px solid #fbbf24' }}>{['Data', 'Fattura', 'Fornitore', 'Importo', 'Metodo', 'Stato', ''].map((h,i) => (<th key={i} style={{ padding: '8px', textAlign: 'left', fontWeight: 700, fontSize: 10, color: '#92400e', textTransform: 'uppercase' }}>{h}</th>))}</tr></thead>
+              <tbody>{provvisori.slice(0, 20).map(p => (
+                <tr key={p.fattura_id} style={{ borderBottom: '1px solid #fef3c7' }}>
+                  <td style={{ padding: '8px' }}>{p.fattura_data}</td>
+                  <td style={{ padding: '8px', fontWeight: 600 }}>{p.fattura_numero}</td>
+                  <td style={{ padding: '8px' }}>{(p.fornitore || '').substring(0, 25)}</td>
+                  <td style={{ padding: '8px', fontWeight: 700, color: '#059669' }}>€ {(p.importo||0).toFixed(2)}</td>
+                  <td style={{ padding: '8px' }}><span style={{ padding: '2px 8px', borderRadius: 99, fontSize: 10, fontWeight: 700, background: p.suggerimento==='cassa'?'#fef3c7':'#dbeafe', color: p.suggerimento==='cassa'?'#92400e':'#1e40af' }}>{p.suggerimento==='cassa'?'🏪 Cassa':'🏦 Banca'}</span></td>
+                  <td style={{ padding: '8px', fontSize: 10, color: p.stato_match==='confermato'?'#16a34a':p.stato_match==='probabile'?'#d97706':'#6b7280' }}>{p.stato_match==='confermato'?'✓ Verificato':p.stato_match==='probabile'?'~ Probabile':'⏳ Attesa'}</td>
+                  <td style={{ padding: '8px' }}><div style={{ display:'flex', gap:4 }}>
+                    <button onClick={async()=>{try{await api.post('/api/prima-nota/provvisori/conferma',{fattura_id:p.fattura_id,metodo:p.suggerimento});setProvvisori(v=>v.filter(x=>x.fattura_id!==p.fattura_id));}catch(e){alert(e.message)}}} style={{ padding:'3px 8px', background:'#22c55e', color:'white', border:'none', borderRadius:4, fontWeight:700, fontSize:10, cursor:'pointer' }}>✓</button>
+                    <button onClick={async()=>{const m2=p.suggerimento==='cassa'?'banca':'cassa';try{await api.post('/api/prima-nota/provvisori/conferma',{fattura_id:p.fattura_id,metodo:m2});setProvvisori(v=>v.filter(x=>x.fattura_id!==p.fattura_id));}catch(e){alert(e.message)}}} style={{ padding:'3px 8px', background:'#f1f5f9', color:'#475569', border:'1px solid #d1d5db', borderRadius:4, fontSize:10, cursor:'pointer' }}>→ {p.suggerimento==='cassa'?'Banca':'Cassa'}</button>
+                  </div></td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+          {provvisori.length > 20 && <div style={{ textAlign: 'center', padding: 8, fontSize: 12, color: '#92400e' }}>...e altri {provvisori.length - 20}</div>}
+        </div>
+      )}
+
       {/* SECTION BUTTONS - Sticky su mobile */}
       <div style={{ 
         display: 'flex', 
