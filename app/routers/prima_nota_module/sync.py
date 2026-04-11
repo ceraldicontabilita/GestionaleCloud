@@ -547,17 +547,62 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
             } if movimento_match else None,
         })
     
-    tot_cassa = sum(p["importo"] for p in provvisori if p["suggerimento"] == "cassa")
-    tot_banca = sum(p["importo"] for p in provvisori if p["suggerimento"] == "banca")
+    # Auto-conferma: fatture BANCA con match "confermato" → registra direttamente
+    auto_confermati = 0
+    provvisori_finali = []
+    
+    for p in provvisori:
+        if p["stato_match"] == "confermato" and p["suggerimento"] == "banca" and p.get("movimento_banca"):
+            # Auto-registra in Prima Nota Banca
+            fatt_id = p["fattura_id"]
+            ref = f"FATT-{fatt_id}"
+            existing = await db[COLLECTION_PRIMA_NOTA_BANCA].find_one({"riferimento": ref})
+            if not existing:
+                data_mov = p["movimento_banca"].get("data", p["fattura_data"])
+                if "/" in str(data_mov):
+                    parts = str(data_mov).split("/")
+                    if len(parts) == 3:
+                        data_mov = f"{parts[2]}-{parts[1]}-{parts[0]}"
+                
+                pn_id = str(uuid.uuid4())
+                await db[COLLECTION_PRIMA_NOTA_BANCA].insert_one({
+                    "id": pn_id,
+                    "data": data_mov,
+                    "tipo": "uscita",
+                    "categoria": "Fatture",
+                    "descrizione": f"Fatt. {p['fattura_numero']} - {p['fornitore'][:30]}",
+                    "importo": p["importo"],
+                    "riferimento": ref,
+                    "fattura_id": fatt_id,
+                    "source": "auto_riconciliazione_banca",
+                    "created_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+                })
+                await db["invoices"].update_one(
+                    {"id": fatt_id},
+                    {"$set": {"stato_pagamento": "pagata", "prima_nota_id": pn_id, "prima_nota_tipo": "banca"}}
+                )
+                auto_confermati += 1
+            else:
+                # Già registrata, aggiorna solo stato fattura
+                await db["invoices"].update_one(
+                    {"id": fatt_id},
+                    {"$set": {"stato_pagamento": "pagata", "prima_nota_tipo": "banca"}}
+                )
+        else:
+            provvisori_finali.append(p)
+    
+    tot_cassa = sum(p["importo"] for p in provvisori_finali if p["suggerimento"] == "cassa")
+    tot_banca = sum(p["importo"] for p in provvisori_finali if p["suggerimento"] == "banca")
     
     return {
-        "provvisori": provvisori,
-        "totale": len(provvisori),
+        "provvisori": provvisori_finali,
+        "totale": len(provvisori_finali),
         "totale_cassa": round(tot_cassa, 2),
         "totale_banca": round(tot_banca, 2),
-        "confermati": sum(1 for p in provvisori if p["stato_match"] == "confermato"),
-        "probabili": sum(1 for p in provvisori if p["stato_match"] == "probabile"),
-        "in_attesa": sum(1 for p in provvisori if p["stato_match"] == "in_attesa"),
+        "confermati": sum(1 for p in provvisori_finali if p["stato_match"] == "confermato"),
+        "probabili": sum(1 for p in provvisori_finali if p["stato_match"] == "probabile"),
+        "in_attesa": sum(1 for p in provvisori_finali if p["stato_match"] == "in_attesa"),
+        "auto_confermati_banca": auto_confermati,
     }
 
 
