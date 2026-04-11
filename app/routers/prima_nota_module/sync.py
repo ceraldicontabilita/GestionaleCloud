@@ -431,14 +431,37 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
             movimenti_banca[imp] = []
         movimenti_banca[imp].append(m)
     
+    # Carica metodo pagamento per fornitore (da anagrafica fornitori)
+    metodo_per_piva = {}
+    async for s in db["fornitori"].find(
+        {"metodo_pagamento": {"$exists": True, "$ne": ""}},
+        {"_id": 0, "partita_iva": 1, "metodo_pagamento": 1}
+    ):
+        piva = s.get("partita_iva", "")
+        metodo = s.get("metodo_pagamento", "")
+        if piva and metodo:
+            metodo_per_piva[piva] = metodo
+    
     provvisori = []
     for f in fatture:
         importo = float(f.get("total_amount", 0))
         metodo_xml = f.get("payment_method", "")
         metodo_code = f.get("payment_method_code", "")
+        piva = f.get("supplier_vat", "")
         
-        # Suggerimento basato su metodo XML
-        if metodo_xml in ["contanti", "cassa"] or metodo_code in ["MP01", "MP04"]:
+        # PRIORITÀ 1: Metodo dal fornitore in anagrafica
+        metodo_fornitore = metodo_per_piva.get(piva, "")
+        
+        if metodo_fornitore:
+            # Usa il metodo impostato nel fornitore
+            if metodo_fornitore in ["contanti", "cassa"]:
+                suggerimento = "cassa"
+                stato_match = "confermato"
+            else:
+                suggerimento = "banca"
+                stato_match = "confermato"
+        # PRIORITÀ 2: Metodo dal XML della fattura
+        elif metodo_xml in ["contanti", "cassa"] or metodo_code in ["MP01", "MP04"]:
             suggerimento = "cassa"
             stato_match = "confermato"
         elif metodo_xml in ["carta"] or metodo_code in ["MP08", "MP15"]:
