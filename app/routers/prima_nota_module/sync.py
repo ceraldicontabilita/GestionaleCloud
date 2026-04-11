@@ -196,6 +196,26 @@ async def _sync_corrispettivi_impl(anno: int = None) -> Dict:
         
         await db[COLLECTION_PRIMA_NOTA_CASSA].insert_one(movimento)
         inseriti += 1
+        
+        # Registra anche USCITA verso banca per pagamento elettronico (POS)
+        pag_elettronico = float(c.get("pagato_elettronico", 0) or 0)
+        if pag_elettronico > 0:
+            existing_pos = await db[COLLECTION_PRIMA_NOTA_CASSA].find_one(
+                {"corrispettivo_id": corr_id, "categoria": "POS Verso Banca"}
+            )
+            if not existing_pos:
+                movimento_pos = {
+                    "id": str(__import__("uuid").uuid4()),
+                    "data": data,
+                    "tipo": "uscita",
+                    "categoria": "POS Verso Banca",
+                    "descrizione": f"POS elettronico {data} → accredito banca giorno successivo",
+                    "importo": pag_elettronico,
+                    "corrispettivo_id": corr_id,
+                    "source": "corrispettivi_pos_sync",
+                    "created_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+                }
+                await db[COLLECTION_PRIMA_NOTA_CASSA].insert_one(movimento_pos)
     
     return {
         "message": f"Sincronizzati {inseriti} corrispettivi in Prima Nota Cassa",
@@ -471,20 +491,42 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
             suggerimento = "banca"
             stato_match = "in_attesa"
         
-        # Se banca: cerca nell'estratto conto
+        # Se banca: cerca INTELLIGENTEMENTE nell'estratto conto
         movimento_match = None
         if suggerimento == "banca":
             candidati = movimenti_banca.get(importo, [])
             nome = (f.get("supplier_name") or "").upper()
+            numero_fatt = (f.get("invoice_number") or "").upper()
+            
             for m in candidati:
                 desc = (m.get("descrizione") or "").upper()
-                nome_parts = nome.split()[:2]
-                if any(p in desc for p in nome_parts if len(p) > 3):
+                score = 0
+                
+                # Match per nome fornitore (prime 2 parole)
+                nome_parts = [p for p in nome.split()[:3] if len(p) > 3]
+                for p in nome_parts:
+                    if p in desc:
+                        score += 30
+                
+                # Match per P.IVA
+                if piva and piva in desc:
+                    score += 50
+                
+                # Match per numero fattura
+                if numero_fatt and len(numero_fatt) > 2 and numero_fatt in desc:
+                    score += 40
+                
+                # Keywords bonifico
+                if "VS.DISP" in desc or "BONIFICO" in desc:
+                    score += 10
+                
+                if score >= 30:
                     movimento_match = m
                     stato_match = "confermato"
                     break
+            
             if not movimento_match and candidati:
-                # Match solo per importo
+                # Match solo per importo — probabile ma non certo
                 movimento_match = candidati[0]
                 stato_match = "probabile"
         
