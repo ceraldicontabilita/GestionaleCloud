@@ -272,6 +272,10 @@ def _register_core(app: FastAPI):
     app.include_router(pagopa.router, tags=["PagoPA"])
     app.include_router(inps_documenti.router, prefix="/api/inps", tags=["INPS"])
     app.include_router(adr.router, prefix="/api/adr", tags=["ADR"])
+    
+    # Multi-Pagamento Fatture
+    from app.routers import multi_pagamento
+    app.include_router(multi_pagamento.router, prefix="/api/pagamenti", tags=["Multi-Pagamento"])
 
 
 # ─── Email Module ──────────────────────────────────────────────────────────
