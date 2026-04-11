@@ -41,6 +41,9 @@ export default function Dashboard() {
   // Alert Pagamenti (Stipendi + F24 DA_PAGARE)
   const [alertPagamenti, setAlertPagamenti] = useState(null);
   
+  // Verbali e Trattenute
+  const [verbaliStats, setVerbaliStats] = useState(null);
+  
   // Stato per auto-riparazione
   const [autoRepairStatus, setAutoRepairStatus] = useState(null);
   
@@ -142,6 +145,24 @@ export default function Dashboard() {
             }
           }
         }).catch(e => console.warn('Errore grafici secondari:', e));
+        
+        // Carica stats verbali/trattenute
+        api.get('/api/noleggio/veicoli?anno=' + anno).then(r => {
+          const veicoli = r.data?.veicoli || [];
+          const stats = r.data?.statistiche || {};
+          // Conta verbali totali dai veicoli
+          const verbaliTot = veicoli.reduce((s, v) => s + (v.verbali?.length || 0), 0);
+          // Carica trattenute
+          api.get('/api/email-download/statistiche').then(statRes => {
+            const verbaliEmail = statRes.data?.verbale?.totale || 0;
+            setVerbaliStats({
+              veicoli: veicoli.length,
+              canoni: stats.totale_canoni || 0,
+              verbali_costo: stats.totale_verbali || 0,
+              totale_noleggio: stats.totale_generale || 0,
+            });
+          }).catch(() => {});
+        }).catch(() => {});
         
         // alert-limiti caricato SEPARATAMENTE perché può essere lento (non blocca gli altri)
         api.get(`/api/giustificativi/alert-limiti?soglia_percentuale=80&anno=${anno}`)
@@ -544,6 +565,41 @@ export default function Dashboard() {
               </span>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Widget Noleggio Auto & Verbali */}
+      {verbaliStats && (
+        <div style={{ 
+          background: 'white', borderRadius: 12, padding: 20,
+          boxShadow: '0 2px 8px rgba(0,0,0,0.08)', marginTop: 20,
+          border: '1px solid #e5e7eb'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 24 }}>🚗</span>
+              <div>
+                <div style={{ fontWeight: 'bold', fontSize: 16, color: '#1e3a5f' }}>Noleggio Auto</div>
+                <div style={{ fontSize: 12, color: '#6b7280' }}>{verbaliStats.veicoli} veicoli in flotta</div>
+              </div>
+            </div>
+            <Link to="/noleggio" style={{ fontSize: 13, color: '#3b82f6', textDecoration: 'none' }}>Gestisci →</Link>
+          </div>
+          
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
+            <div style={{ background: '#eff6ff', borderRadius: 8, padding: '10px 14px' }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#3b82f6', textTransform: 'uppercase' }}>Canoni</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: '#1e40af' }}>{formatEuro(verbaliStats.canoni)}</div>
+            </div>
+            <div style={{ background: '#fef2f2', borderRadius: 8, padding: '10px 14px' }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#dc2626', textTransform: 'uppercase' }}>Verbali/Multe</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: '#dc2626' }}>{formatEuro(verbaliStats.verbali_costo)}</div>
+            </div>
+            <div style={{ background: '#f0fdf4', borderRadius: 8, padding: '10px 14px' }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#059669', textTransform: 'uppercase' }}>Totale Noleggio</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: '#059669' }}>{formatEuro(verbaliStats.totale_noleggio)}</div>
+            </div>
+          </div>
         </div>
       )}
 
