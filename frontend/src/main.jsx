@@ -276,9 +276,7 @@ const router = createBrowserRouter([
       // === REDIRECT ROTTE LEGACY / MANCANTI ===
       { path: "fisco", element: <Navigate to="/contabilita/calendario" replace /> },
       { path: "fisco/*", element: <Navigate to="/contabilita/calendario" replace /> },
-      { path: "riconciliazione", element: <Navigate to="/contabilita" replace /> },
-      { path: "riconciliazione-unificata", element: <Navigate to="/contabilita" replace /> },
-      { path: "riconciliazione/*", element: <Navigate to="/contabilita" replace /> },
+      { path: "riconciliazione-unificata", element: <Navigate to="/riconciliazione" replace /> },
       
       // === CATCH-ALL: rotte non trovate → Dashboard ===
       { path: "*", element: <Navigate to="/" replace /> },

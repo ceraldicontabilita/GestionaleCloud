@@ -17,6 +17,7 @@ const NAV_ITEMS = [
   { to: '/fornitori', label: 'Fornitori', Icon: Building2 },
   { to: '/dipendenti', label: 'HR', Icon: Users },
   { to: null, href: 'https://www.ceraldiapp.it', label: 'Tracciabilità', Icon: FlaskConical, external: true },
+  { to: '/riconciliazione/assegni', label: 'Assegni', Icon: FileBarChart },
 ];
 
 const ALTRO_ITEMS = [
