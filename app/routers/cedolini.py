@@ -794,18 +794,19 @@ async def cedolini_dipendente(dipendente_id: str, anno: Optional[int] = None) ->
     """
     db = Database.get_db()
     
-    # Verifica dipendente — cerca nella collection corretta
-    dipendente = await db["dipendenti"].find_one({"id": dipendente_id}, {"_id": 0, "nome_completo": 1, "nome": 1, "cognome": 1})
-    if not dipendente:
-        # Fallback alla collection legacy
-        dipendente = await db["dipendenti"].find_one({"id": dipendente_id}, {"_id": 0, "nome_completo": 1, "nome": 1})
+    # Verifica dipendente — cerca per id O codice_fiscale
+    dipendente = await db["dipendenti"].find_one(
+        {"$or": [{"id": dipendente_id}, {"codice_fiscale": dipendente_id}]},
+        {"_id": 0, "nome_completo": 1, "nome": 1, "cognome": 1, "codice_fiscale": 1}
+    )
     if not dipendente:
         raise HTTPException(status_code=404, detail="Dipendente non trovato")
     
+    cf = dipendente.get("codice_fiscale", dipendente_id)
     nome = dipendente.get("nome_completo") or (f"{dipendente.get('cognome','')} {dipendente.get('nome','')}".strip()) or dipendente.get("nome", "")
     
-    # Query cedolini
-    query = {"dipendente_id": dipendente_id}
+    # Query cedolini — cerca per dipendente_id O codice_fiscale
+    query = {"$or": [{"dipendente_id": dipendente_id}, {"codice_fiscale": cf}]}
     if anno:
         query["$or"] = [{"anno": anno}, {"anno": str(anno)}]
     
@@ -840,6 +841,51 @@ async def cedolini_dipendente(dipendente_id: str, anno: Optional[int] = None) ->
         "totale_lordo": round(totale_lordo, 2),
         "totale_netto": round(totale_netto, 2),
         "cedolini": cedolini
+    }
+
+
+@router.get("/dipendente/{dipendente_id}/trattenute")
+@handle_errors
+async def trattenute_dipendente(dipendente_id: str, anno: Optional[int] = None) -> Dict[str, Any]:
+    """
+    Lista trattenute (verbali, pignoramenti, anticipi) di un dipendente.
+    Accetta sia ID che codice_fiscale come parametro.
+    """
+    db = Database.get_db()
+    
+    # Cerca dipendente per id O codice_fiscale
+    dip = await db["dipendenti"].find_one(
+        {"$or": [{"id": dipendente_id}, {"codice_fiscale": dipendente_id}]},
+        {"_id": 0, "codice_fiscale": 1, "nome": 1, "cognome": 1}
+    )
+    cf = dip.get("codice_fiscale", dipendente_id) if dip else dipendente_id
+    
+    query_conditions = [
+        {"dipendente_id": dipendente_id},
+        {"dipendente_id": cf},
+        {"dipendente_cf": cf},
+    ]
+    
+    query = {"$or": query_conditions}
+    if anno:
+        query = {"$and": [{"$or": query_conditions}, {"anno": anno}]}
+    
+    trattenute = await db["trattenute_dipendenti"].find(
+        query, {"_id": 0}
+    ).sort([("anno", -1), ("mese", -1)]).to_list(500)
+    
+    totale = sum(float(t.get("importo", 0) or 0) for t in trattenute)
+    da_applicare = [t for t in trattenute if t.get("stato") == "da_applicare"]
+    applicate = [t for t in trattenute if t.get("stato") == "applicata"]
+    
+    return {
+        "dipendente_id": dipendente_id,
+        "trattenute": trattenute,
+        "totale": len(trattenute),
+        "importo_totale": round(totale, 2),
+        "da_applicare": len(da_applicare),
+        "applicate": len(applicate),
+        "importo_da_applicare": round(sum(float(t.get("importo", 0) or 0) for t in da_applicare), 2)
     }
 
 

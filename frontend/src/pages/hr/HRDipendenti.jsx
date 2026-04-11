@@ -146,17 +146,25 @@ function TabCedolini({ dip }) {
   const isMobile = useIsMobile();
   const [anno, setAnno] = useState(ANNO_CORRENTE);
   const [data, setData] = useState(null);
+  const [trattenute, setTrattenute] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);
-    api.get(`/api/cedolini/dipendente/${dip.id}?anno=${anno}`)
-      .then(r => setData(r.data))
-      .catch(() => setData(null))
+    Promise.all([
+      api.get(`/api/cedolini/dipendente/${dip.id || dip.codice_fiscale}?anno=${anno}`),
+      api.get(`/api/cedolini/dipendente/${dip.id || dip.codice_fiscale}/trattenute?anno=${anno}`),
+    ])
+      .then(([cedRes, trattRes]) => {
+        setData(cedRes.data);
+        setTrattenute(trattRes.data);
+      })
+      .catch(() => { setData(null); setTrattenute(null); })
       .finally(() => setLoading(false));
   }, [dip.id, anno]);
 
   const cedolini = data?.cedolini || [];
+  const listaTratt = trattenute?.trattenute || [];
 
   return (
     <div>
@@ -174,6 +182,63 @@ function TabCedolini({ dip }) {
 
       {loading && <div style={{ padding: 40, textAlign: 'center', color: COLORS.textMuted }}>Caricamento…</div>}
 
+      {/* Trattenute Alert */}
+      {!loading && listaTratt.length > 0 && (
+        <div style={{ 
+          background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, 
+          padding: '16px 20px', marginBottom: 20 
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 18 }}>⚠️</span>
+              <span style={{ fontWeight: 700, color: '#991b1b', fontSize: 14 }}>
+                Trattenute da Applicare: {trattenute?.da_applicare || 0}
+              </span>
+            </div>
+            <span style={{ fontWeight: 700, color: '#dc2626', fontSize: 16 }}>
+              € {(trattenute?.importo_da_applicare || 0).toFixed(2)}
+            </span>
+          </div>
+          
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <thead>
+              <tr>
+                {['Tipo', 'Descrizione', 'Importo', 'Mese', 'Stato'].map((h, i) => (
+                  <th key={i} style={{ padding: '6px 10px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#991b1b', textTransform: 'uppercase', borderBottom: '1px solid #fecaca' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {listaTratt.map((t, i) => (
+                <tr key={t.id || i} style={{ borderBottom: '1px solid #fee2e2' }}>
+                  <td style={{ padding: '8px 10px' }}>
+                    <span style={{ 
+                      padding: '2px 8px', borderRadius: 99, fontSize: 10, fontWeight: 600,
+                      background: t.tipo === 'verbale_multa' ? '#fef3c7' : '#e0e7ff',
+                      color: t.tipo === 'verbale_multa' ? '#92400e' : '#3730a3'
+                    }}>
+                      {t.tipo === 'verbale_multa' ? '🚗 Verbale' : t.tipo || 'Altro'}
+                    </span>
+                  </td>
+                  <td style={{ padding: '8px 10px', fontSize: 12, color: '#374151' }}>{t.descrizione || '—'}</td>
+                  <td style={{ padding: '8px 10px', fontWeight: 700, color: '#dc2626' }}>€ {parseFloat(t.importo || 0).toFixed(2)}</td>
+                  <td style={{ padding: '8px 10px' }}>{t.mese}/{t.anno}</td>
+                  <td style={{ padding: '8px 10px' }}>
+                    <span style={{
+                      padding: '2px 8px', borderRadius: 99, fontSize: 10, fontWeight: 600,
+                      background: t.stato === 'applicata' ? '#dcfce7' : '#fee2e2',
+                      color: t.stato === 'applicata' ? '#16a34a' : '#dc2626'
+                    }}>
+                      {t.stato === 'applicata' ? '✓ Applicata' : 'Da applicare'}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       {!loading && cedolini.length === 0 && (
         <div style={{ padding: 48, textAlign: 'center', color: COLORS.textMuted }}>
           <div style={{ fontWeight: 600, marginBottom: 8 }}>Nessun cedolino per il {anno}</div>
@@ -183,15 +248,16 @@ function TabCedolini({ dip }) {
 
       {!loading && cedolini.length > 0 && (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: 12, marginBottom: 24 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
             {[
-              { label: 'Cedolini', value: data?.totale_cedolini },
-              { label: 'Totale Lordo', value: formatEuro(data?.totale_lordo) },
-              { label: 'Totale Netto', value: formatEuro(data?.totale_netto) },
+              { label: 'Cedolini', value: data?.totale_cedolini, color: COLORS.text },
+              { label: 'Totale Lordo', value: formatEuro(data?.totale_lordo), color: COLORS.text },
+              { label: 'Totale Netto', value: formatEuro(data?.totale_netto), color: '#16a34a' },
+              { label: 'Trattenute Verbali', value: `€ ${(trattenute?.importo_totale || 0).toFixed(2)}`, color: '#dc2626' },
             ].map(s => (
               <div key={s.label} style={{ background: '#f8fafc', borderRadius: 8, padding: '12px 16px' }}>
                 <div style={{ fontSize: 11, fontWeight: 600, color: COLORS.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{s.label}</div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: COLORS.text, marginTop: 4 }}>{s.value ?? '—'}</div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: s.color, marginTop: 4 }}>{s.value ?? '—'}</div>
               </div>
             ))}
           </div>
@@ -418,9 +484,8 @@ function TabVerbali({ dip }) {
 
   useEffect(() => {
     setLoading(true);
-    // Cerca verbali per driver_id o driver_cf
     const cf = dip.codice_fiscale || '';
-    const id = dip.id || '';
+    const id = dip.id || dip.codice_fiscale || '';
     api.get(`/api/noleggio/verbali-dipendente?dipendente_id=${id}&codice_fiscale=${cf}`)
       .then(r => {
         const list = r.data?.verbali || [];
