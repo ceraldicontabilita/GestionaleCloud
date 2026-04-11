@@ -210,6 +210,55 @@ async def get_veicoli(
                 "totale_generale": 0
             })
     
+    # ── ARRICCHISCI CON VERBALI DAL DB verbali_noleggio ──────────────────────
+    # I verbali/multe vengono anche dalla collection verbali_noleggio
+    # (scaricati dalla PEC/Gmail), non solo dalle fatture XML
+    verbali_query = {}
+    if anno:
+        verbali_query["$or"] = [
+            {"data_verbale": {"$regex": f"^{anno}"}},
+            {"created_at": {"$regex": f"^{anno}"}}
+        ]
+    
+    verbali_db = await db["verbali_noleggio"].find(
+        {**verbali_query, "targa": {"$ne": None, "$ne": ""}},
+        {"_id": 0, "pdf_data": 0, "quietanza_pdf": 0}
+    ).to_list(500)
+    
+    # Aggiungi verbali come costi ai veicoli
+    for verbale in verbali_db:
+        targa = (verbale.get("targa") or "").upper()
+        importo = float(verbale.get("importo") or 0)
+        
+        # Trova il veicolo nel risultato
+        veicolo_target = None
+        for v in risultato:
+            if (v.get("targa") or "").upper() == targa:
+                veicolo_target = v
+                break
+        
+        if veicolo_target:
+            # Aggiungi come costo verbale
+            verbale_record = {
+                "data": verbale.get("data_verbale") or verbale.get("created_at", "")[:10],
+                "numero_verbale": verbale.get("numero_verbale"),
+                "descrizione": f"Verbale {verbale.get('numero_verbale', '')}",
+                "importo": importo,
+                "iva": 0,
+                "totale": importo,
+                "stato": verbale.get("stato"),
+                "pagato": verbale.get("stato") == "pagato",
+                "fattura_id": verbale.get("fattura_id"),
+                "fattura_numero": verbale.get("fattura_numero"),
+            }
+            
+            # Evita duplicati (se il verbale è già in fattura)
+            existing_nums = [v.get("numero_verbale") for v in veicolo_target.get("verbali", [])]
+            if verbale.get("numero_verbale") not in existing_nums:
+                veicolo_target.setdefault("verbali", []).append(verbale_record)
+                veicolo_target["totale_verbali"] = veicolo_target.get("totale_verbali", 0) + importo
+                veicolo_target["totale_generale"] = veicolo_target.get("totale_generale", 0) + importo
+    
     # Conta fatture davvero non associate
     fornitori_con_veicoli = set(v.get("fornitore_piva") for v in veicoli_salvati.values())
     fatture_davvero_non_associate = [
@@ -217,15 +266,15 @@ async def get_veicoli(
         if f.get("supplier_vat") not in fornitori_con_veicoli
     ]
     
-    # Statistiche
+    # Statistiche (DOPO arricchimento con verbali DB)
     statistiche = {
-        "totale_canoni": sum(v.get("totale_canoni", 0) for v in risultato),
-        "totale_pedaggio": sum(v.get("totale_pedaggio", 0) for v in risultato),
-        "totale_verbali": sum(v.get("totale_verbali", 0) for v in risultato),
-        "totale_bollo": sum(v.get("totale_bollo", 0) for v in risultato),
-        "totale_costi_extra": sum(v.get("totale_costi_extra", 0) for v in risultato),
-        "totale_riparazioni": sum(v.get("totale_riparazioni", 0) for v in risultato),
-        "totale_generale": sum(v.get("totale_generale", 0) for v in risultato)
+        "totale_canoni": round(sum(v.get("totale_canoni", 0) for v in risultato), 2),
+        "totale_pedaggio": round(sum(v.get("totale_pedaggio", 0) for v in risultato), 2),
+        "totale_verbali": round(sum(v.get("totale_verbali", 0) for v in risultato), 2),
+        "totale_bollo": round(sum(v.get("totale_bollo", 0) for v in risultato), 2),
+        "totale_costi_extra": round(sum(v.get("totale_costi_extra", 0) for v in risultato), 2),
+        "totale_riparazioni": round(sum(v.get("totale_riparazioni", 0) for v in risultato), 2),
+        "totale_generale": round(sum(v.get("totale_generale", 0) for v in risultato), 2)
     }
     
     return {
