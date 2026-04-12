@@ -35,6 +35,7 @@ def _register_auth(app: FastAPI):
     from app.routers import auth, public_api, google_auth, openclaw
     from app.routers.agenti import router as r_agenti
     from app.routers.erp_bridge import router as erp_bridge_router
+    from app.routers.legal_pages import router as legal_router
     
     app.include_router(public_api.router, prefix="/api", tags=["Public API"])
     app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
@@ -42,6 +43,7 @@ def _register_auth(app: FastAPI):
     app.include_router(openclaw.router, prefix="/api", tags=["OpenClaw AI Assistant"])
     app.include_router(r_agenti, prefix="/api", tags=["Agenti AI"])
     app.include_router(erp_bridge_router)
+    app.include_router(legal_router, tags=["Legal"])
 
 
 # ─── F24 Module ─────────────────────────────────────────────────────────────
