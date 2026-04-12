@@ -4,7 +4,7 @@ import api from '../api';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
-import { formatEuro, STYLES, COLORS, button, badge, useIsMobile } from '../lib/utils';
+import { formatEuro, formatDateIT, STYLES, COLORS, button, badge, useIsMobile } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
 
 // Funzione per formattare valuta come stringa pura (per PDF)
@@ -157,8 +157,8 @@ export default function Commercialista() {
     doc.setFontSize(9);
     doc.setFont(undefined, 'normal');
     doc.setTextColor(80);
-    doc.text('Via Roma, 123 - 80100 Napoli (NA)', 14, 24);
-    doc.text('P.IVA: 12345678901 - C.F.: 12345678901', 14, 29);
+    doc.text('Piazza Carità, 14 - 80134 Napoli (NA)', 14, 24);
+    doc.text('P.IVA: 04523831214 - C.F.: 04523831214', 14, 29);
     
     // Linea separatrice
     doc.setDrawColor(30, 58, 95);
