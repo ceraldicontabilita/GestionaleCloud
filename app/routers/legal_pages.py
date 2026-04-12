@@ -133,3 +133,38 @@ async def privacy_policy():
 async def terms_of_service():
     """Condizioni d'uso per Meta/WhatsApp compliance."""
     return TERMS_HTML
+
+
+@router.get("/api/data-deletion", response_class=HTMLResponse)
+@router.get("/data-deletion", response_class=HTMLResponse)
+async def data_deletion():
+    """Istruzioni per eliminazione dati utente — richiesto da Meta."""
+    return """<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Eliminazione Dati — Ceraldi Group S.R.L.</title>
+<style>
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; color: #1e293b; line-height: 1.7; }
+h1 { color: #1a40b5; }
+.box { background: #f0f4ff; padding: 20px; border-radius: 8px; margin: 20px 0; }
+</style>
+</head>
+<body>
+<h1>Eliminazione dei Dati dell'Utente</h1>
+<p><strong>Ceraldi Group S.R.L.</strong> — P.IVA 04523831214</p>
+<div class="box">
+<p>Per richiedere l'eliminazione dei tuoi dati personali dal nostro sistema, invia una email a:</p>
+<p style="font-size:20px; font-weight:bold;">📧 ceraldigroupsrl@gmail.com</p>
+<p>Oggetto: <strong>Richiesta eliminazione dati</strong></p>
+<p>Nella email indica:</p>
+<ul>
+<li>Il tuo nome e cognome</li>
+<li>Il numero di telefono associato</li>
+<li>I dati specifici che desideri eliminare</li>
+</ul>
+<p>Risponderemo entro <strong>30 giorni</strong> confermando l'avvenuta eliminazione, come previsto dal GDPR (art. 17).</p>
+</div>
+</body>
+</html>"""
