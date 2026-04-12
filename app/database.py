@@ -46,135 +46,66 @@ class Database:
     @classmethod
     async def _create_indexes(cls) -> None:
         """Create database indexes for unique constraints and performance."""
-        try:
-            db = cls.db
-            
-            # --- Invoices ---
-            await db[Collections.INVOICES].create_index(
-                "invoice_key", unique=True, sparse=True,
-                name="idx_invoice_key_unique"
-            )
-            await db[Collections.INVOICES].create_index(
-                [("fornitore_piva", 1), ("invoice_date", -1)],
-                name="idx_invoices_fornitore_data"
-            )
-            await db[Collections.INVOICES].create_index(
-                "stato", name="idx_invoices_stato"
-            )
-            
-            # --- Employees ---
-            await db[Collections.EMPLOYEES].create_index(
-                "codice_fiscale", unique=True, sparse=True,
-                name="idx_employees_cf_unique"
-            )
-            await db[Collections.EMPLOYEES].create_index(
-                "attivo", name="idx_employees_attivo"
-            )
-            
-            # --- Prima Nota Cassa ---
-            await db[Collections.CASH_MOVEMENTS].create_index(
-                [("data", -1)], name="idx_pn_cassa_data"
-            )
-            await db[Collections.CASH_MOVEMENTS].create_index(
-                [("anno", 1), ("tipo", 1)], name="idx_pn_cassa_anno_tipo"
-            )
-            
-            # --- Prima Nota Banca ---
-            await db["prima_nota_banca"].create_index(
-                [("data", -1)], name="idx_pn_banca_data"
-            )
-            await db["prima_nota_banca"].create_index(
-                [("anno", 1), ("tipo", 1)], name="idx_pn_banca_anno_tipo"
-            )
-            
-            # --- Estratto Conto ---
-            await db[Collections.BANK_STATEMENTS].create_index(
-                [("data", -1)], name="idx_ec_data"
-            )
-            await db[Collections.BANK_STATEMENTS].create_index(
-                [("importo", 1)], name="idx_ec_importo"
-            )
-            
-            # --- F24 ---
-            await db[Collections.F24_MODELS].create_index(
-                [("periodo", 1), ("stato", 1)], name="idx_f24_periodo_stato"
-            )
-            
-            # --- Cedolini ---
-            await db[Collections.PAYSLIPS].create_index(
-                [("employee_id", 1), ("anno", 1), ("mese", 1)],
-                name="idx_cedolini_emp_anno_mese"
-            )
-            
-            # --- Fornitori ---
-            await db[Collections.SUPPLIERS].create_index(
-                "partita_iva", unique=True, sparse=True,
-                name="idx_fornitori_piva_unique"
-            )
-            
-            # --- Indici aggiuntivi per performance ---
-            
-            # Anno (usato in TUTTE le query filtrate per anno fiscale)
-            await db[Collections.INVOICES].create_index("anno", name="idx_invoices_anno")
-            await db[Collections.CASH_MOVEMENTS].create_index("anno", name="idx_pn_cassa_anno")
-            await db["prima_nota_banca"].create_index("anno", name="idx_pn_banca_anno")
-            
-            # created_at / updated_at (ordinamento temporale)
-            await db[Collections.INVOICES].create_index(
-                [("created_at", -1)], name="idx_invoices_created_at"
-            )
-            await db[Collections.BANK_STATEMENTS].create_index(
-                [("created_at", -1)], name="idx_ec_created_at"
-            )
-            
-            # Riconciliazione: stato + data
-            await db[Collections.BANK_STATEMENTS].create_index(
-                [("stato_riconciliazione", 1), ("data", -1)],
-                name="idx_ec_riconciliazione_data"
-            )
-            
-            # Documenti email: data + tipo
-            await db["documenti_classificati"].create_index(
-                [("tipo_documento", 1), ("data_documento", -1)],
-                name="idx_docs_tipo_data"
-            )
-            
-            # Warehouse: product search
-            await db[Collections.WAREHOUSE_PRODUCTS].create_index(
-                [("nome", 1)], name="idx_warehouse_nome"
-            )
-            
-            # Scadenzario fornitori
-            await db["scadenziario_fornitori"].create_index(
-                [("data_scadenza", 1), ("stato", 1)],
-                name="idx_scadenzario_data_stato"
-            )
-            
-            # Corrispettivi
-            await db[Collections.CORRISPETTIVI].create_index(
-                [("data", -1)], name="idx_corrispettivi_data"
-            )
-            
-            # F24 per anno
-            await db[Collections.F24_MODELS].create_index(
-                "anno", name="idx_f24_anno"
-            )
-            
-            # Users - sparse index allows multiple documents with null email
-            # Email is optional but must be unique when present
-            await db[Collections.USERS].create_index(
-                "email", unique=True, sparse=True, name="idx_users_email_unique"
-            )
-            
-            # Text index for search on invoices
-            await db[Collections.INVOICES].create_index(
-                [("fornitore_denominazione", "text"), ("numero_documento", "text")],
-                name="idx_invoices_text_search"
-            )
-            
-            logger.info("✅ Database indexes created (invoices, employees, prima_nota, f24, cedolini, fornitori, performance indexes)")
-        except Exception as e:
-            logger.warning(f"Index creation warning (may already exist): {e}")
+        db = cls.db
+        created = 0
+        skipped = 0
+        
+        async def _safe_index(collection_name, keys, **kwargs):
+            nonlocal created, skipped
+            try:
+                await db[collection_name].create_index(keys, **kwargs)
+                created += 1
+            except Exception:
+                skipped += 1
+        
+        # --- Invoices ---
+        await _safe_index(Collections.INVOICES, "invoice_key", unique=True, sparse=True, name="idx_invoice_key_unique")
+        await _safe_index(Collections.INVOICES, [("fornitore_piva", 1), ("invoice_date", -1)], name="idx_invoices_fornitore_data")
+        await _safe_index(Collections.INVOICES, "stato", name="idx_invoices_stato")
+        
+        # --- Employees ---
+        await _safe_index(Collections.EMPLOYEES, "codice_fiscale", unique=True, sparse=True, name="idx_employees_cf_unique")
+        await _safe_index(Collections.EMPLOYEES, "attivo", name="idx_employees_attivo")
+        
+        # --- Prima Nota ---
+        await _safe_index(Collections.CASH_MOVEMENTS, [("data", -1)], name="idx_pn_cassa_data")
+        await _safe_index(Collections.CASH_MOVEMENTS, [("anno", 1), ("tipo", 1)], name="idx_pn_cassa_anno_tipo")
+        await _safe_index("prima_nota_banca", [("data", -1)], name="idx_pn_banca_data")
+        await _safe_index("prima_nota_banca", [("anno", 1), ("tipo", 1)], name="idx_pn_banca_anno_tipo")
+        
+        # --- Estratto Conto ---
+        await _safe_index(Collections.BANK_STATEMENTS, [("data", -1)], name="idx_ec_data")
+        await _safe_index(Collections.BANK_STATEMENTS, [("importo", 1)], name="idx_ec_importo")
+        
+        # --- F24 ---
+        await _safe_index(Collections.F24_MODELS, [("periodo", 1), ("stato", 1)], name="idx_f24_periodo_stato")
+        
+        # --- Cedolini ---
+        await _safe_index(Collections.PAYSLIPS, [("employee_id", 1), ("anno", 1), ("mese", 1)], name="idx_cedolini_emp_anno_mese")
+        
+        # --- Fornitori ---
+        await _safe_index(Collections.SUPPLIERS, "partita_iva", unique=True, sparse=True, name="idx_fornitori_piva_unique")
+        
+        # --- Anno indexes ---
+        await _safe_index(Collections.INVOICES, "anno", name="idx_invoices_anno")
+        await _safe_index(Collections.CASH_MOVEMENTS, "anno", name="idx_pn_cassa_anno")
+        await _safe_index("prima_nota_banca", "anno", name="idx_pn_banca_anno")
+        
+        # --- Timestamps ---
+        await _safe_index(Collections.INVOICES, [("created_at", -1)], name="idx_invoices_created_at")
+        await _safe_index(Collections.BANK_STATEMENTS, [("created_at", -1)], name="idx_ec_created_at")
+        
+        # --- Riconciliazione ---
+        await _safe_index(Collections.BANK_STATEMENTS, [("stato_riconciliazione", 1), ("data", -1)], name="idx_ec_riconciliazione_data")
+        
+        # --- Corrispettivi ---
+        await _safe_index(Collections.CORRISPETTIVI, [("data", -1)], name="idx_corrispettivi_data")
+        await _safe_index(Collections.F24_MODELS, "anno", name="idx_f24_anno")
+        
+        # --- Warehouse ---
+        await _safe_index(Collections.WAREHOUSE_PRODUCTS, [("nome", 1)], name="idx_warehouse_nome")
+        
+        logger.info(f"✅ Database indexes: {created} creati, {skipped} già esistenti")
 
     @classmethod
     async def close_db(cls) -> None:

@@ -76,6 +76,14 @@ async def sync_gmail_aruba_task():
             email_config = await db["email_accounts"].find_one({}, {"_id": 0})
         
         if not email_config:
+            # Fallback: usa variabili d'ambiente
+            import os
+            env_user = os.environ.get("IMAP_USER") or os.environ.get("EMAIL_USER")
+            env_pass = os.environ.get("IMAP_PASSWORD") or os.environ.get("EMAIL_PASSWORD")
+            if env_user and env_pass:
+                email_config = {"email": env_user, "password": env_pass, "imap_server": os.environ.get("IMAP_HOST", "imap.gmail.com")}
+        
+        if not email_config:
             logger.warning("📧 [SCHEDULER] Nessun account email configurato per sync Aruba")
             return
         
