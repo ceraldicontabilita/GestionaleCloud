@@ -159,11 +159,59 @@ frontend:
         agent: "testing"
         comment: "✅ FIX VERIFIED: Page loads correctly without infinite 'Caricamento verifica coerenza dati...' spinner. Data loads within 2 seconds and displays 'Stato: CRITICO' banner with verification cards (IVA Annuale, Versamenti Cassa vs Banca, Prima Nota vs E/C, Bonifici vs Banca). All three tabs (Riepilogo, IVA Mensile, Discrepanze) are visible and functional. The infinite loading spinner issue has been fixed."
 
+  - task: "Presenze page - 2025 Febbraio data display"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/pages/hr/HRPresenze.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ VERIFIED: Presenze page with 2025 selected and Febbraio month shows 16 dipendenti and 472.0 ore ordinarie (expected ~472). Employee names displayed correctly: Capezzuto Alessandro, Carotenuto Antonella, Cascella Giorgio, etc. Ore badges (11 found) and FE badges (9 found) are displayed next to employee names. Legenda shows 'FE = Ferie' as expected."
+
+  - task: "Presenze page - 2026 data display"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/pages/hr/HRPresenze.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ VERIFIED: Presenze page with 2026 selected shows 26 dipendenti and 2 mesi disponibili as expected. Legenda shows 'AI = Ass.za ingiustif' correctly."
+
+  - task: "Verbali page - Total verbali count and driver names"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/pages/VerbaliRiconciliazione.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ VERIFIED: Verbali page (/noleggio/verbali) shows 165 verbali totali as expected. Driver names 'Antonietta Ceraldi' and 'Vincenzo Ceraldi' are visible in the first entries. Targa values are populated (84 targa cells found in table)."
+
+  - task: "Overall navigation - Main pages load without errors"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/App.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ VERIFIED: All main pages load successfully without stuck loading spinners: Dashboard, Fatture, Cedolini, Magazzino, Presenze. No critical errors found. Minor: Some React console warnings about duplicate keys and failed Cloudflare CDN requests (non-critical)."
+
 metadata:
   created_by: "testing_agent"
   version: "1.0"
-  test_sequence: 2
-  last_tested: "2026-04-12T07:40:00Z"
+  test_sequence: 3
+  last_tested: "2026-04-12T08:20:00Z"
 
 test_plan:
   current_focus: []
@@ -176,4 +224,6 @@ agent_communication:
     message: "Completed comprehensive testing of the Cedolini page. Most features are working correctly. Found one critical data issue: one employee record shows 'Libro unico (2).pdf' instead of a proper employee name in the Per Dipendente view. This suggests that the backend data parsing or the getNomeDipendente() function needs to handle this edge case better. The issue is likely in the data import/parsing logic where employee names are extracted from PDF filenames or email attachments."
   - agent: "testing"
     message: "VERIFICATION COMPLETE (2026-04-12): All three requested fixes have been successfully verified: (1) Cedolini page now shows '(Nome non disponibile)' instead of PDF filenames - 0 PDF filenames found in 14 employee cards. (2) Noleggio Auto page has single year selector with no duplicate badges - verified 1 selector, 0 duplicate 'Anno:' badges, 4 veicoli displayed. (3) Verifica Coerenza page loads correctly without infinite spinner - data loads in <2 seconds, shows 'Stato: CRITICO' banner, all tabs visible (Riepilogo, IVA Mensile, Discrepanze). All fixes are working as expected. No issues found."
+  - agent: "testing"
+    message: "QUICK VERIFICATION COMPLETE (2026-04-12 08:20): All verification tests PASSED successfully. Test 1 - Presenze 2025 Febbraio: 16 dipendenti, 472.0 ore ordinarie, employee names (Capezzuto, Carotenuto, Cascella) visible, Ore and FE badges displayed, Legenda shows 'FE = Ferie'. Test 2 - Presenze 2026: 26 dipendenti, 2 mesi disponibili, Legenda shows 'AI = Ass.za ingiustif'. Test 3 - Verbali: 165 verbali totali, driver names (Antonietta Ceraldi, Vincenzo Ceraldi) visible, targa values populated. Test 4 - Navigation: All main pages (Dashboard, Fatture, Cedolini, Magazzino, Presenze) load successfully without errors or stuck spinners. Minor non-critical issues: React duplicate key warnings and Cloudflare CDN request failures."
 ---
