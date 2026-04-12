@@ -426,15 +426,16 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
     """
     db = Database.get_db()
     
-    # Fatture dell'anno senza prima_nota_id
+    # Fatture dell'anno NON ancora registrate in Prima Nota
+    # Logica: esclude fatture con stato_pagamento="pagata" E quelle con prima_nota_id valido
     fatture = await db["invoices"].find(
         {
             "invoice_date": {"$regex": f"^{anno}"},
             "total_amount": {"$gt": 0},
+            "stato_pagamento": {"$nin": ["pagata", "paid"]},
             "$or": [
                 {"prima_nota_id": None}, {"prima_nota_id": ""},
                 {"prima_nota_id": {"$exists": False}},
-                {"stato_pagamento": {"$ne": "pagata"}}
             ]
         },
         {"_id": 0, "xml_raw": 0, "linee": 0}
@@ -682,10 +683,14 @@ async def conferma_fattura_provvisoria(data: Dict = Body(...)) -> Dict:
     # Dedup
     existing = await db[collection].find_one({"riferimento": f"FATT-{fattura_id}"})
     if existing:
-        # Already registered - just update fattura
+        # Already registered - aggiorna fattura con prima_nota_id per escluderla dai provvisori
         await db["invoices"].update_one(
             {"id": fattura_id},
-            {"$set": {"stato_pagamento": "pagata", "prima_nota_tipo": metodo}}
+            {"$set": {
+                "stato_pagamento": "pagata",
+                "prima_nota_tipo": metodo,
+                "prima_nota_id": existing.get("id", str(existing.get("_id", ""))),
+            }}
         )
         return {"success": True, "message": "Già registrata"}
     
