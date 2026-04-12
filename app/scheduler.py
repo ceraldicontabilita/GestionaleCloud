@@ -5,6 +5,7 @@ Scheduler per task automatici.
 """
 import logging
 import uuid
+import asyncio
 from datetime import datetime
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -76,12 +77,13 @@ async def sync_gmail_aruba_task():
             email_config = await db["email_accounts"].find_one({}, {"_id": 0})
         
         if not email_config:
-            # Fallback: usa variabili d'ambiente
+            # Fallback: usa variabili d'ambiente PEC Aruba
             import os
-            env_user = os.environ.get("IMAP_USER") or os.environ.get("EMAIL_USER")
-            env_pass = os.environ.get("IMAP_PASSWORD") or os.environ.get("EMAIL_PASSWORD")
+            env_user = os.environ.get("ARUBA_PEC_USER") or os.environ.get("IMAP_USER") or os.environ.get("EMAIL_USER")
+            env_pass = os.environ.get("ARUBA_PEC_PASSWORD") or os.environ.get("IMAP_PASSWORD") or os.environ.get("EMAIL_PASSWORD")
+            env_host = os.environ.get("ARUBA_PEC_HOST", "imaps.pec.aruba.it")
             if env_user and env_pass:
-                email_config = {"email": env_user, "password": env_pass, "imap_server": os.environ.get("IMAP_HOST", "imap.gmail.com")}
+                email_config = {"email": env_user, "password": env_pass, "imap_server": env_host}
         
         if not email_config:
             logger.warning("📧 [SCHEDULER] Nessun account email configurato per sync Aruba")
@@ -287,6 +289,8 @@ async def gmail_full_scan_task():
                 }, "notifications")
             except Exception as ws_err:
                 logger.debug(f"[SCHEDULER-GMAIL] WebSocket non disponibile: {ws_err}")
+    except asyncio.CancelledError:
+        logger.warning("[SCHEDULER-GMAIL] Scansione Gmail cancellata (timeout)")
     except Exception as e:
         logger.error(f"[SCHEDULER-GMAIL] Errore scansione Gmail: {e}")
 
