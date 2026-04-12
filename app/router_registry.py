@@ -44,6 +44,9 @@ def _register_auth(app: FastAPI):
     app.include_router(r_agenti, prefix="/api", tags=["Agenti AI"])
     app.include_router(erp_bridge_router)
     app.include_router(legal_router, tags=["Legal"])
+    
+    from app.routers.whatsapp_webhook import router as whatsapp_router
+    app.include_router(whatsapp_router, prefix="/api/whatsapp", tags=["WhatsApp"])
 
 
 # ─── F24 Module ─────────────────────────────────────────────────────────────
