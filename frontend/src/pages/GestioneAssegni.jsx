@@ -155,6 +155,9 @@ export default function GestioneAssegni() {
       filtered.sort((a, b) => {
         const fornA = (a.supplier_name || a.cedente_denominazione || '').toLowerCase();
         const fornB = (b.supplier_name || b.cedente_denominazione || '').toLowerCase();
+        // N/A e vuoti vanno in fondo
+        if (!fornA && fornB) return 1;
+        if (fornA && !fornB) return -1;
         if (fornA !== fornB) return fornA.localeCompare(fornB);
         // Stesso fornitore: NC (TD04) dopo le fatture normali
         const tipoA = (a.tipo_documento || a.document_type || 'TD01');
