@@ -151,6 +151,19 @@ export default function GestioneAssegni() {
         });
       }
       
+      // ORDINA PER FORNITORE (raggruppamento visivo) poi per data decrescente
+      filtered.sort((a, b) => {
+        const fornA = (a.supplier_name || a.cedente_denominazione || '').toLowerCase();
+        const fornB = (b.supplier_name || b.cedente_denominazione || '').toLowerCase();
+        if (fornA !== fornB) return fornA.localeCompare(fornB);
+        // Stesso fornitore: NC (TD04) dopo le fatture normali
+        const tipoA = (a.tipo_documento || a.document_type || 'TD01');
+        const tipoB = (b.tipo_documento || b.document_type || 'TD01');
+        if (tipoA !== tipoB) return tipoA === 'TD04' ? 1 : -1;
+        // Stesso tipo: per data decrescente
+        return (b.invoice_date || '').localeCompare(a.invoice_date || '');
+      });
+      
       setFatture(filtered);
     } catch (error) {
       console.error('Error loading fatture:', error);
@@ -258,7 +271,7 @@ export default function GestioneAssegni() {
       setSelectedFatture(selectedFatture.filter(f => f.id !== fattura.id));
     } else if (selectedFatture.length < 4) {
       // REGOLA CONTABILE: Un assegno può pagare solo fatture dello STESSO fornitore
-      const fornitoreNuovo = fattura.supplier_name || fattura.cedente_denominazione;
+      const fornitoreNuovo = fattura.supplier_name || fattura.cedente_denominazione || fattura.fornitore;
       const fornitoreEsistente = selectedFatture[0]?.fornitore;
       
       if (fornitoreEsistente && fornitoreNuovo && 
@@ -267,12 +280,20 @@ export default function GestioneAssegni() {
         return;
       }
       
+      // Usa importo pre-calcolato (negativo per NC)
+      const tipoDoc = fattura.tipo_documento || fattura.document_type || 'TD01';
+      const isNC = tipoDoc === 'TD04';
+      const importoRaw = parseFloat(fattura.total_amount || fattura.importo_totale || fattura.importo || 0);
+      const importo = isNC ? -Math.abs(importoRaw) : importoRaw;
+      
       setSelectedFatture([...selectedFatture, {
         id: fattura.id,
         numero: fattura.invoice_number || fattura.numero_fattura,
-        importo: parseFloat(fattura.total_amount || fattura.importo_totale || 0),
+        importo: importo,
         data: fattura.invoice_date || fattura.data_fattura,
-        fornitore: fattura.supplier_name || fattura.cedente_denominazione
+        fornitore: fornitoreNuovo,
+        tipo_documento: tipoDoc,
+        is_nota_credito: isNC,
       }]);
     } else {
       alert('Puoi collegare massimo 4 fatture per assegno');
@@ -2122,8 +2143,15 @@ export default function GestioneAssegni() {
                         padding: '8px 0',
                         borderBottom: '1px solid #d1fae5'
                       }}>
-                        <span style={{ color: '#065f46' }}>{f.numero} - {f.fornitore}</span>
-                        <span style={{ fontWeight: 'bold', color: '#047857' }}>{formatEuro(f.importo)}</span>
+                        <span style={{ color: f.is_nota_credito ? '#dc2626' : '#065f46', display: 'flex', alignItems: 'center', gap: 6 }}>
+                          {f.numero} - {f.fornitore}
+                          {f.is_nota_credito && (
+                            <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: '#fee2e2', color: '#dc2626' }}>NC</span>
+                          )}
+                        </span>
+                        <span style={{ fontWeight: 'bold', color: f.is_nota_credito ? '#dc2626' : '#047857' }}>
+                          {f.is_nota_credito ? '- ' : ''}{formatEuro(Math.abs(f.importo))}
+                        </span>
                       </div>
                     ))}
                     <div style={{ 
@@ -2173,38 +2201,84 @@ export default function GestioneAssegni() {
                   </div>
                 ) : (
                   <div style={{ maxHeight: 280, overflow: 'auto', border: '1px solid #e2e8f0', borderRadius: 8 }}>
-                    {fatture.map(f => {
+                    {fatture.map((f, idx) => {
                       const isSelected = selectedFatture.find(sf => sf.id === f.id);
                       const fornitore = f.supplier_name || f.cedente_denominazione || 'N/A';
+                      const tipoDoc = f.tipo_documento || f.document_type || 'TD01';
+                      const isNotaCredito = tipoDoc === 'TD04';
+                      const importoRaw = parseFloat(f.total_amount || f.importo_totale || 0);
+                      // Note credito: importo SEMPRE negativo
+                      const importo = isNotaCredito ? -Math.abs(importoRaw) : importoRaw;
+                      
+                      // Mostra header fornitore quando cambia
+                      const prevFornitore = idx > 0 ? (fatture[idx-1].supplier_name || fatture[idx-1].cedente_denominazione || '') : '';
+                      const showFornitoreHeader = fornitore.toLowerCase() !== prevFornitore.toLowerCase();
                       
                       return (
-                        <div
-                          key={f.id}
-                          onClick={() => toggleFattura(f)}
-                          style={{
-                            padding: 14,
-                            borderBottom: '1px solid #f1f5f9',
-                            cursor: 'pointer',
-                            background: isSelected ? '#dbeafe' : 'white',
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            transition: 'background 0.15s'
-                          }}
-                        >
-                          <div>
-                            <div style={{ fontWeight: 600, color: isSelected ? '#1e40af' : '#1e293b' }}>
-                              {isSelected ? '✓ ' : '○ '}
-                              {f.invoice_number || f.numero_fattura || 'N/A'}
+                        <React.Fragment key={f.id}>
+                          {showFornitoreHeader && (
+                            <div style={{
+                              padding: '8px 14px',
+                              background: '#f1f5f9',
+                              borderBottom: '1px solid #e2e8f0',
+                              fontSize: 11,
+                              fontWeight: 700,
+                              color: '#475569',
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.03em',
+                              position: 'sticky',
+                              top: 0,
+                              zIndex: 1,
+                            }}>
+                              🏢 {fornitore}
                             </div>
-                            <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
-                              {fornitore} • {formatDateIT(f.invoice_date || f.data_fattura)}
+                          )}
+                          <div
+                            onClick={() => toggleFattura({
+                              ...f,
+                              importo_display: importo,
+                              importo: importo,
+                              fornitore: fornitore,
+                            })}
+                            style={{
+                              padding: 14,
+                              borderBottom: '1px solid #f1f5f9',
+                              cursor: 'pointer',
+                              background: isSelected ? '#dbeafe' : isNotaCredito ? '#fef2f2' : 'white',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              transition: 'background 0.15s',
+                              borderLeft: isNotaCredito ? '3px solid #ef4444' : '3px solid transparent',
+                            }}
+                          >
+                            <div>
+                              <div style={{ fontWeight: 600, color: isSelected ? '#1e40af' : isNotaCredito ? '#dc2626' : '#1e293b', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                {isSelected ? '✓ ' : '○ '}
+                                {f.invoice_number || f.numero_fattura || 'N/A'}
+                                {isNotaCredito && (
+                                  <span style={{ 
+                                    fontSize: 9, fontWeight: 700, padding: '2px 6px', 
+                                    borderRadius: 4, background: '#fee2e2', color: '#dc2626',
+                                    textTransform: 'uppercase',
+                                  }}>
+                                    Nota Credito
+                                  </span>
+                                )}
+                              </div>
+                              <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
+                                {fornitore} • {formatDateIT(f.invoice_date || f.data_fattura)}
+                              </div>
+                            </div>
+                            <div style={{ 
+                              fontWeight: 'bold', 
+                              color: isNotaCredito ? '#dc2626' : '#1e3a5f', 
+                              fontSize: 15 
+                            }}>
+                              {isNotaCredito ? '- ' : ''}{formatEuro(Math.abs(importo))}
                             </div>
                           </div>
-                          <div style={{ fontWeight: 'bold', color: '#1e3a5f', fontSize: 15 }}>
-                            {formatEuro(parseFloat(f.total_amount || f.importo_totale || 0))}
-                          </div>
-                        </div>
+                        </React.Fragment>
                       );
                     })}
                   </div>
