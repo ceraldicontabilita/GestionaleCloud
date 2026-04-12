@@ -11,9 +11,9 @@ Al suo posto: 4 pagine separate in `frontend/src/pages/hr/`.
 ### Route HR
 ```
 /dipendenti          → HRDipendenti.jsx      (anagrafica + dettaglio dipendente)
-/dipendenti/cedolini → HRCedolini.jsx        (buste paga + import Gmail)
-/dipendenti/presenze → HRPresenze.jsx        (calendario presenze)
-/dipendenti/tfr      → HRTFR.jsx             (gestione TFR e acconti)
+/cedolini            → HRCedolini.jsx        (buste paga Per Mese/Per Dipendente)
+/presenze            → HRPresenze.jsx        (calendario presenze + import PDF)
+/tfr                 → HRTFR.jsx             (gestione TFR e acconti)
 ```
 
 ### SecondaryTabs (navigazione HR)
@@ -29,7 +29,7 @@ Al suo posto: 4 pagine separate in `frontend/src/pages/hr/`.
 ## API BACKEND (tutte funzionanti)
 
 ```
-GET  /api/dipendenti                              → lista 34 dipendenti
+GET  /api/dipendenti                              → lista 30 dipendenti
 GET  /api/dipendenti/{id}                         → singolo dipendente
 PUT  /api/dipendenti/{id}                         → salva anagrafica
 GET  /api/cedolini?anno=2026                      → cedolini per anno
@@ -178,7 +178,7 @@ DELETE /api/tfr/acconti/{id}               → cancella acconto
 ## PRESENZE E GIUSTIFICATIVI
 
 **Collections presenze:**
-- `presenze` (20.989): storico completo presenze giornaliere
+- `presenze` (290): storico completo presenze giornaliere
 - `presenze_mensili` (1.629): riepiloghi mensili
 - `attendance_presenze_calendario`: calendario mensile per la UI
 

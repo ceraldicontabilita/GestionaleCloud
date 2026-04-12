@@ -12,7 +12,7 @@
 |---|---|
 | Backend | Python 3.x + FastAPI + Motor (async) |
 | Frontend | React 18 + Vite |
-| Database | MongoDB Atlas (`azienda_erp_db`) |
+| Database | MongoDB Atlas (`Gestionale`) |
 | Avvio | Supervisor (backend `:8001`, frontend `:3000`) |
 
 **Regola fondamentale**: CSS inline ONLY da `lib/utils.js` — NO Tailwind, NO Shadcn per le pagine gestionali.
@@ -40,61 +40,38 @@
 
 ---
 
-## DOCUMENTAZIONE FRONTEND
-
-| File | Contenuto |
-|---|---|
-| [DESIGN_SYSTEM.md](./DESIGN_SYSTEM.md) | Costanti COLORS/SPACING/STYLES, template pagina, componenti UI, icone, mobile |
-
----
-
-## ROADMAP E PIANIFICAZIONE
-
-| File | Contenuto |
-|---|---|
-| [PRD.md](./PRD.md) | Product requirements: stato implementazione, backlog prioritizzato, collection MongoDB |
-| [AUTOMAZIONI.md](./AUTOMAZIONI.md) | Automazioni pianificate: Prima Nota auto, schede fornitore, fascicolo dipendente, IVA mensile |
-| [AGENTI_AI.md](./AGENTI_AI.md) | Agenti AI: FiscaleSentinella, HRGuardiano, LearningCervello + visione futura |
-| [DEBITO_TECNICO.md](./DEBITO_TECNICO.md) | File da eliminare, collection duplicate, inconsistenze codice, piano di pulizia |
-
----
-
-## STORICO E CONTESTO
-
-| File | Contenuto |
-|---|---|
-| [DIARIO.md](./DIARIO.md) | Storico sessioni di sviluppo: bug risolti, decisioni prese, TODO |
-| [PATCH_HISTORY.md](./PATCH_HISTORY.md) | Patch Chat 8 applicate: reload fix, responsive, scheduler, tracciabilità |
-| [CREDENZIALI.md](./CREDENZIALI.md) | Template credenziali (placeholder — le reali sono in `backend/.env`) |
-
----
-
 ## RIFERIMENTI RAPIDI
 
-### Collections MongoDB canoniche
+### Collections MongoDB canoniche (DB: Gestionale)
 ```
-dipendenti (34)              ← HR — CANONICA (NON employees)
-cedolini (1658)              ← Buste paga
-invoices (224)               ← Fatture passive SDI
-suppliers (328)              ← Fornitori (modulo principale)
-prima_nota_cassa (2132)      ← Prima nota cassa
-prima_nota_banca (1869)      ← Prima nota banca
-corrispettivi (1114)         ← UNICA fonte ricavi
-estratto_conto_movimenti (4468) ← Movimenti bancari
-f24_unificato (68)           ← F24
+dipendenti (30)                  ← HR — CANONICA (NON employees)
+cedolini (301)                   ← Buste paga (Zucchetti v2)
+presenze (290)                   ← Presenze giornaliere
+invoices (1.405)                 ← Fatture passive SDI (TD01+TD04)
+fornitori (245)                  ← Fornitori — CANONICA (NON suppliers)
+prima_nota_cassa (136)           ← Prima nota cassa
+prima_nota_banca (4.365)         ← Prima nota banca
+corrispettivi (54)               ← UNICA fonte ricavi
+estratto_conto_movimenti (8.839) ← Movimenti bancari
+assegni (220)                    ← Gestione assegni
+warehouse_stocks (496)           ← Magazzino — CANONICA (NON warehouse_inventory)
+verbali_noleggio (165)           ← Verbali noleggio auto
+f24_unificato (1)                ← F24
 ```
 
 ### API più usate
 ```
 GET  /api/dipendenti
 GET  /api/cedolini?anno=2026
-GET  /api/fatture-ricevute/archivio?anno=2026
+GET  /api/invoices?anno=2026
 GET  /api/prima-nota/cassa?anno=2026
 GET  /api/prima-nota/banca?anno=2026
-GET  /api/suppliers?page=1&limit=50
+GET  /api/prima-nota/provvisori?anno=2026
+GET  /api/attendance/libro-unico?anno=2026
+POST /api/attendance/libro-unico/import-pdf
+GET  /api/products/catalog
 POST /api/bank/import-estratto-conto
 POST /api/cedolini/import-gmail?since_days=180
-POST /api/email-download/pec/download-fatture-sync?since_days=30
 GET  /api/health
 ```
 
@@ -103,13 +80,16 @@ GET  /api/health
 /               → Dashboard
 /fornitori      → Anagrafica Fornitori
 /dipendenti     → HR Dipendenti
-/dipendenti/cedolini → Buste Paga
-/dipendenti/presenze → Presenze
-/dipendenti/tfr      → TFR
-/prima-nota     → Prima Nota Hub
+/cedolini       → Buste Paga (vista Per Mese / Per Dipendente)
+/presenze       → Presenze & Calendario (import PDF Libro Unico)
+/tfr            → TFR
+/prima-nota     → Prima Nota Hub (Cassa + Banca + Provvisori)
 /fatture        → Archivio Fatture Ricevute
-/corrispettivi  → Corrispettivi RT
-/tracciabilita  → Tracciabilità HACCP (link a ceraldiapp.it)
+/noleggio       → Flotta Auto + Verbali + Riepilogo Costi
+/magazzino      → Giacenze (496 prodotti)
+/riconciliazione → Riconciliazione bancaria + Assegni
+/contabilita    → Piano Conti + Bilancio + IVA
+/strumenti      → Verifica Coerenza + Commercialista
 ```
 
 ### Regole critiche
@@ -117,9 +97,15 @@ GET  /api/health
 2. **IMAP**: sempre in `asyncio.to_thread()` — mai diretto in async
 3. **_id MongoDB**: escludere sempre con `{"_id": 0}`
 4. **Collection dipendenti**: usare `dipendenti`, NON `employees`
-5. **Volume d'affari**: solo da `corrispettivi` — NON da `invoices`
-6. **Auth**: disabilitata (`AUTH_DISABLED=true`)
-7. **server.py**: NON cancellare — avvio Supervisor
+5. **Collection fornitori**: usare `fornitori`, NON `suppliers`
+6. **Collection magazzino**: usare `warehouse_stocks`, NON `warehouse_inventory`
+7. **DB name**: `Gestionale` (NON `azienda_erp_db`)
+8. **Volume d'affari**: solo da `corrispettivi` — NON da `invoices`
+9. **Auth**: disabilitata (`AUTH_DISABLED=true`)
+10. **server.py**: NON cancellare — avvio Supervisor
+11. **Settings priority**: `.env` > OS env (intenzionale)
+12. **Cedolini**: usare campo `nome_dipendente` per display nome
+13. **Note credito**: TD04 → importo negativo nel modal assegni
 
 ---
 

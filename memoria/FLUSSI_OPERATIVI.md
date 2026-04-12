@@ -164,7 +164,7 @@ POST /api/cedolini/import-gmail?since_days=180
 - Parsing filename: `"Busta paga - Nome - Aprile 2026.pdf"` → `mese=4, anno=2026`
 
 **Collections:**
-- `cedolini` (1.658): principale — tutte le fonti
+- `cedolini` (301): principale — tutte le fonti
 - `cedolini_importati` (2.363): sistema Zucchetti cloud
 
 ---

@@ -135,7 +135,7 @@ app/scripts/unifica_fornitori_suppliers.py    → script eseguito, da eliminare
 ### Magazzino (sovrapposti)
 | Collection | Record | Situazione |
 |---|---|---|
-| `warehouse_inventory` | 6.885 | CANONICA — giacenze correnti |
+| `warehouse_stocks` | 496 | CANONICA — giacenze correnti (NON warehouse_inventory) |
 | `warehouse_stocks` | 1.484 | DEPRECATA — dati obsoleti |
 | `warehouse_movements` | ~3.935 | CANONICA — movimenti |
 | `magazzino_movimenti` | — | ALIAS |
@@ -144,7 +144,7 @@ app/scripts/unifica_fornitori_suppliers.py    → script eseguito, da eliminare
 ### Presenze (troppo frammentate)
 | Collection | Uso |
 |---|---|
-| `presenze` (20.989) | CANONICA |
+| `presenze` (290) | CANONICA |
 | `presenze_mensili` (1.629) | RIEPILOGO |
 | `attendance_presenze_calendario` | CALENDARIO UI |
 | `libro_unico_presenze` | IMPORT |

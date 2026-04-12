@@ -10,7 +10,7 @@
 | Backend | Python 3.x + FastAPI 0.110.1 | Entry point: `backend/server.py` |
 | ORM / DB driver | Motor 3.3.1 (async) + PyMongo 4.5.0 | MongoDB asincrono |
 | Frontend | React 18 + Vite | Porta 3000 (supervisor) |
-| Database | MongoDB Atlas | DB: `azienda_erp_db` (alias `Gestionale`) |
+| Database | MongoDB Atlas | DB: `Gestionale` |
 | Scheduler | APScheduler | Task automatici: PEC, Gmail, F24 |
 | Auth | JWT (pyjwt + bcrypt + passlib) | **DISABILITATA** (`AUTH_DISABLED=true`) |
 | Email | IMAPClient (sincrono in thread) | Gmail + Aruba PEC |
