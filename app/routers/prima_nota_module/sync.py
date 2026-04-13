@@ -209,25 +209,9 @@ async def _sync_corrispettivi_impl(anno: int = None) -> Dict:
             await db[COLLECTION_PRIMA_NOTA_CASSA].insert_one(movimento)
             inseriti += 1
         
-        # Registra anche USCITA verso banca per pagamento elettronico (POS)
-        pag_elettronico = float(c.get("pagato_elettronico", 0) or 0)
-        if pag_elettronico > 0:
-            existing_pos = await db[COLLECTION_PRIMA_NOTA_CASSA].find_one(
-                {"corrispettivo_id": corr_id, "categoria": "POS Verso Banca"}
-            )
-            if not existing_pos:
-                movimento_pos = {
-                    "id": str(__import__("uuid").uuid4()),
-                    "data": data,
-                    "tipo": "uscita",
-                    "categoria": "POS Verso Banca",
-                    "descrizione": f"POS elettronico {data} → accredito banca giorno successivo",
-                    "importo": pag_elettronico,
-                    "corrispettivo_id": corr_id,
-                    "source": "corrispettivi_pos_sync",
-                    "created_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
-                }
-                await db[COLLECTION_PRIMA_NOTA_CASSA].insert_one(movimento_pos)
+        # NOTA: Il pagamento elettronico (POS) NON va in cassa come uscita.
+        # Il POS va diretto in banca come accredito (si trova nell'estratto conto).
+        # I campi pagato_contanti e pagato_elettronico sono salvati per informazione.
     
     return {
         "message": f"Sincronizzati {inseriti} corrispettivi in Prima Nota Cassa",

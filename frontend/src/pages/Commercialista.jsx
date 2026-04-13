@@ -235,6 +235,15 @@ export default function Commercialista() {
     const totUscite = primaNotaData.totale_uscite || 0;
     const saldo = totEntrate - totUscite;
     
+    // Calcola totale POS dai corrispettivi (info, non in cassa)
+    const totalePOS = movimenti
+      .filter(m => (m.tipo === 'entrata' || m.type === 'entrata') && (m.categoria === 'Corrispettivi' || m.category === 'Corrispettivi'))
+      .reduce((sum, m) => sum + parseFloat(m.pagato_elettronico || 0), 0);
+    
+    const totaleGiornata = movimenti
+      .filter(m => (m.tipo === 'entrata' || m.type === 'entrata') && (m.categoria === 'Corrispettivi' || m.category === 'Corrispettivi'))
+      .reduce((sum, m) => sum + parseFloat(m.totale_giornata || m.importo || 0), 0);
+    
     // Calcola ultimo giorno del mese per il saldo
     const ultimoGiorno = new Date(selectedYear, selectedMonth + 1, 0).getDate();
     const dataOggi = new Date();
@@ -263,6 +272,16 @@ export default function Commercialista() {
     
     doc.text('Corrispettivi Contanti:', 20, yLeft);
     doc.text(fmt(entrateCorresp), 96, yLeft, { align: 'right' });
+    
+    if (totalePOS > 0) {
+      yLeft += 6;
+      doc.setTextColor(100);
+      doc.setFont(undefined, 'italic');
+      doc.text('Pagam. Elettronico (→ Banca):', 20, yLeft);
+      doc.text(fmt(totalePOS), 96, yLeft, { align: 'right' });
+      doc.setFont(undefined, 'normal');
+      doc.setTextColor(60);
+    }
     
     if (entrateFinSoci > 0) {
       yLeft += 6;
