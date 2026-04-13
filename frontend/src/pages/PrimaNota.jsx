@@ -858,65 +858,6 @@ function PrimaNotaDesktop() {
             ⚠️ <strong>Nota contabile:</strong> Gli "Accrediti" mostrano tutti i movimenti in entrata sul conto bancario (POS, bonifici, depositi, finanziamenti). <strong>I ricavi reali dell'azienda sono nei Corrispettivi</strong>, visibili nella sezione Cassa. Alcuni accrediti (es. bonifici interni, finanziamenti) non sono ricavi.
           </div>
 
-          {/* Import CSV toolbar */}
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 14px' }}>
-            <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Estratto Conto:</span>
-            
-            {/* Import incrementale */}
-            <input
-              ref={bancaCSVRef}
-              type="file"
-              accept=".csv"
-              style={{ display: 'none' }}
-              onChange={handleImportCSVBanca}
-              data-testid="input-import-csv-banca"
-            />
-            <button
-              data-testid="btn-import-csv-banca"
-              onClick={() => bancaCSVRef.current?.click()}
-              disabled={importingCSV}
-              style={{
-                padding: '7px 14px',
-                background: importingCSV ? '#9ca3af' : '#3b82f6',
-                color: 'white', border: 'none', borderRadius: 7,
-                cursor: importingCSV ? 'not-allowed' : 'pointer',
-                fontWeight: 600, fontSize: 12
-              }}
-              title="Aggiorna incrementalmente: salta movimenti già presenti"
-            >
-              {importingCSV ? '...' : '📥 Importa CSV'}
-            </button>
-
-            {/* Force reimport */}
-            <input
-              ref={bancaForceReimportRef}
-              type="file"
-              accept=".csv"
-              style={{ display: 'none' }}
-              onChange={handleForceReimportBanca}
-              data-testid="input-force-reimport-banca"
-            />
-            <button
-              data-testid="btn-force-reimport-banca"
-              onClick={() => bancaForceReimportRef.current?.click()}
-              disabled={forceReimporting}
-              style={{
-                padding: '7px 14px',
-                background: forceReimporting ? '#9ca3af' : '#dc2626',
-                color: 'white', border: 'none', borderRadius: 7,
-                cursor: forceReimporting ? 'not-allowed' : 'pointer',
-                fontWeight: 600, fontSize: 12
-              }}
-              title="Cancella e reimporta completamente gli anni del CSV (mantiene commissioni duplicate)"
-            >
-              {forceReimporting ? '...' : '🔄 Forza Aggiornamento'}
-            </button>
-
-            <span style={{ fontSize: 11, color: '#6b7280', marginLeft: 4 }}>
-              <strong>Forza Aggiornamento</strong> = cancella e reimporta gli anni del CSV (corregge saldo e commissioni)
-            </span>
-          </div>
-
           {/* Filter - Bottoni Mesi */}
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 14, color: '#6b7280', marginRight: 8 }}>📅 Mese:</span>

@@ -42,10 +42,11 @@ const S = {
     zIndex: 1000,
     display: 'flex',
     alignItems: 'center',
-    background: COLORS.primary,
+    background: '#1e3a5f',
     boxShadow: '0 2px 8px rgba(0,0,0,0.18)',
     padding: '0 12px',
     gap: 0,
+    overflow: 'hidden',
   },
   brand: {
     display: 'flex',
