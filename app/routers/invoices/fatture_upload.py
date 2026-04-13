@@ -239,6 +239,38 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
     
     logger.info(f"Fattura importata: {invoice.get('invoice_number')} - {invoice.get('supplier_name')}")
     
+    # AUTO-REGISTRA in Prima Nota se il fornitore ha metodo definito (non sospesa)
+    if metodo_pagamento and metodo_pagamento not in ['sospesa', 'misto']:
+        import uuid as _uuid
+        pn_id = str(_uuid.uuid4())
+        is_cassa = metodo_pagamento in ['contanti', 'cassa']
+        pn_collection = "prima_nota_cassa" if is_cassa else "prima_nota_banca"
+        
+        await db[pn_collection].insert_one({
+            "id": pn_id,
+            "data": invoice.get("invoice_date", ""),
+            "tipo": "uscita",
+            "categoria": "Fatture",
+            "descrizione": f"Fatt. {invoice.get('invoice_number','')} - {invoice.get('supplier_name','')[:30]}",
+            "importo": invoice.get("total_amount", 0),
+            "fattura_id": invoice["id"],
+            "riferimento": f"FATT-{invoice['id']}",
+            "source": "auto_import",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+        
+        await db[Collections.INVOICES].update_one(
+            {"id": invoice["id"]},
+            {"$set": {
+                "prima_nota_id": pn_id,
+                "prima_nota_tipo": "cassa" if is_cassa else "banca",
+                "prima_nota_cassa_id": pn_id if is_cassa else None,
+                "prima_nota_banca_id": pn_id if not is_cassa else None,
+                "stato_pagamento": "pagata",
+            }}
+        )
+        logger.info(f"  → Auto-registrata in {'CASSA' if is_cassa else 'BANCA'} (metodo fornitore: {metodo_pagamento})")
+    
     return invoice
 
 
