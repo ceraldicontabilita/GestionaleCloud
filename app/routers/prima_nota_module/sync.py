@@ -484,10 +484,10 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
         if stato_pag == "sospesa":
             suggerimento = "sospesa"
             stato_match = "in_attesa"
-        # PRIORITÀ 1: Metodo dal fornitore in anagrafica
+        # PRIORITÀ 1 (UNICA): Metodo dal fornitore in anagrafica
+        # REGOLA: il metodo XML della fattura NON viene MAI usato
         elif metodo_per_piva.get(piva, ""):
             metodo_fornitore = metodo_per_piva.get(piva, "")
-            # Usa il metodo impostato nel fornitore
             if metodo_fornitore in ["contanti", "cassa"]:
                 suggerimento = "cassa"
                 stato_match = "confermato"
@@ -495,19 +495,11 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
                 suggerimento = "sospesa"
                 stato_match = "in_attesa"
             else:
-                # bonifico, assegno, riba, carta, sepa → SEMPRE banca
                 suggerimento = "banca"
                 stato_match = "confermato"
-        # PRIORITÀ 2: Metodo dal XML della fattura
-        elif metodo_xml in ["contanti", "cassa"] or metodo_code in ["MP01", "MP04"]:
-            suggerimento = "cassa"
-            stato_match = "confermato"
-        elif metodo_xml in ["sospesa", "misto", ""] or not metodo_xml:
-            suggerimento = "sospesa"
-            stato_match = "in_attesa"
+        # NESSUN METODO FORNITORE → sospesa (da decidere manualmente)
         else:
-            # bonifico, assegno, riba, carta, sepa, bollettino, rid, domiciliazione → BANCA
-            suggerimento = "banca"
+            suggerimento = "sospesa"
             stato_match = "in_attesa"
         
         # Se banca: cerca INTELLIGENTEMENTE nell'estratto conto

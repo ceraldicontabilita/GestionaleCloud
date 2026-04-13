@@ -313,6 +313,10 @@ async def update_supplier(supplier_id: str, data: Dict[str, Any] = Body(...)) ->
         if data["metodo_pagamento"] not in PAYMENT_METHODS:
             raise HTTPException(status_code=400, detail="Metodo pagamento non valido")
         metodo_configurato = data["metodo_pagamento"] is not None and data["metodo_pagamento"] != ""
+        
+        # Se cambia metodo, salva la data del cambio e lo storico
+        if metodo_configurato:
+            data["metodo_pagamento_dal"] = data.get("metodo_pagamento_dal") or datetime.now(timezone.utc).strftime("%Y-%m-%d")
     
     if "termini_pagamento" in data:
         term = next((t for t in PAYMENT_TERMS if t["code"] == data["termini_pagamento"]), None)
@@ -333,6 +337,21 @@ async def update_supplier(supplier_id: str, data: Dict[str, Any] = Body(...)) ->
         {"$or": [{"id": supplier_id}, {"partita_iva": supplier_id}]},
         {"$set": data}
     )
+    
+    # Se metodo cambiato, salva nello storico
+    if metodo_configurato:
+        old_supplier = await db[Collections.SUPPLIERS].find_one(
+            {"$or": [{"id": supplier_id}, {"partita_iva": supplier_id}]},
+            {"metodo_pagamento": 1, "denominazione": 1}
+        )
+        await db[Collections.SUPPLIERS].update_one(
+            {"$or": [{"id": supplier_id}, {"partita_iva": supplier_id}]},
+            {"$push": {"storico_metodi_pagamento": {
+                "metodo": data["metodo_pagamento"],
+                "dal": data.get("metodo_pagamento_dal", datetime.now(timezone.utc).strftime("%Y-%m-%d")),
+                "registrato_il": datetime.now(timezone.utc).isoformat(),
+            }}}
+        )
     
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Fornitore non trovato")
