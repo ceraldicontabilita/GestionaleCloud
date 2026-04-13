@@ -218,8 +218,6 @@ const router = createBrowserRouter([
       { path: "ai-parser", element: <Navigate to="/documenti/import" replace /> },
       { path: "ai-parser/:tipo", element: <LazyPage><DocumentiHub /></LazyPage> },
       { path: "lettura-documenti", element: <Navigate to="/documenti/import" replace /> },
-      { path: "correzione-ai", element: <Navigate to="/documenti/correzione-ai" replace /> },
-      { path: "correzione-ai/:documento", element: <LazyPage><DocumentiHub /></LazyPage> },
 
       // === DOCUMENTI ===
       { path: "documenti", element: <LazyPage><DocumentiHub /></LazyPage> },

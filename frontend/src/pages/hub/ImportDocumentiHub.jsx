@@ -3,7 +3,6 @@ import { useLocation } from 'react-router-dom';
 
 const ImportContent = lazy(() => import('../ImportDocumenti.jsx'));
 const ImportAIContent = lazy(() => import('../ImportDocumentiAI.jsx'));
-const CorrezioneContent = lazy(() => import('../CorrezioneAI.jsx'));
 
 const Loading = () => (
   <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>
@@ -25,7 +24,6 @@ export default function ImportDocumentiHub() {
 
   const getContent = () => {
     if (path.includes('/import-ai')) return <ImportAIContent />;
-    if (path.includes('/correzione-ai')) return <CorrezioneContent />;
     return <ImportContent />;
   };
 

@@ -7,14 +7,12 @@ const ArchivioContent       = lazy(() => import('../Documenti.jsx'));
 const ImportContent         = lazy(() => import('../ImportDocumenti.jsx'));
 const DaRivedereContent     = lazy(() => import('../DocumentiDaRivedere.jsx'));
 const ClassificazioneContent = lazy(() => import('../ClassificazioneDocumenti.jsx'));
-const CorrezioneAIContent   = lazy(() => import('../CorrezioneAI.jsx'));
 
 const TABS = [
   { id: 'archivio',        label: '📁 Archivio',           color: '#3b82f6' },
   { id: 'import',          label: '📥 Import Documenti',   color: '#8b5cf6' },
   { id: 'da-rivedere',     label: '👁️ Da Rivedere',        color: '#f59e0b' },
   { id: 'classificazione', label: '🏷️ Classificazione',    color: '#10b981' },
-  { id: 'correzione-ai',   label: '🤖 Correzione AI',      color: '#ec4899' },
 ];
 
 const Loading = () => (
@@ -35,7 +33,6 @@ const Loading = () => (
 const getTabFromPath = (pathname) => {
   if (pathname.includes('/documenti-da-rivedere') || pathname.includes('/documenti/da-rivedere')) return 'da-rivedere';
   if (pathname.includes('/classificazione-documenti') || pathname.includes('/documenti/classificazione')) return 'classificazione';
-  if (pathname.includes('/correzione-ai') || pathname.includes('/documenti/correzione-ai')) return 'correzione-ai';
   if (pathname.includes('/import-documenti') || pathname.includes('/documenti/import')) return 'import';
   if (pathname.includes('/documenti/')) {
     const m = pathname.match(/\/documenti\/([\w-]+)/);
@@ -75,7 +72,6 @@ export default function DocumentiHub() {
     'import':          ImportContent,
     'da-rivedere':     DaRivedereContent,
     'classificazione': ClassificazioneContent,
-    'correzione-ai':   CorrezioneAIContent,
   };
 
   return (
