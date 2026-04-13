@@ -185,7 +185,8 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
     # Assicura che il fornitore esista
     supplier_result = await ensure_supplier_exists(db, parsed)
     supplier_id = supplier_result.get("supplier_id")
-    metodo_pagamento = supplier_result.get("metodo_pagamento") or "bonifico"
+    # REGOLA: metodo pagamento SOLO dal fornitore. Se non definito → sospesa (provvisorio)
+    metodo_pagamento = supplier_result.get("metodo_pagamento") or "sospesa"
     
     # Calcola data scadenza
     data_fattura_str = parsed.get("invoice_date", "")
