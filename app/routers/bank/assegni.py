@@ -863,11 +863,25 @@ async def auto_associa_assegni() -> Dict[str, Any]:
         "stato": {"$nin": ["annullato", "incassato"]}
     }, {"_id": 0}).to_list(1000)
     
-    # Carica fatture non pagate
-    fatture = await db[Collections.INVOICES].find({
+    # Carica fatture non pagate — SOLO di fornitori che pagano con assegno
+    # Carica metodo pagamento fornitori
+    metodo_fornitori = {}
+    async for f in db[Collections.SUPPLIERS].find({'metodo_pagamento': {'$exists': True}}, {'partita_iva': 1, 'metodo_pagamento': 1}):
+        if f.get('partita_iva'):
+            metodo_fornitori[f['partita_iva']] = (f.get('metodo_pagamento') or '').lower()
+    
+    fatture_raw = await db[Collections.INVOICES].find({
         "status": {"$nin": STATI_PAGATI},
         "total_amount": {"$gt": 0}
     }, {"_id": 0}).to_list(5000)
+    
+    # Filtra: solo fatture di fornitori con metodo assegno o misto o senza metodo
+    fatture = []
+    for f in fatture_raw:
+        piva = f.get('supplier_vat', '')
+        metodo = metodo_fornitori.get(piva, '')
+        if metodo in ['assegno', 'misto', '']:
+            fatture.append(f)
     
     # Carica associazioni storiche per learning
     associazioni_storiche = await db[COLLECTION_ASSEGNI].find({
