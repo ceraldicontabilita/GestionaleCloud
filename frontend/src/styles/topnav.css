@@ -482,3 +482,219 @@
   background: #c7dff9;
   border-radius: 5px;
 }
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   MOBILE FIXES GLOBALI — patch mobile-first
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ─── OVERFLOW CONTROL ──────────────────────────────────────── */
+html, body {
+  overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
+}
+
+.topnav-layout {
+  overflow-x: hidden;
+}
+
+/* ─── INPUTS: evita zoom iOS al tap (font-size deve essere >=16px) ─── */
+@media (max-width: 768px) {
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+  /* Ripristina font piccoli per checkbox e radio */
+  input[type="checkbox"], input[type="radio"] {
+    font-size: inherit !important;
+  }
+}
+
+/* ─── TABELLE responsive ─────────────────────────────────────── */
+@media (max-width: 768px) {
+  /* Ogni tabella diretta deve essere in un contenitore scrollable */
+  table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    max-width: 100%;
+    white-space: nowrap;
+  }
+  table thead, table tbody {
+    display: table;
+    width: max-content;
+    min-width: 100%;
+  }
+  /* Celle più compatte */
+  table td, table th {
+    font-size: 12.5px !important;
+    padding: 6px 8px !important;
+  }
+}
+
+/* ─── MODALI e card ─────────────────────────────────────────── */
+@media (max-width: 768px) {
+  /* Modali generici: mai escono dallo schermo */
+  [role="dialog"],
+  .modal,
+  .dialog-overlay > div {
+    max-width: calc(100vw - 16px) !important;
+    max-height: calc(100vh - 16px) !important;
+    margin: 8px !important;
+    box-sizing: border-box;
+  }
+  /* Card con padding più piccolo */
+  .card, .page-card {
+    padding: 12px !important;
+  }
+  /* Hide scrollbar su scroll orizzontale mobile (rimane funzionale) */
+  .scroll-x::-webkit-scrollbar {
+    height: 3px;
+  }
+}
+
+/* ─── HEADER pagina responsive ───────────────────────────────── */
+@media (max-width: 768px) {
+  /* Riduce header pagine e padding */
+  .topnav-layout .page-content {
+    padding: 8px 12px 90px !important;
+    padding-top: calc(var(--topnav-height) + 4px) !important;
+  }
+  h1, .page-title {
+    font-size: 18px !important;
+    line-height: 1.3;
+  }
+  h2 {
+    font-size: 16px !important;
+  }
+  h3 {
+    font-size: 14px !important;
+  }
+}
+
+/* ─── GRID: forza 1 colonna sotto 480px ──────────────────────── */
+@media (max-width: 480px) {
+  [style*="grid-template-columns"] {
+    /* 2-3-4 colonne → 1 colonna sotto 480px */
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   MOBILE MENU OVERLAY — mancante in App.jsx
+   ═══════════════════════════════════════════════════════════════════ */
+
+.mobile-menu-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(13, 24, 41, 0.55);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 1500;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  animation: mmOverlayFade 0.22s ease-out;
+}
+
+@keyframes mmOverlayFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.mobile-menu {
+  background: #fff;
+  width: 100%;
+  max-width: 520px;
+  max-height: 85vh;
+  border-radius: 20px 20px 0 0;
+  box-shadow: 0 -8px 40px rgba(0,0,0,0.25);
+  display: flex;
+  flex-direction: column;
+  animation: mmSlideUp 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+}
+
+@keyframes mmSlideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+.mobile-menu-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--ceraldi-border);
+  background: linear-gradient(180deg, #fff 0%, #f6faff 100%);
+}
+
+.mobile-menu-header .brand-square {
+  background: var(--ceraldi-primary);
+}
+
+.mobile-menu-close {
+  margin-left: auto;
+  background: #f0f4ff;
+  border: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  font-size: 18px;
+  color: var(--ceraldi-primary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+
+.mobile-menu-close:hover {
+  background: #dfe8ff;
+}
+
+.mobile-menu-items {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 10px 10px calc(16px + env(safe-area-inset-bottom, 0px));
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.mobile-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #f6faff;
+  color: #0d1829;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 600;
+  transition: all 0.15s;
+  border: 1.5px solid transparent;
+  min-height: 48px;
+}
+
+.mobile-menu-item:hover,
+.mobile-menu-item:active {
+  background: #e2eef8;
+}
+
+.mobile-menu-item.active {
+  background: var(--ceraldi-primary);
+  color: #fff;
+  border-color: var(--ceraldi-primary-dark);
+}
+
+.mobile-menu-item span:first-child {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+/* Su schermi molto piccoli, 1 colonna */
+@media (max-width: 380px) {
+  .mobile-menu-items {
+    grid-template-columns: 1fr;
+  }
+}
