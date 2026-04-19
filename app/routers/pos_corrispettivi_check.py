@@ -153,6 +153,10 @@ async def verifica_coerenza_pos_corrispettivi(
         
         elettronico_xml = corr["elettronico"]
         pos_accreditato = pos["importo"]
+        pos_manuale = chiusure_by_date.get(data, 0)
+        
+        # Usa POS manuale (chiusure giornaliere) se disponibile, altrimenti XML
+        riferimento_pos = pos_manuale if pos_manuale > 0 else elettronico_xml
         
         totale_elettronico_xml += elettronico_xml
         totale_pos_accreditato += pos_accreditato
@@ -170,25 +174,34 @@ async def verifica_coerenza_pos_corrispettivi(
                 data_accredito_attesa = (dt + timedelta(days=giorni_al_lunedi)).strftime("%Y-%m-%d")
         except Exception:
             data_accredito_attesa = data
+            dt = None
         
         # Verifica coerenza con tolleranza
-        differenza = abs(elettronico_xml - pos_accreditato)
-        tolleranza = max(elettronico_xml * 0.02, 5)  # 2% o €5 min
+        differenza = abs(riferimento_pos - pos_accreditato)
+        tolleranza = max(riferimento_pos * 0.02, 5)  # 2% o €5 min
         
         stato = "ok"
         messaggio = ""
         
-        if elettronico_xml > 0 and pos_accreditato == 0:
-            stato = "mancante"
-            messaggio = f"POS non accreditato: attesi €{elettronico_xml:.2f}"
-            giorni_anomalia += 1
-        elif pos_accreditato > 0 and elettronico_xml == 0:
+        # Nuovo stato: IN_TRANSITO per ultimi 2 giorni
+        oggi = datetime.now()
+        is_recente = dt and dt >= oggi - timedelta(days=2)
+        
+        if riferimento_pos > 0 and pos_accreditato == 0:
+            if is_recente:
+                stato = "in_transito"
+                messaggio = f"POS in transito: €{riferimento_pos:.2f} (accredito atteso {data_accredito_attesa})"
+            else:
+                stato = "mancante"
+                messaggio = f"POS non accreditato: attesi €{riferimento_pos:.2f}"
+                giorni_anomalia += 1
+        elif pos_accreditato > 0 and riferimento_pos == 0:
             stato = "extra"
             messaggio = "POS accreditato ma nessun corrispettivo elettronico"
             giorni_anomalia += 1
         elif differenza > tolleranza:
             stato = "differenza"
-            messaggio = f"Differenza €{differenza:.2f} (XML: €{elettronico_xml:.2f}, POS: €{pos_accreditato:.2f})"
+            messaggio = f"Differenza €{differenza:.2f} (atteso: €{riferimento_pos:.2f}, accreditato: €{pos_accreditato:.2f})"
             giorni_anomalia += 1
         else:
             giorni_ok += 1
