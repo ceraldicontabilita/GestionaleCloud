@@ -28,7 +28,7 @@ export default function ImportDocumentiHub() {
   };
 
   return (
-    <div style={{ padding: '16px 24px', minHeight: '100vh', background: '#f8fafc' }}>
+    <div style={{ width: '100%' }}>
       <Suspense fallback={<Loading />}>
         {getContent()}
       </Suspense>

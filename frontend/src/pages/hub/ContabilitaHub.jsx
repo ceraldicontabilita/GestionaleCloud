@@ -89,12 +89,13 @@ export default function ContabilitaHub() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f8fafc' }}>
-      {/* Tab Bar — wrap su 2 righe per 12 tab */}
+    <div style={{ width: '100%' }}>
+      {/* Tab Bar — stile uniforme */}
       <div style={{
-        display: 'flex', gap: 4, padding: '8px 24px',
-        background: 'white', borderBottom: '1.5px solid #e2e8f0',
-        flexWrap: 'wrap'
+        display: 'flex', gap: 6, padding: '8px 16px',
+        background: 'white', borderBottom: '1px solid #e2e8f0',
+        borderRadius: '8px 8px 0 0',
+        flexWrap: 'wrap', marginBottom: 0,
       }}>
         {TABS.map(tab => (
           <button
@@ -102,12 +103,13 @@ export default function ContabilitaHub() {
             data-testid={`tab-contabilita-${tab.id}`}
             onClick={() => handleTabChange(tab.id)}
             style={{
-              padding: '7px 14px', borderRadius: 8, border: 'none',
-              fontWeight: 600, fontSize: 12, cursor: 'pointer',
-              transition: 'all 0.15s',
-              background: activeTab === tab.id ? tab.color : '#f1f5f9',
+              padding: '7px 13px', borderRadius: 6,
+              border: `1px solid ${activeTab === tab.id ? tab.color : '#e2e8f0'}`,
+              fontWeight: activeTab === tab.id ? 700 : 500, fontSize: 12, cursor: 'pointer',
+              transition: 'all 140ms ease',
+              background: activeTab === tab.id ? tab.color : '#ffffff',
               color: activeTab === tab.id ? 'white' : '#64748b',
-              boxShadow: activeTab === tab.id ? '0 2px 6px rgba(0,0,0,0.15)' : 'none',
+              boxShadow: activeTab === tab.id ? '0 1px 2px rgba(15,39,68,0.08)' : 'none',
               marginBottom: 4,
             }}
           >
@@ -116,8 +118,8 @@ export default function ContabilitaHub() {
         ))}
       </div>
 
-      {/* Tab Content - mount-once pattern: nessun reload al cambio tab */}
-      <div style={{ padding: '16px 24px' }}>
+      {/* Tab Content - mount-once */}
+      <div style={{ padding: '16px 0 0 0' }}>
         {error && (
           <div style={{ padding: 16, background: '#fef2f2', borderRadius: 8, color: '#dc2626', marginBottom: 16 }}>
             Errore: {error}

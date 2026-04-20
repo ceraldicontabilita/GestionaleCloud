@@ -4,6 +4,7 @@ import { createBrowserRouter, RouterProvider, Navigate } from "react-router-dom"
 import { QueryClientProvider } from "@tanstack/react-query";
 import App from "./App.jsx";
 import "./styles.css";
+import "./index.css";
 import { AnnoProvider } from "./contexts/AnnoContext.jsx";
 import { AuthProvider, RequireAuth } from "./contexts/AuthContext.jsx";
 import { queryClient } from "./lib/queryClient.js";

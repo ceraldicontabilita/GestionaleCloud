@@ -61,31 +61,28 @@ export default function CucinaHub() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f8fafc' }}>
-      {/* Barra tab */}
+    <div style={{ width: '100%' }}>
+      {/* Tab Bar uniforme */}
       <div style={{
-        display: 'flex',
-        gap: 0,
-        borderBottom: '2px solid #e2e8f0',
-        background: '#fff',
-        padding: '0 24px',
+        display: 'flex', gap: 6, padding: '8px 16px',
+        background: 'white', borderBottom: '1px solid #e2e8f0',
+        borderRadius: '8px 8px 0 0',
         overflowX: 'auto',
+        flexWrap: 'wrap',
       }}>
         {TABS.map(t => (
           <button
             key={t.id}
             onClick={() => handleTabChange(t.id)}
             style={{
-              padding: '12px 20px',
-              fontWeight: 600,
-              fontSize: 13,
-              cursor: 'pointer',
-              border: 'none',
-              borderBottom: activeTab === t.id ? '3px solid #1e3a5f' : '3px solid transparent',
-              background: 'transparent',
-              color: activeTab === t.id ? '#1e3a5f' : '#6b7280',
+              padding: '7px 13px', borderRadius: 6,
+              border: `1px solid ${activeTab === t.id ? '#0f2744' : '#e2e8f0'}`,
+              fontWeight: activeTab === t.id ? 700 : 500, fontSize: 12, cursor: 'pointer',
+              transition: 'all 140ms ease',
+              background: activeTab === t.id ? '#0f2744' : '#ffffff',
+              color: activeTab === t.id ? 'white' : '#64748b',
+              boxShadow: activeTab === t.id ? '0 1px 2px rgba(15,39,68,0.08)' : 'none',
               whiteSpace: 'nowrap',
-              transition: 'color 0.15s',
             }}
           >
             {t.label}

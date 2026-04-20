@@ -38,7 +38,7 @@ export default function AdminHub() {
   }, [isBatch, isBatchProc, isAdmin]);
 
   return (
-    <div style={{ padding: '16px 24px', minHeight: '100vh', background: '#f8fafc' }}>
+    <div style={{ width: '100%' }}>
       <div style={{ display: isAdmin ? 'block' : 'none' }}>
         <Suspense fallback={<Loading />}>{visitedAdmin && <AdminContent />}</Suspense>
       </div>

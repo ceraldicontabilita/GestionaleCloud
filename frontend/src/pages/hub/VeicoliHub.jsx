@@ -169,11 +169,12 @@ export default function VeicoliHub() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f8fafc' }}>
-      {/* Tab Bar */}
+    <div style={{ width: '100%' }}>
+      {/* Tab Bar uniforme */}
       <div style={{
-        display: 'flex', gap: 4, padding: '8px 24px',
-        background: 'white', borderBottom: '1.5px solid #e2e8f0',
+        display: 'flex', gap: 6, padding: '8px 16px',
+        background: 'white', borderBottom: '1px solid #e2e8f0',
+        borderRadius: '8px 8px 0 0',
         flexWrap: 'wrap'
       }}>
         {TABS.map(tab => (
@@ -182,16 +183,16 @@ export default function VeicoliHub() {
             data-testid={`tab-noleggio-${tab.id}`}
             onClick={() => handleTabChange(tab.id)}
             style={{
-              padding: '9px 18px',
-              borderRadius: 8,
-              border: 'none',
-              fontWeight: 600,
-              fontSize: 13,
+              padding: '7px 13px',
+              borderRadius: 6,
+              border: `1px solid ${activeTab === tab.id ? tab.color : '#e2e8f0'}`,
+              fontWeight: activeTab === tab.id ? 700 : 500,
+              fontSize: 12,
               cursor: 'pointer',
-              transition: 'all 0.15s',
-              background: activeTab === tab.id ? tab.color : '#f1f5f9',
+              transition: 'all 140ms ease',
+              background: activeTab === tab.id ? tab.color : '#ffffff',
               color: activeTab === tab.id ? 'white' : '#64748b',
-              boxShadow: activeTab === tab.id ? '0 2px 6px rgba(0,0,0,0.15)' : 'none',
+              boxShadow: activeTab === tab.id ? '0 1px 2px rgba(15,39,68,0.08)' : 'none',
             }}
           >
             {tab.label}
@@ -199,8 +200,8 @@ export default function VeicoliHub() {
         ))}
       </div>
 
-      {/* Tab Content - usa display:none per preservare lo stato dei componenti già caricati */}
-      <div style={{ padding: '16px 24px' }}>
+      {/* Tab Content */}
+      <div style={{ padding: '16px 0 0 0' }}>
         <Suspense fallback={<Loading />}>
           {/* Flotta: carica solo se visitato, poi mantieni montato */}
           {loadedTabs.has('flotta') && (

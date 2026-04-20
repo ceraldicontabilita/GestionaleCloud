@@ -37,13 +37,13 @@ const S = {
     top: 0,
     left: 0,
     right: 0,
-    height: 56,
+    height: 54,
     zIndex: 1000,
     display: 'flex',
     alignItems: 'center',
-    background: '#1e3a5f',
-    boxShadow: '0 2px 8px rgba(0,0,0,0.18)',
-    padding: '0 12px',
+    background: COLORS.primary,
+    boxShadow: '0 2px 8px rgba(15,39,68,0.18)',
+    padding: '0 16px',
     gap: 0,
   },
   brand: {
@@ -105,15 +105,16 @@ const S = {
   },
   dropdownMenu: {
     position: 'fixed',
-    top: 56,
+    top: 54,
     right: 'auto',
     background: '#fff',
     borderRadius: 10,
-    boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
-    minWidth: 180,
+    boxShadow: '0 12px 32px rgba(15,39,68,0.18)',
+    minWidth: 200,
     padding: '6px 0',
     zIndex: 2000,
     animation: 'navDropIn 0.15s ease',
+    border: '1px solid #e2e8f0',
   },
   dropItem: (isActive) => ({
     display: 'flex',
@@ -310,7 +311,7 @@ const TopNav = memo(function TopNav() {
       </nav>
 
       {/* Spacer per compensare la navbar fixed */}
-      <div style={{ height: 56 }} />
+      <div style={{ height: 54 }} />
     </>
   );
 });
@@ -387,7 +388,8 @@ const NotificationBellMinimal = memo(function NotificationBellMinimal() {
           width: 300,
           background: '#fff',
           borderRadius: 10,
-          boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
+          boxShadow: '0 12px 32px rgba(15,39,68,0.18)',
+          border: '1px solid #e2e8f0',
           zIndex: 2000,
           overflow: 'hidden',
           animation: 'navDropIn 0.15s ease',

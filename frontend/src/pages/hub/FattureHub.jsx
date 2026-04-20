@@ -28,7 +28,7 @@ export default function FattureHub() {
   }, [isCorresp]);
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f8fafc', padding: '16px 24px' }}>
+    <div style={{ width: '100%' }}>
       <div style={{ display: isCorresp ? 'none' : 'block' }}>
         <Suspense fallback={<Loading />}>
           {visitedArchivio && <ArchivioContent />}

@@ -1,714 +1,188 @@
-/* ═══════════════════════════════════════════════════════════════════
-   CERALDI ERP - TOP NAVIGATION LAYOUT
-   Design System from layout-A-topnav.html
-   ═══════════════════════════════════════════════════════════════════ */
+/* ================================================================
+   CERALDI ERP — TOP NAVIGATION (uniformata con palette globale)
+   ================================================================ */
 
-/* ─── CSS VARIABLES (Design Tokens) ─────────────────────────────── */
 :root {
-  --ceraldi-primary: #1a40b5;
-  --ceraldi-primary-dark: #1336a0;
-  --ceraldi-primary-light: #1a40b5;
-  --ceraldi-secondary: #1336a0;
-  --ceraldi-bg: #fff;
-  --ceraldi-text: #0d1829;
-  --ceraldi-text-muted: #7a9ab8;
-  --ceraldi-text-nav: #ffffff;
-  --ceraldi-border: #e2eef8;
-  --ceraldi-border-light: #cee2f8;
-  --ceraldi-success: #16a34a;
-  --ceraldi-warning: #d97706;
-  --ceraldi-error: #dc2626;
-  --ceraldi-error-light: #e53e3e;
-  
-  /* Layout Heights */
+  --ceraldi-primary:       #0f2744;
+  --ceraldi-primary-dark:  #081425;
+  --ceraldi-primary-light: #1e3a5f;
+  --ceraldi-secondary:     #1e3a5f;
+  --ceraldi-bg:            #f1f5f9;
+  --ceraldi-text:          #0f172a;
+  --ceraldi-text-muted:    #64748b;
+  --ceraldi-text-nav:      #ffffff;
+  --ceraldi-border:        #e2e8f0;
+  --ceraldi-border-light:  #f1f5f9;
+  --ceraldi-success:       #15803d;
+  --ceraldi-warning:       #b45309;
+  --ceraldi-error:         #b91c1c;
+  --ceraldi-error-light:   #ef4444;
+
   --topnav-height: 54px;
-  --secondary-tabs-height: 42px;
-  --total-header-height: calc(var(--topnav-height) + var(--secondary-tabs-height));
 }
 
-/* ─── BASE LAYOUT ─────────────────────────────────────────────── */
+/* Base container */
 .topnav-layout {
   min-height: 100vh;
   background: var(--ceraldi-bg);
   color: var(--ceraldi-text);
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
   font-size: 13px;
 }
 
 .topnav-layout .page-content {
-  padding: 8px 16px 40px;
-  padding-top: calc(var(--topnav-height) + 8px);
+  padding: 16px 24px 40px 24px;
+  padding-top: calc(var(--topnav-height) + 16px);
   min-height: calc(100vh - var(--topnav-height));
-  overflow-y: auto;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
-/* ─── TOP NAV PRIMARY ─────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .topnav-layout .page-content {
+    padding: 12px 14px 84px 14px;
+    padding-top: calc(var(--topnav-height) + 10px);
+  }
+}
+
+/* ─── TOP NAV PRIMARY ─── */
 .topnav-primary {
   background: var(--ceraldi-primary);
-  border-bottom: 2px solid var(--ceraldi-primary-dark);
+  border-bottom: 1px solid var(--ceraldi-primary-dark);
   height: var(--topnav-height);
   display: flex;
   align-items: center;
-  padding: 0 24px;
+  padding: 0 16px;
   gap: 8px;
   position: fixed !important;
-  top: 0;
-  left: 0;
-  right: 0;
+  top: 0; left: 0; right: 0;
   z-index: 1000;
+  box-shadow: 0 2px 8px rgba(15, 39, 68, 0.18);
 }
 
-/* Brand */
 .topnav-brand {
   display: flex;
   align-items: center;
   gap: 9px;
   margin-right: 20px;
+  text-decoration: none;
 }
 
 .brand-square {
   width: 32px;
   height: 32px;
-  background: var(--ceraldi-primary);
+  background: rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(255, 255, 255, 0.28);
   border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: white;
-  font-family: 'Syne', sans-serif;
+  color: #fff;
   font-weight: 800;
   font-size: 13px;
+  letter-spacing: 0.5px;
 }
 
 .brand-name {
-  font-family: 'Syne', sans-serif;
   font-weight: 800;
-  font-size: 16px;
-  color: #ffffff;
-  letter-spacing: -0.4px;
+  font-size: 15px;
+  color: #fff;
+  letter-spacing: -0.3px;
+  white-space: nowrap;
 }
 
-/* Nav Items Container */
+/* Nav items */
 .topnav-items {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
   flex: 1;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
+.topnav-items::-webkit-scrollbar { display: none; }
 
-/* Nav Item */
 .topnav-item {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 13px;
+  padding: 6px 12px;
   border-radius: 7px;
   font-size: 13px;
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.85);
+  color: rgba(255, 255, 255, 0.82);
   cursor: pointer;
-  transition: all 0.14s ease;
+  transition: background 140ms ease, color 140ms ease;
   white-space: nowrap;
   text-decoration: none;
   background: transparent;
-  border: 1.5px solid transparent;
+  border: 1px solid transparent;
 }
-
 .topnav-item:hover {
-  background: rgba(255, 255, 255, 0.18);
-  color: #ffffff;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
 }
-
 .topnav-item.active {
-  background: white;
-  color: var(--ceraldi-primary);
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
   font-weight: 700;
-  border-color: rgba(255, 255, 255, 0.6);
-  box-shadow: none;
+  border-color: rgba(255, 255, 255, 0.25);
 }
 
-.topnav-icon {
-  font-size: 14px;
+.topnav-icon { font-size: 14px; }
+.topnav-label { font-size: 13px; }
+
+/* Hover helpers */
+.topnav-link:hover {
+  background: rgba(255, 255, 255, 0.12) !important;
+  color: #fff !important;
+}
+.topnav-drop-item:hover {
+  background: rgba(15, 39, 68, 0.06) !important;
 }
 
-.topnav-label {
-  font-size: 13px;
-}
+.topnav-items-scroll::-webkit-scrollbar { display: none; }
 
-.topnav-dot {
-  width: 6px;
-  height: 6px;
-  background: #ffdd00;
-  border-radius: 50%;
-}
-
-.topnav-badge {
-  background: #ff4444;
-  color: #ffffff;
-  font-size: 10px;
-  font-weight: 700;
-  padding: 1px 5px;
-  border-radius: 10px;
-}
-
-.topnav-arrow {
-  opacity: 0.5;
-  margin-left: 2px;
-}
-
-/* Dropdown Menu */
-.topnav-dropdown {
-  position: relative;
-}
-
-.topnav-dropdown-menu {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  padding-top: 4px; /* Piccolo spazio senza creare gap che rompe l'hover */
-  z-index: 200;
-}
-
-@keyframes dropdownFade {
-  from {
-    opacity: 0;
-    transform: translateY(-4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.topnav-dropdown-item {
-  display: block;
-  padding: 8px 12px;
-  border-radius: 6px;
-  font-size: 13px;
-  color: #0d1829;
-  text-decoration: none;
-  transition: all 0.12s ease;
-}
-
-.topnav-dropdown-item:hover {
-  background: #f0f4ff;
-  color: var(--ceraldi-primary);
-}
-
-.topnav-dropdown-item.active {
-  background: var(--ceraldi-primary);
-  color: white;
-  font-weight: 600;
-}
-
-/* Dropdown Grid per "Altro" */
-.topnav-dropdown-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  min-width: 280px;
-  gap: 2px;
-  padding: 6px;
-  background: #ffffff;
-  color: #0d1829;
-  border: 1.5px solid var(--ceraldi-border);
-  border-radius: 10px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-}
-
-/* Right Side Utilities */
-.topnav-right {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.topnav-anno {
-  margin-right: 8px;
-}
-
-/* FIX 6 — Anno Selector su sfondo blu */
-.topnav-anno select {
-  background: rgba(255, 255, 255, 0.15);
-  color: #ffffff;
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  font-weight: 700;
-  border-radius: 6px;
-  padding: 3px 8px;
-  font-size: 13px;
-  cursor: pointer;
-  outline: none;
-}
-
-.topnav-anno select option {
-  color: #0d1829;
-  background: #ffffff;
-}
-
-.topnav-icon-btn {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.15);
-  border: 1.5px solid rgba(255, 255, 255, 0.3);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.14s ease;
-  position: relative;
-  color: rgba(255, 255, 255, 0.85);
-}
-
-.topnav-icon-btn:hover {
-  border-color: rgba(255, 255, 255, 0.6);
-  background: rgba(255, 255, 255, 0.25);
-}
-
-.topnav-icon-btn .badge {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 7px;
-  height: 7px;
-  background: var(--ceraldi-error-light);
-  border-radius: 50%;
-  border: 1.5px solid white;
-}
-
-/* User */
-.topnav-user {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 4px 10px 4px 4px;
-  border-radius: 8px;
-  cursor: pointer;
-  margin-left: 4px;
-  transition: background 0.14s ease;
-}
-
-.topnav-user:hover {
-  background: rgba(255, 255, 255, 0.15);
-}
-
-.topnav-avatar {
-  width: 28px;
-  height: 28px;
-  background: rgba(255, 255, 255, 0.25);
-  border-radius: 7px;
-  color: white;
-  font-size: 11px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.topnav-user-name {
-  font-size: 12px;
-  font-weight: 600;
-  color: #ffffff;
-}
-
-.topnav-user-role {
-  font-size: 10px;
-  color: rgba(255, 255, 255, 0.7);
-}
-
-/* ─── SECONDARY TABS ─────────────────────────────────────────── */
+/* ─── SECONDARY TABS (if any) ─── */
 .secondary-tabs {
-  background: #edf4fd;
-  border-bottom: 1.5px solid var(--ceraldi-border-light);
+  background: #fff;
+  border-bottom: 1px solid var(--ceraldi-border);
+  padding: 6px 24px;
   display: flex;
-  align-items: center;
-  padding: 0 24px;
-  gap: 2px;
-  height: var(--secondary-tabs-height);
+  gap: 6px;
+  overflow-x: auto;
   position: fixed;
   top: var(--topnav-height);
-  left: 0;
-  right: 0;
-  z-index: 99;
+  left: 0; right: 0;
+  z-index: 990;
+  scrollbar-width: none;
 }
+.secondary-tabs::-webkit-scrollbar { display: none; }
 
 .secondary-tab {
-  padding: 5px 14px;
+  padding: 6px 12px;
   border-radius: 6px;
-  font-size: 12.5px;
-  font-weight: 500;
-  color: #3a5e90;
+  font-size: 12px;
+  color: var(--ceraldi-text-muted);
+  background: transparent;
+  border: 1px solid transparent;
   cursor: pointer;
-  transition: all 0.14s ease;
-  text-decoration: none;
+  white-space: nowrap;
+  transition: all 140ms ease;
 }
-
 .secondary-tab:hover {
-  background: rgba(255, 255, 255, 0.7);
-}
-
-.secondary-tab.on,
-.secondary-tab.active {
-  background: white;
   color: var(--ceraldi-primary);
-  font-weight: 700;
-  outline: 2px solid var(--ceraldi-primary);
-  outline-offset: -2px;
-}
-
-.tab-sep {
-  width: 1px;
-  height: 18px;
   background: var(--ceraldi-border-light);
-  margin: 0 4px;
 }
-
-/* ─── MOBILE NAVIGATION ─────────────────────────────────────── */
-@media (max-width: 1024px) {
-  .topnav-primary {
-    padding: 0 16px;
-    gap: 4px;
-  }
-  
-  .topnav-brand {
-    margin-right: 12px;
-  }
-  
-  .brand-name {
-    display: none;
-  }
-  
-  .topnav-label {
-    display: none;
-  }
-  
-  .topnav-item {
-    padding: 6px 10px;
-  }
-  
-  .topnav-anno {
-    display: none;
-  }
-  
-  .topnav-user-info {
-    display: none;
-  }
-}
-
-@media (max-width: 768px) {
-  .topnav-items,
-  .topnav-items-scroll {
-    display: none !important;
-  }
-  
-  .topnav-primary {
-    justify-content: space-between;
-    height: 48px !important;
-  }
-  
-  .brand-name {
-    display: block;
-    font-size: 14px;
-  }
-  
-  /* Hide right section items on mobile except brand */
-  .topnav-right {
-    display: none !important;
-  }
-  
-  /* Show mobile bottom nav */
-  .mobile-nav-topnav {
-    display: flex !important;
-  }
-  
-  /* Page content needs less top padding on mobile */
-  .topnav-layout .page-content {
-    padding-top: 56px !important;
-    padding-left: 8px !important;
-    padding-right: 8px !important;
-  }
-}
-
-/* ─── MOBILE BOTTOM NAV (for small screens) ───────────────── */
-.mobile-nav-topnav {
-  display: none;
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
-  padding: 6px 4px;
-  padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
-  z-index: 1000;
-  justify-content: space-around;
-  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.2);
-}
-
-.mobile-nav-topnav .mobile-nav-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 8px 12px;
-  border-radius: 12px;
-  color: rgba(255, 255, 255, 0.6);
-  font-size: 10px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  transition: all 0.2s;
-  min-width: 60px;
-  text-decoration: none;
-}
-
-.mobile-nav-topnav .mobile-nav-item:hover,
-.mobile-nav-topnav .mobile-nav-item.active {
-  color: white;
-  background: rgba(255, 255, 255, 0.1);
-}
-
-.mobile-nav-topnav .mobile-nav-item.active {
-  background: #2563eb;
-}
-
-.mobile-nav-topnav .mobile-nav-icon {
-  font-size: 22px;
-  margin-bottom: 4px;
-}
-
-.mobile-nav-topnav .mobile-nav-label {
-  font-weight: 500;
-}
-
-/* Content padding for mobile */
-@media (max-width: 768px) {
-  .topnav-layout .page-content {
-    padding-bottom: 90px;
-  }
-}
-
-/* ─── SCROLLBAR STYLING ───────────────────────────────────── */
-.topnav-layout .page-content::-webkit-scrollbar {
-  width: 5px;
-}
-
-.topnav-layout .page-content::-webkit-scrollbar-thumb {
-  background: #c7dff9;
-  border-radius: 5px;
-}
-
-
-/* ═══════════════════════════════════════════════════════════════════
-   MOBILE FIXES GLOBALI — patch mobile-first
-   ═══════════════════════════════════════════════════════════════════ */
-
-/* ─── OVERFLOW CONTROL ──────────────────────────────────────── */
-html, body {
-  overflow-x: hidden;
-  -webkit-text-size-adjust: 100%;
-}
-
-.topnav-layout {
-  overflow-x: hidden;
-}
-
-/* ─── INPUTS: evita zoom iOS al tap (font-size deve essere >=16px) ─── */
-@media (max-width: 768px) {
-  input, select, textarea {
-    font-size: 16px !important;
-  }
-  /* Ripristina font piccoli per checkbox e radio */
-  input[type="checkbox"], input[type="radio"] {
-    font-size: inherit !important;
-  }
-}
-
-/* ─── TABELLE responsive ─────────────────────────────────────── */
-@media (max-width: 768px) {
-  /* Ogni tabella diretta deve essere in un contenitore scrollable */
-  table {
-    display: block;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    max-width: 100%;
-    white-space: nowrap;
-  }
-  table thead, table tbody {
-    display: table;
-    width: max-content;
-    min-width: 100%;
-  }
-  /* Celle più compatte */
-  table td, table th {
-    font-size: 12.5px !important;
-    padding: 6px 8px !important;
-  }
-}
-
-/* ─── MODALI e card ─────────────────────────────────────────── */
-@media (max-width: 768px) {
-  /* Modali generici: mai escono dallo schermo */
-  [role="dialog"],
-  .modal,
-  .dialog-overlay > div {
-    max-width: calc(100vw - 16px) !important;
-    max-height: calc(100vh - 16px) !important;
-    margin: 8px !important;
-    box-sizing: border-box;
-  }
-  /* Card con padding più piccolo */
-  .card, .page-card {
-    padding: 12px !important;
-  }
-  /* Hide scrollbar su scroll orizzontale mobile (rimane funzionale) */
-  .scroll-x::-webkit-scrollbar {
-    height: 3px;
-  }
-}
-
-/* ─── HEADER pagina responsive ───────────────────────────────── */
-@media (max-width: 768px) {
-  /* Riduce header pagine e padding */
-  .topnav-layout .page-content {
-    padding: 8px 12px 90px !important;
-    padding-top: calc(var(--topnav-height) + 4px) !important;
-  }
-  h1, .page-title {
-    font-size: 18px !important;
-    line-height: 1.3;
-  }
-  h2 {
-    font-size: 16px !important;
-  }
-  h3 {
-    font-size: 14px !important;
-  }
-}
-
-/* ─── GRID: forza 1 colonna sotto 480px ──────────────────────── */
-@media (max-width: 480px) {
-  [style*="grid-template-columns"] {
-    /* 2-3-4 colonne → 1 colonna sotto 480px */
-  }
-}
-
-/* ═══════════════════════════════════════════════════════════════════
-   MOBILE MENU OVERLAY — mancante in App.jsx
-   ═══════════════════════════════════════════════════════════════════ */
-
-.mobile-menu-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(13, 24, 41, 0.55);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  z-index: 1500;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  animation: mmOverlayFade 0.22s ease-out;
-}
-
-@keyframes mmOverlayFade {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-.mobile-menu {
-  background: #fff;
-  width: 100%;
-  max-width: 520px;
-  max-height: 85vh;
-  border-radius: 20px 20px 0 0;
-  box-shadow: 0 -8px 40px rgba(0,0,0,0.25);
-  display: flex;
-  flex-direction: column;
-  animation: mmSlideUp 0.28s cubic-bezier(0.16, 1, 0.3, 1);
-  overflow: hidden;
-}
-
-@keyframes mmSlideUp {
-  from { transform: translateY(100%); }
-  to { transform: translateY(0); }
-}
-
-.mobile-menu-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 14px 18px;
-  border-bottom: 1px solid var(--ceraldi-border);
-  background: linear-gradient(180deg, #fff 0%, #f6faff 100%);
-}
-
-.mobile-menu-header .brand-square {
-  background: var(--ceraldi-primary);
-}
-
-.mobile-menu-close {
-  margin-left: auto;
-  background: #f0f4ff;
-  border: none;
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
-  font-size: 18px;
-  color: var(--ceraldi-primary);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.15s;
-}
-
-.mobile-menu-close:hover {
-  background: #dfe8ff;
-}
-
-.mobile-menu-items {
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  padding: 10px 10px calc(16px + env(safe-area-inset-bottom, 0px));
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
-}
-
-.mobile-menu-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 14px;
-  border-radius: 12px;
-  background: #f6faff;
-  color: #0d1829;
-  text-decoration: none;
-  font-size: 13px;
-  font-weight: 600;
-  transition: all 0.15s;
-  border: 1.5px solid transparent;
-  min-height: 48px;
-}
-
-.mobile-menu-item:hover,
-.mobile-menu-item:active {
-  background: #e2eef8;
-}
-
-.mobile-menu-item.active {
+.secondary-tab.active {
   background: var(--ceraldi-primary);
   color: #fff;
-  border-color: var(--ceraldi-primary-dark);
+  font-weight: 700;
 }
 
-.mobile-menu-item span:first-child {
-  font-size: 18px;
-  flex-shrink: 0;
-}
-
-/* Su schermi molto piccoli, 1 colonna */
-@media (max-width: 380px) {
-  .mobile-menu-items {
-    grid-template-columns: 1fr;
-  }
+/* ─── DROPDOWN (Altro) ─── */
+@keyframes navDropIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
 }

@@ -33,7 +33,7 @@ export default function PrimaNotaHub() {
   }, [isProvvisori]);
 
   return (
-    <div style={{ padding: '16px 24px', minHeight: '100vh', background: '#f8fafc' }}>
+    <div style={{ width: '100%' }}>
       <div style={{ display: isProvvisori ? 'none' : 'block' }}>
         <Suspense fallback={<Loading />}>
           {visitedPrimaNota && <PrimaNotaContent />}
