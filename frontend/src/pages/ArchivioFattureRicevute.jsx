@@ -310,7 +310,7 @@ export default function ArchivioFatture() {
                       const isRiconciliata = f.riconciliato === true;
 
                       const azioniButtons = (
-                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', gap: 4, flexWrap: 'nowrap', alignItems: 'center', whiteSpace: 'nowrap' }}>
                           {isRiconciliata && (
                             <span style={{ padding: '5px 8px', background: '#10b981', color: 'white', borderRadius: 6, fontSize: 11, fontWeight: 'bold' }}>✓ RICONC.</span>
                           )}

@@ -431,6 +431,46 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
         riconciliazione_paghe = await esegui_riconciliazione_paghe_completa(db)
     except Exception as e:
         logger.error(f"Errore riconciliazione paghe: {e}")
+    
+    # ===== RICONCILIAZIONE FATTURE PROVVISORIE =====
+    # Cerca pagamenti nell'EC per fatture non ancora pagate
+    provvisori_riconciliati = 0
+    try:
+        import uuid as _uuid
+        provvisori = await db["invoices"].find({
+            "total_amount": {"$gt": 0},
+            "stato_pagamento": {"$nin": ["pagata", "paid"]},
+            "$or": [{"prima_nota_id": None}, {"prima_nota_id": {"$exists": False}}, {"prima_nota_id": ""}]
+        }, {"_id": 0, "id": 1, "supplier_name": 1, "total_amount": 1, "invoice_date": 1, "invoice_number": 1}).to_list(500)
+        
+        for f in provvisori:
+            importo = float(f.get("total_amount", 0))
+            nome = (f.get("supplier_name", "") or "").upper()[:10]
+            ec_query = {"importo": {"$gte": importo - 1, "$lte": importo + 1}, "tipo": "uscita"}
+            if nome and len(nome) > 3:
+                ec_query["descrizione"] = {"$regex": nome[:8], "$options": "i"}
+            
+            match = await db["estratto_conto_movimenti"].find_one(ec_query)
+            if match:
+                pn_id = str(_uuid.uuid4())
+                await db["prima_nota_banca"].insert_one({
+                    "id": pn_id, "data": match.get("data_contabile", f.get("invoice_date", "")),
+                    "tipo": "uscita", "categoria": "Fatture",
+                    "descrizione": f"Fatt. {f.get('invoice_number','')} - {(f.get('supplier_name',''))[:30]}",
+                    "importo": importo, "fattura_id": f["id"],
+                    "source": "riconciliazione_ec_auto",
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                })
+                await db["invoices"].update_one({"id": f["id"]}, {"$set": {
+                    "prima_nota_id": pn_id, "prima_nota_tipo": "banca", "prima_nota_banca_id": pn_id,
+                    "stato_pagamento": "pagata",
+                }})
+                provvisori_riconciliati += 1
+        
+        if provvisori_riconciliati > 0:
+            logger.info(f"[EC Import] Riconciliate {provvisori_riconciliati} fatture provvisorie con EC")
+    except Exception as e:
+        logger.error(f"Errore riconciliazione provvisori: {e}")
         riconciliazione_paghe = {"error": str(e)}
     
     # ── EVENTO: pubblica sul Bus per matching automatico ──
@@ -467,7 +507,8 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
         },
         "riconciliazione_automatica": riconciliazione_results,
         "riconciliazione_summary": (riconciliazione_results or {}).get("summary"),
-        "riconciliazione_paghe": riconciliazione_paghe
+        "riconciliazione_paghe": riconciliazione_paghe,
+        "provvisori_riconciliati": provvisori_riconciliati,
     }
 
 
