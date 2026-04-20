@@ -183,7 +183,59 @@ async def import_fattura_xml(file: UploadFile = File(...)) -> Dict[str, Any]:
     except Exception as e:
         risultato_integrazione["magazzino"] = {"error": str(e)}
     
-    risultato_integrazione["prima_nota"] = {"status": "in_attesa_conferma", "message": "Scrittura Prima Nota in attesa di conferma"}
+    # ── AUTO-ROUTING: se il fornitore ha un metodo di pagamento riconoscibile,
+    # crea subito il movimento in prima_nota_cassa o prima_nota_banca.
+    # Evita il passaggio manuale per Amazon, bonifici, carte, SEPA, ecc.
+    from .metodo_pagamento import normalizza_metodo_pagamento
+    dest = normalizza_metodo_pagamento(metodo_pagamento_finale)
+    if dest in ("cassa", "banca"):
+        try:
+            importo_f = float(parsed.get("total_amount", 0))
+            if importo_f > 0:
+                movimento_id = str(uuid.uuid4())
+                target_coll = "prima_nota_cassa" if dest == "cassa" else "prima_nota_banca"
+                data_pag = parsed.get("invoice_date", "")
+                movimento = {
+                    "id": movimento_id,
+                    "data": data_pag,
+                    "descrizione": f"Pagamento Fatt. {numero_doc} - {fornitore_result.get('ragione_sociale', 'Fornitore')}",
+                    "causale": "Pagamento fattura fornitore",
+                    "importo": importo_f,
+                    "tipo": "uscita",
+                    "categoria": "fornitori",
+                    "stato": "confermato",
+                    "fattura_id": fattura_id,
+                    "fattura_collegata": fattura_id,
+                    "fattura_numero": numero_doc,
+                    "fornitore": fornitore_result.get("ragione_sociale", "Fornitore"),
+                    "fornitore_piva": partita_iva,
+                    "metodo_pagamento": dest,
+                    "metodo_pagamento_originale": metodo_pagamento_finale,
+                    "provvisorio": False,
+                    "riconciliato": False,
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "source": "auto_import_da_fornitore",
+                }
+                await db[target_coll].insert_one(movimento)
+                await db[COL_FATTURE_RICEVUTE].update_one(
+                    {"id": fattura_id},
+                    {"$set": {
+                        "pagato": True, "stato": "pagata", "stato_pagamento": "pagata",
+                        "data_pagamento": data_pag,
+                        "metodo_pagamento": dest,
+                        "metodo_pagamento_effettivo": dest,
+                        "metodo_pagamento_originale": metodo_pagamento_finale,
+                        "provvisorio": False,
+                        ("prima_nota_cassa_id" if dest == "cassa" else "prima_nota_banca_id"): movimento_id,
+                    }}
+                )
+                risultato_integrazione["prima_nota"] = {"status": "auto_confermato", "collection": target_coll, "movimento_id": movimento_id}
+            else:
+                risultato_integrazione["prima_nota"] = {"status": "skip_importo_zero"}
+        except Exception as e:
+            risultato_integrazione["prima_nota"] = {"status": "errore_auto_routing", "error": str(e)}
+    else:
+        risultato_integrazione["prima_nota"] = {"status": "in_attesa_conferma", "message": "Metodo pagamento fornitore non definito o assegno: conferma manuale richiesta"}
     
     try:
         scadenza_id = await crea_scadenza_pagamento(db, fattura_id, fattura, fornitore_obj)

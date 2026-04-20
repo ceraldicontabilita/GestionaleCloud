@@ -304,13 +304,15 @@ export default function ArchivioFatture() {
                       
                       // Metodo configurato nel fornitore (per default quando non pagato)
                       const metodoFornitore = (f.fornitore_metodo_pagamento || f.metodo_pagamento || '').toLowerCase();
-                      const isFornitoreCassa = metodoFornitore.includes('contant') || metodoFornitore === 'cassa';
+                      const isFornitoreCassa = metodoFornitore.includes('contant') || metodoFornitore === 'cassa' || metodoFornitore.includes('cash');
+                      const isFornitoreBanca = metodoFornitore.includes('bonifico') || metodoFornitore === 'banca' || metodoFornitore.includes('bank') || metodoFornitore.includes('sepa') || metodoFornitore.includes('rid');
+                      const fornitoreHaMetodo = isFornitoreCassa || isFornitoreBanca;
                       
                       // BLOCCO: Se riconciliata, non permettere modifica
                       const isRiconciliata = f.riconciliato === true;
 
                       const azioniButtons = (
-                        <div style={{ display: 'flex', gap: 4, flexWrap: 'nowrap', alignItems: 'center', whiteSpace: 'nowrap' }}>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                           {isRiconciliata && (
                             <span style={{ padding: '5px 8px', background: '#10b981', color: 'white', borderRadius: 6, fontSize: 11, fontWeight: 'bold' }}>✓ RICONC.</span>
                           )}
@@ -319,52 +321,78 @@ export default function ArchivioFatture() {
                             target="_blank" rel="noopener noreferrer"
                             style={{ padding: '7px 11px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: '600', textDecoration: 'none' }}
                           >📄 Vedi</a>
-                          {!(isPaid && metodoPagEffettivo === 'banca') && (
+                          {/* Se la fattura NON è ancora pagata e il fornitore ha metodo predefinito: mostra UN solo bottone "Auto" */}
+                          {!isPaid && fornitoreHaMetodo && (
                             <button
                               disabled={isRiconciliata}
                               onClick={async () => {
-                                if (isRiconciliata || (isPaid && metodoPagEffettivo === 'cassa')) return;
+                                if (isRiconciliata) return;
+                                const metodoAuto = isFornitoreCassa ? 'cassa' : 'banca';
                                 try {
                                   const scrollPos = window.scrollY;
-                                  await api.post('/api/fatture-ricevute/paga-manuale', { fattura_id: f.id, importo: f.importo_totale || 0, metodo: 'cassa', data_pagamento: f.data_documento || f.invoice_date, fornitore: f.fornitore_ragione_sociale || f.supplier_name || 'Fornitore', numero_fattura: f.numero_documento || f.invoice_number || '' });
+                                  await api.post('/api/fatture-ricevute/paga-manuale', { fattura_id: f.id, importo: f.importo_totale || 0, metodo: metodoAuto, data_pagamento: f.data_documento || f.invoice_date, fornitore: f.fornitore_ragione_sociale || f.supplier_name || 'Fornitore', numero_fattura: f.numero_documento || f.invoice_number || '' });
                                   await fetchFatture();
                                   setTimeout(() => window.scrollTo(0, scrollPos), 100);
-                                } catch (err) { alert(`❌ Errore Cassa: ${err.response?.data?.detail || err.message}`); }
+                                } catch (err) { alert(`❌ Errore: ${err.response?.data?.detail || err.message}`); }
                               }}
-                              style={{ padding: '7px 11px', background: isRiconciliata ? '#e5e7eb' : (isPaid && metodoPagEffettivo === 'cassa') ? '#10b981' : '#f0fdf4', color: isRiconciliata ? '#9ca3af' : (isPaid && metodoPagEffettivo === 'cassa') ? 'white' : '#16a34a', border: isRiconciliata ? 'none' : (isPaid && metodoPagEffettivo === 'cassa') ? 'none' : '2px solid #16a34a', borderRadius: 6, cursor: isRiconciliata ? 'not-allowed' : 'pointer', fontSize: 12, fontWeight: '600', opacity: isRiconciliata ? 0.5 : 1 }}
-                            >💵 {(isPaid && metodoPagEffettivo === 'cassa') ? '✓ Cassa' : 'Cassa'}</button>
+                              style={{ padding: '7px 11px', background: isFornitoreCassa ? '#16a34a' : '#2563eb', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: '600' }}
+                              title={`Il fornitore paga ${isFornitoreCassa ? 'in contanti' : 'con bonifico'} — clicca per confermare`}
+                            >{isFornitoreCassa ? '💵 Conferma Cassa' : '🏦 Conferma Banca'}</button>
                           )}
-                          {!(isPaid && metodoPagEffettivo === 'cassa') && (
-                            <button
-                              disabled={isRiconciliata}
-                              onClick={async () => {
-                                if (isRiconciliata || (isPaid && metodoPagEffettivo === 'banca')) return;
-                                try {
-                                  const scrollPos = window.scrollY;
-                                  await api.post('/api/fatture-ricevute/paga-manuale', { fattura_id: f.id, importo: f.importo_totale || 0, metodo: 'banca', data_pagamento: f.data_documento || f.invoice_date, fornitore: f.fornitore_ragione_sociale || f.supplier_name || 'Fornitore', numero_fattura: f.numero_documento || f.invoice_number || '' });
-                                  await fetchFatture();
-                                  setTimeout(() => window.scrollTo(0, scrollPos), 100);
-                                } catch (err) { alert(`❌ Errore Banca: ${err.response?.data?.detail || err.message}`); }
-                              }}
-                              style={{ padding: '7px 11px', background: isRiconciliata ? '#e5e7eb' : (isPaid && metodoPagEffettivo === 'banca') ? '#3b82f6' : '#eff6ff', color: isRiconciliata ? '#9ca3af' : (isPaid && metodoPagEffettivo === 'banca') ? 'white' : '#2563eb', border: isRiconciliata ? 'none' : (isPaid && metodoPagEffettivo === 'banca') ? 'none' : '2px solid #2563eb', borderRadius: 6, cursor: isRiconciliata ? 'not-allowed' : 'pointer', fontSize: 12, fontWeight: '600', opacity: isRiconciliata ? 0.5 : 1 }}
-                            >🏦 {(isPaid && metodoPagEffettivo === 'banca') ? '✓ Banca' : 'Banca'}</button>
+                          {/* Se la fattura è pagata: mostra SOLO il bottone col check del metodo effettivo */}
+                          {isPaid && metodoPagEffettivo === 'cassa' && (
+                            <span style={{ padding: '7px 11px', background: '#10b981', color: 'white', borderRadius: 6, fontSize: 12, fontWeight: '600' }}>💵 ✓ Cassa</span>
+                          )}
+                          {isPaid && metodoPagEffettivo === 'banca' && (
+                            <span style={{ padding: '7px 11px', background: '#3b82f6', color: 'white', borderRadius: 6, fontSize: 12, fontWeight: '600' }}>🏦 ✓ Banca</span>
+                          )}
+                          {/* Fallback: fornitore SENZA metodo definito e fattura non pagata → mostra entrambi i bottoni */}
+                          {!isPaid && !fornitoreHaMetodo && (
+                            <>
+                              <button
+                                disabled={isRiconciliata}
+                                onClick={async () => {
+                                  if (isRiconciliata) return;
+                                  try {
+                                    const scrollPos = window.scrollY;
+                                    await api.post('/api/fatture-ricevute/paga-manuale', { fattura_id: f.id, importo: f.importo_totale || 0, metodo: 'cassa', data_pagamento: f.data_documento || f.invoice_date, fornitore: f.fornitore_ragione_sociale || f.supplier_name || 'Fornitore', numero_fattura: f.numero_documento || f.invoice_number || '' });
+                                    await fetchFatture();
+                                    setTimeout(() => window.scrollTo(0, scrollPos), 100);
+                                  } catch (err) { alert(`❌ Errore Cassa: ${err.response?.data?.detail || err.message}`); }
+                                }}
+                                style={{ padding: '7px 11px', background: '#f0fdf4', color: '#16a34a', border: '2px solid #16a34a', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: '600' }}
+                              >💵 Cassa</button>
+                              <button
+                                disabled={isRiconciliata}
+                                onClick={async () => {
+                                  if (isRiconciliata) return;
+                                  try {
+                                    const scrollPos = window.scrollY;
+                                    await api.post('/api/fatture-ricevute/paga-manuale', { fattura_id: f.id, importo: f.importo_totale || 0, metodo: 'banca', data_pagamento: f.data_documento || f.invoice_date, fornitore: f.fornitore_ragione_sociale || f.supplier_name || 'Fornitore', numero_fattura: f.numero_documento || f.invoice_number || '' });
+                                    await fetchFatture();
+                                    setTimeout(() => window.scrollTo(0, scrollPos), 100);
+                                  } catch (err) { alert(`❌ Errore Banca: ${err.response?.data?.detail || err.message}`); }
+                                }}
+                                style={{ padding: '7px 11px', background: '#eff6ff', color: '#2563eb', border: '2px solid #2563eb', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: '600' }}
+                              >🏦 Banca</button>
+                            </>
                           )}
                         </div>
                       );
 
                       return (
-                        <div key={f.id || `fattura-${idx}`} style={{ background: 'white', borderRadius: 10, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)', border: '1px solid #e5e7eb' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-                            <div>
-                              <div style={{ fontWeight: 700, color: '#1e3a5f', fontSize: 14 }}>{f.supplier_name || f.fornitore_ragione_sociale || '—'}</div>
-                              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>{f.supplier_vat || f.fornitore_partita_iva}</div>
+                        <div key={f.id || `fattura-${idx}`} style={{ background: 'white', borderRadius: 10, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)', border: '1px solid #e5e7eb', overflow: 'hidden', minWidth: 0 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8, gap: 8 }}>
+                            <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+                              <div style={{ fontWeight: 700, color: '#1e3a5f', fontSize: 14, wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{f.supplier_name || f.fornitore_ragione_sociale || '—'}</div>
+                              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2, wordBreak: 'break-word' }}>{f.supplier_vat || f.fornitore_partita_iva}</div>
                             </div>
-                            <div style={{ fontWeight: 700, fontSize: 15, color: '#1e3a5f', whiteSpace: 'nowrap', marginLeft: 8 }}>{formatCurrency(f.total_amount || f.importo_totale)}</div>
+                            <div style={{ fontWeight: 700, fontSize: 15, color: '#1e3a5f', whiteSpace: 'nowrap', flexShrink: 0 }}>{formatCurrency(f.total_amount || f.importo_totale)}</div>
                           </div>
-                          <div style={{ display: 'flex', gap: 16, fontSize: 12, color: '#64748b', marginBottom: 10 }}>
-                            <span>📅 {formatDateIT(f.invoice_date || f.data_documento)}</span>
-                            <span>#{f.invoice_number || f.numero_documento || '—'}</span>
-                            <span>IVA {formatCurrency(f.iva)}</span>
+                          <div style={{ display: 'flex', gap: 10, rowGap: 4, fontSize: 12, color: '#64748b', marginBottom: 10, flexWrap: 'wrap', minWidth: 0 }}>
+                            <span style={{ minWidth: 0, whiteSpace: 'nowrap' }}>📅 {formatDateIT(f.invoice_date || f.data_documento)}</span>
+                            <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '55%' }} title={f.invoice_number || f.numero_documento || ''}>#{f.invoice_number || f.numero_documento || '—'}</span>
+                            <span style={{ whiteSpace: 'nowrap' }}>IVA {formatCurrency(f.iva)}</span>
                           </div>
                           {azioniButtons}
                         </div>

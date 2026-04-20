@@ -318,6 +318,187 @@ async def aggiorna_metodi_pagamento_da_fornitori() -> Dict[str, Any]:
     }
 
 
+async def backfill_autoroute_da_metodo_fornitore() -> Dict[str, Any]:
+    """
+    Backfill massivo: per ogni fattura NON ancora registrata in prima nota,
+    legge il metodo di pagamento dell'anagrafica fornitore e crea automaticamente
+    il movimento in `prima_nota_cassa` o `prima_nota_banca`.
+    
+    Metodi mappati (vedi metodo_pagamento.py):
+      - contanti/cassa/MP01              → prima_nota_cassa
+      - banca/bonifico/carta/SEPA/RID/
+        PayPal/MP05/MP08/MP19/MP20/MP21  → prima_nota_banca
+      - assegno/MP02/MP03                → NON auto-routato (gestione manuale)
+      - ambiguo/vuoto/misto              → NON auto-routato
+    """
+    from .metodo_pagamento import normalizza_metodo_pagamento
+    db = Database.get_db()
+
+    report = {
+        "success": True,
+        "analizzate": 0,
+        "confermate_cassa": 0,
+        "confermate_banca": 0,
+        "skip_assegno": 0,
+        "skip_metodo_non_definito": 0,
+        "skip_fornitore_non_trovato": 0,
+        "skip_gia_confermate": 0,
+        "skip_importo_zero": 0,
+        "errori": 0,
+        "dettagli_errori": [],
+    }
+
+    # Carica mappa fornitori → metodo (una sola query)
+    fornitori_cursor = db[COL_FORNITORI].find(
+        {},
+        {"_id": 0, "partita_iva": 1, "piva": 1, "metodo_pagamento": 1, "metodo_pagamento_predefinito": 1}
+    )
+    map_metodo: Dict[str, str] = {}
+    async for fdoc in fornitori_cursor:
+        metodo = fdoc.get("metodo_pagamento_predefinito") or fdoc.get("metodo_pagamento") or ""
+        for key in ("partita_iva", "piva"):
+            piva = (fdoc.get(key) or "").strip()
+            if piva and metodo:
+                map_metodo[piva] = metodo
+
+    # Processa entrambe le collection di fatture
+    for coll_name, field_piva, field_numero, field_data, field_importo in [
+        ("invoices",        "supplier_vat",          "invoice_number",  "invoice_date",  "total_amount"),
+        ("fatture_passive", "fornitore_piva",        "numero",          "data",          "importo_totale"),
+    ]:
+        cursor = db[coll_name].find(
+            {
+                # non ancora registrata in prima nota
+                "prima_nota_cassa_id": {"$in": [None, ""]},
+                "prima_nota_banca_id": {"$in": [None, ""]},
+                # non marcata già pagata
+                "$and": [
+                    {"pagato": {"$ne": True}},
+                    {"stato": {"$nin": ["pagata", "paid"]}},
+                ],
+            },
+            {"_id": 0}
+        )
+        async for doc in cursor:
+            report["analizzate"] += 1
+            piva = (doc.get(field_piva) or doc.get("supplier_vat") or doc.get("fornitore_piva") or "").strip()
+            if not piva:
+                report["skip_fornitore_non_trovato"] += 1
+                continue
+            metodo_fornitore = map_metodo.get(piva)
+            if not metodo_fornitore:
+                report["skip_fornitore_non_trovato"] += 1
+                continue
+
+            dest = normalizza_metodo_pagamento(metodo_fornitore)
+            if dest == "assegno":
+                report["skip_assegno"] += 1
+                continue
+            if dest not in ("cassa", "banca"):
+                report["skip_metodo_non_definito"] += 1
+                continue
+
+            try:
+                importo = float(doc.get(field_importo) or 0)
+            except (ValueError, TypeError):
+                importo = 0.0
+            if importo <= 0:
+                report["skip_importo_zero"] += 1
+                continue
+
+            fattura_id = doc.get("id") or doc.get("dedup_key") or ""
+            if not fattura_id:
+                report["errori"] += 1
+                continue
+
+            # Dedup: se c'è già un movimento di prima nota collegato, salta
+            target_coll = "prima_nota_cassa" if dest == "cassa" else "prima_nota_banca"
+            existing = await db[target_coll].find_one({"fattura_id": fattura_id}, {"_id": 1, "id": 1})
+            if existing:
+                report["skip_gia_confermate"] += 1
+                # Comunque aggiorna la fattura con il link
+                await db[coll_name].update_one(
+                    {"id": fattura_id} if doc.get("id") else {"dedup_key": fattura_id},
+                    {"$set": {
+                        ("prima_nota_cassa_id" if dest == "cassa" else "prima_nota_banca_id"): existing.get("id"),
+                        "pagato": True,
+                        "stato": "pagata",
+                        "metodo_pagamento_effettivo": dest,
+                        "updated_at": datetime.now(timezone.utc).isoformat(),
+                    }}
+                )
+                continue
+
+            # Crea il movimento di prima nota
+            movimento_id = str(uuid.uuid4())
+            fornitore_label = doc.get("supplier_name") or doc.get("cedente_denominazione") or doc.get("fornitore_denominazione") or "Fornitore"
+            numero = doc.get(field_numero) or doc.get("numero") or doc.get("invoice_number") or ""
+            data_pag = doc.get(field_data) or doc.get("data") or doc.get("invoice_date") or ""
+
+            movimento = {
+                "id": movimento_id,
+                "data": data_pag,
+                "descrizione": f"Pagamento Fatt. {numero} - {fornitore_label}",
+                "causale": "Pagamento fattura fornitore",
+                "importo": importo,
+                "tipo": "uscita",
+                "categoria": "fornitori",
+                "stato": "confermato",
+                "fattura_id": fattura_id,
+                "fattura_collegata": fattura_id,
+                "fattura_numero": numero,
+                "fornitore": fornitore_label,
+                "fornitore_piva": piva,
+                "metodo_pagamento": dest,
+                "metodo_pagamento_originale": metodo_fornitore,
+                "provvisorio": False,
+                "riconciliato": False,           # matching con estratto conto è separato
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "source": "backfill_auto_da_fornitore",
+            }
+
+            try:
+                await db[target_coll].insert_one(movimento)
+
+                update_fields = {
+                    "status": "paid",
+                    "pagato": True,
+                    "stato": "pagata",
+                    "stato_pagamento": "pagata",
+                    "data_pagamento": data_pag,
+                    "metodo_pagamento": dest,
+                    "metodo_pagamento_effettivo": dest,
+                    "metodo_pagamento_originale": metodo_fornitore,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                }
+                if dest == "cassa":
+                    update_fields["prima_nota_cassa_id"] = movimento_id
+                    report["confermate_cassa"] += 1
+                else:
+                    update_fields["prima_nota_banca_id"] = movimento_id
+                    report["confermate_banca"] += 1
+
+                # Aggiorna su entrambe le collection (fattura potrebbe esistere in entrambe)
+                await db[coll_name].update_one(
+                    {"id": fattura_id} if doc.get("id") else {"dedup_key": fattura_id},
+                    {"$set": update_fields}
+                )
+                # Cross-update (se stesso id esiste nell'altra collection per retro-compat)
+                other_coll = "fatture_passive" if coll_name == "invoices" else "invoices"
+                await db[other_coll].update_one(
+                    {"id": fattura_id}, {"$set": update_fields}
+                )
+
+            except Exception as e:
+                report["errori"] += 1
+                if len(report["dettagli_errori"]) < 10:
+                    report["dettagli_errori"].append(f"{fattura_id}: {e}")
+                logger.error(f"backfill_autoroute errore fattura {fattura_id}: {e}")
+
+    logger.info(f"Backfill auto-route completato: {report}")
+    return report
+
+
 
 async def riconcilia_fatture_paypal() -> Dict[str, Any]:
     """
