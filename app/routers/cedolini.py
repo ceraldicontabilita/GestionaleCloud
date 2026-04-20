@@ -1393,3 +1393,25 @@ async def import_cedolini_da_gmail(
             else f"Nessun cedolino nuovo trovato ({skipped_duplicates} già presenti)"
         )
     }
+
+
+
+@router.get("/dipendente/{dipendente_id}/acconti-banca")
+@handle_errors
+async def acconti_banca_dipendente(dipendente_id: str, anno: Optional[int] = None) -> Dict[str, Any]:
+    """Acconti/stipendi trovati nell'estratto conto per un dipendente."""
+    db = Database.get_db()
+    
+    query = {"dipendente_id": dipendente_id}
+    if anno:
+        query["anno"] = anno
+    
+    acconti = await db["acconti_dipendenti"].find(query, {"_id": 0}).sort("data", -1).to_list(200)
+    totale = sum(a.get("importo", 0) for a in acconti)
+    
+    return {
+        "dipendente_id": dipendente_id,
+        "acconti": acconti,
+        "totale": round(totale, 2),
+        "count": len(acconti),
+    }
