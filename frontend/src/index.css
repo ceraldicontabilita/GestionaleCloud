@@ -1,6 +1,6 @@
 /* ================================================================
    CERALDI ERP — STILE GLOBALE
-   Minimale · Professionale · Full-frame · No Tailwind
+   Minimale · Professionale · Full-frame · No Tailwind · Mobile-safe
    ================================================================ */
 
 @import './styles/common.css';
@@ -42,11 +42,18 @@
   box-sizing: border-box;
 }
 
-html, body, #root {
+/* Blocca overflow orizzontale globale (safety net per pagine legacy) */
+html, body {
   margin: 0;
   padding: 0;
-  min-height: 100%;
   width: 100%;
+  max-width: 100%;
+  min-height: 100%;
+  overflow-x: hidden;           /* taglia overflow orizzontale */
+  -webkit-text-size-adjust: 100%;
+}
+
+html, body, #root {
   background: var(--c-bg);
   color: var(--c-text);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
@@ -55,8 +62,9 @@ html, body, #root {
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  -webkit-text-size-adjust: 100%;
 }
+
+#root { width: 100%; max-width: 100%; }
 
 a {
   color: var(--c-primary);
@@ -69,11 +77,22 @@ button {
   font-family: inherit;
   font-size: inherit;
   color: inherit;
+  max-width: 100%;
+}
+
+img, video, svg, iframe, canvas {
+  max-width: 100%;
+  height: auto;
 }
 
 input, select, textarea {
   font-family: inherit;
   font-size: 13px;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+input, textarea {
+  min-width: 0;                 /* evita che flex-item input sforino */
 }
 
 input:focus, select:focus, textarea:focus {
@@ -89,6 +108,7 @@ code {
   border-radius: 4px;
   background: var(--c-bg-alt);
   color: var(--c-primary);
+  word-break: break-word;
 }
 
 /* Scrollbar custom leggera */
@@ -105,6 +125,9 @@ code {
   background-clip: content-box;
   border: 2px solid transparent;
 }
+/* Nascondi scrollbars orizzontali nelle barre compatte */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; }
 
 /* Selezione testo */
 ::selection {
@@ -113,12 +136,14 @@ code {
 }
 
 /* ================================================================
-   LAYOUT PRINCIPALE (TopNav + content full-frame)
+   LAYOUT PRINCIPALE
    ================================================================ */
 
 .topnav-layout {
   min-height: 100vh;
   width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
   background: var(--c-bg);
   color: var(--c-text);
 }
@@ -130,27 +155,49 @@ code {
   padding-top: calc(var(--topnav-height) + 16px);
   min-height: calc(100vh - var(--topnav-height));
   box-sizing: border-box;
+  overflow-x: hidden;           /* no scroll orizzontale nel content */
 }
 
 @media (max-width: 768px) {
   .topnav-layout .page-content {
-    padding: 12px 14px 84px 14px;
-    padding-top: calc(var(--topnav-height) + 10px);
+    padding: 10px 12px 84px 12px;
+    padding-top: calc(var(--topnav-height) + 8px);
   }
+}
+
+/* ================================================================
+   TOPNAV — Mobile: nascondi link primari, il menu è in basso
+   ================================================================ */
+
+@media (max-width: 768px) {
+  /* Nasconde i link principali della navbar su mobile */
+  .topnav-primary .topnav-items,
+  [data-testid="topnav-primary"] > div[class*="topnav-items"] {
+    display: none !important;
+  }
+  /* Riduce padding della navbar */
+  .topnav-primary,
+  [data-testid="topnav-primary"] {
+    padding: 0 10px !important;
+  }
+  /* Brand più compatto */
+  .brand-name { display: none; }
 }
 
 /* ================================================================
    COMPONENTI COMUNI
    ================================================================ */
 
-/* Card */
 .card {
   background: var(--c-card);
   border: 1px solid var(--c-border);
   border-radius: var(--radius-md);
   padding: 20px;
   box-shadow: var(--shadow-sm);
+  max-width: 100%;
+  overflow: hidden;
 }
+@media (max-width: 768px) { .card { padding: 14px; } }
 
 .card-title {
   margin: 0 0 14px 0;
@@ -163,7 +210,6 @@ code {
   gap: 8px;
 }
 
-/* Header pagina */
 .page-header {
   display: flex;
   justify-content: space-between;
@@ -178,6 +224,7 @@ code {
   margin-bottom: 16px;
   box-shadow: var(--shadow-sm);
 }
+@media (max-width: 768px) { .page-header { padding: 12px 14px; } }
 
 .page-title {
   margin: 0;
@@ -189,6 +236,7 @@ code {
   align-items: center;
   gap: 10px;
 }
+@media (max-width: 768px) { .page-title { font-size: 17px; } }
 
 .page-subtitle {
   margin: 2px 0 0 0;
@@ -227,7 +275,7 @@ code {
 .btn-ghost     { background: transparent; color: var(--c-text-muted); border-color: transparent; }
 .btn-ghost:hover { background: var(--c-bg-alt); color: var(--c-text); }
 
-/* Tabelle globali */
+/* Tabelle globali — scroll orizzontale su mobile */
 table {
   width: 100%;
   border-collapse: collapse;
@@ -259,6 +307,23 @@ table tbody tr:hover td {
   background: rgba(15, 39, 68, 0.025);
 }
 
+@media (max-width: 768px) {
+  table th, table td {
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+}
+
+/* Wrapper per tabelle che scrollano orizzontalmente */
+.table-scroll,
+.table-wrapper {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: var(--radius-md);
+}
+
 /* Badge pill */
 .badge {
   display: inline-block;
@@ -281,12 +346,23 @@ table tbody tr:hover td {
 .tab-bar {
   display: flex;
   gap: 6px;
-  padding: 8px 24px;
+  padding: 8px 16px;
   background: var(--c-card);
   border-bottom: 1px solid var(--c-border);
   flex-wrap: wrap;
   align-items: center;
+  max-width: 100%;
 }
+@media (max-width: 768px) {
+  .tab-bar {
+    padding: 6px 10px;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    scrollbar-width: none;
+  }
+  .tab-bar::-webkit-scrollbar { display: none; }
+}
+
 .tab {
   padding: 8px 14px;
   border-radius: var(--radius-sm);
@@ -300,6 +376,8 @@ table tbody tr:hover td {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .tab:hover { border-color: var(--c-primary-light); color: var(--c-primary); }
 .tab.active {
@@ -379,7 +457,10 @@ table tbody tr:hover td {
 }
 .mobile-nav-icon { font-size: 18px; }
 
-/* Legacy container classes per retrocompat pages */
+/* ================================================================
+   LEGACY & UTILITY
+   ================================================================ */
+
 .page-container {
   width: 100%;
   max-width: 100%;
@@ -387,26 +468,29 @@ table tbody tr:hover td {
   margin: 0;
 }
 
-/* Stats grid legacy */
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 12px;
   margin-bottom: 16px;
 }
+@media (max-width: 768px) {
+  .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+}
+
 .stat-card {
   background: var(--c-card);
   border: 1px solid var(--c-border);
   border-radius: var(--radius-md);
   padding: 16px;
   box-shadow: var(--shadow-sm);
+  min-width: 0;
 }
 .stat-card.amber { border-left: 3px solid var(--c-warning); }
 .stat-card.blue  { border-left: 3px solid var(--c-info); }
 .stat-card.green { border-left: 3px solid var(--c-success); }
 .stat-card.red   { border-left: 3px solid var(--c-danger); }
 
-/* Text utility classes */
 .text-muted    { color: var(--c-text-muted); }
 .text-primary  { color: var(--c-primary); }
 .text-success  { color: var(--c-success); }
@@ -415,19 +499,53 @@ table tbody tr:hover td {
 .text-right    { text-align: right; }
 .text-center   { text-align: center; }
 
-/* Form group helpers */
 .form-row {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
   align-items: center;
+  max-width: 100%;
 }
-.form-row > * { min-width: 0; }
+.form-row > * { min-width: 0; max-width: 100%; }
 
-/* Divider */
 .divider {
   height: 1px;
   background: var(--c-border);
   margin: 16px 0;
   border: 0;
+}
+
+/* ================================================================
+   MOBILE GENERIC FIXES (safety net per pagine legacy)
+   ================================================================ */
+
+@media (max-width: 768px) {
+  /* I flexbox non si espandono oltre il viewport */
+  .page-content > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  /* Tutte le select/input fluidi */
+  select, input[type="text"], input[type="number"], input[type="search"],
+  input[type="email"], input[type="date"], textarea {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0 !important;
+  }
+
+  /* Griglie multi-colonna legacy → 1 colonna su mobile */
+  .grid-cols-3, .grid-cols-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  /* Riduce padding dei container h1/h2 */
+  h1 { font-size: 20px; }
+  h2 { font-size: 17px; }
+  h3 { font-size: 15px; }
+
+  /* I bottoni di azione multipli vanno a capo */
+  .btn-row, [data-btn-row] {
+    flex-wrap: wrap;
+  }
 }

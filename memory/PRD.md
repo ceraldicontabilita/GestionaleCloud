@@ -1,90 +1,69 @@
-# PRD — Ceraldi ERP (gestionale2)
+# Ceraldi ERP — PRD
 
-Product Requirements Document | Aprile 2026
-Repo GitHub: ceraldicontabilita/gestionale2
-DB: Gestionale (MongoDB Atlas)
+Prodotto: gestionale contabile / amministrativo interno.
+Cliente: Ceraldi Group S.R.L. (P.IVA 04523831214) — bar / pasticceria, Napoli.
+Ultima revisione: Apr 2026.
 
-## Identità
-- Azienda: Ceraldi Group S.R.L. — Bar/Pasticceria, Napoli
-- P.IVA: 04523831214 | Regime: Ordinario
-- Stack: React 18 + Vite + FastAPI + MongoDB Atlas
-- Utenti: staff amministrativo (no multi-tenant)
+Documentazione viva completa in `/app/memoria/` (PRD.md · INDEX.md · LOGICA_OPERATIVA.md).
+Questo file è il riepilogo per i tool interni Emergent.
 
-## Stato attuale
-Il gestionale è in produzione con TUTTE le funzionalità core:
-- Fatture SDI (1.405), Prima Nota (Cassa+Banca), Corrispettivi, Fornitori (245)
-- HR (30 dipendenti, 301 cedolini), Magazzino (496 prodotti)
-- Noleggio (4 veicoli, 165 verbali), Assegni (220), Riconciliazione bancaria
-- Contabilità (Piano Conti, Bilancio, IVA), Email (PEC+Gmail), Scheduler
+## Obiettivo
 
-## Refactoring grafico completato (Apr 2026)
+Un unico gestionale che copra:
+- Ciclo passivo (fatture SDI via PEC)
+- Corrispettivi giornalieri (registratore)
+- Prima nota cassa/banca + Provvisori
+- Riconciliazione bancaria
+- HR (dipendenti, cedolini, presenze, TFR)
+- Noleggio auto + verbali stradali
+- Magazzino prodotti
+- Assegni per carnet
+- Contabilità (piano conti, bilancio, IVA, cespiti, mutui, budget)
+- Strumenti commercialista + verifica coerenza
+- Alert scadenze F24
 
-### Obiettivo
-Uniformare graficamente tutto il gestionale senza toccare la logica di business.
-"stile uniforme, responsive full-frame, solo utils.js, no Tailwind. Pulito e leggero".
+## Stack
 
-### Modifiche applicate
-1. **Design system unificato** (`src/lib/utils.js`)
-   - Palette unica: Navy `#0f2744` + accent oro `#b8860b` + neutri slate
-   - Helpers completi: COLORS, SPACING, SHADOWS, BORDER_RADIUS, FONT, STYLES
-   - button(type), badge(type), tabStyle() come fonte unica di verità
-   - RG grids, pagePad, useIsMobile per responsive
-   - formattazione italiana (formatEuro, formatDateIT, ecc.)
+- React 18 + Vite (frontend, porta 3000)
+- FastAPI + Motor async (backend, porta 8001)
+- MongoDB Atlas (DB: `Gestionale`)
+- Design: inline styles da `src/lib/utils.js` — no Tailwind, no Shadcn
 
-2. **CSS globale leggero** (`src/index.css`)
-   - Reset minimale, scrollbar custom, focus state coerente
-   - Classi .card .btn .badge .tab .stat-box .page-header
-   - Mobile bottom-nav gestito via media query
-   - Nessuna direttiva @tailwind / @apply
+## Stato corrente
 
-3. **Tailwind rimosso dalla build**
-   - `postcss.config.cjs` senza plugin tailwindcss (solo autoprefixer)
-   - Utility CSS vanilla (`src/styles/utilities.css`) per le poche pagine legacy
-     che usano classi Tailwind-like (DatiProvvisori, BatchReprocessing, GestioneInvoiceTronic)
+Funzionante in produzione: tutte le aree core (fatture, prima nota, fornitori, HR,
+noleggio, magazzino, assegni, riconciliazione, contabilità, strumenti, email).
 
-4. **Full-frame responsive**
-   - Rimosso `max-width` ovunque; `.page-content` usa 100% width
-   - Padding gestito una sola volta dal layout (no duplicazione negli hub)
-   - 11 hub (`ContabilitaHub`, `MagazzinoHub`, `StrumentiHub`, etc.) uniformati
+Attività recenti (Apr 2026):
+- Refactoring grafico completo: design system unificato, palette navy + oro,
+  layout full-frame, tabs uniformate, mobile-responsive (no scroll orizzontale).
+- Rimosso Tailwind dalla build (PostCSS senza plugin).
+- Fix backend: installati `lxml` + `primp` mancanti.
+- Documentazione viva riscritta da zero in `/app/memoria/`.
 
-5. **TopNav + palette uniformata**
-   - Altezza 54px, background `#0f2744`, shadow sobria
-   - Dropdown "Altro" coerente con il resto dell'app
-   - Variabili CSS `--ceraldi-*` allineate alla palette utils.js
+## Backlog
 
-6. **Tab bar uniforme** su tutti gli hub
-   - padding `8px 16px`, border radius 6, gap 6
-   - Tab attivo: background `tab.color` con testo bianco, border coerente
-   - Tab inattivo: background bianco, border neutro, hover cambia colore
+P1:
+- Prima Nota automatica senza conferma per match E/C ≥90% confidenza
+- Endpoint `/scarica-posta` per verbali via PEC (ancora stub)
 
-7. **Fix backend**: installati `lxml` + `primp` mancanti per avviare uvicorn
+P2:
+- Scheda fornitore completa (storico + scadenze + pattern)
+- Fascicolo dipendente (cedolini + TFR + presenze + bonifici)
+- Merge `suppliers` (15 legacy) in `fornitori` (245)
 
-### File toccati (refactoring grafico)
-- `src/lib/utils.js` (riscritto - design system)
-- `src/index.css` (riscritto - stile globale)
-- `src/styles/topnav.css` (riscritto - palette uniforme)
-- `src/styles/common.css` (ripulito - legacy shim)
-- `src/styles/utilities.css` (nuovo - utility CSS vanilla)
-- `src/styles.css` (ripulito - solo tokens legacy)
-- `src/App.css` (svuotato)
-- `src/App.jsx` (banner alert mantenuto)
-- `src/components/layout/TopNav.jsx` (palette uniformata)
-- `src/pages/hub/*.jsx` (11 file - tab bar + rimozione padding duplicato)
-- `src/main.jsx` (import index.css aggiunto)
-- `postcss.config.cjs` (rimosso tailwind)
+P3:
+- TFR automatico da cedolino
+- Controllo IVA mensile automatico + F24 suggerito
+- Notifiche WhatsApp (Meta token già configurato)
 
-### Testing
-Verifica visuale su desktop (1920×900) delle pagine:
-- Dashboard, Fatture, Prima Nota, Fornitori, HR, Contabilità (Piano Conti),
-  Strumenti (Verifica Coerenza), Riconciliazione/Assegni, Dati Provvisori
-Tutte le pagine caricano correttamente, backend connesso, nessun layout rotto.
+## Regole invariabili
 
-## Backlog (non toccato in questa sessione)
-- P1 Prima Nota automatica senza conferma (matching EC ≥90%)
-- P1 Scarica posta verbali da PEC (endpoint stub)
-- P2 Scheda fornitore completa (fatturato, scadenze, pattern pagamento)
-- P2 Fascicolo dipendente (storico cedolini + TFR + presenze + bonifici)
-- P2 Cleanup DB: `suppliers` (15) → merge in `fornitori` (245)
-- P3 TFR automatico da cedolino
-- P3 Controllo IVA mensile automatico
-- P3 WhatsApp notifiche
+- DB: `Gestionale` (non `azienda_erp_db`)
+- `fornitori` (non `suppliers`), `dipendenti` (non `employees`), `warehouse_stocks` (non `warehouse_inventory`)
+- Ricavi SOLO da `corrispettivi`; le `invoices` sono costi
+- Metodo pagamento fattura preso dal fornitore, mai dall'XML
+- Note credito TD04 = importo negativo + badge rosso
+- IMAP sempre in `asyncio.to_thread()`
+
+Per dettagli operativi vedi `/app/memoria/LOGICA_OPERATIVA.md`.
