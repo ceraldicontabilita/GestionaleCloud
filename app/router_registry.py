@@ -123,6 +123,9 @@ def _register_bank(app: FastAPI):
     app.include_router(assegni_learning.router, prefix="/api/assegni/learning", tags=["Assegni Learning"])
     app.include_router(pos_accredito.router, prefix="/api/pos-accredito", tags=["POS Accredito"])
     app.include_router(paypal_statements.router, prefix="/api/paypal-statements", tags=["PayPal"])
+    
+    from app.routers.paypal_api import router as paypal_api_router
+    app.include_router(paypal_api_router, prefix="/api", tags=["PayPal API"])
     app.include_router(bonifici_associazioni.router, prefix="/api", tags=["Bonifici Associazioni"])
     app.include_router(distinte_bpm.router, prefix="/api/paghe", tags=["Distinte BPM"])
 

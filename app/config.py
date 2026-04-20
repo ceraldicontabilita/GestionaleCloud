@@ -93,6 +93,10 @@ class Settings(BaseSettings):
     TELEGRAM_BOT_TOKEN: Optional[str] = None
     TELEGRAM_CHAT_ID: Optional[str] = None
     
+    # PayPal Reporting API
+    PAYPAL_CLIENT_ID: str = ""
+    PAYPAL_CLIENT_SECRET: str = ""
+    
     # InvoiceTronic
     INVOICETRONIC_API_KEY: Optional[str] = None
     INVOICETRONIC_SANDBOX: bool = True

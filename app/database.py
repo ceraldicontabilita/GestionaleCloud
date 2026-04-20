@@ -105,6 +105,12 @@ class Database:
         # --- Warehouse ---
         await _safe_index(Collections.WAREHOUSE_PRODUCTS, [("nome", 1)], name="idx_warehouse_nome")
         
+        # --- PayPal ---
+        await _safe_index("paypal_transactions", "transaction_id", unique=True, name="idx_paypal_txn_id")
+        await _safe_index("paypal_transactions", "paypal_account_id", name="idx_paypal_account")
+        await _safe_index("paypal_transactions", "is_pagopa", name="idx_paypal_pagopa")
+        await _safe_index("paypal_transactions", [("initiation_date", -1)], name="idx_paypal_date")
+        
         logger.info(f"✅ Database indexes: {created} creati, {skipped} già esistenti")
 
     @classmethod
