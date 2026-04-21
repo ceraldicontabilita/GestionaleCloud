@@ -15,6 +15,7 @@ const CATEGORIE = {
 
 export default function PianoDeiConti() {
   const isMobile = useIsMobile();
+  const { anno: annoGlobale } = useAnnoGlobale();
   const [_conti, setConti] = useState([]);
   const [grouped, setGrouped] = useState({});
   const [regole, setRegole] = useState([]);
@@ -30,12 +31,11 @@ export default function PianoDeiConti() {
     setSelectedConto(conto);
     setContoDetail(null);
     setLoadingDetail(true);
-    const annoCorrente = new Date().getFullYear();
     try {
-      const res = await api.get(`/api/piano-conti/conto/${conto.codice}/movimenti?limit=40&anno=${annoCorrente}`);
+      const res = await api.get(`/api/piano-conti/conto/${conto.codice}/movimenti?limit=40&anno=${annoGlobale}`);
       setContoDetail(res.data);
     } catch { /* mostra solo info base */ } finally { setLoadingDetail(false); }
-  }, []);
+  }, [annoGlobale]);
 
   const closeDrawer = () => { setSelectedConto(null); setContoDetail(null); };
   // URL Tab Support
@@ -71,15 +71,16 @@ export default function PianoDeiConti() {
 
   useEffect(() => {
     loadData();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [annoGlobale]);
 
   const loadData = async () => {
     setLoading(true);
     try {
       const [contiRes, regoleRes, bilancioRes] = await Promise.all([
-        api.get('/api/piano-conti/'),
+        api.get(`/api/piano-conti/?anno=${annoGlobale}`),
         api.get('/api/piano-conti/regole'),
-        api.get('/api/piano-conti/bilancio')
+        api.get(`/api/piano-conti/bilancio?anno=${annoGlobale}`)
       ]);
       
       setConti(contiRes.data.conti || []);

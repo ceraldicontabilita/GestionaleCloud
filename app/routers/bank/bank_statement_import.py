@@ -578,7 +578,7 @@ async def reconcile_movement(db, movement: Dict[str, Any], tolerance: float = 0.
 
 
 # Collection per estratto conto
-COLLECTION_ESTRATTO_CONTO = "estratto_conto"
+COLLECTION_ESTRATTO_CONTO = "estratto_conto_movimenti"
 
 @router.get("/movements")
 @handle_errors
@@ -589,29 +589,74 @@ async def get_bank_statement_movements(
 ) -> Dict[str, Any]:
     """
     Recupera i movimenti importati dall'estratto conto.
+    Accetta date ISO (YYYY-MM-DD) e filtra su data_contabile / data_valuta / data
+    gestendo formati italiani (gg/mm/yyyy) e ISO.
     """
     db = Database.get_db()
-    
-    query = {}
+
+    query: Dict[str, Any] = {}
+
+    def _iso_to_it(iso_str: Optional[str]) -> Optional[str]:
+        """Converte 2026-01-01 → 01/01/2026"""
+        if not iso_str: return None
+        try:
+            y, m, d = iso_str.split("-")
+            return f"{d}/{m}/{y}"
+        except Exception:
+            return None
+
+    if data_da or data_a:
+        anni = set()
+        for s in (data_da, data_a):
+            if s and len(s) >= 4:
+                anni.add(s[:4])
+        # Filtro per anno (regex su campi in formato italiano)
+        or_conditions = []
+        for anno in anni:
+            or_conditions.extend([
+                {"data_contabile": {"$regex": f"/{anno}$"}},
+                {"data_valuta":    {"$regex": f"/{anno}$"}},
+                {"data":           {"$regex": f"^{anno}-"}},  # ISO
+                {"data":           {"$regex": f"/{anno}$"}},  # IT
+            ])
+        if or_conditions:
+            query["$or"] = or_conditions
+
+    movements = await db[COLLECTION_ESTRATTO_CONTO].find(
+        query, {"_id": 0}
+    ).sort("data_contabile", -1).limit(limit).to_list(limit)
+
+    # Normalizza: aggiungi campo `data` in formato ISO per ogni movimento (se possibile)
+    for m in movements:
+        if not m.get("data"):
+            dt = m.get("data_contabile") or m.get("data_valuta") or ""
+            if dt and "/" in dt:
+                parts = dt.split("/")
+                if len(parts) == 3:
+                    m["data"] = f"{parts[2]}-{parts[1].zfill(2)}-{parts[0].zfill(2)}"
+        # Deriva tipo da importo se manca
+        if not m.get("tipo"):
+            imp = float(m.get("importo") or 0)
+            m["tipo"] = "entrata" if imp > 0 else "uscita"
+        # Normalizza importo assoluto se il campo è negativo
+        if m.get("tipo") == "uscita" and float(m.get("importo") or 0) < 0:
+            m["importo"] = abs(float(m["importo"]))
+
+    # Filtro fine granularità per range
     if data_da:
-        query["data"] = {"$gte": data_da}
+        movements = [m for m in movements if (m.get("data") or "") >= data_da]
     if data_a:
-        if "data" in query:
-            query["data"]["$lte"] = data_a
-        else:
-            query["data"] = {"$lte": data_a}
-    
-    movements = await db[COLLECTION_ESTRATTO_CONTO].find(query, {"_id": 0}).sort("data", -1).limit(limit).to_list(limit)
-    
-    totale_entrate = sum(m.get("importo", 0) for m in movements if m.get("tipo") == "entrata")
-    totale_uscite = sum(m.get("importo", 0) for m in movements if m.get("tipo") == "uscita")
-    
+        movements = [m for m in movements if (m.get("data") or "9999-99-99") <= data_a]
+
+    totale_entrate = sum(float(m.get("importo") or 0) for m in movements if m.get("tipo") == "entrata")
+    totale_uscite  = sum(float(m.get("importo") or 0) for m in movements if m.get("tipo") == "uscita")
+
     return {
         "movements": movements,
         "count": len(movements),
-        "totale_entrate": totale_entrate,
-        "totale_uscite": totale_uscite,
-        "saldo": totale_entrate - totale_uscite
+        "totale_entrate": round(totale_entrate, 2),
+        "totale_uscite":  round(totale_uscite, 2),
+        "saldo":          round(totale_entrate - totale_uscite, 2)
     }
 
 

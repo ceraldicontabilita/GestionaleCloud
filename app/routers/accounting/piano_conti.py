@@ -97,58 +97,180 @@ STRUTTURA_BASE = {
 
 @router.get("/")
 @handle_errors
-async def get_piano_conti() -> Dict[str, Any]:
-    """Ottiene il piano dei conti completo con saldi calcolati dai dati reali."""
+async def get_piano_conti(anno: str = None) -> Dict[str, Any]:
+    """Piano dei conti con saldi calcolati al volo dall'anno selezionato.
+    Se `anno` non è passato, calcola su tutti gli anni (cumulativo).
+    """
     db = Database.get_db()
-    
+
     conti = await db[COLLECTION_PIANO_CONTI].find({}, {"_id": 0}).sort("codice", 1).to_list(1000)
-    
     if not conti:
         conti = await inizializza_piano_conti_base(db)
-    
-    # Compute real saldi from invoices and corrispettivi
-    costi_res = await db["invoices"].aggregate([
-        {"$group": {"_id": None, "totale": {"$sum": "$importo_totale"}, "imponibile": {"$sum": "$importo_imponibile"}, "iva": {"$sum": "$importo_iva"}}}
-    ]).to_list(1)
-    ricavi_res = await db["corrispettivi"].aggregate([
-        {"$match": {"entity_status": {"$ne": "deleted"}}},
-        {"$group": {"_id": None, "totale": {"$sum": "$totale"}, "imponibile": {"$sum": "$totale_imponibile"}, "iva": {"$sum": "$totale_iva"}}}
-    ]).to_list(1)
-    
-    real_saldi = {
-        "01.02.01": round(ricavi_res[0]["totale"], 2) if ricavi_res else 0,
-        "01.04.01": round(costi_res[0]["iva"], 2) if costi_res else 0,
-        "02.01.01": round(costi_res[0]["totale"], 2) if costi_res else 0,
-        "02.03.01": round(ricavi_res[0]["iva"], 2) if ricavi_res else 0,
-        "04.01.01": round(ricavi_res[0]["imponibile"], 2) if ricavi_res else 0,
-        "05.01.01": round(costi_res[0]["imponibile"], 2) if costi_res else 0,
-    }
-    
-    # Inject real saldi into conti
+
+    # Calcola i saldi reali dalle collection di origine, filtrando per anno se passato
+    saldi = await _calcola_saldi_piano_conti(db, anno)
+
     for conto in conti:
         codice = conto.get("codice", "")
-        if codice in real_saldi:
-            conto["saldo"] = real_saldi[codice]
-    
-    grouped = {
-        "attivo": [],
-        "passivo": [],
-        "patrimonio_netto": [],
-        "ricavi": [],
-        "costi": []
-    }
-    
+        if codice in saldi:
+            conto["saldo"] = saldi[codice]
+        else:
+            conto["saldo"] = 0.0
+
+    grouped = {"attivo": [], "passivo": [], "patrimonio_netto": [], "ricavi": [], "costi": []}
     for conto in conti:
         categoria = conto.get("categoria", "")
         if categoria in grouped:
             grouped[categoria].append(conto)
-    
+
     return {
         "conti": conti,
         "grouped": grouped,
         "totale": len(conti),
-        "struttura": STRUTTURA_BASE
+        "struttura": STRUTTURA_BASE,
+        "anno": anno,
     }
+
+
+async def _calcola_saldi_piano_conti(db, anno: str = None) -> Dict[str, float]:
+    """Calcola i saldi effettivi di tutti i conti del piano leggendo dalle
+    collection operative. Se `anno` è passato, filtra ai movimenti di quell'anno.
+
+    Mappatura:
+      01.01.01 Cassa              ← prima_nota_cassa (entrate − uscite)
+      01.01.02 Banca c/c          ← prima_nota_banca ∪ estratto_conto_movimenti
+      01.02.01 Crediti v/clienti  ← corrispettivi non ancora incassati (0 se tutti pagati cassa)
+      01.04.01 IVA a credito      ← invoices (IVA detraibile)
+      02.01.01 Debiti v/fornitori ← invoices non pagate (importo residuo)
+      02.02.01 Debiti tributari   ← f24_unificato non pagate
+      02.02.02 Debiti v/INPS      ← cedolini (contributi) non ancora pagati
+      02.03.01 IVA a debito       ← corrispettivi (totale_iva)
+      02.04.01 TFR                ← cedolini (tfr_mese cumulato)
+      04.01.01 Ricavi vendite     ← corrispettivi (totale_imponibile)
+      05.01.01 Acquisto merci     ← invoices (imponibile)
+      05.03.01 Salari e stipendi  ← cedolini (netto)
+      05.03.02 Contributi previd. ← cedolini (contributi)
+    """
+    saldi: Dict[str, float] = {}
+
+    # Filtri temporali (stringa ISO YYYY-MM-DD o campo numerico "anno")
+    def _date_range(field: str):
+        if not anno:
+            return {}
+        return {field: {"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31"}}
+
+    def _anno_field():
+        if not anno:
+            return {}
+        return {"anno": int(anno)}
+
+    # ── INVOICES (fatture passive: costi + IVA credito + debiti fornitori) ──
+    match_inv = _date_range("invoice_date") or _date_range("data_documento") or {}
+    pipe_inv = [
+        *( [{"$match": match_inv}] if match_inv else [] ),
+        {"$group": {
+            "_id": None,
+            "totale":     {"$sum": {"$ifNull": ["$total_amount", {"$ifNull": ["$importo_totale", 0]}]}},
+            "imponibile": {"$sum": {"$ifNull": ["$importo_imponibile", {"$ifNull": ["$imponibile", 0]}]}},
+            "iva":        {"$sum": {"$ifNull": ["$importo_iva", {"$ifNull": ["$iva", 0]}]}},
+        }}
+    ]
+    res = await db["invoices"].aggregate(pipe_inv).to_list(1)
+    if res:
+        saldi["05.01.01"] = round(float(res[0].get("imponibile") or 0), 2)   # Costi merci
+        saldi["01.04.01"] = round(float(res[0].get("iva") or 0), 2)          # IVA credito
+        saldi["02.01.01"] = round(float(res[0].get("totale") or 0), 2)       # Debiti fornitori (lordi)
+
+    # Sottrai pagamenti effettivi ai Debiti v/fornitori (per saldo reale)
+    match_pag = _date_range("data") or {}
+    pipe_pag_banca = [
+        *( [{"$match": match_pag}] if match_pag else [] ),
+        {"$match": {"categoria": "fornitori"}},
+        {"$group": {"_id": None, "tot": {"$sum": "$importo"}}}
+    ]
+    pag_banca = await db["prima_nota_banca"].aggregate(pipe_pag_banca).to_list(1)
+    pag_cassa = await db["prima_nota_cassa"].aggregate(pipe_pag_banca).to_list(1)
+    pagato = (pag_banca[0]["tot"] if pag_banca else 0) + (pag_cassa[0]["tot"] if pag_cassa else 0)
+    saldi["02.01.01"] = round(max(0.0, saldi.get("02.01.01", 0) - float(pagato)), 2)
+
+    # ── CORRISPETTIVI (ricavi + IVA debito) ──────────────────────────────────
+    match_corr = _date_range("data") or {}
+    pipe_corr = [
+        {"$match": {**match_corr, "entity_status": {"$ne": "deleted"}}} if match_corr else {"$match": {"entity_status": {"$ne": "deleted"}}},
+        {"$group": {
+            "_id": None,
+            "totale":     {"$sum": {"$ifNull": ["$totale", 0]}},
+            "imponibile": {"$sum": {"$ifNull": ["$totale_imponibile", 0]}},
+            "iva":        {"$sum": {"$ifNull": ["$totale_iva", 0]}},
+            "contanti":   {"$sum": {"$ifNull": ["$pagato_contante", {"$ifNull": ["$pagato_cassa", 0]}]}},
+            "pos":        {"$sum": {"$ifNull": ["$pagato_elettronico", 0]}},
+        }}
+    ]
+    res = await db["corrispettivi"].aggregate(pipe_corr).to_list(1)
+    if res:
+        saldi["04.01.01"] = round(float(res[0].get("imponibile") or 0), 2)   # Ricavi vendite prodotti (corrispettivi totale)
+        saldi["02.03.01"] = round(float(res[0].get("iva") or 0), 2)          # IVA debito
+
+    # ── PRIMA NOTA CASSA (saldo cassa) ───────────────────────────────────────
+    pipe_cassa = [
+        *( [{"$match": _date_range("data")}] if _date_range("data") else [] ),
+        {"$group": {
+            "_id": "$tipo",
+            "tot": {"$sum": "$importo"}
+        }}
+    ]
+    res = await db["prima_nota_cassa"].aggregate(pipe_cassa).to_list(10)
+    entrate_cassa = sum(float(r.get("tot") or 0) for r in res if r.get("_id") == "entrata")
+    uscite_cassa  = sum(float(r.get("tot") or 0) for r in res if r.get("_id") == "uscita")
+    saldi["01.01.01"] = round(max(0.0, entrate_cassa - uscite_cassa), 2)
+
+    # ── ESTRATTO CONTO (saldo banca) ─────────────────────────────────────────
+    # data_contabile e data_valuta sono nel formato italiano "gg/mm/yyyy"
+    match_ec = {}
+    if anno:
+        match_ec = {"$or": [
+            {"data_contabile": {"$regex": f"/{anno}$"}},
+            {"data_valuta":    {"$regex": f"/{anno}$"}},
+        ]}
+    pipe_ec = [
+        *( [{"$match": match_ec}] if match_ec else [] ),
+        {"$group": {"_id": None, "tot": {"$sum": "$importo"}}}
+    ]
+    res = await db["estratto_conto_movimenti"].aggregate(pipe_ec).to_list(1)
+    if res:
+        saldi["01.01.02"] = round(float(res[0].get("tot") or 0), 2)
+
+    # ── CEDOLINI (costi personale + TFR + contributi) ─────────────────────────
+    match_ced = _anno_field() or {}
+    pipe_ced = [
+        *( [{"$match": match_ced}] if match_ced else [] ),
+        {"$group": {
+            "_id": None,
+            "netti":       {"$sum": {"$ifNull": ["$netto", 0]}},
+            "tfr":         {"$sum": {"$ifNull": ["$tfr_mese", 0]}},
+            "contributi":  {"$sum": {"$ifNull": ["$contributi_azienda", 0]}},
+            "lordi":       {"$sum": {"$ifNull": ["$lordo", 0]}},
+        }}
+    ]
+    res = await db["cedolini"].aggregate(pipe_ced).to_list(1)
+    if res:
+        saldi["05.03.01"] = round(float(res[0].get("lordi") or res[0].get("netti") or 0), 2)  # Salari/stipendi
+        saldi["05.03.02"] = round(float(res[0].get("contributi") or 0), 2)                    # Contributi previd.
+        saldi["05.03.03"] = round(float(res[0].get("tfr") or 0), 2)                           # TFR costo
+        saldi["02.04.01"] = round(float(res[0].get("tfr") or 0), 2)                           # TFR debito
+
+    # ── F24 (debiti tributari) ────────────────────────────────────────────────
+    if "f24_unificato" in await db.list_collection_names():
+        match_f24 = _date_range("data_scadenza") or _anno_field() or {}
+        pipe_f24 = [
+            *( [{"$match": match_f24}] if match_f24 else [] ),
+            {"$group": {"_id": None, "tot": {"$sum": {"$ifNull": ["$totale", {"$ifNull": ["$importo", 0]}]}}}}
+        ]
+        res = await db["f24_unificato"].aggregate(pipe_f24).to_list(1)
+        if res:
+            saldi["02.02.01"] = round(float(res[0].get("tot") or 0), 2)
+
+    return saldi
 
 
 async def inizializza_piano_conti_base(db) -> List[Dict[str, Any]]:
@@ -717,96 +839,67 @@ async def get_movimenti_contabili(
 
 @router.get("/bilancio")
 @handle_errors
-async def get_bilancio() -> Dict[str, Any]:
-    """Genera il bilancio (situazione patrimoniale ed economica) con dati reali."""
+async def get_bilancio(anno: str = None) -> Dict[str, Any]:
+    """Bilancio completo (SP + CE) con saldi filtrati per anno.
+    Usa `_calcola_saldi_piano_conti` come fonte unica di verità.
+    """
     db = Database.get_db()
-    
+
     conti = await db[COLLECTION_PIANO_CONTI].find({}, {"_id": 0}).to_list(1000)
-    
-    # Compute real saldi from actual data
-    # Costi: sum of all invoices (fatture ricevute)
-    costi_pipeline = [
-        {"$group": {"_id": None, "totale": {"$sum": "$importo_totale"}, "imponibile": {"$sum": "$importo_imponibile"}, "iva": {"$sum": "$importo_iva"}}}
-    ]
-    costi_res = await db["invoices"].aggregate(costi_pipeline).to_list(1)
-    totale_costi = costi_res[0]["imponibile"] if costi_res else 0
-    totale_iva_credito = costi_res[0]["iva"] if costi_res else 0
-    totale_debiti_fornitori = costi_res[0]["totale"] if costi_res else 0
-    
-    # Ricavi: corrispettivi
-    ricavi_pipeline = [
-        {"$match": {"entity_status": {"$ne": "deleted"}}},
-        {"$group": {"_id": None, "totale": {"$sum": "$totale"}, "imponibile": {"$sum": "$totale_imponibile"}, "iva": {"$sum": "$totale_iva"}}}
-    ]
-    ricavi_res = await db["corrispettivi"].aggregate(ricavi_pipeline).to_list(1)
-    totale_ricavi = ricavi_res[0]["imponibile"] if ricavi_res else 0
-    totale_iva_debito = ricavi_res[0]["iva"] if ricavi_res else 0
-    totale_crediti_clienti = ricavi_res[0]["totale"] if ricavi_res else 0
-    
-    # Map real values to conti
-    real_saldi = {
-        "01.01.01": 0,  # Cassa
-        "01.01.02": 0,  # Banca c/c
-        "01.02.01": round(totale_crediti_clienti, 2),  # Crediti v/clienti
-        "01.04.01": round(totale_iva_credito, 2),  # IVA a credito
-        "02.01.01": round(totale_debiti_fornitori, 2),  # Debiti v/fornitori
-        "02.02.01": round(totale_iva_debito, 2),  # IVA a debito
-        "04.01.01": round(totale_ricavi, 2),  # Ricavi
-        "05.01.01": round(totale_costi, 2),  # Costi merci
-    }
-    
+    if not conti:
+        conti = await inizializza_piano_conti_base(db)
+
+    real_saldi = await _calcola_saldi_piano_conti(db, anno)
+
     bilancio = {
+        "anno": anno,
         "stato_patrimoniale": {
-            "attivo": {"conti": [], "totale": 0},
-            "passivo": {"conti": [], "totale": 0},
-            "patrimonio_netto": {"conti": [], "totale": 0}
+            "attivo":            {"conti": [], "totale": 0.0},
+            "passivo":           {"conti": [], "totale": 0.0},
+            "patrimonio_netto":  {"conti": [], "totale": 0.0},
         },
         "conto_economico": {
-            "ricavi": {"conti": [], "totale": 0},
-            "costi": {"conti": [], "totale": 0},
-            "risultato": 0
+            "ricavi":     {"conti": [], "totale": 0.0},
+            "costi":      {"conti": [], "totale": 0.0},
+            "risultato":  0.0,
         }
     }
-    
+
     for conto in conti:
         codice = conto.get("codice", "")
-        saldo = real_saldi.get(codice, float(conto.get("saldo", 0)))
+        saldo = real_saldi.get(codice, 0.0)
         categoria = conto.get("categoria", "")
-        
-        conto_info = {
-            "codice": codice,
-            "nome": conto.get("nome"),
-            "saldo": saldo
-        }
-        
+
+        info = {"codice": codice, "nome": conto.get("nome"), "saldo": saldo}
+
         if categoria == "attivo":
-            bilancio["stato_patrimoniale"]["attivo"]["conti"].append(conto_info)
+            bilancio["stato_patrimoniale"]["attivo"]["conti"].append(info)
             bilancio["stato_patrimoniale"]["attivo"]["totale"] += saldo
         elif categoria == "passivo":
-            bilancio["stato_patrimoniale"]["passivo"]["conti"].append(conto_info)
+            bilancio["stato_patrimoniale"]["passivo"]["conti"].append(info)
             bilancio["stato_patrimoniale"]["passivo"]["totale"] += saldo
         elif categoria == "patrimonio_netto":
-            bilancio["stato_patrimoniale"]["patrimonio_netto"]["conti"].append(conto_info)
+            bilancio["stato_patrimoniale"]["patrimonio_netto"]["conti"].append(info)
             bilancio["stato_patrimoniale"]["patrimonio_netto"]["totale"] += saldo
         elif categoria == "ricavi":
-            bilancio["conto_economico"]["ricavi"]["conti"].append(conto_info)
+            bilancio["conto_economico"]["ricavi"]["conti"].append(info)
             bilancio["conto_economico"]["ricavi"]["totale"] += saldo
         elif categoria == "costi":
-            bilancio["conto_economico"]["costi"]["conti"].append(conto_info)
+            bilancio["conto_economico"]["costi"]["conti"].append(info)
             bilancio["conto_economico"]["costi"]["totale"] += saldo
-    
+
     bilancio["conto_economico"]["risultato"] = (
-        bilancio["conto_economico"]["ricavi"]["totale"] - 
+        bilancio["conto_economico"]["ricavi"]["totale"] -
         bilancio["conto_economico"]["costi"]["totale"]
     )
-    
-    # Round totals
+
+    # Round
     for key in ["attivo", "passivo", "patrimonio_netto"]:
         bilancio["stato_patrimoniale"][key]["totale"] = round(bilancio["stato_patrimoniale"][key]["totale"], 2)
     for key in ["ricavi", "costi"]:
         bilancio["conto_economico"][key]["totale"] = round(bilancio["conto_economico"][key]["totale"], 2)
     bilancio["conto_economico"]["risultato"] = round(bilancio["conto_economico"]["risultato"], 2)
-    
+
     return bilancio
 
 
