@@ -35,6 +35,31 @@ Funzionante in produzione: tutte le aree core (fatture, prima nota, fornitori, H
 noleggio, magazzino, assegni, riconciliazione, contabilità, strumenti, email).
 
 Attività recenti (Apr 2026):
+- **[FEAT P1 contabilità – Apr 2026] Disponibilità Liquide + Versamenti**:
+  nuovo endpoint `GET /api/contabilita/disponibilita-liquide?anno=YYYY&data_rif=...`
+  che calcola:
+    • saldo cassa (prima_nota_cassa entrate-uscite fino a data_rif)
+    • saldo banca (prima_nota_banca entrate-uscite)
+    • totale disponibilità liquide (cassa + banca)
+    • versamenti cassa→banca (movimenti cassa tipo=uscita con categoria/descrizione
+      contenente "versament")
+  Widget in cima alla pagina `/contabilita/avanzata` con 4 card:
+  Disponibilità Liquide · Cassa · Banca · Versamenti.
+  Fix bonus: errore `isMobile is not defined` preesistente (styles module-level
+  che referenziava variabile di component) convertito in stili-funzione per
+  grid4/grid3/grid2.
+  Verificato su produzione 2026: tot €-167.757,59 / cassa €-82.814 / banca €-84.944 / versamenti €41.570 (11 operazioni).
+- **[FEAT P1 cespiti – Apr 2026] Auto-scan cespiti da fatture XML**:
+  riscritto `POST /api/cespiti/scan-fatture` che ora legge dal nested array
+  `invoices.righe[]` (con fallback su `total_amount`+`supplier_name` se le righe
+  non sono state importate). Il classificatore riconosce: macchinari,
+  attrezzature, forni/impastatrici/frigoriferi, mobili/arredi, impianti,
+  software, veicoli, hardware/computer. Bottone "Scan Fatture XML" in
+  `/contabilita` tab Cespiti già presente.
+  Risultato attuale in produzione: 1 cespite (ARREDOTOP €1.384,70, categoria
+  mobili_arredi). Le altre 1713 fatture non hanno `righe` popolate, perché
+  il loro import originale non ha salvato il dettaglio XML — rerun dell'import
+  con salvataggio righe porterà a un catalogo cespiti completo.
 - **[FEAT P1 – Apr 2026] UI Risoluzione Ambigui Assegni**: aggiunti al file
   `app/routers/bank/assegni.py` 2 endpoint (`GET /api/assegni/ambigui` e
   `POST /api/assegni/{id}/risolvi-ambiguo`) riposizionati PRIMA della route

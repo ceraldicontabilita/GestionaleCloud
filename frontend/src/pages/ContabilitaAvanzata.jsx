@@ -31,9 +31,9 @@ const styles = {
     background: `linear-gradient(to bottom right, ${from}, ${to})`, borderRadius: 12, padding: 20
   }),
   row: { display: 'flex', alignItems: 'center', gap: 16 },
-  grid4: { display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: 16 },
-  grid3: { display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)', gap: 16 },
-  grid2: { display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 24 },
+  grid4: (isMobile) => ({ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: 16 }),
+  grid3: (isMobile) => ({ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)', gap: 16 }),
+  grid2: (isMobile) => ({ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 24 }),
   label: { color: 'white', fontWeight: '500' },
   select: { background: '#334155', color: 'white', padding: '8px 16px', borderRadius: 8, border: '1px solid #475569' },
   statLabel: (color) => ({ color: color, fontSize: 14, marginBottom: 4 }),
@@ -86,20 +86,23 @@ export default function ContabilitaAvanzata() {
     if (tab !== activeTab) setActiveTab(tab);
   }, [location.pathname]);
   const [message, setMessage] = useState(null);
+  const [disponibilita, setDisponibilita] = useState(null);
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [impRes, statRes, bilRes, aliqRes] = await Promise.all([
+      const [impRes, statRes, bilRes, aliqRes, dispRes] = await Promise.all([
         api.get(`/api/contabilita/calcolo-imposte?regione=${regione}&anno=${selectedYear}`).catch(() => null),
         api.get(`/api/contabilita/statistiche-categorizzazione?anno=${selectedYear}`).catch(() => null),
         api.get(`/api/contabilita/bilancio-dettagliato?anno=${selectedYear}`).catch(() => null),
-        api.get(`/api/contabilita/aliquote-irap`).catch(() => null)
+        api.get(`/api/contabilita/aliquote-irap`).catch(() => null),
+        api.get(`/api/contabilita/disponibilita-liquide?anno=${selectedYear}`).catch(() => null),
       ]);
       if (impRes?.data) setImposte(impRes.data);
       if (statRes?.data) setStatistiche(statRes.data);
       if (bilRes?.data) setBilancio(bilRes.data);
       if (aliqRes?.data) { setAliquoteIrap(aliqRes.data.aliquote || {}); }
+      if (dispRes?.data) setDisponibilita(dispRes.data);
     } catch (err) { console.error('Errore caricamento dati:', err); }
     setLoading(false);
   };
@@ -164,6 +167,46 @@ export default function ContabilitaAvanzata() {
         {/* Message */}
         {message && <div style={message.type === 'success' ? styles.messageSuccess : styles.messageError}>{message.text}</div>}
 
+        {/* Card Disponibilità Liquide */}
+        {disponibilita && (
+          <div data-testid="disponibilita-liquide-card" style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+            gap: 16,
+            marginBottom: 24,
+          }}>
+            <div style={{
+              background: 'linear-gradient(135deg, #065f46 0%, #047857 100%)',
+              borderRadius: 12, padding: 16, color: 'white',
+            }}>
+              <div style={{ fontSize: 12, opacity: 0.9, marginBottom: 4 }}>💶 Disponibilità Liquide (Cassa + Banca)</div>
+              <div style={{ fontSize: 28, fontWeight: 700 }}>{formatEuro(disponibilita.totale_disponibilita_liquide || 0)}</div>
+              <div style={{ fontSize: 11, opacity: 0.8, marginTop: 4 }}>al {disponibilita.data_riferimento}</div>
+            </div>
+            <div style={{ background: '#1e293b', borderRadius: 12, padding: 16, color: 'white' }}>
+              <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>💵 Cassa</div>
+              <div style={{ fontSize: 22, fontWeight: 700 }}>{formatEuro(disponibilita.cassa?.saldo || 0)}</div>
+              <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
+                E: {formatEuro(disponibilita.cassa?.entrate || 0)} · U: {formatEuro(disponibilita.cassa?.uscite || 0)}
+              </div>
+            </div>
+            <div style={{ background: '#1e293b', borderRadius: 12, padding: 16, color: 'white' }}>
+              <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>🏦 Banca</div>
+              <div style={{ fontSize: 22, fontWeight: 700 }}>{formatEuro(disponibilita.banca?.saldo || 0)}</div>
+              <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
+                E: {formatEuro(disponibilita.banca?.entrate || 0)} · U: {formatEuro(disponibilita.banca?.uscite || 0)}
+              </div>
+            </div>
+            <div style={{ background: '#1e293b', borderRadius: 12, padding: 16, color: 'white' }}>
+              <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>⇄ Versamenti (Cassa → Banca)</div>
+              <div style={{ fontSize: 22, fontWeight: 700 }}>{formatEuro(disponibilita.versamenti_cassa_to_banca?.totale || 0)}</div>
+              <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
+                {disponibilita.versamenti_cassa_to_banca?.operazioni || 0} operazioni nel {disponibilita.anno}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Tabs */}
         <div style={styles.tabs}>
           {['imposte', 'statistiche', 'bilancio'].map((tab) => (
@@ -190,7 +233,7 @@ export default function ContabilitaAvanzata() {
             </div>
 
             {/* Cards Riepilogo */}
-            <div style={styles.grid4}>
+            <div style={styles.grid4(isMobile)}>
               <div style={styles.cardGradient('#2563eb', '#1e40af')}><p style={styles.statLabel('#bfdbfe')}>Utile Civilistico</p><p style={styles.statValue} data-testid="utile-civilistico">{formatEuro(imposte.utile_civilistico)}</p></div>
               <div style={styles.cardGradient('#ea580c', '#c2410c')}><p style={styles.statLabel('#fed7aa')}>IRES (24%)</p><p style={styles.statValue} data-testid="ires-dovuta">{formatEuro(imposte.ires.imposta_dovuta)}</p></div>
               <div style={styles.cardGradient('#9333ea', '#7c3aed')}><p style={styles.statLabel('#e9d5ff')}>IRAP ({imposte.irap.aliquota}%)</p><p style={styles.statValue} data-testid="irap-dovuta">{formatEuro(imposte.irap.imposta_dovuta)}</p></div>
@@ -198,7 +241,7 @@ export default function ContabilitaAvanzata() {
             </div>
 
             {/* Dettaglio IRES/IRAP */}
-            <div style={styles.grid2}>
+            <div style={styles.grid2(isMobile)}>
               <div style={styles.card}>
                 <h3 style={styles.sectionTitle}>📊 Calcolo IRES</h3>
                 <table style={styles.table}>
@@ -238,7 +281,7 @@ export default function ContabilitaAvanzata() {
       {/* Tab: Statistiche */}
       {activeTab === 'statistiche' && statistiche && (
         <div style={styles.spaceY}>
-          <div style={styles.grid3}>
+          <div style={styles.grid3(isMobile)}>
             <div style={styles.card}><p style={{ color: '#94a3b8', fontSize: 14 }}>Fatture Categorizzate</p><p style={{ fontSize: 28, fontWeight: 'bold', color: '#4ade80' }}>{statistiche.totale_categorizzate}</p></div>
             <div style={styles.card}><p style={{ color: '#94a3b8', fontSize: 14 }}>Non Categorizzate</p><p style={{ fontSize: 28, fontWeight: 'bold', color: '#fb923c' }}>{statistiche.totale_non_categorizzate}</p></div>
             <div style={styles.card}><p style={{ color: '#94a3b8', fontSize: 14 }}>Copertura</p><p style={{ fontSize: 28, fontWeight: 'bold', color: '#60a5fa' }}>{statistiche.percentuale_copertura}%</p></div>
@@ -274,7 +317,7 @@ export default function ContabilitaAvanzata() {
         <div style={styles.spaceY}>
           <div style={styles.card}>
             <h3 style={styles.sectionTitle}>📈 Conto Economico</h3>
-            <div style={styles.grid2}>
+            <div style={styles.grid2(isMobile)}>
               <div>
                 <h4 style={styles.sectionHeader('#4ade80')}>RICAVI</h4>
                 <div style={styles.spaceY}>
@@ -309,7 +352,7 @@ export default function ContabilitaAvanzata() {
           </div>
           <div style={styles.card}>
             <h3 style={styles.sectionTitle}>🏦 Stato Patrimoniale</h3>
-            <div style={styles.grid2}>
+            <div style={styles.grid2(isMobile)}>
               <div>
                 <h4 style={styles.sectionHeader('#60a5fa')}>ATTIVO</h4>
                 <div style={styles.spaceY}>
