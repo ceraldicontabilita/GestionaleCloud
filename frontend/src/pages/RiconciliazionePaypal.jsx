@@ -6,6 +6,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
+import { useIsMobile } from '../hooks/useData';
 import {
   RefreshCw, CreditCard, AlertTriangle, CheckCircle2, FileText,
   Download, Search, TrendingDown, BarChart3
@@ -55,6 +56,9 @@ export default function RiconciliazionePaypal() {
   const [annoFiltro, setAnnoFiltro] = useState(anno);
   const [soloPagamenti, setSoloPagamenti] = useState(true);
   const [searchTx, setSearchTx] = useState('');
+
+  // Sincronizza il filtro locale con l'anno globale quando cambia nel TopNav
+  useEffect(() => { setAnnoFiltro(anno); }, [anno]);
 
   const loadDashboard = useCallback(async () => {
     try {
@@ -148,6 +152,29 @@ export default function RiconciliazionePaypal() {
             <button onClick={() => navigate('/documenti/import')}
               style={{ padding: '8px 14px', background: 'rgba(255,255,255,0.2)', color: 'white', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}>
               + Importa PDF
+            </button>
+            <button
+              data-testid="sync-paypal-api-btn"
+              onClick={async () => {
+                try {
+                  toast.info('Sincronizzazione PayPal API in corso…');
+                  const today = new Date();
+                  const end = today.toISOString().slice(0, 10);
+                  const startDate = new Date(today.getFullYear(), today.getMonth() - 3, 1);
+                  const start = startDate.toISOString().slice(0, 10);
+                  const res = await api.post('/api/paypal-api/sync', { start_date: start, end_date: end });
+                  const r = res.data || {};
+                  toast.success(`✓ Sync OK — ${r.total || 0} transazioni (${r.enriched || 0} arricchite)`);
+                  // reload
+                  loadDashboard(); loadTransactions();
+                } catch (e) {
+                  toast.error('Errore sync: ' + (e.response?.data?.detail || e.message));
+                }
+              }}
+              style={{ padding: '8px 14px', background: 'rgba(253, 224, 71, 0.25)', color: 'white', border: '1px solid rgba(253, 224, 71, 0.5)', borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 600 }}
+              title="Sincronizza le ultime 3 mesi di transazioni PayPal via API (Transaction Search)"
+            >
+              🔄 Sync PayPal API (ultimi 3 mesi)
             </button>
           </div>
         </div>

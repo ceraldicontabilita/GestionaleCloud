@@ -32,20 +32,44 @@ def extract_enriched_fields(tx: Dict[str, Any]) -> Dict[str, Any]:
         PAGOPA_IUV_PATTERN.search(f"{subject} {invoice}")
     )
 
+    importo_f = float(amount.get("value") or 0)
+    init_date = info.get("transaction_initiation_date") or ""
+    # Data ISO (YYYY-MM-DD) per compatibilità con gli altri endpoint PayPal
+    data_iso = init_date[:10] if init_date else None
+
+    # Estrai nome_controparte dal payer_info / shipping_info
+    payer_info = tx.get("payer_info", {}) or {}
+    shipping_info = tx.get("shipping_info", {}) or {}
+    payer_name = payer_info.get("payer_name", {}) or {}
+    nome_controparte = (
+        payer_name.get("alternate_full_name")
+        or payer_name.get("full_name")
+        or f"{payer_name.get('given_name', '')} {payer_name.get('surname', '')}".strip()
+        or shipping_info.get("name")
+        or info.get("transaction_subject")
+        or ""
+    )
+
     return {
         "transaction_id": info.get("transaction_id"),
         "paypal_account_id": info.get("paypal_account_id"),
         "paypal_reference_id": info.get("paypal_reference_id"),
         "reference_id_type": info.get("paypal_reference_id_type"),
         "event_code": info.get("transaction_event_code"),
-        "importo": float(amount.get("value") or 0),
+        # Campi usati dai listing:
+        "data": data_iso,
+        "data_operazione": init_date,
+        "lordo": importo_f,  # alias compatibile
+        "importo": importo_f,
+        "tipo": info.get("transaction_event_code"),
+        "nome_controparte": nome_controparte.strip(),
         "currency": amount.get("currency_code"),
         "shipping_amount": float(shipping.get("value") or 0),
         "invoice_id_fornitore": invoice or None,
         "custom_field": custom or None,
         "transaction_subject": subject or None,
         "transaction_note": info.get("transaction_note"),
-        "initiation_date": info.get("transaction_initiation_date"),
+        "initiation_date": init_date,
         "is_pagopa": is_pagopa,
         "instrument_type": info.get("instrument_type"),
         "instrument_sub_type": info.get("instrument_sub_type"),

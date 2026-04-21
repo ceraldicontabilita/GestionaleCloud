@@ -4,7 +4,7 @@ import {
   LayoutDashboard, FileText, BookOpen, Building2,
   Users, FlaskConical, ChevronDown,
   Bell, Calendar, Warehouse,
-  Settings, Wrench, FileBarChart, BookMarked, Car, Download
+  Settings, Wrench, FileBarChart, BookMarked, Car, Download, CreditCard
 } from 'lucide-react';
 import { AnnoSelector } from '../../contexts/AnnoContext';
 import { COLORS } from '../../lib/utils';
@@ -26,6 +26,7 @@ const ALTRO_ITEMS = [
   { to: '/documenti', label: 'Documenti', Icon: BookMarked },
   { to: '/noleggio', label: 'Noleggio Auto', Icon: Car },
   { to: '/riconciliazione', label: 'Riconciliazione', Icon: FileBarChart },
+  { to: '/riconciliazione/paypal', label: 'PayPal', Icon: CreditCard },
   { to: '/strumenti', label: 'Strumenti', Icon: Wrench },
   { to: '/admin', label: 'Admin', Icon: Settings },
 ];
