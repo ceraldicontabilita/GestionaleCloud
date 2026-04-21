@@ -499,10 +499,13 @@ async def scarica_ricevuta_verbale(verbale_id: str):
         {"$or": [{"id": verbale_id}, {"numero_verbale": verbale_id}]},
         {"_id": 0, "pdf_data": 0, "quietanza_pdf": 0}
     )
-    if not v or not v.get("pdf_ricevuta_path") or not os.path.exists(v["pdf_ricevuta_path"]):
+    pdf_path = (v or {}).get("pdf_ricevuta_path") or ""
+    # Security: il path DEVE essere sotto /app/uploads/
+    safe_path = os.path.realpath(pdf_path) if pdf_path else ""
+    if not v or not safe_path or not safe_path.startswith("/app/uploads/") or not os.path.exists(safe_path):
         raise HTTPException(404, "PDF non disponibile")
     return FileResponse(
-        v["pdf_ricevuta_path"],
+        safe_path,
         media_type="application/pdf",
         filename=f"ricevuta_verbale_{v.get('numero_verbale', verbale_id)}.pdf",
     )

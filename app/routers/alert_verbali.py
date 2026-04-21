@@ -55,7 +55,7 @@ async def contatore_alert() -> Dict[str, int]:
     oggi = datetime.now().date().isoformat()
     scad5 = (datetime.now() + timedelta(days=5)).date().isoformat()
     in_scad = await db["verbali_noleggio"].count_documents({
-        "stato": {"$in": ["notificato", "da_verificare"]},
+        "stato": {"$in": ["notificato", "da_verificare", "notifica_attesa"]},
         "data_scadenza_riduzione_30": {"$gte": oggi, "$lte": scad5},
         "data_pagamento": {"$in": [None, ""]},
     })

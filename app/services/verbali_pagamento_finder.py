@@ -147,6 +147,14 @@ async def _cerca_in_gmail(db, iuv, numero_verbale, verbale):
                         f.write(pdf_a.get_payload(decode=True))
                 else:
                     _genera_pdf_da_testo(body_txt, pdf_path)
+
+                # Se i campi dal body non sono stati estratti, prova a leggere il PDF
+                if pdf_a and (not parsed.get("totale") or not parsed.get("iuv")):
+                    pdf_parsed = _parse_pagopa_pdf(pdf_path)
+                    for k, v2 in pdf_parsed.items():
+                        if v2 and not parsed.get(k):
+                            parsed[k] = v2
+
                 return {
                     "fonte": "gmail",
                     "psp": parsed.get("psp", "PagoPA"),
@@ -186,6 +194,36 @@ def _parse_pagopa_body(body):
             out["totale"] = float(imp.replace(".", "").replace(",", "."))
         except ValueError:
             pass
+    return out
+
+
+def _parse_pagopa_pdf(pdf_path):
+    """Estrai iuv/totale/data/psp dal PDF allegato quando il body testuale non li contiene."""
+    out = {}
+    try:
+        import pdfplumber
+        with pdfplumber.open(pdf_path) as pdf:
+            text = "\n".join((p.extract_text() or "") for p in pdf.pages)
+    except Exception:
+        return out
+    # delega il parsing dei campi al body parser
+    parsed = _parse_pagopa_body(text)
+    for k, v in parsed.items():
+        if v is not None:
+            out[k] = v
+    # fallback extra: cerca importo generico
+    if not out.get("totale"):
+        m = re.search(r'€\s*([\d.]+,\d{2})', text)
+        if m:
+            try:
+                out["totale"] = float(m.group(1).replace(".", "").replace(",", "."))
+            except ValueError:
+                pass
+    # fallback: IUV senza prefisso strict
+    if not out.get("iuv"):
+        m = re.search(r'\b([03]\d{17})\b', text)
+        if m:
+            out["iuv"] = m.group(1)
     return out
 
 

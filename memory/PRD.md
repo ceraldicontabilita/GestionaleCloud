@@ -35,6 +35,56 @@ Funzionante in produzione: tutte le aree core (fatture, prima nota, fornitori, H
 noleggio, magazzino, assegni, riconciliazione, contabilità, strumenti, email).
 
 Attività recenti (Apr 2026):
+- **[FEAT P0 PayPal FASE 2 + Verbali FASE 3/4 – Apr 2026]** Implementate le 3 patch massicce
+  di riconciliazione avanzata richieste dall'utente:
+  
+  **FASE 2 (PayPal matching)**:
+  • `app/services/paypal_pdf_fetcher.py`: download ricevute PagoPA da Gmail +
+    generazione PDF sintetico con reportlab.
+  • `app/services/paypal_riconciliazione.py` arricchito con
+    `match_fornitore_by_paypal_id`, `riconcilia_multe_pagopa`,
+    `collega_a_estratto_conto`. Strategia primaria paypal_account_id
+    aggiunta in `riconcilia_pagamenti_paypal`.
+  • Endpoint: `POST /api/paypal-api/riconcilia`, `GET /api/paypal-api/ricevuta-pdf/{tx_id}`.
+  • Test smoke: tx `6TE49269X41363546` → PDF 2231B generato OK.
+  
+  **FASE 3 (ricerca pagamento verbali multi-fonte)**:
+  • `app/services/verbali_iuv_extractor.py`: estrazione IUV (18 cifre, prefisso 0/3)
+    da campi, filename, contenuto PDF via pdfplumber.
+  • `app/services/verbali_pagamento_finder.py`: cascata PayPal →
+    Gmail ricevute PagoPA → estratto_conto_movimenti SDD PayPal (entro 120gg).
+    Include parser PDF come fallback quando body email è HTML-only.
+  • Endpoint: `POST /api/verbali-noleggio/{id}/cerca-pagamento`,
+    `GET /api/verbali-noleggio/{id}/ricevuta-pdf` (con validazione anti path-traversal).
+  • Test reale: verbale `B25123609980` → trovato=true, fonte=gmail, PDF salvato.
+  • UI: card `DettaglioVerbale.jsx` con 3 stati (verde PAGATO / giallo DA VERIFICARE)
+    + bottoni data-testid `verbale-cerca-pagamento-btn` e `verbale-scarica-ricevuta-btn`.
+  
+  **FASE 4 (workflow bidirezionale verbali)**:
+  • `app/services/verbali_gmail_scanner.py`: scan Gmail per PEC verbali CdS
+    inoltrate (whitelist mittenti Polizia Locale Napoli, Prefettura, ARVAL,
+    Comune Napoli; no IMAP PEC Aruba diretto). Parse subject+body+avviso PDF
+    digitale. Calcolo scadenza beneficio 30% (5gg) + ordinaria (60gg).
+  • `app/services/verbali_fattura_linker.py`: cerca_fattura_per_verbale +
+    collega_verbali_a_fatture massivo.
+  • `app/services/verbali_fattura_trigger.py`: Trigger B. Hook chiamato dopo
+    insert fattura XML (in `app/routers/fatture_module/import_xml.py`);
+    se fornitore noleggio ARVAL/LEASYS/ALD/ALPHABET, estrae numeri verbale
+    dalle linee e crea schede parziali stato=notifica_attesa.
+  • `app/routers/alert_verbali.py`: `GET /api/alert-verbali/contatore`,
+    `/scadenza-imminente?giorni_soglia=5` — alert beneficio 30%.
+  • Endpoint aggiuntivi: `POST /api/verbali-noleggio/scan-gmail?days_back=N`,
+    `POST /api/verbali-noleggio/riconcilia-completo` (pipeline end-to-end).
+  • Scheduler: job `scan_gmail_verbali` ogni 30 min, `link_verbali_fatture`
+    ogni 60 min (in `app/scheduler.py`).
+  • Script retroattivi: `scripts/popola_paypal_account_id.py`,
+    `scripts/popola_verbali_retroattivo.py`.
+  • Test smoke reale: scan_gmail days_back=90 → 13 email, 12 nuovi, 1 updated.
+  
+  **Testing**: testing_agent_v3_fork iteration_3 → **16/16 test pytest PASS**.
+  Path traversal e asimmetria contatore alert già fixati.
+  Dipendenze aggiunte: `reportlab`, `pdfplumber`.
+  
 - **[FEAT P1 PayPal Transaction Search API – Apr 2026]** Configurate le
   credenziali `PAYPAL_CLIENT_ID` / `PAYPAL_CLIENT_SECRET` nel backend .env
   (App "APP CERALDI ERP" live, scope Transaction Search).
