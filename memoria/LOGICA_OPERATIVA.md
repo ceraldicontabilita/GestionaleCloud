@@ -207,13 +207,157 @@ Tab: Banca · Assegni · F24 · Fatture Aruba · Stipendi · Documenti · PayPal
 
 220 assegni raggruppati per carnet.
 
-Modal "Collega Fatture":
-- Fatture ordinate per fornitore (header sticky)
-- Note credito con importo negativo (badge rosso)
-- Massimo 4 fatture per assegno
-- Solo fatture dello stesso fornitore
+---
 
-Regola: l'auto-associazione collega assegni SOLO a fatture di fornitori con metodo di pagamento "assegno".
+#### 🎯 Logica N↔M: assegni ↔ fatture
+
+Un **assegno** e una **fattura** hanno una relazione **molti-a-molti**: lo stesso assegno può pagare più fatture, e la stessa fattura può essere pagata con più assegni. Il collante è il **fornitore**: gli assegni collegati a una fattura devono SEMPRE essere dello stesso fornitore della fattura.
+
+La struttura logica è:
+
+```
+assegno ─┐              ┌─► fattura
+         ├── collegamento ──► quota (€)
+assegno ─┘              └─► fattura
+```
+
+Ogni collegamento ha una **quota** in euro: la parte di importo dell'assegno che paga quella fattura. Un assegno può avere più quote (una per fattura), una fattura può ricevere più quote (una per ogni assegno).
+
+**Regola d'oro**:
+```
+importo_assegno = somma delle quote assegnate alle sue fatture
+importo_pagato_fattura = somma delle quote ricevute dai suoi assegni
+fattura.saldata  ⇔  importo_pagato_fattura == importo_fattura
+```
+
+---
+
+#### Caso A — 1 assegno = 1 fattura (tipico)
+
+Banca scrive assegno nº 1234 di €500,00 al fornitore X.
+Il fornitore X ha fattura FT001 aperta di €500,00.
+Collego l'assegno alla fattura → quota €500,00.
+- fattura FT001: pagata (saldata al 100%)
+- assegno 1234: pienamente assegnato (quota = importo)
+
+#### Caso B — 1 assegno paga 2+ fatture stesso fornitore
+
+Banca scrive assegno nº 1235 di €1.500,00 al fornitore Y.
+Il fornitore Y ha 3 fatture aperte: FT010 €600, FT011 €900, FT012 €300.
+Collego l'assegno a FT010 + FT011 → quote €600 + €900 = €1.500.
+- FT010: pagata
+- FT011: pagata
+- FT012: resta aperta
+- assegno 1235: pienamente assegnato
+
+**Vincolo**: tutte le fatture collegate a uno stesso assegno devono appartenere allo stesso fornitore. Massimo 4 fatture per assegno (regola operativa).
+
+#### Caso C — Fattura grande pagata da 2+ assegni (pagamento rateale)
+
+Fornitore Z emette fattura FT050 di €5.000 al mese. Si paga con 3 assegni:
+- assegno 2001 €1.800 → quota su FT050 = €1.800
+- assegno 2002 €1.700 → quota su FT050 = €1.700
+- assegno 2003 €1.500 → quota su FT050 = €1.500
+
+Totale quote su FT050 = €5.000 → fattura saldata.
+
+**Stato della fattura**:
+- Prima del primo assegno:  `aperta`
+- Dopo assegno 2001:        `parzialmente_pagata`  (importo_pagato = 1.800)
+- Dopo assegno 2002:        `parzialmente_pagata`  (importo_pagato = 3.500)
+- Dopo assegno 2003:        `pagata`               (importo_pagato = 5.000)
+
+#### Caso D — Mix dei due (raro ma gestito)
+
+Assegno 3000 €2.000 paga:
+- FT070 (€1.200) interamente → quota 1.200
+- FT071 (€4.000, rateale) per la prima tranche → quota 800
+
+Totale quote = 2.000. L'assegno è chiuso, FT070 è saldata, FT071 resta aperta con €3.200 residui.
+
+#### Caso E — Nota credito (TD04)
+
+Il fornitore emette una NC di €300 che scala dall'importo dell'assegno dovuto.
+Nel modal "Collega Fatture" la NC appare con **importo negativo** e badge rosso:
+- assegno €1.000
+- fattura FT100 €1.200
+- NC FT100-NC €-200 (stessa fattura o del fornitore)
+- Quota netta su FT100 = 1.200 − 200 = 1.000 → l'assegno copre la fattura
+
+---
+
+#### 📋 Dati coinvolti
+
+Collezione `assegni`:
+```
+id, numero, importo, data_emissione, data_addebito,
+fornitore_piva, fornitore_ragione_sociale,
+carnet_id, carnet_sequenza,
+fatture_collegate: [
+  { fattura_id, quota, data_collegamento }
+],
+importo_assegnato   (somma quote — deve == importo)
+stato               (emesso | parzialmente_assegnato | assegnato | addebitato | annullato)
+riconciliato_banca  (true se incrociato con estratto conto)
+movimento_banca_id  (riferimento al record nell'estratto conto)
+```
+
+Collezione `invoices` / `fatture_passive`:
+```
+id, importo_totale, fornitore_piva,
+importo_pagato      (somma delle quote ricevute)
+importo_residuo     (importo_totale − importo_pagato − eventuali NC)
+stato_pagamento     (aperta | parzialmente_pagata | pagata)
+assegni_collegati: [
+  { assegno_id, numero, quota }
+]
+```
+
+---
+
+#### 🔗 Riconciliazione con estratto conto
+
+Quando l'assegno "esce" dal conto corrente (banca addebita):
+1. Arriva un movimento in `estratto_conto_movimenti` con causale "Assegno n. XXXX" e importo
+2. Il sistema cerca nel registro `assegni` un assegno con (numero, importo) match
+3. Se trovato: `assegno.riconciliato_banca = true`, `data_addebito = data_movimento`, `movimento_banca_id = id`
+4. Se la somma delle quote copre tutte le fatture collegate, le fatture diventano definitivamente pagate
+
+Se arriva un addebito assegno ma nessun assegno nel registro corrisponde → alert "Assegno non registrato" nella pagina Strumenti → Verifica Coerenza.
+
+---
+
+#### ✅ Validazioni a livello di UI
+
+Quando l'utente collega fatture a un assegno:
+
+- Deve selezionare fatture **dello stesso fornitore** dell'assegno (altre filtrate via)
+- Massimo 4 fatture per assegno
+- La somma delle quote NON può superare `importo_assegno`
+- Se la somma delle quote è `< importo_assegno` → assegno `parzialmente_assegnato` (residuo va su altre fatture future dello stesso fornitore)
+- Se la somma delle quote `== importo_assegno` → assegno `assegnato`
+- Se l'assegno paga per intero la fattura → `fattura.stato = pagata`, crea in automatico un movimento in `prima_nota_banca` con tipo "uscita_assegno"
+- Se l'assegno paga solo una parte → `fattura.stato = parzialmente_pagata`, il movimento in prima nota è comunque creato ma con importo = quota
+
+---
+
+#### 🔍 Pagina Assegni — tab
+
+1. **Tutti** — lista assegni raggruppati per carnet, badge stato (emesso / assegnato / addebitato)
+2. **Da collegare** — assegni senza fatture (da processare)
+3. **Parzialmente assegnati** — assegni con quota residua da allocare
+4. **Addebitati ma non riconciliati** — movimenti banca che citano "assegno" senza assegno nel registro
+5. **Fatture aperte del fornitore X** — quando clicchi un assegno, mostra solo le fatture aperte dello stesso fornitore
+
+---
+
+#### Regola auto-associazione
+
+All'arrivo di una fattura SDI da un fornitore con `metodo_pagamento = "assegno"`:
+- La fattura NON viene auto-routata in prima_nota_cassa né in prima_nota_banca
+- Resta in stato `aperta` con `metodo_pagamento = "assegno"`
+- Appare nel tab "Fatture in attesa di assegno" della pagina Assegni
+- Verrà collegata manualmente o dall'auto-matcher quando viene emesso un assegno dello stesso fornitore con importo compatibile
 
 ---
 
