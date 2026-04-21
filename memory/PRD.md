@@ -35,6 +35,21 @@ Funzionante in produzione: tutte le aree core (fatture, prima nota, fornitori, H
 noleggio, magazzino, assegni, riconciliazione, contabilità, strumenti, email).
 
 Attività recenti (Apr 2026):
+- **[FEAT P1 PayPal Transaction Search API – Apr 2026]** Configurate le
+  credenziali `PAYPAL_CLIENT_ID` / `PAYPAL_CLIENT_SECRET` nel backend .env
+  (App "APP CERALDI ERP" live, scope Transaction Search).
+  Endpoint attivi:
+  • `GET /api/paypal-api/status` — conta transazioni totali, arricchite da API,
+    PagoPA identificate, ultimo sync.
+  • `POST /api/paypal-api/sync` — sincronizza un periodo (`start_date`/`end_date`)
+    via PayPal Reporting API; upsert per transaction_id ed estrazione di
+    `invoice_id_fornitore`, `paypal_account_id`, `paypal_reference_id`,
+    riconoscimento PagoPA (pattern custom_field/IUV).
+  • `POST /api/paypal-api/sync/month` — sync del mese corrente.
+  Test smoke su produzione (Settembre 2025):
+  `{"total":11,"enriched":11}`, transazione `6TE49269X41363546` con
+  `invoice_id_fornitore=OCTWO-617786` e `paypal_account_id=MKF7Q6VWWVH3E`
+  (entrambi corrispondenti all'atteso), 1 transazione PagoPA riconosciuta.
 - **[FEAT P1 HR + F24 – Apr 2026]** Completata la catena documents_inbox →
   entità di dominio:
   • Fix collection: il classificatore cedolini/CU ora legge da `dipendenti`
