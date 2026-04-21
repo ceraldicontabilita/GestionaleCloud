@@ -35,6 +35,23 @@ Funzionante in produzione: tutte le aree core (fatture, prima nota, fornitori, H
 noleggio, magazzino, assegni, riconciliazione, contabilità, strumenti, email).
 
 Attività recenti (Apr 2026):
+- **[FEAT P1 HR + F24 – Apr 2026]** Completata la catena documents_inbox →
+  entità di dominio:
+  • Fix collection: il classificatore cedolini/CU ora legge da `dipendenti`
+    (collection canonica con 30 record, non `hr_employees` che era vuoto).
+  • Nuovo endpoint `POST /api/documenti-inbox/import-dipendenti-from-cu`:
+    estrae CF + nominativo dai filename CU (pattern
+    `<CF> - AAAA - COGNOME NOME (...)` ) e crea i mancanti.
+  • Nuovo endpoint `GET /api/documenti-inbox/cross-check-f24`: confronta
+    F24 inbox (AI-parsed a download) con `f24_tributi`. Legge
+    `totale_versato` / `data_pagamento` / `tributi[]` dai documenti AI-parsed.
+  • Nuovo endpoint `POST /api/documenti-inbox/import-f24-from-inbox`: importa
+    i tributi F24 mancanti in `f24_tributi` (una riga per ciascun tributo).
+  Risultato produzione:
+  • **22/23 CU associate al dipendente giusto** via CF (solo "avv Carini"
+    non-match, non è dipendente).
+  • **2 F24 PDF AI-parsed** → **5 tributi** importati in `f24_tributi`
+    (totale €660,62 split in 1040, 8948).
 - **[FEAT P1 Gmail/PEC auto-classify – Apr 2026]** Nuovo modulo
   `app/routers/documents_inbox_classify.py` registrato sotto prefix
   `/api/documenti-inbox`. Classifica i 58 PDF/XML scaricati via Gmail/PEC in

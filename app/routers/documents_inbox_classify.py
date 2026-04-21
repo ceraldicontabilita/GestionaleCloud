@@ -170,8 +170,8 @@ async def auto_classify(
         ]}
 
     docs = await db["documents_inbox"].find(query, {"_id": 0}).to_list(10000)
-    # Preload dipendenti
-    employees = await db["hr_employees"].find({}, {
+    # Preload dipendenti (la collection canonica si chiama 'dipendenti')
+    employees = await db["dipendenti"].find({}, {
         "_id": 0, "id": 1, "cognome": 1, "nome": 1, "surname": 1, "name": 1,
         "codice_fiscale": 1, "fiscal_code": 1,
     }).to_list(5000)
@@ -276,11 +276,266 @@ async def inbox_statistics() -> Dict[str, Any]:
     ]):
         per_cat[r["_id"] or "non_classificato"] = r["c"]
     cedolini_associati = await db["documents_inbox"].count_documents({
-        "categoria": "cedolino", "dipendente_id": {"$exists": True, "$ne": None}
+        "categoria": {"$in": ["cedolino", "cu"]}, "dipendente_id": {"$exists": True, "$ne": None}
     })
     return {
         "totali": totali,
         "non_classificati": senza_cat,
         "per_categoria": per_cat,
         "cedolini_associati_dipendente": cedolini_associati,
+    }
+
+
+@router.post("/import-dipendenti-from-cu")
+@handle_errors
+async def import_dipendenti_from_cu(
+    dry_run: bool = Query(False, description="Preview senza scrivere"),
+) -> Dict[str, Any]:
+    """
+    Popola la collection `dipendenti` dall'anagrafica contenuta nei filename
+    delle Certificazioni Uniche (CU).
+
+    Pattern filename supportato:
+      '<CodiceFiscale> - <Anno> - <COGNOME NOME> (<CF>-<Progressivo>).pdf'
+    Esempio: 'CLETTV65E05F839N - 2025 - CELIO OTTAVIO (CLETTV65E05F839N-0300022).pdf'
+    """
+    import uuid as _uuid
+    db = Database.get_db()
+
+    cu_docs = await db["documents_inbox"].find(
+        {"categoria": "cu"}, {"_id": 0, "filename": 1}
+    ).to_list(5000)
+
+    # Indicizza dipendenti esistenti per CF
+    existing = await db["dipendenti"].find({}, {"_id": 0, "id": 1, "codice_fiscale": 1}).to_list(5000)
+    cf_set = {(e.get("codice_fiscale") or "").upper() for e in existing if e.get("codice_fiscale")}
+
+    # Pattern di estrazione
+    cu_pattern = re.compile(
+        r"([A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z])\s*-\s*(\d{4})\s*-\s*([A-Z][A-Z\s']+?)\s*\(",
+        re.IGNORECASE,
+    )
+
+    nuovi: List[Dict[str, Any]] = []
+    gia_presenti = 0
+    non_riconosciuti: List[str] = []
+
+    for d in cu_docs:
+        fn = (d.get("filename") or "").replace("\n", " ").strip()
+        m = cu_pattern.search(fn)
+        if not m:
+            non_riconosciuti.append(fn[:80])
+            continue
+        cf = m.group(1).upper()
+        nome_completo_raw = m.group(3).strip()
+        # Split cognome/nome: per codici fiscali italiani, in filename il cognome viene sempre prima
+        # Gestione di cognomi composti: prendiamo la prima parola come cognome, il resto come nome
+        # (approccio prudente — l'utente potrà correggere)
+        parts = nome_completo_raw.split()
+        if len(parts) >= 2:
+            # Nomi composti: se la stringa è molto lunga (come "SANKAPALA ARACHCHILAGE JANANIE AYACHANA DISSANAYAKA"),
+            # prendiamo la prima metà come cognome e la seconda come nome
+            if len(parts) > 3:
+                mid = len(parts) // 2
+                cognome = " ".join(parts[:mid]).title()
+                nome = " ".join(parts[mid:]).title()
+            else:
+                cognome = parts[0].title()
+                nome = " ".join(parts[1:]).title()
+        else:
+            cognome = nome_completo_raw.title()
+            nome = ""
+
+        if cf in cf_set:
+            gia_presenti += 1
+            continue
+
+        nuovi.append({
+            "id": str(_uuid.uuid4()),
+            "codice_fiscale": cf,
+            "cognome": cognome,
+            "nome": nome,
+            "nome_completo": nome_completo_raw.title(),
+            "stato": "attivo",
+            "attivo": True,
+            "fonte": "cu_auto_import",
+            "anno_cu": int(m.group(2)),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+        cf_set.add(cf)
+
+    if not dry_run and nuovi:
+        await db["dipendenti"].insert_many([n.copy() for n in nuovi])
+
+    return {
+        "success": True,
+        "dry_run": dry_run,
+        "cu_analizzate": len(cu_docs),
+        "dipendenti_creati": len(nuovi),
+        "gia_presenti": gia_presenti,
+        "non_riconosciuti": len(non_riconosciuti),
+        "nuovi_preview": [
+            {"codice_fiscale": n["codice_fiscale"], "nominativo": f"{n['cognome']} {n['nome']}"}
+            for n in nuovi[:30]
+        ],
+        "filename_non_riconosciuti": non_riconosciuti[:10],
+    }
+
+
+@router.get("/cross-check-f24")
+@handle_errors
+async def cross_check_f24() -> Dict[str, Any]:
+    """
+    Confronta gli F24 rilevati in `documents_inbox` con la collection `f24_tributi`.
+
+    Ritorna:
+      - f24_matched: (importo, scadenza) trovati in entrambi
+      - f24_only_inbox: nei PDF ma non in `f24_tributi` (da importare)
+      - f24_only_tributi: in `f24_tributi` senza documento PDF (da rintracciare)
+    """
+    db = Database.get_db()
+
+    inbox_f24 = await db["documents_inbox"].find(
+        {"categoria": "f24"},
+        {"_id": 0, "id": 1, "filename": 1, "importo": 1, "data_scadenza": 1,
+         "totale_versato": 1, "data_pagamento": 1, "ragione_sociale": 1, "tributi": 1,
+         "codice_fiscale": 1, "ai_parsed_data": 1},
+    ).to_list(5000)
+
+    tributi = await db["f24_tributi"].find(
+        {}, {"_id": 0, "id": 1, "importo": 1, "data_scadenza": 1, "origine": 1}
+    ).to_list(5000)
+
+    def _key(r: Dict[str, Any], prefer_versamento: bool = False) -> Optional[Tuple[str, float]]:
+        # Supporta sia la chiave (scadenza, importo) che (data_pagamento, totale_versato)
+        if prefer_versamento:
+            s = r.get("data_pagamento") or r.get("data_scadenza")
+            i = r.get("totale_versato")
+            if i is None:
+                i = r.get("importo")
+        else:
+            s = r.get("data_scadenza") or r.get("data_pagamento")
+            i = r.get("importo")
+            if i is None:
+                i = r.get("totale_versato")
+        if not s or i is None:
+            return None
+        return (str(s)[:10], round(float(i), 2))
+
+    trib_keys = {_key(t): t for t in tributi if _key(t)}
+    inbox_keys = {_key(d, prefer_versamento=True): d for d in inbox_f24 if _key(d, prefer_versamento=True)}
+
+    matched = [
+        {"scadenza": k[0], "importo": k[1],
+         "inbox_filename": inbox_keys[k].get("filename"),
+         "tributo_id": trib_keys[k].get("id")}
+        for k in set(inbox_keys) & set(trib_keys)
+    ]
+    only_inbox = [
+        {"scadenza": k[0], "importo": k[1],
+         "filename": inbox_keys[k].get("filename"),
+         "doc_id": inbox_keys[k].get("id"),
+         "ragione_sociale": inbox_keys[k].get("ragione_sociale"),
+         "codice_fiscale": inbox_keys[k].get("codice_fiscale"),
+         "tributi": [{"codice": t.get("codice_tributo"), "importo": t.get("importo_debito")}
+                     for t in (inbox_keys[k].get("tributi") or [])]}
+        for k in set(inbox_keys) - set(trib_keys)
+    ]
+    only_tributi = [
+        {"scadenza": k[0], "importo": k[1], "tributo_id": trib_keys[k].get("id"),
+         "origine": trib_keys[k].get("origine")}
+        for k in set(trib_keys) - set(inbox_keys)
+    ]
+
+    return {
+        "success": True,
+        "f24_inbox_totali": len(inbox_f24),
+        "f24_inbox_con_metadata": len(inbox_keys),
+        "f24_tributi_totali": len(tributi),
+        "matched": matched,
+        "only_inbox": only_inbox,
+        "only_tributi": only_tributi[:100],
+        "counts": {
+            "matched": len(matched),
+            "only_inbox": len(only_inbox),
+            "only_tributi": len(only_tributi),
+        },
+    }
+
+
+@router.post("/import-f24-from-inbox")
+@handle_errors
+async def import_f24_from_inbox(
+    dry_run: bool = Query(False, description="Preview senza scrivere"),
+) -> Dict[str, Any]:
+    """Importa in `f24_tributi` tutti gli F24 presenti in documents_inbox
+    con AI-parsed data ma non ancora presenti nella collection principale.
+
+    Per ogni F24: crea un record tributo per ciascuna riga tributo dell'F24.
+    """
+    import uuid as _uuid
+    db = Database.get_db()
+
+    inbox_f24 = await db["documents_inbox"].find(
+        {"categoria": "f24", "totale_versato": {"$gt": 0}},
+        {"_id": 0},
+    ).to_list(5000)
+
+    existing = await db["f24_tributi"].find(
+        {}, {"_id": 0, "data_scadenza": 1, "importo": 1, "codice_tributo": 1}
+    ).to_list(10000)
+    existing_keys = set()
+    for t in existing:
+        s = str(t.get("data_scadenza") or "")[:10]
+        i = round(float(t.get("importo") or 0), 2)
+        c = str(t.get("codice_tributo") or "")
+        existing_keys.add((s, i, c))
+
+    nuovi: List[Dict[str, Any]] = []
+    for d in inbox_f24:
+        data_pag = str(d.get("data_pagamento") or "")[:10]
+        tributi_rows = d.get("tributi") or []
+        if not data_pag or not tributi_rows:
+            continue
+
+        for tr in tributi_rows:
+            importo = float(tr.get("importo_debito") or 0) - float(tr.get("importo_credito") or 0)
+            if importo <= 0:
+                continue
+            cod = str(tr.get("codice_tributo") or "")
+            key = (data_pag, round(importo, 2), cod)
+            if key in existing_keys:
+                continue
+            existing_keys.add(key)
+            nuovi.append({
+                "id": str(_uuid.uuid4()),
+                "data_scadenza": data_pag,
+                "data_pagamento": data_pag,
+                "importo": round(importo, 2),
+                "codice_tributo": cod,
+                "descrizione": tr.get("descrizione"),
+                "rateazione": tr.get("rateazione"),
+                "periodo_riferimento": tr.get("periodo_riferimento"),
+                "codice_fiscale": d.get("codice_fiscale"),
+                "ragione_sociale": d.get("ragione_sociale"),
+                "origine": "documents_inbox_import",
+                "documento_id": d.get("id"),
+                "filename": d.get("filename"),
+                "stato": "da_verificare",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            })
+
+    if not dry_run and nuovi:
+        await db["f24_tributi"].insert_many([n.copy() for n in nuovi])
+
+    return {
+        "success": True,
+        "dry_run": dry_run,
+        "f24_analizzati": len(inbox_f24),
+        "tributi_creati": len(nuovi),
+        "nuovi_preview": [
+            {"data_pagamento": n["data_pagamento"], "codice_tributo": n["codice_tributo"],
+             "importo": n["importo"], "descrizione": n.get("descrizione")}
+            for n in nuovi[:20]
+        ],
     }
