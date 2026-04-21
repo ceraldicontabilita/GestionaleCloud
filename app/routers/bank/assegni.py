@@ -817,6 +817,40 @@ async def clear_generated_assegni(stato: str = Query("vuoto")) -> Dict[str, Any]
     }
 
 
+@router.post("/auto-match")
+async def auto_match_assegni(
+    dry_run: bool = Query(False, description="Se True, non scrive su DB — restituisce solo la proposta"),
+) -> Dict[str, Any]:
+    """
+    🤖 Auto-matcher Assegni ↔ Fatture (4 livelli, N:M, tolleranza ±0,005€).
+
+    Implementa la logica operativa documentata in LOGICA_OPERATIVA.md:
+    - L1: 1 assegno = 1 fattura stesso importo
+    - L2: N assegni uguali stesso fornitore = 1 fattura divisa in parti uguali (max 4 rate, 4 mesi)
+    - L3: 2-4 assegni di importi diversi stesso fornitore = 1 fattura (finestra 60gg)
+    - L4: 1 assegno = 2-4 fatture dello stesso fornitore
+
+    Vincolo rigido: P.IVA fornitore deve combaciare. Se ambiguo, non decide.
+    Genera automaticamente i movimenti in prima_nota_banca (source=assegno_auto_match).
+    """
+    from app.routers.bank.assegni_auto_match import run_auto_match
+
+    db = Database.get_db()
+    report = await run_auto_match(db, dry_run=dry_run)
+    return {
+        "success": True,
+        **report,
+        "totali": {
+            "L1": len(report["match_l1"]),
+            "L2": len(report["match_l2"]),
+            "L3": len(report["match_l3"]),
+            "L4": len(report["match_l4"]),
+            "ambigui": len(report["ambigui"]),
+            "non_trovati": len(report["non_trovati"]),
+        },
+    }
+
+
 @router.post("/auto-associa")
 async def auto_associa_assegni() -> Dict[str, Any]:
     """

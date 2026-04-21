@@ -415,6 +415,25 @@ export default function GestioneAssegni() {
     }
   };
 
+  const handleAutoMatch = async (dryRun = false) => {
+    setAutoAssociating(true);
+    setAutoAssocResult(null);
+    try {
+      const url = `/api/assegni/auto-match${dryRun ? '?dry_run=true' : ''}`;
+      const res = await api.post(url);
+      setAutoAssocResult({
+        ...res.data,
+        _modalita_auto_match: true,
+        _dry_run: dryRun,
+      });
+      if (!dryRun) loadData();
+    } catch (error) {
+      alert('Errore Auto-Match: ' + (error.response?.data?.detail || error.message));
+    } finally {
+      setAutoAssociating(false);
+    }
+  };
+
   // LEARNING MACHINE: Apprende dalle associazioni esistenti
   const handleLearn = async () => {
     setLearningLoading(true);
@@ -887,6 +906,45 @@ export default function GestioneAssegni() {
           }}
         >
           {autoAssociating ? 'Associando...' : 'Auto-Associa'}
+        </button>
+
+        {/* Nuovo: Auto-Match rigoroso a 4 livelli (LOGICA_OPERATIVA) */}
+        <button
+          onClick={() => handleAutoMatch(false)}
+          disabled={autoAssociating}
+          data-testid="auto-match-btn"
+          title="Auto-match rigoroso: 4 livelli (L1 1→1, L2 N uguali→1, L3 N diversi→1, L4 1→N) con tolleranza ±0,005€"
+          style={{
+            padding: '10px 16px',
+            background: autoAssociating ? '#ccc' : 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+            color: 'white',
+            border: 'none',
+            borderRadius: 8,
+            cursor: autoAssociating ? 'not-allowed' : 'pointer',
+            fontWeight: 'bold',
+            fontSize: 13,
+            boxShadow: '0 2px 4px rgba(5,150,105,0.3)'
+          }}
+        >
+          {autoAssociating ? '🤖 …' : '🤖 Auto-collega'}
+        </button>
+        <button
+          onClick={() => handleAutoMatch(true)}
+          disabled={autoAssociating}
+          data-testid="auto-match-preview-btn"
+          title="Anteprima: mostra cosa collegherebbe senza scrivere sul DB"
+          style={{
+            padding: '10px 14px',
+            background: '#f3f4f6',
+            color: '#374151',
+            border: '1px solid #d1d5db',
+            borderRadius: 8,
+            cursor: autoAssociating ? 'not-allowed' : 'pointer',
+            fontWeight: 600,
+            fontSize: 12
+          }}
+        >
+          👁️ Anteprima
         </button>
         
         {/* Pulsante Associazione Combinata (somma assegni = fattura) */}
@@ -1391,7 +1449,54 @@ export default function GestioneAssegni() {
       )}
       
       {/* Risultato Auto-Associazione */}
-      {autoAssocResult && (
+      {autoAssocResult && autoAssocResult._modalita_auto_match && (
+        <div style={{
+          marginBottom: 20,
+          padding: 15,
+          background: '#ecfdf5',
+          borderRadius: 8,
+          border: '1px solid #6ee7b7',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+            <div style={{ flex: 1 }}>
+              <strong style={{ color: '#047857', fontSize: 14 }}>
+                🤖 Auto-Match {autoAssocResult._dry_run ? '(ANTEPRIMA)' : 'completato'}
+              </strong>
+              <div style={{ marginTop: 8, fontSize: 13, display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+                <span>📋 Assegni processati: <strong>{autoAssocResult.assegni_processati ?? 0}</strong></span>
+                <span>📄 Fatture disponibili: <strong>{autoAssocResult.fatture_disponibili ?? 0}</strong></span>
+                <span>🏦 Movimenti banca creati: <strong>{autoAssocResult.movimenti_banca_creati ?? 0}</strong></span>
+              </div>
+              <div style={{ marginTop: 8, fontSize: 13, display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+                <span style={{ color: '#059669' }}>✓ L1 (1=1): <strong>{autoAssocResult.totali?.L1 ?? 0}</strong></span>
+                <span style={{ color: '#0369a1' }}>✓ L2 (N uguali→1): <strong>{autoAssocResult.totali?.L2 ?? 0}</strong></span>
+                <span style={{ color: '#7c3aed' }}>✓ L3 (N diversi→1): <strong>{autoAssocResult.totali?.L3 ?? 0}</strong></span>
+                <span style={{ color: '#ea580c' }}>✓ L4 (1→N): <strong>{autoAssocResult.totali?.L4 ?? 0}</strong></span>
+                <span style={{ color: '#dc2626' }}>⚠ Ambigui: <strong>{autoAssocResult.totali?.ambigui ?? 0}</strong></span>
+                <span style={{ color: '#6b7280' }}>✗ Non trovati: <strong>{autoAssocResult.totali?.non_trovati ?? 0}</strong></span>
+              </div>
+              {autoAssocResult.ambigui?.length > 0 && (
+                <details style={{ marginTop: 10, fontSize: 12 }}>
+                  <summary style={{ cursor: 'pointer', color: '#dc2626', fontWeight: 600 }}>
+                    Vedi {autoAssocResult.ambigui.length} assegni ambigui (da confermare manualmente)
+                  </summary>
+                  <ul style={{ margin: '6px 0', paddingLeft: 18 }}>
+                    {autoAssocResult.ambigui.slice(0, 10).map((a, i) => (
+                      <li key={i}>
+                        [{a.livello}] Assegno {a.assegno_numero} — {a.candidates?.length || 0} candidate
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+            </div>
+            <button onClick={() => setAutoAssocResult(null)} style={{ padding: '5px 10px' }}>✕</button>
+          </div>
+        </div>
+      )}
+
+      {/* Risultato Auto-Associazione (legacy) */}
+      {autoAssocResult && !autoAssocResult._modalita_auto_match && (
         <div style={{ 
           marginBottom: 20, 
           padding: 15, 

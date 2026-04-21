@@ -1,0 +1,32 @@
+{
+  "summary": "Testing completo (backend + frontend) dell'Auto-matcher Assegni a 4 livelli. Tutti i requisiti verificati su DB produzione senza side-effect: il sistema era gia` in stato stazionario post-primo-run (44 match L1 applicati, 185 assegni arricchiti con P.IVA), e le nuove chiamate sono idempotenti come atteso. Dry-run non scrive, real-run non crea duplicati, anti-duplicato su (assegno_id, invoice_id) verificato, vincolo P.IVA rispettato, dedup intelligente funziona (assegno ambiguo con 4 numeri fattura DIVERSI resta ambiguo). Frontend: entrambi i bottoni presenti con i data-testid corretti, chiamate /api/assegni/auto-match con e senza dry_run confermate, pannello risultati mostra contatori L1/L2/L3/L4/Ambigui/Non trovati.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_2.json"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "assegni_auto_match.py _try_l3: le combinazioni con itertools.combinations su liste grandi di assegni senza match (potenzialmente >30 dello stesso fornitore) crescono combinatorialmente (C(n,4)); con 30 assegni = 27.405 combinazioni per livello, gestibile, ma se il numero sale (es. 100 assegni stesso fornitore) diventa O(10^6). Consigliato limitare anche qui a top-N per performance, come gia` fatto in _try_l4 (top 10).",
+    "_enrich_assegni_con_piva fallback substring: `if norm in k or k in norm` e` molto permissivo — con ragioni sociali corte (es. 'CG SRL') rischia di matchare fornitori errati. Consigliato richiedere almeno 5-6 caratteri in comune o usare SequenceMatcher con soglia >= 0.85.",
+    "_apply_match per il caso N:M (N assegni → N fatture, quindi len(assegni)>1 e len(fatture)>1) ritorna {'error': 'caso match non gestito'} — nessun livello attuale lo genera, ma il branch non loggato potrebbe nascondere regressioni future. Consigliato logger.warning in quel ramo.",
+    "_crea_mov_banca: idempotency key usa (assegno_id, invoice_id, tipo='uscita', categoria='Assegni'); se un utente in futuro creasse manualmente un movimento con quegli stessi tag verrebbe considerato gia` presente e il matcher NON creerebbe il suo. Consigliato stringere la chiave a source='assegno_auto_match'.",
+    "_load_open_invoices_by_piva esclude solo payment_status in ['paid','cancelled'] ma non considera 'pagata' (italiano), che e` pero` filtrato dopo via _is_paid_status. Funziona, ma per performance meglio filtrare direttamente in query Mongo includendo anche 'pagata' e 'pagato' nel $nin.",
+    "Inconsistenza stato assegni: 45 assegni hanno 'fatture_collegate' non vuoto ma solo 44 hanno match_auto=True. Il 45esimo e` un link manuale con schema diverso (usa 'id' e 'numero' invece di 'fattura_id' e 'match_livello'). Consigliato normalizzare lo schema di fatture_collegate tra link manuale e auto-match per evitare confusione downstream."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "N/A (AUTH_DISABLED)",
+  "seed_data_creation": "Nessun dato di test creato. Usati i 220 assegni reali e 1660 fatture aperte reali del cliente. Nessuna scrittura aggiuntiva al DB (il 2o run e` stato idempotente: 0 nuovi movimenti).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Stato post-test verificato: prima_nota_banca{source:'assegno_auto_match'}=44, assegni{match_auto:true}=44, invoices con assegni_collegati=44, assegni con fornitore_piva enriched=185. Endpoint POST /api/assegni/auto-match?dry_run=true|false funzionante su https://gestione-contabile.preview.emergentagent.com. Frontend in /riconciliazione/assegni (UI italiana) con [data-testid=auto-match-preview-btn] e [data-testid=auto-match-btn]. Per rigenerare dati di test, ripristinare manualmente alcuni assegni/fatture a stato 'aperto' prima di rilanciare.",
+  "rca of the issue": "Nessun bug. Verifiche eseguite: (1) GET stato iniziale DB; (2) curl dry_run=true → 175 processati, 0 arricchiti, 0 L1/L2/L3/L4 nuovi, 9 ambigui, 166 non_trovati, DB invariato; (3) curl senza dry_run → stesso output, 0 movimenti_banca_creati (idempotente); (4) aggregate MongoDB su prima_nota_banca per (assegno_id,invoice_id) duplicati = 0; (5) aggregate fatture_collegate.fattura_id duplicati = 0; (6) ispezione lista ambigui L1: assegno 0208770631 ha 4 candidate con invoice_number DIVERSI (0070033077, 0070045803, 0070046314, 0070047077) stesso importo 2496.33€ — dedup corretto, giustamente segnalato ambiguo; (7) Playwright: click Anteprima → chiamata /api/assegni/auto-match?dry_run=true → 200 + pannello 'Auto-Match (ANTEPRIMA)' con contatori visibili; (8) Playwright: click Auto-collega (con window.confirm stubbato) → chiamata /api/assegni/auto-match senza dry_run → 200 + pannello 'Auto-Match completato'. Tutte le assertion dei requirements risultano vere."
+}
