@@ -296,6 +296,39 @@ export default function ImportDocumenti() {
           <span style={{ marginLeft: 12, fontSize: 12, color: '#6b7280' }}>
             Supporta ZIP annidati con estrazione automatica
           </span>
+
+          {/* Auto-classify documenti Gmail/PEC */}
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                const res = await api.post('/api/documenti-inbox/auto-classify?solo_non_classificati=false');
+                const r = res.data || {};
+                const cats = Object.entries(r.classificati || {}).map(([k, v]) => `  ${k}: ${v}`).join('\n');
+                alert(
+                  `✓ Auto-classificazione completata\n\n` +
+                  `Documenti totali: ${r.totali}\n` +
+                  `Non classificabili: ${r.nessuna_categoria}\n` +
+                  `Cedolini/CU associati a dipendente: ${r.cedolini_associati}\n` +
+                  `F24 creati in f24_tributi: ${r.f24_creati}\n\n` +
+                  `Categorie rilevate:\n${cats}`
+                );
+              } catch (e) {
+                alert('Errore: ' + (e.response?.data?.detail || e.message));
+              }
+            }}
+            data-testid="auto-classify-btn"
+            title="Scansiona documents_inbox (Gmail/PEC) e classifica automaticamente F24, cedolini, CU, verbali, PEC…"
+            style={{
+              marginLeft: 14,
+              padding: '10px 16px',
+              background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+              color: 'white', border: 'none', borderRadius: 8,
+              fontWeight: 600, cursor: 'pointer', fontSize: 13,
+            }}
+          >
+            🧠 Auto-classifica Gmail/PEC
+          </button>
         </div>
 
         {/* Lista File in coda */}

@@ -35,6 +35,27 @@ Funzionante in produzione: tutte le aree core (fatture, prima nota, fornitori, H
 noleggio, magazzino, assegni, riconciliazione, contabilità, strumenti, email).
 
 Attività recenti (Apr 2026):
+- **[FEAT P1 Gmail/PEC auto-classify – Apr 2026]** Nuovo modulo
+  `app/routers/documents_inbox_classify.py` registrato sotto prefix
+  `/api/documenti-inbox`. Classifica i 58 PDF/XML scaricati via Gmail/PEC in
+  14 categorie (f24, cu, cedolino, verbale, contributi_inps, pec_notifica,
+  cartella_esattoriale, bonifico, scontrino, satispay, fattura_servizi,
+  fattura_estera, ricevuta_estera, estratto_conto, xml_sdi, qr_pagamento,
+  rimborso) via pattern filename + subject + sender. Riconosce il codice
+  fiscale italiano nei filename CU (formato standard AAAAAA99A99A999A)
+  e lo associa al dipendente in `hr_employees`. Per gli F24 estrae importo
+  e scadenza dal PDF e crea un record in `f24_tributi` se mancante.
+  Endpoint: `POST /api/documenti-inbox/auto-classify` (dry_run, solo_non_classificati)
+  + `GET /api/documenti-inbox/statistics`. Bottone UI "🧠 Auto-classifica Gmail/PEC"
+  nella pagina `/import-documenti`. Risultato produzione: 58/58 classificati,
+  0 non-classificati.
+- **[FIX cespiti scan – Apr 2026]** Fix importante: lo scan leggeva il campo
+  sbagliato (`righe` invece di `linee`, dove l'importatore XML salva le righe).
+  Correzione applicata + estensione alla collection `fatture_passive`.
+  Risultato su produzione: da 1 cespite (€1.384) a **17 cespiti per €68.352,75**
+  (forni, frigoriferi professionali, sfogliatrice, impastatrice, lavapiatti,
+  mobili, software, planetaria). Tutti con categoria, coefficiente
+  ammortamento e vita utile auto-assegnati.
 - **[FEAT P1 contabilità – Apr 2026] Disponibilità Liquide + Versamenti**:
   nuovo endpoint `GET /api/contabilita/disponibilita-liquide?anno=YYYY&data_rif=...`
   che calcola:

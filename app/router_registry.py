@@ -297,6 +297,10 @@ def _register_email(app: FastAPI):
     app.include_router(email_download.router, prefix="/api", tags=["Email Download"])
     app.include_router(email_reconciliation.router, tags=["Email Riconciliazione"])
     app.include_router(email_mongodb.router, prefix="/api", tags=["Email MongoDB"])
+
+    # Auto-classify documents_inbox (Gmail/PEC)
+    from app.routers import documents_inbox_classify
+    app.include_router(documents_inbox_classify.router, prefix="/api/documenti-inbox", tags=["Documents Inbox"])
     app.include_router(documenti_non_associati.router, prefix="/api", tags=["Documenti Non Associati"])
     app.include_router(documenti_intelligenti.router, prefix="/api/documenti-smart", tags=["Documenti Intelligenti"])
     app.include_router(document_ai.router, prefix="/api/document-ai", tags=["Document AI"])

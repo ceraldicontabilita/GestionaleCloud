@@ -377,66 +377,74 @@ async def scan_fatture_per_cespiti(
     nuovi_cespiti: List[Dict[str, Any]] = []
     seen = set()
 
-    # Itera TUTTE le fatture passive non annullate
-    cursor = db["invoices"].find({
-        "entity_status": {"$ne": "deleted"},
-        "$or": [{"total_amount": {"$gt": soglia_valore}}, {"importo_totale": {"$gt": soglia_valore}}],
-    }, {"_id": 0})
+    # Itera TUTTE le fatture passive non annullate (da entrambe le collection note)
+    processed_total = 0
+    for coll_name in ("invoices", "fatture_passive"):
+        if coll_name not in await db.list_collection_names():
+            continue
+        cursor = db[coll_name].find({
+            "entity_status": {"$ne": "deleted"},
+            "$or": [
+                {"total_amount": {"$gt": soglia_valore}},
+                {"importo_totale": {"$gt": soglia_valore}},
+            ],
+        }, {"_id": 0})
 
-    async for inv in cursor:
-        righe = inv.get("righe") or []
-        fattura_id = inv.get("id") or inv.get("invoice_key")
-        data_fattura = inv.get("invoice_date") or inv.get("data_fattura") or ""
-        data_acquisto = str(data_fattura)[:10] if data_fattura else "2025-01-01"
-        try:
-            anno_acquisto = int(data_acquisto[:4])
-        except (ValueError, IndexError):
-            anno_acquisto = 2025
-        fornitore = inv.get("supplier_name") or inv.get("cedente_denominazione")
+        async for inv in cursor:
+            processed_total += 1
+            righe = inv.get("righe") or inv.get("linee") or inv.get("lines") or []
+            fattura_id = inv.get("id") or inv.get("invoice_key")
+            data_fattura = inv.get("invoice_date") or inv.get("data_fattura") or inv.get("data") or ""
+            data_acquisto = str(data_fattura)[:10] if data_fattura else "2025-01-01"
+            try:
+                anno_acquisto = int(data_acquisto[:4])
+            except (ValueError, IndexError):
+                anno_acquisto = 2025
+            fornitore = inv.get("supplier_name") or inv.get("cedente_denominazione")
 
-        # Se non ci sono righe, usa total_amount come riga unica
-        if not righe:
-            total = float(inv.get("total_amount") or inv.get("importo_totale") or 0)
-            desc = f"{fornitore or 'Fornitore ignoto'} — Fatt. {inv.get('invoice_number') or inv.get('numero_fattura') or ''}".strip(" -")
-            righe = [{"descrizione": desc, "prezzo_totale": total}]
+            # Se non ci sono righe, usa total_amount come riga unica
+            if not righe:
+                total = float(inv.get("total_amount") or inv.get("importo_totale") or 0)
+                desc = f"{fornitore or 'Fornitore ignoto'} — Fatt. {inv.get('invoice_number') or inv.get('numero_fattura') or ''}".strip(" -")
+                righe = [{"descrizione": desc, "prezzo_totale": total}]
 
-        for riga in righe:
-            descrizione = str(riga.get("descrizione") or "").strip()
-            prezzo = float(riga.get("prezzo_totale") or riga.get("importo") or 0)
-            if not descrizione or prezzo < soglia_valore:
-                continue
+            for riga in righe:
+                descrizione = str(riga.get("descrizione") or riga.get("description") or "").strip()
+                prezzo = float(riga.get("prezzo_totale") or riga.get("importo") or riga.get("price_total") or 0)
+                if not descrizione or prezzo < soglia_valore:
+                    continue
 
-            categoria = classify_asset(descrizione, prezzo)
-            if not categoria:
-                continue
+                categoria = classify_asset(descrizione, prezzo)
+                if not categoria:
+                    continue
 
-            dedup_key = (descrizione[:100], round(prezzo, 2))
-            if dedup_key in seen or dedup_key in existing_set:
-                continue
-            seen.add(dedup_key)
+                dedup_key = (descrizione[:100], round(prezzo, 2))
+                if dedup_key in seen or dedup_key in existing_set:
+                    continue
+                seen.add(dedup_key)
 
-            cat_info = CATEGORIE_CESPITI.get(categoria, {"descrizione": categoria, "coefficiente": 15, "vita_utile": 7})
-            cespite = {
-                "id": str(uuid4()),
-                "descrizione": descrizione[:200],
-                "categoria": categoria,
-                "categoria_descrizione": cat_info["descrizione"],
-                "coefficiente_ammortamento": cat_info["coefficiente"],
-                "vita_utile_anni": cat_info["vita_utile"],
-                "data_acquisto": data_acquisto,
-                "anno_acquisto": anno_acquisto,
-                "valore_acquisto": round(prezzo, 2),
-                "valore_residuo": round(prezzo, 2),
-                "fondo_ammortamento": 0,
-                "fornitore": fornitore,
-                "fattura_id": fattura_id,
-                "note": "Auto-estratto da fattura XML",
-                "stato": "attivo",
-                "ammortamento_completato": False,
-                "piano_ammortamento": [],
-                "created_at": datetime.now(timezone.utc).isoformat(),
-            }
-            nuovi_cespiti.append(cespite)
+                cat_info = CATEGORIE_CESPITI.get(categoria, {"descrizione": categoria, "coefficiente": 15, "vita_utile": 7})
+                cespite = {
+                    "id": str(uuid4()),
+                    "descrizione": descrizione[:200],
+                    "categoria": categoria,
+                    "categoria_descrizione": cat_info["descrizione"],
+                    "coefficiente_ammortamento": cat_info["coefficiente"],
+                    "vita_utile_anni": cat_info["vita_utile"],
+                    "data_acquisto": data_acquisto,
+                    "anno_acquisto": anno_acquisto,
+                    "valore_acquisto": round(prezzo, 2),
+                    "valore_residuo": round(prezzo, 2),
+                    "fondo_ammortamento": 0,
+                    "fornitore": fornitore,
+                    "fattura_id": fattura_id,
+                    "note": "Auto-estratto da fattura XML",
+                    "stato": "attivo",
+                    "ammortamento_completato": False,
+                    "piano_ammortamento": [],
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                }
+                nuovi_cespiti.append(cespite)
 
     if dry_run:
         return {
