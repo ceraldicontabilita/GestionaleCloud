@@ -275,7 +275,30 @@ Assegno 3000 €2.000 paga:
 
 Totale quote = 2.000. L'assegno è chiuso, FT070 è saldata, FT071 resta aperta con €3.200 residui.
 
-#### Caso E — Nota credito (TD04)
+#### Caso E — Assegni + saldo in contanti (quota cassa manuale)
+
+Fornitore W emette fattura FT200 di €5.000. Si paga con:
+- 3 assegni da €1.500 = €4.500
+- Differenza €500 pagata in contanti al momento dell'ultima consegna
+
+Nel modal Collega Fatture:
+- Seleziono i 3 assegni del fornitore W
+- Nel campo **"Quota cassa"** scrivo €500,00
+- La somma risulta: 1.500 × 3 + 500 = 5.000 = importo fattura → ✓ saldata
+
+Cosa succede dietro:
+- Crea 3 movimenti in `prima_nota_banca` (uno per assegno) da €1.500 ciascuno
+- Crea 1 movimento in `prima_nota_cassa` da €500 tipo "saldo fattura in contanti"
+- Fattura FT200 diventa `pagata` con `importo_pagato = 5.000`
+
+Note:
+- La quota cassa è disponibile SOLO nel collegamento manuale, non viene mai suggerita dall'auto-matcher
+- Tolleranza applicata anche qui: `assegni + quota_cassa − importo_fattura` deve essere ≤ 0,005 €
+- Se vuoi registrare solo la cassa (senza assegni) usa direttamente la pagina Fatture → bottone "💵 Cassa"
+
+---
+
+#### Caso F — Nota credito (TD04)
 
 Il fornitore emette una NC di €300 che scala dall'importo dell'assegno dovuto.
 Nel modal "Collega Fatture" la NC appare con **importo negativo** e badge rosso:
@@ -400,12 +423,15 @@ Esempio: assegno €1.500 ↔ fatture €600 + €900 → match bundle.
 
 ---
 
-#### 📐 Tolleranze e arrotondamenti
+#### 📐 Tolleranze, vincoli e residui
 
-- Match secco: ±0,05 € (singolo centesimo di divisione)
-- Match N assegni uguali verso 1 fattura: ±(0,05 × N) €
-- Match combinatorio (Livello 3 e 4): ±0,10 €
-- Se la tolleranza assorbe il match ma lascia un **residuo > 0,01 €**, il residuo viene scritto come nota nel collegamento (`note: "arrotondamento pagamento rateale"`) e **non** crea fatture/assegni residui fittizi
+- **Tolleranza per match automatico**: massimo **±0,005 €** (mezzo centesimo) in qualunque livello
+- Se la differenza tra somma assegni e importo fattura **supera 0,005 €**:
+  - il matcher NON collega automaticamente
+  - la fattura (o il residuo) viene scritto in **prima nota provvisoria** in attesa di decisione manuale
+  - nella pagina Assegni appare un alert "Residuo non matchato — gestione manuale"
+- **Ratealità**: massimo **4 rate** per fattura, **un assegno al mese** (finestra max 4 mesi tra il primo e l'ultimo assegno dello stesso gruppo)
+- **Quota manuale in contanti**: nel modal "Collega fatture" è possibile inserire una **quota cassa** aggiuntiva se la differenza tra assegni e fattura viene pagata in contanti (es. fattura €5.000, 3 assegni da €1.500 = €4.500, quota cassa manuale €500 → fattura saldata). La quota cassa genera automaticamente un movimento in `prima_nota_cassa` tipo "saldo fattura in contanti".
 
 ---
 
@@ -414,7 +440,7 @@ Esempio: assegno €1.500 ↔ fatture €600 + €900 → match bundle.
 Lo scheduler lancia l'auto-matcher una volta all'ora oppure on-demand dal pulsante "🤖 Auto-collega" della pagina Assegni. Processa gli assegni in questo ordine:
 
 1. **Livello 1** (match secco) su tutti gli assegni non collegati
-2. **Livello 2** (N assegni uguali → 1 fattura) sui restanti
+2. **Livello 2** (N assegni uguali → 1 fattura, fino a 4 rate) sui restanti
 3. **Livello 3** (N assegni diversi → 1 fattura, 2 ≤ N ≤ 4) sui restanti
 4. **Livello 4** (1 assegno → N fatture) sui restanti
 
@@ -425,10 +451,11 @@ Ad ogni livello, il matcher è **conservativo**: se trova più candidate valide,
 #### 🔒 Regole di sicurezza del matcher
 
 - **Stesso fornitore**: solo assegni e fatture con stessa P.IVA vengono valutati insieme
-- **Niente cross-carnet per Livello 2**: gli N assegni "uguali" devono essere dello stesso carnet (stesso libretto) per considerarli rate dello stesso pagamento
-- **Note credito**: se il fornitore ha NC aperte, il matcher le sottrae dal totale fattura prima di cercare il match (es. fattura €5.000 − NC €200 = target €4.800)
-- **Assegni già addebitati in banca** hanno priorità: il matcher li processa per primi perché sono già usciti dal conto
-- **Idempotente**: girando l'auto-matcher 10 volte di fila, il risultato non cambia (non crea doppioni)
+- **Vincolo temporale**: gli N assegni "uguali" di Livello 2 devono avere **data di emissione in mesi diversi consecutivi** (1 al mese, finestra max 4 mesi)
+- **Niente cross-carnet per Livello 2**: gli N assegni devono essere dello stesso carnet (stesso libretto BPM)
+- **Note credito**: il matcher sottrae NC aperte dal totale fattura prima di cercare il match
+- **Assegni già addebitati in banca** (`riconciliato_banca=true`) hanno priorità: il matcher li processa per primi
+- **Idempotente**: girando l'auto-matcher 10 volte di fila, il risultato non cambia
 - **Reversibile**: ogni match automatico è marcato `match_auto = true` e può essere rimosso con un click dalla pagina Assegni
 
 ---
