@@ -1,6 +1,7 @@
 """
 Fatture Module - Import XML singoli e multipli.
 """
+import logging
 from fastapi import HTTPException, UploadFile, File
 from typing import Dict, Any, List
 from datetime import datetime, timezone
@@ -16,6 +17,8 @@ from app.routers.fatture_module.ciclo_utils import (
 )
 from .common import COL_FORNITORI, COL_FATTURE_RICEVUTE
 from .helpers import get_or_create_fornitore, check_duplicato, salva_dettaglio_righe, salva_allegato_pdf
+
+logger = logging.getLogger(__name__)
 
 
 async def import_fattura_xml(file: UploadFile = File(...)) -> Dict[str, Any]:
@@ -139,6 +142,13 @@ async def import_fattura_xml(file: UploadFile = File(...)) -> Dict[str, Any]:
     }
     
     await db[COL_FATTURE_RICEVUTE].insert_one(fattura.copy())
+    
+    # Trigger B: verbali da fattura XML noleggio (non bloccante)
+    try:
+        from app.services.verbali_fattura_trigger import processa_fattura_per_verbali
+        await processa_fattura_per_verbali(db, fattura)
+    except Exception:
+        logger.exception("Errore trigger verbali da fattura")
     
     # F: Gestione Note di Credito TD04/TD08 — storna fattura originale
     NOTE_CREDITO = ["TD04", "TD08"]

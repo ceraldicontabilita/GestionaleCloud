@@ -299,6 +299,38 @@ def start_scheduler():
     """Avvia lo scheduler con i task programmati."""
     logger.info("🚀 [SCHEDULER] Configurazione scheduler...")
 
+    # ── Gmail Verbali CdS: scan ogni 30 min ────────────────────────────────
+    async def _scan_gmail_verbali_job():
+        from app.database import Database
+        from app.services.verbali_gmail_scanner import scan_gmail_verbali
+        try:
+            result = await scan_gmail_verbali(Database.get_db(), days_back=2)
+            logger.info(f"[SCHEDULER-VERBALI-GMAIL] {result}")
+        except Exception as e:
+            logger.error(f"[SCHEDULER-VERBALI-GMAIL] errore: {e}")
+
+    async def _link_verbali_fatture_job():
+        from app.database import Database
+        from app.services.verbali_fattura_linker import collega_verbali_a_fatture
+        try:
+            result = await collega_verbali_a_fatture(Database.get_db())
+            logger.info(f"[SCHEDULER-VERBALI-LINK] {result}")
+        except Exception as e:
+            logger.error(f"[SCHEDULER-VERBALI-LINK] errore: {e}")
+
+    scheduler.add_job(
+        _scan_gmail_verbali_job,
+        'interval', minutes=30,
+        id="scan_gmail_verbali", name="Scan Gmail Verbali CdS (ogni 30 min)",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        _link_verbali_fatture_job,
+        'interval', minutes=60,
+        id="link_verbali_fatture", name="Link Verbali ↔ Fatture (ogni 60 min)",
+        replace_existing=True,
+    )
+
     # ── PEC: scarica nuove fatture ogni ora ────────────────────────────────
     scheduler.add_job(
         pec_hourly_download_task,

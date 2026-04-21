@@ -1,0 +1,45 @@
+{
+  "summary": "Test backend completo di FASE 2 (PayPal riconciliazione + ricevuta PDF), FASE 3 (ricerca pagamento multi-fonte + PDF verbale) e FASE 4 (scan Gmail, pipeline completa, alert scadenza). 16/16 test pytest passano (51.45s) contro l'URL pubblico REACT_APP_BACKEND_URL. Verificati dati reali: verbale B25123609980 (trovato=true, fonte=gmail, pdf_disponibile=true) e transazione PayPal 6TE49269X41363546 (PDF 2231B valido, header %PDF-1.3). Endpoint di regressione /status e /sync OK. Nessun bug bloccante.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "POST /api/verbali-noleggio/{verbale_id}/cerca-pagamento",
+        "issue": "Per B25123609980 torna trovato=true + pdf_disponibile=true ma importo=0, psp=null, data_pagamento=null, metodo_pagamento=null, iuv_usato=null. Il PDF Gmail viene scaricato ma i metadata del pagamento non sono estratti dal PDF/email. Il main agent aveva preannunciato questo comportamento, ma il fatto che i campi siano null porta a risposta parziale e poca informazione sull'effettivo pagamento."
+      },
+      {
+        "endpoint": "POST /api/paypal-api/riconcilia",
+        "issue": "Strategia primaria paypal_account_id non produce match per i 6 pagamenti di settembre 2025: tutti i 6 finiscono in dettaglio_non_trovati con motivo 'Nessun fornitore corrispondente a <account_id>' e best_score 0.20. Il campo beneficiario della tx PayPal contiene l'ID account (P4DJ6DV3XEWCE, MKF7Q6VWWVH3E, ...) e nessun fornitore nel DB ha tale paypal_account_id memorizzato — pertanto la strategia fallback per nome+importo fallisce matching. Main agent ha indicato questo come expected perché 'i fornitori non hanno ancora paypal_account_id popolato', ma l'UX del riconciliatore non migliora finché non si popola il campo sul lato fornitori. Valutare se aggiungere suggerimenti top-1 candidato sopra soglia (es. 0.50) invece di solo list."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_fase2_fase3_fase4.py",
+    "/app/test_reports/pytest/fase2_fase3_fase4.xml"
+  ],
+  "action_items": [
+    "[LOW] Considerare l'arricchimento della risposta /cerca-pagamento quando fonte=gmail: se il PDF è scaricabile, estrarre almeno data/importo dal testo del PDF (attualmente in `verbali_pagamento_finder.py` non si valorizzano importo/data/psp quando la fonte è gmail PDF-only).",
+    "[LOW] Valutare popolamento progressivo `fornitori.paypal_account_id` tramite UI (attualmente nessun fornitore ha l'ID, quindi la strategia primaria della riconciliazione fatture gira a vuoto)."
+  ],
+  "critical_code_review_comments": [
+    "app/routers/paypal_api.py linea 76-77: il filtro `initiation_date` è un .setdefault dopo uno start_date già impostato con $gte; funziona ma se solo end_date è presente, il $gte non viene impostato e il dict ha solo $lte — OK ma la concatenazione delle date come stringhe ISO senza UTC può portare a off-by-day se il DB memorizza con timezone. Suggerimento: normalizzare sempre a ISO-Z.",
+    "app/routers/paypal_api.py linea 98-125 (ricevuta-pdf): la funzione controlla prima il file locale, poi fa fetch da Gmail (PagoPA) o genera PDF — ma tutto sincronizzamente nella request. Per tx con molti PDF da scaricare la request può andare in timeout. Valutare generazione in background con task + return 202 + polling.",
+    "app/routers/verbali_noleggio_api.py linea 493-508 (ricevuta-pdf verbale): nessuna sanitizzazione del path pdf_ricevuta_path — se il DB ha un path malformato o controllato esternamente, FileResponse apre un file arbitrario. Rischio traversal. Suggerimento: validare che pdf_ricevuta_path sia sotto /app/uploads/.",
+    "app/routers/alert_verbali.py linea 22: il filtro `data_pagamento: {$in:[None, '']}` NON coglie verbali con campo assente (non settato). Mongo restituisce ugualmente il documento perché $in con None matcha sia null sia missing, ma se domani il campo viene settato a 0 o false (tipo non-pagato con flag diverso) il filtro fallisce silenziosamente. Meglio usare `$or: [{data_pagamento: {$exists: false}}, {data_pagamento: null}, {data_pagamento: ''}]`.",
+    "app/routers/verbali_noleggio_api.py /riconcilia-completo: la pipeline esegue 3 step sincroni in cascata (scan-gmail + linker + finder per ogni verbale aperto). Per DB con 100+ verbali notificati questa rotta può superare i 5 minuti e andare in timeout — manca limit/batch/task asincrono. Valutare scheduler-job (già presente in app/scheduler.py come _scan_gmail_verbali_job ogni 30min) come canale primario e rendere /riconcilia-completo invocabile ma con timeout guard.",
+    "app/routers/alert_verbali.py /contatore: non considera 'notifica_attesa' tra gli stati per scadenza_imminente_5gg (include solo 'notificato' e 'da_verificare'). Invece /scadenza-imminente include anche 'notifica_attesa'. Asimmetria fra i due endpoint — un verbale in notifica_attesa con data_scadenza_riduzione_30 imminente apparirà nella lista ma non nel contatore."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "not tested (skip frontend as requested)"},
+  "test_credentials": "N/A (AUTH_DISABLED nel backend, nessuna autenticazione necessaria)",
+  "seed_data_creation": "Nessun dato di test creato. Tutti i test leggono/interrogano dati reali preesistenti (verbale B25123609980, 11 tx PayPal, 6 pagamenti sept 2025). Nessuna scrittura indiretta verificata: /scan-gmail potrebbe creare verbali nuovi se emerge PEC non vista — run su days_back=7 ha prodotto verbali_nuovi=0, verbali_aggiornati=0.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Suite pytest `/app/backend/tests/test_fase2_fase3_fase4.py` — 16 test, tutti passano. Endpoint verificati: POST /api/paypal-api/riconcilia (torna {multe_pagopa:{totale:1,riconciliati:0}, fatture:{pagamenti_processati:6,riconciliati:0,non_trovati:6}, banca:{processate:7,collegate:0}}), GET /api/paypal-api/ricevuta-pdf/6TE49269X41363546 (200, 2231B, %PDF-1.3), POST /api/verbali-noleggio/B25123609980/cerca-pagamento (trovato=true fonte=gmail pdf_disponibile=true, altri campi null), GET /api/verbali-noleggio/B25123609980/ricevuta-pdf (200, 1542B), POST /api/verbali-noleggio/scan-gmail?days_back=7 (email_scansionate:1 email_match:1 nuovi:0 aggiornati:0), POST /api/verbali-noleggio/riconcilia-completo (200), GET /api/alert-verbali/contatore ({scadenza_imminente_5gg:0, in_attesa_notifica:0}), GET /api/alert-verbali/scadenza-imminente (lista vuota, nessun verbale in scadenza). Endpoint regressione /api/paypal-api/status e /sync con date invalide (400) OK. Per prossime run, rieseguire `pytest /app/backend/tests/test_fase2_fase3_fase4.py -v` — idempotente.",
+  "rca of the issue": "Nessun bug. Le risposte inattese (importo=0 su cerca-pagamento, riconciliati=0 su riconcilia) sono comportamento atteso documentato dal main agent: (a) i fornitori Ceraldi non hanno ancora paypal_account_id popolato, (b) verbale pagato via Gmail PDF-only non ha metadata estratti dal finder corrente. Trattati come minor issue suggerendo miglioramenti non bloccanti."
+}

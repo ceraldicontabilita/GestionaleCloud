@@ -449,3 +449,101 @@ async def get_verbali_stats() -> Dict[str, Any]:
         "importo_totale": round(importo_totale, 2),
         "health_score": round((con_driver / totale * 100) if totale > 0 else 0, 1)
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# FASE 3 + FASE 4: Ricerca pagamento multi-fonte + workflow bidirezionale
+# ═══════════════════════════════════════════════════════════════════════════
+import os
+from fastapi.responses import FileResponse
+
+
+@router.post("/{verbale_id}/cerca-pagamento")
+@handle_errors
+async def cerca_pagamento_verbale(verbale_id: str) -> Dict[str, Any]:
+    """Cerca in cascata (PayPal → Gmail → E/C) il pagamento del verbale.
+    Se trovato, applica al verbale tutti i dati del pagamento."""
+    from app.services.verbali_pagamento_finder import (
+        trova_pagamento_verbale, applica_pagamento_a_verbale
+    )
+    db = Database.get_db()
+    v = await db[COLLECTION].find_one(
+        {"$or": [{"id": verbale_id}, {"numero_verbale": verbale_id}]},
+        {"_id": 0, "pdf_data": 0, "quietanza_pdf": 0}
+    )
+    if not v:
+        raise HTTPException(404, "Verbale non trovato")
+    match = await trova_pagamento_verbale(db, v)
+    if not match:
+        return {"trovato": False, "messaggio": "Nessun pagamento trovato."}
+    vid = v.get("id") or v.get("numero_verbale") or verbale_id
+    await applica_pagamento_a_verbale(db, vid, match)
+    return {
+        "trovato": True,
+        "fonte": match["fonte"],
+        "psp": match["psp"],
+        "importo": match["importo"],
+        "data_pagamento": match["data_pagamento"],
+        "metodo_pagamento": match["metodo_pagamento"],
+        "pdf_disponibile": bool(match.get("pdf_ricevuta_path")),
+        "iuv_usato": match.get("iuv_usato"),
+    }
+
+
+@router.get("/{verbale_id}/ricevuta-pdf")
+@handle_errors
+async def scarica_ricevuta_verbale(verbale_id: str):
+    """Scarica la ricevuta PDF collegata al verbale."""
+    db = Database.get_db()
+    v = await db[COLLECTION].find_one(
+        {"$or": [{"id": verbale_id}, {"numero_verbale": verbale_id}]},
+        {"_id": 0, "pdf_data": 0, "quietanza_pdf": 0}
+    )
+    if not v or not v.get("pdf_ricevuta_path") or not os.path.exists(v["pdf_ricevuta_path"]):
+        raise HTTPException(404, "PDF non disponibile")
+    return FileResponse(
+        v["pdf_ricevuta_path"],
+        media_type="application/pdf",
+        filename=f"ricevuta_verbale_{v.get('numero_verbale', verbale_id)}.pdf",
+    )
+
+
+@router.post("/scan-gmail")
+@handle_errors
+async def scan_gmail(days_back: int = 7) -> Dict[str, Any]:
+    """Scansione Gmail per verbali CdS inoltrati (Trigger A)."""
+    from app.services.verbali_gmail_scanner import scan_gmail_verbali
+    return await scan_gmail_verbali(Database.get_db(), days_back=days_back)
+
+
+@router.post("/riconcilia-completo")
+@handle_errors
+async def riconcilia_completo() -> Dict[str, Any]:
+    """
+    Pipeline completa workflow verbali:
+    1. Scan Gmail ultimi 7gg per nuove PEC
+    2. Collega verbali ↔ fatture ARVAL/Leasys
+    3. Ricerca pagamenti PagoPA in tutte le fonti
+    """
+    from app.services.verbali_gmail_scanner import scan_gmail_verbali
+    from app.services.verbali_fattura_linker import collega_verbali_a_fatture
+    from app.services.verbali_pagamento_finder import (
+        trova_pagamento_verbale, applica_pagamento_a_verbale
+    )
+    db = Database.get_db()
+    r1 = await scan_gmail_verbali(db, days_back=7)
+    r2 = await collega_verbali_a_fatture(db)
+    r3 = {"processati": 0, "riconciliati": 0}
+    cursor = db[COLLECTION].find({
+        "stato": {"$in": ["notificato", "da_verificare", "notifica_attesa"]},
+        "riconciliato_paypal": {"$ne": True},
+    }, {"_id": 0, "pdf_data": 0, "quietanza_pdf": 0})
+    async for v in cursor:
+        r3["processati"] += 1
+        m = await trova_pagamento_verbale(db, v)
+        if m:
+            vid = v.get("id") or v.get("numero_verbale")
+            ok = await applica_pagamento_a_verbale(db, vid, m)
+            if ok:
+                r3["riconciliati"] += 1
+    return {"scan_gmail": r1, "link_fatture": r2, "ricerca_pagamenti": r3}

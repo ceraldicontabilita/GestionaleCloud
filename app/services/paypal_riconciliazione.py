@@ -112,6 +112,82 @@ def match_fornitore(paypal_name: str, fornitore_name: str) -> float:
     return 0.0
 
 
+async def match_fornitore_by_paypal_id(db: AsyncIOMotorDatabase, paypal_account_id: str) -> Optional[Dict[str, Any]]:
+    """Ricerca fornitore tramite il paypal_account_id salvato in anagrafica."""
+    if not paypal_account_id:
+        return None
+    return await db["fornitori"].find_one(
+        {"$or": [
+            {"anagrafica.paypal_account_id": paypal_account_id},
+            {"paypal_account_id": paypal_account_id},
+        ]},
+        {"_id": 0}
+    )
+
+
+async def riconcilia_multe_pagopa(db: AsyncIOMotorDatabase, transazioni_pagopa: List[Dict[str, Any]]) -> Dict[str, int]:
+    """Le multe CdS non vanno su invoices, ma su verbali_noleggio (fase 3)."""
+    from app.services.verbali_pagamento_finder import trova_pagamento_verbale, applica_pagamento_a_verbale
+    stats = {"totale": len(transazioni_pagopa), "riconciliati": 0}
+    for tx in transazioni_pagopa:
+        subj = tx.get("transaction_subject", "") or ""
+        m_verb = re.search(r'([A-Z]\d{10,12})', subj)
+        if m_verb:
+            verbale = await db["verbali_noleggio"].find_one({"numero_verbale": m_verb.group(1)})
+            if verbale:
+                match = await trova_pagamento_verbale(db, verbale)
+                if match:
+                    vid = verbale.get("id") or verbale.get("numero_verbale")
+                    ok = await applica_pagamento_a_verbale(db, vid, match)
+                    if ok:
+                        stats["riconciliati"] += 1
+    return stats
+
+
+async def collega_a_estratto_conto(db: AsyncIOMotorDatabase) -> Dict[str, int]:
+    """Lega paypal_transactions ↔ estratto_conto_movimenti (evita doppi conteggi)."""
+    stats = {"processate": 0, "collegate": 0}
+    query = {
+        "event_code": {"$in": ["T0006", "T0003"]},
+        "importo": {"$lt": 0},
+        "riconciliato_con_estratto_banca": {"$ne": True},
+    }
+    cursor = db["paypal_transactions"].find(query)
+    async for tx in cursor:
+        stats["processate"] += 1
+        try:
+            imp = abs(tx["importo"])
+            data_tx = datetime.fromisoformat(tx["initiation_date"].replace("Z", "+00:00"))
+        except Exception:
+            continue
+        mov = await db["estratto_conto_movimenti"].find_one({
+            "descrizione": {"$regex": "PayPal Europe.*49RJ2252ASLM4", "$options": "i"},
+            "importo": {"$gte": -imp - 0.01, "$lte": -imp + 0.01},
+            "data_contabile": {
+                "$gte": data_tx.strftime("%Y-%m-%d"),
+                "$lte": (data_tx + timedelta(days=7)).strftime("%Y-%m-%d"),
+            },
+        })
+        if mov:
+            await db["paypal_transactions"].update_one(
+                {"transaction_id": tx["transaction_id"]},
+                {"$set": {
+                    "riconciliato_con_estratto_banca": True,
+                    "estratto_conto_movimento_id": str(mov.get("_id") or mov.get("id"))
+                }}
+            )
+            await db["estratto_conto_movimenti"].update_one(
+                {"_id": mov["_id"]},
+                {"$set": {
+                    "paypal_transaction_id": tx["transaction_id"],
+                    "paypal_beneficiario_id": tx.get("paypal_account_id"),
+                    "pagopa_is_multa": tx.get("is_pagopa", False),
+                }}
+            )
+            stats["collegate"] += 1
+    return stats
+
+
 async def riconcilia_pagamenti_paypal(
     db: AsyncIOMotorDatabase,
     pagamenti: List[Dict[str, Any]],
@@ -153,19 +229,41 @@ async def riconcilia_pagamenti_paypal(
                 
             data_pag = parse_paypal_date(pag.get("data", ""))
             beneficiario = pag.get("beneficiario", "") or pag.get("descrizione", "")
-            
-            # Cerca fatture con importo simile (tolleranza 2% o 1€)
-            min_importo = importo * (1 - tolleranza_importo) - 1
-            max_importo = importo * (1 + tolleranza_importo) + 1
-            
-            query = {
-                "total_amount": {"$gte": min_importo, "$lte": max_importo}
-            }
-            
-            fatture_candidate = await db[collection_name].find(
-                query,
-                {"_id": 0}
-            ).to_list(100)
+
+            # STRATEGIA PRIMARIA: match tramite paypal_account_id
+            paypal_account_id = pag.get("paypal_account_id")
+            fatture_candidate = []
+            if paypal_account_id:
+                fornitore_match = await match_fornitore_by_paypal_id(db, paypal_account_id)
+                if fornitore_match:
+                    forn_id = fornitore_match.get("id") or str(fornitore_match.get("_id", ""))
+                    forn_piva = fornitore_match.get("anagrafica", {}).get("piva") or fornitore_match.get("piva")
+                    or_conds = [{"fornitore_id": forn_id}]
+                    if forn_piva:
+                        or_conds.append({"fornitore_piva": forn_piva})
+                        or_conds.append({"fornitore_partita_iva": forn_piva})
+                        or_conds.append({"supplier_vat": forn_piva})
+                    query_fatt = {
+                        "$or": or_conds,
+                        "total_amount": {"$gte": importo * 0.98 - 1, "$lte": importo * 1.02 + 1}
+                    }
+                    fatture_candidate = await db[collection_name].find(
+                        query_fatt, {"_id": 0}
+                    ).to_list(100)
+
+            # Fallback: cerca per importo simile (tolleranza 2% o 1€)
+            if not fatture_candidate:
+                min_importo = importo * (1 - tolleranza_importo) - 1
+                max_importo = importo * (1 + tolleranza_importo) + 1
+
+                query = {
+                    "total_amount": {"$gte": min_importo, "$lte": max_importo}
+                }
+
+                fatture_candidate = await db[collection_name].find(
+                    query,
+                    {"_id": 0}
+                ).to_list(100)
             
             if not fatture_candidate:
                 risultato["non_trovati"] += 1

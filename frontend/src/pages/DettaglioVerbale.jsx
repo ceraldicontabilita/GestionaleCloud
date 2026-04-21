@@ -342,19 +342,35 @@ export default function DettaglioVerbale() {
           }}>
             <h3 style={{ margin: '0 0 16px 0', fontSize: 16, color: '#1e3a5f' }}>💳 Stato Pagamento</h3>
             
-            {verbale?.stato_pagamento === 'pagato' ? (
+            {(verbale?.stato === 'pagato' || verbale?.stato_pagamento === 'pagato') ? (
               <div style={{ 
                 padding: 16, 
                 background: '#dcfce7', 
-                borderRadius: 8, 
-                textAlign: 'center' 
-              }}>
-                <div style={{ fontSize: 36, marginBottom: 8 }}>✅</div>
-                <div style={{ fontWeight: 'bold', color: '#166534' }}>PAGATO</div>
-                {verbale?.data_pagamento && (
-                  <div style={{ fontSize: 12, color: '#15803d', marginTop: 4 }}>
-                    Data: {formatDateIT(verbale.data_pagamento)}
-                  </div>
+                borderRadius: 8,
+                border: '1px solid #15803d',
+              }} data-testid="verbale-stato-pagato">
+                <div style={{ fontWeight: 'bold', color: '#166534', fontSize: 16 }}>✅ PAGATO</div>
+                <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '120px 1fr', rowGap: 6, fontSize: 13 }}>
+                  {verbale?.importo ? (<><span style={{ color: '#666' }}>Importo</span><span style={{ fontWeight: 600 }}>{formatEuro(verbale.importo)}</span></>) : null}
+                  {verbale?.data_pagamento ? (<><span style={{ color: '#666' }}>Data</span><span>{formatDateIT(verbale.data_pagamento)}</span></>) : null}
+                  {verbale?.psp ? (<><span style={{ color: '#666' }}>PSP</span><span>{verbale.psp}</span></>) : null}
+                  {verbale?.metodo_pagamento ? (<><span style={{ color: '#666' }}>Metodo</span><span>{verbale.metodo_pagamento}</span></>) : null}
+                  {verbale?.fonte_riconciliazione ? (<><span style={{ color: '#666' }}>Fonte</span><span>{verbale.fonte_riconciliazione}</span></>) : null}
+                  {verbale?.iuv ? (<><span style={{ color: '#666' }}>IUV</span><span style={{ fontFamily: 'Courier New', fontSize: 11 }}>{verbale.iuv}</span></>) : null}
+                </div>
+                {verbale?.pdf_ricevuta_path && (
+                  <a
+                    href={`/api/verbali-noleggio/${encodeURIComponent(verbale.id || verbale.numero_verbale)}/ricevuta-pdf`}
+                    target="_blank" rel="noopener noreferrer"
+                    data-testid="verbale-scarica-ricevuta-btn"
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 16,
+                      padding: '10px 18px', borderRadius: 20, background: '#15803d',
+                      color: '#fff', textDecoration: 'none', fontWeight: 600, fontSize: 13,
+                    }}
+                  >
+                    📥 Scarica ricevuta
+                  </a>
                 )}
               </div>
             ) : (
@@ -362,15 +378,41 @@ export default function DettaglioVerbale() {
                 padding: 16, 
                 background: '#fef3c7', 
                 borderRadius: 8, 
-                textAlign: 'center' 
-              }}>
+                textAlign: 'center',
+                border: '1px solid #b45309',
+              }} data-testid="verbale-stato-da-verificare">
                 <div style={{ fontSize: 36, marginBottom: 8 }}>⚠️</div>
                 <div style={{ fontWeight: 'bold', color: '#92400e' }}>
-                  {verbale?.stato_pagamento === 'sospeso' ? 'SOSPESO' : 'DA VERIFICARE'}
+                  {verbale?.stato === 'sospeso' || verbale?.stato_pagamento === 'sospeso' ? 'SOSPESO' : 'DA VERIFICARE'}
                 </div>
-                <div style={{ fontSize: 12, color: '#b45309', marginTop: 4 }}>
-                  Non trovato nell'estratto conto
+                <div style={{ fontSize: 12, color: '#b45309', marginTop: 4, marginBottom: 14 }}>
+                  Non trovato automaticamente
                 </div>
+                <button
+                  data-testid="verbale-cerca-pagamento-btn"
+                  onClick={async () => {
+                    try {
+                      const vid = verbale?.id || verbale?.numero_verbale;
+                      const res = await api.post(`/api/verbali-noleggio/${encodeURIComponent(vid)}/cerca-pagamento`);
+                      const d = res.data;
+                      if (d.trovato) {
+                        alert(`✅ Pagamento trovato!\nFonte: ${d.fonte}\nPSP: ${d.psp}\nImporto: ${formatEuro(d.importo)}\nData: ${d.data_pagamento || ''}`);
+                        setTimeout(() => window.location.reload(), 500);
+                      } else {
+                        alert('Nessun pagamento trovato per questo verbale.');
+                      }
+                    } catch (e) {
+                      alert('Errore: ' + (e.response?.data?.detail || e.message));
+                    }
+                  }}
+                  style={{
+                    background: 'linear-gradient(135deg, #0f2744 0%, #1e3a5f 100%)',
+                    color: '#fff', border: 'none', padding: '12px 24px',
+                    borderRadius: 20, fontWeight: 600, cursor: 'pointer', fontSize: 13,
+                  }}
+                >
+                  🔍 Cerca pagamento
+                </button>
               </div>
             )}
             

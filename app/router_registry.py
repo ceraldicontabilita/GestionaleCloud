@@ -311,12 +311,14 @@ def _register_email(app: FastAPI):
 # ─── Noleggio & Verbali Module ─────────────────────────────────────────────
 def _register_noleggio(app: FastAPI):
     from app.routers import noleggio, verbali_noleggio, verbali_noleggio_api, verbali_riconciliazione, veicoli
+    from app.routers import alert_verbali
     
     app.include_router(noleggio.router, prefix="/api/noleggio", tags=["Noleggio Auto"])
     app.include_router(verbali_noleggio.router, tags=["Verbali Noleggio"])
     app.include_router(verbali_noleggio_api.router, prefix="/api/verbali-noleggio", tags=["Verbali API"])
     app.include_router(verbali_riconciliazione.router, prefix="/api/verbali-riconciliazione", tags=["Verbali Riconciliazione"])
     app.include_router(veicoli.router, tags=["Veicoli"])
+    app.include_router(alert_verbali.router, prefix="/api", tags=["Alert Verbali"])
 
 
 # ─── AI Module ─────────────────────────────────────────────────────────────
