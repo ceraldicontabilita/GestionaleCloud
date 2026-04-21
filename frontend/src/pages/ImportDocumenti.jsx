@@ -329,6 +329,52 @@ export default function ImportDocumenti() {
           >
             🧠 Auto-classifica Gmail/PEC
           </button>
+
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                const res = await api.post('/api/documenti-inbox/import-f24-from-inbox');
+                const r = res.data || {};
+                alert(`✓ Import F24 completato\n\nF24 analizzati: ${r.f24_analizzati}\nTributi creati in f24_tributi: ${r.tributi_creati}`);
+              } catch (e) { alert('Errore: ' + (e.response?.data?.detail || e.message)); }
+            }}
+            data-testid="import-f24-btn"
+            style={{
+              marginLeft: 8, padding: '10px 16px',
+              background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+              color: 'white', border: 'none', borderRadius: 8,
+              fontWeight: 600, cursor: 'pointer', fontSize: 13,
+            }}
+          >
+            📧 Importa F24 da inbox
+          </button>
+
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                const res = await api.post('/api/documenti-inbox/import-dipendenti-from-cu');
+                const r = res.data || {};
+                alert(
+                  `✓ Import dipendenti da CU completato\n\n` +
+                  `CU analizzate: ${r.cu_analizzate}\n` +
+                  `Dipendenti creati: ${r.dipendenti_creati}\n` +
+                  `Già presenti: ${r.gia_presenti}\n` +
+                  `Filename non riconosciuti: ${r.non_riconosciuti}`
+                );
+              } catch (e) { alert('Errore: ' + (e.response?.data?.detail || e.message)); }
+            }}
+            data-testid="import-dipendenti-cu-btn"
+            style={{
+              marginLeft: 8, padding: '10px 16px',
+              background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+              color: 'white', border: 'none', borderRadius: 8,
+              fontWeight: 600, cursor: 'pointer', fontSize: 13,
+            }}
+          >
+            👤 Importa dipendenti da CU
+          </button>
         </div>
 
         {/* Lista File in coda */}
