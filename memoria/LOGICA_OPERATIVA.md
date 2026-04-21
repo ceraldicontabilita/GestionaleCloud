@@ -351,13 +351,104 @@ Quando l'utente collega fatture a un assegno:
 
 ---
 
-#### Regola auto-associazione
+#### 🤖 Auto-matching intelligente (assegni ↔ fatture)
 
-All'arrivo di una fattura SDI da un fornitore con `metodo_pagamento = "assegno"`:
-- La fattura NON viene auto-routata in prima_nota_cassa né in prima_nota_banca
-- Resta in stato `aperta` con `metodo_pagamento = "assegno"`
-- Appare nel tab "Fatture in attesa di assegno" della pagina Assegni
-- Verrà collegata manualmente o dall'auto-matcher quando viene emesso un assegno dello stesso fornitore con importo compatibile
+Quando arrivano assegni nuovi senza collegamenti, il sistema prova automaticamente ad associarli a fatture aperte del medesimo fornitore con queste strategie, in ordine di priorità.
+
+**Livello 1 — Match secco (1 assegno = 1 fattura)**
+
+Per ogni assegno non collegato:
+- cerca nelle fatture aperte del fornitore una con `importo == assegno.importo` (tolleranza ±0,05 €)
+- se trova UNA sola corrispondenza → match automatico, quota = importo fattura
+- se trova PIÙ corrispondenze → non auto-matcha, segnala "Match ambiguo — conferma manuale"
+
+Esempio: assegno €500 ↔ fattura €500 → match secco.
+
+**Livello 2 — Match di gruppo (N assegni uguali = 1 fattura divisa in parti uguali)**
+
+Raggruppa assegni dello stesso fornitore per importo (tolleranza ±0,05 €). Se trova un gruppo di N ≥ 2 assegni simili:
+- calcola somma = N × importo_medio
+- cerca fatture aperte del fornitore con `importo == somma` (tolleranza ±N × 0,05 € per assorbire gli arrotondamenti di divisione)
+- se trova una sola fattura → match: ogni assegno diventa acconto rateale della stessa fattura
+
+Esempio reale:
+- 3 assegni da €1.663,26 / €1.663,26 / €1.663,28 per EG TAPPEZZERIA
+- Somma = €4.989,80
+- Fattura EG TAPPEZZERIA nr.1 del 24/01/2025 importo €4.989,80
+- Verifica: 4.989,80 ÷ 3 = 1.663,267 → arrotondabile alle tre quote viste
+- Match: i 3 assegni vengono collegati come acconti della fattura, ciascuno con quota pari al proprio importo
+
+La tolleranza cumulativa (0,05 € × N) copre il caso in cui l'emittente arrotondi diversamente ciascuna rata.
+
+**Livello 3 — Match di somma (N assegni di importi diversi = 1 fattura)**
+
+Se nel carnet ci sono N assegni (2 ≤ N ≤ 4) dello stesso fornitore di importi diversi emessi in un intervallo ragionevole (es. 60 giorni), calcola tutte le combinazioni possibili:
+- per ogni sottoinsieme di 2-4 assegni, calcola la somma
+- cerca fatture aperte del fornitore con `importo == somma` (tolleranza ±0,10 €)
+- se trova un solo abbinamento → match
+
+Esempio: assegni €1.800 + €1.700 + €1.500 = €5.000 ↔ fattura €5.000 → match rateale.
+
+**Livello 4 — Match inverso (1 assegno = N fatture dello stesso fornitore)**
+
+Se l'assegno è maggiore della fattura più grande aperta del fornitore:
+- calcola tutte le combinazioni di 2-4 fatture aperte del fornitore
+- cerca quella con `somma == assegno.importo` (tolleranza ±0,05 €)
+- se trova un solo abbinamento → match: l'assegno paga le N fatture
+
+Esempio: assegno €1.500 ↔ fatture €600 + €900 → match bundle.
+
+---
+
+#### 📐 Tolleranze e arrotondamenti
+
+- Match secco: ±0,05 € (singolo centesimo di divisione)
+- Match N assegni uguali verso 1 fattura: ±(0,05 × N) €
+- Match combinatorio (Livello 3 e 4): ±0,10 €
+- Se la tolleranza assorbe il match ma lascia un **residuo > 0,01 €**, il residuo viene scritto come nota nel collegamento (`note: "arrotondamento pagamento rateale"`) e **non** crea fatture/assegni residui fittizi
+
+---
+
+#### 🚥 Ordine di esecuzione dell'auto-matcher
+
+Lo scheduler lancia l'auto-matcher una volta all'ora oppure on-demand dal pulsante "🤖 Auto-collega" della pagina Assegni. Processa gli assegni in questo ordine:
+
+1. **Livello 1** (match secco) su tutti gli assegni non collegati
+2. **Livello 2** (N assegni uguali → 1 fattura) sui restanti
+3. **Livello 3** (N assegni diversi → 1 fattura, 2 ≤ N ≤ 4) sui restanti
+4. **Livello 4** (1 assegno → N fatture) sui restanti
+
+Ad ogni livello, il matcher è **conservativo**: se trova più candidate valide, non decide da solo, segnala "Ambiguo" e lascia la scelta all'utente nella pagina Assegni (sezione "Da confermare").
+
+---
+
+#### 🔒 Regole di sicurezza del matcher
+
+- **Stesso fornitore**: solo assegni e fatture con stessa P.IVA vengono valutati insieme
+- **Niente cross-carnet per Livello 2**: gli N assegni "uguali" devono essere dello stesso carnet (stesso libretto) per considerarli rate dello stesso pagamento
+- **Note credito**: se il fornitore ha NC aperte, il matcher le sottrae dal totale fattura prima di cercare il match (es. fattura €5.000 − NC €200 = target €4.800)
+- **Assegni già addebitati in banca** hanno priorità: il matcher li processa per primi perché sono già usciti dal conto
+- **Idempotente**: girando l'auto-matcher 10 volte di fila, il risultato non cambia (non crea doppioni)
+- **Reversibile**: ogni match automatico è marcato `match_auto = true` e può essere rimosso con un click dalla pagina Assegni
+
+---
+
+#### 🎛️ Flusso utente con auto-matcher
+
+```
+1. Utente apre /riconciliazione/assegni
+2. Click "🤖 Auto-collega"
+3. Il matcher gira (~2-5 sec)
+4. Mostra report:
+   ├─ Livello 1: 42 assegni collegati (match secco)
+   ├─ Livello 2: 8 collegati (N assegni uguali → 1 fattura rateale)
+   ├─ Livello 3: 3 collegati (combinatorio)
+   ├─ Livello 4: 5 collegati (assegno multi-fattura)
+   └─ 12 ambigui (conferma manuale)
+5. Tab "Da confermare": 12 assegni con 2+ match possibili
+6. Utente clicca "Conferma" o "Scegli altra" per ciascun ambiguo
+7. Residui manuali: tab "Da collegare" per assegni senza match
+```
 
 ---
 
