@@ -180,32 +180,8 @@ def _parse_email_verbale(msg, senders_whitelist: Set[str]):
 
 
 def _extract_text_body(msg) -> str:
-    text = ""
-    for part in msg.walk():
-        ctype = part.get_content_type()
-        if ctype == "text/plain":
-            try:
-                text += (part.get_payload(decode=True) or b"").decode(
-                    part.get_content_charset() or "utf-8", errors="replace"
-                ) + "\n"
-            except Exception:
-                pass
-        elif ctype == "message/rfc822" or (
-            part.get_filename() and part.get_filename().lower().endswith(".eml")
-        ):
-            try:
-                if part.is_multipart():
-                    for sub in part.get_payload():
-                        inner = BytesParser(policy=default_policy).parsebytes(sub.as_bytes())
-                        text += _extract_text_body(inner) + "\n"
-                else:
-                    raw = part.get_payload(decode=True)
-                    if raw:
-                        inner = BytesParser(policy=default_policy).parsebytes(raw)
-                        text += _extract_text_body(inner) + "\n"
-            except Exception:
-                pass
-    return text
+    from app.services._email_utils import extract_best_body
+    return extract_best_body(msg)
 
 
 def _save_attachments(msg, key) -> List[Dict[str, Any]]:

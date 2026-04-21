@@ -54,17 +54,13 @@ async def fetch_ricevuta_pagopa(
         for num in data[0].split():
             _, msg_data = conn.fetch(num, "(RFC822)")
             msg = email_lib.message_from_bytes(msg_data[0][1])
-            body_txt = ""
+            from app.services._email_utils import extract_best_body
+            body_txt = extract_best_body(msg)
             pdf_attach = None
             for part in msg.walk():
-                ctype = part.get_content_type()
-                if ctype == "text/plain" and not body_txt:
-                    try:
-                        body_txt = part.get_payload(decode=True).decode(errors="replace")
-                    except Exception:
-                        pass
-                elif ctype == "application/pdf":
+                if part.get_content_type() == "application/pdf":
                     pdf_attach = part
+                    break
 
             if importo_str not in body_txt:
                 continue
@@ -95,30 +91,10 @@ async def fetch_ricevuta_pagopa(
 
 
 def _parse_pagopa_body(body: str) -> Dict[str, Any]:
-    out = {
-        "iuv": None, "verbale": None, "targa": None, "ente_creditore": None,
-        "data_infrazione": None, "psp": None, "metodo": None, "totale": None,
-    }
-    mapping = {
-        "iuv": r'Codice Avviso:\s*(\d{18})',
-        "verbale": r'VERBALE N\.?:\s*([A-Z0-9]+)',
-        "targa": r'TARGA:\s*([A-Z0-9]+)',
-        "ente_creditore": r'Ente creditore:\s*([^\n]+)',
-        "data_infrazione": r'DATA:\s*(\d{2}/\d{2}/\d{2,4})',
-        "psp": r'Gestore della transazione \(PSP\):\s*([^\n]+)',
-        "metodo": r'Metodo di pagamento:\s*([^\n]+)',
-    }
-    for k, pat in mapping.items():
-        m = re.search(pat, body, re.IGNORECASE)
-        if m:
-            out[k] = m.group(1).strip()
-    m = re.search(r'Totale:\s*([\d.,]+)\s*€', body)
-    if m:
-        try:
-            out["totale"] = float(m.group(1).replace(".", "").replace(",", "."))
-        except ValueError:
-            pass
-    return out
+    """Parser multi-formato email PagoPA: pagopa.it, mooney.it, PartenoPay."""
+    # Delega al parser condiviso in verbali_pagamento_finder
+    from app.services.verbali_pagamento_finder import _parse_pagopa_body as _unified
+    return _unified(body)
 
 
 def _genera_pdf_da_testo(testo: str, path: str, titolo: str):

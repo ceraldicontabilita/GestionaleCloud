@@ -125,16 +125,13 @@ async def _cerca_in_gmail(db, iuv, numero_verbale, verbale):
                     msg = email_lib.message_from_bytes(mdata[0][1])
                 except Exception:
                     continue
-                body_txt = ""
+                from app.services._email_utils import extract_best_body
+                body_txt = extract_best_body(msg)
                 pdf_a = None
                 for p in msg.walk():
-                    if p.get_content_type() == "text/plain" and not body_txt:
-                        try:
-                            body_txt = p.get_payload(decode=True).decode(errors="replace")
-                        except Exception:
-                            pass
-                    elif p.get_content_type() == "application/pdf":
+                    if p.get_content_type() == "application/pdf":
                         pdf_a = p
+                        break
                 parsed = _parse_pagopa_body(body_txt)
                 if iuv and parsed.get("iuv") and parsed["iuv"] != iuv:
                     continue
@@ -148,19 +145,36 @@ async def _cerca_in_gmail(db, iuv, numero_verbale, verbale):
                 else:
                     _genera_pdf_da_testo(body_txt, pdf_path)
 
-                # Se i campi dal body non sono stati estratti, prova a leggere il PDF
-                if pdf_a and (not parsed.get("totale") or not parsed.get("iuv")):
+                # Prova sempre a leggere il PDF allegato per completare i metadata mancanti
+                # (PartenoPay non espone PSP/metodo nel body, li troviamo solo nel PDF attestazione)
+                if pdf_a and (not parsed.get("totale") or not parsed.get("iuv")
+                              or not parsed.get("psp") or not parsed.get("metodo")):
                     pdf_parsed = _parse_pagopa_pdf(pdf_path)
                     for k, v2 in pdf_parsed.items():
                         if v2 and not parsed.get(k):
                             parsed[k] = v2
 
+                # Default basati sul mittente quando i campi non sono presenti nel body
+                sender = (msg.get("From") or "").lower()
+                if "partenopay" in sender:
+                    default_psp = "PartenoPay (Comune di Napoli)"
+                    default_metodo = "PagoPA"
+                elif "mooney" in sender:
+                    default_psp = "Mooney (PayTipper)"
+                    default_metodo = "PagoPA"
+                elif "pagopa" in sender:
+                    default_psp = "PagoPA"
+                    default_metodo = "PagoPA"
+                else:
+                    default_psp = "PagoPA"
+                    default_metodo = "PagoPA"
+
                 return {
                     "fonte": "gmail",
-                    "psp": parsed.get("psp", "PagoPA"),
-                    "importo": parsed.get("totale", 0),
+                    "psp": parsed.get("psp") or default_psp,
+                    "importo": parsed.get("totale") or 0,
                     "data_pagamento": parsed.get("data_pagamento"),
-                    "metodo_pagamento": parsed.get("metodo", "PayPal"),
+                    "metodo_pagamento": parsed.get("metodo") or default_metodo,
                     "paypal_transaction_id": None,
                     "pdf_ricevuta_path": pdf_path,
                     "iuv_usato": parsed.get("iuv") or iuv,
@@ -175,20 +189,60 @@ async def _cerca_in_gmail(db, iuv, numero_verbale, verbale):
 
 
 def _parse_pagopa_body(body):
+    """Parser multi-formato email PagoPA: pagopa.it, mooney.it, PartenoPay."""
     out = {}
-    def _m(pat, f=0):
-        r = re.search(pat, body, f)
-        return r.group(1).strip() if r else None
-    out["iuv"] = _m(r'Codice Avviso:\s*(\d{18})')
-    out["verbale"] = _m(r'VERBALE N\.?:\s*([A-Z0-9]+)')
-    out["targa"] = _m(r'TARGA:\s*([A-Z0-9]+)', re.IGNORECASE)
-    out["ente_creditore"] = _m(r'Ente creditore:\s*([^\n]+)')
-    out["data_infrazione"] = _m(r'DATA:\s*(\d{2}/\d{2}/\d{2,4})')
-    out["psp"] = _m(r'Gestore della transazione \(PSP\):\s*([^\n]+)')
-    out["metodo"] = _m(r'Metodo di pagamento:\s*([^\n]+)')
-    out["codice_transazione"] = _m(r'codice transazione:\s*([a-f0-9]+)', re.IGNORECASE)
-    out["data_pagamento"] = _m(r'Data e ora:\s*([^\n]+)')
-    imp = _m(r'Totale:\s*([\d.,]+)\s*€')
+    def _m(patterns, f=0):
+        if isinstance(patterns, str):
+            patterns = [patterns]
+        for pat in patterns:
+            r = re.search(pat, body, f)
+            if r:
+                return r.group(1).strip()
+        return None
+
+    out["iuv"] = _m([
+        r'Codice Avviso[:\s]*(\d{18})',
+        r'\b([03]\d{17})\b',
+    ])
+    out["verbale"] = _m([
+        r'VERBALE N\.?\s*:\s*([A-Z0-9]+)',
+        r'Verbale N\.?\s*:?\s*([A-Z]\d{10,12})',
+    ], re.IGNORECASE)
+    out["targa"] = _m([
+        r'TARGA[:\s]*([A-Z]{2}\d{3}[A-Z]{2})',
+        r'TARGA[:\s]*([A-Z0-9]+)',
+    ], re.IGNORECASE)
+    out["ente_creditore"] = _m([
+        r'Ente creditore[:\s]*([^\n]+)',
+        r'Ente Beneficiario[:\s]*([^\n]+)',
+    ], re.IGNORECASE)
+    out["data_infrazione"] = _m([
+        r'VERBALE.*?DATA[:\s]*(\d{2}/\d{2}/\d{2,4})',
+        r'\bDATA\b[:\s]*(\d{2}/\d{2}/\d{2,4})',
+    ], re.IGNORECASE | re.DOTALL)
+    out["psp"] = _m([
+        r'Gestore della transazione \(PSP\)[:\s]*([^\n]+)',
+        r'PSP[:\s]*([^\n]+)',
+    ], re.IGNORECASE)
+    out["metodo"] = _m([
+        r'Metodo di pagamento[:\s]*([^\n]+)',
+        r'Tipo pagamento[:\s]*([^\n]+)',
+    ], re.IGNORECASE)
+    out["codice_transazione"] = _m(
+        r'codice transazione[:\s]*([a-f0-9]+)', re.IGNORECASE
+    )
+    out["data_pagamento"] = _m([
+        r'Data e ora[:\s]*([^\n]+)',
+        r'Data pagamento[:\s]*(\d{2}/\d{2}/\d{4}(?:[ ,]+\d{2}:\d{2}(?::\d{2})?)?)',
+        r'Data del pagamento[:\s]*([^\n]+)',
+    ], re.IGNORECASE)
+
+    imp = _m([
+        r'Totale[:\s]*([\d.]+,\d{2})\s*€',
+        r'Importo\s*\[?€?\]?[:\s]*([\d.]+,\d{2})',
+        r'Importo\s+pagato[:\s]*€?\s*([\d.]+,\d{2})',
+        r'€\s*([\d.]+,\d{2})',
+    ], re.IGNORECASE)
     if imp:
         try:
             out["totale"] = float(imp.replace(".", "").replace(",", "."))
