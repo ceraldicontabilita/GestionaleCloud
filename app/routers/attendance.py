@@ -935,64 +935,142 @@ async def set_presenza(data: Dict[str, Any]) -> Dict[str, Any]:
 @handle_errors
 async def batch_insert_presenze(body: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Inserisce presenze in batch per un dipendente su un range di date.
-    
+    Inserisce giustificativi/presenze massivi su più dipendenti e range date.
+
     Body:
-        employee_id: ID del dipendente
-        giorni: Lista di date (YYYY-MM-DD)
-        stato: Stato da applicare (P, A, F, PE, M, R, ecc.)
+        employee_ids: [str]  (o employee_id singolo per back-compat)
+        giorni: [YYYY-MM-DD]
+        stato: codice giustificativo (P=presente, FE=ferie, MA=malattia, PE=permesso,
+               RL=ROL, RC=riposo compensativo, L1=L.104, CO=congedo parentale,
+               IN=infortunio, DS=donazione sangue, LU=lutto, MT=matrimonio,
+               SC=sciopero, AI=assenza ingiustificata)
+        ore: ore totali (default 8 per intera giornata, 4 per mezza)
+        protocollo: protocollo INPS/certificato (obbligatorio per MA/IN/CO)
+        note: note libere
+        allegato_filename: nome file certificato (opzionale)
     """
     db = Database.get_db()
-    
-    employee_id = body.get("employee_id")
+
+    employee_ids = body.get("employee_ids") or ([body["employee_id"]] if body.get("employee_id") else [])
     giorni = body.get("giorni", [])
     stato = body.get("stato", "A")
-    
-    if not employee_id or not giorni:
-        raise HTTPException(status_code=400, detail="employee_id e giorni sono obbligatori")
-    
-    # Verifica dipendente esiste
-    dipendente = await db["dipendenti"].find_one({"id": employee_id}, {"_id": 0, "nome": 1, "cognome": 1})
-    if not dipendente:
-        raise HTTPException(status_code=404, detail=f"Dipendente {employee_id} non trovato")
-    
+    ore = body.get("ore")
+    protocollo = (body.get("protocollo") or "").strip()
+    note = (body.get("note") or "").strip()
+    allegato_filename = body.get("allegato_filename")
+
+    if not employee_ids or not giorni:
+        raise HTTPException(status_code=400, detail="employee_ids e giorni sono obbligatori")
+
+    # Validazione protocollo obbligatorio per malattia/infortunio/congedo parentale
+    if stato in ("MA", "SM", "IN", "CO") and not protocollo:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Protocollo obbligatorio per tipologia {stato} (INPS/certificato medico)"
+        )
+
+    # Default ore per codice
+    if ore is None:
+        ore = 8.0
+
     inserted_count = 0
     updated_count = 0
-    
-    for giorno in giorni:
-        key = f"{employee_id}_{giorno}"
-        
-        # Verifica se esiste già
-        existing = await db["presenze"].find_one({"key": key}, {"_id": 0})
-        
-        if existing:
-            # Aggiorna
-            await db["presenze"].update_one(
-                {"key": key},
-                {"$set": {
-                    "stato": stato,
-                    "updated_at": datetime.now(timezone.utc).isoformat()
-                }}
-            )
-            updated_count += 1
-        else:
-            # Inserisce nuovo
-            await db["presenze"].insert_one({
-                "key": key,
-                "employee_id": employee_id,
-                "data": giorno,
+    dipendenti_processati = []
+
+    for emp_id in employee_ids:
+        dipendente = await db["dipendenti"].find_one(
+            {"id": emp_id}, {"_id": 0, "nome": 1, "cognome": 1, "codice_fiscale": 1}
+        )
+        if not dipendente:
+            continue
+        dipendenti_processati.append(f"{dipendente.get('cognome','')} {dipendente.get('nome','')}")
+
+        for giorno in giorni:
+            key = f"{emp_id}_{giorno}"
+            now_iso = datetime.now(timezone.utc).isoformat()
+
+            patch = {
                 "stato": stato,
-                "created_at": datetime.now(timezone.utc).isoformat()
-            })
-            inserted_count += 1
-    
+                "ore": float(ore),
+                "updated_at": now_iso,
+            }
+            if protocollo:
+                patch["protocollo"] = protocollo
+            if note:
+                patch["note"] = note
+            if allegato_filename:
+                patch["allegato_filename"] = allegato_filename
+
+            existing = await db["presenze"].find_one({"key": key}, {"_id": 0})
+            # Estrai anno/mese da giorno (formato YYYY-MM-DD)
+            try:
+                anno_int = int(giorno[:4])
+                mese_int = int(giorno[5:7])
+            except Exception:
+                anno_int = mese_int = None
+            if existing:
+                await db["presenze"].update_one({"key": key}, {"$set": patch})
+                updated_count += 1
+            else:
+                doc = {
+                    "key": key,
+                    "employee_id": emp_id,
+                    "dipendente_id": emp_id,
+                    "data": giorno,
+                    "anno": anno_int,
+                    "mese": mese_int,
+                    "codice_fiscale": dipendente.get("codice_fiscale"),
+                    "dipendente_nome": f"{dipendente.get('cognome','')} {dipendente.get('nome','')}",
+                    "fonte": "inserimento_manuale",
+                    "created_at": now_iso,
+                    **patch,
+                }
+                await db["presenze"].insert_one(doc)
+                inserted_count += 1
+
     return {
         "success": True,
-        "message": f"Inserite {inserted_count} e aggiornate {updated_count} presenze",
-        "employee": f"{dipendente.get('nome', '')} {dipendente.get('cognome', '')}",
+        "message": f"Inserite {inserted_count} e aggiornate {updated_count} presenze su {len(dipendenti_processati)} dipendenti",
+        "dipendenti": dipendenti_processati,
         "giorni_processati": len(giorni),
+        "stato_applicato": stato,
+        "protocollo": protocollo or None,
         "inserted": inserted_count,
-        "updated": updated_count
+        "updated": updated_count,
+    }
+
+
+@router.get("/tipologie-giustificativi")
+async def lista_tipologie_giustificativi() -> Dict[str, Any]:
+    """
+    Tassonomia giustificativi CCNL Commercio Confcommercio + base generale.
+    Fonte: CCNL Terziario Distribuzione Servizi (Confcommercio).
+    """
+    return {
+        "tipologie": [
+            # Lavoro
+            {"codice": "P", "nome": "Presente", "categoria": "presenza", "colore": "#16a34a", "protocollo_obbligatorio": False, "ore_default": 8.0},
+            # Ferie & Riposi
+            {"codice": "FE", "nome": "Ferie", "categoria": "ferie", "colore": "#1d4ed8", "protocollo_obbligatorio": False, "ore_default": 8.0, "normativa": "Art. 36 CCNL Commercio"},
+            {"codice": "RL", "nome": "ROL (Riduzione Orario)", "categoria": "permessi", "colore": "#16a34a", "protocollo_obbligatorio": False, "ore_default": 8.0, "normativa": "Art. 138 CCNL Commercio"},
+            {"codice": "RC", "nome": "Riposo Compensativo", "categoria": "riposi", "colore": "#0891b2", "protocollo_obbligatorio": False, "ore_default": 8.0},
+            {"codice": "EF", "nome": "Ex Festività", "categoria": "permessi", "colore": "#0891b2", "protocollo_obbligatorio": False, "ore_default": 8.0, "normativa": "Art. 137 CCNL Commercio"},
+            # Assenze giustificate
+            {"codice": "MA", "nome": "Malattia", "categoria": "malattia", "colore": "#92400e", "protocollo_obbligatorio": True, "ore_default": 8.0, "normativa": "Art. 176 CCNL + L. 33/1980", "note": "Richiede certificato INPS (numero protocollo)"},
+            {"codice": "SM", "nome": "Malattia Certificata (Specialistica)", "categoria": "malattia", "colore": "#d97706", "protocollo_obbligatorio": True, "ore_default": 8.0},
+            {"codice": "IN", "nome": "Infortunio sul Lavoro", "categoria": "infortunio", "colore": "#dc2626", "protocollo_obbligatorio": True, "ore_default": 8.0, "normativa": "D.Lgs. 38/2000, INAIL"},
+            {"codice": "PE", "nome": "Permesso Retribuito", "categoria": "permessi", "colore": "#4338ca", "protocollo_obbligatorio": False, "ore_default": 4.0, "normativa": "Art. 140 CCNL Commercio"},
+            {"codice": "PN", "nome": "Permesso Non Retribuito", "categoria": "permessi", "colore": "#64748b", "protocollo_obbligatorio": False, "ore_default": 4.0},
+            {"codice": "L1", "nome": "Permesso L. 104/92", "categoria": "permessi", "colore": "#7c3aed", "protocollo_obbligatorio": False, "ore_default": 8.0, "normativa": "L. 104/1992 Art. 33 (3 giorni/mese)"},
+            {"codice": "CO", "nome": "Congedo Parentale", "categoria": "congedi", "colore": "#15803d", "protocollo_obbligatorio": True, "ore_default": 8.0, "normativa": "D.Lgs. 151/2001 Art. 32"},
+            {"codice": "CM", "nome": "Congedo Matrimoniale", "categoria": "congedi", "colore": "#e11d48", "protocollo_obbligatorio": False, "ore_default": 8.0, "normativa": "Art. 141 CCNL Commercio (15 gg consecutivi)"},
+            {"codice": "LU", "nome": "Lutto (permesso retribuito)", "categoria": "permessi", "colore": "#475569", "protocollo_obbligatorio": False, "ore_default": 8.0, "normativa": "L. 53/2000 (3 gg)"},
+            {"codice": "DS", "nome": "Donazione Sangue", "categoria": "permessi", "colore": "#dc2626", "protocollo_obbligatorio": False, "ore_default": 8.0, "normativa": "L. 584/1967"},
+            {"codice": "SC", "nome": "Sciopero", "categoria": "assenze", "colore": "#ea580c", "protocollo_obbligatorio": False, "ore_default": 8.0},
+            {"codice": "ST", "nome": "Studio (150 ore)", "categoria": "permessi", "colore": "#06b6d4", "protocollo_obbligatorio": False, "ore_default": 8.0, "normativa": "Art. 142 CCNL Commercio"},
+            # Assenze ingiustificate
+            {"codice": "AI", "nome": "Assenza Ingiustificata", "categoria": "assenze", "colore": "#dc2626", "protocollo_obbligatorio": False, "ore_default": 8.0},
+        ]
     }
 
 

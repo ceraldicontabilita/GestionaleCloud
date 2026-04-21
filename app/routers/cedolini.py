@@ -805,10 +805,14 @@ async def cedolini_dipendente(dipendente_id: str, anno: Optional[int] = None) ->
     cf = dipendente.get("codice_fiscale", dipendente_id)
     nome = dipendente.get("nome_completo") or (f"{dipendente.get('cognome','')} {dipendente.get('nome','')}".strip()) or dipendente.get("nome", "")
     
-    # Query cedolini — cerca per dipendente_id O codice_fiscale
-    query = {"$or": [{"dipendente_id": dipendente_id}, {"codice_fiscale": cf}]}
+    # Query cedolini — cerca per dipendente_id O codice_fiscale, e anno (se passato)
+    # IMPORTANTE: usa $and per non sovrascrivere il filtro dipendente
+    query: Dict[str, Any] = {"$or": [{"dipendente_id": dipendente_id}, {"codice_fiscale": cf}]}
     if anno:
-        query["$or"] = [{"anno": anno}, {"anno": str(anno)}]
+        query = {"$and": [
+            {"$or": [{"dipendente_id": dipendente_id}, {"codice_fiscale": cf}]},
+            {"$or": [{"anno": anno}, {"anno": str(anno)}]},
+        ]}
     
     cedolini = await db["cedolini"].find(
         query,
@@ -1415,3 +1419,20 @@ async def acconti_banca_dipendente(dipendente_id: str, anno: Optional[int] = Non
         "totale": round(totale, 2),
         "count": len(acconti),
     }
+
+
+@router.post("/acconti/scan-estratto-conto")
+async def scan_acconti_da_estratto_conto(body: Dict[str, Any] = Body(default={})):
+    """Scansiona estratto_conto_movimenti per bonifici a dipendenti e li collega."""
+    from app.services.acconti_auto_linker import scan_and_link_acconti
+    from app.database import Database as _DB
+    dry = bool(body.get("dry_run", False))
+    return await scan_and_link_acconti(_DB.get_db(), dry_run=dry)
+
+
+@router.get("/acconti/dipendente/{dipendente_id}")
+async def lista_acconti_dipendente(dipendente_id: str, anno: Optional[int] = None):
+    """Lista acconti/stipendi bancari collegati a un dipendente."""
+    from app.services.acconti_auto_linker import get_pagamenti_dipendente
+    from app.database import Database as _DB
+    return await get_pagamenti_dipendente(_DB.get_db(), dipendente_id, anno=anno)

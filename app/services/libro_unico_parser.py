@@ -380,6 +380,30 @@ def parse_libro_unico_pdf(pdf_bytes: bytes) -> Dict[str, Any]:
                                 except:
                                     pass
 
+                    # Estrai lordo previdenziale (da riga "Z00000Contributo IVS <LORDO> 9,19000%")
+                    lordo_mese: Optional[float] = None
+                    imponibile_irpef: Optional[float] = None
+                    irpef_lorda: Optional[float] = None
+                    contributi_inps: Optional[float] = None
+
+                    for line in lines:
+                        # Z00000Contributo IVS 1.682,00 9,19000% 154,58
+                        m_ivs = re.search(r'Contributo\s+IVS\s+(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})\s+\d', line, re.IGNORECASE)
+                        if m_ivs and lordo_mese is None:
+                            lordo_mese = safe_float(m_ivs.group(1).replace('.', '').replace(',', '.'), 0.0)
+                        # F02000Imponibile IRPEF 1.299,14
+                        m_imp = re.search(r'Imponibile\s+IRPEF\s+(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})', line, re.IGNORECASE)
+                        if m_imp and imponibile_irpef is None:
+                            imponibile_irpef = safe_float(m_imp.group(1).replace('.', '').replace(',', '.'), 0.0)
+                        # F02010IRPEF lorda 298,80
+                        m_irp = re.search(r'IRPEF\s+lorda\s+(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})', line, re.IGNORECASE)
+                        if m_irp and irpef_lorda is None:
+                            irpef_lorda = safe_float(m_irp.group(1).replace('.', '').replace(',', '.'), 0.0)
+                        # Tot. contributi c/dip (fallback): ...154,58 + 4,49 = 159,07
+                        m_cont = re.search(r'Tot\.?\s+contributi[^0-9]*(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})', line, re.IGNORECASE)
+                        if m_cont and contributi_inps is None:
+                            contributi_inps = safe_float(m_cont.group(1).replace('.', '').replace(',', '.'), 0.0)
+
                     # Estrai stipendio
                     for i, line in enumerate(lines):
                         if ('Recupero' in line and 'acconto' in line) or '000306' in line:
@@ -418,6 +442,10 @@ def parse_libro_unico_pdf(pdf_bytes: bytes) -> Dict[str, Any]:
                                 "netto": acconto + netto_mese,
                                 "acconto": acconto,
                                 "differenza": netto_mese,
+                                "lordo": lordo_mese or 0.0,
+                                "imponibile_irpef": imponibile_irpef or 0.0,
+                                "irpef_lorda": irpef_lorda or 0.0,
+                                "contributi_inps": contributi_inps or 0.0,
                                 "note": f"Acconto: €{acconto:.2f}" if acconto > 0 else "Nessun acconto",
                                 "ore_ordinarie": ore_ordinarie,
                                 "mansione": mansione,
@@ -432,6 +460,10 @@ def parse_libro_unico_pdf(pdf_bytes: bytes) -> Dict[str, Any]:
                 "netto": emp_data["netto"],
                 "acconto": emp_data["acconto"],
                 "differenza": emp_data["differenza"],
+                "lordo": emp_data.get("lordo", 0.0),
+                "imponibile_irpef": emp_data.get("imponibile_irpef", 0.0),
+                "irpef_lorda": emp_data.get("irpef_lorda", 0.0),
+                "contributi_inps": emp_data.get("contributi_inps", 0.0),
                 "note": emp_data["note"]
             })
 

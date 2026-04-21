@@ -319,6 +319,8 @@ def _register_noleggio(app: FastAPI):
     app.include_router(verbali_riconciliazione.router, prefix="/api/verbali-riconciliazione", tags=["Verbali Riconciliazione"])
     app.include_router(veicoli.router, tags=["Veicoli"])
     app.include_router(alert_verbali.router, prefix="/api", tags=["Alert Verbali"])
+    from app.routers import admin_export
+    app.include_router(admin_export.router, prefix="/api", tags=["Admin Export"])
 
 
 # ─── AI Module ─────────────────────────────────────────────────────────────

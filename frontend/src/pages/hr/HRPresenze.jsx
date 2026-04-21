@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Calendar, Clock, Users, RefreshCw, ChevronDown, ChevronRight, Check, X } from 'lucide-react';
+import { Calendar, Clock, Users, RefreshCw, ChevronDown, ChevronRight, Check, X, Plus } from 'lucide-react';
 import api from '../../api';
 import { COLORS, useIsMobile } from '../../lib/utils';
 import { useAnnoGlobale } from '../../contexts/AnnoContext';
+import BatchGiustificativoModal from '../../components/BatchGiustificativoModal';
 
 const MESI_LABEL = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
 const GIORNI_SETTIMANA = ['LU','MA','ME','GI','VE','SA','DO'];
@@ -56,6 +57,7 @@ export default function HRPresenze() {
   const [legenda, setLegenda] = useState({});
   const [uploading, setUploading] = useState(false);
   const [uploadResult, setUploadResult] = useState(null);
+  const [batchModalOpen, setBatchModalOpen] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -182,8 +184,28 @@ export default function HRPresenze() {
             {uploading ? 'Importazione…' : 'Importa PDF Libro Unico'}
             <input type="file" accept=".pdf" onChange={handleUploadPDF} style={{ display: 'none' }} disabled={uploading} />
           </label>
+          <button
+            data-testid="btn-batch-giustificativo"
+            onClick={() => setBatchModalOpen(true)}
+            style={{
+              padding: '8px 16px', border: 'none', borderRadius: 8, fontSize: 13,
+              background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)',
+              color: 'white', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600,
+            }}
+          >
+            <Plus size={14} />
+            Inserimento massivo
+          </button>
         </div>
       </div>
+
+      <BatchGiustificativoModal
+        open={batchModalOpen}
+        onClose={() => setBatchModalOpen(false)}
+        dipendenti={dipendenti}
+        onSaved={loadData}
+      />
 
       {/* Upload Result */}
       {uploadResult && (
