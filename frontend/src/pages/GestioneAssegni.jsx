@@ -346,6 +346,13 @@ export default function GestioneAssegni() {
   // Auto-associa assegni alle fatture
   const [autoAssociating, setAutoAssociating] = useState(false);
   const [autoAssocResult, setAutoAssocResult] = useState(null);
+
+  // Ambigui auto-match: risoluzione manuale
+  const [ambiguiOpen, setAmbiguiOpen] = useState(false);
+  const [ambiguiLoading, setAmbiguiLoading] = useState(false);
+  const [ambiguiList, setAmbiguiList] = useState([]);
+  const [ambiguiSelections, setAmbiguiSelections] = useState({}); // {assegnoId: [fatturaId,...]}
+  const [ambiguiResolving, setAmbiguiResolving] = useState({});
   
   // Learning Machine - nuovi stati
   const [learningLoading, setLearningLoading] = useState(false);
@@ -431,6 +438,59 @@ export default function GestioneAssegni() {
       alert('Errore Auto-Match: ' + (error.response?.data?.detail || error.message));
     } finally {
       setAutoAssociating(false);
+    }
+  };
+
+  // Carica lista ambigui
+  const loadAmbigui = async () => {
+    setAmbiguiLoading(true);
+    try {
+      const res = await api.get('/api/assegni/ambigui');
+      setAmbiguiList(res.data?.ambigui || []);
+      // default: prima fattura selezionata per ciascuno
+      const def = {};
+      (res.data?.ambigui || []).forEach(a => {
+        def[a.assegno_id] = a.candidates?.[0] ? [a.candidates[0].fattura_id] : [];
+      });
+      setAmbiguiSelections(def);
+    } catch (e) {
+      alert('Errore caricamento ambigui: ' + (e.response?.data?.detail || e.message));
+    } finally {
+      setAmbiguiLoading(false);
+    }
+  };
+
+  const toggleAmbiguiSection = async () => {
+    const willOpen = !ambiguiOpen;
+    setAmbiguiOpen(willOpen);
+    if (willOpen && ambiguiList.length === 0) {
+      await loadAmbigui();
+    }
+  };
+
+  const setAmbiguiSelection = (assegnoId, fatturaId, checked) => {
+    setAmbiguiSelections(prev => {
+      const cur = prev[assegnoId] || [];
+      const next = checked ? [...cur.filter(id => id !== fatturaId), fatturaId] : cur.filter(id => id !== fatturaId);
+      return { ...prev, [assegnoId]: next };
+    });
+  };
+
+  const resolveAmbiguo = async (assegnoId) => {
+    const fattura_ids = ambiguiSelections[assegnoId] || [];
+    if (fattura_ids.length === 0) {
+      alert('Seleziona almeno una fattura');
+      return;
+    }
+    setAmbiguiResolving(p => ({ ...p, [assegnoId]: true }));
+    try {
+      await api.post(`/api/assegni/${assegnoId}/risolvi-ambiguo`, { fattura_ids });
+      setAmbiguiList(list => list.filter(a => a.assegno_id !== assegnoId));
+      loadData();
+    } catch (e) {
+      alert('Errore: ' + (e.response?.data?.detail || e.message));
+    } finally {
+      setAmbiguiResolving(p => ({ ...p, [assegnoId]: false }));
     }
   };
 
@@ -946,6 +1006,129 @@ export default function GestioneAssegni() {
         >
           👁️ Anteprima
         </button>
+
+        <button
+          onClick={toggleAmbiguiSection}
+          data-testid="ambigui-toggle-btn"
+          style={{
+            flexShrink: 0,
+            padding: '10px 14px',
+            background: ambiguiOpen ? '#fef3c7' : 'white',
+            color: '#92400e',
+            border: '1px solid #fcd34d',
+            borderRadius: 8,
+            cursor: 'pointer',
+            fontWeight: 600,
+            fontSize: 12,
+          }}
+        >
+          {ambiguiOpen ? '▲ Nascondi ambigui' : '⚠ Risolvi ambigui'}
+        </button>
+      </div>
+
+      {/* Pannello risoluzione ambigui */}
+      {ambiguiOpen && (
+        <div data-testid="ambigui-panel" style={{
+          marginBottom: 20,
+          padding: 16,
+          background: '#fffbeb',
+          border: '1px solid #fcd34d',
+          borderRadius: 10,
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <div>
+              <strong style={{ color: '#92400e', fontSize: 14 }}>
+                ⚠ Assegni ambigui — serve la tua decisione
+              </strong>
+              <p style={{ margin: '4px 0 0', fontSize: 12, color: '#78350f' }}>
+                Per questi assegni l'auto-matcher ha trovato più di una fattura candidata con lo stesso importo.
+                Seleziona quale collegare.
+              </p>
+            </div>
+            <button
+              onClick={loadAmbigui}
+              disabled={ambiguiLoading}
+              style={{ padding: '6px 10px', background: 'white', border: '1px solid #d97706',
+                       borderRadius: 6, color: '#b45309', cursor: 'pointer', fontSize: 12 }}
+            >
+              {ambiguiLoading ? '⏳ Aggiorno…' : '↻ Ricarica'}
+            </button>
+          </div>
+
+          {ambiguiLoading && <div style={{ padding: 12, textAlign: 'center' }}>Caricamento ambigui…</div>}
+
+          {!ambiguiLoading && ambiguiList.length === 0 && (
+            <div style={{ padding: 20, textAlign: 'center', color: '#059669', fontSize: 14 }}>
+              ✅ Nessun assegno ambiguo da risolvere.
+            </div>
+          )}
+
+          {!ambiguiLoading && ambiguiList.map(a => (
+            <div key={a.assegno_id} data-testid={`ambiguo-${a.assegno_id}`} style={{
+              marginTop: 12, padding: 12, background: 'white', borderRadius: 8, border: '1px solid #fde68a'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                <div style={{ flex: '1 1 280px', minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#1f2937' }}>
+                    [{a.livello}] Assegno n. {a.assegno_numero}
+                  </div>
+                  <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
+                    {a.fornitore_ragione_sociale} — P.IVA {a.fornitore_piva}
+                  </div>
+                  <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
+                    Importo: <strong style={{ color: '#111827' }}>€ {a.importo.toFixed(2)}</strong>
+                    {a.data_emissione && <> · Emissione: {a.data_emissione}</>}
+                  </div>
+                </div>
+                <button
+                  onClick={() => resolveAmbiguo(a.assegno_id)}
+                  disabled={ambiguiResolving[a.assegno_id]}
+                  data-testid={`risolvi-${a.assegno_id}`}
+                  style={{
+                    padding: '8px 14px',
+                    background: ambiguiResolving[a.assegno_id] ? '#9ca3af' : 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                    color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer',
+                    fontWeight: 600, fontSize: 12,
+                  }}
+                >
+                  {ambiguiResolving[a.assegno_id] ? '⏳ …' : '✓ Collega selezionati'}
+                </button>
+              </div>
+              {/* Candidate fatture */}
+              <div style={{ marginTop: 10, borderTop: '1px dashed #fde68a', paddingTop: 10 }}>
+                {(a.candidates || []).map(c => {
+                  const selected = (ambiguiSelections[a.assegno_id] || []).includes(c.fattura_id);
+                  return (
+                    <label key={c.fattura_id} style={{
+                      display: 'flex', alignItems: 'center', padding: '6px 8px',
+                      background: selected ? '#ecfdf5' : 'transparent', borderRadius: 4,
+                      cursor: 'pointer', gap: 8, fontSize: 12,
+                    }}>
+                      <input
+                        type="checkbox"
+                        checked={selected}
+                        onChange={(e) => setAmbiguiSelection(a.assegno_id, c.fattura_id, e.target.checked)}
+                      />
+                      <span style={{ flex: 1 }}>
+                        <strong>{c.numero || c.fattura_id.slice(0, 8)}</strong>
+                        {c.data && <span style={{ color: '#6b7280' }}> · {c.data}</span>}
+                        {c.fornitore && <span style={{ color: '#6b7280' }}> · {c.fornitore}</span>}
+                      </span>
+                      <span style={{ fontFamily: 'monospace', color: '#111827' }}>€ {(c.importo_residuo ?? c.importo_totale ?? 0).toFixed(2)}</span>
+                      {c.payment_status === 'partial' && (
+                        <span style={{ fontSize: 10, background: '#dbeafe', color: '#1e40af', padding: '2px 6px', borderRadius: 3 }}>parziale</span>
+                      )}
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* chiusura bottoniera originale continua dopo */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
         
         {/* Pulsante Associazione Combinata (somma assegni = fattura) */}
         <button

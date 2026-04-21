@@ -35,6 +35,27 @@ Funzionante in produzione: tutte le aree core (fatture, prima nota, fornitori, H
 noleggio, magazzino, assegni, riconciliazione, contabilità, strumenti, email).
 
 Attività recenti (Apr 2026):
+- **[FEAT P1 – Apr 2026] UI Risoluzione Ambigui Assegni**: aggiunti al file
+  `app/routers/bank/assegni.py` 2 endpoint (`GET /api/assegni/ambigui` e
+  `POST /api/assegni/{id}/risolvi-ambiguo`) riposizionati PRIMA della route
+  dinamica `/{assegno_id}`. Nel frontend `GestioneAssegni.jsx` nuovo bottone
+  `[data-testid=ambigui-toggle-btn]` ("⚠ Risolvi ambigui") che apre un pannello
+  con: per ogni assegno ambiguo la lista delle fatture candidate con checkbox
+  (default la prima selezionata), bottone "✓ Collega selezionati" che invoca
+  `risolvi-ambiguo` via `_apply_match`. Al successo l'assegno scompare
+  dalla lista e i dati vengono ricaricati.
+  Verificato su produzione: 9 casi KIMBO S.P.A. (3 assegni × 4 fatture identiche)
+  correttamente esposti e pronti alla decisione manuale dell'utente.
+- **[BUG FIX P0 – Apr 2026] Duplicati estratto conto (POS Banca doppio)**:
+  rimosso un bug di dati (non di codice): la collezione
+  `estratto_conto_movimenti` conteneva 4596 record duplicati per import
+  ripetuti con formato data diverso (ISO `2026-01-15` vs italiano `15/01/2026`,
+  intersezione 0). Creato script one-shot
+  `/app/scripts/cleanup_estratto_conto_duplicati.py` (8849 → 4253 record).
+  Anti-duplicato persistente nell'endpoint `POST /api/bank-statement/import`.
+  Endpoint di manutenzione on-demand
+  `POST /api/bank-statement/cleanup-duplicati`. POS Banca Gennaio 2026
+  ora €34.219,10 (prima €68.438,20 = 2x).
 - **[FEAT P2/P3 – Apr 2026]** Pacchetto multi-feature:
   • **Auto-conferma fatture**: bottone "✅ Auto-conferma fatture" in `/fornitori`
     che chiama `POST /api/fatture-ricevute/backfill-autoroute` — scorre tutte
@@ -99,9 +120,15 @@ Attività recenti (Apr 2026):
 ## Backlog
 
 P1:
-- Tab contabili vuoti: Mutui, Budget, Chiusura Esercizio, Finanziaria, Cespiti
+- **Tab contabili vuoti**: tutti gli endpoint esistono già (`/api/mutui`,
+  `/api/cespiti`, `/api/chiusura-esercizio/*`, `/api/contabilita-gestionale/budget`,
+  `/api/finanziaria/summary`) e rispondono correttamente. Le pagine frontend
+  esistono (GestioneMutui, GestioneCespiti, ChiusuraEsercizio,
+  BudgetPrevisionale, Finanziaria). Non sono "rotte": sono vuote perché
+  l'utente non ha ancora inserito Mutui/Cespiti/Budget. Quick-start
+  (auto-rilevo mutui da estratto conto, auto-popolo cespiti da fatture
+  grandi importi, clone budget da anno consuntivo) è il prossimo passo.
 - Associazione automatica documenti Gmail (F24, cedolini, verbali)
-- Risoluzione ambigui auto-match: UI per confermare manualmente gli assegni con più candidati (9 casi attualmente)
 - Prima Nota automatica senza conferma per match E/C ≥90% confidenza
 - Endpoint `/scarica-posta` per verbali via PEC (ancora stub)
 

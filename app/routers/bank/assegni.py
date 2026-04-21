@@ -511,6 +511,106 @@ async def correggi_associazione_assegno(
     return {"success": True, "message": message, "assegno_id": assegno_id, "nuova_fattura_id": nuova_fattura_id}
 
 
+# === ROUTE AUTO-MATCH (statiche — prima delle dinamiche) ===
+
+@router.post("/auto-match")
+async def auto_match_assegni(
+    dry_run: bool = Query(False, description="Se True, non scrive su DB — restituisce solo la proposta"),
+) -> Dict[str, Any]:
+    """
+    🤖 Auto-matcher Assegni ↔ Fatture (4 livelli, N:M, tolleranza ±0,005€).
+    Vedi /app/memoria/LOGICA_OPERATIVA.md per i dettagli.
+    """
+    from app.routers.bank.assegni_auto_match import run_auto_match
+    db = Database.get_db()
+    report = await run_auto_match(db, dry_run=dry_run)
+    return {
+        "success": True,
+        **report,
+        "totali": {
+            "L1": len(report["match_l1"]),
+            "L2": len(report["match_l2"]),
+            "L3": len(report["match_l3"]),
+            "L4": len(report["match_l4"]),
+            "ambigui": len(report["ambigui"]),
+            "non_trovati": len(report["non_trovati"]),
+        },
+    }
+
+
+@router.get("/ambigui")
+async def lista_ambigui() -> Dict[str, Any]:
+    """Elenca gli assegni ambigui (più fatture candidate dell'auto-matcher)."""
+    from app.routers.bank.assegni_auto_match import run_auto_match
+    db = Database.get_db()
+    report = await run_auto_match(db, dry_run=True)
+
+    ambigui_dettaglio = []
+    for amb in report.get("ambigui", []):
+        ass = await db["assegni"].find_one({"id": amb["assegno_id"]}, {"_id": 0})
+        if not ass:
+            continue
+        cands = []
+        for c in amb.get("candidates", []):
+            inv = await db["invoices"].find_one({"id": c["fattura_id"]}, {"_id": 0})
+            if not inv:
+                continue
+            total = float(inv.get("total_amount") or inv.get("importo_totale") or 0)
+            paid = float(inv.get("importo_pagato") or 0)
+            cands.append({
+                "fattura_id": c["fattura_id"],
+                "numero": inv.get("invoice_number") or inv.get("numero_fattura"),
+                "data": inv.get("invoice_date") or inv.get("data_fattura"),
+                "importo_totale": total,
+                "importo_pagato": paid,
+                "importo_residuo": round(total - paid, 2),
+                "fornitore": inv.get("supplier_name") or inv.get("cedente_denominazione"),
+                "payment_status": inv.get("payment_status"),
+            })
+        ambigui_dettaglio.append({
+            "livello": amb.get("livello"),
+            "assegno_id": ass.get("id"),
+            "assegno_numero": ass.get("numero"),
+            "importo": float(ass.get("importo") or 0),
+            "data_emissione": ass.get("data_emissione"),
+            "fornitore_piva": ass.get("fornitore_piva"),
+            "fornitore_ragione_sociale": ass.get("fornitore_ragione_sociale") or ass.get("beneficiario"),
+            "carnet_id": ass.get("carnet_id"),
+            "candidates": cands,
+        })
+
+    return {"success": True, "count": len(ambigui_dettaglio), "ambigui": ambigui_dettaglio}
+
+
+@router.post("/{assegno_id}/risolvi-ambiguo")
+async def risolvi_ambiguo(
+    assegno_id: str,
+    payload: Dict[str, Any] = Body(...),
+) -> Dict[str, Any]:
+    """Risolve manualmente un assegno ambiguo collegandolo a 1+ fatture."""
+    from app.routers.bank.assegni_auto_match import _apply_match
+    fattura_ids = payload.get("fattura_ids") or ([payload["fattura_id"]] if payload.get("fattura_id") else [])
+    if not fattura_ids:
+        raise HTTPException(status_code=400, detail="fattura_ids è obbligatorio")
+    db = Database.get_db()
+    ass = await db["assegni"].find_one({"id": assegno_id}, {"_id": 0})
+    if not ass:
+        raise HTTPException(status_code=404, detail="Assegno non trovato")
+    if ass.get("fatture_collegate"):
+        raise HTTPException(status_code=400, detail="Assegno già collegato")
+    fatture = []
+    for fid in fattura_ids:
+        inv = await db["invoices"].find_one({"id": fid}, {"_id": 0})
+        if not inv:
+            raise HTTPException(status_code=404, detail=f"Fattura {fid} non trovata")
+        total = float(inv.get("total_amount") or inv.get("importo_totale") or 0)
+        paid = float(inv.get("importo_pagato") or 0)
+        inv["_residuo"] = round(total - paid, 2)
+        fatture.append(inv)
+    res = await _apply_match(db, [ass], fatture, livello="MANUAL", dry_run=False)
+    return {"success": True, **res}
+
+
 # === ROUTE DINAMICHE (con parametri) - DEVONO STARE DOPO LE STATICHE ===
 
 @router.get("/{assegno_id}")
@@ -814,40 +914,6 @@ async def clear_generated_assegni(stato: str = Query("vuoto")) -> Dict[str, Any]
     return {
         "message": f"Eliminati {result.deleted_count} assegni con stato '{stato}'",
         "deleted_count": result.deleted_count
-    }
-
-
-@router.post("/auto-match")
-async def auto_match_assegni(
-    dry_run: bool = Query(False, description="Se True, non scrive su DB — restituisce solo la proposta"),
-) -> Dict[str, Any]:
-    """
-    🤖 Auto-matcher Assegni ↔ Fatture (4 livelli, N:M, tolleranza ±0,005€).
-
-    Implementa la logica operativa documentata in LOGICA_OPERATIVA.md:
-    - L1: 1 assegno = 1 fattura stesso importo
-    - L2: N assegni uguali stesso fornitore = 1 fattura divisa in parti uguali (max 4 rate, 4 mesi)
-    - L3: 2-4 assegni di importi diversi stesso fornitore = 1 fattura (finestra 60gg)
-    - L4: 1 assegno = 2-4 fatture dello stesso fornitore
-
-    Vincolo rigido: P.IVA fornitore deve combaciare. Se ambiguo, non decide.
-    Genera automaticamente i movimenti in prima_nota_banca (source=assegno_auto_match).
-    """
-    from app.routers.bank.assegni_auto_match import run_auto_match
-
-    db = Database.get_db()
-    report = await run_auto_match(db, dry_run=dry_run)
-    return {
-        "success": True,
-        **report,
-        "totali": {
-            "L1": len(report["match_l1"]),
-            "L2": len(report["match_l2"]),
-            "L3": len(report["match_l3"]),
-            "L4": len(report["match_l4"]),
-            "ambigui": len(report["ambigui"]),
-            "non_trovati": len(report["non_trovati"]),
-        },
     }
 
 
