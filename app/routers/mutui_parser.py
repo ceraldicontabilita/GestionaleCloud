@@ -8,7 +8,7 @@ e le importa nel database MongoDB.
 
 import re
 import pdfplumber
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Optional
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from fastapi.responses import JSONResponse
@@ -263,7 +263,7 @@ async def import_mutuo_from_pdf(
                 "rate_non_riconciliate": stats["rate_pagate"],
                 "percentuale_riconciliazione": 0.0,
                 
-                "updated_at": datetime.now(),
+                "updated_at": datetime.now(timezone.utc),
                 "file_piano_ammortamento": file.filename,
                 "allegati": [],
                 "note": f"Importato da PDF il {datetime.now().strftime('%d/%m/%Y %H:%M')}"
@@ -279,7 +279,7 @@ async def import_mutuo_from_pdf(
                 action = "aggiornato"
             else:
                 # Inserisci
-                documento["created_at"] = datetime.now()
+                documento["created_at"] = datetime.now(timezone.utc)
                 documento["created_by"] = "import_pdf"
                 await db.mutui.insert_one(documento)
                 action = "importato"
