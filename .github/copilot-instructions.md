@@ -203,6 +203,62 @@ Endpoint che accettano range di date (missioni, ferie, scadenze) devono:
 
 Vedere `app/routers/employees/missioni.py` per il pattern `_parse_date` + `_validate_date_range`.
 
+### 3.11 Race condition su fetch con filtri (lezione Codex P2)
+
+Ogni `useEffect` che fa `api.get` dipendente da filtri (anno, mese, competenza, ecc.) è vulnerabile: cambiando rapidamente il filtro, più richieste restano in volo e una risposta lenta può sovrascrivere lo stato con dati della query sbagliata.
+
+```jsx
+// ✅ CORRETTO
+useEffect(() => {
+  const controller = new AbortController();
+  (async () => {
+    try {
+      const { data } = await api.get(url, {
+        params,
+        signal: controller.signal,
+      });
+      if (controller.signal.aborted) return;
+      setState(data);
+    } catch (e) {
+      if (e?.name === 'CanceledError' || e?.code === 'ERR_CANCELED') return;
+      // errore reale
+    }
+  })();
+  return () => controller.abort();
+}, [filtro1, filtro2]);
+
+// ❌ SBAGLIATO — cambio rapido filtro = dati dell'anno sbagliato
+useEffect(() => {
+  api.get(url).then(r => setState(r.data));
+}, [filtro]);
+```
+
+Vedere `frontend/src/pages/hr/HRTFR.jsx` e `frontend/src/pages/hr/HRAcconti.jsx` per il pattern.
+
+### 3.12 Controlla TUTTI i writer di una collection prima di scrivere un reader (lezione Codex P1)
+
+Una singola collezione Mongo può avere **più writer con schemi diversi**. Prima di scrivere un endpoint che legge una collection, cercare globalmente tutti gli writer:
+
+```bash
+grep -rn 'db\["<collection>"\].insert\|db\["<collection>"\].update' app/ --include="*.py"
+```
+
+Se trovi schemi diversi (es. `presenze` che ha documenti `flat` da batch-insert e documenti `nested` da libro unico PDF), il tuo reader deve gestire **tutti**. Codex becca questi bug perché analizza il repo intero; io no, perché di default guardo solo il producer più vicino alla mia task. **Quindi devo cercare esplicitamente.**
+
+Vedere `app/routers/attendance.py::get_month_grid` per il pattern di reader che gestisce due schemi.
+
+### 3.13 Response API = campi frontend (pattern #2 esteso)
+
+Prima di dichiarare `setState({ totale: d.nome_campo || 0 })`, **aprire il file del router** e copiare il nome esatto del campo dalla `return {...}` finale. I `|| 0` fallback silenziano il bug: il KPI mostra 0 e sembra corretto. Sostituire `||` con `??` quando 0 è un valore legittimo (es. nessuna liquidazione quest'anno ma API funzionante).
+
+```javascript
+// ❌ SBAGLIATO — la chiave reale è "totale_fondo_tfr", bug silenzioso
+totale: d.totale_fondo || 0
+
+// ✅ CORRETTO
+totale: d.totale_fondo_tfr ?? 0  // nome verificato in app/routers/tfr.py:405
+```
+
 ---
 
 ## 4. Collezioni MongoDB canoniche
