@@ -45,7 +45,7 @@ async def cerca_match_bancario(
     try:
         data_scadenza = datetime.strptime(data_scadenza_str[:10], "%Y-%m-%d")
     except (ValueError, TypeError):
-        data_scadenza = datetime.now()
+        data_scadenza = datetime.now(timezone.utc)
     
     data_min = (data_scadenza - timedelta(days=tolleranza_giorni)).strftime("%Y-%m-%d")
     data_max = (data_scadenza + timedelta(days=tolleranza_giorni)).strftime("%Y-%m-%d")
