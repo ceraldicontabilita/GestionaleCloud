@@ -1,5 +1,5 @@
 """Shifts router - Employee shift scheduling."""
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Body, Depends, status
 from typing import Dict, Any, List
 from datetime import datetime, timezone
 from uuid import uuid4
@@ -31,7 +31,7 @@ async def get_schedule(
     summary="Create shift schedule"
 )
 async def create_schedule(
-    data: Dict[str, Any],
+    data: Dict[str, Any] = Body(...),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ) -> Dict[str, str]:
     """Create a shift schedule."""
