@@ -48,7 +48,7 @@ def parse_amount(amount) -> float:
     clean = str(amount).replace('€', '').replace('.', '').replace(',', '.').strip()
     try:
         return float(clean)
-    except:
+    except Exception:
         return 0.0
 
 
