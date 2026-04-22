@@ -21,34 +21,37 @@ export function useScadenzeNotifiche() {
   }, []);
 
   // Invia notifica
-  const sendNotification = useCallback((title, body, options = {}) => {
-    if (permission !== 'granted') return;
+  const sendNotification = useCallback(
+    (title, body, options = {}) => {
+      if (permission !== 'granted') return;
 
-    const notification = new Notification(title, {
-      body,
-      icon: '/favicon.ico',
-      badge: '/favicon.ico',
-      tag: options.tag || 'scadenza',
-      requireInteraction: options.urgent || false,
-      ...options
-    });
+      const notification = new Notification(title, {
+        body,
+        icon: '/favicon.ico',
+        badge: '/favicon.ico',
+        tag: options.tag || 'scadenza',
+        requireInteraction: options.urgent || false,
+        ...options,
+      });
 
-    notification.onclick = () => {
-      window.focus();
-      if (options.url) {
-        const isInternalRoute = options.url.startsWith('/') && !options.url.startsWith('/api/');
-        if (isInternalRoute) {
-          window.history.pushState({}, '', options.url);
-          window.dispatchEvent(new PopStateEvent('popstate'));
-        } else {
-          window.location.href = options.url;
+      notification.onclick = () => {
+        window.focus();
+        if (options.url) {
+          const isInternalRoute = options.url.startsWith('/') && !options.url.startsWith('/api/');
+          if (isInternalRoute) {
+            window.history.pushState({}, '', options.url);
+            window.dispatchEvent(new PopStateEvent('popstate'));
+          } else {
+            window.location.href = options.url;
+          }
         }
-      }
-      notification.close();
-    };
+        notification.close();
+      };
 
-    return notification;
-  }, [permission]);
+      return notification;
+    },
+    [permission]
+  );
 
   // Controlla scadenze
   const checkScadenze = useCallback(async () => {
@@ -113,7 +116,7 @@ export function useScadenzeNotifiche() {
     sendNotification,
     scadenzeUrgenti,
     checkScadenze,
-    isSupported: 'Notification' in window
+    isSupported: 'Notification' in window,
   };
 }
 
@@ -140,22 +143,22 @@ export function NotificheScadenze({ showBanner = true }) {
   // Banner per richiedere permesso - meno invasivo, in basso a destra
   if (showBanner) {
     return (
-      <div style={{
-        position: 'fixed',
-        bottom: 20,
-        right: 20,
-        maxWidth: 360,
-        background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)',
-        color: 'white',
-        padding: '14px 18px',
-        borderRadius: 12,
-        boxShadow: '0 4px 20px rgba(0,0,0,0.2)',
-        zIndex: 9999,
-        fontSize: 13
-      }}>
-        <div style={{ marginBottom: 10, fontWeight: 500 }}>
-          🔔 Attiva le notifiche
-        </div>
+      <div
+        style={{
+          position: 'fixed',
+          bottom: 20,
+          right: 20,
+          maxWidth: 360,
+          background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)',
+          color: 'white',
+          padding: '14px 18px',
+          borderRadius: 12,
+          boxShadow: '0 4px 20px rgba(0,0,0,0.2)',
+          zIndex: 9999,
+          fontSize: 13,
+        }}
+      >
+        <div style={{ marginBottom: 10, fontWeight: 500 }}>🔔 Attiva le notifiche</div>
         <div style={{ marginBottom: 12, fontSize: 12, opacity: 0.9 }}>
           Ricevi avvisi per scadenze imminenti
         </div>
@@ -170,7 +173,7 @@ export function NotificheScadenze({ showBanner = true }) {
               borderRadius: 6,
               fontWeight: 600,
               cursor: 'pointer',
-              fontSize: 12
+              fontSize: 12,
             }}
           >
             Attiva
@@ -184,7 +187,7 @@ export function NotificheScadenze({ showBanner = true }) {
               border: 'none',
               borderRadius: 6,
               cursor: 'pointer',
-              fontSize: 12
+              fontSize: 12,
             }}
           >
             Non ora
