@@ -12,7 +12,7 @@ import logging
 import tempfile
 import io
 from typing import Dict, Any, Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
 
 from dotenv import load_dotenv
 
@@ -383,7 +383,7 @@ Rispondi con UNA SOLA PAROLA senza punteggiatura."""
             
             parsed_data = json.loads(json_str.strip())
             parsed_data["success"] = True
-            parsed_data["parsed_at"] = datetime.now().isoformat()
+            parsed_data["parsed_at"] = datetime.now(timezone.utc).isoformat()
             parsed_data["parser"] = "ai_emergent_claude"
             parsed_data["pages_analyzed"] = len(images_b64)
             
