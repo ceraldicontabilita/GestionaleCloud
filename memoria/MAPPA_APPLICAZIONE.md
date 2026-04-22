@@ -202,3 +202,43 @@ Cedolini PDF → Parser Zucchetti → Collezione "cedolini"
 Tutti i router sono in app/router_registry.py.
 22 router erano mancanti e sono stati aggiunti in questa sessione.
 I router usano prefix dinamici + add_api_route per le funzioni.
+
+---
+
+## VERIFICA SPECIFICHE OPERATIVE vs CODICE (22 Aprile 2026)
+
+### ✅ IMPLEMENTATO E FUNZIONANTE:
+1. **Fatture Ricevute**: parser XML, import P7M, deduplica hash, auto-routing cassa/banca, collegamento fornitore, alimentazione magazzino
+2. **Fornitori**: creazione auto da fattura, deduplica P.IVA, metodo pagamento guida flusso, scheda con estratto fatture
+3. **Prima Nota Cassa**: corrispettivi→cassa (solo contanti, POS separato), saldo anno
+4. **Prima Nota Banca**: import estratto conto, classificazione, deduplica, collegamento fatture
+5. **Cedolini**: parser Zucchetti (payslip_parser_v2), collegamento dipendente, TFR, import Gmail
+6. **Dipendenti**: fascicolo completo con match stipendi (3 strategie), deduplica CF, arricchimento anagrafica
+7. **F24**: import da documenti, scadenze, riconciliazione banca
+8. **Documenti/Inbox**: upload auto, classificazione multi-tipo, deduplica hash
+9. **Riconciliazione**: auto matching con scoring, conferma manuale, multipla
+10. **Magazzino**: prodotti da fattura, dizionario articoli
+
+### ⚠️ IMPLEMENTATO MA PARZIALE:
+1. **Trasferimenti cassa↔banca**: endpoint `sposta-movimento` esiste ma non crea automaticamente il lato opposto
+2. **POS→banca**: la quota POS crea partita attesa ma il match con accredito bancario non è robusto
+3. **Alert engine**: servizio creato ma non ancora integrato nei router (nelle patch, da applicare)
+4. **Event bus**: 20 handler definiti ma nelle patch, non ancora attivi in produzione
+5. **Partite aperte**: engine creato ma nelle patch
+
+### ❌ MANCA O DA IMPLEMENTARE:
+1. **Netting note di credito**: TD04 viene riconosciuto ma il netting automatico con fatture collegate non è implementato
+2. **Scoring completezza anagrafica dipendente**: il fascicolo c'è ma non c'è un punteggio di completezza visivo
+3. **Audit trail modifiche anagrafiche**: non traccia chi/quando modifica un dipendente o fornitore
+4. **Dashboard HR operativa**: manca dashboard dedicata HR con KPI dipendenti
+5. **Merge duplicati fornitori guidato**: la deduplica trova i duplicati ma non c'è UI per il merge
+
+### PARSER DISPONIBILI:
+- `fattura_elettronica_parser.py` — XML FatturaPA
+- `corrispettivi_parser.py` — XML corrispettivi
+- `f24_parser.py` — modelli F24
+- `payslip_parser_v2.py` — cedolini Zucchetti
+- `busta_paga_multi_template.py` — multi-template
+- `estratto_conto_bnl_parser.py` — BNL
+- `estratto_conto_nexi_parser.py` — Nexi
+- `paypal_msr_parser.py` — PayPal
