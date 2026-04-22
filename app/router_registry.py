@@ -43,12 +43,13 @@ def register_all_routers(app: FastAPI) -> None:
 
 # ─── Auth & Public ──────────────────────────────────────────────────────────
 def _register_auth(app: FastAPI):
-    from app.routers import auth, public_api, google_auth, openclaw
+    from app.routers import auth, public_api, google_auth, openclaw, pin_login
     from app.routers.erp_bridge import router as erp_bridge_router
     from app.routers.legal_pages import router as legal_router
 
     app.include_router(public_api.router, prefix="/api", tags=["Public API"])
     app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
+    app.include_router(pin_login.router, prefix="/api/auth", tags=["Auth PIN"])
     app.include_router(google_auth.router, prefix="/api", tags=["Google OAuth"])
     app.include_router(openclaw.router, prefix="/api", tags=["OpenClaw AI Assistant"])
     # ERP Bridge: ponte inbound da ceraldiapp.it (app Tracciabilità esterna)
