@@ -185,7 +185,7 @@ async def get_statistiche_mutui():
                                 "data_scadenza": rata["data_scadenza"],
                                 "importo_totale": rata["importo_totale"]
                             })
-                    except:
+                    except Exception:
                         pass
         
         # Ordina per data
@@ -310,7 +310,7 @@ async def riconcilia_mutui_con_estratto_conto(
                 # Cerca movimento bancario corrispondente
                 try:
                     data_rata = datetime.strptime(rata["data_scadenza"], "%d/%m/%Y")
-                except:
+                except Exception:
                     continue
                     
                 data_min = (data_rata - timedelta(days=tolleranza_giorni)).strftime("%Y-%m-%d")
@@ -463,7 +463,7 @@ async def riconcilia_rata_manuale(
         # Verifica esistenza movimento
         try:
             movimento = await db.estratto_conto_movimenti.find_one({"_id": ObjectId(movimento_id)})
-        except:
+        except Exception:
             movimento = await db.estratto_conto_movimenti.find_one({"id": movimento_id})
             
         if not movimento:
