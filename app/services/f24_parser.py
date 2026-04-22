@@ -20,7 +20,7 @@ def parse_importo(value: str) -> float:
     value = value.strip().replace(".", "").replace(",", ".")
     try:
         return float(value)
-    except:
+    except Exception:
         return 0.0
 
 
@@ -34,7 +34,7 @@ def parse_data(value: str) -> Optional[str]:
         try:
             dt = datetime.strptime(value, fmt)
             return dt.strftime("%Y-%m-%d")
-        except:
+        except Exception:
             continue
     return value
 
