@@ -31,6 +31,7 @@ const ALL_NAV_ITEMS = [
   { to: "/dipendenti", label: "Dipendenti", icon: "👥" },
   { to: "/turni", label: "Turni", icon: "🗓️" },
   { to: "/missioni", label: "Missioni", icon: "✈️" },
+  { to: "/hr-documenti", label: "Doc. HR", icon: "🗂️" },
   { to: "/cedolini", label: "Cedolini", icon: "📄" },
   { to: "/bilancio", label: "Bilancio", icon: "📊" },
   { to: "/mutui", label: "Mutui", icon: "🏦" },
