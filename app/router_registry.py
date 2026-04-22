@@ -44,7 +44,6 @@ def register_all_routers(app: FastAPI) -> None:
 # ─── Auth & Public ──────────────────────────────────────────────────────────
 def _register_auth(app: FastAPI):
     from app.routers import auth, public_api, google_auth, openclaw
-    from app.routers.agenti import router as r_agenti
     from app.routers.erp_bridge import router as erp_bridge_router
     from app.routers.legal_pages import router as legal_router
 
@@ -52,7 +51,6 @@ def _register_auth(app: FastAPI):
     app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
     app.include_router(google_auth.router, prefix="/api", tags=["Google OAuth"])
     app.include_router(openclaw.router, prefix="/api", tags=["OpenClaw AI Assistant"])
-    app.include_router(r_agenti, prefix="/api", tags=["Agenti AI"])
     # ERP Bridge: ponte inbound da ceraldiapp.it (app Tracciabilità esterna)
     # che invia al gestionale le fatture importate dalla PEC.
     # Il router ha già prefix interno "/api/erp/ponte", quindi NO prefix qui.
@@ -101,7 +99,7 @@ def _register_accounting(app: FastAPI):
     app.include_router(prima_nota_salari.router, prefix="/api/prima-nota-salari", tags=["Prima Nota Salari"])
     app.include_router(piano_conti.router, prefix="/api/piano-conti", tags=["Piano dei Conti"])
     app.include_router(bilancio.router, prefix="/api/bilancio", tags=["Bilancio"])
-    app.include_router(contabilita_gestionale.router, tags=["Contabilità Gestionale"])
+    app.include_router(contabilita_gestionale.router, prefix="/api/contabilita-gestionale", tags=["Contabilità Gestionale"])
     app.include_router(centri_costo.router, prefix="/api/centri-costo", tags=["Centri di Costo"])
     app.include_router(contabilita_avanzata.router, prefix="/api/contabilita", tags=["Contabilita Avanzata"])
     app.include_router(regole_categorizzazione.router, prefix="/api/regole", tags=["Regole"])
@@ -137,11 +135,15 @@ def _register_bank(app: FastAPI):
     app.include_router(assegni_learning.router, prefix="/api/assegni/learning", tags=["Assegni Learning"])
     app.include_router(pos_accredito.router, prefix="/api/pos-accredito", tags=["POS Accredito"])
     app.include_router(paypal_statements.router, prefix="/api/paypal-statements", tags=["PayPal"])
-    
-    from app.routers.paypal_api import router as paypal_api_router
-    app.include_router(paypal_api_router, prefix="/api", tags=["PayPal API"])
+
+    # (paypal_api è registrato in _register_core con prefix="/api/paypal-api")
     app.include_router(bonifici_associazioni.router, prefix="/api", tags=["Bonifici Associazioni"])
     app.include_router(distinte_bpm.router, prefix="/api/paghe", tags=["Distinte BPM"])
+
+    # bonifici_import_unificato: wrapper per ImportUnificato UI.
+    # Il router ha prefix interno "/archivio-bonifici/jobs", quindi prefix="/api" qui.
+    from app.routers.bank.bonifici_import_unificato import router as bonifici_import_unif_router
+    app.include_router(bonifici_import_unif_router, prefix="/api", tags=["Bonifici Import Unificato"])
 
 
 # ─── Warehouse Module ──────────────────────────────────────────────────────
@@ -156,7 +158,7 @@ def _register_warehouse(app: FastAPI):
     app.include_router(products_catalog.router, prefix="/api/products", tags=["Products Catalog"])
     app.include_router(dizionario_articoli.router, prefix="/api/dizionario-articoli", tags=["Dizionario Articoli"])
     app.include_router(dizionario_prodotti.router, prefix="/api/dizionario-prodotti", tags=["Dizionario Prodotti"])
-    app.include_router(inventario.router, prefix="/api", tags=["Inventario"])
+    app.include_router(inventario.router, prefix="/api/inventario", tags=["Inventario"])
 
 
 # ─── Invoices Module ───────────────────────────────────────────────────────
@@ -171,7 +173,7 @@ def _register_invoices(app: FastAPI):
     app.include_router(fatture_upload.router, prefix="/api/fatture", tags=["Fatture Upload"])
     app.include_router(fatture_ricevute_router, prefix="/api/fatture-ricevute", tags=["Fatture Ricevute"])
     app.include_router(corrispettivi.router, prefix="/api/corrispettivi", tags=["Corrispettivi"])
-    app.include_router(invoicetronic.router, tags=["InvoiceTronic SDI"])
+    app.include_router(invoicetronic.router, prefix="/api/invoicetronic", tags=["InvoiceTronic SDI"])
 
 
 # ─── Employees Module ──────────────────────────────────────────────────────
@@ -223,7 +225,7 @@ def _register_core(app: FastAPI):
         indici_bilancio, chiusura_esercizio, gestione_iva_speciale,
         configurazioni, alerts, import_templates, manutenzione,
         todo, mutui, mutui_parser, import_manuale, auto_repair,
-        inserimento_rapido, settings_router, dati_provvisori, 
+        rapido, settings_router, dati_provvisori,
         batch_reprocessing, pos_corrispettivi_check, enhanced_parser,
         chat_router, learning_universal, schede_tecniche
     )
@@ -270,28 +272,33 @@ def _register_core(app: FastAPI):
     app.include_router(mutui.router, prefix="/api/mutui", tags=["Mutui"])
     app.include_router(mutui_parser.router, prefix="/api/mutui", tags=["Mutui Parser"])
     app.include_router(import_manuale.router, prefix="/api/import-manuale", tags=["Import Manuale"])
-    app.include_router(auto_repair.router, prefix="/api", tags=["Auto Riparazione"])
-    app.include_router(inserimento_rapido.router, prefix="/api", tags=["Inserimento Rapido"])
+    app.include_router(auto_repair.router, prefix="/api/auto-repair", tags=["Auto Riparazione"])
+    app.include_router(rapido.router, prefix="/api/rapido", tags=["Inserimento Rapido"])
     app.include_router(dati_provvisori.router, prefix="/api", tags=["Dati Provvisori"])
-    app.include_router(batch_reprocessing.router, prefix="/api", tags=["Batch Reprocessing"])
+    app.include_router(batch_reprocessing.router, prefix="/api/batch-reprocess", tags=["Batch Reprocessing"])
     app.include_router(pos_corrispettivi_check.router, prefix="/api", tags=["POS Check"])
     app.include_router(enhanced_parser.router, prefix="/api", tags=["Enhanced Parser"])
     app.include_router(chat_router.router, prefix="/api", tags=["Chat"])
-    app.include_router(schede_tecniche.router, prefix="/api", tags=["Schede Tecniche"])
+    app.include_router(schede_tecniche.router, prefix="/api/schede-tecniche", tags=["Schede Tecniche"])
     app.include_router(learning_universal.router, prefix="/api/learning-universal", tags=["Learning Universal"])
-    app.include_router(settings_router.router, prefix="/api/settings", tags=["Settings"])
     app.include_router(websocket_realtime.router, prefix="/api", tags=["WebSocket"])
     app.include_router(learning_machine.router, prefix="/api/learning-machine", tags=["Learning Machine"])
     app.include_router(learning_machine_cdc.router, prefix="/api", tags=["Learning CDC"])
-    app.include_router(fornitori_learning.router, prefix="/api", tags=["Fornitori Learning"])
-    app.include_router(openapi_imprese.router, prefix="/api", tags=["OpenAPI Imprese"])
+    app.include_router(fornitori_learning.router, prefix="/api/fornitori-learning", tags=["Fornitori Learning"])
+    app.include_router(openapi_imprese.router, prefix="/api/openapi-imprese", tags=["OpenAPI Imprese"])
     app.include_router(openapi_it.router, prefix="/api/openapi", tags=["OpenAPI.it"])
-    app.include_router(openapi_automotive.router, prefix="/api", tags=["OpenAPI Automotive"])
+    app.include_router(openapi_automotive.router, prefix="/api/openapi-automotive", tags=["OpenAPI Automotive"])
     app.include_router(sync_relazionale.router, prefix="/api", tags=["Sync Relazionale"])
-    app.include_router(pagopa.router, tags=["PagoPA"])
+    app.include_router(pagopa.router, prefix="/api/pagopa", tags=["PagoPA"])
     app.include_router(inps_documenti.router, prefix="/api/inps", tags=["INPS"])
     app.include_router(adr.router, prefix="/api/adr", tags=["ADR"])
-    
+
+    # Agenti AI, PayPal, Previsioni Acquisti
+    from app.routers import agenti, paypal_api, previsioni_acquisti
+    app.include_router(agenti.router, prefix="/api/agenti", tags=["Agenti AI"])
+    app.include_router(paypal_api.router, prefix="/api/paypal-api", tags=["PayPal API"])
+    app.include_router(previsioni_acquisti.router, prefix="/api/previsioni-acquisti", tags=["Previsioni Acquisti"])
+
     # Multi-Pagamento Fatture
     from app.routers import multi_pagamento
     app.include_router(multi_pagamento.router, prefix="/api/pagamenti", tags=["Multi-Pagamento"])
@@ -304,15 +311,15 @@ def _register_email(app: FastAPI):
         documenti_non_associati, documenti_intelligenti, document_ai, ai_parser, upload_ai
     )
     
-    app.include_router(email_scanner.router, tags=["Email Scanner"])
-    app.include_router(email_download.router, prefix="/api", tags=["Email Download"])
+    app.include_router(email_scanner.router, prefix="/api/email-scanner", tags=["Email Scanner"])
+    app.include_router(email_download.router, prefix="/api/email-download", tags=["Email Download"])
     app.include_router(email_reconciliation.router, tags=["Email Riconciliazione"])
     app.include_router(email_mongodb.router, prefix="/api", tags=["Email MongoDB"])
 
     # Auto-classify documents_inbox (Gmail/PEC)
     from app.routers import documents_inbox_classify
     app.include_router(documents_inbox_classify.router, prefix="/api/documenti-inbox", tags=["Documents Inbox"])
-    app.include_router(documenti_non_associati.router, prefix="/api", tags=["Documenti Non Associati"])
+    app.include_router(documenti_non_associati.router, prefix="/api/documenti-non-associati", tags=["Documenti Non Associati"])
     app.include_router(documenti_intelligenti.router, prefix="/api/documenti-smart", tags=["Documenti Intelligenti"])
     app.include_router(document_ai.router, prefix="/api/document-ai", tags=["Document AI"])
     app.include_router(ai_parser.router, prefix="/api/ai-parser", tags=["AI Parser"])
@@ -343,36 +350,9 @@ def _register_ai(app: FastAPI):
 # ─── Tracciabilità Module ──────────────────────────────────────────────────
 def _register_tracciabilita(app: FastAPI):
     """
-    NOTA: il nome è legacy. Ora registra solo i router "extra" (_missing_routers)
-    che non hanno una categoria propria. Il modulo tracciabilità HACCP/ristorazione
-    è stato rimosso (non era utilizzato nel gestionale amministrativo Ceraldi).
+    NOTA: questa funzione è stata svuotata nel giro 11 (rimozione tracciabilità)
+    e nel giro 12 (consolidamento registrazioni in _register_core).
+    È mantenuta nel flusso di register_all_routers solo per retrocompatibilità
+    con eventuali hook futuri. Può essere rimossa in un giro successivo.
     """
-    # ── ROUTER EXTRA — Registrazione batch per endpoint non ancora collegati ──
-    _missing_routers = [
-        ("app.routers.agenti", "/api/agenti", "Agenti"),
-        ("app.routers.auto_repair", "/api/auto-repair", "Auto Repair"),
-        ("app.routers.batch_reprocessing", "/api/batch-reprocess", "Batch Reprocess"),
-        ("app.routers.accounting.contabilita_gestionale", "/api/contabilita-gestionale", "Contabilità Gestionale"),
-        ("app.routers.dati_provvisori", "/api", "Dati Provvisori"),
-        ("app.routers.documenti_non_associati", "/api/documenti-non-associati", "Documenti Non Associati"),
-        ("app.routers.email_download", "/api/email-download", "Email Download"),
-        ("app.routers.email_scanner", "/api/email-scanner", "Email Scanner"),
-        ("app.routers.fornitori_learning", "/api/fornitori-learning", "Fornitori Learning"),
-        ("app.routers.invoicetronic", "/api/invoicetronic", "InvoiceTronic"),
-        ("app.routers.openapi_automotive", "/api/openapi-automotive", "OpenAPI Automotive"),
-        ("app.routers.openapi_imprese", "/api/openapi-imprese", "OpenAPI Imprese"),
-        ("app.routers.pagopa", "/api/pagopa", "PagoPA"),
-        ("app.routers.paypal_api", "/api/paypal-api", "PayPal API"),
-        ("app.routers.previsioni_acquisti", "/api/previsioni-acquisti", "Previsioni Acquisti"),
-        ("app.routers.schede_tecniche", "/api/schede-tecniche", "Schede Tecniche"),
-        ("app.routers.inventario", "/api/inventario", "Inventario"),
-        ("app.routers.rapido", "/api/rapido", "Inserimento Rapido"),
-    ]
-    for module_path, prefix, tag in _missing_routers:
-        try:
-            import importlib
-            mod = importlib.import_module(module_path)
-            app.include_router(mod.router, prefix=prefix, tags=[tag])
-            logger.info("✅ Router registrato: %s → %s", tag, prefix)
-        except Exception as e:
-            logger.warning("⚠️ Router %s non caricato: %s", tag, str(e)[:80])
+    pass

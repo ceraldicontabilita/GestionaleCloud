@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 from app.database import Database
 
-router = APIRouter(prefix="/fornitori-learning", tags=["Fornitori Learning"])
+router = APIRouter(tags=["Fornitori Learning"])
 
 # Collezione MongoDB
 COLL_FORNITORI_KEYWORDS = "fornitori_keywords"

@@ -11,7 +11,7 @@ from app.database import Database
 from app.services.batch_reprocessing import BatchReprocessingService
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/batch-reprocess", tags=["Batch Reprocessing"])
+router = APIRouter(tags=["Batch Reprocessing"])
 
 # Stato globale del job in corso
 _job_state: Dict[str, Any] = {

@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 from app.database import Database
 
-router = APIRouter(prefix="/settings", tags=["Impostazioni"])
+router = APIRouter(tags=["Impostazioni"])
 
 
 @router.get("/gmail")

@@ -21,7 +21,7 @@ import base64
 from app.database import Database
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api/invoicetronic", tags=["InvoiceTronic SDI"])
+router = APIRouter(tags=["InvoiceTronic SDI"])
 
 # Configurazione
 INVOICETRONIC_API_KEY = os.environ.get("INVOICETRONIC_API_KEY")

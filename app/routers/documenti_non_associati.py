@@ -14,7 +14,7 @@ import base64
 from app.database import Database
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/documenti-non-associati", tags=["Documenti Non Associati"])
+router = APIRouter(tags=["Documenti Non Associati"])
 
 
 def extract_pdf_from_p7s(p7s_data: bytes) -> Optional[bytes]:

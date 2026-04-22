@@ -239,8 +239,11 @@ export default function Riconciliazione() {
 
   const loadFattureNonPagate = async () => {
     try {
-      const res = await api.get(`/api/invoices/list?paid=false&limit=500&anno=${anno}`);
-      setFattureNonPagate(res.data.invoices || res.data || []);
+      // Endpoint BE è /api/invoices con filtro status (non esiste /list né paid=false)
+      // Prendiamo tutte le fatture dell'anno e filtriamo lato client quelle non pagate.
+      const res = await api.get(`/api/invoices?limit=500&anno=${anno}`);
+      const all = res.data.invoices || res.data || [];
+      setFattureNonPagate(all.filter((inv) => !inv.pagato && inv.status !== 'paid'));
     } catch (e) {
       console.error("Errore:", e);
     }

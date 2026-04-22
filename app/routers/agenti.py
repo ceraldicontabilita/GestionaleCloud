@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 from app.database import Database
 
-router = APIRouter(prefix="/agenti", tags=["Agenti AI"])
+router = APIRouter(tags=["Agenti AI"])
 
 
 @router.get("/segnalazioni")

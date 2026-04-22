@@ -10,7 +10,7 @@ import uuid
 
 from ..database import Database
 
-router = APIRouter(prefix="/inventario", tags=["inventario"])
+router = APIRouter(tags=["inventario"])
 
 COLLECTION = "inventari"
 

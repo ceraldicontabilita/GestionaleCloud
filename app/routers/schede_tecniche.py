@@ -28,7 +28,7 @@ from emergentintegrations.llm.chat import LlmChat, UserMessage
 from duckduckgo_search import DDGS
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/schede-tecniche", tags=["Schede Tecniche"])
+router = APIRouter(tags=["Schede Tecniche"])
 
 EMERGENT_KEY  = os.environ.get("EMERGENT_LLM_KEY", "")
 IMAP_HOST     = os.environ.get("IMAP_HOST", "imap.gmail.com")

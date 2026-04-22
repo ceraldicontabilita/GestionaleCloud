@@ -24,7 +24,7 @@ from app.services.email_full_download import (
 )
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/email-download", tags=["Email Download"])
+router = APIRouter(tags=["Email Download"])
 
 # Stato del download in corso
 download_status = {

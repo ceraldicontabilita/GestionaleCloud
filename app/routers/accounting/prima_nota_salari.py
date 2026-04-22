@@ -582,6 +582,42 @@ async def reset_prima_nota_salari(
     }
 
 
+@router.delete("/pulisci-righe-vuote")
+async def pulisci_righe_vuote() -> Dict[str, Any]:
+    """
+    Elimina i record "vuoti" dalla prima_nota_salari, cioè quelli dove SIA
+    `importo_busta` SIA `importo_bonifico` sono 0, null o mancanti.
+
+    Usato dal pulsante "Pulisci righe vuote" della UI PrimaNotaSalariTab per
+    rimuovere residui di import falliti o placeholder orfani. Non tocca i
+    record che hanno almeno uno dei due importi valorizzati.
+
+    Returns:
+        {"righe_eliminate": int, "message": str}
+    """
+    db = Database.get_db()
+
+    # Una riga è "vuota" se importo_busta è None/0 E importo_bonifico è None/0
+    query = {
+        "$and": [
+            {"$or": [
+                {"importo_busta": {"$in": [None, 0, 0.0]}},
+                {"importo_busta": {"$exists": False}},
+            ]},
+            {"$or": [
+                {"importo_bonifico": {"$in": [None, 0, 0.0]}},
+                {"importo_bonifico": {"$exists": False}},
+            ]},
+        ]
+    }
+
+    result = await db["prima_nota_salari"].delete_many(query)
+    return {
+        "righe_eliminate": result.deleted_count,
+        "message": f"Eliminate {result.deleted_count} righe vuote da prima_nota_salari",
+    }
+
+
 @router.post("/consolida-record")
 async def consolida_record() -> Dict[str, Any]:
     """

@@ -12,7 +12,7 @@ import logging
 from app.database import Database
 from app.services.openapi_automotive import OpenAPIAutomotive, map_automotive_to_veicolo
 
-router = APIRouter(prefix="/openapi-automotive", tags=["OpenAPI Automotive"])
+router = APIRouter(tags=["OpenAPI Automotive"])
 logger = logging.getLogger(__name__)
 
 # Token da environment (stesso di Company)

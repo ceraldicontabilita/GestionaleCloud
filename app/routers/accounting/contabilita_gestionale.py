@@ -13,7 +13,7 @@ from collections import defaultdict
 
 from app.database import Database, Collections
 
-router = APIRouter(prefix="/api/contabilita-gestionale", tags=["Contabilità Gestionale"])
+router = APIRouter(tags=["Contabilità Gestionale"])
 
 COLLECTION_PRIMA_NOTA_CASSA = "prima_nota_cassa"
 COLLECTION_PRIMA_NOTA_BANCA = "prima_nota_banca"

@@ -17,7 +17,7 @@ from app.database import Database
 from app.utils.error_handler import handle_errors
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api/pagopa", tags=["PagoPA"])
+router = APIRouter(tags=["PagoPA"])
 
 # Collection per ricevute PagoPA
 COLLECTION_RICEVUTE = "ricevute_pagopa"

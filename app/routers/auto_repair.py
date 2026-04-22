@@ -9,7 +9,7 @@ from fastapi import APIRouter, Query, HTTPException
 from app.database import Database
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/auto-repair", tags=["Auto Riparazione"])
+router = APIRouter(tags=["Auto Riparazione"])
 
 
 @router.post("/collega-targa-driver")

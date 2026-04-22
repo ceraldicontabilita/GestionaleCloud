@@ -12,7 +12,7 @@ import logging
 from app.database import Database
 from app.services.openapi_company import OpenAPICompany, map_company_to_fornitore
 
-router = APIRouter(prefix="/openapi-imprese", tags=["OpenAPI Imprese"])
+router = APIRouter(tags=["OpenAPI Imprese"])
 logger = logging.getLogger(__name__)
 
 # Token da environment

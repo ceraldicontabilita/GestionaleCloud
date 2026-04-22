@@ -9,7 +9,7 @@ from app.database import Database
 from app.services.paypal_api_sync import sync_paypal_period
 from app.services.paypal_riconciliazione import match_fornitore, normalize_string
 
-router = APIRouter(prefix="/paypal-api", tags=["paypal-api"])
+router = APIRouter(tags=["PayPal API"])
 
 
 @router.post("/sync")

@@ -13,7 +13,7 @@ from app.services.email_scanner_completo import (
 )
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api/email-scanner", tags=["Email Scanner"])
+router = APIRouter(tags=["Email Scanner"])
 
 
 @router.get("/cartelle")
