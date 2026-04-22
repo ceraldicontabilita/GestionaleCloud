@@ -772,26 +772,34 @@ export default function Portale() {
 
   useEffect(() => {
     const init = async () => {
-      const sessionId = getSessionIdFromHash();
-      if (sessionId) {
-        const u = await processSession(sessionId);
-        if (u) {
+      try {
+        const sessionId = getSessionIdFromHash();
+        if (sessionId) {
+          const u = await processSession(sessionId);
+          if (u) {
+            setUser(u);
+            setStep('portal');
+            await loadPortalData(u.email);
+            return;
+          }
+        }
+        const saved = localStorage.getItem('portal_user');
+        const token = localStorage.getItem('portal_token');
+        if (saved && token) {
+          const u = JSON.parse(saved);
           setUser(u);
           setStep('portal');
           await loadPortalData(u.email);
           return;
         }
+        setStep('login');
+      } catch (err) {
+        console.error('Portale init error:', err);
+        // Fallback a login in caso di errore qualsiasi (JSON parse, network, etc.)
+        localStorage.removeItem('portal_user');
+        localStorage.removeItem('portal_token');
+        setStep('login');
       }
-      const saved = localStorage.getItem('portal_user');
-      const token = localStorage.getItem('portal_token');
-      if (saved && token) {
-        const u = JSON.parse(saved);
-        setUser(u);
-        setStep('portal');
-        await loadPortalData(u.email);
-        return;
-      }
-      setStep('login');
     };
     init();
   }, [processSession, loadPortalData]);
