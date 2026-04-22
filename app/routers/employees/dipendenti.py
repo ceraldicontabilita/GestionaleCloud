@@ -395,48 +395,54 @@ async def create_dipendente(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     """Crea nuovo dipendente."""
     db = Database.get_db()
     
-    # Campi obbligatori
-    required = ["nome_completo"]
-    for field in required:
-        if not data.get(field):
-            raise HTTPException(status_code=400, detail=f"Campo obbligatorio mancante: {field}")
+    # Accetta nome+cognome separati O nome_completo
+    nome = data.get("nome", "")
+    cognome = data.get("cognome", "")
+    nome_completo = data.get("nome_completo", "")
     
-    # Parse nome
-    nome_parts = data["nome_completo"].split()
-    cognome = nome_parts[0] if nome_parts else ""
-    nome = " ".join(nome_parts[1:]) if len(nome_parts) > 1 else ""
+    if not nome_completo and not (nome and cognome):
+        raise HTTPException(status_code=400, detail="Serve nome_completo oppure nome + cognome")
+    
+    # Se arriva nome_completo senza nome/cognome, NON splittare automaticamente
+    # (nomi come "De Luca" verrebbero rotti). Salva tutto in nome_completo.
+    if nome_completo and not nome and not cognome:
+        nome = ""
+        cognome = ""
+    elif nome and cognome and not nome_completo:
+        nome_completo = f"{cognome} {nome}".strip()
+    
+    # IBAN: accetta sia "iban" che "iban_cedolino", salva entrambi per compatibilità
+    iban_value = data.get("iban_cedolino") or data.get("iban", "")
     
     dipendente = {
         "id": str(uuid.uuid4()),
-        "nome_completo": data["nome_completo"],
+        "nome_completo": nome_completo,
         "cognome": cognome,
         "nome": nome,
-        "codice_fiscale": data.get("codice_fiscale", ""),
-        "codice_dipendente": data.get("codice_dipendente", ""),  # Codice aziendale (es. 0300006)
+        "codice_fiscale": (data.get("codice_fiscale", "") or "").upper().strip(),
+        "codice_dipendente": data.get("codice_dipendente", ""),
         "matricola": data.get("matricola", ""),
         "email": data.get("email", ""),
         "telefono": data.get("telefono", ""),
         "indirizzo": data.get("indirizzo", ""),
         "data_nascita": data.get("data_nascita"),
         "luogo_nascita": data.get("luogo_nascita", ""),
-        "mansione": data.get("mansione", ""),  # es. "CAM. DI SALA"
-        "qualifica": data.get("qualifica", ""),  # es. "OPE" (operatore)
-        "livello": data.get("livello", ""),  # es. "6 Livello Super"
-        "tipo_contratto": data.get("tipo_contratto", "Tempo Indeterminato"),
+        "mansione": data.get("mansione", ""),
+        "qualifica": data.get("qualifica", ""),
+        "livello": data.get("livello", ""),
+        "tipo_contratto": data.get("tipo_contratto", ""),
         "data_assunzione": data.get("data_assunzione"),
         "data_fine_contratto": data.get("data_fine_contratto"),
         "ore_settimanali": data.get("ore_settimanali", 40),
-        "giorni_lavoro": data.get("giorni_lavoro", ["lun", "mar", "mer", "gio", "ven", "sab"]),  # Default Lun-Sab
-        "iban": data.get("iban", ""),
-        "ibans": data.get("ibans", []),  # IBAN multipli (principale + secondari)
-        # Retribuzione dettagliata
-        "paga_base": data.get("paga_base", 0),  # Paga base mensile
-        "contingenza": data.get("contingenza", 0),  # Indennità contingenza
-        "stipendio_lordo": data.get("stipendio_lordo", 0),  # Totale lordo
-        "stipendio_orario": data.get("stipendio_orario", 0),  # Paga oraria
-        # Agevolazioni fiscali
-        "agevolazioni": data.get("agevolazioni", []),  # es. ["Decontr.SUD DL104.20"]
-        # Progressivi
+        "giorni_lavoro": data.get("giorni_lavoro", ["lun", "mar", "mer", "gio", "ven", "sab"]),
+        "iban": iban_value,
+        "iban_cedolino": iban_value,  # Campo canonico per matching stipendi
+        "ibans": data.get("ibans", []),
+        "paga_base": data.get("paga_base", 0),
+        "contingenza": data.get("contingenza", 0),
+        "stipendio_lordo": data.get("stipendio_lordo", 0),
+        "stipendio_orario": data.get("stipendio_orario", 0),
+        "agevolazioni": data.get("agevolazioni", []),
         "progressivi": {
             "tfr_accantonato": data.get("tfr_accantonato", 0),
             "ferie_maturate": data.get("ferie_maturate", 0),
@@ -449,21 +455,16 @@ async def create_dipendente(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
             "rol_goduti": data.get("rol_goduti", 0),
             "rol_residui": data.get("rol_residui", 0)
         },
-        # Acconti
         "acconti": data.get("acconti", []),
-        # Libretto sanitario
         "libretto_numero": data.get("libretto_numero", ""),
         "libretto_scadenza": data.get("libretto_scadenza"),
         "libretto_file": data.get("libretto_file"),
-        # Portale
         "portale_invitato": False,
         "portale_registrato": False,
         "portale_ultimo_accesso": None,
-        # Bonifici associati
         "bonifici_associati": data.get("bonifici_associati", []),
-        # Status
         "attivo": True,
-        "in_carico": data.get("in_carico", True),  # Flag per presenze (default: true per nuovi dipendenti)
+        "in_carico": data.get("in_carico", True),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
@@ -476,6 +477,21 @@ async def create_dipendente(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     
     await db[Collections.EMPLOYEES].insert_one(dipendente.copy())
     dipendente.pop("_id", None)
+    
+    # Event bus: propaga evento per deduplica, alert IBAN/contratto, audit
+    try:
+        from app.services.event_bus import propagate_event, EventTypes
+        await propagate_event(EventTypes.DIPENDENTE_CREATED, {
+            "dipendente_id": dipendente["id"],
+            "nome": nome,
+            "cognome": cognome,
+            "codice_fiscale": dipendente["codice_fiscale"],
+            "iban_cedolino": iban_value,
+            "tipo_contratto": dipendente["tipo_contratto"],
+            "stato": "attivo",
+        }, db, source_module="dipendenti")
+    except Exception:
+        logger.exception("Errore propagazione evento dipendente.created")
     
     return dipendente
 
@@ -616,6 +632,26 @@ async def update_dipendente(dipendente_id: str, data: Dict[str, Any] = Body(...)
     if not dipendente_old:
         raise HTTPException(status_code=404, detail="Dipendente non trovato")
     
+    # Sync nome_completo ↔ nome + cognome
+    if "nome" in data or "cognome" in data:
+        nome = data.get("nome", dipendente_old.get("nome", ""))
+        cognome = data.get("cognome", dipendente_old.get("cognome", ""))
+        if nome or cognome:
+            data["nome_completo"] = f"{cognome} {nome}".strip()
+    elif "nome_completo" in data and data["nome_completo"]:
+        # Non splittare automaticamente — lascia nome/cognome come sono
+        pass
+    
+    # Sync iban ↔ iban_cedolino (campo canonico per matching stipendi)
+    if "iban" in data:
+        data["iban_cedolino"] = data["iban"]
+    elif "iban_cedolino" in data:
+        data["iban"] = data["iban_cedolino"]
+    
+    # Normalizza CF
+    if "codice_fiscale" in data and data["codice_fiscale"]:
+        data["codice_fiscale"] = data["codice_fiscale"].upper().strip()
+    
     # Aggiorna il dipendente
     result = await db[Collections.EMPLOYEES].update_one(
         {"$or": [{"id": dipendente_id}, {"codice_fiscale": dipendente_id}]},
@@ -627,14 +663,12 @@ async def update_dipendente(dipendente_id: str, data: Dict[str, Any] = Body(...)
     
     # SINCRONIZZAZIONE A CASCATA: Aggiorna IBAN nei bonifici associati
     new_ibans = data.get("ibans", [])
-    new_iban = data.get("iban", "")
+    new_iban = data.get("iban", "") or data.get("iban_cedolino", "")
     dip_id = dipendente_old.get("id")
     
     if new_ibans or new_iban:
-        # Aggiorna i bonifici associati a questo dipendente
         all_ibans = list(set([i for i in new_ibans if i] + ([new_iban] if new_iban else [])))
         
-        # Aggiorna i bonifici dove il dipendente è già associato
         await db.bonifici_transfers.update_many(
             {"dipendente_id": dip_id},
             {"$set": {
@@ -643,18 +677,16 @@ async def update_dipendente(dipendente_id: str, data: Dict[str, Any] = Body(...)
             }}
         )
         
-        # Inoltre, trova bonifici con IBAN corrispondente e associali automaticamente se non già associati
         if all_ibans:
             nome_completo = data.get("nome_completo") or dipendente_old.get("nome_completo") or \
                 f"{data.get('nome', dipendente_old.get('nome', ''))} {data.get('cognome', dipendente_old.get('cognome', ''))}".strip()
             
-            # Cerca bonifici con IBAN beneficiario corrispondente
             for iban in all_ibans:
-                if iban and len(iban) >= 15:  # IBAN minimo valido
+                if iban and len(iban) >= 15:
                     await db.bonifici_transfers.update_many(
                         {
                             "beneficiario.iban": iban,
-                            "dipendente_id": {"$exists": False}  # Solo se non già associato
+                            "dipendente_id": {"$exists": False}
                         },
                         {"$set": {
                             "dipendente_id": dip_id,
@@ -665,23 +697,57 @@ async def update_dipendente(dipendente_id: str, data: Dict[str, Any] = Body(...)
                         }}
                     )
     
+    # Event bus: propaga evento per risoluzione alert (IBAN, contratto, etc.)
+    try:
+        from app.services.event_bus import propagate_event, EventTypes
+        await propagate_event(EventTypes.DIPENDENTE_UPDATED, {
+            "dipendente_id": dip_id,
+            "iban_cedolino": new_iban,
+            "codice_fiscale": data.get("codice_fiscale", dipendente_old.get("codice_fiscale")),
+            "tipo_contratto": data.get("tipo_contratto", dipendente_old.get("tipo_contratto")),
+        }, db, source_module="dipendenti")
+    except Exception:
+        logger.exception("Errore propagazione evento dipendente.updated")
+    
     return {"message": "Dipendente aggiornato"}
 
 
 @router.delete("/{dipendente_id}")
 @handle_errors
 async def delete_dipendente(dipendente_id: str) -> Dict[str, str]:
-    """Elimina dipendente."""
+    """Cessa dipendente (soft delete). Il fascicolo resta consultabile."""
     db = Database.get_db()
     
-    result = await db[Collections.EMPLOYEES].delete_one(
-        {"$or": [{"id": dipendente_id}, {"codice_fiscale": dipendente_id}]}
+    # Soft delete: marca come non in carico, NON cancella fisicamente
+    result = await db[Collections.EMPLOYEES].update_one(
+        {"$or": [{"id": dipendente_id}, {"codice_fiscale": dipendente_id}]},
+        {"$set": {
+            "in_carico": False,
+            "attivo": False,
+            "data_cessazione": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }}
     )
     
-    if result.deleted_count == 0:
+    if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Dipendente non trovato")
     
-    return {"message": "Dipendente eliminato"}
+    # Event bus: verifica flussi attivi per cessato
+    try:
+        dip = await db[Collections.EMPLOYEES].find_one(
+            {"$or": [{"id": dipendente_id}, {"codice_fiscale": dipendente_id}]},
+            {"_id": 0, "id": 1, "nome_completo": 1}
+        )
+        if dip:
+            from app.services.event_bus import propagate_event, EventTypes
+            await propagate_event(EventTypes.DIPENDENTE_CESSATO, {
+                "dipendente_id": dip.get("id", dipendente_id),
+                "nome_completo": dip.get("nome_completo", ""),
+            }, db, source_module="dipendenti")
+    except Exception:
+        logger.exception("Errore propagazione evento dipendente.cessato")
+    
+    return {"message": "Dipendente cessato (fascicolo conservato)"}
 
 
 # ============== TURNI ==============

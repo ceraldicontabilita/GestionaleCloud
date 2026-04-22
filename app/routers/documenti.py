@@ -2446,10 +2446,21 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
     lower = filename.lower()
     
     # Controlla estensione
-    if lower.endswith('.xml'):
-        # Verifica se è fattura elettronica o corrispettivo
+    if lower.endswith('.xml') or lower.endswith('.p7m') or lower.endswith('.xml.p7m'):
+        # Estrai XML da P7M se necessario
         try:
             content_str = file_content.decode('utf-8', errors='ignore')
+            
+            # Se è P7M, cerca il contenuto XML all'interno del wrapper
+            if lower.endswith('.p7m') and 'FatturaElettronica' not in content_str:
+                # P7M: il contenuto XML può essere embedded — cerca i marker XML
+                xml_start = content_str.find('<?xml')
+                if xml_start == -1:
+                    xml_start = content_str.find('<FatturaElettronica')
+                if xml_start == -1:
+                    xml_start = content_str.find('<DatiRT')
+                if xml_start >= 0:
+                    content_str = content_str[xml_start:]
             
             # Corrispettivi telematici COR10 (Registratore Telematico)
             # Contengono DatiRT, DataOraRilevazione o Trasmissione con CodiceFiscaleEsercente

@@ -113,7 +113,7 @@ function TabAnagrafica({ dip, onSaved }) {
         {field('Livello', 'livello')}
         {field('Tipo Contratto', 'tipo_contratto')}
         {field('Scatto Contingenza', 'scatto_contingenza')}
-        {field('IBAN', 'iban')}
+        {field('IBAN Stipendio', 'iban_cedolino')}
         {field('Banca', 'banca')}
         {field('Importo Netto Mensile', 'importo_netto', 'number')}
       </div>

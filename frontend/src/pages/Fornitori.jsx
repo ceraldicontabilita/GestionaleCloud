@@ -1908,7 +1908,9 @@ export default function Fornitori() {
       {/* MODALE ESTRATTO FATTURE */}
       {estrattoModal.open && (
         <Portal>
-        <div style={{
+        <div 
+          onClick={() => setEstrattoModal(prev => ({ ...prev, open: false }))}
+          style={{
           position: 'fixed',
           top: 0, left: 0, right: 0, bottom: 0,
           backgroundColor: 'rgba(0,0,0,0.5)',
@@ -1917,7 +1919,9 @@ export default function Fornitori() {
           justifyContent: 'center',
           zIndex: 10000
         }}>
-          <div id="estratto-fatture-content" style={{
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            id="estratto-fatture-content" style={{
             backgroundColor: 'white',
             borderRadius: '16px',
             width: '95%',
@@ -2114,6 +2118,7 @@ export default function Fornitori() {
                           <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600 }}>Totale</th>
                           <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600 }}>Metodo Pag.</th>
                           <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600 }}>Stato</th>
+                          <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600 }}>Azioni</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -2153,11 +2158,63 @@ export default function Fornitori() {
                                 <span style={{ background: '#f59e0b', color: 'white', padding: '2px 8px', borderRadius: 12, fontSize: 10 }}>Da pagare</span>
                               )}
                             </td>
+                            <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                              {!f.pagato && !f.is_nota_credito && (
+                                <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
+                                  <button
+                                    onClick={async () => {
+                                      if (!window.confirm(`Confermi pagamento CASSA di ${formatEuro(f.importo_totale)} per fattura ${f.numero}?`)) return;
+                                      try {
+                                        await api.post('/api/fatture-ricevute/paga-manuale', {
+                                          fattura_id: f.id,
+                                          metodo: 'cassa',
+                                          importo: f.importo_totale,
+                                          fornitore: estrattoModal.fornitore?.ragione_sociale || estrattoModal.fornitore?.denominazione || '',
+                                          numero_fattura: f.numero || '',
+                                          data_pagamento: new Date().toISOString().split('T')[0]
+                                        });
+                                        reloadEstratto();
+                                      } catch (e) {
+                                        alert('Errore: ' + (e.response?.data?.detail || e.message));
+                                      }
+                                    }}
+                                    style={{
+                                      padding: '3px 8px', borderRadius: 4, border: 'none', cursor: 'pointer',
+                                      background: '#dcfce7', color: '#166534', fontSize: 10, fontWeight: 600
+                                    }}
+                                    title="Segna come pagata in contanti"
+                                  >💵 Cassa</button>
+                                  <button
+                                    onClick={async () => {
+                                      if (!window.confirm(`Confermi pagamento BANCA di ${formatEuro(f.importo_totale)} per fattura ${f.numero}?`)) return;
+                                      try {
+                                        await api.post('/api/fatture-ricevute/paga-manuale', {
+                                          fattura_id: f.id,
+                                          metodo: 'banca',
+                                          importo: f.importo_totale,
+                                          fornitore: estrattoModal.fornitore?.ragione_sociale || estrattoModal.fornitore?.denominazione || '',
+                                          numero_fattura: f.numero || '',
+                                          data_pagamento: new Date().toISOString().split('T')[0]
+                                        });
+                                        reloadEstratto();
+                                      } catch (e) {
+                                        alert('Errore: ' + (e.response?.data?.detail || e.message));
+                                      }
+                                    }}
+                                    style={{
+                                      padding: '3px 8px', borderRadius: 4, border: 'none', cursor: 'pointer',
+                                      background: '#dbeafe', color: '#1e40af', fontSize: 10, fontWeight: 600
+                                    }}
+                                    title="Segna come pagata con bonifico"
+                                  >🏦 Banca</button>
+                                </div>
+                              )}
+                            </td>
                           </tr>
                         ))}
                         {(!estrattoModal.data.estratto || estrattoModal.data.estratto.length === 0) && (
                           <tr>
-                            <td colSpan={8} style={{ padding: 40, textAlign: 'center', color: '#6b7280' }}>
+                            <td colSpan={9} style={{ padding: 40, textAlign: 'center', color: '#6b7280' }}>
                               Nessuna fattura trovata con i filtri selezionati
                             </td>
                           </tr>
