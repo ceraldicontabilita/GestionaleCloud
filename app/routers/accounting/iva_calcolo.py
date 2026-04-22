@@ -441,6 +441,32 @@ async def get_iva_annual(year: int) -> Dict[str, Any]:
                 "corrispettivi_count": corr_count
             })
         
+        # ── SALDO PROGRESSIVO: riporta credito/debito dal mese precedente ──
+        # L'IVA funziona così: se a Gennaio hai credito €2.745, a Febbraio
+        # quel credito si compensa col debito di Febbraio. Solo se il saldo
+        # progressivo è positivo devi versare.
+        saldo_progressivo = 0.0
+        for m in monthly_data:
+            saldo_mese = m["saldo"]  # debito - credito del mese
+            saldo_precedente = saldo_progressivo
+            saldo_progressivo = round(saldo_progressivo + saldo_mese, 2)
+            
+            # Aggiungi campi progressivi
+            m["saldo_precedente"] = round(saldo_precedente, 2)
+            m["saldo_progressivo"] = round(saldo_progressivo, 2)
+            
+            # Lo stato "Da versare" vale solo se il progressivo è positivo
+            # (cioè il credito accumulato non copre più il debito)
+            if saldo_progressivo > 0.005:
+                m["stato_progressivo"] = "Da versare"
+                m["importo_da_versare"] = round(saldo_progressivo, 2)
+            elif saldo_progressivo < -0.005:
+                m["stato_progressivo"] = "A credito"
+                m["importo_da_versare"] = 0.0
+            else:
+                m["stato_progressivo"] = "Pareggio"
+                m["importo_da_versare"] = 0.0
+        
         tot_cred = sum(m['iva_credito'] for m in monthly_data)
         tot_nc = sum(m['iva_note_credito'] for m in monthly_data)
         tot_deb = sum(m['iva_debito'] for m in monthly_data)
@@ -449,13 +475,15 @@ async def get_iva_annual(year: int) -> Dict[str, Any]:
         return {
             "anno": year,
             "monthly_data": monthly_data,
+            "mesi": monthly_data,  # alias per compatibilità frontend
             "totali": {
                 "iva_credito_lordo": round(tot_cred + tot_nc, 2),
                 "iva_note_credito": round(tot_nc, 2),
                 "iva_credito": round(tot_cred, 2),  # Netto
                 "iva_debito": round(tot_deb, 2),
                 "saldo": round(tot_saldo, 2),
-                "stato": "Da versare" if tot_saldo > 0 else "A credito"
+                "saldo_progressivo": round(saldo_progressivo, 2),
+                "stato": "Da versare" if saldo_progressivo > 0 else "A credito"
             }
         }
     except Exception as e:

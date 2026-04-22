@@ -141,20 +141,34 @@ export default function IVA() {
                     <tr style={{ borderBottom: "2px solid #e5e7eb", background: '#f9fafb' }}>
                       <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600 }}>Mese</th>
                       <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600 }}>IVA Debito</th>
+                      <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600, fontSize: 12 }}>N.Corr</th>
                       <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600 }}>IVA Credito</th>
-                      <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600 }}>Saldo</th>
+                      <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600, fontSize: 12 }}>N.Fatt</th>
+                      <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600 }}>Saldo Mese</th>
+                      <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600, background: '#eef2ff' }}>Riporto</th>
+                      <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600, background: '#eef2ff' }}>Saldo Anno</th>
                       <th style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 600 }}>Stato</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {annualData.mesi?.map((m, idx) => (
+                    {(annualData.mesi || annualData.monthly_data)?.map((m, idx) => (
                       <tr key={idx} style={{ borderBottom: '1px solid #f3f4f6', background: idx % 2 === 0 ? 'white' : '#f9fafb' }}>
                         <td style={{ padding: '12px 16px', fontWeight: 500 }}>{mesiItaliani[m.mese]}</td>
                         <td style={{ padding: '12px 16px', textAlign: 'right', color: '#ea580c' }}>{formatEuro(m.iva_debito)}</td>
+                        <td style={{ padding: '12px 10px', textAlign: 'right', color: '#9ca3af', fontSize: 12 }}>{m.corrispettivi_count || 0}</td>
                         <td style={{ padding: '12px 16px', textAlign: 'right', color: '#16a34a' }}>{formatEuro(m.iva_credito)}</td>
-                        <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 700, color: getSaldoColor(m.saldo) }}>{formatEuro(m.saldo)}</td>
+                        <td style={{ padding: '12px 10px', textAlign: 'right', color: '#9ca3af', fontSize: 12 }}>{(m.fatture_count || 0) + (m.note_credito_count || 0)}</td>
+                        <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600, color: getSaldoColor(m.saldo) }}>{m.saldo > 0 ? '+' : ''}{formatEuro(m.saldo)}</td>
+                        <td style={{ padding: '12px 16px', textAlign: 'right', color: getSaldoColor(m.saldo_precedente || 0), background: '#f8faff', fontSize: 13 }}>
+                          {m.saldo_precedente ? ((m.saldo_precedente > 0 ? '+' : '') + formatEuro(m.saldo_precedente)) : '—'}
+                        </td>
+                        <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 700, color: getSaldoColor(m.saldo_progressivo || 0), background: '#f8faff' }}>
+                          {formatEuro(m.saldo_progressivo || 0)}
+                        </td>
                         <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-                          <span style={{ ...getSaldoBadge(m.stato), padding: '4px 10px', borderRadius: 6, fontSize: 12, fontWeight: 600 }}>{m.stato}</span>
+                          <span style={{ ...getSaldoBadge(m.stato_progressivo || m.stato), padding: '4px 10px', borderRadius: 6, fontSize: 12, fontWeight: 600 }}>
+                            {m.stato_progressivo || m.stato}
+                          </span>
                         </td>
                       </tr>
                     ))}
@@ -163,9 +177,17 @@ export default function IVA() {
                     <tr style={{ borderTop: "2px solid #1e3a5f", background: '#f0f9ff', fontWeight: 700 }}>
                       <td style={{ padding: '12px 16px' }}>TOTALE ANNUO</td>
                       <td style={{ padding: '12px 16px', textAlign: 'right', color: '#ea580c' }}>{formatEuro(annualData.totali?.iva_debito)}</td>
+                      <td style={{ padding: '12px 10px' }}></td>
                       <td style={{ padding: '12px 16px', textAlign: 'right', color: '#16a34a' }}>{formatEuro(annualData.totali?.iva_credito)}</td>
+                      <td style={{ padding: '12px 10px' }}></td>
                       <td style={{ padding: '12px 16px', textAlign: 'right', color: getSaldoColor(annualData.totali?.saldo) }}>{formatEuro(annualData.totali?.saldo)}</td>
-                      <td style={{ padding: '12px 16px', textAlign: 'center' }}><span style={{ ...getSaldoBadge(annualData.totali?.stato), padding: '4px 10px', borderRadius: 6, fontSize: 12, fontWeight: 600 }}>{annualData.totali?.stato}</span></td>
+                      <td style={{ padding: '12px 16px', background: '#f8faff' }}></td>
+                      <td style={{ padding: '12px 16px', textAlign: 'right', background: '#f8faff', color: getSaldoColor(annualData.totali?.saldo_progressivo || annualData.totali?.saldo) }}>
+                        {formatEuro(annualData.totali?.saldo_progressivo || annualData.totali?.saldo)}
+                      </td>
+                      <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                        <span style={{ ...getSaldoBadge(annualData.totali?.stato), padding: '4px 10px', borderRadius: 6, fontSize: 12, fontWeight: 600 }}>{annualData.totali?.stato}</span>
+                      </td>
                     </tr>
                   </tfoot>
                 </table>
