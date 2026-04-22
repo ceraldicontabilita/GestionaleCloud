@@ -1,5 +1,5 @@
 """Invoices Emesse router - Issued invoices."""
-from fastapi import APIRouter, Depends, Path, status, UploadFile, File
+from fastapi import APIRouter, Body, Depends, File, Path, UploadFile, status
 from typing import Dict, Any, List
 from datetime import datetime, timezone
 from uuid import uuid4
@@ -45,7 +45,7 @@ async def get_invoice_emessa(
     summary="Create issued invoice"
 )
 async def create_invoice_emessa(
-    data: Dict[str, Any],
+    data: Dict[str, Any] = Body(...),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ) -> Dict[str, str]:
     """Create an issued invoice."""
