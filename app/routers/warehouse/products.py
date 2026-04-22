@@ -1,5 +1,5 @@
 """Products router - Product catalog management."""
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Body, Depends, status
 from typing import Dict, Any, List
 from datetime import datetime, timezone
 from uuid import uuid4
@@ -31,7 +31,7 @@ async def get_products(
     summary="Create product"
 )
 async def create_product(
-    data: Dict[str, Any],
+    data: Dict[str, Any] = Body(...),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ) -> Dict[str, str]:
     """Create a new product."""
