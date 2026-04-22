@@ -70,7 +70,7 @@ def estrai_dati_da_testo(testo: str) -> Dict[str, Any]:
                 val_clean = val.replace('.', '').replace(',', '.')
                 try:
                     importi.append(float(val_clean))
-                except:
+                except Exception:
                     pass
     
     # Estrai numeri verbale
