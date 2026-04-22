@@ -154,7 +154,7 @@ async def inizializza_giustificativi() -> Dict[str, Any]:
 # CRUD GIUSTIFICATIVI
 # =============================================================================
 
-@router.get("/giustificativi")
+@router.get("")
 @handle_errors
 async def get_giustificativi(
     categoria: str = Query(None),
@@ -198,7 +198,7 @@ async def get_giustificativi(
     }
 
 
-@router.put("/giustificativi/{codice}")
+@router.put("/codice/{codice}")
 @handle_errors
 async def update_giustificativo(codice: str, payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     """

@@ -416,7 +416,7 @@ async def upload_regole_excel(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=f"Errore nel processamento del file: {str(e)}")
 
 
-@router.get("/regole")
+@router.get("")
 async def get_regole() -> Dict[str, Any]:
     """Ottiene tutte le regole di categorizzazione (dal database + default)."""
     db = Database.get_db()
@@ -464,7 +464,7 @@ async def get_regole() -> Dict[str, Any]:
     }
 
 
-@router.post("/regole/fornitore")
+@router.post("/fornitore")
 async def aggiungi_regola_fornitore(data: Dict[str, Any]) -> Dict[str, Any]:
     """Aggiunge una nuova regola per fornitore."""
     db = Database.get_db()
@@ -501,7 +501,7 @@ async def aggiungi_regola_fornitore(data: Dict[str, Any]) -> Dict[str, Any]:
     return {"success": True, "message": "Regola aggiunta", "action": "created", "id": regola["id"]}
 
 
-@router.post("/regole/descrizione")
+@router.post("/descrizione")
 async def aggiungi_regola_descrizione(data: Dict[str, Any]) -> Dict[str, Any]:
     """Aggiunge una nuova regola per descrizione prodotto."""
     db = Database.get_db()
@@ -535,7 +535,7 @@ async def aggiungi_regola_descrizione(data: Dict[str, Any]) -> Dict[str, Any]:
     return {"success": True, "message": "Regola aggiunta", "action": "created", "id": regola["id"]}
 
 
-@router.delete("/regole/{tipo}/{pattern}")
+@router.delete("/elimina/{tipo}/{pattern}")
 async def elimina_regola(tipo: str, pattern: str) -> Dict[str, Any]:
     """Elimina una regola."""
     db = Database.get_db()

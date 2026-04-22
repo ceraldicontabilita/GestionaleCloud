@@ -50,7 +50,7 @@ export default function RegoleCategorizzazione() {
   const fetchRegole = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.get('/api/regole/regole');
+      const res = await api.get('/api/regole');
       setRegole(res.data);
     } catch (err) {
       console.error('Errore caricamento regole:', err);
@@ -104,7 +104,7 @@ export default function RegoleCategorizzazione() {
       return;
     }
     try {
-      const res = await api.post('/api/regole/regole/fornitore', newRule);
+      const res = await api.post('/api/regole/fornitore', newRule);
       if (res.data.success) {
         setMessage({ type: 'success', text: '✅ Regola aggiunta!' });
         setShowAddForm(false);
@@ -119,7 +119,7 @@ export default function RegoleCategorizzazione() {
   const handleDeleteRule = async (tipo, pattern) => {
     
     try {
-      await api.delete(`/api/regole/regole/${tipo}/${encodeURIComponent(pattern)}`);
+      await api.delete(`/api/regole/elimina/${tipo}/${encodeURIComponent(pattern)}`);
       setMessage({ type: 'success', text: '✅ Regola eliminata!' });
       fetchRegole();
     } catch (err) {

@@ -374,7 +374,7 @@ async def associa_dimissioni_dipendenti() -> Dict[str, Any]:
     return risultati
 
 
-@router.get("/dimissioni")
+@router.get("")
 @handle_errors
 async def get_dimissioni() -> List[Dict[str, Any]]:
     """Lista tutte le dimissioni trovate."""
