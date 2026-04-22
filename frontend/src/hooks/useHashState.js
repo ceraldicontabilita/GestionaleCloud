@@ -95,7 +95,7 @@ export function useHashState(defaults = {}) {
   }, []);
 
   // Imposta più chiavi contemporaneamente
-  const setMany = useCallback((updates) => {
+  const setMany = useCallback(updates => {
     setState(prev => ({ ...prev, ...updates }));
   }, []);
 
