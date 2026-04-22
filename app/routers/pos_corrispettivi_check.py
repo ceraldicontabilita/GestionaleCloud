@@ -18,7 +18,7 @@ Normativa 2026:
 """
 from fastapi import APIRouter, HTTPException, Query
 from typing import Dict, Any, List
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 
 from app.database import Database
@@ -184,7 +184,7 @@ async def verifica_coerenza_pos_corrispettivi(
         messaggio = ""
         
         # Nuovo stato: IN_TRANSITO per ultimi 2 giorni
-        oggi = datetime.now()
+        oggi = datetime.now(timezone.utc)
         is_recente = dt and dt >= oggi - timedelta(days=2)
         
         if riferimento_pos > 0 and pos_accreditato == 0:
