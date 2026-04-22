@@ -576,7 +576,7 @@ async def get_dashboard_scadenze() -> Dict[str, Any]:
     Ritorna le scadenze più urgenti di ogni tipo.
     """
     db = Database.get_db()
-    oggi = datetime.now()
+    oggi = datetime.now(timezone.utc)
     oggi_str = oggi.strftime('%Y-%m-%d')
     limite_30 = (oggi + timedelta(days=30)).strftime('%Y-%m-%d')
     limite_60 = (oggi + timedelta(days=60)).strftime('%Y-%m-%d')
