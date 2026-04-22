@@ -466,20 +466,20 @@ export default function VerificaCoerenza() {
                     <span>Registrati</span>
                     <strong>
                       {formatEuro(bonifici.bonifici_registrati.totale)} (
-                      {bonifici.bonifici_registrati.count})
+                      {bonifici?.bonifici_registrati?.count})
                     </strong>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
                     <span>Riconciliati</span>
                     <strong style={{ color: '#059669' }}>
-                      {bonifici.bonifici_registrati.riconciliati}/
-                      {bonifici.bonifici_registrati.count}
+                      {bonifici?.bonifici_registrati?.riconciliati}/
+                      {bonifici?.bonifici_registrati?.count}
                     </strong>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
                     <span>In Banca</span>
                     <strong>
-                      {formatEuro(bonifici.bonifici_banca.totale)} ({bonifici.bonifici_banca.count})
+                      {formatEuro(bonifici.bonifici_banca.totale)} ({bonifici?.bonifici_banca?.count})
                     </strong>
                   </div>
                   <div
@@ -613,7 +613,7 @@ export default function VerificaCoerenza() {
           <div style={{ ...cardStyle, border: '2px solid #fecaca' }}>
             <div style={{ ...cardHeaderStyle, background: '#fef2f2' }}>
               <h3 style={{ ...cardTitleStyle, color: '#991b1b' }}>
-                ⚠️ Discrepanze Rilevate ({verificaCompleta.discrepanze.length})
+                ⚠️ Discrepanze Rilevate ({verificaCompleta?.discrepanze?.length})
               </h3>
             </div>
             <div style={cardContentStyle}>
