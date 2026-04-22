@@ -1,10 +1,10 @@
 /**
  * UTILITY FORMATTAZIONE ITALIANA
- * 
+ *
  * REGOLA FONDAMENTALE:
  * - Date: formato GG/MM/AAAA (es. 25/01/2026)
  * - Valuta: formato € 0.000,00 (punto per migliaia, virgola per decimali)
- * 
+ *
  * Usare SEMPRE queste funzioni in tutta l'applicazione!
  */
 
@@ -13,28 +13,28 @@
  * @param {string|Date} dataStr - Data in qualsiasi formato
  * @returns {string} Data formattata GG/MM/AAAA
  */
-export const formattaDataItaliana = (dataStr) => {
-  if (!dataStr) return "";
-  
+export const formattaDataItaliana = dataStr => {
+  if (!dataStr) return '';
+
   // Se è una stringa vuota o null
-  if (typeof dataStr === 'string' && dataStr.trim() === '') return "";
-  
+  if (typeof dataStr === 'string' && dataStr.trim() === '') return '';
+
   // Se contiene T, è formato ISO - estrai solo la data
   if (typeof dataStr === 'string' && dataStr.includes('T')) {
     dataStr = dataStr.split('T')[0];
   }
-  
+
   // Formato YYYY-MM-DD (ISO)
   if (typeof dataStr === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dataStr)) {
     const [anno, mese, giorno] = dataStr.split('-');
     return `${giorno}/${mese}/${anno}`;
   }
-  
+
   // Già in formato italiano DD/MM/YYYY
   if (typeof dataStr === 'string' && /^\d{2}\/\d{2}\/\d{4}$/.test(dataStr)) {
     return dataStr;
   }
-  
+
   // Formato americano MM/DD/YYYY o MM/DD/YY - converti a italiano
   if (typeof dataStr === 'string' && /^\d{2}\/\d{2}\/\d{2,4}$/.test(dataStr)) {
     const parts = dataStr.split('/');
@@ -49,7 +49,7 @@ export const formattaDataItaliana = (dataStr) => {
     }
     return `${parts[1]}/${parts[0]}/${anno}`;
   }
-  
+
   // Prova parsing Date object
   try {
     const dt = dataStr instanceof Date ? dataStr : new Date(dataStr);
@@ -59,8 +59,10 @@ export const formattaDataItaliana = (dataStr) => {
       const anno = dt.getFullYear();
       return `${giorno}/${mese}/${anno}`;
     }
-  } catch (e) { /* ignora errori di parsing */ }
-  
+  } catch (e) {
+    /* ignora errori di parsing */
+  }
+
   return dataStr;
 };
 
@@ -71,18 +73,19 @@ export const formattaDataItaliana = (dataStr) => {
  * @returns {string} Importo formattato
  */
 export const formattaValutaItaliana = (importo, conSymbolo = true) => {
-  if (importo === null || importo === undefined || importo === '') return conSymbolo ? '€ 0,00' : '0,00';
-  
+  if (importo === null || importo === undefined || importo === '')
+    return conSymbolo ? '€ 0,00' : '0,00';
+
   const numero = typeof importo === 'string' ? parseFloat(importo.replace(',', '.')) : importo;
-  
+
   if (isNaN(numero)) return conSymbolo ? '€ 0,00' : '0,00';
-  
+
   // Formatta con separatore migliaia (.) e decimali (,)
   const formattato = numero.toLocaleString('it-IT', {
     minimumFractionDigits: 2,
-    maximumFractionDigits: 2
+    maximumFractionDigits: 2,
   });
-  
+
   return conSymbolo ? `€ ${formattato}` : formattato;
 };
 
@@ -106,8 +109,8 @@ export const giorniNelMese = (mese, anno) => new Date(anno, mese, 0).getDate();
 
 /**
  * Formatta un periodo (data inizio - data fine)
- * @param {string} dataInizio 
- * @param {string} dataFine 
+ * @param {string} dataInizio
+ * @param {string} dataFine
  * @returns {string} Periodo formattato
  */
 export const formattaPeriodo = (dataInizio, dataFine) => {
@@ -118,4 +121,3 @@ export const formattaPeriodo = (dataInizio, dataFine) => {
   if (!inizio) return `al ${fine}`;
   return `dal ${inizio} al ${fine}`;
 };
-
