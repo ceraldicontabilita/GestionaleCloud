@@ -59,7 +59,7 @@ def _normalizza_da_invoices(doc: dict) -> dict:
         "prima_nota_banca_id": doc.get("prima_nota_banca_id"),
         "has_pdf": False,
         "email_associata": doc.get("email_from"),
-        "anno": doc.get("anno") or (int(doc["invoice_date"][:4]) if doc.get("invoice_date") else None),
+        "anno": doc.get("anno") or _safe_year(doc.get("invoice_date")),
         "created_at": created_at,
         "data_pagamento": doc.get("data_pagamento"),
         "fonte": doc.get("fonte", "aruba_pec"),
