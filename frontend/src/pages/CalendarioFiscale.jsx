@@ -1,9 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
-import { PageLayout, PageSection, PageGrid, PageEmpty, PageLoading, PageError } from '../components/PageLayout';
+import {
+  PageLayout,
+  PageSection,
+  PageGrid,
+  PageEmpty,
+  PageLoading,
+  PageError,
+} from '../components/PageLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
-import { Calendar, CheckCircle, Clock, AlertTriangle, Bell, Filter, RefreshCw, Mail } from 'lucide-react';
+import {
+  Calendar,
+  CheckCircle,
+  Clock,
+  AlertTriangle,
+  Bell,
+  Filter,
+  RefreshCw,
+  Mail,
+} from 'lucide-react';
 import api from '../api';
 import { toast } from 'sonner';
 
@@ -17,7 +33,7 @@ export default function CalendarioFiscale() {
   const [filtroStato, setFiltroStato] = useState('tutti');
   const [completando, setCompletando] = useState(null);
   const [inviandoNotifica, setInviandoNotifica] = useState(null);
-  
+
   const MESI = [
     { id: 'tutti', label: 'Tutti i mesi' },
     { id: '01', label: 'Gennaio' },
@@ -33,22 +49,22 @@ export default function CalendarioFiscale() {
     { id: '11', label: 'Novembre' },
     { id: '12', label: 'Dicembre' },
   ];
-  
+
   const loadCalendario = async () => {
     setLoading(true);
     setError(null);
     try {
       const [calRes, notRes] = await Promise.all([
         api.get(`/api/fiscalita/calendario/${selectedYear}`),
-        api.get(`/api/fiscalita/notifiche-scadenze?anno=${selectedYear}&giorni=30`)
+        api.get(`/api/fiscalita/notifiche-scadenze?anno=${selectedYear}&giorni=30`),
       ]);
-      
+
       if (calRes.data?.success) {
         setCalendario(calRes.data);
       } else {
         setError('Impossibile caricare il calendario');
       }
-      
+
       if (notRes.data?.success) {
         setNotifiche(notRes.data);
       }
@@ -59,13 +75,13 @@ export default function CalendarioFiscale() {
       setLoading(false);
     }
   };
-  
+
   useEffect(() => {
     loadCalendario();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedYear]);
-  
-  const completaScadenza = async (scadenzaId) => {
+
+  const completaScadenza = async scadenzaId => {
     setCompletando(scadenzaId);
     try {
       await api.post(`/api/fiscalita/calendario/completa/${scadenzaId}`);
@@ -78,11 +94,13 @@ export default function CalendarioFiscale() {
       setCompletando(null);
     }
   };
-  
+
   const inviaNotifica = async (scadenzaId, tipo = 'dashboard') => {
     setInviandoNotifica(scadenzaId);
     try {
-      const res = await api.post(`/api/fiscalita/notifiche-scadenze/invia?scadenza_id=${scadenzaId}&tipo_notifica=${tipo}`);
+      const res = await api.post(
+        `/api/fiscalita/notifiche-scadenze/invia?scadenza_id=${scadenzaId}&tipo_notifica=${tipo}`
+      );
       if (res.data?.success) {
         if (tipo === 'dashboard') {
           toast.success('Notifica creata in dashboard');
@@ -97,50 +115,50 @@ export default function CalendarioFiscale() {
       setInviandoNotifica(null);
     }
   };
-  
+
   const getScadenzeFiltrate = () => {
     if (!calendario?.scadenze) return [];
-    
+
     let scadenze = [...calendario.scadenze];
-    
+
     if (filtroMese !== 'tutti') {
       scadenze = scadenze.filter(s => s.data?.substring(5, 7) === filtroMese);
     }
-    
+
     if (filtroStato === 'completate') {
       scadenze = scadenze.filter(s => s.completato);
     } else if (filtroStato === 'da_fare') {
       scadenze = scadenze.filter(s => !s.completato);
     }
-    
+
     return scadenze.sort((a, b) => (a.data || '').localeCompare(b.data || ''));
   };
-  
-  const getTipoColor = (tipo) => {
+
+  const getTipoColor = tipo => {
     const colors = {
-      'iva': '#3b82f6',
-      'f24': '#ef4444',
-      'dichiarazione': '#8b5cf6',
-      'imu': '#f59e0b',
-      'comunicazione': '#06b6d4',
-      'default': '#64748b'
+      iva: '#3b82f6',
+      f24: '#ef4444',
+      dichiarazione: '#8b5cf6',
+      imu: '#f59e0b',
+      comunicazione: '#06b6d4',
+      default: '#64748b',
     };
     return colors[tipo] || colors.default;
   };
-  
-  const formatDate = (dateStr) => {
+
+  const formatDate = dateStr => {
     if (!dateStr) return '-';
     const [y, m, d] = dateStr.split('-');
     return `${d}/${m}/${y}`;
   };
-  
-  const isScaduta = (dateStr) => {
+
+  const isScaduta = dateStr => {
     if (!dateStr) return false;
     const oggi = new Date().toISOString().substring(0, 10);
     return dateStr < oggi;
   };
-  
-  const isImminente = (dateStr) => {
+
+  const isImminente = dateStr => {
     if (!dateStr) return false;
     const oggi = new Date();
     const scadenza = new Date(dateStr);
@@ -158,7 +176,11 @@ export default function CalendarioFiscale() {
       icon={<Calendar size={24} />}
       actions={
         <Button onClick={loadCalendario} disabled={loading} variant="outline">
-          <RefreshCw size={16} className={loading ? 'animate-spin' : ''} style={{ marginRight: 8 }} />
+          <RefreshCw
+            size={16}
+            className={loading ? 'animate-spin' : ''}
+            style={{ marginRight: 8 }}
+          />
           Aggiorna
         </Button>
       }
@@ -171,16 +193,18 @@ export default function CalendarioFiscale() {
         <>
           {/* Alert Scadenze Critiche */}
           {notifiche?.riepilogo?.critiche > 0 && (
-            <div style={{
-              background: 'linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)',
-              borderRadius: 12,
-              padding: 16,
-              marginBottom: 20,
-              color: 'white',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between'
-            }}>
+            <div
+              style={{
+                background: 'linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)',
+                borderRadius: 12,
+                padding: 16,
+                marginBottom: 20,
+                color: 'white',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <AlertTriangle size={32} />
                 <div>
@@ -208,7 +232,7 @@ export default function CalendarioFiscale() {
               </div>
             </div>
           )}
-          
+
           {/* KPI Cards */}
           <PageGrid cols={4} gap={16}>
             <Card>
@@ -244,13 +268,17 @@ export default function CalendarioFiscale() {
               </CardContent>
             </Card>
           </PageGrid>
-          
+
           {/* Scadenze Imminenti */}
           {scadenzeImminenti.length > 0 && (
-            <PageSection title="Scadenze Imminenti" icon={<Bell size={18} />} style={{ marginTop: 20 }}>
+            <PageSection
+              title="Scadenze Imminenti"
+              icon={<Bell size={18} />}
+              style={{ marginTop: 20 }}
+            >
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {scadenzeImminenti.map((scad, idx) => (
-                  <div 
+                  <div
                     key={idx}
                     style={{
                       display: 'flex',
@@ -259,47 +287,49 @@ export default function CalendarioFiscale() {
                       padding: 16,
                       background: isScaduta(scad.data) ? '#fef2f2' : '#fefce8',
                       borderRadius: 12,
-                      border: `1px solid ${isScaduta(scad.data) ? '#fca5a5' : '#fde047'}`
+                      border: `1px solid ${isScaduta(scad.data) ? '#fca5a5' : '#fde047'}`,
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <div style={{
-                        width: 40,
-                        height: 40,
-                        borderRadius: 8,
-                        background: getTipoColor(scad.tipo),
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        color: '#fff',
-                        fontWeight: 700,
-                        fontSize: 14
-                      }}>
+                      <div
+                        style={{
+                          width: 40,
+                          height: 40,
+                          borderRadius: 8,
+                          background: getTipoColor(scad.tipo),
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: '#fff',
+                          fontWeight: 700,
+                          fontSize: 14,
+                        }}
+                      >
                         {scad.data?.substring(8, 10)}
                       </div>
                       <div>
-                        <div style={{ fontWeight: 600, color: '#1e293b' }}>
-                          {scad.descrizione}
-                        </div>
+                        <div style={{ fontWeight: 600, color: '#1e293b' }}>{scad.descrizione}</div>
                         <div style={{ fontSize: 13, color: '#64748b' }}>
                           {formatDate(scad.data)} - {scad.tipo?.toUpperCase()}
                         </div>
                       </div>
                     </div>
                     {isScaduta(scad.data) ? (
-                      <span style={{
-                        padding: '4px 12px',
-                        background: '#dc2626',
-                        color: '#fff',
-                        borderRadius: 20,
-                        fontSize: 12,
-                        fontWeight: 600
-                      }}>
+                      <span
+                        style={{
+                          padding: '4px 12px',
+                          background: '#dc2626',
+                          color: '#fff',
+                          borderRadius: 20,
+                          fontSize: 12,
+                          fontWeight: 600,
+                        }}
+                      >
                         SCADUTA
                       </span>
                     ) : (
-                      <Button 
-                        size="sm" 
+                      <Button
+                        size="sm"
                         onClick={() => completaScadenza(scad.id)}
                         disabled={completando === scad.id}
                       >
@@ -311,50 +341,54 @@ export default function CalendarioFiscale() {
               </div>
             </PageSection>
           )}
-          
+
           {/* Filtri */}
-          <div style={{ 
-            display: 'flex', 
-            gap: 12, 
-            marginTop: 20,
-            marginBottom: 16,
-            flexWrap: 'wrap'
-          }}>
+          <div
+            style={{
+              display: 'flex',
+              gap: 12,
+              marginTop: 20,
+              marginBottom: 16,
+              flexWrap: 'wrap',
+            }}
+          >
             <select
               value={filtroMese}
-              onChange={(e) => setFiltroMese(e.target.value)}
+              onChange={e => setFiltroMese(e.target.value)}
               style={{
                 padding: '8px 12px',
                 borderRadius: 8,
                 border: '1px solid #e2e8f0',
-                fontSize: 14
+                fontSize: 14,
               }}
             >
               {MESI.map(m => (
-                <option key={m.id} value={m.id}>{m.label}</option>
+                <option key={m.id} value={m.id}>
+                  {m.label}
+                </option>
               ))}
             </select>
-            
+
             <select
               value={filtroStato}
-              onChange={(e) => setFiltroStato(e.target.value)}
+              onChange={e => setFiltroStato(e.target.value)}
               style={{
                 padding: '8px 12px',
                 borderRadius: 8,
                 border: '1px solid #e2e8f0',
-                fontSize: 14
+                fontSize: 14,
               }}
             >
               <option value="tutti">Tutte le scadenze</option>
               <option value="da_fare">Da completare</option>
               <option value="completate">Completate</option>
             </select>
-            
+
             <div style={{ marginLeft: 'auto', fontSize: 14, color: '#64748b' }}>
               {scadenzeFiltrate.length} scadenze visualizzate
             </div>
           </div>
-          
+
           {/* Lista Scadenze */}
           <Card>
             <CardContent style={{ padding: 0 }}>
@@ -373,13 +407,17 @@ export default function CalendarioFiscale() {
                   </thead>
                   <tbody>
                     {scadenzeFiltrate.map((scad, idx) => (
-                      <tr 
+                      <tr
                         key={scad.id || idx}
-                        style={{ 
+                        style={{
                           borderBottom: '1px solid #f1f5f9',
-                          background: scad.completato ? '#f0fdf4' : 
-                                     isScaduta(scad.data) ? '#fef2f2' :
-                                     isImminente(scad.data) ? '#fefce8' : 'white'
+                          background: scad.completato
+                            ? '#f0fdf4'
+                            : isScaduta(scad.data)
+                              ? '#fef2f2'
+                              : isImminente(scad.data)
+                                ? '#fefce8'
+                                : 'white',
                         }}
                       >
                         <td style={{ padding: '12px 16px' }}>
@@ -394,30 +432,56 @@ export default function CalendarioFiscale() {
                           )}
                         </td>
                         <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-                          <span style={{
-                            padding: '4px 10px',
-                            borderRadius: 12,
-                            fontSize: 12,
-                            fontWeight: 600,
-                            background: getTipoColor(scad.tipo),
-                            color: '#fff'
-                          }}>
+                          <span
+                            style={{
+                              padding: '4px 10px',
+                              borderRadius: 12,
+                              fontSize: 12,
+                              fontWeight: 600,
+                              background: getTipoColor(scad.tipo),
+                              color: '#fff',
+                            }}
+                          >
                             {scad.tipo?.toUpperCase() || 'ALTRO'}
                           </span>
                         </td>
                         <td style={{ padding: '12px 16px', textAlign: 'center' }}>
                           {scad.completato ? (
-                            <span style={{ color: '#22c55e', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                            <span
+                              style={{
+                                color: '#22c55e',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: 4,
+                              }}
+                            >
                               <CheckCircle size={16} />
                               Completata
                             </span>
                           ) : isScaduta(scad.data) ? (
-                            <span style={{ color: '#dc2626', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                            <span
+                              style={{
+                                color: '#dc2626',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: 4,
+                              }}
+                            >
                               <AlertTriangle size={16} />
                               Scaduta
                             </span>
                           ) : (
-                            <span style={{ color: '#f59e0b', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                            <span
+                              style={{
+                                color: '#f59e0b',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: 4,
+                              }}
+                            >
                               <Clock size={16} />
                               In attesa
                             </span>
