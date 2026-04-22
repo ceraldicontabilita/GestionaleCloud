@@ -16,7 +16,12 @@ export const STATI_PRESENZA = {
   cessato: { label: 'X', color: '#991b1b', bg: '#fef2f2', name: 'Cessato' },
   riposo: { label: '-', color: '#9ca3af', bg: '#f3f4f6', name: 'Riposo' },
   festivita_lavorata: { label: 'FL', color: '#059669', bg: '#d1fae5', name: 'Festività Lavorata' },
-  festivita_non_lavorata: { label: 'FNL', color: '#0891b2', bg: '#cffafe', name: 'Festività Non Lavorata' },
+  festivita_non_lavorata: {
+    label: 'FNL',
+    color: '#0891b2',
+    bg: '#cffafe',
+    name: 'Festività Non Lavorata',
+  },
 };
 
 // Giorni settimana abbreviati
@@ -24,8 +29,18 @@ export const GIORNI_SETTIMANA = ['D', 'L', 'M', 'M', 'G', 'V', 'S'];
 
 // Nomi dei mesi
 export const MESI = [
-  'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno', 
-  'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'
+  'Gennaio',
+  'Febbraio',
+  'Marzo',
+  'Aprile',
+  'Maggio',
+  'Giugno',
+  'Luglio',
+  'Agosto',
+  'Settembre',
+  'Ottobre',
+  'Novembre',
+  'Dicembre',
 ];
 
 // Mansioni predefinite
