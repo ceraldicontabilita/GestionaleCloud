@@ -77,6 +77,13 @@ def _register_f24(app: FastAPI):
     app.include_router(codici_tributari.router, prefix="/api/codici-tributari", tags=["Codici Tributari"])
     app.include_router(riconciliazione_f24_banca.router, prefix="/api/f24-riconciliazione", tags=["Riconciliazione F24 Banca"])
 
+    # Email F24 (scarica/processa allegati F24 da email)
+    try:
+        from app.routers.f24.email_f24 import router as email_f24_router
+        app.include_router(email_f24_router, prefix="/api/f24-email", tags=["F24 Email Download"])
+    except Exception as e:
+        logger.warning(f"Router email_f24 non registrato: {e}")
+
 
 # ─── Accounting Module ──────────────────────────────────────────────────────
 def _register_accounting(app: FastAPI):
@@ -201,6 +208,13 @@ def _register_employees(app: FastAPI):
     app.include_router(dimissioni.router, prefix="/api/dimissioni", tags=["Dimissioni"])
     app.include_router(libro_unico_parser.router, prefix="/api/paghe", tags=["Libro Unico Parser"])
     app.include_router(f24_parser.router, prefix="/api/paghe", tags=["F24 Parser"])
+
+    # Timbrature (attendance_module)
+    try:
+        from app.routers.attendance_module.timbrature import router as timbrature_router
+        app.include_router(timbrature_router, prefix="/api/attendance", tags=["Timbrature"])
+    except Exception as e:
+        logger.warning(f"Router timbrature non registrato: {e}")
 
 
 # ─── Reports Module ────────────────────────────────────────────────────────
