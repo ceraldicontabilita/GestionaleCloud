@@ -1485,7 +1485,7 @@ async def get_libretti_in_scadenza(giorni: int = Query(30, description="Giorni p
     """Ritorna libretti in scadenza nei prossimi N giorni."""
     db = Database.get_db()
     
-    oggi = datetime.now()
+    oggi = datetime.now(timezone.utc)
     limite = (oggi + timedelta(days=giorni)).strftime('%Y-%m-%d')
     oggi_str = oggi.strftime('%Y-%m-%d')
     
@@ -1737,7 +1737,7 @@ async def get_contratti_in_scadenza(giorni: int = Query(60, description="Giorni 
     """Ritorna contratti a tempo determinato in scadenza."""
     db = Database.get_db()
     
-    oggi = datetime.now()
+    oggi = datetime.now(timezone.utc)
     limite = (oggi + timedelta(days=giorni)).strftime('%Y-%m-%d')
     oggi_str = oggi.strftime('%Y-%m-%d')
     
