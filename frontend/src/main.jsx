@@ -35,6 +35,7 @@ const HRTFR = lazy(() => import("./pages/hr/HRTFR.jsx"));
 const HRTurni = lazy(() => import("./pages/hr/HRTurni.jsx"));
 const HRMissioni = lazy(() => import("./pages/hr/HRMissioni.jsx"));
 const HRDocumenti = lazy(() => import("./pages/hr/HRDocumenti.jsx"));
+const HRFeriePermessi = lazy(() => import("./pages/hr/HRFeriePermessi.jsx"));
 const VeicoliHub = lazy(() => import("./pages/hub/VeicoliHub.jsx"));
 const ContabilitaHub = lazy(() => import("./pages/hub/ContabilitaHub.jsx"));
 const MagazzinoHub = lazy(() => import("./pages/hub/MagazzinoHub.jsx"));
@@ -121,6 +122,7 @@ const router = createBrowserRouter([
       { path: "turni", element: <LazyPage><HRTurni /></LazyPage> },
       { path: "missioni", element: <LazyPage><HRMissioni /></LazyPage> },
       { path: "hr-documenti", element: <LazyPage><HRDocumenti /></LazyPage> },
+      { path: "ferie-permessi", element: <LazyPage><HRFeriePermessi /></LazyPage> },
       
       // === CEDOLINI & TFR ===
       { path: "paghe", element: <Navigate to="/cedolini" replace /> },
