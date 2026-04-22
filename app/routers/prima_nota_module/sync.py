@@ -40,53 +40,87 @@ async def registra_pagamento_fattura(
     importo_cassa: float = 0,
     importo_banca: float = 0
 ) -> Dict:
-    """Registra automaticamente il pagamento di una fattura."""
+    """Registra automaticamente il pagamento di una fattura.
+
+    IDEMPOTENTE: se esiste già un movimento con stesso fattura_id sulla
+    collection di destinazione, NON crea duplicati. Ritorna l'id esistente.
+    """
     db = Database.get_db()
-    
+
     now = datetime.now(timezone.utc).isoformat()
     data_fattura = fattura.get("invoice_date") or fattura.get("data_fattura") or now[:10]
     importo_totale = fattura.get("total_amount") or fattura.get("importo_totale") or 0
     numero_fattura = fattura.get("invoice_number") or fattura.get("numero_fattura") or "N/A"
     fornitore = fattura.get("supplier_name") or fattura.get("cedente_denominazione") or "Fornitore"
     fornitore_piva = fattura.get("supplier_vat") or fattura.get("cedente_piva") or ""
-    
+    fattura_id = fattura.get("id") or fattura.get("invoice_key")
+
     tipo_movimento, categoria, desc_prefisso = determina_tipo_movimento_fattura(fattura)
-    
-    risultato = {"cassa": None, "banca": None, "tipo_movimento": tipo_movimento}
+
+    risultato = {"cassa": None, "banca": None, "tipo_movimento": tipo_movimento, "duplicato": False}
     descrizione_base = f"{desc_prefisso} {numero_fattura} - {fornitore[:40]}"
-    
+
+    # Riferimento UNIFORME in tutto il modulo: "FATT-{id}"
+    # Questo allinea dedup con sync_fatture_pagate e conferma_fattura_provvisoria.
+    riferimento = f"FATT-{fattura_id}" if fattura_id else numero_fattura
+
     movimento_base = {
         "data": data_fattura,
         "tipo": tipo_movimento,
         "categoria": categoria,
-        "riferimento": numero_fattura,
+        "riferimento": riferimento,
+        "numero_fattura": numero_fattura,  # mantenuto per retrocompatibilità UI
         "fornitore_piva": fornitore_piva,
-        "fattura_id": fattura.get("id") or fattura.get("invoice_key"),
+        "fattura_id": fattura_id,
         "tipo_documento": fattura.get("tipo_documento"),
         "source": "fattura_pagata",
         "created_at": now
     }
-    
-    if metodo_pagamento.lower() in ["cassa", "contanti"]:
-        mov = {**movimento_base, "id": str(uuid.uuid4()), "importo": importo_totale, "descrizione": descrizione_base}
-        await db[COLLECTION_PRIMA_NOTA_CASSA].insert_one(mov.copy())
-        risultato["cassa"] = mov["id"]
-        
-    elif metodo_pagamento.lower() in ["banca", "bonifico", "assegno", "riba", "carta", "sepa", "mav", "rav", "rid", "f24"]:
-        mov = {**movimento_base, "id": str(uuid.uuid4()), "importo": importo_totale, "descrizione": descrizione_base}
-        await db[COLLECTION_PRIMA_NOTA_BANCA].insert_one(mov.copy())
-        risultato["banca"] = mov["id"]
-        
-    elif metodo_pagamento.lower() == "misto":
+
+    async def _insert_idempotente(collection: str, importo: float, desc: str) -> tuple:
+        """Inserisce movimento solo se non esiste già per questa fattura.
+        Ritorna (id_movimento, was_duplicate)."""
+        if fattura_id:
+            existing = await db[collection].find_one({
+                "$or": [
+                    {"fattura_id": fattura_id},
+                    {"riferimento": riferimento},
+                ],
+                "status": {"$nin": ["deleted", "archived"]},
+            })
+            if existing:
+                return (existing.get("id") or str(existing.get("_id")), True)
+
+        mov = {**movimento_base, "id": str(uuid.uuid4()), "importo": float(importo), "descrizione": desc}
+        await db[collection].insert_one(mov.copy())
+        return (mov["id"], False)
+
+    metodo = (metodo_pagamento or "").lower()
+
+    if metodo in ["cassa", "contanti"]:
+        mid, dup = await _insert_idempotente(COLLECTION_PRIMA_NOTA_CASSA, importo_totale, descrizione_base)
+        risultato["cassa"] = mid
+        risultato["duplicato"] = dup
+
+    elif metodo in ["banca", "bonifico", "assegno", "riba", "carta", "sepa", "mav", "rav", "rid", "f24"]:
+        mid, dup = await _insert_idempotente(COLLECTION_PRIMA_NOTA_BANCA, importo_totale, descrizione_base)
+        risultato["banca"] = mid
+        risultato["duplicato"] = dup
+
+    elif metodo == "misto":
         if importo_cassa > 0:
-            mov = {**movimento_base, "id": str(uuid.uuid4()), "importo": importo_cassa, "descrizione": f"{descrizione_base} (contanti)"}
-            await db[COLLECTION_PRIMA_NOTA_CASSA].insert_one(mov.copy())
-            risultato["cassa"] = mov["id"]
+            mid, dup_c = await _insert_idempotente(
+                COLLECTION_PRIMA_NOTA_CASSA, importo_cassa, f"{descrizione_base} (contanti)"
+            )
+            risultato["cassa"] = mid
+            risultato["duplicato"] = risultato["duplicato"] or dup_c
         if importo_banca > 0:
-            mov = {**movimento_base, "id": str(uuid.uuid4()), "importo": importo_banca, "descrizione": f"{descrizione_base} (bonifico)"}
-            await db[COLLECTION_PRIMA_NOTA_BANCA].insert_one(mov.copy())
-            risultato["banca"] = mov["id"]
-    
+            mid, dup_b = await _insert_idempotente(
+                COLLECTION_PRIMA_NOTA_BANCA, importo_banca, f"{descrizione_base} (bonifico)"
+            )
+            risultato["banca"] = mid
+            risultato["duplicato"] = risultato["duplicato"] or dup_b
+
     return risultato
 
 
@@ -155,7 +189,9 @@ async def sync_corrispettivi_anno(anno: int = Query(...)) -> Dict:
 
 async def _sync_corrispettivi_impl(anno: int = None) -> Dict:
     """Implementazione sync corrispettivi → prima nota cassa."""
+    import logging
     from .common import COLLECTION_PRIMA_NOTA_CASSA
+    logger = logging.getLogger(__name__)
     db = Database.get_db()
     
     query = {}
@@ -166,6 +202,7 @@ async def _sync_corrispettivi_impl(anno: int = None) -> Dict:
     
     inseriti = 0
     duplicati = 0
+    saltati_importo_zero = []  # diagnostica: quali corrispettivi vengono scartati
     
     for c in corrispettivi:
         corr_id = c.get("id", "")
@@ -183,10 +220,36 @@ async def _sync_corrispettivi_impl(anno: int = None) -> Dict:
         # USCITA = POS verso banca (il POS esce dalla cassa verso la banca)
         # SALDO = solo contanti rimasti in cassa
         contanti = float(c.get("pagato_contanti", 0) or 0)
-        elettronico = float(c.get("pagato_elettronico", 0) or 0)
-        totale = float(c.get("totale", 0) or c.get("totale_complessivo", 0) or c.get("importo", 0) or 0)
+        # FIX: il DB salva "pagato_pos", il vecchio codice leggeva "pagato_elettronico"
+        # Manteniamo entrambi i nomi per retrocompatibilità con vecchi documenti.
+        elettronico = float(c.get("pagato_pos", 0) or c.get("pagato_elettronico", 0) or 0)
+        totale = float(
+            c.get("totale", 0)
+            or c.get("totale_complessivo", 0)
+            or c.get("importo", 0)
+            or c.get("totale_giornaliero", 0)
+            or (contanti + elettronico)  # fallback: somma dei metodi di pagamento
+            or 0
+        )
         
         if totale <= 0:
+            # Log diagnostico: aiuta a capire perché alcuni corrispettivi non compaiono in cassa
+            saltati_importo_zero.append({
+                "id": corr_id,
+                "data": data,
+                "anno": c.get("anno"),
+                "campi_totale": {
+                    "totale": c.get("totale"),
+                    "totale_complessivo": c.get("totale_complessivo"),
+                    "importo": c.get("importo"),
+                    "pagato_contanti": c.get("pagato_contanti"),
+                    "pagato_pos": c.get("pagato_pos"),
+                },
+            })
+            logger.warning(
+                "Corrispettivo %s (data=%s) saltato: totale=0 su tutti i campi noti",
+                corr_id, data,
+            )
             continue
         
         # ENTRATA CASSA: totale corrispettivo
@@ -230,6 +293,8 @@ async def _sync_corrispettivi_impl(anno: int = None) -> Dict:
         "message": f"Sincronizzati {inseriti} corrispettivi in Prima Nota Cassa",
         "inseriti": inseriti,
         "duplicati": duplicati,
+        "saltati": len(saltati_importo_zero),
+        "saltati_dettaglio": saltati_importo_zero[:50],  # primi 50 per diagnostica
         "anno": anno,
         "ok": True
     }

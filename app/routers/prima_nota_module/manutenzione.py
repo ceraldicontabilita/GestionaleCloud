@@ -653,3 +653,172 @@ async def migrazione_pulisci_bancari_da_cassa() -> Dict[str, Any]:
         "movimenti_rimasti": remaining,
         "campione_eliminati": campione_eliminati
     }
+
+
+async def dedup_fatture_prima_nota(
+    applica: bool = Query(False, description="Se False esegue solo dry-run, se True elimina realmente"),
+    anno: Optional[int] = Query(None, description="Limita al singolo anno")
+) -> Dict[str, Any]:
+    """Elimina i duplicati di fatture in Prima Nota Cassa e Banca.
+
+    Due movimenti sono duplicati se hanno:
+      - stesso fattura_id (se presente), OPPURE
+      - stesso riferimento (es. FATT-xxx), OPPURE
+      - stesso numero_fattura + stesso importo + stessa data
+    Viene tenuto il movimento più VECCHIO (created_at minimo),
+    gli altri vengono marchiati deleted (soft delete, recuperabili).
+
+    USO: chiamare prima con ?applica=false per vedere cosa farebbe,
+    poi ?applica=true per eseguire.
+    """
+    db = Database.get_db()
+
+    report: Dict[str, Any] = {"cassa": {}, "banca": {}, "applica": applica}
+
+    for collection_name in [COLLECTION_PRIMA_NOTA_CASSA, COLLECTION_PRIMA_NOTA_BANCA]:
+        label = "cassa" if "cassa" in collection_name else "banca"
+
+        query: Dict[str, Any] = {"status": {"$nin": ["deleted", "archived"]}}
+        if anno:
+            query["data"] = {"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31"}
+
+        movimenti = await db[collection_name].find(query, {"_id": 0}).to_list(50000)
+
+        # Raggruppamento per chiave di dedup
+        gruppi: Dict[str, list] = {}
+        for m in movimenti:
+            # Considera solo movimenti che sembrano collegati a fatture
+            fid = m.get("fattura_id")
+            rif = m.get("riferimento") or ""
+            num = m.get("numero_fattura") or ""
+
+            chiave = None
+            if fid:
+                chiave = f"fid:{fid}"
+            elif rif and rif.startswith("FATT-"):
+                chiave = f"rif:{rif}"
+            elif num:
+                # fallback: numero + importo + data (protegge da omonimie)
+                chiave = f"num:{num}|imp:{m.get('importo')}|d:{m.get('data')}"
+            else:
+                continue  # non fattura, ignoro
+
+            gruppi.setdefault(chiave, []).append(m)
+
+        duplicati_trovati = []
+        ids_da_eliminare = []
+        for chiave, mov_list in gruppi.items():
+            if len(mov_list) <= 1:
+                continue
+            # Ordina per created_at crescente: il primo resta, gli altri vanno eliminati
+            mov_list.sort(key=lambda x: x.get("created_at") or "9999")
+            tenuto = mov_list[0]
+            da_eliminare = mov_list[1:]
+            duplicati_trovati.append({
+                "chiave": chiave,
+                "tenuto_id": tenuto.get("id"),
+                "tenuto_importo": tenuto.get("importo"),
+                "tenuto_data": tenuto.get("data"),
+                "eliminati_count": len(da_eliminare),
+                "eliminati_ids": [d.get("id") for d in da_eliminare],
+            })
+            ids_da_eliminare.extend(d.get("id") for d in da_eliminare if d.get("id"))
+
+        # Soft delete (reversibile)
+        deleted = 0
+        if applica and ids_da_eliminare:
+            result = await db[collection_name].update_many(
+                {"id": {"$in": ids_da_eliminare}},
+                {"$set": {
+                    "status": "deleted",
+                    "deleted_at": datetime.now(timezone.utc).isoformat(),
+                    "deleted_reason": "dedup_fatture_prima_nota",
+                }}
+            )
+            deleted = result.modified_count
+
+        report[label] = {
+            "gruppi_duplicati": len(duplicati_trovati),
+            "movimenti_da_eliminare": len(ids_da_eliminare),
+            "eliminati_effettivi": deleted,
+            "campione": duplicati_trovati[:20],
+        }
+
+    report["nota"] = (
+        "DRY-RUN (niente è stato toccato). Rilancia con ?applica=true per eseguire."
+        if not applica else
+        "Duplicati marchiati come deleted (soft delete, recuperabili da DB)."
+    )
+    return report
+
+
+async def diagnostica_corrispettivi_vs_cassa(
+    anno: int = Query(..., description="Anno da analizzare")
+) -> Dict[str, Any]:
+    """Confronta corrispettivi nella sorgente con quelli presenti in Prima Nota Cassa.
+
+    Restituisce:
+      - corrispettivi presenti nella sorgente ma MANCANTI in cassa
+      - corrispettivi con importo=0 su tutti i campi noti (non sincronizzabili)
+      - eventuali duplicati (stesso corrispettivo_id inserito più volte)
+    """
+    db = Database.get_db()
+
+    sorgente = await db["corrispettivi"].find({"anno": anno}, {"_id": 0}).to_list(10000)
+    cassa = await db[COLLECTION_PRIMA_NOTA_CASSA].find(
+        {"source": "corrispettivi_sync", "corrispettivo_id": {"$ne": None},
+         "status": {"$nin": ["deleted", "archived"]}},
+        {"_id": 0, "corrispettivo_id": 1, "importo": 1, "data": 1, "id": 1},
+    ).to_list(10000)
+
+    cassa_by_corr: Dict[str, list] = {}
+    for m in cassa:
+        cassa_by_corr.setdefault(m["corrispettivo_id"], []).append(m)
+
+    mancanti = []
+    non_sincronizzabili = []  # totale = 0 su tutti i campi
+    duplicati = []
+
+    for c in sorgente:
+        cid = c.get("id")
+        totale = float(
+            c.get("totale", 0) or c.get("totale_complessivo", 0)
+            or c.get("importo", 0) or c.get("totale_giornaliero", 0) or 0
+        )
+        contanti = float(c.get("pagato_contanti", 0) or 0)
+        pos = float(c.get("pagato_pos", 0) or c.get("pagato_elettronico", 0) or 0)
+        if totale <= 0 and (contanti + pos) <= 0:
+            non_sincronizzabili.append({
+                "id": cid, "data": c.get("data"),
+                "totale": c.get("totale"), "totale_complessivo": c.get("totale_complessivo"),
+                "importo": c.get("importo"), "pagato_contanti": c.get("pagato_contanti"),
+                "pagato_pos": c.get("pagato_pos"),
+            })
+            continue
+        mov_in_cassa = cassa_by_corr.get(cid, [])
+        if not mov_in_cassa:
+            mancanti.append({
+                "id": cid, "data": c.get("data"),
+                "totale_calcolato": totale or (contanti + pos),
+            })
+        elif len(mov_in_cassa) > 1:
+            duplicati.append({
+                "corrispettivo_id": cid,
+                "data": c.get("data"),
+                "count_in_cassa": len(mov_in_cassa),
+                "ids_movimenti": [m.get("id") for m in mov_in_cassa],
+            })
+
+    return {
+        "anno": anno,
+        "corrispettivi_sorgente": len(sorgente),
+        "corrispettivi_in_cassa": len(cassa_by_corr),
+        "mancanti_in_cassa": len(mancanti),
+        "non_sincronizzabili_importo_zero": len(non_sincronizzabili),
+        "duplicati_in_cassa": len(duplicati),
+        "mancanti_dettaglio": mancanti[:100],
+        "non_sincronizzabili_dettaglio": non_sincronizzabili[:50],
+        "duplicati_dettaglio": duplicati[:50],
+        "azione_consigliata_duplicati": "POST /api/prima-nota/dedup-fatture?applica=true (per fatture) o cleanup manuale per corrispettivi",
+        "azione_consigliata_mancanti": "POST /api/prima-nota/cassa/sync-corrispettivi?anno={anno}",
+    }
