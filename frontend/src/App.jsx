@@ -16,7 +16,7 @@ const MOBILE_NAV = [
   { to: "/", label: "Home", icon: "🏠" },
   { to: "/fatture-ricevute", label: "Fatture", icon: "📄" },
   { to: "/riconciliazione", label: "Banca", icon: "🏦" },
-  { to: "/dipendenti", label: "HR", icon: "👥" },
+  { to: "/hr", label: "HR", icon: "👥" },
   { to: "/more", label: "Menu", icon: "☰", isMenu: true },
 ];
 
@@ -28,7 +28,8 @@ const ALL_NAV_ITEMS = [
   { to: "/fornitori", label: "Fornitori", icon: "🏢" },
   { to: "/prima-nota", label: "Prima Nota", icon: "📒" },
   { to: "/riconciliazione", label: "Riconciliazione", icon: "🏦" },
-  { to: "/dipendenti", label: "Dipendenti", icon: "👥" },
+  { to: "/hr", label: "Risorse Umane", icon: "👥" },
+  { to: "/dipendenti", label: "Dipendenti", icon: "👤" },
   { to: "/turni", label: "Turni", icon: "🗓️" },
   { to: "/ferie-permessi", label: "Ferie", icon: "🏖️" },
   { to: "/missioni", label: "Missioni", icon: "✈️" },
