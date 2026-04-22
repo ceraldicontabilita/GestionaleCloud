@@ -21,6 +21,34 @@ export default function HRTFR() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ importo: '', data: '', note: '' });
   const [saving, setSaving] = useState(false);
+  const [annoRiepilogo, setAnnoRiepilogo] = useState(new Date().getFullYear());
+  const [riepilogo, setRiepilogo] = useState(null);
+
+  useEffect(() => {
+    api
+      .get('/api/tfr/riepilogo-aziendale', { params: { anno: annoRiepilogo } })
+      .then((r) => {
+        const d = r.data || {};
+        // Adatto nomi campi backend→frontend
+        setRiepilogo({
+          totale_fondo: d.totale_fondo || d.fondo_tfr_totale || 0,
+          num_dipendenti: d.num_dipendenti || (d.dettaglio_dipendenti || []).length,
+          totale_accantonato_anno:
+            d.accantonamenti_anno?.totale_accantonato ||
+            d.totale_accantonato_anno || 0,
+          totale_quota_anno:
+            d.accantonamenti_anno?.totale_quota || d.totale_quota_anno || 0,
+          totale_rivalutazione_anno:
+            d.accantonamenti_anno?.totale_rivalutazione ||
+            d.totale_rivalutazione_anno || 0,
+          totale_liquidato_anno:
+            d.liquidazioni_anno?.totale_netto || d.totale_liquidato_anno || 0,
+          num_liquidazioni_anno:
+            d.liquidazioni_anno?.num_liquidazioni || d.num_liquidazioni_anno || 0,
+        });
+      })
+      .catch(() => setRiepilogo(null));
+  }, [annoRiepilogo]);
 
   useEffect(() => {
     api
@@ -87,7 +115,94 @@ export default function HRTFR() {
     : '';
 
   return (
-    <div style={{ padding: 24, display: 'flex', gap: 24, height: 'calc(100vh - 160px)' }}>
+    <div style={{ padding: isMobile ? 16 : 24, minHeight: '100vh', backgroundColor: COLORS.bg }}>
+      {/* HEADER */}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: 12,
+          marginBottom: 20,
+        }}
+      >
+        <div>
+          <h1
+            style={{
+              fontSize: 26,
+              fontWeight: 700,
+              color: COLORS.text,
+              margin: 0,
+              letterSpacing: '-0.02em',
+            }}
+          >
+            Gestione TFR
+          </h1>
+          <p style={{ fontSize: 13, color: COLORS.textMuted, margin: '4px 0 0' }}>
+            Trattamento di Fine Rapporto — fondo accantonato, liquidazioni, acconti
+          </p>
+        </div>
+        <select
+          value={annoRiepilogo}
+          onChange={(e) => setAnnoRiepilogo(parseInt(e.target.value, 10))}
+          style={{
+            padding: '8px 14px',
+            fontSize: 13,
+            border: `1px solid ${COLORS.border}`,
+            borderRadius: 8,
+            backgroundColor: COLORS.card,
+            color: COLORS.text,
+            cursor: 'pointer',
+            fontWeight: 600,
+          }}
+        >
+          {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i).map((a) => (
+            <option key={a} value={a}>
+              Anno {a}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* KPI aziendali */}
+      {riepilogo && (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)',
+            gap: 16,
+            marginBottom: 20,
+          }}
+        >
+          <KpiTFR
+            label="Fondo TFR totale"
+            value={formatEuro(riepilogo.totale_fondo)}
+            sub={`${riepilogo.num_dipendenti || 0} dipendenti`}
+            accent={COLORS.primary}
+          />
+          <KpiTFR
+            label={`Accantonato ${annoRiepilogo}`}
+            value={formatEuro(riepilogo.totale_accantonato_anno || 0)}
+            sub={`Quota: ${formatEuro(riepilogo.totale_quota_anno || 0)}`}
+            accent={COLORS.accent}
+          />
+          <KpiTFR
+            label={`Rivalutazione ${annoRiepilogo}`}
+            value={formatEuro(riepilogo.totale_rivalutazione_anno || 0)}
+            sub="1,5% + 75% ISTAT"
+            accent={COLORS.info}
+          />
+          <KpiTFR
+            label={`Liquidazioni ${annoRiepilogo}`}
+            value={formatEuro(riepilogo.totale_liquidato_anno || 0)}
+            sub={`${riepilogo.num_liquidazioni_anno || 0} pratiche`}
+            accent={COLORS.success}
+          />
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: 24, height: 'calc(100vh - 360px)', minHeight: 500 }}>
       {/* Lista dipendenti */}
       <div
         style={{
@@ -483,6 +598,46 @@ export default function HRTFR() {
           </>
         )}
       </div>
+      </div>
+    </div>
+  );
+}
+
+function KpiTFR({ label, value, sub, accent }) {
+  return (
+    <div
+      style={{
+        backgroundColor: COLORS.card,
+        border: `1px solid ${COLORS.border}`,
+        borderRadius: 12,
+        padding: 16,
+        borderTop: `3px solid ${accent || COLORS.primary}`,
+      }}
+    >
+      <div
+        style={{
+          fontSize: 11,
+          fontWeight: 600,
+          color: COLORS.textMuted,
+          textTransform: 'uppercase',
+          letterSpacing: '0.05em',
+          marginBottom: 8,
+        }}
+      >
+        {label}
+      </div>
+      <div
+        style={{
+          fontSize: 20,
+          fontWeight: 700,
+          color: COLORS.text,
+          fontVariantNumeric: 'tabular-nums',
+          marginBottom: 2,
+        }}
+      >
+        {value}
+      </div>
+      <div style={{ fontSize: 12, color: COLORS.textMuted }}>{sub}</div>
     </div>
   );
 }
