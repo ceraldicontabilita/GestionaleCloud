@@ -179,6 +179,13 @@ export default function HRTurni() {
     [turni]
   );
 
+  // ────── KPI ──────
+  const totAssegnazioni = Object.keys(assegnazioni).length;
+  const copertoGg = useMemo(() => {
+    const daysWithAny = new Set(Object.keys(assegnazioni).map((k) => k.split('_')[1]));
+    return daysWithAny.size;
+  }, [assegnazioni]);
+
   // ═══════════════════════════════════════════════════════════════════════
   // Render
   // ═══════════════════════════════════════════════════════════════════════
@@ -193,7 +200,7 @@ export default function HRTurni() {
           alignItems: 'center',
           flexWrap: 'wrap',
           gap: SPACING.md,
-          marginBottom: SPACING.xxl,
+          marginBottom: SPACING.xl,
         }}
       >
         <div>
@@ -235,6 +242,82 @@ export default function HRTurni() {
           <Plus size={18} /> Nuovo turno
         </button>
       </div>
+
+      {/* KPI */}
+      {!loading && (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)',
+            gap: SPACING.lg,
+            marginBottom: SPACING.lg,
+          }}
+        >
+          <KpiTurni
+            icon={<Clock size={20} color={COLORS.primary} />}
+            label="Tipi turno"
+            value={turni.length.toString()}
+            sub="definiti"
+            accent={COLORS.primary}
+          />
+          <KpiTurni
+            icon={<Users size={20} color={COLORS.accent} />}
+            label="Dipendenti attivi"
+            value={dipendentiAttivi.length.toString()}
+            sub="coinvolti"
+            accent={COLORS.accent}
+          />
+          <KpiTurni
+            icon={<Clock size={20} color={COLORS.info} />}
+            label="Assegnazioni"
+            value={totAssegnazioni.toString()}
+            sub="celle occupate"
+            accent={COLORS.info}
+          />
+          <KpiTurni
+            icon={<Users size={20} color={COLORS.success} />}
+            label="Giorni coperti"
+            value={`${copertoGg}/7`}
+            sub="della settimana"
+            accent={COLORS.success}
+          />
+        </div>
+      )}
+
+      {/* Help bar */}
+      {!loading && turni.length > 0 && (
+        <div
+          style={{
+            padding: '10px 14px',
+            backgroundColor: COLORS.bgAlt,
+            borderRadius: 8,
+            fontSize: 12,
+            color: COLORS.textMuted,
+            marginBottom: SPACING.lg,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+          }}
+        >
+          <span
+            style={{
+              fontSize: 10,
+              fontWeight: 700,
+              color: COLORS.primary,
+              textTransform: 'uppercase',
+              letterSpacing: '0.06em',
+              padding: '2px 8px',
+              borderRadius: 4,
+              backgroundColor: COLORS.primarySoft,
+            }}
+          >
+            Suggerimento
+          </span>
+          <span>
+            Clicca una cella della tabella e scegli il turno dall'elenco. L'assegnazione si salva automaticamente.
+          </span>
+        </div>
+      )}
 
       {loading ? (
         <div style={{ textAlign: 'center', padding: 48, color: COLORS.textMuted }}>
@@ -763,6 +846,47 @@ function ModalNuovoTurno({ form, setForm, editing, saving, onClose, onSubmit }) 
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function KpiTurni({ icon, label, value, sub, accent }) {
+  return (
+    <div
+      style={{
+        backgroundColor: COLORS.card,
+        border: `1px solid ${COLORS.border}`,
+        borderRadius: 12,
+        padding: SPACING.lg,
+        borderTop: `3px solid ${accent || COLORS.primary}`,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+        {icon}
+        <span
+          style={{
+            fontSize: 11,
+            fontWeight: 600,
+            color: COLORS.textMuted,
+            textTransform: 'uppercase',
+            letterSpacing: '0.05em',
+          }}
+        >
+          {label}
+        </span>
+      </div>
+      <div
+        style={{
+          fontSize: 22,
+          fontWeight: 700,
+          color: COLORS.text,
+          fontVariantNumeric: 'tabular-nums',
+          marginBottom: 2,
+        }}
+      >
+        {value}
+      </div>
+      <div style={{ fontSize: 12, color: COLORS.textMuted }}>{sub}</div>
     </div>
   );
 }
