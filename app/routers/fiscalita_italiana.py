@@ -733,7 +733,7 @@ async def scadenze_imminenti(giorni: int = Query(30)) -> Dict[str, Any]:
     """Scadenze nei prossimi N giorni"""
     db = Database.get_db()
     
-    oggi = datetime.now()
+    oggi = datetime.now(timezone.utc)
     limite = (oggi + timedelta(days=giorni)).strftime("%Y-%m-%d")
     oggi_str = oggi.strftime("%Y-%m-%d")
     
@@ -876,7 +876,7 @@ async def get_notifiche_scadenze_imminenti(
     prossime = []  # 4-7 giorni
     pianificabili = []  # oltre 7 giorni
     
-    oggi_dt = datetime.now()
+    oggi_dt = datetime.now(timezone.utc)
     for s in scadenze:
         try:
             data_scad = datetime.strptime(s.get("data", ""), "%Y-%m-%d") if s.get("data") else None
