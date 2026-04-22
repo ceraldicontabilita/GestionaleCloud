@@ -1,7 +1,7 @@
 """
 Inserimento Rapido — endpoint per operazioni quick-entry dalla pagina InserimentoRapido.
 """
-from fastapi import APIRouter, HTTPException, Body
+from fastapi import APIRouter, HTTPException, Body, Request
 from typing import Dict, Any
 from datetime import datetime, timezone
 import uuid
@@ -34,19 +34,19 @@ async def ultimi_inserimenti(limit: int = 5) -> list:
 
 
 @router.post("/corrispettivo")
-async def rapido_corrispettivo(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+async def rapido_corrispettivo(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     db = Database.get_db()
-    importo = float(data.get("importo", 0))
+    importo = float(payload.get("importo", 0))
     if importo <= 0:
         raise HTTPException(status_code=400, detail="Importo deve essere > 0")
 
     mov_id = str(uuid.uuid4())
     movimento = {
         "id": mov_id,
-        "data": data.get("data", datetime.now().strftime("%Y-%m-%d")),
+        "data": payload.get("data", datetime.now().strftime("%Y-%m-%d")),
         "tipo": "entrata",
         "importo": importo,
-        "descrizione": data.get("descrizione", f"Corrispettivo rapido {data.get('data', '')}"),
+        "descrizione": payload.get("descrizione", f"Corrispettivo rapido {payload.get('data', '')}"),
         "categoria": "Corrispettivi",
         "source": "rapido_corrispettivo",
         "created_at": datetime.now(timezone.utc).isoformat()
@@ -56,9 +56,9 @@ async def rapido_corrispettivo(data: Dict[str, Any] = Body(...)) -> Dict[str, An
 
 
 @router.post("/versamento-banca")
-async def rapido_versamento(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+async def rapido_versamento(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     db = Database.get_db()
-    importo = float(data.get("importo", 0))
+    importo = float(payload.get("importo", 0))
     if importo <= 0:
         raise HTTPException(status_code=400, detail="Importo deve essere > 0")
 
@@ -66,9 +66,9 @@ async def rapido_versamento(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     # Uscita cassa
     await db["prima_nota_cassa"].insert_one({
         "id": mov_id,
-        "data": data.get("data", datetime.now().strftime("%Y-%m-%d")),
+        "data": payload.get("data", datetime.now().strftime("%Y-%m-%d")),
         "tipo": "uscita", "importo": importo,
-        "descrizione": data.get("descrizione", "Versamento in banca"),
+        "descrizione": payload.get("descrizione", "Versamento in banca"),
         "categoria": "Versamento", "source": "rapido_versamento",
         "created_at": datetime.now(timezone.utc).isoformat()
     })
@@ -76,18 +76,18 @@ async def rapido_versamento(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
 
 
 @router.post("/apporto-soci")
-async def rapido_apporto(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+async def rapido_apporto(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     db = Database.get_db()
-    importo = float(data.get("importo", 0))
+    importo = float(payload.get("importo", 0))
     if importo <= 0:
         raise HTTPException(status_code=400, detail="Importo deve essere > 0")
 
     mov_id = str(uuid.uuid4())
     await db["prima_nota_cassa"].insert_one({
         "id": mov_id,
-        "data": data.get("data", datetime.now().strftime("%Y-%m-%d")),
+        "data": payload.get("data", datetime.now().strftime("%Y-%m-%d")),
         "tipo": "entrata", "importo": importo,
-        "descrizione": data.get("descrizione", "Finanziamento soci"),
+        "descrizione": payload.get("descrizione", "Finanziamento soci"),
         "categoria": "Finanziamento soci", "source": "rapido_apporto_soci",
         "created_at": datetime.now(timezone.utc).isoformat()
     })
@@ -128,18 +128,18 @@ async def rapido_paga_fattura(
 
 
 @router.post("/acconto-dipendente")
-async def rapido_acconto(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+async def rapido_acconto(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     db = Database.get_db()
-    importo = float(data.get("importo", 0))
-    dip_id = data.get("dipendente_id", "")
+    importo = float(payload.get("importo", 0))
+    dip_id = payload.get("dipendente_id", "")
     if importo <= 0 or not dip_id:
         raise HTTPException(status_code=400, detail="dipendente_id e importo richiesti")
 
     mov_id = str(uuid.uuid4())
     await db["prima_nota_cassa"].insert_one({
-        "id": mov_id, "data": data.get("data", datetime.now().strftime("%Y-%m-%d")),
+        "id": mov_id, "data": payload.get("data", datetime.now().strftime("%Y-%m-%d")),
         "tipo": "uscita", "importo": importo,
-        "descrizione": f"Acconto a dipendente {data.get('nome', '')}",
+        "descrizione": f"Acconto a dipendente {payload.get('nome', '')}",
         "categoria": "Acconti dipendenti", "dipendente_id": dip_id,
         "source": "rapido_acconto",
         "created_at": datetime.now(timezone.utc).isoformat()
@@ -148,19 +148,19 @@ async def rapido_acconto(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
 
 
 @router.post("/presenza")
-async def rapido_presenza(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+async def rapido_presenza(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     db = Database.get_db()
-    dip_id = data.get("dipendente_id", "")
+    dip_id = payload.get("dipendente_id", "")
     if not dip_id:
         raise HTTPException(status_code=400, detail="dipendente_id richiesto")
 
     doc = {
         "id": str(uuid.uuid4()),
         "dipendente_id": dip_id,
-        "data": data.get("data", datetime.now().strftime("%Y-%m-%d")),
-        "tipo": data.get("tipo", "presente"),
-        "ore": float(data.get("ore", 8)),
-        "note": data.get("note", ""),
+        "data": payload.get("data", datetime.now().strftime("%Y-%m-%d")),
+        "tipo": payload.get("tipo", "presente"),
+        "ore": float(payload.get("ore", 8)),
+        "note": payload.get("note", ""),
         "source": "rapido",
         "created_at": datetime.now(timezone.utc).isoformat()
     }
