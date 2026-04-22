@@ -1,5 +1,5 @@
 """Pianificazione router - Budget planning."""
-from fastapi import APIRouter, Depends, Path, status
+from fastapi import APIRouter, Body, Depends, Path, status
 from typing import Dict, Any, List
 from datetime import datetime, timezone
 from uuid import uuid4
@@ -31,7 +31,7 @@ async def get_costi_previsionali(
     summary="Create planned cost"
 )
 async def create_costo(
-    data: Dict[str, Any],
+    data: Dict[str, Any] = Body(...),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ) -> Dict[str, str]:
     """Create a planned cost entry."""
