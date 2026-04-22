@@ -2,7 +2,17 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
-import { formatEuro, formatDateIT, STYLES, COLORS, button, badge , useIsMobile, RG, pagePad } from '../lib/utils';
+import {
+  formatEuro,
+  formatDateIT,
+  STYLES,
+  COLORS,
+  button,
+  badge,
+  useIsMobile,
+  RG,
+  pagePad,
+} from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
 import { useHashState } from '../hooks/useHashState';
 import { CopyLinkButton } from '../components/CopyLinkButton';
@@ -50,7 +60,7 @@ export default function ArchivioBonifici() {
   });
   const activeTab = hs.tab;
 
-  const handleTabChange = (tabId) => {
+  const handleTabChange = tabId => {
     setHs('tab', tabId);
     navigate(`/archivio-bonifici/${tabId}`);
   };
@@ -64,7 +74,7 @@ export default function ArchivioBonifici() {
 
   // Chiudi dropdown quando si clicca fuori
   useEffect(() => {
-    const handleClickOutside = (event) => {
+    const handleClickOutside = event => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         // Chiudi tutti i dropdown
         setAssociaDropdown(null);
@@ -146,8 +156,6 @@ export default function ArchivioBonifici() {
   };
 
   const handleRiconcilia = async () => {
-
-
     setRiconciliando(true);
     try {
       // Avvia in background
@@ -165,7 +173,9 @@ export default function ArchivioBonifici() {
 
             if (statusRes.data.status === 'completed') {
               const result = statusRes.data.result;
-              alert(`✅ Riconciliazione completata!\n\nRiconciliati: ${result.riconciliati}\nNon trovati: ${result.non_riconciliati}`);
+              alert(
+                `✅ Riconciliazione completata!\n\nRiconciliati: ${result.riconciliati}\nNon trovati: ${result.non_riconciliati}`
+              );
               await Promise.all([loadTransfers(), loadRiconciliazioneStats()]);
               setRiconciliando(false);
             } else if (statusRes.data.status === 'error') {
@@ -187,7 +197,9 @@ export default function ArchivioBonifici() {
         setTimeout(pollStatus, 1000);
       } else {
         // Fallback sincrono
-        alert(`✅ ${res.data.message}\n\nRiconciliati: ${res.data.riconciliati}\nNon trovati: ${res.data.non_riconciliati}`);
+        alert(
+          `✅ ${res.data.message}\n\nRiconciliati: ${res.data.riconciliati}\nNon trovati: ${res.data.non_riconciliati}`
+        );
         await Promise.all([loadTransfers(), loadRiconciliazioneStats()]);
         setRiconciliando(false);
       }
@@ -198,8 +210,7 @@ export default function ArchivioBonifici() {
   };
 
   // Elimina bonifico
-  const handleDelete = async (id) => {
-
+  const handleDelete = async id => {
     try {
       await api.delete(`/api/archivio-bonifici/transfers/${id}`);
       loadTransfers();
@@ -210,13 +221,13 @@ export default function ArchivioBonifici() {
   };
 
   // Export
-  const handleExport = (format) => {
+  const handleExport = format => {
     const baseUrl = window.location.origin;
     window.open(`${baseUrl}/api/archivio-bonifici/export?format=${format}`, '_blank');
   };
 
   // Download ZIP per anno
-  const handleDownloadZip = async (year) => {
+  const handleDownloadZip = async year => {
     setDownloadingZip(true);
     try {
       const baseUrl = window.location.origin;
@@ -229,7 +240,7 @@ export default function ArchivioBonifici() {
   };
 
   // Salva nota bonifico
-  const handleSaveNote = async (id) => {
+  const handleSaveNote = async id => {
     try {
       await api.put(`/api/archivio-bonifici/transfers/${id}`, { note: noteText });
       setEditingNote(null);
@@ -242,17 +253,18 @@ export default function ArchivioBonifici() {
 
   // Sincronizza IBAN dai bonifici all'anagrafica dipendenti
   const handleSyncIbanToAnagrafica = async () => {
-
     try {
       const res = await api.post('/api/archivio-bonifici/sync-iban-anagrafica');
-      alert(`✅ Sincronizzazione completata!\n\nDipendenti aggiornati: ${res.data.dipendenti_aggiornati}\nBonifici analizzati: ${res.data.totale_bonifici_analizzati}`);
+      alert(
+        `✅ Sincronizzazione completata!\n\nDipendenti aggiornati: ${res.data.dipendenti_aggiornati}\nBonifici analizzati: ${res.data.totale_bonifici_analizzati}`
+      );
     } catch (error) {
       alert('Errore: ' + (error.response?.data?.detail || error.message));
     }
   };
 
   // Carica operazioni salari compatibili per associazione
-  const loadOperazioniCompatibili = async (bonifico_id) => {
+  const loadOperazioniCompatibili = async bonifico_id => {
     setLoadingOperazioni(true);
     setDipendenteIbanMatch(null);
     try {
@@ -270,7 +282,7 @@ export default function ArchivioBonifici() {
   };
 
   // Toggle dropdown associazione SALARI
-  const toggleAssociaDropdown = (bonifico_id) => {
+  const toggleAssociaDropdown = bonifico_id => {
     // Chiudi dropdown fatture se aperto
     setAssociaFatturaDropdown(null);
     setFattureCompatibili([]);
@@ -288,7 +300,9 @@ export default function ArchivioBonifici() {
   // Associa bonifico a operazione salari
   const handleAssocia = async (bonifico_id, operazione_id) => {
     try {
-      await api.post(`/api/archivio-bonifici/associa-salario?bonifico_id=${bonifico_id}&operazione_id=${operazione_id}`);
+      await api.post(
+        `/api/archivio-bonifici/associa-salario?bonifico_id=${bonifico_id}&operazione_id=${operazione_id}`
+      );
       setAssociaDropdown(null);
       setOperazioniCompatibili([]);
       loadTransfers();
@@ -301,10 +315,8 @@ export default function ArchivioBonifici() {
   const handleDisassocia = async (bonifico_id, dipendente_nome) => {
     const msg1 = `Rimuovere associazione con "${dipendente_nome || 'salario'}"?`;
 
-
     // Seconda conferma
     const msg2 = `⚠️ CONFERMA RIMOZIONE\n\nQuesta azione rimuoverà l'associazione tra il bonifico e il salario.\n\nSei sicuro di voler procedere?`;
-
 
     try {
       await api.delete(`/api/archivio-bonifici/disassocia-salario/${bonifico_id}`);
@@ -315,7 +327,7 @@ export default function ArchivioBonifici() {
   };
 
   // === NUOVE FUNZIONI PER FATTURE ===
-  const loadFattureCompatibili = async (bonifico_id) => {
+  const loadFattureCompatibili = async bonifico_id => {
     setLoadingFatture(true);
     try {
       const res = await api.get(`/api/archivio-bonifici/fatture-compatibili/${bonifico_id}`);
@@ -327,7 +339,7 @@ export default function ArchivioBonifici() {
     setLoadingFatture(false);
   };
 
-  const toggleAssociaFatturaDropdown = (bonifico_id) => {
+  const toggleAssociaFatturaDropdown = bonifico_id => {
     // Chiudi dropdown salari se aperto
     setAssociaDropdown(null);
     setOperazioniCompatibili([]);
@@ -343,7 +355,9 @@ export default function ArchivioBonifici() {
 
   const handleAssociaFattura = async (bonifico_id, fattura_id, collection) => {
     try {
-      await api.post(`/api/archivio-bonifici/associa-fattura?bonifico_id=${bonifico_id}&fattura_id=${fattura_id}&collection=${collection}`);
+      await api.post(
+        `/api/archivio-bonifici/associa-fattura?bonifico_id=${bonifico_id}&fattura_id=${fattura_id}&collection=${collection}`
+      );
       setAssociaFatturaDropdown(null);
       setFattureCompatibili([]);
       loadTransfers();
@@ -355,10 +369,8 @@ export default function ArchivioBonifici() {
   const handleDisassociaFattura = async (bonifico_id, fattura_numero) => {
     const msg1 = `Rimuovere associazione con fattura "${fattura_numero || 'N/D'}"?`;
 
-
     // Seconda conferma
     const msg2 = `⚠️ CONFERMA RIMOZIONE\n\nQuesta azione rimuoverà l'associazione tra il bonifico e la fattura.\n\nSei sicuro di voler procedere?`;
-
 
     try {
       await api.delete(`/api/archivio-bonifici/disassocia-fattura/${bonifico_id}`);
@@ -381,20 +393,29 @@ export default function ArchivioBonifici() {
   return (
     <div style={{ maxWidth: 1400, margin: '0 auto', padding: '16px' }} ref={dropdownRef}>
       {/* Action bar senza titolo duplicato */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: 16, gap: 10, flexWrap: 'wrap' }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'flex-end',
+          alignItems: 'center',
+          marginBottom: 16,
+          gap: 10,
+          flexWrap: 'wrap',
+        }}
+      >
         <Link
           to="/import-export"
           style={{
-            padding: "8px 14px",
-            background: "#3b82f6",
-            color: "white",
+            padding: '8px 14px',
+            background: '#3b82f6',
+            color: 'white',
             fontWeight: 600,
             fontSize: 13,
             borderRadius: 8,
-            textDecoration: "none",
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 6
+            textDecoration: 'none',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
           }}
         >
           📥 Importa
@@ -402,29 +423,33 @@ export default function ArchivioBonifici() {
         <button
           onClick={handleSyncIbanToAnagrafica}
           style={{
-            padding: "8px 14px",
-            background: "#10b981",
-            color: "white",
+            padding: '8px 14px',
+            background: '#10b981',
+            color: 'white',
             fontWeight: 600,
             fontSize: 13,
-            border: "none",
+            border: 'none',
             borderRadius: 8,
-            cursor: "pointer"
+            cursor: 'pointer',
           }}
           title="Sincronizza gli IBAN dei bonifici nell'anagrafica dipendenti"
         >
           🏦 Sync IBAN
         </button>
         <button
-          onClick={() => { loadTransfers(); loadSummary(); loadCount(); }}
+          onClick={() => {
+            loadTransfers();
+            loadSummary();
+            loadCount();
+          }}
           style={{
-            padding: "8px 14px",
-            background: "#f5f5f5",
-            color: "#333",
-            border: "1px solid #ddd",
+            padding: '8px 14px',
+            background: '#f5f5f5',
+            color: '#333',
+            border: '1px solid #ddd',
             borderRadius: 8,
-            cursor: "pointer",
-            fontSize: 13
+            cursor: 'pointer',
+            fontSize: 13,
           }}
         >
           🔄 Aggiorna
@@ -432,25 +457,75 @@ export default function ArchivioBonifici() {
       </div>
 
       {/* Stats Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16, marginBottom: 24 }}>
-        <div style={{ background: '#f0f9ff', padding: 20, borderRadius: 12, border: '1px solid #bae6fd' }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+          gap: 16,
+          marginBottom: 24,
+        }}
+      >
+        <div
+          style={{
+            background: '#f0f9ff',
+            padding: 20,
+            borderRadius: 12,
+            border: '1px solid #bae6fd',
+          }}
+        >
           <div style={{ fontSize: 13, color: '#0369a1' }}>Bonifici Totali in DB</div>
           <div style={{ fontSize: 32, fontWeight: 'bold', color: '#0c4a6e' }}>{count}</div>
         </div>
-        <div style={{ background: '#f0fdf4', padding: 20, borderRadius: 12, border: '1px solid #bbf7d0' }}>
+        <div
+          style={{
+            background: '#f0fdf4',
+            padding: 20,
+            borderRadius: 12,
+            border: '1px solid #bbf7d0',
+          }}
+        >
           <div style={{ fontSize: 13, color: '#16a34a' }}>Bonifici Filtrati</div>
-          <div style={{ fontSize: 32, fontWeight: 'bold', color: '#166534' }}>{transfers.length}</div>
+          <div style={{ fontSize: 32, fontWeight: 'bold', color: '#166534' }}>
+            {transfers.length}
+          </div>
         </div>
-        <div style={{ background: '#fefce8', padding: 20, borderRadius: 12, border: '1px solid #fef08a' }}>
+        <div
+          style={{
+            background: '#fefce8',
+            padding: 20,
+            borderRadius: 12,
+            border: '1px solid #fef08a',
+          }}
+        >
           <div style={{ fontSize: 13, color: '#ca8a04' }}>Totale Importi Filtrati</div>
-          <div style={{ fontSize: 24, fontWeight: 'bold', color: '#854d0e' }}>{formatEuro(totaleImporto)}</div>
+          <div style={{ fontSize: 24, fontWeight: 'bold', color: '#854d0e' }}>
+            {formatEuro(totaleImporto)}
+          </div>
         </div>
         {/* Card Riconciliazione */}
-        <div style={{ background: riconciliazioneStats?.riconciliati > 0 ? '#f0fdf4' : '#fef2f2', padding: 20, borderRadius: 12, border: `1px solid ${riconciliazioneStats?.riconciliati > 0 ? '#bbf7d0' : '#fecaca'}` }}>
-          <div style={{ fontSize: 13, color: riconciliazioneStats?.riconciliati > 0 ? '#16a34a' : '#dc2626' }}>
+        <div
+          style={{
+            background: riconciliazioneStats?.riconciliati > 0 ? '#f0fdf4' : '#fef2f2',
+            padding: 20,
+            borderRadius: 12,
+            border: `1px solid ${riconciliazioneStats?.riconciliati > 0 ? '#bbf7d0' : '#fecaca'}`,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 13,
+              color: riconciliazioneStats?.riconciliati > 0 ? '#16a34a' : '#dc2626',
+            }}
+          >
             ✓ Riconciliati
           </div>
-          <div style={{ fontSize: 32, fontWeight: 'bold', color: riconciliazioneStats?.riconciliati > 0 ? '#166534' : '#991b1b' }}>
+          <div
+            style={{
+              fontSize: 32,
+              fontWeight: 'bold',
+              color: riconciliazioneStats?.riconciliati > 0 ? '#166534' : '#991b1b',
+            }}
+          >
             {riconciliazioneStats?.riconciliati || 0}/{riconciliazioneStats?.totale || 0}
           </div>
           <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>
@@ -460,18 +535,22 @@ export default function ArchivioBonifici() {
       </div>
 
       {/* Pulsante Riconciliazione */}
-      <div style={{
-        background: 'linear-gradient(135deg, #0ea5e9, #0369a1)',
-        padding: 16,
-        borderRadius: 12,
-        marginBottom: 24,
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        color: 'white'
-      }}>
+      <div
+        style={{
+          background: 'linear-gradient(135deg, #0ea5e9, #0369a1)',
+          padding: 16,
+          borderRadius: 12,
+          marginBottom: 24,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          color: 'white',
+        }}
+      >
         <div>
-          <div style={{ fontWeight: 'bold', fontSize: 16 }}>🔗 Riconciliazione con Estratto Conto</div>
+          <div style={{ fontWeight: 'bold', fontSize: 16 }}>
+            🔗 Riconciliazione con Estratto Conto
+          </div>
           <div style={{ fontSize: 13, opacity: 0.9 }}>
             Confronta i bonifici con i movimenti bancari per verificare i pagamenti effettivi
           </div>
@@ -487,7 +566,7 @@ export default function ArchivioBonifici() {
             border: 'none',
             cursor: riconciliando ? 'not-allowed' : 'pointer',
             fontWeight: 'bold',
-            fontSize: 14
+            fontSize: 14,
           }}
           data-testid="riconcilia-bonifici-btn"
         >
@@ -498,54 +577,81 @@ export default function ArchivioBonifici() {
       {/* Riepilogo per Anno con Download ZIP */}
       {Object.keys(summary).length > 0 && (
         <div style={{ background: '#f8fafc', padding: 16, borderRadius: 12, marginBottom: 24 }}>
-          <h3 style={{ fontSize: 14, fontWeight: 'bold', marginBottom: 12, color: '#475569' }}>📊 Riepilogo per Anno (clicca per scaricare ZIP)</h3>
+          <h3 style={{ fontSize: 14, fontWeight: 'bold', marginBottom: 12, color: '#475569' }}>
+            📊 Riepilogo per Anno (clicca per scaricare ZIP)
+          </h3>
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-            {Object.entries(summary).sort(([a], [b]) => b.localeCompare(a)).map(([year, data]) => (
-              <div
-                key={year}
-                style={{
-                  background: 'white',
-                  padding: '8px 16px',
-                  borderRadius: 8,
-                  border: '1px solid #e2e8f0',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s'
-                }}
-                onClick={() => handleDownloadZip(year)}
-                onMouseOver={(e) => e.currentTarget.style.borderColor = '#3b82f6'}
-                onMouseOut={(e) => e.currentTarget.style.borderColor = '#e2e8f0'}
-              >
-                <div style={{ fontWeight: 'bold', color: '#1e3a5f', display: 'flex', alignItems: 'center', gap: 8 }}>
-                  {year}
-                  <span style={{ fontSize: 12, color: '#3b82f6' }}>📥</span>
+            {Object.entries(summary)
+              .sort(([a], [b]) => b.localeCompare(a))
+              .map(([year, data]) => (
+                <div
+                  key={year}
+                  style={{
+                    background: 'white',
+                    padding: '8px 16px',
+                    borderRadius: 8,
+                    border: '1px solid #e2e8f0',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                  }}
+                  onClick={() => handleDownloadZip(year)}
+                  onMouseOver={e => (e.currentTarget.style.borderColor = '#3b82f6')}
+                  onMouseOut={e => (e.currentTarget.style.borderColor = '#e2e8f0')}
+                >
+                  <div
+                    style={{
+                      fontWeight: 'bold',
+                      color: '#1e3a5f',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                    }}
+                  >
+                    {year}
+                    <span style={{ fontSize: 12, color: '#3b82f6' }}>📥</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: '#64748b' }}>
+                    {data.count} bonifici • {formatEuro(data.total)}
+                  </div>
                 </div>
-                <div style={{ fontSize: 12, color: '#64748b' }}>{data.count} bonifici • {formatEuro(data.total)}</div>
-              </div>
-            ))}
+              ))}
           </div>
-          {downloadingZip && <div style={{ marginTop: 8, fontSize: 12, color: '#3b82f6' }}>⏳ Preparazione ZIP in corso...</div>}
+          {downloadingZip && (
+            <div style={{ marginTop: 8, fontSize: 12, color: '#3b82f6' }}>
+              ⏳ Preparazione ZIP in corso...
+            </div>
+          )}
         </div>
       )}
 
       {/* Filters */}
-      <div style={{
-        background: 'white',
-        padding: 16,
-        borderRadius: 12,
-        border: '1px solid #e2e8f0',
-        marginBottom: 24,
-        display: 'flex',
-        gap: 12,
-        flexWrap: 'wrap',
-        alignItems: 'center'
-      }}>
+      <div
+        style={{
+          background: 'white',
+          padding: 16,
+          borderRadius: 12,
+          border: '1px solid #e2e8f0',
+          marginBottom: 24,
+          display: 'flex',
+          gap: 12,
+          flexWrap: 'wrap',
+          alignItems: 'center',
+        }}
+      >
         <input
           type="text"
           placeholder="🔍 Cerca causale, CRO/TRN..."
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') loadTransfers(); }}
-          style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e2e8f0', minWidth: 200 }}
+          onChange={e => setSearch(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter') loadTransfers();
+          }}
+          style={{
+            padding: '8px 12px',
+            borderRadius: 8,
+            border: '1px solid #e2e8f0',
+            minWidth: 200,
+          }}
           data-testid="bonifici-search"
         />
         <button
@@ -558,7 +664,7 @@ export default function ArchivioBonifici() {
             border: 'none',
             cursor: 'pointer',
             fontSize: 13,
-            fontWeight: 'bold'
+            fontWeight: 'bold',
           }}
           data-testid="bonifici-search-btn"
         >
@@ -568,21 +674,31 @@ export default function ArchivioBonifici() {
           type="text"
           placeholder="Filtra ordinante..."
           value={ordinanteFilter}
-          onChange={(e) => setOrdinanteFilter(e.target.value)}
-          style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e2e8f0', minWidth: 150 }}
+          onChange={e => setOrdinanteFilter(e.target.value)}
+          style={{
+            padding: '8px 12px',
+            borderRadius: 8,
+            border: '1px solid #e2e8f0',
+            minWidth: 150,
+          }}
         />
         <input
           type="text"
           placeholder="Filtra beneficiario..."
           value={beneficiarioFilter}
-          onChange={(e) => setBeneficiarioFilter(e.target.value)}
-          style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e2e8f0', minWidth: 150 }}
+          onChange={e => setBeneficiarioFilter(e.target.value)}
+          style={{
+            padding: '8px 12px',
+            borderRadius: 8,
+            border: '1px solid #e2e8f0',
+            minWidth: 150,
+          }}
         />
         <input
           type="text"
           placeholder="Anno (es. 2024)"
           value={yearFilter}
-          onChange={(e) => setYearFilter(e.target.value)}
+          onChange={e => setYearFilter(e.target.value)}
           style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e2e8f0', width: 120 }}
         />
         {/* Bottone Reset Filtri */}
@@ -601,7 +717,7 @@ export default function ArchivioBonifici() {
               color: '#64748b',
               border: '1px solid #e2e8f0',
               cursor: 'pointer',
-              fontSize: 12
+              fontSize: 12,
             }}
           >
             ✕ Reset
@@ -618,7 +734,7 @@ export default function ArchivioBonifici() {
               color: 'white',
               border: 'none',
               cursor: 'pointer',
-              fontSize: 13
+              fontSize: 13,
             }}
           >
             📥 Export XLSX
@@ -632,7 +748,7 @@ export default function ArchivioBonifici() {
               color: 'white',
               border: 'none',
               cursor: 'pointer',
-              fontSize: 13
+              fontSize: 13,
             }}
           >
             📥 Export CSV
@@ -655,17 +771,19 @@ export default function ArchivioBonifici() {
             fontSize: 14,
             display: 'flex',
             alignItems: 'center',
-            gap: 8
+            gap: 8,
           }}
           data-testid="tab-da-associare"
         >
           Da Associare
-          <span style={{
-            background: activeTab === 'da_associare' ? 'rgba(255,255,255,0.2)' : '#e2e8f0',
-            padding: '2px 8px',
-            borderRadius: 10,
-            fontSize: 12
-          }}>
+          <span
+            style={{
+              background: activeTab === 'da_associare' ? 'rgba(255,255,255,0.2)' : '#e2e8f0',
+              padding: '2px 8px',
+              borderRadius: 10,
+              fontSize: 12,
+            }}
+          >
             {bonificiDaAssociare.length}
           </span>
         </button>
@@ -683,18 +801,20 @@ export default function ArchivioBonifici() {
             display: 'flex',
             alignItems: 'center',
             gap: 8,
-            marginLeft: 4
+            marginLeft: 4,
           }}
           data-testid="tab-associati"
         >
           ✅ Associati
-          <span style={{
-            background: activeTab === 'associati' ? 'rgba(255,255,255,0.2)' : '#dcfce7',
-            color: activeTab === 'associati' ? 'white' : '#16a34a',
-            padding: '2px 8px',
-            borderRadius: 10,
-            fontSize: 12
-          }}>
+          <span
+            style={{
+              background: activeTab === 'associati' ? 'rgba(255,255,255,0.2)' : '#dcfce7',
+              color: activeTab === 'associati' ? 'white' : '#16a34a',
+              padding: '2px 8px',
+              borderRadius: 10,
+              fontSize: 12,
+            }}
+          >
             {bonificiAssociati.length}
           </span>
         </button>
@@ -703,14 +823,18 @@ export default function ArchivioBonifici() {
       </div>
 
       {/* Table */}
-      <div style={{
-        background: 'white',
-        borderRadius: '0 12px 12px 12px',
-        border: '1px solid #e2e8f0',
-        overflow: 'hidden'
-      }}>
+      <div
+        style={{
+          background: 'white',
+          borderRadius: '0 12px 12px 12px',
+          border: '1px solid #e2e8f0',
+          overflow: 'hidden',
+        }}
+      >
         {loading ? (
-          <div style={{ padding: 40, textAlign: 'center', color: '#64748b' }}>⏳ Caricamento...</div>
+          <div style={{ padding: 40, textAlign: 'center', color: '#64748b' }}>
+            ⏳ Caricamento...
+          </div>
         ) : transfersToShow.length === 0 ? (
           <div style={{ padding: 40, textAlign: 'center', color: '#64748b' }}>
             {activeTab === 'da_associare'
@@ -719,37 +843,74 @@ export default function ArchivioBonifici() {
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
-                <tr style={{ background: activeTab === 'associati' ? '#16a34a' : '#1e3a5f', color: 'white' }}>
+                <tr
+                  style={{
+                    background: activeTab === 'associati' ? '#16a34a' : '#1e3a5f',
+                    color: 'white',
+                  }}
+                >
                   <th style={{ padding: 8, textAlign: 'center', width: 40 }}>✓</th>
                   <th style={{ padding: 8, textAlign: 'left' }}>Data</th>
                   <th style={{ padding: 8, textAlign: 'right' }}>Importo</th>
                   <th style={{ padding: 8, textAlign: 'left' }}>Beneficiario</th>
                   <th style={{ padding: 8, textAlign: 'left' }}>Causale</th>
                   <th style={{ padding: 8, textAlign: 'left' }}>CRO/TRN</th>
-                  <th style={{ padding: 8, textAlign: 'left', width: 180 }}>{activeTab === 'associati' ? 'Salario Associato' : 'Associa Salario'}</th>
-                  <th style={{ padding: 8, textAlign: 'left', width: 180 }}>{activeTab === 'associati' ? 'Fattura Associata' : 'Associa Fattura'}</th>
+                  <th style={{ padding: 8, textAlign: 'left', width: 180 }}>
+                    {activeTab === 'associati' ? 'Salario Associato' : 'Associa Salario'}
+                  </th>
+                  <th style={{ padding: 8, textAlign: 'left', width: 180 }}>
+                    {activeTab === 'associati' ? 'Fattura Associata' : 'Associa Fattura'}
+                  </th>
                   <th style={{ padding: 8, textAlign: 'left', width: 100 }}>Note</th>
                   <th style={{ padding: 8, textAlign: 'center', width: 50 }}>🗑️</th>
                 </tr>
               </thead>
               <tbody>
                 {transfersToShow.map((t, idx) => (
-                  <tr key={t.id || idx} style={{ borderBottom: '1px solid #f1f5f9', background: t.riconciliato ? '#f0fdf4' : 'white' }}>
+                  <tr
+                    key={t.id || idx}
+                    style={{
+                      borderBottom: '1px solid #f1f5f9',
+                      background: t.riconciliato ? '#f0fdf4' : 'white',
+                    }}
+                  >
                     <td style={{ padding: 8, textAlign: 'center' }}>
                       {t.riconciliato ? (
-                        <span style={{ color: '#16a34a', fontSize: 16 }} title={`Riconciliato: ${t.movimento_descrizione || 'Trovato in estratto conto'}`}>✅</span>
+                        <span
+                          style={{ color: '#16a34a', fontSize: 16 }}
+                          title={`Riconciliato: ${t.movimento_descrizione || 'Trovato in estratto conto'}`}
+                        >
+                          ✅
+                        </span>
                       ) : (
                         <span style={{ color: '#d1d5db', fontSize: 14 }}>○</span>
                       )}
                     </td>
                     <td style={{ padding: 8, whiteSpace: 'nowrap' }}>{formatDate(t.data)}</td>
-                    <td style={{ padding: 8, textAlign: 'right', fontWeight: 'bold', color: '#16a34a', whiteSpace: 'nowrap' }}>
+                    <td
+                      style={{
+                        padding: 8,
+                        textAlign: 'right',
+                        fontWeight: 'bold',
+                        color: '#16a34a',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
                       {formatEuro(t.importo)}
                     </td>
                     <td style={{ padding: 8 }}>{t.beneficiario?.nome || '-'}</td>
-                    <td style={{ padding: 8, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={t.causale}>
+                    <td
+                      style={{
+                        padding: 8,
+                        maxWidth: 180,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                      title={t.causale}
+                    >
                       {t.causale || '-'}
                     </td>
                     <td style={{ padding: 8, fontSize: 10 }}>{t.cro_trn || '-'}</td>
@@ -757,19 +918,27 @@ export default function ArchivioBonifici() {
                     <td style={{ padding: 8, position: 'relative' }}>
                       {t.salario_associato ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <span style={{
-                            background: '#dcfce7',
-                            color: '#16a34a',
-                            padding: '4px 8px',
-                            borderRadius: 6,
-                            fontSize: 10,
-                            fontWeight: 500
-                          }}>
+                          <span
+                            style={{
+                              background: '#dcfce7',
+                              color: '#16a34a',
+                              padding: '4px 8px',
+                              borderRadius: 6,
+                              fontSize: 10,
+                              fontWeight: 500,
+                            }}
+                          >
                             ✓ {t.operazione_salario_desc?.substring(0, 20) || 'Associato'}
                           </span>
                           <button
                             onClick={() => handleDisassocia(t.id, t.operazione_salario_desc)}
-                            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 10, color: '#dc2626' }}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              cursor: 'pointer',
+                              fontSize: 10,
+                              color: '#dc2626',
+                            }}
                             title="Rimuovi associazione (doppia conferma)"
                           >
                             ✗
@@ -787,7 +956,7 @@ export default function ArchivioBonifici() {
                               borderRadius: 6,
                               cursor: 'pointer',
                               fontSize: 11,
-                              fontWeight: 500
+                              fontWeight: 500,
                             }}
                             data-testid={`btn-associa-${t.id}`}
                           >
@@ -795,27 +964,31 @@ export default function ArchivioBonifici() {
                           </button>
                           {/* Dropdown operazioni */}
                           {associaDropdown === t.id && (
-                            <div style={{
-                              position: 'absolute',
-                              top: '100%',
-                              left: 0,
-                              zIndex: 100,
-                              background: 'white',
-                              border: '1px solid #e2e8f0',
-                              borderRadius: 8,
-                              boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                              minWidth: 300,
-                              maxHeight: 250,
-                              overflowY: 'auto'
-                            }}>
+                            <div
+                              style={{
+                                position: 'absolute',
+                                top: '100%',
+                                left: 0,
+                                zIndex: 100,
+                                background: 'white',
+                                border: '1px solid #e2e8f0',
+                                borderRadius: 8,
+                                boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                                minWidth: 300,
+                                maxHeight: 250,
+                                overflowY: 'auto',
+                              }}
+                            >
                               {/* Banner IBAN Match */}
                               {dipendenteIbanMatch && !loadingOperazioni && (
-                                <div style={{
-                                  background: '#ecfdf5',
-                                  borderBottom: '2px solid #16a34a',
-                                  padding: '8px 12px',
-                                  fontSize: 10
-                                }}>
+                                <div
+                                  style={{
+                                    background: '#ecfdf5',
+                                    borderBottom: '2px solid #16a34a',
+                                    padding: '8px 12px',
+                                    fontSize: 10,
+                                  }}
+                                >
                                   <div style={{ fontWeight: 600, color: '#16a34a' }}>
                                     🔗 IBAN riconosciuto
                                   </div>
@@ -825,9 +998,18 @@ export default function ArchivioBonifici() {
                                 </div>
                               )}
                               {loadingOperazioni ? (
-                                <div style={{ padding: 16, textAlign: 'center', color: '#6b7280' }}>⏳ Caricamento...</div>
+                                <div style={{ padding: 16, textAlign: 'center', color: '#6b7280' }}>
+                                  ⏳ Caricamento...
+                                </div>
                               ) : operazioniCompatibili.length === 0 ? (
-                                <div style={{ padding: 16, textAlign: 'center', color: '#6b7280', fontSize: 11 }}>
+                                <div
+                                  style={{
+                                    padding: 16,
+                                    textAlign: 'center',
+                                    color: '#6b7280',
+                                    fontSize: 11,
+                                  }}
+                                >
                                   {dipendenteIbanMatch
                                     ? `Nessuna operazione in Prima Nota Salari per ${dipendenteIbanMatch.nome_display}`
                                     : 'Nessuna operazione salari compatibile trovata'}
@@ -842,44 +1024,92 @@ export default function ArchivioBonifici() {
                                       borderBottom: '1px solid #f1f5f9',
                                       cursor: 'pointer',
                                       transition: 'background 0.1s',
-                                      background: op.iban_match ? '#ecfdf5' : 'white'
+                                      background: op.iban_match ? '#ecfdf5' : 'white',
                                     }}
-                                    onMouseOver={(e) => e.currentTarget.style.background = op.iban_match ? '#dcfce7' : '#f0f9ff'}
-                                    onMouseOut={(e) => e.currentTarget.style.background = op.iban_match ? '#ecfdf5' : 'white'}
+                                    onMouseOver={e =>
+                                      (e.currentTarget.style.background = op.iban_match
+                                        ? '#dcfce7'
+                                        : '#f0f9ff')
+                                    }
+                                    onMouseOut={e =>
+                                      (e.currentTarget.style.background = op.iban_match
+                                        ? '#ecfdf5'
+                                        : 'white')
+                                    }
                                   >
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <div
+                                      style={{
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'center',
+                                      }}
+                                    >
                                       <span style={{ fontWeight: 500, fontSize: 11 }}>
-                                        {op.iban_match && <span style={{ color: '#16a34a', marginRight: 4 }}>🔗</span>}
+                                        {op.iban_match && (
+                                          <span style={{ color: '#16a34a', marginRight: 4 }}>
+                                            🔗
+                                          </span>
+                                        )}
                                         {op.dipendente || op.descrizione || 'Operazione'}
                                       </span>
-                                      <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                                      <div
+                                        style={{ display: 'flex', gap: 4, alignItems: 'center' }}
+                                      >
                                         {op.iban_match && (
-                                          <span style={{
-                                            background: '#16a34a',
-                                            color: 'white',
-                                            padding: '2px 6px',
-                                            borderRadius: 4,
-                                            fontSize: 8,
-                                            fontWeight: 600
-                                          }}>
+                                          <span
+                                            style={{
+                                              background: '#16a34a',
+                                              color: 'white',
+                                              padding: '2px 6px',
+                                              borderRadius: 4,
+                                              fontSize: 8,
+                                              fontWeight: 600,
+                                            }}
+                                          >
                                             IBAN ✓
                                           </span>
                                         )}
-                                        <span style={{
-                                          background: op.compatibilita_score >= 70 ? '#dcfce7' : op.compatibilita_score >= 40 ? '#fef3c7' : '#fee2e2',
-                                          color: op.compatibilita_score >= 70 ? '#16a34a' : op.compatibilita_score >= 40 ? '#d97706' : '#dc2626',
-                                          padding: '2px 6px',
-                                          borderRadius: 4,
-                                          fontSize: 9,
-                                          fontWeight: 600
-                                        }}>
+                                        <span
+                                          style={{
+                                            background:
+                                              op.compatibilita_score >= 70
+                                                ? '#dcfce7'
+                                                : op.compatibilita_score >= 40
+                                                  ? '#fef3c7'
+                                                  : '#fee2e2',
+                                            color:
+                                              op.compatibilita_score >= 70
+                                                ? '#16a34a'
+                                                : op.compatibilita_score >= 40
+                                                  ? '#d97706'
+                                                  : '#dc2626',
+                                            padding: '2px 6px',
+                                            borderRadius: 4,
+                                            fontSize: 9,
+                                            fontWeight: 600,
+                                          }}
+                                        >
                                           {op.compatibilita_score}%
                                         </span>
                                       </div>
                                     </div>
-                                    <div style={{ fontSize: 10, color: '#6b7280', marginTop: 4, display: 'flex', justifyContent: 'space-between' }}>
-                                      <span>{op.anno && op.mese ? `${op.mese}/${op.anno}` : formatDate(op.data)}</span>
-                                      <span style={{ fontWeight: 600 }}>{formatEuro(op.importo_display)}</span>
+                                    <div
+                                      style={{
+                                        fontSize: 10,
+                                        color: '#6b7280',
+                                        marginTop: 4,
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                      }}
+                                    >
+                                      <span>
+                                        {op.anno && op.mese
+                                          ? `${op.mese}/${op.anno}`
+                                          : formatDate(op.data)}
+                                      </span>
+                                      <span style={{ fontWeight: 600 }}>
+                                        {formatEuro(op.importo_display)}
+                                      </span>
                                     </div>
                                   </div>
                                 ))
@@ -893,19 +1123,27 @@ export default function ArchivioBonifici() {
                     <td style={{ padding: 8, position: 'relative' }}>
                       {t.fattura_associata ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <span style={{
-                            background: '#dbeafe',
-                            color: '#1d4ed8',
-                            padding: '4px 8px',
-                            borderRadius: 6,
-                            fontSize: 10,
-                            fontWeight: 500
-                          }}>
+                          <span
+                            style={{
+                              background: '#dbeafe',
+                              color: '#1d4ed8',
+                              padding: '4px 8px',
+                              borderRadius: 6,
+                              fontSize: 10,
+                              fontWeight: 500,
+                            }}
+                          >
                             📄 {t.fattura_numero?.substring(0, 15) || 'Associata'}
                           </span>
                           <button
                             onClick={() => handleDisassociaFattura(t.id, t.fattura_numero)}
-                            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 10, color: '#dc2626' }}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              cursor: 'pointer',
+                              fontSize: 10,
+                              color: '#dc2626',
+                            }}
                             title="Rimuovi associazione (doppia conferma)"
                           >
                             ✗
@@ -923,7 +1161,7 @@ export default function ArchivioBonifici() {
                               borderRadius: 6,
                               cursor: 'pointer',
                               fontSize: 11,
-                              fontWeight: 500
+                              fontWeight: 500,
                             }}
                             data-testid={`btn-associa-fattura-${t.id}`}
                           >
@@ -931,23 +1169,34 @@ export default function ArchivioBonifici() {
                           </button>
                           {/* Dropdown fatture */}
                           {associaFatturaDropdown === t.id && (
-                            <div style={{
-                              position: 'absolute',
-                              top: '100%',
-                              left: 0,
-                              zIndex: 100,
-                              background: 'white',
-                              border: '1px solid #e2e8f0',
-                              borderRadius: 8,
-                              boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                              minWidth: 300,
-                              maxHeight: 250,
-                              overflowY: 'auto'
-                            }}>
+                            <div
+                              style={{
+                                position: 'absolute',
+                                top: '100%',
+                                left: 0,
+                                zIndex: 100,
+                                background: 'white',
+                                border: '1px solid #e2e8f0',
+                                borderRadius: 8,
+                                boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                                minWidth: 300,
+                                maxHeight: 250,
+                                overflowY: 'auto',
+                              }}
+                            >
                               {loadingFatture ? (
-                                <div style={{ padding: 16, textAlign: 'center', color: '#6b7280' }}>⏳ Caricamento...</div>
+                                <div style={{ padding: 16, textAlign: 'center', color: '#6b7280' }}>
+                                  ⏳ Caricamento...
+                                </div>
                               ) : fattureCompatibili.length === 0 ? (
-                                <div style={{ padding: 16, textAlign: 'center', color: '#6b7280', fontSize: 11 }}>
+                                <div
+                                  style={{
+                                    padding: 16,
+                                    textAlign: 'center',
+                                    color: '#6b7280',
+                                    fontSize: 11,
+                                  }}
+                                >
                                   Nessuna fattura compatibile trovata
                                 </div>
                               ) : (
@@ -959,23 +1208,44 @@ export default function ArchivioBonifici() {
                                       padding: '10px 12px',
                                       borderBottom: '1px solid #f1f5f9',
                                       cursor: 'pointer',
-                                      transition: 'background 0.1s'
+                                      transition: 'background 0.1s',
                                     }}
-                                    onMouseOver={(e) => e.currentTarget.style.background = '#eff6ff'}
-                                    onMouseOut={(e) => e.currentTarget.style.background = 'white'}
+                                    onMouseOver={e =>
+                                      (e.currentTarget.style.background = '#eff6ff')
+                                    }
+                                    onMouseOut={e => (e.currentTarget.style.background = 'white')}
                                   >
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <div
+                                      style={{
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'center',
+                                      }}
+                                    >
                                       <span style={{ fontWeight: 500, fontSize: 11 }}>
-                                        {f.numero_fattura || 'N/A'} - {f.fornitore?.substring(0, 20) || ''}
+                                        {f.numero_fattura || 'N/A'} -{' '}
+                                        {f.fornitore?.substring(0, 20) || ''}
                                       </span>
-                                      <span style={{
-                                        background: f.compatibilita_score >= 70 ? '#dcfce7' : f.compatibilita_score >= 40 ? '#fef3c7' : '#fee2e2',
-                                        color: f.compatibilita_score >= 70 ? '#16a34a' : f.compatibilita_score >= 40 ? '#d97706' : '#dc2626',
-                                        padding: '2px 6px',
-                                        borderRadius: 4,
-                                        fontSize: 9,
-                                        fontWeight: 600
-                                      }}>
+                                      <span
+                                        style={{
+                                          background:
+                                            f.compatibilita_score >= 70
+                                              ? '#dcfce7'
+                                              : f.compatibilita_score >= 40
+                                                ? '#fef3c7'
+                                                : '#fee2e2',
+                                          color:
+                                            f.compatibilita_score >= 70
+                                              ? '#16a34a'
+                                              : f.compatibilita_score >= 40
+                                                ? '#d97706'
+                                                : '#dc2626',
+                                          padding: '2px 6px',
+                                          borderRadius: 4,
+                                          fontSize: 9,
+                                          fontWeight: 600,
+                                        }}
+                                      >
                                         {f.compatibilita_score}%
                                       </span>
                                     </div>
@@ -996,17 +1266,59 @@ export default function ArchivioBonifici() {
                           <input
                             type="text"
                             value={noteText}
-                            onChange={(e) => setNoteText(e.target.value)}
-                            style={{ padding: 4, borderRadius: 4, border: '1px solid #e2e8f0', fontSize: 11, width: 80 }}
+                            onChange={e => setNoteText(e.target.value)}
+                            style={{
+                              padding: 4,
+                              borderRadius: 4,
+                              border: '1px solid #e2e8f0',
+                              fontSize: 11,
+                              width: 80,
+                            }}
                             autoFocus
                           />
-                          <button onClick={() => handleSaveNote(t.id)} style={{ padding: '2px 6px', background: '#16a34a', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 10 }}>✓</button>
-                          <button onClick={() => { setEditingNote(null); setNoteText(''); }} style={{ padding: '2px 6px', background: '#94a3b8', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 10 }}>✗</button>
+                          <button
+                            onClick={() => handleSaveNote(t.id)}
+                            style={{
+                              padding: '2px 6px',
+                              background: '#16a34a',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: 4,
+                              cursor: 'pointer',
+                              fontSize: 10,
+                            }}
+                          >
+                            ✓
+                          </button>
+                          <button
+                            onClick={() => {
+                              setEditingNote(null);
+                              setNoteText('');
+                            }}
+                            style={{
+                              padding: '2px 6px',
+                              background: '#94a3b8',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: 4,
+                              cursor: 'pointer',
+                              fontSize: 10,
+                            }}
+                          >
+                            ✗
+                          </button>
                         </div>
                       ) : (
                         <div
-                          onClick={() => { setEditingNote(t.id); setNoteText(t.note || ''); }}
-                          style={{ cursor: 'pointer', color: t.note ? '#1e3a5f' : '#94a3b8', fontSize: 11 }}
+                          onClick={() => {
+                            setEditingNote(t.id);
+                            setNoteText(t.note || '');
+                          }}
+                          style={{
+                            cursor: 'pointer',
+                            color: t.note ? '#1e3a5f' : '#94a3b8',
+                            fontSize: 11,
+                          }}
                           title="Clicca per modificare"
                         >
                           {t.note || '+ Nota'}
@@ -1021,7 +1333,7 @@ export default function ArchivioBonifici() {
                           border: 'none',
                           cursor: 'pointer',
                           fontSize: 14,
-                          opacity: 0.6
+                          opacity: 0.6,
                         }}
                         title="Elimina"
                       >
