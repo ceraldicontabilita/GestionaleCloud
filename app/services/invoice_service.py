@@ -101,7 +101,9 @@ class InvoiceService:
         for p in products_data:
             if not isinstance(p, dict):
                 continue
-            tax_amount = p.get("total_price", 0) * (p.get("vat_rate", 0) / 100)
+            total_price = float(p.get("total_price") or 0)
+            vat_rate = float(p.get("vat_rate") or 0)
+            tax_amount = total_price * (vat_rate / 100) if vat_rate else 0.0
             total_tax_amount += tax_amount
             products.append({
                 "codice": "", # Optional
@@ -109,8 +111,8 @@ class InvoiceService:
                 "quantita": p.get("quantity", 0),
                 "prezzo_unitario": p.get("unit_price", 0),
                 "sconto": 0.0,
-                "prezzo_totale": p["total_price"],
-                "aliquota_iva": p["vat_rate"]
+                "prezzo_totale": total_price,
+                "aliquota_iva": vat_rate
             })
             
         invoice_doc = {
