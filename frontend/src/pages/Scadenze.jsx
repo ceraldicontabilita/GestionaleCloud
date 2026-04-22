@@ -127,7 +127,7 @@ export default function Scadenze() {
   };
 
   const handleElimina = async (id) => {
-    
+    if (!window.confirm('Eliminare questa scadenza?')) return;
     try {
       await api.delete(`/api/scadenze/${id}`);
       loadData();

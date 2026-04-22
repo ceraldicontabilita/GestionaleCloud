@@ -1708,7 +1708,9 @@ function ScadenzeWidget({ scadenze }) {
 
       {/* Modal Pagamento */}
       {pagaModal && (
-        <div style={{
+        <div 
+          onClick={() => setPagaModal(null)}
+          style={{
           position: 'fixed',
           inset: 0,
           background: 'rgba(0,0,0,0.5)',
@@ -1717,7 +1719,9 @@ function ScadenzeWidget({ scadenze }) {
           justifyContent: 'center',
           zIndex: 1000
         }}>
-          <div style={{
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            style={{
             background: 'white',
             borderRadius: 16,
             padding: 24,
