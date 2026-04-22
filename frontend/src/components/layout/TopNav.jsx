@@ -1,10 +1,23 @@
 import React, { useState, useRef, useCallback, memo, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
-  LayoutDashboard, FileText, BookOpen, Building2,
-  Users, FlaskConical, ChevronDown,
-  Bell, Calendar, Warehouse,
-  Settings, Wrench, FileBarChart, BookMarked, Car, Download, CreditCard
+  LayoutDashboard,
+  FileText,
+  BookOpen,
+  Building2,
+  Users,
+  FlaskConical,
+  ChevronDown,
+  Bell,
+  Calendar,
+  Warehouse,
+  Settings,
+  Wrench,
+  FileBarChart,
+  BookMarked,
+  Car,
+  Download,
+  CreditCard,
 } from 'lucide-react';
 import { AnnoSelector } from '../../contexts/AnnoContext';
 import { COLORS } from '../../lib/utils';
@@ -16,7 +29,13 @@ const NAV_ITEMS = [
   { to: '/prima-nota', label: 'Prima Nota', Icon: BookOpen },
   { to: '/fornitori', label: 'Fornitori', Icon: Building2 },
   { to: '/dipendenti', label: 'HR', Icon: Users },
-  { to: null, href: 'https://www.ceraldiapp.it', label: 'Tracciabilità', Icon: FlaskConical, external: true },
+  {
+    to: null,
+    href: 'https://www.ceraldiapp.it',
+    label: 'Tracciabilità',
+    Icon: FlaskConical,
+    external: true,
+  },
   { to: '/riconciliazione/assegni', label: 'Assegni', Icon: FileBarChart },
 ];
 
@@ -83,7 +102,7 @@ const S = {
     overflowX: 'auto',
     scrollbarWidth: 'none',
   },
-  navItem: (isActive) => ({
+  navItem: isActive => ({
     display: 'flex',
     alignItems: 'center',
     gap: 5,
@@ -117,7 +136,7 @@ const S = {
     animation: 'navDropIn 0.15s ease',
     border: '1px solid #e2e8f0',
   },
-  dropItem: (isActive) => ({
+  dropItem: isActive => ({
     display: 'flex',
     alignItems: 'center',
     gap: 8,
@@ -177,7 +196,9 @@ const AltroDropdown = memo(function AltroDropdown({ isAltroActive }) {
   // Chiudi se si clicca fuori
   useEffect(() => {
     if (!open) return;
-    const handle = (e) => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); };
+    const handle = e => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+    };
     document.addEventListener('mousedown', handle);
     return () => document.removeEventListener('mousedown', handle);
   }, [open]);
@@ -192,7 +213,15 @@ const AltroDropdown = memo(function AltroDropdown({ isAltroActive }) {
       >
         <span style={{ fontSize: 13 }}>···</span>
         <span>Altro</span>
-        <ChevronDown size={11} style={{ opacity: 0.7, marginLeft: 1, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+        <ChevronDown
+          size={11}
+          style={{
+            opacity: 0.7,
+            marginLeft: 1,
+            transform: open ? 'rotate(180deg)' : 'none',
+            transition: 'transform 0.2s',
+          }}
+        />
       </button>
       {open && (
         <div style={S.dropdownMenu} data-testid="nav-altro-menu">
@@ -219,7 +248,8 @@ const TopNav = memo(function TopNav() {
   const location = useLocation();
 
   const isAltroActive = ALTRO_ITEMS.some(
-    (item) => item.to && (location.pathname === item.to || location.pathname.startsWith(item.to + '/'))
+    item =>
+      item.to && (location.pathname === item.to || location.pathname.startsWith(item.to + '/'))
   );
 
   return (
@@ -242,7 +272,6 @@ const TopNav = memo(function TopNav() {
       `}</style>
 
       <nav style={S.nav} data-testid="topnav-primary">
-
         {/* Brand */}
         <NavLink to="/" style={S.brand} data-testid="nav-brand">
           <div style={S.brandSquare}>CG</div>
@@ -289,25 +318,29 @@ const TopNav = memo(function TopNav() {
           {/* Selettore Anno */}
           <div style={S.annoWrap} data-testid="anno-selector">
             <span style={S.annoLabel}>ANNO</span>
-            <AnnoSelector style={{
-              background: 'rgba(255,255,255,0.15)',
-              border: '1px solid rgba(255,255,255,0.4)',
-              borderRadius: 6,
-              color: '#fff',
-              fontWeight: 700,
-              fontSize: 16,
-              cursor: 'pointer',
-              padding: '4px 8px',
-              outline: 'none',
-              minWidth: 70,
-            }} />
+            <AnnoSelector
+              style={{
+                background: 'rgba(255,255,255,0.15)',
+                border: '1px solid rgba(255,255,255,0.4)',
+                borderRadius: 6,
+                color: '#fff',
+                fontWeight: 700,
+                fontSize: 16,
+                cursor: 'pointer',
+                padding: '4px 8px',
+                outline: 'none',
+                minWidth: 70,
+              }}
+            />
           </div>
 
           {/* Campana notifiche */}
           <NotificationBellMinimal />
 
           {/* Avatar utente */}
-          <div style={S.avatar} title="Ceraldi Group Admin">CG</div>
+          <div style={S.avatar} title="Ceraldi Group Admin">
+            CG
+          </div>
         </div>
       </nav>
 
@@ -321,14 +354,21 @@ export default TopNav;
 
 /* ─── Campana notifiche — usa /api/alerts/summary (sistema relazionale) ─── */
 const NotificationBellMinimal = memo(function NotificationBellMinimal() {
-  const [summary, setSummary] = useState({ totale_aperti: 0, per_severita: { critical: 0, warning: 0, info: 0 }, critical_recenti: [], per_modulo: {} });
+  const [summary, setSummary] = useState({
+    totale_aperti: 0,
+    per_severita: { critical: 0, warning: 0, info: 0 },
+    critical_recenti: [],
+    per_modulo: {},
+  });
   const [open, setOpen] = useState(false);
 
   const fetchSummary = useCallback(async () => {
     try {
       const { default: api } = await import('../../api');
       const r = await api.get('/api/alerts/summary');
-      setSummary(r.data || { totale_aperti: 0, per_severita: {}, critical_recenti: [], per_modulo: {} });
+      setSummary(
+        r.data || { totale_aperti: 0, per_severita: {}, critical_recenti: [], per_modulo: {} }
+      );
     } catch (e) {
       // Silenzioso: se non autenticati il badge resta a 0
     }
@@ -342,7 +382,7 @@ const NotificationBellMinimal = memo(function NotificationBellMinimal() {
   }, [fetchSummary]);
 
   const handleOpen = useCallback(() => {
-    setOpen((prev) => !prev);
+    setOpen(prev => !prev);
     // Refresh immediato all'apertura
     if (!open) fetchSummary();
   }, [open, fetchSummary]);
@@ -378,50 +418,72 @@ const NotificationBellMinimal = memo(function NotificationBellMinimal() {
       >
         <Bell size={15} />
         {hasAlerts && (
-          <span style={{
-            position: 'absolute',
-            top: -4,
-            right: -4,
-            minWidth: 16,
-            height: 16,
-            padding: '0 4px',
-            background: badgeColor,
-            color: '#fff',
-            fontSize: 10,
-            fontWeight: 700,
-            borderRadius: 8,
-            border: '1px solid #1e3a5f',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            lineHeight: 1,
-          }}>
+          <span
+            style={{
+              position: 'absolute',
+              top: -4,
+              right: -4,
+              minWidth: 16,
+              height: 16,
+              padding: '0 4px',
+              background: badgeColor,
+              color: '#fff',
+              fontSize: 10,
+              fontWeight: 700,
+              borderRadius: 8,
+              border: '1px solid #1e3a5f',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              lineHeight: 1,
+            }}
+          >
             {totale > 99 ? '99+' : totale}
           </span>
         )}
       </button>
 
       {open && (
-        <div style={{
-          position: 'absolute',
-          top: 'calc(100% + 8px)',
-          right: 0,
-          width: 340,
-          background: '#fff',
-          borderRadius: 10,
-          boxShadow: '0 12px 32px rgba(15,39,68,0.18)',
-          border: '1px solid #e2e8f0',
-          zIndex: 2000,
-          overflow: 'hidden',
-          animation: 'navDropIn 0.15s ease',
-        }} data-testid="notification-dropdown">
-          <div style={{ padding: '12px 16px', borderBottom: '1px solid #f3f4f6', fontWeight: 700, fontSize: 13, color: COLORS.primary, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div
+          style={{
+            position: 'absolute',
+            top: 'calc(100% + 8px)',
+            right: 0,
+            width: 340,
+            background: '#fff',
+            borderRadius: 10,
+            boxShadow: '0 12px 32px rgba(15,39,68,0.18)',
+            border: '1px solid #e2e8f0',
+            zIndex: 2000,
+            overflow: 'hidden',
+            animation: 'navDropIn 0.15s ease',
+          }}
+          data-testid="notification-dropdown"
+        >
+          <div
+            style={{
+              padding: '12px 16px',
+              borderBottom: '1px solid #f3f4f6',
+              fontWeight: 700,
+              fontSize: 13,
+              color: COLORS.primary,
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+            }}
+          >
             <span>Alert di sistema</span>
             {hasAlerts && (
               <span style={{ fontSize: 11, fontWeight: 600, color: '#64748b' }}>
-                {critical > 0 && <span style={{ color: '#ef4444', marginRight: 6 }}>🔴 {critical}</span>}
-                {warning > 0 && <span style={{ color: '#f59e0b', marginRight: 6 }}>🟡 {warning}</span>}
-                {(summary.per_severita?.info || 0) > 0 && <span style={{ color: '#3b82f6' }}>🔵 {summary.per_severita.info}</span>}
+                {critical > 0 && (
+                  <span style={{ color: '#ef4444', marginRight: 6 }}>🔴 {critical}</span>
+                )}
+                {warning > 0 && (
+                  <span style={{ color: '#f59e0b', marginRight: 6 }}>🟡 {warning}</span>
+                )}
+                {(summary.per_severita?.info || 0) > 0 && (
+                  <span style={{ color: '#3b82f6' }}>🔵 {summary.per_severita.info}</span>
+                )}
               </span>
             )}
           </div>
@@ -433,30 +495,61 @@ const NotificationBellMinimal = memo(function NotificationBellMinimal() {
               </div>
             ) : summary.critical_recenti && summary.critical_recenti.length > 0 ? (
               <>
-                <div style={{ padding: '8px 16px', background: '#fef2f2', fontSize: 10, fontWeight: 700, color: '#b91c1c', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                <div
+                  style={{
+                    padding: '8px 16px',
+                    background: '#fef2f2',
+                    fontSize: 10,
+                    fontWeight: 700,
+                    color: '#b91c1c',
+                    textTransform: 'uppercase',
+                    letterSpacing: 0.5,
+                  }}
+                >
                   Alert critici recenti
                 </div>
                 {summary.critical_recenti.map((a, i) => (
-                  <div key={a.id || i} style={{
-                    padding: '10px 16px',
-                    borderBottom: '1px solid #f9fafb',
-                    fontSize: 12,
-                    color: '#374151',
-                  }}>
-                    <div style={{ fontWeight: 600, marginBottom: 2 }}>{a.titolo || a.codice || 'Alert'}</div>
-                    {a.dettaglio && <div style={{ fontSize: 11, color: '#6b7280' }}>{a.dettaglio.slice(0, 120)}</div>}
-                    {a.modulo && <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 2 }}>{a.modulo}</div>}
+                  <div
+                    key={a.id || i}
+                    style={{
+                      padding: '10px 16px',
+                      borderBottom: '1px solid #f9fafb',
+                      fontSize: 12,
+                      color: '#374151',
+                    }}
+                  >
+                    <div style={{ fontWeight: 600, marginBottom: 2 }}>
+                      {a.titolo || a.codice || 'Alert'}
+                    </div>
+                    {a.dettaglio && (
+                      <div style={{ fontSize: 11, color: '#6b7280' }}>
+                        {a.dettaglio.slice(0, 120)}
+                      </div>
+                    )}
+                    {a.modulo && (
+                      <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 2 }}>{a.modulo}</div>
+                    )}
                   </div>
                 ))}
               </>
             ) : (
               <div style={{ padding: 16, fontSize: 12, color: '#6b7280' }}>
-                {Object.entries(summary.per_modulo || {}).slice(0, 8).map(([modulo, count]) => (
-                  <div key={modulo} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #f9fafb' }}>
-                    <span style={{ textTransform: 'capitalize' }}>{modulo}</span>
-                    <span style={{ fontWeight: 700, color: COLORS.primary }}>{count}</span>
-                  </div>
-                ))}
+                {Object.entries(summary.per_modulo || {})
+                  .slice(0, 8)
+                  .map(([modulo, count]) => (
+                    <div
+                      key={modulo}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        padding: '6px 0',
+                        borderBottom: '1px solid #f9fafb',
+                      }}
+                    >
+                      <span style={{ textTransform: 'capitalize' }}>{modulo}</span>
+                      <span style={{ fontWeight: 700, color: COLORS.primary }}>{count}</span>
+                    </div>
+                  ))}
               </div>
             )}
           </div>
