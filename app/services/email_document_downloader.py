@@ -359,7 +359,7 @@ class EmailDocumentDownloader:
         if self.connection:
             try:
                 self.connection.logout()
-            except:
+            except Exception:
                 pass
             self.connection = None
 
@@ -566,7 +566,7 @@ class EmailDocumentDownloader:
                     # Parse data
                     try:
                         email_date = email.utils.parsedate_to_datetime(date_str)
-                    except:
+                    except Exception:
                         email_date = datetime.now(timezone.utc)
                     
                     # Cerca allegati
