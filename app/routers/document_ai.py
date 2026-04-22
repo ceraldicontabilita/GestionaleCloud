@@ -3,7 +3,7 @@ Router per Document AI Extractor
 API per estrarre dati strutturati da documenti (F24, buste paga, estratti conto)
 """
 
-from fastapi import APIRouter, UploadFile, File, HTTPException, Form
+from fastapi import APIRouter, Body, File, Form, HTTPException, UploadFile
 from typing import Optional
 import base64
 from datetime import datetime, timezone
@@ -95,11 +95,11 @@ async def extract_from_file(
 
 @router.post("/extract-base64")
 async def extract_from_base64(
-    base64_data: str,
-    filename: str,
-    document_type: Optional[str] = None,
-    model: str = "claude-sonnet-4-5-20250929",
-    save_to_db: bool = False
+    base64_data: str = Body(...),
+    filename: str = Body(...),
+    document_type: Optional[str] = Body(None),
+    model: str = Body("claude-sonnet-4-5-20250929"),
+    save_to_db: bool = Body(False)
 ):
     """
     Estrae dati strutturati da un documento in formato base64.
@@ -258,8 +258,8 @@ async def delete_extracted_document(doc_id: str):
 
 @router.post("/process-classified-email")
 async def process_classified_email(
-    email_id: str,
-    model: str = "claude-sonnet-4-5-20250929"
+    email_id: str = Body(...),
+    model: str = Body("claude-sonnet-4-5-20250929")
 ):
     """
     Processa un documento classificato dal sistema email.
