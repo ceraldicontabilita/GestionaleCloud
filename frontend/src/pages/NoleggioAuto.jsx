@@ -715,7 +715,7 @@ export default function NoleggioAuto() {
           alignItems: 'center', 
           justifyContent: 'center',
           zIndex: 1000
-        }}>
+        }} onClick={() => setEditingVeicolo(null)}>
           <div style={{ 
             background: 'white', 
             borderRadius: 12, 
@@ -724,7 +724,7 @@ export default function NoleggioAuto() {
             maxWidth: 550,
             maxHeight: '90vh',
             overflowY: 'auto'
-          }}>
+          }} onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
               <h2 style={{ margin: 0, fontSize: 18 }}>✏️ Modifica {editingVeicolo.targa}</h2>
               <button onClick={() => setEditingVeicolo(null)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer' }}>✕</button>
