@@ -322,6 +322,18 @@ async def import_cassa_from_excel(file: UploadFile = File(...)) -> Dict[str, Any
                             "updated_at": now
                         }}
                     )
+                    # --- EVENT BUS: propaga FATTURA_PAGATA (import Excel cassa) ---
+                    try:
+                        from app.services.event_bus import propagate_event, EventTypes
+                        await propagate_event(EventTypes.FATTURA_PAGATA, {
+                            "fattura_id": str(invoice.get("id") or invoice.get("_id")),
+                            "metodo_pagamento": "contanti",
+                            "data_pagamento": data_documento,
+                            "importo": importo,
+                            "movimento_id": movimento["id"],
+                        }, db, source_module="prima_nota_import_excel_cassa")
+                    except Exception:
+                        logger.exception("Errore propagazione fattura.pagata (import Excel cassa)")
                 else:
                     results["not_found"].append({
                         "numero": numero_fattura,
@@ -797,7 +809,20 @@ async def move_invoices_by_supplier_payment(
                 {"_id": invoice["_id"]},
                 {"$set": update_data}
             )
-            
+
+            # --- EVENT BUS: propaga FATTURA_PAGATA (batch process fatture) ---
+            try:
+                from app.services.event_bus import propagate_event, EventTypes
+                await propagate_event(EventTypes.FATTURA_PAGATA, {
+                    "fattura_id": str(invoice.get("id") or invoice.get("_id") or invoice_id),
+                    "metodo_pagamento": metodo,
+                    "data_pagamento": now[:10],
+                    "movimento_id": movimento["id"],
+                    "importo": movimento.get("importo"),
+                }, db, source_module="prima_nota_batch_process")
+            except Exception:
+                logger.exception("Errore propagazione fattura.pagata (batch process)")
+
             results["processed"] += 1
             
         except Exception as e:
