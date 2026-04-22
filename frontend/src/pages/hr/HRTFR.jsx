@@ -29,22 +29,32 @@ export default function HRTFR() {
       .get('/api/tfr/riepilogo-aziendale', { params: { anno: annoRiepilogo } })
       .then((r) => {
         const d = r.data || {};
-        // Adatto nomi campi backend→frontend
+        // Mapping basato sulla risposta REALE di get_riepilogo_tfr_aziendale
+        // (vedi app/routers/tfr.py):
+        //   totale_fondo_tfr        -> fondo TFR totale
+        //   num_dipendenti_attivi   -> conteggio dipendenti attivi (NON dettaglio_dipendenti.length,
+        //                              che è filtrato a tfr_accantonato > 0)
+        //   accantonamenti_anno.*   -> dati anno
+        //   liquidazioni_anno.*     -> dati anno
+        // I fallback legacy (totale_fondo, num_dipendenti) sono mantenuti per retrocompat
+        // in caso un giorno l'endpoint cambi forma.
         setRiepilogo({
-          totale_fondo: d.totale_fondo || d.fondo_tfr_totale || 0,
-          num_dipendenti: d.num_dipendenti || (d.dettaglio_dipendenti || []).length,
+          totale_fondo:
+            d.totale_fondo_tfr ?? d.totale_fondo ?? d.fondo_tfr_totale ?? 0,
+          num_dipendenti:
+            d.num_dipendenti_attivi ?? d.num_dipendenti ?? 0,
           totale_accantonato_anno:
-            d.accantonamenti_anno?.totale_accantonato ||
-            d.totale_accantonato_anno || 0,
+            d.accantonamenti_anno?.totale_accantonato ??
+            d.totale_accantonato_anno ?? 0,
           totale_quota_anno:
-            d.accantonamenti_anno?.totale_quota || d.totale_quota_anno || 0,
+            d.accantonamenti_anno?.totale_quota ?? d.totale_quota_anno ?? 0,
           totale_rivalutazione_anno:
-            d.accantonamenti_anno?.totale_rivalutazione ||
-            d.totale_rivalutazione_anno || 0,
+            d.accantonamenti_anno?.totale_rivalutazione ??
+            d.totale_rivalutazione_anno ?? 0,
           totale_liquidato_anno:
-            d.liquidazioni_anno?.totale_netto || d.totale_liquidato_anno || 0,
+            d.liquidazioni_anno?.totale_netto ?? d.totale_liquidato_anno ?? 0,
           num_liquidazioni_anno:
-            d.liquidazioni_anno?.num_liquidazioni || d.num_liquidazioni_anno || 0,
+            d.liquidazioni_anno?.num_liquidazioni ?? d.num_liquidazioni_anno ?? 0,
         });
       })
       .catch(() => setRiepilogo(null));
