@@ -41,7 +41,7 @@ def calculate_payment_pattern(dates: List[str]) -> Dict[str, Any]:
             if isinstance(d, str):
                 try:
                     parsed_dates.append(datetime.fromisoformat(d.replace('Z', '+00:00')))
-                except:
+                except Exception:
                     pass
             elif isinstance(d, datetime):
                 parsed_dates.append(d)
@@ -72,7 +72,7 @@ def calculate_payment_pattern(dates: List[str]) -> Dict[str, Any]:
             return {"type": "bisettimanale", "avg_days": round(avg_interval), "confidence": 0.85}
         else:
             return {"type": "irregolare", "avg_days": round(avg_interval), "confidence": 0.5}
-    except:
+    except Exception:
         return {"type": "unknown", "confidence": 0}
 
 
@@ -264,7 +264,7 @@ async def learn_payment_patterns(db) -> Dict:
                         if 0 <= delay <= 365:
                             payment_delays.append(delay)
                             supplier_payments[supplier_id].append(delay)
-                    except:
+                    except Exception:
                         pass
         
         if payment_delays:
@@ -384,7 +384,7 @@ async def learn_seasonal_patterns(db) -> Dict:
                         dt = data
                     month = dt.month
                     monthly_totals[month].append(float(importo))
-                except:
+                except Exception:
                     pass
         
         # Calcola medie mensili
