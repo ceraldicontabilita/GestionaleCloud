@@ -554,7 +554,7 @@ export default function DizionarioArticoli() {
           alignItems: 'center',
           justifyContent: 'center',
           zIndex: 1000
-        }}>
+        }} onClick={() => setEditingArticolo(null)}>
           <div style={{
             background: 'white',
             borderRadius: 12,
@@ -563,7 +563,7 @@ export default function DizionarioArticoli() {
             maxWidth: 600,
             maxHeight: '90vh',
             overflow: 'auto'
-          }}>
+          }} onClick={e => e.stopPropagation()}>
             <h3 style={{ margin: '0 0 20px 0', color: '#1e3a5f' }}>
               ✏️ Modifica Mappatura Articolo
             </h3>
