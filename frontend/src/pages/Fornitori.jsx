@@ -172,7 +172,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
           ragione_sociale: dati.ragione_sociale || prev.ragione_sociale,
         }));
         setXmlMsg(
-          `Estratti da ${d.xml_letti} fatture: ${d.campi_aggiornati.join(', ') || 'nessun campo nuovo'}`
+          `Estratti da ${d.xml_letti} fatture: ${(d.campi_aggiornati ?? []).join(', ') || 'nessun campo nuovo'}`
         );
       } else {
         setXmlMsg(d.message || 'Nessun dato trovato negli XML');
@@ -752,7 +752,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                     <div style={{ fontSize: '12px', color: '#6b7280', marginBottom: '6px' }}>
                       IBAN aggiuntivi (da fatture):
                     </div>
-                    {form.iban_lista.map((iban, idx) => (
+                    {(form.iban_lista ?? []).map((iban, idx) => (
                       <div
                         key={idx}
                         style={{
@@ -1991,7 +1991,7 @@ export default function Fornitori() {
                   partite_iva: partiteIva,
                 });
                 alert(
-                  `Aggiornati: ${bulkRes.data.aggiornati}\nCreati: ${bulkRes.data.creati}\nErrori: ${bulkRes.data.errori}`
+                  `Aggiornati: ${(bulkRes.data?.aggiornati ?? 0)}\nCreati: ${(bulkRes.data?.creati ?? 0)}\nErrori: ${(bulkRes.data?.errori ?? 0)}`
                 );
                 reloadData();
               } catch (err) {
@@ -2430,13 +2430,13 @@ export default function Fornitori() {
                       }}
                     >
                       <div style={{ fontSize: '14px', color: '#0369a1', marginBottom: '4px' }}>
-                        TOTALE FATTURATO {fatturatoModal.data.anno}
+                        TOTALE FATTURATO {(fatturatoModal.data?.anno ?? '')}
                       </div>
                       <div style={{ fontSize: '36px', fontWeight: 700, color: '#0c4a6e' }}>
                         {formatEuro(fatturatoModal.data.totale_fatturato || 0)}
                       </div>
                       <div style={{ fontSize: '14px', color: '#0369a1', marginTop: '8px' }}>
-                        {fatturatoModal.data.numero_fatture} fatture
+                        {(fatturatoModal.data?.numero_fatture ?? 0)} fatture
                       </div>
                     </div>
 
@@ -2459,7 +2459,7 @@ export default function Fornitori() {
                       >
                         <div style={{ fontSize: '12px', color: '#16a34a' }}>Pagate</div>
                         <div style={{ fontSize: '20px', fontWeight: 700, color: '#15803d' }}>
-                          {fatturatoModal.data.fatture_pagate || 0}
+                          {(fatturatoModal.data?.fatture_pagate ?? 0) || 0}
                         </div>
                         <div style={{ fontSize: '11px', color: '#6b7280' }}>
                           {formatEuro(fatturatoModal.data.importo_pagato || 0)}
@@ -2475,7 +2475,7 @@ export default function Fornitori() {
                       >
                         <div style={{ fontSize: '12px', color: '#dc2626' }}>Da Pagare</div>
                         <div style={{ fontSize: '20px', fontWeight: 700, color: '#b91c1c' }}>
-                          {fatturatoModal.data.fatture_non_pagate || 0}
+                          {(fatturatoModal.data?.fatture_non_pagate ?? 0) || 0}
                         </div>
                         <div style={{ fontSize: '11px', color: '#6b7280' }}>
                           {formatEuro(fatturatoModal.data.importo_non_pagato || 0)}
@@ -2498,7 +2498,7 @@ export default function Fornitori() {
                             Dettaglio Mensile
                           </div>
                           <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
-                            {fatturatoModal.data.dettaglio_mensile.map((m, idx) => (
+                            {(fatturatoModal.data?.dettaglio_mensile ?? []).map((m, idx) => (
                               <div
                                 key={idx}
                                 style={{
@@ -2524,7 +2524,7 @@ export default function Fornitori() {
                         </div>
                       )}
 
-                    {fatturatoModal.data.numero_fatture === 0 && (
+                    {(fatturatoModal.data?.numero_fatture ?? 0) === 0 && (
                       <div style={{ textAlign: 'center', color: '#6b7280', padding: '20px' }}>
                         Nessuna fattura registrata per questo anno
                       </div>
