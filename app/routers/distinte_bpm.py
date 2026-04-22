@@ -91,7 +91,7 @@ def parse_date_it(date_str: str) -> Optional[str]:
         parts = date_str.strip().split('/')
         if len(parts) == 3:
             return f"{parts[2]}-{parts[1].zfill(2)}-{parts[0].zfill(2)}"
-    except:
+    except Exception:
         pass
     return None
 
@@ -109,7 +109,7 @@ def parse_importo(value: str) -> float:
         elif ',' in clean:
             clean = clean.replace(',', '.')
         return float(clean)
-    except:
+    except Exception:
         return 0.0
 
 
@@ -140,7 +140,7 @@ async def import_distinte_bpm(
         # Prova decodifica
         try:
             text = content.decode('utf-8')
-        except:
+        except Exception:
             text = content.decode('latin-1')
         
         # Rileva separatore (punto e virgola o virgola)
