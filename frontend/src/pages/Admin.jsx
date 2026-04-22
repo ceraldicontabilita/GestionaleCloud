@@ -187,10 +187,10 @@ export default function Admin() {
       if (r.data.success) {
         setPecMsg({
           ok: true,
-          testo: `Connessione PEC riuscita! Email in casella: ${r.data.email_count}`,
+          testo: `Connessione PEC riuscita! Email in casella: ${r?.data?.email_count}`,
         });
       } else {
-        setPecMsg({ ok: false, testo: r.data.message || 'Connessione PEC fallita' });
+        setPecMsg({ ok: false, testo: r?.data?.message || 'Connessione PEC fallita' });
       }
     } catch (e) {
       setPecMsg({ ok: false, testo: e.response?.data?.detail || 'Errore durante il test' });
@@ -238,9 +238,9 @@ export default function Admin() {
     try {
       const r = await api.post(`/api/config/email-accounts/${accountId}/test`);
       if (r.data.success) {
-        alert(`✅ Connessione riuscita!\n\nEmail nella casella: ${r.data.email_count}`);
+        alert(`✅ Connessione riuscita!\n\nEmail nella casella: ${r?.data?.email_count}`);
       } else {
-        alert(`❌ Connessione fallita:\n${r.data.message}`);
+        alert(`❌ Connessione fallita:\n${r?.data?.message}`);
       }
     } catch (e) {
       alert('Errore test: ' + (e.response?.data?.detail || e.message));
@@ -339,7 +339,7 @@ export default function Admin() {
     try {
       const r = await api.post(`/api/prima-nota/cassa/fix-corrispettivi-importo?anno=${anno}`);
       alert(
-        `Corretti ${r.data.corretti} movimenti.\nDifferenza totale: €${r.data.totale_differenza_euro?.toLocaleString('it-IT')}`
+        `Corretti ${r?.data?.corretti} movimenti.\nDifferenza totale: €${r?.data?.totale_differenza_euro?.toLocaleString('it-IT')}`
       );
       await verificaEntrateCorrette();
       await loadSyncStatus();
@@ -355,7 +355,7 @@ export default function Admin() {
     try {
       const r = await api.post('/api/sync/match-fatture-cassa');
       alert(
-        `Match completato:\n- Trovate: ${r.data.matched}\n- Non trovate: ${r.data.not_matched}`
+        `Match completato:\n- Trovate: ${r?.data?.matched}\n- Non trovate: ${r?.data?.not_matched}`
       );
       await loadSyncStatus();
     } catch (e) {
@@ -371,7 +371,7 @@ export default function Admin() {
       const r = await api.post('/api/admin/fatture-set-metodo-pagamento', {
         metodo_pagamento: 'Bonifico',
       });
-      alert(`Aggiornate ${r.data.updated || r.data.modified_count || 0} fatture`);
+      alert(`Aggiornate ${r?.data?.updated || r.data.modified_count || 0} fatture`);
       await loadSyncStatus();
     } catch (e) {
       console.error('Error:', e);
@@ -385,7 +385,7 @@ export default function Admin() {
     try {
       const r = await api.post('/api/sync/match-fatture-banca');
       alert(
-        `Match completato:\n- Associate: ${r.data.matched}\n- Non trovate: ${r.data.not_matched}`
+        `Match completato:\n- Associate: ${r?.data?.matched}\n- Non trovate: ${r?.data?.not_matched}`
       );
       await loadSyncStatus();
     } catch (e) {
@@ -1500,7 +1500,7 @@ function FattureAdminTab() {
       const res = await api.post('/api/admin/fatture-set-metodo-pagamento', {
         metodo_pagamento: metodo,
       });
-      alert(`✅ ${res.data.message}\n\nFatture aggiornate: ${res.data.updated}`);
+      alert(`✅ ${res?.data?.message}\n\nFatture aggiornate: ${res?.data?.updated}`);
       loadFattureStats();
     } catch (e) {
       alert('❌ Errore: ' + (e.response?.data?.detail || e.message));
