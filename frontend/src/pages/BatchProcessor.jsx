@@ -1,12 +1,12 @@
 /**
  * BatchProcessor.jsx - Riprocessamento Automatico Documenti
- * 
+ *
  * MIGLIORAMENTI:
  * - Processo AUTOMATICO all'apertura della pagina
  * - Design uniforme con il resto dell'app (STYLES, COLORS)
  * - Progress tracking in tempo reale
  * - Nessun click manuale richiesto
- * 
+ *
  * @author Ceraldi ERP
  * @version 2.0.0
  */
@@ -15,10 +15,22 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { PageLayout } from '../components/PageLayout';
 import api from '../api';
 import { STYLES, COLORS, formatEuro, formatDateIT, button, badge } from '../lib/utils';
-import { 
-  RefreshCw, Play, CheckCircle, XCircle, Loader2, 
-  FileText, Mail, AlertTriangle, Clock, Zap,
-  Download, Upload, Database, Settings, BarChart3
+import {
+  RefreshCw,
+  Play,
+  CheckCircle,
+  XCircle,
+  Loader2,
+  FileText,
+  Mail,
+  AlertTriangle,
+  Clock,
+  Zap,
+  Download,
+  Upload,
+  Database,
+  Settings,
+  BarChart3,
 } from 'lucide-react';
 
 // ============================================================================
@@ -30,98 +42,98 @@ const styles = {
     ...STYLES.page,
     display: 'flex',
     flexDirection: 'column',
-    gap: 24
+    gap: 24,
   },
-  
+
   header: {
     ...STYLES.header,
-    marginBottom: 0
+    marginBottom: 0,
   },
-  
+
   headerTitle: {
     fontSize: 24,
     fontWeight: 700,
-    margin: 0
+    margin: 0,
   },
-  
+
   headerSubtitle: {
     fontSize: 14,
     opacity: 0.9,
-    marginTop: 4
+    marginTop: 4,
   },
-  
+
   card: {
     ...STYLES.card,
-    overflow: 'hidden'
+    overflow: 'hidden',
   },
-  
+
   cardHeader: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 16,
     paddingBottom: 16,
-    borderBottom: `1px solid ${COLORS.grayLight}`
+    borderBottom: `1px solid ${COLORS.grayLight}`,
   },
-  
+
   cardTitle: {
     fontSize: 18,
     fontWeight: 600,
     color: COLORS.primary,
     display: 'flex',
     alignItems: 'center',
-    gap: 8
+    gap: 8,
   },
-  
+
   statsGrid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-    gap: 16
+    gap: 16,
   },
-  
+
   statCard: {
     background: COLORS.grayBg,
     borderRadius: 12,
     padding: 20,
     textAlign: 'center',
     border: `1px solid ${COLORS.grayLight}`,
-    transition: 'all 0.2s ease'
+    transition: 'all 0.2s ease',
   },
-  
+
   statValue: {
     fontSize: 32,
     fontWeight: 700,
-    color: COLORS.primary
+    color: COLORS.primary,
   },
-  
+
   statLabel: {
     fontSize: 14,
     color: COLORS.gray,
-    marginTop: 4
+    marginTop: 4,
   },
-  
+
   progressContainer: {
     background: COLORS.grayBg,
     borderRadius: 12,
     padding: 24,
-    marginBottom: 24
+    marginBottom: 24,
   },
-  
+
   progressBar: {
     height: 12,
     background: COLORS.grayLight,
     borderRadius: 6,
     overflow: 'hidden',
-    marginTop: 12
+    marginTop: 12,
   },
-  
+
   progressFill: {
     height: '100%',
     background: `linear-gradient(90deg, ${COLORS.primary} 0%, ${COLORS.success} 100%)`,
     borderRadius: 6,
-    transition: 'width 0.5s ease'
+    transition: 'width 0.5s ease',
   },
-  
+
   logContainer: {
     background: '#1a1a2e',
     borderRadius: 12,
@@ -129,41 +141,41 @@ const styles = {
     maxHeight: 300,
     overflowY: 'auto',
     fontFamily: 'Monaco, Consolas, monospace',
-    fontSize: 12
+    fontSize: 12,
   },
-  
+
   logEntry: {
     padding: '4px 0',
-    borderBottom: '1px solid rgba(255,255,255,0.1)'
+    borderBottom: '1px solid rgba(255,255,255,0.1)',
   },
-  
+
   logTime: {
     color: '#888',
-    marginRight: 8
+    marginRight: 8,
   },
-  
+
   logSuccess: {
-    color: '#4ade80'
+    color: '#4ade80',
   },
-  
+
   logError: {
-    color: '#f87171'
+    color: '#f87171',
   },
-  
+
   logInfo: {
-    color: '#60a5fa'
+    color: '#60a5fa',
   },
-  
+
   logWarning: {
-    color: '#fbbf24'
+    color: '#fbbf24',
   },
-  
+
   taskList: {
     display: 'flex',
     flexDirection: 'column',
-    gap: 12
+    gap: 12,
   },
-  
+
   taskItem: {
     display: 'flex',
     alignItems: 'center',
@@ -171,38 +183,38 @@ const styles = {
     padding: 16,
     background: COLORS.grayBg,
     borderRadius: 10,
-    border: `1px solid ${COLORS.grayLight}`
+    border: `1px solid ${COLORS.grayLight}`,
   },
-  
+
   taskIcon: {
     width: 40,
     height: 40,
     borderRadius: 10,
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'center'
+    justifyContent: 'center',
   },
-  
+
   taskInfo: {
-    flex: 1
+    flex: 1,
   },
-  
+
   taskTitle: {
     fontWeight: 600,
-    color: COLORS.primary
+    color: COLORS.primary,
   },
-  
+
   taskSubtitle: {
     fontSize: 13,
-    color: COLORS.gray
+    color: COLORS.gray,
   },
-  
+
   taskStatus: {
     display: 'flex',
     alignItems: 'center',
     gap: 6,
     fontSize: 13,
-    fontWeight: 500
+    fontWeight: 500,
   },
 
   autoModeIndicator: {
@@ -213,7 +225,7 @@ const styles = {
     background: 'rgba(255,255,255,0.2)',
     borderRadius: 20,
     fontSize: 13,
-    fontWeight: 500
+    fontWeight: 500,
   },
 
   pulseDot: {
@@ -221,8 +233,8 @@ const styles = {
     height: 8,
     borderRadius: '50%',
     background: '#4ade80',
-    animation: 'pulse 2s infinite'
-  }
+    animation: 'pulse 2s infinite',
+  },
 };
 
 // ============================================================================
@@ -238,7 +250,7 @@ const AUTO_TASKS = [
     color: COLORS.info,
     endpoint: '/api/email-download/start-full-download?days_back=30',
     method: 'POST',
-    autoRun: true
+    autoRun: true,
   },
   {
     id: 'aruba_sync',
@@ -248,7 +260,7 @@ const AUTO_TASKS = [
     color: COLORS.success,
     endpoint: '/api/documenti/scarica-fatture-aruba?since_days=30',
     method: 'POST',
-    autoRun: true
+    autoRun: true,
   },
   {
     id: 'ai_process',
@@ -258,7 +270,7 @@ const AUTO_TASKS = [
     color: COLORS.warning,
     endpoint: '/api/ai-parser/process-email-batch?limit=100',
     method: 'POST',
-    autoRun: true
+    autoRun: true,
   },
   {
     id: 'auto_associate',
@@ -268,7 +280,7 @@ const AUTO_TASKS = [
     color: COLORS.purple,
     endpoint: '/api/email-download/auto-associa',
     method: 'POST',
-    autoRun: true
+    autoRun: true,
   },
   {
     id: 'f24_reconcile',
@@ -278,7 +290,7 @@ const AUTO_TASKS = [
     color: COLORS.primary,
     endpoint: '/api/f24-riconciliazione/riconcilia-tutto',
     method: 'POST',
-    autoRun: true
+    autoRun: true,
   },
   {
     id: 'categorize',
@@ -288,8 +300,8 @@ const AUTO_TASKS = [
     color: '#9c27b0',
     endpoint: '/api/estratto-conto-movimenti/ricategorizza-batch',
     method: 'POST',
-    autoRun: true
-  }
+    autoRun: true,
+  },
 ];
 
 // ============================================================================
@@ -307,10 +319,10 @@ export default function BatchProcessor() {
     totalProcessed: 0,
     documentsCreated: 0,
     errorsCount: 0,
-    lastRunTime: null
+    lastRunTime: null,
   });
   const [progress, setProgress] = useState(0);
-  
+
   const hasRunRef = useRef(false);
   const logContainerRef = useRef(null);
 
@@ -318,7 +330,7 @@ export default function BatchProcessor() {
   const addLog = useCallback((message, type = 'info') => {
     const timestamp = new Date().toLocaleTimeString('it-IT');
     setLogs(prev => [...prev, { timestamp, message, type }].slice(-100));
-    
+
     // Auto-scroll
     setTimeout(() => {
       if (logContainerRef.current) {
@@ -328,91 +340,96 @@ export default function BatchProcessor() {
   }, []);
 
   // Esegui singolo task
-  const executeTask = useCallback(async (task) => {
-    setCurrentTask(task.id);
-    addLog(`▶ Avvio: ${task.name}`, 'info');
-    
-    try {
-      const response = task.method === 'POST' 
-        ? await api.post(task.endpoint)
-        : await api.get(task.endpoint);
-      
-      const result = response.data;
-      
-      setTaskResults(prev => ({
-        ...prev,
-        [task.id]: { success: true, data: result }
-      }));
-      
-      // Aggiorna stats
-      setStats(prev => ({
-        ...prev,
-        totalProcessed: prev.totalProcessed + (result.processed || result.emails_processate || result.riconciliati || 0),
-        documentsCreated: prev.documentsCreated + (result.fatture_create || result.created || 0),
-        errorsCount: prev.errorsCount + (result.errors?.length || 0)
-      }));
-      
-      addLog(`✓ ${task.name}: completato`, 'success');
-      
-      // Log dettagli
-      if (result.processed) addLog(`  → Processati: ${result.processed}`, 'info');
-      if (result.fatture_create) addLog(`  → Fatture create: ${result.fatture_create}`, 'success');
-      if (result.riconciliati) addLog(`  → Riconciliati: ${result.riconciliati}`, 'success');
-      if (result.errors?.length) addLog(`  → Errori: ${result.errors.length}`, 'warning');
-      
-      return true;
-    } catch (error) {
-      const errorMsg = error.response?.data?.detail || error.message;
-      
-      setTaskResults(prev => ({
-        ...prev,
-        [task.id]: { success: false, error: errorMsg }
-      }));
-      
-      addLog(`✗ ${task.name}: ${errorMsg}`, 'error');
-      
-      setStats(prev => ({
-        ...prev,
-        errorsCount: prev.errorsCount + 1
-      }));
-      
-      return false;
-    }
-  }, [addLog]);
+  const executeTask = useCallback(
+    async task => {
+      setCurrentTask(task.id);
+      addLog(`▶ Avvio: ${task.name}`, 'info');
+
+      try {
+        const response =
+          task.method === 'POST' ? await api.post(task.endpoint) : await api.get(task.endpoint);
+
+        const result = response.data;
+
+        setTaskResults(prev => ({
+          ...prev,
+          [task.id]: { success: true, data: result },
+        }));
+
+        // Aggiorna stats
+        setStats(prev => ({
+          ...prev,
+          totalProcessed:
+            prev.totalProcessed +
+            (result.processed || result.emails_processate || result.riconciliati || 0),
+          documentsCreated: prev.documentsCreated + (result.fatture_create || result.created || 0),
+          errorsCount: prev.errorsCount + (result.errors?.length || 0),
+        }));
+
+        addLog(`✓ ${task.name}: completato`, 'success');
+
+        // Log dettagli
+        if (result.processed) addLog(`  → Processati: ${result.processed}`, 'info');
+        if (result.fatture_create)
+          addLog(`  → Fatture create: ${result.fatture_create}`, 'success');
+        if (result.riconciliati) addLog(`  → Riconciliati: ${result.riconciliati}`, 'success');
+        if (result.errors?.length) addLog(`  → Errori: ${result.errors.length}`, 'warning');
+
+        return true;
+      } catch (error) {
+        const errorMsg = error.response?.data?.detail || error.message;
+
+        setTaskResults(prev => ({
+          ...prev,
+          [task.id]: { success: false, error: errorMsg },
+        }));
+
+        addLog(`✗ ${task.name}: ${errorMsg}`, 'error');
+
+        setStats(prev => ({
+          ...prev,
+          errorsCount: prev.errorsCount + 1,
+        }));
+
+        return false;
+      }
+    },
+    [addLog]
+  );
 
   // Esegui tutti i task in sequenza
   const runAllTasks = useCallback(async () => {
     if (isRunning) return;
-    
+
     setIsRunning(true);
     setProgress(0);
     setTaskResults({});
     setLogs([]);
-    
+
     addLog('🚀 Avvio elaborazione batch automatica...', 'info');
     addLog(`📋 ${AUTO_TASKS.length} task da eseguire`, 'info');
-    
+
     const tasksToRun = AUTO_TASKS.filter(t => t.autoRun);
-    
+
     for (let i = 0; i < tasksToRun.length; i++) {
       const task = tasksToRun[i];
       setProgress(Math.round((i / tasksToRun.length) * 100));
-      
+
       await executeTask(task);
-      
+
       // Pausa tra task per non sovraccaricare
       await new Promise(resolve => setTimeout(resolve, 500));
     }
-    
+
     setProgress(100);
     setCurrentTask(null);
     setIsRunning(false);
-    
+
     setStats(prev => ({
       ...prev,
-      lastRunTime: new Date().toISOString()
+      lastRunTime: new Date().toISOString(),
     }));
-    
+
     addLog('✅ Elaborazione batch completata!', 'success');
   }, [isRunning, executeTask, addLog]);
 
@@ -429,30 +446,38 @@ export default function BatchProcessor() {
   }, [autoMode, runAllTasks]);
 
   // Render status icon per task
-  const renderTaskStatus = (taskId) => {
+  const renderTaskStatus = taskId => {
     if (currentTask === taskId) {
-      return <Loader2 style={{ width: 20, height: 20, color: COLORS.info, animation: 'spin 1s linear infinite' }} />;
+      return (
+        <Loader2
+          style={{
+            width: 20,
+            height: 20,
+            color: COLORS.info,
+            animation: 'spin 1s linear infinite',
+          }}
+        />
+      );
     }
-    
+
     const result = taskResults[taskId];
     if (!result) {
       return <Clock style={{ width: 20, height: 20, color: COLORS.gray }} />;
     }
-    
+
     if (result.success) {
       return <CheckCircle style={{ width: 20, height: 20, color: COLORS.success }} />;
     }
-    
+
     return <XCircle style={{ width: 20, height: 20, color: COLORS.danger }} />;
   };
 
   return (
-    <PageLayout 
-      title="Elaborazione Batch Automatica" 
+    <PageLayout
+      title="Elaborazione Batch Automatica"
       subtitle="Sincronizzazione automatica email, fatture, F24 e documenti"
     >
       <div style={styles.container}>
-        
         {/* Header con controlli */}
         <div style={styles.header}>
           <div>
@@ -467,7 +492,7 @@ export default function BatchProcessor() {
               <div style={styles.pulseDot} />
               <span>Auto Mode {autoMode ? 'ON' : 'OFF'}</span>
             </div>
-            
+
             {/* Pulsante Avvia/Stop */}
             <button
               onClick={runAllTasks}
@@ -475,12 +500,19 @@ export default function BatchProcessor() {
               style={{
                 ...button.primary,
                 opacity: isRunning ? 0.7 : 1,
-                cursor: isRunning ? 'not-allowed' : 'pointer'
+                cursor: isRunning ? 'not-allowed' : 'pointer',
               }}
             >
               {isRunning ? (
                 <>
-                  <Loader2 style={{ width: 18, height: 18, marginRight: 8, animation: 'spin 1s linear infinite' }} />
+                  <Loader2
+                    style={{
+                      width: 18,
+                      height: 18,
+                      marginRight: 8,
+                      animation: 'spin 1s linear infinite',
+                    }}
+                  />
                   Elaborazione in corso...
                 </>
               ) : (
@@ -500,9 +532,7 @@ export default function BatchProcessor() {
               <span style={{ fontWeight: 600, color: COLORS.primary }}>
                 Elaborazione in corso...
               </span>
-              <span style={{ fontWeight: 700, color: COLORS.primary }}>
-                {progress}%
-              </span>
+              <span style={{ fontWeight: 700, color: COLORS.primary }}>{progress}%</span>
             </div>
             <div style={styles.progressBar}>
               <div style={{ ...styles.progressFill, width: `${progress}%` }} />
@@ -513,9 +543,7 @@ export default function BatchProcessor() {
         {/* Statistiche */}
         <div style={styles.statsGrid}>
           <div style={styles.statCard}>
-            <div style={{ ...styles.statValue, color: COLORS.primary }}>
-              {stats.totalProcessed}
-            </div>
+            <div style={{ ...styles.statValue, color: COLORS.primary }}>{stats.totalProcessed}</div>
             <div style={styles.statLabel}>Documenti Processati</div>
           </div>
           <div style={styles.statCard}>
@@ -525,17 +553,14 @@ export default function BatchProcessor() {
             <div style={styles.statLabel}>Documenti Creati</div>
           </div>
           <div style={styles.statCard}>
-            <div style={{ ...styles.statValue, color: COLORS.danger }}>
-              {stats.errorsCount}
-            </div>
+            <div style={{ ...styles.statValue, color: COLORS.danger }}>{stats.errorsCount}</div>
             <div style={styles.statLabel}>Errori</div>
           </div>
           <div style={styles.statCard}>
             <div style={{ ...styles.statValue, color: COLORS.info, fontSize: 18 }}>
-              {stats.lastRunTime 
+              {stats.lastRunTime
                 ? new Date(stats.lastRunTime).toLocaleTimeString('it-IT')
-                : '--:--'
-              }
+                : '--:--'}
             </div>
             <div style={styles.statLabel}>Ultimo Aggiornamento</div>
           </div>
@@ -549,30 +574,31 @@ export default function BatchProcessor() {
               Task Automatici
             </div>
           </div>
-          
+
           <div style={styles.taskList}>
             {AUTO_TASKS.map(task => {
               const Icon = task.icon;
               const result = taskResults[task.id];
-              
+
               return (
-                <div 
-                  key={task.id} 
+                <div
+                  key={task.id}
                   style={{
                     ...styles.taskItem,
-                    background: currentTask === task.id 
-                      ? `linear-gradient(90deg, ${task.color}10 0%, transparent 100%)`
-                      : result?.success 
-                        ? `${COLORS.success}08`
-                        : result?.error
-                          ? `${COLORS.danger}08`
-                          : COLORS.grayBg
+                    background:
+                      currentTask === task.id
+                        ? `linear-gradient(90deg, ${task.color}10 0%, transparent 100%)`
+                        : result?.success
+                          ? `${COLORS.success}08`
+                          : result?.error
+                            ? `${COLORS.danger}08`
+                            : COLORS.grayBg,
                   }}
                 >
                   <div style={{ ...styles.taskIcon, background: `${task.color}15` }}>
                     <Icon style={{ width: 20, height: 20, color: task.color }} />
                   </div>
-                  
+
                   <div style={styles.taskInfo}>
                     <div style={styles.taskTitle}>{task.name}</div>
                     <div style={styles.taskSubtitle}>{task.description}</div>
@@ -584,10 +610,8 @@ export default function BatchProcessor() {
                       </div>
                     )}
                   </div>
-                  
-                  <div style={styles.taskStatus}>
-                    {renderTaskStatus(task.id)}
-                  </div>
+
+                  <div style={styles.taskStatus}>{renderTaskStatus(task.id)}</div>
                 </div>
               );
             })}
@@ -608,7 +632,7 @@ export default function BatchProcessor() {
               Pulisci Log
             </button>
           </div>
-          
+
           <div style={styles.logContainer} ref={logContainerRef}>
             {logs.length === 0 ? (
               <div style={{ color: '#666', textAlign: 'center', padding: 24 }}>
@@ -618,12 +642,17 @@ export default function BatchProcessor() {
               logs.map((log, i) => (
                 <div key={i} style={styles.logEntry}>
                   <span style={styles.logTime}>[{log.timestamp}]</span>
-                  <span style={
-                    log.type === 'success' ? styles.logSuccess :
-                    log.type === 'error' ? styles.logError :
-                    log.type === 'warning' ? styles.logWarning :
-                    styles.logInfo
-                  }>
+                  <span
+                    style={
+                      log.type === 'success'
+                        ? styles.logSuccess
+                        : log.type === 'error'
+                          ? styles.logError
+                          : log.type === 'warning'
+                            ? styles.logWarning
+                            : styles.logInfo
+                    }
+                  >
                     {log.message}
                   </span>
                 </div>
@@ -631,9 +660,8 @@ export default function BatchProcessor() {
             )}
           </div>
         </div>
-
       </div>
-      
+
       {/* CSS per animazioni */}
       <style>{`
         @keyframes spin {
