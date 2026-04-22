@@ -1,5 +1,21 @@
 # CERALDI ERP — MAPPA APPLICAZIONE COMPLETA
-## Aggiornata: 22 Aprile 2026 — Audit completo: Body(21), Modali(7), Router(2)
+## Aggiornata: 22 Aprile 2026 — Audit completo + Formattazione uniforme
+
+### 📐 Formattazione codice (22/04/2026)
+- Aggiunto `frontend/.prettierrc.json` con config standard (semi=true, singleQuote=true, printWidth=100, tabWidth=2)
+- Formattati **73 file JSX** (3 pages + 70 components)
+- Formattati **26 file .js** (hooks, utils, stores, lib, design tokens)
+- 78 pages erano già formattate correttamente
+- Config usata: arrowParens=avoid, trailingComma=es5, endOfLine=lf
+
+### Come formattare nuovo codice
+```bash
+cd frontend
+npx prettier --write src/pages/NuovaPagina.jsx
+```
+
+### Audit completo fix applicati:
+- Body(21), Modali(7), Router(2)
 
 ## ARCHITETTURA
 
