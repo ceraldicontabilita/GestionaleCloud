@@ -33,7 +33,7 @@ async def check_f24_scadenze(db, username: str) -> List[Dict]:
             # Parse scadenza
             try:
                 scadenza = datetime.fromisoformat(scadenza_str.replace("Z", "+00:00")).date()
-            except:
+            except Exception:
                 continue
             
             giorni_mancanti = (scadenza - today).days
