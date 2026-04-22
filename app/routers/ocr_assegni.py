@@ -1,5 +1,5 @@
 """OCR Assegni router - Check OCR functionality."""
-from fastapi import APIRouter, Depends, Path, status, UploadFile, File
+from fastapi import APIRouter, Body, Depends, File, Path, UploadFile, status
 from typing import Dict, Any, List
 from datetime import datetime, timezone
 from uuid import uuid4
@@ -31,7 +31,7 @@ async def get_registro(
     summary="Add to registry"
 )
 async def add_to_registro(
-    data: Dict[str, Any],
+    data: Dict[str, Any] = Body(...),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ) -> Dict[str, str]:
     """Add entry to OCR check registry."""
