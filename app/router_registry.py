@@ -172,7 +172,7 @@ def _register_warehouse(app: FastAPI):
 def _register_invoices(app: FastAPI):
     from app.routers.invoices import invoices_main, invoices_emesse, invoices_export, fatture_upload, corrispettivi
     from app.routers.fatture_module import router as fatture_ricevute_router
-    from app.routers import invoicetronic
+    from app.routers import invoicetronic, fatture_foto_ocr
 
     app.include_router(invoices_emesse.router, prefix="/api/invoices/emesse", tags=["Invoices Emesse"])
     app.include_router(invoices_main.router, prefix="/api/invoices", tags=["Invoices"])
@@ -181,6 +181,8 @@ def _register_invoices(app: FastAPI):
     app.include_router(fatture_ricevute_router, prefix="/api/fatture-ricevute", tags=["Fatture Ricevute"])
     app.include_router(corrispettivi.router, prefix="/api/corrispettivi", tags=["Corrispettivi"])
     app.include_router(invoicetronic.router, prefix="/api/invoicetronic", tags=["InvoiceTronic SDI"])
+    # Foto allegate a fatture + storage correzioni OCR (usato da Appgestionale mobile)
+    app.include_router(fatture_foto_ocr.router, prefix="/api", tags=["Fatture Foto & OCR Correzioni"])
 
 
 # ─── Employees Module ──────────────────────────────────────────────────────
