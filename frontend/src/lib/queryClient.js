@@ -30,13 +30,13 @@ export const queryKeys = {
   // Prima Nota Salari
   primaNota: {
     all: ['prima-nota'],
-    salari: (filters) => ['prima-nota', 'salari', filters],
+    salari: filters => ['prima-nota', 'salari', filters],
     dipendenti: () => ['prima-nota', 'dipendenti'],
   },
   // Libro Unico
   libroUnico: {
     all: ['libro-unico'],
-    salaries: (monthYear) => ['libro-unico', 'salaries', monthYear],
+    salaries: monthYear => ['libro-unico', 'salaries', monthYear],
   },
   // Libretti Sanitari
   libretti: {
@@ -52,7 +52,7 @@ export const queryKeys = {
   // Dipendenti
   dipendenti: {
     all: ['dipendenti'],
-    list: (filters) => ['dipendenti', 'list', filters],
-    detail: (id) => ['dipendenti', 'detail', id],
+    list: filters => ['dipendenti', 'list', filters],
+    detail: id => ['dipendenti', 'detail', id],
   },
 };
