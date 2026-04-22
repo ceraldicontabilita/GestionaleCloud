@@ -1,9 +1,9 @@
 /**
  * Page Layout Style System
- * 
+ *
  * Sistema di layout unificato per tutte le pagine dell'applicazione.
  * Garantisce consistenza visiva e accessibilità.
- * 
+ *
  * USO:
  * import { PAGE_WRAPPER, PAGE_CONTAINER, PAGE_HEADER, PAGE_CONTENT } from '@/design/pageLayoutStyle';
  */
@@ -138,7 +138,7 @@ export const TABS_CONTAINER = {
   overflowX: 'auto',
 };
 
-export const TAB_STYLE = (isActive) => ({
+export const TAB_STYLE = isActive => ({
   padding: '12px 20px',
   background: isActive ? COLORS.primary : 'transparent',
   color: isActive ? '#fff' : COLORS.textSecondary,
