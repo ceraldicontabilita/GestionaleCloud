@@ -14,6 +14,7 @@ import api from '../../api';
 import { COLORS, useIsMobile } from '../../lib/utils';
 import { useAnnoGlobale } from '../../contexts/AnnoContext';
 import BatchGiustificativoModal from '../../components/BatchGiustificativoModal';
+import GrigliaMensilePresenze from '../../components/GrigliaMensilePresenze';
 
 const MESI_LABEL = [
   'Gennaio',
@@ -434,6 +435,12 @@ export default function HRPresenze() {
               count: presenze.length,
             },
             {
+              id: 'griglia',
+              label: 'Griglia Mensile',
+              icon: <Users size={14} />,
+              count: 0,
+            },
+            {
               id: 'richieste',
               label: 'Richieste Assenza',
               icon: <Clock size={14} />,
@@ -799,6 +806,16 @@ export default function HRPresenze() {
               })}
             </div>
           ))}
+
+        {/* === GRIGLIA MENSILE TAB === */}
+        {!loading && tab === 'griglia' && (
+          <div style={{ padding: 16 }}>
+            <GrigliaMensilePresenze
+              dipendenti={dipendenti}
+              onSaved={() => loadData()}
+            />
+          </div>
+        )}
 
         {/* === RICHIESTE TAB === */}
         {!loading &&

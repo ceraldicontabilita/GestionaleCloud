@@ -1040,6 +1040,64 @@ async def batch_insert_presenze(body: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+@router.get("/month-grid")
+@handle_errors
+async def get_month_grid(anno: int, mese: int) -> Dict[str, Any]:
+    """
+    Restituisce tutte le celle (employee_id, data) di un mese in formato piatto
+    per alimentare la griglia mensile multi-select.
+
+    Output:
+        {
+            "anno": 2026,
+            "mese": 4,
+            "celle": [
+                { "employee_id": "...", "data": "2026-04-01", "stato": "FE",
+                  "ore": 8.0, "protocollo": "...", "note": "..." },
+                ...
+            ]
+        }
+
+    Solo celle con stato presente vengono restituite (quelle senza presenza
+    sono implicitamente vuote nella griglia). Il frontend mostra la cella
+    vuota se la chiave non esiste.
+    """
+    if mese < 1 or mese > 12:
+        raise HTTPException(status_code=400, detail="mese deve essere 1..12")
+
+    db = Database.get_db()
+    cursor = db["presenze"].find(
+        {"anno": anno, "mese": mese},
+        {
+            "_id": 0,
+            "employee_id": 1,
+            "dipendente_id": 1,
+            "data": 1,
+            "stato": 1,
+            "ore": 1,
+            "protocollo": 1,
+            "note": 1,
+        },
+    )
+    celle = []
+    async for doc in cursor:
+        emp_id = doc.get("employee_id") or doc.get("dipendente_id")
+        if not emp_id or not doc.get("data"):
+            continue
+        celle.append(
+            {
+                "employee_id": emp_id,
+                "data": doc["data"],
+                "stato": doc.get("stato"),
+                "ore": doc.get("ore"),
+                "protocollo": doc.get("protocollo"),
+                "note": doc.get("note"),
+            }
+        )
+
+    return {"anno": anno, "mese": mese, "celle": celle}
+
+
 @router.get("/tipologie-giustificativi")
 async def lista_tipologie_giustificativi() -> Dict[str, Any]:
     """
