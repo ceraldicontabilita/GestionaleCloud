@@ -13,6 +13,68 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+@router.get("/summary")
+async def alerts_summary() -> Dict[str, Any]:
+    """
+    Summary degli alert APERTI del sistema relazionale, aggregati per severità e modulo.
+    Usato dal badge nella topnav per mostrare il conteggio visibile all'utente.
+
+    Compatibile con entrambi gli schemi alert:
+    - Schema legacy: {letto: bool, risolto: bool}
+    - Schema relazionale: {stato: "aperto"|"risolto", severita: "critical"|"warning"|"info"}
+    """
+    db = Database.get_db()
+
+    # Query: alert aperti nello schema relazionale (stato="aperto")
+    # OR alert legacy non risolti (risolto=false)
+    query_open = {
+        "$or": [
+            {"stato": "aperto"},
+            {"$and": [
+                {"stato": {"$exists": False}},
+                {"risolto": {"$ne": True}}
+            ]}
+        ]
+    }
+
+    # Conteggio per severità
+    per_severita: Dict[str, int] = {"critical": 0, "warning": 0, "info": 0}
+    pipeline_sev = [
+        {"$match": query_open},
+        {"$group": {"_id": "$severita", "count": {"$sum": 1}}}
+    ]
+    async for doc in db["alerts"].aggregate(pipeline_sev):
+        sev = doc["_id"] or "info"
+        if sev in per_severita:
+            per_severita[sev] = doc["count"]
+
+    # Conteggio per modulo
+    per_modulo: Dict[str, int] = {}
+    pipeline_mod = [
+        {"$match": query_open},
+        {"$group": {"_id": "$modulo", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}}
+    ]
+    async for doc in db["alerts"].aggregate(pipeline_mod):
+        if doc["_id"]:
+            per_modulo[doc["_id"]] = doc["count"]
+
+    # Top 5 alert critici recenti (per dropdown)
+    critical_recenti = await db["alerts"].find(
+        {**query_open, "severita": "critical"},
+        {"_id": 0, "id": 1, "codice": 1, "titolo": 1, "dettaglio": 1,
+         "modulo": 1, "severita": 1, "created_at": 1, "entita_id": 1}
+    ).sort("created_at", -1).limit(5).to_list(5)
+
+    totale = sum(per_severita.values())
+
+    return {
+        "totale_aperti": totale,
+        "per_severita": per_severita,
+        "per_modulo": per_modulo,
+        "critical_recenti": critical_recenti,
+    }
+
 @router.get("/lista")
 async def lista_alerts(
     tipo: Optional[str] = Query(None, description="Filtra per tipo alert"),
