@@ -1,8 +1,18 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  COLORS, STYLES, SPACING, SHADOWS, BORDER_RADIUS, FONT,
-  button, badge, formatEuro, formatDateIT, formatDateShort,
-  useIsMobile, RG
+  COLORS,
+  STYLES,
+  SPACING,
+  SHADOWS,
+  BORDER_RADIUS,
+  FONT,
+  button,
+  badge,
+  formatEuro,
+  formatDateIT,
+  formatDateShort,
+  useIsMobile,
+  RG,
 } from '../lib/utils';
 
 const API = import.meta.env.VITE_BACKEND_URL || '';
@@ -40,7 +50,9 @@ export default function DashboardRelazionale() {
     setLoading(false);
   }, []);
 
-  useEffect(() => { caricaDati(); }, [caricaDati]);
+  useEffect(() => {
+    caricaDati();
+  }, [caricaDati]);
 
   const alerts = data?.alerts?.alerts || [];
   const alertStats = data?.alerts?.stats || {};
@@ -77,11 +89,7 @@ export default function DashboardRelazionale() {
             Stato completo del gestionale — alert, partite, riconciliazione
           </p>
         </div>
-        <button
-          style={button('secondary')}
-          onClick={caricaDati}
-          disabled={loading}
-        >
+        <button style={button('secondary')} onClick={caricaDati} disabled={loading}>
           {loading ? '⏳ Caricamento...' : '🔄 Aggiorna'}
         </button>
       </div>
@@ -101,14 +109,16 @@ export default function DashboardRelazionale() {
           >
             {t.label}
             {t.count > 0 && (
-              <span style={{
-                ...badge('danger'),
-                marginLeft: 6,
-                fontSize: 10,
-                padding: '2px 6px',
-                minWidth: 18,
-                textAlign: 'center',
-              }}>
+              <span
+                style={{
+                  ...badge('danger'),
+                  marginLeft: 6,
+                  fontSize: 10,
+                  padding: '2px 6px',
+                  minWidth: 18,
+                  textAlign: 'center',
+                }}
+              >
                 {t.count}
               </span>
             )}
@@ -124,15 +134,23 @@ export default function DashboardRelazionale() {
           </div>
         ) : tabAttiva === 'panoramica' ? (
           <TabPanoramica
-            alerts={alerts} critici={critici} warning={warning} info={info}
-            partiteStats={partiteStats} matchStats={matchStats}
-            alertPerModulo={alertPerModulo} isMobile={isMobile}
+            alerts={alerts}
+            critici={critici}
+            warning={warning}
+            info={info}
+            partiteStats={partiteStats}
+            matchStats={matchStats}
+            alertPerModulo={alertPerModulo}
+            isMobile={isMobile}
           />
         ) : tabAttiva === 'alert' ? (
           <TabAlert
-            alerts={alerts} alertPerModulo={alertPerModulo}
-            filter={alertFilter} setFilter={setAlertFilter}
-            onRefresh={caricaDati} isMobile={isMobile}
+            alerts={alerts}
+            alertPerModulo={alertPerModulo}
+            filter={alertFilter}
+            setFilter={setAlertFilter}
+            onRefresh={caricaDati}
+            isMobile={isMobile}
           />
         ) : tabAttiva === 'partite' ? (
           <TabPartite stats={partiteStats} isMobile={isMobile} />
@@ -144,12 +162,19 @@ export default function DashboardRelazionale() {
   );
 }
 
-
 /* ================================================================
    TAB PANORAMICA — KPI + alert critici + stato moduli
    ================================================================ */
-function TabPanoramica({ alerts, critici, warning, info, partiteStats, matchStats, alertPerModulo, isMobile }) {
-
+function TabPanoramica({
+  alerts,
+  critici,
+  warning,
+  info,
+  partiteStats,
+  matchStats,
+  alertPerModulo,
+  isMobile,
+}) {
   const kpis = [
     { label: 'Alert Critici', value: critici, color: COLORS.danger, icon: '🚨' },
     { label: 'Alert Warning', value: warning, color: COLORS.warning, icon: '⚠️' },
@@ -159,21 +184,42 @@ function TabPanoramica({ alerts, critici, warning, info, partiteStats, matchStat
 
   // Partite aperte totali
   const totPartite = Object.values(partiteStats).reduce((acc, v) => acc + (v?.count || 0), 0);
-  const totResiduo = Object.values(partiteStats).reduce((acc, v) => acc + (v?.totale_residuo || 0), 0);
+  const totResiduo = Object.values(partiteStats).reduce(
+    (acc, v) => acc + (v?.totale_residuo || 0),
+    0
+  );
 
   return (
     <div>
       {/* KPI ROW */}
       <div style={STYLES.kpiGrid}>
         {kpis.map((k, i) => (
-          <div key={i} style={{
-            ...STYLES.statBox,
-            borderLeftColor: k.color,
-          }}>
-            <div style={{ fontSize: 11, color: COLORS.textMuted, textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.4px', marginBottom: 4 }}>
+          <div
+            key={i}
+            style={{
+              ...STYLES.statBox,
+              borderLeftColor: k.color,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 11,
+                color: COLORS.textMuted,
+                textTransform: 'uppercase',
+                fontWeight: 700,
+                letterSpacing: '0.4px',
+                marginBottom: 4,
+              }}
+            >
               {k.icon} {k.label}
             </div>
-            <div style={{ fontSize: 28, fontWeight: 800, color: k.value > 0 ? k.color : COLORS.textSubtle }}>
+            <div
+              style={{
+                fontSize: 28,
+                fontWeight: 800,
+                color: k.value > 0 ? k.color : COLORS.textSubtle,
+              }}
+            >
               {k.value}
             </div>
           </div>
@@ -191,18 +237,28 @@ function TabPanoramica({ alerts, critici, warning, info, partiteStats, matchStat
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
                 <span style={{ fontSize: 13, color: COLORS.textMuted }}>{totPartite} partite</span>
-                <span style={{ fontSize: 15, fontWeight: 700, color: COLORS.danger }}>{formatEuro(totResiduo)}</span>
+                <span style={{ fontSize: 15, fontWeight: 700, color: COLORS.danger }}>
+                  {formatEuro(totResiduo)}
+                </span>
               </div>
               {Object.entries(partiteStats).map(([tipo, v]) => (
-                <div key={tipo} style={{
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  padding: '8px 0', borderBottom: `1px solid ${COLORS.gray[100]}`,
-                }}>
+                <div
+                  key={tipo}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '8px 0',
+                    borderBottom: `1px solid ${COLORS.gray[100]}`,
+                  }}
+                >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={badge(_badgeTipoPartita(tipo))}>{_labelTipoPartita(tipo)}</span>
                     <span style={{ fontSize: 12, color: COLORS.textMuted }}>×{v.count}</span>
                   </div>
-                  <span style={{ fontSize: 13, fontWeight: 600 }}>{formatEuro(v.totale_residuo)}</span>
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>
+                    {formatEuro(v.totale_residuo)}
+                  </span>
                 </div>
               ))}
             </div>
@@ -217,10 +273,16 @@ function TabPanoramica({ alerts, critici, warning, info, partiteStats, matchStat
           ) : (
             <div>
               {Object.entries(matchStats).map(([stato, v]) => (
-                <div key={stato} style={{
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  padding: '8px 0', borderBottom: `1px solid ${COLORS.gray[100]}`,
-                }}>
+                <div
+                  key={stato}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '8px 0',
+                    borderBottom: `1px solid ${COLORS.gray[100]}`,
+                  }}
+                >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={badge(_badgeStatoMatch(stato))}>{stato}</span>
                     <span style={{ fontSize: 12, color: COLORS.textMuted }}>×{v.count}</span>
@@ -235,55 +297,92 @@ function TabPanoramica({ alerts, critici, warning, info, partiteStats, matchStat
 
       {/* ALERT CRITICI RECENTI */}
       {critici > 0 && (
-        <div style={{ ...STYLES.card, marginTop: SPACING.lg, borderLeft: `4px solid ${COLORS.danger}` }}>
+        <div
+          style={{
+            ...STYLES.card,
+            marginTop: SPACING.lg,
+            borderLeft: `4px solid ${COLORS.danger}`,
+          }}
+        >
           <div style={STYLES.sectionTitle}>🚨 Alert Critici</div>
-          {alerts.filter(a => a.severita === 'critical').slice(0, 5).map(a => (
-            <AlertRow key={a.id} alert={a} />
-          ))}
+          {alerts
+            .filter(a => a.severita === 'critical')
+            .slice(0, 5)
+            .map(a => (
+              <AlertRow key={a.id} alert={a} />
+            ))}
         </div>
       )}
 
       {/* STATO MODULI */}
       <div style={{ ...STYLES.card, marginTop: SPACING.lg }}>
         <div style={STYLES.sectionTitle}>📦 Alert per Modulo</div>
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(auto-fit, minmax(140px, 1fr))',
-          gap: SPACING.sm,
-        }}>
-          {Object.entries(alertPerModulo).sort((a, b) => b[1].length - a[1].length).map(([modulo, list]) => {
-            const hasCritici = list.some(a => a.severita === 'critical');
-            const hasWarning = list.some(a => a.severita === 'warning');
-            return (
-              <div key={modulo} style={{
-                padding: '10px 12px',
-                borderRadius: BORDER_RADIUS.sm,
-                background: hasCritici ? COLORS.dangerLight : hasWarning ? COLORS.warningLight : COLORS.gray[50],
-                border: `1px solid ${hasCritici ? COLORS.danger : hasWarning ? COLORS.warning : COLORS.border}`,
-                textAlign: 'center',
-              }}>
-                <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: COLORS.textMuted, marginBottom: 4 }}>
-                  {_iconModulo(modulo)} {modulo}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(auto-fit, minmax(140px, 1fr))',
+            gap: SPACING.sm,
+          }}
+        >
+          {Object.entries(alertPerModulo)
+            .sort((a, b) => b[1].length - a[1].length)
+            .map(([modulo, list]) => {
+              const hasCritici = list.some(a => a.severita === 'critical');
+              const hasWarning = list.some(a => a.severita === 'warning');
+              return (
+                <div
+                  key={modulo}
+                  style={{
+                    padding: '10px 12px',
+                    borderRadius: BORDER_RADIUS.sm,
+                    background: hasCritici
+                      ? COLORS.dangerLight
+                      : hasWarning
+                        ? COLORS.warningLight
+                        : COLORS.gray[50],
+                    border: `1px solid ${hasCritici ? COLORS.danger : hasWarning ? COLORS.warning : COLORS.border}`,
+                    textAlign: 'center',
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      textTransform: 'uppercase',
+                      color: COLORS.textMuted,
+                      marginBottom: 4,
+                    }}
+                  >
+                    {_iconModulo(modulo)} {modulo}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 20,
+                      fontWeight: 800,
+                      color: hasCritici
+                        ? COLORS.danger
+                        : hasWarning
+                          ? COLORS.warning
+                          : COLORS.primary,
+                    }}
+                  >
+                    {list.length}
+                  </div>
                 </div>
-                <div style={{ fontSize: 20, fontWeight: 800, color: hasCritici ? COLORS.danger : hasWarning ? COLORS.warning : COLORS.primary }}>
-                  {list.length}
-                </div>
-              </div>
-            );
-          })}
+              );
+            })}
         </div>
       </div>
     </div>
   );
 }
 
-
 /* ================================================================
    TAB ALERT — Lista completa filtrata per modulo/severità
    ================================================================ */
 function TabAlert({ alerts, alertPerModulo, filter, setFilter, onRefresh, isMobile }) {
   const moduli = ['tutti', ...Object.keys(alertPerModulo).sort()];
-  const filtrati = filter === 'tutti' ? alerts : (alertPerModulo[filter] || []);
+  const filtrati = filter === 'tutti' ? alerts : alertPerModulo[filter] || [];
 
   return (
     <div>
@@ -321,7 +420,6 @@ function TabAlert({ alerts, alertPerModulo, filter, setFilter, onRefresh, isMobi
   );
 }
 
-
 /* ================================================================
    TAB PARTITE APERTE — Dettaglio per tipo
    ================================================================ */
@@ -330,7 +428,7 @@ function TabPartite({ stats, isMobile }) {
   const [tipoFiltro, setTipoFiltro] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const caricaPartite = useCallback(async (tipo) => {
+  const caricaPartite = useCallback(async tipo => {
     setLoading(true);
     try {
       const url = tipo
@@ -344,7 +442,9 @@ function TabPartite({ stats, isMobile }) {
     setLoading(false);
   }, []);
 
-  useEffect(() => { caricaPartite(tipoFiltro); }, [tipoFiltro, caricaPartite]);
+  useEffect(() => {
+    caricaPartite(tipoFiltro);
+  }, [tipoFiltro, caricaPartite]);
 
   const tipi = ['', 'fattura_fornitore', 'f24', 'stipendio', 'pos_atteso', 'trasferimento'];
 
@@ -353,13 +453,30 @@ function TabPartite({ stats, isMobile }) {
       {/* KPI */}
       <div style={STYLES.kpiGrid}>
         {Object.entries(stats).map(([tipo, v]) => (
-          <div key={tipo} style={{ ...STYLES.statBox, borderLeftColor: _colorTipoPartita(tipo), cursor: 'pointer' }}
-               onClick={() => setTipoFiltro(tipo)}>
-            <div style={{ fontSize: 11, color: COLORS.textMuted, textTransform: 'uppercase', fontWeight: 700, marginBottom: 4 }}>
+          <div
+            key={tipo}
+            style={{
+              ...STYLES.statBox,
+              borderLeftColor: _colorTipoPartita(tipo),
+              cursor: 'pointer',
+            }}
+            onClick={() => setTipoFiltro(tipo)}
+          >
+            <div
+              style={{
+                fontSize: 11,
+                color: COLORS.textMuted,
+                textTransform: 'uppercase',
+                fontWeight: 700,
+                marginBottom: 4,
+              }}
+            >
               {_labelTipoPartita(tipo)}
             </div>
             <div style={{ fontSize: 22, fontWeight: 800, color: COLORS.primary }}>{v.count}</div>
-            <div style={{ fontSize: 13, color: COLORS.danger, fontWeight: 600 }}>{formatEuro(v.totale_residuo)}</div>
+            <div style={{ fontSize: 13, color: COLORS.danger, fontWeight: 600 }}>
+              {formatEuro(v.totale_residuo)}
+            </div>
           </div>
         ))}
       </div>
@@ -367,8 +484,15 @@ function TabPartite({ stats, isMobile }) {
       {/* Filtri */}
       <div style={{ ...STYLES.flexRow, marginBottom: SPACING.md, gap: 6 }}>
         {tipi.map(t => (
-          <button key={t || 'all'} onClick={() => setTipoFiltro(t)}
-            style={{ ...button(tipoFiltro === t ? 'primary' : 'secondary'), fontSize: 12, padding: '5px 12px' }}>
+          <button
+            key={t || 'all'}
+            onClick={() => setTipoFiltro(t)}
+            style={{
+              ...button(tipoFiltro === t ? 'primary' : 'secondary'),
+              fontSize: 12,
+              padding: '5px 12px',
+            }}
+          >
             {t ? _labelTipoPartita(t) : '📋 Tutte'}
           </button>
         ))}
@@ -376,7 +500,9 @@ function TabPartite({ stats, isMobile }) {
 
       {/* Tabella */}
       {loading ? (
-        <div style={{ textAlign: 'center', padding: 40, color: COLORS.textMuted }}>⏳ Caricamento...</div>
+        <div style={{ textAlign: 'center', padding: 40, color: COLORS.textMuted }}>
+          ⏳ Caricamento...
+        </div>
       ) : (
         <div style={STYLES.tableWrap}>
           <table style={STYLES.table}>
@@ -393,18 +519,47 @@ function TabPartite({ stats, isMobile }) {
             <tbody>
               {(Array.isArray(partite) ? partite : []).map(p => (
                 <tr key={p.id}>
-                  <td style={STYLES.td}><span style={badge(_badgeTipoPartita(p.tipo))}>{_labelTipoPartita(p.tipo)}</span></td>
+                  <td style={STYLES.td}>
+                    <span style={badge(_badgeTipoPartita(p.tipo))}>
+                      {_labelTipoPartita(p.tipo)}
+                    </span>
+                  </td>
                   <td style={STYLES.td}>{p.controparte_nome || '-'}</td>
                   <td style={STYLES.td}>{formatEuro(p.importo_originale)}</td>
-                  <td style={{ ...STYLES.td, fontWeight: 700, color: p.residuo > 0 ? COLORS.danger : COLORS.success }}>
+                  <td
+                    style={{
+                      ...STYLES.td,
+                      fontWeight: 700,
+                      color: p.residuo > 0 ? COLORS.danger : COLORS.success,
+                    }}
+                  >
                     {formatEuro(p.residuo)}
                   </td>
                   <td style={STYLES.td}>{p.data_scadenza ? formatDateIT(p.data_scadenza) : '-'}</td>
-                  <td style={STYLES.td}><span style={badge(p.stato === 'chiusa' ? 'success' : p.stato === 'parziale' ? 'warning' : 'neutral')}>{p.stato}</span></td>
+                  <td style={STYLES.td}>
+                    <span
+                      style={badge(
+                        p.stato === 'chiusa'
+                          ? 'success'
+                          : p.stato === 'parziale'
+                            ? 'warning'
+                            : 'neutral'
+                      )}
+                    >
+                      {p.stato}
+                    </span>
+                  </td>
                 </tr>
               ))}
               {(!partite || partite.length === 0) && (
-                <tr><td colSpan={6} style={{ ...STYLES.td, textAlign: 'center', color: COLORS.textMuted }}>Nessuna partita</td></tr>
+                <tr>
+                  <td
+                    colSpan={6}
+                    style={{ ...STYLES.td, textAlign: 'center', color: COLORS.textMuted }}
+                  >
+                    Nessuna partita
+                  </td>
+                </tr>
               )}
             </tbody>
           </table>
@@ -413,7 +568,6 @@ function TabPartite({ stats, isMobile }) {
     </div>
   );
 }
-
 
 /* ================================================================
    TAB RICONCILIAZIONE — Stato match
@@ -424,11 +578,21 @@ function TabRiconciliazione({ stats, isMobile }) {
       <div style={STYLES.kpiGrid}>
         {Object.entries(stats).map(([stato, v]) => (
           <div key={stato} style={{ ...STYLES.statBox, borderLeftColor: _colorStatoMatch(stato) }}>
-            <div style={{ fontSize: 11, color: COLORS.textMuted, textTransform: 'uppercase', fontWeight: 700, marginBottom: 4 }}>
+            <div
+              style={{
+                fontSize: 11,
+                color: COLORS.textMuted,
+                textTransform: 'uppercase',
+                fontWeight: 700,
+                marginBottom: 4,
+              }}
+            >
               {stato}
             </div>
             <div style={{ fontSize: 22, fontWeight: 800, color: COLORS.primary }}>{v.count}</div>
-            <div style={{ fontSize: 13, color: COLORS.textMuted, fontWeight: 600 }}>{formatEuro(v.totale)}</div>
+            <div style={{ fontSize: 13, color: COLORS.textMuted, fontWeight: 600 }}>
+              {formatEuro(v.totale)}
+            </div>
           </div>
         ))}
       </div>
@@ -443,7 +607,6 @@ function TabRiconciliazione({ stats, isMobile }) {
   );
 }
 
-
 /* ================================================================
    COMPONENTI HELPER
    ================================================================ */
@@ -456,10 +619,15 @@ function AlertRow({ alert: a, showModulo = true }) {
   const sev = sevColors[a.severita] || sevColors.info;
 
   return (
-    <div style={{
-      display: 'flex', gap: 10, alignItems: 'flex-start',
-      padding: '10px 0', borderBottom: `1px solid ${COLORS.gray[100]}`,
-    }}>
+    <div
+      style={{
+        display: 'flex',
+        gap: 10,
+        alignItems: 'flex-start',
+        padding: '10px 0',
+        borderBottom: `1px solid ${COLORS.gray[100]}`,
+      }}
+    >
       <span style={{ fontSize: 16 }}>{sev.icon}</span>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -471,39 +639,52 @@ function AlertRow({ alert: a, showModulo = true }) {
           {a.codice} · {a.created_at ? formatDateShort(a.created_at) : ''}
         </div>
       </div>
-      <span style={badge(a.severita === 'critical' ? 'danger' : a.severita === 'warning' ? 'warning' : 'info')}>
+      <span
+        style={badge(
+          a.severita === 'critical' ? 'danger' : a.severita === 'warning' ? 'warning' : 'info'
+        )}
+      >
         {a.severita}
       </span>
     </div>
   );
 }
 
-
 /* ================================================================
    UTILITY MAPPATURE
    ================================================================ */
 function _labelTipoPartita(tipo) {
   const map = {
-    fattura_fornitore: 'Fatture', nota_credito: 'Note Credito',
-    f24: 'F24', stipendio: 'Stipendi', pos_atteso: 'POS',
-    trasferimento: 'Trasferimenti', altro: 'Altro',
+    fattura_fornitore: 'Fatture',
+    nota_credito: 'Note Credito',
+    f24: 'F24',
+    stipendio: 'Stipendi',
+    pos_atteso: 'POS',
+    trasferimento: 'Trasferimenti',
+    altro: 'Altro',
   };
   return map[tipo] || tipo;
 }
 
 function _badgeTipoPartita(tipo) {
   const map = {
-    fattura_fornitore: 'warning', nota_credito: 'danger',
-    f24: 'info', stipendio: 'primary', pos_atteso: 'accent',
-    trasferimento: 'neutral', altro: 'neutral',
+    fattura_fornitore: 'warning',
+    nota_credito: 'danger',
+    f24: 'info',
+    stipendio: 'primary',
+    pos_atteso: 'accent',
+    trasferimento: 'neutral',
+    altro: 'neutral',
   };
   return map[tipo] || 'neutral';
 }
 
 function _colorTipoPartita(tipo) {
   const map = {
-    fattura_fornitore: COLORS.warning, f24: COLORS.info,
-    stipendio: COLORS.primary, pos_atteso: COLORS.accent,
+    fattura_fornitore: COLORS.warning,
+    f24: COLORS.info,
+    stipendio: COLORS.primary,
+    pos_atteso: COLORS.accent,
     trasferimento: COLORS.textMuted,
   };
   return map[tipo] || COLORS.primary;
@@ -521,9 +702,16 @@ function _colorStatoMatch(stato) {
 
 function _iconModulo(modulo) {
   const map = {
-    fornitori: '🏢', fatture: '📄', f24: '🏛️', cedolini: '💰',
-    dipendenti: '👤', banca: '🏦', cassa: '💵', magazzino: '📦',
-    documenti: '📁', riconciliazione: '🔗',
+    fornitori: '🏢',
+    fatture: '📄',
+    f24: '🏛️',
+    cedolini: '💰',
+    dipendenti: '👤',
+    banca: '🏦',
+    cassa: '💵',
+    magazzino: '📦',
+    documenti: '📁',
+    riconciliazione: '🔗',
   };
   return map[modulo] || '📌';
 }
