@@ -1,5 +1,5 @@
 """Admin router - Administrative functions."""
-from fastapi import APIRouter, Depends, Path, Query
+from fastapi import APIRouter, Body, Depends, Path, Query
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 import logging
@@ -127,7 +127,7 @@ async def get_year_opening_balances(
     summary="Update year opening balances"
 )
 async def update_year_opening_balances(
-    data: Dict[str, Any],
+    data: Dict[str, Any] = Body(...),
     year: int = Path(...),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ) -> Dict[str, str]:
@@ -231,7 +231,7 @@ async def get_fatture_stats() -> Dict[str, Any]:
     summary="Set payment method for invoices"
 )
 async def set_fatture_metodo_pagamento(
-    data: Dict[str, Any]
+    data: Dict[str, Any] = Body(...)
 ) -> Dict[str, Any]:
     """
     Imposta il metodo di pagamento per le fatture che non ne hanno uno.
