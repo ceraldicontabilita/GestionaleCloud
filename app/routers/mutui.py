@@ -163,7 +163,7 @@ async def get_statistiche_mutui():
             stats["percentuale_riconciliazione"] = 0
         
         # Trova prossime scadenze (prossimi 30 giorni)
-        oggi = datetime.now()
+        oggi = datetime.now(timezone.utc)
         
         # Query per rate "Da pagare"
         mutui_con_scadenze = await db.mutui.find(
@@ -554,8 +554,8 @@ async def create_mutuo(mutuo_data: dict):
             )
         
         # Aggiungi timestamp
-        mutuo_data["created_at"] = datetime.now()
-        mutuo_data["updated_at"] = datetime.now()
+        mutuo_data["created_at"] = datetime.now(timezone.utc)
+        mutuo_data["updated_at"] = datetime.now(timezone.utc)
         
         result = await db.mutui.insert_one(mutuo_data)
         
@@ -587,7 +587,7 @@ async def update_mutuo(mutuo_id: str, update_data: dict):
         update_data.pop("created_at", None)
         
         # Aggiungi timestamp aggiornamento
-        update_data["updated_at"] = datetime.now()
+        update_data["updated_at"] = datetime.now(timezone.utc)
         
         result = await db.mutui.update_one(
             {"mutuo_id": mutuo_id},
