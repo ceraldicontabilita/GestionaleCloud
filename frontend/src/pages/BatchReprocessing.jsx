@@ -1,7 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../api';
 import { PageLayout } from '../components/PageLayout';
-import { RefreshCw, Play, AlertTriangle, CheckCircle, Loader2, FileText, Users } from 'lucide-react';
+import {
+  RefreshCw,
+  Play,
+  AlertTriangle,
+  CheckCircle,
+  Loader2,
+  FileText,
+  Users,
+} from 'lucide-react';
 
 export default function BatchReprocessing() {
   const [preview, setPreview] = useState(null);
@@ -86,7 +94,9 @@ export default function BatchReprocessing() {
                 <div className="text-gray-600">F24</div>
               </div>
               <div className="bg-green-50 rounded-lg p-4 text-center">
-                <div className="text-3xl font-bold text-green-700">{preview.cedolini_totale || 0}</div>
+                <div className="text-3xl font-bold text-green-700">
+                  {preview.cedolini_totale || 0}
+                </div>
                 <div className="text-gray-600">Cedolini</div>
               </div>
               <div className="bg-purple-50 rounded-lg p-4 text-center">
@@ -94,7 +104,7 @@ export default function BatchReprocessing() {
                 <div className="text-gray-600">Totale</div>
               </div>
             </div>
-            
+
             {/* Dettaglio collezioni */}
             <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
               <div>
@@ -121,39 +131,50 @@ export default function BatchReprocessing() {
 
         {/* Status */}
         {status && (
-          <div className={`rounded-xl border p-6 ${
-            status.running ? 'bg-yellow-50 border-yellow-200' : 
-            status.error ? 'bg-red-50 border-red-200' :
-            status.result ? 'bg-green-50 border-green-200' :
-            'bg-white'
-          }`}>
+          <div
+            className={`rounded-xl border p-6 ${
+              status.running
+                ? 'bg-yellow-50 border-yellow-200'
+                : status.error
+                  ? 'bg-red-50 border-red-200'
+                  : status.result
+                    ? 'bg-green-50 border-green-200'
+                    : 'bg-white'
+            }`}
+          >
             <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              {status.running ? <Loader2 size={20} className="animate-spin" /> :
-               status.error ? <AlertTriangle size={20} className="text-red-500" /> :
-               status.result ? <CheckCircle size={20} className="text-green-500" /> :
-               <RefreshCw size={20} />}
+              {status.running ? (
+                <Loader2 size={20} className="animate-spin" />
+              ) : status.error ? (
+                <AlertTriangle size={20} className="text-red-500" />
+              ) : status.result ? (
+                <CheckCircle size={20} className="text-green-500" />
+              ) : (
+                <RefreshCw size={20} />
+              )}
               Stato Job
             </h3>
-            
+
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <span className="font-medium">Stato:</span>
-                <span className={`px-2 py-1 rounded text-sm ${
-                  status.running ? 'bg-yellow-200 text-yellow-800' :
-                  status.error ? 'bg-red-200 text-red-800' :
-                  status.result ? 'bg-green-200 text-green-800' :
-                  'bg-gray-200 text-gray-800'
-                }`}>
+                <span
+                  className={`px-2 py-1 rounded text-sm ${
+                    status.running
+                      ? 'bg-yellow-200 text-yellow-800'
+                      : status.error
+                        ? 'bg-red-200 text-red-800'
+                        : status.result
+                          ? 'bg-green-200 text-green-800'
+                          : 'bg-gray-200 text-gray-800'
+                  }`}
+                >
                   {status.progress || 'Inattivo'}
                 </span>
               </div>
-              
-              {status.error && (
-                <div className="text-red-600 mt-2">
-                  Errore: {status.error}
-                </div>
-              )}
-              
+
+              {status.error && <div className="text-red-600 mt-2">Errore: {status.error}</div>}
+
               {status.result && (
                 <div className="mt-4 space-y-3">
                   <div className="text-sm text-gray-600">
@@ -163,30 +184,39 @@ export default function BatchReprocessing() {
                       </span>
                     )}
                   </div>
-                  
+
                   <div className="grid grid-cols-4 gap-4 text-center">
                     <div className="bg-white rounded p-3 shadow-sm">
-                      <div className="text-xl font-bold text-blue-600">{status.result.f24_success || 0}</div>
+                      <div className="text-xl font-bold text-blue-600">
+                        {status.result.f24_success || 0}
+                      </div>
                       <div className="text-xs text-gray-500">F24 OK</div>
                     </div>
                     <div className="bg-white rounded p-3 shadow-sm">
-                      <div className="text-xl font-bold text-red-600">{status.result.f24_errors || 0}</div>
+                      <div className="text-xl font-bold text-red-600">
+                        {status.result.f24_errors || 0}
+                      </div>
                       <div className="text-xs text-gray-500">F24 Errori</div>
                     </div>
                     <div className="bg-white rounded p-3 shadow-sm">
-                      <div className="text-xl font-bold text-green-600">{status.result.cedolini_success || 0}</div>
+                      <div className="text-xl font-bold text-green-600">
+                        {status.result.cedolini_success || 0}
+                      </div>
                       <div className="text-xs text-gray-500">Cedolini OK</div>
                     </div>
                     <div className="bg-white rounded p-3 shadow-sm">
-                      <div className="text-xl font-bold text-red-600">{status.result.cedolini_errors || 0}</div>
+                      <div className="text-xl font-bold text-red-600">
+                        {status.result.cedolini_errors || 0}
+                      </div>
                       <div className="text-xs text-gray-500">Cedolini Errori</div>
                     </div>
                   </div>
-                  
+
                   <div className="text-center text-lg font-semibold mt-4">
-                    Totale: {status.result.totale_successi || 0} / {status.result.totale_processati || 0} processati con successo
+                    Totale: {status.result.totale_successi || 0} /{' '}
+                    {status.result.totale_processati || 0} processati con successo
                   </div>
-                  
+
                   {status.result.errors?.length > 0 && (
                     <details className="mt-4">
                       <summary className="cursor-pointer text-red-600 font-medium">
@@ -210,13 +240,14 @@ export default function BatchReprocessing() {
         {/* Azioni */}
         <div className="bg-white rounded-xl shadow-sm border p-6">
           <h3 className="text-lg font-semibold mb-4">Avvia Riprocessamento</h3>
-          
+
           <div className="space-y-4">
             {/* Test Mode */}
             <div className="p-4 bg-blue-50 rounded-lg">
               <h4 className="font-medium text-blue-800 mb-2">Modalità Test (DRY RUN)</h4>
               <p className="text-sm text-blue-600 mb-3">
-                Esegue il riprocessamento senza salvare le modifiche. Usa per verificare quanti documenti verrebbero aggiornati.
+                Esegue il riprocessamento senza salvare le modifiche. Usa per verificare quanti
+                documenti verrebbero aggiornati.
               </p>
               <div className="flex gap-2">
                 <button
@@ -253,13 +284,17 @@ export default function BatchReprocessing() {
                 Modalità Produzione (MODIFICA DATI)
               </h4>
               <p className="text-sm text-orange-600 mb-3">
-                ⚠️ Attenzione: questa operazione modificherà permanentemente i dati nel database. 
-                I nuovi dati estratti verranno salvati nei campi *_enhanced.
+                ⚠️ Attenzione: questa operazione modificherà permanentemente i dati nel database. I
+                nuovi dati estratti verranno salvati nei campi *_enhanced.
               </p>
               <div className="flex gap-2">
                 <button
                   onClick={() => {
-                    if (window.confirm('Sei sicuro? Questa operazione modificherà i dati nel database.')) {
+                    if (
+                      window.confirm(
+                        'Sei sicuro? Questa operazione modificherà i dati nel database.'
+                      )
+                    ) {
                       startReprocessing(false, 'all');
                     }
                   }}
@@ -304,7 +339,10 @@ export default function BatchReprocessing() {
           <ul className="list-disc list-inside space-y-1">
             <li>Il sistema legge i PDF originali memorizzati nel database</li>
             <li>Ogni documento viene riprocessato con il nuovo parser AI migliorato</li>
-            <li>I nuovi dati vengono salvati in campi separati (*_enhanced) per non sovrascrivere i dati originali</li>
+            <li>
+              I nuovi dati vengono salvati in campi separati (*_enhanced) per non sovrascrivere i
+              dati originali
+            </li>
             <li>Puoi confrontare i dati originali con quelli migliorati</li>
           </ul>
         </div>
