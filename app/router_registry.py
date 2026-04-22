@@ -45,6 +45,7 @@ def register_all_routers(app: FastAPI) -> None:
 def _register_auth(app: FastAPI):
     from app.routers import auth, public_api, google_auth, openclaw
     from app.routers.agenti import router as r_agenti
+    from app.routers.erp_bridge import router as erp_bridge_router
     from app.routers.legal_pages import router as legal_router
 
     app.include_router(public_api.router, prefix="/api", tags=["Public API"])
@@ -52,6 +53,10 @@ def _register_auth(app: FastAPI):
     app.include_router(google_auth.router, prefix="/api", tags=["Google OAuth"])
     app.include_router(openclaw.router, prefix="/api", tags=["OpenClaw AI Assistant"])
     app.include_router(r_agenti, prefix="/api", tags=["Agenti AI"])
+    # ERP Bridge: ponte inbound da ceraldiapp.it (app Tracciabilità esterna)
+    # che invia al gestionale le fatture importate dalla PEC.
+    # Il router ha già prefix interno "/api/erp/ponte", quindi NO prefix qui.
+    app.include_router(erp_bridge_router)
     app.include_router(legal_router, tags=["Legal"])
 
     from app.routers.whatsapp_webhook import router as whatsapp_router
