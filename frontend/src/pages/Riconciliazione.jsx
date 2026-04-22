@@ -293,14 +293,14 @@ export default function Riconciliazione() {
       const res = await api.post('/api/riconciliazione-auto/riconcilia-estratto-conto');
       alert(
         `✅ Riconciliazione completata!\n\n` +
-          `Movimenti analizzati: ${res.data.movimenti_analizzati}\n` +
-          `Riconciliati: ${res.data.totale_riconciliati}\n` +
-          `- Fatture: ${res.data.riconciliati_fatture}\n` +
-          `- POS: ${res.data.riconciliati_pos}\n` +
-          `- Versamenti: ${res.data.riconciliati_versamenti}\n` +
-          `- F24: ${res.data.riconciliati_f24}\n\n` +
-          `Da confermare: ${res.data.dubbi}\n` +
-          `Non trovati: ${res.data.non_trovati}`
+          `Movimenti analizzati: ${res?.data?.movimenti_analizzati}\n` +
+          `Riconciliati: ${res?.data?.totale_riconciliati}\n` +
+          `- Fatture: ${res?.data?.riconciliati_fatture}\n` +
+          `- POS: ${res?.data?.riconciliati_pos}\n` +
+          `- Versamenti: ${res?.data?.riconciliati_versamenti}\n` +
+          `- F24: ${res?.data?.riconciliati_f24}\n\n` +
+          `Da confermare: ${res?.data?.dubbi}\n` +
+          `Non trovati: ${res?.data?.non_trovati}`
       );
       loadStats();
     } catch (e) {
