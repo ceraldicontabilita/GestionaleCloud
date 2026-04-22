@@ -25,9 +25,22 @@ export default function HRTFR() {
   const [riepilogo, setRiepilogo] = useState(null);
 
   useEffect(() => {
+    // Guard contro race condition (Codex P2):
+    // se l'utente cambia rapidamente anno, più richieste possono essere in volo
+    // contemporaneamente. Senza protezione, una risposta lenta di un anno
+    // precedente potrebbe sovrascrivere lo stato con dati dell'anno sbagliato.
+    // Soluzione: AbortController che annulla la richiesta quando l'effect
+    // viene cleanup-ato (ovvero quando annoRiepilogo cambia o al unmount).
+    const controller = new AbortController();
+    let cancelled = false;
+
     api
-      .get('/api/tfr/riepilogo-aziendale', { params: { anno: annoRiepilogo } })
+      .get('/api/tfr/riepilogo-aziendale', {
+        params: { anno: annoRiepilogo },
+        signal: controller.signal,
+      })
       .then((r) => {
+        if (cancelled) return;
         const d = r.data || {};
         // Mapping basato sulla risposta REALE di get_riepilogo_tfr_aziendale
         // (vedi app/routers/tfr.py):
@@ -57,7 +70,17 @@ export default function HRTFR() {
             d.liquidazioni_anno?.num_liquidazioni ?? d.num_liquidazioni_anno ?? 0,
         });
       })
-      .catch(() => setRiepilogo(null));
+      .catch((err) => {
+        if (cancelled) return;
+        // Ignora cancellation error: non è un errore reale, è la nostra cleanup
+        if (err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED') return;
+        setRiepilogo(null);
+      });
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, [annoRiepilogo]);
 
   useEffect(() => {

@@ -84,14 +84,16 @@ export default function GrigliaMensilePresenze({ dipendenti = [], onSaved }) {
   }, []);
 
   // ───── Load presenze mese ─────
-  const loadPresenze = useCallback(async () => {
+  const loadPresenze = useCallback(async (signal) => {
     if (dipendentiAttivi.length === 0) return;
     setLoading(true);
     try {
       // Provo prima il riepilogo mensile unificato
       const { data } = await api.get('/api/attendance/month-grid', {
         params: { anno: year, mese: month + 1 },
+        signal,
       });
+      if (signal?.aborted) return;
       const map = {};
       (data?.celle || []).forEach((c) => {
         if (c.stato && c.stato !== 'P') {
@@ -105,17 +107,21 @@ export default function GrigliaMensilePresenze({ dipendenti = [], onSaved }) {
       });
       setPresenzeMap(map);
     } catch (e) {
+      if (e?.name === 'CanceledError' || e?.code === 'ERR_CANCELED') return;
       // Fallback silenzioso: se l'endpoint non esiste mostro griglia vuota
       setPresenzeMap({});
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   }, [dipendentiAttivi.length, year, month]);
 
   useEffect(() => {
-    loadPresenze();
+    // Race guard: cambio rapido mese non deve sovrascrivere con risposta obsoleta
+    const controller = new AbortController();
+    loadPresenze(controller.signal);
     setSelection(new Set());
     setAnchor(null);
+    return () => controller.abort();
   }, [loadPresenze]);
 
   // ═══════════════════════════════════════════════════════════════════════

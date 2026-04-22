@@ -109,24 +109,30 @@ export default function HRBustePaga() {
   }, [loadCompetenze]);
 
   // ────── Load riepilogo ──────
-  const loadRiepilogo = useCallback(async () => {
+  const loadRiepilogo = useCallback(async (signal) => {
     if (!competenza) return;
     setLoading(true);
     try {
       const { data } = await api.get(
-        `/api/buste-paga/riepilogo-mensile/${competenza}`
+        `/api/buste-paga/riepilogo-mensile/${competenza}`,
+        { signal }
       );
+      if (signal?.aborted) return;
       setRiepilogo(data || null);
     } catch (e) {
+      if (e?.name === 'CanceledError' || e?.code === 'ERR_CANCELED') return;
       console.error('[HRBustePaga] riepilogo error', e);
       setRiepilogo(null);
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   }, [competenza]);
 
   useEffect(() => {
-    loadRiepilogo();
+    // Race guard: cambio rapido competenza non deve sovrascrivere con risposta obsoleta
+    const controller = new AbortController();
+    loadRiepilogo(controller.signal);
+    return () => controller.abort();
   }, [loadRiepilogo]);
 
   // ────── Handlers ──────

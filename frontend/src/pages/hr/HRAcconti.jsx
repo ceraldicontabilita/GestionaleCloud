@@ -96,7 +96,7 @@ export default function HRAcconti() {
   const [saving, setSaving] = useState(false);
 
   // ───── Load ─────
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (signal) => {
     setLoading(true);
     try {
       const params = { anno };
@@ -105,9 +105,11 @@ export default function HRAcconti() {
       if (dipFilter) params.dipendente_id = dipFilter;
 
       const [dipRes, accRes] = await Promise.all([
-        api.get('/api/dipendenti'),
-        api.get('/api/acconti', { params }),
+        api.get('/api/dipendenti', { signal }),
+        api.get('/api/acconti', { params, signal }),
       ]);
+
+      if (signal?.aborted) return;
 
       const dipList = Array.isArray(dipRes.data)
         ? dipRes.data
@@ -116,14 +118,21 @@ export default function HRAcconti() {
       setAcconti(accRes.data?.acconti || []);
       setTotale(accRes.data?.totale || 0);
     } catch (e) {
+      // Ignora cancellation: non è un errore reale
+      if (e?.name === 'CanceledError' || e?.code === 'ERR_CANCELED') return;
       console.error('[HRAcconti] load error', e);
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   }, [anno, mese, tipoFilter, dipFilter]);
 
   useEffect(() => {
-    loadData();
+    // Race guard (Codex P2 pattern): cambi rapidi di filtro generano richieste
+    // sovrapposte. Abortiamo la precedente prima di lanciare la nuova per
+    // evitare che una risposta obsoleta sovrascriva lo stato.
+    const controller = new AbortController();
+    loadData(controller.signal);
+    return () => controller.abort();
   }, [loadData]);
 
   // ───── KPI ─────
