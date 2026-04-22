@@ -109,7 +109,7 @@ def _normalizza_da_fatture_passive(doc: dict) -> dict:
         "prima_nota_banca_id": doc.get("prima_nota_banca_id"),
         "has_pdf": False,
         "email_associata": None,
-        "anno": doc.get("anno") or (int(doc["data"][:4]) if doc.get("data") else None),
+        "anno": doc.get("anno") or _safe_year(doc.get("data")),
         "created_at": created_at,
         "data_pagamento": doc.get("data_pagamento"),
         "fonte": doc.get("source", "pec_auto"),
