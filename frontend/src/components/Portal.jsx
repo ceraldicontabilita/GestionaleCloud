@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom';
 
 /**
- * Portal Component - Risolve l'errore "removeChild" renderizzando 
+ * Portal Component - Risolve l'errore "removeChild" renderizzando
  * i modali in un elemento root dedicato invece di document.body
  */
 export default function Portal({ children }) {
@@ -17,6 +17,6 @@ export default function Portal({ children }) {
 
   // Usa portal-root se esiste, altrimenti document.body
   const portalRoot = document.getElementById('portal-root') || document.body;
-  
+
   return ReactDOM.createPortal(children, portalRoot);
 }
