@@ -13,6 +13,7 @@
  *   DELETE /api/buste-paga/{competenza}/{nome}           elimina singola
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
   Users, Clock, Euro, AlertCircle, RefreshCw, Trash2, FileText,
 } from 'lucide-react';
@@ -75,38 +76,80 @@ function initialsFromName(name = '') {
 // ═══════════════════════════════════════════════════════════════════════
 export default function HRBustePaga() {
   const isMobile = useIsMobile();
+  const navigate = useNavigate();
+  const { competenza: competenzaFromUrl } = useParams();
 
   const [competenze, setCompetenze] = useState([]);
-  const [competenza, setCompetenza] = useState(currentCompetenza());
+  // Inizializzazione: se l'URL contiene /buste-paga/YYYY-MM e il formato è valido,
+  // uso quello (supporto deep-link/bookmark). Altrimenti fallback a mese corrente.
+  // (fix Codex P2 #2)
+  const [competenza, setCompetenza] = useState(() => {
+    const fromUrl = (competenzaFromUrl || '').trim();
+    if (/^\d{4}-(0[1-9]|1[0-2])$/.test(fromUrl)) return fromUrl;
+    return currentCompetenza();
+  });
   const [riepilogo, setRiepilogo] = useState(null);
   const [loading, setLoading] = useState(false);
   const [loadingCompetenze, setLoadingCompetenze] = useState(true);
 
+  // Quando il parametro URL cambia (es. utente clicca link o usa back/forward),
+  // aggiorno lo stato interno di conseguenza.
+  useEffect(() => {
+    const fromUrl = (competenzaFromUrl || '').trim();
+    if (/^\d{4}-(0[1-9]|1[0-2])$/.test(fromUrl) && fromUrl !== competenza) {
+      setCompetenza(fromUrl);
+    }
+    // Intenzionalmente NON dipende da `competenza` per evitare loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [competenzaFromUrl]);
+
+  // Quando l'utente cambia competenza via select, aggiorno anche l'URL
+  // (così è bookmark-abile e torna indietro con il browser back).
+  const setCompetenzaAndUrl = useCallback(
+    (c) => {
+      setCompetenza(c);
+      navigate(`/buste-paga/${c}`, { replace: true });
+    },
+    [navigate]
+  );
+
   // ────── Load competenze ──────
+  // Solo fetch dell'elenco: NESSUNA auto-selezione qui dentro. L'auto-select
+  // è fatto in un useEffect dedicato che dipende esplicitamente sia da
+  // `competenze` che da `competenza`, così il linter è soddisfatto e non
+  // abbiamo il bug Codex P2 #1 (la callback era stale).
   const loadCompetenze = useCallback(async () => {
     setLoadingCompetenze(true);
     try {
       const { data } = await api.get('/api/buste-paga/competenze');
       const list = Array.isArray(data?.competenze) ? data.competenze : [];
       setCompetenze(list);
-      // Se la competenza selezionata non esiste ancora, prendo la prima
-      // disponibile (più recente)
-      if (list.length > 0 && !list.includes(competenza)) {
-        setCompetenza(list[0]);
-      }
     } catch (e) {
       console.error('[HRBustePaga] competenze error', e);
       setCompetenze([]);
     } finally {
       setLoadingCompetenze(false);
     }
-    // Intentionally omit `competenza` dep: we reset only once on mount.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     loadCompetenze();
   }, [loadCompetenze]);
+
+  // Auto-select: se la competenza corrente NON è nell'elenco disponibile
+  // (es. primo caricamento con mese corrente senza dati), cado sulla prima
+  // disponibile. Eccezione: se l'URL ha una competenza esplicita, la lascio
+  // anche se vuota — l'utente ha deep-linkato quel mese specifico.
+  // Se la corrente è già valida, non tocco nulla (fix Codex P2 #1).
+  useEffect(() => {
+    if (competenze.length === 0) return;
+    if (competenze.includes(competenza)) return;
+    // Se l'URL ha una competenza esplicita valida, rispetto la sua scelta
+    const fromUrl = (competenzaFromUrl || '').trim();
+    if (/^\d{4}-(0[1-9]|1[0-2])$/.test(fromUrl)) return;
+    // Nessuna preferenza esplicita dall'URL → fallback sulla più recente
+    setCompetenzaAndUrl(competenze[0]);
+  }, [competenze, competenza, competenzaFromUrl, setCompetenzaAndUrl]);
 
   // ────── Load riepilogo ──────
   const loadRiepilogo = useCallback(async (signal) => {
@@ -206,7 +249,7 @@ export default function HRBustePaga() {
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <select
             value={competenza}
-            onChange={(e) => setCompetenza(e.target.value)}
+            onChange={(e) => setCompetenzaAndUrl(e.target.value)}
             style={{
               padding: '9px 14px',
               fontSize: 14,
