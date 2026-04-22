@@ -36,6 +36,7 @@ const HRTurni = lazy(() => import("./pages/hr/HRTurni.jsx"));
 const HRMissioni = lazy(() => import("./pages/hr/HRMissioni.jsx"));
 const HRDocumenti = lazy(() => import("./pages/hr/HRDocumenti.jsx"));
 const HRFeriePermessi = lazy(() => import("./pages/hr/HRFeriePermessi.jsx"));
+const HRHub = lazy(() => import("./pages/hr/HRHub.jsx"));
 const VeicoliHub = lazy(() => import("./pages/hub/VeicoliHub.jsx"));
 const ContabilitaHub = lazy(() => import("./pages/hub/ContabilitaHub.jsx"));
 const MagazzinoHub = lazy(() => import("./pages/hub/MagazzinoHub.jsx"));
@@ -112,6 +113,7 @@ const router = createBrowserRouter([
       { path: "dati-provvisori", element: <LazyPage><DatiProvvisoriPage /></LazyPage> },
       
       // === DIPENDENTI ===
+      { path: "hr", element: <LazyPage><HRHub /></LazyPage> },
       { path: "dipendenti", element: <LazyPage><HRDipendenti /></LazyPage> },
       { path: "dipendenti/:tab", element: <LazyPage><HRDipendenti /></LazyPage> },
       { path: "dipendenti/:tab/:subtab", element: <LazyPage><HRDipendenti /></LazyPage> },
