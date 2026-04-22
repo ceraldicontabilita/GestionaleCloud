@@ -1,5 +1,5 @@
 # CERALDI ERP — MAPPA APPLICAZIONE COMPLETA
-## Aggiornata: 22 Aprile 2026 — Fix Body() applicato su 19 router
+## Aggiornata: 22 Aprile 2026 — Audit completo: Body(21), Modali(7), Router(2)
 
 ## ARCHITETTURA
 
@@ -189,13 +189,13 @@ Cedolini PDF → Parser Zucchetti → Collezione "cedolini"
 ### 16. ADMIN (AdminHub → include Admin, BatchReprocessing)
 **URL**: /admin
 
-## BUG PATTERN COMUNI
+## BUG PATTERN COMUNI (aggiornato 22/04/2026)
 
-1. **Body() mancante**: ✅ FIXATO 22/04/2026 — scan automatico su 215 router, fixati 18 file critici (accounting_extended, admin, bank_reconciliation, cash_register, config, buste_paga, shifts, staff, finanziaria, invoices_emesse, learning_machine_cdc, ocr_assegni, payroll, pianificazione, settings, warehouse/products, giustificativi, warehouse_main, invoices_main). Tutti i router ora hanno Body importato e Body(...) sui parametri.
-2. **Campi mancanti in response**: il backend non restituisce campi che il frontend mostra → €0,00 o vuoto
-3. **Modali senza overlay click-to-close**: l'utente non riesce a chiudere il modale
-4. **DELETE senza confirm**: cancellazione irreversibile senza conferma
-5. **Router non registrati**: file Python con endpoint ma non include_router in registry → 404
+1. **Body() mancante**: ✅ FIXATO 22/04/2026 — scan automatico su 215 router, fixati 21 file (accounting_extended, admin, bank_reconciliation, cash_register, config, buste_paga, shifts, staff, finanziaria, invoices_emesse, learning_machine_cdc, ocr_assegni, payroll, pianificazione, settings, warehouse/products, giustificativi, warehouse_main, invoices_main, distinte_bpm, document_ai). Tutti i router hanno Body importato e Body(...) sui parametri POST/PUT.
+2. **Campi mancanti in response**: il backend non restituisce campi che il frontend mostra → €0,00 o vuoto. Verificare SEMPRE che i campi restituiti dal router corrispondano a quelli usati nel JSX.
+3. **Modali senza overlay click-to-close**: ✅ FIXATO 22/04/2026 — fixati 7 file JSX: Fornitori (3 modali), VerbaliRiconciliazione, DizionarioArticoli, NoleggioAuto (2 modali), SaldiFeriePermessi. Pattern: overlay onClick={close} + contenuto onClick={e => e.stopPropagation()}.
+4. **DELETE senza confirm**: ✅ OK — scan su 85 pagine JSX, nessun DELETE senza confirm trovato.
+5. **Router non registrati**: ✅ FIXATO 22/04/2026 — timbrature.py (prefix /api/attendance) e email_f24.py (prefix /api/f24-email) aggiunti al router_registry.py. Scan completo: tutti gli altri file non registrati sono helper/common senza router.
 
 ## ROUTER REGISTRATI
 
