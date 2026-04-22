@@ -238,7 +238,7 @@ export default function Scadenze() {
                   onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.15)')}
                 >
                   <div style={{ fontSize: 28, fontWeight: 700 }}>
-                    {alertWidget.libretti_sanitari.scaduti}
+                    {alertWidget?.libretti_sanitari?.scaduti}
                   </div>
                   <div style={{ fontSize: 12, opacity: 0.9 }}>🔴 Libretti Scaduti</div>
                 </div>
@@ -257,7 +257,7 @@ export default function Scadenze() {
                   onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.15)')}
                 >
                   <div style={{ fontSize: 28, fontWeight: 700 }}>
-                    {alertWidget.libretti_sanitari.in_scadenza_30gg}
+                    {alertWidget?.libretti_sanitari?.in_scadenza_30gg}
                   </div>
                   <div style={{ fontSize: 12, opacity: 0.9 }}>🟡 Libretti in Scadenza</div>
                 </div>
@@ -276,7 +276,7 @@ export default function Scadenze() {
                   onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.15)')}
                 >
                   <div style={{ fontSize: 28, fontWeight: 700 }}>
-                    {alertWidget.contratti.in_scadenza_60gg}
+                    {alertWidget?.contratti?.in_scadenza_60gg}
                   </div>
                   <div style={{ fontSize: 12, opacity: 0.9 }}>📋 Contratti in Scadenza</div>
                 </div>
@@ -295,7 +295,7 @@ export default function Scadenze() {
                   onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.15)')}
                 >
                   <div style={{ fontSize: 28, fontWeight: 700 }}>
-                    {alertWidget.f24.da_pagare_30gg}
+                    {alertWidget?.f24?.da_pagare_30gg}
                   </div>
                   <div style={{ fontSize: 12, opacity: 0.9 }}>📋 F24 da Pagare</div>
                 </div>
@@ -309,7 +309,7 @@ export default function Scadenze() {
                   }}
                 >
                   <div style={{ fontSize: 28, fontWeight: 700 }}>
-                    {alertWidget.fiscali.prossime}
+                    {alertWidget?.fiscali?.prossime}
                   </div>
                   <div style={{ fontSize: 12, opacity: 0.9 }}>📅 Scadenze Fiscali</div>
                 </div>
@@ -366,7 +366,7 @@ export default function Scadenze() {
                     data-testid="verbali-attesa-fattura-card"
                   >
                     <div style={{ fontSize: 32, fontWeight: 700 }}>
-                      {documentiRiconciliare.verbali.in_attesa_fattura}
+                      {documentiRiconciliare?.verbali?.in_attesa_fattura}
                     </div>
                     <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>
                       📧 Verbali in Attesa Fattura
@@ -400,7 +400,7 @@ export default function Scadenze() {
                     data-testid="fatture-attesa-verbale-card"
                   >
                     <div style={{ fontSize: 32, fontWeight: 700 }}>
-                      {documentiRiconciliare.verbali.estratti_da_fatture -
+                      {documentiRiconciliare?.verbali?.estratti_da_fatture -
                         documentiRiconciliare.verbali.con_pdf_scaricato}
                     </div>
                     <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>
