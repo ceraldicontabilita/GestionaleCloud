@@ -45,17 +45,15 @@ def register_all_routers(app: FastAPI) -> None:
 def _register_auth(app: FastAPI):
     from app.routers import auth, public_api, google_auth, openclaw
     from app.routers.agenti import router as r_agenti
-    from app.routers.erp_bridge import router as erp_bridge_router
     from app.routers.legal_pages import router as legal_router
-    
+
     app.include_router(public_api.router, prefix="/api", tags=["Public API"])
     app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
     app.include_router(google_auth.router, prefix="/api", tags=["Google OAuth"])
     app.include_router(openclaw.router, prefix="/api", tags=["OpenClaw AI Assistant"])
     app.include_router(r_agenti, prefix="/api", tags=["Agenti AI"])
-    app.include_router(erp_bridge_router)
     app.include_router(legal_router, tags=["Legal"])
-    
+
     from app.routers.whatsapp_webhook import router as whatsapp_router
     app.include_router(whatsapp_router, prefix="/api/whatsapp", tags=["WhatsApp"])
 
@@ -144,15 +142,14 @@ def _register_bank(app: FastAPI):
 # ─── Warehouse Module ──────────────────────────────────────────────────────
 def _register_warehouse(app: FastAPI):
     from app.routers.warehouse import warehouse_main, magazzino, magazzino_products, products, products_catalog, dizionario_articoli
-    from app.routers import magazzino_avanzato, dizionario_prodotti, inventario
-    
+    from app.routers import dizionario_prodotti, inventario
+
     app.include_router(warehouse_main.router, prefix="/api/warehouse", tags=["Warehouse"])
     app.include_router(magazzino.router, prefix="/api/magazzino", tags=["Magazzino"])
     app.include_router(magazzino_products.router, prefix="/api/magazzino", tags=["Magazzino Products"])
     app.include_router(products.router, prefix="/api/products", tags=["Products"])
     app.include_router(products_catalog.router, prefix="/api/products", tags=["Products Catalog"])
     app.include_router(dizionario_articoli.router, prefix="/api/dizionario-articoli", tags=["Dizionario Articoli"])
-    app.include_router(magazzino_avanzato.router, prefix="/api", tags=["Magazzino Avanzato"])
     app.include_router(dizionario_prodotti.router, prefix="/api/dizionario-prodotti", tags=["Dizionario Prodotti"])
     app.include_router(inventario.router, prefix="/api", tags=["Inventario"])
 
@@ -161,15 +158,13 @@ def _register_warehouse(app: FastAPI):
 def _register_invoices(app: FastAPI):
     from app.routers.invoices import invoices_main, invoices_emesse, invoices_export, fatture_upload, corrispettivi
     from app.routers.fatture_module import router as fatture_ricevute_router
-    from app.routers.fatture_module.api_tracciabilita import router as r_api_tracciabilita
     from app.routers import invoicetronic
-    
+
     app.include_router(invoices_emesse.router, prefix="/api/invoices/emesse", tags=["Invoices Emesse"])
     app.include_router(invoices_main.router, prefix="/api/invoices", tags=["Invoices"])
     app.include_router(invoices_export.router, prefix="/api/invoices", tags=["Invoices Export"])
     app.include_router(fatture_upload.router, prefix="/api/fatture", tags=["Fatture Upload"])
     app.include_router(fatture_ricevute_router, prefix="/api/fatture-ricevute", tags=["Fatture Ricevute"])
-    app.include_router(r_api_tracciabilita, prefix="/api", tags=["API Tracciabilita"])
     app.include_router(corrispettivi.router, prefix="/api/corrispettivi", tags=["Corrispettivi"])
     app.include_router(invoicetronic.router, tags=["InvoiceTronic SDI"])
 
@@ -342,70 +337,12 @@ def _register_ai(app: FastAPI):
 
 # ─── Tracciabilità Module ──────────────────────────────────────────────────
 def _register_tracciabilita(app: FastAPI):
-    """Registra i 40+ router del modulo tracciabilità HACCP."""
-    try:
-        from app.routers.tracciabilita.lotti import router as r_tr_lotti
-        from app.routers.tracciabilita.lotti_fornitori import router as r_tr_lotti_forn
-        from app.routers.tracciabilita.lotti_produzione import router as r_tr_lotti_prod
-        from app.routers.tracciabilita.produzioni import router as r_tr_produzioni
-        from app.routers.tracciabilita.temperature_negative import router as r_tr_temp_neg
-        from app.routers.tracciabilita.temperature_positive import router as r_tr_temp_pos
-        from app.routers.tracciabilita.sanificazione import router as r_tr_san
-        from app.routers.tracciabilita.disinfestazione import router as r_tr_dis
-        from app.routers.tracciabilita.haccp_auto import router as r_tr_haccp_auto
-        from app.routers.tracciabilita.haccp_report import router as r_tr_haccp_rep
-        from app.routers.tracciabilita.report_haccp import router as r_tr_report
-        from app.routers.tracciabilita.anomalie import router as r_tr_anomalie
-        from app.routers.tracciabilita.chiusure import router as r_tr_chiusure
-        from app.routers.tracciabilita.attrezzature import router as r_tr_attr
-        from app.routers.tracciabilita.costi_giornalieri import router as r_tr_costi
-        from app.routers.tracciabilita.acquaviva import router as r_tr_acquaviva
-        from app.routers.tracciabilita.colazione import router as r_tr_colazione
-        from app.routers.tracciabilita.vendita_banco import router as r_tr_vendita
-        from app.routers.tracciabilita.fornitori import router as r_tr_fornitori_tr
-        from app.routers.tracciabilita.sconti_merce import router as r_tr_sconti
-        from app.routers.tracciabilita.ricezione_merce import router as r_tr_ricezione
-        from app.routers.tracciabilita.stampa import router as r_tr_stampa
-        from app.routers.tracciabilita.manuale_haccp import router as r_tr_manuale
-        from app.routers.tracciabilita.haccp_manuale_auto import router as r_tr_haccp_man
-        from app.routers.tracciabilita.ricette import router as r_tr_ricette
-        from app.routers.tracciabilita.backup import router as r_tr_backup
-        from app.routers.tracciabilita.controllo_olio import router as r_tr_olio
-        from app.routers.tracciabilita.prodotti_vendita import router as r_tr_prodotti_v
-        from app.routers.tracciabilita.food_cost import router as r_tr_fc
-        from app.routers.tracciabilita.normalizzazione import router as r_tr_norm
-        from app.routers.tracciabilita.materie_prime import router as r_tr_materie
-        from app.routers.tracciabilita.ordini_fornitori import router as r_tr_ord_forn
-        from app.routers.tracciabilita.temperature_cottura import router as r_tr_temp_cott
-        from app.routers.tracciabilita.fatture import router as r_tr_fatture
-        from app.routers.tracciabilita.supervisor_operativo import router as r_tr_supervisor
-        from app.routers.tracciabilita.utils import router as r_tr_utils
-        from app.routers.tracciabilita.codici_cun import router as r_tr_codici_cun
-        from app.routers.tracciabilita.pec_import import router as r_tr_pec
-        from app.routers.tracciabilita.mepa import router as r_tr_mepa
-        from app.routers.tracciabilita.saima import router as r_tr_saima
-        from app.routers.tracciabilita.saima_ricettari import router as r_tr_saima_ric
-        from app.routers.tracciabilita.pipeline import router as r_tr_pipeline
-        
-        _all = [
-            r_tr_lotti, r_tr_lotti_forn, r_tr_lotti_prod, r_tr_produzioni,
-            r_tr_temp_neg, r_tr_temp_pos, r_tr_san, r_tr_dis,
-            r_tr_haccp_auto, r_tr_haccp_rep, r_tr_report, r_tr_anomalie,
-            r_tr_chiusure, r_tr_attr, r_tr_costi, r_tr_acquaviva, r_tr_colazione,
-            r_tr_vendita, r_tr_fornitori_tr, r_tr_sconti, r_tr_ricezione,
-            r_tr_stampa, r_tr_manuale, r_tr_haccp_man,
-            r_tr_ricette, r_tr_backup, r_tr_olio, r_tr_prodotti_v,
-            r_tr_fc, r_tr_norm, r_tr_materie, r_tr_ord_forn, r_tr_temp_cott,
-            r_tr_fatture, r_tr_supervisor, r_tr_utils, r_tr_codici_cun,
-            r_tr_pec, r_tr_mepa, r_tr_saima, r_tr_saima_ric, r_tr_pipeline,
-        ]
-        for r in _all:
-            app.include_router(r, prefix="/api/tr")
-        logger.info("✅ Tracciabilità: %d router caricati", len(_all))
-    except Exception as e:
-        logger.warning("⚠️ Tracciabilità: %s", str(e)[:120])
-
-    # ── ROUTER MANCANTI — Registrazione batch per endpoint non ancora collegati ──
+    """
+    NOTA: il nome è legacy. Ora registra solo i router "extra" (_missing_routers)
+    che non hanno una categoria propria. Il modulo tracciabilità HACCP/ristorazione
+    è stato rimosso (non era utilizzato nel gestionale amministrativo Ceraldi).
+    """
+    # ── ROUTER EXTRA — Registrazione batch per endpoint non ancora collegati ──
     _missing_routers = [
         ("app.routers.agenti", "/api/agenti", "Agenti"),
         ("app.routers.auto_repair", "/api/auto-repair", "Auto Repair"),
@@ -415,7 +352,6 @@ def _register_tracciabilita(app: FastAPI):
         ("app.routers.documenti_non_associati", "/api/documenti-non-associati", "Documenti Non Associati"),
         ("app.routers.email_download", "/api/email-download", "Email Download"),
         ("app.routers.email_scanner", "/api/email-scanner", "Email Scanner"),
-        ("app.routers.erp_bridge", "/api/erp", "ERP Bridge"),
         ("app.routers.fornitori_learning", "/api/fornitori-learning", "Fornitori Learning"),
         ("app.routers.invoicetronic", "/api/invoicetronic", "InvoiceTronic"),
         ("app.routers.openapi_automotive", "/api/openapi-automotive", "OpenAPI Automotive"),
@@ -435,14 +371,3 @@ def _register_tracciabilita(app: FastAPI):
             logger.info("✅ Router registrato: %s → %s", tag, prefix)
         except Exception as e:
             logger.warning("⚠️ Router %s non caricato: %s", tag, str(e)[:80])
-
-    # Cucina — modulo multi-file
-    try:
-        from app.routers.cucina import food_cost, ordini_fornitori, prodotti_vendita, ricette
-        app.include_router(food_cost.router, prefix="/api/cucina/food-cost", tags=["Cucina Food Cost"])
-        app.include_router(ordini_fornitori.router, prefix="/api/cucina/ordini-fornitori", tags=["Cucina Ordini"])
-        app.include_router(prodotti_vendita.router, prefix="/api/cucina/prodotti-vendita", tags=["Cucina Prodotti Vendita"])
-        app.include_router(ricette.router, prefix="/api/cucina/ricette", tags=["Cucina Ricette"])
-        logger.info("✅ Cucina: 4 router caricati")
-    except Exception as e:
-        logger.warning("⚠️ Cucina: %s", str(e)[:80])

@@ -16,7 +16,6 @@ import re
 from app.database import Database, Collections
 from app.parsers.fattura_elettronica_parser import parse_fattura_xml
 from app.utils.warehouse_helpers import auto_populate_warehouse_from_invoice
-from app.services.tracciabilita_auto import popola_tracciabilita_da_fattura
 from app.utils.error_handler import handle_errors
 
 logger = logging.getLogger(__name__)
@@ -770,30 +769,7 @@ async def upload_fattura_xml(file: UploadFile = File(...)) -> Dict[str, Any]:
             logger.debug(f"Associazione PDF non disponibile: {e}")
         
         warehouse_result = await auto_populate_warehouse_from_invoice(db, parsed, invoice["id"])
-        
-        # === AUTOMAZIONI COMPLETE: Ricette + Operazioni da confermare ===
-        automazioni_result = None
-        try:
-            from app.services.automazione_completa import processa_fattura_con_automazioni
-            automazioni_result = await processa_fattura_con_automazioni(db, parsed, invoice["id"])
-            if automazioni_result.get("ricette", {}).get("ricette_aggiornate", 0) > 0:
-                logger.info(f"🍳 Ricette aggiornate: {automazioni_result['ricette']['ricette_aggiornate']}")
-            if automazioni_result.get("operazione", {}).get("operazione_completata"):
-                logger.info("✅ Operazione completata con fattura XML")
-        except Exception as e:
-            logger.warning(f"Errore automazioni: {e}")
-        
-        # Popolamento automatico tracciabilità HACCP
-        tracciabilita_result = {"created": 0, "skipped": 0}
-        try:
-            tracciabilita_result = await popola_tracciabilita_da_fattura(
-                fattura=invoice,
-                linee=parsed.get("linee", [])
-            )
-            logger.info(f"Tracciabilità HACCP: {tracciabilita_result.get('created', 0)} record creati")
-        except Exception as e:
-            logger.warning(f"Errore popolamento tracciabilità: {e}")
-        
+
         prima_nota_result = {"cassa": None, "banca": None}
         # Registra in Prima Nota SOLO se non è stato già riconciliato automaticamente
         # O se il metodo non è misto
@@ -858,14 +834,6 @@ async def upload_fattura_xml(file: UploadFile = File(...)) -> Dict[str, Any]:
             "warehouse": {
                 "products_created": warehouse_result.get("products_created", 0),
                 "products_updated": warehouse_result.get("products_updated", 0)
-            },
-            "tracciabilita_haccp": {
-                "created": tracciabilita_result.get("created", 0),
-                "skipped": tracciabilita_result.get("skipped", 0)
-            },
-            "automazioni": {
-                "ricette_aggiornate": automazioni_result.get("ricette", {}).get("ricette_aggiornate", 0) if automazioni_result else 0,
-                "operazione_completata": automazioni_result.get("operazione", {}).get("operazione_completata", False) if automazioni_result else False
             },
             "prima_nota": prima_nota_result,
             "pdf_associato": pdf_association_result.get("pdf_associated", False) if pdf_association_result else False,

@@ -191,11 +191,6 @@ docs_path = "./docs"
 os.makedirs(docs_path, exist_ok=True)
 app.mount("/api/download", StaticFiles(directory=docs_path), name="download")
 
-# Tracciabilità mini-sito
-_tracciabilita_static = os.path.join(os.path.dirname(__file__), "static", "tracciabilita")
-if os.path.isdir(_tracciabilita_static):
-    app.mount("/api/tracciabilita", StaticFiles(directory=_tracciabilita_static, html=True), name="tracciabilita")
-
 # SPA Frontend (React Router)
 _FRONTEND_DIST = os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "frontend", "dist"))
 if os.path.isdir(_FRONTEND_DIST):

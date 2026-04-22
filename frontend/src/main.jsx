@@ -52,7 +52,6 @@ const MappaGestionale = lazy(() => import("./pages/MappaGestionale.jsx"));
 const DatiProvvisoriPage = lazy(() => import("./pages/DatiProvvisoriPage.jsx"));
 const AgentiPage = lazy(() => import("./pages/Agenti.jsx"));
 const Portale = lazy(() => import("./pages/Portale.jsx"));
-const TracciabilitaPage = lazy(() => import("./pages/TracciabilitaPage.jsx"));
 const LearningMachine = lazy(() => import("./pages/LearningMachine.jsx"));
 const DashboardRelazionale = lazy(() => import("./pages/DashboardRelazionale.jsx"));
 
@@ -80,10 +79,7 @@ const router = createBrowserRouter([
       
       // === INSERIMENTO RAPIDO ===
       { path: "rapido", element: <LazyPage><InserimentoRapido /></LazyPage> },
-      
-      // === TRACCIABILITA' MINI-SITO ===
-      { path: "tracciabilita", element: <LazyPage><TracciabilitaPage /></LazyPage> },
-      
+
       // === FATTURE & VENDITE ===
       { path: "fatture", element: <LazyPage><FattureHub /></LazyPage> },
       { path: "fatture/import", element: <Navigate to="/documenti/import" replace /> },

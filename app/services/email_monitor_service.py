@@ -536,16 +536,8 @@ async def run_full_sync(db) -> Dict[str, Any]:
     try:
         # 1. Scarica email documenti (ultimo 1 giorno - i duplicati vengono saltati)
         results["email_sync"] = await sync_email_documents(db, giorni=1)
-        
-        # 2. Scarica notifiche Aruba → operazioni da confermare
-        try:
-            from app.services.automazione_completa import fetch_aruba_emails_to_operazioni
-            results["aruba_sync"] = await fetch_aruba_emails_to_operazioni(db, giorni=7)
-        except Exception as e:
-            logger.error(f"Errore sync Aruba: {e}")
-            results["aruba_sync"] = {"success": False, "error": str(e)}
-        
-        # 3. Scarica F24 automatici (se auto_scan_attivo)
+
+        # 2. Scarica F24 automatici (se auto_scan_attivo)
         try:
             settings = await db["f24_email_settings"].find_one({"tipo": "f24_settings"})
             if settings and settings.get("auto_scan_attivo", False):
@@ -574,16 +566,7 @@ async def run_full_sync(db) -> Dict[str, Any]:
         
         # 5. Processa documenti
         results["processamento"] = await processa_nuovi_documenti(db)
-        
-        # 6. Aggiorna ricette se ci sono stati aggiornamenti al magazzino
-        try:
-            proc = results.get("processamento", {})
-            if proc.get("buste_paga", 0) > 0 or proc.get("estratti_nexi", 0) > 0 or proc.get("estratti_bnl", 0) > 0:
-                from app.services.automazione_completa import aggiorna_prezzi_ricette
-                results["ricette_aggiornate"] = await aggiorna_prezzi_ricette(db)
-        except Exception as e:
-            logger.error(f"Errore aggiornamento ricette: {e}")
-        
+
         # Step 7 (I): Alert fatture scadute
         try:
             from datetime import date as _date
