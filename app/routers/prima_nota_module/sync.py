@@ -315,15 +315,31 @@ async def sync_fatture_pagate(anno: int = Query(...)) -> Dict:
     if not fatture:
         return {"message": "Nessuna fattura pagata trovata", "importati": 0}
     
+    # IMPORTANTE: il dedup NON deve filtrare per categoria.
+    # Dopo la PR #1, registra_pagamento_fattura salva con categoria variabile
+    # ("Pagamento fornitore", "Incasso cliente", "Nota credito fornitore") e
+    # NON "Fatture". Se filtrassimo per categoria="Fatture" come prima, questa
+    # funzione non vedrebbe quei movimenti e creerebbe duplicati.
+    # Il riferimento è ormai uniforme (FATT-{id}), basta quello.
     existing_cassa = await db[COLLECTION_PRIMA_NOTA_CASSA].find(
-        {"categoria": "Fatture", "data": {"$gte": date_start, "$lte": date_end}},
-        {"riferimento": 1, "_id": 0}
+        {
+            "data": {"$gte": date_start, "$lte": date_end},
+            "riferimento": {"$regex": "^FATT-"},
+            "status": {"$nin": ["deleted", "archived"]},
+        },
+        {"riferimento": 1, "fattura_id": 1, "_id": 0}
     ).to_list(10000)
     existing_banca = await db[COLLECTION_PRIMA_NOTA_BANCA].find(
-        {"categoria": "Fatture", "data": {"$gte": date_start, "$lte": date_end}},
-        {"riferimento": 1, "_id": 0}
+        {
+            "data": {"$gte": date_start, "$lte": date_end},
+            "riferimento": {"$regex": "^FATT-"},
+            "status": {"$nin": ["deleted", "archived"]},
+        },
+        {"riferimento": 1, "fattura_id": 1, "_id": 0}
     ).to_list(10000)
     existing_refs = set(e.get("riferimento") for e in existing_cassa + existing_banca if e.get("riferimento"))
+    # Dedup anche per fattura_id (caso: vecchi movimenti col riferimento nel formato "numero_fattura")
+    existing_fids = set(e.get("fattura_id") for e in existing_cassa + existing_banca if e.get("fattura_id"))
     
     importati_cassa = 0
     importati_banca = 0
@@ -331,9 +347,11 @@ async def sync_fatture_pagate(anno: int = Query(...)) -> Dict:
     totale_banca = 0
     
     for fatt in fatture:
-        ref = f"FATT-{fatt.get('id', '')}"
-        
-        if ref in existing_refs:
+        fattura_id = fatt.get('id', '')
+        ref = f"FATT-{fattura_id}"
+
+        # Dedup: o per riferimento FATT-, o per fattura_id (in caso di vecchi movimenti)
+        if ref in existing_refs or (fattura_id and fattura_id in existing_fids):
             continue
         
         totale = float(fatt.get("total_amount", 0) or 0)
@@ -351,6 +369,7 @@ async def sync_fatture_pagate(anno: int = Query(...)) -> Dict:
             "descrizione": f"Fattura {fatt.get('numero', '')} - {fornitore[:30]}",
             "categoria": "Fatture",
             "riferimento": ref,
+            "fattura_id": fattura_id,
             "source": "sync_fatture",
             "created_at": datetime.now(timezone.utc).isoformat()
         }
