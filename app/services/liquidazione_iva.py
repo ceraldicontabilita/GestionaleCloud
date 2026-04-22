@@ -12,7 +12,7 @@ Questo modulo calcola la liquidazione IVA mensile secondo le norme italiane:
 - Deroghe temporali: regola 15 giorni e 12 giorni per fatture mese precedente
 """
 
-from datetime import date, timedelta, datetime
+from datetime import date, timedelta, datetime, timezone
 from decimal import Decimal
 from typing import Dict, Any, List, Optional
 import logging
@@ -271,7 +271,7 @@ def compute_vat_liquidation_from_db(
             "corrispettivi_count": len(corrispettivi)
         },
         "regime_iva": "ordinaria",
-        "calcolato_il": datetime.now().isoformat()
+        "calcolato_il": datetime.now(timezone.utc).isoformat()
     }
 
 
