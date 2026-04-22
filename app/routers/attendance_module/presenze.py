@@ -878,7 +878,7 @@ async def import_presenze_da_pdf(file: UploadFile = File(...)) -> Dict[str, Any]
                 if ore_raw:
                     try:
                         ore_ordinarie = float(str(ore_raw).replace(',', '.'))
-                    except:
+                    except Exception:
                         ore_ordinarie = 0.0
                 
                 # If there's a giustificativo code
@@ -904,7 +904,7 @@ async def import_presenze_da_pdf(file: UploadFile = File(...)) -> Dict[str, Any]
                 qty = riep.get("quantita", "0")
                 try:
                     qty_float = float(str(qty).replace(',', '.'))
-                except:
+                except Exception:
                     qty_float = 0.0
                 
                 if not codice and "ore ordinarie" in desc.lower():
