@@ -2485,7 +2485,7 @@ export default function Fornitori() {
 
                     {/* Dettaglio Mensile (se disponibile) */}
                     {fatturatoModal.data.dettaglio_mensile &&
-                      fatturatoModal.data.dettaglio_mensile.length > 0 && (
+                      (fatturatoModal.data?.dettaglio_mensile?.length || 0) > 0 && (
                         <div>
                           <div
                             style={{
