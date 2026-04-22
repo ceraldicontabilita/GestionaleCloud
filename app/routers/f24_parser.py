@@ -45,7 +45,7 @@ def parse_euro_amount(text: str) -> float:
     cleaned = cleaned.replace(' ', '')
     try:
         return float(cleaned)
-    except:
+    except Exception:
         return 0.0
 
 
