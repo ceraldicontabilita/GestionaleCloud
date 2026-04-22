@@ -411,7 +411,7 @@ def _register_tracciabilita(app: FastAPI):
         ("app.routers.auto_repair", "/api/auto-repair", "Auto Repair"),
         ("app.routers.batch_reprocessing", "/api/batch-reprocess", "Batch Reprocess"),
         ("app.routers.accounting.contabilita_gestionale", "/api/contabilita-gestionale", "Contabilità Gestionale"),
-        ("app.routers.dati_provvisori", "/api/dati-provvisori", "Dati Provvisori"),
+        ("app.routers.dati_provvisori", "/api", "Dati Provvisori"),
         ("app.routers.documenti_non_associati", "/api/documenti-non-associati", "Documenti Non Associati"),
         ("app.routers.email_download", "/api/email-download", "Email Download"),
         ("app.routers.email_scanner", "/api/email-scanner", "Email Scanner"),
