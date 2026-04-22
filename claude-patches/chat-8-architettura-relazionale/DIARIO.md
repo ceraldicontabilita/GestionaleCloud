@@ -96,3 +96,53 @@ Emergent applica le patch, poi si può lavorare su:
 - Backlog P0/P1 (Piano Conti, Controllo Mensile, Cespiti)
 
 ---
+
+## Chat 9 (continuazione) — 22 Aprile 2026
+
+### Obiettivo
+Controllo qualità e fix critici su calcoli IVA, prima nota, banca, cedolini,
+fornitori, dashboard, scadenze, import documenti.
+
+### Fix applicati direttamente nel repo (7 commit)
+
+1. **Fix IVA saldo progressivo** (`iva_calcolo.py` + `IVA.jsx`):
+   Aggiunto riporto credito/debito mese precedente. Marzo non è più
+   "Da versare" se il credito accumulato copre. Nuove colonne:
+   Riporto, Saldo Anno, N.Corr, N.Fatt.
+
+2. **Fix Prima Nota Cassa** (`PrimaNota.jsx`):
+   Rimosso "Saldo Cumulativo" €-485K e "Riporto Anni Prec." dalla cassa.
+   saldoPrecedente tabella movimenti impostato a 0.
+
+3. **Fix Banca riporto negativo** (`PrimaNota.jsx`):
+   Check `> 0` → `!== 0` per mostrare riporto anche se negativo.
+
+4. **Fix Prima Nota duplicati fatture** (`import_xml.py`):
+   Aggiunto `find_one(fattura_id)` prima di `insert_one`. Se esiste già
+   un movimento per la stessa fattura, non crea duplicato.
+
+5. **Fix import .p7m** (`documenti.py`):
+   Il detector ora gestisce `.p7m` e `.xml.p7m`, cerca i marker XML
+   nel wrapper P7M per classificare fatture e corrispettivi firmati.
+
+6. **Fix pagamento fatture dal fornitore** (`Fornitori.jsx`):
+   Aggiunta colonna "Azioni" nel modale estratto fatture con bottoni
+   💵Cassa e 🏦Banca → chiama `/api/fatture-ricevute/paga-manuale`.
+
+7. **Fix modale chiudi/stampa/X** (`Fornitori.jsx`):
+   Aggiunto onClick overlay per chiudere + stopPropagation sul contenuto.
+
+8. **Fix Dashboard bilancio** (`dashboard.py`):
+   Filtro costi fatture ora cerca con `$or` su anno/invoice_date/
+   data_ricezione/data_documento.
+
+9. **Fix Scadenze IVA progressivo** (`scadenze.py`):
+   Aggiunto saldo_progressivo con riporto credito. Nuovi campi:
+   `da_versare_effettivo` e `importo_versamento_effettivo`.
+
+### Patch aggiunta
+- `claude-patches/chat-9-fix-dipendenti/`: fascicolo dipendente completo
+  con matching stipendi banca (3 strategie), arricchimento anagrafica,
+  presenze, TFR, saldi.
+
+---
