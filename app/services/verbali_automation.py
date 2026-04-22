@@ -111,7 +111,7 @@ def extract_data_verbale_from_text(text: str) -> Optional[str]:
                     if len(anno) == 2:
                         anno = f"20{anno}"
                     return f"{anno}-{mese}-{giorno}"
-            except:
+            except Exception:
                 pass
     
     return None
