@@ -130,7 +130,7 @@ def parse_fatturapa_xml(xml_content: bytes) -> Optional[Dict[str, Any]]:
                 # Rimuovi la dichiarazione di encoding dall'XML per evitare conflitti
                 decoded = re.sub(r'encoding=["\'][\w-]+["\']', 'encoding="UTF-8"', decoded)
                 root = ET.fromstring(decoded.encode('utf-8'))
-            except:
+            except Exception:
                 return None
 
         # Trova il namespace dinamicamente
@@ -230,7 +230,7 @@ def parse_fatturapa_xml(xml_content: bytes) -> Optional[Dict[str, Any]]:
         def to_float(s):
             try:
                 return float(str(s).replace(',', '.').strip())
-            except:
+            except Exception:
                 return 0.0
 
         total_amount = to_float(importo_totale) or to_float(importo_pagamento)
