@@ -234,7 +234,7 @@ export default function GestioneCespiti() {
   const handleCalcolaAmm = async () => {
     try {
       const r = await api.post(`/api/cespiti/registra/${anno}`);
-      alert(r.data.messaggio);
+      alert(r?.data?.messaggio);
       loadCespiti();
     } catch (e) {
       alert('Errore');
@@ -247,7 +247,7 @@ export default function GestioneCespiti() {
       const r = await api.post('/api/cespiti/scan-fatture?soglia_valore=200&dry_run=false');
       if (r.data.cespiti_creati > 0) {
         alert(
-          `${r.data.messaggio}\nValore totale: EUR ${r.data.valore_totale?.toLocaleString('it-IT')}`
+          `${r?.data?.messaggio}\nValore totale: EUR ${r?.data?.valore_totale?.toLocaleString('it-IT')}`
         );
       } else {
         alert('Nessun nuovo cespite trovato nelle fatture XML.');
@@ -329,7 +329,7 @@ export default function GestioneCespiti() {
             <div style={{ ...styles.grid4, marginBottom: 12 }}>
               <div style={styles.statBox('#eff6ff')}>
                 <p style={styles.statLabel('#2563eb')}>Cespiti</p>
-                <p style={styles.statValue('#1e40af')}>{riepilogoCespiti.totali.num_cespiti}</p>
+                <p style={styles.statValue('#1e40af')}>{riepilogoCespiti?.totali?.num_cespiti}</p>
               </div>
               <div style={styles.statBox('#f0fdf4')}>
                 <p style={styles.statLabel('#16a34a')}>Val. Acq.</p>
@@ -600,7 +600,7 @@ export default function GestioneCespiti() {
                   <span style={{ fontSize: 12, fontWeight: '600' }}>TFR per Dipendente</span>
                 </div>
                 <div style={styles.cardContent}>
-                  {riepilogoTFR.dettaglio_dipendenti.length === 0 ? (
+                  {riepilogoTFR?.dettaglio_dipendenti?.length === 0 ? (
                     <div style={{ ...styles.small, textAlign: 'center' }}>Nessun TFR</div>
                   ) : (
                     <div>
@@ -677,7 +677,7 @@ export default function GestioneCespiti() {
                 <div style={styles.statBox('#f8fafc')}>
                   <p style={styles.statLabel('#475569')}>Fatture</p>
                   <p style={{ fontSize: 18, fontWeight: 'bold' }}>
-                    {scadenzario.riepilogo.totale_fatture}
+                    {scadenzario?.riepilogo?.totale_fatture}
                   </p>
                 </div>
                 <div style={styles.statBox('#eff6ff')}>
@@ -695,7 +695,7 @@ export default function GestioneCespiti() {
                 <div style={styles.statBox('#fffbeb')}>
                   <p style={styles.statLabel('#d97706')}>7gg</p>
                   <p style={styles.statValue('#b45309')}>
-                    {scadenzario.riepilogo.num_prossimi_7gg}
+                    {scadenzario?.riepilogo?.num_prossimi_7gg}
                   </p>
                 </div>
               </div>
