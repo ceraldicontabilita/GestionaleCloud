@@ -132,6 +132,18 @@ except ImportError:
 from app.middleware.authentication import AuthenticationMiddleware
 app.add_middleware(AuthenticationMiddleware)
 
+# SEO: header X-Robots-Tag su TUTTE le risposte
+# Gestionale privato → non deve comparire in nessun motore di ricerca.
+from starlette.middleware.base import BaseHTTPMiddleware
+
+class NoIndexMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        response.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive, nosnippet, noimageindex"
+        return response
+
+app.add_middleware(NoIndexMiddleware)
+
 # Exception Handlers
 add_exception_handlers(app)
 

@@ -33,6 +33,11 @@ PUBLIC_PATHS = {
     "/docs",
     "/redoc",
     "/openapi.json",
+
+    # SEO/crawler files (must be accessible without auth)
+    "/robots.txt",
+    "/sitemap.xml",
+    "/favicon.ico",
 }
 
 # Path prefixes that don't require authentication
