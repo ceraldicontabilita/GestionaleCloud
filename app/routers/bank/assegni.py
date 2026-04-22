@@ -802,7 +802,7 @@ async def emetti_assegno(
             "fattura_id": assegno_upd.get("fattura_collegata"),
             "fornitore_piva": assegno_upd.get("fornitore_piva"),
             "riconciliato": False,
-            "anno": int(data_emissione[:4]),
+            "anno": int(data_emissione[:4]) if data_emissione and len(str(data_emissione)) >= 4 and str(data_emissione)[:4].isdigit() else datetime.now(timezone.utc).year,
             "created_at": datetime.now(timezone.utc).isoformat()
         }
         await db["prima_nota_banca"].insert_one(mov.copy())
