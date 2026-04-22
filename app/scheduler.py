@@ -209,6 +209,119 @@ async def scan_verbali_email_task():
         logger.error(traceback.format_exc())
 
 
+async def check_scadenze_partite_task():
+    """
+    Task eseguito ogni giorno alle 7:00.
+    Scansiona partite_aperte con stato 'aperta' o 'parziale' e data_scadenza < oggi,
+    e genera gli alert relazionali appropriati in base al tipo di partita:
+      - fattura_fornitore → FAT_DA_PAGARE_SCADUTA
+      - f24               → F24_SCADUTO (+ F24_NON_PAGATO se non riconciliato)
+      - stipendio         → CED_NON_PAGATO
+      - pos_atteso        → BNK_POS_NON_RICONCILIATO
+
+    L'alert_engine.genera_alert() è idempotente: non ricrea alert già aperti,
+    quindi il task può girare ogni giorno senza duplicare.
+    """
+    from app.database import Database
+    from app.services.alert_engine import genera_alert
+
+    logger.info("📅 [SCHEDULER] Controllo scadenze partite aperte...")
+
+    try:
+        db = Database.get_db()
+        oggi = datetime.now().date().isoformat()
+
+        # Tipi di partita → codice alert associato
+        mapping_alert = {
+            "fattura_fornitore": "FAT_DA_PAGARE_SCADUTA",
+            "f24": "F24_SCADUTO",
+            "stipendio": "CED_NON_PAGATO",
+            "pos_atteso": "BNK_POS_NON_RICONCILIATO",
+        }
+
+        stats = {t: 0 for t in mapping_alert}
+        stats["totale_analizzate"] = 0
+        stats["senza_mapping"] = 0
+        stats["errori"] = 0
+
+        # Query partite scadute aperte o parziali
+        cursor = db["partite_aperte"].find(
+            {
+                "stato": {"$in": ["aperta", "parziale"]},
+                "data_scadenza": {"$lt": oggi, "$ne": None},
+            },
+            {"_id": 0, "id": 1, "tipo": 1, "documento_id": 1,
+             "documento_collection": 1, "controparte_nome": 1,
+             "residuo": 1, "data_scadenza": 1}
+        )
+
+        async for partita in cursor:
+            stats["totale_analizzate"] += 1
+            tipo = partita.get("tipo", "")
+            codice_alert = mapping_alert.get(tipo)
+            if not codice_alert:
+                stats["senza_mapping"] += 1
+                continue
+
+            documento_id = partita.get("documento_id") or partita.get("id")
+            documento_coll = partita.get("documento_collection", "partite_aperte")
+            controparte = partita.get("controparte_nome", "")
+            residuo = partita.get("residuo", 0)
+            data_scad = partita.get("data_scadenza", "")
+
+            dettaglio = (
+                f"Scaduta il {data_scad} — residuo €{residuo:.2f}"
+                + (f" — {controparte}" if controparte else "")
+            )
+
+            try:
+                created = await genera_alert(
+                    codice_alert,
+                    documento_id,
+                    documento_coll,
+                    dettaglio,
+                    db,
+                    extra={
+                        "partita_id": partita.get("id"),
+                        "residuo": residuo,
+                        "data_scadenza": data_scad,
+                    }
+                )
+                if created:
+                    stats[tipo] += 1
+            except Exception as e:
+                stats["errori"] += 1
+                logger.error(f"[SCHEDULER-SCADENZE] errore alert {codice_alert} per {documento_id}: {e}")
+
+        logger.info(
+            f"📅 [SCHEDULER] Scadenze partite: {stats['totale_analizzate']} analizzate, "
+            f"fatture={stats['fattura_fornitore']}, f24={stats['f24']}, "
+            f"stipendi={stats['stipendio']}, pos={stats['pos_atteso']}, "
+            f"senza_mapping={stats['senza_mapping']}, errori={stats['errori']}"
+        )
+
+        # Notifica WebSocket se ci sono nuovi alert di scadenza
+        totale_nuovi = sum(stats[t] for t in mapping_alert)
+        if totale_nuovi > 0:
+            try:
+                from app.services.websocket_manager import notify_data_change
+                await notify_data_change("scadenze_partite", {
+                    "nuovi_alert": totale_nuovi,
+                    "fatture": stats["fattura_fornitore"],
+                    "f24": stats["f24"],
+                    "stipendi": stats["stipendio"],
+                    "pos": stats["pos_atteso"],
+                }, "notifications")
+                logger.info("🔔 [SCHEDULER] WebSocket notifica scadenze_partite inviata")
+            except Exception as e:
+                logger.debug(f"[SCHEDULER-SCADENZE] WebSocket non disponibile: {e}")
+
+    except Exception as e:
+        logger.error(f"📅 [SCHEDULER] Errore controllo scadenze partite: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+
+
 async def check_scadenze_f24_task():
     """
     Task eseguito ogni giorno alle 8:00.
@@ -361,6 +474,15 @@ def start_scheduler():
         replace_existing=True
     )
     
+    # Task Scadenze Partite Aperte (sistema relazionale) - ogni giorno alle 7:00
+    scheduler.add_job(
+        check_scadenze_partite_task,
+        CronTrigger(hour=7, minute=0),
+        id="scadenze_partite_check",
+        name="Controllo Scadenze Partite Aperte (ogni giorno ore 7:00)",
+        replace_existing=True
+    )
+
     # Task Scadenze F24 - ogni giorno alle 8:00
     scheduler.add_job(
         check_scadenze_f24_task,
@@ -395,6 +517,7 @@ def start_scheduler():
     logger.info("   - Gmail/Aruba: ogni 10 minuti")
     logger.info("   - Gmail Full Scan (tutte cartelle): ogni ora")
     logger.info("   - Verbali Email: ogni ora")
+    logger.info("   - Scadenze Partite Aperte: ogni giorno ore 7:00")
     logger.info("   - Scadenze F24: ogni giorno ore 8:00 e 14:00")
 
 
