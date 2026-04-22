@@ -118,8 +118,17 @@ await seed_alert_definitions(Database.get_db())
 
 - `PIANO_LAVORO_RELAZIONALE.md` — architettura completa, catalogo alert, mappa moduli
 - `DIARIO.md` — cronologia sviluppo
+- `README.md` — aggiornato con sezione architettura relazionale
+- `memoria/INDEX.md` — aggiornato: collezioni corrette, servizi core, regole critiche 16 punti
+- `memoria/PRD.md` — aggiornato: stato implementazione, architettura relazionale
+- `memoria/LOGICA_OPERATIVA.md` — aggiunto sezione 5 "Sistema relazionale a eventi" con mappa
+- `memoria/BACKLOG.md` — aggiunta nota collegamento al piano relazionale
 
-**Entrambi vanno copiati nella root del repo.**
+**Tutti i file .md vanno copiati nelle rispettive posizioni nel repo:**
+- `README.md` → root del repo
+- `PIANO_LAVORO_RELAZIONALE.md` → root del repo
+- `DIARIO.md` → root del repo
+- `memoria/*.md` → `memoria/` nel repo
 
 ---
 
