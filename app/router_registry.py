@@ -404,3 +404,45 @@ def _register_tracciabilita(app: FastAPI):
         logger.info("✅ Tracciabilità: %d router caricati", len(_all))
     except Exception as e:
         logger.warning("⚠️ Tracciabilità: %s", str(e)[:120])
+
+    # ── ROUTER MANCANTI — Registrazione batch per endpoint non ancora collegati ──
+    _missing_routers = [
+        ("app.routers.agenti", "/api/agenti", "Agenti"),
+        ("app.routers.auto_repair", "/api/auto-repair", "Auto Repair"),
+        ("app.routers.batch_reprocessing", "/api/batch-reprocess", "Batch Reprocess"),
+        ("app.routers.accounting.contabilita_gestionale", "/api/contabilita-gestionale", "Contabilità Gestionale"),
+        ("app.routers.dati_provvisori", "/api/dati-provvisori", "Dati Provvisori"),
+        ("app.routers.documenti_non_associati", "/api/documenti-non-associati", "Documenti Non Associati"),
+        ("app.routers.email_download", "/api/email-download", "Email Download"),
+        ("app.routers.email_scanner", "/api/email-scanner", "Email Scanner"),
+        ("app.routers.erp_bridge", "/api/erp", "ERP Bridge"),
+        ("app.routers.fornitori_learning", "/api/fornitori-learning", "Fornitori Learning"),
+        ("app.routers.invoicetronic", "/api/invoicetronic", "InvoiceTronic"),
+        ("app.routers.openapi_automotive", "/api/openapi-automotive", "OpenAPI Automotive"),
+        ("app.routers.openapi_imprese", "/api/openapi-imprese", "OpenAPI Imprese"),
+        ("app.routers.pagopa", "/api/pagopa", "PagoPA"),
+        ("app.routers.paypal_api", "/api/paypal-api", "PayPal API"),
+        ("app.routers.previsioni_acquisti", "/api/previsioni-acquisti", "Previsioni Acquisti"),
+        ("app.routers.schede_tecniche", "/api/schede-tecniche", "Schede Tecniche"),
+        ("app.routers.inventario", "/api/inventario", "Inventario"),
+        ("app.routers.rapido", "/api/rapido", "Inserimento Rapido"),
+    ]
+    for module_path, prefix, tag in _missing_routers:
+        try:
+            import importlib
+            mod = importlib.import_module(module_path)
+            app.include_router(mod.router, prefix=prefix, tags=[tag])
+            logger.info("✅ Router registrato: %s → %s", tag, prefix)
+        except Exception as e:
+            logger.warning("⚠️ Router %s non caricato: %s", tag, str(e)[:80])
+
+    # Cucina — modulo multi-file
+    try:
+        from app.routers.cucina import food_cost, ordini_fornitori, prodotti_vendita, ricette
+        app.include_router(food_cost.router, prefix="/api/cucina/food-cost", tags=["Cucina Food Cost"])
+        app.include_router(ordini_fornitori.router, prefix="/api/cucina/ordini-fornitori", tags=["Cucina Ordini"])
+        app.include_router(prodotti_vendita.router, prefix="/api/cucina/prodotti-vendita", tags=["Cucina Prodotti Vendita"])
+        app.include_router(ricette.router, prefix="/api/cucina/ricette", tags=["Cucina Ricette"])
+        logger.info("✅ Cucina: 4 router caricati")
+    except Exception as e:
+        logger.warning("⚠️ Cucina: %s", str(e)[:80])
