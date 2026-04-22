@@ -83,7 +83,7 @@ class EstrattoContoNexiParser:
                     mese = mesi.get(parts[1], "01")
                     anno = parts[2]
                     self.metadata["data_estratto_iso"] = f"{anno}-{mese}-{giorno}"
-            except:
+            except Exception:
                 pass
         
         # Numero carta (mascherato)
@@ -220,7 +220,7 @@ class EstrattoContoNexiParser:
                 if len(year) == 2:
                     year = "20" + year if int(year) < 50 else "19" + year
                 return f"{year}-{month}-{day}"
-        except:
+        except Exception:
             pass
         return date_str
     
@@ -232,7 +232,7 @@ class EstrattoContoNexiParser:
             # Gestisci formato italiano (virgola decimale)
             amount_str = amount_str.replace('.', '').replace(',', '.')
             return float(amount_str)
-        except:
+        except Exception:
             return 0.0
     
     def _categorize_transaction(self, descrizione: str) -> str:
