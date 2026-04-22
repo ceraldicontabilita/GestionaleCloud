@@ -560,7 +560,7 @@ async def fetch_aruba_invoices(
                 
                 # Salva in operazioni_da_confermare
                 operazione = {
-                    "id": hashlib.md5(f"{email_hash}{datetime.now().isoformat()}".encode()).hexdigest()[:16],
+                    "id": hashlib.md5(f"{email_hash}{datetime.now(timezone.utc).isoformat()}".encode()).hexdigest()[:16],
                     "email_hash": email_hash,
                     "fornitore": invoice_data["fornitore"],
                     "fornitore_id": fornitore_id,
