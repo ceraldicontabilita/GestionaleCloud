@@ -642,6 +642,7 @@ async def get_bilancio_istantaneo(
         costi_res = await db[Collections.INVOICES].aggregate([
             {"$match": {"$or": [
                 {"anno": anno},
+                {"anno": str(anno)},
                 {"invoice_date": {"$regex": f"^{anno}"}},
                 {"data_ricezione": {"$regex": f"^{anno}"}},
                 {"data_documento": {"$regex": f"^{anno}"}}
@@ -671,6 +672,7 @@ async def get_bilancio_istantaneo(
         # Conta documenti
         num_fatture_ricevute = await db[Collections.INVOICES].count_documents({"$or": [
             {"anno": anno},
+            {"anno": str(anno)},
             {"invoice_date": {"$regex": f"^{anno}"}},
             {"data_ricezione": {"$regex": f"^{anno}"}}
         ]})
