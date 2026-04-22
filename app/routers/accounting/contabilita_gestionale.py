@@ -783,7 +783,7 @@ async def get_budget_vs_consuntivo(
         data = c.get("data", "")
         try:
             m = int(data[5:7])
-        except:
+        except Exception:
             continue
         if 1 <= m <= 12:
             ricavi_mensili[m] += float(c.get("totale_imponibile") or c.get("totale") or 0)
@@ -802,7 +802,7 @@ async def get_budget_vs_consuntivo(
         data_doc = f.get("data_documento", "")
         try:
             m = int(data_doc[5:7])
-        except:
+        except Exception:
             continue
         if not (1 <= m <= 12):
             continue
