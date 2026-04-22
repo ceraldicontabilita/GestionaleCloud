@@ -48,7 +48,7 @@ def decode_mime_header(header_value: str) -> str:
             else:
                 result.append(part)
         return ''.join(result)
-    except:
+    except Exception:
         return str(header_value)
 
 
