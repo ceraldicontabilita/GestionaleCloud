@@ -72,13 +72,26 @@ async def login(
 ) -> TokenResponse:
     """
     Authenticate user with email and password.
-    
+
     - **email**: User email
     - **password**: User password
-    
+
     Returns JWT access token upon successful authentication.
     """
     logger.info(f"Login request: {credentials.email}")
+
+    # --- WHITELIST: blocca email non autorizzate (condiviso con Google Auth) ---
+    import os as _os
+    _allowed = {e.strip().lower() for e in _os.environ.get("ALLOWED_EMAILS", "ceraldigroupsrl@gmail.com").split(",") if e.strip()}
+    if _allowed and credentials.email.strip().lower() not in _allowed:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                f"Accesso non autorizzato per {credentials.email}. "
+                "Questo gestionale è riservato. Contatta l'amministratore."
+            )
+        )
+
     return await auth_service.login(credentials)
 
 

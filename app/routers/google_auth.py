@@ -31,6 +31,11 @@ EMERGENT_AUTH_URL = os.environ.get(
 )
 SESSION_EXPIRY_DAYS = 7
 
+# --- WHITELIST EMAIL: solo questi indirizzi possono autenticarsi ---
+# Configurabile via env ALLOWED_EMAILS="email1,email2"; case-insensitive.
+_allowed_env = os.environ.get("ALLOWED_EMAILS", "ceraldigroupsrl@gmail.com")
+ALLOWED_EMAILS = {e.strip().lower() for e in _allowed_env.split(",") if e.strip()}
+
 
 @router.post("/session")
 async def process_google_session(request: SessionRequest, response: Response):
@@ -65,7 +70,18 @@ async def process_google_session(request: SessionRequest, response: Response):
         
         if not email or not session_token:
             raise HTTPException(status_code=400, detail="Dati utente incompleti")
-        
+
+        # --- WHITELIST: blocca email non autorizzate ---
+        email_norm = email.strip().lower()
+        if ALLOWED_EMAILS and email_norm not in ALLOWED_EMAILS:
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    f"Accesso non autorizzato per {email}. "
+                    "Questo gestionale è riservato. Contatta l'amministratore."
+                )
+            )
+
         # Cerca utente esistente o creane uno nuovo
         existing_user = await db.users.find_one({"email": email}, {"_id": 0})
         

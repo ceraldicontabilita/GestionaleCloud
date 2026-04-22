@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function Login() {
@@ -350,24 +350,7 @@ export default function Login() {
             Continua con Google
           </button>
 
-          {/* Link alla registrazione */}
-          <p
-            style={{
-              textAlign: 'center',
-              color: '#94a3b8',
-              fontSize: 14,
-              marginTop: 20,
-            }}
-          >
-            Non hai un account?{' '}
-            <Link
-              to="/register"
-              style={{ color: '#3b82f6', textDecoration: 'none', fontWeight: 500 }}
-              data-testid="goto-register-link"
-            >
-              Registrati
-            </Link>
-          </p>
+          {/* Registrazione disabilitata - utenti autorizzati gestiti via whitelist */}
 
           <div
             style={{
