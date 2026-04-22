@@ -105,7 +105,7 @@ async def find_bank_match(db, importo: float, data_documento: str, fornitore: st
                 data_min = (data_doc - timedelta(days=60)).strftime("%Y-%m-%d")
                 data_max = (data_doc + timedelta(days=60)).strftime("%Y-%m-%d")
                 query["data"] = {"$gte": data_min, "$lte": data_max}
-            except:
+            except Exception:
                 pass
         
         # Cerca match
@@ -165,7 +165,7 @@ async def find_multiple_checks_match(db, importo: float, data_documento: str, fo
                 data_doc = datetime.strptime(data_documento, "%Y-%m-%d")
                 data_min = (data_doc - timedelta(days=90)).strftime("%Y-%m-%d")
                 data_max = (data_doc + timedelta(days=90)).strftime("%Y-%m-%d")
-            except:
+            except Exception:
                 pass
         
         # Cerca tutti gli assegni nel periodo
@@ -263,7 +263,7 @@ def parse_aruba_email_body(html_content: str) -> Optional[Dict[str, Any]]:
         if data_str:
             try:
                 data_documento = datetime.strptime(data_str, "%d/%m/%Y").strftime("%Y-%m-%d")
-            except:
+            except Exception:
                 data_documento = data_str
         
         return {
@@ -482,7 +482,7 @@ async def fetch_aruba_invoices(
                 if invoice_data["data_documento"]:
                     try:
                         anno_fiscale = int(invoice_data["data_documento"].split("-")[0])
-                    except:
+                    except Exception:
                         anno_fiscale = datetime.now().year
                 else:
                     anno_fiscale = datetime.now().year
