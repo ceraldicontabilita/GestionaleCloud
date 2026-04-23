@@ -9,6 +9,7 @@ import DedupeDipendentiModal from '../../components/DedupeDipendentiModal';
 const TABS = [
   { id: 'anagrafica', label: 'Anagrafica' },
   { id: 'contratti', label: 'Contratti' },
+  { id: 'presenze', label: 'Presenze' },
   { id: 'cedolini', label: 'Cedolini' },
   { id: 'verbali', label: 'Verbali' },
   { id: 'movimenti', label: 'Movimenti' },
@@ -346,6 +347,351 @@ function TabContratti({ dip }) {
           )}
         </div>
       ))}
+    </div>
+  );
+}
+
+// ─── Presenze (calendario mensile dipendente) ─────────────────────────────────
+function TabPresenze({ dip }) {
+  const isMobile = useIsMobile();
+  const today = new Date();
+  const [anno, setAnno] = useState(today.getFullYear());
+  const [mese, setMese] = useState(today.getMonth() + 1); // 1-12
+  const [celle, setCelle] = useState({}); // { "YYYY-MM-DD": {stato, ore, protocollo, note} }
+  const [tipologie, setTipologie] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  // Load tipologie giustificativi (per legenda colori)
+  useAbortableEffect((signal) => {
+    api
+      .get('/api/attendance/tipologie-giustificativi', { signal })
+      .then((r) => { if (!signal.aborted) setTipologie(r.data?.tipologie || []); })
+      .catch((e) => { if (!isCanceledError(e)) setTipologie([]); });
+  }, []);
+
+  // Load celle del mese per il dipendente
+  useAbortableEffect((signal) => {
+    if (!dip?.id) return;
+    setLoading(true);
+    api
+      .get('/api/attendance/month-grid', { params: { anno, mese }, signal })
+      .then((r) => {
+        if (signal.aborted) return;
+        const all = r.data?.celle || [];
+        // Filtro solo le celle di questo dipendente
+        const map = {};
+        all.forEach((c) => {
+          if (c.employee_id === dip.id || c.employee_id === dip.codice_fiscale) {
+            map[c.data] = {
+              stato: c.stato,
+              ore: c.ore,
+              protocollo: c.protocollo,
+              note: c.note,
+            };
+          }
+        });
+        setCelle(map);
+      })
+      .catch((e) => { if (!isCanceledError(e)) setCelle({}); })
+      .finally(() => { if (!signal.aborted) setLoading(false); });
+  }, [dip?.id, dip?.codice_fiscale, anno, mese]);
+
+  // Calcolo giorni del mese
+  const giorniMese = new Date(anno, mese, 0).getDate();
+  const giorniArr = Array.from({ length: giorniMese }, (_, i) => i + 1);
+
+  // Stats
+  const stats = (() => {
+    const s = { presenti: 0, ferie: 0, malattia: 0, permessi: 0, altri: 0, ore: 0 };
+    Object.values(celle).forEach((c) => {
+      const code = (c.stato || '').toUpperCase();
+      s.ore += parseFloat(c.ore || 0);
+      if (!code || code === 'P') s.presenti += 1;
+      else if (code === 'FE' || code === 'FR') s.ferie += 1;
+      else if (code === 'MA' || code === 'IN') s.malattia += 1;
+      else if (code.startsWith('PE') || code === 'RL') s.permessi += 1;
+      else s.altri += 1;
+    });
+    return s;
+  })();
+
+  const MESI = [
+    'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
+    'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre',
+  ];
+  const DOW = ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab'];
+
+  const lightenColor = (hex) => {
+    if (!hex || !hex.startsWith('#') || hex.length !== 7) return '#e2e8f0';
+    return `${hex}22`;
+  };
+
+  const colorByCode = (code) => {
+    if (!code) return null;
+    const tip = tipologie.find((t) => t.codice === code);
+    return tip?.colore || null;
+  };
+
+  return (
+    <div style={{ padding: 16 }}>
+      {/* Header con selettore mese + anno */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          flexWrap: 'wrap',
+          marginBottom: 16,
+          padding: 12,
+          backgroundColor: COLORS.card,
+          border: `1px solid ${COLORS.border}`,
+          borderRadius: 10,
+        }}
+      >
+        <select
+          value={mese}
+          onChange={(e) => setMese(parseInt(e.target.value, 10))}
+          style={{
+            padding: '7px 12px',
+            fontSize: 13,
+            fontWeight: 600,
+            border: `1px solid ${COLORS.border}`,
+            borderRadius: 8,
+            backgroundColor: COLORS.card,
+            cursor: 'pointer',
+          }}
+        >
+          {MESI.map((m, i) => (
+            <option key={i} value={i + 1}>
+              {m}
+            </option>
+          ))}
+        </select>
+        <select
+          value={anno}
+          onChange={(e) => setAnno(parseInt(e.target.value, 10))}
+          style={{
+            padding: '7px 12px',
+            fontSize: 13,
+            fontWeight: 600,
+            border: `1px solid ${COLORS.border}`,
+            borderRadius: 8,
+            backgroundColor: COLORS.card,
+            cursor: 'pointer',
+          }}
+        >
+          {Array.from({ length: 5 }, (_, i) => today.getFullYear() - i).map((a) => (
+            <option key={a} value={a}>
+              {a}
+            </option>
+          ))}
+        </select>
+        <div style={{ flex: 1 }} />
+        <div style={{ fontSize: 12, color: COLORS.textMuted }}>
+          Dati da <code>/api/attendance/month-grid</code>
+        </div>
+      </div>
+
+      {/* KPI del mese */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(5, 1fr)',
+          gap: 10,
+          marginBottom: 16,
+        }}
+      >
+        <MiniKpi label="Presenze" value={stats.presenti} color={COLORS.success} />
+        <MiniKpi label="Ferie" value={stats.ferie} color={COLORS.info} />
+        <MiniKpi label="Malattia" value={stats.malattia} color={COLORS.warning} />
+        <MiniKpi label="Permessi" value={stats.permessi} color={COLORS.accent} />
+        <MiniKpi label="Ore" value={stats.ore.toFixed(0) + 'h'} color={COLORS.primary} />
+      </div>
+
+      {/* Calendario */}
+      {loading ? (
+        <div style={{ padding: 40, textAlign: 'center', color: COLORS.textMuted }}>
+          Caricamento…
+        </div>
+      ) : (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(7, 1fr)',
+            gap: 6,
+            padding: 12,
+            backgroundColor: COLORS.card,
+            border: `1px solid ${COLORS.border}`,
+            borderRadius: 10,
+          }}
+        >
+          {/* Intestazione giorni settimana (parte da lunedì) */}
+          {['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'].map((d) => (
+            <div
+              key={d}
+              style={{
+                fontSize: 10,
+                fontWeight: 700,
+                color: COLORS.textMuted,
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+                textAlign: 'center',
+                padding: '6px 0',
+              }}
+            >
+              {d}
+            </div>
+          ))}
+
+          {/* Celle vuote fino al primo giorno */}
+          {(() => {
+            const primo = new Date(anno, mese - 1, 1).getDay(); // 0=dom..6=sab
+            // ISO-week: lun=0..dom=6
+            const iso = primo === 0 ? 6 : primo - 1;
+            return Array.from({ length: iso }, (_, i) => (
+              <div key={'empty-' + i} />
+            ));
+          })()}
+
+          {/* Giorni del mese */}
+          {giorniArr.map((g) => {
+            const ds = `${anno}-${String(mese).padStart(2, '0')}-${String(g).padStart(2, '0')}`;
+            const cella = celle[ds];
+            const dow = new Date(anno, mese - 1, g).getDay();
+            const isWeekend = dow === 0 || dow === 6;
+            const code = cella?.stato;
+            const colore = code ? colorByCode(code) : null;
+            const bg = code && colore ? lightenColor(colore) : isWeekend ? COLORS.bgAlt : COLORS.card;
+
+            return (
+              <div
+                key={g}
+                title={
+                  cella
+                    ? `${DOW[dow]} ${g}/${mese}: ${code || 'P'} ${cella.ore || ''}h${cella.protocollo ? ' · ' + cella.protocollo : ''}`
+                    : `${DOW[dow]} ${g}/${mese}`
+                }
+                style={{
+                  aspectRatio: '1',
+                  padding: 4,
+                  border: `1px solid ${COLORS.border}`,
+                  borderRadius: 6,
+                  backgroundColor: bg,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                  alignItems: 'flex-start',
+                  fontSize: 11,
+                  cursor: 'default',
+                }}
+              >
+                <span style={{ fontWeight: 700, color: isWeekend ? COLORS.danger : COLORS.text }}>
+                  {g}
+                </span>
+                {code && (
+                  <span
+                    style={{
+                      fontSize: 9,
+                      fontWeight: 700,
+                      color: colore || COLORS.text,
+                      padding: '1px 4px',
+                      borderRadius: 3,
+                      backgroundColor: '#fff',
+                      alignSelf: 'center',
+                    }}
+                  >
+                    {code}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Legenda */}
+      {tipologie.length > 0 && (
+        <div
+          style={{
+            display: 'flex',
+            gap: 14,
+            flexWrap: 'wrap',
+            marginTop: 14,
+            padding: 10,
+            backgroundColor: COLORS.bgAlt,
+            borderRadius: 8,
+            fontSize: 11,
+            color: COLORS.textMuted,
+          }}
+        >
+          {tipologie.slice(0, 10).map((t) => (
+            <span
+              key={t.codice}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+            >
+              <span
+                style={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: 3,
+                  backgroundColor: lightenColor(t.colore),
+                  border: `1px solid ${t.colore || COLORS.border}`,
+                  display: 'inline-block',
+                }}
+              />
+              <strong style={{ color: COLORS.text }}>{t.codice}</strong> {t.nome}
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div style={{ marginTop: 16, fontSize: 12, color: COLORS.textMuted }}>
+        💡 Per inserire o modificare presenze vai alla{' '}
+        <a
+          href="/presenze"
+          style={{ color: COLORS.primary, fontWeight: 600 }}
+        >
+          pagina Presenze
+        </a>{' '}
+        — sezione &ldquo;Griglia Mensile&rdquo;.
+      </div>
+    </div>
+  );
+}
+
+function MiniKpi({ label, value, color }) {
+  return (
+    <div
+      style={{
+        backgroundColor: COLORS.card,
+        border: `1px solid ${COLORS.border}`,
+        borderRadius: 8,
+        padding: '10px 12px',
+        borderTop: `2px solid ${color || COLORS.primary}`,
+      }}
+    >
+      <div
+        style={{
+          fontSize: 10,
+          fontWeight: 600,
+          color: COLORS.textMuted,
+          textTransform: 'uppercase',
+          letterSpacing: '0.05em',
+        }}
+      >
+        {label}
+      </div>
+      <div
+        style={{
+          fontSize: 18,
+          fontWeight: 700,
+          color: COLORS.text,
+          fontVariantNumeric: 'tabular-nums',
+          marginTop: 2,
+        }}
+      >
+        {value}
+      </div>
     </div>
   );
 }
@@ -1750,6 +2096,11 @@ export default function HRDipendenti() {
                 <div style={{ display: activeTab === 'contratti' ? 'block' : 'none' }}>
                   {visitedTabs.has('contratti') && (
                     <TabContratti key={selected?.id + '-c'} dip={selected} />
+                  )}
+                </div>
+                <div style={{ display: activeTab === 'presenze' ? 'block' : 'none' }}>
+                  {visitedTabs.has('presenze') && (
+                    <TabPresenze key={selected?.id + '-p'} dip={selected} />
                   )}
                 </div>
                 <div style={{ display: activeTab === 'cedolini' ? 'block' : 'none' }}>

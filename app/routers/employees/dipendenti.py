@@ -389,6 +389,183 @@ async def get_tipi_contratto() -> List[str]:
     return CONTRATTI_TIPI
 
 
+@router.post("/bulk-upsert", summary="Import/update massivo dipendenti (match su CF)")
+@handle_errors
+async def bulk_upsert_dipendenti(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    """Importa o aggiorna dipendenti in massa, matchando su codice_fiscale.
+
+    Body atteso:
+        {
+            "dipendenti": [
+                {
+                    "cognome": "...",
+                    "nome": "...",
+                    "codice_fiscale": "...",  # OBBLIGATORIO per il match
+                    "data_nascita": "YYYY-MM-DD",
+                    "mansione": "...",
+                    "telefono": "...",
+                    "email": "...",
+                    "indirizzo": "...",
+                    # altri campi opzionali...
+                },
+                ...
+            ],
+            "overwrite_fields": true  # default false: se true sovrascrive
+                                      # i campi esistenti anche se valorizzati
+        }
+
+    Comportamento:
+    - Se esiste già un dipendente con stesso CF normalizzato → aggiorna.
+      I campi vengono aggiornati solo se non sono già popolati nel record
+      esistente, a meno che overwrite_fields=True (stile "merge conservativo").
+    - Se non esiste → crea nuovo con uuid + valori default.
+    - Restituisce un report per riga con esito: created / updated / skipped.
+    """
+    lista = payload.get("dipendenti") or []
+    overwrite = bool(payload.get("overwrite_fields", False))
+    if not isinstance(lista, list) or not lista:
+        raise HTTPException(
+            status_code=400,
+            detail="Lista 'dipendenti' vuota o non valida",
+        )
+
+    db = Database.get_db()
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    # Campi accettati dall'upsert (whitelist per evitare injection di campi strani)
+    CAMPI_AGGIORNABILI = {
+        "nome", "cognome", "nome_completo",
+        "data_nascita", "luogo_nascita",
+        "mansione", "qualifica", "livello", "tipo_contratto",
+        "email", "telefono", "indirizzo",
+        "data_assunzione", "data_fine_contratto",
+        "ore_settimanali", "giorni_lavoro",
+        "iban", "iban_cedolino",
+        "matricola", "codice_dipendente",
+        "note",
+    }
+
+    risultati: List[Dict[str, Any]] = []
+    creati = 0
+    aggiornati = 0
+    saltati = 0
+
+    for idx, raw in enumerate(lista):
+        cf = (raw.get("codice_fiscale") or "").upper().strip()
+        if not cf:
+            risultati.append({
+                "riga": idx + 1,
+                "esito": "skipped",
+                "motivo": "codice_fiscale mancante",
+                "nominativo": f"{raw.get('cognome','')} {raw.get('nome','')}".strip(),
+            })
+            saltati += 1
+            continue
+
+        # Normalizza nome_completo se manca
+        nome = (raw.get("nome") or "").strip()
+        cognome = (raw.get("cognome") or "").strip()
+        nome_completo = (raw.get("nome_completo") or "").strip()
+        if not nome_completo and (cognome or nome):
+            nome_completo = f"{cognome} {nome}".strip()
+
+        # Esiste già?
+        esistente = await db[Collections.EMPLOYEES].find_one(
+            {"codice_fiscale": cf}, {"_id": 0}
+        )
+
+        if esistente:
+            # Update conservativo: aggiorna solo campi non già popolati,
+            # salvo overwrite_fields=True
+            update_set: Dict[str, Any] = {}
+            for campo in CAMPI_AGGIORNABILI:
+                if campo not in raw:
+                    continue
+                nuovo = raw[campo]
+                if nuovo in (None, "", []):
+                    continue
+                vecchio = esistente.get(campo)
+                if overwrite or vecchio in (None, "", [], 0):
+                    update_set[campo] = nuovo
+            # nome_completo derivato, aggiungilo se abbiamo nome+cognome
+            if nome_completo and (overwrite or not esistente.get("nome_completo")):
+                update_set["nome_completo"] = nome_completo
+            if update_set:
+                update_set["updated_at"] = now_iso
+                await db[Collections.EMPLOYEES].update_one(
+                    {"codice_fiscale": cf}, {"$set": update_set}
+                )
+                risultati.append({
+                    "riga": idx + 1,
+                    "esito": "updated",
+                    "codice_fiscale": cf,
+                    "nominativo": nome_completo or cf,
+                    "campi_aggiornati": list(update_set.keys()),
+                })
+                aggiornati += 1
+            else:
+                risultati.append({
+                    "riga": idx + 1,
+                    "esito": "skipped",
+                    "motivo": "nessun campo da aggiornare",
+                    "codice_fiscale": cf,
+                    "nominativo": nome_completo or cf,
+                })
+                saltati += 1
+        else:
+            # Crea nuovo record con default
+            nuovo_doc = {
+                "id": str(uuid.uuid4()),
+                "codice_fiscale": cf,
+                "nome_completo": nome_completo,
+                "cognome": cognome,
+                "nome": nome,
+                "codice_dipendente": raw.get("codice_dipendente", ""),
+                "matricola": raw.get("matricola", ""),
+                "email": raw.get("email", ""),
+                "telefono": raw.get("telefono", ""),
+                "indirizzo": raw.get("indirizzo", ""),
+                "data_nascita": raw.get("data_nascita"),
+                "luogo_nascita": raw.get("luogo_nascita", ""),
+                "mansione": raw.get("mansione", ""),
+                "qualifica": raw.get("qualifica", ""),
+                "livello": raw.get("livello", ""),
+                "tipo_contratto": raw.get("tipo_contratto", ""),
+                "data_assunzione": raw.get("data_assunzione"),
+                "data_fine_contratto": raw.get("data_fine_contratto"),
+                "ore_settimanali": raw.get("ore_settimanali", 40),
+                "giorni_lavoro": raw.get("giorni_lavoro", ["lun", "mar", "mer", "gio", "ven", "sab"]),
+                "iban": raw.get("iban", ""),
+                "iban_cedolino": raw.get("iban_cedolino") or raw.get("iban", ""),
+                "ibans": raw.get("ibans", []),
+                "note": raw.get("note", ""),
+                "attivo": True,
+                "in_carico": True,
+                "source": "bulk_upsert",
+                "created_at": now_iso,
+                "updated_at": now_iso,
+            }
+            await db[Collections.EMPLOYEES].insert_one(nuovo_doc.copy())
+            risultati.append({
+                "riga": idx + 1,
+                "esito": "created",
+                "codice_fiscale": cf,
+                "nominativo": nome_completo or cf,
+                "id": nuovo_doc["id"],
+            })
+            creati += 1
+
+    return {
+        "totali": {
+            "input": len(lista),
+            "creati": creati,
+            "aggiornati": aggiornati,
+            "saltati": saltati,
+        },
+        "risultati": risultati,
+    }
+
+
 @router.post("")
 @handle_errors
 async def create_dipendente(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
