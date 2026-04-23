@@ -672,11 +672,46 @@ async def update_dipendente(dipendente_id: str, data: Dict[str, Any] = Body(...)
     # Normalizza CF
     if "codice_fiscale" in data and data["codice_fiscale"]:
         data["codice_fiscale"] = data["codice_fiscale"].upper().strip()
-    
+
+    # TRANSIZIONE in_carico: se il valore cambia, sincronizza i campi correlati.
+    # Questo allinea il PUT alla logica del DELETE (soft-delete) in modo che
+    # spuntare "non in carico" nel form produca lo stesso effetto di chiamare DELETE:
+    #   - attivo viene messo a False
+    #   - data_cessazione impostata a oggi (solo se non già presente)
+    #   - viene propagato l'evento DIPENDENTE_CESSATO per innescare i flussi a
+    #     cascata (rimozione da presenze, cedolini correnti, alert, ecc.)
+    # Senza queste cascate il dipendente restava "non in carico" sulla scheda
+    # ma continuava a comparire nei flussi attivi (bug segnalato dall'utente).
+    cessazione_triggerata = False
+    if "in_carico" in data:
+        old_in_carico = dipendente_old.get("in_carico", True)
+        new_in_carico = data.get("in_carico")
+        if new_in_carico is False and old_in_carico is not False:
+            # Transizione ATTIVO → NON IN CARICO
+            data["attivo"] = False
+            if not dipendente_old.get("data_cessazione"):
+                data["data_cessazione"] = datetime.now(timezone.utc).isoformat()
+            cessazione_triggerata = True
+        elif new_in_carico is True and old_in_carico is False:
+            # Transizione NON IN CARICO → ATTIVO (riattivazione)
+            data["attivo"] = True
+            # Rimuovo data_cessazione con un $unset esplicito nell'update_one più sotto
+            data.pop("data_cessazione", None)
+
     # Aggiorna il dipendente
+    # Prepara update_ops: $set con data; aggiunge $unset se c'è riattivazione
+    update_ops: Dict[str, Any] = {"$set": data}
+    riattivazione = (
+        "in_carico" in data
+        and data.get("in_carico") is True
+        and dipendente_old.get("in_carico") is False
+    )
+    if riattivazione and dipendente_old.get("data_cessazione"):
+        update_ops["$unset"] = {"data_cessazione": ""}
+
     result = await db[Collections.EMPLOYEES].update_one(
         {"$or": [{"id": dipendente_id}, {"codice_fiscale": dipendente_id}]},
-        {"$set": data}
+        update_ops
     )
     
     if result.matched_count == 0:
@@ -729,7 +764,21 @@ async def update_dipendente(dipendente_id: str, data: Dict[str, Any] = Body(...)
         }, db, source_module="dipendenti")
     except Exception:
         logger.exception("Errore propagazione evento dipendente.updated")
-    
+
+    # Se è stata triggerata una cessazione durante questo PUT, propaga anche
+    # l'evento DIPENDENTE_CESSATO per innescare la pulizia dei flussi attivi
+    # (stesso comportamento del DELETE). Così la spunta "non in carico" nel
+    # form ha lo stesso effetto di cliccare "Cessa dipendente".
+    if cessazione_triggerata:
+        try:
+            from app.services.event_bus import propagate_event, EventTypes
+            await propagate_event(EventTypes.DIPENDENTE_CESSATO, {
+                "dipendente_id": dip_id,
+                "nome_completo": data.get("nome_completo") or dipendente_old.get("nome_completo", ""),
+            }, db, source_module="dipendenti")
+        except Exception:
+            logger.exception("Errore propagazione evento dipendente.cessato (da PUT)")
+
     return {"message": "Dipendente aggiornato"}
 
 
