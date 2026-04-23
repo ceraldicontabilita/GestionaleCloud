@@ -673,3 +673,376 @@ async def list_chiusure_audit(
         "count": len(items),
         "items": items
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CONTROLLO INCASSI A 2 FASI (v2 - aprile 2026)
+# ═══════════════════════════════════════════════════════════════════════════
+# Basato sulla specifica utente (spiegazione_coerenza.xlsx):
+#
+# FASE 1 - Controllo serale: RT XML vs POS manuale
+#   diff_serale = pos_manuale_serale - pagato_elettronico_xml
+#   Serve a rilevare ERRORI DI BATTITURA al registratore di cassa.
+#   Se diff > 0: ieri ho battuto MENO elettronico al RT del reale → compensa +
+#   Se diff < 0: ieri ho battuto PIÙ elettronico al RT del reale → compensa -
+#
+# FASE 2 - Controllo accrediti: POS manuale vs banca
+#   diff_accredito = accredito_banca - pos_manuale_serale
+#   Il POS manuale è la VERITÀ, la banca deve accreditare quell'importo.
+#   Considera calendario bancario: lun-gio → +1gg, ven-sab-dom → lun successivo.
+#
+# Questo modulo SOSTITUISCE logicamente verifica_coerenza_pos_corrispettivi
+# (che confrontava XML direttamente con banca, approccio sbagliato).
+# L'endpoint vecchio è mantenuto per retrocompatibilità ma marcato deprecated.
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _data_accredito_attesa(data_incasso_str: str) -> str:
+    """Dato il giorno di incasso POS, ritorna il giorno atteso di accredito banca.
+
+    Regole:
+      - Lunedì-Giovedì → +1 giorno lavorativo
+      - Venerdì, Sabato, Domenica → Lunedì successivo
+    """
+    try:
+        d = datetime.strptime(data_incasso_str, "%Y-%m-%d")
+    except (ValueError, TypeError):
+        return data_incasso_str
+    # weekday(): Lun=0, Mar=1, Mer=2, Gio=3, Ven=4, Sab=5, Dom=6
+    wd = d.weekday()
+    if wd <= 3:  # Lun-Gio
+        accredito = d + timedelta(days=1)
+    elif wd == 4:  # Ven → Lun (+3)
+        accredito = d + timedelta(days=3)
+    elif wd == 5:  # Sab → Lun (+2)
+        accredito = d + timedelta(days=2)
+    else:  # Dom → Lun (+1)
+        accredito = d + timedelta(days=1)
+    return accredito.strftime("%Y-%m-%d")
+
+
+async def _carica_pos_manuale_per_data(db) -> Dict[str, float]:
+    """Carica il POS serale manuale per ogni data, unendo le due fonti:
+      - chiusure_pos_manuali (import CSV storico)
+      - prima_nota_banca con source='chiusura_pos_mobile' (inserimento da UI)
+
+    Se una data è in entrambe, vince prima_nota_banca (è più recente e aggiornabile
+    dall'utente). Ritorna un dizionario {data: importo}.
+    """
+    out: Dict[str, float] = {}
+
+    # Fonte 1: chiusure_pos_manuali (import CSV)
+    async for c in db["chiusure_pos_manuali"].find({}, {"_id": 0, "data": 1, "importo": 1, "totale": 1}):
+        d = c.get("data")
+        if not d:
+            continue
+        if isinstance(d, datetime):
+            d = d.strftime("%Y-%m-%d")
+        imp = float(c.get("importo") or c.get("totale") or 0)
+        if d and imp:
+            out[d[:10]] = imp
+
+    # Fonte 2: prima_nota_banca con source chiusura_pos_mobile (sovrascrive)
+    async for c in db["prima_nota_banca"].find(
+        {"source": {"$in": ["chiusura_pos_mobile", "corrispettivo_pos"]}},
+        {"_id": 0, "data": 1, "importo": 1, "amount": 1}
+    ):
+        d = c.get("data")
+        if not d:
+            continue
+        if isinstance(d, datetime):
+            d = d.strftime("%Y-%m-%d")
+        imp = float(c.get("importo") or c.get("amount") or 0)
+        if d and imp:
+            out[d[:10]] = imp  # sovrascrive l'import CSV
+
+    return out
+
+
+async def _carica_accrediti_banca_pos(db, data_da: str, data_a: str) -> Dict[str, float]:
+    """Carica gli accrediti POS in banca dall'estratto conto.
+
+    Sono i movimenti di tipo 'entrata' in prima_nota_banca che hanno caratteristica
+    di essere accrediti POS (non chiusure manuali, non altri movimenti). Si
+    identifica con descrizione/categoria o con causale bancaria specifica.
+
+    Strategia conservativa: prendo solo movimenti che hanno esplicitamente
+    POS/MONETICA nella descrizione o nella categoria — niente regex generiche
+    per evitare falsi positivi (bug risolto il 22/04/2026).
+    """
+    out: Dict[str, float] = {}
+
+    keywords_pos = [
+        "POS ", "MONETICA", "MULTIBANCA POS", "NEXI", "PAGOBANCOMAT",
+        "INCASSO POS", "ACCREDITO POS", "BANCOMAT"
+    ]
+
+    # Regex OR su tutte le keyword
+    regex_or = "|".join(keywords_pos)
+
+    query = {
+        "data": {"$gte": data_da, "$lte": data_a},
+        "tipo": "entrata",
+        # Escludi le chiusure manuali (non sono accrediti bancari reali)
+        "source": {"$nin": ["chiusura_pos_mobile", "corrispettivo_pos", "manuale_da_xml"]},
+        "$or": [
+            {"descrizione": {"$regex": regex_or, "$options": "i"}},
+            {"categoria": {"$regex": "pos|monetica", "$options": "i"}},
+        ],
+    }
+
+    async for m in db["prima_nota_banca"].find(query, {"_id": 0, "data": 1, "importo": 1, "amount": 1}):
+        d = m.get("data")
+        if isinstance(d, datetime):
+            d = d.strftime("%Y-%m-%d")
+        if not d:
+            continue
+        imp = float(m.get("importo") or m.get("amount") or 0)
+        d = d[:10]
+        # Accumula (se più di un accredito nella stessa giornata)
+        out[d] = out.get(d, 0.0) + imp
+
+    return out
+
+
+@router.get("/controllo-due-fasi")
+@handle_errors
+async def controllo_incassi_due_fasi(
+    data_da: Optional[str] = Query(None, description="Data inizio YYYY-MM-DD"),
+    data_a: Optional[str] = Query(None, description="Data fine YYYY-MM-DD"),
+    anno: Optional[int] = Query(None, description="Anno di riferimento (alternativa a da/a)"),
+    tolleranza_euro: float = Query(0.5, description="Tolleranza per considerare 'ok' una differenza"),
+) -> Dict[str, Any]:
+    """Controllo incassi giornaliero a 2 fasi (nuova logica v2 - aprile 2026).
+
+    FASE 1: Rileva errori di battitura al registratore fiscale
+      - Confronto: POS serale manuale − pagato_elettronico XML
+      - Alert al giorno successivo con importo da compensare
+
+    FASE 2: Verifica accrediti bancari
+      - Confronto: accredito banca − POS serale manuale
+      - Tiene conto del calendario bancario (ven-dom → lun)
+
+    Ritorna giorno per giorno lo stato delle due fasi con alert attivi.
+    """
+    db = Database.get_db()
+
+    if not anno and not data_da:
+        anno = datetime.now().year
+    if anno:
+        data_da = f"{anno}-01-01"
+        data_a = f"{anno}-12-31"
+    elif not data_a:
+        data_a = datetime.now().strftime("%Y-%m-%d")
+
+    # Carica tutti i dati
+    corrispettivi = await db["corrispettivi"].find(
+        {"data": {"$gte": data_da, "$lte": data_a}},
+        {"_id": 0, "data": 1, "pagato_elettronico": 1, "pagato_contanti": 1, "totale": 1}
+    ).sort("data", 1).to_list(10000)
+
+    pos_manuali = await _carica_pos_manuale_per_data(db)
+    accrediti = await _carica_accrediti_banca_pos(db, data_da, data_a)
+
+    # Unione di tutte le date che hanno almeno un dato (corrispettivo o chiusura manuale)
+    date_note = set()
+    for c in corrispettivi:
+        d = c.get("data")
+        if isinstance(d, datetime):
+            d = d.strftime("%Y-%m-%d")
+        if d:
+            date_note.add(d[:10])
+    for d in pos_manuali.keys():
+        if data_da <= d <= data_a:
+            date_note.add(d)
+
+    # Index corrispettivi per data
+    corr_by_date: Dict[str, Dict] = {}
+    for c in corrispettivi:
+        d = c.get("data")
+        if isinstance(d, datetime):
+            d = d.strftime("%Y-%m-%d")
+        if d:
+            corr_by_date[d[:10]] = c
+
+    oggi = datetime.now().strftime("%Y-%m-%d")
+    giorni = []
+    stats = {
+        "tot_giorni": 0,
+        "fase1_ok": 0, "fase1_diff_piu": 0, "fase1_diff_meno": 0,
+        "fase2_ok": 0, "fase2_attesa": 0, "fase2_mancante": 0, "fase2_diff": 0, "fase2_extra": 0,
+        "importo_tot_da_compensare_piu": 0.0,
+        "importo_tot_da_compensare_meno": 0.0,
+        "importo_tot_mancante_banca": 0.0,
+    }
+
+    # Gli alert di compensazione si attivano il giorno DOPO quello della differenza.
+    # Cioè: alert[data=X] = guarda diff_serale del giorno (X-1 lavorativo).
+    # Per semplicità d'implementazione, calcolo la diff sul giorno X e marco
+    # alert_attivo_il = giorno successivo in formato stringa.
+
+    for d in sorted(date_note):
+        xml_el = float(corr_by_date.get(d, {}).get("pagato_elettronico") or 0)
+        pos_man = float(pos_manuali.get(d) or 0)
+
+        # FASE 1: solo se abbiamo entrambi i dati, altrimenti non possiamo confrontare
+        if xml_el > 0 or pos_man > 0:
+            diff_serale = round(pos_man - xml_el, 2)
+            if abs(diff_serale) <= tolleranza_euro:
+                stato_serale = "ok"
+                alert_serale = None
+            elif diff_serale > 0:
+                stato_serale = "differenza_in_piu_da_registrare"
+                alert_serale = {
+                    "attivo": True,
+                    "tipo": "registrare_di_piu",
+                    "importo": diff_serale,
+                    "messaggio": (
+                        f"Il {d} hai battuto al registratore €{diff_serale:.2f} in MENO "
+                        f"di pagamento elettronico rispetto al POS reale. "
+                        f"Devi registrare €{diff_serale:.2f} in PIÙ come elettronico per compensare."
+                    ),
+                }
+                stats["fase1_diff_piu"] += 1
+                stats["importo_tot_da_compensare_piu"] += diff_serale
+            else:
+                stato_serale = "differenza_in_meno_da_registrare"
+                alert_serale = {
+                    "attivo": True,
+                    "tipo": "registrare_di_meno",
+                    "importo": abs(diff_serale),
+                    "messaggio": (
+                        f"Il {d} hai battuto al registratore €{abs(diff_serale):.2f} in PIÙ "
+                        f"di pagamento elettronico rispetto al POS reale. "
+                        f"Devi registrare €{abs(diff_serale):.2f} in MENO come elettronico per compensare."
+                    ),
+                }
+                stats["fase1_diff_meno"] += 1
+                stats["importo_tot_da_compensare_meno"] += abs(diff_serale)
+        else:
+            diff_serale = 0.0
+            stato_serale = "no_dati"
+            alert_serale = None
+
+        if stato_serale == "ok":
+            stats["fase1_ok"] += 1
+
+        # FASE 2: calcolo data accredito attesa + confronto con banca
+        data_accr_attesa = _data_accredito_attesa(d)
+        accredito = float(accrediti.get(data_accr_attesa) or 0)
+
+        if pos_man <= 0:
+            diff_accr = 0.0
+            stato_accr = "no_pos_manuale"
+        elif data_accr_attesa > oggi:
+            diff_accr = 0.0
+            stato_accr = "in_attesa"
+            stats["fase2_attesa"] += 1
+        elif accredito == 0:
+            diff_accr = -pos_man
+            stato_accr = "mancante"
+            stats["fase2_mancante"] += 1
+            stats["importo_tot_mancante_banca"] += pos_man
+        else:
+            diff_accr = round(accredito - pos_man, 2)
+            if abs(diff_accr) <= tolleranza_euro:
+                stato_accr = "ok"
+                stats["fase2_ok"] += 1
+            elif diff_accr < 0:
+                stato_accr = "differenza"
+                stats["fase2_diff"] += 1
+            else:
+                stato_accr = "extra"
+                stats["fase2_extra"] += 1
+
+        giorni.append({
+            "data": d,
+            # Fase 1
+            "xml_elettronico": round(xml_el, 2),
+            "pos_manuale": round(pos_man, 2),
+            "diff_serale": diff_serale,
+            "stato_serale": stato_serale,
+            "alert_compensazione": alert_serale,
+            # Fase 2
+            "data_accredito_attesa": data_accr_attesa,
+            "accredito_banca": round(accredito, 2),
+            "diff_accredito": diff_accr,
+            "stato_accredito": stato_accr,
+        })
+        stats["tot_giorni"] += 1
+
+    # Round stats
+    stats["importo_tot_da_compensare_piu"] = round(stats["importo_tot_da_compensare_piu"], 2)
+    stats["importo_tot_da_compensare_meno"] = round(stats["importo_tot_da_compensare_meno"], 2)
+    stats["importo_tot_mancante_banca"] = round(stats["importo_tot_mancante_banca"], 2)
+
+    return {
+        "success": True,
+        "data_da": data_da,
+        "data_a": data_a,
+        "tolleranza_euro": tolleranza_euro,
+        "statistiche": stats,
+        "giorni": giorni,
+    }
+
+
+@router.get("/alert-oggi")
+@handle_errors
+async def alert_oggi(
+    tolleranza_euro: float = Query(0.5)
+) -> Dict[str, Any]:
+    """Alert attivi OGGI per l'utente:
+      - Compensazioni da fare al registratore per errori di battitura del giorno precedente
+      - Accrediti bancari mancanti dei giorni scorsi
+
+    Usato dalla dashboard / widget per mostrare cosa c'è da sistemare.
+    """
+    db = Database.get_db()
+    oggi = datetime.now()
+    # Guarda ultimi 30 giorni per prendere tutti gli alert attivi
+    data_da = (oggi - timedelta(days=30)).strftime("%Y-%m-%d")
+    data_a = oggi.strftime("%Y-%m-%d")
+
+    # Riusa la logica del controllo completo
+    full = await controllo_incassi_due_fasi(data_da=data_da, data_a=data_a, tolleranza_euro=tolleranza_euro)
+
+    alerts_compensazione = []
+    alerts_banca = []
+
+    for g in full.get("giorni", []):
+        if g.get("alert_compensazione"):
+            alerts_compensazione.append({
+                "data_errore": g["data"],
+                **g["alert_compensazione"],
+            })
+        if g.get("stato_accredito") == "mancante":
+            alerts_banca.append({
+                "data_incasso": g["data"],
+                "data_accredito_attesa": g["data_accredito_attesa"],
+                "importo_atteso": g["pos_manuale"],
+                "messaggio": (
+                    f"Accredito POS mancante: il {g['data']} hai incassato €{g['pos_manuale']:.2f} "
+                    f"ma la banca non l'ha ancora accreditato (atteso il {g['data_accredito_attesa']})."
+                ),
+            })
+        elif g.get("stato_accredito") == "differenza":
+            alerts_banca.append({
+                "data_incasso": g["data"],
+                "data_accredito_attesa": g["data_accredito_attesa"],
+                "importo_atteso": g["pos_manuale"],
+                "importo_accreditato": g["accredito_banca"],
+                "differenza": g["diff_accredito"],
+                "messaggio": (
+                    f"Accredito diverso dal previsto: il {g['data']} incasso POS €{g['pos_manuale']:.2f}, "
+                    f"banca ha accreditato €{g['accredito_banca']:.2f} (differenza €{g['diff_accredito']:.2f})."
+                ),
+            })
+
+    return {
+        "success": True,
+        "oggi": data_a,
+        "num_alert_compensazione": len(alerts_compensazione),
+        "num_alert_banca": len(alerts_banca),
+        "alert_compensazione": alerts_compensazione,
+        "alert_banca": alerts_banca,
+    }

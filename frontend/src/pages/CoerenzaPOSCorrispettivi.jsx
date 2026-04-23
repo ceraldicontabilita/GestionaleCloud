@@ -25,7 +25,10 @@ export default function CoerenzaPOSCorrispettivi() {
   const [loading, setLoading] = useState(true);
   const [dati, setDati] = useState(null);
   const [riepilogoMensile, setRiepilogoMensile] = useState(null);
-  const [tab, setTab] = useState('giornaliero');
+  // Nuova logica v2: controllo a 2 fasi (aprile 2026)
+  const [dueFasi, setDueFasi] = useState(null);
+  const [alertOggi, setAlertOggi] = useState(null);
+  const [tab, setTab] = useState('due_fasi');  // nuovo tab default
   const [err, setErr] = useState('');
 
   useEffect(() => {
@@ -36,12 +39,16 @@ export default function CoerenzaPOSCorrispettivi() {
     setLoading(true);
     setErr('');
     try {
-      const [coerenzaRes, mensileRes] = await Promise.all([
+      const [coerenzaRes, mensileRes, dueFasiRes, alertRes] = await Promise.all([
         api.get(`/api/pos-corrispettivi/verifica-coerenza?anno=${anno}`),
         api.get(`/api/pos-corrispettivi/riepilogo-mensile?anno=${anno}`),
+        api.get(`/api/pos-corrispettivi/controllo-due-fasi?anno=${anno}`),
+        api.get(`/api/pos-corrispettivi/alert-oggi`),
       ]);
       setDati(coerenzaRes.data);
       setRiepilogoMensile(mensileRes.data);
+      setDueFasi(dueFasiRes.data);
+      setAlertOggi(alertRes.data);
     } catch (e) {
       setErr('Errore caricamento: ' + (e.response?.data?.detail || e.message));
     } finally {
@@ -189,7 +196,31 @@ export default function CoerenzaPOSCorrispettivi() {
       )}
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+        <button
+          onClick={() => setTab('due_fasi')}
+          style={{
+            padding: '8px 16px',
+            background: tab === 'due_fasi' ? '#b8860b' : '#fef3c7',
+            color: tab === 'due_fasi' ? 'white' : '#78350f',
+            border: 'none',
+            borderRadius: 6,
+            fontWeight: 600,
+            fontSize: 13,
+            cursor: 'pointer',
+          }}
+          title="Controllo giornaliero a 2 fasi: RT vs POS e POS vs banca (logica 2026)"
+        >
+          ⚡ Controllo 2 Fasi
+          {alertOggi && (alertOggi.num_alert_compensazione + alertOggi.num_alert_banca) > 0 && (
+            <span style={{
+              marginLeft: 6, background: '#dc2626', color: 'white',
+              borderRadius: 10, padding: '1px 7px', fontSize: 11,
+            }}>
+              {alertOggi.num_alert_compensazione + alertOggi.num_alert_banca}
+            </span>
+          )}
+        </button>
         <button
           onClick={() => setTab('giornaliero')}
           style={{
@@ -256,6 +287,15 @@ export default function CoerenzaPOSCorrispettivi() {
           <RefreshCw size={14} /> Aggiorna
         </button>
       </div>
+
+      {/* Tab nuovo: Controllo 2 Fasi (logica 2026) */}
+      {tab === 'due_fasi' && dueFasi && (
+        <ControlloDueFasi
+          dati={dueFasi}
+          alertOggi={alertOggi}
+          isMobile={isMobile}
+        />
+      )}
 
       {/* Tab Giornaliero */}
       {tab === 'giornaliero' && dati?.riepilogo_giornaliero && (
@@ -641,5 +681,271 @@ export default function CoerenzaPOSCorrispettivi() {
         </div>
       </div>
     </div>
+  );
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// COMPONENTE: Controllo Incassi a 2 Fasi (v2 - aprile 2026)
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Visualizza giorno per giorno:
+//   - FASE 1: RT (XML) vs POS reale → errori di battitura + alert compensazione
+//   - FASE 2: POS reale vs accredito banca → verifica accrediti
+//
+// Basato sulla specifica utente (spiegazione_coerenza.xlsx).
+// ═══════════════════════════════════════════════════════════════════════════
+function ControlloDueFasi({ dati, alertOggi, isMobile }) {
+  const stats = dati?.statistiche || {};
+  const giorni = dati?.giorni || [];
+
+  const [filtroStato, setFiltroStato] = useState('tutti'); // tutti | problemi | ok
+
+  const giorniFiltrati = giorni.filter(g => {
+    if (filtroStato === 'tutti') return true;
+    if (filtroStato === 'ok') {
+      return g.stato_serale === 'ok' && g.stato_accredito === 'ok';
+    }
+    // problemi: almeno una fase con problemi
+    return (g.stato_serale !== 'ok' && g.stato_serale !== 'no_dati') ||
+           (g.stato_accredito !== 'ok' && g.stato_accredito !== 'in_attesa' && g.stato_accredito !== 'no_pos_manuale');
+  });
+
+  return (
+    <div>
+      {/* Sezione Alert Oggi */}
+      {alertOggi && (alertOggi.num_alert_compensazione + alertOggi.num_alert_banca) > 0 && (
+        <div style={{
+          background: '#fffbeb',
+          border: '2px solid #f59e0b',
+          borderRadius: 10,
+          padding: 16,
+          marginBottom: 20,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+            <AlertTriangle size={20} color="#d97706" />
+            <strong style={{ fontSize: 15, color: '#78350f' }}>
+              Cose da sistemare oggi
+            </strong>
+          </div>
+
+          {alertOggi.alert_compensazione?.map((a, i) => (
+            <div key={`comp-${i}`} style={{
+              background: '#fff',
+              padding: 10,
+              marginBottom: 6,
+              borderRadius: 6,
+              borderLeft: '4px solid #f59e0b',
+              fontSize: 13,
+              color: '#78350f',
+            }}>
+              <strong>Registratore fiscale:</strong> {a.messaggio}
+            </div>
+          ))}
+
+          {alertOggi.alert_banca?.map((a, i) => (
+            <div key={`banca-${i}`} style={{
+              background: '#fff',
+              padding: 10,
+              marginBottom: 6,
+              borderRadius: 6,
+              borderLeft: '4px solid #dc2626',
+              fontSize: 13,
+              color: '#78350f',
+            }}>
+              <strong>Accredito banca:</strong> {a.messaggio}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Statistiche riassuntive */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)',
+        gap: 10,
+        marginBottom: 20,
+      }}>
+        <StatCard
+          label="Giorni con errore battitura"
+          value={stats.fase1_diff_piu + stats.fase1_diff_meno || 0}
+          subtitle={`${stats.fase1_ok || 0} giorni OK`}
+          color="#d97706"
+        />
+        <StatCard
+          label="Da compensare in PIÙ"
+          value={formatEuro(stats.importo_tot_da_compensare_piu)}
+          subtitle="sul registratore"
+          color="#7c3aed"
+        />
+        <StatCard
+          label="Da compensare in MENO"
+          value={formatEuro(stats.importo_tot_da_compensare_meno)}
+          subtitle="sul registratore"
+          color="#7c3aed"
+        />
+        <StatCard
+          label="Accrediti banca mancanti"
+          value={formatEuro(stats.importo_tot_mancante_banca)}
+          subtitle={`${stats.fase2_mancante || 0} giorni`}
+          color="#dc2626"
+        />
+      </div>
+
+      {/* Filtro */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+        {[
+          { k: 'tutti', l: 'Tutti' },
+          { k: 'problemi', l: 'Solo problemi' },
+          { k: 'ok', l: 'Solo OK' },
+        ].map(o => (
+          <button
+            key={o.k}
+            onClick={() => setFiltroStato(o.k)}
+            style={{
+              padding: '6px 12px',
+              fontSize: 12,
+              fontWeight: 600,
+              background: filtroStato === o.k ? '#0f2744' : '#f1f5f9',
+              color: filtroStato === o.k ? '#fff' : '#475569',
+              border: 'none',
+              borderRadius: 6,
+              cursor: 'pointer',
+            }}
+          >
+            {o.l}
+          </button>
+        ))}
+        <div style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b', alignSelf: 'center' }}>
+          {giorniFiltrati.length} / {giorni.length} giorni
+        </div>
+      </div>
+
+      {/* Tabella giornaliera */}
+      <div style={{
+        background: 'white',
+        borderRadius: 10,
+        overflow: 'auto',
+        border: '1px solid #e2e8f0',
+      }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+          <thead>
+            <tr style={{ background: '#0f2744', color: '#fff' }}>
+              <th style={{ padding: '10px 8px', textAlign: 'left' }}>Data</th>
+              <th colSpan={3} style={{ padding: '10px 8px', textAlign: 'center', borderLeft: '2px solid #fff', borderRight: '2px solid #fff' }}>
+                FASE 1: RT vs POS reale
+              </th>
+              <th colSpan={3} style={{ padding: '10px 8px', textAlign: 'center' }}>
+                FASE 2: POS reale vs Banca
+              </th>
+            </tr>
+            <tr style={{ background: '#1e293b', color: '#fff', fontSize: 11 }}>
+              <th></th>
+              <th style={{ padding: '6px 8px', textAlign: 'right' }}>XML elettr.</th>
+              <th style={{ padding: '6px 8px', textAlign: 'right' }}>POS reale</th>
+              <th style={{ padding: '6px 8px', textAlign: 'right', borderRight: '2px solid #fff' }}>Diff. serale</th>
+              <th style={{ padding: '6px 8px', textAlign: 'right' }}>POS reale</th>
+              <th style={{ padding: '6px 8px', textAlign: 'right' }}>Accredito banca</th>
+              <th style={{ padding: '6px 8px', textAlign: 'right' }}>Diff. accr.</th>
+            </tr>
+          </thead>
+          <tbody>
+            {giorniFiltrati.map((g, i) => (
+              <RigaGiornaliera key={g.data} g={g} even={i % 2 === 0} />
+            ))}
+          </tbody>
+        </table>
+        {giorniFiltrati.length === 0 && (
+          <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>
+            Nessun giorno da mostrare con questo filtro.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function StatCard({ label, value, subtitle, color }) {
+  return (
+    <div style={{
+      background: '#fff',
+      border: `1px solid ${color}33`,
+      borderLeft: `4px solid ${color}`,
+      borderRadius: 8,
+      padding: 12,
+    }}>
+      <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', fontWeight: 600, letterSpacing: 0.3 }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 18, fontWeight: 700, color, marginTop: 4 }}>
+        {value}
+      </div>
+      {subtitle && (
+        <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
+          {subtitle}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RigaGiornaliera({ g, even }) {
+  const diffSerColor = g.stato_serale === 'ok' ? '#16a34a' :
+                       g.stato_serale === 'no_dati' ? '#94a3b8' : '#dc2626';
+  const diffAccrColor = g.stato_accredito === 'ok' ? '#16a34a' :
+                        g.stato_accredito === 'in_attesa' ? '#3b82f6' :
+                        g.stato_accredito === 'no_pos_manuale' ? '#94a3b8' :
+                        g.stato_accredito === 'mancante' ? '#dc2626' :
+                        g.stato_accredito === 'extra' ? '#eab308' : '#dc2626';
+
+  const statoAccrLabel = {
+    'ok': 'OK',
+    'in_attesa': 'In attesa',
+    'no_pos_manuale': '—',
+    'mancante': 'Mancante',
+    'differenza': 'Diff.',
+    'extra': 'Extra',
+  }[g.stato_accredito] || g.stato_accredito;
+
+  return (
+    <tr style={{ background: even ? '#fff' : '#f8fafc', borderBottom: '1px solid #f1f5f9' }}>
+      <td style={{ padding: '8px', fontWeight: 600 }}>
+        {formatDateIT(g.data)}
+      </td>
+      <td style={{ padding: '6px 8px', textAlign: 'right' }}>
+        {g.xml_elettronico > 0 ? formatEuro(g.xml_elettronico) : '—'}
+      </td>
+      <td style={{ padding: '6px 8px', textAlign: 'right' }}>
+        {g.pos_manuale > 0 ? formatEuro(g.pos_manuale) : '—'}
+      </td>
+      <td style={{
+        padding: '6px 8px',
+        textAlign: 'right',
+        borderRight: '2px solid #e2e8f0',
+        color: diffSerColor,
+        fontWeight: 600,
+      }}>
+        {g.stato_serale === 'no_dati' ? '—' : formatEuro(g.diff_serale)}
+      </td>
+      <td style={{ padding: '6px 8px', textAlign: 'right' }}>
+        {g.pos_manuale > 0 ? formatEuro(g.pos_manuale) : '—'}
+      </td>
+      <td style={{ padding: '6px 8px', textAlign: 'right' }}>
+        {g.accredito_banca > 0 ? formatEuro(g.accredito_banca) : '—'}
+      </td>
+      <td style={{
+        padding: '6px 8px',
+        textAlign: 'right',
+        color: diffAccrColor,
+        fontWeight: 600,
+      }}>
+        <div style={{ fontSize: 11, textTransform: 'uppercase', fontWeight: 700 }}>
+          {statoAccrLabel}
+        </div>
+        {g.stato_accredito === 'ok' || g.stato_accredito === 'differenza' || g.stato_accredito === 'extra'
+          ? formatEuro(g.diff_accredito)
+          : null}
+      </td>
+    </tr>
   );
 }
