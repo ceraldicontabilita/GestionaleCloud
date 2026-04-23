@@ -352,33 +352,54 @@ export default function PaypalTransactionDetailModal({ open, onClose, transactio
 
                 {fatture.length > 0 ? (
                   <div style={{ marginTop: 8 }}>
-                    <div style={{ fontSize: 11, color: '#64748b', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.3 }}>
-                      Fatture trovate ({fatture.length})
+                    <div style={{ fontSize: 11, color: '#64748b', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.3 }}>
+                      Altre fatture di questo fornitore ({fatture.length})
+                    </div>
+                    <div style={{ fontSize: 11, color: '#94a3b8', fontStyle: 'italic', marginBottom: 8 }}>
+                      Sono le fatture di {tx.nome_controparte || tx.payer_name || 'questo fornitore'} nel gestionale.
+                      Le fatture con importo uguale a questa transazione (<strong>{fmtEuro(tx.lordo ?? tx.amount)}</strong>) sono evidenziate in oro —
+                      potrebbero essere ciò che questo pagamento PayPal ha saldato.
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      {fatture.map((f) => (
-                        <div
-                          key={f.id}
-                          onClick={() => handleGoToFattura(f.id)}
-                          style={{
-                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                            padding: '8px 10px', background: '#f8fafc', borderRadius: 6,
-                            cursor: 'pointer', fontSize: 12,
-                            border: '1px solid #e2e8f0',
-                          }}
-                        >
-                          <span>
-                            <strong>{f.invoice_number || f.numero_fattura}</strong>
-                            <span style={{ color: '#64748b', marginLeft: 8 }}>
-                              {fmtDate(f.invoice_date || f.data_fattura)}
+                      {fatture.map((f) => {
+                        const importoFattura = Math.abs(Number(f.total_amount ?? f.importo_totale ?? 0));
+                        const importoTx = Math.abs(Number(tx.lordo ?? tx.amount ?? 0));
+                        const matchImporto = importoTx > 0 && Math.abs(importoFattura - importoTx) < 0.02;
+                        return (
+                          <div
+                            key={f.id}
+                            onClick={() => handleGoToFattura(f.id)}
+                            style={{
+                              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                              padding: '8px 10px',
+                              background: matchImporto ? '#fef3c7' : '#f8fafc',
+                              borderRadius: 6,
+                              cursor: 'pointer', fontSize: 12,
+                              border: `1px solid ${matchImporto ? '#fcd34d' : '#e2e8f0'}`,
+                              transition: 'background 120ms',
+                            }}
+                            onMouseEnter={e => { e.currentTarget.style.background = matchImporto ? '#fde68a' : '#eef2f7'; }}
+                            onMouseLeave={e => { e.currentTarget.style.background = matchImporto ? '#fef3c7' : '#f8fafc'; }}
+                            title="Clicca per aprire la fattura"
+                          >
+                            <span>
+                              <strong>{f.invoice_number || f.numero_fattura}</strong>
+                              <span style={{ color: '#64748b', marginLeft: 8 }}>
+                                {fmtDate(f.invoice_date || f.data_fattura)}
+                              </span>
+                              {matchImporto && (
+                                <span style={{ marginLeft: 8, fontSize: 10, color: '#92400e', fontWeight: 700 }}>
+                                  ★ stesso importo
+                                </span>
+                              )}
                             </span>
-                          </span>
-                          <span>
-                            {fmtEuro(f.total_amount || f.importo_totale)}
-                            <ExternalLink size={11} style={{ marginLeft: 6, verticalAlign: 'middle', color: '#64748b' }} />
-                          </span>
-                        </div>
-                      ))}
+                            <span>
+                              {fmtEuro(importoFattura)}
+                              <ExternalLink size={11} style={{ marginLeft: 6, verticalAlign: 'middle', color: '#64748b' }} />
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 ) : (
