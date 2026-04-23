@@ -376,11 +376,16 @@ class VerificaCoerenza:
         # Verifica versamenti
         versamenti = await self.verifica_versamenti_vs_banca(anno)
         risultati["verifiche"]["versamenti"] = versamenti
-        
-        # Verifica saldi
-        saldi = await self.verifica_saldo_cassa_vs_banca(anno)
-        risultati["verifiche"]["saldi"] = saldi
-        
+
+        # NOTA: la verifica "Saldo Prima Nota vs Estratto Conto" è stata
+        # DISABILITATA su richiesta dell'utente perché produceva una discrepanza
+        # fuorviante. Il confronto aggregato tra due totali non dice quale
+        # movimento manca. L'utente ha chiesto di sostituirla con una pagina
+        # che elenca i singoli movimenti bancari non presenti in Prima Nota
+        # (endpoint nuovo: /api/prima-nota/movimenti-ec-non-in-prima-nota).
+        # Manteniamo il metodo verifica_saldo_cassa_vs_banca nel codice per
+        # eventuale uso diagnostico futuro ma non lo chiamiamo più qui.
+
         # Verifica F24
         f24 = await self.verifica_f24_vs_pagamenti(anno)
         risultati["verifiche"]["f24"] = f24

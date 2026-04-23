@@ -31,7 +31,7 @@ export default function VerificaCoerenza() {
   }, [location.pathname]);
   const [verificaCompleta, setVerificaCompleta] = useState(null);
   const [confrontoIva, setConfrontoIva] = useState(null);
-  const [bonifici, setBonifici] = useState(null);
+  // 'bonifici' rimosso: il box 'Bonifici vs Banca' è stato eliminato (sempre a zero, fuorviante)
   const [error, setError] = useState(null);
 
   useEffect(() => {
@@ -42,18 +42,14 @@ export default function VerificaCoerenza() {
     setLoading(true);
     setError(null);
     try {
-      const [completa, iva, bonif] = await Promise.all([
+      const [completa, iva] = await Promise.all([
         api.get(`/api/verifica-coerenza/completa/${anno}`).catch(() => ({ data: null })),
         api
           .get(`/api/verifica-coerenza/confronto-iva-completo/${anno}`)
           .catch(() => ({ data: null })),
-        api
-          .get(`/api/verifica-coerenza/verifica-bonifici-vs-banca/${anno}`)
-          .catch(() => ({ data: null })),
       ]);
       setVerificaCompleta(completa.data);
       setConfrontoIva(iva.data);
-      setBonifici(bonif.data);
     } catch (err) {
       console.error('Errore caricamento:', err);
       setError('Errore nel caricamento dei dati');
@@ -405,101 +401,11 @@ export default function VerificaCoerenza() {
             </div>
           </div>
 
-          {/* Saldi */}
-          <div style={cardStyle}>
-            <div style={cardHeaderStyle}>
-              <h3 style={cardTitleStyle}>🏦 Prima Nota vs E/C</h3>
-            </div>
-            <div style={cardContentStyle}>
-              {verificaCompleta?.verifiche?.saldi && (
-                <div style={{ display: 'grid', gap: 10 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-                    <span>Prima Nota</span>
-                    <strong>{formatEuro(verificaCompleta.verifiche.saldi.saldo_prima_nota)}</strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-                    <span>Estratto Conto</span>
-                    <strong>
-                      {formatEuro(verificaCompleta.verifiche.saldi.saldo_estratto_conto)}
-                    </strong>
-                  </div>
-                  <div
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      padding: 10,
-                      background:
-                        Math.abs(verificaCompleta.verifiche.saldi.differenza) < 1
-                          ? '#dcfce7'
-                          : '#fef2f2',
-                      borderRadius: 6,
-                    }}
-                  >
-                    <span style={{ fontSize: 13 }}>Differenza</span>
-                    <strong
-                      style={{
-                        color:
-                          Math.abs(verificaCompleta.verifiche.saldi.differenza) < 1
-                            ? '#166534'
-                            : '#dc2626',
-                      }}
-                    >
-                      {Math.abs(verificaCompleta.verifiche.saldi.differenza) < 1
-                        ? '✅ OK'
-                        : formatEuro(verificaCompleta.verifiche.saldi.differenza)}
-                    </strong>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Bonifici */}
-          <div style={cardStyle}>
-            <div style={cardHeaderStyle}>
-              <h3 style={cardTitleStyle}>📄 Bonifici vs Banca</h3>
-            </div>
-            <div style={cardContentStyle}>
-              {bonifici && (
-                <div style={{ display: 'grid', gap: 10 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-                    <span>Registrati</span>
-                    <strong>
-                      {formatEuro(bonifici.bonifici_registrati.totale)} (
-                      {bonifici?.bonifici_registrati?.count})
-                    </strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-                    <span>Riconciliati</span>
-                    <strong style={{ color: '#059669' }}>
-                      {bonifici?.bonifici_registrati?.riconciliati}/
-                      {bonifici?.bonifici_registrati?.count}
-                    </strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-                    <span>In Banca</span>
-                    <strong>
-                      {formatEuro(bonifici.bonifici_banca.totale)} ({bonifici?.bonifici_banca?.count})
-                    </strong>
-                  </div>
-                  <div
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      padding: 10,
-                      background: bonifici.coerente ? '#dcfce7' : '#fef2f2',
-                      borderRadius: 6,
-                    }}
-                  >
-                    <span style={{ fontSize: 13 }}>Stato</span>
-                    <strong style={{ color: bonifici.coerente ? '#166534' : '#dc2626' }}>
-                      {bonifici.coerente ? '✅ OK' : formatEuro(bonifici.differenza)}
-                    </strong>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
+          {/* NOTA: i box 'Prima Nota vs E/C' e 'Bonifici vs Banca' sono stati
+              rimossi su richiesta dell'utente perché fuorvianti (sempre a zero
+              o con numeri non interpretabili). Il controllo saldi è stato
+              sostituito da una tab dedicata che elenca i singoli movimenti
+              bancari non presenti in Prima Nota, con azioni di import. */}
         </div>
       )}
 

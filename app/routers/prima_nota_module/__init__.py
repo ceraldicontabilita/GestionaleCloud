@@ -42,7 +42,8 @@ from .manutenzione import (
     regenerate_from_invoices, fix_versamenti_duplicati, fix_categories_and_duplicates,
     sposta_movimento, verifica_metodo_fattura, verifica_entrate_corrispettivi,
     fix_corrispettivi_importo, migrazione_pulisci_bancari_da_cassa,
-    dedup_fatture_prima_nota, diagnostica_corrispettivi_vs_cassa
+    dedup_fatture_prima_nota, diagnostica_corrispettivi_vs_cassa,
+    lista_movimenti_ec_non_in_prima_nota, importa_movimento_ec_in_prima_nota,
 )
 
 # === ROTTE STATICHE (devono venire PRIMA delle dinamiche) ===
@@ -94,6 +95,8 @@ router.add_api_route("/sposta-movimento", sposta_movimento, methods=["POST"])
 router.add_api_route("/migrazione-pulisci-bancari-cassa", migrazione_pulisci_bancari_da_cassa, methods=["POST"])
 router.add_api_route("/dedup-fatture", dedup_fatture_prima_nota, methods=["POST"])
 router.add_api_route("/diagnostica-corrispettivi", diagnostica_corrispettivi_vs_cassa, methods=["GET"])
+router.add_api_route("/movimenti-ec-non-in-prima-nota", lista_movimenti_ec_non_in_prima_nota, methods=["GET"])
+router.add_api_route("/importa-da-ec", importa_movimento_ec_in_prima_nota, methods=["POST"])
 
 # === ROTTE DINAMICHE (devono venire DOPO le statiche) ===
 

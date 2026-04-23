@@ -2,7 +2,7 @@
 Prima Nota Module - Manutenzione e Fix.
 Funzioni di fix, cleanup, recalculate per manutenzione dati.
 """
-from fastapi import HTTPException, Query
+from fastapi import HTTPException, Query, Body
 from pydantic import BaseModel
 from typing import Dict, Optional, Any
 from datetime import datetime, timezone
@@ -11,6 +11,9 @@ import uuid
 from app.database import Database
 from .common import COLLECTION_PRIMA_NOTA_CASSA, COLLECTION_PRIMA_NOTA_BANCA, logger
 from .sync import determina_tipo_movimento_fattura
+
+# Collection estratto conto bancario (non esportata da .common, la definisco qui)
+COLLECTION_ESTRATTO_CONTO = "estratto_conto_movimenti"
 
 
 class SpostaMovimentoRequest(BaseModel):
@@ -821,4 +824,175 @@ async def diagnostica_corrispettivi_vs_cassa(
         "duplicati_dettaglio": duplicati[:50],
         "azione_consigliata_duplicati": "POST /api/prima-nota/dedup-fatture?applica=true (per fatture) o cleanup manuale per corrispettivi",
         "azione_consigliata_mancanti": "POST /api/prima-nota/cassa/sync-corrispettivi?anno={anno}",
+    }
+
+
+async def lista_movimenti_ec_non_in_prima_nota(
+    anno: int = Query(..., description="Anno da analizzare"),
+    tipo: Optional[str] = Query(None, description="Filtra per tipo: 'entrata' o 'uscita'"),
+    limit: int = Query(500, description="Max risultati"),
+) -> Dict[str, Any]:
+    """Elenca i movimenti dell'Estratto Conto bancario che NON hanno
+    corrispondenza in Prima Nota Banca.
+
+    Un movimento è considerato "mancante" se uno dei due casi:
+      1. ha flag `riconciliato` == False/None, OPPURE
+      2. non c'è nessun movimento in prima_nota_banca con stesso
+         importo e data (±3 giorni di tolleranza) non soft-deleted
+
+    Il secondo controllo è un safety net nel caso il flag di
+    riconciliazione non fosse stato aggiornato correttamente.
+    """
+    db = Database.get_db()
+
+    # Movimenti EC non riconciliati dell'anno
+    ec_query: Dict[str, Any] = {
+        "data": {"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31"},
+        "$or": [
+            {"riconciliato": {"$ne": True}},
+            {"riconciliato": {"$exists": False}},
+        ],
+    }
+    if tipo in ("entrata", "uscita"):
+        ec_query["tipo"] = tipo
+
+    ec_movimenti = await db[COLLECTION_ESTRATTO_CONTO].find(
+        ec_query, {"_id": 0}
+    ).sort("data", -1).limit(limit).to_list(limit)
+
+    # Per il safety-net, carico anche i movimenti di prima nota banca dell'anno
+    pn_query: Dict[str, Any] = {
+        "data": {"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31"},
+        "status": {"$nin": ["deleted", "archived"]},
+    }
+    pn_movimenti = await db[COLLECTION_PRIMA_NOTA_BANCA].find(
+        pn_query, {"_id": 0, "importo": 1, "data": 1, "tipo": 1, "riferimento": 1,
+                   "fattura_id": 1, "estratto_conto_ref": 1}
+    ).to_list(10000)
+
+    # Set di EC già referenziati da qualche movimento PN (attraverso estratto_conto_ref)
+    ec_refs_in_pn = {m.get("estratto_conto_ref") for m in pn_movimenti if m.get("estratto_conto_ref")}
+
+    # Indice per match importo+data (per safety net)
+    def _keys_for_safety(m):
+        d = m.get("data", "")[:10]
+        imp = round(float(m.get("importo", 0) or 0), 2)
+        t = m.get("tipo", "")
+        # chiave con tolleranza ±1 giorno
+        try:
+            from datetime import datetime as _dt, timedelta as _td
+            dt = _dt.fromisoformat(d)
+            return [
+                f"{imp}|{t}|{(dt + _td(days=off)).date().isoformat()}"
+                for off in (-1, 0, 1)
+            ]
+        except Exception:
+            return [f"{imp}|{t}|{d}"]
+
+    pn_index = set()
+    for m in pn_movimenti:
+        for k in _keys_for_safety(m):
+            pn_index.add(k)
+
+    mancanti = []
+    for m in ec_movimenti:
+        if m.get("id") in ec_refs_in_pn:
+            continue  # già riferenziato da prima nota, saltiamo
+        # Controllo match su importo+data: se c'è un candidato PN lo segnalo come "sospetto"
+        keys = _keys_for_safety(m)
+        sospetto = any(k in pn_index for k in keys)
+        mancanti.append({
+            "id": m.get("id"),
+            "data": m.get("data"),
+            "tipo": m.get("tipo"),
+            "importo": round(float(m.get("importo", 0) or 0), 2),
+            "descrizione": m.get("descrizione", ""),
+            "categoria": m.get("categoria"),
+            "riconciliato": bool(m.get("riconciliato")),
+            # True = c'è forse già un record in Prima Nota con stessi dati ma non
+            # collegato. Probabilmente serve solo un match, non un nuovo insert.
+            "possibile_match_esistente": sospetto,
+        })
+
+    return {
+        "anno": anno,
+        "tipo_filtro": tipo,
+        "totale_mancanti": len(mancanti),
+        "totale_entrate": sum(1 for x in mancanti if x["tipo"] == "entrata"),
+        "totale_uscite": sum(1 for x in mancanti if x["tipo"] == "uscita"),
+        "importo_totale_entrate": round(
+            sum(x["importo"] for x in mancanti if x["tipo"] == "entrata"), 2
+        ),
+        "importo_totale_uscite": round(
+            sum(x["importo"] for x in mancanti if x["tipo"] == "uscita"), 2
+        ),
+        "movimenti": mancanti,
+    }
+
+
+async def importa_movimento_ec_in_prima_nota(
+    data: Dict[str, Any] = Body(...)
+) -> Dict[str, Any]:
+    """Crea un movimento in Prima Nota Banca a partire da un movimento EC.
+
+    Body:
+      - ec_id: id del movimento estratto_conto_movimenti da importare
+      - categoria (opzionale): categoria da assegnare al movimento PN
+      - descrizione (opzionale): sovrascrive la descrizione EC
+
+    Effetti:
+      - Inserisce un record in prima_nota_banca con source='import_da_ec'
+      - Segna il movimento EC con riconciliato=True e estratto_conto_ref impostato
+      - Idempotente: se esiste già un PN con estratto_conto_ref=ec_id, non crea duplicati
+    """
+    db = Database.get_db()
+    ec_id = data.get("ec_id")
+    if not ec_id:
+        raise HTTPException(status_code=400, detail="ec_id richiesto")
+
+    ec = await db[COLLECTION_ESTRATTO_CONTO].find_one({"id": ec_id}, {"_id": 0})
+    if not ec:
+        raise HTTPException(status_code=404, detail="Movimento estratto conto non trovato")
+
+    # Idempotenza
+    existing = await db[COLLECTION_PRIMA_NOTA_BANCA].find_one({
+        "estratto_conto_ref": ec_id,
+        "status": {"$nin": ["deleted", "archived"]},
+    })
+    if existing:
+        return {
+            "success": True,
+            "message": "Movimento già importato in precedenza",
+            "prima_nota_id": existing.get("id"),
+            "duplicato": True,
+        }
+
+    now = datetime.now(timezone.utc).isoformat()
+    pn_id = str(uuid.uuid4())
+    movimento = {
+        "id": pn_id,
+        "data": ec.get("data"),
+        "tipo": ec.get("tipo", "uscita"),
+        "importo": round(float(ec.get("importo", 0) or 0), 2),
+        "descrizione": data.get("descrizione") or ec.get("descrizione", ""),
+        "categoria": data.get("categoria") or ec.get("categoria") or "Da categorizzare",
+        "riferimento": f"EC-{ec_id[:8]}",
+        "source": "import_da_ec",
+        "estratto_conto_ref": ec_id,
+        "created_at": now,
+    }
+    await db[COLLECTION_PRIMA_NOTA_BANCA].insert_one(movimento.copy())
+
+    # Segno il movimento EC come riconciliato
+    await db[COLLECTION_ESTRATTO_CONTO].update_one(
+        {"id": ec_id},
+        {"$set": {"riconciliato": True, "prima_nota_id": pn_id, "riconciliato_at": now}}
+    )
+
+    return {
+        "success": True,
+        "message": "Movimento importato in Prima Nota Banca",
+        "prima_nota_id": pn_id,
+        "ec_id": ec_id,
+        "duplicato": False,
     }

@@ -6,9 +6,11 @@ const VerificaContent = lazy(() => import('../VerificaCoerenza.jsx'));
 const CommercialistaContent = lazy(() => import('../Commercialista.jsx'));
 const PianificazioneContent = lazy(() => import('../Pianificazione.jsx'));
 const VisureContent = lazy(() => import('../Visure.jsx'));
+const MovimentiBancaContent = lazy(() => import('../VerificaMovimentiBanca.jsx'));
 
 const TABS = [
   { id: 'verifica', label: '🔍 Verifica Coerenza', color: '#3b82f6' },
+  { id: 'movimenti-banca', label: '🏦 Movimenti Banca', color: '#b8860b' },
   { id: 'commercialista', label: '📊 Commercialista', color: '#8b5cf6' },
   { id: 'pianificazione', label: '📅 Pianificazione', color: '#10b981' },
   { id: 'visure', label: '🏛️ Visure', color: '#06b6d4' },
@@ -36,6 +38,7 @@ const getTabFromPath = pathname => {
   if (pathname.includes('/commercialista')) return 'commercialista';
   if (pathname.includes('/pianificazione')) return 'pianificazione';
   if (pathname.includes('/visure')) return 'visure';
+  if (pathname.includes('/movimenti-banca')) return 'movimenti-banca';
   if (pathname.includes('/strumenti/')) {
     const m = pathname.match(/\/strumenti\/([\w-]+)/);
     if (m && TABS.find(t => t.id === m[1])) return m[1];
@@ -76,6 +79,7 @@ export default function StrumentiHub() {
 
   const CONTENTS = {
     verifica: VerificaContent,
+    'movimenti-banca': MovimentiBancaContent,
     commercialista: CommercialistaContent,
     pianificazione: PianificazioneContent,
     visure: VisureContent,
