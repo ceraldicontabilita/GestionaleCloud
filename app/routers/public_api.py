@@ -713,22 +713,49 @@ async def create_assegno(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
 
 @router.get("/pianificazione/events")
 async def list_events(skip: int = 0, limit: int = 10000) -> List[Dict[str, Any]]:
-    """Lista eventi pianificazione."""
+    """Lista eventi pianificazione.
+
+    Ordinamento: prova prima scheduled_date, poi start_date per retrocompatibilità
+    con eventi creati con lo schema vecchio.
+    """
     db = Database.get_db()
-    return await db["planning_events"].find({}, {"_id": 0}).sort("start_date", 1).skip(skip).limit(limit).to_list(limit)
+    events = await db["planning_events"].find({}, {"_id": 0}).to_list(limit or 10000)
+    # Sort in memoria per gestire eventi con schema misto (scheduled_date | start_date)
+    def _date_key(ev):
+        return ev.get("scheduled_date") or ev.get("start_date") or ""
+    events.sort(key=_date_key)
+    return events[skip: skip + (limit or 10000)]
 
 
 @router.post("/pianificazione/events")
 async def create_event(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
-    """Crea evento pianificazione."""
-    db = Database.get_db()
+    """Crea evento pianificazione.
+
+    Accetta sia il nuovo schema del frontend (scheduled_date, event_type, notes,
+    status) sia il vecchio (start_date, end_date, type, description) per
+    retrocompatibilità. Il documento viene salvato con AMBEDUE i nomi di campo
+    così vecchi e nuovi client possono leggerlo correttamente.
+    """
+    # Campo data: preferisce scheduled_date (nuovo), fallback a start_date (vecchio)
+    scheduled = data.get("scheduled_date") or data.get("start_date") or ""
+    end_date = data.get("end_date", "")
+    # Tipo evento: event_type (nuovo) o type (vecchio)
+    event_type = data.get("event_type") or data.get("type") or "event"
+    # Note / descrizione
+    notes = data.get("notes") or data.get("description") or ""
+
     event = {
         "id": str(uuid.uuid4()),
         "title": data.get("title", ""),
-        "start_date": data.get("start_date", ""),
-        "end_date": data.get("end_date", ""),
-        "type": data.get("type", "event"),
-        "description": data.get("description", ""),
+        # Salvo entrambi i nomi per retrocompatibilità
+        "scheduled_date": scheduled,
+        "start_date": scheduled,
+        "end_date": end_date,
+        "event_type": event_type,
+        "type": event_type,
+        "notes": notes,
+        "description": notes,
+        "status": data.get("status", "scheduled"),
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db["planning_events"].insert_one(event.copy())

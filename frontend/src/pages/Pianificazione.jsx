@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api';
-import { PageLayout, PageSection, PageLoading, PageEmpty } from '../components/PageLayout';
+import { PageLayout, PageSection, PageLoading } from '../components/PageLayout';
 import { Calendar, Plus, RefreshCw, X } from 'lucide-react';
 
 export default function Pianificazione() {
@@ -262,7 +262,20 @@ export default function Pianificazione() {
         {loading ? (
           <PageLoading message="Caricamento eventi..." />
         ) : events.length === 0 ? (
-          <PageEmpty icon="📭" message="Nessun evento pianificato" />
+          <div style={{ padding: '40px 20px', textAlign: 'center' }}>
+            <div style={{ fontSize: 48, marginBottom: 12 }}>📭</div>
+            <div style={{ fontSize: 16, fontWeight: 600, color: '#1e293b', marginBottom: 8 }}>
+              Nessun evento in agenda
+            </div>
+            <div style={{ fontSize: 13, color: '#64748b', maxWidth: 520, margin: '0 auto', lineHeight: 1.5 }}>
+              Qui puoi annotare riunioni, scadenze fiscali, promemoria e attività da fare.
+              Non è un calendario condiviso né sincronizzato con Google Calendar:
+              è uno spazio personale per tenere in un posto solo le date che riguardano l'azienda
+              (es. scadenza IVA, rinnovo contratti, appuntamenti col commercialista).
+              <br /><br />
+              Clicca <strong>Nuovo Evento</strong> per aggiungere il primo.
+            </div>
+          </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {events.map((ev, i) => (

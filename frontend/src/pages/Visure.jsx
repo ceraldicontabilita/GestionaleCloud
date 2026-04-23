@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import api from '../api';
 import { toast } from 'sonner';
+import { useIsMobile } from '../lib/utils';
 
 export default function Visure() {
   const isMobile = useIsMobile();
