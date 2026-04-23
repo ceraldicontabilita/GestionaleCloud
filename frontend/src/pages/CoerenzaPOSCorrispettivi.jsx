@@ -294,6 +294,7 @@ export default function CoerenzaPOSCorrispettivi() {
           dati={dueFasi}
           alertOggi={alertOggi}
           isMobile={isMobile}
+          onReload={loadDati}
         />
       )}
 
@@ -695,26 +696,63 @@ export default function CoerenzaPOSCorrispettivi() {
 //
 // Basato sulla specifica utente (spiegazione_coerenza.xlsx).
 // ═══════════════════════════════════════════════════════════════════════════
-function ControlloDueFasi({ dati, alertOggi, isMobile }) {
+function ControlloDueFasi({ dati, alertOggi, isMobile, onReload }) {
   const stats = dati?.statistiche || {};
   const giorni = dati?.giorni || [];
 
   const [filtroStato, setFiltroStato] = useState('tutti'); // tutti | problemi | ok
+  const [modalAperta, setModalAperta] = useState(false);
 
   const giorniFiltrati = giorni.filter(g => {
     if (filtroStato === 'tutti') return true;
     if (filtroStato === 'ok') {
-      return g.stato_serale === 'ok' && g.stato_accredito === 'ok';
+      return g.stato_serale === 'ok' && g.stato_accredito === 'ok' && g.stato_corrispettivo !== 'manca_xml';
     }
     // problemi: almeno una fase con problemi
-    return (g.stato_serale !== 'ok' && g.stato_serale !== 'no_dati') ||
-           (g.stato_accredito !== 'ok' && g.stato_accredito !== 'in_attesa' && g.stato_accredito !== 'no_pos_manuale');
+    return (g.stato_serale !== 'ok' && g.stato_serale !== 'no_dati' && g.stato_serale !== 'in_attesa_xml') ||
+           (g.stato_accredito !== 'ok' && g.stato_accredito !== 'in_attesa' && g.stato_accredito !== 'no_pos_manuale') ||
+           g.stato_corrispettivo === 'manca_xml';
   });
 
   return (
     <div>
+      {/* Toolbar con bottone inserimento manuale */}
+      <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center' }}>
+        <button
+          onClick={() => setModalAperta(true)}
+          style={{
+            padding: '8px 16px',
+            background: '#b8860b',
+            color: '#fff',
+            border: 'none',
+            borderRadius: 8,
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: 'pointer',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+          }}
+        >
+          + Inserisci chiusura serale
+        </button>
+        <div style={{ fontSize: 12, color: '#64748b' }}>
+          Corrispettivo manuale (provvisorio) + POS reale del giorno
+        </div>
+      </div>
+
+      {modalAperta && (
+        <ModalChiusuraSerale
+          onClose={() => setModalAperta(false)}
+          onSaved={() => {
+            setModalAperta(false);
+            if (onReload) onReload();
+          }}
+        />
+      )}
+
       {/* Sezione Alert Oggi */}
-      {alertOggi && (alertOggi.num_alert_compensazione + alertOggi.num_alert_banca) > 0 && (
+      {alertOggi && (alertOggi.num_alert_compensazione + alertOggi.num_alert_banca + (alertOggi.num_alert_xml_mancante || 0)) > 0 && (
         <div style={{
           background: '#fffbeb',
           border: '2px solid #f59e0b',
@@ -756,16 +794,36 @@ function ControlloDueFasi({ dati, alertOggi, isMobile }) {
               <strong>Accredito banca:</strong> {a.messaggio}
             </div>
           ))}
+
+          {alertOggi.alert_xml_mancante?.map((a, i) => (
+            <div key={`xml-${i}`} style={{
+              background: '#fff',
+              padding: 10,
+              marginBottom: 6,
+              borderRadius: 6,
+              borderLeft: '4px solid #8b5cf6',
+              fontSize: 13,
+              color: '#78350f',
+            }}>
+              <strong>XML mancante:</strong> {a.messaggio}
+            </div>
+          ))}
         </div>
       )}
 
       {/* Statistiche riassuntive */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)',
+        gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(5, 1fr)',
         gap: 10,
         marginBottom: 20,
       }}>
+        <StatCard
+          label="XML mancanti (≥7gg)"
+          value={stats.fase0_manca_xml || 0}
+          subtitle={`${stats.fase0_provvisori || 0} provvisori · ${stats.fase0_definitivi_xml || 0} definitivi`}
+          color="#8b5cf6"
+        />
         <StatCard
           label="Giorni con errore battitura"
           value={stats.fase1_diff_piu + stats.fase1_diff_meno || 0}
@@ -832,6 +890,9 @@ function ControlloDueFasi({ dati, alertOggi, isMobile }) {
           <thead>
             <tr style={{ background: '#0f2744', color: '#fff' }}>
               <th style={{ padding: '10px 8px', textAlign: 'left' }}>Data</th>
+              <th style={{ padding: '10px 8px', textAlign: 'center', borderLeft: '2px solid #fff' }}>
+                Stato
+              </th>
               <th colSpan={3} style={{ padding: '10px 8px', textAlign: 'center', borderLeft: '2px solid #fff', borderRight: '2px solid #fff' }}>
                 FASE 1: RT vs POS reale
               </th>
@@ -841,6 +902,7 @@ function ControlloDueFasi({ dati, alertOggi, isMobile }) {
             </tr>
             <tr style={{ background: '#1e293b', color: '#fff', fontSize: 11 }}>
               <th></th>
+              <th style={{ padding: '6px 8px', textAlign: 'center', borderLeft: '2px solid #fff' }}>Corrisp.</th>
               <th style={{ padding: '6px 8px', textAlign: 'right' }}>XML elettr.</th>
               <th style={{ padding: '6px 8px', textAlign: 'right' }}>POS reale</th>
               <th style={{ padding: '6px 8px', textAlign: 'right', borderRight: '2px solid #fff' }}>Diff. serale</th>
@@ -891,7 +953,8 @@ function StatCard({ label, value, subtitle, color }) {
 
 function RigaGiornaliera({ g, even }) {
   const diffSerColor = g.stato_serale === 'ok' ? '#16a34a' :
-                       g.stato_serale === 'no_dati' ? '#94a3b8' : '#dc2626';
+                       g.stato_serale === 'no_dati' ? '#94a3b8' :
+                       g.stato_serale === 'in_attesa_xml' ? '#8b5cf6' : '#dc2626';
   const diffAccrColor = g.stato_accredito === 'ok' ? '#16a34a' :
                         g.stato_accredito === 'in_attesa' ? '#3b82f6' :
                         g.stato_accredito === 'no_pos_manuale' ? '#94a3b8' :
@@ -907,13 +970,35 @@ function RigaGiornaliera({ g, even }) {
     'extra': 'Extra',
   }[g.stato_accredito] || g.stato_accredito;
 
+  // Badge stato corrispettivo (fase 0)
+  const statoCorr = g.stato_corrispettivo;
+  const statoCorrBadge = {
+    'definitivo_xml': { label: 'XML', bg: '#dcfce7', color: '#166534' },
+    'provvisorio': { label: 'Provv.', bg: '#fef3c7', color: '#92400e' },
+    'manca_xml': { label: '⚠ No XML', bg: '#ede9fe', color: '#6d28d9' },
+    'sconosciuto': { label: '—', bg: '#f1f5f9', color: '#64748b' },
+  }[statoCorr] || { label: '—', bg: '#f1f5f9', color: '#64748b' };
+
   return (
     <tr style={{ background: even ? '#fff' : '#f8fafc', borderBottom: '1px solid #f1f5f9' }}>
       <td style={{ padding: '8px', fontWeight: 600 }}>
         {formatDateIT(g.data)}
       </td>
-      <td style={{ padding: '6px 8px', textAlign: 'right' }}>
-        {g.xml_elettronico > 0 ? formatEuro(g.xml_elettronico) : '—'}
+      <td style={{ padding: '6px 8px', textAlign: 'center', borderLeft: '2px solid #e2e8f0' }}>
+        <span style={{
+          display: 'inline-block',
+          padding: '2px 8px',
+          fontSize: 10,
+          fontWeight: 700,
+          borderRadius: 10,
+          background: statoCorrBadge.bg,
+          color: statoCorrBadge.color,
+        }}>
+          {statoCorrBadge.label}
+        </span>
+      </td>
+      <td style={{ padding: '6px 8px', textAlign: 'right', borderLeft: '2px solid #e2e8f0' }}>
+        {g.xml_elettronico > 0 ? formatEuro(g.xml_elettronico) : (statoCorr !== 'definitivo_xml' ? <em style={{color:'#94a3b8',fontSize:11}}>attendo XML</em> : '—')}
       </td>
       <td style={{ padding: '6px 8px', textAlign: 'right' }}>
         {g.pos_manuale > 0 ? formatEuro(g.pos_manuale) : '—'}
@@ -925,7 +1010,9 @@ function RigaGiornaliera({ g, even }) {
         color: diffSerColor,
         fontWeight: 600,
       }}>
-        {g.stato_serale === 'no_dati' ? '—' : formatEuro(g.diff_serale)}
+        {g.stato_serale === 'no_dati' ? '—'
+          : g.stato_serale === 'in_attesa_xml' ? <em style={{color:'#8b5cf6',fontSize:11}}>attendo XML</em>
+          : formatEuro(g.diff_serale)}
       </td>
       <td style={{ padding: '6px 8px', textAlign: 'right' }}>
         {g.pos_manuale > 0 ? formatEuro(g.pos_manuale) : '—'}
@@ -947,5 +1034,182 @@ function RigaGiornaliera({ g, even }) {
           : null}
       </td>
     </tr>
+  );
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MODALE: Inserimento chiusura serale (corrispettivo manuale + POS reale)
+// ═══════════════════════════════════════════════════════════════════════════
+// Un form compatto per inserire in un colpo solo i due dati che l'utente ha
+// a fine giornata: il totale del corrispettivo e il POS reale battuto.
+// Il corrispettivo è marcato come "provvisorio" finché non arriva XML AdE.
+// ═══════════════════════════════════════════════════════════════════════════
+function ModalChiusuraSerale({ onClose, onSaved }) {
+  const oggi = new Date().toISOString().slice(0, 10);
+  const [dataForm, setDataForm] = useState(oggi);
+  const [totale, setTotale] = useState('');
+  const [posReale, setPosReale] = useState('');
+  const [note, setNote] = useState('');
+  const [salvando, setSalvando] = useState(false);
+  const [errore, setErrore] = useState('');
+
+  const salva = async () => {
+    if (!dataForm) {
+      setErrore('Inserisci la data');
+      return;
+    }
+    const t = parseFloat(totale.replace(',', '.'));
+    if (isNaN(t) || t <= 0) {
+      setErrore('Il totale corrispettivo deve essere un numero maggiore di 0');
+      return;
+    }
+    const p = posReale ? parseFloat(posReale.replace(',', '.')) : null;
+    if (p !== null && (isNaN(p) || p < 0)) {
+      setErrore('Il POS reale deve essere un numero >= 0');
+      return;
+    }
+
+    setSalvando(true);
+    setErrore('');
+    try {
+      await api.post('/api/corrispettivi/manuale', {
+        data: dataForm,
+        totale: t,
+        pos_reale_serale: p,
+        note: note || undefined,
+      });
+      if (onSaved) onSaved();
+    } catch (e) {
+      setErrore(e?.response?.data?.detail || e?.message || 'Errore salvataggio');
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        zIndex: 10000, padding: 16,
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: '#fff', borderRadius: 12, padding: 20,
+          width: '100%', maxWidth: 480,
+          boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+          <h3 style={{ margin: 0, fontSize: 17, color: '#0f2744' }}>
+            Chiusura serale
+          </h3>
+          <button
+            onClick={onClose}
+            style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 18, color: '#64748b' }}
+          >
+            ✕
+          </button>
+        </div>
+
+        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 16, lineHeight: 1.5 }}>
+          Inserisci il totale del corrispettivo giornaliero (provvisorio) e il POS reale
+          letto dall'hardware. Quando arriverà l'XML dall'Agenzia Entrate, il totale sarà
+          sostituito automaticamente col dato ufficiale.
+        </div>
+
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ fontSize: 11, fontWeight: 600, color: '#475569', textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>
+            Data
+          </label>
+          <input
+            type="date"
+            value={dataForm}
+            max={oggi}
+            onChange={e => setDataForm(e.target.value)}
+            style={{ width: '100%', padding: 8, fontSize: 14, borderRadius: 6, border: '1px solid #cbd5e1' }}
+          />
+        </div>
+
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ fontSize: 11, fontWeight: 600, color: '#475569', textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>
+            Totale corrispettivo (€) *
+          </label>
+          <input
+            type="text"
+            inputMode="decimal"
+            value={totale}
+            onChange={e => setTotale(e.target.value)}
+            placeholder="es. 1250,50"
+            style={{ width: '100%', padding: 8, fontSize: 14, borderRadius: 6, border: '1px solid #cbd5e1' }}
+          />
+        </div>
+
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ fontSize: 11, fontWeight: 600, color: '#475569', textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>
+            POS reale dalla chiusura serale (€)
+          </label>
+          <input
+            type="text"
+            inputMode="decimal"
+            value={posReale}
+            onChange={e => setPosReale(e.target.value)}
+            placeholder="es. 450,00 (opzionale)"
+            style={{ width: '100%', padding: 8, fontSize: 14, borderRadius: 6, border: '1px solid #cbd5e1' }}
+          />
+          <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
+            Facoltativo ma consigliato: il totale battuto al POS fisico (per il controllo FASE 1).
+          </div>
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ fontSize: 11, fontWeight: 600, color: '#475569', textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>
+            Note
+          </label>
+          <input
+            type="text"
+            value={note}
+            onChange={e => setNote(e.target.value)}
+            placeholder="Eventuale nota"
+            style={{ width: '100%', padding: 8, fontSize: 14, borderRadius: 6, border: '1px solid #cbd5e1' }}
+          />
+        </div>
+
+        {errore && (
+          <div style={{ padding: 10, background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', borderRadius: 6, fontSize: 13, marginBottom: 12 }}>
+            {errore}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button
+            onClick={onClose}
+            disabled={salvando}
+            style={{
+              padding: '8px 16px', background: '#f1f5f9', color: '#475569',
+              border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            Annulla
+          </button>
+          <button
+            onClick={salva}
+            disabled={salvando}
+            style={{
+              padding: '8px 16px', background: salvando ? '#94a3b8' : '#b8860b',
+              color: '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 600,
+              cursor: salvando ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {salvando ? 'Salvo...' : 'Salva chiusura'}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

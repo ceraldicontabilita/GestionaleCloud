@@ -838,7 +838,13 @@ async def controllo_incassi_due_fasi(
     # Carica tutti i dati
     corrispettivi = await db["corrispettivi"].find(
         {"data": {"$gte": data_da, "$lte": data_a}},
-        {"_id": 0, "data": 1, "pagato_elettronico": 1, "pagato_contanti": 1, "totale": 1}
+        {
+            "_id": 0, "data": 1,
+            "pagato_elettronico": 1, "pagato_contanti": 1, "totale": 1,
+            # v2: stato del corrispettivo + dati provvisori/ufficiali
+            "stato": 1, "totale_manuale": 1, "totale_xml": 1,
+            "source": 1, "data_inserimento_manuale": 1, "data_import_xml": 1,
+        }
     ).sort("data", 1).to_list(10000)
 
     pos_manuali = await _carica_pos_manuale_per_data(db)
@@ -866,11 +872,19 @@ async def controllo_incassi_due_fasi(
             corr_by_date[d[:10]] = c
 
     oggi = datetime.now().strftime("%Y-%m-%d")
+    soglia_alert_xml = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
     giorni = []
     stats = {
         "tot_giorni": 0,
+        # FASE 0 (nuovo in v3): stato corrispettivo
+        "fase0_provvisori": 0,
+        "fase0_definitivi_xml": 0,
+        "fase0_manca_xml": 0,
+        # FASE 1: errori di battitura
         "fase1_ok": 0, "fase1_diff_piu": 0, "fase1_diff_meno": 0,
+        # FASE 2: accrediti banca
         "fase2_ok": 0, "fase2_attesa": 0, "fase2_mancante": 0, "fase2_diff": 0, "fase2_extra": 0,
+        # Importi aggregati
         "importo_tot_da_compensare_piu": 0.0,
         "importo_tot_da_compensare_meno": 0.0,
         "importo_tot_mancante_banca": 0.0,
@@ -882,11 +896,47 @@ async def controllo_incassi_due_fasi(
     # alert_attivo_il = giorno successivo in formato stringa.
 
     for d in sorted(date_note):
-        xml_el = float(corr_by_date.get(d, {}).get("pagato_elettronico") or 0)
+        c_row = corr_by_date.get(d, {})
+        xml_el = float(c_row.get("pagato_elettronico") or 0)
         pos_man = float(pos_manuali.get(d) or 0)
 
+        # FASE 0 v3: stato corrispettivo (provvisorio / definitivo_xml / manca_xml)
+        stato_corr_raw = c_row.get("stato")
+        totale_manuale_corr = c_row.get("totale_manuale")
+        totale_xml_corr = c_row.get("totale_xml")
+        if not stato_corr_raw:
+            # Retrocompat: se non c'è stato esplicito, dedurlo dai campi
+            has_xml = bool(c_row.get("pagato_elettronico") is not None or totale_xml_corr)
+            is_manual_source = c_row.get("source") in ("manuale_serale", "manuale", "manual_entry")
+            if has_xml:
+                stato_corr = "definitivo_xml"
+            elif is_manual_source:
+                stato_corr = "manca_xml" if d < soglia_alert_xml else "provvisorio"
+            else:
+                stato_corr = "sconosciuto"
+        else:
+            # Ricalcolo dinamico manca_xml per evitare di dipendere solo dal job
+            if stato_corr_raw == "provvisorio" and d < soglia_alert_xml:
+                stato_corr = "manca_xml"
+            else:
+                stato_corr = stato_corr_raw
+
+        if stato_corr == "provvisorio":
+            stats["fase0_provvisori"] += 1
+        elif stato_corr == "definitivo_xml":
+            stats["fase0_definitivi_xml"] += 1
+        elif stato_corr == "manca_xml":
+            stats["fase0_manca_xml"] += 1
+
         # FASE 1: solo se abbiamo entrambi i dati, altrimenti non possiamo confrontare
-        if xml_el > 0 or pos_man > 0:
+        # Se il corrispettivo è provvisorio/manca_xml, non abbiamo xml_elettronico
+        # → stato speciale "in_attesa_xml"
+        if stato_corr in ("provvisorio", "manca_xml") and pos_man > 0:
+            # Abbiamo il POS serale ma non i dati fiscali → aspettiamo XML
+            diff_serale = 0.0
+            stato_serale = "in_attesa_xml"
+            alert_serale = None
+        elif xml_el > 0 or pos_man > 0:
             diff_serale = round(pos_man - xml_el, 2)
             if abs(diff_serale) <= tolleranza_euro:
                 stato_serale = "ok"
@@ -957,6 +1007,10 @@ async def controllo_incassi_due_fasi(
 
         giorni.append({
             "data": d,
+            # Fase 0 (v3): stato corrispettivo
+            "stato_corrispettivo": stato_corr,
+            "totale_manuale": totale_manuale_corr,
+            "totale_xml": totale_xml_corr,
             # Fase 1
             "xml_elettronico": round(xml_el, 2),
             "pos_manuale": round(pos_man, 2),
@@ -1008,6 +1062,7 @@ async def alert_oggi(
 
     alerts_compensazione = []
     alerts_banca = []
+    alerts_xml_mancante = []
 
     for g in full.get("giorni", []):
         if g.get("alert_compensazione"):
@@ -1037,12 +1092,24 @@ async def alert_oggi(
                     f"banca ha accreditato €{g['accredito_banca']:.2f} (differenza €{g['diff_accredito']:.2f})."
                 ),
             })
+        # v3: alert XML mancante (>=7 giorni senza file ufficiale)
+        if g.get("stato_corrispettivo") == "manca_xml":
+            alerts_xml_mancante.append({
+                "data": g["data"],
+                "totale_manuale": g.get("totale_manuale") or g.get("pos_manuale") or 0,
+                "messaggio": (
+                    f"Manca il file XML dei corrispettivi per il {g['data']}. "
+                    f"Hai ancora un corrispettivo provvisorio non sostituito da XML ufficiale."
+                ),
+            })
 
     return {
         "success": True,
         "oggi": data_a,
         "num_alert_compensazione": len(alerts_compensazione),
         "num_alert_banca": len(alerts_banca),
+        "num_alert_xml_mancante": len(alerts_xml_mancante),
         "alert_compensazione": alerts_compensazione,
         "alert_banca": alerts_banca,
+        "alert_xml_mancante": alerts_xml_mancante,
     }

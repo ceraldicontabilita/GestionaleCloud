@@ -2,9 +2,9 @@
 Corrispettivi Router - Gestione corrispettivi telematici.
 Refactored from public_api.py
 """
-from fastapi import APIRouter, HTTPException, UploadFile, File, Query
+from fastapi import APIRouter, HTTPException, UploadFile, File, Query, Body
 from typing import Dict, Any, List
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import uuid
 import logging
 import zipfile
@@ -1461,3 +1461,254 @@ async def view_corrispettivo(corrispettivo_id: str):
     
     return HTMLResponse(content=html_content, status_code=200)
 
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CORRISPETTIVO MANUALE SERALE (v2 - aprile 2026)
+# ═══════════════════════════════════════════════════════════════════════════
+# Permette all'utente di inserire la sera il totale corrispettivo PROVVISORIO
+# prima che arrivi il file XML ufficiale dal portale Agenzia Entrate.
+#
+# Flusso:
+#   1. Utente inserisce manualmente il totale giornaliero (stato=provvisorio)
+#   2. Successivamente arriva l'XML dall'AdE (import tramite endpoint esistente)
+#   3. L'import XML aggiorna lo stesso record mettendo stato=definitivo_xml
+#      e sovrascrivendo totale/contanti/elettronico con dati fiscali
+#   4. Scheduler giornaliero marca come "manca_xml" i record manuali più
+#      vecchi di 7 giorni
+#
+# Schema record corrispettivi (aggiunte ai campi esistenti):
+#   - totale_manuale: float (dato serale provvisorio)
+#   - totale_xml: float (dato fiscale ufficiale, null finché non arriva)
+#   - stato: "provvisorio" | "definitivo_xml" | "manca_xml"
+#   - data_inserimento_manuale: ISO timestamp
+#   - data_import_xml: ISO timestamp (null finché non arriva)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+GIORNI_PRIMA_ALERT_XML_MANCANTE = 7
+
+
+@router.post("/manuale")
+async def inserisci_corrispettivo_manuale(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    """Inserisce o aggiorna un corrispettivo MANUALE serale (provvisorio).
+
+    Body:
+      - data: "YYYY-MM-DD" (obbligatorio)
+      - totale: float > 0 (obbligatorio)
+      - pos_reale_serale: float >= 0 (opzionale, inserimento POS serale contestuale)
+      - note: str (opzionale)
+
+    Comportamento:
+      - Se esiste già un corrispettivo per quella data:
+          * Se stato == "definitivo_xml" → ritorna 409 (non si sovrascrive
+            un dato fiscale con un manuale)
+          * Altrimenti aggiorna totale_manuale e ricalcola totale/stato
+      - Se NON esiste → crea nuovo record con stato=provvisorio
+
+    Opzionalmente, se pos_reale_serale è fornito, chiama anche l'endpoint
+    della chiusura POS per unificare i due input della sera in un solo click.
+    """
+    db = Database.get_db()
+
+    data_str = data.get("data")
+    if not data_str:
+        raise HTTPException(status_code=400, detail="Campo 'data' obbligatorio (YYYY-MM-DD)")
+    try:
+        data_dt = datetime.strptime(data_str, "%Y-%m-%d")
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail=f"Data non valida: {data_str!r}")
+
+    try:
+        totale = round(float(data.get("totale", 0) or 0), 2)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Campo 'totale' non numerico")
+
+    if totale <= 0:
+        raise HTTPException(status_code=400, detail="Il totale deve essere > 0")
+
+    pos_reale = data.get("pos_reale_serale")
+    try:
+        pos_reale = round(float(pos_reale), 2) if pos_reale is not None else None
+    except (ValueError, TypeError):
+        pos_reale = None
+
+    note = (data.get("note") or "").strip()
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    existing = await db["corrispettivi"].find_one({"data": data_str}, {"_id": 0})
+
+    if existing and existing.get("stato") == "definitivo_xml":
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Esiste già un corrispettivo DEFINITIVO (XML ufficiale) per il {data_str}. "
+                f"Non puoi sovrascriverlo con un dato manuale. Se devi correggerlo, importa un nuovo XML."
+            )
+        )
+
+    if existing:
+        # Aggiorna il manuale mantenendo quello che c'era
+        update = {
+            "totale_manuale": totale,
+            "totale": totale,  # finché non arriva XML, totale attivo = manuale
+            "stato": "provvisorio",
+            "data_inserimento_manuale": now_iso,
+            "updated_at": now_iso,
+        }
+        if note:
+            update["note_manuale"] = note
+        await db["corrispettivi"].update_one({"data": data_str}, {"$set": update})
+        action = "aggiornato"
+        corr_id = existing.get("id")
+    else:
+        corr_id = str(uuid.uuid4())
+        doc = {
+            "id": corr_id,
+            "data": data_str,
+            "anno": data_dt.year,
+            "mese": data_dt.month,
+            "totale": totale,
+            "totale_manuale": totale,
+            "totale_xml": None,
+            "pagato_contanti": None,  # ignoti finché non arriva XML
+            "pagato_elettronico": None,
+            "stato": "provvisorio",
+            "source": "manuale_serale",
+            "data_inserimento_manuale": now_iso,
+            "data_import_xml": None,
+            "created_at": now_iso,
+            "updated_at": now_iso,
+        }
+        if note:
+            doc["note_manuale"] = note
+        await db["corrispettivi"].insert_one(doc.copy())
+        action = "creato"
+
+    # Salva anche POS reale se fornito (scrivendo in prima_nota_banca con
+    # source=chiusura_pos_mobile, come fa l'endpoint esistente)
+    pos_result = None
+    if pos_reale is not None and pos_reale >= 0:
+        existing_pos = await db["prima_nota_banca"].find_one({
+            "data": data_str,
+            "source": {"$in": ["chiusura_pos_mobile", "corrispettivo_pos"]},
+        })
+        if existing_pos:
+            await db["prima_nota_banca"].update_one(
+                {"id": existing_pos["id"]},
+                {"$set": {
+                    "importo": pos_reale,
+                    "amount": pos_reale,
+                    "updated_at": now_iso,
+                }}
+            )
+            pos_result = {"action": "aggiornato", "id": existing_pos["id"]}
+        else:
+            pos_id = str(uuid.uuid4())
+            await db["prima_nota_banca"].insert_one({
+                "id": pos_id,
+                "data": data_str,
+                "date": data_str,
+                "tipo": "entrata",
+                "type": "entrata",
+                "importo": pos_reale,
+                "amount": pos_reale,
+                "descrizione": f"POS reale serale {data_str} (da inserimento corrispettivo manuale)",
+                "description": f"POS reale serale {data_str} (da inserimento corrispettivo manuale)",
+                "categoria": "Corrispettivi POS",
+                "category": "Corrispettivi POS",
+                "source": "chiusura_pos_mobile",
+                "anno": data_dt.year,
+                "mese": data_dt.month,
+                "riconciliato": False,
+                "created_at": now_iso,
+                "updated_at": now_iso,
+            })
+            pos_result = {"action": "creato", "id": pos_id}
+
+    return {
+        "success": True,
+        "action": action,
+        "corrispettivo_id": corr_id,
+        "data": data_str,
+        "totale": totale,
+        "stato": "provvisorio",
+        "pos_reale_serale": pos_result,
+    }
+
+
+@router.get("/manuali-senza-xml")
+async def elenca_corrispettivi_manuali_senza_xml(
+    giorni_minimi: int = Query(0, description="Filtra solo quelli più vecchi di N giorni")
+) -> Dict[str, Any]:
+    """Elenca i corrispettivi che sono ancora in stato provvisorio (manuale
+    non sostituito da XML). Usato per l'alert 'manca XML'.
+
+    giorni_minimi=0 → tutti i provvisori
+    giorni_minimi=7 → solo quelli con data più vecchia di 7gg (= alert attivo)
+    """
+    db = Database.get_db()
+    oggi = datetime.now()
+    soglia = (oggi - timedelta(days=giorni_minimi)).strftime("%Y-%m-%d")
+
+    query = {
+        "$or": [
+            {"stato": {"$in": ["provvisorio", "manca_xml"]}},
+            # retrocompat: record senza campo stato ma con source manuale
+            {"stato": {"$exists": False}, "source": {"$in": ["manuale_serale", "manuale", "manual_entry"]}},
+        ]
+    }
+    if giorni_minimi > 0:
+        query["data"] = {"$lt": soglia}
+
+    corr_list = await db["corrispettivi"].find(
+        query,
+        {"_id": 0, "id": 1, "data": 1, "totale": 1, "totale_manuale": 1, "stato": 1, "data_inserimento_manuale": 1}
+    ).sort("data", 1).to_list(1000)
+
+    # Calcola giorni di attesa per ognuno
+    for c in corr_list:
+        try:
+            d_str = c.get("data", "")[:10]
+            giorni_attesa = (oggi - datetime.strptime(d_str, "%Y-%m-%d")).days
+            c["giorni_attesa_xml"] = giorni_attesa
+            c["alert_attivo"] = giorni_attesa >= GIORNI_PRIMA_ALERT_XML_MANCANTE
+        except (ValueError, TypeError):
+            c["giorni_attesa_xml"] = 0
+            c["alert_attivo"] = False
+
+    alert_attivi = [c for c in corr_list if c.get("alert_attivo")]
+
+    return {
+        "success": True,
+        "totale_provvisori": len(corr_list),
+        "totale_alert_attivi": len(alert_attivi),
+        "giorni_soglia_alert": GIORNI_PRIMA_ALERT_XML_MANCANTE,
+        "corrispettivi": corr_list,
+    }
+
+
+@router.post("/aggiorna-stati-mancanti")
+async def aggiorna_stati_corrispettivi_mancanti() -> Dict[str, Any]:
+    """Job di manutenzione: scorre i corrispettivi provvisori e aggiorna a
+    'manca_xml' quelli più vecchi di GIORNI_PRIMA_ALERT_XML_MANCANTE giorni.
+
+    Chiamabile manualmente da UI o da scheduler giornaliero.
+    """
+    db = Database.get_db()
+    soglia = (datetime.now() - timedelta(days=GIORNI_PRIMA_ALERT_XML_MANCANTE)).strftime("%Y-%m-%d")
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    result = await db["corrispettivi"].update_many(
+        {
+            "stato": "provvisorio",
+            "data": {"$lt": soglia},
+        },
+        {"$set": {"stato": "manca_xml", "stato_aggiornato_il": now_iso}}
+    )
+
+    return {
+        "success": True,
+        "aggiornati": result.modified_count,
+        "soglia_giorni": GIORNI_PRIMA_ALERT_XML_MANCANTE,
+    }

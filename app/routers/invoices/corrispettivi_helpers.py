@@ -236,6 +236,34 @@ async def ingest_corrispettivo_parsed(
 
     existing = await _find_existing_corrispettivo(db, corr_doc)
 
+    # Se è un import XML e c'era un corrispettivo manuale provvisorio per
+    # quella data, promuoviamo il record a "definitivo_xml" mantenendo traccia
+    # storica del dato manuale (totale_manuale resta, data_inserimento_manuale
+    # resta, ma totale/totale_xml vengono sovrascritti con i dati fiscali).
+    # Vedi spiegazione flusso in POST /api/corrispettivi/manuale.
+    was_manuale_provvisorio = bool(
+        existing
+        and source == "xml"
+        and (
+            existing.get("stato") in ("provvisorio", "manca_xml")
+            or existing.get("source") in ("manuale_serale", "manuale", "manual_entry")
+        )
+    )
+    if source == "xml":
+        # L'import XML imposta sempre stato definitivo + totale_xml
+        corr_doc["stato"] = "definitivo_xml"
+        corr_doc["totale_xml"] = totale
+        corr_doc["data_import_xml"] = datetime.now(timezone.utc).isoformat()
+        # Se c'era il manuale, preserviamo totale_manuale e data_inserimento_manuale
+        if was_manuale_provvisorio and existing:
+            if existing.get("totale_manuale"):
+                corr_doc["totale_manuale"] = existing.get("totale_manuale")
+            if existing.get("data_inserimento_manuale"):
+                corr_doc["data_inserimento_manuale"] = existing.get("data_inserimento_manuale")
+            # Forziamo update_if_exists anche se il chiamante non l'ha chiesto:
+            # promuovere provvisorio → definitivo è sempre sicuro
+            update_if_exists = True
+
     if existing:
         if not update_if_exists:
             # Duplicato: non toccare Prima Nota
