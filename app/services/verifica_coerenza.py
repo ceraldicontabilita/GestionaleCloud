@@ -229,12 +229,27 @@ class VerificaCoerenza:
             saldo_prima_nota = 0
         
         # Saldo Estratto Conto
+        # I movimenti dell'estratto conto sono salvati con `importo` SEMPRE
+        # POSITIVO (valore assoluto) e `tipo` a "entrata" o "uscita".
+        # Sommare direttamente "$importo" sommerebbe entrate e uscite come se
+        # fossero tutte positive, producendo un numero privo di significato.
+        # Il saldo corretto è: SOMMA(entrate) - SOMMA(uscite).
         pipeline_ec = [
-            {"$match": {"data": {"$regex": f"^{prefix}"}}},
-            {"$group": {"_id": None, "totale": {"$sum": "$importo"}}}
+            {"$match": {
+                "data": {"$regex": f"^{prefix}"},
+                "status": {"$nin": ["deleted", "archived"]}
+            }},
+            {"$group": {
+                "_id": None,
+                "entrate": {"$sum": {"$cond": [{"$eq": ["$tipo", "entrata"]}, "$importo", 0]}},
+                "uscite": {"$sum": {"$cond": [{"$eq": ["$tipo", "uscita"]}, "$importo", 0]}}
+            }}
         ]
         result_ec = await self.db["estratto_conto_movimenti"].aggregate(pipeline_ec).to_list(1)
-        saldo_estratto = result_ec[0]["totale"] if result_ec else 0
+        if result_ec:
+            saldo_estratto = result_ec[0]["entrate"] - result_ec[0]["uscite"]
+        else:
+            saldo_estratto = 0
         
         differenza = saldo_prima_nota - saldo_estratto
         
