@@ -181,11 +181,24 @@ async def _calcola_saldi_piano_conti(db, anno: str = None) -> Dict[str, float]:
         saldi["01.04.01"] = round(float(res[0].get("iva") or 0), 2)          # IVA credito
         saldi["02.01.01"] = round(float(res[0].get("totale") or 0), 2)       # Debiti fornitori (lordi)
 
-    # Sottrai pagamenti effettivi ai Debiti v/fornitori (per saldo reale)
+    # Sottrai pagamenti effettivi ai Debiti v/fornitori (per saldo reale).
+    # IMPORTANTE: dopo la PR #1, i movimenti di pagamento fornitori sono salvati
+    # con categoria "Pagamento fornitore" (determina_tipo_movimento_fattura),
+    # NON con "fornitori". Inoltre possono avere source='fattura_pagata' o
+    # 'conferma_provvisori' o 'sync_fatture'. Dedup per riferimento FATT-.
     match_pag = _date_range("data") or {}
     pipe_pag_banca = [
         *( [{"$match": match_pag}] if match_pag else [] ),
-        {"$match": {"categoria": "fornitori"}},
+        {"$match": {
+            "status": {"$nin": ["deleted", "archived"]},
+            "tipo": "uscita",
+            "$or": [
+                {"categoria": {"$in": ["Pagamento fornitore", "Fatture", "fornitori"]}},
+                {"riferimento": {"$regex": "^FATT-"}},
+                {"source": {"$in": ["fattura_pagata", "conferma_provvisori", "sync_fatture"]}},
+                {"fattura_id": {"$ne": None}},
+            ]
+        }},
         {"$group": {"_id": None, "tot": {"$sum": "$importo"}}}
     ]
     pag_banca = await db["prima_nota_banca"].aggregate(pipe_pag_banca).to_list(1)
@@ -212,8 +225,13 @@ async def _calcola_saldi_piano_conti(db, anno: str = None) -> Dict[str, float]:
         saldi["02.03.01"] = round(float(res[0].get("iva") or 0), 2)          # IVA debito
 
     # ── PRIMA NOTA CASSA (saldo cassa) ───────────────────────────────────────
+    # NON usare max(0, ...): se le uscite superano le entrate in un anno, la
+    # cassa può avere un saldo negativo (scoperto), e l'utente deve vederlo per
+    # poterlo correggere. Il saldo può anche essere a negativo per anni parziali.
     pipe_cassa = [
-        *( [{"$match": _date_range("data")}] if _date_range("data") else [] ),
+        *( [{"$match": {**_date_range("data"), "status": {"$nin": ["deleted", "archived"]}}}]
+           if _date_range("data") else
+           [{"$match": {"status": {"$nin": ["deleted", "archived"]}}}] ),
         {"$group": {
             "_id": "$tipo",
             "tot": {"$sum": "$importo"}
@@ -222,23 +240,52 @@ async def _calcola_saldi_piano_conti(db, anno: str = None) -> Dict[str, float]:
     res = await db["prima_nota_cassa"].aggregate(pipe_cassa).to_list(10)
     entrate_cassa = sum(float(r.get("tot") or 0) for r in res if r.get("_id") == "entrata")
     uscite_cassa  = sum(float(r.get("tot") or 0) for r in res if r.get("_id") == "uscita")
-    saldi["01.01.01"] = round(max(0.0, entrate_cassa - uscite_cassa), 2)
+    saldi["01.01.01"] = round(entrate_cassa - uscite_cassa, 2)
 
-    # ── ESTRATTO CONTO (saldo banca) ─────────────────────────────────────────
-    # data_contabile e data_valuta sono nel formato italiano "gg/mm/yyyy"
-    match_ec = {}
+    # ── BANCA c/c (saldo banca): Prima Nota Banca + Estratto Conto ───────────
+    # Il saldo banca viene dai movimenti di Prima Nota Banca (che è la fonte
+    # contabile). Se però Prima Nota Banca è vuota o sincronizzata male, si
+    # può ricadere sull'Estratto Conto come secondo strato.
+    #
+    # IMPORTANTE: l'estratto conto salva sempre importi POSITIVI in "importo"
+    # e distingue entrata/uscita nel campo "tipo" (verificato in
+    # bank_statement_import.py). NON sommare direttamente "$importo" come
+    # faceva la versione precedente — produceva un numero senza senso.
+    #
+    # Il formato date è ISO yyyy-mm-dd (non italiano).
+
+    # 1) Prima Nota Banca (fonte contabile)
+    match_pnb_anno = {}
     if anno:
-        match_ec = {"$or": [
-            {"data_contabile": {"$regex": f"/{anno}$"}},
-            {"data_valuta":    {"$regex": f"/{anno}$"}},
-        ]}
-    pipe_ec = [
-        *( [{"$match": match_ec}] if match_ec else [] ),
-        {"$group": {"_id": None, "tot": {"$sum": "$importo"}}}
+        match_pnb_anno["data"] = {"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31"}
+    match_pnb = {**match_pnb_anno, "status": {"$nin": ["deleted", "archived"]}}
+    pipe_pnb = [
+        {"$match": match_pnb},
+        {"$group": {"_id": "$tipo", "tot": {"$sum": "$importo"}}}
     ]
-    res = await db["estratto_conto_movimenti"].aggregate(pipe_ec).to_list(1)
-    if res:
-        saldi["01.01.02"] = round(float(res[0].get("tot") or 0), 2)
+    res_pnb = await db["prima_nota_banca"].aggregate(pipe_pnb).to_list(10)
+    entrate_pnb = sum(float(r.get("tot") or 0) for r in res_pnb if r.get("_id") == "entrata")
+    uscite_pnb  = sum(float(r.get("tot") or 0) for r in res_pnb if r.get("_id") == "uscita")
+    saldo_pnb = entrate_pnb - uscite_pnb
+
+    # 2) Estratto Conto (fonte bancaria reale) — usato se Prima Nota Banca è vuota
+    match_ec: Dict[str, Any] = {"status": {"$nin": ["deleted", "archived"]}}
+    if anno:
+        match_ec["data"] = {"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31"}
+    pipe_ec = [
+        {"$match": match_ec},
+        {"$group": {"_id": "$tipo", "tot": {"$sum": "$importo"}}}
+    ]
+    res_ec = await db["estratto_conto_movimenti"].aggregate(pipe_ec).to_list(10)
+    entrate_ec = sum(float(r.get("tot") or 0) for r in res_ec if r.get("_id") == "entrata")
+    uscite_ec  = sum(float(r.get("tot") or 0) for r in res_ec if r.get("_id") == "uscita")
+    saldo_ec = entrate_ec - uscite_ec
+
+    # Se Prima Nota Banca ha movimenti, è la fonte primaria. Altrimenti fallback su EC.
+    if abs(saldo_pnb) > 0.01:
+        saldi["01.01.02"] = round(saldo_pnb, 2)
+    else:
+        saldi["01.01.02"] = round(saldo_ec, 2)
 
     # ── CEDOLINI (costi personale + TFR + contributi) ─────────────────────────
     match_ced = _anno_field() or {}
