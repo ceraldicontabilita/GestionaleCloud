@@ -1322,25 +1322,24 @@ async def import_corrispettivi_xml(
                 "totale": totale_xml
             })
         
-        # AGGIORNA anche prima_nota_cassa SE esiste un corrispettivo manuale per quella data
-        # (aggiorna solo i dettagli IVA, NON l'importo che resta quello manuale)
-        existing_cassa = await db[COLLECTION_PRIMA_NOTA_CASSA].find_one({
-            "data": data,
-            "categoria": "Corrispettivi"
-        })
-        if existing_cassa:
-            await db[COLLECTION_PRIMA_NOTA_CASSA].update_one(
-                {"id": existing_cassa["id"]},
-                {"$set": {
-                    "pagato_contanti": pagato_contanti,
-                    "pagato_elettronico": pagato_elettronico,
-                    "imponibile": totale_imponibile,
-                    "imposta": totale_imposta,
-                    "dettaglio_iva": dettaglio_iva,
-                    "xml_filename": file.filename,
-                    "iva_popolata": True
-                }}
-            )
+        # IMPORTANTE: l'import XML NON scrive più in prima_nota_cassa.
+        #
+        # Motivazione (feedback utente 23/04/2026):
+        #   L'XML del registratore telematico serve SOLO per il controllo di
+        #   coerenza POS (pagina CoerenzaPOSCorrispettivi). L'entrata/uscita in
+        #   Prima Nota Cassa viene inserita manualmente dall'operatore la sera
+        #   alla chiusura, sulla base del battuto effettivo allo scontrino POS.
+        #
+        #   Il sistema NON deve creare entrate/uscite automatiche dall'XML:
+        #     - l'entrata Cassa (totale corrispettivo) la inserisce l'utente
+        #     - l'uscita Cassa (quota POS battuta) la inserisce l'utente
+        #     - l'entrata Banca (accredito POS) arriva da estratto conto
+        #
+        #   Il flusso automatico precedente causava duplicati e movimenti
+        #   errati in Banca.
+        #
+        # Chi vuole comunque creare l'entrata Cassa in automatico dall'XML può
+        # usare l'endpoint opzionale POST /api/prima-nota/cassa/crea-entrata-da-corrispettivo
         
         return {
             "success": True,

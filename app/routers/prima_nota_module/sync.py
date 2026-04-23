@@ -996,3 +996,384 @@ async def collega_fatture_movimenti() -> Dict:
                 collegati += 1
     
     return {"success": True, "movimenti_collegati": collegati}
+
+
+async def auto_conferma_provvisori_per_metodo(
+    anno: int = Query(..., description="Anno da processare"),
+) -> Dict[str, Any]:
+    """Auto-confermazione bulk delle fatture provvisorie basata sul metodo pagamento
+    dell'anagrafica fornitore.
+
+    REGOLE (come da specifiche utente):
+      - Fornitore con metodo 'cassa' o 'contanti'
+          → tutte le fatture (pagate o no) vanno in Prima Nota CASSA
+      - Fornitore con metodo 'banca' o 'bonifico'
+          → solo le fatture PAGATE vanno in Prima Nota BANCA
+          → le fatture NON pagate restano in Provvisoria (aspettano il match EC)
+      - Fornitore con metodo 'paypal', 'carta', 'carta_di_credito', 'misto'
+          → restano in Provvisoria (aspettano EC PayPal / carta)
+      - Fornitore senza metodo in anagrafica
+          → resta in Provvisoria
+
+    Ogni movimento creato viene marcato con source='auto_confirm_provvisoria' in
+    modo da essere identificabile per rollback.
+
+    Idempotente: se una fattura è già in Prima Nota (prima_nota_id valorizzato
+    oppure esiste un movimento con riferimento FATT-{id}), viene saltata.
+    """
+    db = Database.get_db()
+    now = datetime.now(timezone.utc).isoformat()
+
+    # Carica il dizionario metodo-per-piva dall'anagrafica fornitori
+    metodo_per_piva: Dict[str, str] = {}
+    async for s in db["fornitori"].find(
+        {"metodo_pagamento": {"$exists": True, "$ne": ""}},
+        {"_id": 0, "partita_iva": 1, "metodo_pagamento": 1}
+    ):
+        piva = (s.get("partita_iva") or "").strip()
+        metodo = (s.get("metodo_pagamento") or "").strip().lower()
+        if piva and metodo:
+            metodo_per_piva[piva] = metodo
+
+    # Fatture provvisorie dell'anno
+    fatture = await db["invoices"].find(
+        {
+            "invoice_date": {"$regex": f"^{anno}"},
+            "total_amount": {"$gt": 0},
+            "$or": [
+                {"prima_nota_id": None},
+                {"prima_nota_id": ""},
+                {"prima_nota_id": {"$exists": False}},
+            ],
+            "stato_pagamento": {"$nin": ["sospesa"]},  # le sospese non le tocco
+        },
+        {"_id": 0, "xml_raw": 0, "linee": 0}
+    ).to_list(5000)
+
+    report = {
+        "anno": anno,
+        "totali_provvisorie_analizzate": len(fatture),
+        "mosse_cassa": 0,
+        "mosse_banca": 0,
+        "restate_in_provvisoria_banca_non_pagata": 0,
+        "restate_in_provvisoria_paypal_o_carta": 0,
+        "restate_in_provvisoria_fornitore_senza_metodo": 0,
+        "skipped_gia_in_prima_nota": 0,
+        "skipped_errori": [],
+        "dettaglio_mosse": [],  # prime 100 per log
+    }
+
+    for f in fatture:
+        try:
+            fid = f.get("id") or f.get("invoice_key")
+            if not fid:
+                continue
+
+            piva = (f.get("supplier_vat") or f.get("cedente_piva") or "").strip()
+            stato_pagamento = (f.get("stato_pagamento") or "").lower()
+            pagata = stato_pagamento in ("pagata", "paid")
+
+            # Dedup sicuro: se esiste già un movimento in cassa o banca per
+            # questa fattura, non tocco nulla (può esserci stato movimento
+            # manuale). Aggiorno solo il flag sulla fattura per toglierla dai
+            # provvisori.
+            rif = f"FATT-{fid}"
+            existing_cassa = await db[COLLECTION_PRIMA_NOTA_CASSA].find_one({
+                "$or": [{"riferimento": rif}, {"fattura_id": fid}],
+                "status": {"$nin": ["deleted", "archived"]},
+            })
+            existing_banca = await db[COLLECTION_PRIMA_NOTA_BANCA].find_one({
+                "$or": [{"riferimento": rif}, {"fattura_id": fid}],
+                "status": {"$nin": ["deleted", "archived"]},
+            })
+            if existing_cassa or existing_banca:
+                existing = existing_cassa or existing_banca
+                tipo_pn = "cassa" if existing_cassa else "banca"
+                await db["invoices"].update_one(
+                    {"id": fid},
+                    {"$set": {
+                        "prima_nota_id": existing.get("id"),
+                        "prima_nota_tipo": tipo_pn,
+                        "stato_pagamento": "pagata" if pagata else stato_pagamento,
+                    }}
+                )
+                report["skipped_gia_in_prima_nota"] += 1
+                continue
+
+            metodo = metodo_per_piva.get(piva, "")
+
+            # --- APPLICA REGOLE ---
+            destinazione = None
+
+            if metodo in ("cassa", "contanti"):
+                # Regola: cassa → sempre in Prima Nota Cassa, pagata o no
+                destinazione = "cassa"
+            elif metodo in ("banca", "bonifico", "riba", "sepa"):
+                # Regola: banca → solo se pagata
+                if pagata:
+                    destinazione = "banca"
+                else:
+                    report["restate_in_provvisoria_banca_non_pagata"] += 1
+                    continue
+            elif metodo in ("paypal", "carta", "carta_di_credito", "carta_credito", "misto"):
+                # Regola: paypal/carta → sempre in provvisoria, aspettano EC
+                report["restate_in_provvisoria_paypal_o_carta"] += 1
+                continue
+            else:
+                # Fornitore senza metodo in anagrafica
+                report["restate_in_provvisoria_fornitore_senza_metodo"] += 1
+                continue
+
+            # --- CREA MOVIMENTO ---
+            collection = COLLECTION_PRIMA_NOTA_CASSA if destinazione == "cassa" else COLLECTION_PRIMA_NOTA_BANCA
+            importo = float(f.get("total_amount") or f.get("importo_totale") or 0)
+            numero = f.get("invoice_number") or f.get("numero_fattura") or "N/A"
+            fornitore = f.get("supplier_name") or f.get("cedente_denominazione") or "Fornitore"
+            data_fatt = f.get("invoice_date") or f.get("data_fattura") or now[:10]
+
+            tipo_mov, cat, desc_prefix = determina_tipo_movimento_fattura(f)
+
+            pn_id = str(uuid.uuid4())
+            movimento = {
+                "id": pn_id,
+                "data": data_fatt,
+                "tipo": tipo_mov,
+                "categoria": cat,
+                "descrizione": f"{desc_prefix} {numero} - {fornitore[:40]}",
+                "importo": round(importo, 2),
+                "riferimento": rif,
+                "numero_fattura": numero,
+                "fornitore_piva": piva,
+                "fattura_id": fid,
+                "source": "auto_confirm_provvisoria",  # marker per rollback
+                "auto_confirm_meta": {
+                    "metodo_fornitore": metodo,
+                    "stato_pagamento_al_momento": stato_pagamento,
+                    "operazione_id": now,  # stessa per tutti i mov della stessa run
+                },
+                "created_at": now,
+            }
+            await db[collection].insert_one(movimento.copy())
+
+            # Aggiorna la fattura
+            update_data = {
+                "prima_nota_id": pn_id,
+                "prima_nota_tipo": destinazione,
+                "metodo_pagamento_effettivo": metodo,
+            }
+            if destinazione == "cassa" or pagata:
+                update_data["stato_pagamento"] = "pagata"
+                if not f.get("data_pagamento"):
+                    update_data["data_pagamento"] = now[:10]
+
+            await db["invoices"].update_one({"id": fid}, {"$set": update_data})
+
+            if destinazione == "cassa":
+                report["mosse_cassa"] += 1
+            else:
+                report["mosse_banca"] += 1
+
+            if len(report["dettaglio_mosse"]) < 100:
+                report["dettaglio_mosse"].append({
+                    "fattura_id": fid,
+                    "numero": numero,
+                    "fornitore": fornitore[:60],
+                    "metodo_fornitore": metodo,
+                    "destinazione": destinazione,
+                    "importo": round(importo, 2),
+                    "pn_id": pn_id,
+                })
+
+        except Exception as e:
+            logger.exception(f"Errore auto-conferma fattura {f.get('id')}: {e}")
+            report["skipped_errori"].append({
+                "fattura_id": f.get("id"),
+                "errore": str(e)[:200],
+            })
+
+    return {
+        "success": True,
+        "rollback_endpoint": "POST /api/prima-nota/annulla-auto-conferma (con parametro operazione_id se vuoi annullare solo questa run)",
+        **report,
+    }
+
+
+async def annulla_auto_conferma(
+    operazione_id: Optional[str] = Query(None, description="Se fornito annulla solo i movimenti di quella operazione; altrimenti annulla TUTTI i movimenti auto-confirm"),
+) -> Dict[str, Any]:
+    """Rollback dell'operazione auto_conferma_provvisori_per_metodo.
+
+    Se operazione_id è fornito, annulla solo quella run specifica.
+    Altrimenti annulla TUTTI i movimenti con source='auto_confirm_provvisoria'.
+
+    Il rollback:
+      1. Soft-delete dei movimenti (status='deleted') — reversibile dal DB
+      2. Riporta le fatture allo stato prima-nota-id vuoto + stato_pagamento
+         al valore precedente (salvato in auto_confirm_meta.stato_pagamento_al_momento)
+    """
+    db = Database.get_db()
+    now = datetime.now(timezone.utc).isoformat()
+
+    filtro: Dict[str, Any] = {
+        "source": "auto_confirm_provvisoria",
+        "status": {"$nin": ["deleted", "archived"]},
+    }
+    if operazione_id:
+        filtro["auto_confirm_meta.operazione_id"] = operazione_id
+
+    movimenti_cassa = await db[COLLECTION_PRIMA_NOTA_CASSA].find(filtro, {"_id": 0}).to_list(10000)
+    movimenti_banca = await db[COLLECTION_PRIMA_NOTA_BANCA].find(filtro, {"_id": 0}).to_list(10000)
+
+    ids_cassa = [m["id"] for m in movimenti_cassa]
+    ids_banca = [m["id"] for m in movimenti_banca]
+    fatture_ids = list({m.get("fattura_id") for m in (movimenti_cassa + movimenti_banca) if m.get("fattura_id")})
+
+    # Soft-delete movimenti
+    if ids_cassa:
+        await db[COLLECTION_PRIMA_NOTA_CASSA].update_many(
+            {"id": {"$in": ids_cassa}},
+            {"$set": {"status": "deleted", "deleted_at": now, "deleted_reason": "rollback_auto_confirm"}}
+        )
+    if ids_banca:
+        await db[COLLECTION_PRIMA_NOTA_BANCA].update_many(
+            {"id": {"$in": ids_banca}},
+            {"$set": {"status": "deleted", "deleted_at": now, "deleted_reason": "rollback_auto_confirm"}}
+        )
+
+    # Ripristina le fatture: ciclo uno per uno per ripristinare il giusto stato_pagamento
+    fatture_ripristinate = 0
+    for m in movimenti_cassa + movimenti_banca:
+        fid = m.get("fattura_id")
+        if not fid:
+            continue
+        stato_originale = (m.get("auto_confirm_meta") or {}).get("stato_pagamento_al_momento", "")
+        set_ops = {"prima_nota_id": "", "prima_nota_tipo": ""}
+        if stato_originale:
+            set_ops["stato_pagamento"] = stato_originale
+        await db["invoices"].update_one({"id": fid}, {"$set": set_ops})
+        fatture_ripristinate += 1
+
+    return {
+        "success": True,
+        "operazione_id": operazione_id,
+        "movimenti_cassa_annullati": len(ids_cassa),
+        "movimenti_banca_annullati": len(ids_banca),
+        "fatture_ripristinate_a_provvisoria": fatture_ripristinate,
+    }
+
+async def crea_entrata_cassa_da_corrispettivo(
+    data: str = Query(..., description="Data corrispettivo YYYY-MM-DD"),
+    includi_uscita_pos: bool = Query(True, description="Se True crea anche l'uscita POS (battuto serale)"),
+) -> Dict[str, Any]:
+    """Crea manualmente l'entrata in Prima Nota Cassa dal corrispettivo XML già importato.
+
+    Utilizzo previsto: l'operatore la sera non ha tempo di inserire l'entrata
+    cassa a mano, preme questo bottone (dalla UI) e il sistema crea:
+      - Entrata in Prima Nota Cassa = totale corrispettivo (contanti + POS)
+      - Uscita in Prima Nota Cassa = pagato_elettronico (solo se includi_uscita_pos=True)
+
+    Idempotente: se esistono già movimenti con source='manuale_da_xml' + corrispettivo_id
+    per questa data, non li duplica.
+
+    NOTA: questo endpoint è SOLO per il flusso opzionale manuale. Il flusso
+    normale è che l'utente inserisca i movimenti a mano la sera; l'XML serve
+    solo per controllo coerenza POS.
+    """
+    db = Database.get_db()
+    now = datetime.now(timezone.utc).isoformat()
+
+    # Cerca il corrispettivo per quella data
+    corrispettivo = await db["corrispettivi"].find_one({"data": data}, {"_id": 0})
+    if not corrispettivo:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Nessun corrispettivo trovato per la data {data}. Importa prima l'XML del registratore telematico."
+        )
+
+    corr_id = corrispettivo.get("id")
+    if not corr_id:
+        raise HTTPException(status_code=400, detail="Corrispettivo senza id, impossibile deduplicare")
+
+    # Idempotenza: se esiste già un movimento da questo endpoint per il corrispettivo, non duplicare
+    existing_entrata = await db[COLLECTION_PRIMA_NOTA_CASSA].find_one({
+        "corrispettivo_id": corr_id,
+        "source": "manuale_da_xml",
+        "tipo": "entrata",
+        "status": {"$nin": ["deleted", "archived"]},
+    })
+    if existing_entrata:
+        return {
+            "success": True,
+            "duplicato": True,
+            "message": f"Movimenti per il {data} già creati in precedenza (id: {existing_entrata.get('id')})",
+        }
+
+    # Estrai valori dal corrispettivo (tolleranti a schema legacy)
+    contanti = float(corrispettivo.get("pagato_contanti", 0) or 0)
+    elettronico = float(
+        corrispettivo.get("pagato_pos", 0)
+        or corrispettivo.get("pagato_elettronico", 0)
+        or 0
+    )
+    totale = float(
+        corrispettivo.get("totale", 0)
+        or corrispettivo.get("totale_complessivo", 0)
+        or (contanti + elettronico)
+        or 0
+    )
+
+    if totale <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Corrispettivo {data} ha totale 0. Verifica l'XML importato."
+        )
+
+    risultati = {"entrata_cassa_id": None, "uscita_pos_id": None}
+
+    # 1) ENTRATA CASSA = totale corrispettivo
+    entrata_id = str(uuid.uuid4())
+    movimento_entrata = {
+        "id": entrata_id,
+        "data": data,
+        "tipo": "entrata",
+        "categoria": "Corrispettivi",
+        "descrizione": f"Corrispettivi {data} (da XML)",
+        "importo": round(totale, 2),
+        "corrispettivo_id": corr_id,
+        "pagato_contanti": round(contanti, 2),
+        "pagato_elettronico": round(elettronico, 2),
+        "totale_giornata": round(totale, 2),
+        "source": "manuale_da_xml",
+        "created_at": now,
+    }
+    await db[COLLECTION_PRIMA_NOTA_CASSA].insert_one(movimento_entrata.copy())
+    risultati["entrata_cassa_id"] = entrata_id
+
+    # 2) USCITA CASSA = quota POS (opzionale)
+    if includi_uscita_pos and elettronico > 0:
+        uscita_id = str(uuid.uuid4())
+        movimento_uscita = {
+            "id": uscita_id,
+            "data": data,
+            "tipo": "uscita",
+            "categoria": "POS Verso Banca",
+            "descrizione": f"Battuto POS {data} (da XML) → Banca",
+            "importo": round(elettronico, 2),
+            "corrispettivo_id": corr_id,
+            "source": "manuale_da_xml",
+            "created_at": now,
+        }
+        await db[COLLECTION_PRIMA_NOTA_CASSA].insert_one(movimento_uscita.copy())
+        risultati["uscita_pos_id"] = uscita_id
+
+    return {
+        "success": True,
+        "duplicato": False,
+        "data": data,
+        "totale_corrispettivo": round(totale, 2),
+        "contanti": round(contanti, 2),
+        "elettronico": round(elettronico, 2),
+        "include_uscita_pos": includi_uscita_pos and elettronico > 0,
+        **risultati,
+        "message": f"Movimenti creati in Prima Nota Cassa per il {data}. Sono annullabili normalmente dalla pagina Prima Nota.",
+    }

@@ -20,11 +20,12 @@ import { AlertTriangle, CheckCircle, Search, Eye, Trash2, RefreshCw, Loader2 } f
 export default function PuliziaPrimaNota() {
   const { anno } = useAnnoGlobale();
 
-  const [loading, setLoading] = useState(null); // 'diagnosi' | 'anteprima' | 'pulisci' | 'risincronizza'
+  const [loading, setLoading] = useState(null); // 'diagnosi' | 'anteprima' | 'pulisci' | 'risincronizza' | 'auto-conferma'
   const [diagnosi, setDiagnosi] = useState(null);
   const [anteprima, setAnteprima] = useState(null);
   const [risultatoPulizia, setRisultatoPulizia] = useState(null);
   const [risultatoSync, setRisultatoSync] = useState(null);
+  const [risultatoAutoConferma, setRisultatoAutoConferma] = useState(null);
   const [errore, setErrore] = useState(null);
 
   const azzeraErrori = () => setErrore(null);
@@ -91,6 +92,30 @@ export default function PuliziaPrimaNota() {
       setRisultatoSync(res.data);
     } catch (e) {
       setErrore(e?.response?.data?.detail || e?.message || 'Errore durante la risincronizzazione');
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  const lanciaAutoConferma = async () => {
+    const conferma = window.confirm(
+      `Smistamento provvisorie per metodo fornitore — anno ${anno}\n\n` +
+      `Verranno spostate dalla Provvisoria a Prima Nota Cassa/Banca le fatture in base al metodo pagamento del fornitore:\n` +
+      `• Fornitore CASSA → tutte le fatture in Prima Nota Cassa\n` +
+      `• Fornitore BANCA → solo fatture PAGATE in Prima Nota Banca\n` +
+      `• Fornitore PAYPAL/CARTA/senza metodo → restano in Provvisoria\n\n` +
+      `Ogni movimento creato è annullabile con un solo comando se qualcosa non torna.\n\n` +
+      `Procedere?`
+    );
+    if (!conferma) return;
+    azzeraErrori();
+    setLoading('auto-conferma');
+    setRisultatoAutoConferma(null);
+    try {
+      const res = await api.post(`/api/prima-nota/provvisori/auto-conferma-per-metodo?anno=${anno}`);
+      setRisultatoAutoConferma(res.data);
+    } catch (e) {
+      setErrore(e?.response?.data?.detail || e?.message || 'Errore durante lo smistamento');
     } finally {
       setLoading(null);
     }
@@ -268,6 +293,61 @@ export default function PuliziaPrimaNota() {
                   <div style={{ marginTop: 6, color: '#991b1b' }}>
                     {risultatoSync.saltati} corrispettivi saltati (importo 0 su tutti i campi) — vanno corretti a mano nella sezione Corrispettivi.
                   </div>
+                )}
+              </div>
+            </div>
+          )}
+        </StepCard>
+
+        {/* STEP 5 - AUTO-CONFERMA PROVVISORI PER METODO PAGAMENTO FORNITORE */}
+        <StepCard
+          numero={5}
+          titolo="Smista fatture provvisorie per metodo fornitore"
+          descrizione="Sposta automaticamente le fatture dalla Provvisoria alla Prima Nota Cassa o Banca, in base al metodo pagamento dell'anagrafica fornitore. Le fatture di fornitori senza metodo definito, o con metodo PayPal/Carta, oppure fatture non pagate di fornitori 'banca', restano in Provvisoria."
+        >
+          <button
+            onClick={lanciaAutoConferma}
+            disabled={isBusy}
+            style={btnStyle('primary', isBusy)}
+          >
+            {loading === 'auto-conferma' ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+            Smista provvisorie
+          </button>
+
+          {risultatoAutoConferma && (
+            <div style={{ ...resultBoxStyle, background: '#f0fdf4', borderColor: '#22c55e' }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+                <CheckCircle size={18} color="#059669" />
+                <strong style={{ color: '#065f46' }}>Smistamento completato</strong>
+              </div>
+              <div style={{ fontSize: 13, color: '#065f46', lineHeight: 1.6 }}>
+                Fatture analizzate: <strong>{risultatoAutoConferma.totali_provvisorie_analizzate}</strong>
+                <br />
+                <span style={{ color: '#15803d' }}>✓ Spostate in Cassa: <strong>{risultatoAutoConferma.mosse_cassa}</strong></span>
+                <br />
+                <span style={{ color: '#15803d' }}>✓ Spostate in Banca: <strong>{risultatoAutoConferma.mosse_banca}</strong></span>
+                <br />
+                <span style={{ color: '#78350f' }}>
+                  Restate in Provvisoria:{' '}
+                  {risultatoAutoConferma.restate_in_provvisoria_banca_non_pagata} (banca non pagate) +{' '}
+                  {risultatoAutoConferma.restate_in_provvisoria_paypal_o_carta} (paypal/carta) +{' '}
+                  {risultatoAutoConferma.restate_in_provvisoria_fornitore_senza_metodo} (fornitore senza metodo)
+                </span>
+                {risultatoAutoConferma.skipped_gia_in_prima_nota > 0 && (
+                  <>
+                    <br />
+                    <span style={{ color: '#64748b' }}>
+                      Saltate perché già registrate: {risultatoAutoConferma.skipped_gia_in_prima_nota}
+                    </span>
+                  </>
+                )}
+                {risultatoAutoConferma.skipped_errori?.length > 0 && (
+                  <>
+                    <br />
+                    <span style={{ color: '#991b1b' }}>
+                      ⚠ Errori: {risultatoAutoConferma.skipped_errori.length}
+                    </span>
+                  </>
                 )}
               </div>
             </div>
