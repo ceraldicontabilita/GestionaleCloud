@@ -54,7 +54,7 @@ export default function HRHub() {
       ]);
       if (signal?.aborted) return;
       setStats({
-        dipendenti: (Array.isArray(dipRes.data) ? dipRes.data : []).filter((d) => (d.stato || 'attivo') === 'attivo').length,
+        dipendenti: (Array.isArray(dipRes.data) ? dipRes.data : []).filter((d) => (d.in_carico !== false && d.attivo !== false)).length,
         richieste_in_attesa: Array.isArray(richRes.data) ? richRes.data.length : 0,
         missioni_in_attesa: Array.isArray(misRes.data) ? misRes.data.length : 0,
         documenti_in_scadenza: Array.isArray(docRes.data) ? docRes.data.length : 0,
@@ -315,3 +315,4 @@ function ModuloCard({ modulo, onClick }) {
     </button>
   );
 }
+
