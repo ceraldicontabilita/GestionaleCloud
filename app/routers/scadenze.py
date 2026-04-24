@@ -33,6 +33,7 @@ SCADENZE_FISCALI = {
 
 @router.get("/tutte")
 @router.get("/", include_in_schema=False)
+@router.get("", include_in_schema=False)
 @handle_errors
 async def get_tutte_scadenze(
     anno: int = Query(None),
@@ -645,4 +646,5 @@ async def get_dashboard_scadenze() -> Dict[str, Any]:
             "dettaglio": scadenze_urgenti[:3]
         }
     }
+
 
