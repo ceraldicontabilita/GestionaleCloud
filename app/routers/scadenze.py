@@ -17,7 +17,7 @@ import uuid
 from app.utils.error_handler import handle_errors
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
+router = APIRouter(redirect_slashes=False)
 
 # Scadenze fiscali fisse italiane
 SCADENZE_FISCALI = {
@@ -646,5 +646,6 @@ async def get_dashboard_scadenze() -> Dict[str, Any]:
             "dettaglio": scadenze_urgenti[:3]
         }
     }
+
 
 
