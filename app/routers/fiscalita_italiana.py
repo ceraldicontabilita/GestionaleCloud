@@ -876,7 +876,7 @@ async def get_notifiche_scadenze_imminenti(
     prossime = []  # 4-7 giorni
     pianificabili = []  # oltre 7 giorni
     
-    oggi_dt = datetime.now()  # naive, coerente con strptime (fix TypeError)
+    oggi_dt = datetime.now(timezone.utc)
     for s in scadenze:
         try:
             data_scad = datetime.strptime(s.get("data", ""), "%Y-%m-%d") if s.get("data") else None
@@ -891,7 +891,7 @@ async def get_notifiche_scadenze_imminenti(
                 else:
                     s["urgenza"] = "normale"
                     pianificabili.append(s)
-        except (ValueError, TypeError):
+        except ValueError:
             s["urgenza"] = "normale"
             pianificabili.append(s)
     
@@ -1385,4 +1385,3 @@ async def esegui_apertura_esercizio(anno: int = Query(...)) -> Dict[str, Any]:
         "totale_passivita": totale_avere,
         "move_id": move_id
     }
-
