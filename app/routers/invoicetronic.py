@@ -200,13 +200,20 @@ async def scarica_fattura(fattura_id: str) -> Dict[str, Any]:
             upsert=True
         )
         
-        # TODO: Parsare XML e inserire in invoices collection principale
-        
+        # Parse XML FatturaPA e inserisci in collection invoices principale
+        invoice_id = None
+        if xml_content:
+            try:
+                invoice_id = await _parse_xml_fattura_pa(db, xml_content, fattura_doc)
+            except Exception as parse_err:
+                logger.warning(f"Parse XML SDI fallito per {fattura_id}: {parse_err}")
+
         return {
             "success": True,
             "fattura_id": fattura_id,
             "file_name": fattura_doc["file_name"],
-            "imported": True
+            "imported": True,
+            "invoice_id": invoice_id
         }
     except Exception as e:
         logger.error(f"Errore scaricamento fattura {fattura_id}: {e}")
@@ -426,3 +433,101 @@ async def get_fatture_importate(
         "fatture": fatture,
         "count": len(fatture)
     }
+
+async def _parse_xml_fattura_pa(db, xml_content: str, fattura_sdi: dict) -> str:
+    """
+    Parsa XML FatturaPA e upsert in collection invoices.
+    Estrae i campi principali secondo lo standard FatturaPA 1.2.
+    """
+    import xml.etree.ElementTree as ET
+    import uuid
+
+    ns = {
+        'fp': 'http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2',
+        'ds': 'http://www.w3.org/2000/09/xmldsig#',
+    }
+
+    def find_text(root, xpath, default=''):
+        """Cerca con e senza namespace."""
+        for prefix in ['fp:', '']:
+            el = root.find(xpath.replace('fp:', prefix), ns if prefix else {})
+            if el is not None and el.text:
+                return el.text.strip()
+        return default
+
+    try:
+        root = ET.fromstring(xml_content)
+    except ET.ParseError:
+        # XML malformato - salva comunque il documento grezzo
+        return None
+
+    # Cedente (fornitore)
+    cedente = root.find('.//fp:CedentePrestatore', ns) or root.find('.//CedentePrestatore')
+    fornitore_piva = ''
+    fornitore_nome = ''
+    if cedente is not None:
+        piva_el = cedente.find('.//fp:IdCodice', ns) or cedente.find('.//IdCodice')
+        fornitore_piva = piva_el.text.strip() if piva_el is not None and piva_el.text else ''
+        denom_el = cedente.find('.//fp:Denominazione', ns) or cedente.find('.//Denominazione')
+        if denom_el is None or not denom_el.text:
+            nome_el = cedente.find('.//fp:Nome', ns) or cedente.find('.//Nome')
+            cog_el = cedente.find('.//fp:Cognome', ns) or cedente.find('.//Cognome')
+            fornitore_nome = f"{(nome_el.text or '').strip()} {(cog_el.text or '').strip()}".strip()
+        else:
+            fornitore_nome = denom_el.text.strip()
+
+    # Header documento
+    dati_gen = root.find('.//fp:DatiGeneraliDocumento', ns) or root.find('.//DatiGeneraliDocumento')
+    numero_doc = find_text(root, './/fp:Numero') or find_text(root, './/Numero')
+    data_doc = find_text(root, './/fp:Data') or find_text(root, './/Data')
+    tipo_doc = find_text(root, './/fp:TipoDocumento') or 'TD01'
+
+    # Totale
+    importo_totale = 0.0
+    for dati_pag in (root.findall('.//fp:DatiPagamento', ns) or root.findall('.//DatiPagamento')):
+        imp_el = dati_pag.find('.//fp:ImportoPagamento', ns) or dati_pag.find('.//ImportoPagamento')
+        if imp_el is not None and imp_el.text:
+            try:
+                importo_totale += float(imp_el.text.replace(',', '.'))
+            except ValueError:
+                pass
+    if importo_totale == 0:
+        # Fallback: somma righe
+        for riga in (root.findall('.//fp:DettaglioLinee', ns) or root.findall('.//DettaglioLinee')):
+            tot_el = riga.find('.//fp:PrezzoTotale', ns) or riga.find('.//PrezzoTotale')
+            if tot_el is not None and tot_el.text:
+                try:
+                    importo_totale += float(tot_el.text.replace(',', '.'))
+                except ValueError:
+                    pass
+
+    invoice_key = f"{fornitore_piva}_{numero_doc}_{data_doc}"
+    invoice_id = f"sdi-{uuid.uuid4().hex[:12]}"
+
+    invoice_doc = {
+        "id": invoice_id,
+        "invoice_key": invoice_key,
+        "source": "invoicetronic_sdi",
+        "invoice_number": numero_doc,
+        "invoice_date": data_doc,
+        "tipo_documento": tipo_doc,
+        "fornitore_ragione_sociale": fornitore_nome,
+        "fornitore_piva": fornitore_piva,
+        "total_amount": importo_totale,
+        "importo_totale": importo_totale,
+        "stato": "da_pagare",
+        "pagato": False,
+        "sdi_id": fattura_sdi.get("invoicetronic_id"),
+        "xml_file_name": fattura_sdi.get("file_name"),
+        "anno": int(data_doc[:4]) if data_doc and len(data_doc) >= 4 else None,
+        "created_at": fattura_sdi.get("imported_at"),
+        "updated_at": fattura_sdi.get("imported_at"),
+    }
+
+    await db["invoices"].update_one(
+        {"invoice_key": invoice_key},
+        {"$setOnInsert": invoice_doc},
+        upsert=True
+    )
+    logger.info(f"SDI import: {fornitore_nome} fattura {numero_doc} €{importo_totale:.2f}")
+    return invoice_id
