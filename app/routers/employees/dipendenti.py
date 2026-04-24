@@ -571,6 +571,145 @@ async def bulk_upsert_dipendenti(payload: Dict[str, Any] = Body(...)) -> Dict[st
     }
 
 
+@router.post(
+    "/bulk-upsert/preview",
+    summary="Preview import massivo (dry-run): mostra cosa cambierebbe SENZA scrivere",
+)
+@handle_errors
+async def bulk_upsert_preview(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    """Simulazione dell'import massivo: legge il DB ma non scrive nulla.
+
+    Stesso body di `/bulk-upsert`. Restituisce un report identico a quello
+    reale, ma:
+      - Nessun documento viene inserito o modificato nel DB
+      - Per ogni record "updated" è presente un campo `diff` con
+        {campo: {vecchio, nuovo}} per permettere alla UI di mostrare
+        un'anteprima riga per riga di cosa cambierà
+      - La risposta include `dry_run: true`
+
+    Utilizzo tipico:
+      1. UI chiama `/bulk-upsert/preview` con i dati dell'Excel/cedolini
+      2. Mostra all'utente l'elenco di creazioni/aggiornamenti/skip
+      3. Se utente conferma, UI chiama `/bulk-upsert` con stesso payload
+    """
+    lista = payload.get("dipendenti") or []
+    overwrite = bool(payload.get("overwrite_fields", False))
+    if not isinstance(lista, list) or not lista:
+        raise HTTPException(
+            status_code=400,
+            detail="Lista 'dipendenti' vuota o non valida",
+        )
+
+    db = Database.get_db()
+
+    # Stessa whitelist di bulk-upsert (tenuta in sync manualmente: se
+    # CAMPI_AGGIORNABILI cambia sopra, cambia anche qui)
+    CAMPI_AGGIORNABILI = {
+        "nome", "cognome", "nome_completo",
+        "data_nascita", "luogo_nascita",
+        "mansione", "qualifica", "livello", "tipo_contratto",
+        "email", "telefono", "indirizzo",
+        "data_assunzione", "data_fine_contratto",
+        "ore_settimanali", "giorni_lavoro",
+        "iban", "iban_cedolino",
+        "matricola", "codice_dipendente",
+        "note",
+    }
+
+    risultati: List[Dict[str, Any]] = []
+    creati = 0
+    aggiornati = 0
+    saltati = 0
+
+    for idx, raw in enumerate(lista):
+        cf = (raw.get("codice_fiscale") or "").upper().strip()
+        if not cf:
+            risultati.append({
+                "riga": idx + 1,
+                "esito": "skipped",
+                "motivo": "codice_fiscale mancante",
+                "nominativo": f"{raw.get('cognome','')} {raw.get('nome','')}".strip(),
+            })
+            saltati += 1
+            continue
+
+        nome = (raw.get("nome") or "").strip()
+        cognome = (raw.get("cognome") or "").strip()
+        nome_completo = (raw.get("nome_completo") or "").strip()
+        if not nome_completo and (cognome or nome):
+            nome_completo = f"{cognome} {nome}".strip()
+
+        # SOLO LETTURA
+        esistente = await db[Collections.EMPLOYEES].find_one(
+            {"codice_fiscale": cf}, {"_id": 0}
+        )
+
+        if esistente:
+            update_set: Dict[str, Any] = {}
+            diff: Dict[str, Any] = {}
+            for campo in CAMPI_AGGIORNABILI:
+                if campo not in raw:
+                    continue
+                nuovo = raw[campo]
+                if nuovo in (None, "", []):
+                    continue
+                vecchio = esistente.get(campo)
+                if overwrite or vecchio in (None, "", [], 0):
+                    update_set[campo] = nuovo
+                    diff[campo] = {"vecchio": vecchio, "nuovo": nuovo}
+            if nome_completo and (overwrite or not esistente.get("nome_completo")):
+                if esistente.get("nome_completo") != nome_completo:
+                    update_set["nome_completo"] = nome_completo
+                    diff["nome_completo"] = {
+                        "vecchio": esistente.get("nome_completo"),
+                        "nuovo": nome_completo,
+                    }
+            if update_set:
+                risultati.append({
+                    "riga": idx + 1,
+                    "esito": "updated",
+                    "codice_fiscale": cf,
+                    "nominativo": nome_completo or cf,
+                    "campi_aggiornati": sorted(update_set.keys()),
+                    "diff": diff,
+                })
+                aggiornati += 1
+            else:
+                risultati.append({
+                    "riga": idx + 1,
+                    "esito": "skipped",
+                    "motivo": "nessun campo da aggiornare (tutti già popolati)",
+                    "codice_fiscale": cf,
+                    "nominativo": nome_completo or cf,
+                })
+                saltati += 1
+        else:
+            # Anteprima creazione: mostra i campi che verranno scritti
+            campi_nuovi = {
+                k: v for k, v in raw.items()
+                if k in CAMPI_AGGIORNABILI and v not in (None, "", [])
+            }
+            risultati.append({
+                "riga": idx + 1,
+                "esito": "created",
+                "codice_fiscale": cf,
+                "nominativo": nome_completo or cf,
+                "campi_nuovi": sorted(campi_nuovi.keys()),
+            })
+            creati += 1
+
+    return {
+        "dry_run": True,
+        "totali": {
+            "input": len(lista),
+            "creati": creati,
+            "aggiornati": aggiornati,
+            "saltati": saltati,
+        },
+        "risultati": risultati,
+    }
+
+
 @router.post("")
 @handle_errors
 async def create_dipendente(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:

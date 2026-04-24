@@ -10,6 +10,7 @@ import {
 import api from '../../api';
 import { COLORS, STYLES, SPACING, useIsMobile, pagePad } from '../../lib/utils';
 import DedupeDipendentiModal from '../../components/DedupeDipendentiModal';
+import ImportDipendentiModal from '../../components/ImportDipendentiModal';
 
 // ─── Costanti ─────────────────────────────────────────────────────────────────
 const TABS = [
@@ -1084,6 +1085,7 @@ export default function HRDipendenti() {
   const [selected, setSelected] = useState(null);
   const [activeTab, setActiveTab] = useState('anagrafica');
   const [showDedupe, setShowDedupe] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [showNuovo, setShowNuovo] = useState(false);
   const [kpi, setKpi] = useState(null);
 
@@ -1159,6 +1161,9 @@ export default function HRDipendenti() {
             <div style={{ display:'flex', gap:6 }}>
               <button onClick={()=>setShowDedupe(true)} title="Deduplica" style={{ padding:'5px 8px', background:'rgba(255,255,255,0.15)', color:'white', border:'1px solid rgba(255,255,255,0.3)', borderRadius:7, cursor:'pointer', fontSize:12 }}>
                 🔗
+              </button>
+              <button onClick={()=>setShowImport(true)} title="Import massivo" style={{ padding:'5px 8px', background:'rgba(255,255,255,0.15)', color:'white', border:'1px solid rgba(255,255,255,0.3)', borderRadius:7, cursor:'pointer', fontSize:12 }}>
+                📥
               </button>
               <button onClick={()=>setShowNuovo(v=>!v)} style={{ padding:'5px 10px', background:'rgba(255,255,255,0.2)', color:'white', border:'1px solid rgba(255,255,255,0.35)', borderRadius:7, cursor:'pointer', fontSize:12, display:'flex', alignItems:'center', gap:4, fontWeight:600 }}>
                 <Plus size={13}/> Nuovo
@@ -1338,6 +1343,7 @@ export default function HRDipendenti() {
 
       {/* Modale deduplica */}
       {showDedupe && <DedupeDipendentiModal onClose={()=>setShowDedupe(false)} onMerged={loadLista} />}
+      {showImport && <ImportDipendentiModal onClose={()=>setShowImport(false)} onImported={()=>{ setShowImport(false); loadLista(); }} />}
     </div>
   );
 }
