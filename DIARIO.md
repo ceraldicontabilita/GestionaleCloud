@@ -146,3 +146,6 @@ fornitori, dashboard, scadenze, import documenti.
   presenze, TFR, saldi.
 
 ---
+
+
+<!-- deploy trigger 10:08:35 -->
