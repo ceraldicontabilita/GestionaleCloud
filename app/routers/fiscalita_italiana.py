@@ -854,6 +854,14 @@ async def get_notifiche_scadenze_imminenti(
     Recupera le scadenze imminenti per notifiche.
     Utile per sistemi di alert e dashboard.
     """
+    import traceback as _tb
+    try:
+        return await _get_notifiche_impl(giorni=giorni, anno=anno)
+    except Exception as _e:
+        return {"success": False, "debug_error": str(_e), "debug_type": type(_e).__name__, "debug_trace": _tb.format_exc()[-500:]}
+
+
+async def _get_notifiche_impl(giorni: int = 7, anno: int = None) -> Dict[str, Any]:
     db = Database.get_db()
     
     if not anno:
@@ -1385,4 +1393,5 @@ async def esegui_apertura_esercizio(anno: int = Query(...)) -> Dict[str, Any]:
         "totale_passivita": totale_avere,
         "move_id": move_id
     }
+
 
