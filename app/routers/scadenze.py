@@ -32,16 +32,28 @@ SCADENZE_FISCALI = {
 
 
 @router.get("", include_in_schema=False)
-@router.get("/", include_in_schema=False)
 @handle_errors
-async def get_scadenze_root(
+async def get_scadenze_noslash(
     anno: int = Query(None),
     mese: int = Query(None),
     tipo: str = Query(None, description="Filtra per tipo: IVA, F24, FATTURA, INPS"),
     include_passate: bool = Query(False),
     limit: int = Query(20)
 ) -> Dict[str, Any]:
-    """Alias root per /api/scadenze e /api/scadenze/ → stessa logica di /tutte"""
+    """Alias /api/scadenze (senza slash)"""
+    return await get_tutte_scadenze(anno=anno, mese=mese, tipo=tipo, include_passate=include_passate, limit=limit)
+
+
+@router.get("/", include_in_schema=False)
+@handle_errors
+async def get_scadenze_slash(
+    anno: int = Query(None),
+    mese: int = Query(None),
+    tipo: str = Query(None, description="Filtra per tipo: IVA, F24, FATTURA, INPS"),
+    include_passate: bool = Query(False),
+    limit: int = Query(20)
+) -> Dict[str, Any]:
+    """Alias /api/scadenze/ (con slash)"""
     return await get_tutte_scadenze(anno=anno, mese=mese, tipo=tipo, include_passate=include_passate, limit=limit)
 
 
@@ -658,4 +670,5 @@ async def get_dashboard_scadenze() -> Dict[str, Any]:
             "dettaglio": scadenze_urgenti[:3]
         }
     }
+
 
