@@ -157,16 +157,22 @@ from app.router_registry import register_all_routers
 register_all_routers(app)
 
 # Route alias senza trailing slash - workaround FastAPI 0.110.1 + proxy Emergent
-# Con redirect_slashes=False, i path "" non vengono registrati correttamente.
-# Soluzione: registrare esplicitamente i path root dei moduli problematici.
-try:
-    from app.routers.mutui import get_mutui
-    from app.routers.scadenze import get_tutte_scadenze
-    app.add_api_route("/api/mutui", endpoint=get_mutui, methods=["GET"], include_in_schema=False, tags=["Mutui"])
-    app.add_api_route("/api/scadenze", endpoint=get_tutte_scadenze, methods=["GET"], include_in_schema=False, tags=["Scadenze"])
-except Exception as _e:
-    import logging as _log
-    _log.getLogger(__name__).warning(f"Route alias non registrate: {_e}")
+# Redirect server-side: /api/mutui → /api/mutui/ e /api/scadenze → /api/scadenze/tutte
+from fastapi.responses import RedirectResponse
+
+@app.get("/api/mutui", include_in_schema=False, tags=["Mutui"])
+async def mutui_root_alias(request: Request):
+    """Alias senza trailing slash per /api/mutui/"""
+    url = str(request.url).rstrip("/") + "/"
+    return RedirectResponse(url=url, status_code=307)
+
+@app.get("/api/scadenze", include_in_schema=False, tags=["Scadenze"])
+async def scadenze_root_alias(request: Request):
+    """Alias senza trailing slash per /api/scadenze/tutte"""
+    # Preserva query params
+    qs = request.url.query
+    target = "/api/scadenze/tutte" + (f"?{qs}" if qs else "")
+    return RedirectResponse(url=target, status_code=307)
 
 
 # =============================================================================
@@ -232,4 +238,5 @@ if os.path.isdir(_FRONTEND_DIST):
         return FileResponse(os.path.join(_FRONTEND_DIST, "index.html"))
 
     logger.info("✅ Frontend React montato (SPA routing attivo)")
+
 
