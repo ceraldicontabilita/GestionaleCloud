@@ -38,15 +38,6 @@ def register_all_routers(app: FastAPI) -> None:
     except Exception as e:
         logger.warning(f"Router relazionali non registrati: {e}")
 
-    # Fix path senza trailing slash (FastAPI 0.110.1 non risolve "" con prefix)
-    try:
-        from app.routers.mutui import get_mutui
-        from app.routers.scadenze import get_tutte_scadenze
-        app.add_api_route("/api/mutui", get_mutui, methods=["GET"], tags=["Mutui"], include_in_schema=False)
-        app.add_api_route("/api/scadenze", get_tutte_scadenze, methods=["GET"], tags=["Scadenze"], include_in_schema=False)
-    except Exception as e:
-        logger.warning(f"Route alias senza slash non registrate: {e}")
-
     logger.info("✅ Tutti i router registrati")
 
 
@@ -387,4 +378,5 @@ def _register_tracciabilita(app: FastAPI):
     con eventuali hook futuri. Può essere rimossa in un giro successivo.
     """
     pass
+
 
