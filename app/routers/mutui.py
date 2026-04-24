@@ -24,7 +24,7 @@ import logging
 
 from app.database import Database
 
-router = APIRouter(tags=["Mutui"])
+router = APIRouter(tags=["Mutui"], redirect_slashes=False)
 logger = logging.getLogger(__name__)
 
 
@@ -633,5 +633,6 @@ async def delete_mutuo(mutuo_id: str):
     except Exception as e:
         logger.error(f"Errore delete_mutuo: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 
