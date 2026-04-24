@@ -201,7 +201,30 @@ async def get_riconciliazione_f24(
                 {"sezione_inps.periodo_riferimento": {"$regex": str(anno)}}
             ]
         }).to_list(1000)
-        
+
+        # Livello 1: F24 ricevuti via email (collection f24_unificato)
+        f24_email = await db["f24_unificato"].find(
+            {"anno": anno, "stato": {"$in": ["ricevuto", "acquisito", "inviato", "confermato"]}},
+            {"codice_tributo": 1, "periodo_riferimento": 1, "sezione": 1}
+        ).to_list(1000)
+        f24_email_keys = set()
+        for f in f24_email:
+            for tributo in (f.get("tributi") or []):
+                k = f"{tributo.get('codice_tributo')}_{tributo.get('periodo_riferimento','')}"
+                f24_email_keys.add(k)
+            # Anche formato flat
+            if f.get("codice_tributo"):
+                k = f"{f['codice_tributo']}_{f.get('periodo_riferimento','')}"
+                f24_email_keys.add(k)
+
+        # Livello 2: pagamenti banca (prima_nota_banca con causale F24)
+        pnb = await db["prima_nota_banca"].find(
+            {"anno": anno, "causale": {"$regex": "f24|tribut|erario|inps", "$options": "i"}},
+            {"data": 1, "descrizione": 1, "importo": 1}
+        ).to_list(500)
+        # Mappa per data (approssimativa)
+        f24_banca_date = set(p.get("data", "")[:7] for p in pnb if p.get("data"))
+
         # Costruisci mappa di riconciliazione
         riconciliazione = {}
         
@@ -236,8 +259,8 @@ async def get_riconciliazione_f24(
                             "categoria": info["categoria"],
                             "periodo": periodo,
                             "sezione": sezione_nome,
-                            "livello_1_f24_email": False,  # TODO: collegare con email F24
-                            "livello_2_pagamento_banca": False,  # TODO: collegare con estratto conto
+                            "livello_1_f24_email": key in f24_email_keys,
+                            "livello_2_pagamento_banca": (periodo[:7] in f24_banca_date) if periodo else False,
                             "livello_3_quietanza": True,  # Abbiamo la quietanza
                             "importo_debito": 0,
                             "importo_credito": 0,
