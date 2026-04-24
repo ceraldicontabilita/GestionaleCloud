@@ -28,7 +28,7 @@ from .bulk import (
     correggi_nomi_fornitori_mancanti, sincronizza_fornitori_da_fatture
 )
 from .base import (
-    search_by_piva, list_suppliers, get_suppliers_stats, get_payment_deadlines,
+    search_by_piva, list_suppliers, list_suppliers_filtered, get_suppliers_stats, get_payment_deadlines,
     unifica_fornitori_collection, verifica_unificazione_stato,
     get_supplier, update_supplier, toggle_supplier_active, delete_supplier,
     get_supplier_fatturato, get_supplier_iban_from_invoices,
@@ -62,6 +62,7 @@ router.add_api_route("/sincronizza-da-fatture", sincronizza_fornitori_da_fatture
 # Base - Static routes
 router.add_api_route("/search-piva/{partita_iva}", search_by_piva, methods=["GET"])
 router.add_api_route("", list_suppliers, methods=["GET"])
+router.add_api_route("/filtered", list_suppliers_filtered, methods=["GET"])
 router.add_api_route("/stats", get_suppliers_stats, methods=["GET"])
 router.add_api_route("/scadenze", get_payment_deadlines, methods=["GET"])
 router.add_api_route("/unifica-collection", unifica_fornitori_collection, methods=["POST"])

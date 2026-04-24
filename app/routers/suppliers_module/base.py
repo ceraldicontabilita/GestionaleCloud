@@ -120,6 +120,10 @@ async def list_suppliers(
     search: Optional[str] = Query(None),
     metodo_pagamento: Optional[str] = Query(None),
     attivo: Optional[bool] = Query(None),
+    esclude_magazzino: Optional[bool] = Query(None, description="True=fornitori esclusi da magazzino, False=fornitori che popolano magazzino"),
+    stato_anagrafica: Optional[str] = Query(None, description="'nuovo' (prima fattura < giorni_nuovo gg) | 'storico' (prima fattura >= giorni_nuovo gg) | 'mai_fatturato'"),
+    giorni_nuovo: int = Query(90, ge=1, le=3650, description="Soglia giorni per definire 'nuovo'"),
+    prodotto: Optional[str] = Query(None, description="Cerca fornitori che hanno un prodotto in magazzino con nome/descrizione che matcha"),
     use_cache: bool = Query(True)
 ) -> List[Dict[str, Any]]:
     """Lista fornitori con filtri e statistiche fatture."""
@@ -128,8 +132,13 @@ async def list_suppliers(
     db = Database.get_db()
     t_start = time.time()
     
+    # Filtri avanzati disabilitano la cache
+    advanced_filters_active = (
+        esclude_magazzino is not None or stato_anagrafica or prodotto
+    )
+    
     cache_key = f"{SUPPLIERS_CACHE_KEY}:all"
-    if use_cache and not search and not metodo_pagamento and attivo is None:
+    if use_cache and not search and not metodo_pagamento and attivo is None and not advanced_filters_active:
         cached_data = await cache.get(cache_key)
         if cached_data is not None:
             return cached_data[skip:skip+limit]
@@ -139,6 +148,8 @@ async def list_suppliers(
     suppliers_query = {}
     if attivo is not None:
         suppliers_query["attivo"] = attivo
+    if esclude_magazzino is not None:
+        suppliers_query["esclude_magazzino"] = esclude_magazzino
     if search and search.strip():
         import re as _re
         search_lower = _re.escape(search.strip())
@@ -149,6 +160,23 @@ async def list_suppliers(
         ]
     if metodo_pagamento:
         suppliers_query["metodo_pagamento"] = metodo_pagamento
+    
+    # Pre-filtro per 'prodotto': trova le P.IVA dei fornitori che hanno il prodotto in magazzino
+    piva_con_prodotto: Optional[set] = None
+    if prodotto and prodotto.strip():
+        import re as _re
+        prod_regex = _re.escape(prodotto.strip())
+        prodotti_match = await db[Collections.WAREHOUSE_PRODUCTS].find(
+            {"$or": [
+                {"nome": {"$regex": prod_regex, "$options": "i"}},
+                {"descrizione": {"$regex": prod_regex, "$options": "i"}}
+            ]},
+            {"_id": 0, "fornitore_piva": 1}
+        ).to_list(5000)
+        piva_con_prodotto = {p["fornitore_piva"] for p in prodotti_match if p.get("fornitore_piva")}
+        if not piva_con_prodotto:
+            return []  # Nessun fornitore matcha
+        suppliers_query["partita_iva"] = {"$in": list(piva_con_prodotto)}
     
     saved_suppliers = await db[Collections.SUPPLIERS].find(suppliers_query, {"_id": 0}).to_list(1000)
     
@@ -163,7 +191,9 @@ async def list_suppliers(
                 "source": "database"
             }
     
-    if not search:
+    # Calcola statistiche fatture - sempre se serve stato_anagrafica o se non c'è search
+    need_stats = not search or stato_anagrafica
+    if need_stats:
         stats_pipeline = [
             {"$match": {"$or": [
                 {"supplier_vat": {"$exists": True, "$ne": None, "$ne": ""}},
@@ -173,12 +203,14 @@ async def list_suppliers(
                 "_id": {"$ifNull": ["$supplier_vat", "$fornitore_partita_iva"]},
                 "fatture_count": {"$sum": 1},
                 "fatture_totale": {"$sum": {"$toDouble": {"$ifNull": ["$importo_totale", {"$ifNull": ["$total_amount", 0]}]}}},
-                "fatture_non_pagate": {"$sum": {"$cond": [{"$ne": ["$pagato", True]}, {"$toDouble": {"$ifNull": ["$importo_totale", {"$ifNull": ["$total_amount", 0]}]}}, 0]}}
+                "fatture_non_pagate": {"$sum": {"$cond": [{"$ne": ["$pagato", True]}, {"$toDouble": {"$ifNull": ["$importo_totale", {"$ifNull": ["$total_amount", 0]}]}}, 0]}},
+                "prima_fattura_data": {"$min": {"$ifNull": ["$data_documento", "$invoice_date"]}},
+                "ultima_fattura_data": {"$max": {"$ifNull": ["$data_documento", "$invoice_date"]}}
             }}
         ]
         
         try:
-            invoice_stats = await db["invoices"].aggregate(stats_pipeline, allowDiskUse=True).to_list(1000)
+            invoice_stats = await db["invoices"].aggregate(stats_pipeline, allowDiskUse=True).to_list(5000)
             
             for stat in invoice_stats:
                 piva = stat.get("_id")
@@ -186,14 +218,37 @@ async def list_suppliers(
                     suppliers_map[piva]["fatture_count"] = stat.get("fatture_count", 0)
                     suppliers_map[piva]["fatture_totale"] = stat.get("fatture_totale", 0)
                     suppliers_map[piva]["fatture_non_pagate"] = stat.get("fatture_non_pagate", 0)
+                    suppliers_map[piva]["prima_fattura_data"] = stat.get("prima_fattura_data")
+                    suppliers_map[piva]["ultima_fattura_data"] = stat.get("ultima_fattura_data")
                     suppliers_map[piva]["source"] = "merged"
         except Exception as e:
             logger.warning(f"Error loading invoice stats: {e}")
     
     suppliers = list(suppliers_map.values())
+    
+    # Filtro stato_anagrafica (post-aggregation perché richiede prima_fattura_data)
+    if stato_anagrafica:
+        soglia_date = (datetime.now(timezone.utc) - timedelta(days=giorni_nuovo)).date().isoformat()
+        
+        def _match_stato(s):
+            prima = s.get("prima_fattura_data")
+            if stato_anagrafica == "mai_fatturato":
+                return not prima
+            if not prima:
+                return False
+            # Normalizza stringhe (potrebbe essere "2024-03-15T00:00:00" o "2024-03-15")
+            prima_str = prima[:10] if isinstance(prima, str) else str(prima)[:10]
+            if stato_anagrafica == "nuovo":
+                return prima_str >= soglia_date
+            if stato_anagrafica == "storico":
+                return prima_str < soglia_date
+            return True
+        
+        suppliers = [s for s in suppliers if _match_stato(s)]
+    
     suppliers.sort(key=lambda x: (x.get("ragione_sociale") or x.get("supplier_name") or "zzz").lower())
     
-    if use_cache and not search and not metodo_pagamento and attivo is None:
+    if use_cache and not search and not metodo_pagamento and attivo is None and not advanced_filters_active:
         await cache.set(cache_key, suppliers, SUPPLIERS_CACHE_TTL)
     
     return suppliers[skip:skip+limit]
@@ -273,6 +328,66 @@ async def verifica_unificazione_stato() -> Dict[str, Any]:
     """Verifica lo stato dell'unificazione delle collection."""
     from app.scripts.unifica_fornitori_suppliers import verifica_unificazione
     return await verifica_unificazione()
+
+
+@router.get("/filtered")
+async def list_suppliers_filtered(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(500, ge=1, le=1000),
+    search: Optional[str] = Query(None, description="Ricerca per nome/ragione sociale/P.IVA"),
+    esclude_magazzino: Optional[bool] = Query(None, description="True=esclusi da magazzino | False=popolano magazzino | None=tutti"),
+    stato_anagrafica: Optional[str] = Query(None, regex="^(nuovo|storico|mai_fatturato)$", description="nuovo | storico | mai_fatturato"),
+    giorni_nuovo: int = Query(90, ge=1, le=3650),
+    prodotto: Optional[str] = Query(None, description="Cerca fornitori che vendono questo prodotto (match su nome/descrizione magazzino)"),
+    attivo: Optional[bool] = Query(None),
+    metodo_pagamento: Optional[str] = Query(None)
+) -> Dict[str, Any]:
+    """
+    Endpoint dedicato con filtri avanzati per l'anagrafica fornitori.
+    Restituisce anche i contatori delle varie categorie per popolare i badge UI.
+    """
+    db = Database.get_db()
+    
+    # Riuso la logica di list_suppliers passando i filtri
+    items = await list_suppliers(
+        skip=skip,
+        limit=limit,
+        search=search,
+        metodo_pagamento=metodo_pagamento,
+        attivo=attivo,
+        esclude_magazzino=esclude_magazzino,
+        stato_anagrafica=stato_anagrafica,
+        giorni_nuovo=giorni_nuovo,
+        prodotto=prodotto,
+        use_cache=False
+    )
+    
+    # Contatori globali (senza filtri applicati) — utili per i badge UI
+    total_all = await db[Collections.SUPPLIERS].count_documents({})
+    total_popolano_magazzino = await db[Collections.SUPPLIERS].count_documents({"esclude_magazzino": {"$ne": True}})
+    total_esclusi_magazzino = await db[Collections.SUPPLIERS].count_documents({"esclude_magazzino": True})
+    total_attivi = await db[Collections.SUPPLIERS].count_documents({"attivo": True})
+    
+    return {
+        "items": items,
+        "count": len(items),
+        "filters_applied": {
+            "search": search,
+            "esclude_magazzino": esclude_magazzino,
+            "stato_anagrafica": stato_anagrafica,
+            "giorni_nuovo": giorni_nuovo,
+            "prodotto": prodotto,
+            "attivo": attivo,
+            "metodo_pagamento": metodo_pagamento
+        },
+        "totali": {
+            "totale_fornitori": total_all,
+            "popolano_magazzino": total_popolano_magazzino,
+            "esclusi_magazzino": total_esclusi_magazzino,
+            "attivi": total_attivi
+        },
+        "pagination": {"skip": skip, "limit": limit}
+    }
 
 
 @router.get("/{supplier_id}")
