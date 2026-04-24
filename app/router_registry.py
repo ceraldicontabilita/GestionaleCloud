@@ -182,6 +182,13 @@ def _register_invoices(app: FastAPI):
     app.include_router(corrispettivi.router, prefix="/api/corrispettivi", tags=["Corrispettivi"])
     app.include_router(invoicetronic.router, prefix="/api/invoicetronic", tags=["InvoiceTronic SDI"])
 
+    # Foto fatture (OCR da mobile)
+    try:
+        from app.routers.fatture_foto_ocr import router as foto_ocr_router
+        app.include_router(foto_ocr_router, prefix="/api/fatture-foto", tags=["Fatture Foto OCR"])
+    except Exception as e:
+        import logging; logging.getLogger(__name__).warning(f"Router fatture_foto_ocr non registrato: {e}")
+
 
 # ─── Employees Module ──────────────────────────────────────────────────────
 def _register_employees(app: FastAPI):
