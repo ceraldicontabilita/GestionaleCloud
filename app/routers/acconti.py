@@ -31,6 +31,8 @@ async def list_acconti(
     anno: Optional[int] = Query(default=None),
     mese: Optional[int] = Query(default=None, ge=1, le=12),
     tipo: Optional[str] = Query(default=None),
+    natura: Optional[str] = Query(default=None, description="su_futuro | su_pregresso"),
+    stato: Optional[str] = Query(default=None, description="registrato | riconciliato_banca | scalato_su_cedolino | annullato"),
     dipendente_id: Optional[str] = Query(default=None),
     limit: int = Query(default=1000, ge=1, le=5000),
     current_user: Dict[str, Any] = Depends(get_current_user),
@@ -39,6 +41,11 @@ async def list_acconti(
 
     Per la griglia pagina Acconti. I filtri anno/mese sono matching su prefisso
     del campo `data` (formato YYYY-MM-DD).
+
+    Filtri estesi:
+    - natura: filtra per natura_acconto (su_futuro / su_pregresso)
+    - stato: filtra per stato lifecycle (registrato, riconciliato_banca,
+             scalato_su_cedolino, annullato)
     """
     db = Database.get_db()
     query: Dict[str, Any] = {}
@@ -52,6 +59,21 @@ async def list_acconti(
                 detail=f"Tipo non valido. Validi: {', '.join(sorted(TIPI_VALIDI))}",
             )
         query["tipo"] = tipo
+    if natura:
+        if natura not in {"su_futuro", "su_pregresso"}:
+            raise HTTPException(
+                status_code=400,
+                detail="Natura non valida. Validi: su_futuro, su_pregresso",
+            )
+        query["natura_acconto"] = natura
+    if stato:
+        valid_stati = {"registrato", "riconciliato_banca", "scalato_su_cedolino", "annullato"}
+        if stato not in valid_stati:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Stato non valido. Validi: {', '.join(sorted(valid_stati))}",
+            )
+        query["stato"] = stato
 
     # Filtro per anno/mese:
     # Schema reale dei docs (ispezione MongoDB):
@@ -216,6 +238,61 @@ async def riepilogo_acconti(
         for r in per_dipendente_raw
     ]
 
+    # Aggregazione per natura_acconto (su_futuro vs su_pregresso)
+    # Per i record legacy senza il campo, default "su_futuro" (caso più comune)
+    pipeline_natura: List[Dict[str, Any]] = []
+    if match:
+        pipeline_natura.append({"$match": match})
+    pipeline_natura.extend(
+        [
+            common_enrich,
+            {
+                "$group": {
+                    "_id": {"$ifNull": ["$natura_acconto", "su_futuro"]},
+                    "totale": {"$sum": "$_importo_num"},
+                    "count": {"$sum": 1},
+                }
+            },
+            {"$sort": {"totale": -1}},
+        ]
+    )
+    per_natura_raw = await db["acconti_dipendenti"].aggregate(pipeline_natura).to_list(10)
+    per_natura = [
+        {
+            "natura": r["_id"] or "su_futuro",
+            "totale": round(r["totale"] or 0, 2),
+            "count": r["count"],
+        }
+        for r in per_natura_raw
+    ]
+
+    # Aggregazione per stato lifecycle
+    pipeline_stato: List[Dict[str, Any]] = []
+    if match:
+        pipeline_stato.append({"$match": match})
+    pipeline_stato.extend(
+        [
+            common_enrich,
+            {
+                "$group": {
+                    "_id": {"$ifNull": ["$stato", "registrato"]},
+                    "totale": {"$sum": "$_importo_num"},
+                    "count": {"$sum": 1},
+                }
+            },
+            {"$sort": {"totale": -1}},
+        ]
+    )
+    per_stato_raw = await db["acconti_dipendenti"].aggregate(pipeline_stato).to_list(10)
+    per_stato = [
+        {
+            "stato": r["_id"] or "registrato",
+            "totale": round(r["totale"] or 0, 2),
+            "count": r["count"],
+        }
+        for r in per_stato_raw
+    ]
+
     totale_generale = sum(r["totale"] for r in per_tipo)
 
     return {
@@ -223,4 +300,6 @@ async def riepilogo_acconti(
         "totale_generale": round(totale_generale, 2),
         "per_tipo": per_tipo,
         "per_dipendente": per_dipendente,
+        "per_natura": per_natura,
+        "per_stato": per_stato,
     }

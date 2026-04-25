@@ -148,6 +148,21 @@ class Database:
 
         # --- Acconti / TFR ---
         await _safe_index("acconti_dipendenti", "dipendente_id", name="idx_acconti_dip")
+        # Compound index per query "tutti gli acconti di tizio per il mese X"
+        await _safe_index(
+            "acconti_dipendenti",
+            [("dipendente_id", 1), ("scalato_su_anno_mese", 1)],
+            name="idx_acconti_dip_scalato",
+        )
+        # Indice per filtrare/aggregare per stato lifecycle
+        await _safe_index("acconti_dipendenti", "stato", name="idx_acconti_stato")
+        # Indice per riconciliazione: "trovami acconti collegati a questo movimento"
+        await _safe_index(
+            "acconti_dipendenti",
+            "movimento_bancario_id",
+            name="idx_acconti_movimento",
+            sparse=True,
+        )
         await _safe_index("tfr_accantonamenti", [("dipendente_id", 1), ("anno", 1)], name="idx_tfr_dip_anno")
         await _safe_index("trattenute_dipendenti", "dipendente_id", name="idx_trattenute_dip")
 
