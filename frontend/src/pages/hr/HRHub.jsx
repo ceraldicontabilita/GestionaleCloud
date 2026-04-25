@@ -118,6 +118,15 @@ export default function HRHub() {
       badge: null,
     },
     {
+      path: '/prima-nota-salari',
+      titolo: 'Prima Nota Salari',
+      descrizione: 'Vista DARE / AVERE consolidata: cedolini, acconti, bonifici per ogni dipendente',
+      icon: TrendingUp,
+      color: '#0f2744',
+      bg: '#e0e7ff',
+      badge: null,
+    },
+    {
       path: '/missioni',
       titolo: 'Missioni',
       descrizione: 'Trasferte, rimborsi, workflow approvazione',

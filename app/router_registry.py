@@ -89,7 +89,7 @@ def _register_f24(app: FastAPI):
 def _register_accounting(app: FastAPI):
     from app.routers.accounting import (
         accounting_main, accounting_extended, accounting_engine_api,
-        prima_nota_automation, prima_nota_salari,
+        prima_nota_automation, prima_nota_salari, prima_nota_salari_v2,
         piano_conti, bilancio, centri_costo, contabilita_avanzata,
         regole_categorizzazione, iva_calcolo, liquidazione_iva,
         riconciliazione_automatica, contabilita_gestionale
@@ -104,6 +104,7 @@ def _register_accounting(app: FastAPI):
     app.include_router(prima_nota_router, prefix="/api/prima-nota", tags=["Prima Nota"])
     app.include_router(prima_nota_automation.router, prefix="/api/prima-nota-auto", tags=["Prima Nota Auto"])
     app.include_router(prima_nota_salari.router, prefix="/api/prima-nota-salari", tags=["Prima Nota Salari"])
+    app.include_router(prima_nota_salari_v2.router, prefix="/api/prima-nota-salari-v2", tags=["Prima Nota Salari V2 (DARE/AVERE)"])
     app.include_router(piano_conti.router, prefix="/api/piano-conti", tags=["Piano dei Conti"])
     app.include_router(bilancio.router, prefix="/api/bilancio", tags=["Bilancio"])
     app.include_router(contabilita_gestionale.router, prefix="/api/contabilita-gestionale", tags=["Contabilità Gestionale"])

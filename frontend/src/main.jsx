@@ -34,6 +34,7 @@ const HRCedolini = lazy(() => import("./pages/hr/HRCedolini.jsx"));
 const HRTFR = lazy(() => import("./pages/hr/HRTFR.jsx"));
 const HRTurni = lazy(() => import("./pages/hr/HRTurni.jsx"));
 const HRAcconti = lazy(() => import("./pages/hr/HRAcconti.jsx"));
+const HRPrimaNotaSalari = lazy(() => import("./pages/hr/HRPrimaNotaSalari.jsx"));
 const HRBustePaga = lazy(() => import("./pages/hr/HRBustePaga.jsx"));
 const HRMissioni = lazy(() => import("./pages/hr/HRMissioni.jsx"));
 const HRDocumenti = lazy(() => import("./pages/hr/HRDocumenti.jsx"));
@@ -127,6 +128,7 @@ const router = createBrowserRouter([
       { path: "saldi-ferie-permessi", element: <LazyPage><DipendentiHub /></LazyPage> },
       { path: "turni", element: <LazyPage><HRTurni /></LazyPage> },
       { path: "acconti", element: <LazyPage><HRAcconti /></LazyPage> },
+      { path: "prima-nota-salari", element: <LazyPage><HRPrimaNotaSalari /></LazyPage> },
       { path: "buste-paga", element: <LazyPage><HRBustePaga /></LazyPage> },
       { path: "buste-paga/:competenza", element: <LazyPage><HRBustePaga /></LazyPage> },
       { path: "missioni", element: <LazyPage><HRMissioni /></LazyPage> },

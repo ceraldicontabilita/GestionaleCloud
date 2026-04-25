@@ -18,6 +18,7 @@ const TABS = [
   { id: 'contratti',     label: 'Contratti',     icon: Briefcase },
   { id: 'presenze',      label: 'Presenze',      icon: Calendar },
   { id: 'cedolini',      label: 'Cedolini',      icon: FileText },
+  { id: 'prima_nota',    label: 'Prima Nota',    icon: TrendingUp },
   { id: 'verbali',       label: 'Verbali',       icon: Shield },
   { id: 'movimenti',     label: 'Movimenti',     icon: CreditCard },
   { id: 'giustificativi',label: 'Giustificativi',icon: Activity },
@@ -1671,6 +1672,258 @@ function ScalaAccontiCedolinoModal({ cedolino, dipNome, onClose, onScaled }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// TAB PRIMA NOTA SALARI (Task 5)
+// Vista DARE/AVERE per dipendente, accordion mese-per-mese.
+// ─────────────────────────────────────────────────────────────────────────────
+function TabPrimaNotaSalari({ dip }) {
+  const isMobile = useIsMobile();
+  const [anno, setAnno] = useState(ANNO_CORRENTE);
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [meseAperto, setMeseAperto] = useState(null); // mese accordion espanso
+
+  useAbortableEffect((signal) => {
+    setLoading(true);
+    api.get(`/api/prima-nota-salari-v2/dipendente/${dip.id}?anno=${anno}`, { signal })
+      .then(r => { if (!signal?.aborted) setData(r.data); })
+      .catch(e => { if (!isCanceledError(e)) setData(null); })
+      .finally(() => { if (!signal?.aborted) setLoading(false); });
+  }, [dip.id, anno]);
+
+  if (loading) {
+    return <div style={{ padding: 40, textAlign: 'center', color: COLORS.textMuted }}>Caricamento…</div>;
+  }
+  if (!data) {
+    return <EmptyState icon={TrendingUp} text="Nessun dato disponibile" sub="Riprova più tardi." />;
+  }
+
+  const ri = data.riepilogo || {};
+
+  // Colori per stato cella
+  const colorByStato = {
+    quadrato:     { bg: '#dcfce7', border: '#86efac', text: '#15803d', label: '✓ Quadrato' },
+    in_pagamento: { bg: '#fef3c7', border: '#fcd34d', text: '#92400e', label: '⏳ Da pagare' },
+    anticipato:   { bg: '#dbeafe', border: '#93c5fd', text: '#1e3a8a', label: '↗ Anticipato' },
+    vuoto:        { bg: '#f8fafc', border: COLORS.border, text: COLORS.textMuted, label: '—' },
+  };
+
+  return (
+    <div>
+      {/* Header con selettore anno */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>Prima Nota Salari</h3>
+        <select
+          value={anno}
+          onChange={e => setAnno(Number(e.target.value))}
+          style={{ padding: '6px 12px', border: `1px solid ${COLORS.border}`, borderRadius: 8, fontSize: 13, background: 'white' }}
+        >
+          {ANNI.map(a => <option key={a}>{a}</option>)}
+        </select>
+      </div>
+
+      {/* Riepilogo annuale */}
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4,1fr)', gap: 12, marginBottom: 20 }}>
+        <KpiCard
+          label="Totale Dare"
+          value={fmt€(ri.totale_dare || 0)}
+          color={COLORS.primary}
+          icon={FileText}
+          sub="Cedolini anno"
+        />
+        <KpiCard
+          label="Totale Avere"
+          value={fmt€(ri.totale_avere || 0)}
+          color="#16a34a"
+          icon={TrendingUp}
+          sub="Acconti + bonifici"
+        />
+        <KpiCard
+          label="Saldo Annuo"
+          value={fmt€(ri.saldo || 0)}
+          color={Math.abs(ri.saldo || 0) < 0.01 ? '#16a34a' : '#dc2626'}
+          icon={CreditCard}
+          sub={Math.abs(ri.saldo || 0) < 0.01 ? 'Quadrato ✓' : (ri.saldo > 0 ? 'Da pagare' : 'Anticipato')}
+        />
+        <KpiCard
+          label="Mesi Quadrati"
+          value={`${ri.mesi_quadrati || 0}/12`}
+          color="#15803d"
+          icon={Check}
+          sub={`${ri.mesi_in_pagamento || 0} pendenti`}
+        />
+      </div>
+
+      {/* Accordion mensile */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {(data.mesi || []).map(m => {
+          const c = colorByStato[m.stato] || colorByStato.vuoto;
+          const aperto = meseAperto === m.mese;
+          const isVuoto = m.stato === 'vuoto';
+
+          return (
+            <div
+              key={m.mese}
+              style={{
+                border: `1px solid ${c.border}`,
+                borderRadius: 8,
+                background: 'white',
+                overflow: 'hidden',
+                opacity: isVuoto ? 0.5 : 1,
+              }}
+            >
+              {/* Header riga mese (cliccabile) */}
+              <button
+                type="button"
+                onClick={() => !isVuoto && setMeseAperto(aperto ? null : m.mese)}
+                disabled={isVuoto}
+                style={{
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '10px 14px',
+                  background: aperto ? `${c.bg}` : 'white',
+                  border: 'none',
+                  cursor: isVuoto ? 'default' : 'pointer',
+                  textAlign: 'left',
+                  fontSize: 13,
+                }}
+              >
+                <ChevronRight
+                  size={14}
+                  style={{
+                    color: COLORS.textMuted,
+                    transform: aperto ? 'rotate(90deg)' : 'none',
+                    transition: 'transform 0.15s',
+                    flexShrink: 0,
+                  }}
+                />
+                <span style={{ fontWeight: 700, minWidth: 90, color: COLORS.text }}>
+                  {m.mese_nome}
+                </span>
+                <span style={{
+                  fontSize: 10,
+                  padding: '2px 8px',
+                  borderRadius: 3,
+                  background: c.bg,
+                  color: c.text,
+                  fontWeight: 700,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                }}>
+                  {c.label}
+                </span>
+                <span style={{ flex: 1 }} />
+                <span style={{ display: 'flex', gap: 16, alignItems: 'center', fontSize: 12 }}>
+                  <span style={{ color: COLORS.textMuted }}>
+                    Dare: <strong style={{ color: COLORS.primary, fontVariantNumeric: 'tabular-nums' }}>{fmt€(m.totale_dare)}</strong>
+                  </span>
+                  <span style={{ color: COLORS.textMuted }}>
+                    Avere: <strong style={{ color: '#16a34a', fontVariantNumeric: 'tabular-nums' }}>{fmt€(m.totale_avere)}</strong>
+                  </span>
+                  <span style={{
+                    fontWeight: 700,
+                    color: Math.abs(m.saldo) < 0.01 ? '#15803d' : (m.saldo > 0 ? '#dc2626' : '#1e3a8a'),
+                    fontVariantNumeric: 'tabular-nums',
+                    minWidth: 80,
+                    textAlign: 'right',
+                  }}>
+                    {m.saldo > 0 ? '+' : ''}{fmt€(m.saldo)}
+                  </span>
+                </span>
+              </button>
+
+              {/* Dettaglio righe DARE/AVERE */}
+              {aperto && (
+                <div style={{
+                  padding: '12px 16px',
+                  borderTop: `1px solid ${c.border}`,
+                  background: '#fafafa',
+                  display: 'grid',
+                  gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+                  gap: 16,
+                }}>
+                  {/* DARE */}
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: COLORS.primary, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6, paddingBottom: 4, borderBottom: `1px solid ${COLORS.border}` }}>
+                      📄 Dare (cedolino)
+                    </div>
+                    {m.dare.length === 0 ? (
+                      <div style={{ fontSize: 12, color: COLORS.textMuted, fontStyle: 'italic', padding: 6 }}>
+                        Nessun cedolino
+                      </div>
+                    ) : (
+                      m.dare.map((r, i) => (
+                        <div key={i} style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          padding: '5px 0',
+                          fontSize: 12,
+                        }}>
+                          <span style={{ color: COLORS.text }}>{r.label}</span>
+                          <span style={{ fontWeight: 700, color: COLORS.primary, fontVariantNumeric: 'tabular-nums' }}>
+                            {fmt€(r.importo)}
+                          </span>
+                        </div>
+                      ))
+                    )}
+                    <div style={{ marginTop: 6, paddingTop: 6, borderTop: `1px solid ${COLORS.border}`, display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 700 }}>
+                      <span style={{ color: COLORS.textMuted }}>Totale</span>
+                      <span style={{ color: COLORS.primary, fontVariantNumeric: 'tabular-nums' }}>{fmt€(m.totale_dare)}</span>
+                    </div>
+                  </div>
+
+                  {/* AVERE */}
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#15803d', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6, paddingBottom: 4, borderBottom: `1px solid ${COLORS.border}` }}>
+                      💸 Avere (acconti + bonifici)
+                    </div>
+                    {m.avere.length === 0 ? (
+                      <div style={{ fontSize: 12, color: COLORS.textMuted, fontStyle: 'italic', padding: 6 }}>
+                        Nessun pagamento
+                      </div>
+                    ) : (
+                      m.avere.map((r, i) => (
+                        <div key={i} style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          padding: '5px 0',
+                          fontSize: 12,
+                        }}>
+                          <span style={{ color: COLORS.text, display: 'flex', gap: 6, alignItems: 'center', minWidth: 0 }}>
+                            <span style={{ color: COLORS.textMuted, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
+                              {fmtD(r.data)}
+                            </span>
+                            <span style={{
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}>{r.label}</span>
+                          </span>
+                          <span style={{ fontWeight: 700, color: '#15803d', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
+                            {fmt€(r.importo)}
+                          </span>
+                        </div>
+                      ))
+                    )}
+                    <div style={{ marginTop: 6, paddingTop: 6, borderTop: `1px solid ${COLORS.border}`, display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 700 }}>
+                      <span style={{ color: COLORS.textMuted }}>Totale</span>
+                      <span style={{ color: '#15803d', fontVariantNumeric: 'tabular-nums' }}>{fmt€(m.totale_avere)}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // TAB VERBALI
 // ─────────────────────────────────────────────────────────────────────────────
 function TabVerbali({ dip }) {
@@ -2320,6 +2573,8 @@ export default function HRDipendenti() {
                 <TabPresenze key={selected.id+'-p'} dip={selected} />}
               {activeTab==='cedolini' &&
                 <TabCedolini key={selected.id+'-ced'} dip={selected} />}
+              {activeTab==='prima_nota' &&
+                <TabPrimaNotaSalari key={selected.id+'-pn'} dip={selected} />}
               {activeTab==='verbali' &&
                 <TabVerbali key={selected.id+'-v'} dip={selected} />}
               {activeTab==='movimenti' &&
