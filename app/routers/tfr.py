@@ -529,13 +529,17 @@ class AccontoInput(BaseModel):
     data: str  # YYYY-MM-DD
     note: Optional[str] = ""
 
-    # === NUOVI CAMPI (introdotti per gestione completa flusso acconti) ===
+    # === CAMPI ESTESI (gestione completa flusso acconti) ===
     # Distinzione tra acconto su lavoro futuro vs su pregresso (lavoro già svolto).
     # Default "su_futuro" perché è il caso standard (anticipo su busta del mese).
     natura_acconto: Optional[str] = "su_futuro"  # "su_futuro" | "su_pregresso"
 
-    # Come l'azienda ha materialmente erogato l'acconto al dipendente
-    metodo_erogazione: Optional[str] = "cassa"  # "cassa" | "bonifico" | "assegno"
+    # Tipo di bonifico bancario. Ceraldi Group eroga acconti SOLO via banca,
+    # mai in contanti. Distinguere standard vs istantaneo aiuta nella
+    # riconciliazione (task 2) perché i bonifici standard appaiono in
+    # estratto conto in 1-2 giorni lavorativi, gli istantanei lo stesso
+    # giorno (anche festivi).
+    tipo_bonifico: Optional[str] = "standard"  # "standard" | "istantaneo"
 
     # Mese/anno del cedolino su cui questo acconto verrà scalato.
     # Per default: stesso mese della data dell'acconto. L'utente può forzare
@@ -550,7 +554,7 @@ class AccontoUpdateInput(BaseModel):
     tipo: Optional[str] = None
     note: Optional[str] = None
     natura_acconto: Optional[str] = None
-    metodo_erogazione: Optional[str] = None
+    tipo_bonifico: Optional[str] = None
     scalato_su_anno_mese: Optional[str] = None
     stato: Optional[str] = None
 
@@ -560,7 +564,7 @@ TIPI_ACCONTO_VALIDI = {
     "stipendio", "tfr", "ferie", "tredicesima", "quattordicesima", "prestito",
 }
 NATURE_VALIDE = {"su_futuro", "su_pregresso"}
-METODI_VALIDI = {"cassa", "bonifico", "assegno"}
+TIPI_BONIFICO_VALIDI = {"standard", "istantaneo"}
 STATI_VALIDI = {
     "registrato",            # appena inserito
     "riconciliato_banca",    # collegato a movimento estratto conto
@@ -645,7 +649,10 @@ async def registra_acconto(input_data: AccontoInput) -> Dict[str, Any]:
     Nuovi campi:
     - natura_acconto: "su_futuro" (anticipo su busta prossima) | "su_pregresso"
       (ripianamento su lavoro già svolto). Default "su_futuro".
-    - metodo_erogazione: "cassa" | "bonifico" | "assegno". Default "cassa".
+    - tipo_bonifico: "standard" | "istantaneo". Default "standard".
+      Tutti gli acconti Ceraldi sono via banca: distinguere standard da
+      istantaneo aiuta nella riconciliazione con l'estratto conto (i
+      bonifici istantanei arrivano anche in giornata festiva).
     - scalato_su_anno_mese: mese cedolino su cui andrà scalato (es. "2026-04").
       Se non fornito, derivato dalla data dell'acconto.
 
@@ -684,11 +691,11 @@ async def registra_acconto(input_data: AccontoInput) -> Dict[str, Any]:
             detail=f"Natura acconto non valida. Usa: {', '.join(sorted(NATURE_VALIDE))}",
         )
 
-    metodo = input_data.metodo_erogazione or "cassa"
-    if metodo not in METODI_VALIDI:
+    metodo = input_data.tipo_bonifico or "standard"
+    if metodo not in TIPI_BONIFICO_VALIDI:
         raise HTTPException(
             status_code=400,
-            detail=f"Metodo erogazione non valido. Usa: {', '.join(sorted(METODI_VALIDI))}",
+            detail=f"Tipo bonifico non valido. Usa: {', '.join(sorted(TIPI_BONIFICO_VALIDI))}",
         )
 
     # Deriva scalato_su_anno_mese da data se non fornito
@@ -725,7 +732,7 @@ async def registra_acconto(input_data: AccontoInput) -> Dict[str, Any]:
 
         # Nuovi campi
         "natura_acconto": natura,
-        "metodo_erogazione": metodo,
+        "tipo_bonifico": metodo,
         "scalato_su_anno_mese": scalato_su,
 
         # Stato lifecycle
@@ -771,7 +778,7 @@ async def registra_acconto(input_data: AccontoInput) -> Dict[str, Any]:
         "messaggio": f"Acconto {input_data.tipo} ({natura}) registrato per {dipendente.get('nome_completo', '')}",
         "importo": round(input_data.importo, 2),
         "natura": natura,
-        "metodo": metodo,
+        "tipo_bonifico": metodo,
         "scalato_su": scalato_su,
         "stato": "registrato",
     }
@@ -848,13 +855,13 @@ async def modifica_acconto(acconto_id: str, input_data: dict) -> Dict[str, Any]:
             )
         update_fields["natura_acconto"] = input_data["natura_acconto"]
 
-    if "metodo_erogazione" in input_data and input_data["metodo_erogazione"]:
-        if input_data["metodo_erogazione"] not in METODI_VALIDI:
+    if "tipo_bonifico" in input_data and input_data["tipo_bonifico"]:
+        if input_data["tipo_bonifico"] not in TIPI_BONIFICO_VALIDI:
             raise HTTPException(
                 status_code=400,
-                detail=f"Metodo non valido. Usa: {', '.join(sorted(METODI_VALIDI))}",
+                detail=f"Tipo bonifico non valido. Usa: {', '.join(sorted(TIPI_BONIFICO_VALIDI))}",
             )
-        update_fields["metodo_erogazione"] = input_data["metodo_erogazione"]
+        update_fields["tipo_bonifico"] = input_data["tipo_bonifico"]
 
     if "scalato_su_anno_mese" in input_data:
         # Accetta None per "rimuovi binding"

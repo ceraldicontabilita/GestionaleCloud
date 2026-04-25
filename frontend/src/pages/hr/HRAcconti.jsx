@@ -47,11 +47,21 @@ const NATURE = [
   },
 ];
 
-// Modalità di erogazione fisica dell'acconto
-const METODI = [
-  { id: 'cassa', label: 'Cassa', icon: '💵' },
-  { id: 'bonifico', label: 'Bonifico', icon: '🏦' },
-  { id: 'assegno', label: 'Assegno', icon: '📄' },
+// Tipo di bonifico: standard (1-2gg lavorativi) vs istantaneo (real-time, anche festivi)
+// Ceraldi Group eroga acconti SOLO via banca, mai contanti.
+const TIPI_BONIFICO = [
+  {
+    id: 'standard',
+    label: 'Bonifico standard',
+    icon: '🏦',
+    sub: '1-2 giorni lavorativi',
+  },
+  {
+    id: 'istantaneo',
+    label: 'Bonifico istantaneo',
+    icon: '⚡',
+    sub: 'real-time, anche festivi',
+  },
 ];
 
 const MESI = [
@@ -192,7 +202,7 @@ export default function HRAcconti() {
       data: a.data || new Date().toISOString().slice(0, 10),
       note: a.note || '',
       natura_acconto: a.natura_acconto || 'su_futuro',
-      metodo_erogazione: a.metodo_erogazione || 'cassa',
+      tipo_bonifico: a.tipo_bonifico || 'standard',
       scalato_su_anno_mese: a.scalato_su_anno_mese || '',
     });
     setModalOpen(true);
@@ -227,7 +237,7 @@ export default function HRAcconti() {
         data: form.data,
         note: form.note || '',
         natura_acconto: form.natura_acconto || 'su_futuro',
-        metodo_erogazione: form.metodo_erogazione || 'cassa',
+        tipo_bonifico: form.tipo_bonifico || 'standard',
       };
       // Solo se l'utente ha forzato un mese diverso, mandalo (altrimenti backend lo deriva da data)
       if (form.scalato_su_anno_mese) {
@@ -548,9 +558,9 @@ export default function HRAcconti() {
                                 Su futuro
                               </span>
                             )}
-                            {a.metodo_erogazione && a.metodo_erogazione !== 'cassa' && (
-                              <span style={{ padding: '1px 6px', borderRadius: 3, background: '#f1f5f9', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                                {a.metodo_erogazione === 'bonifico' ? '🏦 Bonif.' : '📄 Ass.'}
+                            {a.tipo_bonifico === 'istantaneo' && (
+                              <span style={{ padding: '1px 6px', borderRadius: 3, background: '#fef3c7', color: '#b45309', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                ⚡ Istantaneo
                               </span>
                             )}
                             {a.stato && a.stato !== 'registrato' && (
@@ -663,7 +673,7 @@ function defaultForm() {
     data: new Date().toISOString().slice(0, 10),
     note: '',
     natura_acconto: 'su_futuro',
-    metodo_erogazione: 'cassa',
+    tipo_bonifico: 'standard',
     scalato_su_anno_mese: '',
   };
 }
@@ -886,29 +896,43 @@ function AccontoModal({ form, setForm, editing, dipendenti, saving, onClose, onS
             </div>
           </FormField>
 
-          {/* Metodo erogazione */}
-          <FormField label="Metodo di erogazione *">
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-              {METODI.map((m) => (
+          {/* Tipo bonifico */}
+          <FormField
+            label="Tipo bonifico *"
+            hint="Tutti gli acconti vengono erogati via banca. L'istantaneo arriva real-time anche nei festivi."
+          >
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
+              {TIPI_BONIFICO.map((b) => (
                 <button
-                  key={m.id}
+                  key={b.id}
                   type="button"
-                  onClick={() => setForm((f) => ({ ...f, metodo_erogazione: m.id }))}
+                  onClick={() => setForm((f) => ({ ...f, tipo_bonifico: b.id }))}
                   style={{
-                    padding: '10px 8px',
+                    padding: '12px',
                     borderRadius: 8,
-                    border: `2px solid ${form.metodo_erogazione === m.id ? COLORS.primary : COLORS.border}`,
+                    border: `2px solid ${form.tipo_bonifico === b.id ? COLORS.primary : COLORS.border}`,
                     backgroundColor:
-                      form.metodo_erogazione === m.id ? `${COLORS.primary}15` : COLORS.card,
-                    color: form.metodo_erogazione === m.id ? COLORS.primary : COLORS.text,
-                    fontSize: 13,
-                    fontWeight: form.metodo_erogazione === m.id ? 700 : 500,
+                      form.tipo_bonifico === b.id ? `${COLORS.primary}15` : COLORS.card,
+                    color: form.tipo_bonifico === b.id ? COLORS.primary : COLORS.text,
                     cursor: 'pointer',
-                    textAlign: 'center',
+                    textAlign: 'left',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
                   }}
                 >
-                  <div style={{ fontSize: 18, marginBottom: 2 }}>{m.icon}</div>
-                  {m.label}
+                  <div style={{ fontSize: 22 }}>{b.icon}</div>
+                  <div>
+                    <div style={{
+                      fontSize: 13,
+                      fontWeight: form.tipo_bonifico === b.id ? 700 : 500,
+                    }}>
+                      {b.label}
+                    </div>
+                    <div style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 1 }}>
+                      {b.sub}
+                    </div>
+                  </div>
                 </button>
               ))}
             </div>
