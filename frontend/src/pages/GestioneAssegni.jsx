@@ -77,7 +77,7 @@ export default function GestioneAssegni() {
     try {
       const res = await api.post('/api/assegni/ricostruisci-dati');
       if (res.data.beneficiari_trovati > 0 || res.data.fatture_associate > 0) {
-        console.log('Dati ricostruiti:', res.data);
+        
         // Ricarica dopo ricostruzione
         loadData();
       }
