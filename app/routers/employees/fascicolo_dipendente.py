@@ -117,8 +117,8 @@ async def fascicolo_dipendente(
                         seen_ids.add(cid)
                         c["match_tipo"] = "bonifici_arch"
                         stipendi_banca.append(c)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"fascicolo: bonifici_transfers skip: {e}")
 
     stipendi_banca.sort(key=lambda x: x.get("data", ""), reverse=True)
 
@@ -139,8 +139,8 @@ async def fascicolo_dipendente(
             },
             {"_id": 0}
         ).to_list(31)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"fascicolo: presenze_giornaliere skip: {e}")
 
     # ── 6. ACCONTI TFR ──
     acconti_tfr = []
@@ -148,8 +148,8 @@ async def fascicolo_dipendente(
         acconti_tfr = await db["tfr_acconti"].find(
             {"dipendente_id": dip_id}, {"_id": 0}
         ).sort("data", -1).to_list(50)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"fascicolo: tfr_acconti skip: {e}")
 
     # ── 7. PROGRESSIVI FERIE/PERMESSI ──
     progressivi = dip.get("progressivi", {})
@@ -163,8 +163,8 @@ async def fascicolo_dipendente(
         verbali = await db["verbali_autovelox"].find(
             {"$or": v_query}, {"_id": 0}
         ).sort("data_verbale", -1).to_list(50)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"fascicolo: verbali_autovelox skip: {e}")
 
     # ── 9. GIUSTIFICATIVI ANNO ──
     giustificativi = []
@@ -173,8 +173,8 @@ async def fascicolo_dipendente(
             {"dipendente_id": dip_id, "anno": anno},
             {"_id": 0}
         ).sort("data_inizio", -1).to_list(200)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"fascicolo: giustificativi skip: {e}")
 
     # ── RESPONSE ──
     return {

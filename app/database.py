@@ -113,6 +113,86 @@ class Database:
 
         # --- Partite Aperte (Chat 8) ---
         await _safe_index("partite_aperte", "id", unique=True, name="idx_pa_id")
+
+        # --- Dipendenti (query per CF, attivo, data_assunzione) ---
+        await _safe_index("dipendenti", "codice_fiscale", unique=True, sparse=True, name="idx_dipendenti_cf")
+        await _safe_index("dipendenti", "attivo", name="idx_dipendenti_attivo")
+        await _safe_index("dipendenti", [("cognome", 1), ("nome", 1)], name="idx_dipendenti_nome")
+
+        # --- Assegni (query per stato, fornitore, data) ---
+        await _safe_index("assegni", "stato", name="idx_assegni_stato")
+        await _safe_index("assegni", "pagato", name="idx_assegni_pagato")
+        await _safe_index("assegni", [("fornitore_piva", 1), ("data_emissione", -1)], name="idx_assegni_fornitore_data")
+        await _safe_index("assegni", "fattura_id", sparse=True, name="idx_assegni_fattura")
+
+        # --- Alerts (query per stato, tipo, data) ---
+        await _safe_index("alerts", [("stato", 1), ("created_at", -1)], name="idx_alerts_stato_data")
+        await _safe_index("alerts", "tipo", name="idx_alerts_tipo")
+        await _safe_index("alerts", "entity_id", sparse=True, name="idx_alerts_entity")
+
+        # --- Pagamenti (query per fattura, stato, data) ---
+        await _safe_index("pagamenti", "fattura_id", sparse=True, name="idx_pagamenti_fattura")
+        await _safe_index("pagamenti", [("data", -1)], name="idx_pagamenti_data")
+        await _safe_index("pagamenti", "stato", name="idx_pagamenti_stato")
+
+        # --- Verbali Noleggio ---
+        await _safe_index("verbali_noleggio", [("data_verbale", -1)], name="idx_verbali_data")
+        await _safe_index("verbali_noleggio", "veicolo_targa", sparse=True, name="idx_verbali_targa")
+        await _safe_index("verbali_noleggio", "dipendente_id", sparse=True, name="idx_verbali_dipendente")
+
+        # --- Presenze / Attendance ---
+        await _safe_index("presenze", [("employee_id", 1), ("data", -1)], name="idx_presenze_emp_data")
+        await _safe_index("presenze_giornaliere", [("employee_id", 1), ("anno", 1), ("mese", 1)], name="idx_presenze_g_emp")
+        await _safe_index("attendance_assenze", [("dipendente_id", 1), ("data_inizio", -1)], name="idx_assenze_dip_data")
+        await _safe_index("attendance_timbrature", [("dipendente_id", 1), ("timestamp", -1)], name="idx_timbrature_dip")
+
+        # --- Acconti / TFR ---
+        await _safe_index("acconti_dipendenti", "dipendente_id", name="idx_acconti_dip")
+        await _safe_index("tfr_accantonamenti", [("dipendente_id", 1), ("anno", 1)], name="idx_tfr_dip_anno")
+        await _safe_index("trattenute_dipendenti", "dipendente_id", name="idx_trattenute_dip")
+
+        # --- Notifications ---
+        await _safe_index("notifications", [("created_at", -1)], name="idx_notif_data")
+        await _safe_index("notifications", "letta", name="idx_notif_letta")
+
+        # --- Documents inbox ---
+        await _safe_index("documents_inbox", [("received_at", -1)], name="idx_docs_inbox_data")
+        await _safe_index("documents_inbox", "stato", name="idx_docs_inbox_stato")
+
+        # --- Prima nota salari ---
+        await _safe_index("prima_nota_salari", [("anno", 1), ("mese", 1)], name="idx_pn_salari_anno_mese")
+        await _safe_index("prima_nota_salari", "dipendente_id", sparse=True, name="idx_pn_salari_dip")
+
+        # --- Movimenti contabili ---
+        await _safe_index("movimenti_contabili", [("data", -1)], name="idx_mov_cont_data")
+        await _safe_index("movimenti_contabili", [("anno", 1), ("conto", 1)], name="idx_mov_cont_anno_conto")
+
+        # --- Cash ---
+        await _safe_index("cash", [("data", -1)], name="idx_cash_data")
+        await _safe_index("cash", [("anno", 1), ("tipo", 1)], name="idx_cash_anno_tipo")
+
+        # --- Fatture emesse ---
+        await _safe_index("fatture_emesse", [("data_emissione", -1)], name="idx_fe_data")
+        await _safe_index("fatture_emesse", "stato", name="idx_fe_stato")
+
+        # --- Acquisti prodotti ---
+        await _safe_index("acquisti_prodotti", [("data", -1)], name="idx_acquisti_data")
+        await _safe_index("acquisti_prodotti", "fornitore_id", sparse=True, name="idx_acquisti_fornitore")
+
+        # --- Veicoli noleggio ---
+        await _safe_index("veicoli_noleggio", "targa", unique=True, sparse=True, name="idx_veicoli_targa")
+        await _safe_index("veicoli_noleggio", "disponibile", name="idx_veicoli_disponibile")
+
+        # --- Riepilogo cedolini ---
+        await _safe_index("riepilogo_cedolini", [("anno", 1), ("mese", 1)], name="idx_riep_ced_anno_mese")
+
+        # --- Agenti segnalazioni ---
+        await _safe_index("agenti_segnalazioni", [("created_at", -1)], name="idx_agenti_segn_data")
+        await _safe_index("agenti_segnalazioni", "stato", name="idx_agenti_segn_stato")
+
+        # --- Operazioni da confermare ---
+        await _safe_index("operazioni_da_confermare", [("created_at", -1)], name="idx_op_conf_data")
+        await _safe_index("operazioni_da_confermare", "stato", name="idx_op_conf_stato")
         await _safe_index("partite_aperte", [("stato", 1), ("tipo", 1)], name="idx_pa_stato_tipo")
         await _safe_index("partite_aperte", [("controparte_id", 1), ("stato", 1)], name="idx_pa_controparte")
         await _safe_index("partite_aperte", [("documento_id", 1), ("tipo", 1)], name="idx_pa_doc_tipo")

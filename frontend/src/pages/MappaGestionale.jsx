@@ -1709,7 +1709,7 @@ export default function MappaGestionale() {
                 <h2 style={{ margin: '0 0 14px', fontSize: 15, fontWeight: 700, color: '#1e293b' }}>
                   Dettaglio: {FLUSSI[activeSezione].titolo}
                 </h2>
-                <FlowCard sezioneKey={activeSezione} isActive={true} onClick={() => {}} />
+                <FlowCard sezioneKey={activeSezione} isActive={true} onClick={null} />
               </div>
             )}
 

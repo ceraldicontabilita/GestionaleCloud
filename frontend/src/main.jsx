@@ -38,6 +38,8 @@ const HRBustePaga = lazy(() => import("./pages/hr/HRBustePaga.jsx"));
 const HRMissioni = lazy(() => import("./pages/hr/HRMissioni.jsx"));
 const HRDocumenti = lazy(() => import("./pages/hr/HRDocumenti.jsx"));
 const HRFeriePermessi = lazy(() => import("./pages/hr/HRFeriePermessi.jsx"));
+const Attendance = lazy(() => import("./pages/Attendance.jsx"));
+const SaldiFeriePermessi = lazy(() => import("./pages/SaldiFeriePermessi.jsx"));
 const HRHub = lazy(() => import("./pages/hr/HRHub.jsx"));
 const VeicoliHub = lazy(() => import("./pages/hub/VeicoliHub.jsx"));
 const ContabilitaHub = lazy(() => import("./pages/hub/ContabilitaHub.jsx"));
@@ -130,6 +132,8 @@ const router = createBrowserRouter([
       { path: "missioni", element: <LazyPage><HRMissioni /></LazyPage> },
       { path: "hr-documenti", element: <LazyPage><HRDocumenti /></LazyPage> },
       { path: "ferie-permessi", element: <LazyPage><HRFeriePermessi /></LazyPage> },
+      { path: "presenze/attendance", element: <LazyPage><Attendance /></LazyPage> },
+      { path: "saldi-ferie-permessi", element: <LazyPage><SaldiFeriePermessi /></LazyPage> },
       
       // === CEDOLINI & TFR ===
       { path: "paghe", element: <Navigate to="/cedolini" replace /> },
@@ -183,6 +187,10 @@ const router = createBrowserRouter([
       { path: "finanziaria/:anno", element: <LazyPage><ContabilitaHub /></LazyPage> },
       { path: "chiusura-esercizio", element: <Navigate to="/contabilita/chiusura" replace /> },
       { path: "chiusura-esercizio/:anno", element: <LazyPage><ContabilitaHub /></LazyPage> },
+      { path: "utile-obiettivo", element: <Navigate to="/contabilita/utile" replace /> },
+      { path: "utile-obiettivo/:anno", element: <Navigate to="/contabilita/utile" replace /> },
+      { path: "previsioni-acquisti", element: <Navigate to="/contabilita/previsioni-acquisti" replace /> },
+      { path: "previsioni-acquisti/:anno", element: <LazyPage><ContabilitaHub /></LazyPage> },
       
       // === MAGAZZINO ===
       { path: "magazzino", element: <LazyPage><MagazzinoHub /></LazyPage> },
@@ -193,6 +201,8 @@ const router = createBrowserRouter([
       { path: "ricerca-prodotti/:query", element: <LazyPage><MagazzinoHub /></LazyPage> },
       { path: "dizionario-articoli", element: <Navigate to="/magazzino/articoli" replace /> },
       { path: "dizionario-articoli/:articolo", element: <LazyPage><MagazzinoHub /></LazyPage> },
+      { path: "dizionario-prodotti", element: <Navigate to="/magazzino/prodotti" replace /> },
+      { path: "dizionario-prodotti/:prodotto", element: <Navigate to="/magazzino/prodotti" replace /> },
       { path: "magazzino-dv", element: <Navigate to="/magazzino" replace /> },
       
       // === REDIRECT CUCINA → MAGAZZINO (la sezione cucina è stata rimossa) ===
@@ -200,12 +210,8 @@ const router = createBrowserRouter([
       { path: "cucina/:tab", element: <Navigate to="/magazzino" replace /> },
       { path: "ricettario", element: <Navigate to="/magazzino" replace /> },
       { path: "ricettario/:tab", element: <Navigate to="/magazzino" replace /> },
-      { path: "dizionario-prodotti", element: <Navigate to="/magazzino/prodotti" replace /> },
-      { path: "dizionario-prodotti/:prodotto", element: <Navigate to="/magazzino/prodotti" replace /> },
       { path: "centri-costo", element: <Navigate to="/contabilita/centri-costo" replace /> },
       { path: "centri-costo/:centro", element: <Navigate to="/contabilita/centri-costo" replace /> },
-      { path: "utile-obiettivo", element: <Navigate to="/contabilita/utile" replace /> },
-      { path: "utile-obiettivo/:anno", element: <Navigate to="/contabilita/utile" replace /> },
       { path: "learning-machine", element: <LazyPage><LearningMachine /></LazyPage> },
       { path: "learning-machine/:tab", element: <LazyPage><LearningMachine /></LazyPage> },
       
@@ -316,4 +322,5 @@ if ('serviceWorker' in navigator && window.location.protocol === 'https:') {
       .catch((err) => console.warn('[PWA] sw registration failed:', err));
   });
 }
+
 

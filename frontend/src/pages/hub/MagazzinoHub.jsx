@@ -6,6 +6,7 @@ const MagazzinoContent = lazy(() => import('../Magazzino.jsx'));
 const InventarioContent = lazy(() => import('../Inventario.jsx'));
 const RicercaContent = lazy(() => import('../RicercaProdotti.jsx'));
 const ArticoliContent = lazy(() => import('../DizionarioArticoli.jsx'));
+const ProdottiContent = lazy(() => import('../DizionarioProdotti.jsx'));
 const POSContent = lazy(() => import('../CoerenzaPOSCorrispettivi.jsx'));
 
 const TABS = [
@@ -13,6 +14,7 @@ const TABS = [
   { id: 'inventario', label: '📋 Inventario', color: '#10b981' },
   { id: 'ricerca', label: '🔍 Ricerca Prodotti', color: '#f59e0b' },
   { id: 'articoli', label: '📚 Dizionario Articoli', color: '#8b5cf6' },
+  { id: 'prodotti', label: '🍽️ Dizionario Prodotti', color: '#f43f5e' },
   { id: 'pos', label: '🔄 Coerenza POS', color: '#06b6d4' },
 ];
 
@@ -40,6 +42,8 @@ const getTabFromPath = pathname => {
     return 'ricerca';
   if (pathname.includes('/dizionario-articoli') || pathname.includes('/magazzino/articoli'))
     return 'articoli';
+  if (pathname.includes('/dizionario-prodotti') || pathname.includes('/magazzino/prodotti'))
+    return 'prodotti';
   if (pathname.includes('/pos') || pathname.includes('/coerenza-pos')) return 'pos';
   if (pathname.includes('/magazzino/')) {
     const m = pathname.match(/\/magazzino\/([\w-]+)/);
@@ -84,6 +88,7 @@ export default function MagazzinoHub() {
     inventario: InventarioContent,
     ricerca: RicercaContent,
     articoli: ArticoliContent,
+    prodotti: ProdottiContent,
     pos: POSContent,
   };
 

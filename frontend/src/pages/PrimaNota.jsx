@@ -475,7 +475,7 @@ function PrimaNotaDesktop() {
       loadAllData();
       // Feedback visivo opzionale
       if (res.data.fattura_aggiornata) {
-        console.log(`Fattura ${res.data.fattura_id} aggiornata con nuovo metodo`);
+        
       }
     } catch (error) {
       alert('Errore spostamento: ' + (error.response?.data?.detail || error.message));

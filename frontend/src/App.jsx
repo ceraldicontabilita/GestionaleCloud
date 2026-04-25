@@ -72,10 +72,10 @@ export default function App() {
         if (sessionIdMatch) {
           const sessionId = sessionIdMatch[1];
           try {
-            console.log('[App] Processando Google OAuth session_id...');
+            
             const response = await api.post('/api/auth/google/session', { session_id: sessionId });
             if (response.data.success) {
-              console.log('[App] Google OAuth completato:', response.data.user?.email);
+              
               if (response.data.access_token) {
                 setAuthToken(response.data.access_token);
               }
@@ -381,3 +381,4 @@ export default function App() {
     </UploadProvider>
   );
 }
+

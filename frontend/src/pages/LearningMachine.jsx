@@ -49,6 +49,7 @@ import {
 } from 'lucide-react';
 
 const RegoleCategorizzazioneLazy = lazy(() => import('./RegoleCategorizzazione.jsx'));
+const LearningUniversaleLazy = lazy(() => import('./LearningMachineUniversale.jsx'));
 
 // ============================================================
 // COMPONENTI RIUTILIZZABILI
@@ -390,6 +391,7 @@ export default function LearningMachine() {
     { id: 'assegni', label: 'Pattern Assegni', icon: CreditCard },
     { id: 'documenti', label: 'Classificazione Documenti', icon: FileText },
     { id: 'regole', label: '⚙️ Regole Categorizzazione', icon: Settings },
+    { id: 'universale', label: '🌐 Training Universale', icon: RefreshCw },
   ];
 
   // ============================================================
@@ -1455,6 +1457,23 @@ export default function LearningMachine() {
             </>
           )}
         </div>
+      )}
+
+      {/* === TAB: LEARNING UNIVERSALE === */}
+      {activeTab === 'universale' && (
+        <Suspense
+          fallback={
+            <div style={{ textAlign: 'center', padding: 60, color: '#6b7280' }}>
+              <RefreshCw
+                size={32}
+                style={{ margin: '0 auto 12px', animation: 'spin 1s linear infinite' }}
+              />
+              <p>Caricamento Training Universale...</p>
+            </div>
+          }
+        >
+          <LearningUniversaleLazy />
+        </Suspense>
       )}
 
       {/* === TAB: REGOLE CATEGORIZZAZIONE === */}

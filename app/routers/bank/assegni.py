@@ -481,7 +481,9 @@ async def correggi_associazione_assegno(
         importo_assegno_val = float(assegno.get("importo") or 0)
 
         update_data["fattura_id"] = nuova_fattura_id
-        # FIX 1: alias per consistenza GET
+        update_data["pagato"] = True
+        update_data["stato"] = "associato"
+        # alias per consistenza GET
         update_data["numero_fattura"] = numero_fattura_val
         update_data["fattura_numero"] = numero_fattura_val
         update_data["data_fattura"] = fattura.get("invoice_date") or fattura.get("data_documento")
@@ -515,6 +517,8 @@ async def correggi_associazione_assegno(
         message = f"Associazione corretta per assegno {assegno.get('numero_assegno') or assegno.get('numero')}"
     else:
         update_data["fattura_id"] = None
+        update_data["pagato"] = False
+        update_data["stato"] = "emesso"
         update_data["numero_fattura"] = None
         update_data["fattura_numero"] = None
         update_data["data_fattura"] = None

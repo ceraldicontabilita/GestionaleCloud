@@ -137,6 +137,24 @@ export default function HRHub() {
       badge: stats.documenti_in_scadenza > 0 ? `${stats.documenti_in_scadenza} in scadenza` : null,
       badgeColor: COLORS.danger,
     },
+    {
+      path: '/presenze/attendance',
+      titolo: 'Registro Presenze',
+      descrizione: 'Inserimento batch presenze, PDF consulente, giustificativi',
+      icon: Clock,
+      color: '#0891b2',
+      bg: '#ecfeff',
+      badge: null,
+    },
+    {
+      path: '/saldi-ferie-permessi',
+      titolo: 'Saldi Ferie & Permessi',
+      descrizione: 'Consuntivo saldi finali ferie, permessi e ROL per dipendente',
+      icon: CalendarDays,
+      color: '#059669',
+      bg: '#ecfdf5',
+      badge: null,
+    },
   ], [stats]);
 
   // ═══════════════════════════════════════════════════════════════════════

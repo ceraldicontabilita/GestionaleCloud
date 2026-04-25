@@ -951,14 +951,102 @@ async def import_invoices_excel(
     file: UploadFile = File(...),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ) -> Dict[str, Any]:
-    """Import invoices from Excel file."""
+    """
+    Importa fatture da file Excel.
+    Colonne attese: Numero, Data, Fornitore, P.IVA, Importo, Stato
+    (l'ordine può variare - si cerca per nome colonna case-insensitive).
+    """
+    try:
+        import openpyxl
+    except ImportError:
+        raise HTTPException(status_code=501, detail="openpyxl non installato")
+
+    import io, uuid
+    from datetime import datetime, timezone
+
+    db = Database.get_db()
     contents = await file.read()
-    # TODO: Process Excel import
+
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(contents), read_only=True, data_only=True)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"File Excel non valido: {e}")
+
+    ws = wb.active
+    rows = list(ws.iter_rows(values_only=True))
+    if not rows:
+        return {"message": "File vuoto", "filename": file.filename, "imported": 0, "errors": []}
+
+    # Mappa header (case-insensitive)
+    header_row = [str(h).strip().lower() if h else "" for h in rows[0]]
+    col = lambda names: next((header_row.index(n) for n in names if n in header_row), None)
+
+    idx_num   = col(["numero", "n.", "num", "numero_fattura", "invoice_number"])
+    idx_data  = col(["data", "data_fattura", "data_documento", "invoice_date"])
+    idx_forn  = col(["fornitore", "ragione_sociale", "supplier", "supplier_name"])
+    idx_piva  = col(["p.iva", "piva", "partita_iva", "vat", "fornitore_piva"])
+    idx_imp   = col(["importo", "totale", "total", "total_amount", "importo_totale"])
+    idx_stato = col(["stato", "status", "stato_pagamento"])
+
+    imported = 0
+    errors = []
+
+    for row_i, row in enumerate(rows[1:], 2):
+        try:
+            numero   = str(row[idx_num]).strip()  if idx_num is not None and row[idx_num]  else ""
+            data_val = row[idx_data]               if idx_data is not None else None
+            fornitore= str(row[idx_forn]).strip()  if idx_forn is not None and row[idx_forn] else ""
+            piva     = str(row[idx_piva]).strip()  if idx_piva is not None and row[idx_piva] else ""
+            importo  = float(row[idx_imp] or 0)   if idx_imp is not None else 0.0
+            stato    = str(row[idx_stato]).strip() if idx_stato is not None and row[idx_stato] else "da_pagare"
+
+            if not numero and not fornitore:
+                continue  # Riga vuota
+
+            if isinstance(data_val, datetime):
+                data_str = data_val.date().isoformat()
+            elif data_val:
+                data_str = str(data_val)[:10]
+            else:
+                data_str = datetime.now().date().isoformat()
+
+            anno = int(data_str[:4]) if data_str else datetime.now().year
+            invoice_key = f"{piva}_{numero}_{data_str}" if piva and numero else f"xls_{uuid.uuid4().hex[:8]}"
+
+            doc = {
+                "id": f"xls-{uuid.uuid4().hex[:12]}",
+                "invoice_key": invoice_key,
+                "source": "excel_import",
+                "invoice_number": numero,
+                "invoice_date": data_str,
+                "anno": anno,
+                "fornitore_ragione_sociale": fornitore,
+                "fornitore_piva": piva,
+                "total_amount": importo,
+                "importo_totale": importo,
+                "stato": stato,
+                "pagato": stato.lower() in ("pagato", "paid"),
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+
+            result = await db["invoices"].update_one(
+                {"invoice_key": invoice_key},
+                {"$setOnInsert": doc},
+                upsert=True
+            )
+            if result.upserted_id:
+                imported += 1
+
+        except Exception as e:
+            errors.append({"riga": row_i, "errore": str(e)})
+
     return {
-        "message": "Excel import completed",
+        "message": f"Import completato: {imported} fatture inserite",
         "filename": file.filename,
-        "imported": 0,
-        "errors": []
+        "imported": imported,
+        "errors": errors,
+        "total_rows": len(rows) - 1
     }
 
 

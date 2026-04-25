@@ -3,6 +3,8 @@ Cash router.
 API endpoints for cash register management and daily closures.
 """
 from fastapi import APIRouter, Depends, Query, Path, status
+from fastapi.responses import StreamingResponse
+import io
 from typing import List, Dict, Any, Optional
 from datetime import date
 import logging
@@ -308,18 +310,73 @@ async def export_cash_excel(
     service: CashService = Depends(get_cash_service)
 ):
     """
-    Export cash movements to Excel.
-    
-    TODO: Implement Excel export with openpyxl
-    
-    **Query Parameters:**
-    - **start_date**: Start date (YYYY-MM-DD)
-    - **end_date**: End date (YYYY-MM-DD)
-    
-    **Returns:**
-    - Excel file download
+    Export movimenti cassa in Excel (openpyxl).
     """
-    return {
-        "message": "Excel export not yet implemented",
-        "note": "Will be implemented in future version"
+    try:
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment
+    except ImportError:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=501,
+            content={"error": "openpyxl non installato", "detail": "pip install openpyxl"}
+        )
+
+    db = Database.get_db()
+    query = {
+        "data": {
+            "$gte": start_date.isoformat(),
+            "$lte": end_date.isoformat()
+        }
     }
+    movimenti = await db[Collections.CASH_MOVEMENTS].find(
+        query, {"_id": 0}
+    ).sort("data", 1).to_list(10000)
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Movimenti Cassa"
+
+    # Header
+    headers = ["Data", "Tipo", "Descrizione", "Causale", "Importo (€)", "Saldo"]
+    header_fill = PatternFill("solid", fgColor="0F2744")
+    header_font = Font(bold=True, color="FFFFFF")
+    for col, h in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=h)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center")
+
+    # Dati
+    saldo = 0.0
+    for row_idx, mov in enumerate(movimenti, 2):
+        importo = float(mov.get("importo") or 0)
+        tipo = mov.get("tipo", "")
+        if tipo in ("entrata", "incasso", "+"):
+            saldo += importo
+        else:
+            saldo -= importo
+
+        ws.cell(row=row_idx, column=1, value=mov.get("data", ""))
+        ws.cell(row=row_idx, column=2, value=tipo)
+        ws.cell(row=row_idx, column=3, value=mov.get("descrizione") or mov.get("note", ""))
+        ws.cell(row=row_idx, column=4, value=mov.get("causale", ""))
+        ws.cell(row=row_idx, column=5, value=importo)
+        ws.cell(row=row_idx, column=6, value=round(saldo, 2))
+
+    # Larghezze colonne
+    ws.column_dimensions["A"].width = 12
+    ws.column_dimensions["C"].width = 40
+    ws.column_dimensions["D"].width = 20
+
+    # Salva in buffer
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+
+    filename = f"cassa_{start_date}_{end_date}.xlsx"
+    return StreamingResponse(
+        buffer,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )

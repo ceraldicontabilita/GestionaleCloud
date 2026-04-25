@@ -151,7 +151,7 @@ export default function RiconciliazioneUnificata() {
     try {
       const res = await api.post('/api/fatture-ricevute/auto-ricostruisci-dati');
       if (res.data.riconciliazioni_auto > 0 || res.data.f24_corretti > 0) {
-        console.log('🔧 Auto-riparazione completata:', res.data);
+        
         setAutoRepairStatus(res.data);
         // Ricarica dati dopo riparazione
         loadAllData();

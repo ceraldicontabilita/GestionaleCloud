@@ -31,7 +31,7 @@ export default function AuthCallback() {
         }
 
         const sessionId = sessionIdMatch[1];
-        console.log('[AuthCallback] Processando session_id...');
+        
 
         // Chiama il backend per validare e creare la sessione
         const response = await api.post('/api/auth/google/session', {
@@ -39,7 +39,7 @@ export default function AuthCallback() {
         });
 
         if (response.data.success && response.data.user) {
-          console.log('[AuthCallback] Login Google riuscito:', response.data.user.email);
+          
 
           // FIX: usa setAuthToken (chiave "auth_token") invece di localStorage.setItem('token', ...)
           // in modo che AuthContext + api.js riconoscano l'utente come loggato.
