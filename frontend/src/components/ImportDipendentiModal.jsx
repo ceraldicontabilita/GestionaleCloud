@@ -2,7 +2,7 @@
 // Flusso: paste JSON o upload file → preview dry-run → conferma → apply
 import React, { useState, useMemo } from 'react';
 import { X, Upload, AlertTriangle, CheckCircle, FileText, Eye, Play } from 'lucide-react';
-import api from '../lib/api';
+import api from '../api';
 import { COLORS, SPACING } from '../lib/utils';
 
 export default function ImportDipendentiModal({ onClose, onImported }) {
