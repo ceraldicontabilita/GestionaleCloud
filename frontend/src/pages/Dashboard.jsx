@@ -82,10 +82,7 @@ export default function Dashboard() {
         (fatRes.data.fornitori_associati || 0) +
         (ricRes.data.riconciliazioni_auto || 0);
 
-      console.log('🔧 Auto-riparazione completata:', {
-        fatture: fatRes.data,
-        riconciliazione: ricRes.data,
-      });
+      
       setAutoRepairStatus({
         fatture: fatRes.data,
         riconciliazione: ricRes.data,
