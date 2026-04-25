@@ -344,3 +344,110 @@ async def smappa_fornitore(body: Dict[str, Any] = Body(...)):
          "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}}
     )
     return {"success": True, "modified": res.modified_count}
+
+
+@router.post("/crea-fornitore-e-mappa")
+async def crea_fornitore_e_mappa(body: Dict[str, Any] = Body(...)):
+    """Crea un nuovo fornitore E lo mappa al paypal_account_id in un'unica operazione.
+
+    Body:
+        {
+            "paypal_account_id": "6QL6S5MMB8NA2",  # OBBLIGATORIO
+            "ragione_sociale":   "MongoDB Limited",  # OBBLIGATORIO
+            "piva":              "IE9952657T",       # opzionale
+            "nazione":           "IE",               # default "IT"
+            "metodo_pagamento":  "paypal",           # default "paypal" (è ovvio)
+            "esclude_magazzino": True,               # default True
+            "email":             "billing@mongodb.com",  # opzionale
+            "note":              "Servizi cloud DB"
+        }
+
+    Comportamento:
+    - Verifica che il paypal_account_id non sia già mappato altrove (409)
+    - Verifica che la P.IVA non sia duplicata (409)
+    - Crea il fornitore con uuid + valori default sensati per fornitori PayPal
+      (esclude_magazzino=True perché tipicamente sono SaaS/servizi, non prodotti)
+    - Imposta automaticamente paypal_account_id sul nuovo record
+    """
+    import uuid
+
+    paypal_account_id = (body.get("paypal_account_id") or "").strip()
+    ragione_sociale = (body.get("ragione_sociale") or "").strip()
+    if not paypal_account_id:
+        raise HTTPException(400, "paypal_account_id richiesto")
+    if not ragione_sociale:
+        raise HTTPException(400, "ragione_sociale richiesta")
+
+    db = Database.get_db()
+
+    # Anti-duplicazione 1: paypal_account_id già mappato?
+    already_mapped = await db["fornitori"].find_one(
+        {"paypal_account_id": paypal_account_id},
+        {"_id": 0, "id": 1, "nome": 1, "ragione_sociale": 1}
+    )
+    if already_mapped:
+        raise HTTPException(
+            409,
+            f"Account PayPal già mappato a fornitore: "
+            f"{already_mapped.get('ragione_sociale') or already_mapped.get('nome')}"
+        )
+
+    # Anti-duplicazione 2: P.IVA già esistente?
+    piva = (body.get("piva") or "").strip().upper()
+    if piva:
+        existing_by_piva = await db["fornitori"].find_one(
+            {"piva": piva},
+            {"_id": 0, "id": 1, "nome": 1, "ragione_sociale": 1}
+        )
+        if existing_by_piva:
+            raise HTTPException(
+                409,
+                f"P.IVA già presente per: "
+                f"{existing_by_piva.get('ragione_sociale') or existing_by_piva.get('nome')}. "
+                f"Usa /mappa-fornitore con fornitore_id={existing_by_piva.get('id')}"
+            )
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    fornitore_id = str(uuid.uuid4())
+
+    fornitore = {
+        "id": fornitore_id,
+        "nome": ragione_sociale,
+        "ragione_sociale": ragione_sociale,
+        "piva": piva,
+        "codice_fiscale": (body.get("codice_fiscale") or "").upper().strip(),
+        "email": (body.get("email") or "").strip(),
+        "telefono": (body.get("telefono") or "").strip(),
+        "indirizzo": (body.get("indirizzo") or "").strip(),
+        "cap": (body.get("cap") or "").strip(),
+        "comune": (body.get("comune") or "").strip(),
+        "provincia": (body.get("provincia") or "").strip(),
+        "nazione": (body.get("nazione") or "IT").upper().strip(),
+        "iban": "",  # PayPal non usa IBAN
+        "iban_lista": [],
+        "metodo_pagamento": body.get("metodo_pagamento") or "paypal",
+        "giorni_pagamento": int(body.get("giorni_pagamento") or 0),
+        "esclude_magazzino": bool(body.get("esclude_magazzino", True)),
+        "escludi_da_tracciabilita": bool(body.get("escludi_da_tracciabilita", False)),
+        "paypal_account_id": paypal_account_id,
+        "note": (body.get("note") or "").strip() or "Creato da mapping PayPal",
+        "source": "paypal_mapping",
+        "created_at": now_iso,
+        "updated_at": now_iso,
+    }
+    await db["fornitori"].insert_one(fornitore.copy())
+    fornitore.pop("_id", None)
+
+    # Conta transazioni che ora avranno il fornitore mappato
+    n_tx = await db["paypal_transactions"].count_documents(
+        {"paypal_account_id": paypal_account_id}
+    )
+
+    return {
+        "success": True,
+        "fornitore_id": fornitore_id,
+        "ragione_sociale": ragione_sociale,
+        "paypal_account_id": paypal_account_id,
+        "n_transazioni_collegabili": n_tx,
+        "fornitore": fornitore,
+    }

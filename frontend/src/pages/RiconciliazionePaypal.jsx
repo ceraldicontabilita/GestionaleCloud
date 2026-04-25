@@ -77,6 +77,7 @@ export default function RiconciliazionePaypal() {
   const [mappingData, setMappingData] = useState(null);
   const [mappingLoading, setMappingLoading] = useState(false);
   const [selectedForn, setSelectedForn] = useState({}); // {paypal_account_id: fornitore_id}
+  const [createModal, setCreateModal] = useState(null); // {paypal_account_id, nome_controparte, ...} | null
 
   // Sincronizza il filtro locale con l'anno globale quando cambia nel TopNav
   useEffect(() => {
@@ -1205,8 +1206,8 @@ export default function RiconciliazionePaypal() {
                     )}
                   </div>
 
-                  {/* Colonna 3: bottone collega */}
-                  <div style={{ display: 'flex', gap: 8 }}>
+                  {/* Colonna 3: bottoni azione */}
+                  <div style={{ display: 'flex', gap: 8, flexDirection: 'column' }}>
                     <button
                       data-testid={`mappa-btn-${item.paypal_account_id}`}
                       onClick={() =>
@@ -1224,10 +1225,32 @@ export default function RiconciliazionePaypal() {
                         cursor: selectedForn[item.paypal_account_id] ? 'pointer' : 'not-allowed',
                         fontWeight: 600,
                         fontSize: 13,
-                        flex: 1,
                       }}
                     >
                       🔗 Collega
+                    </button>
+                    <button
+                      data-testid={`crea-forn-btn-${item.paypal_account_id}`}
+                      onClick={() => setCreateModal({
+                        paypal_account_id: item.paypal_account_id,
+                        nome_controparte: item.nome_controparte || '',
+                        email_controparte: item.email_controparte || '',
+                        importo_totale: item.importo_totale || 0,
+                        n_tx: item.n_tx || 0,
+                      })}
+                      style={{
+                        padding: '8px 14px',
+                        background: 'transparent',
+                        color: '#0070ba',
+                        border: '1px dashed #0070ba',
+                        borderRadius: 6,
+                        cursor: 'pointer',
+                        fontWeight: 600,
+                        fontSize: 11,
+                      }}
+                      title="Crea un nuovo fornitore in anagrafica e mappalo subito"
+                    >
+                      ➕ Crea nuovo
                     </button>
                   </div>
                 </div>
@@ -1260,6 +1283,218 @@ export default function RiconciliazionePaypal() {
         transactionId={modalTxId}
         onClose={() => setModalTxId(null)}
       />
+
+      {/* Modale crea fornitore + mappa */}
+      {createModal && (
+        <CreaFornitorePaypalModal
+          context={createModal}
+          onClose={() => setCreateModal(null)}
+          onCreated={() => {
+            setCreateModal(null);
+            loadMapping();
+            toast.success('✓ Fornitore creato e mappato');
+          }}
+        />
+      )}
     </PageLayout>
   );
 }
+
+// ─── Modale: crea fornitore inline + mappa al paypal_account_id ──────────────
+function CreaFornitorePaypalModal({ context, onClose, onCreated }) {
+  const [form, setForm] = useState({
+    ragione_sociale: context.nome_controparte || '',
+    piva: '',
+    nazione: 'IT',
+    email: context.email_controparte || '',
+    metodo_pagamento: 'paypal',
+    esclude_magazzino: true,
+    note: `Creato da PayPal mapping (${context.n_tx} transazioni, totale €${Math.abs(context.importo_totale).toFixed(2)})`,
+  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const submit = async () => {
+    if (!form.ragione_sociale.trim()) {
+      setError('La ragione sociale è obbligatoria');
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      await api.post('/api/paypal-api/crea-fornitore-e-mappa', {
+        paypal_account_id: context.paypal_account_id,
+        ...form,
+      });
+      onCreated();
+    } catch (e) {
+      setError(e.response?.data?.detail || e.message || 'Errore sconosciuto');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+        zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: 'white', borderRadius: 12, width: '100%', maxWidth: 560,
+          padding: 24, boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+        }}
+      >
+        <div style={{ marginBottom: 16 }}>
+          <h2 style={{ margin: 0, fontSize: 18, color: '#0070ba' }}>
+            ➕ Crea fornitore PayPal
+          </h2>
+          <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>
+            Account ID: <code>{context.paypal_account_id}</code> · {context.n_tx} transazioni
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <Field label="Ragione sociale *" required>
+            <input
+              type="text"
+              value={form.ragione_sociale}
+              onChange={e => setForm(f => ({ ...f, ragione_sociale: e.target.value }))}
+              autoFocus
+              style={inputStyle}
+            />
+          </Field>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 10 }}>
+            <Field label="P.IVA / VAT">
+              <input
+                type="text"
+                value={form.piva}
+                onChange={e => setForm(f => ({ ...f, piva: e.target.value.toUpperCase() }))}
+                placeholder="es. IE9952657T"
+                style={inputStyle}
+              />
+            </Field>
+            <Field label="Nazione">
+              <select
+                value={form.nazione}
+                onChange={e => setForm(f => ({ ...f, nazione: e.target.value }))}
+                style={inputStyle}
+              >
+                <option value="IT">🇮🇹 Italia</option>
+                <option value="IE">🇮🇪 Irlanda</option>
+                <option value="NL">🇳🇱 Paesi Bassi</option>
+                <option value="DE">🇩🇪 Germania</option>
+                <option value="FR">🇫🇷 Francia</option>
+                <option value="ES">🇪🇸 Spagna</option>
+                <option value="GB">🇬🇧 Regno Unito</option>
+                <option value="US">🇺🇸 USA</option>
+                <option value="LU">🇱🇺 Lussemburgo</option>
+                <option value="OTHER">Altro</option>
+              </select>
+            </Field>
+          </div>
+
+          <Field label="Email">
+            <input
+              type="email"
+              value={form.email}
+              onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+              style={inputStyle}
+            />
+          </Field>
+
+          <Field label="Note">
+            <textarea
+              value={form.note}
+              onChange={e => setForm(f => ({ ...f, note: e.target.value }))}
+              rows={2}
+              style={{ ...inputStyle, fontFamily: 'inherit', resize: 'vertical' }}
+            />
+          </Field>
+
+          <label
+            style={{
+              display: 'flex', alignItems: 'flex-start', gap: 8, padding: 10,
+              background: '#f8fafc', borderRadius: 6, fontSize: 12,
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={form.esclude_magazzino}
+              onChange={e => setForm(f => ({ ...f, esclude_magazzino: e.target.checked }))}
+              style={{ marginTop: 2 }}
+            />
+            <span>
+              <strong>Escludi da magazzino</strong> (consigliato per fornitori PayPal: SaaS, servizi cloud, abbonamenti)
+            </span>
+          </label>
+        </div>
+
+        {error && (
+          <div
+            style={{
+              marginTop: 12, padding: 10, background: '#fee2e2',
+              border: '1px solid #fca5a5', borderRadius: 6, color: '#b91c1c', fontSize: 13,
+            }}
+          >
+            ⚠️ {error}
+          </div>
+        )}
+
+        <div style={{ marginTop: 20, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button
+            onClick={onClose}
+            disabled={loading}
+            style={{
+              padding: '8px 16px', background: 'white', color: '#64748b',
+              border: '1px solid #e2e8f0', borderRadius: 6, cursor: 'pointer', fontSize: 13,
+            }}
+          >
+            Annulla
+          </button>
+          <button
+            onClick={submit}
+            disabled={loading || !form.ragione_sociale.trim()}
+            style={{
+              padding: '8px 18px',
+              background: form.ragione_sociale.trim() && !loading
+                ? 'linear-gradient(135deg, #0070ba 0%, #003087 100%)'
+                : '#cbd5e1',
+              color: 'white', border: 'none', borderRadius: 6,
+              cursor: form.ragione_sociale.trim() && !loading ? 'pointer' : 'not-allowed',
+              fontSize: 13, fontWeight: 600,
+            }}
+          >
+            {loading ? '⏳ Creazione…' : '➕ Crea e mappa'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, children }) {
+  return (
+    <label style={{ display: 'block' }}>
+      <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        {label}
+      </div>
+      {children}
+    </label>
+  );
+}
+
+const inputStyle = {
+  width: '100%',
+  padding: '8px 10px',
+  border: '1px solid #e2e8f0',
+  borderRadius: 6,
+  fontSize: 13,
+  outline: 'none',
+  boxSizing: 'border-box',
+};
