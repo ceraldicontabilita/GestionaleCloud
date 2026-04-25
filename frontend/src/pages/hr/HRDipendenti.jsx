@@ -1276,6 +1276,9 @@ function TabCedolini({ dip }) {
   const [anno, setAnno] = useState(ANNO_CORRENTE);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  // Modale scalatura acconti per il cedolino selezionato
+  const [scalaCedolino, setScalaCedolino] = useState(null); // cedolino object | null
+  const [reloadBump, setReloadBump] = useState(0);
 
   const load = useCallback((signal) => {
     setLoading(true);
@@ -1283,7 +1286,7 @@ function TabCedolini({ dip }) {
       .then(r=>{ if(!signal?.aborted) setData(r.data); })
       .catch(e=>{ if(!isCanceledError(e)) setData(null); })
       .finally(()=>{ if(!signal?.aborted) setLoading(false); });
-  }, [dip.id, anno]);
+  }, [dip.id, dip.codice_fiscale, anno, reloadBump]);
 
   useAbortableEffect(load, [load]);
 
@@ -1344,7 +1347,7 @@ function TabCedolini({ dip }) {
           <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
             <thead>
               <tr style={{ background:'#f8fafc' }}>
-                {['Mese','Lordo','Netto','TFR','Stato'].map(h=>(
+                {['Mese','Lordo','Netto','TFR','Stato','Acconti'].map(h=>(
                   <th key={h} style={{ padding:'10px 16px', textAlign:'left', fontSize:10, fontWeight:700, color:COLORS.textMuted, textTransform:'uppercase', letterSpacing:'0.05em', borderBottom:`1px solid ${COLORS.border}` }}>{h}</th>
                 ))}
               </tr>
@@ -1366,6 +1369,31 @@ function TabCedolini({ dip }) {
                     <td style={{ padding:'12px 16px' }}>
                       <Badge label={pagato?'✓ Pagato':'Da pagare'} bg={pagato?'#dcfce7':'#fef9c3'} color={pagato?'#16a34a':'#a16207'} />
                     </td>
+                    <td style={{ padding:'12px 16px' }}>
+                      {c.id ? (
+                        <button
+                          onClick={()=>setScalaCedolino(c)}
+                          title="Scala acconti registrati su questo cedolino"
+                          style={{
+                            padding:'5px 10px',
+                            background:'transparent',
+                            color:COLORS.primary,
+                            border:`1px solid ${COLORS.primary}`,
+                            borderRadius:6,
+                            cursor:'pointer',
+                            fontSize:11,
+                            fontWeight:600,
+                            display:'inline-flex',
+                            alignItems:'center',
+                            gap:4,
+                          }}
+                        >
+                          🔗 Scala acconti
+                        </button>
+                      ) : (
+                        <span style={{ fontSize:11, color:COLORS.textMuted }}>—</span>
+                      )}
+                    </td>
                   </tr>
                 );
               })}
@@ -1373,6 +1401,271 @@ function TabCedolini({ dip }) {
           </table>
         </div>
       )}
+
+      {/* Modale scalatura acconti su cedolino */}
+      {scalaCedolino && (
+        <ScalaAccontiCedolinoModal
+          cedolino={scalaCedolino}
+          dipNome={`${dip.cognome||''} ${dip.nome||''}`.trim()}
+          onClose={()=>setScalaCedolino(null)}
+          onScaled={()=>{
+            setScalaCedolino(null);
+            setReloadBump(b=>b+1);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Modale: scala acconti su cedolino paga
+// Compara acconto_mese_precedente del cedolino con acconti registrati per
+// il periodo, mostra match/discrepanza e permette scalatura (eventualmente
+// forzata in caso di delta).
+// ─────────────────────────────────────────────────────────────────────────────
+function ScalaAccontiCedolinoModal({ cedolino, dipNome, onClose, onScaled }) {
+  const [loading, setLoading] = useState(true);
+  const [preview, setPreview] = useState(null);
+  const [error, setError] = useState(null);
+  const [applying, setApplying] = useState(false);
+  const [forza, setForza] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const res = await api.get(`/api/tfr/cedolini/${cedolino.id}/preview-scalatura-acconti`);
+        if (!cancelled) setPreview(res.data);
+      } catch (e) {
+        if (!cancelled) setError(e.response?.data?.detail || e.message);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [cedolino.id]);
+
+  const applica = async () => {
+    setApplying(true);
+    setError(null);
+    try {
+      await api.post(`/api/tfr/cedolini/${cedolino.id}/scala-acconti`, {
+        forza_anche_se_discrepanza: forza,
+      });
+      onScaled();
+    } catch (e) {
+      const detail = e.response?.data?.detail;
+      if (typeof detail === 'object') {
+        setError(detail.messaggio || JSON.stringify(detail));
+      } else {
+        setError(detail || e.message);
+      }
+      setApplying(false);
+    }
+  };
+
+  const stato = preview?.stato_match;
+  const isQuadra = stato === 'quadra';
+  const isDiscrepanza = stato === 'discrepanza';
+  const isNessunDato = stato === 'nessun_dato' || stato === 'nessun_dato_cedolino' || stato === 'nessun_acconto';
+
+  // Color scheme per stato match
+  const banner = isQuadra
+    ? { bg:'#dcfce7', border:'#86efac', color:'#15803d', icon:'✅' }
+    : isDiscrepanza
+      ? { bg:'#fef3c7', border:'#fcd34d', color:'#92400e', icon:'⚠️' }
+      : { bg:'#fee2e2', border:'#fca5a5', color:'#b91c1c', icon:'⛔' };
+
+  return (
+    <div onClick={onClose}
+      style={{ position:'fixed', inset:0, background:'rgba(15,39,68,0.6)', zIndex:1100, display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}
+    >
+      <div onClick={e=>e.stopPropagation()}
+        style={{ background:'white', borderRadius:12, width:'100%', maxWidth:680, maxHeight:'90vh', display:'flex', flexDirection:'column', boxShadow:'0 20px 60px rgba(0,0,0,0.3)' }}
+      >
+        {/* Header */}
+        <div style={{
+          padding:'16px 24px', borderBottom:`1px solid ${COLORS.border}`,
+          background: 'linear-gradient(135deg, #0f2744 0%, #1a3a5f 100%)',
+          borderRadius:'12px 12px 0 0', color:'white',
+        }}>
+          <div style={{ fontSize:11, opacity:0.8, textTransform:'uppercase', letterSpacing:'0.06em', fontWeight:700 }}>
+            🔗 Scala acconti su cedolino
+          </div>
+          <div style={{ fontSize:17, fontWeight:700, marginTop:2 }}>
+            {['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'][(cedolino.mese||1)-1]} {cedolino.anno}
+          </div>
+          <div style={{ fontSize:12, opacity:0.85 }}>{dipNome}</div>
+        </div>
+
+        {/* Body */}
+        <div style={{ flex:1, overflowY:'auto', padding:20 }}>
+          {loading && (
+            <div style={{ padding:40, textAlign:'center', color:COLORS.textMuted }}>
+              ⏳ Analisi cedolino in corso…
+            </div>
+          )}
+
+          {error && !loading && (
+            <div style={{ padding:12, background:'#fee2e2', border:'1px solid #fca5a5', borderRadius:8, color:'#b91c1c', fontSize:13 }}>
+              ⚠️ {error}
+            </div>
+          )}
+
+          {!loading && preview && (
+            <>
+              {/* Banner stato match */}
+              <div style={{
+                padding:'12px 14px',
+                background: banner.bg,
+                border: `1px solid ${banner.border}`,
+                borderRadius: 8,
+                color: banner.color,
+                fontSize: 13,
+                marginBottom: 16,
+                display:'flex', gap:10, alignItems:'flex-start',
+              }}>
+                <span style={{ fontSize:18 }}>{banner.icon}</span>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontWeight:700, marginBottom:2 }}>
+                    {isQuadra && 'Match perfetto'}
+                    {isDiscrepanza && 'Discrepanza rilevata'}
+                    {stato === 'nessun_acconto' && 'Nessun acconto registrato'}
+                    {stato === 'nessun_dato_cedolino' && 'Cedolino senza dato AI'}
+                    {stato === 'nessun_dato' && 'Nessun dato disponibile'}
+                  </div>
+                  <div>{preview.messaggio}</div>
+                </div>
+              </div>
+
+              {/* Confronto numerico */}
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:16 }}>
+                <KpiCard
+                  label="Cedolino dichiara"
+                  value={preview.acconto_mese_precedente != null
+                    ? fmt€(preview.acconto_mese_precedente)
+                    : '— non disponibile'
+                  }
+                  color={preview.acconto_mese_precedente != null ? COLORS.primary : COLORS.textMuted}
+                />
+                <KpiCard
+                  label="Sistema registra"
+                  value={fmt€(preview.totale_acconti_registrati)}
+                  color={COLORS.primary}
+                  sub={`${preview.acconti_registrati.length} acconti`}
+                />
+              </div>
+
+              {preview.delta != null && Math.abs(preview.delta) >= 0.01 && (
+                <div style={{
+                  padding:8, background:'#fef3c7', borderRadius:6, marginBottom:14,
+                  fontSize:12, color:'#92400e', textAlign:'center', fontWeight:600,
+                }}>
+                  Delta: {preview.delta > 0 ? '+' : ''}{fmt€(preview.delta)}
+                  {preview.delta > 0 ? ' (cedolino > registrati)' : ' (cedolino < registrati)'}
+                </div>
+              )}
+
+              {/* Lista acconti */}
+              {preview.acconti_registrati.length > 0 && (
+                <div style={{ border:`1px solid ${COLORS.border}`, borderRadius:8, overflow:'hidden' }}>
+                  <div style={{ padding:'8px 12px', background:'#f8fafc', fontSize:11, fontWeight:700, color:COLORS.textMuted, textTransform:'uppercase', letterSpacing:'0.04em' }}>
+                    Acconti che verranno scalati
+                  </div>
+                  <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+                    <tbody>
+                      {preview.acconti_registrati.map(a => (
+                        <tr key={a.id} style={{ borderTop:`1px solid ${COLORS.border}` }}>
+                          <td style={{ padding:'8px 12px', fontWeight:600 }}>{fmtD(a.data)}</td>
+                          <td style={{ padding:'8px 12px', color:COLORS.textMuted }}>{a.tipo}</td>
+                          <td style={{ padding:'8px 12px' }}>
+                            <span style={{
+                              fontSize:10, padding:'1px 6px', borderRadius:3, fontWeight:600,
+                              background: a.natura_acconto === 'su_pregresso' ? '#fef3c7' : '#dbeafe',
+                              color: a.natura_acconto === 'su_pregresso' ? '#b45309' : '#1d4ed8',
+                            }}>
+                              {a.natura_acconto === 'su_pregresso' ? 'Pregresso' : 'Su futuro'}
+                            </span>
+                          </td>
+                          <td style={{ padding:'8px 12px', textAlign:'right', fontWeight:700, color:COLORS.primary, fontVariantNumeric:'tabular-nums' }}>
+                            {fmt€(a.importo)}
+                          </td>
+                          <td style={{ padding:'8px 12px' }}>
+                            <span style={{
+                              fontSize:10, padding:'1px 6px', borderRadius:3, fontWeight:600,
+                              background: a.stato === 'riconciliato_banca' ? '#dcfce7' : '#f1f5f9',
+                              color: a.stato === 'riconciliato_banca' ? '#15803d' : '#475569',
+                            }}>
+                              {a.stato === 'riconciliato_banca' ? 'Banca ✓' : 'Registrato'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* Checkbox forza in caso di discrepanza */}
+              {isDiscrepanza && (
+                <label style={{
+                  display:'flex', gap:10, marginTop:14, padding:10,
+                  background:'#fef3c7', border:'1px solid #fcd34d', borderRadius:8,
+                  cursor:'pointer',
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={forza}
+                    onChange={e=>setForza(e.target.checked)}
+                    style={{ marginTop:2 }}
+                  />
+                  <div style={{ fontSize:12, color:'#92400e' }}>
+                    <strong>Ho verificato e accetto la discrepanza</strong>: applica comunque la scalatura.
+                    {' '}Gli acconti registrati verranno marcati come scalati per il loro importo intero.
+                  </div>
+                </label>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{
+          padding:'12px 24px', borderTop:`1px solid ${COLORS.border}`,
+          display:'flex', justifyContent:'flex-end', gap:8, background:'#f8fafc',
+          borderRadius:'0 0 12px 12px',
+        }}>
+          <button
+            onClick={onClose}
+            disabled={applying}
+            style={{ padding:'8px 16px', background:'white', color:COLORS.textMuted, border:`1px solid ${COLORS.border}`, borderRadius:6, cursor:'pointer', fontSize:13 }}
+          >
+            Chiudi
+          </button>
+          {!loading && preview && !isNessunDato && (
+            <button
+              onClick={applica}
+              disabled={applying || (isDiscrepanza && !forza)}
+              style={{
+                padding:'8px 18px',
+                background: (applying || (isDiscrepanza && !forza))
+                  ? '#cbd5e1'
+                  : isQuadra
+                    ? 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)'
+                    : 'linear-gradient(135deg, #b45309 0%, #92400e 100%)',
+                color:'white', border:'none', borderRadius:6,
+                cursor: (applying || (isDiscrepanza && !forza)) ? 'not-allowed' : 'pointer',
+                fontSize:13, fontWeight:600,
+              }}
+            >
+              {applying ? '⏳ Applicazione…' : isDiscrepanza ? '⚠️ Forza scalatura' : '✓ Scala acconti'}
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
