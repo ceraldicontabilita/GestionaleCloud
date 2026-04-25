@@ -14,6 +14,8 @@ const ChiusuraContent = lazy(() => import('../ChiusuraEsercizio.jsx'));
 const BudgetContent = lazy(() => import('../BudgetPrevisionale.jsx'));
 const MutuiContent = lazy(() => import('../Mutui.jsx'));
 const AvanzataContent = lazy(() => import('../ContabilitaAvanzata.jsx'));
+const UtileObiettivoContent = lazy(() => import('../UtileObiettivo.jsx'));
+const PrevisioniAcquistiContent = lazy(() => import('../PrevisioniAcquisti.jsx'));
 
 const TABS = [
   { id: 'piano-conti', label: '📊 Piano dei Conti', color: '#1a40b5' },
@@ -27,6 +29,8 @@ const TABS = [
   { id: 'budget', label: '📋 Budget Previsionale', color: '#84cc16' },
   { id: 'mutui', label: '🏠 Mutui', color: '#f97316' },
   { id: 'avanzata', label: '🔧 Contab. Avanzata', color: '#0ea5e9' },
+  { id: 'utile', label: '🎯 Utile Obiettivo', color: '#14b8a6' },
+  { id: 'previsioni-acquisti', label: '📦 Previsioni Acquisti', color: '#a855f7' },
 ];
 
 const Loading = () => (
@@ -64,6 +68,10 @@ const getTabFromPath = pathname => {
   if (pathname.includes('/mutui')) return 'mutui';
   if (pathname.includes('/contabilita-avanzata') || pathname.includes('/contabilita/avanzata'))
     return 'avanzata';
+  if (pathname.includes('/utile-obiettivo') || pathname.includes('/contabilita/utile'))
+    return 'utile';
+  if (pathname.includes('/previsioni-acquisti') || pathname.includes('/contabilita/previsioni-acquisti'))
+    return 'previsioni-acquisti';
   if (pathname.includes('/contabilita/')) {
     const m = pathname.match(/\/contabilita\/([\w-]+)/);
     if (m && TABS.find(t => t.id === m[1])) return m[1];
@@ -168,6 +176,8 @@ export default function ContabilitaHub() {
           { id: 'budget', C: BudgetContent },
           { id: 'mutui', C: MutuiContent },
           { id: 'avanzata', C: AvanzataContent },
+          { id: 'utile', C: UtileObiettivoContent },
+          { id: 'previsioni-acquisti', C: PrevisioniAcquistiContent },
         ].map(({ id, C }) => (
           <div key={id} style={{ display: activeTab === id ? 'block' : 'none' }}>
             <Suspense fallback={<Loading />}>{visitedTabs.has(id) && <C />}</Suspense>
