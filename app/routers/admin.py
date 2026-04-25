@@ -263,3 +263,50 @@ async def set_fatture_metodo_pagamento(
         "message": f"Metodo pagamento impostato a '{metodo}'",
         "updated": result.modified_count
     }
+
+# ============================================================================
+# CLEANUP: rollback Task 4 trattenute disciplinari
+# ============================================================================
+# Endpoint one-shot per eliminare eventuali record orfani creati durante la
+# breve esistenza del sistema trattenute disciplinari (PR #50 mergiata e poi
+# rollbackata in PR successiva). Identificati da source='trattenute_disciplinari'.
+# Da chiamare una volta dopo il deploy del rollback. Idempotente.
+
+@router.delete(
+    "/cleanup-trattenute-disciplinari",
+    summary="One-shot: rimuove record orfani del sistema trattenute disciplinari (Task 4 rollback)",
+)
+async def cleanup_trattenute_disciplinari() -> Dict[str, Any]:
+    """Cancella tutti i record di trattenute_dipendenti con
+    source='trattenute_disciplinari' creati dal sistema poi annullato.
+
+    NON tocca i record legacy (verbali noleggio, anticipi, pignoramenti)
+    che usano altri valori di source o non hanno source.
+
+    Idempotente: se non ci sono record da eliminare restituisce 0.
+    """
+    db = Database.get_db()
+
+    # Conteggio prima dell'eliminazione (per audit)
+    query = {"source": "trattenute_disciplinari"}
+    count_before = await db["trattenute_dipendenti"].count_documents(query)
+
+    if count_before == 0:
+        return {
+            "success": True,
+            "message": "Nessun record da pulire (collection già pulita)",
+            "eliminati": 0,
+        }
+
+    result = await db["trattenute_dipendenti"].delete_many(query)
+    logger.warning(
+        f"[CLEANUP TASK 4] Eliminati {result.deleted_count} record "
+        f"trattenute disciplinari (rollback PR #50)"
+    )
+
+    return {
+        "success": True,
+        "message": f"Cleanup completato: {result.deleted_count} record eliminati",
+        "eliminati": result.deleted_count,
+        "trovati_prima": count_before,
+    }
