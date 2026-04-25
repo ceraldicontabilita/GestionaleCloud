@@ -43,13 +43,45 @@ File creato:
 
 Contiene la regola operativa definitiva per evitare regressioni future.
 
-### 4. Timezone router veicoli
+### 4. Timezone router veicoli e verbali
 
-File modificato:
+File modificati:
 
 - `app/routers/veicoli.py`
+- `app/services/verbali_fattura_trigger.py`
 
-Sostituito `datetime.utcnow()` con timestamp UTC timezone-aware.
+Sostituiti usi sicuri di `datetime.utcnow()` con timestamp UTC timezone-aware.
+
+### 5. Audit statico automatico
+
+File creato:
+
+- `scripts/audit_static.py`
+
+Controlla automaticamente:
+
+- `datetime.utcnow()`
+- collection deprecate o vietate
+- POST/PUT con `Dict[str, Any]` senza `Body(...)`
+- `api.delete` senza `window.confirm` vicino
+- `api.get` in componenti con `useEffect` senza `AbortController`
+- uso compatibile di `/api/suppliers`
+
+### 6. GitHub Action audit
+
+File creato:
+
+- `.github/workflows/audit-static.yml`
+
+Esegue `python scripts/audit_static.py` su push e pull request.
+
+### 7. Smoke test runtime
+
+File creato:
+
+- `scripts/smoke_app.py`
+
+Quando backend e frontend sono avviati, controlla endpoint e pagine principali senza modificare dati.
 
 ## Verifiche effettuate
 
@@ -81,6 +113,11 @@ Risultato: nessun accesso diretto trovato.
 
 Decisione: mantenere entrambi. Rinominare a tappeto romperebbe compatibilita'.
 
+### DELETE frontend
+
+Controllati esempi ad alto rischio. `ToDo.jsx` usa `window.confirm` prima di `api.delete`.
+Lo scanner automatico ora segnala altri eventuali casi.
+
 ## Problemi residui da verificare
 
 ### P1 - Test runtime mancanti
@@ -111,15 +148,36 @@ Priorita':
 
 ### P1 - POST/PUT con Body
 
-La documentazione precedente dice che molti router sono gia' stati corretti, ma serve uno scan AST completo prima del deploy.
+La documentazione precedente dice che molti router sono gia' stati corretti, ma ora lo scanner `scripts/audit_static.py` consente controllo continuo.
 
 ### P2 - datetime.utcnow residui
 
-Sono rimasti usi di `datetime.utcnow()` in alcuni servizi collegati a verbali, PayPal e learning. Vanno corretti con test dedicato per evitare regressioni nei confronti data.
+Sono rimasti usi di `datetime.utcnow()` in alcuni servizi collegati a Gmail, PayPal e learning. Alcuni file contengono logiche sensibili e vanno corretti con test dedicato per evitare regressioni nei confronti data.
 
 ### P2 - Hardcoded collection
 
 Continuare a ridurre stringhe hardcoded. Ogni nuovo sviluppo deve usare costanti centralizzate.
+
+## Comandi audit
+
+Statico:
+
+```bash
+python scripts/audit_static.py
+cat memoria/AUDIT_STATIC_REPORT.md
+```
+
+Runtime, con servizi gia' avviati:
+
+```bash
+python scripts/smoke_app.py
+```
+
+Runtime con URL espliciti:
+
+```bash
+BACKEND_URL=http://localhost:8001 FRONTEND_URL=http://localhost:3000 python scripts/smoke_app.py
+```
 
 ## Test minimi consigliati prima del deploy
 
@@ -149,5 +207,6 @@ Frontend:
 ## Stato
 
 Correzioni sicure applicate.
-Audit statico avviato e documentato.
-Audit runtime ancora da eseguire in ambiente applicativo.
+Audit statico automatizzato.
+Smoke test runtime aggiunto.
+Audit runtime da eseguire nell'ambiente applicativo avviato.
