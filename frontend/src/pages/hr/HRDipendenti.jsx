@@ -55,6 +55,27 @@ function fmtD(d) {
   } catch { return d; }
 }
 
+// Helper per multi-select: dato due 'YYYY-MM-DD', restituisce array di tutte
+// le date intermedie incluse (ordine cronologico ascendente).
+function computeDateRange(dsA, dsB) {
+  if (!dsA || !dsB) return [];
+  const a = new Date(dsA + 'T00:00:00');
+  const b = new Date(dsB + 'T00:00:00');
+  if (isNaN(a) || isNaN(b)) return [];
+  const start = a <= b ? a : b;
+  const end = a <= b ? b : a;
+  const out = [];
+  const cur = new Date(start);
+  while (cur <= end) {
+    const y = cur.getFullYear();
+    const m = String(cur.getMonth() + 1).padStart(2, '0');
+    const d = String(cur.getDate()).padStart(2, '0');
+    out.push(`${y}-${m}-${d}`);
+    cur.setDate(cur.getDate() + 1);
+  }
+  return out;
+}
+
 // Badge stato
 function Badge({ label, color, bg }) {
   return (
@@ -441,6 +462,12 @@ function TabPresenze({ dip }) {
   const [editError, setEditError] = useState(null);
   // Bump per riload dati dopo save (evita race con AbortController)
   const [reloadBump, setReloadBump] = useState(0);
+  // Multi-select: quando attivo, click su cella la aggiunge/rimuove dall'insieme
+  const [multiMode, setMultiMode] = useState(false);
+  const [selected, setSelected] = useState(new Set()); // Set di 'YYYY-MM-DD'
+  const [showBulkEditor, setShowBulkEditor] = useState(false);
+  // Anchor per shift+click range select (ultimo giorno cliccato)
+  const [lastClickedDate, setLastClickedDate] = useState(null);
 
   useAbortableEffect((signal) => {
     api.get('/api/attendance/tipologie-giustificativi', { signal })
@@ -476,6 +503,64 @@ function TabPresenze({ dip }) {
     });
     setEditError(null);
     setEditingDate(ds);
+  };
+
+  // Click su cella: gestisce 3 casi (single, multi-toggle, shift-range)
+  const handleCellClick = (ds, event) => {
+    // Modalità singola: apre subito la modale
+    if (!multiMode) {
+      setLastClickedDate(ds);
+      openEditor(ds);
+      return;
+    }
+    // Modalità multi: shift+click selezione range, click semplice toggle singolo
+    if (event?.shiftKey && lastClickedDate) {
+      const range = computeDateRange(lastClickedDate, ds);
+      setSelected(prev => {
+        const next = new Set(prev);
+        range.forEach(d => next.add(d));
+        return next;
+      });
+    } else {
+      setSelected(prev => {
+        const next = new Set(prev);
+        if (next.has(ds)) next.delete(ds); else next.add(ds);
+        return next;
+      });
+    }
+    setLastClickedDate(ds);
+  };
+
+  // Quick action: seleziona tutti i giorni feriali del mese (lun-ven)
+  const selectWeekdays = () => {
+    const next = new Set();
+    for (let g = 1; g <= giorniMese; g++) {
+      const d = new Date(anno, mese - 1, g);
+      const dow = d.getDay();
+      if (dow >= 1 && dow <= 5) {
+        next.add(`${anno}-${String(mese).padStart(2,'0')}-${String(g).padStart(2,'0')}`);
+      }
+    }
+    setSelected(next);
+  };
+
+  // Quick action: seleziona tutti i giorni del mese
+  const selectAll = () => {
+    const next = new Set();
+    for (let g = 1; g <= giorniMese; g++) {
+      next.add(`${anno}-${String(mese).padStart(2,'0')}-${String(g).padStart(2,'0')}`);
+    }
+    setSelected(next);
+  };
+
+  const clearSelection = () => {
+    setSelected(new Set());
+    setLastClickedDate(null);
+  };
+
+  const exitMultiMode = () => {
+    setMultiMode(false);
+    clearSelection();
   };
 
   const closeEditor = () => {
@@ -532,6 +617,51 @@ function TabPresenze({ dip }) {
     }
   };
 
+  // Salva massivamente lo stesso stato/ore/protocollo/note su tutti i giorni
+  // selezionati. Usato dal bulk editor in modalità multi-select.
+  const bulkSave = async (form) => {
+    const giorni = Array.from(selected).sort();
+    if (!giorni.length) {
+      throw new Error('Nessun giorno selezionato');
+    }
+    if (!form.stato) {
+      throw new Error('Seleziona uno stato');
+    }
+    if (['MA','SM','IN','CO'].includes(form.stato) && !form.protocollo.trim()) {
+      throw new Error('Protocollo obbligatorio per ' + form.stato);
+    }
+    await api.post('/api/attendance/batch-insert', {
+      employee_ids: [dip.id],
+      giorni,
+      stato: form.stato,
+      ore: form.ore != null ? Number(form.ore) : 8,
+      protocollo: form.protocollo.trim(),
+      note: form.note.trim(),
+    });
+    setShowBulkEditor(false);
+    clearSelection();
+    setReloadBump(b => b+1);
+  };
+
+  // Cancella tutti i giorni selezionati
+  const bulkDelete = async () => {
+    const giorni = Array.from(selected).sort();
+    if (!giorni.length) return;
+    if (!window.confirm(`Eliminare la presenza per ${giorni.length} giorni selezionati?`)) return;
+    // Loop sequenziale per evitare flooding API; sono tipicamente ≤31 chiamate
+    for (const ds of giorni) {
+      try {
+        await api.delete('/api/attendance/presenza', {
+          params: { employee_id: dip.id, data: ds },
+        });
+      } catch {
+        // continua col prossimo, errori isolati non bloccano
+      }
+    }
+    clearSelection();
+    setReloadBump(b => b+1);
+  };
+
   const giorniMese = new Date(anno, mese, 0).getDate();
   const stats = useMemo(()=>{
     const s={ presenti:0, ferie:0, malattia:0, permessi:0, assenti:0, ore:0 };
@@ -572,10 +702,87 @@ function TabPresenze({ dip }) {
         <div style={{ flex:1, fontSize:12, color:COLORS.textMuted }}>
           {Object.keys(celle).length} giorni registrati
         </div>
+        <button
+          onClick={()=>{ if(multiMode) exitMultiMode(); else setMultiMode(true); }}
+          title={multiMode?'Esci da modalità multi-select':'Attiva modalità multi-select per applicare lo stesso stato a più giorni'}
+          style={{
+            padding:'6px 12px',
+            background: multiMode ? COLORS.primary : 'transparent',
+            color: multiMode ? 'white' : COLORS.primary,
+            border: `1px solid ${COLORS.primary}`,
+            borderRadius:6, cursor:'pointer', fontSize:12, fontWeight:600,
+            display:'flex', alignItems:'center', gap:4,
+          }}
+        >
+          {multiMode ? '✓ Multi-select attivo' : '☑ Multi-select'}
+        </button>
         <a href="/presenze" style={{ fontSize:12, color:COLORS.primary, fontWeight:600, display:'flex', alignItems:'center', gap:4 }}>
           <ExternalLink size={12}/> Gestisci presenze
         </a>
       </div>
+
+      {/* Toolbar multi-select (visibile solo in modalità multi) */}
+      {multiMode && (
+        <div style={{
+          marginBottom:14, padding:'12px 14px',
+          background:'linear-gradient(135deg, #dbeafe 0%, #eff6ff 100%)',
+          border:'1px solid #93c5fd', borderRadius:10,
+          display:'flex', alignItems:'center', gap:10, flexWrap:'wrap',
+        }}>
+          <div style={{ fontSize:13, fontWeight:700, color:'#1e3a8a' }}>
+            {selected.size === 0 ? '☑ Seleziona i giorni cliccando' : `📌 ${selected.size} giorn${selected.size===1?'o':'i'} selezionat${selected.size===1?'o':'i'}`}
+          </div>
+          <div style={{ flex:1, minWidth:8 }}/>
+          <button
+            onClick={selectWeekdays}
+            disabled={selected.size === giorniMese}
+            style={smallBtn('#0891b2')}
+            title="Seleziona tutti i lunedì-venerdì del mese"
+          >
+            Lun-Ven
+          </button>
+          <button
+            onClick={selectAll}
+            style={smallBtn('#0891b2')}
+            title="Seleziona tutti i giorni del mese"
+          >
+            Tutto il mese
+          </button>
+          {selected.size > 0 && (
+            <>
+              <button
+                onClick={clearSelection}
+                style={smallBtn('#64748b')}
+                title="Deseleziona tutti"
+              >
+                Pulisci
+              </button>
+              <button
+                onClick={bulkDelete}
+                style={smallBtn(COLORS.danger)}
+                title="Elimina presenze sui giorni selezionati"
+              >
+                🗑️ Elimina ({selected.size})
+              </button>
+              <button
+                onClick={()=>setShowBulkEditor(true)}
+                style={{
+                  padding:'6px 14px',
+                  background:'linear-gradient(135deg, #16a34a 0%, #15803d 100%)',
+                  color:'white', border:'none', borderRadius:6,
+                  cursor:'pointer', fontSize:12, fontWeight:700,
+                }}
+                title="Applica lo stesso stato a tutti i giorni selezionati"
+              >
+                💾 Applica stato ({selected.size})
+              </button>
+            </>
+          )}
+          <button onClick={exitMultiMode} style={smallBtn('#64748b')} title="Esci dalla modalità multi-select">
+            ✕ Esci
+          </button>
+        </div>
+      )}
 
       {/* KPI */}
       <div style={{ display:'grid', gridTemplateColumns: isMobile?'1fr 1fr':'repeat(5,1fr)', gap:10, marginBottom:16 }}>
@@ -613,12 +820,34 @@ function TabPresenze({ dip }) {
               const isWe=dow===0||dow===6;
               const code=cella?.stato;
               const colore=code?colorByCode(code):null;
-              const bg=code&&colore?lighten(colore):isWe?'#f8fafc':'white';
+              const isSelected = multiMode && selected.has(ds);
+              const bg = isSelected
+                ? '#dbeafe'
+                : (code && colore ? lighten(colore) : (isWe ? '#f8fafc' : 'white'));
+              const borderColor = isSelected
+                ? '#1d4ed8'
+                : (code && colore ? colore + '44' : COLORS.border);
+              const borderWidth = isSelected ? 2 : 1;
               return (
                 <div key={g}
-                  onClick={() => openEditor(ds)}
-                  title={cella?`${DOW[dow]} ${g}/${mese}: ${code||'P'} ${cella.ore||''}h — clicca per modificare`:`${DOW[dow]} ${g}/${mese} — clicca per inserire`}
-                  style={{ aspectRatio:'1', padding:4, border:`1px solid ${code&&colore?colore+'44':COLORS.border}`, borderRadius:8, backgroundColor:bg, display:'flex', flexDirection:'column', justifyContent:'space-between', alignItems:'flex-start', fontSize:11, cursor:'pointer', transition:'transform 0.1s, box-shadow 0.1s' }}
+                  onClick={(e) => handleCellClick(ds, e)}
+                  title={
+                    multiMode
+                      ? (isSelected
+                          ? `${DOW[dow]} ${g}/${mese} — selezionato (clicca per deselezionare; shift+click per range)`
+                          : `${DOW[dow]} ${g}/${mese} — clicca per selezionare (shift+click per range)`)
+                      : (cella
+                          ? `${DOW[dow]} ${g}/${mese}: ${code||'P'} ${cella.ore||''}h — clicca per modificare`
+                          : `${DOW[dow]} ${g}/${mese} — clicca per inserire`)
+                  }
+                  style={{
+                    aspectRatio:'1', padding:4,
+                    border:`${borderWidth}px solid ${borderColor}`,
+                    borderRadius:8, backgroundColor:bg,
+                    display:'flex', flexDirection:'column', justifyContent:'space-between', alignItems:'flex-start',
+                    fontSize:11, cursor:'pointer', transition:'transform 0.1s, box-shadow 0.1s',
+                    position:'relative',
+                  }}
                   onMouseEnter={e=>{ e.currentTarget.style.transform='scale(1.05)'; e.currentTarget.style.boxShadow='0 2px 6px rgba(15,39,68,0.15)'; e.currentTarget.style.zIndex='1'; }}
                   onMouseLeave={e=>{ e.currentTarget.style.transform=''; e.currentTarget.style.boxShadow=''; e.currentTarget.style.zIndex=''; }}
                 >
@@ -627,6 +856,15 @@ function TabPresenze({ dip }) {
                     <span style={{ fontSize:8, fontWeight:800, color:colore||COLORS.text, padding:'1px 4px', borderRadius:3, background:'white', alignSelf:'center' }}>
                       {code}
                     </span>
+                  )}
+                  {isSelected && (
+                    <div style={{
+                      position:'absolute', top:2, right:2,
+                      background:'#1d4ed8', color:'white',
+                      width:14, height:14, borderRadius:'50%',
+                      display:'flex', alignItems:'center', justifyContent:'center',
+                      fontSize:9, fontWeight:700, lineHeight:1,
+                    }}>✓</div>
                   )}
                 </div>
               );
@@ -648,10 +886,10 @@ function TabPresenze({ dip }) {
       )}
 
       <div style={{ marginTop:10, fontSize:11, color:COLORS.textMuted, fontStyle:'italic' }}>
-        💡 Clicca su qualunque giorno del calendario per inserire o modificare la presenza.
+        💡 Clicca su un giorno per inserire/modificare. Attiva <strong>Multi-select</strong> per applicare lo stesso stato a più giorni in una volta (anche con shift+click per range).
       </div>
 
-      {/* Editor cella inline */}
+      {/* Editor cella inline (singolo giorno) */}
       {editingDate && (
         <CellEditorModal
           date={editingDate}
@@ -665,6 +903,17 @@ function TabPresenze({ dip }) {
           onSave={saveCell}
           onDelete={deleteCell}
           onClose={closeEditor}
+        />
+      )}
+
+      {/* Editor bulk (più giorni in modalità multi-select) */}
+      {showBulkEditor && selected.size > 0 && (
+        <BulkEditorModal
+          dipNome={`${dip.cognome||''} ${dip.nome||''}`.trim()}
+          giorni={Array.from(selected).sort()}
+          tipologie={tipologie}
+          onSave={bulkSave}
+          onClose={()=>setShowBulkEditor(false)}
         />
       )}
     </div>
@@ -813,6 +1062,206 @@ function CellEditorModal({ date, dipNome, form, setForm, tipologie, loading, err
               {loading ? '⏳ Salvataggio…' : '💾 Salva'}
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Helper per bottoni piccoli della toolbar multi-select
+function smallBtn(color) {
+  return {
+    padding:'5px 10px',
+    background:'transparent',
+    color: color,
+    border: `1px solid ${color}`,
+    borderRadius:6,
+    cursor:'pointer',
+    fontSize:11,
+    fontWeight:600,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Editor BULK: applica stesso stato/ore/protocollo/note a un set di giorni
+// ─────────────────────────────────────────────────────────────────────────────
+function BulkEditorModal({ dipNome, giorni, tipologie, onSave, onClose }) {
+  const [form, setForm] = useState({ stato:'', ore:8, protocollo:'', note:'' });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const STATI_COMUNI = ['FE','MA','RL','PE','IN','CO','LU','RC'];
+  const stati = useMemo(() => {
+    const tipMap = {};
+    (tipologie || []).forEach(t => { tipMap[t.codice] = t; });
+    const comuni = STATI_COMUNI.filter(c => tipMap[c]).map(c => tipMap[c]);
+    const altri = (tipologie || []).filter(t => !STATI_COMUNI.includes(t.codice))
+      .sort((a, b) => (a.codice || '').localeCompare(b.codice || ''));
+    return [...comuni, ...altri];
+  }, [tipologie]);
+
+  const isMA = ['MA','SM','IN','CO'].includes(form.stato);
+
+  const submit = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      await onSave(form);
+    } catch (e) {
+      setError(e.response?.data?.detail || e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Range visualizzazione (es. "1-5 e 8-12 Aprile" oppure "12 giorni sparsi")
+  const rangeText = useMemo(() => {
+    if (giorni.length === 0) return '';
+    if (giorni.length === 1) return giorni[0];
+    // Raggruppa contigui
+    const groups = [];
+    let cur = [giorni[0]];
+    for (let i = 1; i < giorni.length; i++) {
+      const prevDate = new Date(giorni[i-1] + 'T00:00:00');
+      const thisDate = new Date(giorni[i] + 'T00:00:00');
+      const diff = (thisDate - prevDate) / (1000*60*60*24);
+      if (diff === 1) {
+        cur.push(giorni[i]);
+      } else {
+        groups.push(cur);
+        cur = [giorni[i]];
+      }
+    }
+    groups.push(cur);
+    // Formatta come "1-5", "8" ecc.
+    const monthIdx = parseInt(giorni[0].split('-')[1], 10) - 1;
+    const monthName = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'][monthIdx];
+    return groups.map(g => {
+      const startDay = parseInt(g[0].split('-')[2], 10);
+      if (g.length === 1) return startDay;
+      const endDay = parseInt(g[g.length-1].split('-')[2], 10);
+      return `${startDay}-${endDay}`;
+    }).join(', ') + ' ' + monthName;
+  }, [giorni]);
+
+  return (
+    <div onClick={onClose}
+      style={{ position:'fixed', inset:0, background:'rgba(15,39,68,0.6)', zIndex:1100, display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}
+    >
+      <div onClick={e=>e.stopPropagation()}
+        style={{ background:'white', borderRadius:12, width:'100%', maxWidth:560, padding:24, boxShadow:'0 20px 60px rgba(0,0,0,0.3)', maxHeight:'90vh', overflowY:'auto' }}
+      >
+        <div style={{ marginBottom:16 }}>
+          <div style={{ fontSize:11, color:COLORS.textMuted, textTransform:'uppercase', letterSpacing:'0.05em', fontWeight:700 }}>
+            📌 Applica stato a {giorni.length} giorni
+          </div>
+          <h2 style={{ margin:'4px 0 2px', fontSize:18, color:COLORS.primary }}>{rangeText}</h2>
+          <div style={{ fontSize:12, color:COLORS.textMuted }}>{dipNome}</div>
+        </div>
+
+        {/* Anteprima giorni selezionati (collassata se troppi) */}
+        <details style={{ marginBottom:14, fontSize:12, color:COLORS.textMuted }}>
+          <summary style={{ cursor:'pointer', padding:6 }}>
+            Vedi i {giorni.length} giorni selezionati
+          </summary>
+          <div style={{ marginTop:6, padding:8, background:'#f8fafc', borderRadius:6, fontFamily:'monospace', fontSize:11, lineHeight:1.6 }}>
+            {giorni.join(', ')}
+          </div>
+        </details>
+
+        <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+          <label style={{ display:'block' }}>
+            <div style={{ fontSize:11, fontWeight:700, color:COLORS.textMuted, marginBottom:4, textTransform:'uppercase' }}>Stato *</div>
+            <select
+              value={form.stato}
+              onChange={e=>setForm(f=>({...f, stato:e.target.value}))}
+              autoFocus
+              style={{ width:'100%', padding:'10px 12px', border:`1px solid ${COLORS.border}`, borderRadius:8, fontSize:14, fontWeight:600, background:'white' }}
+            >
+              <option value="">— Seleziona —</option>
+              {stati.map(t => (
+                <option key={t.codice} value={t.codice}>
+                  {t.codice} — {t.nome}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+            <label style={{ display:'block' }}>
+              <div style={{ fontSize:11, fontWeight:700, color:COLORS.textMuted, marginBottom:4, textTransform:'uppercase' }}>Ore (per giorno)</div>
+              <input
+                type="number"
+                step="0.25"
+                min="0"
+                max="24"
+                value={form.ore}
+                onChange={e=>setForm(f=>({...f, ore:e.target.value}))}
+                style={{ width:'100%', padding:'8px 10px', border:`1px solid ${COLORS.border}`, borderRadius:8, fontSize:13, boxSizing:'border-box' }}
+              />
+            </label>
+            <label style={{ display:'block' }}>
+              <div style={{ fontSize:11, fontWeight:700, color:COLORS.textMuted, marginBottom:4, textTransform:'uppercase' }}>
+                Protocollo {isMA && <span style={{ color:COLORS.danger }}>*</span>}
+              </div>
+              <input
+                type="text"
+                value={form.protocollo}
+                onChange={e=>setForm(f=>({...f, protocollo:e.target.value}))}
+                placeholder={isMA ? 'INPS/Cert. medico' : '(opzionale)'}
+                style={{ width:'100%', padding:'8px 10px', border:`1px solid ${isMA && !form.protocollo ? '#fca5a5' : COLORS.border}`, borderRadius:8, fontSize:13, boxSizing:'border-box' }}
+              />
+            </label>
+          </div>
+
+          <label style={{ display:'block' }}>
+            <div style={{ fontSize:11, fontWeight:700, color:COLORS.textMuted, marginBottom:4, textTransform:'uppercase' }}>Note</div>
+            <textarea
+              value={form.note}
+              onChange={e=>setForm(f=>({...f, note:e.target.value}))}
+              rows={2}
+              style={{ width:'100%', padding:'8px 10px', border:`1px solid ${COLORS.border}`, borderRadius:8, fontSize:13, fontFamily:'inherit', resize:'vertical', boxSizing:'border-box' }}
+            />
+          </label>
+
+          {isMA && (
+            <div style={{ padding:8, background:'#fef3c7', border:'1px solid #fcd34d', borderRadius:6, fontSize:11, color:'#92400e' }}>
+              ⚠️ Per malattia/infortunio/congedo è obbligatorio inserire un protocollo (INPS o certificato medico)
+            </div>
+          )}
+
+          <div style={{ padding:10, background:'#fef3c7', border:'1px solid #fcd34d', borderRadius:6, fontSize:12, color:'#92400e' }}>
+            ⚠️ <strong>Attenzione</strong>: l'azione sovrascriverà presenze già esistenti su questi {giorni.length} giorni.
+          </div>
+
+          {error && (
+            <div style={{ padding:10, background:'#fee2e2', border:'1px solid #fca5a5', borderRadius:6, color:'#b91c1c', fontSize:13 }}>
+              ⚠️ {error}
+            </div>
+          )}
+        </div>
+
+        <div style={{ marginTop:20, display:'flex', justifyContent:'flex-end', gap:8 }}>
+          <button
+            onClick={onClose}
+            disabled={loading}
+            style={{ padding:'8px 16px', background:'white', color:COLORS.textMuted, border:`1px solid ${COLORS.border}`, borderRadius:6, cursor:'pointer', fontSize:13 }}
+          >
+            Annulla
+          </button>
+          <button
+            onClick={submit}
+            disabled={loading || !form.stato}
+            style={{
+              padding:'8px 18px',
+              background: form.stato && !loading ? 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)' : '#cbd5e1',
+              color:'white', border:'none', borderRadius:6,
+              cursor: form.stato && !loading ? 'pointer' : 'not-allowed',
+              fontSize:13, fontWeight:600,
+            }}
+          >
+            {loading ? '⏳ Applicazione…' : `💾 Applica a ${giorni.length} giorni`}
+          </button>
         </div>
       </div>
     </div>
