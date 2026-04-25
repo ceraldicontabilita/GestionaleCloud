@@ -1,12 +1,20 @@
 """
 Costanti per il modulo Fornitori.
+
+Regola canonica: la collection MongoDB dei fornitori e' `fornitori`.
+`supplier`/`suppliers` restano nomi tecnici/inglesi di moduli, endpoint e servizi,
+ma NON devono indicare una collection MongoDB separata.
 """
 
+from app.db_collections import COLL_FORNITORI, COLL_INVOICES
+
+
 class Collections:
-    """Nomi delle collection MongoDB."""
-    SUPPLIERS = "suppliers"
-    INVOICES = "invoices"
-    FORNITORI = "fornitori"
+    """Nomi delle collection MongoDB per il modulo fornitori."""
+    FORNITORI = COLL_FORNITORI
+    SUPPLIERS = COLL_FORNITORI  # Alias legacy/inglese -> collection canonica `fornitori`
+    INVOICES = COLL_INVOICES
+
 
 # Metodi di pagamento disponibili
 PAYMENT_METHODS = [
