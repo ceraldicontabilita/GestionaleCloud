@@ -1213,6 +1213,348 @@ async def annulla_riconciliazione_banca(acconto_id: str) -> Dict[str, Any]:
     }
 
 
+# ============================================
+# SCALATURA ACCONTI SU CEDOLINO PAGA (Task 3)
+# ============================================
+# Quando arriva il cedolino mensile di un dipendente, il sistema confronta
+# il valore "acconto_mese_precedente" (estratto dal PDF dal parser AI) con
+# il totale degli acconti `scalato_su_anno_mese == cedolino_periodo`
+# registrati per quel dipendente. Se quadra, marca tutti come scalati.
+# Se non quadra, restituisce la discrepanza per scelta manuale.
+
+def _estrai_acconto_da_cedolino(cedolino: Dict[str, Any]) -> Optional[float]:
+    """Estrae il valore 'acconto già erogato' dal cedolino salvato.
+
+    Cerca in vari campi possibili (dipende dal flusso di import):
+    - cedolino.enhanced_parsing.importi_finali.acconto_mese_precedente (parser AI)
+    - cedolino.acconto_mese_precedente (campo flat se promosso)
+    - cedolino.importi_finali.acconto_mese_precedente (legacy)
+
+    Returns None se non disponibile (cedolino non parsato col parser AI).
+    """
+    candidates = []
+
+    enhanced = cedolino.get("enhanced_parsing") or {}
+    if isinstance(enhanced, dict):
+        importi = enhanced.get("importi_finali") or {}
+        if isinstance(importi, dict):
+            v = importi.get("acconto_mese_precedente")
+            if v is not None:
+                candidates.append(v)
+
+    importi_flat = cedolino.get("importi_finali") or {}
+    if isinstance(importi_flat, dict):
+        v = importi_flat.get("acconto_mese_precedente")
+        if v is not None:
+            candidates.append(v)
+
+    v = cedolino.get("acconto_mese_precedente")
+    if v is not None:
+        candidates.append(v)
+
+    for c in candidates:
+        try:
+            f = float(c)
+            if f > 0:
+                return round(f, 2)
+        except (ValueError, TypeError):
+            continue
+
+    return None
+
+
+async def _trova_acconti_da_scalare(
+    db, dipendente_id: str, codice_fiscale: Optional[str], anno: int, mese: int
+) -> List[Dict[str, Any]]:
+    """Trova acconti candidati alla scalatura per un cedolino.
+
+    Criteri:
+    - scalato_su_anno_mese == "{anno}-{mese:02d}"
+    - stato in ('registrato', 'riconciliato_banca') — non già scalati né annullati
+    - matching dipendente: prima per id, fallback per CF (per record legacy
+      senza dipendente_id ma con codice_fiscale)
+    """
+    periodo = f"{anno}-{str(mese).zfill(2)}"
+    stati_eligibili = ["registrato", "riconciliato_banca"]
+
+    # Match primario per dipendente_id
+    query = {
+        "dipendente_id": dipendente_id,
+        "scalato_su_anno_mese": periodo,
+        "stato": {"$in": stati_eligibili},
+    }
+    items = await db["acconti_dipendenti"].find(query, {"_id": 0}).to_list(500)
+
+    # Fallback su CF se non ho trovato nulla via id (record legacy)
+    if not items and codice_fiscale:
+        query_cf = {
+            "codice_fiscale": codice_fiscale.upper().strip(),
+            "scalato_su_anno_mese": periodo,
+            "stato": {"$in": stati_eligibili},
+        }
+        items = await db["acconti_dipendenti"].find(query_cf, {"_id": 0}).to_list(500)
+
+    return items
+
+
+@router.get("/cedolini/{cedolino_id}/preview-scalatura-acconti")
+@handle_errors
+async def preview_scalatura_acconti(cedolino_id: str) -> Dict[str, Any]:
+    """Anteprima della scalatura acconti per un cedolino (NON scrive sul DB).
+
+    Estrae da cedolino.enhanced_parsing.importi_finali.acconto_mese_precedente
+    il totale dichiarato dal cedolino. Confronta con la somma degli acconti
+    registrati per quel dipendente con scalato_su_anno_mese == periodo.
+
+    Risposta:
+        {
+          "cedolino": {id, dipendente_id, anno, mese, ...},
+          "acconto_mese_precedente": float | null,
+          "acconti_registrati": [...],
+          "totale_acconti_registrati": float,
+          "delta": float,                # acconto_cedolino - totale_registrati
+          "stato_match": "quadra" | "discrepanza" | "nessun_dato_cedolino" |
+                         "nessun_acconto",
+          "messaggio": str,
+        }
+    """
+    db = Database.get_db()
+
+    cedolino = await db["cedolini"].find_one({"id": cedolino_id}, {"_id": 0})
+    if not cedolino:
+        raise HTTPException(status_code=404, detail="Cedolino non trovato")
+
+    dipendente_id = cedolino.get("dipendente_id")
+    codice_fiscale = cedolino.get("codice_fiscale") or cedolino.get("cf")
+    anno = cedolino.get("anno")
+    mese = cedolino.get("mese")
+
+    if not anno or not mese:
+        raise HTTPException(
+            status_code=400,
+            detail="Cedolino senza anno/mese - impossibile fare matching",
+        )
+
+    if not dipendente_id and not codice_fiscale:
+        raise HTTPException(
+            status_code=400,
+            detail="Cedolino senza dipendente_id né codice_fiscale - impossibile fare matching",
+        )
+
+    acconto_cedolino = _estrai_acconto_da_cedolino(cedolino)
+    acconti = await _trova_acconti_da_scalare(
+        db, dipendente_id, codice_fiscale, anno, mese
+    )
+    totale_registrati = round(sum(float(a.get("importo", 0) or 0) for a in acconti), 2)
+
+    # Determina stato_match
+    stato_match: str
+    messaggio: str
+    delta: Optional[float] = None
+
+    if acconto_cedolino is None and not acconti:
+        stato_match = "nessun_dato"
+        messaggio = (
+            "Il cedolino non riporta acconti del mese precedente e nel sistema "
+            "non risultano acconti registrati per questo periodo."
+        )
+    elif acconto_cedolino is None:
+        stato_match = "nessun_dato_cedolino"
+        messaggio = (
+            f"Il cedolino non riporta il valore 'acconto mese precedente' "
+            f"(probabilmente non parsato con AI), ma nel sistema risultano "
+            f"{len(acconti)} acconti registrati per €{totale_registrati:.2f}. "
+            f"Riprocessa il cedolino con parser AI o scala manualmente."
+        )
+    elif not acconti:
+        stato_match = "nessun_acconto"
+        messaggio = (
+            f"Il cedolino dichiara €{acconto_cedolino:.2f} di acconti già erogati "
+            f"ma nel sistema non risultano acconti registrati per il mese "
+            f"{anno}-{str(mese).zfill(2)}. Verifica di aver registrato gli acconti."
+        )
+    else:
+        delta = round(acconto_cedolino - totale_registrati, 2)
+        if abs(delta) < 0.01:
+            stato_match = "quadra"
+            messaggio = (
+                f"Match perfetto: cedolino dichiara €{acconto_cedolino:.2f}, "
+                f"sistema ha {len(acconti)} acconti registrati per "
+                f"€{totale_registrati:.2f}."
+            )
+        else:
+            stato_match = "discrepanza"
+            messaggio = (
+                f"DISCREPANZA: cedolino dichiara €{acconto_cedolino:.2f}, "
+                f"sistema ha {len(acconti)} acconti registrati per "
+                f"€{totale_registrati:.2f} (delta: €{delta:+.2f}). "
+                f"Verifica manualmente prima di applicare la scalatura."
+            )
+
+    return {
+        "cedolino": {
+            "id": cedolino.get("id"),
+            "dipendente_id": dipendente_id,
+            "dipendente_nome": cedolino.get("dipendente_nome") or cedolino.get("nome_dipendente"),
+            "codice_fiscale": codice_fiscale,
+            "anno": anno,
+            "mese": mese,
+            "periodo": f"{anno}-{str(mese).zfill(2)}",
+        },
+        "acconto_mese_precedente": acconto_cedolino,
+        "acconti_registrati": [
+            {
+                "id": a.get("id"),
+                "data": a.get("data"),
+                "importo": a.get("importo"),
+                "tipo": a.get("tipo"),
+                "natura_acconto": a.get("natura_acconto") or "su_futuro",
+                "tipo_bonifico": a.get("tipo_bonifico") or "standard",
+                "stato": a.get("stato") or "registrato",
+                "note": a.get("note") or "",
+            }
+            for a in acconti
+        ],
+        "totale_acconti_registrati": totale_registrati,
+        "delta": delta,
+        "stato_match": stato_match,
+        "messaggio": messaggio,
+    }
+
+
+class ScalaturaInput(BaseModel):
+    forza_anche_se_discrepanza: Optional[bool] = False
+
+
+@router.post("/cedolini/{cedolino_id}/scala-acconti")
+@handle_errors
+async def scala_acconti_su_cedolino(
+    cedolino_id: str, payload: ScalaturaInput = Body(default=ScalaturaInput())
+) -> Dict[str, Any]:
+    """Scala gli acconti sul cedolino: marca tutti gli acconti del periodo
+    come 'scalato_su_cedolino', linkando il cedolino_id e l'importo scalato.
+
+    Comportamento:
+    - Se quadra (delta < 0.01): scala tutti, ognuno per il suo importo intero
+    - Se discrepanza: errore 400 con dettagli, A MENO CHE
+      forza_anche_se_discrepanza=True (l'utente ha verificato e accetta)
+    - Se nessun acconto registrato: 400
+    - Se nessun dato cedolino: 400 (chiede di riprocessare con AI)
+
+    Effetti per ogni acconto:
+    - stato='scalato_su_cedolino'
+    - cedolino_id=<id>
+    - importo_scalato_effettivo=<importo dell'acconto, integralmente>
+    """
+    db = Database.get_db()
+
+    # Riusa la logica del preview per coerenza
+    preview = await preview_scalatura_acconti(cedolino_id)
+    stato_match = preview["stato_match"]
+
+    if stato_match in ("nessun_acconto", "nessun_dato", "nessun_dato_cedolino"):
+        raise HTTPException(
+            status_code=400,
+            detail=preview["messaggio"],
+        )
+
+    if stato_match == "discrepanza" and not payload.forza_anche_se_discrepanza:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "stato_match": "discrepanza",
+                "messaggio": preview["messaggio"],
+                "delta": preview["delta"],
+                "totale_registrati": preview["totale_acconti_registrati"],
+                "totale_cedolino": preview["acconto_mese_precedente"],
+                "hint": "Imposta forza_anche_se_discrepanza=true per applicare comunque",
+            },
+        )
+
+    # Procedi con la scalatura
+    now_iso = datetime.now(timezone.utc).isoformat()
+    acconti_ids = [a["id"] for a in preview["acconti_registrati"]]
+    aggiornati = 0
+    for acconto_data in preview["acconti_registrati"]:
+        await db["acconti_dipendenti"].update_one(
+            {"id": acconto_data["id"]},
+            {"$set": {
+                "stato": "scalato_su_cedolino",
+                "cedolino_id": cedolino_id,
+                "importo_scalato_effettivo": acconto_data["importo"],
+                "scalato_il": now_iso,
+                "updated_at": now_iso,
+            }},
+        )
+        aggiornati += 1
+
+    return {
+        "success": True,
+        "messaggio": (
+            f"Scalati {aggiornati} acconti su cedolino "
+            f"{preview['cedolino']['periodo']} di "
+            f"{preview['cedolino']['dipendente_nome'] or preview['cedolino']['codice_fiscale']}"
+            + (" (FORZATO con discrepanza)" if stato_match == "discrepanza" else "")
+        ),
+        "cedolino_id": cedolino_id,
+        "acconti_scalati": acconti_ids,
+        "totale_scalato": preview["totale_acconti_registrati"],
+        "totale_cedolino": preview["acconto_mese_precedente"],
+        "delta": preview["delta"],
+        "stato_match": stato_match,
+        "forzato": stato_match == "discrepanza",
+    }
+
+
+@router.post("/cedolini/{cedolino_id}/annulla-scalatura-acconti")
+@handle_errors
+async def annulla_scalatura_acconti(cedolino_id: str) -> Dict[str, Any]:
+    """Annulla la scalatura: riporta gli acconti del cedolino allo stato
+    precedente (riconciliato_banca se hanno movimento_bancario_id, altrimenti
+    registrato).
+    """
+    db = Database.get_db()
+
+    cedolino = await db["cedolini"].find_one({"id": cedolino_id}, {"_id": 0})
+    if not cedolino:
+        raise HTTPException(status_code=404, detail="Cedolino non trovato")
+
+    # Trova acconti scalati su questo cedolino
+    acconti_scalati = await db["acconti_dipendenti"].find(
+        {"cedolino_id": cedolino_id, "stato": "scalato_su_cedolino"},
+        {"_id": 0}
+    ).to_list(500)
+
+    if not acconti_scalati:
+        raise HTTPException(
+            status_code=404,
+            detail="Nessun acconto risulta scalato su questo cedolino",
+        )
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    for a in acconti_scalati:
+        # Ripristina stato precedente in base alla presenza di movimento bancario
+        nuovo_stato = "riconciliato_banca" if a.get("movimento_bancario_id") else "registrato"
+        await db["acconti_dipendenti"].update_one(
+            {"id": a["id"]},
+            {
+                "$set": {"stato": nuovo_stato, "updated_at": now_iso},
+                "$unset": {
+                    "cedolino_id": "",
+                    "importo_scalato_effettivo": "",
+                    "scalato_il": "",
+                },
+            },
+        )
+
+    return {
+        "success": True,
+        "messaggio": f"Annullata scalatura di {len(acconti_scalati)} acconti dal cedolino",
+        "cedolino_id": cedolino_id,
+        "acconti_ripristinati": [a["id"] for a in acconti_scalati],
+    }
+
+
 @router.get("/parse-payslips")
 @handle_errors
 async def parse_payslips_for_tfr() -> Dict[str, Any]:
