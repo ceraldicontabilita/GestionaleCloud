@@ -523,10 +523,50 @@ async def calcola_tfr_batch(anno: int) -> Dict[str, Any]:
 
 class AccontoInput(BaseModel):
     dipendente_id: str
-    tipo: str  # "tfr", "ferie", "tredicesima", "quattordicesima", "prestito"
+    # Tipi: "stipendio" | "tfr" | "ferie" | "tredicesima" | "quattordicesima" | "prestito"
+    tipo: str
     importo: float
     data: str  # YYYY-MM-DD
     note: Optional[str] = ""
+
+    # === NUOVI CAMPI (introdotti per gestione completa flusso acconti) ===
+    # Distinzione tra acconto su lavoro futuro vs su pregresso (lavoro già svolto).
+    # Default "su_futuro" perché è il caso standard (anticipo su busta del mese).
+    natura_acconto: Optional[str] = "su_futuro"  # "su_futuro" | "su_pregresso"
+
+    # Come l'azienda ha materialmente erogato l'acconto al dipendente
+    metodo_erogazione: Optional[str] = "cassa"  # "cassa" | "bonifico" | "assegno"
+
+    # Mese/anno del cedolino su cui questo acconto verrà scalato.
+    # Per default: stesso mese della data dell'acconto. L'utente può forzare
+    # un mese diverso (es. "anticipo dato il 30/04 ma scalato su busta di maggio")
+    scalato_su_anno_mese: Optional[str] = None  # formato "YYYY-MM"
+
+
+class AccontoUpdateInput(BaseModel):
+    """Modello per PUT /acconti/{id}: tutti i campi opzionali per update parziale."""
+    importo: Optional[float] = None
+    data: Optional[str] = None
+    tipo: Optional[str] = None
+    note: Optional[str] = None
+    natura_acconto: Optional[str] = None
+    metodo_erogazione: Optional[str] = None
+    scalato_su_anno_mese: Optional[str] = None
+    stato: Optional[str] = None
+
+
+# Costanti per validazione (esposte a livello modulo per riuso in altri router)
+TIPI_ACCONTO_VALIDI = {
+    "stipendio", "tfr", "ferie", "tredicesima", "quattordicesima", "prestito",
+}
+NATURE_VALIDE = {"su_futuro", "su_pregresso"}
+METODI_VALIDI = {"cassa", "bonifico", "assegno"}
+STATI_VALIDI = {
+    "registrato",            # appena inserito
+    "riconciliato_banca",    # collegato a movimento estratto conto
+    "scalato_su_cedolino",   # confermato sul cedolino paga
+    "annullato",             # rimosso dal flusso (non eliminato per audit)
+}
 
 
 @router.get("/acconti/{dipendente_id}")
@@ -599,28 +639,79 @@ async def get_acconti_dipendente(dipendente_id: str) -> Dict[str, Any]:
 async def registra_acconto(input_data: AccontoInput) -> Dict[str, Any]:
     """
     Registra un acconto per un dipendente.
-    Tipi supportati: tfr, ferie, tredicesima, quattordicesima, prestito.
+
+    Tipi supportati: stipendio, tfr, ferie, tredicesima, quattordicesima, prestito.
+
+    Nuovi campi:
+    - natura_acconto: "su_futuro" (anticipo su busta prossima) | "su_pregresso"
+      (ripianamento su lavoro già svolto). Default "su_futuro".
+    - metodo_erogazione: "cassa" | "bonifico" | "assegno". Default "cassa".
+    - scalato_su_anno_mese: mese cedolino su cui andrà scalato (es. "2026-04").
+      Se non fornito, derivato dalla data dell'acconto.
+
+    Stato lifecycle:
+        registrato → riconciliato_banca → scalato_su_cedolino
+                  ↘ annullato
+
+    L'acconto viene creato in stato "registrato". Le transizioni di stato
+    avvengono via endpoint dedicati (riconcilia, scala-su-cedolino) che
+    saranno aggiunti nei task successivi.
     """
     db = Database.get_db()
-    
+
     # Verifica dipendente
     dipendente = await db["dipendenti"].find_one(
         {"id": input_data.dipendente_id},
         {"_id": 0}
     )
-    
+
     if not dipendente:
         raise HTTPException(status_code=404, detail="Dipendente non trovato")
-    
-    # Valida tipo
-    tipi_validi = ["tfr", "ferie", "tredicesima", "quattordicesima", "prestito"]
-    if input_data.tipo not in tipi_validi:
-        raise HTTPException(status_code=400, detail=f"Tipo non valido. Usa: {', '.join(tipi_validi)}")
-    
+
+    # Validazioni di dominio
+    if input_data.tipo not in TIPI_ACCONTO_VALIDI:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Tipo non valido. Usa: {', '.join(sorted(TIPI_ACCONTO_VALIDI))}",
+        )
     if input_data.importo <= 0:
         raise HTTPException(status_code=400, detail="L'importo deve essere positivo")
-    
-    # Crea record acconto
+
+    natura = input_data.natura_acconto or "su_futuro"
+    if natura not in NATURE_VALIDE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Natura acconto non valida. Usa: {', '.join(sorted(NATURE_VALIDE))}",
+        )
+
+    metodo = input_data.metodo_erogazione or "cassa"
+    if metodo not in METODI_VALIDI:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Metodo erogazione non valido. Usa: {', '.join(sorted(METODI_VALIDI))}",
+        )
+
+    # Deriva scalato_su_anno_mese da data se non fornito
+    scalato_su = input_data.scalato_su_anno_mese
+    if not scalato_su:
+        try:
+            # input_data.data è in formato YYYY-MM-DD
+            scalato_su = input_data.data[:7]  # estrae YYYY-MM
+        except Exception:
+            scalato_su = None
+
+    # Estrae anno/mese numerici dalla data per query rapide su DB
+    anno_int = mese_int = None
+    try:
+        if input_data.data and len(input_data.data) >= 7:
+            anno_int = int(input_data.data[:4])
+            mese_int = int(input_data.data[5:7])
+    except Exception:
+        pass
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    # Crea record acconto con schema esteso
     acconto = {
         "id": str(uuid4()),
         "dipendente_id": input_data.dipendente_id,
@@ -628,13 +719,31 @@ async def registra_acconto(input_data: AccontoInput) -> Dict[str, Any]:
         "tipo": input_data.tipo,
         "importo": round(input_data.importo, 2),
         "data": input_data.data,
-        "note": input_data.note,
-        "created_at": datetime.now(timezone.utc).isoformat()
+        "anno": anno_int,
+        "mese": mese_int,
+        "note": input_data.note or "",
+
+        # Nuovi campi
+        "natura_acconto": natura,
+        "metodo_erogazione": metodo,
+        "scalato_su_anno_mese": scalato_su,
+
+        # Stato lifecycle
+        "stato": "registrato",
+        "movimento_bancario_id": None,
+        "riconciliato_il": None,
+        "cedolino_id": None,
+        "importo_scalato_effettivo": None,
+
+        # Audit
+        "source": "manuale",
+        "created_at": now_iso,
+        "updated_at": now_iso,
     }
-    
+
     await db["acconti_dipendenti"].insert_one(acconto.copy())
-    
-    # Se è un acconto TFR, aggiorna anche il TFR del dipendente
+
+    # Se è un acconto TFR, aggiorna anche il TFR del dipendente (logica preesistente)
     if input_data.tipo == "tfr":
         tfr_attuale = float(dipendente.get("tfr_accantonato", 0))
         nuovo_tfr = max(0, tfr_attuale - input_data.importo)
@@ -642,8 +751,8 @@ async def registra_acconto(input_data: AccontoInput) -> Dict[str, Any]:
             {"id": input_data.dipendente_id},
             {"$set": {"tfr_accantonato": round(nuovo_tfr, 2)}}
         )
-        
-        # Registra movimento
+
+        # Registra movimento contabile
         movimento = {
             "id": str(uuid4()),
             "data": input_data.data,
@@ -651,37 +760,49 @@ async def registra_acconto(input_data: AccontoInput) -> Dict[str, Any]:
             "tipo": "acconto_tfr",
             "importo": round(input_data.importo, 2),
             "dipendente_id": input_data.dipendente_id,
-            "note": input_data.note,
-            "created_at": datetime.now(timezone.utc).isoformat()
+            "note": input_data.note or "",
+            "created_at": now_iso,
         }
         await db["movimenti_contabili"].insert_one(movimento.copy())
-    
+
     return {
         "success": True,
         "acconto_id": acconto["id"],
-        "messaggio": f"Acconto {input_data.tipo} registrato per {dipendente.get('nome_completo', '')}",
-        "importo": round(input_data.importo, 2)
+        "messaggio": f"Acconto {input_data.tipo} ({natura}) registrato per {dipendente.get('nome_completo', '')}",
+        "importo": round(input_data.importo, 2),
+        "natura": natura,
+        "metodo": metodo,
+        "scalato_su": scalato_su,
+        "stato": "registrato",
     }
 
 
 @router.put("/acconti/{acconto_id}")
 @handle_errors
 async def modifica_acconto(acconto_id: str, input_data: dict) -> Dict[str, Any]:
-    """Modifica un acconto esistente."""
+    """Modifica un acconto esistente.
+
+    Accetta tutti i campi del modello esteso. Se viene cambiata la data,
+    ricalcola anche `anno`, `mese` numerici e `scalato_su_anno_mese`
+    (a meno che quest'ultimo sia stato fornito esplicitamente).
+    """
     db = Database.get_db()
-    
+
     # Trova acconto
     acconto = await db["acconti_dipendenti"].find_one({"id": acconto_id})
     if not acconto:
         raise HTTPException(status_code=404, detail="Acconto non trovato")
-    
+
     # Prepara aggiornamento
-    update_fields = {}
-    if "importo" in input_data:
+    update_fields: Dict[str, Any] = {}
+
+    if "importo" in input_data and input_data["importo"] is not None:
         vecchio_importo = acconto.get("importo", 0)
         nuovo_importo = float(input_data["importo"])
+        if nuovo_importo <= 0:
+            raise HTTPException(status_code=400, detail="L'importo deve essere positivo")
         update_fields["importo"] = round(nuovo_importo, 2)
-        
+
         # Se è un acconto TFR, aggiorna il saldo del dipendente
         if acconto.get("tipo") == "tfr":
             dipendente = await db["dipendenti"].find_one({"id": acconto["dipendente_id"]})
@@ -693,24 +814,72 @@ async def modifica_acconto(acconto_id: str, input_data: dict) -> Dict[str, Any]:
                     {"id": acconto["dipendente_id"]},
                     {"$set": {"tfr_accantonato": round(nuovo_tfr, 2)}}
                 )
-    
-    if "data" in input_data:
-        update_fields["data"] = input_data["data"]
+
+    if "data" in input_data and input_data["data"]:
+        nuova_data = input_data["data"]
+        update_fields["data"] = nuova_data
+        # Ricalcola anno/mese numerici dal nuovo valore
+        try:
+            if len(nuova_data) >= 7:
+                update_fields["anno"] = int(nuova_data[:4])
+                update_fields["mese"] = int(nuova_data[5:7])
+        except Exception:
+            pass
+        # Se l'utente non ha forzato scalato_su_anno_mese, derivalo dalla nuova data
+        if "scalato_su_anno_mese" not in input_data:
+            update_fields["scalato_su_anno_mese"] = nuova_data[:7]
+
     if "note" in input_data:
-        update_fields["note"] = input_data["note"]
-    if "tipo" in input_data:
+        update_fields["note"] = input_data["note"] or ""
+
+    if "tipo" in input_data and input_data["tipo"]:
+        if input_data["tipo"] not in TIPI_ACCONTO_VALIDI:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Tipo non valido. Usa: {', '.join(sorted(TIPI_ACCONTO_VALIDI))}",
+            )
         update_fields["tipo"] = input_data["tipo"]
-    
+
+    if "natura_acconto" in input_data and input_data["natura_acconto"]:
+        if input_data["natura_acconto"] not in NATURE_VALIDE:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Natura non valida. Usa: {', '.join(sorted(NATURE_VALIDE))}",
+            )
+        update_fields["natura_acconto"] = input_data["natura_acconto"]
+
+    if "metodo_erogazione" in input_data and input_data["metodo_erogazione"]:
+        if input_data["metodo_erogazione"] not in METODI_VALIDI:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Metodo non valido. Usa: {', '.join(sorted(METODI_VALIDI))}",
+            )
+        update_fields["metodo_erogazione"] = input_data["metodo_erogazione"]
+
+    if "scalato_su_anno_mese" in input_data:
+        # Accetta None per "rimuovi binding"
+        update_fields["scalato_su_anno_mese"] = input_data["scalato_su_anno_mese"]
+
+    if "stato" in input_data and input_data["stato"]:
+        if input_data["stato"] not in STATI_VALIDI:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Stato non valido. Usa: {', '.join(sorted(STATI_VALIDI))}",
+            )
+        update_fields["stato"] = input_data["stato"]
+
     if update_fields:
+        update_fields["updated_at"] = datetime.now(timezone.utc).isoformat()
         await db["acconti_dipendenti"].update_one(
             {"id": acconto_id},
             {"$set": update_fields}
         )
-    
+
     return {
         "success": True,
         "messaggio": f"Acconto {acconto.get('tipo', '')} modificato",
-        "acconto_id": acconto_id
+        "acconto_id": acconto_id,
+        "campi_aggiornati": sorted(update_fields.keys()),
     }
 
 

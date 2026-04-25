@@ -31,6 +31,29 @@ const TIPI = [
 ];
 const TIPI_MAP = TIPI.reduce((acc, t) => ((acc[t.id] = t), acc), {});
 
+// Natura dell'acconto: anticipo su busta futura vs ripianamento su pregresso
+const NATURE = [
+  {
+    id: 'su_futuro',
+    label: 'Su busta futura',
+    sub: 'anticipo del cedolino del mese',
+    color: '#1d4ed8',
+  },
+  {
+    id: 'su_pregresso',
+    label: 'Su lavoro pregresso',
+    sub: 'ripianamento debito già maturato',
+    color: '#b45309',
+  },
+];
+
+// Modalità di erogazione fisica dell'acconto
+const METODI = [
+  { id: 'cassa', label: 'Cassa', icon: '💵' },
+  { id: 'bonifico', label: 'Bonifico', icon: '🏦' },
+  { id: 'assegno', label: 'Assegno', icon: '📄' },
+];
+
 const MESI = [
   'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
   'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre',
@@ -168,6 +191,9 @@ export default function HRAcconti() {
       importo: a.importo || '',
       data: a.data || new Date().toISOString().slice(0, 10),
       note: a.note || '',
+      natura_acconto: a.natura_acconto || 'su_futuro',
+      metodo_erogazione: a.metodo_erogazione || 'cassa',
+      scalato_su_anno_mese: a.scalato_su_anno_mese || '',
     });
     setModalOpen(true);
   };
@@ -200,7 +226,13 @@ export default function HRAcconti() {
         importo,
         data: form.data,
         note: form.note || '',
+        natura_acconto: form.natura_acconto || 'su_futuro',
+        metodo_erogazione: form.metodo_erogazione || 'cassa',
       };
+      // Solo se l'utente ha forzato un mese diverso, mandalo (altrimenti backend lo deriva da data)
+      if (form.scalato_su_anno_mese) {
+        payload.scalato_su_anno_mese = form.scalato_su_anno_mese;
+      }
       if (editing) {
         await api.put(`/api/tfr/acconti/${editing.id}`, payload);
       } else {
@@ -492,19 +524,47 @@ export default function HRAcconti() {
                         </div>
                       </td>
                       <td style={{ ...tdStyle, textAlign: 'center' }}>
-                        <span
-                          style={{
-                            display: 'inline-block',
-                            padding: '3px 10px',
-                            borderRadius: 6,
-                            fontSize: 11,
-                            fontWeight: 700,
-                            backgroundColor: `${tipo.color}20`,
-                            color: tipo.color,
-                          }}
-                        >
-                          {tipo.label}
-                        </span>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'center' }}>
+                          <span
+                            style={{
+                              display: 'inline-block',
+                              padding: '3px 10px',
+                              borderRadius: 6,
+                              fontSize: 11,
+                              fontWeight: 700,
+                              backgroundColor: `${tipo.color}20`,
+                              color: tipo.color,
+                            }}
+                          >
+                            {tipo.label}
+                          </span>
+                          <div style={{ display: 'inline-flex', gap: 4, fontSize: 9, fontWeight: 600 }}>
+                            {a.natura_acconto === 'su_pregresso' ? (
+                              <span style={{ padding: '1px 6px', borderRadius: 3, background: '#fef3c7', color: '#b45309', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                Pregresso
+                              </span>
+                            ) : (
+                              <span style={{ padding: '1px 6px', borderRadius: 3, background: '#dbeafe', color: '#1d4ed8', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                Su futuro
+                              </span>
+                            )}
+                            {a.metodo_erogazione && a.metodo_erogazione !== 'cassa' && (
+                              <span style={{ padding: '1px 6px', borderRadius: 3, background: '#f1f5f9', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                {a.metodo_erogazione === 'bonifico' ? '🏦 Bonif.' : '📄 Ass.'}
+                              </span>
+                            )}
+                            {a.stato && a.stato !== 'registrato' && (
+                              <span style={{
+                                padding: '1px 6px', borderRadius: 3,
+                                background: a.stato === 'scalato_su_cedolino' ? '#dcfce7' : '#fef3c7',
+                                color: a.stato === 'scalato_su_cedolino' ? '#15803d' : '#b45309',
+                                textTransform: 'uppercase', letterSpacing: '0.04em',
+                              }}>
+                                {a.stato === 'scalato_su_cedolino' ? '✓ Scalato' : a.stato === 'riconciliato_banca' ? 'Banca' : a.stato}
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       </td>
                       <td
                         style={{
@@ -602,6 +662,9 @@ function defaultForm() {
     importo: '',
     data: new Date().toISOString().slice(0, 10),
     note: '',
+    natura_acconto: 'su_futuro',
+    metodo_erogazione: 'cassa',
+    scalato_su_anno_mese: '',
   };
 }
 
@@ -786,6 +849,95 @@ function AccontoModal({ form, setForm, editing, dipendenti, saving, onClose, onS
             </div>
           </FormField>
 
+          {/* Natura acconto: su lavoro futuro vs pregresso */}
+          <FormField label="Natura dell'acconto *">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
+              {NATURE.map((n) => (
+                <button
+                  key={n.id}
+                  type="button"
+                  onClick={() => setForm((f) => ({ ...f, natura_acconto: n.id }))}
+                  style={{
+                    padding: '10px 12px',
+                    borderRadius: 8,
+                    border: `2px solid ${form.natura_acconto === n.id ? n.color : COLORS.border}`,
+                    backgroundColor:
+                      form.natura_acconto === n.id ? `${n.color}15` : COLORS.card,
+                    color: form.natura_acconto === n.id ? n.color : COLORS.text,
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                  }}
+                >
+                  <div style={{
+                    fontSize: 13,
+                    fontWeight: form.natura_acconto === n.id ? 700 : 500,
+                  }}>
+                    {n.label}
+                  </div>
+                  <div style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 2 }}>
+                    {n.sub}
+                  </div>
+                </button>
+              ))}
+            </div>
+            <div style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 6, fontStyle: 'italic' }}>
+              💡 <strong>Su busta futura</strong>: il cedolino del mese scalerà l'acconto.
+              {' '}<strong>Su pregresso</strong>: ripiana retribuzione già maturata, non sarà scalato.
+            </div>
+          </FormField>
+
+          {/* Metodo erogazione */}
+          <FormField label="Metodo di erogazione *">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+              {METODI.map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => setForm((f) => ({ ...f, metodo_erogazione: m.id }))}
+                  style={{
+                    padding: '10px 8px',
+                    borderRadius: 8,
+                    border: `2px solid ${form.metodo_erogazione === m.id ? COLORS.primary : COLORS.border}`,
+                    backgroundColor:
+                      form.metodo_erogazione === m.id ? `${COLORS.primary}15` : COLORS.card,
+                    color: form.metodo_erogazione === m.id ? COLORS.primary : COLORS.text,
+                    fontSize: 13,
+                    fontWeight: form.metodo_erogazione === m.id ? 700 : 500,
+                    cursor: 'pointer',
+                    textAlign: 'center',
+                  }}
+                >
+                  <div style={{ fontSize: 18, marginBottom: 2 }}>{m.icon}</div>
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          </FormField>
+
+          {/* Mese cedolino su cui scalare (solo se "su_futuro") */}
+          {form.natura_acconto === 'su_futuro' && (
+            <FormField
+              label="Scalato su cedolino di"
+              hint="Default: stesso mese della data acconto. Modifica solo se devi forzare un altro mese."
+            >
+              <input
+                type="month"
+                value={form.scalato_su_anno_mese || (form.data ? form.data.slice(0, 7) : '')}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, scalato_su_anno_mese: e.target.value }))
+                }
+                style={{
+                  padding: '8px 10px',
+                  border: `1px solid ${COLORS.border}`,
+                  borderRadius: 8,
+                  fontSize: 13,
+                  width: '100%',
+                  boxSizing: 'border-box',
+                }}
+              />
+            </FormField>
+          )}
+
           {isTFR && (
             <div
               style={{
@@ -871,7 +1023,7 @@ function AccontoModal({ form, setForm, editing, dipendenti, saving, onClose, onS
   );
 }
 
-function FormField({ label, children }) {
+function FormField({ label, children, hint }) {
   return (
     <div style={{ marginBottom: SPACING.lg }}>
       <label
@@ -888,6 +1040,11 @@ function FormField({ label, children }) {
         {label}
       </label>
       {children}
+      {hint && (
+        <div style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 4, fontStyle: 'italic' }}>
+          {hint}
+        </div>
+      )}
     </div>
   );
 }
