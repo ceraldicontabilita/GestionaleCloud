@@ -193,7 +193,7 @@ def _register_invoices(app: FastAPI):
 # ─── Employees Module ──────────────────────────────────────────────────────
 def _register_employees(app: FastAPI):
     from app.routers.employees import dipendenti, employees_payroll, employee_contracts, buste_paga, shifts, staff, giustificativi
-    from app.routers import payroll, cedolini, cedolini_riconciliazione, tfr, attendance, dimissioni
+    from app.routers import payroll, cedolini, cedolini_riconciliazione, tfr, attendance, dimissioni, trattenute
     from app.routers import salari_unificati_v2, bonifici_stipendi, libro_unico_parser, f24_parser
     from app.routers.attendance_module import presenze as attendance_presenze
     
@@ -208,6 +208,7 @@ def _register_employees(app: FastAPI):
     app.include_router(cedolini.router, prefix="/api/cedolini", tags=["Cedolini"])
     app.include_router(cedolini_riconciliazione.router, prefix="/api/cedolini", tags=["Cedolini Riconciliazione"])
     app.include_router(tfr.router, prefix="/api/tfr", tags=["TFR"])
+    app.include_router(trattenute.router, prefix="/api/trattenute", tags=["Trattenute Disciplinari"])
     app.include_router(attendance.router, prefix="/api/attendance", tags=["Attendance"])
     app.include_router(attendance_presenze.router, prefix="/api/attendance", tags=["Presenze"])
     app.include_router(salari_unificati_v2.router, prefix="/api/salari-v2", tags=["Salari V2"])

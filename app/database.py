@@ -165,6 +165,19 @@ class Database:
         )
         await _safe_index("tfr_accantonamenti", [("dipendente_id", 1), ("anno", 1)], name="idx_tfr_dip_anno")
         await _safe_index("trattenute_dipendenti", "dipendente_id", name="idx_trattenute_dip")
+        # Indici per workflow disciplinari (Task 4)
+        await _safe_index(
+            "trattenute_dipendenti",
+            [("dipendente_id", 1), ("anno", 1), ("mese", 1)],
+            name="idx_trattenute_dip_periodo",
+        )
+        await _safe_index("trattenute_dipendenti", "stato", name="idx_trattenute_stato")
+        await _safe_index(
+            "trattenute_dipendenti",
+            "cedolino_id",
+            name="idx_trattenute_cedolino",
+            sparse=True,
+        )
 
         # --- Notifications ---
         await _safe_index("notifications", [("created_at", -1)], name="idx_notif_data")
