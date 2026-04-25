@@ -434,6 +434,13 @@ function TabPresenze({ dip }) {
   const [celle, setCelle] = useState({});
   const [tipologie, setTipologie] = useState([]);
   const [loading, setLoading] = useState(true);
+  // Editor inline cella
+  const [editingDate, setEditingDate] = useState(null);  // 'YYYY-MM-DD' | null
+  const [editForm, setEditForm] = useState({ stato:'', ore:8, protocollo:'', note:'' });
+  const [editLoading, setEditLoading] = useState(false);
+  const [editError, setEditError] = useState(null);
+  // Bump per riload dati dopo save (evita race con AbortController)
+  const [reloadBump, setReloadBump] = useState(0);
 
   useAbortableEffect((signal) => {
     api.get('/api/attendance/tipologie-giustificativi', { signal })
@@ -456,7 +463,74 @@ function TabPresenze({ dip }) {
       })
       .catch(e=>{ if(!isCanceledError(e)) setCelle({}); })
       .finally(()=>{ if(!signal?.aborted) setLoading(false); });
-  }, [dip?.id, dip?.codice_fiscale, anno, mese]);
+  }, [dip?.id, dip?.codice_fiscale, anno, mese, reloadBump]);
+
+  // Apre editor per una data, precompilando con la cella esistente (se c'è)
+  const openEditor = (ds) => {
+    const ex = celle[ds] || {};
+    setEditForm({
+      stato: ex.stato || '',
+      ore: ex.ore != null ? Number(ex.ore) : 8,
+      protocollo: ex.protocollo || '',
+      note: ex.note || '',
+    });
+    setEditError(null);
+    setEditingDate(ds);
+  };
+
+  const closeEditor = () => {
+    setEditingDate(null);
+    setEditError(null);
+  };
+
+  const saveCell = async () => {
+    if (!editingDate) return;
+    if (!editForm.stato) {
+      setEditError('Seleziona uno stato (FE, MA, RL, ecc.)');
+      return;
+    }
+    // Protocollo obbligatorio per malattia/infortunio/congedo
+    if (['MA','SM','IN','CO'].includes(editForm.stato) && !editForm.protocollo.trim()) {
+      setEditError('Protocollo INPS o certificato obbligatorio per ' + editForm.stato);
+      return;
+    }
+    setEditLoading(true);
+    setEditError(null);
+    try {
+      await api.post('/api/attendance/batch-insert', {
+        employee_ids: [dip.id],
+        giorni: [editingDate],
+        stato: editForm.stato,
+        ore: editForm.ore != null ? Number(editForm.ore) : 8,
+        protocollo: editForm.protocollo.trim(),
+        note: editForm.note.trim(),
+      });
+      closeEditor();
+      setReloadBump(b => b+1);
+    } catch (e) {
+      setEditError(e.response?.data?.detail || e.message);
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  const deleteCell = async () => {
+    if (!editingDate) return;
+    if (!window.confirm(`Eliminare la presenza del ${editingDate}?`)) return;
+    setEditLoading(true);
+    setEditError(null);
+    try {
+      await api.delete('/api/attendance/presenza', {
+        params: { employee_id: dip.id, data: editingDate },
+      });
+      closeEditor();
+      setReloadBump(b => b+1);
+    } catch (e) {
+      setEditError(e.response?.data?.detail || e.message);
+    } finally {
+      setEditLoading(false);
+    }
+  };
 
   const giorniMese = new Date(anno, mese, 0).getDate();
   const stats = useMemo(()=>{
@@ -541,8 +615,13 @@ function TabPresenze({ dip }) {
               const colore=code?colorByCode(code):null;
               const bg=code&&colore?lighten(colore):isWe?'#f8fafc':'white';
               return (
-                <div key={g} title={cella?`${DOW[dow]} ${g}/${mese}: ${code||'P'} ${cella.ore||''}h`:`${DOW[dow]} ${g}/${mese}`}
-                  style={{ aspectRatio:'1', padding:4, border:`1px solid ${code&&colore?colore+'44':COLORS.border}`, borderRadius:8, backgroundColor:bg, display:'flex', flexDirection:'column', justifyContent:'space-between', alignItems:'flex-start', fontSize:11 }}>
+                <div key={g}
+                  onClick={() => openEditor(ds)}
+                  title={cella?`${DOW[dow]} ${g}/${mese}: ${code||'P'} ${cella.ore||''}h — clicca per modificare`:`${DOW[dow]} ${g}/${mese} — clicca per inserire`}
+                  style={{ aspectRatio:'1', padding:4, border:`1px solid ${code&&colore?colore+'44':COLORS.border}`, borderRadius:8, backgroundColor:bg, display:'flex', flexDirection:'column', justifyContent:'space-between', alignItems:'flex-start', fontSize:11, cursor:'pointer', transition:'transform 0.1s, box-shadow 0.1s' }}
+                  onMouseEnter={e=>{ e.currentTarget.style.transform='scale(1.05)'; e.currentTarget.style.boxShadow='0 2px 6px rgba(15,39,68,0.15)'; e.currentTarget.style.zIndex='1'; }}
+                  onMouseLeave={e=>{ e.currentTarget.style.transform=''; e.currentTarget.style.boxShadow=''; e.currentTarget.style.zIndex=''; }}
+                >
                   <span style={{ fontWeight:700, color:isWe?COLORS.danger:COLORS.text }}>{g}</span>
                   {code && (
                     <span style={{ fontSize:8, fontWeight:800, color:colore||COLORS.text, padding:'1px 4px', borderRadius:3, background:'white', alignSelf:'center' }}>
@@ -567,6 +646,175 @@ function TabPresenze({ dip }) {
           ))}
         </div>
       )}
+
+      <div style={{ marginTop:10, fontSize:11, color:COLORS.textMuted, fontStyle:'italic' }}>
+        💡 Clicca su qualunque giorno del calendario per inserire o modificare la presenza.
+      </div>
+
+      {/* Editor cella inline */}
+      {editingDate && (
+        <CellEditorModal
+          date={editingDate}
+          dipNome={`${dip.cognome||''} ${dip.nome||''}`.trim()}
+          form={editForm}
+          setForm={setEditForm}
+          tipologie={tipologie}
+          loading={editLoading}
+          error={editError}
+          existingCell={celle[editingDate]}
+          onSave={saveCell}
+          onDelete={deleteCell}
+          onClose={closeEditor}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Editor inline cella di presenza (popover modale)
+// ─────────────────────────────────────────────────────────────────────────────
+function CellEditorModal({ date, dipNome, form, setForm, tipologie, loading, error, existingCell, onSave, onDelete, onClose }) {
+  // Format data leggibile (es. "Lunedì 15 Aprile 2026")
+  const dt = new Date(date + 'T00:00:00');
+  const dayName = ['Domenica','Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato'][dt.getDay()];
+  const monthName = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'][dt.getMonth()];
+  const dataLeggibile = `${dayName} ${dt.getDate()} ${monthName} ${dt.getFullYear()}`;
+
+  // Stati comuni in primo piano + tutti gli altri ordinati
+  const STATI_COMUNI = ['FE','MA','RL','PE','IN','CO','LU','RC'];
+  const stati = useMemo(() => {
+    const tipMap = {};
+    (tipologie || []).forEach(t => { tipMap[t.codice] = t; });
+    const comuni = STATI_COMUNI.filter(c => tipMap[c]).map(c => tipMap[c]);
+    const altri = (tipologie || []).filter(t => !STATI_COMUNI.includes(t.codice))
+      .sort((a, b) => (a.codice || '').localeCompare(b.codice || ''));
+    return [...comuni, ...altri];
+  }, [tipologie]);
+
+  const isMA = ['MA','SM','IN','CO'].includes(form.stato);
+  const isExisting = !!existingCell?.stato;
+
+  return (
+    <div onClick={onClose}
+      style={{ position:'fixed', inset:0, background:'rgba(15,39,68,0.6)', zIndex:1100, display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}
+    >
+      <div onClick={e=>e.stopPropagation()}
+        style={{ background:'white', borderRadius:12, width:'100%', maxWidth:520, padding:24, boxShadow:'0 20px 60px rgba(0,0,0,0.3)' }}
+      >
+        <div style={{ marginBottom:16 }}>
+          <div style={{ fontSize:11, color:COLORS.textMuted, textTransform:'uppercase', letterSpacing:'0.05em', fontWeight:700 }}>
+            {isExisting ? '✏️ Modifica presenza' : '➕ Inserisci presenza'}
+          </div>
+          <h2 style={{ margin:'4px 0 2px', fontSize:18, color:COLORS.primary }}>{dataLeggibile}</h2>
+          <div style={{ fontSize:12, color:COLORS.textMuted }}>{dipNome}</div>
+        </div>
+
+        <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+          <label style={{ display:'block' }}>
+            <div style={{ fontSize:11, fontWeight:700, color:COLORS.textMuted, marginBottom:4, textTransform:'uppercase' }}>Stato *</div>
+            <select
+              value={form.stato}
+              onChange={e=>setForm(f=>({...f, stato:e.target.value}))}
+              autoFocus
+              style={{ width:'100%', padding:'10px 12px', border:`1px solid ${COLORS.border}`, borderRadius:8, fontSize:14, fontWeight:600, background:'white' }}
+            >
+              <option value="">— Seleziona —</option>
+              {stati.map(t => (
+                <option key={t.codice} value={t.codice}>
+                  {t.codice} — {t.nome}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+            <label style={{ display:'block' }}>
+              <div style={{ fontSize:11, fontWeight:700, color:COLORS.textMuted, marginBottom:4, textTransform:'uppercase' }}>Ore</div>
+              <input
+                type="number"
+                step="0.25"
+                min="0"
+                max="24"
+                value={form.ore}
+                onChange={e=>setForm(f=>({...f, ore:e.target.value}))}
+                style={{ width:'100%', padding:'8px 10px', border:`1px solid ${COLORS.border}`, borderRadius:8, fontSize:13, boxSizing:'border-box' }}
+              />
+            </label>
+            <label style={{ display:'block' }}>
+              <div style={{ fontSize:11, fontWeight:700, color:COLORS.textMuted, marginBottom:4, textTransform:'uppercase' }}>
+                Protocollo {isMA && <span style={{ color:COLORS.danger }}>*</span>}
+              </div>
+              <input
+                type="text"
+                value={form.protocollo}
+                onChange={e=>setForm(f=>({...f, protocollo:e.target.value}))}
+                placeholder={isMA ? 'INPS/Cert. medico' : '(opzionale)'}
+                style={{ width:'100%', padding:'8px 10px', border:`1px solid ${isMA && !form.protocollo ? '#fca5a5' : COLORS.border}`, borderRadius:8, fontSize:13, boxSizing:'border-box' }}
+              />
+            </label>
+          </div>
+
+          <label style={{ display:'block' }}>
+            <div style={{ fontSize:11, fontWeight:700, color:COLORS.textMuted, marginBottom:4, textTransform:'uppercase' }}>Note</div>
+            <textarea
+              value={form.note}
+              onChange={e=>setForm(f=>({...f, note:e.target.value}))}
+              rows={2}
+              style={{ width:'100%', padding:'8px 10px', border:`1px solid ${COLORS.border}`, borderRadius:8, fontSize:13, fontFamily:'inherit', resize:'vertical', boxSizing:'border-box' }}
+            />
+          </label>
+
+          {isMA && (
+            <div style={{ padding:8, background:'#fef3c7', border:'1px solid #fcd34d', borderRadius:6, fontSize:11, color:'#92400e' }}>
+              ⚠️ Per malattia/infortunio/congedo è obbligatorio inserire un protocollo (INPS o certificato medico)
+            </div>
+          )}
+
+          {error && (
+            <div style={{ padding:10, background:'#fee2e2', border:'1px solid #fca5a5', borderRadius:6, color:'#b91c1c', fontSize:13 }}>
+              ⚠️ {error}
+            </div>
+          )}
+        </div>
+
+        <div style={{ marginTop:20, display:'flex', justifyContent:'space-between', alignItems:'center', gap:8 }}>
+          <div>
+            {isExisting && (
+              <button
+                onClick={onDelete}
+                disabled={loading}
+                style={{ padding:'8px 14px', background:'transparent', color:COLORS.danger, border:`1px solid ${COLORS.danger}`, borderRadius:6, cursor:loading?'not-allowed':'pointer', fontSize:12, fontWeight:600 }}
+                title="Elimina questa cella di presenza"
+              >
+                🗑️ Elimina
+              </button>
+            )}
+          </div>
+          <div style={{ display:'flex', gap:8 }}>
+            <button
+              onClick={onClose}
+              disabled={loading}
+              style={{ padding:'8px 16px', background:'white', color:COLORS.textMuted, border:`1px solid ${COLORS.border}`, borderRadius:6, cursor:'pointer', fontSize:13 }}
+            >
+              Annulla
+            </button>
+            <button
+              onClick={onSave}
+              disabled={loading || !form.stato}
+              style={{
+                padding:'8px 18px',
+                background: form.stato && !loading ? 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)' : '#cbd5e1',
+                color:'white', border:'none', borderRadius:6,
+                cursor: form.stato && !loading ? 'pointer' : 'not-allowed',
+                fontSize:13, fontWeight:600,
+              }}
+            >
+              {loading ? '⏳ Salvataggio…' : '💾 Salva'}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

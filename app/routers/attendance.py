@@ -927,9 +927,49 @@ async def set_presenza(data: Dict[str, Any]) -> Dict[str, Any]:
 
 
 
-# =============================================================================
-# BATCH INSERT PRESENZE
-# =============================================================================
+@router.delete("/presenza")
+@handle_errors
+async def delete_presenza(employee_id: str, data: str) -> Dict[str, Any]:
+    """Cancella una cella di presenza per un dipendente in una data specifica.
+
+    Cancella sia dalla collection `presenze` (schema flat usato da batch-insert)
+    sia dalla collection `attendance_presenze_calendario` (schema legacy usato
+    da set-presenza), per coerenza completa quando un utente "svuota" una cella.
+
+    Query params:
+        employee_id: ID del dipendente
+        data: data in formato YYYY-MM-DD
+
+    Note: i documenti dello schema "nested" libro unico NON vengono modificati,
+    perché rappresentano dati storici importati dal Libro Unico del Lavoro.
+    """
+    if not employee_id or not data:
+        raise HTTPException(status_code=400, detail="employee_id e data sono obbligatori")
+
+    db = Database.get_db()
+    key = f"{employee_id}_{data}"
+
+    # Schema flat (presenze)
+    res_flat = await db["presenze"].delete_one({"key": key})
+    # Fallback se il key non corrisponde (legacy senza key)
+    if res_flat.deleted_count == 0:
+        res_flat = await db["presenze"].delete_one(
+            {"$or": [{"employee_id": employee_id}, {"dipendente_id": employee_id}], "data": data}
+        )
+
+    # Schema legacy (attendance_presenze_calendario)
+    res_legacy = await db["attendance_presenze_calendario"].delete_one(
+        {"employee_id": employee_id, "data": data}
+    )
+
+    return {
+        "success": True,
+        "deleted_flat": res_flat.deleted_count,
+        "deleted_legacy": res_legacy.deleted_count,
+        "employee_id": employee_id,
+        "data": data,
+    }
+
 
 @router.post("/batch-insert")
 @handle_errors
