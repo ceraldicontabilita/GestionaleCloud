@@ -14,6 +14,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Plus, Edit2, Trash2, Euro, Users, Calendar, AlertCircle, X, RefreshCw,
+  Link as LinkIcon, Unlink, Search, CheckCircle2,
 } from 'lucide-react';
 import api from '../../api';
 import { COLORS, SPACING, useIsMobile } from '../../lib/utils';
@@ -127,6 +128,8 @@ export default function HRAcconti() {
   const [editing, setEditing] = useState(null); // acconto da modificare, null = nuovo
   const [form, setForm] = useState(() => defaultForm());
   const [saving, setSaving] = useState(false);
+  // Modale riconciliazione bancaria
+  const [reconcileAcconto, setReconcileAcconto] = useState(null); // l'acconto su cui si sta riconciliando
 
   // ───── Load ─────
   const loadData = useCallback(async (signal) => {
@@ -279,6 +282,21 @@ export default function HRAcconti() {
     } catch (e) {
       console.error('[HRAcconti] delete error', e);
       alert('Errore nell\'eliminazione: ' + (e.response?.data?.detail || e.message));
+    }
+  };
+
+  // Annulla riconciliazione bancaria (sgancia movimento da acconto)
+  const annullaRiconciliazione = async (a) => {
+    if (!window.confirm(
+      `Annullare la riconciliazione bancaria dell'acconto di ${formatEuro(a.importo)} del ${formatData(a.data)}?\n\n` +
+      `Il movimento dell'estratto conto tornerà disponibile e l'acconto tornerà in stato 'registrato'.`
+    )) return;
+    try {
+      await api.post(`/api/tfr/acconti/${a.id}/annulla-riconciliazione-banca`);
+      await loadData();
+    } catch (e) {
+      console.error('[HRAcconti] annulla riconciliazione error', e);
+      alert('Errore: ' + (e.response?.data?.detail || e.message));
     }
   };
 
@@ -599,6 +617,26 @@ export default function HRAcconti() {
                       </td>
                       <td style={{ ...tdStyle, textAlign: 'center' }}>
                         <div style={{ display: 'inline-flex', gap: 4 }}>
+                          {/* Bottone Cerca movimento bancario - visibile solo se non riconciliato */}
+                          {a.stato !== 'riconciliato_banca' && a.stato !== 'scalato_su_cedolino' && (
+                            <button
+                              onClick={() => setReconcileAcconto(a)}
+                              style={iconBtn('#0891b2', '#cffafe')}
+                              title="Cerca movimento bancario"
+                            >
+                              <LinkIcon size={13} />
+                            </button>
+                          )}
+                          {/* Bottone Annulla riconciliazione - visibile solo se riconciliato */}
+                          {a.stato === 'riconciliato_banca' && (
+                            <button
+                              onClick={() => annullaRiconciliazione(a)}
+                              style={iconBtn(COLORS.warning || '#b45309', '#fef3c7')}
+                              title="Annulla riconciliazione bancaria"
+                            >
+                              <Unlink size={13} />
+                            </button>
+                          )}
                           <button
                             onClick={() => openEdit(a)}
                             style={iconBtn(COLORS.info, COLORS.infoLight)}
@@ -655,6 +693,16 @@ export default function HRAcconti() {
           saving={saving}
           onClose={closeModal}
           onSubmit={submit}
+        />
+      )}
+      {reconcileAcconto && (
+        <RiconciliaBancaModal
+          acconto={reconcileAcconto}
+          onClose={() => setReconcileAcconto(null)}
+          onReconciled={() => {
+            setReconcileAcconto(null);
+            loadData();
+          }}
         />
       )}
     </div>
@@ -1104,6 +1152,265 @@ const btnGhost = {
   fontWeight: 500,
   cursor: 'pointer',
 };
+
+// ═══════════════════════════════════════════════════════════════════════
+// RICONCILIA BANCA MODAL — Trova movimento estratto conto per acconto
+// ═══════════════════════════════════════════════════════════════════════
+function RiconciliaBancaModal({ acconto, onClose, onReconciled }) {
+  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+  const [linking, setLinking] = useState(null); // movimento_id in fase di link
+
+  // Carica candidati
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const res = await api.get(`/api/tfr/acconti/${acconto.id}/candidati-banca`);
+        if (!cancelled) setData(res.data);
+      } catch (e) {
+        if (!cancelled) setError(e.response?.data?.detail || e.message);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [acconto.id]);
+
+  const collega = async (movimentoId) => {
+    setLinking(movimentoId);
+    try {
+      await api.post(`/api/tfr/acconti/${acconto.id}/riconcilia-banca`, {
+        movimento_id: movimentoId,
+      });
+      onReconciled();
+    } catch (e) {
+      alert('Errore: ' + (e.response?.data?.detail || e.message));
+      setLinking(null);
+    }
+  };
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(15,39,68,0.6)',
+        zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: 'white', borderRadius: 12, width: '100%', maxWidth: 880,
+          maxHeight: '90vh', display: 'flex', flexDirection: 'column',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+        }}
+      >
+        {/* Header */}
+        <div style={{
+          padding: '16px 24px', borderBottom: `1px solid ${COLORS.border}`,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          background: 'linear-gradient(135deg, #0891b2 0%, #0e7490 100%)',
+          borderRadius: '12px 12px 0 0',
+        }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 17, color: 'white', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Search size={18} /> Cerca movimento bancario
+            </h2>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.85)', marginTop: 4 }}>
+              Acconto di <strong>{formatEuro(acconto.importo)}</strong> a <strong>{acconto.dipendente_nome}</strong> del {formatData(acconto.data)}
+              {acconto.tipo_bonifico === 'istantaneo' && ' · ⚡ Istantaneo'}
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              background: 'rgba(255,255,255,0.2)', border: '1px solid rgba(255,255,255,0.3)',
+              borderRadius: 6, padding: 6, cursor: 'pointer', color: 'white', display: 'flex',
+            }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
+          {loading && (
+            <div style={{ padding: 40, textAlign: 'center', color: COLORS.textMuted }}>
+              <RefreshCw size={20} style={{ animation: 'spin 1s linear infinite' }} />
+              <div style={{ marginTop: 8, fontSize: 13 }}>Ricerca movimenti compatibili…</div>
+            </div>
+          )}
+
+          {error && (
+            <div style={{
+              padding: 12, background: '#fee2e2', border: '1px solid #fca5a5',
+              borderRadius: 8, color: '#b91c1c', fontSize: 13,
+              display: 'flex', gap: 8, alignItems: 'flex-start',
+            }}>
+              <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 1 }} />
+              <div><strong>Errore</strong>: {error}</div>
+            </div>
+          )}
+
+          {!loading && !error && data && (
+            <>
+              <div style={{
+                padding: 10, background: '#f1f5f9', borderRadius: 8, fontSize: 12,
+                color: COLORS.textMuted, marginBottom: 14,
+              }}>
+                Ricerca tra movimenti uscita dal <strong>{formatData(data.ricerca.data_min)}</strong> al <strong>{formatData(data.ricerca.data_max)}</strong> con importo {formatEuro(data.acconto.importo)} (tolleranza ±0.01€).
+                {data.acconto.tipo_bonifico === 'istantaneo'
+                  ? ' Range ristretto perché bonifico istantaneo.'
+                  : ' Range esteso a 5 giorni perché bonifico standard.'}
+              </div>
+
+              {data.candidati.length === 0 && (
+                <div style={{
+                  padding: 32, textAlign: 'center', color: COLORS.textMuted,
+                  background: '#f8fafc', borderRadius: 10,
+                }}>
+                  <div style={{ fontSize: 32, marginBottom: 8 }}>🔍</div>
+                  <div style={{ fontWeight: 600, color: COLORS.text, marginBottom: 4 }}>
+                    Nessun movimento trovato
+                  </div>
+                  <div style={{ fontSize: 12 }}>
+                    Verifica che l'estratto conto sia stato importato fino al {formatData(data.ricerca.data_max)}.
+                    Oppure modifica la data dell'acconto se hai sbagliato.
+                  </div>
+                </div>
+              )}
+
+              {data.candidati.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {data.candidati.map((c) => {
+                    const score = c.score;
+                    const goldStar = score >= 100;
+                    return (
+                      <div
+                        key={c.movimento_id}
+                        style={{
+                          padding: 12,
+                          border: goldStar ? `2px solid #15803d` : `1px solid ${COLORS.border}`,
+                          borderRadius: 10,
+                          background: goldStar ? '#f0fdf4' : 'white',
+                          display: 'flex', alignItems: 'center', gap: 12,
+                        }}
+                      >
+                        {/* Score badge */}
+                        <div style={{
+                          minWidth: 56, padding: '6px 10px', borderRadius: 8,
+                          background: score >= 100 ? '#15803d' : score >= 80 ? '#0891b2' : '#64748b',
+                          color: 'white', textAlign: 'center', fontSize: 11, fontWeight: 700,
+                        }}>
+                          <div style={{ fontSize: 16 }}>{score}</div>
+                          <div style={{ fontSize: 9, opacity: 0.8, textTransform: 'uppercase' }}>match</div>
+                        </div>
+
+                        {/* Info movimento */}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                            <span style={{ fontSize: 13, fontWeight: 700, color: COLORS.primary }}>
+                              {formatData(c.data)}
+                            </span>
+                            <span style={{ fontSize: 14, fontWeight: 700, color: COLORS.danger }}>
+                              {formatEuro(Math.abs(c.importo))}
+                            </span>
+                            {c.categoria && (
+                              <span style={{
+                                padding: '1px 6px', background: '#e0f2fe', color: '#0369a1',
+                                borderRadius: 3, fontSize: 10, fontWeight: 600,
+                              }}>
+                                {c.categoria}
+                              </span>
+                            )}
+                          </div>
+                          <div style={{
+                            fontSize: 11, color: COLORS.textMuted,
+                            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                            maxWidth: 480,
+                          }} title={c.descrizione}>
+                            {c.descrizione || '—'}
+                          </div>
+                          <div style={{ display: 'flex', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
+                            {c.match_reasons.map((r, i) => (
+                              <span key={i} style={{
+                                fontSize: 9, padding: '1px 5px',
+                                background: r.includes('esatt') ? '#dcfce7' : '#f1f5f9',
+                                color: r.includes('esatt') ? '#15803d' : '#475569',
+                                borderRadius: 3, fontWeight: 600,
+                                textTransform: 'uppercase', letterSpacing: '0.04em',
+                              }}>
+                                ✓ {r}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Bottone collega */}
+                        <button
+                          onClick={() => collega(c.movimento_id)}
+                          disabled={linking === c.movimento_id}
+                          style={{
+                            padding: '8px 14px',
+                            background: linking === c.movimento_id
+                              ? '#cbd5e1'
+                              : goldStar
+                                ? 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)'
+                                : 'linear-gradient(135deg, #0891b2 0%, #0e7490 100%)',
+                            color: 'white', border: 'none', borderRadius: 6,
+                            cursor: linking === c.movimento_id ? 'wait' : 'pointer',
+                            fontSize: 12, fontWeight: 700,
+                            display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0,
+                          }}
+                        >
+                          {linking === c.movimento_id ? (
+                            <><RefreshCw size={12} style={{ animation: 'spin 1s linear infinite' }}/> Collego…</>
+                          ) : (
+                            <><LinkIcon size={12}/> Collega</>
+                          )}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{
+          padding: '12px 24px', borderTop: `1px solid ${COLORS.border}`,
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          background: '#f8fafc', borderRadius: '0 0 12px 12px', fontSize: 11, color: COLORS.textMuted,
+        }}>
+          <div>
+            {data && data.totale_candidati > 0 && (
+              <>
+                <strong>{data.totale_candidati}</strong> candidati trovati.
+                Lo score 100 indica match perfetto (data+importo+nome).
+              </>
+            )}
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              padding: '7px 14px', background: 'white', color: COLORS.textMuted,
+              border: `1px solid ${COLORS.border}`, borderRadius: 6, cursor: 'pointer', fontSize: 12,
+            }}
+          >
+            Chiudi
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 const thStyle = {
   padding: '10px 12px',

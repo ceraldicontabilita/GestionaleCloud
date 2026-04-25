@@ -921,6 +921,298 @@ async def elimina_acconto(acconto_id: str) -> Dict[str, Any]:
     }
 
 
+# ============================================
+# RICONCILIAZIONE ACCONTO ↔ MOVIMENTO ESTRATTO CONTO
+# ============================================
+
+@router.get("/acconti/{acconto_id}/candidati-banca")
+@handle_errors
+async def candidati_banca_per_acconto(acconto_id: str) -> Dict[str, Any]:
+    """Cerca movimenti dell'estratto conto compatibili con questo acconto.
+
+    Logica di matching:
+    - Solo movimenti uscita (importo < 0 o tipo='uscita')
+    - Importo uguale a quello dell'acconto (tolleranza ±0.01€)
+    - Range data dipende dal tipo_bonifico:
+        * 'istantaneo' → stesso giorno della registrazione (±1gg margine)
+        * 'standard' → entro 5 giorni dopo la registrazione (skip weekend non
+          implementato perché alcuni istituti accreditano comunque il sabato)
+    - Esclude movimenti già riconciliati con un altro acconto
+    - La descrizione contiene il cognome o il nome del dipendente
+
+    Restituisce candidati ordinati per "score" decrescente (best match prima).
+    Score: data esatta=+50, importo esatto=+30, nome in descrizione=+20.
+    """
+    db = Database.get_db()
+
+    acconto = await db["acconti_dipendenti"].find_one({"id": acconto_id}, {"_id": 0})
+    if not acconto:
+        raise HTTPException(status_code=404, detail="Acconto non trovato")
+
+    if acconto.get("stato") == "riconciliato_banca":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Acconto già riconciliato. Movimento collegato: {acconto.get('movimento_bancario_id')}",
+        )
+
+    importo_target = abs(float(acconto.get("importo", 0)))
+    if importo_target <= 0:
+        raise HTTPException(status_code=400, detail="Acconto con importo non valido")
+
+    data_acconto_str = acconto.get("data", "")
+    try:
+        data_acconto = datetime.strptime(data_acconto_str, "%Y-%m-%d")
+    except (ValueError, TypeError):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Data acconto non valida: {data_acconto_str}",
+        )
+
+    tipo_bonifico = acconto.get("tipo_bonifico") or "standard"
+
+    # Range temporale per la ricerca
+    from datetime import timedelta
+    if tipo_bonifico == "istantaneo":
+        # Bonifico istantaneo: stesso giorno (±1gg margine per fusi orari/contabilità)
+        data_min = data_acconto - timedelta(days=1)
+        data_max = data_acconto + timedelta(days=1, hours=23, minutes=59)
+    else:
+        # Bonifico standard: range +0/+5gg dalla data registrazione
+        # (alcuni istituti accreditano in giornata, altri D+1, raramente D+2/D+3)
+        data_min = data_acconto - timedelta(days=1)
+        data_max = data_acconto + timedelta(days=5, hours=23, minutes=59)
+
+    # Recupera nome dipendente per matching descrizione
+    dipendente_nome = (acconto.get("dipendente_nome") or "").strip()
+    nome_parti = [p for p in dipendente_nome.split() if len(p) >= 3]
+
+    # Query movimenti candidati
+    # La collezione canonica è estratto_conto_movimenti.
+    # data_contabile_obj è datetime per range query efficienti.
+    query: Dict[str, Any] = {
+        # Movimento di uscita: tipo='uscita' OR importo<0
+        "$or": [
+            {"tipo": "uscita"},
+            {"importo": {"$lt": 0}},
+        ],
+        # Importo entro tolleranza ±0.01
+        # NB: alcuni movimenti hanno importo negativo (uscite), altri positivo
+        # con tipo='uscita' — facciamo confronto su valore assoluto via $expr
+        "$and": [
+            {"$expr": {
+                "$lte": [
+                    {"$abs": {"$subtract": [{"$abs": "$importo"}, importo_target]}},
+                    0.01,
+                ]
+            }}
+        ],
+        # Range data
+        "data_contabile_obj": {"$gte": data_min, "$lte": data_max},
+        # Esclude movimenti già usati per altri acconti
+        "$nor": [
+            {"acconto_id": {"$exists": True, "$ne": None, "$ne": ""}},
+        ],
+    }
+
+    movimenti = await db["estratto_conto_movimenti"].find(
+        query, {"_id": 0}
+    ).sort("data_contabile_obj", 1).limit(50).to_list(50)
+
+    # Calcolo score per ranking
+    candidati = []
+    for m in movimenti:
+        score = 0
+        match_reasons = []
+
+        # Data: esatta = +50, ±1gg = +30, oltre = +10
+        try:
+            data_mov = m.get("data_contabile_obj")
+            if isinstance(data_mov, str):
+                data_mov = datetime.fromisoformat(data_mov.replace("Z", ""))
+            delta_giorni = abs((data_mov - data_acconto).days) if data_mov else 99
+            if delta_giorni == 0:
+                score += 50
+                match_reasons.append("data esatta")
+            elif delta_giorni <= 1:
+                score += 30
+                match_reasons.append(f"data ±{delta_giorni}gg")
+            else:
+                score += 10
+                match_reasons.append(f"data +{delta_giorni}gg")
+        except Exception:
+            delta_giorni = None
+
+        # Importo: già filtrato a tolleranza 0.01 → tutti hanno importo esatto
+        score += 30
+        match_reasons.append("importo esatto")
+
+        # Nome dipendente in descrizione
+        descrizione = (m.get("descrizione") or "").upper()
+        if nome_parti:
+            for parte in nome_parti:
+                if parte.upper() in descrizione:
+                    score += 20
+                    match_reasons.append(f"nome '{parte}' in descrizione")
+                    break
+
+        candidati.append({
+            "movimento_id": m.get("id"),
+            "data": m.get("data") or (m.get("data_contabile_obj").strftime("%Y-%m-%d") if m.get("data_contabile_obj") else None),
+            "descrizione": m.get("descrizione", ""),
+            "importo": m.get("importo"),
+            "categoria": m.get("categoria"),
+            "fornitore": m.get("fornitore"),
+            "score": score,
+            "match_reasons": match_reasons,
+            "delta_giorni": delta_giorni,
+        })
+
+    # Ordina per score desc
+    candidati.sort(key=lambda c: c["score"], reverse=True)
+
+    return {
+        "success": True,
+        "acconto": {
+            "id": acconto.get("id"),
+            "dipendente_nome": dipendente_nome,
+            "importo": acconto.get("importo"),
+            "data": data_acconto_str,
+            "tipo_bonifico": tipo_bonifico,
+        },
+        "ricerca": {
+            "data_min": data_min.strftime("%Y-%m-%d"),
+            "data_max": data_max.strftime("%Y-%m-%d"),
+            "tolleranza_importo": 0.01,
+        },
+        "totale_candidati": len(candidati),
+        "candidati": candidati,
+    }
+
+
+class RiconciliaBancaInput(BaseModel):
+    movimento_id: str
+
+
+@router.post("/acconti/{acconto_id}/riconcilia-banca")
+@handle_errors
+async def riconcilia_acconto_banca(
+    acconto_id: str, payload: RiconciliaBancaInput
+) -> Dict[str, Any]:
+    """Collega manualmente un acconto a un movimento dell'estratto conto.
+
+    Effetti:
+    - Acconto: stato='riconciliato_banca', movimento_bancario_id=<id>,
+      riconciliato_il=<now>
+    - Movimento: acconto_id=<id> (per evitare doppia riconciliazione)
+    """
+    db = Database.get_db()
+
+    acconto = await db["acconti_dipendenti"].find_one({"id": acconto_id})
+    if not acconto:
+        raise HTTPException(status_code=404, detail="Acconto non trovato")
+
+    if acconto.get("stato") == "riconciliato_banca":
+        raise HTTPException(
+            status_code=400,
+            detail="Acconto già riconciliato. Annulla prima la riconciliazione esistente.",
+        )
+
+    movimento = await db["estratto_conto_movimenti"].find_one(
+        {"id": payload.movimento_id}, {"_id": 0}
+    )
+    if not movimento:
+        raise HTTPException(status_code=404, detail="Movimento estratto conto non trovato")
+
+    if movimento.get("acconto_id"):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Movimento già collegato all'acconto {movimento.get('acconto_id')}",
+        )
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    # Aggiorna acconto
+    await db["acconti_dipendenti"].update_one(
+        {"id": acconto_id},
+        {"$set": {
+            "movimento_bancario_id": payload.movimento_id,
+            "riconciliato_il": now_iso,
+            "stato": "riconciliato_banca",
+            "updated_at": now_iso,
+        }},
+    )
+
+    # Aggiorna movimento (link inverso per anti-doppia-riconciliazione)
+    await db["estratto_conto_movimenti"].update_one(
+        {"id": payload.movimento_id},
+        {"$set": {
+            "acconto_id": acconto_id,
+            "categoria_acconto": acconto.get("tipo", "stipendio"),
+            "dipendente_nome": acconto.get("dipendente_nome", ""),
+            "updated_at": now_iso,
+        }},
+    )
+
+    return {
+        "success": True,
+        "messaggio": f"Acconto riconciliato con movimento del {movimento.get('data', '?')}",
+        "acconto_id": acconto_id,
+        "movimento_id": payload.movimento_id,
+        "stato": "riconciliato_banca",
+    }
+
+
+@router.post("/acconti/{acconto_id}/annulla-riconciliazione-banca")
+@handle_errors
+async def annulla_riconciliazione_banca(acconto_id: str) -> Dict[str, Any]:
+    """Annulla la riconciliazione bancaria di un acconto.
+
+    Riporta lo stato a 'registrato' e rimuove il link sul movimento.
+    Utile in caso di errore di abbinamento.
+    """
+    db = Database.get_db()
+
+    acconto = await db["acconti_dipendenti"].find_one({"id": acconto_id})
+    if not acconto:
+        raise HTTPException(status_code=404, detail="Acconto non trovato")
+
+    if acconto.get("stato") != "riconciliato_banca":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Acconto non in stato riconciliato_banca (stato attuale: {acconto.get('stato')})",
+        )
+
+    movimento_id = acconto.get("movimento_bancario_id")
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    # Rimuovi link da acconto
+    await db["acconti_dipendenti"].update_one(
+        {"id": acconto_id},
+        {
+            "$set": {"stato": "registrato", "updated_at": now_iso},
+            "$unset": {"movimento_bancario_id": "", "riconciliato_il": ""},
+        },
+    )
+
+    # Rimuovi link da movimento
+    if movimento_id:
+        await db["estratto_conto_movimenti"].update_one(
+            {"id": movimento_id},
+            {
+                "$unset": {"acconto_id": "", "categoria_acconto": ""},
+                "$set": {"updated_at": now_iso},
+            },
+        )
+
+    return {
+        "success": True,
+        "messaggio": "Riconciliazione bancaria annullata",
+        "acconto_id": acconto_id,
+        "movimento_id": movimento_id,
+        "stato": "registrato",
+    }
+
+
 @router.get("/parse-payslips")
 @handle_errors
 async def parse_payslips_for_tfr() -> Dict[str, Any]:
