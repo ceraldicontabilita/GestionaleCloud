@@ -731,47 +731,31 @@ async def simula_agevolazione(
 @router.get("/calendario/scadenze-imminenti")
 async def scadenze_imminenti(giorni: int = Query(30)) -> Dict[str, Any]:
     """Scadenze nei prossimi N giorni"""
-    db = Database.get_db()
-    
-    oggi = datetime.now()
-    limite = (oggi + timedelta(days=giorni)).strftime("%Y-%m-%d")
-    oggi_str = oggi.strftime("%Y-%m-%d")
-    
-    scadenze = await db["calendario_fiscale"].find(
-        {
-            "data": {"$gte": oggi_str, "$lte": limite},
-            "completato": False
-        },
-        {"_id": 0}
-    ).sort("data", 1).to_list(100)
-    
-    # Raggruppa per urgenza
-    urgenti = []  # Entro 7 giorni
-    prossime = []  # 8-14 giorni
-    future = []  # 15+ giorni
-    
-    for s in scadenze:
-        try:
-            data_scad = datetime.strptime(s["data"], "%Y-%m-%d")
-            diff = (data_scad - oggi).days
-            
-            if diff <= 7:
-                urgenti.append(s)
-            elif diff <= 14:
-                prossime.append(s)
-            else:
+    try:
+        from datetime import datetime, timedelta
+        db = Database.get_db()
+        oggi = datetime.now()
+        oggi_str = oggi.strftime("%Y-%m-%d")
+        limite = (oggi + timedelta(days=giorni)).strftime("%Y-%m-%d")
+        scadenze = await db["calendario_fiscale"].find(
+            {"data": {"$gte": oggi_str, "$lte": limite}, "completato": {"$ne": True}},
+            {"_id": 0}
+        ).sort("data", 1).to_list(100)
+        urgenti, prossime, future = [], [], []
+        for s in scadenze:
+            try:
+                diff = (datetime.strptime(str(s.get("data",""))[:10], "%Y-%m-%d") - oggi).days
+                if diff <= 7: urgenti.append(s)
+                elif diff <= 14: prossime.append(s)
+                else: future.append(s)
+            except Exception:
                 future.append(s)
-        except (ValueError, KeyError):
-            future.append(s)  # In caso di errore, metti nelle future
-    
-    return {
-        "success": True,
-        "periodo": f"{oggi_str} - {limite}",
-        "urgenti_7_giorni": urgenti,
-        "prossime_8_14_giorni": prossime,
-        "future_15_plus": future,
-        "totale": len(scadenze)
-    }
+        return {"success": True, "periodo": f"{oggi_str} - {limite}",
+                "urgenti_7_giorni": urgenti, "prossime_8_14_giorni": prossime,
+                "future_15_plus": future, "totale": len(scadenze)}
+    except Exception as e:
+        import traceback
+        return {"success": False, "error": str(e), "trace": traceback.format_exc()[-300:]}
 
 
 @router.get("/calendario/{anno}")
@@ -850,15 +834,35 @@ async def get_notifiche_scadenze_imminenti(
     giorni: int = Query(7, ge=1, le=30),
     anno: int = Query(None)
 ) -> Dict[str, Any]:
-    """
-    Recupera le scadenze imminenti per notifiche.
-    Utile per sistemi di alert e dashboard.
-    """
-    import traceback as _tb
+    """Scadenze imminenti per notifiche."""
     try:
-        return await _get_notifiche_impl(giorni=giorni, anno=anno)
-    except Exception as _e:
-        return {"success": False, "debug_error": str(_e), "debug_type": type(_e).__name__, "debug_trace": _tb.format_exc()[-500:]}
+        from datetime import datetime, timedelta
+        db = Database.get_db()
+        anno = anno or datetime.now().year
+        oggi = datetime.now()
+        oggi_str = oggi.strftime("%Y-%m-%d")
+        limite_str = (oggi + timedelta(days=giorni)).strftime("%Y-%m-%d")
+        scadenze = await db["calendario_fiscale"].find(
+            {"anno": anno, "completato": {"$ne": True},
+             "data": {"$gte": oggi_str, "$lte": limite_str}},
+            {"_id": 0}
+        ).sort("data", 1).to_list(50)
+        urgenti, prossime, normali = [], [], []
+        for s in scadenze:
+            try:
+                diff = (datetime.strptime(str(s.get("data",""))[:10], "%Y-%m-%d") - oggi).days
+                if diff <= 3: urgenti.append(s)
+                elif diff <= 7: prossime.append(s)
+                else: normali.append(s)
+            except Exception:
+                normali.append(s)
+        return {"success": True, "anno": anno, "giorni_analizzati": giorni,
+                "totale_imminenti": len(scadenze), "urgenti": urgenti,
+                "prossime": prossime, "pianificabili": normali,
+                "riepilogo": {"critiche": len(urgenti), "alta_priorita": len(prossime), "normali": len(normali)}}
+    except Exception as e:
+        import traceback
+        return {"success": False, "error": str(e), "trace": traceback.format_exc()[-300:]}
 
 
 async def _get_notifiche_impl(giorni: int = 7, anno: int = None) -> Dict[str, Any]:
