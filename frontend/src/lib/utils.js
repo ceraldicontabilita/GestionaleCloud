@@ -439,6 +439,19 @@ export function parseDateIT(dateStr) {
 }
 
 export function formatEuro(amount) {
+  if (amount === null || amount === undefined) return '€ 0';
+  const v = parseFloat(amount);
+  if (isNaN(v)) return '€ 0';
+  return new Intl.NumberFormat('it-IT', {
+    style: 'currency',
+    currency: 'EUR',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(Math.round(v));
+}
+
+// formatEuroD — con decimali, per tabelle dettaglio e tooltip
+export function formatEuroD(amount) {
   if (amount === null || amount === undefined) return '€ 0,00';
   return `€ ${new Intl.NumberFormat('it-IT', {
     minimumFractionDigits: 2,
