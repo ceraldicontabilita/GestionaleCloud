@@ -32,8 +32,8 @@ const MESI = [
 export default function Commercialista() {
   const isMobile = useIsMobile();
   const [config, setConfig] = useState({
-    email: 'rosaria.marotta@email.it',
-    nome: 'Dott.ssa Rosaria Marotta',
+    email: '',
+    nome: '',
     alert_giorni: 2,
     smtp_configured: false,
   });
