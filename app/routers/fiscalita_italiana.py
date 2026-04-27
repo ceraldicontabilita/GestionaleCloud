@@ -733,7 +733,7 @@ async def scadenze_imminenti(giorni: int = Query(30)) -> Dict[str, Any]:
     """Scadenze nei prossimi N giorni"""
     db = Database.get_db()
     
-    oggi = datetime.now(timezone.utc)
+    oggi = datetime.now()
     limite = (oggi + timedelta(days=giorni)).strftime("%Y-%m-%d")
     oggi_str = oggi.strftime("%Y-%m-%d")
     
