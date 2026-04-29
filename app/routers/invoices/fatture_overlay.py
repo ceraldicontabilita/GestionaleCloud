@@ -15,11 +15,15 @@ import re
 import uuid
 import zipfile
 
-from fastapi import APIRouter, Body, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Body, File, HTTPException, UploadFile
 
 from app.database import Database
 from app.parsers.fattura_elettronica_parser import parse_fattura_xml
-from app.routers.fatture_module.common import COL_FATTURE_RICEVUTE
+from app.routers.fatture_module.common import (
+    COL_ALLEGATI,
+    COL_DETTAGLIO_RIGHE,
+    COL_FATTURE_RICEVUTE,
+)
 from app.routers.fatture_module.crud import get_fattura_dettaglio, update_fattura
 from app.routers.fatture_module.helpers import (
     get_or_create_fornitore,
@@ -243,7 +247,6 @@ async def _upsert_invoice_from_xml(
     if duplicate:
         update_fields = invoice_doc.copy()
         update_fields.pop("id", None)
-        update_fields.pop("source", None)
         update_fields["source"] = duplicate.get("source") or "legacy_fatture_overlay"
         update_fields["created_at"] = duplicate.get("created_at") or now
         if duplicate.get("metodo_pagamento_modificato_manualmente"):
@@ -257,6 +260,8 @@ async def _upsert_invoice_from_xml(
             update_fields["status"] = duplicate.get("status") or update_fields["status"]
             update_fields["stato_pagamento"] = duplicate.get("stato_pagamento") or update_fields["stato_pagamento"]
         await db[COL_FATTURE_RICEVUTE].update_one({"id": invoice_id}, {"$set": update_fields})
+        await db[COL_DETTAGLIO_RIGHE].delete_many({"fattura_id": invoice_id})
+        await db[COL_ALLEGATI].delete_many({"fattura_id": invoice_id})
         action = "aggiornata"
     else:
         invoice_doc["created_at"] = now
