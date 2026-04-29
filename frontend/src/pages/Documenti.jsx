@@ -94,9 +94,7 @@ export default function Documenti() {
       try {
         const statsRes = await api.get('/api/document-ai/classified-documents-stats');
         setAiStats(statsRes.data);
-      } catch (e) {
-        
-      }
+      } catch (e) { /* stats AI non critiche — ignorato */ }
     } catch (error) {
       console.error('Errore caricamento documenti AI:', error);
     } finally {
