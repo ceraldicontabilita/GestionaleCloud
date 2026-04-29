@@ -4,34 +4,29 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#10231f" />
-  <meta name="description" content="Ceraldi ERP - gestionale operativo" />
-  <link rel="icon" type="image/png" href="/logo-ceraldi.png" />
+  <meta name="description" content="Ceraldi ERP - console operativa" />
   <title>Ceraldi ERP</title>
   <style>
     :root {
-      --bg: #f4f1ea;
+      --bg: #f3efe6;
       --panel: #fffdf8;
-      --panel-2: #ebe4d7;
-      --ink: #17211d;
-      --muted: #66736b;
-      --line: #d8d0c2;
+      --line: #ddd2c3;
+      --ink: #18211e;
+      --muted: #617067;
       --accent: #0f6b57;
-      --accent-2: #b64f2a;
-      --danger: #a33a2f;
-      --ok: #137a4f;
-      --shadow: 0 18px 50px rgba(27, 32, 28, 0.12);
-      font-family: ui-sans-serif, "Aptos", "Segoe UI", system-ui, sans-serif;
+      --accent-2: #ad5524;
+      --shadow: 0 14px 38px rgba(24, 33, 30, 0.12);
+      font-family: "Segoe UI", Aptos, system-ui, sans-serif;
     }
 
     * { box-sizing: border-box; }
 
     body {
       margin: 0;
-      min-height: 100vh;
       color: var(--ink);
       background:
-        linear-gradient(135deg, rgba(15, 107, 87, 0.10), transparent 34%),
-        linear-gradient(315deg, rgba(182, 79, 42, 0.10), transparent 38%),
+        linear-gradient(135deg, rgba(15, 107, 87, 0.08), transparent 34%),
+        linear-gradient(320deg, rgba(173, 85, 36, 0.08), transparent 36%),
         var(--bg);
     }
 
@@ -40,59 +35,42 @@
     .app {
       min-height: 100vh;
       display: grid;
-      grid-template-columns: 288px 1fr;
+      grid-template-columns: 280px 1fr;
     }
 
     .sidebar {
-      padding: 24px;
-      background: rgba(255, 253, 248, 0.86);
+      padding: 22px;
+      background: rgba(255, 253, 248, 0.92);
       border-right: 1px solid var(--line);
-      backdrop-filter: blur(16px);
       position: sticky;
       top: 0;
       height: 100vh;
       overflow: auto;
-    }
-
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 24px;
-    }
-
-    .brand img {
-      width: 44px;
-      height: 44px;
-      object-fit: contain;
-      border-radius: 8px;
-      background: white;
-      border: 1px solid var(--line);
+      backdrop-filter: blur(12px);
     }
 
     .brand h1 {
-      font-size: 20px;
-      line-height: 1.1;
       margin: 0;
+      font-size: 20px;
     }
 
     .brand p {
-      margin: 3px 0 0;
+      margin: 6px 0 0;
       color: var(--muted);
       font-size: 13px;
     }
 
     .nav {
       display: grid;
-      gap: 7px;
-      margin: 18px 0;
+      gap: 8px;
+      margin: 20px 0;
     }
 
     .nav button {
       width: 100%;
       text-align: left;
       border: 1px solid transparent;
-      border-radius: 8px;
+      border-radius: 10px;
       padding: 10px 12px;
       background: transparent;
       color: var(--ink);
@@ -101,41 +79,47 @@
 
     .nav button:hover,
     .nav button.active {
-      background: #ffffff;
+      background: #fff;
       border-color: var(--line);
-      box-shadow: 0 8px 20px rgba(27, 32, 28, 0.08);
+      box-shadow: 0 8px 20px rgba(24, 33, 30, 0.08);
     }
 
     .session {
-      margin-top: 20px;
       padding: 14px;
       border: 1px solid var(--line);
-      border-radius: 8px;
-      background: #ffffff;
+      border-radius: 10px;
+      background: #fff;
     }
 
-    .session strong { display: block; font-size: 13px; }
-    .session span { display: block; color: var(--muted); font-size: 12px; margin-top: 4px; word-break: break-word; }
+    .session strong {
+      display: block;
+      font-size: 13px;
+    }
+
+    .session span {
+      display: block;
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 12px;
+      word-break: break-word;
+    }
 
     .content {
-      padding: 30px;
-      max-width: 1280px;
-      width: 100%;
+      padding: 28px;
     }
 
     .topbar {
       display: flex;
-      align-items: flex-start;
       justify-content: space-between;
       gap: 16px;
-      margin-bottom: 20px;
+      align-items: flex-start;
+      margin-bottom: 18px;
     }
 
     .topbar h2 {
       margin: 0;
       font-size: 30px;
       line-height: 1.1;
-      letter-spacing: 0;
     }
 
     .topbar p {
@@ -152,15 +136,14 @@
 
     .panel {
       grid-column: span 12;
-      background: rgba(255, 253, 248, 0.92);
+      background: rgba(255, 253, 248, 0.95);
       border: 1px solid var(--line);
-      border-radius: 8px;
+      border-radius: 12px;
       box-shadow: var(--shadow);
       padding: 18px;
     }
 
     .half { grid-column: span 6; }
-    .third { grid-column: span 4; }
 
     .panel h3 {
       margin: 0 0 12px;
@@ -182,8 +165,8 @@
     input {
       width: 100%;
       border: 1px solid var(--line);
-      background: #ffffff;
-      border-radius: 8px;
+      border-radius: 10px;
+      background: #fff;
       padding: 11px 12px;
       color: var(--ink);
       outline: none;
@@ -199,59 +182,30 @@
       gap: 10px;
       flex-wrap: wrap;
       align-items: center;
-      margin-top: 4px;
     }
 
     .btn {
       border: 1px solid var(--line);
-      background: #ffffff;
+      border-radius: 10px;
+      background: #fff;
       color: var(--ink);
-      border-radius: 8px;
       min-height: 40px;
       padding: 9px 13px;
       cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
       text-decoration: none;
     }
 
     .btn.primary {
       background: var(--accent);
       border-color: var(--accent);
-      color: #ffffff;
+      color: #fff;
     }
 
     .btn.warn {
       background: var(--accent-2);
       border-color: var(--accent-2);
-      color: #ffffff;
+      color: #fff;
     }
-
-    .btn:disabled {
-      opacity: 0.55;
-      cursor: not-allowed;
-    }
-
-    .cards {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 12px;
-    }
-
-    .card {
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: #ffffff;
-      padding: 14px;
-      min-height: 120px;
-      display: grid;
-      align-content: space-between;
-      gap: 12px;
-    }
-
-    .card h4 { margin: 0; font-size: 15px; }
-    .card p { margin: 7px 0 0; color: var(--muted); font-size: 13px; }
 
     .status-row {
       display: grid;
@@ -261,45 +215,56 @@
 
     .status {
       border: 1px solid var(--line);
-      border-radius: 8px;
-      background: #ffffff;
+      border-radius: 10px;
+      background: #fff;
       padding: 13px;
     }
 
-    .status b { display: block; font-size: 12px; color: var(--muted); text-transform: uppercase; }
-    .status span { display: block; font-size: 22px; margin-top: 6px; }
-
-    .log {
-      min-height: 160px;
-      max-height: 360px;
-      overflow: auto;
-      white-space: pre-wrap;
-      background: #17211d;
-      color: #f7f2e8;
-      border-radius: 8px;
-      padding: 14px;
-      font: 13px/1.5 ui-monospace, "Cascadia Mono", Consolas, monospace;
-    }
-
-    .pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      padding: 6px 9px;
-      background: #ffffff;
+    .status b {
+      display: block;
       color: var(--muted);
       font-size: 12px;
+      text-transform: uppercase;
+    }
+
+    .status span {
+      display: block;
+      margin-top: 6px;
+      font-size: 22px;
+    }
+
+    .endpoint-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 10px;
+    }
+
+    .endpoint-grid button {
+      text-align: left;
+      min-height: 44px;
+      white-space: normal;
+      word-break: break-word;
+    }
+
+    .log {
+      min-height: 180px;
+      max-height: 420px;
+      overflow: auto;
+      white-space: pre-wrap;
+      background: #18211e;
+      color: #f7f1e6;
+      border-radius: 12px;
+      padding: 14px;
+      font: 13px/1.5 Consolas, "Cascadia Mono", monospace;
     }
 
     .hidden { display: none !important; }
 
-    @media (max-width: 900px) {
+    @media (max-width: 940px) {
       .app { grid-template-columns: 1fr; }
       .sidebar { position: static; height: auto; }
       .content { padding: 20px; }
-      .half, .third { grid-column: span 12; }
+      .half { grid-column: span 12; }
       .topbar { display: block; }
     }
   </style>
@@ -308,11 +273,8 @@
   <div class="app">
     <aside class="sidebar">
       <div class="brand">
-        <img src="/logo-ceraldi.png" alt="Ceraldi" onerror="this.style.display='none'" />
-        <div>
-          <h1>Ceraldi ERP</h1>
-          <p>Gestionale operativo</p>
-        </div>
+        <h1>Ceraldi ERP</h1>
+        <p>Console minima per accesso, verifica sessione e test moduli reali.</p>
       </div>
 
       <div class="nav" id="nav"></div>
@@ -321,6 +283,7 @@
         <strong id="session-title">Sessione non attiva</strong>
         <span id="session-detail">Effettua login o setup iniziale.</span>
         <div class="actions" style="margin-top: 12px;">
+          <button class="btn" id="verify-btn" type="button">Verifica</button>
           <button class="btn" id="logout-btn" type="button">Esci</button>
         </div>
       </div>
@@ -330,7 +293,7 @@
       <div class="topbar">
         <div>
           <h2 id="page-title">Accesso</h2>
-          <p id="page-subtitle">Accedi al gestionale, crea il primo admin o controlla lo stato applicazione.</p>
+          <p id="page-subtitle">Login, setup iniziale e controlli di base dell'applicazione.</p>
         </div>
         <div class="actions">
           <button class="btn" id="health-btn" type="button">Stato sistema</button>
@@ -343,7 +306,7 @@
           <h3>Login</h3>
           <form class="form" id="login-form">
             <label>Email
-              <input id="login-email" type="email" autocomplete="username" placeholder="email autorizzata" required />
+              <input id="login-email" type="email" autocomplete="username" required />
             </label>
             <label>Password
               <input id="login-password" type="password" autocomplete="current-password" required />
@@ -381,11 +344,12 @@
 
       <section id="module-view" class="grid hidden">
         <div class="panel">
-          <div class="actions" id="module-actions"></div>
+          <h3>Endpoint reali del modulo</h3>
+          <div class="endpoint-grid" id="module-actions"></div>
         </div>
         <div class="panel">
           <h3>Risultato</h3>
-          <div class="log" id="output">Seleziona un modulo o un controllo.</div>
+          <div class="log" id="output">Seleziona un endpoint.</div>
         </div>
       </section>
     </main>
@@ -394,22 +358,159 @@
   <script>
     const tokenKey = 'ceraldi.erp.token';
     let token = localStorage.getItem(tokenKey) || '';
-    let activeModule = 'dashboard';
+    let activeModule = token ? 'dashboard' : 'accesso';
+
+    const year = new Date().getFullYear();
 
     const modules = [
-      { id: 'accesso', label: 'Accesso', public: true, title: 'Accesso', subtitle: 'Login, setup admin e stato applicazione.' },
-      { id: 'dashboard', label: 'Dashboard', title: 'Dashboard', subtitle: 'Stato generale, KPI e controlli principali.', endpoints: ['/api/health', '/api/dashboard', '/api/alerts'] },
-      { id: 'fatture', label: 'Fatture', title: 'Fatture', subtitle: 'Fatture ricevute, upload e archivio.', endpoints: ['/api/invoices', '/api/fatture-ricevute', '/api/fatture'] },
-      { id: 'fornitori', label: 'Fornitori', title: 'Fornitori', subtitle: 'Anagrafica, schede e collegamenti.', endpoints: ['/api/suppliers', '/api/fornitori', '/api/scadenzario-fornitori'] },
-      { id: 'prima-nota', label: 'Prima nota', title: 'Prima nota', subtitle: 'Cassa, banca, provvisori e conferme.', endpoints: ['/api/prima-nota', '/api/operazioni-da-confermare', '/api/dati-provvisori'] },
-      { id: 'banca', label: 'Banca', title: 'Banca', subtitle: 'Estratti conto, bonifici, POS e riconciliazione.', endpoints: ['/api/bank', '/api/estratto-conto-movimenti', '/api/bank-reconciliation', '/api/pos-accredito'] },
-      { id: 'corrispettivi', label: 'Corrispettivi', title: 'Corrispettivi e POS', subtitle: 'XML RT, incassi elettronici e coerenza POS.', endpoints: ['/api/corrispettivi', '/api/pos-corrispettivi/verifica-coerenza', '/api/pos-corrispettivi/riepilogo-mensile?anno=2026'] },
-      { id: 'f24', label: 'F24', title: 'F24 e fiscale', subtitle: 'F24, quietanze, codici tributo e liquidazione IVA.', endpoints: ['/api/f24', '/api/f24-riconciliazione', '/api/quietanze-f24', '/api/iva'] },
-      { id: 'hr', label: 'HR', title: 'Personale', subtitle: 'Dipendenti, contratti, cedolini, presenze e TFR.', endpoints: ['/api/dipendenti', '/api/contracts', '/api/cedolini', '/api/tfr'] },
-      { id: 'documenti', label: 'Documenti', title: 'Documenti', subtitle: 'Inbox, parser, AI documentale e non associati.', endpoints: ['/api/documenti', '/api/document-ai', '/api/documenti-smart', '/api/upload-ai'] },
-      { id: 'magazzino', label: 'Magazzino', title: 'Magazzino', subtitle: 'Prodotti, inventario, articoli e ordini.', endpoints: ['/api/magazzino', '/api/products', '/api/dizionario-prodotti', '/api/inventario'] },
-      { id: 'noleggio', label: 'Noleggio', title: 'Noleggio e verbali', subtitle: 'Veicoli, verbali, riconciliazioni e costi.', endpoints: ['/api/noleggio', '/api/verbali-noleggio', '/api/verbali-riconciliazione'] },
-      { id: 'impostazioni', label: 'Impostazioni', title: 'Impostazioni', subtitle: 'Configurazioni, notifiche, manutenzione e sistema.', endpoints: ['/api/settings', '/api/config', '/api/system/lock-status', '/api/manutenzione'] }
+      {
+        id: 'accesso',
+        label: 'Accesso',
+        public: true,
+        title: 'Accesso',
+        subtitle: 'Login, setup iniziale e verifica token.'
+      },
+      {
+        id: 'dashboard',
+        label: 'Dashboard',
+        title: 'Dashboard',
+        subtitle: 'KPI e alert aggregati.',
+        endpoints: [
+          '/api/health',
+          `/api/dashboard/summary?anno=${year}`,
+          '/api/dashboard/kpi',
+          '/api/alerts/summary'
+        ]
+      },
+      {
+        id: 'fatture',
+        label: 'Fatture',
+        title: 'Fatture',
+        subtitle: 'Archivio, statistiche e pagamenti banca.',
+        endpoints: [
+          '/api/invoices',
+          '/api/invoices/stats',
+          '/api/invoices/anni-disponibili',
+          '/api/invoices/bank-pending'
+        ]
+      },
+      {
+        id: 'fornitori',
+        label: 'Fornitori',
+        title: 'Fornitori',
+        subtitle: 'Anagrafica e metodi di pagamento.',
+        endpoints: [
+          '/api/suppliers',
+          '/api/suppliers/stats',
+          '/api/suppliers/scadenze',
+          '/api/suppliers/payment-methods'
+        ]
+      },
+      {
+        id: 'prima-nota',
+        label: 'Prima nota',
+        title: 'Prima nota',
+        subtitle: 'Provvisori, operazioni da confermare e sync email.',
+        endpoints: [
+          '/api/dati-provvisori',
+          '/api/operazioni-da-confermare',
+          '/api/dati-provvisori/sync-email'
+        ]
+      },
+      {
+        id: 'banca',
+        label: 'Banca',
+        title: 'Banca',
+        subtitle: 'Saldi, movimenti e importi POS.',
+        endpoints: [
+          '/api/bank/balance',
+          '/api/bank/statements',
+          '/api/estratto-conto-movimenti',
+          '/api/pos-accredito'
+        ]
+      },
+      {
+        id: 'corrispettivi',
+        label: 'Corrispettivi',
+        title: 'Corrispettivi e POS',
+        subtitle: 'Controlli giornalieri e allineamento RT-POS.',
+        endpoints: [
+          '/api/corrispettivi',
+          `/api/pos-corrispettivi/verifica-coerenza?anno=${year}`,
+          `/api/pos-corrispettivi/controllo-due-fasi?anno=${year}`,
+          '/api/pos-corrispettivi/alert-oggi'
+        ]
+      },
+      {
+        id: 'f24',
+        label: 'F24',
+        title: 'F24 e fiscale',
+        subtitle: 'Dashboard F24, scadenze e codici tributo.',
+        endpoints: [
+          '/api/f24',
+          '/api/f24/dashboard/summary',
+          '/api/f24/alerts/scadenze',
+          '/api/f24/codici/all',
+          '/api/f24/quietanze'
+        ]
+      },
+      {
+        id: 'hr',
+        label: 'HR',
+        title: 'Personale',
+        subtitle: 'Dipendenti, statistiche, mansioni e duplicati.',
+        endpoints: [
+          '/api/dipendenti',
+          '/api/dipendenti/stats',
+          '/api/dipendenti/mansioni',
+          '/api/dipendenti/duplicati'
+        ]
+      },
+      {
+        id: 'documenti',
+        label: 'Documenti',
+        title: 'Documenti',
+        subtitle: 'Inbox documentale, monitor e operazioni collegate.',
+        endpoints: [
+          '/api/documenti/lista',
+          '/api/documenti/monitor/status',
+          '/api/documenti/lock-status',
+          '/api/documenti/operazioni-da-confermare'
+        ]
+      },
+      {
+        id: 'magazzino',
+        label: 'Magazzino',
+        title: 'Magazzino',
+        subtitle: 'Sincronizzazione minima disponibile su main.',
+        endpoints: [
+          '/api/magazzino/sync'
+        ]
+      },
+      {
+        id: 'noleggio',
+        label: 'Noleggio',
+        title: 'Noleggio e verbali',
+        subtitle: 'Veicoli, verbali e fatture non associate.',
+        endpoints: [
+          '/api/noleggio/veicoli',
+          '/api/noleggio/fatture-non-associate',
+          '/api/verbali-riconciliazione/dashboard',
+          '/api/verbali-riconciliazione/lista'
+        ]
+      },
+      {
+        id: 'impostazioni',
+        label: 'Impostazioni',
+        title: 'Impostazioni',
+        subtitle: 'Settings, config email e manutenzione dati.',
+        endpoints: [
+          '/api/settings',
+          '/api/settings/user-preferences',
+          '/api/config/email',
+          '/api/manutenzione/stato-collezioni'
+        ]
+      }
     ];
 
     const el = (id) => document.getElementById(id);
@@ -420,13 +521,17 @@
 
     async function request(path, options = {}) {
       const headers = Object.assign({ Accept: 'application/json' }, authHeaders(), options.headers || {});
-      const res = await fetch(path, Object.assign({}, options, { headers }));
-      const text = await res.text();
+      const response = await fetch(path, Object.assign({}, options, { headers }));
+      const text = await response.text();
       let data;
-      try { data = text ? JSON.parse(text) : {}; } catch (_) { data = text; }
-      if (!res.ok) {
-        const detail = data && data.detail ? data.detail : res.statusText;
-        throw new Error(`${res.status} ${detail}`);
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch (_) {
+        data = text;
+      }
+      if (!response.ok) {
+        const detail = data && data.detail ? data.detail : response.statusText;
+        throw new Error(`${response.status} ${detail}`);
       }
       return data;
     }
@@ -480,7 +585,7 @@
 
       if (!isAuth) {
         renderModuleActions(mod);
-        setOutput(token ? 'Seleziona un controllo da eseguire.' : 'Serve il login per chiamare gli endpoint protetti.');
+        setOutput(token ? 'Seleziona un endpoint da verificare.' : 'Serve il login per i moduli protetti.');
       }
     }
 
@@ -539,7 +644,9 @@
 
     function saveToken(data) {
       token = data.access_token || '';
-      if (!token) throw new Error('Token non ricevuto dal server');
+      if (!token) {
+        throw new Error('Token non ricevuto dal server');
+      }
       localStorage.setItem(tokenKey, token);
       setSession(data.user || null);
       showModule('dashboard');
@@ -558,7 +665,10 @@
         });
         saveToken(data);
       } catch (error) {
-        renderStatus([{ label: 'Login', value: 'errore' }, { label: 'Dettaglio', value: error.message }]);
+        renderStatus([
+          { label: 'Login', value: 'errore' },
+          { label: 'Dettaglio', value: error.message }
+        ]);
       }
     });
 
@@ -576,7 +686,10 @@
         });
         saveToken(data);
       } catch (error) {
-        renderStatus([{ label: 'Setup', value: 'errore' }, { label: 'Dettaglio', value: error.message }]);
+        renderStatus([
+          { label: 'Setup', value: 'errore' },
+          { label: 'Dettaglio', value: error.message }
+        ]);
       }
     });
 
@@ -587,13 +700,26 @@
       showModule('accesso');
     });
 
+    el('verify-btn').addEventListener('click', async () => {
+      try {
+        await verifySession();
+        setOutput('Token verificato.');
+      } catch (error) {
+        setOutput(error.message);
+      }
+    });
+
     el('health-btn').addEventListener('click', async () => {
       try {
         const result = await checkHealth();
-        if (!el('auth-view').classList.contains('hidden')) return;
+        if (!el('auth-view').classList.contains('hidden')) {
+          return;
+        }
         setOutput(result);
       } catch (error) {
-        if (!el('auth-view').classList.contains('hidden')) return;
+        if (!el('auth-view').classList.contains('hidden')) {
+          return;
+        }
         setOutput(error.message);
       }
     });
@@ -607,7 +733,7 @@
     }
 
     renderNav();
-    showModule(token ? 'dashboard' : 'accesso');
+    showModule(activeModule);
     checkHealth().catch(() => {});
     verifySession();
   </script>
