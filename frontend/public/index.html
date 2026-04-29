@@ -235,13 +235,13 @@
 
     .endpoint-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
       gap: 10px;
     }
 
     .endpoint-grid button {
       text-align: left;
-      min-height: 44px;
+      min-height: 48px;
       white-space: normal;
       word-break: break-word;
     }
@@ -410,23 +410,22 @@
         id: 'prima-nota',
         label: 'Prima nota',
         title: 'Prima nota',
-        subtitle: 'Provvisori, operazioni da confermare e sync email.',
+        subtitle: 'Provvisori e operazioni da confermare.',
         endpoints: [
           '/api/dati-provvisori',
-          '/api/operazioni-da-confermare',
-          '/api/dati-provvisori/sync-email'
+          '/api/operazioni-da-confermare'
         ]
       },
       {
         id: 'banca',
         label: 'Banca',
         title: 'Banca',
-        subtitle: 'Saldi, movimenti e importi POS.',
+        subtitle: 'Saldi, movimenti e regole accredito POS.',
         endpoints: [
           '/api/bank/balance',
           '/api/bank/statements',
-          '/api/estratto-conto-movimenti',
-          '/api/pos-accredito'
+          `/api/estratto-conto-movimenti/riepilogo?anno=${year}`,
+          `/api/pos-accredito/calcola-accredito?data_pagamento=${year}-01-15`
         ]
       },
       {
@@ -484,7 +483,7 @@
         title: 'Magazzino',
         subtitle: 'Sincronizzazione minima disponibile su main.',
         endpoints: [
-          '/api/magazzino/sync'
+          { path: '/api/magazzino/sync', method: 'POST' }
         ]
       },
       {
@@ -592,17 +591,18 @@
     function renderModuleActions(mod) {
       const target = el('module-actions');
       target.innerHTML = '';
-      (mod.endpoints || []).forEach((path) => {
+      (mod.endpoints || []).forEach((entry) => {
+        const endpoint = typeof entry === 'string' ? { path: entry, method: 'GET' } : entry;
         const button = document.createElement('button');
         button.type = 'button';
         button.className = 'btn';
-        button.textContent = path;
+        button.textContent = `${endpoint.method} ${endpoint.path}`;
         button.addEventListener('click', async () => {
-          setOutput(`Chiamo ${path}...`);
+          setOutput(`Chiamo ${endpoint.method} ${endpoint.path}...`);
           try {
-            setOutput(await request(path));
+            setOutput(await request(endpoint.path, { method: endpoint.method }));
           } catch (error) {
-            setOutput(`Errore su ${path}\n${error.message}`);
+            setOutput(`Errore su ${endpoint.method} ${endpoint.path}\n${error.message}`);
           }
         });
         target.appendChild(button);
