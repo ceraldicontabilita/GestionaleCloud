@@ -1,181 +1,615 @@
 <!doctype html>
-<html lang="en">
-    <head>
-        <meta charset="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <meta name="theme-color" content="#0f172a" />
-        <meta name="description" content="Ceraldi ERP — Gestionale contabile Ceraldi Group" />
-        <link rel="manifest" href="/manifest.webmanifest" />
-        <link rel="icon" type="image/png" href="/logo-ceraldi.png" />
-        <link rel="apple-touch-icon" href="/logo-ceraldi.png" />
-        <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-        <meta name="apple-mobile-web-app-title" content="Ceraldi" />
-        <!--
-        manifest.json provides metadata used when your web app is installed on a
-        user's mobile device or desktop. See https://developers.google.com/web/fundamentals/web-app-manifest/
-        -->
-        <!--
-        Notice the use of %PUBLIC_URL% in the tags above.
-        It will be replaced with the URL of the `public` folder during the build.
-        Only files inside the `public` folder can be referenced from the HTML.
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#10231f" />
+  <meta name="description" content="Ceraldi ERP - gestionale operativo" />
+  <link rel="icon" type="image/png" href="/logo-ceraldi.png" />
+  <title>Ceraldi ERP</title>
+  <style>
+    :root {
+      --bg: #f4f1ea;
+      --panel: #fffdf8;
+      --panel-2: #ebe4d7;
+      --ink: #17211d;
+      --muted: #66736b;
+      --line: #d8d0c2;
+      --accent: #0f6b57;
+      --accent-2: #b64f2a;
+      --danger: #a33a2f;
+      --ok: #137a4f;
+      --shadow: 0 18px 50px rgba(27, 32, 28, 0.12);
+      font-family: ui-sans-serif, "Aptos", "Segoe UI", system-ui, sans-serif;
+    }
 
-        Unlike "/favicon.ico" or "favicon.ico", "%PUBLIC_URL%/favicon.ico" will
-        work correctly both with client-side routing and a non-root public URL.
-        Learn how to configure a non-root public URL by running `npm run build`.
-        -->
-        <title>Emergent | Fullstack App</title>
-        <script src="https://assets.emergent.sh/scripts/emergent-main.js"></script>
-        <!--
-        These two scripts have been added for the Visual Edits, please do not edit or remove them
-        -->
-        <script>
-            // Only load visual edit scripts when inside an iframe
-            if (window.self !== window.top) {
-                // Load debug monitor script
-                var debugMonitorScript = document.createElement('script');
-                debugMonitorScript.src = 'https://assets.emergent.sh/scripts/debug-monitor.js';
-                document.head.appendChild(debugMonitorScript);
+    * { box-sizing: border-box; }
 
-                // Configure Tailwind
-                window.tailwind = window.tailwind || {};
-                tailwind.config = {
-                    corePlugins: { preflight: false },
-                };
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      background:
+        linear-gradient(135deg, rgba(15, 107, 87, 0.10), transparent 34%),
+        linear-gradient(315deg, rgba(182, 79, 42, 0.10), transparent 38%),
+        var(--bg);
+    }
 
-                // Load Tailwind CDN
-                var tailwindScript = document.createElement('script');
-                tailwindScript.src = 'https://cdn.tailwindcss.com';
-                document.head.appendChild(tailwindScript);
-            }
-        </script>
-    </head>
-    <body>
-        <noscript>You need to enable JavaScript to run this app.</noscript>
-        <div id="root"></div>
-        <!--
-      This HTML file is a template.
-      If you open it directly in the browser, you will see an empty page.
+    button, input { font: inherit; }
 
-      You can add webfonts, meta tags, or analytics to this file.
-      The build step will place the bundled scripts into the <body> tag.
+    .app {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 288px 1fr;
+    }
 
-      To begin the development, run `npm start` or `yarn start`.
-      To create a production bundle, use `npm run build` or `yarn build`.
-    -->
-        <a
-            id="emergent-badge"
-            target="_blank"
-            href="https://app.emergent.sh/?utm_source=emergent-badge"
-            style="
-                display: flex !important;
-                align-items: center !important;
-                position: fixed !important;
-                bottom: 20px;
-                right: 20px;
-                text-decoration: none;
-                padding: 6px 10px;
-                font-family: -apple-system, BlinkMacSystemFont,
-                    &quot;Segoe UI&quot;, Roboto, Oxygen, Ubuntu, Cantarell,
-                    &quot;Open Sans&quot;, &quot;Helvetica Neue&quot;,
-                    sans-serif !important;
-                font-size: 12px !important;
-                z-index: 9999 !important;
-                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15) !important;
-                border-radius: 8px !important;
-                background-color: #ffffff !important;
-                border: 1px solid rgba(255, 255, 255, 0.25) !important;
-            "
-        >
-            <div
-                style="display: flex; flex-direction: row; align-items: center"
-            >
-                <img
-                    style="width: 20px; height: 20px; margin-right: 8px"
-                    src="https://avatars.githubusercontent.com/in/1201222?s=120&u=2686cf91179bbafbc7a71bfbc43004cf9ae1acea&v=4"
-                />
-                <p
-                    style="
-                        color: #000000;
-                        font-family: -apple-system, BlinkMacSystemFont,
-                            &quot;Segoe UI&quot;, Roboto, Oxygen, Ubuntu,
-                            Cantarell, &quot;Open Sans&quot;,
-                            &quot;Helvetica Neue&quot;, sans-serif !important;
-                        font-size: 12px !important;
-                        align-items: center;
-                        margin-bottom: 0;
-                    "
-                >
-                    Made with Emergent
-                </p>
+    .sidebar {
+      padding: 24px;
+      background: rgba(255, 253, 248, 0.86);
+      border-right: 1px solid var(--line);
+      backdrop-filter: blur(16px);
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow: auto;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .brand img {
+      width: 44px;
+      height: 44px;
+      object-fit: contain;
+      border-radius: 8px;
+      background: white;
+      border: 1px solid var(--line);
+    }
+
+    .brand h1 {
+      font-size: 20px;
+      line-height: 1.1;
+      margin: 0;
+    }
+
+    .brand p {
+      margin: 3px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .nav {
+      display: grid;
+      gap: 7px;
+      margin: 18px 0;
+    }
+
+    .nav button {
+      width: 100%;
+      text-align: left;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      padding: 10px 12px;
+      background: transparent;
+      color: var(--ink);
+      cursor: pointer;
+    }
+
+    .nav button:hover,
+    .nav button.active {
+      background: #ffffff;
+      border-color: var(--line);
+      box-shadow: 0 8px 20px rgba(27, 32, 28, 0.08);
+    }
+
+    .session {
+      margin-top: 20px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #ffffff;
+    }
+
+    .session strong { display: block; font-size: 13px; }
+    .session span { display: block; color: var(--muted); font-size: 12px; margin-top: 4px; word-break: break-word; }
+
+    .content {
+      padding: 30px;
+      max-width: 1280px;
+      width: 100%;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    .topbar h2 {
+      margin: 0;
+      font-size: 30px;
+      line-height: 1.1;
+      letter-spacing: 0;
+    }
+
+    .topbar p {
+      margin: 8px 0 0;
+      color: var(--muted);
+      max-width: 760px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 16px;
+    }
+
+    .panel {
+      grid-column: span 12;
+      background: rgba(255, 253, 248, 0.92);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      padding: 18px;
+    }
+
+    .half { grid-column: span 6; }
+    .third { grid-column: span 4; }
+
+    .panel h3 {
+      margin: 0 0 12px;
+      font-size: 18px;
+    }
+
+    .form {
+      display: grid;
+      gap: 10px;
+    }
+
+    label {
+      display: grid;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    input {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: #ffffff;
+      border-radius: 8px;
+      padding: 11px 12px;
+      color: var(--ink);
+      outline: none;
+    }
+
+    input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(15, 107, 87, 0.12);
+    }
+
+    .actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-top: 4px;
+    }
+
+    .btn {
+      border: 1px solid var(--line);
+      background: #ffffff;
+      color: var(--ink);
+      border-radius: 8px;
+      min-height: 40px;
+      padding: 9px 13px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      text-decoration: none;
+    }
+
+    .btn.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #ffffff;
+    }
+
+    .btn.warn {
+      background: var(--accent-2);
+      border-color: var(--accent-2);
+      color: #ffffff;
+    }
+
+    .btn:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px;
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #ffffff;
+      padding: 14px;
+      min-height: 120px;
+      display: grid;
+      align-content: space-between;
+      gap: 12px;
+    }
+
+    .card h4 { margin: 0; font-size: 15px; }
+    .card p { margin: 7px 0 0; color: var(--muted); font-size: 13px; }
+
+    .status-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 10px;
+    }
+
+    .status {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #ffffff;
+      padding: 13px;
+    }
+
+    .status b { display: block; font-size: 12px; color: var(--muted); text-transform: uppercase; }
+    .status span { display: block; font-size: 22px; margin-top: 6px; }
+
+    .log {
+      min-height: 160px;
+      max-height: 360px;
+      overflow: auto;
+      white-space: pre-wrap;
+      background: #17211d;
+      color: #f7f2e8;
+      border-radius: 8px;
+      padding: 14px;
+      font: 13px/1.5 ui-monospace, "Cascadia Mono", Consolas, monospace;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 6px 9px;
+      background: #ffffff;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .hidden { display: none !important; }
+
+    @media (max-width: 900px) {
+      .app { grid-template-columns: 1fr; }
+      .sidebar { position: static; height: auto; }
+      .content { padding: 20px; }
+      .half, .third { grid-column: span 12; }
+      .topbar { display: block; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <img src="/logo-ceraldi.png" alt="Ceraldi" onerror="this.style.display='none'" />
+        <div>
+          <h1>Ceraldi ERP</h1>
+          <p>Gestionale operativo</p>
+        </div>
+      </div>
+
+      <div class="nav" id="nav"></div>
+
+      <div class="session">
+        <strong id="session-title">Sessione non attiva</strong>
+        <span id="session-detail">Effettua login o setup iniziale.</span>
+        <div class="actions" style="margin-top: 12px;">
+          <button class="btn" id="logout-btn" type="button">Esci</button>
+        </div>
+      </div>
+    </aside>
+
+    <main class="content">
+      <div class="topbar">
+        <div>
+          <h2 id="page-title">Accesso</h2>
+          <p id="page-subtitle">Accedi al gestionale, crea il primo admin o controlla lo stato applicazione.</p>
+        </div>
+        <div class="actions">
+          <button class="btn" id="health-btn" type="button">Stato sistema</button>
+          <a class="btn" href="/docs" target="_blank" rel="noreferrer">API docs</a>
+        </div>
+      </div>
+
+      <section id="auth-view" class="grid">
+        <div class="panel half">
+          <h3>Login</h3>
+          <form class="form" id="login-form">
+            <label>Email
+              <input id="login-email" type="email" autocomplete="username" placeholder="email autorizzata" required />
+            </label>
+            <label>Password
+              <input id="login-password" type="password" autocomplete="current-password" required />
+            </label>
+            <div class="actions">
+              <button class="btn primary" type="submit">Entra</button>
+              <a class="btn" href="/api/auth/google">Google</a>
             </div>
-        </a>
-        <script>
-            !(function (t, e) {
-                var o, n, p, r;
-                e.__SV ||
-                    ((window.posthog = e),
-                    (e._i = []),
-                    (e.init = function (i, s, a) {
-                        function g(t, e) {
-                            var o = e.split(".");
-                            2 == o.length && ((t = t[o[0]]), (e = o[1])),
-                                (t[e] = function () {
-                                    t.push(
-                                        [e].concat(
-                                            Array.prototype.slice.call(
-                                                arguments,
-                                                0,
-                                            ),
-                                        ),
-                                    );
-                                });
-                        }
-                        ((p = t.createElement("script")).type =
-                            "text/javascript"),
-                            (p.crossOrigin = "anonymous"),
-                            (p.async = !0),
-                            (p.src =
-                                s.api_host.replace(
-                                    ".i.posthog.com",
-                                    "-assets.i.posthog.com",
-                                ) + "/static/array.js"),
-                            (r =
-                                t.getElementsByTagName(
-                                    "script",
-                                )[0]).parentNode.insertBefore(p, r);
-                        var u = e;
-                        for (
-                            void 0 !== a ? (u = e[a] = []) : (a = "posthog"),
-                                u.people = u.people || [],
-                                u.toString = function (t) {
-                                    var e = "posthog";
-                                    return (
-                                        "posthog" !== a && (e += "." + a),
-                                        t || (e += " (stub)"),
-                                        e
-                                    );
-                                },
-                                u.people.toString = function () {
-                                    return u.toString(1) + ".people (stub)";
-                                },
-                                o =
-                                    "init me ws ys ps bs capture je Di ks register register_once register_for_session unregister unregister_for_session Ps getFeatureFlag getFeatureFlagPayload isFeatureEnabled reloadFeatureFlags updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures on onFeatureFlags onSurveysLoaded onSessionId getSurveys getActiveMatchingSurveys renderSurvey canRenderSurvey canRenderSurveyAsync identify setPersonProperties group resetGroups setPersonPropertiesForFlags resetPersonPropertiesForFlags setGroupPropertiesForFlags resetGroupPropertiesForFlags reset get_distinct_id getGroups get_session_id get_session_replay_url alias set_config startSessionRecording stopSessionRecording sessionRecordingStarted captureException loadToolbar get_property getSessionProperty Es $s createPersonProfile Is opt_in_capturing opt_out_capturing has_opted_in_capturing has_opted_out_capturing clear_opt_in_out_capturing Ss debug xs getPageViewId captureTraceFeedback captureTraceMetric".split(
-                                        " ",
-                                    ),
-                                n = 0;
-                            n < o.length;
-                            n++
-                        )
-                            g(u, o[n]);
-                        e._i.push([i, s, a]);
-                    }),
-                    (e.__SV = 1));
-            })(document, window.posthog || []);
-            posthog.init("phc_yJW1VjHGGwmCbbrtczfqqNxgBDbhlhOWcdzcIJEOTFE", {
-                api_host: "https://us.i.posthog.com",
-                person_profiles: "identified_only", // or 'always' to create profiles for anonymous users as well
-            });
-        </script>
-    </body>
+          </form>
+        </div>
+
+        <div class="panel half">
+          <h3>Setup primo admin</h3>
+          <form class="form" id="setup-form">
+            <label>Nome
+              <input id="setup-name" type="text" autocomplete="name" placeholder="Ceraldi Admin" />
+            </label>
+            <label>Email
+              <input id="setup-email" type="email" autocomplete="username" required />
+            </label>
+            <label>Password
+              <input id="setup-password" type="password" autocomplete="new-password" minlength="8" required />
+            </label>
+            <div class="actions">
+              <button class="btn warn" type="submit">Crea admin</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="panel">
+          <h3>Controllo rapido</h3>
+          <div class="status-row" id="status-row"></div>
+        </div>
+      </section>
+
+      <section id="module-view" class="grid hidden">
+        <div class="panel">
+          <div class="actions" id="module-actions"></div>
+        </div>
+        <div class="panel">
+          <h3>Risultato</h3>
+          <div class="log" id="output">Seleziona un modulo o un controllo.</div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const tokenKey = 'ceraldi.erp.token';
+    let token = localStorage.getItem(tokenKey) || '';
+    let activeModule = 'dashboard';
+
+    const modules = [
+      { id: 'accesso', label: 'Accesso', public: true, title: 'Accesso', subtitle: 'Login, setup admin e stato applicazione.' },
+      { id: 'dashboard', label: 'Dashboard', title: 'Dashboard', subtitle: 'Stato generale, KPI e controlli principali.', endpoints: ['/api/health', '/api/dashboard', '/api/alerts'] },
+      { id: 'fatture', label: 'Fatture', title: 'Fatture', subtitle: 'Fatture ricevute, upload e archivio.', endpoints: ['/api/invoices', '/api/fatture-ricevute', '/api/fatture'] },
+      { id: 'fornitori', label: 'Fornitori', title: 'Fornitori', subtitle: 'Anagrafica, schede e collegamenti.', endpoints: ['/api/suppliers', '/api/fornitori', '/api/scadenzario-fornitori'] },
+      { id: 'prima-nota', label: 'Prima nota', title: 'Prima nota', subtitle: 'Cassa, banca, provvisori e conferme.', endpoints: ['/api/prima-nota', '/api/operazioni-da-confermare', '/api/dati-provvisori'] },
+      { id: 'banca', label: 'Banca', title: 'Banca', subtitle: 'Estratti conto, bonifici, POS e riconciliazione.', endpoints: ['/api/bank', '/api/estratto-conto-movimenti', '/api/bank-reconciliation', '/api/pos-accredito'] },
+      { id: 'corrispettivi', label: 'Corrispettivi', title: 'Corrispettivi e POS', subtitle: 'XML RT, incassi elettronici e coerenza POS.', endpoints: ['/api/corrispettivi', '/api/pos-corrispettivi/verifica-coerenza', '/api/pos-corrispettivi/riepilogo-mensile?anno=2026'] },
+      { id: 'f24', label: 'F24', title: 'F24 e fiscale', subtitle: 'F24, quietanze, codici tributo e liquidazione IVA.', endpoints: ['/api/f24', '/api/f24-riconciliazione', '/api/quietanze-f24', '/api/iva'] },
+      { id: 'hr', label: 'HR', title: 'Personale', subtitle: 'Dipendenti, contratti, cedolini, presenze e TFR.', endpoints: ['/api/dipendenti', '/api/contracts', '/api/cedolini', '/api/tfr'] },
+      { id: 'documenti', label: 'Documenti', title: 'Documenti', subtitle: 'Inbox, parser, AI documentale e non associati.', endpoints: ['/api/documenti', '/api/document-ai', '/api/documenti-smart', '/api/upload-ai'] },
+      { id: 'magazzino', label: 'Magazzino', title: 'Magazzino', subtitle: 'Prodotti, inventario, articoli e ordini.', endpoints: ['/api/magazzino', '/api/products', '/api/dizionario-prodotti', '/api/inventario'] },
+      { id: 'noleggio', label: 'Noleggio', title: 'Noleggio e verbali', subtitle: 'Veicoli, verbali, riconciliazioni e costi.', endpoints: ['/api/noleggio', '/api/verbali-noleggio', '/api/verbali-riconciliazione'] },
+      { id: 'impostazioni', label: 'Impostazioni', title: 'Impostazioni', subtitle: 'Configurazioni, notifiche, manutenzione e sistema.', endpoints: ['/api/settings', '/api/config', '/api/system/lock-status', '/api/manutenzione'] }
+    ];
+
+    const el = (id) => document.getElementById(id);
+
+    function authHeaders() {
+      return token ? { Authorization: `Bearer ${token}` } : {};
+    }
+
+    async function request(path, options = {}) {
+      const headers = Object.assign({ Accept: 'application/json' }, authHeaders(), options.headers || {});
+      const res = await fetch(path, Object.assign({}, options, { headers }));
+      const text = await res.text();
+      let data;
+      try { data = text ? JSON.parse(text) : {}; } catch (_) { data = text; }
+      if (!res.ok) {
+        const detail = data && data.detail ? data.detail : res.statusText;
+        throw new Error(`${res.status} ${detail}`);
+      }
+      return data;
+    }
+
+    function setOutput(value) {
+      el('output').textContent = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+    }
+
+    function setSession(user) {
+      if (token) {
+        el('session-title').textContent = 'Sessione attiva';
+        el('session-detail').textContent = user && user.email ? user.email : 'Token salvato nel browser';
+      } else {
+        el('session-title').textContent = 'Sessione non attiva';
+        el('session-detail').textContent = 'Effettua login o setup iniziale.';
+      }
+    }
+
+    function renderNav() {
+      el('nav').innerHTML = '';
+      modules.forEach((mod) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = mod.label;
+        button.className = mod.id === activeModule ? 'active' : '';
+        button.addEventListener('click', () => showModule(mod.id));
+        el('nav').appendChild(button);
+      });
+    }
+
+    function renderStatus(items) {
+      el('status-row').innerHTML = '';
+      items.forEach((item) => {
+        const box = document.createElement('div');
+        box.className = 'status';
+        box.innerHTML = `<b>${item.label}</b><span>${item.value}</span>`;
+        el('status-row').appendChild(box);
+      });
+    }
+
+    function showModule(id) {
+      activeModule = id;
+      const mod = modules.find((item) => item.id === id) || modules[0];
+      el('page-title').textContent = mod.title;
+      el('page-subtitle').textContent = mod.subtitle;
+      renderNav();
+
+      const isAuth = id === 'accesso';
+      el('auth-view').classList.toggle('hidden', !isAuth);
+      el('module-view').classList.toggle('hidden', isAuth);
+
+      if (!isAuth) {
+        renderModuleActions(mod);
+        setOutput(token ? 'Seleziona un controllo da eseguire.' : 'Serve il login per chiamare gli endpoint protetti.');
+      }
+    }
+
+    function renderModuleActions(mod) {
+      const target = el('module-actions');
+      target.innerHTML = '';
+      (mod.endpoints || []).forEach((path) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'btn';
+        button.textContent = path;
+        button.addEventListener('click', async () => {
+          setOutput(`Chiamo ${path}...`);
+          try {
+            setOutput(await request(path));
+          } catch (error) {
+            setOutput(`Errore su ${path}\n${error.message}`);
+          }
+        });
+        target.appendChild(button);
+      });
+    }
+
+    async function checkHealth() {
+      try {
+        const health = await request('/api/health');
+        renderStatus([
+          { label: 'Applicazione', value: health.status || 'online' },
+          { label: 'Database', value: health.database || 'n/d' },
+          { label: 'Versione', value: health.version || 'n/d' }
+        ]);
+        return health;
+      } catch (error) {
+        renderStatus([
+          { label: 'Applicazione', value: 'errore' },
+          { label: 'Dettaglio', value: error.message }
+        ]);
+        throw error;
+      }
+    }
+
+    async function verifySession() {
+      if (!token) {
+        setSession(null);
+        return;
+      }
+      try {
+        const result = await request('/api/auth/verify');
+        setSession(result.user || null);
+      } catch (_) {
+        localStorage.removeItem(tokenKey);
+        token = '';
+        setSession(null);
+      }
+    }
+
+    function saveToken(data) {
+      token = data.access_token || '';
+      if (!token) throw new Error('Token non ricevuto dal server');
+      localStorage.setItem(tokenKey, token);
+      setSession(data.user || null);
+      showModule('dashboard');
+    }
+
+    el('login-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      try {
+        const data = await request('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: el('login-email').value,
+            password: el('login-password').value
+          })
+        });
+        saveToken(data);
+      } catch (error) {
+        renderStatus([{ label: 'Login', value: 'errore' }, { label: 'Dettaglio', value: error.message }]);
+      }
+    });
+
+    el('setup-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      try {
+        const data = await request('/api/auth/setup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: el('setup-name').value,
+            email: el('setup-email').value,
+            password: el('setup-password').value
+          })
+        });
+        saveToken(data);
+      } catch (error) {
+        renderStatus([{ label: 'Setup', value: 'errore' }, { label: 'Dettaglio', value: error.message }]);
+      }
+    });
+
+    el('logout-btn').addEventListener('click', () => {
+      localStorage.removeItem(tokenKey);
+      token = '';
+      setSession(null);
+      showModule('accesso');
+    });
+
+    el('health-btn').addEventListener('click', async () => {
+      try {
+        const result = await checkHealth();
+        if (!el('auth-view').classList.contains('hidden')) return;
+        setOutput(result);
+      } catch (error) {
+        if (!el('auth-view').classList.contains('hidden')) return;
+        setOutput(error.message);
+      }
+    });
+
+    const params = new URLSearchParams(window.location.search);
+    const callbackToken = params.get('token');
+    if (callbackToken) {
+      token = callbackToken;
+      localStorage.setItem(tokenKey, token);
+      history.replaceState({}, document.title, '/');
+    }
+
+    renderNav();
+    showModule(token ? 'dashboard' : 'accesso');
+    checkHealth().catch(() => {});
+    verifySession();
+  </script>
+</body>
 </html>
