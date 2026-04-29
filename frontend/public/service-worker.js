@@ -7,7 +7,7 @@
  *   - Auto-update: al bump della CACHE_VERSION, il vecchio cache viene purgato
  */
 
-const CACHE_VERSION = 'ceraldi-erp-v2';
+const CACHE_VERSION = 'ceraldi-erp-v3';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 
 // Asset base da precachare al primo install
@@ -39,6 +39,9 @@ self.addEventListener('activate', (event) => {
           .map((k) => caches.delete(k))
       );
       await self.clients.claim();
+      // Forza reload di tutte le tab già aperte (kill cache stale)
+      const wins = await self.clients.matchAll({ type: 'window' });
+      wins.forEach((c) => { try { c.navigate(c.url); } catch {} });
     })()
   );
 });
