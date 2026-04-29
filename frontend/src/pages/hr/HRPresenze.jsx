@@ -869,7 +869,7 @@ export default function HRPresenze() {
                         try {
                           await api.put(`/api/attendance/richiesta-assenza/${r.id}/approva`);
                           loadData();
-                        } catch {}
+                        } catch { /* approva richiesta — errore gestito dalla UI sopra */ }
                       }}
                       style={{
                         padding: '6px 14px',
@@ -894,7 +894,7 @@ export default function HRPresenze() {
                             motivo: 'Rifiutata',
                           });
                           loadData();
-                        } catch {}
+                        } catch { /* approva richiesta — errore gestito dalla UI sopra */ }
                       }}
                       style={{
                         padding: '6px 14px',
