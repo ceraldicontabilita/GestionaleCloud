@@ -7,7 +7,7 @@
  *   - Auto-update: al bump della CACHE_VERSION, il vecchio cache viene purgato
  */
 
-const CACHE_VERSION = 'ceraldi-erp-v1';
+const CACHE_VERSION = 'ceraldi-erp-v2';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 
 // Asset base da precachare al primo install
