@@ -200,7 +200,7 @@ if os.path.isdir(_FRONTEND_DIST):
     if os.path.isdir(assets_path):
         app.mount("/assets", StaticFiles(directory=assets_path), name="frontend-assets")
 
-    @app.get("/{full_path:path}", include_in_schema=False)
+    @app.get("/{full_path:path}", include_in_schema=False, response_model=None)
     async def serve_spa_dist(request: Request, full_path: str) -> FileResponse | JSONResponse:
         if full_path.startswith("api/") or full_path == "api":
             return JSONResponse({"detail": "Not found"}, status_code=404)
@@ -212,7 +212,7 @@ if os.path.isdir(_FRONTEND_DIST):
     logger.info("Frontend dist montato")
 elif os.path.isdir(_FRONTEND_PUBLIC):
 
-    @app.get("/{full_path:path}", include_in_schema=False)
+    @app.get("/{full_path:path}", include_in_schema=False, response_model=None)
     async def serve_spa_public(request: Request, full_path: str) -> FileResponse | JSONResponse:
         if full_path.startswith("api/") or full_path == "api":
             return JSONResponse({"detail": "Not found"}, status_code=404)

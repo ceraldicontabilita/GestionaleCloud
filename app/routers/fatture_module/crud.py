@@ -13,6 +13,25 @@ from .common import COL_FORNITORI, COL_FATTURE_RICEVUTE, COL_DETTAGLIO_RIGHE, CO
 from .helpers import generate_invoice_html
 
 
+def _safe_year(value: Any) -> Optional[int]:
+    """Estrae l'anno (int) da una data in formato datetime/ISO/'YYYY-MM-DD'.
+    Ritorna None se il valore è vuoto o non parsabile."""
+    if not value:
+        return None
+    if hasattr(value, "year"):
+        try:
+            return int(value.year)
+        except Exception:
+            return None
+    s = str(value).strip()
+    if len(s) >= 4 and s[:4].isdigit():
+        try:
+            return int(s[:4])
+        except ValueError:
+            return None
+    return None
+
+
 def _normalizza_da_invoices(doc: dict) -> dict:
     """Mappa un documento della collection `invoices` nel formato unificato archivio."""
     try:
