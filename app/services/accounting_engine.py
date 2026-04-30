@@ -716,7 +716,7 @@ class AccountingEnginePersistence(AccountingEngine):
             db: Connessione MongoDB
         """
         super().__init__(db)
-        if not db:
+        if db is None:
             raise ValueError("Database connection required for persistence")
     
     async def salva_scrittura(self, scrittura: Dict[str, Any]) -> str:

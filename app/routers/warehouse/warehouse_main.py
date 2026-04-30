@@ -302,14 +302,14 @@ async def adjust_stock(
 
 @router.get(
     "/inventory/value",
-    response_model=Dict[str, float],
+    response_model=Dict[str, Any],
     summary="Get inventory value",
     description="Calculate total inventory value"
 )
 async def get_inventory_value(
     current_user: Dict[str, Any] = Depends(get_current_user),
     warehouse_service: WarehouseService = Depends(get_warehouse_service)
-) -> Dict[str, float]:
+) -> Dict[str, Any]:
     """
     Calculate total inventory value.
     

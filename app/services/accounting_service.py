@@ -3,7 +3,7 @@ Accounting service.
 Handles accounting entries and financial operations.
 """
 from typing import Dict, Any, Optional
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 import logging
 
 from app.repositories import InvoiceRepository

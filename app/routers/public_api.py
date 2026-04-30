@@ -645,7 +645,7 @@ async def create_bank(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
 async def list_orders(skip: int = 0, limit: int = 10000) -> List[Dict[str, Any]]:
     """Lista ordini."""
     db = Database.get_db()
-    return await db[Collections.ORDERS].find({}, {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
+    return await db["orders"].find({}, {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
 
 
 @router.post("/orders")
@@ -660,7 +660,7 @@ async def create_order(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
         "status": data.get("status", "pending"),
         "created_at": datetime.now(timezone.utc).isoformat()
     }
-    await db[Collections.ORDERS].insert_one(order.copy())
+    await db["orders"].insert_one(order.copy())
     order.pop("_id", None)
     return order
 
