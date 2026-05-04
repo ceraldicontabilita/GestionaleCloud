@@ -8,6 +8,8 @@ Scansiona backend e frontend per bug pattern ricorrenti:
 - api.delete senza confirm vicino
 - fetch GET in useEffect senza AbortController
 - endpoint /api/suppliers e /api/fornitori
+- residui legacy import PDF presenze
+- presenza router export consulente
 
 Uso:
     python scripts/audit_static.py
@@ -18,7 +20,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-import re
 
 ROOT = Path(__file__).resolve().parents[1]
 BACKEND = ROOT / "app"
@@ -77,7 +78,6 @@ def audit_backend(finds: list[Finding]):
 
             for token, msg in banned_collections.items():
                 if token in line and "COLL_" not in line and "Collections." not in line:
-                    # Consenti note/commenti di documentazione solo se non accedono al DB.
                     if "db[" in line or ".get_collection" in line or "count_documents" in line or "find" in line:
                         add(finds, "P1", path, i, "collection", msg)
 
@@ -85,6 +85,16 @@ def audit_backend(finds: list[Finding]):
                 window = "\n".join(txt_lines[i:i+8])
                 if "Dict[str, Any]" in window and "Body(" not in window:
                     add(finds, "P1", path, i, "body", "POST/PUT con Dict[str, Any] senza Body(...).")
+
+            if "/libro-unico/import-pdf" in line and "no_import_pdf.py" not in rel(path):
+                add(
+                    finds,
+                    "P3",
+                    path,
+                    i,
+                    "legacy-presenze-import-pdf",
+                    "Riferimento legacy a import PDF presenze. Deve restare bloccato dal router 410 e non usato come flusso primario.",
+                )
 
 
 def audit_frontend(finds: list[Finding]):
@@ -98,15 +108,35 @@ def audit_frontend(finds: list[Finding]):
                     add(finds, "P1", path, i, "delete-confirm", "DELETE senza confirm vicino.")
 
             if "api.get(" in line:
-                # euristica: se siamo dentro un file pagina/hook e il file usa useEffect ma non AbortController
                 file_text = "\n".join(txt_lines)
                 if "useEffect" in file_text and "AbortController" not in file_text and "signal:" not in file_text:
                     add(finds, "P3", path, i, "fetch-race", "api.get in componente con useEffect senza AbortController; verificare race condition.")
                     break
 
             if "/api/suppliers" in line:
-                # Questo e' ok, ma lo tracciamo come informativo per mappa compatibilita'.
                 add(finds, "INFO", path, i, "fornitori-api", "API compatibile /api/suppliers: ok se backend usa collection fornitori.")
+
+            if "/libro-unico/import-pdf" in line or "Importa PDF Libro Unico" in line:
+                add(
+                    finds,
+                    "P2",
+                    path,
+                    i,
+                    "legacy-presenze-import-pdf-ui",
+                    "UI contiene ancora flusso legacy import PDF presenze. Preferire pagina/CTA export consulente.",
+                )
+
+
+def audit_required_files(finds: list[Finding]):
+    required = [
+        "app/routers/attendance_module/export_consulente.py",
+        "app/routers/attendance_module/no_import_pdf.py",
+        "frontend/src/pages/hr/HRPresenzeExport.jsx",
+        "scripts/smoke_app.py",
+    ]
+    for path in required:
+        if not (ROOT / path).exists():
+            add(finds, "P1", ROOT / path, 0, "missing-required-file", "File richiesto mancante.")
 
 
 def write_report(finds: list[Finding]):
@@ -135,6 +165,7 @@ def main() -> int:
     finds: list[Finding] = []
     audit_backend(finds)
     audit_frontend(finds)
+    audit_required_files(finds)
     write_report(finds)
     print(f"Audit completato: {REPORT}")
     print(f"Finding totali: {len(finds)}")
