@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import json
 import os
-import sys
 import time
 from dataclasses import dataclass
 from urllib.error import HTTPError, URLError
@@ -22,6 +21,8 @@ from urllib.request import Request, urlopen
 BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8001").rstrip("/")
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000").rstrip("/")
 TIMEOUT = float(os.environ.get("SMOKE_TIMEOUT", "12"))
+SMOKE_ANNO = int(os.environ.get("SMOKE_ANNO", "2026"))
+SMOKE_MESE = int(os.environ.get("SMOKE_MESE", "4"))
 
 
 @dataclass
@@ -29,6 +30,7 @@ class Check:
     area: str
     name: str
     url: str
+    method: str = "GET"
     expected: tuple[int, ...] = (200,)
 
 
@@ -43,6 +45,23 @@ BACKEND_CHECKS = [
     Check("dipendenti", "dipendenti", f"{BACKEND_URL}/api/dipendenti?limit=5"),
     Check("cedolini", "cedolini", f"{BACKEND_URL}/api/cedolini?limit=5"),
     Check("scadenze", "prossime", f"{BACKEND_URL}/api/scadenze/prossime?giorni=30&limit=5"),
+    Check(
+        "attendance",
+        "export consulente preview",
+        f"{BACKEND_URL}/api/attendance/export-consulente/preview?anno={SMOKE_ANNO}&mese={SMOKE_MESE}",
+    ),
+    Check(
+        "attendance",
+        "export consulente csv",
+        f"{BACKEND_URL}/api/attendance/export-consulente/csv?anno={SMOKE_ANNO}&mese={SMOKE_MESE}",
+    ),
+    Check(
+        "attendance",
+        "legacy import pdf disabled",
+        f"{BACKEND_URL}/api/attendance/libro-unico/import-pdf",
+        method="POST",
+        expected=(410,),
+    ),
 ]
 
 FRONTEND_PATHS = [
@@ -60,8 +79,12 @@ FRONTEND_PATHS = [
 ]
 
 
-def http_get(url: str) -> tuple[int, str]:
-    req = Request(url, headers={"User-Agent": "ceraldi-smoke-test/1.0"})
+def http_request(url: str, method: str = "GET") -> tuple[int, str]:
+    data = b"{}" if method.upper() in {"POST", "PUT", "PATCH"} else None
+    headers = {"User-Agent": "ceraldi-smoke-test/1.0"}
+    if data is not None:
+        headers["Content-Type"] = "application/json"
+    req = Request(url, data=data, headers=headers, method=method.upper())
     try:
         with urlopen(req, timeout=TIMEOUT) as resp:
             body = resp.read(4000).decode("utf-8", errors="replace")
@@ -75,13 +98,14 @@ def http_get(url: str) -> tuple[int, str]:
 
 def run_check(check: Check) -> dict:
     started = time.time()
-    status, body = http_get(check.url)
+    status, body = http_request(check.url, check.method)
     elapsed_ms = int((time.time() - started) * 1000)
     ok = status in check.expected
     return {
         "ok": ok,
         "area": check.area,
         "name": check.name,
+        "method": check.method,
         "url": check.url,
         "status": status,
         "expected": check.expected,
