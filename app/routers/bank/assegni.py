@@ -232,12 +232,20 @@ async def preview_combinazioni_assegni_v2(
         }
     
     # Carica fatture non pagate
+    # Escludiamo RID/SDD/addebito diretto: non pagabili con assegno.
     fatture = await db.invoices.find({
-        "$or": [
-            {"status": {"$nin": STATI_PAGATI}},
-            {"pagato": {"$ne": True}}
-        ],
-        "total_amount": {"$gt": 0}
+        "$and": [
+            {"$or": [
+                {"status": {"$nin": STATI_PAGATI}},
+                {"pagato": {"$ne": True}}
+            ]},
+            {"total_amount": {"$gt": 0}},
+            {"$nor": [
+                {"metodo_pagamento": {"$regex": "rid|sdd|addebito", "$options": "i"}},
+                {"payment_method": {"$regex": "rid|sdd|addebito", "$options": "i"}},
+                {"modalita_pagamento": {"$regex": "rid|sdd|addebito", "$options": "i"}},
+            ]},
+        ]
     }, {"_id": 0, "invoice_number": 1, "supplier_name": 1, "total_amount": 1}).to_list(10000)
     
     importi_fatture = {round(float(f.get("total_amount", 0)), 2): f for f in fatture}
@@ -2052,13 +2060,22 @@ async def cerca_combinazioni_assegni(
         }
     
     # 2. Carica fatture non pagate
+    # Escludiamo fatture RID/SDD/addebito diretto: non sono pagabili con assegno.
     fatture_non_pagate = await db.invoices.find({
-        "$or": [
-            {"status": {"$nin": STATI_PAGATI}},
-            {"pagato": {"$ne": True}}
-        ],
-        "total_amount": {"$gt": 0}
-    }, {"_id": 0, "id": 1, "invoice_number": 1, "supplier_name": 1, "total_amount": 1}).to_list(10000)
+        "$and": [
+            {"$or": [
+                {"status": {"$nin": STATI_PAGATI}},
+                {"pagato": {"$ne": True}}
+            ]},
+            {"total_amount": {"$gt": 0}},
+            {"$nor": [
+                {"metodo_pagamento": {"$regex": "rid|sdd|addebito", "$options": "i"}},
+                {"payment_method": {"$regex": "rid|sdd|addebito", "$options": "i"}},
+                {"modalita_pagamento": {"$regex": "rid|sdd|addebito", "$options": "i"}},
+            ]},
+        ]
+    }, {"_id": 0, "id": 1, "invoice_number": 1, "supplier_name": 1, "total_amount": 1,
+        "metodo_pagamento": 1, "payment_method": 1}).to_list(10000)
     
     # Crea indice per importo arrotondato
     fatture_per_importo = {}
@@ -2205,12 +2222,20 @@ async def preview_combinazioni_assegni(
         }
     
     # Carica fatture non pagate
+    # Escludiamo RID/SDD/addebito diretto: non pagabili con assegno.
     fatture = await db.invoices.find({
-        "$or": [
-            {"status": {"$nin": STATI_PAGATI}},
-            {"pagato": {"$ne": True}}
-        ],
-        "total_amount": {"$gt": 0}
+        "$and": [
+            {"$or": [
+                {"status": {"$nin": STATI_PAGATI}},
+                {"pagato": {"$ne": True}}
+            ]},
+            {"total_amount": {"$gt": 0}},
+            {"$nor": [
+                {"metodo_pagamento": {"$regex": "rid|sdd|addebito", "$options": "i"}},
+                {"payment_method": {"$regex": "rid|sdd|addebito", "$options": "i"}},
+                {"modalita_pagamento": {"$regex": "rid|sdd|addebito", "$options": "i"}},
+            ]},
+        ]
     }, {"_id": 0, "invoice_number": 1, "supplier_name": 1, "total_amount": 1}).to_list(10000)
     
     importi_fatture = {round(float(f.get("total_amount", 0)), 2): f for f in fatture}
