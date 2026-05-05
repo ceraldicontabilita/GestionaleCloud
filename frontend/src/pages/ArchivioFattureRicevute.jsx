@@ -1032,10 +1032,20 @@ export default function ArchivioFatture() {
                     metodoFornitoreDesk.includes('sdd') ||
                     metodoFornitoreDesk.includes('addebito');
                   const fornHasMetodo = fornCassa || fornBanca;
-                  // Se il fornitore ha metodo, mostriamo solo quel bottone.
-                  // Altrimenti mostriamo entrambi (fallback storico).
-                  const showCassaBtn = fornHasMetodo ? fornCassa : true;
-                  const showBancaBtn = fornHasMetodo ? fornBanca : true;
+                  // Se il fornitore ha metodo, mostriamo solo quel bottone PER LE
+                  // FATTURE NON ANCORA PAGATE. Quando la fattura è già pagata,
+                  // mostriamo il bottone del metodo effettivo (per visualizzare lo
+                  // stato), indipendentemente dall'anagrafica fornitore.
+                  const showCassaBtn = isPaid
+                    ? metodoPagEffettivo === 'cassa'
+                    : fornHasMetodo
+                      ? fornCassa
+                      : true;
+                  const showBancaBtn = isPaid
+                    ? metodoPagEffettivo === 'banca'
+                    : fornHasMetodo
+                      ? fornBanca
+                      : true;
                   const isRiconciliata = f.riconciliato === true;
                   return (
                     <tr
