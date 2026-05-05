@@ -486,26 +486,56 @@ export default function Commercialista() {
     doc.text(`Totale Fatture: ${fattureCassaData.totale_fatture}`, 14, 45);
     doc.setFontSize(14);
     doc.setTextColor(255, 152, 0);
-    doc.text(`Totale: ${formatEuroStr(fattureCassaData.totale_importo)}}`, 14, 55);
+    doc.text(`Totale: ${formatEuroStr(fattureCassaData.totale_importo)}`, 14, 55);
 
     // Table
     if (fattureCassaData.fatture?.length > 0) {
       const tableData = fattureCassaData.fatture.map(f => {
         const numero = f.invoice_number || f.numero_fattura || '-';
-        const data = formatDateIT(f.invoice_date || f.data_fattura);
+        const dataFattura = formatDateIT(f.invoice_date || f.data_fattura);
         const fornitore = f.supplier_name || f.cedente_denominazione || '-';
         const importo = parseFloat(f.total_amount || f.importo_totale || 0);
+        const dataPagamento = formatDateIT(f.data_pagamento) || dataFattura;
+        const modalita =
+          f.modalita_pagamento ||
+          f.metodo_pagamento ||
+          f.payment_method ||
+          'Contanti';
 
-        return [numero, data, fornitore.substring(0, 30), `${formatEuroStr(importo)}}`];
+        return [
+          dataFattura,
+          fornitore.substring(0, 30),
+          numero,
+          `${formatEuroStr(importo)}`,
+          dataPagamento,
+          modalita,
+        ];
       });
 
       autoTable(doc, {
         startY: 65,
-        head: [['N. Fattura', 'Data', 'Fornitore', 'Importo']],
+        head: [
+          [
+            'Data Fattura',
+            'Fornitore',
+            'N. Fattura',
+            'Importo',
+            'Data Pagamento',
+            'Modalità',
+          ],
+        ],
         body: tableData,
         theme: 'striped',
         headStyles: { fillColor: [255, 152, 0] },
-        styles: { fontSize: 9 },
+        styles: { fontSize: 8 },
+        columnStyles: {
+          0: { cellWidth: 22 },
+          1: { cellWidth: 52 },
+          2: { cellWidth: 28 },
+          3: { cellWidth: 24, halign: 'right' },
+          4: { cellWidth: 26 },
+          5: { cellWidth: 30 },
+        },
       });
     }
 
@@ -546,17 +576,17 @@ export default function Commercialista() {
     doc.text(`Numero Assegni: ${carnet?.assegni?.length}`, 14, 45);
     doc.setFontSize(14);
     doc.setTextColor(76, 175, 80);
-    doc.text(`Totale: ${formatEuroStr(carnet.totale)}}`, 14, 55);
+    doc.text(`Totale: ${formatEuroStr(carnet.totale)}`, 14, 55);
 
     // Table
     if (carnet.assegni?.length > 0) {
       const tableData = carnet.assegni.map(a => [
         a.numero || '-',
         a.stato || '-',
-        a.beneficiario || '-',
-        `${formatEuroStr(a.importo)}}`,
+        (a.beneficiario || a.fornitore_ragione_sociale || '-').substring(0, 28),
+        `${formatEuroStr(a.importo)}`,
         formatDateIT(a.data_fattura) || '-',
-        a.numero_fattura || '-',
+        a.numero_fattura || a.fattura_numero || '-',
       ]);
 
       autoTable(doc, {
@@ -666,22 +696,59 @@ export default function Commercialista() {
       );
       currentY += 8;
 
-      // Tabella assegni
-      const tableData = carnet.assegni.map(a => [
-        a.numero || '-',
-        a.data || '-',
-        a.beneficiario || '-',
-        formatEuroStr(a.importo),
-        a.stato || '-',
-      ]);
+      // Tabella assegni con dati completi di fattura e fornitore
+      const tableData = carnet.assegni.map(a => {
+        const dataAssegno =
+          formatDateIT(a.data_emissione) ||
+          formatDateIT(a.data_incasso) ||
+          formatDateIT(a.data_fattura) ||
+          '-';
+        const fornitore = (
+          a.fornitore_ragione_sociale ||
+          a.fornitore_fattura ||
+          a.beneficiario ||
+          '-'
+        ).substring(0, 28);
+        return [
+          a.numero || '-',
+          dataAssegno,
+          (a.beneficiario || '-').substring(0, 24),
+          fornitore,
+          a.numero_fattura || a.fattura_numero || '-',
+          formatDateIT(a.data_fattura) || '-',
+          `${formatEuroStr(a.importo)}`,
+          a.stato || '-',
+        ];
+      });
 
       autoTable(doc, {
         startY: currentY,
-        head: [['Numero', 'Data', 'Beneficiario', 'Importo', 'Stato']],
+        head: [
+          [
+            'N. Assegno',
+            'Data',
+            'Beneficiario',
+            'Fornitore',
+            'N. Fattura',
+            'Data Fattura',
+            'Importo',
+            'Stato',
+          ],
+        ],
         body: tableData,
         theme: 'striped',
-        headStyles: { fillColor: [76, 175, 80] },
-        styles: { fontSize: 8 },
+        headStyles: { fillColor: [76, 175, 80], fontSize: 8 },
+        styles: { fontSize: 7, cellPadding: 2 },
+        columnStyles: {
+          0: { cellWidth: 22 },
+          1: { cellWidth: 18 },
+          2: { cellWidth: 30 },
+          3: { cellWidth: 32 },
+          4: { cellWidth: 18 },
+          5: { cellWidth: 18 },
+          6: { cellWidth: 20, halign: 'right' },
+          7: { cellWidth: 20 },
+        },
         margin: { left: 14, right: 14 },
       });
 
