@@ -28,14 +28,28 @@ export function AuthProvider({ children }) {
 
   const login = useCallback(async (email, password) => {
     const res = await api.post('/api/auth/login', { email, password });
-    const { access_token, user_id, email: userEmail, name, token_type } = res.data;
+    const { access_token, user_id, email: userEmail, name } = res.data;
     setAuthToken(access_token);
-    // Costruisce oggetto user dai dati di risposta
     const userData = {
       id: user_id,
       email: userEmail,
       name: name,
-      role: 'admin' // Default, verrà aggiornato dalla verifica
+      role: 'admin'
+    };
+    setUser(userData);
+    return res.data;
+  }, []);
+
+  const loginWithPin = useCallback(async pin => {
+    const res = await api.post('/api/auth/pin-login', { pin });
+    const { access_token, user_id, email: userEmail, name, role, auth_method } = res.data;
+    setAuthToken(access_token);
+    const userData = {
+      id: user_id,
+      email: userEmail,
+      name: name,
+      role: role || 'admin',
+      auth_method: auth_method || 'pin'
     };
     setUser(userData);
     return res.data;
@@ -49,7 +63,7 @@ export function AuthProvider({ children }) {
   const isAuthenticated = !!user;
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, isAuthenticated, loading }}>
+    <AuthContext.Provider value={{ user, login, loginWithPin, logout, isAuthenticated, loading }}>
       {children}
     </AuthContext.Provider>
   );
