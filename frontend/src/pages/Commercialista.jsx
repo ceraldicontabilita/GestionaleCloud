@@ -1369,12 +1369,31 @@ export default function Commercialista() {
                               (a.importo || '').toString().includes(search)
                           );
                         })
-                        .map(c => (
+                        .map(c => {
+                          const searchLower = carnetSearch.toLowerCase();
+                          // Assegni che matchano la ricerca (se attiva)
+                          const assegniMatch = carnetSearch
+                            ? c.assegni.filter(
+                                a =>
+                                  (a.numero || '').toString().toLowerCase().includes(searchLower) ||
+                                  (a.numero_fattura || a.fattura_numero || '')
+                                    .toString()
+                                    .toLowerCase()
+                                    .includes(searchLower) ||
+                                  (a.beneficiario || '').toLowerCase().includes(searchLower) ||
+                                  (a.fornitore_ragione_sociale || a.fornitore_fattura || '')
+                                    .toString()
+                                    .toLowerCase()
+                                    .includes(searchLower) ||
+                                  (a.importo || '').toString().includes(searchLower)
+                              )
+                            : [];
+                          return (
                           <label
                             key={c.id}
                             style={{
                               display: 'flex',
-                              alignItems: 'center',
+                              flexDirection: 'column',
                               padding: '12px 15px',
                               borderBottom: '1px solid #f3f4f6',
                               cursor: 'pointer',
@@ -1382,28 +1401,105 @@ export default function Commercialista() {
                               transition: 'background 0.2s',
                             }}
                           >
-                            <input
-                              type="checkbox"
-                              checked={selectedCarnets.includes(c.id)}
-                              onChange={e => {
-                                if (e.target.checked) {
-                                  setSelectedCarnets([...selectedCarnets, c.id]);
-                                } else {
-                                  setSelectedCarnets(selectedCarnets.filter(id => id !== c.id));
-                                }
-                              }}
-                              style={{ marginRight: 12, width: 18, height: 18 }}
-                            />
-                            <div style={{ flex: 1 }}>
-                              <div style={{ fontWeight: 'bold', color: '#1e293b' }}>
-                                Carnet {c.id}
-                              </div>
-                              <div style={{ fontSize: 12, color: '#64748b' }}>
-                                {c?.assegni?.length} assegni • {formatEuro(c.totale)}
+                            <div style={{ display: 'flex', alignItems: 'center' }}>
+                              <input
+                                type="checkbox"
+                                checked={selectedCarnets.includes(c.id)}
+                                onChange={e => {
+                                  if (e.target.checked) {
+                                    setSelectedCarnets([...selectedCarnets, c.id]);
+                                  } else {
+                                    setSelectedCarnets(
+                                      selectedCarnets.filter(id => id !== c.id)
+                                    );
+                                  }
+                                }}
+                                style={{ marginRight: 12, width: 18, height: 18 }}
+                              />
+                              <div style={{ flex: 1 }}>
+                                <div style={{ fontWeight: 'bold', color: '#1e293b' }}>
+                                  Carnet {c.id}
+                                </div>
+                                <div style={{ fontSize: 12, color: '#64748b' }}>
+                                  {c?.assegni?.length} assegni • {formatEuro(c.totale)}
+                                  {assegniMatch.length > 0 &&
+                                    ` • ${assegniMatch.length} match`}
+                                </div>
                               </div>
                             </div>
+                            {/* Dettaglio assegni che matchano (solo se search attiva) */}
+                            {assegniMatch.length > 0 && (
+                              <div
+                                style={{
+                                  marginTop: 8,
+                                  marginLeft: 30,
+                                  fontSize: 12,
+                                  background: '#fffbeb',
+                                  border: '1px solid #fde68a',
+                                  borderRadius: 6,
+                                  padding: 8,
+                                }}
+                              >
+                                {assegniMatch.map((a, i) => (
+                                  <div
+                                    key={i}
+                                    style={{
+                                      padding: '4px 0',
+                                      borderBottom:
+                                        i < assegniMatch.length - 1
+                                          ? '1px dashed #f3d97d'
+                                          : 'none',
+                                    }}
+                                  >
+                                    <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>
+                                      N° {a.numero || '-'}
+                                    </span>{' '}
+                                    <span style={{ color: '#b45309' }}>
+                                      {formatEuro(a.importo)}
+                                    </span>
+                                    {a.beneficiario && (
+                                      <span style={{ color: '#374151' }}>
+                                        {' '}
+                                        · {a.beneficiario}
+                                      </span>
+                                    )}
+                                    {a.numero_fattura && (
+                                      <span style={{ color: '#6b7280' }}>
+                                        {' '}
+                                        · fatt. {a.numero_fattura}
+                                      </span>
+                                    )}
+                                    {a.stato && (
+                                      <span
+                                        style={{
+                                          marginLeft: 6,
+                                          padding: '1px 6px',
+                                          borderRadius: 4,
+                                          fontSize: 10,
+                                          background:
+                                            a.stato === 'incassato'
+                                              ? '#d1fae5'
+                                              : a.stato === 'emesso'
+                                                ? '#dbeafe'
+                                                : '#fee2e2',
+                                          color:
+                                            a.stato === 'incassato'
+                                              ? '#065f46'
+                                              : a.stato === 'emesso'
+                                                ? '#1e40af'
+                                                : '#991b1b',
+                                        }}
+                                      >
+                                        {a.stato}
+                                      </span>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                           </label>
-                        ))}
+                          );
+                        })}
                     </div>
 
                     {/* Riepilogo Selezione */}
