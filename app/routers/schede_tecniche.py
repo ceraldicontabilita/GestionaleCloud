@@ -24,8 +24,13 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 
 from app.database import Database
-from emergentintegrations.llm.chat import LlmChat, UserMessage
 from duckduckgo_search import DDGS
+
+try:
+    from emergentintegrations.llm.chat import LlmChat, UserMessage
+except ImportError:  # opzionale in ambienti locali senza SDK Emergent
+    LlmChat = None
+    UserMessage = None
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Schede Tecniche"])
@@ -173,7 +178,7 @@ async def _ai_find_scheda(prodotto: str, fornitore_nome: str = "") -> dict:
     Usa Claude AI per identificare brand, sito ufficiale e probabile URL della scheda tecnica PDF.
     Claude ha conoscenza dei brand alimentari italiani e può suggerire URL plausibili.
     """
-    if not EMERGENT_KEY:
+    if not EMERGENT_KEY or LlmChat is None or UserMessage is None:
         return {"brand": None, "prodotto_pulito": prodotto,
                 "url_pdf_probabile": None, "sito_ufficiale": None, "query_alternativa": prodotto}
     try:
