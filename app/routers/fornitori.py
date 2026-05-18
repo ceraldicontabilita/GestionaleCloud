@@ -389,4 +389,5 @@ async def lookup_cciaa(request: Request, piva: str):
             return {"ok": True, "dati": data}
         else:
             return {"ok": False, "status": resp.status_code}
-    except Exception a
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Errore lookup: {e}")
