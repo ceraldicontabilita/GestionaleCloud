@@ -278,7 +278,7 @@ async def parse_document_with_ai(
     Returns:
         Dict con i dati estratti strutturati
     """
-    from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
+    from app.services.emergent_stub import LlmChat, UserMessage, ImageContent
     
     # Usa EMERGENT_LLM_KEY per emergentintegrations
     api_key = os.environ.get("EMERGENT_LLM_KEY")
