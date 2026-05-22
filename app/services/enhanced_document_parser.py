@@ -356,9 +356,9 @@ async def parse_f24_enhanced(
     try:
         from app.services.emergent_stub import LlmChat, UserMessage, ImageContent
         
-        api_key = os.environ.get("EMERGENT_LLM_KEY")
+        api_key = os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:
-            return {"error": "EMERGENT_LLM_KEY non configurata", "success": False}
+            return {"error": "ANTHROPIC_API_KEY non configurata", "success": False}
         
         # Prepara le immagini
         images_b64 = []
@@ -431,9 +431,9 @@ async def parse_cedolino_enhanced(
     try:
         from app.services.emergent_stub import LlmChat, UserMessage, ImageContent
         
-        api_key = os.environ.get("EMERGENT_LLM_KEY")
+        api_key = os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:
-            return {"error": "EMERGENT_LLM_KEY non configurata", "success": False}
+            return {"error": "ANTHROPIC_API_KEY non configurata", "success": False}
         
         # Prepara le immagini
         images_b64 = []

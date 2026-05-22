@@ -14,7 +14,7 @@ GATEWAY_ENV_FILE = "/root/.clawdbot/gateway.env"
 GATEWAY_ENV_DIR = "/root/.clawdbot"
 
 
-def write_gateway_env(token: str, api_key: str = None, provider: str = "emergent") -> None:
+def write_gateway_env(token: str, api_key: str = None, provider: str = "anthropic") -> None:
     """
     Write secrets to env file before starting gateway.
 
@@ -24,7 +24,7 @@ def write_gateway_env(token: str, api_key: str = None, provider: str = "emergent
     Args:
         token: The gateway authentication token
         api_key: Optional API key for the provider
-        provider: The provider name ("emergent", "anthropic", or "openai")
+        provider: The provider name ("anthropic", "anthropic", or "openai")
     """
     # Ensure directory exists
     os.makedirs(GATEWAY_ENV_DIR, exist_ok=True)

@@ -1,7 +1,7 @@
 """
 LLM Document Parser — Ceraldi ERP
 ==================================
-Usa Gemini (via emergentintegrations) per estrarre dati strutturati dai PDF:
+Usa Claude (via Anthropic API) per estrarre dati strutturati dai PDF:
 - Verbali: targa, numero, importo, data, ente
 - F24: codici tributo, periodi, importi, sezioni
 """
@@ -19,15 +19,15 @@ load_dotenv("/app/backend/.env", override=True)
 
 logger = logging.getLogger(__name__)
 
-EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY", "")
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
 
 async def _ask_gemini_with_pdf(pdf_bytes: bytes, prompt: str, filename: str = "doc.pdf") -> Optional[str]:
     """Invia un PDF a Gemini e ottieni risposta strutturata."""
     from app.services.emergent_stub import LlmChat, UserMessage, FileContentWithMimeType
     
-    if not EMERGENT_KEY:
-        logger.error("[LLM-PARSER] EMERGENT_LLM_KEY non configurata")
+    if not ANTHROPIC_API_KEY:
+        logger.error("[LLM-PARSER] ANTHROPIC_API_KEY non configurata")
         return None
     
     # Salva PDF temporaneo
@@ -38,7 +38,7 @@ async def _ask_gemini_with_pdf(pdf_bytes: bytes, prompt: str, filename: str = "d
             tmp_path = tmp.name
         
         chat = LlmChat(
-            api_key=EMERGENT_KEY,
+            api_key=ANTHROPIC_API_KEY,
             session_id=f"parser-{filename[:20]}",
             system_message="Sei un parser di documenti italiani. Rispondi SOLO con JSON valido, senza markdown."
         ).with_model("gemini", "gemini-2.5-flash")

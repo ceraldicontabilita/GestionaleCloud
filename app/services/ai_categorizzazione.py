@@ -76,12 +76,12 @@ async def categorizza_articoli_con_ai(
     try:
         from app.services.emergent_stub import LlmChat, UserMessage
     except ImportError:
-        logger.error("emergentintegrations non installato")
+        logger.error("LLM stub non disponibile")
         return []
     
-    api_key = os.environ.get('EMERGENT_LLM_KEY')
+    api_key = os.environ.get('ANTHROPIC_API_KEY')
     if not api_key:
-        logger.error("EMERGENT_LLM_KEY non trovata")
+        logger.error("ANTHROPIC_API_KEY non trovata")
         return []
     
     risultati = []

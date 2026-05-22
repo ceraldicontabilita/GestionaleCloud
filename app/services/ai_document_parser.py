@@ -1,9 +1,9 @@
 """
 Parser AI Universale per Documenti
-Usa emergentintegrations con OpenAI GPT (vision) per estrarre dati strutturati da PDF.
+Usa Claude Anthropic API (vision) per estrarre dati strutturati da PDF.
 Supporta: Fatture, F24, Buste Paga
 
-Converte PDF in immagini e le invia a OpenAI per l'analisi usando emergentintegrations.
+Converte PDF in immagini e le invia a Claude per l'analisi.
 """
 import os
 import json
@@ -267,7 +267,7 @@ async def parse_document_with_ai(
     mime_type: str = "application/pdf"
 ) -> Dict[str, Any]:
     """
-    Analizza un documento usando AI (emergentintegrations con OpenAI) e restituisce dati strutturati.
+    Analizza un documento usando Claude AI e restituisce dati strutturati.
     
     Args:
         file_path: Percorso al file PDF/immagine
@@ -280,12 +280,12 @@ async def parse_document_with_ai(
     """
     from app.services.emergent_stub import LlmChat, UserMessage, ImageContent
     
-    # Usa EMERGENT_LLM_KEY per emergentintegrations
-    api_key = os.environ.get("EMERGENT_LLM_KEY")
-    logger.info(f"Using EMERGENT_LLM_KEY: {api_key[:20] if api_key else 'NOT SET'}...")
+    # Usa ANTHROPIC_API_KEY
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    logger.info(f"Using ANTHROPIC_API_KEY: {api_key[:20] if api_key else 'NOT SET'}...")
     
     if not api_key:
-        return {"error": "EMERGENT_LLM_KEY non configurata", "success": False}
+        return {"error": "ANTHROPIC_API_KEY non configurata", "success": False}
     
     try:
         # Leggi il file se abbiamo solo il path
@@ -329,7 +329,7 @@ Rispondi con UNA SOLA PAROLA senza punteggiatura."""
         else:
             prompt = PROMPT_FATTURA  # Default
         
-        # Inizializza chat con emergentintegrations - usa Claude con vision
+        # Inizializza chat Claude con vision
         # (L'Emergent LLM Key ha accesso solo a modelli Claude)
         chat = LlmChat(
             api_key=api_key,

@@ -56,7 +56,7 @@ def get_token_from_config():
 # ============== Pydantic Models ==============
 
 class OpenClawStartRequest(BaseModel):
-    provider: str = "emergent"
+    provider: str = "anthropic"
     apiKey: Optional[str] = None
 
 
@@ -97,7 +97,7 @@ def generate_token():
     return secrets.token_hex(32)
 
 
-def create_moltbot_config(token: str = None, api_key: str = None, provider: str = "emergent"):
+def create_moltbot_config(token: str = None, api_key: str = None, provider: str = "anthropic"):
     """Create/update clawdbot configuration"""
     os.makedirs(CONFIG_DIR, exist_ok=True)
     os.makedirs(WORKSPACE_DIR, exist_ok=True)
@@ -130,13 +130,13 @@ def create_moltbot_config(token: str = None, api_key: str = None, provider: str 
         existing_config["agents"] = {"defaults": {"workspace": WORKSPACE_DIR}}
     
     # Configure Emergent provider
-    if provider == "emergent":
-        emergent_key = api_key or os.environ.get('EMERGENT_API_KEY', '')
-        emergent_base_url = os.environ.get('EMERGENT_BASE_URL', 'https://integrations.emergentagent.com/llm')
+    if provider == "anthropic":
+        anthropic_key = api_key or os.environ.get('ANTHROPIC_API_KEY', '')
+        anthropic_base_url = os.environ.get('ANTHROPIC_BASE_URL', 'https://api.anthropic.com')
         
-        existing_config["models"]["providers"]["emergent-claude"] = {
-            "baseUrl": emergent_base_url,
-            "apiKey": emergent_key,
+        existing_config["models"]["providers"]["anthropic"] = {
+            "baseUrl": anthropic_base_url,
+            "apiKey": anthropic_key,
             "api": "anthropic-messages",
             "authHeader": True,
             "models": [{
@@ -149,7 +149,7 @@ def create_moltbot_config(token: str = None, api_key: str = None, provider: str 
         }
         
         existing_config["agents"]["defaults"]["model"] = {
-            "primary": "emergent-claude/claude-sonnet-4-5"
+            "primary": "anthropic/claude-sonnet-4-5"
         }
     
     with open(CONFIG_FILE, "w") as f:
@@ -228,7 +228,7 @@ async def get_openclaw_status():
         return OpenClawStatusResponse(
             running=True,
             pid=SupervisorClient.get_pid(),
-            provider=gateway_state.get("provider", "emergent"),
+            provider=gateway_state.get("provider", "anthropic"),
             started_at=gateway_state.get("started_at"),
             controlUrl="/api/openclaw/ui/"
         )
@@ -238,7 +238,7 @@ async def get_openclaw_status():
 @router.post("/openclaw/start", response_model=OpenClawStartResponse)
 async def start_openclaw(request: OpenClawStartRequest):
     """Start OpenClaw gateway"""
-    if request.provider not in ["emergent", "anthropic", "openai"]:
+    if request.provider not in ["anthropic", "anthropic", "openai"]:
         raise HTTPException(status_code=400, detail="Provider non valido")
     
     try:

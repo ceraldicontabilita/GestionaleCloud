@@ -378,7 +378,7 @@ async def test_ai_parser() -> Dict[str, Any]:
     from dotenv import load_dotenv
     load_dotenv()
     
-    api_key = os.environ.get("EMERGENT_LLM_KEY")
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
     
     return {
         "status": "ok",

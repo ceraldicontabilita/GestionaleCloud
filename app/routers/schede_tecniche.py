@@ -30,7 +30,7 @@ from duckduckgo_search import DDGS
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Schede Tecniche"])
 
-EMERGENT_KEY  = os.environ.get("EMERGENT_LLM_KEY", "")
+ANTHROPIC_API_KEY  = os.environ.get("ANTHROPIC_API_KEY", "")
 IMAP_HOST     = os.environ.get("IMAP_HOST", "imap.gmail.com")
 IMAP_USER     = os.environ.get("IMAP_USER") or os.environ.get("EMAIL_USER", "")
 IMAP_PASSWORD = os.environ.get("IMAP_PASSWORD") or os.environ.get("EMAIL_PASSWORD", "")
@@ -173,12 +173,12 @@ async def _ai_find_scheda(prodotto: str, fornitore_nome: str = "") -> dict:
     Usa Claude AI per identificare brand, sito ufficiale e probabile URL della scheda tecnica PDF.
     Claude ha conoscenza dei brand alimentari italiani e può suggerire URL plausibili.
     """
-    if not EMERGENT_KEY:
+    if not ANTHROPIC_API_KEY:
         return {"brand": None, "prodotto_pulito": prodotto,
                 "url_pdf_probabile": None, "sito_ufficiale": None, "query_alternativa": prodotto}
     try:
         chat = LlmChat(
-            api_key=EMERGENT_KEY,
+            api_key=ANTHROPIC_API_KEY,
             session_id=f"scheda-{uuid.uuid4()}",
             system_message=(
                 "Sei un esperto di prodotti alimentari italiani, normativa HACCP e schede tecniche. "

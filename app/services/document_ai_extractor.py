@@ -27,7 +27,7 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 # Configurazione
-EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY", "")
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
 # Soglia minima di caratteri per considerare il PDF come "testo"
 MIN_TEXT_LENGTH = 100
@@ -459,8 +459,8 @@ async def extract_structured_data(
     """
     from app.services.emergent_stub import LlmChat, UserMessage
     
-    if not EMERGENT_LLM_KEY:
-        raise ValueError("EMERGENT_LLM_KEY non configurata")
+    if not ANTHROPIC_API_KEY:
+        raise ValueError("ANTHROPIC_API_KEY non configurata")
     
     # Auto-detect tipo documento se non specificato
     if not document_type:
@@ -481,7 +481,7 @@ async def extract_structured_data(
             provider = "openai"
         
         chat = LlmChat(
-            api_key=EMERGENT_LLM_KEY,
+            api_key=ANTHROPIC_API_KEY,
             session_id=f"doc_extract_{datetime.now().strftime('%Y%m%d%H%M%S')}",
             system_message="Sei un assistente specializzato nell'estrazione di dati da documenti italiani. Rispondi SEMPRE e SOLO con JSON valido."
         ).with_model(provider, model)
