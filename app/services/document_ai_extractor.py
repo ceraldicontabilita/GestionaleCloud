@@ -457,7 +457,7 @@ async def extract_structured_data(
     Returns:
         Dati strutturati in formato dict
     """
-    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    from app.services.emergent_stub import LlmChat, UserMessage
     
     if not EMERGENT_LLM_KEY:
         raise ValueError("EMERGENT_LLM_KEY non configurata")
