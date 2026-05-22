@@ -24,7 +24,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 
 from app.database import Database
-from emergentintegrations.llm.chat import LlmChat, UserMessage
+from app.services.emergent_stub import LlmChat, UserMessage
 from duckduckgo_search import DDGS
 
 logger = logging.getLogger(__name__)
