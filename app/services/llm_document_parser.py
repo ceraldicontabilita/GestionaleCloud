@@ -24,7 +24,7 @@ EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY", "")
 
 async def _ask_gemini_with_pdf(pdf_bytes: bytes, prompt: str, filename: str = "doc.pdf") -> Optional[str]:
     """Invia un PDF a Gemini e ottieni risposta strutturata."""
-    from emergentintegrations.llm.chat import LlmChat, UserMessage, FileContentWithMimeType
+    from app.services.emergent_stub import LlmChat, UserMessage, FileContentWithMimeType
     
     if not EMERGENT_KEY:
         logger.error("[LLM-PARSER] EMERGENT_LLM_KEY non configurata")
