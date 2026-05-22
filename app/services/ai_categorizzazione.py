@@ -74,7 +74,7 @@ async def categorizza_articoli_con_ai(
         Lista di categorizzazioni con categoria_haccp, conto, confidenza
     """
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        from app.services.emergent_stub import LlmChat, UserMessage
     except ImportError:
         logger.error("emergentintegrations non installato")
         return []
