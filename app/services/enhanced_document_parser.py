@@ -354,7 +354,7 @@ async def parse_f24_enhanced(
     Estrae TUTTI i codici tributo da tutte le sezioni.
     """
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
+        from app.services.emergent_stub import LlmChat, UserMessage, ImageContent
         
         api_key = os.environ.get("EMERGENT_LLM_KEY")
         if not api_key:
@@ -429,7 +429,7 @@ async def parse_cedolino_enhanced(
     Supporta tutti i formati principali (Zucchetti, Paghe Web, TeamSystem, ADP, CSC).
     """
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
+        from app.services.emergent_stub import LlmChat, UserMessage, ImageContent
         
         api_key = os.environ.get("EMERGENT_LLM_KEY")
         if not api_key:
