@@ -420,3 +420,8 @@ class CorrispettiviService:
         except Exception as e:
             logger.error(f"Error creating prima nota entry: {e}")
             return None
+
+
+def get_corrispettivi_service() -> CorrispettiviService:
+    """Factory function per CorrispettiviService."""
+    return CorrispettiviService()
