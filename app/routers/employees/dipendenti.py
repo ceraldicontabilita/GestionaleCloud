@@ -2277,7 +2277,7 @@ async def scan_buste_paga_folders() -> Dict[str, Any]:
     import os
     from app.utils.busta_paga_parser import scan_all_dipendenti
     
-    base_path = "/app/documents/buste_paga"
+    base_path = "/tmp/documents/buste_paga"
     
     if not os.path.exists(base_path):
         return {
@@ -2316,7 +2316,7 @@ async def import_buste_paga_to_dipendenti(
     from app.utils.busta_paga_parser import scan_all_dipendenti
     
     db = Database.get_db()
-    base_path = "/app/documents/buste_paga"
+    base_path = "/tmp/documents/buste_paga"
     
     # Carica tutti i dipendenti dal DB
     dipendenti_db = await db[Collections.EMPLOYEES].find({}, {"_id": 0}).to_list(1000)
@@ -2446,7 +2446,7 @@ async def get_buste_paga_dipendente(dipendente_id: str) -> Dict[str, Any]:
     nome_completo = dipendente.get('nome_completo') or f"{dipendente.get('nome', '')} {dipendente.get('cognome', '')}"
     
     # Cerca la cartella corrispondente
-    base_path = "/app/documents/buste_paga"
+    base_path = "/tmp/documents/buste_paga"
     cartelle = os.listdir(base_path) if os.path.exists(base_path) else []
     
     cartella_trovata = None
@@ -2509,7 +2509,7 @@ async def import_busta_paga_to_dipendente(dipendente_id: str) -> Dict[str, Any]:
     nome_completo = dipendente.get('nome_completo') or f"{dipendente.get('nome', '')} {dipendente.get('cognome', '')}"
     
     # Cerca la cartella corrispondente
-    base_path = "/app/documents/buste_paga"
+    base_path = "/tmp/documents/buste_paga"
     cartelle = os.listdir(base_path) if os.path.exists(base_path) else []
     
     cartella_trovata = None

@@ -17,7 +17,7 @@ from app.config import settings
 from app.services.verbali_iuv_extractor import get_iuv_from_verbale
 
 logger = logging.getLogger(__name__)
-UPLOAD_DIR = "/app/uploads/paypal_ricevute"
+UPLOAD_DIR = "/tmp/uploads/paypal_ricevute"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # Mappatura PSP PayPal (paypal_account_id → nome PSP)

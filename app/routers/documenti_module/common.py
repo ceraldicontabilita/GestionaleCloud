@@ -10,7 +10,7 @@ import threading
 logger = logging.getLogger(__name__)
 
 # Directory documenti
-DOCUMENTS_DIR = Path(os.environ.get("DOCUMENTS_DIR", "/app/uploads/documenti"))
+DOCUMENTS_DIR = Path(os.environ.get("DOCUMENTS_DIR", "/tmp/uploads/documenti"))
 DOCUMENTS_DIR.mkdir(parents=True, exist_ok=True)
 
 # Collections

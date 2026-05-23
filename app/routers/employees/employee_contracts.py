@@ -19,8 +19,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # Contract templates directory
-CONTRACTS_DIR = "/app/uploads/contracts"
-TEMPLATES_DIR = "/app/uploads/contract_templates"
+CONTRACTS_DIR = "/tmp/uploads/contracts"
+TEMPLATES_DIR = "/tmp/uploads/contract_templates"
 
 # Available contract types
 CONTRACT_TYPES = [

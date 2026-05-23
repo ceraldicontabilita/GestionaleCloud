@@ -24,7 +24,7 @@ router = APIRouter()
 COLL_PAYPAL_STATEMENTS = "paypal_statements"
 COLL_PAYPAL_TRANSACTIONS = "paypal_transactions"
 
-UPLOAD_DIR = "/app/uploads/msr_statements"
+UPLOAD_DIR = "/tmp/uploads/msr_statements"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 

@@ -18,7 +18,7 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 # Cartella upload buste paga
-PAYSLIPS_FOLDER = "/app/uploads/paghe"
+PAYSLIPS_FOLDER = "/tmp/uploads/paghe"
 
 # ============================================
 # COSTANTI TFR

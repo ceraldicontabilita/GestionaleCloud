@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 # Configurazione
 IMAP_SERVER = "imap.gmail.com"
 IMAP_PORT = 993
-DOWNLOAD_DIR = "/app/uploads/email_attachments"
+DOWNLOAD_DIR = "/tmp/uploads/email_attachments"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 # Mittenti conosciuti

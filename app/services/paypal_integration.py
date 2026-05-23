@@ -12,7 +12,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional
 from dotenv import load_dotenv
 
-load_dotenv("/app/backend/.env", override=True)
+load_dotenv("backend/.env", override=True)
 
 logger = logging.getLogger(__name__)
 

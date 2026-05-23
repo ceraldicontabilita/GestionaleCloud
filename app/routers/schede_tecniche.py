@@ -34,7 +34,7 @@ ANTHROPIC_API_KEY  = os.environ.get("ANTHROPIC_API_KEY", "")
 IMAP_HOST     = os.environ.get("IMAP_HOST", "imap.gmail.com")
 IMAP_USER     = os.environ.get("IMAP_USER") or os.environ.get("EMAIL_USER", "")
 IMAP_PASSWORD = os.environ.get("IMAP_PASSWORD") or os.environ.get("EMAIL_PASSWORD", "")
-XML_DIR       = Path("/app/app/uploads/pec_xml")
+XML_DIR       = Path("/tmp/uploads/pec_xml")
 
 # ── Namespace FatturaPA ──────────────────────────────────────────────────────
 

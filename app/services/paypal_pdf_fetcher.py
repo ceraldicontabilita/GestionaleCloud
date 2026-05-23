@@ -14,7 +14,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.config import settings
 
 logger = logging.getLogger(__name__)
-UPLOAD_DIR = "/app/uploads/paypal_ricevute"
+UPLOAD_DIR = "/tmp/uploads/paypal_ricevute"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 

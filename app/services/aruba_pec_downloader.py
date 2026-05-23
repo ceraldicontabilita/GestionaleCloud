@@ -80,7 +80,7 @@ NS = {
     'ns': 'http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2',
 }
 
-UPLOAD_DIR = "/app/app/uploads/pec_xml"
+UPLOAD_DIR = "/tmp/uploads/pec_xml"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 

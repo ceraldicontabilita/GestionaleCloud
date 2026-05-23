@@ -20,7 +20,7 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 # DEPRECATED: Directory per compatibilità legacy
-UPLOAD_DIR = "/app/uploads/f24_commercialista"
+UPLOAD_DIR = "/tmp/uploads/f24_commercialista"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # Collections
@@ -872,7 +872,7 @@ async def dashboard_riconciliazione(
 # UPLOAD MULTIPLO QUIETANZE CON MATCHING AUTOMATICO
 # ============================================
 
-QUIETANZE_DIR = "/app/uploads/quietanze_f24"
+QUIETANZE_DIR = "/tmp/uploads/quietanze_f24"
 os.makedirs(QUIETANZE_DIR, exist_ok=True)
 
 

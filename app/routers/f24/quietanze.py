@@ -16,7 +16,7 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 # DEPRECATED: Directory per compatibilità legacy
-UPLOAD_DIR = "/app/uploads/f24"
+UPLOAD_DIR = "/tmp/uploads/f24"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 

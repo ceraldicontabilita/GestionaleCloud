@@ -502,7 +502,7 @@ async def scarica_ricevuta_verbale(verbale_id: str):
     pdf_path = (v or {}).get("pdf_ricevuta_path") or ""
     # Security: il path DEVE essere sotto /app/uploads/
     safe_path = os.path.realpath(pdf_path) if pdf_path else ""
-    if not v or not safe_path or not safe_path.startswith("/app/uploads/") or not os.path.exists(safe_path):
+    if not v or not safe_path or not safe_path.startswith("/tmp/uploads/") or not os.path.exists(safe_path):
         raise HTTPException(404, "PDF non disponibile")
     return FileResponse(
         safe_path,

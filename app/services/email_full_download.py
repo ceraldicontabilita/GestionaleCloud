@@ -1167,7 +1167,7 @@ async def get_documents_inbox_stats(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
     return stats
 
 
-async def sync_filesystem_pdfs_to_db(db: AsyncIOMotorDatabase, base_dir: str = "/app/documents") -> Dict[str, Any]:
+async def sync_filesystem_pdfs_to_db(db: AsyncIOMotorDatabase, base_dir: str = "/tmp/documents") -> Dict[str, Any]:
     """
     Scansiona i PDF sul filesystem e li sincronizza con documents_inbox.
     Per ogni file:

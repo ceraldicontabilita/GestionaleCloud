@@ -333,7 +333,7 @@ async def view_fattura_assoinvoice(fattura_id: str) -> HTMLResponse:
     # ── Applica ASSO XSL se abbiamo l'XML ────────────────────────────────────
     if xml_bytes:
         try:
-            xsl_path = "/app/app/static/FoglioStileAssoSoftware.xsl"
+            xsl_path = "static/FoglioStileAssoSoftware.xsl"
             xsl_doc = LET.parse(xsl_path)
             transform = LET.XSLT(xsl_doc)
 

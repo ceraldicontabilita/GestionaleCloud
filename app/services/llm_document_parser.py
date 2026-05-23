@@ -15,7 +15,7 @@ import logging
 from typing import Dict, Any, Optional, List
 from dotenv import load_dotenv
 
-load_dotenv("/app/backend/.env", override=True)
+load_dotenv("backend/.env", override=True)
 
 logger = logging.getLogger(__name__)
 

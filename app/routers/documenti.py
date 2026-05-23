@@ -2320,7 +2320,7 @@ async def reimporta_documenti_da_filesystem(
     saltati = []
     errori = []
     
-    base_path = Path("/app/documents")
+    base_path = Path("/tmp/documents")
     
     for dir_name, category in category_dirs.items():
         dir_path = base_path / dir_name

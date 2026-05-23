@@ -21,7 +21,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.config import settings
 
 logger = logging.getLogger(__name__)
-UPLOAD_DIR = "/app/uploads/verbali_gmail"
+UPLOAD_DIR = "/tmp/uploads/verbali_gmail"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 SENDERS_VERBALI_DEFAULT: Set[str] = {

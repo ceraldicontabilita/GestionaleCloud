@@ -5,7 +5,7 @@ from fastapi.responses import FileResponse
 
 router = APIRouter(prefix="/admin/export", tags=["Admin Export"])
 
-ALLOWED_DIRS = ["/app/uploads"]
+ALLOWED_DIRS = ["/tmp/uploads"]
 
 
 def _safe_path(filename: str) -> str:

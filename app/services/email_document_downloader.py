@@ -21,7 +21,7 @@ import hashlib
 logger = logging.getLogger(__name__)
 
 # Directory per salvare i documenti scaricati
-DOCUMENTS_DIR = Path("/app/documents")
+DOCUMENTS_DIR = Path("/tmp/documents")
 DOCUMENTS_DIR.mkdir(exist_ok=True)
 
 # Sottocartelle per categoria
