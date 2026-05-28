@@ -114,15 +114,28 @@ class Settings(BaseSettings):
     ENABLE_ASYNC_IMPORTS: bool = True
     ENABLE_CACHING: bool = True
 
-    # --- Canali legacy di import fatture (CLAUDE.md: solo upload manuale) ---
-    # Default OFF: le fatture devono entrare SOLO via upload manuale (XML/PDF/foto).
-    # Lasciare a True solo per ambienti di test o transizione controllata.
-    ENABLE_PEC_DOWNLOAD: bool = False         # Scheduler orario PEC Aruba IMAP
-    ENABLE_GMAIL_SYNC: bool = False           # Scheduler 10 min Gmail/Aruba per fatture
-    ENABLE_EMAIL_F24_DOWNLOAD: bool = False   # Scarico F24 da email (solo bottone UI)
-    ENABLE_EMAIL_CEDOLINI_DOWNLOAD: bool = False  # Import cedolini Gmail (solo bottone UI)
-    ENABLE_VERBALI_EMAIL_SCAN: bool = False   # Scan verbali multe noleggio da Gmail
-    ENABLE_GMAIL_FULL_SCAN: bool = False      # Gmail Full Scan multi-cartella
+    # ─── Canali email ─ Regola CLAUDE.md (28/05/2026) ─────────────────────
+    # Fatture XML/PDF: SOLO upload manuale. Mai automatico da PEC/Gmail.
+    # Documenti NON-fattura (cartelle esattoriali, avvisi, verbali, cedolini
+    # Vicedomini, quietanze, ...): possono entrare via Gmail SOLO da mittenti
+    # presenti in whitelist (collezione mittenti_attendibili).
+    #
+    # Flag SCHEDULER (job automatici registrati allo startup):
+    ENABLE_PEC_DOWNLOAD: bool = False              # scheduler PEC fatture: OFF per regola
+    ENABLE_GMAIL_SYNC: bool = False                # scheduler Gmail fatture: OFF per regola
+    ENABLE_GMAIL_FULL_SCAN: bool = False           # scheduler Gmail full scan fatture: OFF
+    ENABLE_VERBALI_EMAIL_SCAN: bool = False        # scheduler verbali noleggio email: OFF
+    ENABLE_GMAIL_WHITELIST_SCAN: bool = True       # scheduler Gmail per whitelist non-fatture: ON
+    GMAIL_WHITELIST_SCAN_MINUTES: int = 15         # frequenza scan whitelist (minuti)
+    GMAIL_WHITELIST_LOOKBACK_DAYS: int = 7         # finestra giorni indietro
+    #
+    # Flag ENDPOINT MANUALI (bottoni "Importa adesso" nella UI):
+    # Restano abilitabili anche con scheduler OFF; servono per recuperi
+    # one-shot decisi dall'utente.
+    ENABLE_MANUAL_PEC_IMPORT: bool = True          # bottone "Importa PEC adesso"
+    ENABLE_MANUAL_GMAIL_IMPORT: bool = True        # bottone "Importa Gmail adesso"
+    ENABLE_EMAIL_F24_DOWNLOAD: bool = True         # bottone "Scarica F24 da email"
+    ENABLE_EMAIL_CEDOLINI_DOWNLOAD: bool = True    # bottone "Importa cedolini da Gmail"
     
     # Ponte ERP (Tracciabilita' ceraldiapp.it pull endpoint)
     # Token condiviso per autenticare i GET in /api/erp/ponte/fatture.

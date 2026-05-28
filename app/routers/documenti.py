@@ -168,14 +168,14 @@ async def scarica_fatture_aruba(
     # Endpoint disattivato di default. Per riattivarlo (transizione) impostare
     # ENABLE_GMAIL_SYNC=true in backend/.env. Regola CLAUDE.md: solo upload manuale.
     from app.config import settings as _settings_legacy
-    if not _settings_legacy.ENABLE_GMAIL_SYNC:
+    if not _settings_legacy.ENABLE_MANUAL_GMAIL_IMPORT:
         from fastapi import HTTPException
         raise HTTPException(
             status_code=410,
             detail={
                 "errore": "canale_legacy_disattivato",
                 "messaggio": "Canale legacy: PEC/Gmail Aruba. Usare upload XML manuale.",
-                "flag_per_riattivare": "ENABLE_GMAIL_SYNC",
+                "flag_per_riattivare": "ENABLE_MANUAL_GMAIL_IMPORT",
             },
         )
 
@@ -593,14 +593,14 @@ async def scarica_documenti_email(
     # Endpoint disattivato di default. Per riattivarlo (transizione) impostare
     # ENABLE_GMAIL_SYNC=true in backend/.env. Regola CLAUDE.md: solo upload manuale.
     from app.config import settings as _settings_legacy
-    if not _settings_legacy.ENABLE_GMAIL_SYNC:
+    if not _settings_legacy.ENABLE_MANUAL_GMAIL_IMPORT:
         from fastapi import HTTPException
         raise HTTPException(
             status_code=410,
             detail={
                 "errore": "canale_legacy_disattivato",
                 "messaggio": "Canale legacy email. Usare upload manuale.",
-                "flag_per_riattivare": "ENABLE_GMAIL_SYNC",
+                "flag_per_riattivare": "ENABLE_MANUAL_GMAIL_IMPORT",
             },
         )
 

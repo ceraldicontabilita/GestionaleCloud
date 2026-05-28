@@ -55,6 +55,36 @@ async def pec_hourly_download_task():
         logger.error(f"[SCHEDULER-PEC] Errore download orario: {e}")
 
 
+async def gmail_whitelist_scan_task():
+    """Scansione Gmail filtrata su mittenti attendibili (whitelist).
+
+    Importa documenti NON-fattura nella inbox; le fatture XML eventualmente
+    trovate finiscono in quarantena con alert. NON viola la regola
+    'fatture solo via upload' (vedi CLAUDE.md).
+    """
+    from app.database import Database
+    from app.config import settings as _s
+    from app.services.gmail_whitelist_scanner import scarica_da_gmail
+
+    logger.info("[SCHEDULER-WHITELIST] Avvio scan Gmail mittenti attendibili...")
+    try:
+        db = Database.get_db()
+        host = _s.IMAP_HOST or "imap.gmail.com"
+        user = _s.GMAIL_EMAIL or _s.EMAIL_USER or _s.IMAP_USER
+        password = _s.GMAIL_APP_PASSWORD or _s.EMAIL_PASSWORD or _s.IMAP_PASSWORD
+        if not user or not password:
+            logger.warning("[SCHEDULER-WHITELIST] credenziali Gmail mancanti, skip")
+            return
+        stats = await scarica_da_gmail(
+            db, host, user, password,
+            cartelle=["INBOX"],
+            giorni_indietro=_s.GMAIL_WHITELIST_LOOKBACK_DAYS,
+        )
+        logger.info("[SCHEDULER-WHITELIST] %s", stats)
+    except Exception as e:
+        logger.error("[SCHEDULER-WHITELIST] errore: %s", e)
+
+
 async def sync_gmail_aruba_task():
     """
     Task eseguito ogni 10 minuti.
@@ -518,6 +548,23 @@ def start_scheduler():
         replace_existing=True
     )
     
+    # Task Whitelist Gmail (non-fatture) — ACCESO per regola (CLAUDE.md 28/05/2026)
+    if settings.ENABLE_GMAIL_WHITELIST_SCAN:
+        scheduler.add_job(
+            gmail_whitelist_scan_task,
+            'interval',
+            minutes=settings.GMAIL_WHITELIST_SCAN_MINUTES,
+            id="gmail_whitelist_scan",
+            name=f"Gmail Whitelist Scan (ogni {settings.GMAIL_WHITELIST_SCAN_MINUTES} min)",
+            replace_existing=True
+        )
+        logger.info(
+            "[SCHEDULER] Whitelist Gmail: ATTIVATO (ogni %d min)",
+            settings.GMAIL_WHITELIST_SCAN_MINUTES,
+        )
+    else:
+        logger.info("[SCHEDULER] Whitelist Gmail: DISATTIVATO")
+
     # Task Gmail Full Scan - ogni ora (tutte le cartelle) — LEGACY
     if settings.ENABLE_GMAIL_FULL_SCAN:
         scheduler.add_job(
@@ -538,6 +585,8 @@ def start_scheduler():
     logger.info("   - Gmail/Aruba 10 min: %s", "ON" if settings.ENABLE_GMAIL_SYNC else "OFF (legacy)")
     logger.info("   - Gmail Full Scan: %s", "ON" if settings.ENABLE_GMAIL_FULL_SCAN else "OFF (legacy)")
     logger.info("   - Verbali Email orario: %s", "ON" if settings.ENABLE_VERBALI_EMAIL_SCAN else "OFF (legacy)")
+    logger.info("   - Whitelist Gmail (non-fatture): %s",
+                ("ON ogni %d min" % settings.GMAIL_WHITELIST_SCAN_MINUTES) if settings.ENABLE_GMAIL_WHITELIST_SCAN else "OFF")
     logger.info("   - Scadenze Partite Aperte: ogni giorno ore 7:00")
     logger.info("   - Scadenze F24: ogni giorno ore 8:00 e 14:00")
 
