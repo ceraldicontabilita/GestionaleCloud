@@ -43,6 +43,13 @@ def register_all_routers(app: FastAPI) -> None:
         logger.warning(f"Router mittenti_attendibili non registrato: {e}")
 
     try:
+        from app.routers.contesto import router as contesto_router
+        app.include_router(contesto_router, prefix="/api/contesto",
+                           tags=["Contesto Entita'"])
+    except Exception as e:
+        logger.warning(f"Router contesto non registrato: {e}")
+
+    try:
         from app.routers.partite_aperte_api import router as partite_router
         from app.routers.riconciliazione_stats_api import router as ric_stats_router
         from app.routers.employees.fascicolo_dipendente import router as fascicolo_router
