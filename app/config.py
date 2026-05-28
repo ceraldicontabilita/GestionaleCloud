@@ -124,6 +124,11 @@ class Settings(BaseSettings):
     ENABLE_VERBALI_EMAIL_SCAN: bool = False   # Scan verbali multe noleggio da Gmail
     ENABLE_GMAIL_FULL_SCAN: bool = False      # Gmail Full Scan multi-cartella
     
+    # Ponte ERP (Tracciabilita' ceraldiapp.it pull endpoint)
+    # Token condiviso per autenticare i GET in /api/erp/ponte/fatture.
+    # Se vuoto, l'endpoint risponde 401 a tutti.
+    PONTE_TOKEN: Optional[str] = None
+
     # Logging
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "json"
