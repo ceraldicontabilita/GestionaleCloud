@@ -29,6 +29,13 @@ def register_all_routers(app: FastAPI) -> None:
 
     # Sistema relazionale (Chat 9e) + Fascicolo dipendenti (Chat 9 fix)
     try:
+        from app.routers.documenti_unificati import router as documenti_unificati_router
+        app.include_router(documenti_unificati_router, prefix="/api/documenti-unificati",
+                           tags=["Documenti Unificati"])
+    except Exception as e:
+        logger.warning(f"Router documenti_unificati non registrato: {e}")
+
+    try:
         from app.routers.partite_aperte_api import router as partite_router
         from app.routers.riconciliazione_stats_api import router as ric_stats_router
         from app.routers.employees.fascicolo_dipendente import router as fascicolo_router
