@@ -28,12 +28,15 @@ router = APIRouter(prefix="/sync", tags=["Sincronizzazione Dati"])
 
 # ==================== COSTANTI ====================
 
+# Mappatura logica -> nome collezione MongoDB (canonica = italiana).
+# Regola: la collezione fornitori si chiama "fornitori", NON "suppliers".
 COLLECTIONS = {
     "invoices": "invoices",
     "prima_nota_cassa": "prima_nota_cassa",
     "prima_nota_banca": "prima_nota_banca",
     "corrispettivi": "corrispettivi",
-    "suppliers": "suppliers"
+    "suppliers": "fornitori",   # alias inglese -> canonica italiana
+    "fornitori": "fornitori",
 }
 
 

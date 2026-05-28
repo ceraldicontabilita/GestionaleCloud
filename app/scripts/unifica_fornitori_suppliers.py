@@ -1,4 +1,15 @@
 """
+[ATTENZIONE — LEGACY] Questo script ha direzione INVERSA rispetto alla regola
+canonica attuale (vedi app/db_collections.py + README + CLAUDE.md).
+
+La collezione canonica per i fornitori e' 'fornitori', NON 'suppliers'.
+NON eseguire senza riscrivere prima la direzione: la migrazione corretta
+e' suppliers -> fornitori, non viceversa.
+
+============================================================
+Docstring originale (preservato sotto per riferimento storico):
+============================================================
+
 Script di Migrazione: Unificazione Collection fornitori e suppliers.
 
 Questo script:

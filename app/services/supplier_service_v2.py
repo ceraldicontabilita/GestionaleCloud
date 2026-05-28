@@ -121,7 +121,7 @@ class SupplierServiceV2:
             
             # Cascade update to related collections
             cascade_results = await referential_integrity.cascade_update(
-                collection_name="suppliers",
+                collection_name="fornitori",
                 document_id=supplier_id,
                 updates={"supplier_name": update_dict["name"]},
                 user_id=user_id
@@ -168,7 +168,7 @@ class SupplierServiceV2:
         
         # CHECK REFERENTIAL INTEGRITY
         check_result = await referential_integrity.check_can_delete(
-            collection_name="suppliers",
+            collection_name="fornitori",
             document_id=supplier_id,
             user_id=user_id
         )
@@ -176,7 +176,7 @@ class SupplierServiceV2:
         if not check_result["can_delete"] and not force:
             # Get sample references for error message
             references = await referential_integrity.get_references(
-                collection_name="suppliers",
+                collection_name="fornitori",
                 document_id=supplier_id,
                 user_id=user_id,
                 limit=5
@@ -204,7 +204,7 @@ class SupplierServiceV2:
             )
             
             cascade_results = await referential_integrity.cascade_delete(
-                collection_name="suppliers",
+                collection_name="fornitori",
                 document_id=supplier_id,
                 user_id=user_id,
                 force=True
@@ -240,13 +240,13 @@ class SupplierServiceV2:
         Useful for showing user what will be affected before delete/update.
         """
         check_result = await referential_integrity.check_can_delete(
-            collection_name="suppliers",
+            collection_name="fornitori",
             document_id=supplier_id,
             user_id=user_id
         )
         
         references = await referential_integrity.get_references(
-            collection_name="suppliers",
+            collection_name="fornitori",
             document_id=supplier_id,
             user_id=user_id,
             limit=10

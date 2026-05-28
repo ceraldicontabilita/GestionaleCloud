@@ -17,17 +17,20 @@ logger = logging.getLogger(__name__)
 SOGLIA_DELETE_MASSIVA = 10
 
 # Collections protette che richiedono backup prima di delete
+# Collezioni "core" che richiedono backup automatico prima di delete massive.
+# Nomi = canonici italiani (vedi app/db_collections.py).
 COLLECTIONS_PROTETTE = [
     "assegni",
-    "invoices", 
+    "invoices",
     "fatture_ricevute",
     "prima_nota_salari",
     "prima_nota_cassa",
     "prima_nota_banca",
     "estratto_conto_movimenti",
-    "suppliers",
-    "f24_models",
-    "corrispettivi"
+    "fornitori",          # ex "suppliers" — canonica italiana
+    "dipendenti",         # ex "employees" — canonica italiana
+    "f24_unificato",      # ex "f24_models" — canonica
+    "corrispettivi",
 ]
 
 

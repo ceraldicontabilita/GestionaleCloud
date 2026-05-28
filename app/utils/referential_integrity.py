@@ -25,8 +25,10 @@ class ReferentialIntegrityManager:
     """
     
     # Define relationships: parent -> [children collections with field]
+    # Le chiavi sono i nomi delle collezioni MongoDB (canonica italiana).
+    # I valori sono le collezioni figlie con il campo che fa da foreign key.
     RELATIONSHIPS = {
-        "suppliers": [
+        "fornitori": [   # ex "suppliers" — canonica italiana
             ("invoices", "supplier_id", "supplier_name"),
             ("warehouse_products", "supplier_id", "supplier_name")
         ],
