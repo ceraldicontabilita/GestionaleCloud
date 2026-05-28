@@ -38,6 +38,21 @@ async def scarica_email_allegati(
     - Commercialista (rosaria.marotta@email.it): F24 fiscali
     - Consulenti lavoro (ferrantini): F24 contributivi
     """
+    # ── Guard legacy email ───────────────────────────────────────────────
+    # Endpoint disattivato di default. Per riattivarlo (transizione) impostare
+    # ENABLE_EMAIL_F24_DOWNLOAD=true in backend/.env. Regola CLAUDE.md: solo upload manuale.
+    from app.config import settings as _settings_legacy
+    if not _settings_legacy.ENABLE_EMAIL_F24_DOWNLOAD:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=410,
+            detail={
+                "errore": "canale_legacy_disattivato",
+                "messaggio": "Canale legacy: scarico F24 da email. Usare upload PDF manuale.",
+                "flag_per_riattivare": "ENABLE_EMAIL_F24_DOWNLOAD",
+            },
+        )
+
     db = Database.get_db()
     
     # Download email
@@ -339,6 +354,21 @@ async def scarica_e_processa(
     Flusso completo: scarica email → processa allegati → inserisce F24.
     Ideale per esecuzione giornaliera automatica.
     """
+    # ── Guard legacy email ───────────────────────────────────────────────
+    # Endpoint disattivato di default. Per riattivarlo (transizione) impostare
+    # ENABLE_EMAIL_F24_DOWNLOAD=true in backend/.env. Regola CLAUDE.md: solo upload manuale.
+    from app.config import settings as _settings_legacy
+    if not _settings_legacy.ENABLE_EMAIL_F24_DOWNLOAD:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=410,
+            detail={
+                "errore": "canale_legacy_disattivato",
+                "messaggio": "Canale legacy: scarico+processa F24 da email. Usare upload PDF manuale.",
+                "flag_per_riattivare": "ENABLE_EMAIL_F24_DOWNLOAD",
+            },
+        )
+
     # Step 1: Scarica email
     download_result = await scarica_email_allegati(giorni=giorni)
     

@@ -1375,6 +1375,21 @@ async def import_cedolini_da_gmail(
     Args:
         since_days: quanti giorni indietro cercare (default 180 = 6 mesi)
     """
+    # ── Guard legacy email ───────────────────────────────────────────────
+    # Endpoint disattivato di default. Per riattivarlo (transizione) impostare
+    # ENABLE_EMAIL_CEDOLINI_DOWNLOAD=true in backend/.env. Regola CLAUDE.md: solo upload manuale.
+    from app.config import settings as _settings_legacy
+    if not _settings_legacy.ENABLE_EMAIL_CEDOLINI_DOWNLOAD:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=410,
+            detail={
+                "errore": "canale_legacy_disattivato",
+                "messaggio": "Canale legacy: import cedolini da Gmail. Usare upload PDF manuale.",
+                "flag_per_riattivare": "ENABLE_EMAIL_CEDOLINI_DOWNLOAD",
+            },
+        )
+
     db = Database.get_db()
 
     email_user = os.environ.get("IMAP_USER") or os.environ.get("EMAIL_USER")
