@@ -11,6 +11,9 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 import random
 
+# Feature flags per disattivare canali legacy email (default OFF in config.py)
+from app.config import settings
+
 logger = logging.getLogger(__name__)
 
 # Scheduler instance
@@ -445,34 +448,48 @@ def start_scheduler():
     )
 
     # ── PEC: scarica nuove fatture ogni ora ────────────────────────────────
-    scheduler.add_job(
-        pec_hourly_download_task,
-        'interval',
-        hours=1,
-        id="pec_hourly_download",
-        name="Download PEC Fatture (ogni ora)",
-        replace_existing=True
-    )
+    # LEGACY: regola CLAUDE.md = fatture solo via upload manuale.
+    # Attivare ENABLE_PEC_DOWNLOAD=true SOLO in transizione controllata.
+    if settings.ENABLE_PEC_DOWNLOAD:
+        scheduler.add_job(
+            pec_hourly_download_task,
+            'interval',
+            hours=1,
+            id="pec_hourly_download",
+            name="Download PEC Fatture (ogni ora)",
+            replace_existing=True
+        )
+        logger.info("[SCHEDULER] PEC Aruba orario: ATTIVATO via ENABLE_PEC_DOWNLOAD")
+    else:
+        logger.info("[SCHEDULER] PEC Aruba orario: DISATTIVATO (legacy, regola CLAUDE.md)")
     
-    # Task Gmail/Aruba ogni 10 minuti
-    scheduler.add_job(
-        sync_gmail_aruba_task,
-        'interval',
-        minutes=10,
-        id="gmail_aruba_sync",
-        name="Sync Gmail/Aruba (ogni 10 min)",
-        replace_existing=True
-    )
+    # Task Gmail/Aruba ogni 10 minuti — LEGACY (regola: solo upload manuale)
+    if settings.ENABLE_GMAIL_SYNC:
+        scheduler.add_job(
+            sync_gmail_aruba_task,
+            'interval',
+            minutes=10,
+            id="gmail_aruba_sync",
+            name="Sync Gmail/Aruba (ogni 10 min)",
+            replace_existing=True
+        )
+        logger.info("[SCHEDULER] Sync Gmail/Aruba 10 min: ATTIVATO via ENABLE_GMAIL_SYNC")
+    else:
+        logger.info("[SCHEDULER] Sync Gmail/Aruba 10 min: DISATTIVATO (legacy)")
     
-    # Task Scan Verbali Email ogni ora
-    scheduler.add_job(
-        scan_verbali_email_task,
-        'interval',
-        hours=1,
-        id="verbali_email_scan",
-        name="Scan Email Verbali (ogni ora)",
-        replace_existing=True
-    )
+    # Task Scan Verbali Email ogni ora — LEGACY
+    if settings.ENABLE_VERBALI_EMAIL_SCAN:
+        scheduler.add_job(
+            scan_verbali_email_task,
+            'interval',
+            hours=1,
+            id="verbali_email_scan",
+            name="Scan Email Verbali (ogni ora)",
+            replace_existing=True
+        )
+        logger.info("[SCHEDULER] Verbali Email orario: ATTIVATO via ENABLE_VERBALI_EMAIL_SCAN")
+    else:
+        logger.info("[SCHEDULER] Verbali Email orario: DISATTIVATO (legacy)")
     
     # Task Scadenze Partite Aperte (sistema relazionale) - ogni giorno alle 7:00
     scheduler.add_job(
@@ -501,22 +518,26 @@ def start_scheduler():
         replace_existing=True
     )
     
-    # Task Gmail Full Scan - ogni ora (tutte le cartelle)
-    scheduler.add_job(
-        gmail_full_scan_task,
-        'interval',
-        hours=1,
-        id="gmail_full_scan",
-        name="Gmail Full Scan Multi-Cartella (ogni ora)",
-        replace_existing=True
-    )
+    # Task Gmail Full Scan - ogni ora (tutte le cartelle) — LEGACY
+    if settings.ENABLE_GMAIL_FULL_SCAN:
+        scheduler.add_job(
+            gmail_full_scan_task,
+            'interval',
+            hours=1,
+            id="gmail_full_scan",
+            name="Gmail Full Scan Multi-Cartella (ogni ora)",
+            replace_existing=True
+        )
+        logger.info("[SCHEDULER] Gmail Full Scan orario: ATTIVATO via ENABLE_GMAIL_FULL_SCAN")
+    else:
+        logger.info("[SCHEDULER] Gmail Full Scan orario: DISATTIVATO (legacy)")
     
     scheduler.start()
     logger.info("✅ [SCHEDULER] Scheduler avviato")
-    logger.info("   - PEC Fatture: ogni ora")
-    logger.info("   - Gmail/Aruba: ogni 10 minuti")
-    logger.info("   - Gmail Full Scan (tutte cartelle): ogni ora")
-    logger.info("   - Verbali Email: ogni ora")
+    logger.info("   - PEC Fatture orario: %s", "ON" if settings.ENABLE_PEC_DOWNLOAD else "OFF (legacy)")
+    logger.info("   - Gmail/Aruba 10 min: %s", "ON" if settings.ENABLE_GMAIL_SYNC else "OFF (legacy)")
+    logger.info("   - Gmail Full Scan: %s", "ON" if settings.ENABLE_GMAIL_FULL_SCAN else "OFF (legacy)")
+    logger.info("   - Verbali Email orario: %s", "ON" if settings.ENABLE_VERBALI_EMAIL_SCAN else "OFF (legacy)")
     logger.info("   - Scadenze Partite Aperte: ogni giorno ore 7:00")
     logger.info("   - Scadenze F24: ogni giorno ore 8:00 e 14:00")
 

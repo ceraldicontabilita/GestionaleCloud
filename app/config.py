@@ -113,6 +113,16 @@ class Settings(BaseSettings):
     ENABLE_DOCUMENT_AI: bool = False
     ENABLE_ASYNC_IMPORTS: bool = True
     ENABLE_CACHING: bool = True
+
+    # --- Canali legacy di import fatture (CLAUDE.md: solo upload manuale) ---
+    # Default OFF: le fatture devono entrare SOLO via upload manuale (XML/PDF/foto).
+    # Lasciare a True solo per ambienti di test o transizione controllata.
+    ENABLE_PEC_DOWNLOAD: bool = False         # Scheduler orario PEC Aruba IMAP
+    ENABLE_GMAIL_SYNC: bool = False           # Scheduler 10 min Gmail/Aruba per fatture
+    ENABLE_EMAIL_F24_DOWNLOAD: bool = False   # Scarico F24 da email (solo bottone UI)
+    ENABLE_EMAIL_CEDOLINI_DOWNLOAD: bool = False  # Import cedolini Gmail (solo bottone UI)
+    ENABLE_VERBALI_EMAIL_SCAN: bool = False   # Scan verbali multe noleggio da Gmail
+    ENABLE_GMAIL_FULL_SCAN: bool = False      # Gmail Full Scan multi-cartella
     
     # Logging
     LOG_LEVEL: str = "INFO"
