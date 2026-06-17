@@ -156,6 +156,7 @@ async def pin_login(
         "email": user.get("email", ""),
         "name": user.get("name"),
         "role": user.get("role", "admin"),
+        "tipo": "admin",
         "exp": expire,
         "iat": datetime.now(timezone.utc),
         "auth_method": "pin",  # traccia che è un token da PIN

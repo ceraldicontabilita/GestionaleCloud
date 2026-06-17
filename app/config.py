@@ -173,6 +173,23 @@ class Settings(BaseSettings):
                 "Impostare SECRET_KEY nell'ambiente per la produzione. "
                 "I token JWT generati NON saranno validi dopo il riavvio."
             )
+
+        # Segreto JWT UNIFICATO tra le app Ceraldi: se presente, usa la chiave
+        # condivisa salvata in Gestionale.sistema_stato.auth_secret (lo stesso
+        # meccanismo di Lotti e AppDipendenti), così i token sono interoperabili
+        # tra le app. Sola lettura: non crea la chiave (la gestisce Lotti).
+        try:
+            import os as _os
+            from pymongo import MongoClient as _MC
+            _uri = self.MONGO_URL or self.MONGODB_ATLAS_URI or _os.getenv("MONGO_URL")
+            if _uri:
+                _cli = _MC(_uri, serverSelectionTimeoutMS=4000)
+                _doc = _cli[_os.getenv("DB_NAME", "Gestionale")]["sistema_stato"].find_one({"chiave": "auth_secret"})
+                _cli.close()
+                if _doc and _doc.get("valore"):
+                    self.SECRET_KEY = _doc["valore"]
+        except Exception:
+            pass
     
     def get_cors_origins(self) -> list[str]:
         """Parse CORS origins from comma-separated string."""
