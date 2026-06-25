@@ -548,3 +548,74 @@ table tbody tr:hover td {
     flex-wrap: wrap;
   }
 }
+
+/* ================================================================
+   MOBILE RESPONSIVE — FIX GLOBALI (giu 2026)
+   Obiettivi: niente overflow orizzontale di pagina, tabelle larghe
+   scrollabili in autonomia, top-nav non affollata sul telefono.
+   ================================================================ */
+
+/* 1) Nessuno scroll orizzontale a livello di pagina/documento.
+      Il contenuto non deve mai "sfondare" la larghezza del viewport. */
+html, body {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.topnav-layout {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+.topnav-layout .page-content {
+  overflow-x: hidden;
+}
+
+@media (max-width: 768px) {
+  /* 2) Sul telefono la barra in alto resta solo come header compatto:
+        brand + anno + campana + avatar. La navigazione completa è già
+        disponibile dalla bottom-nav (Home/Fatture/Banca/HR/Menu) e dal
+        menu "☰" a tutto schermo, quindi nascondiamo la lista scrollabile
+        che altrimenti si accavalla. */
+  .topnav-primary .topnav-items,
+  nav[data-testid="topnav-primary"] .topnav-items {
+    display: none !important;
+  }
+
+  /* Top-nav più compatta e con meno padding laterale */
+  .topnav-primary,
+  nav[data-testid="topnav-primary"] {
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+    gap: 6px !important;
+  }
+
+  /* 3) Tabelle "nude" (senza wrapper) scrollano in orizzontale dentro la
+        pagina invece di allargare tutto il layout. */
+  .page-content table {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    white-space: nowrap;
+  }
+  /* Le tabelle già dentro un wrapper scrollabile restano table normali */
+  .table-scroll table,
+  .table-wrapper table {
+    display: table;
+    white-space: normal;
+  }
+
+  /* 4) Immagini/elementi media non sforano mai */
+  .page-content img,
+  .page-content video,
+  .page-content canvas,
+  .page-content svg {
+    max-width: 100%;
+    height: auto;
+  }
+
+  /* 5) Contenitori con larghezze fisse inline → fluidi */
+  .page-content [style*="width: 100%"] { max-width: 100%; }
+}

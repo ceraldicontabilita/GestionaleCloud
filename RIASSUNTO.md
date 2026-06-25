@@ -5,6 +5,15 @@
 noleggio auto, riconciliazione bancaria e tracciabilità HACCP, con **acquisizione automatica dei
 documenti da PEC e Gmail**.
 
+## Link utili
+
+- **App live (deploy Render):** https://ceraldi-gestione.onrender.com/
+- **Dominio produzione:** https://impresasemplice.online
+- **Dashboard deploy Render:** https://dashboard.render.com
+- **Repository:** https://github.com/ceraldicontabilita/GestionaleCloud
+
+> Il deploy su Render parte automaticamente ad ogni push sul branch `main`.
+
 ## Stack tecnologico
 
 | Layer | Tecnologia |
