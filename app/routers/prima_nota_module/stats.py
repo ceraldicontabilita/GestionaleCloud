@@ -172,7 +172,14 @@ async def export_prima_nota_excel(
                 cols = ["data", "tipo", "importo", "descrizione", "categoria", "riferimento", "assegno_collegato"]
                 df_banca = df_banca[[c for c in cols if c in df_banca.columns]]
                 df_banca.to_excel(writer, sheet_name="Prima Nota Banca", index=False)
-    
+
+        # openpyxl requires at least one sheet; without any movements for the
+        # period no sheet would be written and the writer crashes on save.
+        if not writer.sheets:
+            pd.DataFrame(columns=["data", "tipo", "importo", "descrizione"]).to_excel(
+                writer, sheet_name="Prima Nota", index=False
+            )
+
     output.seek(0)
     filename = f"prima_nota_{datetime.now().strftime('%Y%m%d')}.xlsx"
     
