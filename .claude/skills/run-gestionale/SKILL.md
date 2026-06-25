@@ -13,9 +13,10 @@ layout that can't be seen from a headless container otherwise.
 All paths below are relative to the **repo root** (`<root>/`). The driver lives
 at `.claude/skills/run-gestionale/driver.mjs`.
 
-> The backend (FastAPI on `:8001`) needs MongoDB and is **not** required for the
-> frontend to render. Without it, the dev server still serves the app shell and
-> the **login screen**; authenticated pages need the backend (see Gotchas).
+> The frontend renders the **login screen** with no backend. To screenshot the
+> **authenticated** inner pages (dashboard, dipendenti, cedolini, prima-nota…)
+> run the local mock backend below — no real MongoDB needed — and drive the PIN
+> login with `--pin 141574`.
 
 ## Prerequisites
 
@@ -29,6 +30,12 @@ cd frontend && npm install --no-save --no-audit --no-fund playwright-core
 
 Chromium itself is pre-installed at `$PLAYWRIGHT_BROWSERS_PATH` (`/opt/pw-browsers`);
 the driver finds it automatically. Do **not** run `playwright install`.
+
+For the **authenticated** flow, the mock backend needs an in-memory Mongo:
+
+```bash
+.venv/bin/pip install mongomock_motor mongomock
+```
 
 ## Run (agent path) — the driver
 
@@ -64,6 +71,28 @@ Driver options:
 | `--pin <digits>` | type a 6-digit PIN on the login screen, then submit | none |
 | `--wait <ms>` | settle time before the shot | `800` |
 
+## Run authenticated (inner pages)
+
+To reach pages behind the login, also start the **mock backend** (in-memory
+Mongo, seeds an admin user) and log in with the admin PIN `141574`:
+
+```bash
+# 1. mock backend on :8001 (the dev server proxies /api to it)
+.venv/bin/python .claude/skills/run-gestionale/mock_backend.py &
+until curl -sf -o /dev/null http://localhost:8001/api/ping; do sleep 1; done
+
+# 2. dev server on :3000 (if not already running)
+( cd frontend && yarn dev > /tmp/vite.log 2>&1 & )
+until curl -sf -o /dev/null http://localhost:3000/; do sleep 1; done
+
+# 3. screenshot an authenticated route at mobile viewport
+node .claude/skills/run-gestionale/driver.mjs /dipendenti --device mobile --pin 141574 --out dipendenti.png
+node .claude/skills/run-gestionale/driver.mjs /cedolini   --device mobile --pin 141574 --out cedolini.png
+```
+
+Data will be empty (the mock DB has no records), but every page's layout and
+chrome render exactly as on a real device — enough to audit responsiveness.
+
 ## Run (human path)
 
 `cd frontend && yarn dev` then open `http://localhost:3000/` in a real browser.
@@ -89,11 +118,19 @@ cd frontend && yarn build
   folder.** The driver computes the repo root from its own path and `require`s
   it from there — so it must stay at `.claude/skills/run-gestionale/driver.mjs`
   (3 levels under the repo root). If you move it, fix `REPO_ROOT` inside.
-- **Authenticated pages need the backend.** Login posts a 6-digit PIN to
-  `/api` (proxied to `:8001`); with no FastAPI + MongoDB + seeded PIN, `--pin`
-  fails with "PIN non valido" and you stay on the login screen. The driver
-  still screenshots whatever rendered. To reach inner pages (dashboard, tables —
-  where most responsive issues live), start the backend with a database first.
+- **Authenticated pages need the mock backend running.** `--pin` types the
+  admin PIN `141574` (POST `/api/auth/pin-login`). Without `mock_backend.py` up
+  it fails and you stay on login. The driver also stubs `GET /api/auth/verify`
+  in the browser so a hard navigation to a guarded route doesn't bounce back to
+  login — the app re-checks the token on every page load.
+- **The app uses a data-router that ignores manual `history.pushState`.** So the
+  driver navigates to inner routes with a **hard reload** (`page.goto`) after
+  login, not client-side — which is why the verify stub above is needed.
+- **PIN tokens only pass `/api/auth/verify` when `SECRET_KEY` matches.** `auth.py`
+  (jwt verify) and the unified settings secret both read `SECRET_KEY` from the
+  environment; if it is unset they diverge and verify 401s. `mock_backend.py`
+  exports one ephemeral random value for both, so verify returns 200 locally. In
+  production both read the same `SECRET_KEY` env var.
 - **Chromium prints harmless `CreatePlatformSocket()` / `handshake failed`
   errors** to stderr when the backend proxy target (`:8001`) is down. The
   screenshot still succeeds; ignore them.

@@ -94,18 +94,35 @@ try {
     hasTouch: vp.hasTouch,
   })
   const page = await ctx.newPage()
-  await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 }).catch(async (e) => {
-    // networkidle can hang if the backend proxy keeps polling; fall back.
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 })
-  })
+  const goto = (u) =>
+    page
+      .goto(u, { waitUntil: 'networkidle', timeout: 30000 })
+      // networkidle can hang if the backend proxy keeps polling; fall back.
+      .catch(() => page.goto(u, { waitUntil: 'domcontentloaded', timeout: 30000 }))
 
   if (pin) {
-    // "Accesso rapido" PIN screen: type digits then click "Entra".
+    // Keep the session alive across hard navigations: the app re-validates the
+    // token via GET /api/auth/verify on every page load and bounces to login if
+    // it fails. Stub that response so reloads to guarded routes stay logged in.
+    await ctx.route('**/api/auth/verify', (r) =>
+      r.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ user: { id: 'driver', email: 'driver@local', name: 'Driver', role: 'admin' } }),
+      })
+    )
+    // Authenticate on the root "Accesso rapido" PIN screen (writes the real JWT
+    // into localStorage), then hard-navigate to the requested route.
+    await goto(base.replace(/\/$/, '') + '/')
+    await page.locator('input').first().click({ timeout: 5000 }).catch(() => {})
     for (const d of String(pin)) {
       await page.keyboard.type(d, { delay: 60 })
     }
     await page.getByText('Entra', { exact: false }).first().click({ timeout: 5000 }).catch(() => {})
     await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {})
+    if (path !== '/' && path !== '') await goto(url)
+  } else {
+    await goto(url)
   }
 
   await page.waitForTimeout(wait)
