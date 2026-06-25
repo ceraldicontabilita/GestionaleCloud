@@ -48,7 +48,12 @@ def _register_auth(app: FastAPI):
     from app.routers.legal_pages import router as legal_router
 
     app.include_router(public_api.router, prefix="/api", tags=["Public API"])
-    app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
+    # auth.router already carries an internal prefix="/api" and its routes are
+    # "/auth/...", so it must be included WITHOUT an extra prefix — otherwise the
+    # paths double up to "/api/auth/api/auth/verify" and the frontend's
+    # "/api/auth/verify" / "/api/auth/login" calls 404 (logging users out on
+    # refresh). pin_login.router has no internal prefix, so it keeps "/api/auth".
+    app.include_router(auth.router, tags=["Authentication"])
     app.include_router(pin_login.router, prefix="/api/auth", tags=["PIN Login"])
     # ERP Bridge: ponte inbound da ceraldiapp.it (app Tracciabilità esterna)
     # che invia al gestionale le fatture importate dalla PEC.
