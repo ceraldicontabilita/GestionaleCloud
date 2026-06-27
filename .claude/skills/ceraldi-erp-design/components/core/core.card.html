@@ -1,0 +1,85 @@
+<!-- @dsCard group="Components" viewport="700x440" name="Core — Primitivi" subtitle="Button · Badge · Input · Select · Tabs · StatCard · Card · PageHeader" -->
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="../../styles.css" />
+<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"></script>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>
+  body { margin: 0; font-family: var(--font-ui); background: var(--c-bg); color: var(--c-text); padding: 18px; }
+  .group { margin-bottom: 16px; }
+  .glabel { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--c-text-subtle); margin-bottom: 8px; }
+  .rowflex { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+  const { Button, Badge, Input, Select, Tabs, StatCard, Card, PageHeader } = window.CeraldiERPDesignSystem_9a014a;
+  const ic = (name, size = 16) => React.createElement('i', { 'data-lucide': name, style: { width: size, height: size } });
+
+  function Demo() {
+    const [tab, setTab] = React.useState('mese');
+    React.useEffect(() => { if (window.lucide) lucide.createIcons(); });
+    return (
+      <div>
+        <div className="group">
+          <div className="glabel">Page Header</div>
+          <PageHeader title="Corrispettivi" subtitle="Anno 2026" icon={ic('receipt', 20)}
+            actions={<Button size="sm" iconLeft={ic('upload')}>Importa</Button>} />
+        </div>
+
+        <div className="group">
+          <div className="glabel">Buttons</div>
+          <div className="rowflex">
+            <Button>Primary</Button>
+            <Button variant="secondary">Secondary</Button>
+            <Button variant="ghost">Ghost</Button>
+            <Button variant="outline">Outline</Button>
+            <Button variant="success">Salva</Button>
+            <Button variant="danger" iconLeft={ic('trash-2')}>Elimina</Button>
+            <Button disabled>Disabilitato</Button>
+          </div>
+        </div>
+
+        <div className="group">
+          <div className="glabel">Badges</div>
+          <div className="rowflex">
+            <Badge variant="success">Pagata</Badge>
+            <Badge variant="warning">In scadenza</Badge>
+            <Badge variant="danger">Insoluta</Badge>
+            <Badge variant="info">Nota credito</Badge>
+            <Badge variant="primary">Bozza</Badge>
+            <Badge variant="accent">Attenzione</Badge>
+            <Badge variant="neutral">Archiviata</Badge>
+          </div>
+        </div>
+
+        <div className="group">
+          <div className="glabel">Form · Tabs</div>
+          <div className="rowflex">
+            <div style={{ width: 220 }}><Input placeholder="Cerca fornitore…" iconLeft={ic('search', 15)} /></div>
+            <Select defaultValue="2026"><option>2024</option><option>2025</option><option>2026</option></Select>
+            <Tabs value={tab} onChange={setTab} items={[{key:'mese',label:'Per Mese'},{key:'dip',label:'Per Dipendente'}]} />
+          </div>
+        </div>
+
+        <div className="group">
+          <div className="glabel">Stat Cards</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+            <StatCard icon={ic('receipt', 18)} label="Corrispettivi" value="€ 184.920" accent="primary" />
+            <StatCard icon={ic('banknote', 18)} label="Cassa" value="€ 96.400" subtext="52% del totale" accent="success" />
+            <StatCard icon={ic('triangle-alert', 18)} label="Insoluti" value="7" accent="danger" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+  ReactDOM.createRoot(document.getElementById('root')).render(<Demo />);
+</script>
+</body>
+</html>

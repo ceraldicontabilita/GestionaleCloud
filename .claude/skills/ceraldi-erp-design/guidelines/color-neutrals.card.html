@@ -1,0 +1,38 @@
+<!-- @dsCard group="Colors" viewport="700x150" name="Neutri — Slate" subtitle="Superfici e testo: scala slate 50→900" -->
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="../styles.css" />
+<style>
+  body { margin: 0; font-family: var(--font-ui); background: var(--c-card); color: var(--c-text); }
+  .ramp { display: flex; padding: 16px 16px 6px; }
+  .step { flex: 1; height: 56px; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 5px; font-size: 9px; font-family: var(--font-mono); }
+  .step:first-child { border-radius: var(--radius-md) 0 0 var(--radius-md); }
+  .step:last-child { border-radius: 0 var(--radius-md) var(--radius-md) 0; }
+  .cap { display: flex; padding: 0 16px 14px; gap: 18px; font-size: 11px; color: var(--c-text-muted); }
+  .cap b { color: var(--c-text); }
+</style>
+</head>
+<body>
+  <div class="ramp">
+    <div class="step" style="background:var(--gray-50);color:#334155">50</div>
+    <div class="step" style="background:var(--gray-100);color:#334155">100</div>
+    <div class="step" style="background:var(--gray-200);color:#334155">200</div>
+    <div class="step" style="background:var(--gray-300);color:#334155">300</div>
+    <div class="step" style="background:var(--gray-400);color:#fff">400</div>
+    <div class="step" style="background:var(--gray-500);color:#fff">500</div>
+    <div class="step" style="background:var(--gray-600);color:#fff">600</div>
+    <div class="step" style="background:var(--gray-700);color:#fff">700</div>
+    <div class="step" style="background:var(--gray-800);color:#fff">800</div>
+    <div class="step" style="background:var(--gray-900);color:#fff">900</div>
+  </div>
+  <div class="cap">
+    <span><b>bg</b> #f1f5f9</span>
+    <span><b>card</b> #ffffff</span>
+    <span><b>border</b> #e2e8f0</span>
+    <span><b>text</b> #0f172a</span>
+    <span><b>muted</b> #64748b</span>
+  </div>
+</body>
+</html>

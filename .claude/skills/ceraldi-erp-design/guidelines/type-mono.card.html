@@ -1,0 +1,28 @@
+<!-- @dsCard group="Type" viewport="700x150" name="Mono — Numeri" subtitle="Cifre tabellari per importi e allineamento colonne" -->
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="../styles.css" />
+<style>
+  body { margin: 0; font-family: var(--font-ui); background: var(--c-card); color: var(--c-text); padding: 18px; }
+  .wrap { display: flex; gap: 36px; align-items: center; }
+  .col { font-family: var(--font-mono); font-size: 14px; text-align: right; line-height: 1.9; }
+  .col .pos { color: var(--c-success); }
+  .col .neg { color: var(--c-danger); }
+  .note { font-size: 12px; color: var(--c-text-muted); max-width: 280px; line-height: 1.6; }
+  .note b { color: var(--c-text); font-family: var(--font-mono); }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="col">
+      <div class="pos">€ 12.480,00</div>
+      <div>€&nbsp;&nbsp;3.205,50</div>
+      <div class="neg">− € 890,12</div>
+      <div>€ 184.920,00</div>
+    </div>
+    <p class="note">Gli importi usano la mono di sistema (<b>SF&nbsp;Mono / Menlo</b>) per allineare le colonne a destra. Formato italiano: <b>€ 1.234,56</b>.</p>
+  </div>
+</body>
+</html>

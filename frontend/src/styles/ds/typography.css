@@ -1,0 +1,46 @@
+/* ================================================================
+   CERALDI ERP — TYPOGRAPHY TOKENS
+   Web ERP usa lo stack di sistema (rendering nativo, zero latenza
+   webfont). I numeri usano mono di sistema per allineamento colonne.
+   Base font-size 13px — densità controllata.
+   ================================================================ */
+
+:root {
+  /* ---- Famiglie ---- */
+  --font-ui:   -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+               'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'SF Mono', Menlo, Monaco, Consolas, 'Courier New', monospace;
+
+  /* ---- Scala dimensioni (px) ---- */
+  --fs-xs:   11px;  /* badge, label uppercase */
+  --fs-sm:   12px;  /* th, meta, caption */
+  --fs-base: 13px;  /* corpo / tabelle / input (default app) */
+  --fs-md:   14px;  /* card title, dati salienti */
+  --fs-lg:   16px;
+  --fs-xl:   18px;
+  --fs-2xl:  20px;  /* page title */
+  --fs-3xl:  22px;
+  --fs-stat: 24px;  /* valore KPI */
+
+  /* ---- Pesi ---- */
+  --fw-regular:  400; /* @kind font */
+  --fw-medium:   500; /* @kind font */
+  --fw-semibold: 600; /* @kind font */
+  --fw-bold:     700; /* @kind font */
+  --fw-extra:    800; /* @kind font */
+
+  /* ---- Interlinea ---- */
+  --lh-tight:  1.2;  /* @kind font */
+  --lh-normal: 1.45; /* @kind font */
+
+  /* ---- Tracking ---- */
+  --tracking-tight:  -0.3px; /* titoli */
+  --tracking-label:   0.4px; /* th / label uppercase */
+  --tracking-badge:   0.2px;
+
+  /* ---- Semantic aliases ---- */
+  --text-page-title:    var(--fs-2xl);
+  --text-card-title:    var(--fs-md);
+  --text-body-size:     var(--fs-base);
+  --text-label-size:    var(--fs-xs);
+}
