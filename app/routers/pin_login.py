@@ -1,20 +1,21 @@
 """
 PIN Login router — consente l'accesso veloce via PIN dall'app mobile Ceraldi.
-Il PIN 141574 concede un JWT admin, senza richiedere username/password.
+Il PIN <ADMIN_PIN> concede un JWT admin, senza richiedere username/password.
 
 Flow:
   POST /api/auth/pin-login
-  body: {"pin": "141574"}
+  body: {"pin": "<ADMIN_PIN>"}
   → ritorna {"access_token": "...", "token_type": "bearer", ...}
 
 Il PIN non viene mai memorizzato in chiaro: viene confrontato come SHA-256
-contro un hash hardcoded in questo file.
+contro l'hash configurato nella variabile d'ambiente PIN_HASH_ADMIN.
 
 Aggiunto nella chat-8 per ceraldi mobile.
 """
 from fastapi import APIRouter, HTTPException, Body, Request, status
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any
+import os
 import hashlib
 import logging
 import time
@@ -32,9 +33,10 @@ router = APIRouter()
 # CONFIG
 # ============================================================================
 
-# SHA-256 di "141574" — PIN mobile ADMIN (Enzo Ceraldi)
-# Per cambiare il PIN, basta sostituire questo hash con sha256(nuovo_pin).
-PIN_HASH_ADMIN = "72e0837603bda6733feca2c118417d031d2df2c9574373df26c76c28a2c9c0b4"
+# SHA-256 hex del PIN admin, letto dall'ambiente (NON hardcodato).
+# Imposta PIN_HASH_ADMIN in pl.env con: python -c "import hashlib;print(hashlib.sha256(b'NUOVO_PIN').hexdigest())"
+# Se la variabile non è impostata, il login via PIN è disattivato (fail-safe).
+PIN_HASH_ADMIN = os.getenv("PIN_HASH_ADMIN", "")
 
 # Username/email dell'utente admin a cui il PIN concede accesso.
 # Questo utente DEVE esistere in collection users.
@@ -95,7 +97,7 @@ def _clear_failures(ip: str):
 )
 async def pin_login(
     request: Request,
-    payload: Dict[str, Any] = Body(..., example={"pin": "141574"}),
+    payload: Dict[str, Any] = Body(..., example={"pin": "<ADMIN_PIN>"}),
 ) -> Dict[str, Any]:
     ip = _client_ip(request)
 

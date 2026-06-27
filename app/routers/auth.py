@@ -4,6 +4,7 @@ Login/Logout con bcrypt + PyJWT httpOnly cookie.
 Singolo utente admin configurato via env.
 """
 import os
+import secrets
 import jwt
 import bcrypt
 from datetime import datetime, timedelta, timezone
@@ -18,7 +19,10 @@ router = APIRouter(prefix="/api", tags=["auth"])
 ADMIN_EMAIL         = os.getenv("ADMIN_EMAIL", "ceraldigroupsrl@gmail.com")
 ADMIN_PASSWORD      = os.getenv("ADMIN_PASSWORD", "")        # password in chiaro (priorità)
 ADMIN_PASSWORD_HASH = os.getenv("ADMIN_PASSWORD_HASH", "")   # bcrypt (fallback)
-SECRET_KEY          = os.getenv("SECRET_KEY", "ceraldi-erp-2026")
+# No hardcoded fallback: read the JWT secret from the environment. If it is
+# missing, use a random per-process value (tokens won't survive a restart, but
+# no secret is baked into the source). Production must set SECRET_KEY.
+SECRET_KEY          = os.getenv("SECRET_KEY") or secrets.token_urlsafe(64)
 TOKEN_EXPIRE_HOURS  = 24 * 7   # 7 giorni
 
 

@@ -16,7 +16,7 @@ at `.claude/skills/run-gestionale/driver.mjs`.
 > The frontend renders the **login screen** with no backend. To screenshot the
 > **authenticated** inner pages (dashboard, dipendenti, cedolini, prima-nota…)
 > run the local mock backend below — no real MongoDB needed — and drive the PIN
-> login with `--pin 141574`.
+> login with `--pin <ADMIN_PIN>`.
 
 ## Prerequisites
 
@@ -74,7 +74,7 @@ Driver options:
 ## Run authenticated (inner pages)
 
 To reach pages behind the login, also start the **mock backend** (in-memory
-Mongo, seeds an admin user) and log in with the admin PIN `141574`:
+Mongo, seeds an admin user) and log in with the admin PIN `<ADMIN_PIN>`:
 
 ```bash
 # 1. mock backend on :8001 (the dev server proxies /api to it)
@@ -86,8 +86,8 @@ until curl -sf -o /dev/null http://localhost:8001/api/ping; do sleep 1; done
 until curl -sf -o /dev/null http://localhost:3000/; do sleep 1; done
 
 # 3. screenshot an authenticated route at mobile viewport
-node .claude/skills/run-gestionale/driver.mjs /dipendenti --device mobile --pin 141574 --out dipendenti.png
-node .claude/skills/run-gestionale/driver.mjs /cedolini   --device mobile --pin 141574 --out cedolini.png
+node .claude/skills/run-gestionale/driver.mjs /dipendenti --device mobile --pin <ADMIN_PIN> --out dipendenti.png
+node .claude/skills/run-gestionale/driver.mjs /cedolini   --device mobile --pin <ADMIN_PIN> --out cedolini.png
 ```
 
 Data will be empty (the mock DB has no records), but every page's layout and
@@ -119,7 +119,7 @@ cd frontend && yarn build
   it from there — so it must stay at `.claude/skills/run-gestionale/driver.mjs`
   (3 levels under the repo root). If you move it, fix `REPO_ROOT` inside.
 - **Authenticated pages need the mock backend running.** `--pin` types the
-  admin PIN `141574` (POST `/api/auth/pin-login`). Without `mock_backend.py` up
+  admin PIN `<ADMIN_PIN>` (POST `/api/auth/pin-login`). Without `mock_backend.py` up
   it fails and you stay on login. The driver also stubs `GET /api/auth/verify`
   in the browser so a hard navigation to a guarded route doesn't bounce back to
   login — the app re-checks the token on every page load.

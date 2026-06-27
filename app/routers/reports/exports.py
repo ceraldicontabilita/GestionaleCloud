@@ -14,7 +14,9 @@ from app.repositories import (
     InvoiceRepository,
     SupplierRepository,
     WarehouseRepository,
-    EmployeeRepository
+    EmployeeRepository,
+    PayslipRepository,
+    LibrettoSanitarioRepository
 )
 from app.services import InvoiceServiceV2 as InvoiceService, WarehouseService, EmployeeService
 from app.utils.dependencies import get_current_user
@@ -26,11 +28,8 @@ router = APIRouter()
 
 async def get_invoice_service() -> InvoiceService:
     """Get invoice service."""
-    db = Database.get_db()
-    invoice_repo = InvoiceRepository(db[Collections.INVOICES])
-    supplier_repo = SupplierRepository(db[Collections.SUPPLIERS])
-    # Pass None for other services as export doesn't need them
-    return InvoiceService(invoice_repo, supplier_repo)
+    # InvoiceServiceV2 takes the database handle, not repositories.
+    return InvoiceService(Database.get_db())
 
 
 async def get_warehouse_service() -> WarehouseService:
@@ -52,7 +51,9 @@ async def get_employee_service() -> EmployeeService:
     """Get employee service."""
     db = Database.get_db()
     employee_repo = EmployeeRepository(db[Collections.EMPLOYEES])
-    return EmployeeService(employee_repo)
+    payslip_repo = PayslipRepository(db[Collections.PAYSLIPS])
+    libretto_repo = LibrettoSanitarioRepository(db[Collections.LIBRETTI_SANITARI])
+    return EmployeeService(employee_repo, payslip_repo, libretto_repo)
 
 
 @router.get(
@@ -93,12 +94,8 @@ async def export_invoices_excel(
     
     user_id = current_user["user_id"]
     
-    # Get invoices
-    invoices = await service.list_invoices(
-        user_id=user_id,
-        skip=0,
-        limit=10000
-    )
+    # Get invoices (InvoiceServiceV2 exposes get_all, not list_invoices)
+    invoices = await service.get_all(skip=0, limit=10000)
     
     # Apply filters
     if start_date:
@@ -250,8 +247,8 @@ async def export_accounting_excel(
             detail="Invalid month format. Use YYYY-MM"
         )
     
-    # Get invoices for month
-    invoices = await invoice_service.list_invoices(user_id, skip=0, limit=10000)
+    # Get invoices for month (InvoiceServiceV2 exposes get_all, not list_invoices)
+    invoices = await invoice_service.get_all(skip=0, limit=10000)
     month_invoices = [
         inv for inv in invoices
         if inv.get('date', '').startswith(month)
