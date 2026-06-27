@@ -1,0 +1,33 @@
+<!-- @dsCard group="Brand" viewport="700x170" name="Logo — CG monogram" subtitle="Brand mark: CG su navy / inverso. Wordmark 'Ceraldi ERP'" -->
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="../styles.css" />
+<style>
+  body { margin: 0; font-family: var(--font-ui); background: var(--c-card); color: var(--c-text); padding: 22px; }
+  .row { display: flex; gap: 30px; align-items: center; flex-wrap: wrap; }
+  /* lockup su navy (come topnav) */
+  .lockup { display: flex; align-items: center; gap: 10px; }
+  .sq-nav { width: 40px; height: 40px; background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 16px; color: #fff; letter-spacing: 0.5px; }
+  .on-navy { background: var(--c-primary); padding: 14px 18px; border-radius: var(--radius-md); }
+  .wm-light { color: #fff; font-weight: 700; font-size: 16px; letter-spacing: 0.3px; }
+  /* solid navy square on white */
+  .sq-solid { width: 40px; height: 40px; background: var(--c-primary); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 16px; color: #fff; letter-spacing: 0.5px; }
+  .wm-dark { color: var(--c-primary); font-weight: 700; font-size: 16px; letter-spacing: 0.3px; }
+  .cap { font-size: 11px; color: var(--c-text-subtle); margin-top: 8px; }
+</style>
+</head>
+<body>
+  <div class="row">
+    <div>
+      <div class="on-navy"><div class="lockup"><div class="sq-nav">CG</div><span class="wm-light">Ceraldi ERP</span></div></div>
+      <div class="cap">Lockup su navy (top-nav)</div>
+    </div>
+    <div>
+      <div class="lockup"><div class="sq-solid">CG</div><span class="wm-dark">Ceraldi ERP</span></div>
+      <div class="cap">Lockup su bianco</div>
+    </div>
+  </div>
+</body>
+</html>

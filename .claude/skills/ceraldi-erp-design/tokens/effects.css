@@ -1,0 +1,33 @@
+/* ================================================================
+   CERALDI ERP — SHADOW, BORDER & MOTION TOKENS
+   Ombre soffuse tinte navy. Bordi 1px solidi. Transizioni 140ms ease.
+   ================================================================ */
+
+:root {
+  /* ---- Ombre (tinta navy, mai nere pure) ---- */
+  --shadow-sm: 0 1px 2px rgba(15,39,68,0.06);
+  --shadow-md: 0 2px 8px rgba(15,39,68,0.08);
+  --shadow-lg: 0 6px 16px rgba(15,39,68,0.10);
+  --shadow-xl: 0 12px 32px rgba(15,39,68,0.14);
+  --shadow-nav: 0 2px 8px rgba(15,39,68,0.18);
+
+  /* ---- Bordi ---- */
+  --border-width: 1px;
+  --border-accent-left: 4px; /* page-header / stat-box accento sinistro */
+
+  /* ---- Focus ring ---- */
+  --focus-ring: 0 0 0 3px rgba(30,58,95,0.12);
+
+  /* ---- Transizioni ---- */
+  --t-fast:   140ms ease; /* @kind other */
+  --t-normal: 160ms ease; /* @kind other */
+  --ease-std: ease;       /* @kind other */
+
+  /* ---- Selezione testo ---- */
+  --selection-bg: rgba(15,39,68,0.14);
+}
+
+::selection {
+  background: var(--selection-bg);
+  color: var(--c-primary-dark);
+}

@@ -1,0 +1,26 @@
+<!-- @dsCard group="Colors" viewport="700x170" name="Stato — Semantici" subtitle="Zero ambiguità: rosso=errore, verde=ok, oro/ambra=attenzione, blu=info" -->
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="../styles.css" />
+<style>
+  body { margin: 0; font-family: var(--font-ui); background: var(--c-card); color: var(--c-text); }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; padding: 16px; }
+  .sw { border-radius: var(--radius-md); overflow: hidden; border: 1px solid var(--c-border); }
+  .chip { height: 46px; display: flex; align-items: center; padding: 0 12px; color: #fff; font-weight: 700; font-size: 12px; }
+  .pair { display: flex; align-items: center; gap: 7px; padding: 8px 10px; }
+  .dot { width: 14px; height: 14px; border-radius: var(--radius-full); }
+  .lbl { font-size: 11px; font-weight: 700; }
+  .hex { font-size: 10px; color: var(--c-text-muted); font-family: var(--font-mono); }
+</style>
+</head>
+<body>
+  <div class="grid">
+    <div class="sw"><div class="chip" style="background:var(--c-success)">Success</div><div class="pair"><span class="dot" style="background:var(--c-success-light)"></span><span class="lbl">light</span><span class="hex">#dcfce7</span></div></div>
+    <div class="sw"><div class="chip" style="background:var(--c-warning)">Warning</div><div class="pair"><span class="dot" style="background:var(--c-warning-light)"></span><span class="lbl">light</span><span class="hex">#fef3c7</span></div></div>
+    <div class="sw"><div class="chip" style="background:var(--c-danger)">Danger</div><div class="pair"><span class="dot" style="background:var(--c-danger-light)"></span><span class="lbl">light</span><span class="hex">#fee2e2</span></div></div>
+    <div class="sw"><div class="chip" style="background:var(--c-info)">Info</div><div class="pair"><span class="dot" style="background:var(--c-info-light)"></span><span class="lbl">light</span><span class="hex">#dbeafe</span></div></div>
+  </div>
+</body>
+</html>

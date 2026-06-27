@@ -6,6 +6,7 @@ import App from "./App.jsx";
 import "./styles/tokens.css";
 import "./styles.css";
 import "./index.css";
+import "./styles/ds/ds.css"; // Ceraldi design-system tokens (canonical) — authoritative
 import { AnnoProvider } from "./contexts/AnnoContext.jsx";
 import { AuthProvider, RequireAuth } from "./contexts/AuthContext.jsx";
 import { queryClient } from "./lib/queryClient.js";

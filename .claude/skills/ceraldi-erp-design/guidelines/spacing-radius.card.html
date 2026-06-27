@@ -1,0 +1,26 @@
+<!-- @dsCard group="Spacing" viewport="700x150" name="Radius & Ombre" subtitle="Radius 6→14px · ombre soffuse tinta navy" -->
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="../styles.css" />
+<style>
+  body { margin: 0; font-family: var(--font-ui); background: var(--c-bg); color: var(--c-text); padding: 18px; }
+  .row { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+  .box { width: 84px; height: 64px; background: var(--c-card); border: 1px solid var(--c-border); display: flex; align-items: flex-end; justify-content: center; padding-bottom: 6px; font-family: var(--font-mono); font-size: 10px; color: var(--c-text-muted); }
+  .sep { width: 1px; height: 56px; background: var(--c-border); }
+</style>
+</head>
+<body>
+  <div class="row">
+    <div class="box" style="border-radius:6px">sm 6</div>
+    <div class="box" style="border-radius:8px">md 8</div>
+    <div class="box" style="border-radius:10px">lg 10</div>
+    <div class="box" style="border-radius:14px">xl 14</div>
+    <div class="sep"></div>
+    <div class="box" style="border-radius:8px;box-shadow:var(--shadow-sm)">sm</div>
+    <div class="box" style="border-radius:8px;box-shadow:var(--shadow-md)">md</div>
+    <div class="box" style="border-radius:8px;box-shadow:var(--shadow-lg)">lg</div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,30 @@
+<!-- @dsCard group="Brand" viewport="700x150" name="Iconografia — Lucide" subtitle="Set unico: Lucide, stroke 1.5–2, dimensioni 14–18px" -->
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="../styles.css" />
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<style>
+  body { margin: 0; font-family: var(--font-ui); background: var(--c-card); color: var(--c-text); padding: 20px; }
+  .row { display: flex; gap: 26px; align-items: flex-start; flex-wrap: wrap; }
+  .ic { display: flex; flex-direction: column; align-items: center; gap: 7px; color: var(--c-primary); }
+  .ic span { font-size: 10px; color: var(--c-text-muted); font-family: var(--font-mono); }
+  .ic svg { width: 22px; height: 22px; }
+  .note { font-size: 12px; color: var(--c-text-muted); max-width: 200px; line-height: 1.6; }
+</style>
+</head>
+<body>
+  <div class="row">
+    <div class="ic"><i data-lucide="layout-dashboard"></i><span>dashboard</span></div>
+    <div class="ic"><i data-lucide="file-text"></i><span>fatture</span></div>
+    <div class="ic"><i data-lucide="building-2"></i><span>fornitori</span></div>
+    <div class="ic"><i data-lucide="users"></i><span>HR</span></div>
+    <div class="ic"><i data-lucide="banknote"></i><span>banca</span></div>
+    <div class="ic"><i data-lucide="warehouse"></i><span>magazzino</span></div>
+    <div class="ic"><i data-lucide="bell"></i><span>alert</span></div>
+    <p class="note">Lucide è il set unico. Tratto coerente, angoli arrotondati. Emoji solo come decoro inline nei titoli, mai come sistema di icone.</p>
+  </div>
+  <script>lucide.createIcons();</script>
+</body>
+</html>
