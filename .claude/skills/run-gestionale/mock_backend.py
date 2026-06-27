@@ -15,7 +15,7 @@ Run from the repo root:
 Then drive the frontend with the PIN (see SKILL.md):
 
     node .claude/skills/run-gestionale/driver.mjs /dipendenti \
-        --device mobile --pin 141574 --out dipendenti.png
+        --device mobile --pin <ADMIN_PIN> --out dipendenti.png
 
 This is agent tooling, not product code. It does not modify the repo.
 """

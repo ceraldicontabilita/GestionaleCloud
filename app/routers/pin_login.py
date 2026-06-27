@@ -1,10 +1,10 @@
 """
 PIN Login router — consente l'accesso veloce via PIN dall'app mobile Ceraldi.
-Il PIN 141574 concede un JWT admin, senza richiedere username/password.
+Il PIN <ADMIN_PIN> concede un JWT admin, senza richiedere username/password.
 
 Flow:
   POST /api/auth/pin-login
-  body: {"pin": "141574"}
+  body: {"pin": "<ADMIN_PIN>"}
   → ritorna {"access_token": "...", "token_type": "bearer", ...}
 
 Il PIN non viene mai memorizzato in chiaro: viene confrontato come SHA-256
@@ -32,7 +32,7 @@ router = APIRouter()
 # CONFIG
 # ============================================================================
 
-# SHA-256 di "141574" — PIN mobile ADMIN (Enzo Ceraldi)
+# SHA-256 di "<ADMIN_PIN>" — PIN mobile ADMIN (Enzo Ceraldi)
 # Per cambiare il PIN, basta sostituire questo hash con sha256(nuovo_pin).
 PIN_HASH_ADMIN = "72e0837603bda6733feca2c118417d031d2df2c9574373df26c76c28a2c9c0b4"
 
@@ -95,7 +95,7 @@ def _clear_failures(ip: str):
 )
 async def pin_login(
     request: Request,
-    payload: Dict[str, Any] = Body(..., example={"pin": "141574"}),
+    payload: Dict[str, Any] = Body(..., example={"pin": "<ADMIN_PIN>"}),
 ) -> Dict[str, Any]:
     ip = _client_ip(request)
 
