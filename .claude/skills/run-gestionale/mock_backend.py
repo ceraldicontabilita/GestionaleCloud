@@ -30,6 +30,15 @@ import secrets
 # ephemeral one for this process (no hardcoded secret).
 os.environ.setdefault("SECRET_KEY", secrets.token_urlsafe(32))
 
+# pin_login reads PIN_HASH_ADMIN from the env (no hardcoded secret in source).
+# For local screenshots set a throwaway TEST pin so --pin works; this is test
+# tooling only and is NOT the production PIN. Default test pin: 000000.
+import hashlib
+os.environ.setdefault(
+    "PIN_HASH_ADMIN",
+    hashlib.sha256(os.environ.get("TEST_PIN", "000000").encode()).hexdigest(),
+)
+
 import motor.motor_asyncio as _motor
 from mongomock_motor import AsyncMongoMockClient
 
