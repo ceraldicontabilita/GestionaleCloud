@@ -7,9 +7,9 @@
 
 :root {
   /* ---- Famiglie ---- */
-  --font-ui:   -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-               'Helvetica Neue', Arial, sans-serif;
+  --font-ui:   'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'SF Mono', Menlo, Monaco, Consolas, 'Courier New', monospace;
+  --font-serif: 'Fraunces', Georgia, 'Times New Roman', serif;
 
   /* ---- Scala dimensioni (px) ---- */
   --fs-xs:   11px;  /* badge, label uppercase */

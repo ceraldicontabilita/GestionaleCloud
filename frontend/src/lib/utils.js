@@ -13,51 +13,51 @@ export function cn(...inputs) {
 
 /* ---------- PALETTE CHIAVE ---------- */
 export const COLORS = {
-  /* Primari */
-  primary: '#0f2744', // navy profondo — brand
-  primaryLight: '#1e3a5f',
-  primaryDark: '#081425',
-  primarySoft: '#e8eef7', // bg tab attivo chiaro
-  /* Accent oro */
-  accent: '#b8860b',
-  accentLight: '#d4a017',
-  accentSoft: '#fdf6e3',
-  /* Stato */
-  success: '#15803d',
-  successLight: '#dcfce7',
-  warning: '#b45309',
-  warningLight: '#fef3c7',
-  danger: '#b91c1c',
-  dangerLight: '#fee2e2',
-  info: '#1d4ed8',
-  infoLight: '#dbeafe',
-  /* Neutri */
-  bg: '#f1f5f9', // sfondo pagina
-  bgAlt: '#f8fafc',
-  card: '#ffffff',
-  border: '#e2e8f0',
-  borderDark: '#cbd5e1',
-  text: '#0f172a',
-  textMuted: '#64748b',
-  textSubtle: '#94a3b8',
-  /* Grays */
+  /* Primari — salvia / verde bosco */
+  primary: '#5b7a6b',
+  primaryLight: '#6f9180',
+  primaryDark: '#3f5a4e',
+  primarySoft: '#e7eee9',
+  /* Accent ocra (sostituisce l'oro) */
+  accent: '#c4894a',
+  accentLight: '#d49a5e',
+  accentSoft: '#f3e9d8',
+  /* Stato — caldi e desaturati, nessun freddo */
+  success: '#3d8168',
+  successLight: '#e2ede8',
+  warning: '#c4894a',
+  warningLight: '#f3e9d8',
+  danger: '#d35f4e',
+  dangerLight: '#f6e2dd',
+  info: '#8a6f47',        // sabbia, ex blu
+  infoLight: '#ece3d4',
+  /* Neutri crema/sabbia */
+  bg: '#faf7f0',
+  bgAlt: '#f4efe4',
+  card: '#fffefb',
+  border: '#e6e0d4',
+  borderDark: '#d8cfbd',
+  text: '#2c2418',
+  textMuted: '#7a6f5d',
+  textSubtle: '#a89a82',
+  /* Scala sabbia (sostituisce i grigi slate) */
   gray: {
-    50: '#f8fafc',
-    100: '#f1f5f9',
-    200: '#e2e8f0',
-    300: '#cbd5e1',
-    400: '#94a3b8',
-    500: '#64748b',
-    600: '#475569',
-    700: '#334155',
-    800: '#1e293b',
-    900: '#0f172a',
+    50: '#faf7f0',
+    100: '#f4efe4',
+    200: '#e6e0d4',
+    300: '#d8cfbd',
+    400: '#b3a486',
+    500: '#8a7a5c',
+    600: '#6e5f44',
+    700: '#524833',
+    800: '#3d3526',
+    900: '#2c2418',
   },
-  /* Legacy aliases (per retro-compatibilità) */
-  white: '#ffffff',
-  grayLight: '#e2e8f0',
-  grayBg: '#f8fafc',
-  purple: '#7c3aed',
+  /* Legacy aliases */
+  white: '#fffefb',
+  grayLight: '#e6e0d4',
+  grayBg: '#f4efe4',
+  purple: '#8a6f47',   // ex viola → sabbia (niente freddi)
 };
 
 /* Theme alias: usato in diverse pagine legacy */
@@ -81,20 +81,20 @@ export const SPACING = { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32
 
 /* ---------- OMBRE ---------- */
 export const SHADOWS = {
-  sm: '0 1px 2px rgba(15,39,68,0.06)',
-  md: '0 2px 8px rgba(15,39,68,0.08)',
-  lg: '0 6px 16px rgba(15,39,68,0.10)',
-  xl: '0 12px 32px rgba(15,39,68,0.14)',
+  sm: '0 1px 6px rgba(63,90,78,0.06)',
+  md: '0 2px 10px rgba(63,90,78,0.08)',
+  lg: '0 6px 16px rgba(91,122,107,0.14)',
+  xl: '0 12px 32px rgba(63,90,78,0.16)',
 };
 
 /* ---------- RADIUS ---------- */
-export const BORDER_RADIUS = { sm: 6, md: 8, lg: 10, xl: 14, full: 9999 };
+export const BORDER_RADIUS = { sm: 8, md: 12, lg: 16, xl: 20, full: 9999 };
 
 /* ---------- TIPOGRAFIA ---------- */
 export const FONT = {
-  family:
-    "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
-  mono: "'SF Mono', Menlo, Monaco, Consolas, 'Courier New', monospace",
+  family: "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+  serif: "'Fraunces', Georgia, 'Times New Roman', serif",   // titoli e valori stat
+  mono: "'JetBrains Mono', 'SF Mono', Menlo, Monaco, Consolas, monospace",
 };
 
 /* ================================================================

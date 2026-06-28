@@ -14,10 +14,10 @@
   --sp-3xl:  32px;
 
   /* ---- Radius ---- */
-  --radius-sm:   6px;  /* input, bottoni, tab */
-  --radius-md:   8px;  /* card dati, badge contenitore */
-  --radius-lg:   10px; /* dropdown, modali */
-  --radius-xl:   14px; /* contenitori grandi */
+  --radius-sm:   8px;
+  --radius-md:   12px;
+  --radius-lg:   16px;
+  --radius-xl:   20px;
   --radius-full: 9999px; /* pill / badge / avatar */
 
   /* ---- Layout ---- */
