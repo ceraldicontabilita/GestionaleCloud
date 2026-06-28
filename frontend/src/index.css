@@ -1,37 +1,57 @@
 /* ================================================================
-   CERALDI ERP — STILE GLOBALE
-   Minimale · Professionale · Full-frame · No Tailwind · Mobile-safe
+   CERALDI ERP — STILE GLOBALE  ·  TEMA "CERALDI LOTTI"
+   Salvia su crema · Fraunces + Plus Jakarta Sans · Niente blu/viola
+   Drop-in replacement di  frontend/src/index.css
    ================================================================ */
 
 @import './styles/utilities.css';
 
+/* Font di marca (come nell'app Lotti) */
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
 /* CSS tokens (coerenti con lib/utils.js COLORS) */
 :root {
-  --c-primary:       #0f2744;
-  --c-primary-light: #1e3a5f;
-  --c-primary-dark:  #081425;
-  --c-primary-soft:  #e8eef7;
-  --c-accent:        #b8860b;
-  --c-success:       #15803d;
-  --c-warning:       #b45309;
-  --c-danger:        #b91c1c;
-  --c-info:          #1d4ed8;
-  --c-bg:            #f1f5f9;
-  --c-bg-alt:        #f8fafc;
-  --c-card:          #ffffff;
-  --c-text:          #0f172a;
-  --c-text-muted:    #64748b;
-  --c-border:        #e2e8f0;
-  --c-border-dark:   #cbd5e1;
+  /* Salvia / verde bosco — brand */
+  --c-primary:       #5b7a6b;
+  --c-primary-light: #6f9180;
+  --c-primary-dark:  #3f5a4e;
+  --c-primary-soft:  #e7eee9;
 
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 10px;
-  --radius-xl: 14px;
+  /* Accent ocra (sostituisce l'oro) */
+  --c-accent:        #c4894a;
 
-  --shadow-sm: 0 1px 2px rgba(15,39,68,0.06);
-  --shadow-md: 0 2px 8px rgba(15,39,68,0.08);
-  --shadow-lg: 0 6px 16px rgba(15,39,68,0.10);
+  /* Semantici caldi e desaturati — nessun freddo */
+  --c-success:       #3d8168;   /* verde bosco */
+  --c-warning:       #c4894a;   /* ocra        */
+  --c-danger:        #d35f4e;   /* terracotta  */
+  --c-info:          #8a6f47;   /* sabbia (era blu) */
+
+  /* Neutri crema/sabbia */
+  --c-bg:            #faf7f0;
+  --c-bg-alt:        #f4efe4;
+  --c-card:          #fffefb;
+  --c-text:          #2c2418;
+  --c-text-muted:    #7a6f5d;
+  --c-border:        #e6e0d4;
+  --c-border-dark:   #d8cfbd;
+
+  /* Raggi generosi e gerarchici (Lotti: 8 / 12 / 16 / 20) */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+
+  /* Ombre tinte salvia, mai grigio-neutre */
+  --shadow-sm: 0 1px 6px rgba(63,90,78,0.06);
+  --shadow-md: 0 2px 10px rgba(63,90,78,0.08);
+  --shadow-lg: 0 6px 16px rgba(91,122,107,0.14);
+
+  /* Gradiente di marca (bottoni primari, tab attive) */
+  --grad-brand: linear-gradient(135deg, #5b7a6b, #6f9180);
+
+  /* Tipografia */
+  --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-serif: 'Fraunces', Georgia, 'Times New Roman', serif;
 
   --topnav-height: 54px;
 }
@@ -48,22 +68,28 @@ html, body {
   width: 100%;
   max-width: 100%;
   min-height: 100%;
-  overflow-x: hidden;           /* taglia overflow orizzontale */
+  overflow-x: hidden;
   -webkit-text-size-adjust: 100%;
 }
 
 html, body, #root {
   background: var(--c-bg);
   color: var(--c-text);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-    'Helvetica Neue', Arial, sans-serif;
-  font-size: 13px;
-  line-height: 1.45;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 #root { width: 100%; max-width: 100%; }
+
+/* Titoli in Fraunces (serif di marca) */
+h1, h2, h3 {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
 
 a {
   color: var(--c-primary);
@@ -86,27 +112,27 @@ img, video, svg, iframe, canvas {
 
 input, select, textarea {
   font-family: inherit;
-  font-size: 13px;
+  font-size: 15px;
   max-width: 100%;
   box-sizing: border-box;
 }
 input, textarea {
-  min-width: 0;                 /* evita che flex-item input sforino */
+  min-width: 0;
 }
 
 input:focus, select:focus, textarea:focus {
-  border-color: var(--c-primary-light) !important;
-  box-shadow: 0 0 0 3px rgba(30, 58, 95, 0.12) !important;
+  border-color: var(--c-primary) !important;
+  box-shadow: 0 0 0 3px rgba(91, 122, 107, 0.15) !important;
   outline: none;
 }
 
 code {
-  font-family: 'SF Mono', Menlo, Monaco, Consolas, 'Courier New', monospace;
-  font-size: 12px;
+  font-family: 'JetBrains Mono', 'SF Mono', Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: 6px;
   background: var(--c-bg-alt);
-  color: var(--c-primary);
+  color: var(--c-primary-dark);
   word-break: break-word;
 }
 
@@ -124,13 +150,12 @@ code {
   background-clip: content-box;
   border: 2px solid transparent;
 }
-/* Nascondi scrollbars orizzontali nelle barre compatte */
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { scrollbar-width: none; }
 
 /* Selezione testo */
 ::selection {
-  background: rgba(15, 39, 68, 0.14);
+  background: rgba(91, 122, 107, 0.18);
   color: var(--c-primary-dark);
 }
 
@@ -154,7 +179,7 @@ code {
   padding-top: calc(var(--topnav-height) + 16px);
   min-height: calc(100vh - var(--topnav-height));
   box-sizing: border-box;
-  overflow-x: hidden;           /* no scroll orizzontale nel content */
+  overflow-x: hidden;
 }
 
 @media (max-width: 768px) {
@@ -165,21 +190,18 @@ code {
 }
 
 /* ================================================================
-   TOPNAV — Mobile: nascondi link primari, il menu è in basso
+   TOPNAV — Mobile
    ================================================================ */
 
 @media (max-width: 768px) {
-  /* Nasconde i link principali della navbar su mobile */
   .topnav-primary .topnav-items,
   [data-testid="topnav-primary"] > div[class*="topnav-items"] {
     display: none !important;
   }
-  /* Riduce padding della navbar */
   .topnav-primary,
   [data-testid="topnav-primary"] {
     padding: 0 10px !important;
   }
-  /* Brand più compatto */
   .brand-name { display: none; }
 }
 
@@ -187,12 +209,13 @@ code {
    COMPONENTI COMUNI
    ================================================================ */
 
+/* Card: niente bordo, solo ombra salvia (regola d'oro Lotti) */
 .card {
   background: var(--c-card);
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-md);
-  padding: 20px;
-  box-shadow: var(--shadow-sm);
+  border: none;
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  box-shadow: var(--shadow-md);
   max-width: 100%;
   overflow: hidden;
 }
@@ -200,10 +223,11 @@ code {
 
 .card-title {
   margin: 0 0 14px 0;
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--c-primary);
-  letter-spacing: -0.2px;
+  font-family: var(--font-serif);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--c-primary-dark);
+  letter-spacing: -0.01em;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -215,31 +239,32 @@ code {
   align-items: center;
   padding: 16px 20px;
   background: var(--c-card);
-  border: 1px solid var(--c-border);
+  border: none;
   border-left: 4px solid var(--c-primary);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   flex-wrap: wrap;
   gap: 12px;
   margin-bottom: 16px;
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-md);
 }
 @media (max-width: 768px) { .page-header { padding: 12px 14px; } }
 
 .page-title {
   margin: 0;
-  font-size: 20px;
-  font-weight: 700;
-  color: var(--c-primary);
-  letter-spacing: -0.3px;
+  font-family: var(--font-serif);
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--c-primary-dark);
+  letter-spacing: -0.02em;
   display: flex;
   align-items: center;
   gap: 10px;
 }
-@media (max-width: 768px) { .page-title { font-size: 17px; } }
+@media (max-width: 768px) { .page-title { font-size: 20px; } }
 
 .page-subtitle {
   margin: 2px 0 0 0;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--c-text-muted);
   font-weight: 500;
 }
@@ -250,45 +275,46 @@ code {
   align-items: center;
   justify-content: center;
   gap: 7px;
-  padding: 8px 16px;
-  border-radius: var(--radius-sm);
+  padding: 9px 18px;
+  border-radius: var(--radius-md);
   border: 1px solid transparent;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 140ms ease, border-color 140ms ease, color 140ms ease, box-shadow 140ms ease;
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease, box-shadow 140ms ease, transform 90ms ease;
   white-space: nowrap;
   line-height: 1.2;
 }
 .btn:hover { box-shadow: var(--shadow-sm); }
+.btn:active { transform: scale(0.97); }   /* tap shrink — firma dell'app */
 .btn:disabled { opacity: 0.55; cursor: not-allowed; }
 
-.btn-primary   { background: var(--c-primary); color: #fff; border-color: var(--c-primary); }
-.btn-primary:hover   { background: var(--c-primary-light); border-color: var(--c-primary-light); }
-.btn-secondary { background: var(--c-card); color: var(--c-text); border-color: var(--c-border); }
-.btn-secondary:hover { background: var(--c-bg-alt); }
+.btn-primary   { background: var(--grad-brand); color: #fff; border-color: transparent; box-shadow: 0 4px 12px rgba(91,122,107,0.22); }
+.btn-primary:hover   { opacity: 0.92; box-shadow: 0 4px 12px rgba(91,122,107,0.28); }
+.btn-secondary { background: var(--c-card); color: var(--c-text); border: 1.5px solid var(--c-border); }
+.btn-secondary:hover { border-color: #a8c0b3; color: var(--c-primary); background: var(--c-card); }
 .btn-success   { background: var(--c-success); color: #fff; border-color: var(--c-success); }
 .btn-danger    { background: var(--c-danger); color: #fff; border-color: var(--c-danger); }
 .btn-info      { background: var(--c-info); color: #fff; border-color: var(--c-info); }
 .btn-warning   { background: var(--c-warning); color: #fff; border-color: var(--c-warning); }
 .btn-ghost     { background: transparent; color: var(--c-text-muted); border-color: transparent; }
-.btn-ghost:hover { background: var(--c-bg-alt); color: var(--c-text); }
+.btn-ghost:hover { background: var(--c-primary-soft); color: var(--c-primary); }
 
-/* Tabelle globali — scroll orizzontale su mobile */
+/* Tabelle globali */
 table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: 14px;
   background: var(--c-card);
 }
 
 table th {
-  padding: 10px 14px;
+  padding: 11px 14px;
   text-align: left;
   font-weight: 700;
   font-size: 11px;
   text-transform: uppercase;
-  letter-spacing: 0.4px;
+  letter-spacing: 0.05em;
   color: var(--c-text-muted);
   background: var(--c-bg-alt);
   border-bottom: 1px solid var(--c-border);
@@ -296,24 +322,23 @@ table th {
 }
 
 table td {
-  padding: 10px 14px;
-  border-bottom: 1px solid #f1f5f9;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--c-bg-alt);
   color: var(--c-text);
   vertical-align: middle;
 }
 
 table tbody tr:hover td {
-  background: rgba(15, 39, 68, 0.025);
+  background: var(--c-bg);
 }
 
 @media (max-width: 768px) {
   table th, table td {
     padding: 8px 10px;
-    font-size: 12px;
+    font-size: 13px;
   }
 }
 
-/* Wrapper per tabelle che scrollano orizzontalmente */
 .table-scroll,
 .table-wrapper {
   width: 100%;
@@ -326,20 +351,20 @@ table tbody tr:hover td {
 /* Badge pill */
 .badge {
   display: inline-block;
-  padding: 3px 9px;
+  padding: 3px 10px;
   border-radius: 9999px;
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.2px;
+  letter-spacing: 0.03em;
   text-transform: uppercase;
   line-height: 1.4;
 }
-.badge-success { background: #dcfce7; color: var(--c-success); }
-.badge-warning { background: #fef3c7; color: var(--c-warning); }
-.badge-danger  { background: #fee2e2; color: var(--c-danger); }
-.badge-info    { background: #dbeafe; color: var(--c-info); }
-.badge-primary { background: var(--c-primary-soft); color: var(--c-primary); }
-.badge-neutral { background: #f1f5f9; color: #475569; }
+.badge-success { background: #e2ede8; color: var(--c-success); }
+.badge-warning { background: #f3e9d8; color: var(--c-warning); }
+.badge-danger  { background: #f6e2dd; color: var(--c-danger); }
+.badge-info    { background: #ece3d4; color: var(--c-info); }
+.badge-primary { background: var(--c-primary-soft); color: var(--c-primary-dark); }
+.badge-neutral { background: var(--c-bg-alt); color: var(--c-text-muted); }
 
 /* Tabs */
 .tab-bar {
@@ -364,10 +389,10 @@ table tbody tr:hover td {
 
 .tab {
   padding: 8px 14px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   border: 1px solid var(--c-border);
   font-weight: 500;
-  font-size: 12.5px;
+  font-size: 13px;
   cursor: pointer;
   background: var(--c-card);
   color: var(--c-text-muted);
@@ -378,11 +403,11 @@ table tbody tr:hover td {
   white-space: nowrap;
   flex-shrink: 0;
 }
-.tab:hover { border-color: var(--c-primary-light); color: var(--c-primary); }
+.tab:hover { border-color: var(--c-primary-light); color: var(--c-primary); background: var(--c-primary-soft); }
 .tab.active {
-  background: var(--c-primary);
+  background: var(--grad-brand);
   color: #fff;
-  border-color: var(--c-primary);
+  border-color: transparent;
   font-weight: 700;
   box-shadow: var(--shadow-sm);
 }
@@ -390,25 +415,26 @@ table tbody tr:hover td {
 /* KPI box */
 .stat-box {
   background: var(--c-card);
-  border: 1px solid var(--c-border);
+  border: none;
   border-left: 3px solid var(--c-primary);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   padding: 16px 18px;
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-md);
 }
 .stat-box .stat-label {
   font-size: 11px;
   color: var(--c-text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.4px;
-  font-weight: 600;
+  letter-spacing: 0.05em;
+  font-weight: 700;
   margin-bottom: 4px;
 }
 .stat-box .stat-value {
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--c-primary);
-  line-height: 1.2;
+  font-family: var(--font-serif);
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--c-primary-dark);
+  line-height: 1.15;
 }
 
 /* Spinner */
@@ -423,7 +449,7 @@ table tbody tr:hover td {
   bottom: 0; left: 0; right: 0;
   background: var(--c-card);
   border-top: 1px solid var(--c-border);
-  box-shadow: 0 -2px 12px rgba(15,39,68,0.08);
+  box-shadow: 0 -2px 12px rgba(63,90,78,0.08);
   z-index: 900;
   padding: 6px 4px;
   gap: 2px;
@@ -440,7 +466,7 @@ table tbody tr:hover td {
   gap: 2px;
   padding: 6px 8px;
   flex: 1;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   background: transparent;
   border: none;
   color: var(--c-text-muted);
@@ -479,10 +505,10 @@ table tbody tr:hover td {
 
 .stat-card {
   background: var(--c-card);
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-md);
+  border: none;
+  border-radius: var(--radius-lg);
   padding: 16px;
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-md);
   min-width: 0;
 }
 .stat-card.amber { border-left: 3px solid var(--c-warning); }
@@ -519,13 +545,11 @@ table tbody tr:hover td {
    ================================================================ */
 
 @media (max-width: 768px) {
-  /* I flexbox non si espandono oltre il viewport */
   .page-content > * {
     min-width: 0;
     max-width: 100%;
   }
 
-  /* Tutte le select/input fluidi */
   select, input[type="text"], input[type="number"], input[type="search"],
   input[type="email"], input[type="date"], textarea {
     width: 100%;
@@ -533,30 +557,23 @@ table tbody tr:hover td {
     min-width: 0 !important;
   }
 
-  /* Griglie multi-colonna legacy → 1 colonna su mobile */
   .grid-cols-3, .grid-cols-4 {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
 
-  /* Riduce padding dei container h1/h2 */
-  h1 { font-size: 20px; }
-  h2 { font-size: 17px; }
-  h3 { font-size: 15px; }
+  h1 { font-size: 22px; }
+  h2 { font-size: 19px; }
+  h3 { font-size: 16px; }
 
-  /* I bottoni di azione multipli vanno a capo */
   .btn-row, [data-btn-row] {
     flex-wrap: wrap;
   }
 }
 
 /* ================================================================
-   MOBILE RESPONSIVE — FIX GLOBALI (giu 2026)
-   Obiettivi: niente overflow orizzontale di pagina, tabelle larghe
-   scrollabili in autonomia, top-nav non affollata sul telefono.
+   MOBILE RESPONSIVE — FIX GLOBALI
    ================================================================ */
 
-/* 1) Nessuno scroll orizzontale a livello di pagina/documento.
-      Il contenuto non deve mai "sfondare" la larghezza del viewport. */
 html, body {
   max-width: 100%;
   overflow-x: hidden;
@@ -572,17 +589,11 @@ html, body {
 }
 
 @media (max-width: 768px) {
-  /* 2) Sul telefono la barra in alto resta solo come header compatto:
-        brand + anno + campana + avatar. La navigazione completa è già
-        disponibile dalla bottom-nav (Home/Fatture/Banca/HR/Menu) e dal
-        menu "☰" a tutto schermo, quindi nascondiamo la lista scrollabile
-        che altrimenti si accavalla. */
   .topnav-primary .topnav-items,
   nav[data-testid="topnav-primary"] .topnav-items {
     display: none !important;
   }
 
-  /* Top-nav più compatta e con meno padding laterale */
   .topnav-primary,
   nav[data-testid="topnav-primary"] {
     padding-left: 10px !important;
@@ -590,8 +601,6 @@ html, body {
     gap: 6px !important;
   }
 
-  /* 3) Tabelle "nude" (senza wrapper) scrollano in orizzontale dentro la
-        pagina invece di allargare tutto il layout. */
   .page-content table {
     display: block;
     width: 100%;
@@ -600,14 +609,12 @@ html, body {
     -webkit-overflow-scrolling: touch;
     white-space: nowrap;
   }
-  /* Le tabelle già dentro un wrapper scrollabile restano table normali */
   .table-scroll table,
   .table-wrapper table {
     display: table;
     white-space: normal;
   }
 
-  /* 4) Immagini/elementi media non sforano mai */
   .page-content img,
   .page-content video,
   .page-content canvas,
@@ -616,6 +623,5 @@ html, body {
     height: auto;
   }
 
-  /* 5) Contenitori con larghezze fisse inline → fluidi */
   .page-content [style*="width: 100%"] { max-width: 100%; }
 }

@@ -1,60 +1,32 @@
-/* ================================================================
-   CERALDI ERP — COLOR TOKENS
-   Palette: Navy profondo + Oro sobrio (contabile / professionale)
-   Source of truth: frontend/src/lib/utils.js (COLORS) + index.css
-   ================================================================ */
-
+/* Ceraldi ERP — COLOR TOKENS (tema Ceraldi Lotti: salvia/crema) */
 :root {
-  /* ---- Brand: Navy ---- */
-  --c-primary:        #0f2744; /* navy profondo — brand */
-  --c-primary-light:  #1e3a5f;
-  --c-primary-dark:   #081425;
-  --c-primary-soft:   #e8eef7; /* bg tab attivo chiaro / badge primary */
-
-  /* ---- Accent: Oro ---- */
-  --c-accent:         #b8860b;
-  --c-accent-light:   #d4a017;
-  --c-accent-soft:    #fdf6e3;
-
-  /* ---- Stato (zero ambiguità cromatica) ---- */
-  --c-success:        #15803d;
-  --c-success-light:  #dcfce7;
-  --c-warning:        #b45309;
-  --c-warning-light:  #fef3c7;
-  --c-danger:         #b91c1c;
-  --c-danger-light:   #fee2e2;
-  --c-info:           #1d4ed8;
-  --c-info-light:     #dbeafe;
-
-  /* ---- Neutri / Superfici ---- */
-  --c-bg:             #f1f5f9; /* sfondo pagina */
-  --c-bg-alt:         #f8fafc; /* header tabella, zebra */
-  --c-card:           #ffffff;
-  --c-border:         #e2e8f0;
-  --c-border-dark:    #cbd5e1;
-  --c-text:           #0f172a;
-  --c-text-muted:     #64748b;
-  --c-text-subtle:    #94a3b8;
-
-  /* ---- Scala grigi (slate) ---- */
-  --gray-50:  #f8fafc;
-  --gray-100: #f1f5f9;
-  --gray-200: #e2e8f0;
-  --gray-300: #cbd5e1;
-  --gray-400: #94a3b8;
-  --gray-500: #64748b;
-  --gray-600: #475569;
-  --gray-700: #334155;
-  --gray-800: #1e293b;
-  --gray-900: #0f172a;
-
-  /* ---- Semantic aliases ---- */
-  --surface-page:   var(--c-bg);
-  --surface-card:   var(--c-card);
-  --surface-sunken: var(--c-bg-alt);
-  --text-body:      var(--c-text);
-  --text-secondary: var(--c-text-muted);
-  --text-tertiary:  var(--c-text-subtle);
-  --border-default: var(--c-border);
-  --nav-bg:         var(--c-primary);
+  --c-primary:        #5b7a6b;
+  --c-primary-light:  #6f9180;
+  --c-primary-dark:   #3f5a4e;
+  --c-primary-soft:   #e7eee9;
+  --c-accent:         #c4894a;
+  --c-accent-light:   #d49a5e;
+  --c-accent-soft:    #f3e9d8;
+  --c-success:        #3d8168;
+  --c-success-light:  #e2ede8;
+  --c-warning:        #c4894a;
+  --c-warning-light:  #f3e9d8;
+  --c-danger:         #d35f4e;
+  --c-danger-light:   #f6e2dd;
+  --c-info:           #8a6f47;
+  --c-info-light:     #ece3d4;
+  --c-bg:             #faf7f0;
+  --c-bg-alt:         #f4efe4;
+  --c-card:           #fffefb;
+  --c-border:         #e6e0d4;
+  --c-border-dark:    #d8cfbd;
+  --c-text:           #2c2418;
+  --c-text-muted:     #7a6f5d;
+  --c-text-subtle:    #a89a82;
+  --gray-50:#faf7f0; --gray-100:#f4efe4; --gray-200:#e6e0d4; --gray-300:#d8cfbd;
+  --gray-400:#b3a486; --gray-500:#8a7a5c; --gray-600:#6e5f44; --gray-700:#524833;
+  --gray-800:#3d3526; --gray-900:#2c2418;
+  --surface-page: var(--c-bg); --surface-card: var(--c-card); --surface-sunken: var(--c-bg-alt);
+  --text-body: var(--c-text); --text-secondary: var(--c-text-muted); --text-tertiary: var(--c-text-subtle);
+  --border-default: var(--c-border); --nav-bg: var(--c-primary);
 }
