@@ -149,7 +149,7 @@ export function NotificheScadenze({ showBanner = true }) {
           bottom: 20,
           right: 20,
           maxWidth: 360,
-          background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)',
+          background: '#1d4ed8',
           color: 'white',
           padding: '14px 18px',
           borderRadius: 12,

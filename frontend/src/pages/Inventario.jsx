@@ -165,7 +165,7 @@ export default function Inventario() {
           onClick={nuovoInventario}
           style={{
             padding: '12px 24px',
-            background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+            background: '#15803d',
             color: 'white',
             border: 'none',
             borderRadius: '10px',
@@ -259,7 +259,7 @@ export default function Inventario() {
           <div
             style={{
               padding: '20px 24px',
-              background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
+              background: '#1d4ed8',
               color: 'white',
             }}
           >
@@ -374,7 +374,7 @@ export default function Inventario() {
                       background:
                         percentualeRaggiunta >= 100
                           ? '#10b981'
-                          : 'linear-gradient(90deg, #3b82f6, #8b5cf6)',
+                          : '#1d4ed8',
                       transition: 'width 0.3s',
                     }}
                   />

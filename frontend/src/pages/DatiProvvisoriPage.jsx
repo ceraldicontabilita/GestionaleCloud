@@ -76,7 +76,7 @@ export default function DatiProvvisori() {
       {/* Header */}
       <div
         style={{
-          background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)',
+          background: '#1d4ed8',
           borderRadius: 16,
           padding: '24px 28px',
           color: 'white',

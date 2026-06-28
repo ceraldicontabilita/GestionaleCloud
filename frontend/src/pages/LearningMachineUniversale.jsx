@@ -67,7 +67,7 @@ export default function LearningMachineUniversale() {
           textAlign: 'center',
           marginBottom: 32,
           padding: '32px 24px',
-          background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+          background: '#1d4ed8',
           borderRadius: 16,
           color: 'white',
         }}

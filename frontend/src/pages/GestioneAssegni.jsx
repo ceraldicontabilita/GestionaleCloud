@@ -972,7 +972,7 @@ export default function GestioneAssegni() {
             padding: '10px 16px',
             background: autoAssociating
               ? '#ccc'
-              : 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+              : '#15803d',
             color: 'white',
             border: 'none',
             borderRadius: 8,
@@ -1121,7 +1121,7 @@ export default function GestioneAssegni() {
                       padding: '8px 14px',
                       background: ambiguiResolving[a.assegno_id]
                         ? '#9ca3af'
-                        : 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                        : '#15803d',
                       color: 'white',
                       border: 'none',
                       borderRadius: 6,
@@ -1209,7 +1209,7 @@ export default function GestioneAssegni() {
             padding: '10px 16px',
             background: combinazioneLoading
               ? '#ccc'
-              : 'linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%)',
+              : '#0f2744',
             color: 'white',
             border: 'none',
             borderRadius: 8,
@@ -1346,7 +1346,7 @@ export default function GestioneAssegni() {
             gap: 6,
             marginLeft: 'auto',
             padding: '4px 8px',
-            background: 'linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%)',
+            background: '#0f2744',
             borderRadius: 8,
           }}
         >
@@ -1437,7 +1437,7 @@ export default function GestioneAssegni() {
             gap: 16,
             marginBottom: 16,
             padding: 12,
-            background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
+            background: '#dbeafe',
             borderRadius: 10,
             border: '1px solid #bae6fd',
             flexWrap: 'wrap',
@@ -1516,7 +1516,7 @@ export default function GestioneAssegni() {
           style={{
             marginBottom: 16,
             padding: 15,
-            background: 'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)',
+            background: '#dcfce7',
             borderRadius: 8,
             border: '1px solid #6ee7b7',
           }}
@@ -2923,7 +2923,7 @@ export default function GestioneAssegni() {
             <div
               style={{
                 padding: '16px 24px',
-                background: 'linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%)',
+                background: '#0f2744',
                 color: 'white',
                 cursor: 'grab',
                 userSelect: 'none',

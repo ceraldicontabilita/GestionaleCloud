@@ -232,7 +232,7 @@ export default function Visure() {
             <div
               style={{
                 padding: 16,
-                background: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)',
+                background: '#f8fafc',
                 borderRadius: 12,
               }}
             >
@@ -250,7 +250,7 @@ export default function Visure() {
             <div
               style={{
                 padding: 16,
-                background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
+                background: '#dbeafe',
                 borderRadius: 12,
               }}
             >
@@ -282,7 +282,7 @@ export default function Visure() {
           disabled={loading}
           style={{
             padding: '12px 24px',
-            background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+            background: '#15803d',
             color: 'white',
             border: 'none',
             borderRadius: 10,
@@ -383,7 +383,7 @@ export default function Visure() {
             disabled={loading}
             style={{
               padding: '14px 28px',
-              background: loading ? '#9ca3af' : 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+              background: loading ? '#9ca3af' : '#1d4ed8',
               color: 'white',
               border: 'none',
               borderRadius: 12,

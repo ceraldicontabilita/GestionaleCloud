@@ -129,7 +129,7 @@ const styles = {
 
   progressFill: {
     height: '100%',
-    background: `linear-gradient(90deg, ${COLORS.primary} 0%, ${COLORS.success} 100%)`,
+    background: `${COLORS.primary}`,
     borderRadius: 6,
     transition: 'width 0.5s ease',
   },
@@ -587,7 +587,7 @@ export default function BatchProcessor() {
                     ...styles.taskItem,
                     background:
                       currentTask === task.id
-                        ? `linear-gradient(90deg, ${task.color}10 0%, transparent 100%)`
+                        ? `${task.color}`
                         : result?.success
                           ? `${COLORS.success}08`
                           : result?.error

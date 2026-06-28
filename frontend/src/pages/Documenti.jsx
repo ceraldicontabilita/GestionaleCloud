@@ -673,7 +673,7 @@ export default function Documenti() {
             style={{
               ...cardStyle,
               marginBottom: 24,
-              background: 'linear-gradient(135deg, #1e40af, #7c3aed)',
+              background: '#1d4ed8',
             }}
           >
             <div style={{ padding: 24 }}>
@@ -977,7 +977,7 @@ export default function Documenti() {
                 ...cardStyle,
                 marginBottom: 24,
                 border: '2px solid #1e3a5f',
-                background: 'linear-gradient(135deg, #eff6ff, #dbeafe)',
+                background: '#dbeafe',
               }}
             >
               <div style={{ padding: 16 }}>
@@ -1373,7 +1373,7 @@ export default function Documenti() {
                 style={{
                   ...cardStyle,
                   padding: '12px 16px',
-                  background: 'linear-gradient(135deg, #7c3aed, #a855f7)',
+                  background: '#1d4ed8',
                 }}
               >
                 <div style={{ fontSize: 24, fontWeight: 'bold', color: 'white' }}>
@@ -1402,7 +1402,7 @@ export default function Documenti() {
               ...cardStyle,
               padding: 20,
               marginBottom: 20,
-              background: 'linear-gradient(135deg, #7c3aed, #a855f7)',
+              background: '#1d4ed8',
             }}
           >
             <div

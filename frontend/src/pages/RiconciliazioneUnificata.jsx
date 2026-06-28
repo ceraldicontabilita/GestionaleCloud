@@ -508,7 +508,7 @@ export default function RiconciliazioneUnificata() {
             justifyContent: 'space-between',
             alignItems: 'center',
             padding: '15px 20px',
-            background: 'linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%)',
+            background: '#0f2744',
             borderRadius: 12,
             color: 'white',
           }}
@@ -934,7 +934,7 @@ function DashboardTab({ stats, autoMatchStats }) {
       <div
         style={{
           padding: 40,
-          background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)',
+          background: '#1d4ed8',
           borderRadius: 16,
           color: 'white',
           maxWidth: 500,

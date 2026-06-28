@@ -49,7 +49,7 @@ export const STYLES_NEW = {
 
   // Page Header (Banner Grande Blu)
   pageHeader: {
-    background: `linear-gradient(135deg, ${COLORS_NEW.primary} 0%, ${COLORS_NEW.primaryDark} 100%)`,
+    background: `${COLORS_NEW.primary}`,
     padding: '32px 40px',
     color: 'white',
     boxShadow: '0 4px 12px rgba(37, 99, 235, 0.15)',

@@ -31,7 +31,7 @@ const pageStyle = {
     flexWrap: 'wrap',
     gap: '16px',
     padding: '15px 20px',
-    background: 'linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%)',
+    background: '#0f2744',
     borderRadius: '12px',
     color: 'white',
   },
@@ -56,7 +56,7 @@ const pageStyle = {
     marginBottom: '24px',
   },
   statCard: color => ({
-    background: `linear-gradient(135deg, ${color}15, ${color}08)`,
+    background: `${color}`,
     borderRadius: '12px',
     padding: '20px',
     border: `1px solid ${color}30`,

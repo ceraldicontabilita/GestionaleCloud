@@ -299,7 +299,7 @@ export default function DizionarioArticoli() {
             disabled={generating}
             style={{
               padding: '10px 20px',
-              background: generating ? '#9ca3af' : 'linear-gradient(135deg, #3b82f6, #1d4ed8)',
+              background: generating ? '#9ca3af' : '#1d4ed8',
               color: 'white',
               border: 'none',
               borderRadius: 8,
@@ -315,7 +315,7 @@ export default function DizionarioArticoli() {
             disabled={applying}
             style={{
               padding: '10px 20px',
-              background: applying ? '#9ca3af' : 'linear-gradient(135deg, #10b981, #059669)',
+              background: applying ? '#9ca3af' : '#15803d',
               color: 'white',
               border: 'none',
               borderRadius: 8,
@@ -331,7 +331,7 @@ export default function DizionarioArticoli() {
             disabled={categorizingAI}
             style={{
               padding: '10px 20px',
-              background: categorizingAI ? '#9ca3af' : 'linear-gradient(135deg, #8b5cf6, #6d28d9)',
+              background: categorizingAI ? '#9ca3af' : '#1d4ed8',
               color: 'white',
               border: 'none',
               borderRadius: 8,
@@ -732,7 +732,7 @@ export default function DizionarioArticoli() {
                     padding: '10px 20px',
                     borderRadius: 8,
                     border: 'none',
-                    background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)',
+                    background: '#1d4ed8',
                     color: 'white',
                     cursor: 'pointer',
                     fontWeight: 600,

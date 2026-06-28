@@ -121,7 +121,7 @@ export default function ChatIntelligente() {
           width: 60,
           height: 60,
           borderRadius: '50%',
-          background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+          background: '#1d4ed8',
           border: 'none',
           color: 'white',
           fontSize: 28,
@@ -168,7 +168,7 @@ export default function ChatIntelligente() {
       {/* Header */}
       <div
         style={{
-          background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+          background: '#1d4ed8',
           padding: '16px 20px',
           color: 'white',
           display: 'flex',
@@ -244,7 +244,7 @@ export default function ChatIntelligente() {
                 borderRadius: msg.type === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
                 background:
                   msg.type === 'user'
-                    ? 'linear-gradient(135deg, #6366f1, #8b5cf6)'
+                    ? '#1d4ed8'
                     : msg.isError
                       ? '#fee2e2'
                       : 'white',
@@ -372,7 +372,7 @@ export default function ChatIntelligente() {
           style={{
             padding: '12px 20px',
             background:
-              isLoading || !input.trim() ? '#94a3b8' : 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+              isLoading || !input.trim() ? '#94a3b8' : '#1d4ed8',
             border: 'none',
             borderRadius: 24,
             color: 'white',

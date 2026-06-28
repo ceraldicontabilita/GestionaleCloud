@@ -456,7 +456,7 @@ export default function GrigliaMensilePresenze({ dipendenti = [], onSaved }) {
             alignItems: 'center',
             gap: 14,
             padding: '10px 16px',
-            background: `linear-gradient(90deg, ${COLORS.primary} 0%, ${COLORS.primaryLight} 100%)`,
+            background: `${COLORS.primary}`,
             color: '#fff',
             borderRadius: 10,
             marginBottom: 10,

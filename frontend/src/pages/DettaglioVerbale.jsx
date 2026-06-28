@@ -111,7 +111,7 @@ export default function DettaglioVerbale() {
         {/* Header */}
         <div
           style={{
-            background: 'linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%)',
+            background: '#0f2744',
             borderRadius: 16,
             padding: 24,
             color: 'white',
@@ -584,7 +584,7 @@ export default function DettaglioVerbale() {
                       }
                     }}
                     style={{
-                      background: 'linear-gradient(135deg, #0f2744 0%, #1e3a5f 100%)',
+                      background: '#0f2744',
                       color: '#fff',
                       border: 'none',
                       padding: '12px 24px',

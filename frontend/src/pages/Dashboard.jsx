@@ -278,7 +278,7 @@ export default function Dashboard() {
                 background:
                   autoRepairStatus === 'running'
                     ? '#9ca3af'
-                    : 'linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%)',
+                    : '#0f2744',
                 color: 'white',
                 border: 'none',
                 borderRadius: 6,
@@ -323,7 +323,7 @@ export default function Dashboard() {
       <div
         style={{
           background: showVolumeReale
-            ? 'linear-gradient(135deg, #1a1a2e 0%, #0f3460 100%)'
+            ? '#0f2744'
             : '#f7fafc',
           borderRadius: 6,
           padding: 8,
@@ -423,7 +423,7 @@ export default function Dashboard() {
                 <div
                   style={{
                     gridColumn: 'span 4',
-                    background: 'linear-gradient(135deg, #e94560 0%, #0f3460 100%)',
+                    background: '#b91c1c',
                     borderRadius: 8,
                     padding: 20,
                     display: 'flex',
@@ -482,7 +482,7 @@ export default function Dashboard() {
       {bilancioIstantaneo && (
         <div
           style={{
-            background: 'linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%)',
+            background: '#0f2744',
             borderRadius: 10,
             padding: 14,
             marginTop: 12,
@@ -603,7 +603,7 @@ export default function Dashboard() {
             padding: 14,
             boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
             marginTop: 12,
-            background: 'linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%)',
+            background: '#0f2744',
             color: 'white',
           }}
           data-testid="widget-calcolo-imposte"
@@ -1242,8 +1242,8 @@ export default function Dashboard() {
                     width: `${(statoRiconciliazione?.riepilogo?.percentuale_globale ?? 0)}%`,
                     background:
                       (statoRiconciliazione?.riepilogo?.percentuale_globale ?? 0) >= 80
-                        ? 'linear-gradient(90deg, #10b981, #34d399)'
-                        : 'linear-gradient(90deg, #f59e0b, #fbbf24)',
+                        ? '#15803d'
+                        : '#b45309',
                     borderRadius: 6,
                     transition: 'width 0.5s ease',
                   }}
@@ -1376,7 +1376,7 @@ export default function Dashboard() {
         {learningStats && (
           <div
             style={{
-              background: 'linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%)',
+              background: '#f8fafc',
               borderRadius: 12,
               padding: 20,
               boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
@@ -2591,7 +2591,7 @@ function AlertPagamentiWidget({ data }) {
     <div
       data-testid="widget-alert-pagamenti"
       style={{
-        background: 'linear-gradient(135deg, #fff7ed 0%, #fef3c7 100%)',
+        background: '#fee2e2',
         border: '1px solid #fcd34d',
         borderLeft: '4px solid #f59e0b',
         borderRadius: 10,

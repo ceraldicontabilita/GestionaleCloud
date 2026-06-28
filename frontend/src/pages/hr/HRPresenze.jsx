@@ -303,7 +303,7 @@ export default function HRPresenze() {
               border: 'none',
               borderRadius: 8,
               fontSize: 13,
-              background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)',
+              background: '#15803d',
               color: 'white',
               cursor: 'pointer',
               display: 'flex',

@@ -59,7 +59,7 @@ function StatCard({ icon: Icon, label, value, subValue, color, bgGradient }) {
   return (
     <div
       style={{
-        background: bgGradient || 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
+        background: bgGradient || '#f8fafc',
         borderRadius: 12,
         padding: 20,
         border: `1px solid ${color}20`,
@@ -403,7 +403,7 @@ export default function LearningMachine() {
       {/* Header */}
       <div
         style={{
-          background: 'linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%)',
+          background: '#0f2744',
           borderRadius: 12,
           padding: 24,
           marginBottom: 20,
@@ -523,7 +523,7 @@ export default function LearningMachine() {
                   value={dashboardStats?.fornitori_con_keywords || 0}
                   subValue={`${dashboardStats?.copertura_fornitori || 0}% copertura`}
                   color="#16a34a"
-                  bgGradient="linear-gradient(135deg, #dcfce7 0%, #f0fdf4 100%)"
+                  bgGradient="#dcfce7"
                 />
                 <StatCard
                   icon={FileText}
@@ -531,7 +531,7 @@ export default function LearningMachine() {
                   value={`${dashboardStats?.percentuale_fatture || 0}%`}
                   subValue={`${dashboardStats?.fatture_classificate || 0}/${dashboardStats?.totale_fatture || 0}`}
                   color="#2563eb"
-                  bgGradient="linear-gradient(135deg, #dbeafe 0%, #eff6ff 100%)"
+                  bgGradient="#dbeafe"
                 />
                 <StatCard
                   icon={CreditCard}
@@ -539,7 +539,7 @@ export default function LearningMachine() {
                   value={assegniStats?.pattern_totali || 0}
                   subValue={`${assegniStats?.accuracy || 0}% accuracy`}
                   color="#9333ea"
-                  bgGradient="linear-gradient(135deg, #f3e8ff 0%, #faf5ff 100%)"
+                  bgGradient="#dbeafe"
                 />
                 <StatCard
                   icon={TrendingUp}
@@ -547,7 +547,7 @@ export default function LearningMachine() {
                   value={`${dashboardStats?.percentuale_f24 || 0}%`}
                   subValue={`${dashboardStats?.f24_classificati || 0}/${dashboardStats?.totale_f24 || 0}`}
                   color="#f59e0b"
-                  bgGradient="linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%)"
+                  bgGradient="#fef3c7"
                 />
               </div>
 
@@ -579,7 +579,7 @@ export default function LearningMachine() {
                     }}
                     style={{
                       padding: 16,
-                      background: 'linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%)',
+                      background: '#0f2744',
                       color: 'white',
                       border: 'none',
                       borderRadius: 10,
@@ -600,7 +600,7 @@ export default function LearningMachine() {
                     }}
                     style={{
                       padding: 16,
-                      background: 'linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%)',
+                      background: '#b91c1c',
                       color: 'white',
                       border: 'none',
                       borderRadius: 10,
@@ -686,7 +686,7 @@ export default function LearningMachine() {
                   disabled={fornitoriLoading || fornitoriConfigurati.length === 0}
                   style={{
                     ...button('primary'),
-                    background: 'linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%)',
+                    background: '#0f2744',
                     opacity: fornitoriConfigurati.length === 0 ? 0.5 : 1,
                   }}
                 >
@@ -711,21 +711,21 @@ export default function LearningMachine() {
               label="Da Classificare"
               value={fornitoriNonClassificati.length}
               color="#f59e0b"
-              bgGradient="linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%)"
+              bgGradient="#fef3c7"
             />
             <StatCard
               icon={CheckCircle}
               label="Configurati"
               value={fornitoriConfigurati.length}
               color="#16a34a"
-              bgGradient="linear-gradient(135deg, #dcfce7 0%, #f0fdf4 100%)"
+              bgGradient="#dcfce7"
             />
             <StatCard
               icon={Tag}
               label="Centri di Costo"
               value={centriCosto.length}
               color="#2563eb"
-              bgGradient="linear-gradient(135deg, #dbeafe 0%, #eff6ff 100%)"
+              bgGradient="#dbeafe"
             />
           </div>
 
@@ -1203,7 +1203,7 @@ export default function LearningMachine() {
                   ...button('primary'),
                   width: '100%',
                   justifyContent: 'center',
-                  background: 'linear-gradient(135deg, #9333ea 0%, #7c3aed 100%)',
+                  background: '#1d4ed8',
                 }}
               >
                 <Brain size={16} /> {assegniLoading ? 'Apprendimento...' : 'Avvia Learning'}
@@ -1251,7 +1251,7 @@ export default function LearningMachine() {
                   ...button('primary'),
                   width: '100%',
                   justifyContent: 'center',
-                  background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+                  background: '#b45309',
                 }}
               >
                 <Zap size={16} /> {assegniLoading ? 'Associazione...' : 'Associa Automaticamente'}

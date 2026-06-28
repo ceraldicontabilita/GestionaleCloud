@@ -227,7 +227,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
           {/* Header */}
           <div
             style={{
-              background: 'linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%)',
+              background: '#0f2744',
               padding: '20px 24px',
               color: 'white',
             }}
@@ -412,7 +412,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                         borderRadius: '8px',
                         background: loadingOpenAPI
                           ? '#9ca3af'
-                          : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                          : '#15803d',
                         color: 'white',
                         cursor: loadingOpenAPI || !form.partita_iva ? 'not-allowed' : 'pointer',
                         display: 'flex',
@@ -827,7 +827,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                 padding: '10px 20px',
                 border: 'none',
                 borderRadius: '8px',
-                background: 'linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%)',
+                background: '#0f2744',
                 color: 'white',
                 cursor: saving ? 'not-allowed' : 'pointer',
                 fontSize: '14px',
@@ -997,8 +997,8 @@ function SupplierCard({
         style={{
           height: '4px',
           background: hasIncomplete
-            ? 'linear-gradient(90deg, #f59e0b, #fbbf24)'
-            : 'linear-gradient(90deg, #1e3a5f, #2d5a87)',
+            ? '#b45309'
+            : '#0f2744',
         }}
       />
 
@@ -1018,7 +1018,7 @@ function SupplierCard({
                 width: '44px',
                 height: '44px',
                 borderRadius: '10px',
-                background: 'linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%)',
+                background: '#0f2744',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -2034,7 +2034,7 @@ export default function Fornitori() {
             }}
             style={{
               padding: '10px 20px',
-              background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+              background: '#15803d',
               color: 'white',
               border: 'none',
               borderRadius: 8,
@@ -2512,7 +2512,7 @@ export default function Fornitori() {
                 padding: '10px 14px',
                 background: autoConfirming
                   ? '#9ca3af'
-                  : 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                  : '#15803d',
                 color: 'white',
                 border: 'none',
                 borderRadius: 8,
@@ -2642,7 +2642,7 @@ export default function Fornitori() {
               {/* Header */}
               <div
                 style={{
-                  background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+                  background: '#1d4ed8',
                   padding: '20px 24px',
                   color: 'white',
                 }}
@@ -2706,7 +2706,7 @@ export default function Fornitori() {
                     {/* Totale Principale */}
                     <div
                       style={{
-                        background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
+                        background: '#dbeafe',
                         borderRadius: '12px',
                         padding: '20px',
                         marginBottom: '20px',
@@ -2859,7 +2859,7 @@ export default function Fornitori() {
                 style={{
                   padding: '20px 24px',
                   borderBottom: '1px solid #e5e7eb',
-                  background: 'linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%)',
+                  background: '#0f2744',
                   color: 'white',
                 }}
               >
@@ -3544,7 +3544,7 @@ export default function Fornitori() {
                 style={{
                   padding: '20px 24px',
                   borderBottom: '1px solid #e5e7eb',
-                  background: 'linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%)',
+                  background: '#0f2744',
                   color: 'white',
                 }}
               >

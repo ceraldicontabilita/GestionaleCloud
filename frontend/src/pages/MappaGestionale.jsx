@@ -1467,7 +1467,7 @@ export default function MappaGestionale() {
       {/* Header */}
       <div
         style={{
-          background: 'linear-gradient(135deg, #1e3a8a 0%, #1a40b5 100%)',
+          background: '#1d4ed8',
           padding: '20px 28px',
           display: 'flex',
           alignItems: 'center',

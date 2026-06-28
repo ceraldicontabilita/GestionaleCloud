@@ -31,7 +31,7 @@ const COLORS = {
 // Wrapper principale della pagina - sfondo e padding esterno
 export const PAGE_WRAPPER = {
   minHeight: '100vh',
-  background: `linear-gradient(135deg, ${COLORS.primary} 0%, ${COLORS.primaryLight} 100%)`,
+  background: `${COLORS.primary}`,
   padding: '20px',
   boxSizing: 'border-box',
 };

@@ -238,7 +238,7 @@ export default function ImportDocumenti() {
           style={{
             marginBottom: 20,
             padding: 16,
-            background: 'linear-gradient(135deg, #dbeafe 0%, #e0e7ff 100%)',
+            background: '#dbeafe',
             borderRadius: 12,
             border: '1px solid #93c5fd',
             display: 'flex',
@@ -357,7 +357,7 @@ export default function ImportDocumenti() {
             style={{
               marginLeft: 14,
               padding: '10px 16px',
-              background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+              background: '#1d4ed8',
               color: 'white',
               border: 'none',
               borderRadius: 8,
@@ -386,7 +386,7 @@ export default function ImportDocumenti() {
             style={{
               marginLeft: 8,
               padding: '10px 16px',
-              background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+              background: '#b45309',
               color: 'white',
               border: 'none',
               borderRadius: 8,
@@ -419,7 +419,7 @@ export default function ImportDocumenti() {
             style={{
               marginLeft: 8,
               padding: '10px 16px',
-              background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+              background: '#15803d',
               color: 'white',
               border: 'none',
               borderRadius: 8,
@@ -537,7 +537,7 @@ export default function ImportDocumenti() {
                     style={{
                       height: '100%',
                       width: `${(uploadProgress.current / uploadProgress.total) * 100}%`,
-                      background: 'linear-gradient(90deg, #3b82f6, #1d4ed8)',
+                      background: '#1d4ed8',
                       borderRadius: 3,
                       transition: 'width 0.3s ease',
                     }}

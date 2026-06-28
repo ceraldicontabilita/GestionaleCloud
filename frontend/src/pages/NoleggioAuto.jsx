@@ -222,7 +222,7 @@ export default function NoleggioAuto() {
           alignItems: 'center',
           marginBottom: 20,
           padding: '15px 20px',
-          background: 'linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%)',
+          background: '#0f2744',
           borderRadius: 12,
           color: 'white',
           flexWrap: 'wrap',

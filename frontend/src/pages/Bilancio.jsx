@@ -346,8 +346,8 @@ export default function Bilancio() {
         <div
           style={{
             background: isProfit
-              ? 'linear-gradient(135deg, #166534, #22c55e)'
-              : 'linear-gradient(135deg, #991b1b, #ef4444)',
+              ? '#15803d'
+              : '#b91c1c',
             borderRadius: 16,
             padding: 32,
             color: 'white',
