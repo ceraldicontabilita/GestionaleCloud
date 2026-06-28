@@ -225,7 +225,7 @@ export default function App() {
           {/* Alert Commercialista */}
           {alertCommercialista && (
             <div style={{
-              background: 'linear-gradient(135deg, #ff9800 0%, #f57c00 100%)',
+              background: '#b45309',
               color: 'white',
               padding: '12px 20px',
               display: 'flex',

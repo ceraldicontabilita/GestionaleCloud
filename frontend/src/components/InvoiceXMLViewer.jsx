@@ -581,7 +581,7 @@ export default function InvoiceXMLViewer({ invoice: rawInvoice, onClose }) {
           border: '2px solid #1e3a5f',
           borderRadius: 8,
           marginBottom: 20,
-          background: 'linear-gradient(to bottom, #f8fafc, #fff)',
+          background: '#f8fafc',
         }}
       >
         <h2

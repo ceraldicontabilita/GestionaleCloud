@@ -195,7 +195,7 @@ export default function CalendarioFiscale() {
           {notifiche?.riepilogo?.critiche > 0 && (
             <div
               style={{
-                background: 'linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)',
+                background: '#b91c1c',
                 borderRadius: 12,
                 padding: 16,
                 marginBottom: 20,

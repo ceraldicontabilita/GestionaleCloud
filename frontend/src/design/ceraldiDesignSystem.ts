@@ -55,7 +55,7 @@ export const STYLES: Record<string, CSSProperties | ((...args: any[]) => CSSProp
     alignItems: 'center',
     marginBottom: SPACING.lg,
     padding: `${SPACING.lg}px ${SPACING.xl}px`,
-    background: `linear-gradient(135deg, ${COLORS.primary} 0%, ${COLORS.primaryLight} 100%)`,
+    background: COLORS.primary,
     borderRadius: 12,
     color: COLORS.white
   },

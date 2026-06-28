@@ -726,7 +726,7 @@ function TabPresenze({ dip }) {
       {multiMode && (
         <div style={{
           marginBottom:14, padding:'12px 14px',
-          background:'linear-gradient(135deg, #dbeafe 0%, #eff6ff 100%)',
+          background:'#dbeafe',
           border:'1px solid #93c5fd', borderRadius:10,
           display:'flex', alignItems:'center', gap:10, flexWrap:'wrap',
         }}>
@@ -769,7 +769,7 @@ function TabPresenze({ dip }) {
                 onClick={()=>setShowBulkEditor(true)}
                 style={{
                   padding:'6px 14px',
-                  background:'linear-gradient(135deg, #16a34a 0%, #15803d 100%)',
+                  background:'#15803d',
                   color:'white', border:'none', borderRadius:6,
                   cursor:'pointer', fontSize:12, fontWeight:700,
                 }}
@@ -1054,7 +1054,7 @@ function CellEditorModal({ date, dipNome, form, setForm, tipologie, loading, err
               disabled={loading || !form.stato}
               style={{
                 padding:'8px 18px',
-                background: form.stato && !loading ? 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)' : '#cbd5e1',
+                background: form.stato && !loading ? '#15803d' : '#cbd5e1',
                 color:'white', border:'none', borderRadius:6,
                 cursor: form.stato && !loading ? 'pointer' : 'not-allowed',
                 fontSize:13, fontWeight:600,
@@ -1255,7 +1255,7 @@ function BulkEditorModal({ dipNome, giorni, tipologie, onSave, onClose }) {
             disabled={loading || !form.stato}
             style={{
               padding:'8px 18px',
-              background: form.stato && !loading ? 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)' : '#cbd5e1',
+              background: form.stato && !loading ? '#15803d' : '#cbd5e1',
               color:'white', border:'none', borderRadius:6,
               cursor: form.stato && !loading ? 'pointer' : 'not-allowed',
               fontSize:13, fontWeight:600,
@@ -1490,7 +1490,7 @@ function ScalaAccontiCedolinoModal({ cedolino, dipNome, onClose, onScaled }) {
         {/* Header */}
         <div style={{
           padding:'16px 24px', borderBottom:`1px solid ${COLORS.border}`,
-          background: 'linear-gradient(135deg, #0f2744 0%, #1a3a5f 100%)',
+          background: '#0f2744',
           borderRadius:'12px 12px 0 0', color:'white',
         }}>
           <div style={{ fontSize:11, opacity:0.8, textTransform:'uppercase', letterSpacing:'0.06em', fontWeight:700 }}>
@@ -1655,8 +1655,8 @@ function ScalaAccontiCedolinoModal({ cedolino, dipNome, onClose, onScaled }) {
                 background: (applying || (isDiscrepanza && !forza))
                   ? '#cbd5e1'
                   : isQuadra
-                    ? 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)'
-                    : 'linear-gradient(135deg, #b45309 0%, #92400e 100%)',
+                    ? '#15803d'
+                    : '#b91c1c',
                 color:'white', border:'none', borderRadius:6,
                 cursor: (applying || (isDiscrepanza && !forza)) ? 'not-allowed' : 'pointer',
                 fontSize:13, fontWeight:600,

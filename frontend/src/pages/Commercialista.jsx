@@ -872,7 +872,7 @@ export default function Commercialista() {
         {alertStatus?.show_alert && (
           <div
             style={{
-              background: 'linear-gradient(135deg, #ff9800 0%, #f57c00 100%)',
+              background: '#b45309',
               color: 'white',
               padding: 20,
               borderRadius: 12,
@@ -1054,7 +1054,7 @@ export default function Commercialista() {
               style={{
                 marginLeft: 'auto',
                 padding: '10px 20px',
-                background: 'linear-gradient(135deg, #2e7d32 0%, #43a047 100%)',
+                background: '#15803d',
                 color: 'white',
                 border: 'none',
                 borderRadius: 8,
@@ -1092,7 +1092,7 @@ export default function Commercialista() {
             >
               <div
                 style={{
-                  background: 'linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%)',
+                  background: '#0f2744',
                   color: 'white',
                   padding: 20,
                 }}
@@ -1218,7 +1218,7 @@ export default function Commercialista() {
             >
               <div
                 style={{
-                  background: 'linear-gradient(135deg, #ff9800 0%, #f57c00 100%)',
+                  background: '#b45309',
                   color: 'white',
                   padding: 20,
                 }}
@@ -1304,7 +1304,7 @@ export default function Commercialista() {
             >
               <div
                 style={{
-                  background: 'linear-gradient(135deg, #4caf50 0%, #2e7d32 100%)',
+                  background: '#15803d',
                   color: 'white',
                   padding: 20,
                 }}

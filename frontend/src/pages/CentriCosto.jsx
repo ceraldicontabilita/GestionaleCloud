@@ -95,7 +95,7 @@ export default function CentriCosto() {
           data-testid="assign-cdc-btn"
           style={{
             padding: '10px 20px',
-            background: 'linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%)',
+            background: '#0f2744',
             color: 'white',
             border: 'none',
             borderRadius: 8,

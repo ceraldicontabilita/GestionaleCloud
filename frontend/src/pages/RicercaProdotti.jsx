@@ -404,7 +404,7 @@ export default function RicercaProdotti() {
                   flex: 2,
                   background: sendingOrder
                     ? '#ccc'
-                    : 'linear-gradient(135deg, #4caf50 0%, #2e7d32 100%)',
+                    : '#15803d',
                   color: 'white',
                   fontWeight: 'bold',
                   fontSize: 16,

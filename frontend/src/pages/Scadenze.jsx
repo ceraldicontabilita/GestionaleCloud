@@ -188,7 +188,7 @@ export default function Scadenze() {
           onClick={() => setShowModal(true)}
           style={{
             padding: '10px 20px',
-            background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+            background: '#1d4ed8',
             color: 'white',
             border: 'none',
             borderRadius: 8,
@@ -206,7 +206,7 @@ export default function Scadenze() {
         {alertWidget && alertWidget.totale_alert > 0 && (
           <div
             style={{
-              background: 'linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)',
+              background: '#b91c1c',
               borderRadius: 12,
               padding: 20,
               marginBottom: 20,
@@ -326,7 +326,7 @@ export default function Scadenze() {
               0) && (
             <div
               style={{
-                background: 'linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)',
+                background: '#1d4ed8',
                 borderRadius: 12,
                 padding: 20,
                 marginBottom: 20,
@@ -500,7 +500,7 @@ export default function Scadenze() {
         {(scadenzeIva || scadenzeIvaMensili) && (
           <div
             style={{
-              background: 'linear-gradient(135deg, #1e40af 0%, #1e3a8a 100%)',
+              background: '#1d4ed8',
               borderRadius: 12,
               padding: 20,
               marginBottom: 20,

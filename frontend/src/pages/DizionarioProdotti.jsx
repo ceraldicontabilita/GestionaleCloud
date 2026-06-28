@@ -907,7 +907,7 @@ export default function DizionarioProdotti() {
                 <div
                   style={{
                     padding: '20px',
-                    background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
+                    background: '#fef3c7',
                     borderRadius: '12px',
                     border: '2px solid #f59e0b',
                   }}

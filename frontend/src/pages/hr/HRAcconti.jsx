@@ -1213,7 +1213,7 @@ function RiconciliaBancaModal({ acconto, onClose, onReconciled }) {
         <div style={{
           padding: '16px 24px', borderBottom: `1px solid ${COLORS.border}`,
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          background: 'linear-gradient(135deg, #0891b2 0%, #0e7490 100%)',
+          background: '#1d4ed8',
           borderRadius: '12px 12px 0 0',
         }}>
           <div>
@@ -1359,8 +1359,8 @@ function RiconciliaBancaModal({ acconto, onClose, onReconciled }) {
                             background: linking === c.movimento_id
                               ? '#cbd5e1'
                               : goldStar
-                                ? 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)'
-                                : 'linear-gradient(135deg, #0891b2 0%, #0e7490 100%)',
+                                ? '#15803d'
+                                : '#1d4ed8',
                             color: 'white', border: 'none', borderRadius: 6,
                             cursor: linking === c.movimento_id ? 'wait' : 'pointer',
                             fontSize: 12, fontWeight: 700,

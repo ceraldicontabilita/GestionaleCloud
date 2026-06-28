@@ -261,7 +261,7 @@ export default function PrevisioniAcquisti() {
             style={{
               ...cardStyle,
               marginBottom: 16,
-              background: 'linear-gradient(135deg, #8b5cf6, #6366f1)',
+              background: '#1d4ed8',
             }}
           >
             <div style={{ ...cardContentStyle, paddingTop: 16 }}>

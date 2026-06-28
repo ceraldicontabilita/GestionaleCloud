@@ -295,7 +295,7 @@ export default function RegoleCategorizzazione() {
             onClick={handleDownloadExcel}
             style={{
               padding: '10px 20px',
-              background: 'linear-gradient(135deg, #10b981, #059669)',
+              background: '#15803d',
               color: 'white',
               border: 'none',
               borderRadius: 8,
@@ -312,7 +312,7 @@ export default function RegoleCategorizzazione() {
           <label
             style={{
               padding: '10px 20px',
-              background: uploading ? '#9ca3af' : 'linear-gradient(135deg, #3b82f6, #1d4ed8)',
+              background: uploading ? '#9ca3af' : '#1d4ed8',
               color: 'white',
               borderRadius: 8,
               cursor: uploading ? 'wait' : 'pointer',
@@ -339,7 +339,7 @@ export default function RegoleCategorizzazione() {
               padding: '10px 20px',
               background: ricategorizzando
                 ? '#9ca3af'
-                : 'linear-gradient(135deg, #8b5cf6, #6d28d9)',
+                : '#1d4ed8',
               color: 'white',
               border: 'none',
               borderRadius: 8,
@@ -357,7 +357,7 @@ export default function RegoleCategorizzazione() {
             onClick={() => setShowAddForm(!showAddForm)}
             style={{
               padding: '10px 20px',
-              background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+              background: '#b45309',
               color: 'white',
               border: 'none',
               borderRadius: 8,

@@ -39,7 +39,7 @@ const styles = {
     paddingBottom: '80px',
   },
   header: {
-    background: 'linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%)',
+    background: '#0f2744',
     borderRadius: '12px',
     padding: '16px',
     marginBottom: '16px',

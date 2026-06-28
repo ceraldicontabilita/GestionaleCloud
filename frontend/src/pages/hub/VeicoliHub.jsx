@@ -81,7 +81,7 @@ function RiepilogoCosti({ anno }) {
       {/* Header */}
       <div
         style={{
-          background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+          background: '#15803d',
           borderRadius: 12,
           padding: 20,
           color: 'white',

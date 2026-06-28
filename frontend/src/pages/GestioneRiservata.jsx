@@ -47,7 +47,7 @@ function LoginGestioneRiservata({ onLogin }) {
     <div
       style={{
         minHeight: '100vh',
-        background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)',
+        background: '#0f2744',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -70,7 +70,7 @@ function LoginGestioneRiservata({ onLogin }) {
               width: 80,
               height: 80,
               borderRadius: '50%',
-              background: 'linear-gradient(135deg, #e94560 0%, #0f3460 100%)',
+              background: '#b91c1c',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -134,7 +134,7 @@ function LoginGestioneRiservata({ onLogin }) {
               width: '100%',
               padding: 14,
               background:
-                loading || !code ? '#cbd5e0' : 'linear-gradient(135deg, #e94560 0%, #0f3460 100%)',
+                loading || !code ? '#cbd5e0' : '#b91c1c',
               color: 'white',
               border: 'none',
               borderRadius: 8,
@@ -345,7 +345,7 @@ function DashboardGestioneRiservata({ onLogout }) {
             }}
             style={{
               padding: '10px 20px',
-              background: 'linear-gradient(135deg, #e94560 0%, #0f3460 100%)',
+              background: '#b91c1c',
               color: 'white',
               border: 'none',
               borderRadius: 8,
@@ -373,7 +373,7 @@ function DashboardGestioneRiservata({ onLogout }) {
           >
             <div
               style={{
-                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                background: '#15803d',
                 borderRadius: 12,
                 padding: 24,
                 color: 'white',
@@ -393,7 +393,7 @@ function DashboardGestioneRiservata({ onLogout }) {
 
             <div
               style={{
-                background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                background: '#b91c1c',
                 borderRadius: 12,
                 padding: 24,
                 color: 'white',
@@ -413,7 +413,7 @@ function DashboardGestioneRiservata({ onLogout }) {
 
             <div
               style={{
-                background: 'linear-gradient(135deg, #1a1a2e 0%, #0f3460 100%)',
+                background: '#0f2744',
                 borderRadius: 12,
                 padding: 24,
                 color: 'white',
@@ -580,7 +580,7 @@ function DashboardGestioneRiservata({ onLogout }) {
               onClick={handleSave}
               style={{
                 padding: '12px 24px',
-                background: 'linear-gradient(135deg, #e94560 0%, #0f3460 100%)',
+                background: '#b91c1c',
                 color: 'white',
                 border: 'none',
                 borderRadius: 8,

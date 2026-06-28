@@ -547,7 +547,7 @@ function PrimaNotaDesktop() {
           justifyContent: 'space-between',
           alignItems: 'center',
           padding: '12px 16px',
-          background: 'linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%)',
+          background: '#0f2744',
           borderRadius: 8,
           marginBottom: 12,
         }}
@@ -960,7 +960,7 @@ function PrimaNotaDesktop() {
             fontWeight: 'bold',
             background:
               activeSection === 'cassa'
-                ? 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)'
+                ? '#1d4ed8'
                 : '#f3f4f6',
             color: activeSection === 'cassa' ? 'white' : '#374151',
             border: 'none',
@@ -987,7 +987,7 @@ function PrimaNotaDesktop() {
             fontWeight: 'bold',
             background:
               activeSection === 'banca'
-                ? 'linear-gradient(135deg, #1e3a5f 0%, #1d4ed8 100%)'
+                ? '#0f2744'
                 : '#f3f4f6',
             color: activeSection === 'banca' ? 'white' : '#374151',
             border: 'none',
@@ -1577,7 +1577,7 @@ function SummaryCard({ title, value, color, icon, highlight, subtitle }) {
   return (
     <div
       style={{
-        background: highlight ? `linear-gradient(135deg, ${color}15 0%, ${color}25 100%)` : 'white',
+        background: highlight ? `${color}` : 'white',
         borderRadius: 12,
         padding: 16,
         border: highlight ? `2px solid ${color}` : '1px solid #e5e7eb',
@@ -1623,7 +1623,7 @@ function QuickEntryCard({ title, color, children }) {
   return (
     <div
       style={{
-        background: `linear-gradient(135deg, ${color}20 0%, ${color}10 100%)`,
+        background: `${color}`,
         borderRadius: 12,
         padding: 16,
         border: `2px solid ${color}30`,

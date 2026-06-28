@@ -882,7 +882,7 @@ export default function Portale() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          background: 'linear-gradient(135deg, #1e3a5f 0%, #0f2339 100%)',
+          background: '#0f2744',
           padding: 24,
         }}
       >
@@ -1071,7 +1071,7 @@ export default function Portale() {
         {/* Banner benvenuto */}
         <div
           style={{
-            background: 'linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%)',
+            background: '#0f2744',
             borderRadius: 16,
             padding: '22px 28px',
             color: '#fff',

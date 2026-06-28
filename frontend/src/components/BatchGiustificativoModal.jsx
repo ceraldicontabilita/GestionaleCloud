@@ -430,7 +430,7 @@ export default function BatchGiustificativoModal({
               background:
                 saving || selectedEmpIds.length === 0 || giorni.length === 0
                   ? '#94a3b8'
-                  : 'linear-gradient(135deg, #0f2744 0%, #1e3a5f 100%)',
+                  : '#0f2744',
               color: 'white',
               border: 'none',
               borderRadius: 8,

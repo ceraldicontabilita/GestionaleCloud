@@ -232,7 +232,7 @@ export function UploadStatusBar() {
                     height: '100%',
                     width: `${upload.progress}%`,
                     background:
-                      'linear-gradient(45deg, #3b82f6 25%, #60a5fa 25%, #60a5fa 50%, #3b82f6 50%, #3b82f6 75%, #60a5fa 75%)',
+                      '#1d4ed8',
                     backgroundSize: '40px 40px',
                     animation: 'progress-stripe 1s linear infinite',
                     transition: 'width 0.3s',

@@ -130,7 +130,7 @@ export default function Mutui() {
             <div
               data-testid="stat-importo-totale"
               style={{
-                background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+                background: '#1d4ed8',
                 padding: 20,
                 borderRadius: 12,
                 color: 'white',
@@ -150,7 +150,7 @@ export default function Mutui() {
             <div
               data-testid="stat-pagato"
               style={{
-                background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
+                background: '#15803d',
                 padding: 20,
                 borderRadius: 12,
                 color: 'white',
@@ -168,7 +168,7 @@ export default function Mutui() {
             <div
               data-testid="stat-residuo"
               style={{
-                background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
+                background: '#b45309',
                 padding: 20,
                 borderRadius: 12,
                 color: 'white',
@@ -186,7 +186,7 @@ export default function Mutui() {
             <div
               data-testid="stat-completamento"
               style={{
-                background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                background: '#1d4ed8',
                 padding: 20,
                 borderRadius: 12,
                 color: 'white',

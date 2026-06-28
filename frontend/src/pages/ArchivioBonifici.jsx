@@ -537,7 +537,7 @@ export default function ArchivioBonifici() {
       {/* Pulsante Riconciliazione */}
       <div
         style={{
-          background: 'linear-gradient(135deg, #0ea5e9, #0369a1)',
+          background: '#1d4ed8',
           padding: 16,
           borderRadius: 12,
           marginBottom: 24,

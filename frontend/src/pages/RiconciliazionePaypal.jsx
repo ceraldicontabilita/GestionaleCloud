@@ -266,7 +266,7 @@ export default function RiconciliazionePaypal() {
             alignItems: 'center',
             marginBottom: 20,
             padding: '16px 20px',
-            background: 'linear-gradient(135deg, #0070ba 0%, #003087 100%)',
+            background: '#1d4ed8',
             borderRadius: 12,
             color: 'white',
           }}
@@ -1028,7 +1028,7 @@ export default function RiconciliazionePaypal() {
               <div
                 style={{
                   padding: '12px 18px',
-                  background: 'linear-gradient(135deg, #dcfce7 0%, #f0fdf4 100%)',
+                  background: '#dcfce7',
                   borderBottom: '1px solid #22c55e',
                   display: 'flex',
                   justifyContent: 'space-between',
@@ -1048,7 +1048,7 @@ export default function RiconciliazionePaypal() {
                   onClick={mappaTuttiCerti}
                   style={{
                     padding: '8px 18px',
-                    background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
+                    background: '#15803d',
                     color: 'white',
                     border: 'none',
                     borderRadius: 6,
@@ -1217,7 +1217,7 @@ export default function RiconciliazionePaypal() {
                       style={{
                         padding: '10px 16px',
                         background: selectedForn[item.paypal_account_id]
-                          ? 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)'
+                          ? '#15803d'
                           : '#e5e7eb',
                         color: selectedForn[item.paypal_account_id] ? 'white' : '#9ca3af',
                         border: 'none',
@@ -1463,7 +1463,7 @@ function CreaFornitorePaypalModal({ context, onClose, onCreated }) {
             style={{
               padding: '8px 18px',
               background: form.ragione_sociale.trim() && !loading
-                ? 'linear-gradient(135deg, #0070ba 0%, #003087 100%)'
+                ? '#1d4ed8'
                 : '#cbd5e1',
               color: 'white', border: 'none', borderRadius: 6,
               cursor: form.ragione_sociale.trim() && !loading ? 'pointer' : 'not-allowed',

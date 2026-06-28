@@ -102,7 +102,7 @@ export default function Pianificazione() {
             data-testid="btn-nuovo-evento"
             style={{
               padding: '10px 16px',
-              background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)',
+              background: '#1d4ed8',
               color: 'white',
               border: 'none',
               borderRadius: 8,

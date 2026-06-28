@@ -103,7 +103,7 @@ export const SummaryCard = memo(function SummaryCard({
   return (
     <div
       style={{
-        background: 'linear-gradient(135deg, #ff9800 0%, #f57c00 100%)',
+        background: '#b45309',
         padding: 20,
         borderRadius: 12,
         color: 'white',
@@ -160,7 +160,7 @@ export const SummaryCard = memo(function SummaryCard({
           onClick={onOpenAggiustamento}
           style={{
             padding: '10px 20px',
-            background: 'linear-gradient(135deg, #10b981, #059669)',
+            background: '#15803d',
             color: 'white',
             border: 'none',
             borderRadius: 8,
@@ -288,7 +288,7 @@ export const ActionButtons = memo(function ActionButtons({
       <label
         style={{
           padding: '10px 20px',
-          background: importing ? '#9ca3af' : 'linear-gradient(135deg, #4caf50, #388e3c)',
+          background: importing ? '#9ca3af' : '#15803d',
           color: 'white',
           borderRadius: 8,
           cursor: importing ? 'not-allowed' : 'pointer',
@@ -308,7 +308,7 @@ export const ActionButtons = memo(function ActionButtons({
       <label
         style={{
           padding: '10px 20px',
-          background: importing ? '#9ca3af' : 'linear-gradient(135deg, #2196f3, #1976d2)',
+          background: importing ? '#9ca3af' : '#1d4ed8',
           color: 'white',
           borderRadius: 8,
           cursor: importing ? 'not-allowed' : 'pointer',
@@ -330,7 +330,7 @@ export const ActionButtons = memo(function ActionButtons({
         disabled={!hasData}
         style={{
           padding: '10px 20px',
-          background: !hasData ? '#d1d5db' : 'linear-gradient(135deg, #10b981, #059669)',
+          background: !hasData ? '#d1d5db' : '#15803d',
           color: 'white',
           border: 'none',
           borderRadius: 8,
@@ -346,7 +346,7 @@ export const ActionButtons = memo(function ActionButtons({
           onClick={onPulisciVuote}
           style={{
             padding: '10px 20px',
-            background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+            background: '#b45309',
             color: 'white',
             border: 'none',
             borderRadius: 8,
@@ -362,7 +362,7 @@ export const ActionButtons = memo(function ActionButtons({
         onClick={onReset}
         style={{
           padding: '10px 20px',
-          background: 'linear-gradient(135deg, #ef4444, #b91c1c)',
+          background: '#b91c1c',
           color: 'white',
           border: 'none',
           borderRadius: 8,
@@ -377,7 +377,7 @@ export const ActionButtons = memo(function ActionButtons({
         onClick={onRefresh}
         style={{
           padding: '10px 20px',
-          background: 'linear-gradient(135deg, #6b7280, #4b5563)',
+          background: '#475569',
           color: 'white',
           border: 'none',
           borderRadius: 8,

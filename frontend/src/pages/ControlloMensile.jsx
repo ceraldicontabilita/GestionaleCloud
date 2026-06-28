@@ -840,7 +840,7 @@ export default function ControlloMensile() {
       >
         <div
           style={{
-            background: 'linear-gradient(135deg, #1e3a5f 0%, #1d4ed8 100%)',
+            background: '#0f2744',
             borderRadius: 12,
             padding: 14,
             color: 'white',
@@ -851,7 +851,7 @@ export default function ControlloMensile() {
         </div>
         <div
           style={{
-            background: 'linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)',
+            background: '#1d4ed8',
             borderRadius: 12,
             padding: 14,
             color: 'white',
@@ -862,7 +862,7 @@ export default function ControlloMensile() {
         </div>
         <div
           style={{
-            background: 'linear-gradient(135deg, #ec4899 0%, #be185d 100%)',
+            background: '#b91c1c',
             borderRadius: 12,
             padding: 14,
             color: 'white',
@@ -880,7 +880,7 @@ export default function ControlloMensile() {
         </div>
         <div
           style={{
-            background: 'linear-gradient(135deg, #ff9800 0%, #d97706 100%)',
+            background: '#b45309',
             borderRadius: 12,
             padding: 14,
             color: 'white',
@@ -893,7 +893,7 @@ export default function ControlloMensile() {
         </div>
         <div
           style={{
-            background: 'linear-gradient(135deg, #4caf50 0%, #059669 100%)',
+            background: '#15803d',
             borderRadius: 12,
             padding: 14,
             color: 'white',
@@ -906,7 +906,7 @@ export default function ControlloMensile() {
         </div>
         <div
           style={{
-            background: 'linear-gradient(135deg, #16a34a 0%, #16a34a 100%)',
+            background: '#15803d',
             borderRadius: 12,
             padding: 14,
             color: 'white',
@@ -919,7 +919,7 @@ export default function ControlloMensile() {
         </div>
         <div
           style={{
-            background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)',
+            background: '#1d4ed8',
             borderRadius: 12,
             padding: 14,
             color: 'white',
@@ -932,7 +932,7 @@ export default function ControlloMensile() {
         </div>
         <div
           style={{
-            background: 'linear-gradient(135deg, #6b7280 0%, #475569 100%)',
+            background: '#475569',
             borderRadius: 12,
             padding: 14,
             color: 'white',
@@ -945,7 +945,7 @@ export default function ControlloMensile() {
         </div>
         <div
           style={{
-            background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+            background: '#b91c1c',
             borderRadius: 12,
             padding: 14,
             color: 'white',
@@ -963,7 +963,7 @@ export default function ControlloMensile() {
         {/* Card Pagato Non Riscosso */}
         <div
           style={{
-            background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
+            background: '#b45309',
             borderRadius: 12,
             padding: 14,
             color: 'white',
@@ -980,7 +980,7 @@ export default function ControlloMensile() {
         {/* Card Ammontare Annulli */}
         <div
           style={{
-            background: 'linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)',
+            background: '#b91c1c',
             borderRadius: 12,
             padding: 14,
             color: 'white',

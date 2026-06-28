@@ -97,7 +97,7 @@ const styles = {
     marginBottom: 16,
   },
   cardGradient: (from, to) => ({
-    background: `linear-gradient(to bottom right, ${from}, ${to})`,
+    background: `${from}`,
     borderRadius: 12,
     padding: 20,
   }),
@@ -360,7 +360,7 @@ export default function ContabilitaAvanzata() {
           >
             <div
               style={{
-                background: 'linear-gradient(135deg, #065f46 0%, #047857 100%)',
+                background: '#15803d',
                 borderRadius: 12,
                 padding: 16,
                 color: 'white',

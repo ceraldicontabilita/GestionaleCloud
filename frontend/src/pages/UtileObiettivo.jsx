@@ -163,7 +163,7 @@ export default function UtileObiettivo() {
                   data-testid="save-target-btn"
                   style={{
                     padding: '12px 24px',
-                    background: 'linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%)',
+                    background: '#0f2744',
                     color: 'white',
                     border: 'none',
                     borderRadius: 8,
@@ -226,7 +226,7 @@ export default function UtileObiettivo() {
                     style={{
                       width: `${Math.min(percentualeRaggiungimento, 100)}%`,
                       height: '100%',
-                      background: `linear-gradient(90deg, ${progressColor}, ${progressColor}dd)`,
+                      background: `${progressColor}`,
                       borderRadius: 12,
                       transition: 'width 0.5s ease',
                     }}

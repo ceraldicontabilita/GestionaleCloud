@@ -117,7 +117,7 @@ export default function ImportDipendentiModal({ onClose, onImported }) {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            background: `linear-gradient(135deg, ${COLORS.primary}, #1a3a5f)`,
+            background: `${COLORS.primary}`,
             borderRadius: '12px 12px 0 0',
           }}
         >
