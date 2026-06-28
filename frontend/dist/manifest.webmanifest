@@ -1,0 +1,53 @@
+{
+  "name": "Ceraldi ERP",
+  "short_name": "Ceraldi",
+  "description": "Gestionale contabile Ceraldi Group — fatture, corrispettivi, prima nota, magazzino.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "lang": "it-IT",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "/logo-ceraldi.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/logo_ceraldi.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/logo_ceraldi_white.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "categories": ["business", "productivity", "finance"],
+  "shortcuts": [
+    {
+      "name": "Dashboard",
+      "short_name": "Home",
+      "url": "/",
+      "icons": [{"src": "/logo-ceraldi.png", "sizes": "192x192"}]
+    },
+    {
+      "name": "Prima Nota",
+      "short_name": "Prima Nota",
+      "url": "/prima-nota",
+      "icons": [{"src": "/logo-ceraldi.png", "sizes": "192x192"}]
+    },
+    {
+      "name": "Fatture",
+      "short_name": "Fatture",
+      "url": "/fatture",
+      "icons": [{"src": "/logo-ceraldi.png", "sizes": "192x192"}]
+    }
+  ]
+}
