@@ -431,6 +431,16 @@ def start_scheduler():
         except Exception as e:
             logger.error(f"[SCHEDULER-VERBALI-LINK] errore: {e}")
 
+    # ── Google Drive: import fatture XML ogni 15 min ───────────────────────
+    async def _drive_ingest_job():
+        from app.database import Database
+        from app.services import drive_invoice_ingest
+        try:
+            result = await drive_invoice_ingest.sync(Database.get_db())
+            logger.info(f"[SCHEDULER-DRIVE-FATTURE] {result}")
+        except Exception as e:
+            logger.error(f"[SCHEDULER-DRIVE-FATTURE] errore: {e}")
+
     scheduler.add_job(
         _scan_gmail_verbali_job,
         'interval', minutes=30,
@@ -441,6 +451,12 @@ def start_scheduler():
         _link_verbali_fatture_job,
         'interval', minutes=60,
         id="link_verbali_fatture", name="Link Verbali ↔ Fatture (ogni 60 min)",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        _drive_ingest_job,
+        'interval', minutes=15,
+        id="drive_fatture_ingest", name="Import Fatture da Google Drive (ogni 15 min)",
         replace_existing=True,
     )
 

@@ -88,6 +88,11 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID: Optional[str] = None
     GOOGLE_CLIENT_SECRET: Optional[str] = None
     GOOGLE_REDIRECT_URI: str = "/api/auth/google/callback"
+
+    # Google Drive — ingest fatture XML
+    GOOGLE_DRIVE_FATTURE_FOLDER_ID: Optional[str] = None  # cartella Drive da cui leggere gli XML
+    GOOGLE_DRIVE_SA_FILE: Optional[str] = None            # path al JSON del service account
+    GOOGLE_DRIVE_SA_JSON: Optional[str] = None            # oppure il JSON inline (alternativa al file)
     
     # Telegram
     TELEGRAM_BOT_TOKEN: Optional[str] = None
