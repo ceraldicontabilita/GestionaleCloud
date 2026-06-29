@@ -3,7 +3,7 @@ Cash service.
 Business logic for cash register management and daily closures.
 """
 from typing import List, Dict, Any, Optional
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 import logging
 
 from app.repositories.cash_repository import (

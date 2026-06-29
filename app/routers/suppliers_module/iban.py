@@ -36,7 +36,7 @@ async def ricerca_iban_fornitori_web() -> Dict[str, Any]:
             {"iban": ""},
             {"iban": {"$exists": False}}
         ],
-        "partita_iva": {"$exists": True, "$ne": "", "$ne": None}
+        "partita_iva": {"$exists": True, "$nin": ["", None]}
     }, {"_id": 0, "id": 1, "partita_iva": 1, "ragione_sociale": 1, "denominazione": 1}).to_list(500)
     
     risultato = {
@@ -80,7 +80,7 @@ async def ricerca_iban_fornitori_web() -> Dict[str, Any]:
                 fattura_con_iban = await db["invoices"].find_one(
                     {
                         "$or": [{"cedente_piva": piva}, {"supplier_vat": piva}],
-                        "pagamento.iban": {"$exists": True, "$ne": "", "$ne": None}
+                        "pagamento.iban": {"$exists": True, "$nin": ["", None]}
                     },
                     {"pagamento.iban": 1}
                 )
@@ -207,7 +207,7 @@ async def ricerca_iban_singolo_web(supplier_id: str) -> Dict[str, Any]:
     fattura_con_iban = await db["invoices"].find_one(
         {
             "$or": [{"cedente_piva": piva}, {"supplier_vat": piva}],
-            "pagamento.iban": {"$exists": True, "$ne": "", "$ne": None}
+            "pagamento.iban": {"$exists": True, "$nin": ["", None]}
         },
         {"pagamento.iban": 1}
     )
@@ -263,7 +263,7 @@ async def sync_iban_from_invoices() -> Dict[str, Any]:
     pipeline = [
         {
             "$match": {
-                "pagamento.iban": {"$exists": True, "$ne": "", "$ne": None}
+                "pagamento.iban": {"$exists": True, "$nin": ["", None]}
             }
         },
         {

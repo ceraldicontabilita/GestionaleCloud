@@ -203,13 +203,15 @@ async def processa_quietanza_f24(
     # L'F24 appare come "DELEGA F24" o simile in banca
     movimento = await db["prima_nota_banca"].find_one({
         "data": data_versamento,
-        "$or": [
-            {"importo": -importo_totale},
-            {"importo": importo_totale * -1}
-        ],
-        "$or": [
-            {"descrizione": {"$regex": "f24", "$options": "i"}},
-            {"causale": {"$regex": "f24|delega|agenzia entrate", "$options": "i"}}
+        "$and": [
+            {"$or": [
+                {"importo": -importo_totale},
+                {"importo": importo_totale * -1}
+            ]},
+            {"$or": [
+                {"descrizione": {"$regex": "f24", "$options": "i"}},
+                {"causale": {"$regex": "f24|delega|agenzia entrate", "$options": "i"}}
+            ]}
         ]
     })
     

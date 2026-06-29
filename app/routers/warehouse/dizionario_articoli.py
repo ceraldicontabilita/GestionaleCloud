@@ -717,7 +717,7 @@ async def estrai_articoli_fatture(
             "sample_prezzo": {"$first": "$linee.prezzo_unitario"}
         }},
         {"$match": {
-            "_id": {"$ne": None, "$ne": ""},
+            "_id": {"$nin": [None, ""]},
             "count": {"$gte": min_occorrenze}
         }},
         {"$sort": {"count": -1}},
@@ -840,7 +840,7 @@ async def genera_dizionario() -> Dict[str, Any]:
             "fornitori": {"$addToSet": "$supplier_name"},
             "prezzi": {"$push": "$linee.prezzo_totale"}
         }},
-        {"$match": {"_id": {"$ne": None, "$ne": ""}}},
+        {"$match": {"_id": {"$nin": [None, ""]}}},
         {"$sort": {"count": -1}}
     ]
     

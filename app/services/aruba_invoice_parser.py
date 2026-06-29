@@ -405,13 +405,15 @@ async def fetch_aruba_invoices(
                 # === NUOVO: Controlla se la fattura esiste già ===
                 # 1. Controlla nelle fatture XML importate
                 fattura_xml = await db["invoices"].find_one({
-                    "$or": [
-                        {"numero_fattura": invoice_data["numero_fattura"]},
-                        {"invoice_number": invoice_data["numero_fattura"]}
-                    ],
-                    "$or": [
-                        {"supplier_name": {"$regex": invoice_data["fornitore"][:20], "$options": "i"}},
-                        {"cedente_denominazione": {"$regex": invoice_data["fornitore"][:20], "$options": "i"}}
+                    "$and": [
+                        {"$or": [
+                            {"numero_fattura": invoice_data["numero_fattura"]},
+                            {"invoice_number": invoice_data["numero_fattura"]}
+                        ]},
+                        {"$or": [
+                            {"supplier_name": {"$regex": invoice_data["fornitore"][:20], "$options": "i"}},
+                            {"cedente_denominazione": {"$regex": invoice_data["fornitore"][:20], "$options": "i"}}
+                        ]}
                     ]
                 })
                 

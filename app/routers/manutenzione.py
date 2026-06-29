@@ -40,7 +40,7 @@ async def ricostruisci_dati_assegni() -> Dict[str, Any]:
                 {"beneficiario": ""},
                 {"beneficiario": "-"}
             ],
-            "numero_fattura": {"$exists": True, "$ne": None, "$ne": ""}
+            "numero_fattura": {"$exists": True, "$nin": [None, ""]}
         }).to_list(1000)
         
         for ass in assegni_senza_ben:
@@ -101,7 +101,7 @@ async def ricostruisci_dati_assegni() -> Dict[str, Any]:
         
         # 3. Aggiorna date fattura mancanti
         assegni_senza_data = await db.assegni.find({
-            "fattura_id": {"$exists": True, "$ne": None, "$ne": ""},
+            "fattura_id": {"$exists": True, "$nin": [None, ""]},
             "$or": [
                 {"data_fattura": None},
                 {"data_fattura": ""},
@@ -301,7 +301,7 @@ async def ricostruisci_dati_fatture() -> Dict[str, Any]:
         # 2. Associa fornitori mancanti
         fatture_senza_forn = await db.invoices.find({
             "supplier_id": {"$in": [None, ""]},
-            "supplier_name": {"$exists": True, "$ne": None, "$ne": ""}
+            "supplier_name": {"$exists": True, "$nin": [None, ""]}
         }).to_list(5000)
         
         for f in fatture_senza_forn:
@@ -433,7 +433,7 @@ async def ricostruisci_salari() -> Dict[str, Any]:
                 {"dipendente_id": ""},
                 {"dipendente_id": {"$exists": False}}
             ],
-            "codice_fiscale": {"$exists": True, "$ne": None, "$ne": ""}
+            "codice_fiscale": {"$exists": True, "$nin": [None, ""]}
         }).to_list(5000)
         
         for c in cedolini_senza_dip:

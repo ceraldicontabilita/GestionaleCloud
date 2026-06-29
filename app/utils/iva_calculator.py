@@ -102,7 +102,7 @@ async def calculate_daily_iva(db, date_str: str) -> Dict[str, Any]:
                         iva_fattura += iva_linea
             else:
                 # Fallback: usa aliquota fattura o 22% ordinaria
-                aliq = float(f.get('aliquota_iva', 0) or f.get('vat_rate', 0) or 22)
+                aliq = float(fatt.get('aliquota_iva', 0) or fatt.get('vat_rate', 0) or 22)
                 iva_fattura = totale_fattura - (totale_fattura / (1 + aliq / 100))
             
             result["iva_credito"] += iva_fattura

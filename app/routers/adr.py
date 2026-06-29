@@ -8,6 +8,7 @@ import re
 import base64
 import imaplib
 import email
+import logging
 from email.header import decode_header
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
@@ -15,6 +16,8 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from app.database import Database
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 

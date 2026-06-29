@@ -3,7 +3,7 @@ Accounting Entries Service
 Business logic per gestione Prima Nota
 """
 from typing import List, Dict, Any, Optional
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 import logging
 from io import BytesIO
 

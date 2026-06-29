@@ -422,7 +422,7 @@ async def get_verbali_stats() -> Dict[str, Any]:
     totale = await db[COLLECTION].count_documents({})
     
     con_driver = await db[COLLECTION].count_documents({
-        "driver": {"$exists": True, "$ne": None, "$ne": ""}
+        "driver": {"$exists": True, "$nin": [None, ""]}
     })
     
     senza_driver = totale - con_driver

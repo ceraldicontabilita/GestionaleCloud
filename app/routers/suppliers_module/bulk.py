@@ -26,7 +26,7 @@ async def aggiorna_fornitori_bulk() -> Dict[str, Any]:
     db = Database.get_db()
     
     fornitori = await db[Collections.SUPPLIERS].find({
-        "partita_iva": {"$exists": True, "$ne": "", "$ne": None},
+        "partita_iva": {"$exists": True, "$nin": ["", None]},
         "$or": [
             {"ragione_sociale": {"$in": [None, ""]}},
             {"comune": {"$in": [None, ""]}},
@@ -311,8 +311,8 @@ async def sincronizza_fornitori_da_fatture() -> Dict[str, Any]:
     
     pipeline = [
         {"$match": {"$or": [
-            {"supplier_vat": {"$exists": True, "$ne": None, "$ne": ""}},
-            {"fornitore.partita_iva": {"$exists": True, "$ne": None, "$ne": ""}}
+            {"supplier_vat": {"$exists": True, "$nin": [None, ""]}},
+            {"fornitore.partita_iva": {"$exists": True, "$nin": [None, ""]}}
         ]}},
         {"$project": {
             "piva": {"$ifNull": ["$supplier_vat", "$fornitore.partita_iva"]},

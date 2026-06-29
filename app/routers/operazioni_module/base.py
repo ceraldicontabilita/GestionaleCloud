@@ -214,13 +214,15 @@ async def check_fattura_esistente(
     db = Database.get_db()
     
     query = {
-        "$or": [
-            {"supplier_vat": fornitore_piva},
-            {"cedente_piva": fornitore_piva}
-        ],
-        "$or": [
-            {"invoice_number": numero_fattura},
-            {"numero_fattura": numero_fattura}
+        "$and": [
+            {"$or": [
+                {"supplier_vat": fornitore_piva},
+                {"cedente_piva": fornitore_piva}
+            ]},
+            {"$or": [
+                {"invoice_number": numero_fattura},
+                {"numero_fattura": numero_fattura}
+            ]}
         ]
     }
     

@@ -30,7 +30,7 @@ async def sincronizza_da_fatture(db, limit: int = 1000) -> Dict[str, Any]:
     
     # Aggrega fornitori unici dalle fatture
     pipeline = [
-        {"$match": {"supplier_vat": {"$exists": True, "$ne": None, "$ne": ""}}},
+        {"$match": {"supplier_vat": {"$exists": True, "$nin": [None, ""]}}},
         {"$group": {
             "_id": "$supplier_vat",
             "nome": {"$first": "$supplier_name"},

@@ -221,7 +221,7 @@ async def get_veicoli(
         ]
     
     verbali_db = await db["verbali_noleggio"].find(
-        {**verbali_query, "targa": {"$ne": None, "$ne": ""}},
+        {**verbali_query, "targa": {"$nin": [None, ""]}},
         {"_id": 0, "pdf_data": 0, "quietanza_pdf": 0}
     ).to_list(500)
     
@@ -315,7 +315,7 @@ async def export_pdf_costi(anno: Optional[int] = Query(None)) -> Any:
     
     # Arricchisci con verbali
     verbali_db = await db["verbali_noleggio"].find(
-        {"targa": {"$ne": None, "$ne": ""}},
+        {"targa": {"$nin": [None, ""]}},
         {"_id": 0, "pdf_data": 0, "quietanza_pdf": 0}
     ).to_list(500)
     

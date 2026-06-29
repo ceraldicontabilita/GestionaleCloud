@@ -4,7 +4,7 @@ Funzioni helper per auto-popolamento magazzino da fatture XML.
 import re
 import uuid
 from typing import Dict, Any, List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 
 logger = logging.getLogger(__name__)

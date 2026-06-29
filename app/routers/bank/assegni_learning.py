@@ -164,7 +164,7 @@ async def learn_associazioni() -> Dict[str, Any]:
     # 1. Carica assegni con associazioni esistenti
     assegni = await db[COLLECTION_ASSEGNI].find({
         "$and": [
-            {"beneficiario": {"$exists": True, "$ne": "", "$ne": None}},
+            {"beneficiario": {"$exists": True, "$nin": ["", None]}},
             {"$or": [
                 {"importo": {"$gt": 0}},
                 {"fattura_id": {"$exists": True}}

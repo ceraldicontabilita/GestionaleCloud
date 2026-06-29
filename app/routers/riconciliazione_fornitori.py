@@ -4,7 +4,7 @@ Abbina i movimenti bancari (bonifici) alle fatture di acquisto.
 """
 from fastapi import APIRouter, HTTPException, Query, UploadFile, File
 from typing import Dict, Any, List, Optional
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 import uuid
 import logging
 import io
