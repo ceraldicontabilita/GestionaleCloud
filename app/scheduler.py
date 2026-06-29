@@ -16,42 +16,6 @@ logger = logging.getLogger(__name__)
 # Scheduler instance
 scheduler = AsyncIOScheduler()
 
-async def pec_hourly_download_task():
-    """
-    Task eseguito ogni ora.
-    Scarica le nuove fatture dalla casella PEC Aruba ed importa gli XML in MongoDB.
-    Scansiona INBOX e INBOX.lette; supporta file .xml e .p7m (CAdES).
-    """
-    from app.database import Database
-    from app.services.aruba_pec_downloader import download_pec_invoices
-
-    logger.info("[SCHEDULER-PEC] Avvio download PEC orario...")
-    try:
-        db = Database.get_db()
-        # Solo ultimi 7 giorni per il task orario (il full import manuale usa 365gg)
-        result = await download_pec_invoices(db, since_days=7)
-        stats = result.get("stats", {})
-        new_inv = stats.get("new_invoices", 0)
-        dup     = stats.get("duplicates_skipped", 0)
-        xml_tot = stats.get("xml_found", 0)
-        logger.info(
-            f"[SCHEDULER-PEC] Completato: {xml_tot} XML, {new_inv} nuove fatture, "
-            f"{dup} duplicati saltati"
-        )
-        if new_inv > 0:
-            try:
-                from app.services.websocket_manager import notify_data_change
-                await notify_data_change("pec_sync", {
-                    "new_invoices": new_inv,
-                    "xml_found": xml_tot
-                }, "notifications")
-                logger.info("[SCHEDULER-PEC] Notifica WebSocket inviata")
-            except Exception as ws_err:
-                logger.debug(f"[SCHEDULER-PEC] WebSocket non disponibile: {ws_err}")
-    except Exception as e:
-        logger.error(f"[SCHEDULER-PEC] Errore download orario: {e}")
-
-
 async def sync_gmail_aruba_task():
     """
     Task eseguito ogni 10 minuti.
@@ -460,16 +424,6 @@ def start_scheduler():
         replace_existing=True,
     )
 
-    # ── PEC: scarica nuove fatture ogni ora ────────────────────────────────
-    scheduler.add_job(
-        pec_hourly_download_task,
-        'interval',
-        hours=1,
-        id="pec_hourly_download",
-        name="Download PEC Fatture (ogni ora)",
-        replace_existing=True
-    )
-    
     # Task Gmail/Aruba ogni 10 minuti
     scheduler.add_job(
         sync_gmail_aruba_task,
@@ -529,7 +483,6 @@ def start_scheduler():
     
     scheduler.start()
     logger.info("✅ [SCHEDULER] Scheduler avviato")
-    logger.info("   - PEC Fatture: ogni ora")
     logger.info("   - Gmail/Aruba: ogni 10 minuti")
     logger.info("   - Gmail Full Scan (tutte cartelle): ogni ora")
     logger.info("   - Verbali Email: ogni ora")
