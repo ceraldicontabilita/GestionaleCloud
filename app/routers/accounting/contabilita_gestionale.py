@@ -10,9 +10,11 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
 from uuid import uuid4
 from collections import defaultdict
+import logging
 
 from app.database import Database, Collections
 
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Contabilità Gestionale"])
 
 COLLECTION_PRIMA_NOTA_CASSA = "prima_nota_cassa"

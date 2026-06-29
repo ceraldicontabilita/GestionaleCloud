@@ -81,7 +81,7 @@ async def get_dizionario_metodi_pagamento() -> Dict[str, Any]:
     pipeline = [
         {
             "$match": {
-                "metodo_pagamento": {"$exists": True, "$ne": None, "$ne": ""}
+                "metodo_pagamento": {"$exists": True, "$nin": [None, ""]}
             }
         },
         {
@@ -118,7 +118,7 @@ async def get_dizionario_metodi_pagamento() -> Dict[str, Any]:
     # Statistiche
     totale_fornitori = await db[Collections.SUPPLIERS].count_documents({})
     con_metodo = await db[Collections.SUPPLIERS].count_documents({
-        "metodo_pagamento": {"$exists": True, "$ne": None, "$ne": ""}
+        "metodo_pagamento": {"$exists": True, "$nin": [None, ""]}
     })
     
     return {

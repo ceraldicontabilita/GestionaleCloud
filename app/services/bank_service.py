@@ -3,7 +3,7 @@ Bank service.
 Business logic for bank account and statement management.
 """
 from typing import List, Dict, Any, Optional
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 import logging
 
 from app.repositories.bank_repository import BankRepository

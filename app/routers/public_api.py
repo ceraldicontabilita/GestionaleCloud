@@ -736,6 +736,7 @@ async def create_event(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     retrocompatibilità. Il documento viene salvato con AMBEDUE i nomi di campo
     così vecchi e nuovi client possono leggerlo correttamente.
     """
+    db = Database.get_db()
     # Campo data: preferisce scheduled_date (nuovo), fallback a start_date (vecchio)
     scheduled = data.get("scheduled_date") or data.get("start_date") or ""
     end_date = data.get("end_date", "")

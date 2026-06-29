@@ -9,7 +9,7 @@ Endpoint principali:
 - /cleanup: Pulizia email non rilevanti
 """
 
-from fastapi import APIRouter, Query, HTTPException
+from fastapi import APIRouter, Query, HTTPException, Response
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 from pydantic import BaseModel

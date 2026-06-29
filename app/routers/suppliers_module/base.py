@@ -196,8 +196,8 @@ async def list_suppliers(
     if need_stats:
         stats_pipeline = [
             {"$match": {"$or": [
-                {"supplier_vat": {"$exists": True, "$ne": None, "$ne": ""}},
-                {"fornitore_partita_iva": {"$exists": True, "$ne": None, "$ne": ""}}
+                {"supplier_vat": {"$exists": True, "$nin": [None, ""]}},
+                {"fornitore_partita_iva": {"$exists": True, "$nin": [None, ""]}}
             ]}},
             {"$group": {
                 "_id": {"$ifNull": ["$supplier_vat", "$fornitore_partita_iva"]},
@@ -753,7 +753,7 @@ async def get_supplier_iban_from_invoices(supplier_id: str) -> Dict[str, Any]:
         {
             "$match": {
                 "cedente_piva": piva,
-                "pagamento.iban": {"$exists": True, "$ne": "", "$ne": None}
+                "pagamento.iban": {"$exists": True, "$nin": ["", None]}
             }
         },
         {

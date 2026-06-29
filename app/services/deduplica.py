@@ -56,7 +56,7 @@ async def cerca_duplicato_fattura(
     # Match 1: hash file (certezza assoluta)
     if hash_file:
         existing = await coll.find_one(
-            {"hash_file": hash_file, "hash_file": {"$ne": None}},
+            {"hash_file": hash_file},
             {"_id": 0, "id": 1, "invoice_key": 1, "fornitore_denominazione": 1}
         )
         if existing:

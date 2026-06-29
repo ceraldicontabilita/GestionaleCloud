@@ -351,7 +351,7 @@ async def get_fornitori_da_aggiornare(
     
     # Fornitori con P.IVA valida (11 cifre) e senza comune popolato
     fornitori = await db["fornitori"].find({
-        "partita_iva": {"$exists": True, "$ne": None, "$ne": ""},
+        "partita_iva": {"$exists": True, "$nin": [None, ""]},
         "$or": [
             {"comune": {"$exists": False}},
             {"comune": None},

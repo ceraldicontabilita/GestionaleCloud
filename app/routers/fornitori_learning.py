@@ -68,13 +68,13 @@ async def get_learning_stats() -> Dict[str, Any]:
     # Conta fatture
     totale_fatture = await db["invoices"].count_documents({})
     fatture_classificate = await db["invoices"].count_documents({
-        "centro_costo_id": {"$exists": True, "$ne": None, "$ne": ""}
+        "centro_costo_id": {"$exists": True, "$nin": [None, ""]}
     })
     
     # Conta F24
     totale_f24 = await db["f24_unificato"].count_documents({})
     f24_classificati = await db["f24_unificato"].count_documents({
-        "centro_costo_id": {"$exists": True, "$ne": None, "$ne": ""}
+        "centro_costo_id": {"$exists": True, "$nin": [None, ""]}
     })
     
     perc_fatture = round(fatture_classificate / max(totale_fatture, 1) * 100, 1)
@@ -125,7 +125,7 @@ async def fornitori_non_classificati(limit: int = 50) -> Dict[str, Any]:
     pipeline = [
         {"$match": {
             "centro_costo_nome": "Altri costi non classificati",
-            "supplier_name": {"$ne": None, "$ne": ""}
+            "supplier_name": {"$nin": [None, ""]}
         }},
         {"$group": {
             "_id": "$supplier_name",
@@ -648,7 +648,7 @@ async def f24_statistiche() -> Dict[str, Any]:
     totale = await db["f24_unificato"].count_documents({"status": {"$ne": "eliminato"}})
     classificati = await db["f24_unificato"].count_documents({
         "status": {"$ne": "eliminato"},
-        "centro_costo_id": {"$exists": True, "$ne": None, "$ne": ""}
+        "centro_costo_id": {"$exists": True, "$nin": [None, ""]}
     })
     
     # Aggregazione per centro di costo

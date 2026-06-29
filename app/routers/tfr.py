@@ -1010,7 +1010,7 @@ async def candidati_banca_per_acconto(acconto_id: str) -> Dict[str, Any]:
         "data_contabile_obj": {"$gte": data_min, "$lte": data_max},
         # Esclude movimenti già usati per altri acconti
         "$nor": [
-            {"acconto_id": {"$exists": True, "$ne": None, "$ne": ""}},
+            {"acconto_id": {"$exists": True, "$nin": [None, ""]}},
         ],
     }
 

@@ -854,6 +854,76 @@ async def upload_fattura_xml(file: UploadFile = File(...)) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(e))
 
 
+async def process_xml_bytes(db, content: bytes, filename: str, source: str = "xml_upload") -> Dict[str, Any]:
+    """Pipeline CONDIVISA per importare una singola fattura XML dai suoi bytes.
+
+    Usata sia dall'upload bulk (`/upload-xml-bulk`) sia dall'ingest Google Drive,
+    per non duplicare la logica di decodifica/parse/dedup/import.
+
+    Ritorna un dict con `status` in {"imported", "duplicate", "error"}.
+    """
+    # 1. Decodifica (prova più encoding)
+    xml_content = None
+    for enc in ('utf-8', 'utf-8-sig', 'latin-1', 'iso-8859-1'):
+        try:
+            xml_content = content.decode(enc)
+            break
+        except (UnicodeDecodeError, LookupError):
+            continue
+    if not xml_content:
+        return {"status": "error", "filename": filename, "error": "Decodifica fallita"}
+
+    # 2. Parse fattura elettronica
+    parsed = parse_fattura_xml(xml_content)
+    if parsed.get("error"):
+        return {"status": "error", "filename": filename, "error": parsed["error"]}
+
+    # 3. Dedup tramite invoice_key
+    invoice_key = generate_invoice_key(
+        parsed.get("invoice_number", ""),
+        parsed.get("supplier_vat", ""),
+        parsed.get("invoice_date", ""),
+    )
+    if await db[Collections.INVOICES].find_one({"invoice_key": invoice_key}):
+        return {"status": "duplicate", "filename": filename,
+                "invoice_number": parsed.get("invoice_number")}
+
+    # 4. Fornitore (crea se nuovo) + metodo pagamento
+    supplier_result = await ensure_supplier_exists(db, parsed)
+
+    # 5. Documento fattura + insert
+    invoice = {
+        "id": str(uuid.uuid4()),
+        "invoice_key": invoice_key,
+        "supplier_id": supplier_result.get("supplier_id"),
+        "invoice_number": parsed.get("invoice_number", ""),
+        "invoice_date": parsed.get("invoice_date", ""),
+        "supplier_name": parsed.get("supplier_name", ""),
+        "supplier_vat": parsed.get("supplier_vat", ""),
+        "total_amount": float(parsed.get("total_amount", 0) or 0),
+        "imponibile": float(parsed.get("imponibile", 0) or 0),
+        "iva": float(parsed.get("iva", 0) or 0),
+        "linee": parsed.get("linee", []),
+        "riepilogo_iva": parsed.get("riepilogo_iva", []),
+        "metodo_pagamento": supplier_result.get("metodo_pagamento") or "bonifico",
+        "status": "imported",
+        "source": source,
+        "filename": filename,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db[Collections.INVOICES].insert_one(invoice.copy())
+
+    # 6. Auto-popola magazzino (fail-safe)
+    try:
+        await auto_populate_warehouse_from_invoice(db, parsed, invoice["id"])
+    except Exception:
+        pass
+
+    return {"status": "imported", "filename": filename,
+            "invoice_number": parsed.get("invoice_number"),
+            "supplier": parsed.get("supplier_name"), "id": invoice["id"]}
+
+
 @router.post("/upload-xml-bulk")
 @handle_errors
 async def upload_fatture_xml_bulk(files: List[UploadFile] = File(...)) -> Dict[str, Any]:
@@ -897,91 +967,28 @@ async def upload_fatture_xml_bulk(files: List[UploadFile] = File(...)) -> Dict[s
     
     results["total"] = len(xml_files)
     
-    # Processa tutti gli XML
+    # Processa tutti gli XML con la pipeline condivisa (vedi process_xml_bytes)
     for xml_file in xml_files:
         filename = xml_file["filename"]
-        content = xml_file["content"]
-        
-        try:
-            # Decodifica XML
-            xml_content = None
-            for enc in ['utf-8', 'utf-8-sig', 'latin-1', 'iso-8859-1']:
-                try:
-                    xml_content = content.decode(enc)
-                    break
-                except (UnicodeDecodeError, LookupError):
-                    continue
-            
-            if not xml_content:
-                results["errors"].append({"filename": filename, "error": "Decodifica fallita"})
-                results["failed"] += 1
-                continue
-            
-            parsed = parse_fattura_xml(xml_content)
-            if parsed.get("error"):
-                results["errors"].append({"filename": filename, "error": parsed["error"]})
-                results["failed"] += 1
-                continue
-            
-            invoice_key = generate_invoice_key(
-                parsed.get("invoice_number", ""),
-                parsed.get("supplier_vat", ""),
-                parsed.get("invoice_date", "")
-            )
-            
-            if await db[Collections.INVOICES].find_one({"invoice_key": invoice_key}):
-                results["duplicates"].append({
-                    "filename": filename,
-                    "invoice_number": parsed.get("invoice_number")
-                })
-                results["skipped_duplicates"] += 1
-                continue
-            
-            # Assicura che il fornitore esista nel database (crea se nuovo + alert)
-            supplier_result = await ensure_supplier_exists(db, parsed)
-            supplier_id = supplier_result.get("supplier_id")
-            supplier_created = supplier_result.get("supplier_created", False)
-            metodo_pagamento = supplier_result.get("metodo_pagamento") or "bonifico"
-            
-            invoice = {
-                "id": str(uuid.uuid4()),
-                "invoice_key": invoice_key,
-                "supplier_id": supplier_id,
-                "invoice_number": parsed.get("invoice_number", ""),
-                "invoice_date": parsed.get("invoice_date", ""),
-                "supplier_name": parsed.get("supplier_name", ""),
-                "supplier_vat": parsed.get("supplier_vat", ""),
-                "total_amount": float(parsed.get("total_amount", 0) or 0),
-                "imponibile": float(parsed.get("imponibile", 0) or 0),
-                "iva": float(parsed.get("iva", 0) or 0),
-                "linee": parsed.get("linee", []),
-                "riepilogo_iva": parsed.get("riepilogo_iva", []),
-                "metodo_pagamento": metodo_pagamento,
-                "status": "imported",
-                "source": "xml_bulk_upload",
-                "filename": filename,
-                "created_at": datetime.now(timezone.utc).isoformat()
-            }
-            
-            await db[Collections.INVOICES].insert_one(invoice.copy())
-            
-            try:
-                warehouse_result = await auto_populate_warehouse_from_invoice(db, parsed, invoice["id"])
-            except Exception:
-                warehouse_result = {}
-            
+        res = await process_xml_bytes(db, xml_file["content"], filename, source="xml_bulk_upload")
+        status = res.get("status")
+        if status == "imported":
             results["success"].append({
                 "filename": filename,
-                "invoice_number": parsed.get("invoice_number"),
-                "supplier": parsed.get("supplier_name")
+                "invoice_number": res.get("invoice_number"),
+                "supplier": res.get("supplier"),
             })
             results["imported"] += 1
-            
-        except Exception as e:
-            logger.error(f"Errore {filename}: {e}")
-            results["errors"].append({"filename": filename, "error": str(e)})
+        elif status == "duplicate":
+            results["duplicates"].append({
+                "filename": filename,
+                "invoice_number": res.get("invoice_number"),
+            })
+            results["skipped_duplicates"] += 1
+        else:
+            results["errors"].append({"filename": filename, "error": res.get("error", "errore")})
             results["failed"] += 1
-    
+
     return results
 
 

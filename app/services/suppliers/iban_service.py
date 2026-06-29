@@ -38,7 +38,7 @@ async def estrai_iban_da_fatture(db, piva: str) -> Optional[str]:
     fattura_con_iban = await db["invoices"].find_one(
         {
             "$or": [{"cedente_piva": piva}, {"supplier_vat": piva}],
-            "pagamento.iban": {"$exists": True, "$ne": "", "$ne": None}
+            "pagamento.iban": {"$exists": True, "$nin": ["", None]}
         },
         {"pagamento.iban": 1}
     )
@@ -187,5 +187,5 @@ async def trova_fornitori_senza_iban(db, limit: int = 500) -> List[Dict]:
             {"iban": ""},
             {"iban": {"$exists": False}}
         ],
-        "partita_iva": {"$exists": True, "$ne": "", "$ne": None}
+        "partita_iva": {"$exists": True, "$nin": ["", None]}
     }, {"_id": 0, "id": 1, "partita_iva": 1, "ragione_sociale": 1, "denominazione": 1}).to_list(limit)

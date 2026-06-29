@@ -32,8 +32,8 @@ async def elimina_duplicati_fatture() -> Dict[str, Any]:
     # 1. Trova duplicati
     pipeline = [
         {"$match": {
-            "invoice_number": {"$ne": None, "$ne": ""},
-            "supplier_name": {"$ne": None, "$ne": ""}
+            "invoice_number": {"$nin": [None, ""]},
+            "supplier_name": {"$nin": [None, ""]}
         }},
         {"$group": {
             "_id": {

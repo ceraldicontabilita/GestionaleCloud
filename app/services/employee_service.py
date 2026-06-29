@@ -3,7 +3,7 @@ Employee service.
 Business logic for employee management, payslips, and health booklets.
 """
 from typing import List, Dict, Any, Optional
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 import logging
 
 from app.repositories.employee_repository import (

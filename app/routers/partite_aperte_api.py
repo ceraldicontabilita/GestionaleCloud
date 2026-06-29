@@ -82,7 +82,7 @@ async def partite_scadute(
     partite = await db[COLL].find(
         {
             "stato": {"$in": ["aperta", "parziale"]},
-            "data_scadenza": {"$lt": data_limite, "$ne": None, "$ne": ""}
+            "data_scadenza": {"$lt": data_limite, "$nin": [None, ""]}
         },
         {"_id": 0}
     ).sort("data_scadenza", 1).to_list(100)

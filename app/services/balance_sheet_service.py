@@ -3,7 +3,7 @@ Balance Sheet Service
 Business logic per bilanci e report contabili
 """
 from typing import Dict, Any
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 import logging
 from io import BytesIO
 

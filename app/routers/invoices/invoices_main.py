@@ -115,7 +115,7 @@ async def get_anni_disponibili() -> Dict[str, Any]:
     
     # Estrai anni da invoice_date (fatture XML complete)
     pipeline_invoice = [
-        {"$match": {"invoice_date": {"$exists": True, "$ne": None, "$ne": ""}}},
+        {"$match": {"invoice_date": {"$exists": True, "$nin": [None, ""]}}},
         {"$project": {"anno": {"$substr": ["$invoice_date", 0, 4]}}},
         {"$group": {"_id": "$anno"}}
     ]
@@ -131,7 +131,7 @@ async def get_anni_disponibili() -> Dict[str, Any]:
     
     # Estrai anni anche da data_documento (fatture provvisorie da Aruba)
     pipeline_data_doc = [
-        {"$match": {"data_documento": {"$exists": True, "$ne": None, "$ne": ""}}},
+        {"$match": {"data_documento": {"$exists": True, "$nin": [None, ""]}}},
         {"$project": {"anno": {"$substr": ["$data_documento", 0, 4]}}},
         {"$group": {"_id": "$anno"}}
     ]

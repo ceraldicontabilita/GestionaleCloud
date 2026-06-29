@@ -8,6 +8,7 @@ import re
 import base64
 import imaplib
 import email
+import logging
 from email.header import decode_header
 from datetime import datetime, timezone
 from typing import Dict, Any, List
@@ -16,6 +17,7 @@ from fastapi import APIRouter, HTTPException, Query
 from app.database import Database
 from app.utils.error_handler import handle_errors
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # Configurazione email

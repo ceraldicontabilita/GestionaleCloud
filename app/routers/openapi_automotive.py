@@ -245,7 +245,7 @@ async def get_veicoli_da_aggiornare(
     db = Database.get_db()
     
     veicoli = await db.noleggio_veicoli.find({
-        "targa": {"$exists": True, "$ne": None, "$ne": ""},
+        "targa": {"$exists": True, "$nin": [None, ""]},
         "openapi_last_update": {"$exists": False}
     }, {"_id": 0, "id": 1, "targa": 1, "marca": 1, "modello": 1}).limit(limit).to_list(length=limit)
     
