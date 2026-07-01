@@ -13,6 +13,8 @@ import zipfile
 import io
 import re
 
+from pymongo.errors import DuplicateKeyError
+
 from app.database import Database, Collections
 from app.parsers.fattura_elettronica_parser import parse_fattura_xml
 from app.utils.warehouse_helpers import auto_populate_warehouse_from_invoice
@@ -22,10 +24,13 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-async def ensure_supplier_exists(db, parsed_invoice: Dict[str, Any]) -> Dict[str, Any]:
+async def ensure_supplier_exists(db, parsed_invoice: Dict[str, Any], session=None) -> Dict[str, Any]:
     """
     Verifica se il fornitore esiste. Se sì, aggiorna i campi anagrafici mancanti.
     Se non esiste, lo crea automaticamente con i dati dalla fattura XML.
+
+    session: sessione Mongo opzionale, per partecipare a una transazione del
+    chiamante (es. process_fattura_to_db). None per gli altri chiamanti.
     """
     supplier_vat = parsed_invoice.get("supplier_vat") or ""
     supplier_name = parsed_invoice.get("supplier_name") or "Fornitore Sconosciuto"
@@ -48,7 +53,8 @@ async def ensure_supplier_exists(db, parsed_invoice: Dict[str, Any]) -> Dict[str
             {"partita_iva": supplier_vat},
             {"piva": supplier_vat}
         ]},
-        {"_id": 0}
+        {"_id": 0},
+        session=session
     )
 
     # Se non trovato per P.IVA, cerca per denominazione/nome
@@ -61,7 +67,8 @@ async def ensure_supplier_exists(db, parsed_invoice: Dict[str, Any]) -> Dict[str
                 {"ragione_sociale": {"$regex": f"^{safe_name}", "$options": "i"}},
                 {"denominazione": {"$regex": f"^{safe_name}", "$options": "i"}}
             ]},
-            {"_id": 0}
+            {"_id": 0},
+            session=session
         )
 
     fornitore_data = parsed_invoice.get("fornitore") or {}
@@ -94,7 +101,8 @@ async def ensure_supplier_exists(db, parsed_invoice: Dict[str, Any]) -> Dict[str
             update_data["dati_incompleti"] = False
             await db[Collections.SUPPLIERS].update_one(
                 {"id": existing["id"]},
-                {"$set": update_data}
+                {"$set": update_data},
+                session=session
             )
             result["supplier_updated"] = True
             logger.info(f"Fornitore {supplier_name} aggiornato con dati XML: {list(update_data.keys())}")
@@ -125,7 +133,7 @@ async def ensure_supplier_exists(db, parsed_invoice: Dict[str, Any]) -> Dict[str
         "note": "Creato automaticamente da fattura — configurare metodo pagamento"
     }
 
-    await db[Collections.SUPPLIERS].insert_one(new_supplier.copy())
+    await db[Collections.SUPPLIERS].insert_one(new_supplier.copy(), session=session)
     result["supplier_created"] = True
     result["supplier_id"] = new_supplier["id"]
     logger.info(f"Nuovo fornitore creato: {supplier_name} (P.IVA: {supplier_vat})")
@@ -145,7 +153,7 @@ async def ensure_supplier_exists(db, parsed_invoice: Dict[str, Any]) -> Dict[str
         "created_at": datetime.now(timezone.utc).isoformat(),
         "link": f"/fornitori?piva={supplier_vat}"
     }
-    await db["alerts"].insert_one(alert.copy())
+    await db["alerts"].insert_one(alert.copy(), session=session)
     result["alert_created"] = True
 
     return result
@@ -155,147 +163,187 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
     """
     Processa e salva una fattura parsata nel database.
     Usata da documenti.py per l'import automatico.
-    
+
+    Fornitore, fattura e (se generata) prima nota vengono scritti in
+    un'unica transazione Mongo: se un passaggio fallisce a metà, tutto viene
+    annullato invece di lasciare stato incoerente (es. fornitore creato ma
+    fattura mai salvata, o prima nota orfana senza il link sulla fattura).
+    Il client di test in sandbox (mongomock) non supporta le sessioni: in
+    quel caso si procede senza transazione, come prima.
+
     Args:
         db: Database connection
         parsed: Dati fattura parsati da parse_fattura_xml
         filename: Nome file originale
-        
+
     Returns:
         Dict con dati fattura salvata
     """
     if parsed.get("error"):
         raise HTTPException(status_code=400, detail=parsed["error"])
-    
+
     invoice_key = generate_invoice_key(
         parsed.get("invoice_number", ""),
         parsed.get("supplier_vat", ""),
         parsed.get("invoice_date", "")
     )
-    
-    # Controlla duplicati
-    existing = await db[Collections.INVOICES].find_one({"invoice_key": invoice_key})
-    if existing:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Fattura duplicata: {parsed.get('invoice_number')} del fornitore {parsed.get('supplier_name', 'N/A')} esiste già"
+
+    duplicate_detail = (
+        f"Fattura duplicata: {parsed.get('invoice_number')} del fornitore "
+        f"{parsed.get('supplier_name', 'N/A')} esiste già"
+    )
+
+    async def _do_import(session) -> Dict[str, Any]:
+        # Controlla duplicati (l'indice unico su invoice_key resta la
+        # garanzia ultima contro una race fra due transazioni concorrenti)
+        existing = await db[Collections.INVOICES].find_one(
+            {"invoice_key": invoice_key}, session=session
         )
-    
-    # Assicura che il fornitore esista
-    supplier_result = await ensure_supplier_exists(db, parsed)
-    supplier_id = supplier_result.get("supplier_id")
-    # REGOLA: metodo pagamento SOLO dal fornitore. Se non definito → sospesa (provvisorio)
-    metodo_pagamento = supplier_result.get("metodo_pagamento") or "sospesa"
-    
-    # Calcola data scadenza
-    data_fattura_str = parsed.get("invoice_date", "")
-    data_scadenza = None
-    if data_fattura_str:
-        try:
-            data_fattura = datetime.strptime(data_fattura_str, "%Y-%m-%d")
-            data_scadenza = (data_fattura + timedelta(days=30)).strftime("%Y-%m-%d")
-        except (ValueError, TypeError):
-            pass
-    
-    # Crea documento fattura
-    invoice = {
-        "id": str(uuid.uuid4()),
-        "invoice_key": invoice_key,
-        "supplier_id": supplier_id,
-        "invoice_number": parsed.get("invoice_number", ""),
-        "invoice_date": parsed.get("invoice_date", ""),
-        "data_scadenza": data_scadenza,
-        "tipo_documento": parsed.get("tipo_documento", ""),
-        "supplier_name": parsed.get("supplier_name", ""),
-        "supplier_vat": parsed.get("supplier_vat", ""),
-        "total_amount": parsed.get("total_amount", 0),
-        "imponibile": parsed.get("imponibile", 0),
-        "iva": parsed.get("iva", 0),
-        "divisa": parsed.get("divisa", "EUR"),
-        "fornitore": parsed.get("fornitore", {}),
-        "cliente": parsed.get("cliente", {}),
-        "linee": parsed.get("linee", []),
-        "riepilogo_iva": parsed.get("riepilogo_iva", []),
-        "metodo_pagamento": metodo_pagamento,
-        "status": "imported",
-        "source": "xml_upload",
-        "filename": filename,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "cedente_piva": parsed.get("supplier_vat", ""),
-        "cedente_denominazione": parsed.get("supplier_name", ""),
-        "numero_fattura": parsed.get("invoice_number", ""),
-        "data_fattura": parsed.get("invoice_date", ""),
-        "importo_totale": parsed.get("total_amount", 0),
-        "anno": int(parsed.get("invoice_date", "2024")[:4]) if parsed.get("invoice_date") else 2024,
-        "causali": parsed.get("causali", []),
-        "dati_fatture_collegate": parsed.get("dati_fatture_collegate", []),
-        "dati_ordine_acquisto": parsed.get("dati_ordine_acquisto", []),
-        "tipo_documento_desc": parsed.get("tipo_documento_desc", ""),
-    }
-    
-    await db[Collections.INVOICES].insert_one(invoice.copy())
-    invoice.pop("_id", None)
-    
-    logger.info(f"Fattura importata: {invoice.get('invoice_number')} - {invoice.get('supplier_name')}")
-    
-    # AUTO-REGISTRA in Prima Nota
-    # 1. Se contanti → sempre in cassa
-    # 2. Se banca/assegno/rid/carta → cerca prima nell'estratto conto, se trovato registra
-    # 3. Se misto/sconosciuto → provvisorio
-    if metodo_pagamento and metodo_pagamento not in ['misto', '']:
-        import uuid as _uuid
-        pn_id = str(_uuid.uuid4())
-        is_cassa = metodo_pagamento in ['contanti', 'cassa']
-        
-        if is_cassa:
-            # Contanti → sempre in cassa
-            pn_collection = "prima_nota_cassa"
-            registra = True
-        else:
-            # Banca → cerca nell'estratto conto prima di registrare
-            importo_fatt = invoice.get("total_amount", 0)
-            nome_forn = (invoice.get("supplier_name", "") or "").upper()[:10]
-            ec_query = {"importo": {"$gte": importo_fatt - 1, "$lte": importo_fatt + 1}, "tipo": "uscita"}
-            if nome_forn and len(nome_forn) > 3:
-                ec_query["descrizione"] = {"$regex": nome_forn[:8], "$options": "i"}
-            ec_match = await db["estratto_conto_movimenti"].find_one(ec_query)
-            
-            if ec_match:
-                pn_collection = "prima_nota_banca"
+        if existing:
+            raise HTTPException(status_code=409, detail=duplicate_detail)
+
+        # Assicura che il fornitore esista
+        supplier_result = await ensure_supplier_exists(db, parsed, session=session)
+        supplier_id = supplier_result.get("supplier_id")
+        # REGOLA: metodo pagamento SOLO dal fornitore. Se non definito → sospesa (provvisorio)
+        metodo_pagamento = supplier_result.get("metodo_pagamento") or "sospesa"
+
+        # Calcola data scadenza
+        data_fattura_str = parsed.get("invoice_date", "")
+        data_scadenza = None
+        if data_fattura_str:
+            try:
+                data_fattura = datetime.strptime(data_fattura_str, "%Y-%m-%d")
+                data_scadenza = (data_fattura + timedelta(days=30)).strftime("%Y-%m-%d")
+            except (ValueError, TypeError):
+                pass
+
+        # Crea documento fattura
+        invoice = {
+            "id": str(uuid.uuid4()),
+            "invoice_key": invoice_key,
+            "supplier_id": supplier_id,
+            "invoice_number": parsed.get("invoice_number", ""),
+            "invoice_date": parsed.get("invoice_date", ""),
+            "data_scadenza": data_scadenza,
+            "tipo_documento": parsed.get("tipo_documento", ""),
+            "supplier_name": parsed.get("supplier_name", ""),
+            "supplier_vat": parsed.get("supplier_vat", ""),
+            "total_amount": parsed.get("total_amount", 0),
+            "imponibile": parsed.get("imponibile", 0),
+            "iva": parsed.get("iva", 0),
+            "divisa": parsed.get("divisa", "EUR"),
+            "fornitore": parsed.get("fornitore", {}),
+            "cliente": parsed.get("cliente", {}),
+            "linee": parsed.get("linee", []),
+            "riepilogo_iva": parsed.get("riepilogo_iva", []),
+            "metodo_pagamento": metodo_pagamento,
+            "status": "imported",
+            "source": "xml_upload",
+            "filename": filename,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "cedente_piva": parsed.get("supplier_vat", ""),
+            "cedente_denominazione": parsed.get("supplier_name", ""),
+            "numero_fattura": parsed.get("invoice_number", ""),
+            "data_fattura": parsed.get("invoice_date", ""),
+            "importo_totale": parsed.get("total_amount", 0),
+            "anno": int(parsed.get("invoice_date", "2024")[:4]) if parsed.get("invoice_date") else 2024,
+            "causali": parsed.get("causali", []),
+            "dati_fatture_collegate": parsed.get("dati_fatture_collegate", []),
+            "dati_ordine_acquisto": parsed.get("dati_ordine_acquisto", []),
+            "tipo_documento_desc": parsed.get("tipo_documento_desc", ""),
+        }
+
+        await db[Collections.INVOICES].insert_one(invoice.copy(), session=session)
+        invoice.pop("_id", None)
+
+        logger.info(f"Fattura importata: {invoice.get('invoice_number')} - {invoice.get('supplier_name')}")
+
+        # AUTO-REGISTRA in Prima Nota
+        # 1. Se contanti → sempre in cassa
+        # 2. Se banca/assegno/rid/carta → cerca prima nell'estratto conto, se trovato registra
+        # 3. Se misto/sconosciuto → provvisorio
+        if metodo_pagamento and metodo_pagamento not in ['misto', '']:
+            import uuid as _uuid
+            pn_id = str(_uuid.uuid4())
+            is_cassa = metodo_pagamento in ['contanti', 'cassa']
+
+            if is_cassa:
+                # Contanti → sempre in cassa
+                pn_collection = "prima_nota_cassa"
                 registra = True
-                logger.info(f"  → Pagamento trovato in EC: {ec_match.get('descrizione', '')[:40]}")
             else:
-                # Non trovato in EC → provvisorio
-                registra = False
-                logger.info(f"  → Pagamento NON trovato in EC → provvisorio")
-        
-        if registra:
-            await db[pn_collection].insert_one({
-                "id": pn_id,
-                "data": invoice.get("invoice_date", ""),
-                "tipo": "uscita",
-                "categoria": "Fatture",
-                "descrizione": f"Fatt. {invoice.get('invoice_number','')} - {invoice.get('supplier_name','')[:30]}",
-                "importo": invoice.get("total_amount", 0),
-                "fattura_id": invoice["id"],
-                "riferimento": f"FATT-{invoice['id']}",
-                "source": "auto_import",
-                "created_at": datetime.now(timezone.utc).isoformat(),
-            })
-            
-            await db[Collections.INVOICES].update_one(
-                {"id": invoice["id"]},
-                {"$set": {
-                    "prima_nota_id": pn_id,
-                    "prima_nota_tipo": "cassa" if is_cassa else "banca",
-                    "prima_nota_cassa_id": pn_id if is_cassa else None,
-                    "prima_nota_banca_id": pn_id if not is_cassa else None,
-                    "stato_pagamento": "pagata",
-                }}
-            )
-            logger.info(f"  → Auto-registrata in {'CASSA' if is_cassa else 'BANCA'} (metodo: {metodo_pagamento})")
+                # Banca → cerca nell'estratto conto prima di registrare
+                importo_fatt = invoice.get("total_amount", 0)
+                nome_forn = (invoice.get("supplier_name", "") or "").upper()[:10]
+                ec_query = {"importo": {"$gte": importo_fatt - 1, "$lte": importo_fatt + 1}, "tipo": "uscita"}
+                if nome_forn and len(nome_forn) > 3:
+                    ec_query["descrizione"] = {"$regex": nome_forn[:8], "$options": "i"}
+                ec_match = await db["estratto_conto_movimenti"].find_one(ec_query, session=session)
+
+                if ec_match:
+                    pn_collection = "prima_nota_banca"
+                    registra = True
+                    logger.info(f"  → Pagamento trovato in EC: {ec_match.get('descrizione', '')[:40]}")
+                else:
+                    # Non trovato in EC → provvisorio
+                    registra = False
+                    logger.info(f"  → Pagamento NON trovato in EC → provvisorio")
+
+            if registra:
+                await db[pn_collection].insert_one({
+                    "id": pn_id,
+                    "data": invoice.get("invoice_date", ""),
+                    "tipo": "uscita",
+                    "categoria": "Fatture",
+                    "descrizione": f"Fatt. {invoice.get('invoice_number','')} - {invoice.get('supplier_name','')[:30]}",
+                    "importo": invoice.get("total_amount", 0),
+                    "fattura_id": invoice["id"],
+                    "riferimento": f"FATT-{invoice['id']}",
+                    "source": "auto_import",
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                }, session=session)
+
+                await db[Collections.INVOICES].update_one(
+                    {"id": invoice["id"]},
+                    {"$set": {
+                        "prima_nota_id": pn_id,
+                        "prima_nota_tipo": "cassa" if is_cassa else "banca",
+                        "prima_nota_cassa_id": pn_id if is_cassa else None,
+                        "prima_nota_banca_id": pn_id if not is_cassa else None,
+                        "stato_pagamento": "pagata",
+                    }},
+                    session=session
+                )
+                logger.info(f"  → Auto-registrata in {'CASSA' if is_cassa else 'BANCA'} (metodo: {metodo_pagamento})")
+
+        return {"invoice": invoice, "supplier_id": supplier_id, "supplier_result": supplier_result}
+
+    try:
+        session = await db.client.start_session()
+    except NotImplementedError:
+        # Client di test senza supporto sessioni (es. mongomock) → nessuna transazione
+        session = None
+
+    try:
+        if session is not None:
+            async with session:
+                outcome = await session.with_transaction(_do_import)
+        else:
+            outcome = await _do_import(None)
+    except DuplicateKeyError:
+        raise HTTPException(status_code=409, detail=duplicate_detail)
+
+    invoice = outcome["invoice"]
+    supplier_id = outcome["supplier_id"]
+    supplier_result = outcome["supplier_result"]
+    metodo_pagamento = invoice.get("metodo_pagamento")
+    data_scadenza = invoice.get("data_scadenza")
 
     # --- EVENT BUS: propaga evento fattura creata (upload manuale) ---
+    # Fuori dalla transazione per design: è già gestita come fail-safe/
+    # best-effort (try/except sotto) e non deve bloccare né essere
+    # annullata se l'import principale (già commesso) è andato a buon fine.
     # Attiva i 4 handler su FATTURA_CREATED: crea_partita, alert_fornitore,
     # audit, righe_magazzino. Fail-safe per non bloccare l'import.
     try:
