@@ -21,6 +21,23 @@ import uuid
 logger = logging.getLogger(__name__)
 
 
+async def _check_coerenza_pos(db, corr_doc: Dict[str, Any]) -> None:
+    """
+    Confronta l'elettronico dichiarato dal corrispettivo con l'accredito
+    Nexi in banca, segnalando eventuali differenze. Fail-safe: un errore qui
+    non deve mai bloccare l'import del corrispettivo (già scritto in Prima
+    Nota prima di questa chiamata).
+    """
+    try:
+        from app.handlers.corrispettivi import handler_check_coerenza_pos
+        await handler_check_coerenza_pos({
+            "data": corr_doc.get("data", ""),
+            "totale_elettronico": corr_doc.get("pagato_elettronico", 0),
+        }, db)
+    except Exception:
+        logger.exception(f"[Corrispettivi] Errore check coerenza POS per {corr_doc.get('data')}")
+
+
 def _to_float(v: Any) -> float:
     try:
         return float(v or 0)
@@ -299,6 +316,8 @@ async def ingest_corrispettivo_parsed(
             }}
         )
 
+        await _check_coerenza_pos(db, corr_doc)
+
         return {
             "action": "updated",
             "corrispettivo_id": corrispettivo_id,
@@ -328,6 +347,8 @@ async def ingest_corrispettivo_parsed(
 
     logger.info(f"[Corrispettivi] Nuovo importato data={data_str} totale={totale} "
                 f"cassa={pn.get('prima_nota_cassa_id')} banca={pn.get('prima_nota_banca_id')}")
+
+    await _check_coerenza_pos(db, corr_doc)
 
     return {
         "action": "created",

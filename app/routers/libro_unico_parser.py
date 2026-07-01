@@ -685,6 +685,7 @@ async def import_libro_unico(
             scadenze_create = 0
             riconciliati = 0
             tfr_aggiornati = 0
+            salari_prima_nota = 0
             errori = []
             
             for i, dip_data in enumerate(parsed["dipendenti"]):
@@ -844,31 +845,38 @@ async def import_libro_unico(
                         aggiornati += 1
 
                     # ========================================================
-                    # STEP 3b: TFR — usa SOLO i valori già stampati sulla busta
-                    # paga (colonna T.F.R. "Quota anno" / "Fondo al 31/12" /
-                    # "Rivalutazione", vedi estrazione sopra), NESSUN calcolo.
-                    # "Quota anno" è già cumulativa per l'anno in corso, quindi
-                    # si fa upsert per (dipendente, anno) con l'ultima busta
-                    # letta, non un insert per mese (altrimenti sommare mesi
-                    # diversi duplicherebbe l'importo già cumulativo).
+                    # STEP 3b: TFR + PRIMA NOTA SALARI — usa SOLO i valori già
+                    # presenti sulla busta paga (netto in busta, colonna T.F.R.
+                    # "Quota anno"/"Fondo al 31/12"/"Rivalutazione" estratta
+                    # sopra), NESSUN calcolo nostro. "Quota anno" è già
+                    # cumulativa per l'anno in corso, quindi il TFR fa upsert
+                    # per (dipendente, anno) con l'ultima busta letta, non un
+                    # insert per mese (altrimenti sommare mesi diversi
+                    # duplicherebbe un importo già cumulativo).
                     # ========================================================
                     if periodo_parsed:
-                        tfr_raw = busta.get("tfr", {})
-                        quota_anno_str = tfr_raw.get("quota_anno")
-                        if quota_anno_str:
-                            quota_anno = parse_euro_amount(quota_anno_str)
-                            fondo_31_12 = parse_euro_amount(tfr_raw.get("fondo_31_12", ""))
-                            rivalutazione_tfr = parse_euro_amount(tfr_raw.get("rivalutazione", ""))
-                            # Totale fondo = chiusura anno precedente + quota maturata
-                            # nell'anno corrente (stessa formula stampata sul cedolino,
-                            # non un'ipotesi nostra).
-                            totale_accantonamento = round(fondo_31_12 + quota_anno, 2)
-
-                            dipendente_doc = await db[Collections.EMPLOYEES].find_one(
-                                {"codice_fiscale": cf}, {"id": 1}
+                        dipendente_doc = await db[Collections.EMPLOYEES].find_one(
+                            {"codice_fiscale": cf}, {"id": 1}
+                        )
+                        if not dipendente_doc:
+                            logger.warning(
+                                f"TFR/Prima Nota Salari: nessun dipendente in "
+                                f"'{Collections.EMPLOYEES}' per CF {cf} — dati busta paga non collegati"
                             )
-                            if dipendente_doc:
-                                dipendente_id = dipendente_doc["id"]
+                        else:
+                            dipendente_id = dipendente_doc["id"]
+
+                            tfr_raw = busta.get("tfr", {})
+                            quota_anno_str = tfr_raw.get("quota_anno")
+                            if quota_anno_str:
+                                quota_anno = parse_euro_amount(quota_anno_str)
+                                fondo_31_12 = parse_euro_amount(tfr_raw.get("fondo_31_12", ""))
+                                rivalutazione_tfr = parse_euro_amount(tfr_raw.get("rivalutazione", ""))
+                                # Totale fondo = chiusura anno precedente + quota
+                                # maturata nell'anno corrente (stessa formula
+                                # stampata sul cedolino, non un'ipotesi nostra).
+                                totale_accantonamento = round(fondo_31_12 + quota_anno, 2)
+
                                 await db["tfr_accantonamenti"].update_one(
                                     {"dipendente_id": dipendente_id, "anno": anno},
                                     {"$set": {
@@ -893,11 +901,25 @@ async def import_libro_unico(
                                     }}
                                 )
                                 tfr_aggiornati += 1
-                            else:
-                                logger.warning(
-                                    f"TFR: nessun dipendente in '{Collections.EMPLOYEES}' per CF {cf} "
-                                    f"— dato TFR della busta paga non collegato"
-                                )
+
+                            if netto > 0:
+                                try:
+                                    from app.handlers.prima_nota import handler_prima_nota_cedolino
+                                    pn_result = await handler_prima_nota_cedolino({
+                                        "cedolino_id": busta_id,
+                                        "dipendente_id": dipendente_id,
+                                        "nome_dipendente": cognome_nome,
+                                        "codice_fiscale": cf,
+                                        "netto": netto,
+                                        "mese": mese,
+                                        "anno": anno,
+                                    }, db)
+                                    if pn_result.get("movimento_id"):
+                                        salari_prima_nota += 1
+                                except Exception:
+                                    logger.exception(
+                                        f"Prima Nota Salari: errore su {cognome_nome} {periodo_iso}"
+                                    )
 
                     # ========================================================
                     # STEP 4: SCADENZA STIPENDIO (scadenze)
@@ -965,7 +987,8 @@ async def import_libro_unico(
                     f"Workflow LUL completato: {importati} buste nuove, {aggiornati} aggiornate, "
                     f"{anagrafica_aggiornata} anagrafiche, {presenze_salvate} presenze, "
                     f"{scadenze_create} scadenze, {riconciliati} pagamenti riconciliati, "
-                    f"{tfr_aggiornati} accantonamenti TFR aggiornati"
+                    f"{tfr_aggiornati} accantonamenti TFR aggiornati, "
+                    f"{salari_prima_nota} movimenti Prima Nota Salari"
                 ),
                 "data": {
                     "totale_dipendenti": parsed["totale_dipendenti"],
@@ -976,6 +999,7 @@ async def import_libro_unico(
                     "scadenze_create": scadenze_create,
                     "pagamenti_riconciliati": riconciliati,
                     "tfr_aggiornati": tfr_aggiornati,
+                    "salari_prima_nota": salari_prima_nota,
                     "errori": errori,
                     "riepilogo": parsed["riepilogo"]
                 }
