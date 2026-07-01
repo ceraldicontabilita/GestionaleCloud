@@ -11,7 +11,6 @@ ARCHITETTURA:
 from .auth_service import AuthService
 from .invoice_service import InvoiceService
 from .invoice_service_v2 import InvoiceServiceV2, get_invoice_service_v2
-from .supplier_service import SupplierService
 from .warehouse_service import WarehouseService
 from .accounting_service import AccountingService
 from .accounting_entries_service import AccountingEntriesService
@@ -31,7 +30,6 @@ __all__ = [
     "InvoiceService",
     "InvoiceServiceV2",
     "get_invoice_service_v2",
-    "SupplierService",
     "WarehouseService",
     "AccountingService",
     "AccountingEntriesService",
