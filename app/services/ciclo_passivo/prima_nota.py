@@ -32,10 +32,11 @@ async def genera_scrittura_prima_nota(
     Returns:
         ID della scrittura creata
     """
-    # Estrai importi
-    imponibile = float(fattura.get("total_amount") or fattura.get("imponibile") or 0)
+    # Estrai importi (iva/totale prima: imponibile deve derivarne, mai
+    # essere confuso col totale lordo quando "imponibile" non è valorizzato)
     iva = float(fattura.get("iva_totale") or fattura.get("iva") or 0)
-    totale = float(fattura.get("total_amount") or (imponibile + iva))
+    totale = float(fattura.get("total_amount") or 0)
+    imponibile = float(fattura.get("imponibile") or (totale - iva))
     
     # Se totale già include IVA, calcola imponibile
     if iva == 0 and totale > 0:

@@ -23,17 +23,21 @@ async def get_current_user(
 ) -> Dict[str, Any]:
     """
     Dependency to get current authenticated user from JWT token.
-    Returns default user when auth is disabled (no token provided).
+
+    In produzione ogni richiesta che arriva qui è già passata per
+    AuthenticationMiddleware (safety net globale su tutte le rotte /api/*
+    non whitelistate), quindi credentials è già garantito non-None. Questo
+    controllo fallisce chiuso (401) invece di restituire un utente admin
+    fittizio, così una futura rotta whitelistata che usi questa dependency
+    non ottiene accesso admin gratuito senza token.
     """
-    # Auth bypass: return default user when no credentials provided
     if credentials is None:
-        return {
-            "user_id": "default_user",
-            "email": "admin@erp.local",
-            "name": "Amministratore",
-            "role": "admin"
-        }
-    
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
+
     token = credentials.credentials
     
     try:
