@@ -25,57 +25,66 @@ export function UploadStatusBar() {
   // Versione minimizzata - solo badge
   if (minimized) {
     return (
-      <button
-        onClick={() => setMinimized(false)}
-        style={{
-          position: 'fixed',
-          bottom: 20,
-          right: 20,
-          width: 56,
-          height: 56,
-          borderRadius: '50%',
-          background: hasActiveUploads
-            ? '#3b82f6'
-            : completedUploads.length > 0
-              ? '#10b981'
-              : '#ef4444',
-          border: 'none',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: 'white',
-          fontSize: 20,
-          zIndex: 9999,
-          animation: hasActiveUploads ? 'pulse 2s infinite' : 'none',
-        }}
-      >
-        {hasActiveUploads ? '⏳' : completedUploads.length > 0 ? '✓' : '!'}
-        <span
+      <>
+        <style>{`
+          @media (max-width: 768px) {
+            .upload-status-fixed { bottom: 84px !important; }
+          }
+        `}</style>
+        <button
+          onClick={() => setMinimized(false)}
+          className="upload-status-fixed"
           style={{
-            position: 'absolute',
-            top: -4,
-            right: -4,
-            background: '#ef4444',
-            color: 'white',
+            position: 'fixed',
+            bottom: 20,
+            right: 20,
+            width: 56,
+            height: 56,
             borderRadius: '50%',
-            width: 20,
-            height: 20,
-            fontSize: 11,
+            background: hasActiveUploads
+              ? '#3b82f6'
+              : completedUploads.length > 0
+                ? '#10b981'
+                : '#ef4444',
+            border: 'none',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+            cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
+            color: 'white',
+            fontSize: 20,
+            zIndex: 9999,
+            animation: hasActiveUploads ? 'pulse 2s infinite' : 'none',
           }}
         >
-          {uploads.length}
-        </span>
-      </button>
+          {hasActiveUploads ? '⏳' : completedUploads.length > 0 ? '✓' : '!'}
+          <span
+            style={{
+              position: 'absolute',
+              top: -4,
+              right: -4,
+              background: '#ef4444',
+              color: 'white',
+              borderRadius: '50%',
+              width: 20,
+              height: 20,
+              fontSize: 11,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            {uploads.length}
+          </span>
+        </button>
+      </>
     );
   }
 
   return (
     <div
+      className="upload-status-fixed"
       style={{
         position: 'fixed',
         bottom: 20,
@@ -98,6 +107,9 @@ export function UploadStatusBar() {
         @keyframes progress-stripe {
           0% { background-position: 0 0; }
           100% { background-position: 40px 0; }
+        }
+        @media (max-width: 768px) {
+          .upload-status-fixed { bottom: 84px !important; }
         }
       `}</style>
 

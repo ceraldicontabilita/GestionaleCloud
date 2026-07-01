@@ -111,44 +111,63 @@ export default function ChatIntelligente() {
 
   if (!isOpen) {
     return (
-      <button
-        onClick={() => setIsOpen(true)}
-        data-testid="chat-toggle"
-        style={{
-          position: 'fixed',
-          bottom: 24,
-          right: 24,
-          width: 60,
-          height: 60,
-          borderRadius: '50%',
-          background: '#1d4ed8',
-          border: 'none',
-          color: 'white',
-          fontSize: 28,
-          cursor: 'pointer',
-          boxShadow: '0 4px 20px rgba(99, 102, 241, 0.4)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          transition: 'transform 0.2s, box-shadow 0.2s',
-          zIndex: 1000,
-        }}
-        onMouseEnter={e => {
-          e.target.style.transform = 'scale(1.1)';
-          e.target.style.boxShadow = '0 6px 24px rgba(99, 102, 241, 0.5)';
-        }}
-        onMouseLeave={e => {
-          e.target.style.transform = 'scale(1)';
-          e.target.style.boxShadow = '0 4px 20px rgba(99, 102, 241, 0.4)';
-        }}
-      >
-        🤖
-      </button>
+      <>
+        <style>{`
+          @media (max-width: 768px) {
+            [data-testid="chat-toggle"] { bottom: 84px !important; }
+          }
+        `}</style>
+        <button
+          onClick={() => setIsOpen(true)}
+          data-testid="chat-toggle"
+          style={{
+            position: 'fixed',
+            bottom: 24,
+            right: 24,
+            width: 60,
+            height: 60,
+            borderRadius: '50%',
+            background: '#1d4ed8',
+            border: 'none',
+            color: 'white',
+            fontSize: 28,
+            cursor: 'pointer',
+            boxShadow: '0 4px 20px rgba(99, 102, 241, 0.4)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            transition: 'transform 0.2s, box-shadow 0.2s',
+            zIndex: 1000,
+          }}
+          onMouseEnter={e => {
+            e.target.style.transform = 'scale(1.1)';
+            e.target.style.boxShadow = '0 6px 24px rgba(99, 102, 241, 0.5)';
+          }}
+          onMouseLeave={e => {
+            e.target.style.transform = 'scale(1)';
+            e.target.style.boxShadow = '0 4px 20px rgba(99, 102, 241, 0.4)';
+          }}
+        >
+          🤖
+        </button>
+      </>
     );
   }
 
   return (
-    <div
+    <>
+      <style>{`
+        @media (max-width: 768px) {
+          [data-testid="chat-widget"] {
+            bottom: 84px !important;
+            left: 8px !important;
+            right: 8px !important;
+            width: auto !important;
+            height: 60vh !important;
+          }
+        }
+      `}</style>
+      <div
       data-testid="chat-widget"
       style={{
         position: 'fixed',
@@ -384,6 +403,7 @@ export default function ChatIntelligente() {
           {isLoading ? '⏳' : '➤'}
         </button>
       </div>
-    </div>
+      </div>
+    </>
   );
 }
