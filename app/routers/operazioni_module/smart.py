@@ -174,13 +174,28 @@ async def riconcilia_manuale(request: RiconciliaManuale) -> Dict[str, Any]:
         fattura = await db.invoices.find_one({"id": request.entita_id})
         if not fattura:
             raise HTTPException(status_code=404, detail="Fattura non trovata")
-        
+
         update_fields["fattura_id"] = request.entita_id
         await db.invoices.update_one(
             {"id": request.entita_id},
             {"$set": {"pagata": True, "movimento_bancario_id": request.movimento_id}}
         )
-        
+
+        # Propaga il pagamento: senza questo evento la partita aperta
+        # collegata (scadenziario) resta "aperta" per sempre, perché la
+        # conferma manuale non passa dal matching automatico che emette
+        # MATCH_CONFERMATO — vedi commento in on_fattura_pagata_risolvi.
+        try:
+            from app.services.event_bus import propagate_event, EventTypes
+            await propagate_event(EventTypes.FATTURA_PAGATA, {
+                "fattura_id": request.entita_id,
+                "importo": movimento.get("importo"),
+                "metodo_pagamento": fattura.get("metodo_pagamento"),
+                "data_pagamento": update_fields["data_riconciliazione"],
+            }, db, source_module="riconciliazione_smart_manuale")
+        except Exception:
+            logger.exception(f"Errore propagazione FATTURA_PAGATA per {request.entita_id}")
+
     elif request.tipo_operazione == "stipendio":
         update_fields["stipendio_id"] = request.entita_id
         
