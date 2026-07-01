@@ -304,17 +304,23 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
                     "created_at": datetime.now(timezone.utc).isoformat(),
                 }, session=session)
 
+                prima_nota_update = {
+                    "prima_nota_id": pn_id,
+                    "prima_nota_tipo": "cassa" if is_cassa else "banca",
+                    "prima_nota_cassa_id": pn_id if is_cassa else None,
+                    "prima_nota_banca_id": pn_id if not is_cassa else None,
+                    "stato_pagamento": "pagata",
+                }
                 await db[Collections.INVOICES].update_one(
                     {"id": invoice["id"]},
-                    {"$set": {
-                        "prima_nota_id": pn_id,
-                        "prima_nota_tipo": "cassa" if is_cassa else "banca",
-                        "prima_nota_cassa_id": pn_id if is_cassa else None,
-                        "prima_nota_banca_id": pn_id if not is_cassa else None,
-                        "stato_pagamento": "pagata",
-                    }},
+                    {"$set": prima_nota_update},
                     session=session
                 )
+                # Rispecchia l'update anche sul dict in memoria: altrimenti il
+                # valore restituito dalla funzione resta disallineato dal DB
+                # (l'invoice salvata risulterebbe "provvisoria" nella risposta
+                # anche quando è stata correttamente auto-registrata).
+                invoice.update(prima_nota_update)
                 logger.info(f"  → Auto-registrata in {'CASSA' if is_cassa else 'BANCA'} (metodo: {metodo_pagamento})")
 
         return {"invoice": invoice, "supplier_id": supplier_id, "supplier_result": supplier_result}
