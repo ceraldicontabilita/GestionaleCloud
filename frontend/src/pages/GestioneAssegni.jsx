@@ -2181,11 +2181,11 @@ export default function GestioneAssegni() {
           {/* MOBILE CARDS VIEW */}
           <div className="md:hidden" style={{ display: 'block' }}>
             <style>{`
-              @media (min-width: "100%"px) {
+              @media (min-width: 769px) {
                 .mobile-cards-assegni { display: none !important; }
                 .desktop-table-assegni { display: block !important; }
               }
-              @media (max-width: "100%"px) {
+              @media (max-width: 768px) {
                 .mobile-cards-assegni { display: block !important; }
                 .desktop-table-assegni { display: none !important; }
               }
