@@ -21,7 +21,7 @@ import os
 import logging
 import calendar
 
-from app.database import Database
+from app.database import Database, Collections
 
 router = APIRouter(tags=["Libro Unico Parser"])
 logger = logging.getLogger(__name__)
@@ -684,6 +684,7 @@ async def import_libro_unico(
             presenze_salvate = 0
             scadenze_create = 0
             riconciliati = 0
+            tfr_aggiornati = 0
             errori = []
             
             for i, dip_data in enumerate(parsed["dipendenti"]):
@@ -841,7 +842,63 @@ async def import_libro_unico(
                         importati += 1
                     else:
                         aggiornati += 1
-                    
+
+                    # ========================================================
+                    # STEP 3b: TFR — usa SOLO i valori già stampati sulla busta
+                    # paga (colonna T.F.R. "Quota anno" / "Fondo al 31/12" /
+                    # "Rivalutazione", vedi estrazione sopra), NESSUN calcolo.
+                    # "Quota anno" è già cumulativa per l'anno in corso, quindi
+                    # si fa upsert per (dipendente, anno) con l'ultima busta
+                    # letta, non un insert per mese (altrimenti sommare mesi
+                    # diversi duplicherebbe l'importo già cumulativo).
+                    # ========================================================
+                    if periodo_parsed:
+                        tfr_raw = busta.get("tfr", {})
+                        quota_anno_str = tfr_raw.get("quota_anno")
+                        if quota_anno_str:
+                            quota_anno = parse_euro_amount(quota_anno_str)
+                            fondo_31_12 = parse_euro_amount(tfr_raw.get("fondo_31_12", ""))
+                            rivalutazione_tfr = parse_euro_amount(tfr_raw.get("rivalutazione", ""))
+                            # Totale fondo = chiusura anno precedente + quota maturata
+                            # nell'anno corrente (stessa formula stampata sul cedolino,
+                            # non un'ipotesi nostra).
+                            totale_accantonamento = round(fondo_31_12 + quota_anno, 2)
+
+                            dipendente_doc = await db[Collections.EMPLOYEES].find_one(
+                                {"codice_fiscale": cf}, {"id": 1}
+                            )
+                            if dipendente_doc:
+                                dipendente_id = dipendente_doc["id"]
+                                await db["tfr_accantonamenti"].update_one(
+                                    {"dipendente_id": dipendente_id, "anno": anno},
+                                    {"$set": {
+                                        "dipendente_id": dipendente_id,
+                                        "anno": anno,
+                                        "quota_annuale": round(quota_anno, 2),
+                                        "rivalutazione": round(rivalutazione_tfr, 2),
+                                        "fondo_31_12": round(fondo_31_12, 2),
+                                        "totale_accantonamento": totale_accantonamento,
+                                        "ultimo_periodo": periodo_iso,
+                                        "source": "libro_unico_import",
+                                        "source_busta_id": busta_id,
+                                        "updated_at": datetime.now(timezone.utc).isoformat(),
+                                    }},
+                                    upsert=True
+                                )
+                                await db[Collections.EMPLOYEES].update_one(
+                                    {"id": dipendente_id},
+                                    {"$set": {
+                                        "tfr_accantonato": totale_accantonamento,
+                                        "tfr_ultimo_aggiornamento": datetime.now(timezone.utc).isoformat(),
+                                    }}
+                                )
+                                tfr_aggiornati += 1
+                            else:
+                                logger.warning(
+                                    f"TFR: nessun dipendente in '{Collections.EMPLOYEES}' per CF {cf} "
+                                    f"— dato TFR della busta paga non collegato"
+                                )
+
                     # ========================================================
                     # STEP 4: SCADENZA STIPENDIO (scadenze)
                     # ========================================================
@@ -907,7 +964,8 @@ async def import_libro_unico(
                 "message": (
                     f"Workflow LUL completato: {importati} buste nuove, {aggiornati} aggiornate, "
                     f"{anagrafica_aggiornata} anagrafiche, {presenze_salvate} presenze, "
-                    f"{scadenze_create} scadenze, {riconciliati} pagamenti riconciliati"
+                    f"{scadenze_create} scadenze, {riconciliati} pagamenti riconciliati, "
+                    f"{tfr_aggiornati} accantonamenti TFR aggiornati"
                 ),
                 "data": {
                     "totale_dipendenti": parsed["totale_dipendenti"],
@@ -917,6 +975,7 @@ async def import_libro_unico(
                     "presenze_salvate": presenze_salvate,
                     "scadenze_create": scadenze_create,
                     "pagamenti_riconciliati": riconciliati,
+                    "tfr_aggiornati": tfr_aggiornati,
                     "errori": errori,
                     "riepilogo": parsed["riepilogo"]
                 }
