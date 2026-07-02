@@ -17,7 +17,13 @@ export default function ChatIntelligente() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [useAi, setUseAi] = useState(true);
+  const [isListening, setIsListening] = useState(false);
   const messagesEndRef = useRef(null);
+  const recognitionRef = useRef(null);
+
+  const SpeechRecognitionCtor =
+    typeof window !== 'undefined' &&
+    (window.SpeechRecognition || window.webkitSpeechRecognition);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -26,6 +32,37 @@ export default function ChatIntelligente() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  useEffect(() => {
+    return () => {
+      recognitionRef.current?.stop();
+    };
+  }, []);
+
+  const toggleListening = () => {
+    if (!SpeechRecognitionCtor) return;
+
+    if (isListening) {
+      recognitionRef.current?.stop();
+      return;
+    }
+
+    const recognition = new SpeechRecognitionCtor();
+    recognition.lang = 'it-IT';
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => setIsListening(true);
+    recognition.onend = () => setIsListening(false);
+    recognition.onerror = () => setIsListening(false);
+    recognition.onresult = event => {
+      const testo = event.results?.[0]?.[0]?.transcript;
+      if (testo) setInput(testo);
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+  };
 
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
@@ -165,6 +202,10 @@ export default function ChatIntelligente() {
             width: auto !important;
             height: 60vh !important;
           }
+        }
+        @keyframes pulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.7; transform: scale(1.08); }
         }
       `}</style>
       <div
@@ -369,21 +410,41 @@ export default function ChatIntelligente() {
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyPress={handleKeyPress}
-          placeholder="Scrivi una domanda..."
+          placeholder={isListening ? 'Ti ascolto...' : 'Scrivi una domanda...'}
           disabled={isLoading}
           data-testid="chat-input"
           style={{
             flex: 1,
             padding: '12px 16px',
-            border: '1px solid #e5e7eb',
+            border: isListening ? '1px solid #dc2626' : '1px solid #e5e7eb',
             borderRadius: 24,
             fontSize: 14,
             outline: 'none',
             transition: 'border-color 0.2s',
           }}
           onFocus={e => (e.target.style.borderColor = '#6366f1')}
-          onBlur={e => (e.target.style.borderColor = '#e5e7eb')}
+          onBlur={e => (e.target.style.borderColor = isListening ? '#dc2626' : '#e5e7eb')}
         />
+        {SpeechRecognitionCtor && (
+          <button
+            onClick={toggleListening}
+            disabled={isLoading}
+            data-testid="chat-mic"
+            title={isListening ? 'Ferma registrazione' : 'Parla invece di scrivere'}
+            style={{
+              padding: '12px 16px',
+              background: isListening ? '#dc2626' : '#f1f5f9',
+              border: 'none',
+              borderRadius: 24,
+              color: isListening ? 'white' : '#475569',
+              cursor: isLoading ? 'not-allowed' : 'pointer',
+              fontSize: 16,
+              animation: isListening ? 'pulse 1.2s infinite' : 'none',
+            }}
+          >
+            🎤
+          </button>
+        )}
         <button
           onClick={handleSend}
           disabled={isLoading || !input.trim()}

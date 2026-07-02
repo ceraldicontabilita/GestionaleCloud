@@ -51,18 +51,86 @@ async def _risposta_fatture(db, domanda: str) -> Dict[str, Any]:
     }
 
 
+async def _risposta_corrispettivi(db, domanda: str) -> Dict[str, Any]:
+    anno = _estrai_anno(domanda)
+    query = {"data": {"$regex": f"^{anno}"}}
+    corrispettivi = await db["corrispettivi"].find(
+        query, {"_id": 0, "totale": 1, "pagato_contanti": 1, "pagato_elettronico": 1}
+    ).to_list(400)
+    count = len(corrispettivi)
+    totale = sum(float(c.get("totale") or 0) for c in corrispettivi)
+    contanti = sum(float(c.get("pagato_contanti") or 0) for c in corrispettivi)
+    elettronico = sum(float(c.get("pagato_elettronico") or 0) for c in corrispettivi)
+    return {
+        "response": (
+            f"Nel {anno} il totale corrispettivi è {_fmt_euro(totale)} su {count} giornate registrate "
+            f"({_fmt_euro(contanti)} contanti, {_fmt_euro(elettronico)} elettronico)."
+        ),
+        "query_type": "corrispettivi",
+        "summary": {
+            "count": count, "totale": round(totale, 2), "contanti": round(contanti, 2),
+            "elettronico": round(elettronico, 2), "anno": anno,
+        },
+        "data_count": count,
+    }
+
+
+def _f24_anno(doc: Dict[str, Any]) -> "int | None":
+    """
+    f24_unificato ha più schemi coesistenti (import ZIP grezzo, ai_parser,
+    documenti.py in due varianti diverse) — l'anno non è mai garantito come
+    campo diretto, va cercato in più punti possibili.
+    """
+    if doc.get("anno"):
+        try:
+            return int(str(doc["anno"])[:4])
+        except (ValueError, TypeError):
+            pass
+    for campo in ("data_scadenza", "data_versamento", "created_at", "import_date"):
+        val = doc.get(campo)
+        if val and len(str(val)) >= 4 and str(val)[:4].isdigit():
+            return int(str(val)[:4])
+    dati_generali = doc.get("dati_generali") or {}
+    if dati_generali.get("data_versamento"):
+        val = str(dati_generali["data_versamento"])
+        if val[:4].isdigit():
+            return int(val[:4])
+    for lista in ("tributi_erario", "sezione_erario"):
+        tributi = doc.get(lista) or []
+        if tributi and tributi[0].get("anno"):
+            try:
+                return int(str(tributi[0]["anno"])[:4])
+            except (ValueError, TypeError):
+                pass
+    return None
+
+
+def _f24_importo(doc: Dict[str, Any]) -> float:
+    if doc.get("importo_totale"):
+        return float(doc["importo_totale"])
+    if doc.get("saldo_finale"):
+        return float(doc["saldo_finale"])
+    totali = doc.get("totali") or {}
+    if totali.get("saldo_netto"):
+        return float(totali["saldo_netto"])
+    if doc.get("totale_debito"):
+        return float(doc["totale_debito"])
+    return 0.0
+
+
+def _f24_pagato(doc: Dict[str, Any]) -> bool:
+    if doc.get("pagato") is True:
+        return True
+    return (doc.get("stato") or "").lower() == "pagato"
+
+
 async def _risposta_f24(db, domanda: str) -> Dict[str, Any]:
     anno = _estrai_anno(domanda)
-    query = {"anno": {"$in": [anno, str(anno)]}}
-    f24_list = await db[Collections.F24_MODELS].find(
-        query, {"_id": 0, "importo_totale": 1, "totali": 1, "stato": 1}
-    ).to_list(50000)
+    tutti = await db[Collections.F24_MODELS].find({}, {"_id": 0}).to_list(50000)
+    f24_list = [f for f in tutti if _f24_anno(f) == anno]
     count = len(f24_list)
-    totale = sum(
-        float(f.get("importo_totale") or (f.get("totali") or {}).get("saldo_netto") or 0)
-        for f in f24_list
-    )
-    pagati = sum(1 for f in f24_list if (f.get("stato") or "").lower() == "pagato")
+    totale = sum(_f24_importo(f) for f in f24_list)
+    pagati = sum(1 for f in f24_list if _f24_pagato(f))
     return {
         "response": (
             f"Nel {anno} risultano {count} F24 ({pagati} pagati), "
@@ -232,6 +300,7 @@ async def _risposta_strategia(db, domanda: str) -> Dict[str, Any]:
 # Ordine rilevante: la prima parola chiave che matcha decide l'intento.
 _INTENTI = [
     (("consigli", "strategia", "flusso di cassa", "flussi di cassa", "conviene"), _risposta_strategia),
+    (("corrispettiv", "incassat", "incasso"), _risposta_corrispettivi),
     (("f24",), _risposta_f24),
     (("bilanci",), _risposta_bilancio),
     (("dipendent", "personale"), _risposta_dipendenti),
@@ -307,9 +376,9 @@ async def chat_ask(request: Request, data: Dict[str, Any] = Body(...)) -> Dict[s
     if handler is None:
         risultato = {
             "response": (
-                "Posso rispondere su fatture, F24, dipendenti, fornitori, bilancio e darti "
-                "un confronto sull'andamento ricavi/costi — prova ad esempio \"Quante fatture "
-                "ho ricevuto nel 2025?\" oppure \"Dammi un consiglio sul flusso di cassa\"."
+                "Posso rispondere su corrispettivi, fatture, F24, dipendenti, fornitori, bilancio "
+                "e darti un confronto sull'andamento ricavi/costi — prova ad esempio \"Totale "
+                "corrispettivo anno 2025\" oppure \"Dammi un consiglio sul flusso di cassa\"."
             ),
             "query_type": "non_riconosciuto",
         }
