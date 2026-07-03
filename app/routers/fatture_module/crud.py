@@ -308,7 +308,8 @@ async def view_fattura_assoinvoice(fattura_id: str) -> HTMLResponse:
         raise HTTPException(status_code=404, detail="Fattura non trovata")
 
     xml_file_path = fattura.get("xml_file_path")
-    xml_raw_content = fattura.get("xml_raw")  # stringa XML se già estratta
+    # stringa XML se già estratta — nomi diversi a seconda della pipeline di import
+    xml_raw_content = fattura.get("xml_raw") or fattura.get("xml_content")
 
     xml_bytes: bytes | None = None
 

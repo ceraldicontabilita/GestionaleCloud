@@ -963,6 +963,7 @@ async def process_xml_bytes(db, content: bytes, filename: str, source: str = "xm
         "status": "imported",
         "source": source,
         "filename": filename,
+        "xml_raw": xml_content,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db[Collections.INVOICES].insert_one(invoice.copy())
