@@ -378,7 +378,6 @@ def start_scheduler():
     
     scheduler.start()
     logger.info("✅ [SCHEDULER] Scheduler avviato")
-    logger.info("   - Gmail/Aruba: ogni 10 minuti")
     logger.info("   - Gmail Full Scan (tutte cartelle): ogni ora")
     logger.info("   - Verbali Email: ogni ora")
     logger.info("   - Scadenze Partite Aperte: ogni giorno ore 7:00")
