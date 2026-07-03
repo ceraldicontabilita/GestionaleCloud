@@ -102,11 +102,6 @@ class Settings(BaseSettings):
     PAYPAL_CLIENT_ID: str = ""
     PAYPAL_CLIENT_SECRET: str = ""
     
-    # InvoiceTronic
-    INVOICETRONIC_API_KEY: Optional[str] = None
-    INVOICETRONIC_SANDBOX: bool = True
-    INVOICETRONIC_CODICE_DESTINATARIO: str = "7hd37x0"
-    
     # OpenAPI.it
     OPENAPI_IT_KEY: Optional[str] = None
     OPENAPI_IT_ENV: str = "production"

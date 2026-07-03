@@ -78,7 +78,7 @@ veicoli_noleggio (~4)             → Flotta aziendale
                         · Cespiti · Finanziaria · Chiusura · Budget · Mutui
 /strumenti              Verifica coerenza · Commercialista · Pianificazione · Visure
 /documenti              Archivio + Import documenti
-/integrazioni           OpenAPI + InvoiceTronic + PagoPA
+/integrazioni           OpenAPI + PagoPA
 /admin                  Email + Parole chiave + Fatture + Sistema
 ```
 

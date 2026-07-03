@@ -2,7 +2,6 @@ import React, { lazy, Suspense } from 'react';
 import { useLocation } from 'react-router-dom';
 
 const OpenAPIContent = lazy(() => import('../IntegrazioniOpenAPI.jsx'));
-const InvoiceTronicContent = lazy(() => import('../GestioneInvoiceTronic.jsx'));
 const PagoPAContent = lazy(() => import('../GestionePagoPA.jsx'));
 
 const Loading = () => (
@@ -27,7 +26,6 @@ export default function IntegrazioniHub() {
   const path = location.pathname;
 
   const getContent = () => {
-    if (path.includes('/invoicetronic')) return <InvoiceTronicContent />;
     if (path.includes('/pagopa')) return <PagoPAContent />;
     return <OpenAPIContent />;
   };

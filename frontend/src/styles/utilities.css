@@ -1,7 +1,7 @@
 /* ================================================================
    CERALDI ERP — Utility classes vanilla (Tailwind-like, NO Tailwind)
-   Usato solo dalle pagine legacy: DatiProvvisori, BatchReprocessing,
-   GestioneInvoiceTronic. Per nuove pagine usa lib/utils.js inline styles.
+   Usato solo dalle pagine legacy: DatiProvvisori, BatchReprocessing.
+   Per nuove pagine usa lib/utils.js inline styles.
    ================================================================ */
 
 /* Layout */

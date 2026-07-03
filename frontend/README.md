@@ -104,7 +104,7 @@ Helpers responsive:
    - input/select con `min-width: 0` e `max-width: 100%`
    - tab bar con scroll orizzontale sotto 768px
    - TopNav mostra solo brand + anno + notifiche su mobile (il menu completo è nella bottom bar)
-4. Niente Tailwind. Le 3 pagine legacy (`DatiProvvisori`, `BatchReprocessing`, `GestioneInvoiceTronic`) usano classi utility vanilla da `styles/utilities.css`. Le nuove pagine NON devono aggiungere altre classi Tailwind-like.
+4. Niente Tailwind. Le pagine legacy (`DatiProvvisori`, `BatchReprocessing`) usano classi utility vanilla da `styles/utilities.css`. Le nuove pagine NON devono aggiungere altre classi Tailwind-like.
 
 ## Variabili ambiente
 

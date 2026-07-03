@@ -54,7 +54,7 @@ Servizi core in `app/services/`:
 - **Riconciliazione bancaria** — movimenti BPM, assegni, riconciliazione PayPal
 - **Noleggio auto** — flotta, verbali/sanzioni stradali (PagoPA)
 - **Documenti** — archivio email, classificazione automatica per tipo
-- **Integrazioni** — OpenAPI, InvoiceTronic, PagoPA, PayPal
+- **Integrazioni** — OpenAPI (AISP/XBRL/Visure), PagoPA, PayPal
 
 ## Regole canoniche critiche
 

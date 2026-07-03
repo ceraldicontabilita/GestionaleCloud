@@ -272,9 +272,7 @@ const router = createBrowserRouter([
       { path: "integrazioni-openapi/:tab", element: <LazyPage><IntegrazioniHub /></LazyPage> },
       { path: "pagopa", element: <LazyPage><IntegrazioniHub /></LazyPage> },
       { path: "pagopa/:pratica", element: <LazyPage><IntegrazioniHub /></LazyPage> },
-      { path: "invoicetronic", element: <LazyPage><IntegrazioniHub /></LazyPage> },
-      { path: "invoicetronic/:fattura", element: <LazyPage><IntegrazioniHub /></LazyPage> },
-      
+
       // === ADMIN ===
       { path: "admin", element: <LazyPage><AdminHub /></LazyPage> },
       { path: "admin/:sezione", element: <LazyPage><AdminHub /></LazyPage> },

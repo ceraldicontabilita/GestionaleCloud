@@ -211,7 +211,6 @@ Funzioni:
 - email download
 - visure
 - OpenAPI
-- InvoiceTronic
 - PagoPA
 - batch reprocessing
 
