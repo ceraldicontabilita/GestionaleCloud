@@ -1,7 +1,6 @@
 """
 Scheduler per task automatici.
 - Email Verbali: Scan automatico ogni ora
-- Gmail/Aruba: Sync ogni 10 minuti
 """
 import logging
 import uuid
@@ -15,100 +14,6 @@ logger = logging.getLogger(__name__)
 
 # Scheduler instance
 scheduler = AsyncIOScheduler()
-
-async def sync_gmail_aruba_task():
-    """
-    Task eseguito ogni 10 minuti.
-    Scarica nuove fatture da Gmail/Aruba e notifica su Telegram.
-    """
-    from app.database import Database
-    from app.services.aruba_invoice_parser import fetch_aruba_invoices
-    from app.services.telegram_notifications import is_configured, send_notification
-    
-    logger.info("📧 [SCHEDULER] Avvio sync Gmail/Aruba...")
-    
-    try:
-        db = Database.get_db()
-        
-        # Ottieni configurazione email
-        email_config = await db["email_accounts"].find_one(
-            {"tipo": "aruba"},
-            {"_id": 0}
-        )
-        
-        if not email_config:
-            # Prova con config di default
-            email_config = await db["email_accounts"].find_one({}, {"_id": 0})
-        
-        if not email_config:
-            # Fallback: usa variabili d'ambiente PEC Aruba
-            import os
-            env_user = os.environ.get("ARUBA_PEC_USER") or os.environ.get("IMAP_USER") or os.environ.get("EMAIL_USER")
-            env_pass = os.environ.get("ARUBA_PEC_PASSWORD") or os.environ.get("IMAP_PASSWORD") or os.environ.get("EMAIL_PASSWORD")
-            env_host = os.environ.get("ARUBA_PEC_HOST", "imaps.pec.aruba.it")
-            if env_user and env_pass:
-                email_config = {"email": env_user, "password": env_pass, "imap_server": env_host}
-        
-        if not email_config:
-            logger.warning("📧 [SCHEDULER] Nessun account email configurato per sync Aruba")
-            return
-        
-        email_user = email_config.get("email") or email_config.get("username")
-        email_password = email_config.get("password")
-        imap_server = email_config.get("imap_server", "imap.gmail.com")
-        
-        if not email_user or not email_password:
-            logger.warning("📧 [SCHEDULER] Credenziali email mancanti")
-            return
-        
-        # Esegui sync
-        result = await fetch_aruba_invoices(
-            email_user=email_user,
-            email_password=email_password,
-            imap_server=imap_server,
-            days_back=7,
-            auto_import=True
-        )
-        
-        nuove_operazioni = result.get("operazioni_create", 0)
-        totale_processate = result.get("emails_processate", 0)
-        
-        logger.info(f"📧 [SCHEDULER] Sync completato: {nuove_operazioni} nuove operazioni da {totale_processate} email")
-        
-        # Notifica WebSocket real-time se ci sono nuove operazioni
-        if nuove_operazioni > 0:
-            try:
-                from app.services.websocket_manager import notify_data_change
-                await notify_data_change("email_sync", {
-                    "nuove_operazioni": nuove_operazioni,
-                    "emails_processate": totale_processate
-                }, "notifications")
-                logger.info("🔔 [SCHEDULER] WebSocket notifica email_sync inviata")
-            except Exception as e:
-                logger.warning(f"🔔 [SCHEDULER] WebSocket non disponibile: {e}")
-        
-        # Notifica Telegram se ci sono nuove operazioni
-        if nuove_operazioni > 0 and is_configured():
-            from datetime import datetime
-            
-            messaggio = f"""📬 *Nuove Operazioni Aruba*
-
-{nuove_operazioni} nuove fatture da confermare!
-
-📅 {datetime.now().strftime('%d/%m/%Y %H:%M')}
-📧 Email processate: {totale_processate}
-
-👉 Vai su /operazioni-da-confermare per gestirle"""
-            
-            try:
-                await send_notification(messaggio)
-                logger.info("📱 [SCHEDULER] Notifica Telegram inviata")
-            except Exception as e:
-                logger.error(f"📱 [SCHEDULER] Errore notifica Telegram: {e}")
-        
-    except Exception as e:
-        logger.error(f"📧 [SCHEDULER] Errore sync Gmail/Aruba: {e}")
-
 
 async def scan_verbali_email_task():
     """
@@ -424,16 +329,6 @@ def start_scheduler():
         replace_existing=True,
     )
 
-    # Task Gmail/Aruba ogni 10 minuti
-    scheduler.add_job(
-        sync_gmail_aruba_task,
-        'interval',
-        minutes=10,
-        id="gmail_aruba_sync",
-        name="Sync Gmail/Aruba (ogni 10 min)",
-        replace_existing=True
-    )
-    
     # Task Scan Verbali Email ogni ora
     scheduler.add_job(
         scan_verbali_email_task,

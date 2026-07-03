@@ -854,17 +854,8 @@ async def upload_fattura_xml(file: UploadFile = File(...)) -> Dict[str, Any]:
             except Exception as e:
                 logger.warning(f"Prima nota registration failed: {e}")
         
-        # === ASSOCIAZIONE AUTOMATICA FATTURA PROVVISORIA ===
-        # Cerca se esiste una fattura provvisoria da email Aruba da associare
         provvisoria_associata = None
-        try:
-            from app.services.aruba_automation import associate_xml_to_provvisoria
-            provvisoria_associata = await associate_xml_to_provvisoria(db, invoice)
-            if provvisoria_associata:
-                logger.info(f"📧 Fattura provvisoria associata: {provvisoria_associata.get('numero_fattura')}")
-        except Exception as e:
-            logger.debug(f"Associazione provvisoria non disponibile: {e}")
-        
+
         # === AUTOMAZIONE VERBALI DA FATTURE NOLEGGIO ===
         # Se è una fattura di un noleggiatore (ALD, Leasys, etc.), cerca verbali
         verbali_result = {"verbali_trovati": 0, "verbali_creati": 0, "driver_associati": 0}

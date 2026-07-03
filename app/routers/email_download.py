@@ -45,13 +45,11 @@ async def get_download_status() -> Dict[str, Any]:
 async def start_full_download(
     background_tasks: BackgroundTasks,
     days_back: int = Query(default=1, description="Giorni indietro da scaricare (default 1 giorno)"),
-    folder: str = Query(default="INBOX", description="Cartella IMAP"),
-    process_aruba: bool = Query(default=True, description="Processa anche email fatture Aruba")
+    folder: str = Query(default="INBOX", description="Cartella IMAP")
 ) -> Dict[str, Any]:
     """
     Avvia il download completo di tutte le email con PDF.
     Il processo viene eseguito in background.
-    Dopo il download, processa automaticamente le email Aruba per le fatture.
     """
     global download_status
     
@@ -75,36 +73,6 @@ async def start_full_download(
             download_status["stats"] = result.get("stats")
             if not result.get("success"):
                 download_status["error"] = result.get("error")
-            
-            # AUTOMAZIONE ARUBA: Processa email fatture dopo il download
-            if process_aruba and result.get("success"):
-                try:
-                    from app.services.aruba_automation import process_aruba_emails
-                    from app.config import settings
-                    
-                    email_user = settings.EMAIL_USER or settings.GMAIL_EMAIL or ""
-                    email_pass = settings.EMAIL_APP_PASSWORD or settings.GMAIL_APP_PASSWORD or ""
-                    
-                    if email_user and email_pass:
-                        logger.info("🚀 Avvio automazione fatture Aruba...")
-                        aruba_result = await process_aruba_emails(
-                            db=db,
-                            email_user=email_user,
-                            email_password=email_pass,
-                            since_days=days_back,
-                            auto_insert_prima_nota=True
-                        )
-                        
-                        if download_status.get("stats"):
-                            download_status["stats"]["aruba_automation"] = aruba_result.get("stats", {})
-                            download_status["stats"]["aruba_fatture"] = aruba_result.get("fatture", [])
-                        
-                        logger.info(f"✅ Automazione Aruba completata: {aruba_result.get('stats', {})}")
-                except Exception as e:
-                    logger.error(f"Errore automazione Aruba: {e}")
-                    if download_status.get("stats"):
-                        download_status["stats"]["aruba_error"] = str(e)
-                        
         except Exception as e:
             logger.error(f"Errore download: {e}")
             download_status["error"] = str(e)
