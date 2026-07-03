@@ -251,17 +251,24 @@ async def get_archivio_fatture(
     if pive:
         fornitori_docs = await db["fornitori"].find(
             {"partita_iva": {"$in": pive}},
-            {"_id": 0, "partita_iva": 1, "metodo_pagamento": 1, "metodo_pagamento_predefinito": 1}
+            {"_id": 0, "partita_iva": 1, "metodo_pagamento": 1, "metodo_pagamento_predefinito": 1, "ragione_sociale": 1}
         ).to_list(len(pive) + 10)
         map_metodo = {}
+        map_nome = {}
         for fdoc in fornitori_docs:
             piva = (fdoc.get("partita_iva") or "").strip()
             metodo = fdoc.get("metodo_pagamento_predefinito") or fdoc.get("metodo_pagamento") or ""
             if piva:
                 map_metodo[piva] = metodo
+                if fdoc.get("ragione_sociale"):
+                    map_nome[piva] = fdoc["ragione_sociale"]
         for f in all_fatture:
             piva = (f.get("supplier_vat") or f.get("fornitore_partita_iva") or "").strip()
             f["fornitore_metodo_pagamento"] = map_metodo.get(piva, "")
+            # Se il nome fornitore non era stato salvato sulla fattura (es. persona
+            # fisica non gestita dal vecchio parser), recuperalo dall'anagrafica.
+            if not (f.get("fornitore_ragione_sociale") or "").strip() and piva in map_nome:
+                f["fornitore_ragione_sociale"] = map_nome[piva]
 
     total = len(all_fatture)
 
@@ -333,7 +340,10 @@ async def view_fattura_assoinvoice(fattura_id: str) -> HTMLResponse:
     # ── Applica ASSO XSL se abbiamo l'XML ────────────────────────────────────
     if xml_bytes:
         try:
-            xsl_path = "static/FoglioStileAssoSoftware.xsl"
+            xsl_path = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                "static", "FoglioStileAssoSoftware.xsl",
+            )
             xsl_doc = LET.parse(xsl_path)
             transform = LET.XSLT(xsl_doc)
 

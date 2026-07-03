@@ -245,11 +245,28 @@ def parse_fattura_xml(xml_content: str) -> Dict[str, Any]:
         header = find_element(root, 'FatturaElettronicaHeader')
         body = find_element(root, 'FatturaElettronicaBody')
         
+        def get_denominazione_o_persona_fisica(parent):
+            """Denominazione, oppure Nome+Cognome per persona fisica/ditta individuale."""
+            denominazione = (
+                get_nested_text(parent, 'Anagrafica', 'Denominazione')
+                or get_nested_text(parent, 'DatiAnagrafici', 'Anagrafica', 'Denominazione')
+            )
+            if denominazione:
+                return denominazione
+            nome = (
+                get_nested_text(parent, 'Anagrafica', 'Nome')
+                or get_nested_text(parent, 'DatiAnagrafici', 'Anagrafica', 'Nome')
+            )
+            cognome = (
+                get_nested_text(parent, 'Anagrafica', 'Cognome')
+                or get_nested_text(parent, 'DatiAnagrafici', 'Anagrafica', 'Cognome')
+            )
+            return " ".join(p for p in (nome, cognome) if p)
+
         # Estrai dati fornitore (CedentePrestatore)
         cedente = find_element(header, 'CedentePrestatore')
         fornitore = {
-            "denominazione": get_nested_text(cedente, 'Anagrafica', 'Denominazione') or 
-                           get_nested_text(cedente, 'DatiAnagrafici', 'Anagrafica', 'Denominazione'),
+            "denominazione": get_denominazione_o_persona_fisica(cedente),
             "partita_iva": get_nested_text(cedente, 'IdFiscaleIVA', 'IdCodice') or
                           get_nested_text(cedente, 'DatiAnagrafici', 'IdFiscaleIVA', 'IdCodice'),
             "codice_fiscale": get_nested_text(cedente, 'CodiceFiscale') or
@@ -266,8 +283,7 @@ def parse_fattura_xml(xml_content: str) -> Dict[str, Any]:
         # Estrai dati cliente (CessionarioCommittente)
         cessionario = find_element(header, 'CessionarioCommittente')
         cliente = {
-            "denominazione": get_nested_text(cessionario, 'Anagrafica', 'Denominazione') or
-                           get_nested_text(cessionario, 'DatiAnagrafici', 'Anagrafica', 'Denominazione'),
+            "denominazione": get_denominazione_o_persona_fisica(cessionario),
             "partita_iva": get_nested_text(cessionario, 'IdFiscaleIVA', 'IdCodice') or
                           get_nested_text(cessionario, 'DatiAnagrafici', 'IdFiscaleIVA', 'IdCodice'),
             "codice_fiscale": get_nested_text(cessionario, 'CodiceFiscale') or
