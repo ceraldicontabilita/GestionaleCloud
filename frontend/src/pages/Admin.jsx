@@ -67,6 +67,11 @@ export default function Admin() {
   const [testingPec, setTestingPec] = useState(false);
   const [pecMsg, setPecMsg] = useState(null);
 
+  // Google Drive — import fatture
+  const [driveStatus, setDriveStatus] = useState(null);
+  const [syncingDrive, setSyncingDrive] = useState(false);
+  const [driveMsg, setDriveMsg] = useState(null);
+
   // Sincronizzazione dati
   const [syncStatus, setSyncStatus] = useState(null);
   const [syncLoading, setSyncLoading] = useState(false);
@@ -98,6 +103,7 @@ export default function Admin() {
     loadEmailAccounts();
     loadParoleChiave();
     loadPecAccount();
+    loadDriveStatus();
 
     // Polling silenzioso ogni 5 minuti
     const interval = setInterval(() => loadDashboardSummary(true), 5 * 60 * 1000);
@@ -196,6 +202,37 @@ export default function Admin() {
       setPecMsg({ ok: false, testo: e.response?.data?.detail || 'Errore durante il test' });
     } finally {
       setTestingPec(false);
+    }
+  }
+
+  async function loadDriveStatus() {
+    try {
+      const r = await api.get('/api/fatture/drive/status');
+      setDriveStatus(r.data || null);
+    } catch (e) {
+      console.error('Error loading Drive status:', e);
+    }
+  }
+
+  async function syncDriveNow() {
+    setSyncingDrive(true);
+    setDriveMsg(null);
+    try {
+      const r = await api.post('/api/fatture/drive/sync');
+      const d = r.data || {};
+      if (d.status === 'not_configured' || d.status === 'error') {
+        setDriveMsg({ ok: false, testo: d.message || 'Sincronizzazione non riuscita' });
+      } else {
+        setDriveMsg({
+          ok: true,
+          testo: `Sync completato: ${d.imported || 0} importate, ${d.duplicates || 0} già presenti, ${d.errors || 0} errori (su ${d.total || 0} file trovati)`,
+        });
+      }
+      loadDriveStatus();
+    } catch (e) {
+      setDriveMsg({ ok: false, testo: e.response?.data?.detail || 'Errore durante la sincronizzazione' });
+    } finally {
+      setSyncingDrive(false);
     }
   }
 
@@ -1203,6 +1240,172 @@ export default function Admin() {
                   {testingPec ? '⏳ Test in corso...' : '🔌 Testa connessione'}
                 </button>
               </div>
+            </div>
+          </div>
+
+          {/* CARD GOOGLE DRIVE — import fatture */}
+          <div style={cardStyle} data-testid="drive-fatture-card">
+            <div
+              style={{
+                ...cardHeaderStyle,
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+            >
+              <h3
+                style={{ margin: 0, fontSize: 16, display: 'flex', alignItems: 'center', gap: 8 }}
+              >
+                📂 Google Drive — Import Fatture XML
+                {driveStatus?.configured ? (
+                  <span
+                    style={{
+                      fontSize: 10,
+                      background: 'var(--c-success-light)',
+                      color: 'var(--c-success)',
+                      padding: '2px 8px',
+                      borderRadius: 4,
+                    }}
+                  >
+                    Configurato
+                  </span>
+                ) : (
+                  <span
+                    style={{
+                      fontSize: 10,
+                      background: 'var(--c-warning-light)',
+                      color: 'var(--c-warning)',
+                      padding: '2px 8px',
+                      borderRadius: 4,
+                    }}
+                  >
+                    Non configurato
+                  </span>
+                )}
+              </h3>
+              <button
+                data-testid="drive-sync-btn"
+                onClick={syncDriveNow}
+                disabled={syncingDrive || !driveStatus?.configured}
+                style={buttonStyle(
+                  syncingDrive || !driveStatus?.configured ? '#9ca3af' : '#1e3a5f'
+                )}
+              >
+                {syncingDrive ? '⏳ Sincronizzazione...' : '🔄 Sincronizza ora'}
+              </button>
+            </div>
+            <div style={cardContentStyle}>
+              <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 16 }}>
+                Importa automaticamente le fatture XML dalla cartella Google Drive configurata
+                (anche ogni 15 minuti in automatico). Le credenziali (cartella + service account)
+                vanno impostate come variabili d'ambiente sul backend.
+              </p>
+
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
+                  gap: 12,
+                  marginBottom: 16,
+                }}
+              >
+                <div
+                  style={{
+                    background: '#f8fafc',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: 6,
+                    padding: '8px 12px',
+                  }}
+                >
+                  <div style={{ fontSize: 10, color: '#6b7280', marginBottom: 2, fontWeight: 500 }}>
+                    Cartella (ID)
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: '#1e293b',
+                      wordBreak: 'break-all',
+                    }}
+                  >
+                    {driveStatus?.folder_id || 'non impostata'}
+                  </div>
+                </div>
+                <div
+                  style={{
+                    background: '#f8fafc',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: 6,
+                    padding: '8px 12px',
+                  }}
+                >
+                  <div style={{ fontSize: 10, color: '#6b7280', marginBottom: 2, fontWeight: 500 }}>
+                    Ultimo sync
+                  </div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#1e293b' }}>
+                    {driveStatus?.last_sync
+                      ? new Date(driveStatus.last_sync).toLocaleString('it-IT')
+                      : 'mai eseguito'}
+                  </div>
+                </div>
+                <div
+                  style={{
+                    background: '#f8fafc',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: 6,
+                    padding: '8px 12px',
+                  }}
+                >
+                  <div style={{ fontSize: 10, color: '#6b7280', marginBottom: 2, fontWeight: 500 }}>
+                    Fatture importate (totale)
+                  </div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#1e293b' }}>
+                    {driveStatus?.total_imported ?? 0}
+                  </div>
+                </div>
+              </div>
+
+              {driveStatus?.last_result && (
+                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 12 }}>
+                  Ultimo giro: {driveStatus.last_result.total ?? 0} file trovati,{' '}
+                  {driveStatus.last_result.imported ?? 0} importati,{' '}
+                  {driveStatus.last_result.duplicates ?? 0} già presenti,{' '}
+                  {driveStatus.last_result.errors ?? 0} errori.
+                </div>
+              )}
+
+              {driveMsg && (
+                <div
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: 8,
+                    background: driveMsg.ok ? '#f0fdf4' : '#fef2f2',
+                    border: `1px solid ${driveMsg.ok ? '#bbf7d0' : '#fecaca'}`,
+                    fontSize: 13,
+                    color: driveMsg.ok ? '#16a34a' : '#dc2626',
+                  }}
+                >
+                  {driveMsg.ok ? '✓ ' : '✗ '}
+                  {driveMsg.testo}
+                </div>
+              )}
+
+              {!driveStatus?.configured && (
+                <div
+                  style={{
+                    marginTop: 12,
+                    padding: 12,
+                    background: 'var(--c-primary-soft)',
+                    borderRadius: 8,
+                    fontSize: 12,
+                    color: 'var(--c-primary)',
+                  }}
+                >
+                  Imposta <code>GOOGLE_DRIVE_FATTURE_FOLDER_ID</code> e{' '}
+                  <code>GOOGLE_DRIVE_SA_JSON</code> tra le variabili d'ambiente del backend, poi
+                  riavvia il servizio.
+                </div>
+              )}
             </div>
           </div>
         </div>
