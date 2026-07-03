@@ -71,12 +71,6 @@ class Settings(BaseSettings):
     IMAP_PASSWORD: Optional[str] = None
     IMAP_PORT: int = 993
 
-    # Aruba PEC - Fatturazione Elettronica
-    ARUBA_PEC_HOST: str = "imaps.pec.aruba.it"
-    ARUBA_PEC_PORT: int = 993
-    ARUBA_PEC_USER: Optional[str] = None
-    ARUBA_PEC_PASSWORD: Optional[str] = None
-    
     # OpenAI
     OPENAI_API_KEY: Optional[str] = None
     
