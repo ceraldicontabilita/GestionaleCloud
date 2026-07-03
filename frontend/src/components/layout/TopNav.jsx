@@ -159,16 +159,16 @@ const S = {
   annoWrap: {
     display: 'flex',
     alignItems: 'center',
-    background: 'rgba(255,255,255,0.12)',
+    background: 'rgba(255,255,255,0.92)',
     borderRadius: 8,
     padding: '4px 10px',
     gap: 6,
-    border: '1px solid rgba(255,255,255,0.2)',
+    border: '1px solid rgba(255,255,255,0.4)',
   },
   annoLabel: {
     fontSize: 11,
     fontWeight: 700,
-    color: 'rgba(255,255,255,0.8)',
+    color: '#64748b',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
@@ -320,10 +320,10 @@ const TopNav = memo(function TopNav() {
             <span style={S.annoLabel}>ANNO</span>
             <AnnoSelector
               style={{
-                background: 'rgba(255,255,255,0.15)',
-                border: '1px solid rgba(255,255,255,0.4)',
+                background: 'transparent',
+                border: 'none',
                 borderRadius: 6,
-                color: '#fff',
+                color: '#1e3a5f',
                 fontWeight: 700,
                 fontSize: 16,
                 cursor: 'pointer',
