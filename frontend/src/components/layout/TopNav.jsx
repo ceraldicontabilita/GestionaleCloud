@@ -25,8 +25,7 @@ import { COLORS } from '../../lib/utils';
 /* ─── Costanti navigazione (definite fuori dal componente → nessuna ricreazione) ─── */
 
 // URL dell'app esterna AppDipendenti (gestione HR spostata fuori dal gestionale).
-// Segnaposto: sostituire con l'indirizzo definitivo quando disponibile.
-const APP_DIPENDENTI_URL = 'https://app-dipendenti.example.com';
+const APP_DIPENDENTI_URL = 'https://appdipendenti.onrender.com';
 
 const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', Icon: LayoutDashboard },
