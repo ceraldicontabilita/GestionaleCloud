@@ -381,7 +381,14 @@ export default function Documenti() {
         pdfUrl,
       });
     } catch (error) {
-      alert(`❌ Errore visualizzazione: ${error.message}`);
+      const status = error.response?.status;
+      if (status === 502 || status === 504) {
+        alert(
+          '❌ Il documento è troppo grande o il servizio è momentaneamente non disponibile. Riprova tra qualche istante.'
+        );
+      } else {
+        alert(`❌ Errore visualizzazione: ${error.message}`);
+      }
     } finally {
       setPdfLoading(false);
     }

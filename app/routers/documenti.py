@@ -4,7 +4,7 @@ API per scaricare, visualizzare e processare documenti dalle email.
 """
 
 from fastapi import APIRouter, Query, HTTPException, BackgroundTasks
-from fastapi.responses import Response
+from fastapi.responses import StreamingResponse
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
 from pathlib import Path
@@ -395,11 +395,18 @@ async def download_documento(doc_id: str):
     pdf_data = doc.get("pdf_data")
     if not pdf_data:
         raise HTTPException(status_code=404, detail="PDF non disponibile in MongoDB. Eseguire migrazione dati.")
-    
-    import base64
-    content = base64.b64decode(pdf_data)
-    return Response(
-        content=content,
+
+    def _decode_chunks():
+        # Niente più `base64.b64decode(pdf_data)` in un colpo solo: su file grandi
+        # teneva in RAM contemporaneamente stringa base64 + bytes decodificati,
+        # causando OOM-kill del processo (502 lato Render). Chunk multiplo di 4
+        # perché ogni blocco base64 deve decodificarsi autonomamente.
+        chunk_size = 1_048_576
+        for i in range(0, len(pdf_data), chunk_size):
+            yield base64.b64decode(pdf_data[i:i + chunk_size])
+
+    return StreamingResponse(
+        _decode_chunks(),
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{doc.get("filename", "documento.pdf")}"'}
     )
