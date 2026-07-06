@@ -1,21 +1,35 @@
 /**
- * PageLayout - Componente wrapper SEMPLIFICATO
- * Renderizza solo il contenuto senza titoli/header duplicati
- * I titoli sono già gestiti dalla TopNav e SecondaryTabs
+ * PageLayout - Wrapper di pagina con header opzionale (title/icon/subtitle/actions),
+ * renderizzato tramite il design system (ds/PageHeader) quando è passato un titolo.
+ * Il padding usa i token responsive (--page-pad-x-mobile sotto i 768px).
  */
 
 import React from 'react';
+import { PageHeader } from './ds/PageHeader';
 
-export function PageLayout({ children, noPadding = false, className = '' }) {
+export function PageLayout({
+  children,
+  title,
+  icon,
+  subtitle,
+  actions,
+  noPadding = false,
+  className = '',
+}) {
   return (
     <div
+      className={`ds-page-layout ${className}`}
       style={{
         minHeight: '100vh',
         background: '#f8fafc',
-        padding: noPadding ? 0 : '8px 16px',
+        ...(noPadding ? { padding: 0 } : {}),
       }}
-      className={className}
     >
+      {title && (
+        <div style={{ marginBottom: 'var(--sp-lg)' }}>
+          <PageHeader title={title} icon={icon} subtitle={subtitle} actions={actions} />
+        </div>
+      )}
       {children}
     </div>
   );
@@ -56,16 +70,22 @@ export function PageSection({ title, icon, children, className = '', style = {} 
   );
 }
 
-export function PageGrid({ cols = 2, gap = 20, children }) {
+export function PageGrid({ cols = 2, gap = 20, minWidth, children }) {
+  // auto-fit + minmax invece di repeat(cols, 1fr): su schermi stretti le colonne
+  // si riducono finché serve invece di forzare N colonne e scroll orizzontale.
+  // minWidth è derivato da cols quando non specificato esplicitamente.
+  const mw = minWidth || Math.max(140, Math.floor(960 / cols) - gap);
   return (
     <div
       style={{
         display: 'grid',
-        gridTemplateColumns: `repeat(${cols}, 1fr)`,
+        gridTemplateColumns: `repeat(auto-fit, minmax(min(${mw}px, 100%), 1fr))`,
         gap,
       }}
     >
-      {children}
+      {React.Children.map(children, child => (
+        <div style={{ minWidth: 0 }}>{child}</div>
+      ))}
     </div>
   );
 }

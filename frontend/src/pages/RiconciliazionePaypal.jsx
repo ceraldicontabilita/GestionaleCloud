@@ -940,6 +940,7 @@ export default function RiconciliazionePaypal() {
                 Estratti Conto Importati ({statements.length})
               </span>
             </div>
+            <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
                 <tr style={{ background: '#f9fafb' }}>
@@ -990,6 +991,7 @@ export default function RiconciliazionePaypal() {
                 ))}
               </tbody>
             </table>
+            </div>
             {statements.length === 0 && (
               <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>
                 Nessun estratto conto importato.

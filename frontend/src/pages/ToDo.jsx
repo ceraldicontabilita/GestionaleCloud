@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import api from '../api';
 import { formatDateIT, STYLES, COLORS, button, badge } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
+import { StatCard } from '../components/ds/StatCard';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 
 /**
@@ -186,15 +187,15 @@ export default function ToDo() {
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(min(140px, 100%), 1fr))',
           gap: 16,
           marginBottom: 24,
         }}
       >
-        <StatCard label="Da Fare" value={stats.da_fare || 0} color="#3b82f6" />
-        <StatCard label="Completati" value={stats.completati || 0} color="#22c55e" />
-        <StatCard label="Urgenti" value={stats.urgenti || 0} color="#f59e0b" />
-        <StatCard label="Scaduti" value={stats.scaduti || 0} color="#ef4444" />
+        <StatCard label="Da Fare" value={stats.da_fare || 0} accent="info" />
+        <StatCard label="Completati" value={stats.completati || 0} accent="success" />
+        <StatCard label="Urgenti" value={stats.urgenti || 0} accent="warning" />
+        <StatCard label="Scaduti" value={stats.scaduti || 0} accent="danger" />
       </div>
 
       {/* Form Nuovo Task */}
@@ -677,23 +678,5 @@ export default function ToDo() {
         </div>
       )}
     </PageLayout>
-  );
-}
-
-// Componente StatCard
-function StatCard({ label, value, color }) {
-  return (
-    <div
-      style={{
-        background: 'white',
-        borderRadius: 12,
-        padding: 16,
-        border: '1px solid #e5e7eb',
-        textAlign: 'center',
-      }}
-    >
-      <div style={{ fontSize: 28, fontWeight: 'bold', color }}>{value}</div>
-      <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>{label}</div>
-    </div>
   );
 }

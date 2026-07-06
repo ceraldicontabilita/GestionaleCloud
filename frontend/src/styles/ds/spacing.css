@@ -27,3 +27,12 @@
   --page-pad-x-mobile: 12px;
   --content-gap:   16px;
 }
+
+.ds-page-layout {
+  padding: var(--page-pad-y) var(--page-pad-x);
+}
+@media (max-width: 768px) {
+  .ds-page-layout {
+    padding: var(--page-pad-y) var(--page-pad-x-mobile);
+  }
+}
