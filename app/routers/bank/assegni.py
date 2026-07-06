@@ -115,13 +115,22 @@ async def list_assegni(
     limit: int = Query(100, ge=1, le=1000),
     stato: Optional[str] = Query(None),
     fornitore_piva: Optional[str] = Query(None),
-    search: Optional[str] = Query(None)
+    search: Optional[str] = Query(None),
+    anno: Optional[int] = Query(None)
 ) -> List[Dict[str, Any]]:
     """Lista assegni con filtri."""
     db = Database.get_db()
     
     # Escludi assegni eliminati (soft-delete)
     query = {"entity_status": {"$ne": "deleted"}}
+    if anno:
+        # data_emissione/data sono stringhe YYYY-MM-DD; gli assegni senza
+        # data (carnet vuoti) restano sempre visibili
+        query["$and"] = [{"$or": [
+            {"data_emissione": {"$regex": f"^{anno}"}},
+            {"data": {"$regex": f"^{anno}"}},
+            {"$and": [{"data_emissione": {"$in": [None, ""]}}, {"data": {"$in": [None, ""]}}]},
+        ]}]
     if stato:
         query["stato"] = stato
     if fornitore_piva:
@@ -141,12 +150,18 @@ async def list_assegni(
 
 
 @router.get("/stats")
-async def get_assegni_stats() -> Dict[str, Any]:
+async def get_assegni_stats(anno: Optional[int] = Query(None)) -> Dict[str, Any]:
     """Statistiche assegni."""
     db = Database.get_db()
     
     # Escludi assegni eliminati (soft-delete)
     match_filter = {"entity_status": {"$ne": "deleted"}}
+    if anno:
+        match_filter["$and"] = [{"$or": [
+            {"data_emissione": {"$regex": f"^{anno}"}},
+            {"data": {"$regex": f"^{anno}"}},
+            {"$and": [{"data_emissione": {"$in": [None, ""]}}, {"data": {"$in": [None, ""]}}]},
+        ]}]
     
     pipeline = [
         {"$match": match_filter},
@@ -935,6 +950,25 @@ async def annulla_assegno(assegno_id: str) -> Dict[str, str]:
     return {"message": "Assegno annullato"}
 
 
+@router.delete("/clear-generated")
+async def clear_generated_assegni(stato: str = Query("vuoto")) -> Dict[str, Any]:
+    """
+    Elimina tutti gli assegni con un determinato stato.
+    Default: elimina solo quelli vuoti.
+    """
+    db = Database.get_db()
+    
+    if stato not in ASSEGNO_STATI:
+        raise HTTPException(status_code=400, detail=f"Stato non valido. Valori ammessi: {list(ASSEGNO_STATI.keys())}")
+    
+    result = await db[COLLECTION_ASSEGNI].delete_many({"stato": stato})
+    
+    return {
+        "message": f"Eliminati {result.deleted_count} assegni con stato '{stato}'",
+        "deleted_count": result.deleted_count
+    }
+
+
 @router.delete("/{assegno_id}")
 async def delete_assegno(
     assegno_id: str,
@@ -974,25 +1008,6 @@ async def delete_assegno(
     )
     
     return {"success": True, "message": "Assegno eliminato"}
-
-
-@router.delete("/clear-generated")
-async def clear_generated_assegni(stato: str = Query("vuoto")) -> Dict[str, Any]:
-    """
-    Elimina tutti gli assegni con un determinato stato.
-    Default: elimina solo quelli vuoti.
-    """
-    db = Database.get_db()
-    
-    if stato not in ASSEGNO_STATI:
-        raise HTTPException(status_code=400, detail=f"Stato non valido. Valori ammessi: {list(ASSEGNO_STATI.keys())}")
-    
-    result = await db[COLLECTION_ASSEGNI].delete_many({"stato": stato})
-    
-    return {
-        "message": f"Eliminati {result.deleted_count} assegni con stato '{stato}'",
-        "deleted_count": result.deleted_count
-    }
 
 
 @router.post("/auto-associa")

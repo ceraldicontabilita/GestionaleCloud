@@ -196,7 +196,36 @@ async def get_archivio_fatture(
             {"cedente_denominazione": {"$regex": fornitore_nome.strip(), "$options": "i"}}
         ]
     if stato:
-        q_inv["stato"] = stato
+        # I doc di `invoices` usano DUE schemi: stato/pagato (it) e status (en).
+        # Il filtro deve coprirli entrambi, altrimenti "Importate" è sempre
+        # vuoto e "Pagate" perde le fatture marcate solo con status="paid".
+        if stato in ("pagata", "paid"):
+            q_inv.setdefault("$and", []).append({"$or": [
+                {"stato": {"$in": ["pagata", "paid"]}},
+                {"status": "paid"},
+                {"pagato": True},
+                {"stato_pagamento": "pagata"},
+            ]})
+        elif stato in ("importata", "imported"):
+            q_inv.setdefault("$and", []).append({
+                "stato": {"$nin": ["pagata", "paid"]},
+                "status": {"$ne": "paid"},
+                "pagato": {"$ne": True},
+                "stato_pagamento": {"$ne": "pagata"},
+            })
+        elif stato == "anomala":
+            q_inv.setdefault("$and", []).append({"$or": [
+                {"$and": [
+                    {"$or": [{"total_amount": {"$lte": 0}}, {"total_amount": {"$exists": False}}]},
+                    {"$or": [{"importo_totale": {"$lte": 0}}, {"importo_totale": {"$exists": False}}]},
+                ]},
+                {"$and": [
+                    {"invoice_number": {"$in": [None, ""]}},
+                    {"numero_documento": {"$in": [None, ""]}},
+                ]},
+            ]})
+        else:
+            q_inv["stato"] = stato
     if search:
         q_inv["$or"] = [
             {"invoice_number": {"$regex": search, "$options": "i"}},
@@ -538,30 +567,64 @@ async def get_statistiche(anno: Optional[int] = Query(None)) -> Dict[str, Any]:
             {"invoice_date": {"$regex": f"^{anno}"}},
         ]
 
+    # Espressioni che coprono ENTRAMBI gli schemi campi di `invoices`
+    _importo = {"$toDouble": {"$ifNull": ["$total_amount", {"$ifNull": ["$importo_totale", 0]}]}}
+    _piva = {"$ifNull": ["$supplier_vat", {"$ifNull": ["$cedente_piva", ""]}]}
+    _pagata = {"$cond": [{"$or": [
+        {"$in": [{"$ifNull": ["$stato", ""]}, ["pagata", "paid"]]},
+        {"$eq": [{"$ifNull": ["$status", ""]}, "paid"]},
+        {"$eq": [{"$ifNull": ["$pagato", False]}, True]},
+        {"$eq": [{"$ifNull": ["$stato_pagamento", ""]}, "pagata"]},
+    ]}, 1, 0]}
+
     pipeline_inv = [
         {"$match": query},
+        # Dedup di CONTENUTO (stessa chiave usata dalla lista archivio):
+        # i doppioni non devono gonfiare i contatori mostrati sopra la tabella
+        {"$group": {
+            "_id": {
+                "numero": {"$toUpper": {"$ifNull": ["$invoice_number", {"$ifNull": ["$numero_documento", ""]}]}},
+                "piva": _piva,
+                "data": {"$substrCP": [{"$ifNull": ["$invoice_date", {"$ifNull": ["$data_documento", ""]}]}, 0, 10]},
+                "importo": {"$round": [_importo, 2]},
+            },
+            "importo": {"$first": _importo},
+            "piva": {"$first": _piva},
+            "pagata": {"$max": _pagata},
+        }},
         {"$group": {
             "_id": None,
             "totale_fatture": {"$sum": 1},
-            "importo_totale": {"$sum": {"$toDouble": {"$ifNull": ["$total_amount", 0]}}},
-            "fornitori_unici": {"$addToSet": "$supplier_vat"},
-            "pagate": {"$sum": {"$cond": [
-                {"$in": ["$stato", ["pagata", "paid"]]}, 1, 0
-            ]}},
-            "importo_pagato": {"$sum": {"$cond": [
-                {"$in": ["$stato", ["pagata", "paid"]]},
-                {"$toDouble": {"$ifNull": ["$total_amount", 0]}},
-                0
-            ]}},
+            "importo_totale": {"$sum": "$importo"},
+            "fornitori_unici": {"$addToSet": "$piva"},
+            "pagate": {"$sum": "$pagata"},
+            "importo_pagato": {"$sum": {"$cond": [{"$eq": ["$pagata", 1]}, "$importo", 0]}},
         }}
     ]
     result = await db["invoices"].aggregate(pipeline_inv).to_list(1)
     stats = result[0] if result else {}
     stats.pop("_id", None)
 
+    # Anomale REALI (prima era 0 hardcoded): importo assente/≤0 o numero mancante
+    anomale_cond = {"$or": [
+        {"$and": [
+            {"$or": [{"total_amount": {"$lte": 0}}, {"total_amount": {"$exists": False}}]},
+            {"$or": [{"importo_totale": {"$lte": 0}}, {"importo_totale": {"$exists": False}}]},
+        ]},
+        {"$and": [
+            {"invoice_number": {"$in": [None, ""]}},
+            {"numero_documento": {"$in": [None, ""]}},
+        ]},
+    ]}
+    try:
+        anomale = await db["invoices"].count_documents(
+            {"$and": [query, anomale_cond]} if query else anomale_cond)
+    except Exception:
+        anomale = 0
+
     totale = stats.get("totale_fatture", 0)
     importo = round(stats.get("importo_totale", 0), 2)
-    fornitori = len(stats.get("fornitori_unici", []))
+    fornitori = len([p for p in stats.get("fornitori_unici", []) if p])
     pagate = stats.get("pagate", 0)
     importo_pagato = round(stats.get("importo_pagato", 0), 2)
     da_pagare = totale - pagate
@@ -576,7 +639,7 @@ async def get_statistiche(anno: Optional[int] = Query(None)) -> Dict[str, Any]:
         "da_pagare": da_pagare,
         "importo_da_pagare": importo_da_pagare,
         "fornitori_unici": fornitori,
-        "fatture_anomale": 0,
+        "fatture_anomale": anomale,
         "anno": anno,
     }
 

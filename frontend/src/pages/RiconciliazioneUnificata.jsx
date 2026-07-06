@@ -738,7 +738,7 @@ export default function RiconciliazioneUnificata() {
         }}
       >
         {TABS.map(tab => {
-          const count = tab.id === 'dashboard' ? null : stats[tab.id] || 0;
+          const count = tab.id === 'dashboard' ? null : (stats[tab.id] ?? null);
           return (
             <button
               key={tab.id}
@@ -835,6 +835,7 @@ export default function RiconciliazioneUnificata() {
             processing={processing}
             onLoadF24={loadF24OnDemand}
             f24Loading={f24Loading}
+            onRefresh={loadAllData}
           />
         )}
         {activeTab === 'stipendi' && (
@@ -1310,7 +1311,7 @@ function MovimentoCard({ movimento, onConferma, onIgnora, onElimina, processing,
   );
 }
 
-function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading }) {
+function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefresh }) {
   const [selezionati, setSelezionati] = useState(new Set());
   const [metodoBatch, setMetodoBatch] = useState('banca');
   const [salvandoBatch, setSalvandoBatch] = useState(false);
@@ -1391,7 +1392,7 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading }) {
       alert(`✅ Confermati ${selezionati.size} F24`);
       setSelezionati(new Set());
       // Ricarica dati senza reload pagina
-      loadAllData();
+      onRefresh?.();
     } catch (e) {
       alert('Errore: ' + (e.response?.data?.detail || e.message));
     } finally {
@@ -1410,7 +1411,7 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading }) {
           },
         ],
       });
-      loadAllData();
+      onRefresh?.();
     } catch (e) {
       alert('Errore: ' + (e.response?.data?.detail || e.message));
     }

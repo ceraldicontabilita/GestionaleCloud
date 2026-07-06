@@ -125,10 +125,17 @@ async def update_prima_nota_banca(
         {"id": movimento_id},
         {"$set": update_data}
     )
-    
+
     if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Movimento non trovato")
-    
+        # La vista Banca è un mix di prima_nota_banca + estratto_conto_movimenti:
+        # i movimenti dell'estratto conto vanno aggiornati nella loro collection
+        result_ec = await db["estratto_conto_movimenti"].update_one(
+            {"id": movimento_id},
+            {"$set": update_data}
+        )
+        if result_ec.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Movimento non trovato")
+
     return {"message": "Movimento aggiornato", "id": movimento_id}
 
 
@@ -143,23 +150,28 @@ async def delete_movimento_banca(
     
     mov = await db[COLLECTION_PRIMA_NOTA_BANCA].find_one({"id": movimento_id})
     if not mov:
-        raise HTTPException(status_code=404, detail="Movimento non trovato")
-    
+        # Movimento dell'estratto conto mostrato nella vista Banca
+        mov_ec = await db["estratto_conto_movimenti"].find_one({"id": movimento_id})
+        if not mov_ec:
+            raise HTTPException(status_code=404, detail="Movimento non trovato")
+        await db["estratto_conto_movimenti"].delete_one({"id": movimento_id})
+        return {"success": True, "message": "Movimento estratto conto eliminato"}
+
     validation = BusinessRules.can_delete_movement(mov)
-    
+
     if not validation.is_valid:
         raise HTTPException(
             status_code=400,
             detail={"message": "Eliminazione non consentita", "errors": validation.errors}
         )
-    
+
     if validation.warnings and not force:
         return {
             "status": "warning",
             "warnings": validation.warnings,
             "require_force": True
         }
-    
+
     await db[COLLECTION_PRIMA_NOTA_BANCA].update_one(
         {"id": movimento_id},
         {"$set": {
@@ -168,7 +180,17 @@ async def delete_movimento_banca(
             "deleted_at": datetime.now(timezone.utc).isoformat()
         }}
     )
-    
+
+    # Se il movimento saldava una fattura, la fattura torna "da pagare"
+    # (niente prima_nota_id orfano / stato pagata fantasma)
+    if mov.get("fattura_id"):
+        await db["invoices"].update_one(
+            {"id": mov["fattura_id"], "prima_nota_id": movimento_id},
+            {"$set": {"stato_pagamento": "", "pagato": False, "paid": False},
+             "$unset": {"prima_nota_id": "", "prima_nota_tipo": "",
+                        "prima_nota_banca_id": "", "data_pagamento": ""}}
+        )
+
     return {"success": True, "message": "Movimento eliminato (archiviato)"}
 
 

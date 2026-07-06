@@ -144,9 +144,15 @@ async def paypal_dashboard(
     )
     
     # Transazioni in estratto conto bancario con PayPal
-    ec_paypal = await db[COLL_ESTRATTO_CONTO].count_documents(
-        {"descrizione": {"$regex": "paypal", "$options": "i"}}
-    )
+    # Stessa logica della riconciliazione: descrizione O descrizione_originale,
+    # e rispetta il filtro anno selezionato (prima contava sempre tutto).
+    ec_query = {"$or": [
+        {"descrizione": {"$regex": "paypal", "$options": "i"}},
+        {"descrizione_originale": {"$regex": "paypal", "$options": "i"}},
+    ]}
+    if anno:
+        ec_query = {"$and": [ec_query, {"data": {"$regex": f"^{anno}"}}]}
+    ec_paypal = await db[COLL_ESTRATTO_CONTO].count_documents(ec_query)
     
     return {
         "total_statements": total_statements,

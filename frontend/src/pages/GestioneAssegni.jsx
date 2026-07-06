@@ -101,8 +101,8 @@ export default function GestioneAssegni() {
 
       // Ordina per numero assegno decrescente (dal più recente al più vecchio)
       const assegniOrdinati = (assegniRes.data || []).sort((a, b) => {
-        const numA = parseInt(a.numero_assegno?.replace(/\D/g, '') || '0');
-        const numB = parseInt(b.numero_assegno?.replace(/\D/g, '') || '0');
+        const numA = parseInt((a.numero || a.numero_assegno || '').replace(/\D/g, '') || '0');
+        const numB = parseInt((b.numero || b.numero_assegno || '').replace(/\D/g, '') || '0');
         return numB - numA; // Decrescente
       });
 

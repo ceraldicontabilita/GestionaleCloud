@@ -198,7 +198,16 @@ async def delete_movimento_cassa(
             "deleted_at": datetime.now(timezone.utc).isoformat()
         }}
     )
-    
+
+    # Se il movimento saldava una fattura, la fattura torna "da pagare"
+    if mov.get("fattura_id"):
+        await db["invoices"].update_one(
+            {"id": mov["fattura_id"], "prima_nota_id": movimento_id},
+            {"$set": {"stato_pagamento": "", "pagato": False, "paid": False},
+             "$unset": {"prima_nota_id": "", "prima_nota_tipo": "",
+                        "prima_nota_cassa_id": "", "data_pagamento": ""}}
+        )
+
     return {"success": True, "message": "Movimento eliminato (archiviato)"}
 
 

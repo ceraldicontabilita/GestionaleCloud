@@ -401,6 +401,21 @@ async def sposta_movimento(req: SpostaMovimentoRequest) -> Dict:
     await db[dest_coll].insert_one(mov)
     await db[source_coll].delete_one({"id": movimento_id})
 
+    # Aggiorna la FATTURA collegata: metodo e riferimenti prima nota devono
+    # seguire lo spostamento (prima restavano puntati alla collection vecchia)
+    fattura_aggiornata = False
+    if mov.get("fattura_id"):
+        metodo_label = "contanti" if a == "cassa" else "bonifico"
+        upd = {
+            "prima_nota_tipo": a,
+            "metodo_pagamento": metodo_label,
+            "payment_method": metodo_label,
+            "prima_nota_cassa_id": movimento_id if a == "cassa" else None,
+            "prima_nota_banca_id": movimento_id if a == "banca" else None,
+        }
+        r = await db["invoices"].update_one({"id": mov["fattura_id"]}, {"$set": upd})
+        fattura_aggiornata = r.modified_count > 0
+
     # --- EVENT BUS: propaga evento trasferimento (ramo standard) ---
     try:
         from app.services.event_bus import propagate_event, EventTypes
@@ -418,7 +433,8 @@ async def sposta_movimento(req: SpostaMovimentoRequest) -> Dict:
     return {
         "success": True,
         "message": f"Movimento spostato da {da} a {a}",
-        "movimento_id": movimento_id
+        "movimento_id": movimento_id,
+        "fattura_aggiornata": fattura_aggiornata,
     }
 
 

@@ -228,12 +228,23 @@ function PrimaNotaDesktop() {
       const saldoAnno = (ecData.totale_entrate || 0) - (ecData.totale_uscite || 0);
       setBancaData({
         movimenti: movimentiUniti,
-        saldo: ecData.saldo || saldoPrec + saldoAnno,
-        saldo_anno: ecData.saldo_anno || saldoAnno,
+        // Totali coerenti con la TABELLA: estratto conto + movimenti manuali
+        // di prima nota banca (prima le card ignoravano questi ultimi)
+        totale_entrate: movimentiUniti
+          .filter(m => m.tipo === 'entrata')
+          .reduce((sum, m) => sum + Math.abs(m.importo || 0), 0),
+        totale_uscite: movimentiUniti
+          .filter(m => m.tipo === 'uscita')
+          .reduce((sum, m) => sum + Math.abs(m.importo || 0), 0),
+        saldo_anno: saldoAnno,
         saldo_precedente: saldoPrec,
-        totale_entrate: ecData.totale_entrate || 0,
-        totale_uscite: ecData.totale_uscite || 0,
-        count: ecData.totale || movimentiUniti.length,
+        saldo:
+          saldoPrec +
+          movimentiUniti.reduce(
+            (sum, m) => sum + (m.tipo === 'entrata' ? 1 : -1) * Math.abs(m.importo || 0),
+            0
+          ),
+        count: movimentiUniti.length,
       });
 
       // Aggiorna anni disponibili dopo caricamento
@@ -439,7 +450,13 @@ function PrimaNotaDesktop() {
 
   const handleDeleteMovimento = async (tipo, id) => {
     try {
-      await api.delete(`/api/prima-nota/${tipo}/${id}`);
+      const res = await api.delete(`/api/prima-nota/${tipo}/${id}`);
+      if (res.data?.require_force) {
+        const avvisi = (res.data.warnings || []).join('\n');
+        if (confirm(`Attenzione:\n${avvisi}\n\nEliminare comunque?`)) {
+          await api.delete(`/api/prima-nota/${tipo}/${id}?force=true`);
+        }
+      }
       loadAllData();
     } catch (error) {
       alert('Errore: ' + (error.response?.data?.detail || error.message));
@@ -484,7 +501,7 @@ function PrimaNotaDesktop() {
       .reduce((s, m) => s + m.importo, 0) || 0;
   const totaleFattureCassa =
     cassaData.movimenti
-      ?.filter(m => m.categoria === 'Pagamento fornitore')
+      ?.filter(m => ['Pagamento fornitore', 'Fatture', 'fornitori'].includes(m.categoria))
       .reduce((s, m) => s + m.importo, 0) || 0;
   const totaleCorrispettivi =
     cassaData.movimenti
@@ -2581,6 +2598,7 @@ function MovementsTable({
 
 // Componente Modal per Modifica Movimento
 function EditMovimentoModal({ movimento, tipo, onClose, onSave }) {
+  const isMobile = useIsMobile();
   const [form, setForm] = useState({
     data: movimento.data || '',
     tipo: movimento.tipo || 'uscita',

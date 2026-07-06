@@ -59,6 +59,7 @@ export default function Dashboard() {
 
   // Stato per auto-riparazione
   const [autoRepairStatus, setAutoRepairStatus] = useState(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   // Stato per Learning Machine
   const [learningStats, setLearningStats] = useState(null);
@@ -89,6 +90,7 @@ export default function Dashboard() {
       });
 
       // Ricarica dati dopo riparazione (senza reload pagina)
+      setReloadKey(k => k + 1);
     } catch (error) {
       console.warn('Auto-riparazione non riuscita:', error);
       setAutoRepairStatus({ error: true, totale: 0 });
@@ -219,7 +221,7 @@ export default function Dashboard() {
       clearTimeout(timeoutId);
       controller.abort();
     };
-  }, [anno]);
+  }, [anno, reloadKey]);
 
   // Carica Volume Affari Reale quando toggle attivato
   async function loadVolumeReale() {

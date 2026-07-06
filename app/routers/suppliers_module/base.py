@@ -202,8 +202,9 @@ async def list_suppliers(
             if v:
                 alias_index[v] = rec
 
-    # Calcola statistiche fatture - sempre se serve stato_anagrafica o se non c'è search
-    need_stats = not search or stato_anagrafica
+    # Statistiche fatture SEMPRE: prima con una ricerca attiva i contatori
+    # 'Con Fatture'/'Fatture' sulle card crollavano a 0 (dati stantii)
+    need_stats = True
     if need_stats:
         # NB: coalesce su TUTTI i campi P.IVA delle fatture — supplier_vat
         # (schema inglese), cedente_piva (schema italiano), fornitore_partita_iva.
@@ -370,8 +371,6 @@ async def list_suppliers_filtered(
     Endpoint dedicato con filtri avanzati per l'anagrafica fornitori.
     Restituisce anche i contatori delle varie categorie per popolare i badge UI.
     """
-    db = Database.get_db()
-    
     # Riuso la logica di list_suppliers passando i filtri
     items = await list_suppliers(
         skip=skip,
@@ -386,11 +385,12 @@ async def list_suppliers_filtered(
         use_cache=False
     )
     
-    # Contatori globali (senza filtri applicati) — utili per i badge UI
-    total_all = await db[Collections.SUPPLIERS].count_documents({})
-    total_popolano_magazzino = await db[Collections.SUPPLIERS].count_documents({"esclude_magazzino": {"$ne": True}})
-    total_esclusi_magazzino = await db[Collections.SUPPLIERS].count_documents({"esclude_magazzino": True})
-    total_attivi = await db[Collections.SUPPLIERS].count_documents({"attivo": True})
+    # Contatori COERENTI col filtro attivo: i badge devono descrivere il
+    # risultato mostrato, non i totali globali (prima non cambiavano mai).
+    total_all = len(items)
+    total_popolano_magazzino = sum(1 for s in items if not s.get("esclude_magazzino"))
+    total_esclusi_magazzino = sum(1 for s in items if s.get("esclude_magazzino"))
+    total_attivi = sum(1 for s in items if s.get("attivo") is True)
     
     return {
         "items": items,
@@ -436,6 +436,65 @@ async def get_supplier(supplier_id: str) -> Dict[str, Any]:
         supplier["fatture_recenti"] = invoices
     
     return supplier
+
+
+@router.post("")
+async def create_supplier(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    """Crea un nuovo fornitore dal modale 'Nuovo Fornitore'.
+
+    Endpoint mancante: il frontend faceva POST /api/suppliers ma esisteva
+    solo la GET → 405 e impossibile creare fornitori dalla UI.
+    """
+    db = Database.get_db()
+
+    nome = (data.get("ragione_sociale") or data.get("denominazione") or data.get("nome") or "").strip()
+    if not nome:
+        raise HTTPException(status_code=400, detail="Ragione sociale obbligatoria")
+    piva = (data.get("partita_iva") or data.get("piva") or "").strip()
+
+    if piva:
+        esistente = await db[Collections.SUPPLIERS].find_one(
+            {"$or": [{"partita_iva": piva}, {"piva": piva}, {"vat_number": piva}]},
+            {"_id": 0, "id": 1, "ragione_sociale": 1})
+        if esistente:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Esiste già un fornitore con P.IVA {piva}: {esistente.get('ragione_sociale') or ''}")
+
+    metodo = data.get("metodo_pagamento") or ""
+    if metodo and metodo not in PAYMENT_METHODS:
+        raise HTTPException(status_code=400, detail="Metodo pagamento non valido")
+
+    now = datetime.now(timezone.utc).isoformat()
+    nuovo = {
+        "id": str(uuid.uuid4()),
+        "ragione_sociale": nome,
+        "denominazione": nome,
+        "nome": nome,
+        "partita_iva": piva,
+        "piva": piva,
+        "codice_fiscale": data.get("codice_fiscale") or piva,
+        "indirizzo": data.get("indirizzo") or "",
+        "cap": data.get("cap") or "",
+        "comune": data.get("comune") or "",
+        "provincia": data.get("provincia") or "",
+        "nazione": data.get("nazione") or "IT",
+        "email": data.get("email") or "",
+        "telefono": data.get("telefono") or "",
+        "iban": data.get("iban") or "",
+        "metodo_pagamento": metodo,
+        "metodo_pagamento_dal": now[:10] if metodo else None,
+        "giorni_pagamento": data.get("giorni_pagamento") or 30,
+        "note": data.get("note") or "",
+        "attivo": True,
+        "esclude_magazzino": bool(data.get("esclude_magazzino", False)),
+        "source": "manuale",
+        "created_at": now,
+        "updated_at": now,
+    }
+    await db[Collections.SUPPLIERS].insert_one({**nuovo})
+    await cache.clear_pattern(SUPPLIERS_CACHE_KEY)
+    return {"success": True, "supplier": nuovo, "id": nuovo["id"]}
 
 
 @router.put("/{supplier_id}")

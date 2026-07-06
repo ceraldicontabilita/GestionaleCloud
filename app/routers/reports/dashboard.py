@@ -54,7 +54,7 @@ async def get_summary(
         async def get_invoices_amount():
             pipeline = [
                 {"$match": invoices_filter},
-                {"$group": {"_id": None, "total": {"$sum": "$total_amount"}}}
+                {"$group": {"_id": None, "total": {"$sum": {"$toDouble": {"$ifNull": ["$total_amount", {"$ifNull": ["$importo_totale", 0]}]}}}}}
             ]
             result = await db[Collections.INVOICES].aggregate(pipeline).to_list(1)
             return result[0]["total"] if result else 0
@@ -273,8 +273,8 @@ async def get_trend_mensile(
             }},
             {"$group": {
                 "_id": "$mese",
-                "totale": {"$sum": {"$toDouble": {"$ifNull": ["$total_amount", 0]}}},
-                "totale_iva": {"$sum": {"$toDouble": {"$ifNull": ["$iva", 0]}}}
+                "totale": {"$sum": {"$toDouble": {"$ifNull": ["$total_amount", {"$ifNull": ["$importo_totale", 0]}]}}},
+                "totale_iva": {"$sum": {"$toDouble": {"$ifNull": ["$iva", {"$ifNull": ["$importo_iva", 0]}]}}}
             }}
         ]
         fatt_results = await db[Collections.INVOICES].aggregate(fatt_pipeline).to_list(12)
@@ -451,7 +451,7 @@ async def get_confronto_annuale(
                     {"invoice_date": {"$regex": f"^{a}"}}
                 ]
             }},
-            {"$group": {"_id": None, "totale": {"$sum": "$total_amount"}}}
+            {"$group": {"_id": None, "totale": {"$sum": {"$toDouble": {"$ifNull": ["$total_amount", {"$ifNull": ["$importo_totale", 0]}]}}}}}
         ]).to_list(1)
         uscite = uscite_res[0]["totale"] if uscite_res else 0
         
