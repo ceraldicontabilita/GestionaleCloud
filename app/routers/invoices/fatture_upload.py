@@ -47,12 +47,13 @@ async def ensure_supplier_exists(db, parsed_invoice: Dict[str, Any], session=Non
         return result
 
     # Cerca fornitore per P.IVA (supporta sia 'piva' che 'partita_iva' come field name)
+    # NB: niente proiezione {"_id": 0} — l'_id serve come filtro di update
+    # perché i fornitori storici possono non avere il campo "id".
     existing = await db[Collections.SUPPLIERS].find_one(
         {"$or": [
             {"partita_iva": supplier_vat},
             {"piva": supplier_vat}
         ]},
-        {"_id": 0},
         session=session
     )
 
@@ -66,7 +67,6 @@ async def ensure_supplier_exists(db, parsed_invoice: Dict[str, Any], session=Non
                 {"ragione_sociale": {"$regex": f"^{safe_name}", "$options": "i"}},
                 {"denominazione": {"$regex": f"^{safe_name}", "$options": "i"}}
             ]},
-            {"_id": 0},
             session=session
         )
 
@@ -74,7 +74,10 @@ async def ensure_supplier_exists(db, parsed_invoice: Dict[str, Any], session=Non
 
     if existing:
         result["supplier_exists"] = True
-        result["supplier_id"] = existing.get("id")
+        # I fornitori storici (creati da altre app o import vecchi) possono non
+        # avere il campo "id": in quel caso lo generiamo e lo scriviamo sotto.
+        supplier_id = existing.get("id") or str(uuid.uuid4())
+        result["supplier_id"] = supplier_id
         result["metodo_pagamento"] = existing.get("metodo_pagamento")
 
         # Aggiorna SEMPRE i campi anagrafici mancanti (non sovrascrive quelli già compilati)
@@ -95,11 +98,14 @@ async def ensure_supplier_exists(db, parsed_invoice: Dict[str, Any], session=Non
             if value and not existing.get(field):
                 update_data[field] = value
 
+        if not existing.get("id"):
+            update_data["id"] = supplier_id
+
         if update_data:
             update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
             update_data["dati_incompleti"] = False
             await db[Collections.SUPPLIERS].update_one(
-                {"id": existing["id"]},
+                {"_id": existing["_id"]},
                 {"$set": update_data},
                 session=session
             )
