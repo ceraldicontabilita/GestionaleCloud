@@ -12,7 +12,6 @@ import { queryClient } from "./lib/queryClient.js";
 import { ConfirmProvider } from "./components/ui/ConfirmDialog.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import Login from "./pages/Login.jsx";
-import Register from "./pages/Register.jsx";
 import AuthCallback from "./pages/AuthCallback.jsx";
 
 const PageLoader = () => (
@@ -59,7 +58,6 @@ const LazyPage = ({ children }) => (
 const router = createBrowserRouter([
   { path: "/auth/callback", element: <AuthCallback /> },
   { path: "/login", element: <Login /> },
-  { path: "/register", element: <Register /> },
   { path: "/gestione-riservata", element: <LazyPage><GestioneRiservata /></LazyPage> },
   {
     path: "/",
