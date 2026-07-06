@@ -1,5 +1,5 @@
 """Admin router - Administrative functions."""
-from fastapi import APIRouter, Body, Depends, Path, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 import logging
@@ -10,6 +10,25 @@ from app.utils.dependencies import get_current_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+# ── ESEGUITO UNA TANTUM: archivia (rinomina, mai cancella) le collection
+# confermate morte da un audit completo del codice (nessun punto di lettura/
+# scrittura rimasto su nessuna di queste tre). Protetto da un token statico
+# generato per questa sola operazione — endpoint da rimuovere subito dopo
+# l'uso, non è pensato per restare permanentemente esposto.
+_ARCHIVIA_MORTE_TOKEN = "lYW68g5mhN7dGf8VBBwGublSHOIEysbAwV80d_2fvhA"
+
+
+@router.post("/one-shot/archivia-collection-morte", include_in_schema=False)
+async def one_shot_archivia_collection_morte(
+    token: str = Query(...),
+    esegui: bool = Query(False),
+) -> Dict[str, Any]:
+    if token != _ARCHIVIA_MORTE_TOKEN:
+        raise HTTPException(status_code=404)
+    from app.scripts.archivia_collection_morte import archivia_collection_morte
+    return await archivia_collection_morte(esegui=esegui)
 
 
 @router.get("/dashboard-summary", summary="Aggregated dashboard summary for admin page")
