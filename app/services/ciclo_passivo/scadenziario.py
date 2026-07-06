@@ -112,6 +112,6 @@ async def crea_scadenza_pagamento(
     
     # Salva
     await db[SCADENZIARIO_COLLECTION].insert_one(scadenza.copy())
-    logger.info(f"Scadenza creata: {scadenza['id']} - {fornitore_nome} - €{totale} - scade {data_scadenza.strftime('%d/%m/%Y')}")
+    logger.info(f"Scadenza creata: {scadenza['id']} - {fornitore_nome} - €{totale} - scade {data_scadenza.strftime('%d-%m-%Y')}")
     
     return scadenza["id"]

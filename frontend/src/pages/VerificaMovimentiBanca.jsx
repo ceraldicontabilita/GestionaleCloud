@@ -70,7 +70,7 @@ export default function VerificaMovimentiBanca() {
   }).format(Number(n) || 0);
   const fmtData = (d) => {
     if (!d) return '—';
-    try { return new Date(d).toLocaleDateString('it-IT'); } catch { return d; }
+    try { return new Date(d).toLocaleDateString('it-IT').replaceAll('/', '-'); } catch { return d; }
   };
 
   const movimenti = data?.movimenti || [];

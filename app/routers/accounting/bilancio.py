@@ -810,7 +810,7 @@ async def export_bilancio_pdf(anno: int = Query(None)):
     
     # Titolo
     elements.append(Paragraph(f"BILANCIO {anno}", title_style))
-    elements.append(Paragraph(f"Generato il {datetime.now().strftime('%d/%m/%Y')}", styles['Normal']))
+    elements.append(Paragraph(f"Generato il {datetime.now().strftime('%d-%m-%Y')}", styles['Normal']))
     elements.append(Spacer(1, 20))
     
     # === STATO PATRIMONIALE ===
@@ -1359,7 +1359,7 @@ async def export_confronto_pdf(
     # Footer
     elements.append(Spacer(1, 40))
     footer_style = ParagraphStyle('Footer', parent=styles['Normal'], fontSize=9, textColor=colors.gray)
-    elements.append(Paragraph(f"Documento generato il {datetime.now().strftime('%d/%m/%Y %H:%M')} - Azienda Semplice ERP", footer_style))
+    elements.append(Paragraph(f"Documento generato il {datetime.now().strftime('%d-%m-%Y %H:%M')} - Azienda Semplice ERP", footer_style))
     
     doc.build(elements)
     buffer.seek(0)

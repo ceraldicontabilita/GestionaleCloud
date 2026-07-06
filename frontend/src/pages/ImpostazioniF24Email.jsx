@@ -619,7 +619,7 @@ export default function ImpostazioniF24Email() {
                   <AlertCircle size={14} color="#dc2626" />
                 )}
                 Ultima scansione:{' '}
-                {new Date(stato.ultima_scansione.timestamp).toLocaleString('it-IT')} —{' '}
+                {new Date(stato.ultima_scansione.timestamp).toLocaleString('it-IT').replaceAll('/', '-')} —{' '}
                 {stato.ultima_scansione.tipo}
               </div>
             )}
@@ -1010,7 +1010,7 @@ export default function ImpostazioniF24Email() {
                         <AlertCircle size={14} color="#dc2626" />
                       )}
                       <span style={{ color: '#374151' }}>
-                        {new Date(log.timestamp).toLocaleString('it-IT')}
+                        {new Date(log.timestamp).toLocaleString('it-IT').replaceAll('/', '-')}
                       </span>
                       <span
                         style={{

@@ -409,12 +409,18 @@ export function badge(type) {
 /* ================================================================
    FORMATTAZIONE ITALIANA
    ================================================================ */
+// FORMATO DATA UNICO dell'app: gg-mm-aaaa (solo visualizzazione — nel DB e
+// nelle query le date restano ISO aaaa-mm-gg).
 export function formatDateIT(dateStr) {
   if (!dateStr) return '-';
   try {
     const datePart = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
-    const parts = datePart.split('-');
-    if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    // ISO aaaa-mm-gg → gg-mm-aaaa
+    let parts = datePart.split('-');
+    if (parts.length === 3 && parts[0].length === 4) return `${parts[2]}-${parts[1]}-${parts[0]}`;
+    // gg/mm/aaaa (record legacy) → gg-mm-aaaa
+    parts = datePart.split('/');
+    if (parts.length === 3) return `${parts[0]}-${parts[1]}-${parts[2]}`;
     return dateStr;
   } catch {
     return dateStr;
@@ -458,13 +464,12 @@ export function formatDateTimeIT(dateStr) {
   if (!dateStr) return '-';
   try {
     const date = new Date(dateStr);
-    return date.toLocaleString('it-IT', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    if (isNaN(date.getTime())) return dateStr;
+    const gg = String(date.getDate()).padStart(2, '0');
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const hh = String(date.getHours()).padStart(2, '0');
+    const min = String(date.getMinutes()).padStart(2, '0');
+    return `${gg}-${mm}-${date.getFullYear()} ${hh}:${min}`;
   } catch {
     return dateStr;
   }
@@ -475,7 +480,7 @@ export function formatDateShort(dateStr) {
   try {
     const datePart = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
     const parts = datePart.split('-');
-    if (parts.length === 3) return `${parts[2]}/${parts[1]}`;
+    if (parts.length === 3) return `${parts[2]}-${parts[1]}`;
     return dateStr;
   } catch {
     return dateStr;

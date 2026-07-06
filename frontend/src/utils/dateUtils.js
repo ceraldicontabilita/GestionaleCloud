@@ -2,16 +2,17 @@
  * UTILITY FORMATTAZIONE ITALIANA
  *
  * REGOLA FONDAMENTALE:
- * - Date: formato GG/MM/AAAA (es. 25/01/2026)
+ * - Date VISUALIZZATE: formato GG-MM-AAAA (es. 25-01-2026)
+ *   (nel database e nelle query restano ISO AAAA-MM-GG)
  * - Valuta: formato € 0.000,00 (punto per migliaia, virgola per decimali)
  *
  * Usare SEMPRE queste funzioni in tutta l'applicazione!
  */
 
 /**
- * Formatta una data nel formato italiano DD/MM/YYYY
+ * Formatta una data nel formato italiano GG-MM-AAAA
  * @param {string|Date} dataStr - Data in qualsiasi formato
- * @returns {string} Data formattata GG/MM/AAAA
+ * @returns {string} Data formattata GG-MM-AAAA
  */
 export const formattaDataItaliana = dataStr => {
   if (!dataStr) return '';
@@ -27,27 +28,32 @@ export const formattaDataItaliana = dataStr => {
   // Formato YYYY-MM-DD (ISO)
   if (typeof dataStr === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dataStr)) {
     const [anno, mese, giorno] = dataStr.split('-');
-    return `${giorno}/${mese}/${anno}`;
+    return `${giorno}-${mese}-${anno}`;
   }
 
-  // Già in formato italiano DD/MM/YYYY
-  if (typeof dataStr === 'string' && /^\d{2}\/\d{2}\/\d{4}$/.test(dataStr)) {
+  // Già in formato GG-MM-AAAA
+  if (typeof dataStr === 'string' && /^\d{2}-\d{2}-\d{4}$/.test(dataStr)) {
     return dataStr;
   }
 
-  // Formato americano MM/DD/YYYY o MM/DD/YY - converti a italiano
-  if (typeof dataStr === 'string' && /^\d{2}\/\d{2}\/\d{2,4}$/.test(dataStr)) {
+  // Formato italiano legacy DD/MM/YYYY → GG-MM-AAAA
+  if (typeof dataStr === 'string' && /^\d{2}\/\d{2}\/\d{4}$/.test(dataStr)) {
+    const [g, m, a] = dataStr.split('/');
+    return `${g}-${m}-${a}`;
+  }
+
+  // Formato americano MM/DD/YY - converti a italiano
+  if (typeof dataStr === 'string' && /^\d{2}\/\d{2}\/\d{2}$/.test(dataStr)) {
     const parts = dataStr.split('/');
-    // Se il primo numero è > 12, è già DD/MM
-    if (parseInt(parts[0]) > 12) {
-      return dataStr;
-    }
-    // Altrimenti assumiamo MM/DD/YY(YY) e convertiamo
     let anno = parts[2];
     if (anno.length === 2) {
       anno = parseInt(anno) > 50 ? '19' + anno : '20' + anno;
     }
-    return `${parts[1]}/${parts[0]}/${anno}`;
+    // Se il primo numero è > 12, è già DD/MM
+    if (parseInt(parts[0]) > 12) {
+      return `${parts[0]}-${parts[1]}-${anno}`;
+    }
+    return `${parts[1]}-${parts[0]}-${anno}`;
   }
 
   // Prova parsing Date object
@@ -57,7 +63,7 @@ export const formattaDataItaliana = dataStr => {
       const giorno = String(dt.getDate()).padStart(2, '0');
       const mese = String(dt.getMonth() + 1).padStart(2, '0');
       const anno = dt.getFullYear();
-      return `${giorno}/${mese}/${anno}`;
+      return `${giorno}-${mese}-${anno}`;
     }
   } catch (e) {
     /* ignora errori di parsing */

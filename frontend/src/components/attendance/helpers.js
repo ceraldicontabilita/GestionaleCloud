@@ -36,7 +36,7 @@ export const formatDate = dateStr => {
   if (!dateStr) return '-';
   try {
     const d = new Date(dateStr);
-    return d.toLocaleDateString('it-IT');
+    return d.toLocaleDateString('it-IT').replaceAll('/', '-');
   } catch {
     return dateStr;
   }

@@ -679,7 +679,7 @@ async def export_iva_trimestrale_pdf(year: int, quarter: int) -> StreamingRespon
     elements.append(Spacer(1, 40))
     footer_style = ParagraphStyle('Footer', parent=styles['Normal'], fontSize=9, textColor=colors.gray)
     from datetime import datetime
-    elements.append(Paragraph(f"Documento generato il {datetime.now().strftime('%d/%m/%Y %H:%M')} - Azienda Semplice ERP", footer_style))
+    elements.append(Paragraph(f"Documento generato il {datetime.now().strftime('%d-%m-%Y %H:%M')} - Azienda Semplice ERP", footer_style))
     
     doc.build(elements)
     buffer.seek(0)
@@ -759,7 +759,7 @@ async def export_iva_annuale_pdf(year: int) -> StreamingResponse:
     elements.append(Spacer(1, 40))
     footer_style = ParagraphStyle('Footer', parent=styles['Normal'], fontSize=9, textColor=colors.gray)
     from datetime import datetime
-    elements.append(Paragraph(f"Documento generato il {datetime.now().strftime('%d/%m/%Y %H:%M')} - Azienda Semplice ERP", footer_style))
+    elements.append(Paragraph(f"Documento generato il {datetime.now().strftime('%d-%m-%Y %H:%M')} - Azienda Semplice ERP", footer_style))
     
     doc.build(elements)
     buffer.seek(0)

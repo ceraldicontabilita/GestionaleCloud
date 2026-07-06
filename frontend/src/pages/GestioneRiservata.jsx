@@ -674,7 +674,7 @@ function DashboardGestioneRiservata({ onLogout }) {
               <tbody>
                 {movimenti.map(mov => (
                   <tr key={mov.id} style={{ borderBottom: '1px solid #f0f0f0' }}>
-                    <td style={{ padding: '12px 16px' }}>{mov.data}</td>
+                    <td style={{ padding: '12px 16px' }}>{formatDateIT(mov.data)}</td>
                     <td style={{ padding: '12px 16px' }}>
                       <span
                         style={{

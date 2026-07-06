@@ -315,7 +315,7 @@ async def invia_prima_nota_cassa(data: Dict[str, Any] = Body(...)) -> Dict[str, 
             
             <div style="background: #f5f5f5; padding: 15px; text-align: center; font-size: 12px; color: #666;">
                 Ceraldi Group S.R.L. - ERP Azienda Semplice<br>
-                Email generata automaticamente il {datetime.now().strftime('%d/%m/%Y alle %H:%M')}
+                Email generata automaticamente il {datetime.now().strftime('%d-%m-%Y alle %H:%M')}
             </div>
         </div>
     </body>
@@ -401,7 +401,7 @@ async def invia_carnet(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
             
             <div style="background: #f5f5f5; padding: 15px; text-align: center; font-size: 12px; color: #666;">
                 Ceraldi Group S.R.L. - ERP Azienda Semplice<br>
-                Email generata automaticamente il {datetime.now().strftime('%d/%m/%Y alle %H:%M')}
+                Email generata automaticamente il {datetime.now().strftime('%d-%m-%Y alle %H:%M')}
             </div>
         </div>
     </body>
@@ -490,7 +490,7 @@ async def invia_fatture_cassa(data: Dict[str, Any] = Body(...)) -> Dict[str, Any
             
             <div style="background: #f5f5f5; padding: 15px; text-align: center; font-size: 12px; color: #666;">
                 Ceraldi Group S.R.L. - ERP Azienda Semplice<br>
-                Email generata automaticamente il {datetime.now().strftime('%d/%m/%Y alle %H:%M')}
+                Email generata automaticamente il {datetime.now().strftime('%d-%m-%Y alle %H:%M')}
             </div>
         </div>
     </body>
@@ -736,7 +736,7 @@ SALDO IVA: € {saldo_iva:,.2f}
 {'DA VERSARE' if saldo_iva > 0 else 'A CREDITO'}
 
 =====================================
-Generato il {datetime.now().strftime('%d/%m/%Y %H:%M')}
+Generato il {datetime.now().strftime('%d-%m-%Y %H:%M')}
 """
         zf.writestr(f'riepilogo_iva_{mese_str}.txt', riepilogo)
         
@@ -1179,7 +1179,7 @@ async def schedula_export_mensile(data: Dict[str, Any] = Body(...)) -> Dict[str,
                 </ul>
                 <p style="color: #666; font-size: 12px;">
                     Report generato automaticamente da Azienda in Cloud ERP<br>
-                    Data invio: {datetime.now(timezone.utc).strftime('%d/%m/%Y %H:%M')}
+                    Data invio: {datetime.now(timezone.utc).strftime('%d-%m-%Y %H:%M')}
                 </p>
             </body>
             </html>

@@ -249,7 +249,7 @@ def compute_vat_liquidation_from_db(
         "anno": year,
         "mese": month,
         "mese_nome": MESI_ITALIANI[month],
-        "periodo": f"{period_start.strftime('%d/%m/%Y')} - {period_end.strftime('%d/%m/%Y')}",
+        "periodo": f"{period_start.strftime('%d-%m-%Y')} - {period_end.strftime('%d-%m-%Y')}",
         "iva_debito": float(iva_debito),
         "iva_credito": float(iva_credito),
         "credito_precedente": float(prev_credit_carry),
@@ -400,7 +400,7 @@ def export_liquidazione_iva_pdf(
     # Footer
     footer_style = ParagraphStyle('Footer', parent=styles['Normal'], fontSize=9, textColor=colors.grey)
     story.append(Paragraph(
-        f"Documento generato il {datetime.now().strftime('%d/%m/%Y %H:%M')} - Azienda Semplice ERP",
+        f"Documento generato il {datetime.now().strftime('%d-%m-%Y %H:%M')} - Azienda Semplice ERP",
         footer_style
     ))
     

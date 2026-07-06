@@ -469,7 +469,7 @@ export default function Commercialista() {
       doc.setFontSize(8);
       doc.setTextColor(128);
       doc.text(
-        `CERALDI GROUP S.R.L. - Generato il ${new Date().toLocaleDateString('it-IT')} - Pagina ${i}/${pageCount}`,
+        `CERALDI GROUP S.R.L. - Generato il ${new Date().toLocaleDateString('it-IT').replaceAll('/', '-')} - Pagina ${i}/${pageCount}`,
         14,
         doc.internal.pageSize.height - 10
       );
@@ -560,7 +560,7 @@ export default function Commercialista() {
       doc.setFontSize(8);
       doc.setTextColor(128);
       doc.text(
-        `Ceraldi Group S.R.L. - Generato il ${new Date().toLocaleDateString('it-IT')} - Pagina ${i}/${pageCount}`,
+        `Ceraldi Group S.R.L. - Generato il ${new Date().toLocaleDateString('it-IT').replaceAll('/', '-')} - Pagina ${i}/${pageCount}`,
         14,
         doc.internal.pageSize.height - 10
       );
@@ -623,7 +623,7 @@ export default function Commercialista() {
       doc.setFontSize(8);
       doc.setTextColor(128);
       doc.text(
-        `Ceraldi Group S.R.L. - Generato il ${new Date().toLocaleDateString('it-IT')} - Pagina ${i}/${pageCount}`,
+        `Ceraldi Group S.R.L. - Generato il ${new Date().toLocaleDateString('it-IT').replaceAll('/', '-')} - Pagina ${i}/${pageCount}`,
         14,
         doc.internal.pageSize.height - 10
       );
@@ -776,7 +776,7 @@ export default function Commercialista() {
       doc.setFontSize(8);
       doc.setTextColor(128);
       doc.text(
-        `Ceraldi Group S.R.L. - Generato il ${new Date().toLocaleDateString('it-IT')} - Pagina ${i}/${pageCount}`,
+        `Ceraldi Group S.R.L. - Generato il ${new Date().toLocaleDateString('it-IT').replaceAll('/', '-')} - Pagina ${i}/${pageCount}`,
         14,
         doc.internal.pageSize.height - 10
       );
@@ -854,7 +854,7 @@ export default function Commercialista() {
       year: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
-    });
+    }).replaceAll('/', '-');
   };
 
   return (

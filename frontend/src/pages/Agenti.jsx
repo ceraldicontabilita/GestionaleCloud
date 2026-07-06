@@ -28,7 +28,7 @@ function formatTs(iso) {
       month: '2-digit',
       hour: '2-digit',
       minute: '2-digit',
-    });
+    }).replaceAll('/', '-');
   } catch {
     return iso;
   }

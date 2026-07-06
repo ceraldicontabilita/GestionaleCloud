@@ -194,7 +194,7 @@ export default function Corrispettivi() {
           {/* Dettaglio selezionato */}
           {selectedItem && (
             <PageSection
-              title={`Dettaglio Corrispettivo ${selectedItem.data}`}
+              title={`Dettaglio Corrispettivo ${formatDateIT(selectedItem.data)}`}
               icon="📋"
               style={{ marginTop: 20 }}
             >
@@ -227,7 +227,7 @@ export default function Corrispettivi() {
                   </h4>
                   <div style={{ fontSize: 13, lineHeight: 2 }}>
                     <div>
-                      📅 Data: <strong>{selectedItem.data}</strong>
+                      📅 Data: <strong>{formatDateIT(selectedItem.data)}</strong>
                     </div>
                     <div>🔢 Matricola RT: {selectedItem.matricola_rt || '-'}</div>
                     <div>🏢 P.IVA: {selectedItem.partita_iva || '-'}</div>

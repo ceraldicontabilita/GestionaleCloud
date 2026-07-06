@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../api';
-import { COLORS, STYLES, useIsMobile, formatEuro } from '../lib/utils';
+import { COLORS, STYLES, useIsMobile, formatEuro, formatDateIT } from '../lib/utils';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 
 export default function DatiProvvisori() {
@@ -320,7 +320,7 @@ export default function DatiProvvisori() {
                   </td>
                   <td style={{ padding: '12px 14px' }}>
                     <div style={{ fontWeight: 700, color: '#1e3a5f' }}>#{p.fattura_numero}</div>
-                    <div style={{ fontSize: 11, color: '#6b7280' }}>{p.fattura_data}</div>
+                    <div style={{ fontSize: 11, color: '#6b7280' }}>{formatDateIT(p.fattura_data)}</div>
                   </td>
                   <td style={{ padding: '12px 14px' }}>
                     <div style={{ fontWeight: 600 }}>{p.fattura_fornitore}</div>

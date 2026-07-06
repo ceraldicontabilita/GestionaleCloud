@@ -241,7 +241,7 @@ async def genera_report_ferie_permessi_tutti(
     
     # Intestazione
     elements.append(Paragraph(f"RIEPILOGO FERIE E PERMESSI - ANNO {anno}", title_style))
-    elements.append(Paragraph(f"Data: {datetime.now().strftime('%d/%m/%Y')}", 
+    elements.append(Paragraph(f"Data: {datetime.now().strftime('%d-%m-%Y')}", 
                               ParagraphStyle('Date', parent=styles['Normal'], alignment=TA_CENTER)))
     elements.append(Spacer(1, 15))
     
@@ -2659,7 +2659,7 @@ async def genera_report_ferie_permessi(
     elements.append(Paragraph(f"REPORT FERIE E PERMESSI {anno}", title_style))
     elements.append(Paragraph(f"{nome}", subtitle_style))
     elements.append(Paragraph(f"Codice Fiscale: {cf}", normal_style))
-    elements.append(Paragraph(f"Data generazione: {datetime.now().strftime('%d/%m/%Y %H:%M')}", normal_style))
+    elements.append(Paragraph(f"Data generazione: {datetime.now().strftime('%d-%m-%Y %H:%M')}", normal_style))
     elements.append(Spacer(1, 20))
     
     # Tabella Riepilogo

@@ -217,7 +217,7 @@ class EmailService:
                 <h2 style="color: #e74c3c;">Alert Scadenza Libretto Sanitario</h2>
                 <p><strong>Dipendente:</strong> {employee_name}</p>
                 <p><strong>Email:</strong> {employee_email}</p>
-                <p><strong>Data Scadenza:</strong> {expiry_date.strftime('%d/%m/%Y')}</p>
+                <p><strong>Data Scadenza:</strong> {expiry_date.strftime('%d-%m-%Y')}</p>
                 <p><strong>Giorni Rimanenti:</strong> <span style="color: #e74c3c; font-weight: bold;">{days_until_expiry}</span></p>
 
                 <div style="background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0;">

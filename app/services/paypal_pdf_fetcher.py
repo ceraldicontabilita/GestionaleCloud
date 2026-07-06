@@ -159,7 +159,7 @@ async def genera_pdf_transazione_paypal(
             c.drawString(7*cm, y, val_str)
         y -= 0.7*cm
     c.setFont("Helvetica-Oblique", 8)
-    c.drawString(2*cm, 1.5*cm, f"Generato da gestionale2 il {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+    c.drawString(2*cm, 1.5*cm, f"Generato da gestionale2 il {datetime.now().strftime('%d-%m-%Y %H:%M')}")
     c.save()
     await db["paypal_transactions"].update_one(
         {"transaction_id": transaction_id},

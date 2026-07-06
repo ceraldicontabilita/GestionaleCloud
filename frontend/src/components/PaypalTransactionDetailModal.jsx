@@ -124,7 +124,7 @@ export default function PaypalTransactionDetailModal({ open, onClose, transactio
   const fmtDate = (d) => {
     if (!d) return '—';
     try {
-      return new Date(d).toLocaleDateString('it-IT');
+      return new Date(d).toLocaleDateString('it-IT').replaceAll('/', '-');
     } catch { return d; }
   };
 

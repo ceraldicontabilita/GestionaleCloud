@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
-import { formatEuro, useIsMobile, RG, pagePad } from '../lib/utils';
+import { formatEuro, useIsMobile, RG, pagePad, formatDateIT } from '../lib/utils';
 import { PageLayout, PageSection, PageLoading } from '../components/PageLayout';
 import {
   Landmark,
@@ -250,7 +250,7 @@ export default function Mutui() {
                 >
                   <div style={{ fontWeight: 600, color: '#1f2937' }}>{scad.nome}</div>
                   <div style={{ color: '#6b7280' }}>
-                    Rata {scad.numero_rata} - {scad.data_scadenza} -{' '}
+                    Rata {scad.numero_rata} - {formatDateIT(scad.data_scadenza)} -{' '}
                     {formatEuro(scad.importo_totale)}
                   </div>
                 </div>
@@ -454,7 +454,7 @@ export default function Mutui() {
                             <td style={{ padding: '10px 12px', fontWeight: 500 }}>
                               {rata.numero_rata}
                             </td>
-                            <td style={{ padding: '10px 12px' }}>{rata.data_scadenza}</td>
+                            <td style={{ padding: '10px 12px' }}>{formatDateIT(rata.data_scadenza)}</td>
                             <td style={{ padding: '10px 12px', textAlign: 'right' }}>
                               {formatEuro(rata.quota_capitale)}
                             </td>

@@ -65,7 +65,7 @@ def format_date_it(date_str):
             dt = datetime.fromisoformat(date_str.replace("Z", ""))
         else:
             dt = date_str
-        return dt.strftime("%d/%m/%Y")
+        return dt.strftime("%d-%m-%Y")
     except (ValueError, TypeError):
         return str(date_str)[:10] if date_str else "-"
 
@@ -226,7 +226,7 @@ async def generate_report_mensile(
     
     # Footer
     elements.append(Paragraph(
-        f"Report generato il {datetime.now().strftime('%d/%m/%Y alle %H:%M')}",
+        f"Report generato il {datetime.now().strftime('%d-%m-%Y alle %H:%M')}",
         ParagraphStyle(name='Footer', fontSize=8, textColor=colors.gray, alignment=TA_CENTER)
     ))
     
@@ -330,7 +330,7 @@ async def generate_report_dipendenti(
     # Footer
     elements.append(Spacer(1, 30))
     elements.append(Paragraph(
-        f"Report generato il {datetime.now().strftime('%d/%m/%Y alle %H:%M')}",
+        f"Report generato il {datetime.now().strftime('%d-%m-%Y alle %H:%M')}",
         ParagraphStyle(name='Footer', fontSize=8, textColor=colors.gray, alignment=TA_CENTER)
     ))
     
@@ -487,7 +487,7 @@ async def generate_report_scadenze(giorni: int = Query(30, description="Giorni p
     # Footer
     elements.append(Spacer(1, 30))
     elements.append(Paragraph(
-        f"Report generato il {datetime.now().strftime('%d/%m/%Y alle %H:%M')}",
+        f"Report generato il {datetime.now().strftime('%d-%m-%Y alle %H:%M')}",
         ParagraphStyle(name='Footer', fontSize=8, textColor=colors.gray, alignment=TA_CENTER)
     ))
     
@@ -555,7 +555,7 @@ async def generate_report_magazzino():
     # Footer
     elements.append(Spacer(1, 30))
     elements.append(Paragraph(
-        f"Report generato il {datetime.now().strftime('%d/%m/%Y alle %H:%M')}",
+        f"Report generato il {datetime.now().strftime('%d-%m-%Y alle %H:%M')}",
         ParagraphStyle(name='Footer', fontSize=8, textColor=colors.gray, alignment=TA_CENTER)
     ))
     

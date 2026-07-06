@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api';
-import { formatEuro, STYLES, COLORS, button, badge } from '../lib/utils';
+import { formatEuro, STYLES, COLORS, button, badge, formatDateIT } from '../lib/utils';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { PageLayout } from '../components/PageLayout';
 
@@ -654,7 +654,7 @@ export default function ControlloMensile() {
               <tbody>
                 {versamentiDettaglio.map((v, i) => (
                   <tr key={i} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                    <td style={{ padding: 10 }}>{v.data}</td>
+                    <td style={{ padding: 10 }}>{formatDateIT(v.data)}</td>
                     <td style={{ padding: 10 }}>{v.descrizione || v.categoria}</td>
                     <td
                       style={{

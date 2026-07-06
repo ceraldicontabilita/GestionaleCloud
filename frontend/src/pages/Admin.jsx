@@ -1127,7 +1127,7 @@ export default function Admin() {
                   </div>
                   <div style={{ fontSize: 13, fontWeight: 600, color: '#1e293b' }}>
                     {driveStatus?.last_sync
-                      ? new Date(driveStatus.last_sync).toLocaleString('it-IT')
+                      ? new Date(driveStatus.last_sync).toLocaleString('it-IT').replaceAll('/', '-')
                       : 'mai eseguito'}
                   </div>
                 </div>

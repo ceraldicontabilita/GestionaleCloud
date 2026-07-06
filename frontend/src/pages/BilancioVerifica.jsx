@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
-import { formatEuro } from '../lib/utils';
+import { formatEuro, formatDateIT } from '../lib/utils';
 import { PageLayout, PageSection, PageGrid, PageLoading } from '../components/PageLayout';
 import {
   FileText,
@@ -643,7 +643,7 @@ export default function BilancioVerifica() {
                                             style={{ borderBottom: '1px solid #f1f5f9' }}
                                           >
                                             <td style={{ padding: '3px 8px', color: '#6b7280' }}>
-                                              {m.data}
+                                              {formatDateIT(m.data)}
                                             </td>
                                             <td style={{ padding: '3px 8px', color: '#374151' }}>
                                               {m.descrizione}

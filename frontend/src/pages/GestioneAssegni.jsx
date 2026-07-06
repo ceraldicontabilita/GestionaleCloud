@@ -670,7 +670,7 @@ export default function GestioneAssegni() {
       if (a.data_fattura) {
         try {
           const d = new Date(a.data_fattura);
-          dataFattura = d.toLocaleDateString('it-IT');
+          dataFattura = d.toLocaleDateString('it-IT').replaceAll('/', '-');
         } catch {
           dataFattura = formatDateIT(a.data_fattura);
         }
@@ -739,7 +739,7 @@ export default function GestioneAssegni() {
       doc.setDrawColor(200);
       doc.line(14, doc.internal.pageSize.height - 15, 196, doc.internal.pageSize.height - 15);
       doc.text(
-        `CERALDI GROUP S.R.L. - Documento generato il ${new Date().toLocaleDateString('it-IT')} alle ${new Date().toLocaleTimeString('it-IT')} - Pagina ${i}/${pageCount}`,
+        `CERALDI GROUP S.R.L. - Documento generato il ${new Date().toLocaleDateString('it-IT').replaceAll('/', '-')} alle ${new Date().toLocaleTimeString('it-IT')} - Pagina ${i}/${pageCount}`,
         14,
         doc.internal.pageSize.height - 10
       );
@@ -812,7 +812,7 @@ export default function GestioneAssegni() {
     doc.setFontSize(12);
     doc.setFont(undefined, 'normal');
     doc.setTextColor(80);
-    doc.text(`Data: ${new Date().toLocaleDateString('it-IT')}`, 14, 52);
+    doc.text(`Data: ${new Date().toLocaleDateString('it-IT').replaceAll('/', '-')}`, 14, 52);
 
     // ==========================================
     // RIEPILOGO
@@ -838,7 +838,7 @@ export default function GestioneAssegni() {
       if (a.data_fattura) {
         try {
           const d = new Date(a.data_fattura);
-          dataFattura = d.toLocaleDateString('it-IT');
+          dataFattura = d.toLocaleDateString('it-IT').replaceAll('/', '-');
         } catch {
           dataFattura = formatDateIT(a.data_fattura);
         }
@@ -903,7 +903,7 @@ export default function GestioneAssegni() {
       doc.setDrawColor(200);
       doc.line(14, doc.internal.pageSize.height - 15, 196, doc.internal.pageSize.height - 15);
       doc.text(
-        `CERALDI GROUP S.R.L. - Documento generato il ${new Date().toLocaleDateString('it-IT')} alle ${new Date().toLocaleTimeString('it-IT')} - Pagina ${i}/${pageCount}`,
+        `CERALDI GROUP S.R.L. - Documento generato il ${new Date().toLocaleDateString('it-IT').replaceAll('/', '-')} alle ${new Date().toLocaleTimeString('it-IT')} - Pagina ${i}/${pageCount}`,
         14,
         doc.internal.pageSize.height - 10
       );
@@ -1110,7 +1110,7 @@ export default function GestioneAssegni() {
                     <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
                       Importo:{' '}
                       <strong style={{ color: '#111827' }}>€ {a.importo.toFixed(2)}</strong>
-                      {a.data_emissione && <> · Emissione: {a.data_emissione}</>}
+                      {a.data_emissione && <> · Emissione: {formatDateIT(a.data_emissione)}</>}
                     </div>
                   </div>
                   <button
@@ -1160,7 +1160,7 @@ export default function GestioneAssegni() {
                         />
                         <span style={{ flex: 1 }}>
                           <strong>{c.numero || c.fattura_id.slice(0, 8)}</strong>
-                          {c.data && <span style={{ color: '#6b7280' }}> · {c.data}</span>}
+                          {c.data && <span style={{ color: '#6b7280' }}> · {formatDateIT(c.data)}</span>}
                           {c.fornitore && (
                             <span style={{ color: '#6b7280' }}> · {c.fornitore}</span>
                           )}

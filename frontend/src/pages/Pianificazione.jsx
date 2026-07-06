@@ -301,7 +301,7 @@ export default function Pianificazione() {
                     alignItems: 'center',
                   }}
                 >
-                  <span>📅 {new Date(ev.scheduled_date).toLocaleString('it-IT')}</span>
+                  <span>📅 {new Date(ev.scheduled_date).toLocaleString('it-IT').replaceAll('/', '-')}</span>
                   <span>🏷️ {ev.event_type}</span>
                   <span
                     style={{

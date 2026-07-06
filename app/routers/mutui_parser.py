@@ -266,7 +266,7 @@ async def import_mutuo_from_pdf(
                 "updated_at": datetime.now(timezone.utc),
                 "file_piano_ammortamento": file.filename,
                 "allegati": [],
-                "note": f"Importato da PDF il {datetime.now().strftime('%d/%m/%Y %H:%M')}"
+                "note": f"Importato da PDF il {datetime.now().strftime('%d-%m-%Y %H:%M')}"
             }
             
             if existing:

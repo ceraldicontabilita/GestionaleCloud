@@ -361,7 +361,7 @@ def _build_email_scadenze_html(scadenze: List[Dict]) -> str:
     <body style="font-family:Arial,sans-serif;max-width:700px;margin:0 auto;padding:20px">
         <div style="background:#1e40af;color:white;padding:20px;border-radius:8px 8px 0 0">
             <h1 style="margin:0;font-size:22px">📅 Scadenze F24 - Riepilogo</h1>
-            <p style="margin:5px 0 0;opacity:0.9">{datetime.now().strftime('%d/%m/%Y %H:%M')} - Ceraldi Group</p>
+            <p style="margin:5px 0 0;opacity:0.9">{datetime.now().strftime('%d-%m-%Y %H:%M')} - Ceraldi Group</p>
         </div>
         
         <div style="border:1px solid #e5e7eb;border-top:none;padding:20px;border-radius:0 0 8px 8px">

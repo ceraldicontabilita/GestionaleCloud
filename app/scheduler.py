@@ -63,7 +63,7 @@ async def scan_verbali_email_task():
 
 {fase2.get('verbali_nuovi', 0)} nuovi verbali da verificare!
 
-📅 {datetime.now().strftime('%d/%m/%Y %H:%M')}
+📅 {datetime.now().strftime('%d-%m-%Y %H:%M')}
 
 👉 Vai su /verbali-riconciliazione per gestirli"""
                     

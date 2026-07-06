@@ -1766,7 +1766,7 @@ export default function Documenti() {
                             </td>
                             <td style={{ padding: 12, fontSize: 12, color: '#6b7280' }}>
                               {doc.created_at
-                                ? new Date(doc.created_at).toLocaleDateString('it-IT')
+                                ? new Date(doc.created_at).toLocaleDateString('it-IT').replaceAll('/', '-')
                                 : '-'}
                             </td>
                             <td style={{ padding: 12, textAlign: 'center' }}>

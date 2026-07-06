@@ -406,7 +406,7 @@ async def export_pdf_costi(anno: Optional[int] = Query(None)) -> Any:
     elements.append(Spacer(1, 6*mm))
     
     # Footer
-    elements.append(Paragraph(f"Documento generato il {datetime.now().strftime('%d/%m/%Y %H:%M')} — Ceraldi ERP", ParagraphStyle('Footer', parent=styles['Normal'], fontSize=8, textColor=colors.grey)))
+    elements.append(Paragraph(f"Documento generato il {datetime.now().strftime('%d-%m-%Y %H:%M')} — Ceraldi ERP", ParagraphStyle('Footer', parent=styles['Normal'], fontSize=8, textColor=colors.grey)))
     
     doc.build(elements)
     pdf_bytes = buffer.getvalue()

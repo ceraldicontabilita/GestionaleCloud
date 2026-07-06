@@ -113,7 +113,7 @@ async def whatsapp_send_test():
     from app.services.whatsapp_notifications import send_whatsapp_message
     msg = (
         f"✅ Test notifica da Ceraldi ERP\n"
-        f"Ora: {datetime.now().strftime('%d/%m/%Y %H:%M')}\n"
+        f"Ora: {datetime.now().strftime('%d-%m-%Y %H:%M')}\n"
         f"Se ricevi questo messaggio, l'integrazione WhatsApp è attiva."
     )
     return await send_whatsapp_message(msg)

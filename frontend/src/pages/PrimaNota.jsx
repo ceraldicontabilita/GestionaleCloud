@@ -344,7 +344,7 @@ function PrimaNotaDesktop() {
   const handleSaveCorrispettivo = async () => {
     if (!corrispettivo.importo) return alert('Inserisci importo');
     if (corrispettivo.data && !corrispettivo.data.startsWith(selectedYear.toString())) {
-      if (!confirm(`⚠️ La data ${corrispettivo.data} non è dell'anno ${selectedYear}. Continuare?`))
+      if (!confirm(`⚠️ La data ${formatDateIT(corrispettivo.data)} non è dell'anno ${selectedYear}. Continuare?`))
         return;
     }
     setSavingCorrisp(true);
@@ -374,7 +374,7 @@ function PrimaNotaDesktop() {
     const totale = parseFloat(pos.pos1) || 0;
     if (totale === 0) return alert('Inserisci importo POS');
     if (pos.data && !pos.data.startsWith(selectedYear.toString())) {
-      if (!confirm(`⚠️ La data ${pos.data} non è dell'anno ${selectedYear}. Continuare?`)) return;
+      if (!confirm(`⚠️ La data ${formatDateIT(pos.data)} non è dell'anno ${selectedYear}. Continuare?`)) return;
     }
     setSavingPos(true);
     try {
@@ -400,7 +400,7 @@ function PrimaNotaDesktop() {
   const handleSaveVersamento = async () => {
     if (!versamento.importo) return alert('Inserisci importo');
     if (versamento.data && !versamento.data.startsWith(selectedYear.toString())) {
-      if (!confirm(`⚠️ La data ${versamento.data} non è dell'anno ${selectedYear}. Continuare?`))
+      if (!confirm(`⚠️ La data ${formatDateIT(versamento.data)} non è dell'anno ${selectedYear}. Continuare?`))
         return;
     }
     setSavingVers(true);
@@ -427,7 +427,7 @@ function PrimaNotaDesktop() {
   const handleSaveMovimento = async () => {
     if (!movimento.importo || !movimento.descrizione) return alert('Compila tutti i campi');
     if (movimento.data && !movimento.data.startsWith(selectedYear.toString())) {
-      if (!confirm(`⚠️ La data ${movimento.data} non è dell'anno ${selectedYear}. Continuare?`))
+      if (!confirm(`⚠️ La data ${formatDateIT(movimento.data)} non è dell'anno ${selectedYear}. Continuare?`))
         return;
     }
     setSavingMov(true);
@@ -742,7 +742,7 @@ function PrimaNotaDesktop() {
                   }}
                 >
                   <div>
-                    <span style={{ fontSize: 13, color: '#6b7280' }}>{p.fattura_data}</span>
+                    <span style={{ fontSize: 13, color: '#6b7280' }}>{formatDateIT(p.fattura_data)}</span>
                     <span
                       style={{
                         fontSize: 12,

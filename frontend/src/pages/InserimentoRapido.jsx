@@ -931,7 +931,7 @@ export default function InserimentoRapido() {
                         <div style={{ fontSize: '13px', fontWeight: '500', color: '#1e293b' }}>
                           {ins.descrizione}
                         </div>
-                        <div style={{ fontSize: '11px', color: '#64748b' }}>{ins.data}</div>
+                        <div style={{ fontSize: '11px', color: '#64748b' }}>{formatDateIT(ins.data)}</div>
                       </div>
                       {ins.importo && (
                         <span style={{ fontSize: '14px', fontWeight: '600', color: '#1e293b' }}>

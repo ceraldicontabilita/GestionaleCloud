@@ -766,7 +766,7 @@ async def export_pdf_dichiarazione(
     
     # Intestazione
     elements.append(Paragraph(f"PROSPETTO DICHIARAZIONE REDDITI - ANNO {anno}", title_style))
-    elements.append(Paragraph(f"Generato il {datetime.now().strftime('%d/%m/%Y %H:%M')}", normal_style))
+    elements.append(Paragraph(f"Generato il {datetime.now().strftime('%d-%m-%Y %H:%M')}", normal_style))
     elements.append(Spacer(1, 20))
     
     # Sezione 1: Riepilogo Imposte
@@ -910,7 +910,7 @@ async def export_pdf_dichiarazione(
     # Note finali
     elements.append(Paragraph("NOTE", heading_style))
     note_text = f"""
-    • Calcolo basato sui saldi attuali del Piano dei Conti al {datetime.now().strftime('%d/%m/%Y')}
+    • Calcolo basato sui saldi attuali del Piano dei Conti al {datetime.now().strftime('%d-%m-%Y')}
     • Variazioni fiscali automatiche applicate per: Telefonia (20% indeducibile IRES), 
       Carburanti auto (80% indeducibile), Noleggio auto a lungo termine (limite deducibilità)
     • Aliquota IRAP regione {regione.upper()}: {calcolatore.aliquota_irap}%

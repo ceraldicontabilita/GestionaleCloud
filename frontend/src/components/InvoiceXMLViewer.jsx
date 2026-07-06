@@ -47,7 +47,7 @@ export default function InvoiceXMLViewer({ invoice: rawInvoice, onClose }) {
   const formatDate = dateStr => {
     if (!dateStr) return '-';
     const d = new Date(dateStr);
-    return d.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    return d.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' }).replaceAll('/', '-');
   };
 
   // Helper per tipo documento
