@@ -739,7 +739,7 @@ export default function Dashboard() {
                 {scadenzeF24.totale || scadenzeF24.scadenze.length}
               </span>
             </div>
-            <Link to="/f24" style={{ fontSize: 11, color: '#3b82f6', textDecoration: 'none' }}>
+            <Link to="/riconciliazione/f24" style={{ fontSize: 11, color: '#3b82f6', textDecoration: 'none' }}>
               Vedi tutti →
             </Link>
           </div>
@@ -1659,13 +1659,9 @@ export default function Dashboard() {
             <span style={{ fontSize: 20 }}>📈</span>
             <span>Controllo Mensile</span>
           </Link>
-          <Link to="/f24" style={quickActionStyle('#fff3e0', '#e65100')}>
+          <Link to="/riconciliazione/f24" style={quickActionStyle('#fff3e0', '#e65100')}>
             <span style={{ fontSize: 20 }}>📋</span>
             <span>F24 / Tributi</span>
-          </Link>
-          <Link to="/iva" style={quickActionStyle('#e0f2f1', '#00695c')}>
-            <span style={{ fontSize: 20 }}>🧾</span>
-            <span>Calcolo IVA</span>
           </Link>
           <Link to="/commercialista" style={quickActionStyle('#fce4ec', '#c2185b')}>
             <span style={{ fontSize: 20 }}>📁</span>
@@ -2456,7 +2452,7 @@ function AlertPagamentiWidget({ data }) {
         </div>
       </div>
       <Link
-        to="/paghe"
+        to="/riconciliazione/stipendi"
         data-testid="link-vai-paghe"
         style={{
           display: 'inline-flex',

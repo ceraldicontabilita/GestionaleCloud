@@ -193,10 +193,18 @@ async def sync_email_documents(db, giorni: int = 30) -> Dict[str, Any]:
         tipo = mittente.get("tipo_documento", "generico")
 
         if tipo == "fattura_xml":
-            # ── Processo XML FatturaPA ────────────────────────────────────────
+            # ── Processo XML FatturaPA con la PIPELINE UNICA condivisa con
+            # Drive/upload manuale (process_xml_bytes): stesso schema campi
+            # sull'invoice, stesso rispetto del metodo fornitore, stessa
+            # registrazione in prima nota. Prima questa via usava un processore
+            # legacy che non creava MAI un documento in 'invoices' (solo un
+            # inserimento diretto in prima_nota_banca per i soli pagamenti
+            # bancari): le fatture arrivate da email restavano invisibili in
+            # /fatture e i fornitori risultavano "mai fatturato".
             fname = doc.get("filename", "")
             try:
-                from app.services.xml_invoice_processor import process_xml_invoice, is_fatturapa_filename, decode_content
+                from app.services.xml_invoice_processor import is_fatturapa_filename, decode_content
+                from app.routers.invoices.fatture_upload import process_xml_bytes
                 if not is_fatturapa_filename(fname):
                     await db["documents_inbox"].update_one(
                         {"id": doc["id"]},
@@ -215,8 +223,8 @@ async def sync_email_documents(db, giorni: int = 30) -> Dict[str, Any]:
                 if content:
                     if isinstance(content, str):
                         content = content.encode("utf-8")
-                    res = await process_xml_invoice(db, content, fname)
-                    if res.get("success"):
+                    res = await process_xml_bytes(db, content, fname, source="email_gmail")
+                    if res.get("status") == "imported":
                         xml_processed += 1
                     await db["documents_inbox"].update_one(
                         {"id": doc["id"]},

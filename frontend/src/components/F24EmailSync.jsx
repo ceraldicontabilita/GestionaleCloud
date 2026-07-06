@@ -245,7 +245,7 @@ export default function F24EmailSync({ onClose }) {
 
             {/* Link alla pagina F24 */}
             <Link
-              to="/f24"
+              to="/riconciliazione/f24"
               style={{
                 display: 'block',
                 marginTop: 16,

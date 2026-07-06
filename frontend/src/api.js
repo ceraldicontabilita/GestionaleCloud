@@ -123,17 +123,6 @@ export async function getBankStatements(skip = 0, limit = 50) {
   return r.data;
 }
 
-// Orders API
-export async function getOrders(skip = 0, limit = 50) {
-  const r = await api.get(`/api/orders?skip=${skip}&limit=${limit}`);
-  return r.data;
-}
-
-export async function createOrder(data) {
-  const r = await api.post('/api/orders', data);
-  return r.data;
-}
-
 // F24 API
 export async function getF24Models(skip = 0, limit = 50) {
   const r = await api.get(`/api/f24?skip=${skip}&limit=${limit}`);

@@ -639,32 +639,6 @@ async def create_bank(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     return bank
 
 
-# ============== ORDERS ==============
-
-@router.get("/orders")
-async def list_orders(skip: int = 0, limit: int = 10000) -> List[Dict[str, Any]]:
-    """Lista ordini."""
-    db = Database.get_db()
-    return await db["orders"].find({}, {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
-
-
-@router.post("/orders")
-async def create_order(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
-    """Crea ordine."""
-    db = Database.get_db()
-    order = {
-        "id": str(uuid.uuid4()),
-        "customer_name": data.get("customer_name", ""),
-        "items": data.get("items", []),
-        "total": data.get("total", 0),
-        "status": data.get("status", "pending"),
-        "created_at": datetime.now(timezone.utc).isoformat()
-    }
-    await db["orders"].insert_one(order.copy())
-    order.pop("_id", None)
-    return order
-
-
 # ============== ASSEGNI ==============
 
 @router.get("/assegni")
