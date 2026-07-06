@@ -3,7 +3,7 @@ Azienda in Cloud ERP - Backend Server Entry Point
 This imports the FastAPI app from /app/app/main.py
 """
 import sys
-import os
+
 sys.path.insert(0, '/app')
 
 try:
@@ -12,48 +12,7 @@ try:
 except ImportError:
     pass
 
-from app.main import app
-
-# Endpoint di debug versione (temporaneo)
-from fastapi import Request
-from fastapi.responses import JSONResponse
-import subprocess
-
-@app.get("/api/version-debug", include_in_schema=False)
-async def version_debug():
-    try:
-        git_log = subprocess.check_output(
-            ['git', '-C', '/app', 'log', '--oneline', '-3'],
-            stderr=subprocess.DEVNULL
-        ).decode().strip()
-    except Exception as e:
-        git_log = str(e)
-    
-    try:
-        with open('/app/app/routers/mutui.py') as f:
-            mutui_content = f.read()
-        has_noslash = 'get_mutui_noslash' in mutui_content
-        has_naive = 'oggi_dt = datetime.now()  # naive' in open('/app/app/routers/fiscalita_italiana.py').read()
-    except Exception as e:
-        has_noslash = str(e)
-        has_naive = str(e)
-    
-    return {
-        "git_log": git_log,
-        "mutui_has_noslash_fix": has_noslash,
-        "fiscalita_has_naive_fix": has_naive
-    }
-
+from app.main import app  # noqa: F401  (export per uvicorn)
 
 # Export app for uvicorn
 __all__ = ['app']
-
-@app.post("/api/admin/reload-module/{module_name}", include_in_schema=False)
-async def reload_module(module_name: str):
-    import importlib, sys
-    # Solo moduli del nostro codice
-    full_module = f"app.routers.{module_name}"
-    if full_module in sys.modules:
-        importlib.reload(sys.modules[full_module])
-        return {"reloaded": full_module}
-    return {"error": f"Module {full_module} not loaded"}
