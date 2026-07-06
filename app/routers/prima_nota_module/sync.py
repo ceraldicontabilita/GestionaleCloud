@@ -146,7 +146,10 @@ async def registra_fattura_prima_nota(
     if not metodo_pagamento:
         fornitore_piva = fattura.get("supplier_vat") or fattura.get("cedente_piva")
         if fornitore_piva:
-            fornitore = await db[Collections.SUPPLIERS].find_one({"partita_iva": fornitore_piva}, {"_id": 0})
+            fornitore = await db[Collections.SUPPLIERS].find_one(
+                {"$or": [{"partita_iva": fornitore_piva}, {"piva": fornitore_piva},
+                         {"vat_number": fornitore_piva}]},
+                {"_id": 0})
             if fornitore:
                 metodo_fornitore = (fornitore.get("metodo_pagamento") or "").lower()
                 metodo_pagamento = "cassa" if metodo_fornitore in ["contanti", "cassa", "cash"] else "banca"
@@ -558,23 +561,26 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
             movimenti_banca[imp] = []
         movimenti_banca[imp].append(m)
     
-    # Carica metodo pagamento per fornitore (da anagrafica fornitori)
+    # Carica metodo pagamento per fornitore (da anagrafica fornitori).
+    # NB: i fornitori storici hanno la P.IVA in "piva" o "vat_number", non
+    # solo in "partita_iva" — vanno letti tutti, altrimenti il metodo
+    # impostato in scheda fornitore NON viene rispettato.
     metodo_per_piva = {}
     async for s in db["fornitori"].find(
         {"metodo_pagamento": {"$exists": True, "$ne": ""}},
-        {"_id": 0, "partita_iva": 1, "metodo_pagamento": 1}
+        {"_id": 0, "partita_iva": 1, "piva": 1, "vat_number": 1, "metodo_pagamento": 1}
     ):
-        piva = s.get("partita_iva", "")
         metodo = s.get("metodo_pagamento", "")
-        if piva and metodo:
-            metodo_per_piva[piva] = metodo
-    
+        for k in (s.get("partita_iva"), s.get("piva"), s.get("vat_number")):
+            if k and metodo:
+                metodo_per_piva[str(k).strip()] = metodo
+
     provvisori = []
     for f in fatture:
         importo = float(f.get("total_amount", 0))
         metodo_xml = f.get("payment_method", "")
         metodo_code = f.get("payment_method_code", "")
-        piva = f.get("supplier_vat", "")
+        piva = (f.get("supplier_vat") or f.get("cedente_piva") or "").strip()
         
         # PRIORITÀ 0: Se la fattura è stata marcata come sospesa dall'utente
         stato_pag = f.get("stato_pagamento", "")
@@ -1054,15 +1060,16 @@ async def auto_conferma_provvisori_per_metodo(
     now = datetime.now(timezone.utc).isoformat()
 
     # Carica il dizionario metodo-per-piva dall'anagrafica fornitori
+    # (P.IVA in partita_iva, piva o vat_number: record storici inclusi)
     metodo_per_piva: Dict[str, str] = {}
     async for s in db["fornitori"].find(
         {"metodo_pagamento": {"$exists": True, "$ne": ""}},
-        {"_id": 0, "partita_iva": 1, "metodo_pagamento": 1}
+        {"_id": 0, "partita_iva": 1, "piva": 1, "vat_number": 1, "metodo_pagamento": 1}
     ):
-        piva = (s.get("partita_iva") or "").strip()
         metodo = (s.get("metodo_pagamento") or "").strip().lower()
-        if piva and metodo:
-            metodo_per_piva[piva] = metodo
+        for k in (s.get("partita_iva"), s.get("piva"), s.get("vat_number")):
+            if k and metodo:
+                metodo_per_piva[str(k).strip()] = metodo
 
     # Fatture provvisorie dell'anno
     fatture = await db["invoices"].find(

@@ -272,18 +272,24 @@ async def get_archivio_fatture(
     })
     if pive:
         fornitori_docs = await db["fornitori"].find(
-            {"partita_iva": {"$in": pive}},
-            {"_id": 0, "partita_iva": 1, "metodo_pagamento": 1, "metodo_pagamento_predefinito": 1, "ragione_sociale": 1}
-        ).to_list(len(pive) + 10)
+            {"$or": [
+                {"partita_iva": {"$in": pive}},
+                {"piva": {"$in": pive}},
+                {"vat_number": {"$in": pive}},
+            ]},
+            {"_id": 0, "partita_iva": 1, "piva": 1, "vat_number": 1,
+             "metodo_pagamento": 1, "metodo_pagamento_predefinito": 1, "ragione_sociale": 1}
+        ).to_list(len(pive) * 3 + 10)
         map_metodo = {}
         map_nome = {}
         for fdoc in fornitori_docs:
-            piva = (fdoc.get("partita_iva") or "").strip()
             metodo = fdoc.get("metodo_pagamento_predefinito") or fdoc.get("metodo_pagamento") or ""
-            if piva:
-                map_metodo[piva] = metodo
-                if fdoc.get("ragione_sociale"):
-                    map_nome[piva] = fdoc["ragione_sociale"]
+            for key in (fdoc.get("partita_iva"), fdoc.get("piva"), fdoc.get("vat_number")):
+                piva = (key or "").strip()
+                if piva:
+                    map_metodo[piva] = metodo
+                    if fdoc.get("ragione_sociale"):
+                        map_nome[piva] = fdoc["ragione_sociale"]
         for f in all_fatture:
             piva = (f.get("supplier_vat") or f.get("fornitore_partita_iva") or "").strip()
             f["fornitore_metodo_pagamento"] = map_metodo.get(piva, "")

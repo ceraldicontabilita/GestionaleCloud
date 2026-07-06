@@ -92,7 +92,6 @@ function PrimaNotaDesktop() {
   const [savingPos, setSavingPos] = useState(false);
   const [savingVers, setSavingVers] = useState(false);
   const [savingMov, setSavingMov] = useState(false);
-  const [syncing, setSyncing] = useState(false);
   const [importingCSV, setImportingCSV] = useState(false);
   const cassaCSVRef = useRef(null);
   const bancaCSVRef = useRef(null);
@@ -246,21 +245,9 @@ function PrimaNotaDesktop() {
     }
   };
 
-  // Sincronizza fatture pagate con Prima Nota
-  const handleSyncFatture = async () => {
-    setSyncing(true);
-    try {
-      const res = await api.post(`/api/prima-nota/cassa/sync-fatture-pagate?anno=${selectedYear}`);
-      alert(
-        `${res.data.message}\nCassa: € ${res.data.totale_cassa?.toLocaleString('it-IT') || 0}\nBanca: € ${res.data.totale_banca?.toLocaleString('it-IT') || 0}`
-      );
-      loadAllData();
-    } catch (error) {
-      alert('Errore sincronizzazione: ' + (error.response?.data?.detail || error.message));
-    } finally {
-      setSyncing(false);
-    }
-  };
+  // La sincronizzazione fatture/corrispettivi/riconciliazione gira in
+  // AUTOMATICO sul server ogni 30 minuti (job "Automazioni Prima Nota"):
+  // nessun pulsante manuale da ricordare.
 
   // Import CSV Prima Nota Cassa
   // === I movimenti di cassa si inseriscono manualmente (corrispettivi, POS, versamenti) ===
@@ -568,24 +555,6 @@ function PrimaNotaDesktop() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button
-            onClick={handleSyncFatture}
-            disabled={syncing}
-            style={{
-              padding: '6px 12px',
-              background: syncing ? '#999' : '#ff9800',
-              color: 'white',
-              border: 'none',
-              borderRadius: 6,
-              cursor: syncing ? 'not-allowed' : 'pointer',
-              fontWeight: '600',
-              fontSize: 12,
-            }}
-            title="Importa fatture pagate in Prima Nota"
-          >
-            {syncing ? '...' : '📤 Sync Fatture'}
-          </button>
-
           <button
             onClick={() => navigate('/prima-nota/pulizia')}
             style={{
@@ -2390,8 +2359,8 @@ function MovementsTable({
               </div>
               <div style={{ fontSize: 13, color: '#6b7280', maxWidth: 400, margin: '0 auto' }}>
                 La cassa è vuota. Aggiungi movimenti tramite le{' '}
-                <strong>Chiusure Giornaliere</strong> (Corrispettivo, POS, Versamento) oppure usa il
-                pulsante <strong>Sync Fatture</strong> per importare le fatture pagate in contanti.
+                <strong>Chiusure Giornaliere</strong> (Corrispettivo, POS, Versamento). Le fatture
+                pagate in contanti vengono importate <strong>automaticamente</strong> ogni 30 minuti.
               </div>
             </div>
           ) : (

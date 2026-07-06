@@ -310,6 +310,32 @@ def start_scheduler():
         except Exception as e:
             logger.error(f"[SCHEDULER-DRIVE-FATTURE] errore: {e}")
 
+    # ── Automazioni Prima Nota: le ex funzioni "manuali" girano da sole ────
+    # 1. corrispettivi → prima nota cassa (idempotente)
+    # 2. fatture provvisorie → cassa/banca secondo il metodo fornitore
+    # 3. riconciliazione automatica con l'estratto conto
+    async def _automazioni_prima_nota_job():
+        from datetime import datetime as _dt
+        anno_corrente = _dt.now().year
+        try:
+            from app.routers.prima_nota_module.sync import _sync_corrispettivi_impl
+            r = await _sync_corrispettivi_impl(anno_corrente)
+            logger.info(f"[SCHEDULER-PN-CORRISPETTIVI] inseriti={r.get('inseriti')} duplicati={r.get('duplicati')}")
+        except Exception as e:
+            logger.error(f"[SCHEDULER-PN-CORRISPETTIVI] errore: {e}")
+        try:
+            from app.routers.prima_nota_module.sync import auto_conferma_provvisori_per_metodo
+            r = await auto_conferma_provvisori_per_metodo(anno=anno_corrente)
+            logger.info(f"[SCHEDULER-PN-AUTOCONFERMA] cassa={r.get('mosse_cassa')} banca={r.get('mosse_banca')}")
+        except Exception as e:
+            logger.error(f"[SCHEDULER-PN-AUTOCONFERMA] errore: {e}")
+        try:
+            from app.routers.accounting.riconciliazione_automatica import riconcilia_estratto_conto
+            r = await riconcilia_estratto_conto()
+            logger.info(f"[SCHEDULER-PN-RICONCILIA] {r.get('message')}")
+        except Exception as e:
+            logger.error(f"[SCHEDULER-PN-RICONCILIA] errore: {e}")
+
     scheduler.add_job(
         _scan_gmail_verbali_job,
         'interval', minutes=30,
@@ -326,6 +352,13 @@ def start_scheduler():
         _drive_ingest_job,
         'interval', minutes=15,
         id="drive_fatture_ingest", name="Import Fatture da Google Drive (ogni 15 min)",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        _automazioni_prima_nota_job,
+        'interval', minutes=30,
+        id="automazioni_prima_nota",
+        name="Automazioni Prima Nota: corrispettivi + provvisori + riconciliazione (ogni 30 min)",
         replace_existing=True,
     )
 

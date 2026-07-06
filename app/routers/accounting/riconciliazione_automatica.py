@@ -353,9 +353,9 @@ async def riconcilia_estratto_conto() -> Dict[str, Any]:
     metodo_fornitori: Dict[str, str] = {}
     async for s in db[COLLECTION_SUPPLIERS].find(
         {"metodo_pagamento": {"$exists": True, "$ne": ""}},
-        {"_id": 0, "partita_iva": 1, "vat_number": 1, "metodo_pagamento": 1}
+        {"_id": 0, "partita_iva": 1, "piva": 1, "vat_number": 1, "metodo_pagamento": 1}
     ):
-        for k in (s.get("partita_iva"), s.get("vat_number")):
+        for k in (s.get("partita_iva"), s.get("piva"), s.get("vat_number")):
             if k:
                 metodo_fornitori[k] = (s.get("metodo_pagamento") or "").lower()
     
