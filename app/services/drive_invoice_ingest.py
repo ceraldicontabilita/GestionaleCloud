@@ -1,9 +1,9 @@
 """
 Ingest fatture XML da Google Drive.
 
-Legge i file `.xml` da una cartella Drive configurata, li importa con la
-pipeline CONDIVISA `process_xml_bytes` (riuso, niente duplicazione) e sposta i
-file elaborati in una sottocartella `Elaborate`.
+Legge i file `.xml` e `.xml.p7m` (buste firmate) da una cartella Drive
+configurata, li importa con la pipeline CONDIVISA `process_xml_bytes` (riuso,
+niente duplicazione) e sposta i file elaborati in una sottocartella `Elaborate`.
 
 Configurazione (env / settings):
   GOOGLE_DRIVE_FATTURE_FOLDER_ID : id della cartella Drive sorgente
@@ -129,7 +129,10 @@ def _list_xml_files(service, parent_id: str) -> List[Dict[str, Any]]:
         for f in res.get("files", []):
             if f.get("mimeType") == "application/vnd.google-apps.folder":
                 continue
-            if f["name"].lower().endswith(".xml"):
+            fn = f["name"].lower()
+            # .xml puri e .xml.p7m (buste firmate CAdES: l'XML viene
+            # estratto dalla pipeline condivisa process_xml_bytes)
+            if fn.endswith(".xml") or fn.endswith(".xml.p7m"):
                 out.append(f)
         page_token = res.get("nextPageToken")
         if not page_token:

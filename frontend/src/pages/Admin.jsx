@@ -1054,7 +1054,7 @@ export default function Admin() {
             </div>
             <div style={cardContentStyle}>
               <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 16 }}>
-                Importa automaticamente le fatture XML dalla cartella Google Drive configurata
+                Importa automaticamente le fatture XML e P7M (firmate) dalla cartella Google Drive configurata
                 (anche ogni 15 minuti in automatico). Le credenziali (cartella + service account)
                 vanno impostate come variabili d'ambiente sul backend.
               </p>

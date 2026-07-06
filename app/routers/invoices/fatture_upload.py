@@ -17,6 +17,7 @@ from pymongo.errors import DuplicateKeyError
 
 from app.database import Database, Collections
 from app.parsers.fattura_elettronica_parser import parse_fattura_xml
+from app.services.xml_invoice_processor import extract_xml_from_p7m, is_p7m_content
 from app.utils.error_handler import handle_errors
 
 logger = logging.getLogger(__name__)
@@ -655,8 +656,8 @@ def extract_xml_from_zip(zip_content: bytes, zip_filename: str = "archive.zip") 
                 try:
                     file_content = zf.read(name)
                     
-                    if name.lower().endswith('.xml'):
-                        # File XML trovato
+                    if name.lower().endswith('.xml') or is_p7m_content(name):
+                        # File XML (o P7M firmato) trovato
                         xml_files.append({
                             "filename": f"{zip_filename}/{name}",
                             "content": file_content
@@ -678,11 +679,17 @@ def extract_xml_from_zip(zip_content: bytes, zip_filename: str = "archive.zip") 
 @handle_errors
 async def upload_fattura_xml(file: UploadFile = File(...)) -> Dict[str, Any]:
     """Upload e parse di una singola fattura elettronica XML."""
-    if not file.filename.endswith('.xml'):
-        raise HTTPException(status_code=400, detail="Il file deve essere in formato XML")
-    
+    if not (file.filename.endswith('.xml') or is_p7m_content(file.filename)):
+        raise HTTPException(status_code=400, detail="Il file deve essere in formato XML o P7M")
+
     try:
         content = await file.read()
+        if is_p7m_content(file.filename):
+            extracted = extract_xml_from_p7m(content)
+            if extracted is None:
+                raise HTTPException(status_code=400,
+                                    detail="Impossibile estrarre l'XML dalla busta firmata .p7m")
+            content = extracted
         xml_content = content.decode('utf-8')
         parsed = parse_fattura_xml(xml_content)
         
@@ -914,6 +921,21 @@ async def process_xml_bytes(db, content: bytes, filename: str, source: str = "xm
 
     Ritorna un dict con `status` in {"imported", "duplicate", "error"}.
     """
+    # 0. Busta firmata .p7m (CAdES): estrai l'XML interno prima di decodificare.
+    if is_p7m_content(filename):
+        extracted = extract_xml_from_p7m(content)
+        if extracted is None:
+            # Alcuni P7M circolano ri-codificati in base64: decodifica e riprova.
+            try:
+                import base64 as _b64
+                extracted = extract_xml_from_p7m(_b64.b64decode(content))
+            except Exception:
+                extracted = None
+        if extracted is None:
+            return {"status": "error", "filename": filename,
+                    "error": "Impossibile estrarre l'XML dalla busta firmata .p7m"}
+        content = extracted
+
     # 1. Decodifica (prova più encoding)
     xml_content = None
     for enc in ('utf-8', 'utf-8-sig', 'latin-1', 'iso-8859-1'):
@@ -1009,10 +1031,10 @@ async def upload_fatture_xml_bulk(files: List[UploadFile] = File(...)) -> Dict[s
             except Exception as e:
                 results["errors"].append({"filename": filename, "error": f"Errore ZIP: {str(e)}"})
                 results["failed"] += 1
-        elif filename.lower().endswith('.xml'):
+        elif filename.lower().endswith('.xml') or is_p7m_content(filename):
             xml_files.append({"filename": filename, "content": content})
         else:
-            results["errors"].append({"filename": filename, "error": "Formato non supportato (solo XML o ZIP)"})
+            results["errors"].append({"filename": filename, "error": "Formato non supportato (solo XML, P7M o ZIP)"})
             results["failed"] += 1
     
     results["total"] = len(xml_files)
