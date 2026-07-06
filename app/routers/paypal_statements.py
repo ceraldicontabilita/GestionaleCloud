@@ -765,3 +765,65 @@ async def auto_associa_transazioni() -> Dict[str, Any]:
         associate += 1
 
     return {"success": True, "analizzate": len(txs), "associate": associate}
+
+
+@router.post("/auto-cerca-gmail")
+async def auto_cerca_gmail(limit: int = 12) -> Dict[str, Any]:
+    """Per i pagamenti PayPal SENZA fattura nel gestionale, cerca su Gmail in
+    AUTOMATICO (fatture esterne che non passano dallo SDI) e associa il
+    risultato migliore: l'utente trova già il link ✉️ senza dover cliccare.
+
+    Ogni transazione viene cercata una sola volta (flag gmail_cercato_at);
+    max `limit` ricerche per giro per non sovraccaricare IMAP.
+    """
+    import asyncio as _asyncio
+    from app.services.gmail_search import (
+        get_gmail_credentials, search_gmail_sync, build_transaction_query,
+    )
+
+    db = Database.get_db()
+    user, pwd, server = await get_gmail_credentials(db)
+    if not user or not pwd:
+        return {"ok": False, "errore": "Nessun account Gmail configurato", "cercate": 0}
+
+    txs = await db[COLL_PAYPAL_TRANSACTIONS].find(
+        {"lordo": {"$lt": 0},
+         "fattura_associata": {"$exists": False},
+         "gmail_associata": {"$exists": False},
+         "gmail_cercato_at": {"$exists": False}},
+        {"_id": 0, "transaction_id": 1, "importo": 1, "lordo": 1,
+         "nome_controparte": 1, "data": 1},
+    ).sort("data", -1).limit(limit).to_list(limit)
+
+    cercate = 0
+    associate = 0
+    now = datetime.now(timezone.utc).isoformat()
+    for tx in txs:
+        if not tx.get("transaction_id"):
+            continue
+        query = build_transaction_query(
+            importo=tx.get("importo") or tx.get("lordo") or 0,
+            nome_controparte=tx.get("nome_controparte") or "",
+            data_iso=tx.get("data") or "",
+        )
+        if not query:
+            continue
+        try:
+            risultati = await _asyncio.to_thread(search_gmail_sync, user, pwd, server, query, 6)
+        except Exception as e:
+            logger.warning(f"auto-cerca-gmail: errore su {tx['transaction_id']}: {e}")
+            break  # problema IMAP: riprova al prossimo giro
+        cercate += 1
+        set_data: Dict[str, Any] = {
+            "gmail_cercato_at": now,
+            "gmail_candidati": risultati[:5],
+        }
+        # Migliore: il primo con allegato, altrimenti il primo
+        best = next((m for m in risultati if m.get("has_attachment")), None) or (risultati[0] if risultati else None)
+        if best:
+            set_data["gmail_associata"] = {**best, "auto": True}
+            associate += 1
+        await db[COLL_PAYPAL_TRANSACTIONS].update_one(
+            {"transaction_id": tx["transaction_id"]}, {"$set": set_data})
+
+    return {"ok": True, "cercate": cercate, "associate_gmail": associate}

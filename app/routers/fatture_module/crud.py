@@ -250,6 +250,38 @@ async def get_archivio_fatture(
 
     # ── Unisci e ordina per data_documento decrescente ────────────────────────
     all_fatture = normalized_inv + normalized_fp
+
+    # ── Dedup di CONTENUTO: stessa fattura importata più volte da canali
+    # diversi (stesso numero + P.IVA + data + importo). Tiene il documento
+    # "migliore" (con prima nota / pagato), nasconde i doppioni.
+    def _chiave_contenuto(f: dict):
+        numero = str(f.get("numero_documento") or "").strip().upper()
+        piva = str(f.get("fornitore_partita_iva") or "").strip()
+        if not numero or not piva:
+            return None  # dati incompleti: non deduplicare
+        return (numero, piva, str(f.get("data_documento") or "")[:10],
+                round(float(f.get("importo_totale") or 0), 2))
+
+    visti: dict = {}
+    unici = []
+    for f in all_fatture:
+        k = _chiave_contenuto(f)
+        if k is None:
+            unici.append(f)
+            continue
+        if k not in visti:
+            visti[k] = f
+            unici.append(f)
+        else:
+            cur = visti[k]
+            f_ha_pn = bool(f.get("prima_nota_cassa_id") or f.get("prima_nota_banca_id") or f.get("pagato"))
+            cur_ha_pn = bool(cur.get("prima_nota_cassa_id") or cur.get("prima_nota_banca_id") or cur.get("pagato"))
+            if f_ha_pn and not cur_ha_pn:
+                # sostituisci il doc mostrato con quello collegato alla prima nota
+                idx = unici.index(cur)
+                unici[idx] = f
+                visti[k] = f
+    all_fatture = unici
     all_fatture.sort(
         key=lambda f: f.get("data_documento") or "",
         reverse=True
@@ -546,4 +578,72 @@ async def get_statistiche(anno: Optional[int] = Query(None)) -> Dict[str, Any]:
         "fornitori_unici": fornitori,
         "fatture_anomale": 0,
         "anno": anno,
+    }
+
+
+async def pulisci_duplicati_invoices() -> Dict[str, Any]:
+    """Elimina dal DB le fatture DUPLICATE in `invoices` (stesso numero +
+    P.IVA + data + importo, importate più volte da canali diversi).
+
+    Per ogni gruppo tiene il documento "migliore" (collegato a prima nota /
+    pagato, altrimenti il più vecchio) ed elimina gli altri, insieme agli
+    eventuali movimenti di prima nota e scadenze generati dai doppioni.
+    Eseguita anche in automatico dal job Automazioni (ogni 30 min).
+    """
+    db = Database.get_db()
+    docs = await db["invoices"].find(
+        {},
+        {"_id": 0, "id": 1, "invoice_number": 1, "numero_documento": 1,
+         "supplier_vat": 1, "cedente_piva": 1,
+         "invoice_date": 1, "data_documento": 1,
+         "total_amount": 1, "importo_totale": 1,
+         "prima_nota_id": 1, "prima_nota_cassa_id": 1, "prima_nota_banca_id": 1,
+         "pagato": 1, "stato_pagamento": 1, "created_at": 1},
+    ).to_list(20000)
+
+    gruppi: Dict[tuple, list] = {}
+    for d in docs:
+        numero = str(d.get("invoice_number") or d.get("numero_documento") or "").strip().upper()
+        piva = str(d.get("supplier_vat") or d.get("cedente_piva") or "").strip()
+        data = str(d.get("invoice_date") or d.get("data_documento") or "")[:10]
+        try:
+            imp = round(float(d.get("total_amount") or d.get("importo_totale") or 0), 2)
+        except (ValueError, TypeError):
+            imp = 0.0
+        if not numero or not piva or not d.get("id"):
+            continue
+        gruppi.setdefault((numero, piva, data, imp), []).append(d)
+
+    def _score(d: dict) -> tuple:
+        ha_pn = bool(d.get("prima_nota_id") or d.get("prima_nota_cassa_id")
+                     or d.get("prima_nota_banca_id"))
+        pagata = bool(d.get("pagato") or d.get("stato_pagamento") == "pagata")
+        # score più alto = da tenere; a parità vince il più vecchio
+        return (int(ha_pn), int(pagata), -(len(str(d.get("created_at") or "")) and 0))
+
+    ids_da_eliminare = []
+    gruppi_duplicati = 0
+    for k, gruppo in gruppi.items():
+        if len(gruppo) < 2:
+            continue
+        gruppi_duplicati += 1
+        gruppo.sort(key=lambda d: (_score(d), str(d.get("created_at") or "")), reverse=True)
+        tenuta = gruppo[0]
+        for doppione in gruppo[1:]:
+            ids_da_eliminare.append(doppione["id"])
+
+    eliminati_pn = 0
+    if ids_da_eliminare:
+        await db["invoices"].delete_many({"id": {"$in": ids_da_eliminare}})
+        # Rimuovi anche i movimenti prima nota e le scadenze generati dai doppioni
+        r1 = await db["prima_nota_cassa"].delete_many({"fattura_id": {"$in": ids_da_eliminare}})
+        r2 = await db["prima_nota_banca"].delete_many({"fattura_id": {"$in": ids_da_eliminare}})
+        await db["scadenziario_fornitori"].delete_many({"fattura_id": {"$in": ids_da_eliminare}})
+        eliminati_pn = r1.deleted_count + r2.deleted_count
+
+    return {
+        "success": True,
+        "gruppi_duplicati": gruppi_duplicati,
+        "fatture_eliminate": len(ids_da_eliminare),
+        "movimenti_prima_nota_eliminati": eliminati_pn,
     }

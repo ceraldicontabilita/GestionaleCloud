@@ -336,9 +336,19 @@ def start_scheduler():
         except Exception as e:
             logger.error(f"[SCHEDULER-PN-RICONCILIA] errore: {e}")
         try:
-            from app.routers.paypal_statements import auto_associa_transazioni
+            from app.routers.fatture_module.crud import pulisci_duplicati_invoices
+            r = await pulisci_duplicati_invoices()
+            if r.get("fatture_eliminate"):
+                logger.info(f"[SCHEDULER-DEDUP-FATTURE] eliminate={r.get('fatture_eliminate')} "
+                            f"(gruppi={r.get('gruppi_duplicati')})")
+        except Exception as e:
+            logger.error(f"[SCHEDULER-DEDUP-FATTURE] errore: {e}")
+        try:
+            from app.routers.paypal_statements import auto_associa_transazioni, auto_cerca_gmail
             r = await auto_associa_transazioni()
             logger.info(f"[SCHEDULER-PAYPAL-ASSOCIA] associate={r.get('associate')}/{r.get('analizzate')}")
+            r2 = await auto_cerca_gmail()
+            logger.info(f"[SCHEDULER-PAYPAL-GMAIL] cercate={r2.get('cercate')} associate={r2.get('associate_gmail')}")
         except Exception as e:
             logger.error(f"[SCHEDULER-PAYPAL-ASSOCIA] errore: {e}")
 

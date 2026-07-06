@@ -117,6 +117,12 @@ export default function PaypalTransactionDetailModal({ open, onClose, transactio
   const mapping = data?.mapping_fornitore;
   const fatture = data?.fatture_collegate || [];
   const email_controparte = tx?.email_controparte || tx?.payer_email || '';
+  // Se il job automatico ha già cercato su Gmail, mostra subito i risultati
+  const gmailShown =
+    gmailData ||
+    (tx?.gmail_candidati?.length
+      ? { ok: true, risultati: tx.gmail_candidati, auto: true }
+      : null);
 
   const fmtEuro = (n) => {
     if (n === undefined || n === null || Number.isNaN(Number(n))) return '—';
@@ -458,7 +464,7 @@ export default function PaypalTransactionDetailModal({ open, onClose, transactio
                   passa dal Sistema di Interscambio: cerco su Gmail per importo
                   ({fmtEuro(tx.lordo ?? tx.amount)}) e controparte intorno alla data della transazione.
                 </div>
-                {!gmailData && (
+                {!gmailShown && (
                   <Button
                     onClick={async () => {
                       setGmailLoading(true);
@@ -484,17 +490,17 @@ export default function PaypalTransactionDetailModal({ open, onClose, transactio
                     variant="primary"
                   />
                 )}
-                {gmailData && !gmailData.ok && (
+                {gmailShown && !gmailShown.ok && (
                   <div style={{ fontSize: 12, color: '#b91c1c' }}>
-                    {gmailData.errore || 'Ricerca non riuscita'}
+                    {gmailShown.errore || 'Ricerca non riuscita'}
                   </div>
                 )}
-                {gmailData && gmailData.ok && gmailData.risultati.length === 0 && (
+                {gmailShown && gmailShown.ok && gmailShown.risultati.length === 0 && (
                   <EmptyMsg text="Nessuna email trovata per importo/controparte in quel periodo." />
                 )}
-                {gmailData && gmailData.ok && gmailData.risultati.length > 0 && (
+                {gmailShown && gmailShown.ok && gmailShown.risultati.length > 0 && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    {gmailData.risultati.map((m, i) => (
+                    {gmailShown.risultati.map((m, i) => (
                       <a
                         key={m.message_id || i}
                         href={m.gmail_link || 'https://mail.google.com'}

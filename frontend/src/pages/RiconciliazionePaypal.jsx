@@ -751,8 +751,18 @@ export default function RiconciliazionePaypal() {
                           >
                             📄
                           </a>
+                        ) : tx.gmail_associata?.gmail_link ? (
+                          <a
+                            href={tx.gmail_associata.gmail_link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title={`Email trovata su Gmail: ${tx.gmail_associata.subject || ''} — apri in Gmail`}
+                            style={{ textDecoration: 'none', fontSize: 15 }}
+                          >
+                            ✉️
+                          </a>
                         ) : (
-                          <span style={{ color: '#d1d5db' }} title="Nessuna fattura associata — clicca la riga e usa Cerca su Gmail">
+                          <span style={{ color: '#d1d5db' }} title="Ricerca automatica in corso (fatture + Gmail ogni 30 min)">
                             —
                           </span>
                         )}

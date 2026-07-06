@@ -17,7 +17,8 @@ from .import_xml import (
 )
 from .crud import (
     get_archivio_fatture, view_fattura_assoinvoice, download_pdf_allegato,
-    get_fattura_dettaglio, update_fattura, get_fornitori, get_statistiche
+    get_fattura_dettaglio, update_fattura, get_fornitori, get_statistiche,
+    pulisci_duplicati_invoices
 )
 from .pagamento import (
     paga_fattura_manuale, cambia_metodo_pagamento_fattura,
@@ -38,6 +39,7 @@ router.add_api_route("/import-zip", import_fatture_zip, methods=["POST"])
 router.add_api_route("/archivio", get_archivio_fatture, methods=["GET"])
 router.add_api_route("/fornitori", get_fornitori, methods=["GET"])
 router.add_api_route("/statistiche", get_statistiche, methods=["GET"])
+router.add_api_route("/pulisci-duplicati", pulisci_duplicati_invoices, methods=["POST"])
 
 # Pagamento e Riconciliazione
 router.add_api_route("/paga-manuale", paga_fattura_manuale, methods=["POST"])
