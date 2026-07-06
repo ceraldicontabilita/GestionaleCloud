@@ -35,24 +35,57 @@ def is_configured() -> bool:
     )
 
 
+def _parse_sa_json(raw: str) -> dict:
+    """Parsa il JSON del service account tollerando i formati "sporchi" tipici
+    del copia-incolla nelle variabili d'ambiente:
+    - JSON normale (caso corretto)
+    - JSON con virgolette escapate (\"type\": ...) e sequenze \n della
+      private_key trasformate in "backslash + a-capo reale" — succede
+      incollando il contenuto già JSON-encodato come stringa
+    """
+    raw = raw.strip()
+    # Eventuali apici/virgolette esterne aggiunte per sbaglio
+    if (raw.startswith("'") and raw.endswith("'")) or (raw.startswith('"') and raw.endswith('"')):
+        raw = raw[1:-1]
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        pass
+    # De-corruzione: "backslash + newline reale" -> escape \n valido,
+    # poi de-escape delle virgolette (\" -> ").
+    cleaned = raw.replace('\\\n', '\\n').replace('\\"', '"')
+    return json.loads(cleaned)
+
+
+def _load_credentials():
+    """Ritorna (credentials, None) o (None, messaggio_errore)."""
+    try:
+        from google.oauth2 import service_account
+    except ImportError as e:
+        return None, f"dipendenze google mancanti: {e}"
+    try:
+        if settings.GOOGLE_DRIVE_SA_JSON:
+            info = _parse_sa_json(settings.GOOGLE_DRIVE_SA_JSON)
+            return service_account.Credentials.from_service_account_info(info, scopes=_SCOPES), None
+        return service_account.Credentials.from_service_account_file(
+            settings.GOOGLE_DRIVE_SA_FILE, scopes=_SCOPES
+        ), None
+    except json.JSONDecodeError as e:
+        return None, f"GOOGLE_DRIVE_SA_JSON non è un JSON valido: {e}"
+    except Exception as e:
+        return None, f"credenziali service account non valide: {e}"
+
+
 def _build_drive_service():
     """Costruisce il client Drive v3 da service account. None se non disponibile."""
     if not is_configured():
         return None
-    try:
-        from google.oauth2 import service_account
-        from googleapiclient.discovery import build
-    except ImportError as e:
-        logger.error(f"Drive ingest: dipendenze google mancanti: {e}")
+    creds, err = _load_credentials()
+    if creds is None:
+        logger.error(f"Drive ingest: {err}")
         return None
     try:
-        if settings.GOOGLE_DRIVE_SA_JSON:
-            info = json.loads(settings.GOOGLE_DRIVE_SA_JSON)
-            creds = service_account.Credentials.from_service_account_info(info, scopes=_SCOPES)
-        else:
-            creds = service_account.Credentials.from_service_account_file(
-                settings.GOOGLE_DRIVE_SA_FILE, scopes=_SCOPES
-            )
+        from googleapiclient.discovery import build
         return build("drive", "v3", credentials=creds, cache_discovery=False)
     except Exception as e:
         logger.error(f"Drive ingest: errore costruzione service: {e}")
@@ -124,8 +157,13 @@ def _move_to_elaborate(service, file_id: str, parent_id: str, elaborate_id: str)
 
 async def get_status(db) -> Dict[str, Any]:
     state = await db[_SYNC_STATE_COLLECTION].find_one({"_id": _SYNC_STATE_ID}) or {}
+    credenziali_errore = None
+    if is_configured():
+        _, credenziali_errore = _load_credentials()
     return {
         "configured": is_configured(),
+        "credenziali_ok": is_configured() and credenziali_errore is None,
+        "credenziali_errore": credenziali_errore,
         "folder_id": settings.GOOGLE_DRIVE_FATTURE_FOLDER_ID,
         "last_sync": state.get("last_sync"),
         "last_result": state.get("last_result"),
@@ -140,9 +178,12 @@ async def sync(db) -> Dict[str, Any]:
             "message": "Imposta GOOGLE_DRIVE_FATTURE_FOLDER_ID e il service account "
                        "(GOOGLE_DRIVE_SA_FILE o GOOGLE_DRIVE_SA_JSON).",
         }
+    creds, cred_err = _load_credentials()
+    if creds is None:
+        return {"status": "error", "message": f"Credenziali Google Drive non valide: {cred_err}"}
     service = _build_drive_service()
     if service is None:
-        return {"status": "error", "message": "Service Drive non disponibile (credenziali?)."}
+        return {"status": "error", "message": "Service Drive non disponibile (errore costruzione client)."}
 
     # Import locale per evitare import circolari con il router.
     from app.routers.invoices.fatture_upload import process_xml_bytes

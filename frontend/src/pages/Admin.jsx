@@ -1111,6 +1111,22 @@ export default function Admin() {
                 </div>
               </div>
 
+              {driveStatus?.credenziali_errore && (
+                <div
+                  style={{
+                    marginBottom: 12,
+                    padding: '8px 12px',
+                    borderRadius: 8,
+                    background: '#fef2f2',
+                    border: '1px solid #fecaca',
+                    fontSize: 13,
+                    color: '#dc2626',
+                  }}
+                >
+                  ✗ Problema credenziali: {driveStatus.credenziali_errore}
+                </div>
+              )}
+
               {driveStatus?.last_result && (
                 <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 12 }}>
                   Ultimo giro: {driveStatus.last_result.total ?? 0} file trovati,{' '}
