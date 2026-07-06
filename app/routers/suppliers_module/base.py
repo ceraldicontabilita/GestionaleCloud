@@ -181,7 +181,8 @@ async def list_suppliers(
     saved_suppliers = await db[Collections.SUPPLIERS].find(suppliers_query, {"_id": 0}).to_list(1000)
     
     for supplier in saved_suppliers:
-        piva = supplier.get("partita_iva")
+        # P.IVA anche nei campi legacy: i fornitori storici usano 'piva'/'vat_number'
+        piva = supplier.get("partita_iva") or supplier.get("piva") or supplier.get("vat_number")
         if piva:
             suppliers_map[piva] = {
                 **supplier,
@@ -190,17 +191,34 @@ async def list_suppliers(
                 "fatture_non_pagate": 0,
                 "source": "database"
             }
-    
+
+    # Indice alias: lo stesso fornitore raggiungibile da TUTTE le sue P.IVA
+    # (partita_iva / piva / vat_number), per agganciare le statistiche fatture
+    # qualunque sia il campo usato nel documento fattura.
+    alias_index: Dict[str, Dict[str, Any]] = {}
+    for rec in suppliers_map.values():
+        for k in ("partita_iva", "piva", "vat_number"):
+            v = (rec.get(k) or "").strip() if isinstance(rec.get(k), str) else rec.get(k)
+            if v:
+                alias_index[v] = rec
+
     # Calcola statistiche fatture - sempre se serve stato_anagrafica o se non c'è search
     need_stats = not search or stato_anagrafica
     if need_stats:
+        # NB: coalesce su TUTTI i campi P.IVA delle fatture — supplier_vat
+        # (schema inglese), cedente_piva (schema italiano), fornitore_partita_iva.
+        # Prima cedente_piva mancava: i fornitori con sole fatture in schema
+        # italiano risultavano "0 fatture / mai fatturato".
+        _piva_expr = {"$ifNull": ["$supplier_vat",
+                     {"$ifNull": ["$cedente_piva", "$fornitore_partita_iva"]}]}
         stats_pipeline = [
             {"$match": {"$or": [
                 {"supplier_vat": {"$exists": True, "$nin": [None, ""]}},
+                {"cedente_piva": {"$exists": True, "$nin": [None, ""]}},
                 {"fornitore_partita_iva": {"$exists": True, "$nin": [None, ""]}}
             ]}},
             {"$group": {
-                "_id": {"$ifNull": ["$supplier_vat", "$fornitore_partita_iva"]},
+                "_id": _piva_expr,
                 "fatture_count": {"$sum": 1},
                 "fatture_totale": {"$sum": {"$toDouble": {"$ifNull": ["$importo_totale", {"$ifNull": ["$total_amount", 0]}]}}},
                 "fatture_non_pagate": {"$sum": {"$cond": [{"$ne": ["$pagato", True]}, {"$toDouble": {"$ifNull": ["$importo_totale", {"$ifNull": ["$total_amount", 0]}]}}, 0]}},
@@ -208,19 +226,25 @@ async def list_suppliers(
                 "ultima_fattura_data": {"$max": {"$ifNull": ["$data_documento", "$invoice_date"]}}
             }}
         ]
-        
+
         try:
             invoice_stats = await db["invoices"].aggregate(stats_pipeline, allowDiskUse=True).to_list(5000)
-            
+
             for stat in invoice_stats:
                 piva = stat.get("_id")
-                if piva and piva in suppliers_map:
-                    suppliers_map[piva]["fatture_count"] = stat.get("fatture_count", 0)
-                    suppliers_map[piva]["fatture_totale"] = stat.get("fatture_totale", 0)
-                    suppliers_map[piva]["fatture_non_pagate"] = stat.get("fatture_non_pagate", 0)
-                    suppliers_map[piva]["prima_fattura_data"] = stat.get("prima_fattura_data")
-                    suppliers_map[piva]["ultima_fattura_data"] = stat.get("ultima_fattura_data")
-                    suppliers_map[piva]["source"] = "merged"
+                rec = alias_index.get(piva) if piva else None
+                if rec is not None:
+                    rec["fatture_count"] = rec.get("fatture_count", 0) + stat.get("fatture_count", 0) \
+                        if rec.get("source") == "merged" else stat.get("fatture_count", 0)
+                    rec["fatture_totale"] = rec.get("fatture_totale", 0) + stat.get("fatture_totale", 0)
+                    rec["fatture_non_pagate"] = rec.get("fatture_non_pagate", 0) + stat.get("fatture_non_pagate", 0)
+                    prima = stat.get("prima_fattura_data")
+                    if prima and (not rec.get("prima_fattura_data") or prima < rec["prima_fattura_data"]):
+                        rec["prima_fattura_data"] = prima
+                    ultima = stat.get("ultima_fattura_data")
+                    if ultima and (not rec.get("ultima_fattura_data") or ultima > rec["ultima_fattura_data"]):
+                        rec["ultima_fattura_data"] = ultima
+                    rec["source"] = "merged"
         except Exception as e:
             logger.warning(f"Error loading invoice stats: {e}")
     

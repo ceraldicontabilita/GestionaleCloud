@@ -1532,7 +1532,6 @@ export default function Fornitori() {
     esclusi_magazzino: 0,
     attivi: 0,
   });
-  const [autoConfirming, setAutoConfirming] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [currentSupplier, setCurrentSupplier] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -2474,56 +2473,8 @@ export default function Fornitori() {
               </button>
             )}
 
-            {/* Auto-conferma fatture basato sul metodo di pagamento del fornitore */}
-            <button
-              data-testid="auto-conferma-fatture-btn"
-              disabled={autoConfirming}
-              onClick={async () => {
-                if (
-                  !window.confirm(
-                    'Auto-conferma: per ogni fattura non ancora confermata, se il fornitore ha un metodo definito (contanti/bonifico/…), la registra in Prima Nota Cassa o Banca. Procedo?'
-                  )
-                )
-                  return;
-                try {
-                  setAutoConfirming(true);
-                  const res = await api.post('/api/fatture-ricevute/backfill-autoroute');
-                  const r = res.data || {};
-                  alert(
-                    `✓ Auto-conferma completata\n\n` +
-                      `Analizzate: ${r.analizzate}\n` +
-                      `Confermate in CASSA: ${r.confermate_cassa}\n` +
-                      `Confermate in BANCA: ${r.confermate_banca}\n` +
-                      `Saltate (assegno → gestione manuale): ${r.skip_assegno}\n` +
-                      `Saltate (metodo non definito): ${r.skip_metodo_non_definito + r.skip_fornitore_non_trovato}\n` +
-                      `Già confermate: ${r.skip_gia_confermate}\n` +
-                      `Errori: ${r.errori}`
-                  );
-                  load();
-                } catch (e) {
-                  alert('Errore: ' + (e.response?.data?.detail || e.message));
-                } finally {
-                  setAutoConfirming(false);
-                }
-              }}
-              title="Scorre tutte le fatture non ancora in Prima Nota e, se il fornitore ha metodo 'contanti' o 'bonifico/banca', le conferma automaticamente nella giusta collezione."
-              style={{
-                flexShrink: 0,
-                padding: '10px 14px',
-                background: autoConfirming
-                  ? '#9ca3af'
-                  : '#15803d',
-                color: 'white',
-                border: 'none',
-                borderRadius: 8,
-                cursor: autoConfirming ? 'wait' : 'pointer',
-                fontSize: 13,
-                fontWeight: 600,
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {autoConfirming ? '⏳ In corso…' : '✅ Auto-conferma fatture'}
-            </button>
+            {/* L'auto-conferma delle fatture per metodo fornitore è AUTOMATICA:
+                avviene all'import di ogni fattura e col job ogni 30 minuti. */}
           </div>
         </div>
 
