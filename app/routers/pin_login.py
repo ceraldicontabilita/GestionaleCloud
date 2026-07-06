@@ -12,7 +12,7 @@ contro l'hash configurato nella variabile d'ambiente PIN_HASH_ADMIN.
 
 Aggiunto nella chat-8 per ceraldi mobile.
 """
-from fastapi import APIRouter, HTTPException, Body, Request, status
+from fastapi import APIRouter, HTTPException, Body, Request, Response, status
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any
 import os
@@ -97,6 +97,7 @@ def _clear_failures(ip: str):
 )
 async def pin_login(
     request: Request,
+    response: Response,
     payload: Dict[str, Any] = Body(..., example={"pin": "<ADMIN_PIN>"}),
 ) -> Dict[str, Any]:
     ip = _client_ip(request)
@@ -179,6 +180,18 @@ async def pin_login(
     _clear_failures(ip)
 
     logger.info(f"PIN-login OK · IP {ip} · user {user_id} · role {user.get('role')}")
+
+    # Cookie di sessione: permette di aprire i link diretti alle API
+    # (es. "Vedi fattura" in nuova scheda) senza header Authorization.
+    response.set_cookie(
+        key="access_token",
+        value=token,
+        httponly=True,
+        secure=False,
+        samesite="lax",
+        max_age=PIN_TOKEN_EXPIRE_MINUTES * 60,
+        path="/",
+    )
 
     return {
         "access_token": token,

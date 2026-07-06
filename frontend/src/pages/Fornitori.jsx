@@ -914,8 +914,12 @@ function SupplierCard({
   const piva = supplier.partita_iva || supplier.piva || null;
   const hasIncomplete = !piva || !supplier.comune || !supplier.email || !supplier.telefono;
   const hasPiva = !!piva;
-  const metodoKey = supplier.metodo_pagamento || 'bonifico';
-  const metodo = getMetodo(metodoKey);
+  // NIENTE default fittizio: se il metodo non è impostato, la card lo deve
+  // DIRE (prima mostrava "Bonifico" e il filtro "senza metodo" sembrava rotto)
+  const metodoKey = supplier.metodo_pagamento || '';
+  const metodo = metodoKey
+    ? getMetodo(metodoKey)
+    : { label: '⚠️ Da impostare', color: '#b45309' };
   const [showMetodoMenu, setShowMetodoMenu] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [searching, setSearching] = useState(false);
@@ -1632,7 +1636,8 @@ export default function Fornitori() {
 
   const filteredSuppliers = suppliers.filter(s => {
     if (filterMetodo !== 'tutti') {
-      const metodo = s.metodo_pagamento || 'bonifico';
+      // niente default fittizio: senza metodo NON è "bonifico"
+      const metodo = s.metodo_pagamento || '';
       if (metodo !== filterMetodo) return false;
     }
     if (filterIncomplete && (s.partita_iva || s.piva) && s.email) return false;

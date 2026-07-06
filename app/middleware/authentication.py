@@ -102,16 +102,21 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
         
         # --- Require authentication for all other /api/ paths ---
+        # Token dal header Bearer (chiamate API del frontend) OPPURE dal
+        # cookie di sessione (link aperti direttamente nel browser, es.
+        # "Vedi fattura" in nuova scheda: il browser non manda il Bearer).
         auth_header = request.headers.get("Authorization", "")
-        
-        if not auth_header.startswith("Bearer "):
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:]
+        else:
+            token = request.cookies.get("access_token")
+
+        if not token:
             return JSONResponse(
                 status_code=401,
                 content={"detail": "Authentication required"},
                 headers={"WWW-Authenticate": "Bearer"}
             )
-        
-        token = auth_header[7:]  # Remove "Bearer "
         
         try:
             payload = jwt.decode(

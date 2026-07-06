@@ -143,6 +143,14 @@ async def ensure_supplier_exists(db, parsed_invoice: Dict[str, Any], session=Non
     result["supplier_created"] = True
     result["supplier_id"] = new_supplier["id"]
     logger.info(f"Nuovo fornitore creato: {supplier_name} (P.IVA: {supplier_vat})")
+    # Invalida la cache della lista fornitori: il nuovo fornitore deve
+    # comparire SUBITO nella pagina Fornitori, non dopo il TTL.
+    try:
+        from app.middleware.performance import cache as _cache
+        from app.routers.suppliers_module.common import SUPPLIERS_CACHE_KEY as _SCK
+        await _cache.clear_pattern(_SCK)
+    except Exception:
+        pass
 
     # Alert per configurare il metodo di pagamento
     alert = {
