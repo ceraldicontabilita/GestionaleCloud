@@ -166,14 +166,26 @@ export default function Admin() {
       if (d.status === 'not_configured' || d.status === 'error') {
         setDriveMsg({ ok: false, testo: d.message || 'Sincronizzazione non riuscita' });
       } else {
+        const dettagliErrori = (d.details || [])
+          .slice(0, 3)
+          .map(x => `${x.file}: ${x.error}`)
+          .join(' · ');
         setDriveMsg({
-          ok: true,
-          testo: `Sync completato: ${d.imported || 0} importate, ${d.duplicates || 0} già presenti, ${d.errors || 0} errori (su ${d.total || 0} file trovati)`,
+          ok: (d.errors || 0) === 0,
+          testo:
+            `Sync completato: ${d.imported || 0} importate, ${d.duplicates || 0} già presenti, ${d.errors || 0} errori (su ${d.total || 0} file trovati)` +
+            (dettagliErrori ? ` — ${dettagliErrori}` : ''),
         });
       }
       loadDriveStatus();
     } catch (e) {
-      setDriveMsg({ ok: false, testo: e.response?.data?.detail || 'Errore durante la sincronizzazione' });
+      setDriveMsg({
+        ok: false,
+        testo:
+          e.response?.data?.detail ||
+          e.response?.data?.message ||
+          `Errore durante la sincronizzazione (${e.response?.status || e.message})`,
+      });
     } finally {
       setSyncingDrive(false);
     }
@@ -1133,6 +1145,15 @@ export default function Admin() {
                   {driveStatus.last_result.imported ?? 0} importati,{' '}
                   {driveStatus.last_result.duplicates ?? 0} già presenti,{' '}
                   {driveStatus.last_result.errors ?? 0} errori.
+                  {(driveStatus.last_result.details || []).length > 0 && (
+                    <ul style={{ margin: '6px 0 0', paddingLeft: 18, color: '#b91c1c' }}>
+                      {driveStatus.last_result.details.map((d, i) => (
+                        <li key={i} style={{ wordBreak: 'break-all' }}>
+                          <code style={{ fontSize: 11 }}>{d.file}</code>: {d.error}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
               )}
 

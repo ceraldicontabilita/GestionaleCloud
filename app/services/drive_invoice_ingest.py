@@ -224,11 +224,15 @@ async def sync(db) -> Dict[str, Any]:
         return {"status": "error", "message": str(e)}
 
     prev = await db[_SYNC_STATE_COLLECTION].find_one({"_id": _SYNC_STATE_ID}) or {}
+    last_result = {k: result[k] for k in ("total", "imported", "duplicates", "errors", "moved")}
+    # Persisti i primi errori per-file: senza, la card Admin mostra solo il
+    # conteggio e la diagnosi è impossibile.
+    last_result["details"] = result["details"][:5]
     await db[_SYNC_STATE_COLLECTION].update_one(
         {"_id": _SYNC_STATE_ID},
         {"$set": {
             "last_sync": datetime.now(timezone.utc).isoformat(),
-            "last_result": {k: result[k] for k in ("total", "imported", "duplicates", "errors", "moved")},
+            "last_result": last_result,
             "total_imported": prev.get("total_imported", 0) + result["imported"],
         }},
         upsert=True,
