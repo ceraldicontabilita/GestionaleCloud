@@ -612,6 +612,7 @@ function DashboardGestioneRiservata({ onLogout }) {
               Nessun movimento registrato per questo periodo
             </div>
           ) : (
+            <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: '#f7fafc' }}>
@@ -733,6 +734,7 @@ function DashboardGestioneRiservata({ onLogout }) {
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </div>
       </div>

@@ -459,6 +459,7 @@ export default function GestioneCespiti() {
                   Nessun cespite
                 </div>
               ) : (
+                <div style={{ overflowX: 'auto' }}>
                 <table style={styles.table}>
                   <thead>
                     <tr>
@@ -568,6 +569,7 @@ export default function GestioneCespiti() {
                     ))}
                   </tbody>
                 </table>
+                </div>
               )}
             </div>
           </div>

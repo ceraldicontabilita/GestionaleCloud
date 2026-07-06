@@ -819,6 +819,7 @@ export default function ImpostazioniF24Email() {
                 Nessun mittente configurato. Aggiungine uno.
               </div>
             ) : (
+              <div style={{ overflowX: 'auto' }}>
               <table style={STYLES.table}>
                 <thead>
                   <tr>
@@ -959,6 +960,7 @@ export default function ImpostazioniF24Email() {
                   ))}
                 </tbody>
               </table>
+              </div>
             )}
           </div>
         </div>

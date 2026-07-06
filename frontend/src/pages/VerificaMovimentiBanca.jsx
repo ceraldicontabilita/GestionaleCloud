@@ -180,7 +180,7 @@ export default function VerificaMovimentiBanca() {
       {movimenti.length > 0 && (
         <div style={{
           background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10,
-          overflow: 'hidden',
+          overflowX: 'auto',
         }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>

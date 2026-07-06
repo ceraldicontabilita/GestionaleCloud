@@ -397,21 +397,23 @@ export default function IntegrazioniOpenAPI() {
               <div>
                 <div style={cardStyle}>
                   <h4 style={{ margin: '0 0 16px' }}>⚙️ Configurazione Attuale</h4>
-                  <table style={{ width: '100%', fontSize: 13 }}>
-                    <tbody>
-                      <tr>
-                        <td style={{ padding: '8px 0', fontWeight: 600 }}>API Key</td>
-                        <td style={{ padding: '8px 0' }}>
-                          <code
-                            style={{ background: '#f1f5f9', padding: '4px 8px', borderRadius: 4 }}
-                          >
-                            ••••••••••••••••
-                            {xbrlStatus?.api_key_configured ? '(configurata)' : '(mancante)'}
-                          </code>
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', fontSize: 13 }}>
+                      <tbody>
+                        <tr>
+                          <td style={{ padding: '8px 0', fontWeight: 600 }}>API Key</td>
+                          <td style={{ padding: '8px 0' }}>
+                            <code
+                              style={{ background: '#f1f5f9', padding: '4px 8px', borderRadius: 4 }}
+                            >
+                              ••••••••••••••••
+                              {xbrlStatus?.api_key_configured ? '(configurata)' : '(mancante)'}
+                            </code>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
 
                 <div style={{ ...cardStyle, background: '#f0f9ff', border: '1px solid #bae6fd' }}>

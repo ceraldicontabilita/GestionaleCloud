@@ -92,6 +92,7 @@ export default function Bilancio() {
             <h4 style={{ color: '#15803d', fontSize: 14, marginBottom: 12 }}>
               Disponibilità Liquide
             </h4>
+            <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <tbody>
                 <tr>
@@ -114,9 +115,11 @@ export default function Bilancio() {
                 </tr>
               </tbody>
             </table>
+            </div>
           </div>
           <div style={{ marginBottom: 20 }}>
             <h4 style={{ color: '#15803d', fontSize: 14, marginBottom: 12 }}>Crediti</h4>
+            <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <tbody>
                 <tr>
@@ -127,6 +130,7 @@ export default function Bilancio() {
                 </tr>
               </tbody>
             </table>
+            </div>
           </div>
           <div
             style={{
@@ -164,6 +168,7 @@ export default function Bilancio() {
           </h3>
           <div style={{ marginBottom: 20 }}>
             <h4 style={{ color: '#b91c1c', fontSize: 14, marginBottom: 12 }}>Debiti</h4>
+            <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <tbody>
                 <tr>
@@ -174,9 +179,11 @@ export default function Bilancio() {
                 </tr>
               </tbody>
             </table>
+            </div>
           </div>
           <div style={{ marginBottom: 20 }}>
             <h4 style={{ color: '#15803d', fontSize: 14, marginBottom: 12 }}>Patrimonio Netto</h4>
+            <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <tbody>
                 <tr>
@@ -194,6 +201,7 @@ export default function Bilancio() {
                 </tr>
               </tbody>
             </table>
+            </div>
           </div>
           <div
             style={{
@@ -235,6 +243,7 @@ export default function Bilancio() {
           >
             RICAVI (Vendite al Pubblico)
           </h3>
+          <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <tbody>
               <tr>
@@ -278,6 +287,7 @@ export default function Bilancio() {
               </tr>
             </tbody>
           </table>
+          </div>
         </div>
 
         {/* COSTI */}
@@ -292,6 +302,7 @@ export default function Bilancio() {
           >
             COSTI (Fatture Ricevute da Fornitori)
           </h3>
+          <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <tbody>
               <tr>
@@ -340,6 +351,7 @@ export default function Bilancio() {
               </tr>
             </tbody>
           </table>
+          </div>
         </div>
 
         {/* RISULTATO */}

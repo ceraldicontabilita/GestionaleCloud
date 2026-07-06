@@ -420,6 +420,7 @@ export default function PianoDeiConti() {
                           Nessun conto in questa categoria
                         </div>
                       ) : (
+                        <div style={{ overflowX: 'auto' }}>
                         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                           <thead>
                             <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
@@ -507,6 +508,7 @@ export default function PianoDeiConti() {
                             ))}
                           </tbody>
                         </table>
+                        </div>
                       )}
                     </div>
                   )}

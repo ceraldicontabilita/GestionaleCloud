@@ -826,6 +826,7 @@ export default function ChiusuraEsercizio() {
           >
             <h3 style={{ fontSize: 18, fontWeight: 600, marginBottom: 20 }}>Storico Chiusure</h3>
 
+            <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ borderBottom: '2px solid #e2e8f0' }}>
@@ -861,6 +862,7 @@ export default function ChiusuraEsercizio() {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         )}
 

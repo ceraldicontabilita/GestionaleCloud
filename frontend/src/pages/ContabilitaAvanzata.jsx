@@ -495,6 +495,7 @@ export default function ContabilitaAvanzata() {
             <div style={styles.grid2(isMobile)}>
               <div style={styles.card}>
                 <h3 style={styles.sectionTitle}>📊 Calcolo IRES</h3>
+                <div style={{ overflowX: 'auto' }}>
                 <table style={styles.table}>
                   <tbody>
                     <tr>
@@ -547,12 +548,14 @@ export default function ContabilitaAvanzata() {
                     </tr>
                   </tbody>
                 </table>
+                </div>
               </div>
               <div style={styles.card}>
                 <h3 style={styles.sectionTitle}>
                   🏛️ Calcolo IRAP -{' '}
                   {regione.charAt(0).toUpperCase() + regione.slice(1).replace(/_/g, ' ')}
                 </h3>
+                <div style={{ overflowX: 'auto' }}>
                 <table style={styles.table}>
                   <tbody>
                     <tr>
@@ -593,6 +596,7 @@ export default function ContabilitaAvanzata() {
                     </tr>
                   </tbody>
                 </table>
+                </div>
                 <div
                   style={{
                     marginTop: 16,

@@ -800,6 +800,7 @@ export default function RegoleCategorizzazione() {
                 })}
               </tbody>
             </table>
+            </div>
           )}
 
           {/* Tab Categorie */}

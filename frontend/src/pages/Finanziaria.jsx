@@ -219,6 +219,7 @@ export default function Finanziaria() {
 
       {/* Dettaglio Prima Nota */}
       <PageSection title="Dettaglio Prima Nota" icon="📒" style={{ marginTop: 20 }}>
+        <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
           <thead>
             <tr style={{ borderBottom: '2px solid #e2e8f0' }}>
@@ -297,6 +298,7 @@ export default function Finanziaria() {
             </tr>
           </tfoot>
         </table>
+        </div>
       </PageSection>
 
       {/* Situazione Debiti/Crediti */}

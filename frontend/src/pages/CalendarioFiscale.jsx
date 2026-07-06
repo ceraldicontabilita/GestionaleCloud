@@ -395,6 +395,7 @@ export default function CalendarioFiscale() {
               {scadenzeFiltrate.length === 0 ? (
                 <PageEmpty icon="📅" message="Nessuna scadenza per i filtri selezionati" />
               ) : (
+                <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
@@ -503,6 +504,7 @@ export default function CalendarioFiscale() {
                     ))}
                   </tbody>
                 </table>
+                </div>
               )}
             </CardContent>
           </Card>
