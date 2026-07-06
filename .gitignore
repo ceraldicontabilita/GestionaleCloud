@@ -63,3 +63,7 @@ frontend/package-lock.json
 # Committed frontend build — Render static site serves this (no build step)
 !frontend/dist/
 !frontend/dist/**
+
+# Dati reali importati: MAI nel repository
+app/uploads/
+app/static/tracciabilita/uploads/

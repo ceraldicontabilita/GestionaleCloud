@@ -149,14 +149,15 @@ const router = createBrowserRouter([
       // === MAGAZZINO ===
       { path: "magazzino", element: <LazyPage><MagazzinoHub /></LazyPage> },
       { path: "magazzino/:tab", element: <LazyPage><MagazzinoHub /></LazyPage> },
-      { path: "inventario", element: <Navigate to="/magazzino/inventario" replace /> },
-      { path: "inventario/:data", element: <LazyPage><MagazzinoHub /></LazyPage> },
-      { path: "ricerca-prodotti", element: <Navigate to="/magazzino/ricerca" replace /> },
-      { path: "ricerca-prodotti/:query", element: <LazyPage><MagazzinoHub /></LazyPage> },
+      // Giacenze/inventario/prodotti → app HACCP (ceraldiapp.it); qui restano solo articoli e POS
+      { path: "inventario", element: <Navigate to="/magazzino" replace /> },
+      { path: "inventario/:data", element: <Navigate to="/magazzino" replace /> },
+      { path: "ricerca-prodotti", element: <Navigate to="/magazzino" replace /> },
+      { path: "ricerca-prodotti/:query", element: <Navigate to="/magazzino" replace /> },
       { path: "dizionario-articoli", element: <Navigate to="/magazzino/articoli" replace /> },
       { path: "dizionario-articoli/:articolo", element: <LazyPage><MagazzinoHub /></LazyPage> },
-      { path: "dizionario-prodotti", element: <Navigate to="/magazzino/prodotti" replace /> },
-      { path: "dizionario-prodotti/:prodotto", element: <Navigate to="/magazzino/prodotti" replace /> },
+      { path: "dizionario-prodotti", element: <Navigate to="/magazzino" replace /> },
+      { path: "dizionario-prodotti/:prodotto", element: <Navigate to="/magazzino" replace /> },
       { path: "magazzino-dv", element: <Navigate to="/magazzino" replace /> },
       
       // === REDIRECT CUCINA → MAGAZZINO (la sezione cucina è stata rimossa) ===

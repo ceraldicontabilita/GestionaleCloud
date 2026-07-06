@@ -2,19 +2,13 @@ import React, { lazy, Suspense, useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAnnoGlobale } from '../../contexts/AnnoContext';
 
-const MagazzinoContent = lazy(() => import('../Magazzino.jsx'));
-const InventarioContent = lazy(() => import('../Inventario.jsx'));
-const RicercaContent = lazy(() => import('../RicercaProdotti.jsx'));
+// Giacenze, inventario e prodotti sono gestiti dall'app HACCP (ceraldiapp.it).
+// Qui restano SOLO gli strumenti contabili: Dizionario Articoli e Coerenza POS.
 const ArticoliContent = lazy(() => import('../DizionarioArticoli.jsx'));
-const ProdottiContent = lazy(() => import('../DizionarioProdotti.jsx'));
 const POSContent = lazy(() => import('../CoerenzaPOSCorrispettivi.jsx'));
 
 const TABS = [
-  { id: 'giacenze', label: '📦 Giacenze', color: '#3b82f6' },
-  { id: 'inventario', label: '📋 Inventario', color: '#10b981' },
-  { id: 'ricerca', label: '🔍 Ricerca Prodotti', color: '#f59e0b' },
   { id: 'articoli', label: '📚 Dizionario Articoli', color: '#8b5cf6' },
-  { id: 'prodotti', label: '🍽️ Dizionario Prodotti', color: '#f43f5e' },
   { id: 'pos', label: '🔄 Coerenza POS', color: '#06b6d4' },
 ];
 
@@ -37,19 +31,12 @@ const Loading = () => (
 );
 
 const getTabFromPath = pathname => {
-  if (pathname.includes('/inventario')) return 'inventario';
-  if (pathname.includes('/ricerca-prodotti') || pathname.includes('/magazzino/ricerca'))
-    return 'ricerca';
-  if (pathname.includes('/dizionario-articoli') || pathname.includes('/magazzino/articoli'))
-    return 'articoli';
-  if (pathname.includes('/dizionario-prodotti') || pathname.includes('/magazzino/prodotti'))
-    return 'prodotti';
   if (pathname.includes('/pos') || pathname.includes('/coerenza-pos')) return 'pos';
   if (pathname.includes('/magazzino/')) {
     const m = pathname.match(/\/magazzino\/([\w-]+)/);
     if (m && TABS.find(t => t.id === m[1])) return m[1];
   }
-  return 'giacenze';
+  return 'articoli';
 };
 
 export default function MagazzinoHub() {
@@ -80,20 +67,28 @@ export default function MagazzinoHub() {
       n.add(tabId);
       return n;
     });
-    navigate(tabId === 'giacenze' ? '/magazzino' : `/magazzino/${tabId}`);
+    navigate(tabId === 'articoli' ? '/magazzino' : `/magazzino/${tabId}`);
   };
 
   const CONTENTS = {
-    giacenze: MagazzinoContent,
-    inventario: InventarioContent,
-    ricerca: RicercaContent,
     articoli: ArticoliContent,
-    prodotti: ProdottiContent,
     pos: POSContent,
   };
 
   return (
     <div style={{ width: '100%' }}>
+      <div
+        style={{
+          padding: '10px 16px', marginBottom: 8, background: '#eff6ff',
+          border: '1px solid #bfdbfe', borderRadius: 8, fontSize: 13, color: '#1e3a5f',
+        }}
+      >
+        📦 Giacenze, inventario e prodotti si gestiscono nell'app HACCP:{' '}
+        <a href="https://www.ceraldiapp.it" target="_blank" rel="noopener noreferrer"
+           style={{ fontWeight: 700, color: '#2563eb' }}>
+          ceraldiapp.it →
+        </a>
+      </div>
       {/* Tab Bar uniforme */}
       <div
         style={{

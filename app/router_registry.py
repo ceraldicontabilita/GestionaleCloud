@@ -158,17 +158,12 @@ def _register_bank(app: FastAPI):
 
 # ─── Warehouse Module ────────────────────────────────────────────────────────
 def _register_warehouse(app: FastAPI):
-    from app.routers.warehouse import warehouse_main, magazzino, magazzino_products, products, products_catalog, dizionario_articoli
-    from app.routers import dizionario_prodotti, inventario
+    # Giacenze/prodotti/inventario sono competenza dell'app HACCP (ceraldiapp.it):
+    # qui resta SOLO il Dizionario Articoli, strumento contabile usato dalle
+    # fatture. Le collection condivise non vengono toccate.
+    from app.routers.warehouse import dizionario_articoli
 
-    app.include_router(warehouse_main.router, prefix="/api/warehouse", tags=["Warehouse"])
-    app.include_router(magazzino.router, prefix="/api/magazzino", tags=["Magazzino"])
-    app.include_router(magazzino_products.router, prefix="/api/magazzino", tags=["Magazzino Products"])
-    app.include_router(products.router, prefix="/api/products", tags=["Products"])
-    app.include_router(products_catalog.router, prefix="/api/products", tags=["Products Catalog"])
     app.include_router(dizionario_articoli.router, prefix="/api/dizionario-articoli", tags=["Dizionario Articoli"])
-    app.include_router(dizionario_prodotti.router, prefix="/api/dizionario-prodotti", tags=["Dizionario Prodotti"])
-    app.include_router(inventario.router, prefix="/api/inventario", tags=["Inventario"])
 
 
 # ─── Invoices Module ─────────────────────────────────────────────────────────
