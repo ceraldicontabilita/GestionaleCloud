@@ -746,10 +746,14 @@ export default function RiconciliazionePaypal() {
                             }
                             target="_blank"
                             rel="noopener noreferrer"
-                            title={`Fatt. ${tx.fattura_associata.numero || ''} · ${tx.fattura_associata.fornitore || ''} — apri`}
+                            title={
+                              tx.fattura_associata.match === 'solo_importo'
+                                ? `⚠️ Match SOLO per importo (da verificare): Fatt. ${tx.fattura_associata.numero || ''} · ${tx.fattura_associata.fornitore || ''} — apri`
+                                : `Fatt. ${tx.fattura_associata.numero || ''} · ${tx.fattura_associata.fornitore || ''} — apri`
+                            }
                             style={{ textDecoration: 'none', fontSize: 15 }}
                           >
-                            📄
+                            {tx.fattura_associata.match === 'solo_importo' ? '📄⚠️' : '📄'}
                           </a>
                         ) : tx.gmail_associata?.gmail_link ? (
                           <a

@@ -733,14 +733,20 @@ async def auto_associa_transazioni() -> Dict[str, Any]:
         importo = abs(float(tx.get("importo") or tx.get("lordo") or 0))
         if importo <= 0 or not tx.get("transaction_id"):
             continue
-        cands = await db[COLL_INVOICES].find(
-            {"$or": [
-                {"total_amount": {"$gte": importo - 0.05, "$lte": importo + 0.05}},
-                {"importo_totale": {"$gte": importo - 0.05, "$lte": importo + 0.05}},
-            ]},
-            {"_id": 0, "id": 1, "invoice_number": 1, "invoice_date": 1,
-             "supplier_name": 1, "cedente_denominazione": 1, "total_amount": 1},
-        ).limit(10).to_list(10)
+        # Confronto su un IMPORTO UNICO per fattura (coalesce total_amount/importo_totale)
+        # invece di un $or sui due campi separatamente: con un $or, un documento con
+        # total_amount e importo_totale disallineati (schema legacy vs nuovo) può
+        # comparire come candidato per DUE transazioni di importo diverso, causando
+        # match incrociati errati (es. due pagamenti distinti linkati alla stessa fattura).
+        cands = await db[COLL_INVOICES].aggregate([
+            {"$addFields": {"_importo_coalesced": {
+                "$ifNull": ["$total_amount", "$importo_totale"]
+            }}},
+            {"$match": {"_importo_coalesced": {"$gte": importo - 0.05, "$lte": importo + 0.05}}},
+            {"$project": {"_id": 0, "id": 1, "invoice_number": 1, "invoice_date": 1,
+                          "supplier_name": 1, "cedente_denominazione": 1, "total_amount": 1}},
+            {"$limit": 10},
+        ]).to_list(10)
         if not cands:
             continue
         scelta = None
@@ -752,8 +758,13 @@ async def auto_associa_transazioni() -> Dict[str, Any]:
                 if any(w in forn for w in parole):
                     scelta = c
                     break
+        # Senza nome controparte per corroborare il match, un solo candidato per
+        # importo non è una prova sufficiente: lo segnaliamo come "solo_importo"
+        # (bassa confidenza) invece di scriverlo come collegamento certo.
+        confidenza_bassa = False
         if scelta is None and len(cands) == 1:
             scelta = cands[0]
+            confidenza_bassa = not parole
         if scelta is None:
             continue
         await db[COLL_PAYPAL_TRANSACTIONS].update_one(
@@ -766,6 +777,7 @@ async def auto_associa_transazioni() -> Dict[str, Any]:
                 "importo": scelta.get("total_amount"),
                 "view_url": f"/api/fatture-ricevute/fattura/{scelta['id']}/view-assoinvoice",
                 "auto": True,
+                "match": "solo_importo" if confidenza_bassa else "nome_e_importo",
             }}},
         )
         associate += 1

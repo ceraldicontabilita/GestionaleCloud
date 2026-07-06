@@ -263,6 +263,18 @@ export default function PaypalTransactionDetailModal({ open, onClose, transactio
                 <Row label="Tipo" value={translateTipo(tx.tipo || tx.type)} />
                 <Row label="Stato" value={translateStato(tx.status || tx.stato)} />
                 <Row label="Descrizione" value={tx.descrizione || tx.subject || '—'} />
+                {tx.paypal_account_id && (
+                  <Row icon={<Hash size={12} />} label="Account PayPal controparte" value={<code style={{ fontSize: 11 }}>{tx.paypal_account_id}</code>} />
+                )}
+                {tx.invoice_id_fornitore && (
+                  <Row icon={<Receipt size={12} />} label="Rif. fattura PayPal (invoice_id)" value={<strong>{tx.invoice_id_fornitore}</strong>} />
+                )}
+                {tx.transaction_subject && (
+                  <Row label="Oggetto transazione" value={tx.transaction_subject} />
+                )}
+                {tx.custom_field && (
+                  <Row label="Campo personalizzato" value={tx.custom_field} />
+                )}
                 <Row label="Riconciliato in banca" value={
                   tx.riconciliato_banca
                     ? <Badge color="#16a34a" text="Sì" icon={<CheckCircle size={11} />} />
