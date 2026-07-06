@@ -23,7 +23,7 @@ const RiconciliazionePaypalLazy = lazy(() => import('./RiconciliazionePaypal.jsx
  *
  * Una sola pagina smart con:
  * - Dashboard riepilogo
- * - Tab: Banca | Assegni | F24 | Fatture Aruba | Stipendi
+ * - Tab: Banca | Assegni | F24 | Stipendi
  * - Auto-matching intelligente
  * - Flussi a cascata automatici
  * - URL con tab: /riconciliazione/banca, /riconciliazione/assegni, etc.
@@ -34,7 +34,6 @@ const TABS = [
   { id: 'banca', label: '🏦 Banca', color: '#10b981' },
   { id: 'assegni', label: '📝 Assegni', color: '#f59e0b' },
   { id: 'f24', label: '📄 F24', color: '#ef4444' },
-  { id: 'aruba', label: '🧾 Fatture Aruba', color: '#8b5cf6' },
   { id: 'stipendi', label: '👤 Stipendi', color: '#06b6d4' },
   { id: 'documenti', label: '📎 Documenti', color: '#ec4899' },
   { id: 'paypal', label: '💳 PayPal', color: '#003087' },
@@ -84,7 +83,6 @@ export default function RiconciliazioneUnificata() {
   const [movimentiBanca, setMovimentiBanca] = useState([]);
   const [assegni, setAssegni] = useState([]);
   const [f24Pendenti, setF24Pendenti] = useState([]);
-  const [fattureAruba, setFattureAruba] = useState([]);
   const [stipendiPendenti, setStipendiPendenti] = useState([]);
   const [documentiNonAssociati, setDocumentiNonAssociati] = useState([]);
   const [documentiStats, setDocumentiStats] = useState(null);
@@ -176,16 +174,13 @@ export default function RiconciliazioneUnificata() {
     setLoading(true);
     try {
       // Carica dati primari: usa /smart/analizza per suggerimenti + assegni da banca-veloce
-      const [analizzaRes, assegniRes, arubaRes, stipendiRes] = await Promise.all([
+      const [analizzaRes, assegniRes, stipendiRes] = await Promise.all([
         api
           .get(`/api/operazioni-da-confermare/smart/analizza?limit=${limit}`)
           .catch(() => ({ data: { movimenti: [], stats: {} } })),
         api
           .get(`/api/operazioni-da-confermare/smart/banca-veloce?limit=50`)
           .catch(() => ({ data: { movimenti: [], stats: {}, assegni: [] } })),
-        api
-          .get('/api/operazioni-da-confermare/aruba-pendenti')
-          .catch(() => ({ data: { operazioni: [] } })),
         api
           .get('/api/operazioni-da-confermare/smart/cerca-stipendi')
           .catch(() => ({ data: { stipendi: [] } })),
@@ -216,10 +211,8 @@ export default function RiconciliazioneUnificata() {
       setAssegni(assegniDaApi);
 
       const stipendi = stipendiRes.data?.stipendi || [];
-      const aruba = arubaRes.data?.operazioni || [];
 
       setStipendiPendenti(stipendi);
-      setFattureAruba(aruba);
 
       // Aggiorna stats iniziali (F24 caricato su richiesta)
       setStats({
@@ -227,7 +220,6 @@ export default function RiconciliazioneUnificata() {
         banca: movimenti.length,
         assegni: assegniDaApi.length,
         f24: 0, // Caricato su richiesta manuale
-        aruba: aruba.length,
         stipendi: stipendi.length,
         documenti: 0, // Caricato dopo
         fatture_da_pagare: assegniRes.data?.stats?.fatture_da_pagare || 0,
@@ -394,22 +386,6 @@ export default function RiconciliazioneUnificata() {
     }
   };
 
-  // Conferma fattura Aruba
-  const handleConfermaAruba = async (op, metodo) => {
-    setProcessing(op.id);
-    try {
-      await api.post(`/api/operazioni-da-confermare/${op.id}/conferma`, {
-        operazione_id: op.id,
-        metodo_pagamento: metodo,
-      });
-      loadAllData();
-    } catch (e) {
-      alert('Errore: ' + (e.response?.data?.detail || e.message));
-    } finally {
-      setProcessing(null);
-    }
-  };
-
   // Ignora movimento
   const handleIgnora = async movimento => {
     setProcessing(movimento.movimento_id || movimento.id);
@@ -476,7 +452,7 @@ export default function RiconciliazioneUnificata() {
   const handleAssegnaMetodiAuto = async () => {
     setProcessing('assegna-metodi');
     try {
-      const res = await api.post('/api/riconciliazione-auto/assegna-metodi-aruba');
+      const res = await api.post('/api/riconciliazione-auto/assegna-metodi-auto');
       const data = res.data;
 
       alert(
@@ -798,6 +774,24 @@ export default function RiconciliazioneUnificata() {
             </button>
           );
         })}
+        <button
+          onClick={handleAssegnaMetodiAuto}
+          disabled={processing === 'assegna-metodi'}
+          title="Assegna i metodi di pagamento alle fatture in base all'estratto conto"
+          style={{
+            marginLeft: 'auto',
+            padding: '12px 20px',
+            background: '#0f2744',
+            color: 'white',
+            border: 'none',
+            borderRadius: 8,
+            fontWeight: 600,
+            cursor: 'pointer',
+            fontSize: 13,
+          }}
+        >
+          {processing === 'assegna-metodi' ? '⏳ Assegnazione...' : '⚙️ Assegna Metodi Auto'}
+        </button>
       </div>
 
       {/* Tab Content */}
@@ -841,16 +835,6 @@ export default function RiconciliazioneUnificata() {
             processing={processing}
             onLoadF24={loadF24OnDemand}
             f24Loading={f24Loading}
-          />
-        )}
-        {activeTab === 'aruba' && (
-          <ArubaTab
-            fatture={fattureAruba}
-            onConferma={handleConfermaAruba}
-            processing={processing}
-            fornitori={[...new Set(fattureAruba.map(f => f.fornitore).filter(Boolean))]}
-            onRefresh={loadAllData}
-            onAssegnaMetodiAuto={handleAssegnaMetodiAuto}
           />
         )}
         {activeTab === 'stipendi' && (
@@ -1609,383 +1593,6 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading }) {
     </div>
   );
 }
-
-function ArubaTab({
-  fatture,
-  onConferma,
-  processing,
-  fornitori = [],
-  onRefresh,
-  onAssegnaMetodiAuto,
-}) {
-  const [preferenze, setPreferenze] = useState({});
-  const [filtroFornitore, setFiltroFornitore] = useState('');
-  const [selezionate, setSelezionate] = useState(new Set());
-  const [metodoBatch, setMetodoBatch] = useState('bonifico');
-  const [salvandoBatch, setSalvandoBatch] = useState(false);
-
-  // Carica preferenze per ogni fornitore
-  useEffect(() => {
-    const loadPreferenze = async () => {
-      const newPref = {};
-      for (const op of fatture) {
-        if (op.fornitore && !preferenze[op.fornitore]) {
-          try {
-            const res = await api.get(
-              `/api/operazioni-da-confermare/fornitore-preferenza/${encodeURIComponent(op.fornitore)}`
-            );
-            if (res.data?.found) {
-              newPref[op.fornitore] = res.data.metodo_preferito;
-            }
-          } catch (e) {
-            // Ignora errori
-          }
-        }
-      }
-      if (Object.keys(newPref).length > 0) {
-        setPreferenze(prev => ({ ...prev, ...newPref }));
-      }
-    };
-    if (fatture.length > 0) {
-      loadPreferenze();
-    }
-  }, [fatture]);
-
-  // Filtra fatture
-  const fattureFiltrate = filtroFornitore
-    ? fatture.filter(f => f.fornitore?.toLowerCase().includes(filtroFornitore.toLowerCase()))
-    : fatture;
-
-  // Toggle selezione
-  const toggleSelezione = id => {
-    setSelezionate(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(id)) {
-        newSet.delete(id);
-      } else {
-        newSet.add(id);
-      }
-      return newSet;
-    });
-  };
-
-  // Seleziona/Deseleziona tutte
-  const toggleTutte = () => {
-    if (selezionate.size === fattureFiltrate.length) {
-      setSelezionate(new Set());
-    } else {
-      setSelezionate(new Set(fattureFiltrate.map(f => f.id)));
-    }
-  };
-
-  // Conferma batch
-  const confermaBatch = async () => {
-    if (selezionate.size === 0) {
-      alert('Seleziona almeno una fattura');
-      return;
-    }
-
-    setSalvandoBatch(true);
-    try {
-      const operazioni = Array.from(selezionate).map(id => ({
-        operazione_id: id,
-        metodo_pagamento: metodoBatch,
-      }));
-
-      const res = await api.post('/api/riconciliazione-intelligente/conferma-multipla', {
-        operazioni,
-      });
-
-      if (res?.data?.successo > 0) {
-        alert(`✅ ${res?.data?.successo} fatture confermate!`);
-        setSelezionate(new Set());
-        if (onRefresh) onRefresh();
-      }
-
-      if (res.data.errori > 0) {
-        console.error('Errori batch:', res.data.dettagli);
-      }
-    } catch (e) {
-      alert('Errore conferma batch: ' + (e.response?.data?.detail || e.message));
-    } finally {
-      setSalvandoBatch(false);
-    }
-  };
-
-  if (fatture.length === 0) {
-    return (
-      <div style={{ padding: 60, textAlign: 'center', color: '#94a3b8' }}>
-        <div style={{ fontSize: 48, marginBottom: 12, opacity: 0.5 }}>🧾</div>
-        <div>Nessuna fattura Aruba da confermare</div>
-        <div style={{ fontSize: 12, marginTop: 8 }}>
-          Le fatture già inserite in Prima Nota vengono automaticamente saltate
-        </div>
-      </div>
-    );
-  }
-
-  const totale = fattureFiltrate.reduce((sum, f) => sum + (f.importo || f.netto_pagare || 0), 0);
-  const totaleSelezionate = Array.from(selezionate)
-    .map(id => fattureFiltrate.find(f => f.id === id))
-    .filter(Boolean)
-    .reduce((sum, f) => sum + (f.importo || f.netto_pagare || 0), 0);
-
-  return (
-    <div>
-      {/* Header con filtri e azioni batch */}
-      <div style={{ padding: 16, background: '#f5f3ff', borderBottom: '1px solid #e9d5ff' }}>
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            flexWrap: 'wrap',
-            gap: 12,
-          }}
-        >
-          <h3 style={{ margin: 0, fontSize: 16, color: '#7c3aed' }}>
-            🧾 Fatture Aruba ({fattureFiltrate.length})
-          </h3>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <button
-              onClick={onAssegnaMetodiAuto}
-              disabled={processing === 'assegna-metodi'}
-              style={{
-                padding: '6px 12px',
-                background: '#7c3aed',
-                color: 'white',
-                border: 'none',
-                borderRadius: 6,
-                cursor: 'pointer',
-                fontSize: 12,
-                fontWeight: 500,
-              }}
-              title="Assegna automaticamente metodi in base all'estratto conto"
-            >
-              {processing === 'assegna-metodi' ? '⏳ Elaborazione...' : '🔄 Assegna Metodi Auto'}
-            </button>
-            <div style={{ fontWeight: 700, color: '#7c3aed' }}>Totale: {formatEuro(totale)}</div>
-          </div>
-        </div>
-
-        {/* Filtro fornitore */}
-        <div
-          style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}
-        >
-          <select
-            value={filtroFornitore}
-            onChange={e => setFiltroFornitore(e.target.value)}
-            style={{
-              padding: '8px 12px',
-              border: '1px solid #e5e7eb',
-              borderRadius: 6,
-              fontSize: 13,
-            }}
-          >
-            <option value="">Tutti i fornitori ({fatture.length})</option>
-            {fornitori.map(f => (
-              <option key={f} value={f}>
-                {f}
-              </option>
-            ))}
-          </select>
-
-          {/* Azioni batch */}
-          <button
-            onClick={toggleTutte}
-            style={{
-              padding: '8px 12px',
-              background: '#e5e7eb',
-              border: 'none',
-              borderRadius: 6,
-              cursor: 'pointer',
-              fontSize: 12,
-            }}
-          >
-            {selezionate.size === fattureFiltrate.length ? '☐ Deseleziona' : '☑ Seleziona tutte'}
-          </button>
-
-          {selezionate.size > 0 && (
-            <>
-              <select
-                value={metodoBatch}
-                onChange={e => setMetodoBatch(e.target.value)}
-                style={{
-                  padding: '8px 12px',
-                  border: '1px solid #10b981',
-                  borderRadius: 6,
-                  fontSize: 13,
-                  background: '#d1fae5',
-                }}
-              >
-                <option value="cassa">Cassa</option>
-                <option value="bonifico">🏦 Bonifico</option>
-                <option value="carta_credito">💳 Carta/POS</option>
-                <option value="assegno">📝 Assegno</option>
-              </select>
-
-              <button
-                onClick={confermaBatch}
-                disabled={salvandoBatch}
-                style={{
-                  padding: '8px 16px',
-                  background: '#10b981',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: 6,
-                  cursor: 'pointer',
-                  fontWeight: 600,
-                  fontSize: 13,
-                }}
-              >
-                {salvandoBatch ? '⏳' : '✅'} Conferma {selezionate.size} (
-                {formatEuro(totaleSelezionate)})
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* Lista fatture */}
-      <div style={{ maxHeight: 800, overflow: 'auto' }}>
-        {fattureFiltrate.map((op, idx) => {
-          const metodoPreferito = preferenze[op.fornitore] || op.metodo_pagamento_proposto;
-
-          return (
-            <div
-              key={op.id || idx}
-              style={{
-                padding: 16,
-                borderBottom: '1px solid #f1f5f9',
-                opacity: processing === op.id ? 0.5 : 1,
-                background: selezionate.has(op.id) ? '#f0fdf4' : 'white',
-              }}
-            >
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'flex-start',
-                  gap: 12,
-                }}
-              >
-                {/* Checkbox selezione */}
-                <input
-                  type="checkbox"
-                  checked={selezionate.has(op.id)}
-                  onChange={() => toggleSelezione(op.id)}
-                  style={{
-                    width: 18,
-                    height: 18,
-                    marginTop: 2,
-                    cursor: 'pointer',
-                    accentColor: '#10b981',
-                  }}
-                />
-
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: 15 }}>
-                    {op.fornitore || 'Fornitore N/A'}
-                  </div>
-                  <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>
-                    Fatt. {op.numero_fattura} •{' '}
-                    {op.data_documento ? formatDateIT(op.data_documento) : '-'}
-                  </div>
-                  {metodoPreferito && (
-                    <span
-                      style={{
-                        display: 'inline-block',
-                        marginTop: 8,
-                        padding: '4px 10px',
-                        background: preferenze[op.fornitore] ? '#dcfce7' : '#dbeafe',
-                        color: preferenze[op.fornitore] ? '#166534' : '#1e40af',
-                        borderRadius: 4,
-                        fontSize: 11,
-                        fontWeight: 600,
-                      }}
-                    >
-                      {preferenze[op.fornitore] ? '🧠 Preferito' : '💡 Proposto'}:{' '}
-                      {metodoPreferito.toUpperCase()}
-                    </span>
-                  )}
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontWeight: 700, fontSize: 18, color: '#059669' }}>
-                    {formatEuro(op.importo || op.netto_pagare || 0)}
-                  </div>
-                </div>
-              </div>
-
-              {/* Bottoni metodo pagamento - evidenzia preferito */}
-              <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-                <button
-                  onClick={() => onConferma(op, 'cassa')}
-                  disabled={processing === op.id}
-                  style={metodoBtn(
-                    metodoPreferito === 'cassa' ? '#dcfce7' : '#fef3c7',
-                    metodoPreferito === 'cassa' ? '#166534' : '#92400e',
-                    metodoPreferito === 'cassa'
-                  )}
-                >
-                  Cassa {metodoPreferito === 'cassa' && '⭐'}
-                </button>
-                <button
-                  onClick={() => onConferma(op, 'bonifico')}
-                  disabled={processing === op.id}
-                  style={metodoBtn(
-                    metodoPreferito === 'bonifico' ? '#dcfce7' : '#dbeafe',
-                    metodoPreferito === 'bonifico' ? '#166534' : '#1e40af',
-                    metodoPreferito === 'bonifico'
-                  )}
-                >
-                  🏦 Bonifico {metodoPreferito === 'bonifico' && '⭐'}
-                </button>
-                <button
-                  onClick={() => onConferma(op, 'carta_credito')}
-                  disabled={processing === op.id}
-                  style={metodoBtn(
-                    metodoPreferito === 'carta_credito' ? '#dcfce7' : '#e0f2fe',
-                    metodoPreferito === 'carta_credito' ? '#166534' : '#0369a1',
-                    metodoPreferito === 'carta_credito'
-                  )}
-                >
-                  💳 Carta/POS {metodoPreferito === 'carta_credito' && '⭐'}
-                </button>
-                <button
-                  onClick={() => onConferma(op, 'assegno')}
-                  disabled={processing === op.id}
-                  style={metodoBtn(
-                    metodoPreferito === 'assegno' ? '#dcfce7' : '#f3e8ff',
-                    metodoPreferito === 'assegno' ? '#166534' : '#7c3aed',
-                    metodoPreferito === 'assegno'
-                  )}
-                >
-                  📝 Assegno {metodoPreferito === 'assegno' && '⭐'}
-                </button>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-const metodoBtn = (bg, color, isPreferred = false) => ({
-  padding: '10px 16px',
-  background: bg,
-  color: color,
-  border: isPreferred ? '2px solid #10b981' : 'none',
-  borderRadius: 6,
-  fontWeight: 600,
-  cursor: 'pointer',
-  fontSize: 13,
-  boxShadow: isPreferred ? '0 0 0 2px rgba(16, 185, 129, 0.2)' : 'none',
-});
-
-// ============================================
-// TAB DOCUMENTI NON ASSOCIATI
-// ============================================
 
 function DocumentiTab({ documenti, stats, onRefresh, processing }) {
   const [selectedDoc, setSelectedDoc] = useState(null);

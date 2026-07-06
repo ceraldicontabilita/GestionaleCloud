@@ -49,7 +49,6 @@ const ImpostazioniF24Email = lazy(() => import("./pages/ImpostazioniF24Email.jsx
 const MappaGestionale = lazy(() => import("./pages/MappaGestionale.jsx"));
 const DatiProvvisoriPage = lazy(() => import("./pages/DatiProvvisoriPage.jsx"));
 const AgentiPage = lazy(() => import("./pages/Agenti.jsx"));
-const Portale = lazy(() => import("./pages/Portale.jsx"));
 const LearningMachine = lazy(() => import("./pages/LearningMachine.jsx"));
 const DashboardRelazionale = lazy(() => import("./pages/DashboardRelazionale.jsx"));
 
@@ -61,7 +60,6 @@ const router = createBrowserRouter([
   { path: "/auth/callback", element: <AuthCallback /> },
   { path: "/login", element: <Login /> },
   { path: "/register", element: <Register /> },
-  { path: "/portale", element: <Portale /> },
   { path: "/gestione-riservata", element: <LazyPage><GestioneRiservata /></LazyPage> },
   {
     path: "/",

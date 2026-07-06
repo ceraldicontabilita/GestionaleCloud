@@ -33,17 +33,23 @@ def _safe_year(value: Any) -> Optional[int]:
 
 
 def _normalizza_da_invoices(doc: dict) -> dict:
-    """Mappa un documento della collection `invoices` nel formato unificato archivio."""
+    """Mappa un documento della collection `invoices` nel formato unificato archivio.
+
+    NOTA: in `invoices` convivono due schemi — quello inglese (upload XML,
+    Drive: total_amount/invoice_number/...) e quello italiano scritto da
+    fatture_module/import_xml.py (importo_totale/numero_documento/...).
+    Ogni campo va letto con entrambi i nomi, altrimenti i documenti
+    dell'altro schema appaiono con importo 0 e colonne vuote."""
     try:
-        importo_totale = float(doc.get("total_amount") or 0)
+        importo_totale = float(doc.get("total_amount") or doc.get("importo_totale") or 0)
     except (ValueError, TypeError):
         importo_totale = 0.0
     try:
-        imponibile = float(doc.get("taxable_amount") or 0)
+        imponibile = float(doc.get("taxable_amount") or doc.get("imponibile") or 0)
     except (ValueError, TypeError):
         imponibile = 0.0
     try:
-        iva = float(doc.get("vat_amount") or 0)
+        iva = float(doc.get("vat_amount") or doc.get("iva") or 0)
     except (ValueError, TypeError):
         iva = 0.0
     if not imponibile and importo_totale > 0:
@@ -60,25 +66,28 @@ def _normalizza_da_invoices(doc: dict) -> dict:
     if hasattr(created_at, "isoformat"):
         created_at = created_at.isoformat()
 
+    data_doc = doc.get("invoice_date") or doc.get("data_documento")
     return {
         "id": doc.get("id", ""),
-        "numero_documento": doc.get("invoice_number"),
-        "data_documento": doc.get("invoice_date"),
+        "numero_documento": doc.get("invoice_number") or doc.get("numero_documento"),
+        "data_documento": data_doc,
         "importo_totale": importo_totale,
         "imponibile": imponibile,
         "iva": iva,
-        "fornitore_ragione_sociale": doc.get("supplier_name") or doc.get("cedente_denominazione"),
-        "fornitore_partita_iva": doc.get("supplier_vat"),
+        "fornitore_ragione_sociale": (doc.get("supplier_name")
+                                      or doc.get("cedente_denominazione")
+                                      or doc.get("fornitore_ragione_sociale")),
+        "fornitore_partita_iva": doc.get("supplier_vat") or doc.get("fornitore_partita_iva"),
         "stato": "pagata" if pagato else stato_raw,
-        "metodo_pagamento": doc.get("payment_method"),
-        "metodo_pagamento_effettivo": doc.get("payment_method"),
+        "metodo_pagamento": doc.get("payment_method") or doc.get("metodo_pagamento"),
+        "metodo_pagamento_effettivo": doc.get("payment_method") or doc.get("metodo_pagamento"),
         "pagato": pagato,
         "riconciliato": bool(doc.get("riconciliato")),
         "prima_nota_cassa_id": doc.get("prima_nota_cassa_id"),
         "prima_nota_banca_id": doc.get("prima_nota_banca_id"),
         "has_pdf": False,
         "email_associata": doc.get("email_from"),
-        "anno": doc.get("anno") or _safe_year(doc.get("invoice_date")),
+        "anno": doc.get("anno") or _safe_year(data_doc),
         "created_at": created_at,
         "data_pagamento": doc.get("data_pagamento"),
         "fonte": doc.get("fonte", "aruba_pec"),
@@ -158,14 +167,24 @@ async def get_archivio_fatture(
     # ── Costruisci filtri per `invoices` ─────────────────────────────────────
     q_inv: dict = {}
     if anno:
-        q_inv["anno"] = anno
+        # I doc di import_xml (schema italiano) non hanno `anno` né `invoice_date`:
+        # filtra su entrambi gli schemi usando $and per non collidere con gli
+        # $or di ricerca/fornitore più sotto.
+        q_inv.setdefault("$and", []).append({"$or": [
+            {"anno": anno},
+            {"data_documento": {"$regex": f"^{anno}"}},
+        ]})
         if mese:
             mese_str = str(mese).zfill(2)
             last_day = calendar.monthrange(anno, mese)[1]
-            q_inv["invoice_date"] = {
+            intervallo = {
                 "$gte": f"{anno}-{mese_str}-01",
                 "$lte": f"{anno}-{mese_str}-{last_day:02d}"
             }
+            q_inv["$and"].append({"$or": [
+                {"invoice_date": intervallo},
+                {"data_documento": intervallo},
+            ]})
     if fornitore_piva:
         q_inv["supplier_vat"] = {"$regex": fornitore_piva.strip(), "$options": "i"}
     if fornitore_nome:

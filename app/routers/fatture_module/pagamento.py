@@ -75,6 +75,9 @@ async def paga_fattura_manuale(payload: Dict[str, Any] = Body(...)) -> Dict[str,
                 {"id": scadenza_id},
                 {"$set": {
                     "stato": "pagato",
+                    # Lo scadenzario filtra aperte/pagate sul booleano `pagato`:
+                    # senza questo flag la scadenza restava tra le "aperte".
+                    "pagato": True,
                     "data_pagamento": data_pagamento,
                     "metodo_effettivo": metodo,
                     "movimento_id": risultato["movimento_id"],

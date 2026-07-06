@@ -1,7 +1,6 @@
 """
 Operazioni Module - Gestione operazioni da confermare.
 Modulo suddiviso per funzionalità:
-- base: CRUD operazioni, conferma, lista
 - smart: Riconciliazione smart, banca veloce, analisi
 - carta: Transazioni carta, supervisione
 """
@@ -11,10 +10,6 @@ from typing import Optional, Dict, Any
 router = APIRouter()
 
 # Import functions from modules
-from .base import (
-    lista_operazioni, conferma_operazione, elimina_operazione,
-    lista_aruba_pendenti, get_fornitore_preferenza, check_fattura_esistente
-)
 from .smart import (
     banca_veloce, analizza_movimenti_smart, analizza_singolo_movimento,
     riconcilia_automatico, riconcilia_manuale,
@@ -27,11 +22,6 @@ from .carta import (
 from .common import RiconciliaManuale, RiconciliaCartaRequest
 
 # === ROTTE STATICHE ===
-
-# Base operations
-router.add_api_route("/lista", lista_operazioni, methods=["GET"])
-router.add_api_route("/aruba-pendenti", lista_aruba_pendenti, methods=["GET"])
-router.add_api_route("/check-fattura-esistente", check_fattura_esistente, methods=["GET"])
 
 # Smart riconciliazione
 router.add_api_route("/smart/banca-veloce", banca_veloce, methods=["GET"])
@@ -52,21 +42,7 @@ router.add_api_route("/supervisione/esegui", esegui_supervisione, methods=["POST
 
 # === ROTTE DINAMICHE ===
 
-router.add_api_route("/fornitore-preferenza/{fornitore}", get_fornitore_preferenza, methods=["GET"])
 router.add_api_route("/smart/movimento/{movimento_id}", analizza_singolo_movimento, methods=["GET"])
-
-
-# Wrapper per conferma con path parameter
-async def _conferma_operazione_wrapper(
-    operazione_id: str,
-    metodo_pagamento: str = Body(..., embed=True),
-    crea_movimento: bool = Body(False, embed=True),
-    crea_scadenza: bool = Body(False, embed=True)
-):
-    return await conferma_operazione(operazione_id, metodo_pagamento, crea_movimento, crea_scadenza)
-
-router.add_api_route("/{operazione_id}/conferma", _conferma_operazione_wrapper, methods=["POST"])
-router.add_api_route("/{operazione_id}", elimina_operazione, methods=["DELETE"])
 
 
 # Ignora movimento (marca come da non processare)

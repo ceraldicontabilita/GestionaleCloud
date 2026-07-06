@@ -195,12 +195,6 @@ def _register_invoices(app: FastAPI):
     app.include_router(fatture_ricevute_router, prefix="/api/fatture-ricevute", tags=["Fatture Ricevute"])
     app.include_router(corrispettivi.router, prefix="/api/corrispettivi", tags=["Corrispettivi"])
 
-    # Foto fatture (OCR da mobile)
-    try:
-        from app.routers.fatture_foto_ocr import router as foto_ocr_router
-        app.include_router(foto_ocr_router, prefix="/api/fatture-foto", tags=["Fatture Foto OCR"])
-    except Exception as e:
-        import logging; logging.getLogger(__name__).warning(f"Router fatture_foto_ocr non registrato: {e}")
 
 
 # ─── Employees Module (ridotto) ──────────────────────────────────────────────
@@ -235,12 +229,12 @@ def _register_reports(app: FastAPI):
 def _register_core(app: FastAPI):
     from app.routers import (
         cash, chart_of_accounts, notifications, cash_register,
-        settings as settings_base, config, search, ocr_assegni, portal,
-        finanziaria, comparatore, gestione_riservata, commercialista, scadenze,
-        riconciliazione_fornitori, pianificazione, admin, verifica_coerenza,
+        settings as settings_base, config, ocr_assegni,
+        finanziaria, gestione_riservata, commercialista, scadenze,
+        pianificazione, admin, verifica_coerenza,
         documenti, cespiti, scadenzario_fornitori, controllo_gestione,
-        indici_bilancio, chiusura_esercizio, gestione_iva_speciale,
-        configurazioni, alerts, import_templates, manutenzione,
+        indici_bilancio, chiusura_esercizio,
+        configurazioni, alerts, import_templates,
         todo, mutui, mutui_parser, import_manuale, auto_repair,
         rapido, settings_router, dati_provvisori,
         batch_reprocessing, pos_corrispettivi_check, enhanced_parser,
@@ -262,15 +256,11 @@ def _register_core(app: FastAPI):
     app.include_router(settings_base.router, prefix="/api/settings", tags=["Settings Base"])
     app.include_router(config.router, prefix="/api/config", tags=["Config"])
     app.include_router(configurazioni.router, prefix="/api/config", tags=["Configurazioni"])
-    app.include_router(search.router, prefix="/api/search", tags=["Search"])
     app.include_router(ocr_assegni.router, prefix="/api/ocr-assegni", tags=["OCR Assegni"])
-    app.include_router(portal.router, prefix="/api/portal", tags=["Portal"])
     app.include_router(finanziaria.router, prefix="/api/finanziaria", tags=["Finanziaria"])
-    app.include_router(comparatore.router, prefix="/api/comparatore", tags=["Comparatore"])
     app.include_router(gestione_riservata.router, prefix="/api/gestione-riservata", tags=["Gestione Riservata"])
     app.include_router(commercialista.router, prefix="/api/commercialista", tags=["Commercialista"])
     app.include_router(scadenze.router, prefix="/api/scadenze", tags=["Scadenze"])
-    app.include_router(riconciliazione_fornitori.router, prefix="/api/riconciliazione-fornitori", tags=["Riconciliazione Fornitori"])
     app.include_router(pianificazione.router, prefix="/api/pianificazione", tags=["Pianificazione"])
     app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
     app.include_router(verifica_coerenza.router, prefix="/api/verifica-coerenza", tags=["Verifica Coerenza"])
@@ -281,10 +271,8 @@ def _register_core(app: FastAPI):
     app.include_router(controllo_gestione.router, prefix="/api/controllo-gestione", tags=["Controllo Gestione"])
     app.include_router(indici_bilancio.router, prefix="/api/indici-bilancio", tags=["Indici Bilancio"])
     app.include_router(chiusura_esercizio.router, prefix="/api/chiusura-esercizio", tags=["Chiusura Esercizio"])
-    app.include_router(gestione_iva_speciale.router, prefix="/api/iva-speciale", tags=["IVA Speciale"])
     app.include_router(alerts.router, prefix="/api/alerts", tags=["Alert"])
     app.include_router(import_templates.router, prefix="/api/import-templates", tags=["Import Templates"])
-    app.include_router(manutenzione.router, prefix="/api/manutenzione", tags=["Manutenzione"])
     app.include_router(todo.router, prefix="/api/todo", tags=["To-Do"])
     app.include_router(mutui.router, prefix="/api/mutui", tags=["Mutui"])
     app.include_router(mutui_parser.router, prefix="/api/mutui", tags=["Mutui Parser"])
@@ -325,7 +313,7 @@ def _register_core(app: FastAPI):
 def _register_email(app: FastAPI):
     from app.routers import (
         email_scanner, email_download, email_reconciliation, email_mongodb,
-        documenti_non_associati, documenti_intelligenti, document_ai, ai_parser, upload_ai
+        documenti_non_associati, document_ai, ai_parser
     )
     
     app.include_router(email_scanner.router, prefix="/api/email-scanner", tags=["Email Scanner"])
@@ -337,10 +325,8 @@ def _register_email(app: FastAPI):
     from app.routers import documents_inbox_classify
     app.include_router(documents_inbox_classify.router, prefix="/api/documenti-inbox", tags=["Documents Inbox"])
     app.include_router(documenti_non_associati.router, prefix="/api/documenti-non-associati", tags=["Documenti Non Associati"])
-    app.include_router(documenti_intelligenti.router, prefix="/api/documenti-smart", tags=["Documenti Intelligenti"])
     app.include_router(document_ai.router, prefix="/api/document-ai", tags=["Document AI"])
     app.include_router(ai_parser.router, prefix="/api/ai-parser", tags=["AI Parser"])
-    app.include_router(upload_ai.router, prefix="/api/upload-ai", tags=["Upload AI"])
 
 
 # ─── Noleggio & Verbali Module ───────────────────────────────────────────────

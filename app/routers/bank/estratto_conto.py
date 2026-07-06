@@ -748,8 +748,12 @@ async def get_movimenti(
 ) -> Dict[str, Any]:
     """
     Recupera i movimenti dell'estratto conto con filtri.
-    Ordinati per data_contabile_obj decrescente.
-    Usa data_contabile_obj (datetime) per i filtri di anno/mese.
+    Ordinati per data decrescente.
+
+    NOTA: il filtro usa il campo stringa `data` (YYYY-MM-DD), che è quello
+    scritto da TUTTI gli importer (parser universale, email monitor, API).
+    Il vecchio filtro su `data_contabile_obj` (datetime) non trovava nulla
+    perché nessun importer valorizza quel campo.
     """
     import calendar as _calendar
     db = Database.get_db()
@@ -757,17 +761,17 @@ async def get_movimenti(
     query = {}
 
     if anno:
-        # data_contabile_obj è un campo datetime — uso range di date
+        # `data` è una stringa YYYY-MM-DD: il range lessicografico è corretto
         if mese:
             last_day = _calendar.monthrange(anno, mese)[1]
-            query["data_contabile_obj"] = {
-                "$gte": datetime(anno, mese, 1),
-                "$lte": datetime(anno, mese, last_day, 23, 59, 59)
+            query["data"] = {
+                "$gte": f"{anno}-{mese:02d}-01",
+                "$lte": f"{anno}-{mese:02d}-{last_day:02d}"
             }
         else:
-            query["data_contabile_obj"] = {
-                "$gte": datetime(anno, 1, 1),
-                "$lte": datetime(anno, 12, 31, 23, 59, 59)
+            query["data"] = {
+                "$gte": f"{anno}-01-01",
+                "$lte": f"{anno}-12-31"
             }
 
     if categoria:
@@ -786,7 +790,7 @@ async def get_movimenti(
     movimenti = await db["estratto_conto_movimenti"].find(
         query,
         {"_id": 0}
-    ).sort("data_contabile_obj", -1).skip(offset).limit(limit).to_list(limit)
+    ).sort("data", -1).skip(offset).limit(limit).to_list(limit)
 
     # Serializza i campi datetime per la risposta JSON
     for m in movimenti:
@@ -816,7 +820,7 @@ async def get_movimenti(
     saldo_precedente = 0.0
     if anno:
         pipeline_prec = [
-            {"$match": {"data_contabile_obj": {"$lt": datetime(anno, 1, 1)}}},
+            {"$match": {"data": {"$lt": f"{anno}-01-01"}}},
             {"$group": {
                 "_id": None,
                 "entrate": {"$sum": {"$cond": [{"$eq": ["$tipo", "entrata"]}, {"$toDouble": "$importo"}, 0]}},

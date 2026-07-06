@@ -73,16 +73,6 @@ export async function dashboardSummary(anno = null) {
   }
 }
 
-export async function uploadDocument(file, kind) {
-  const form = new FormData();
-  form.append('file', file);
-  form.append('kind', kind);
-  const r = await api.post('/api/portal/upload', form, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  });
-  return r.data;
-}
-
 // Invoices API
 export async function getInvoices(skip = 0, limit = 50) {
   const r = await api.get(`/api/invoices?skip=${skip}&limit=${limit}`);

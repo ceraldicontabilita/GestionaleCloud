@@ -115,10 +115,16 @@ async def get_tutte_scadenze(
     if not include_passate:
         scadenze = [s for s in scadenze if s.get("data", "9999-99-99") >= oggi.isoformat()]
     
+    # Giorni mancanti/urgenza (la pagina Scadenze legge s.giorni_mancanti:
+    # senza, la colonna "Giorni" restava vuota e nessuna riga era marcata scaduta)
+    for s in scadenze:
+        s["giorni_mancanti"] = _giorni_mancanti(s.get("data"))
+        s["urgente"] = s["giorni_mancanti"] <= 3 if s["giorni_mancanti"] is not None else False
+
     # Calcola statistiche
     urgenti = [s for s in scadenze if _is_urgente(s.get("data"))]
     prossime_7gg = [s for s in scadenze if _is_prossimi_giorni(s.get("data"), 7)]
-    
+
     return {
         "scadenze": scadenze[:limit],
         "totale": len(scadenze),

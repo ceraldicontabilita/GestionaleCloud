@@ -31,7 +31,9 @@ router = APIRouter()
 COLLECTION_ESTRATTO_CONTO = "estratto_conto_movimenti"
 COLLECTION_PRIMA_NOTA_CASSA = "prima_nota_cassa"
 COLLECTION_OPERAZIONI_DA_CONFERMARE = "operazioni_da_confermare"
-COLLECTION_SUPPLIERS = "suppliers"
+# Canonica: "fornitori" — "suppliers" era un alias vuoto: i lookup metodo
+# pagamento fornitore non trovavano mai nulla.
+COLLECTION_SUPPLIERS = "fornitori"
 COLLECTION_ASSEGNI = "assegni"
 
 # Importi commissioni bancarie da ignorare
@@ -981,7 +983,9 @@ async def correggi_metodi_pagamento() -> Dict[str, Any]:
         supplier = None
         metodo_fornitore = None
         if piva:
-            supplier = await db[COLLECTION_SUPPLIERS].find_one({"vat_number": piva})
+            supplier = await db[COLLECTION_SUPPLIERS].find_one(
+                {"$or": [{"partita_iva": piva}, {"vat_number": piva}]}
+            )
             if supplier:
                 metodo_fornitore = supplier.get("metodo_pagamento")
         
@@ -1032,7 +1036,7 @@ async def correggi_metodi_pagamento() -> Dict[str, Any]:
     }
 
 
-@router.post("/assegna-metodi-aruba")
+@router.post("/assegna-metodi-auto")
 async def assegna_metodi_aruba_auto() -> Dict[str, Any]:
     """
     Assegna automaticamente i metodi di pagamento alle fatture Aruba
