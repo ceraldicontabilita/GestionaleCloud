@@ -619,7 +619,6 @@ export default function ArchivioFatture() {
                 metodoFornitore.includes('rid') ||
                 metodoFornitore.includes('sdd') ||
                 metodoFornitore.includes('addebito');
-              const fornitoreHaMetodo = isFornitoreCassa || isFornitoreBanca;
 
               // BLOCCO: Se riconciliata, non permettere modifica
               const isRiconciliata = f.riconciliato === true;
@@ -658,61 +657,23 @@ export default function ArchivioFatture() {
                   >
                     📄 Vedi
                   </a>
-                  {/* Fornitore con metodo BANCA: badge fisso — si conferma da sola
-                      quando il pagamento compare in estratto conto (niente bottoni) */}
-                  {!isPaid && isFornitoreBanca && (
+                  {/* Metodo del fornitore in SOLA LETTURA: la registrazione in
+                      cassa/banca si fa dalla pagina Prima Nota. */}
+                  {!isPaid && (isFornitoreBanca || isFornitoreCassa) && (
                     <span
-                      title="Il fornitore paga con bonifico: si conferma automaticamente col match in estratto conto"
+                      title="Metodo del fornitore — la registrazione avviene in Prima Nota"
                       style={{
                         padding: '7px 11px',
-                        background: '#eff6ff',
-                        color: '#2563eb',
-                        border: '1px solid #bfdbfe',
+                        background: isFornitoreCassa ? '#f0fdf4' : '#eff6ff',
+                        color: isFornitoreCassa ? '#16a34a' : '#2563eb',
+                        border: `1px solid ${isFornitoreCassa ? '#bbf7d0' : '#bfdbfe'}`,
                         borderRadius: 6,
                         fontSize: 12,
                         fontWeight: '600',
                       }}
                     >
-                      🏦 Banca · auto
+                      {isFornitoreCassa ? '💵 Cassa' : '🏦 Banca'}
                     </span>
-                  )}
-                  {/* Fornitore con metodo CASSA: un solo bottone di conferma */}
-                  {!isPaid && isFornitoreCassa && (
-                    <button
-                      disabled={isRiconciliata}
-                      onClick={async () => {
-                        if (isRiconciliata) return;
-                        try {
-                          const scrollPos = window.scrollY;
-                          await api.post('/api/fatture-ricevute/paga-manuale', {
-                            fattura_id: f.id,
-                            importo: f.importo_totale || 0,
-                            metodo: 'cassa',
-                            data_pagamento: f.data_documento || f.invoice_date,
-                            fornitore:
-                              f.fornitore_ragione_sociale || f.supplier_name || 'Fornitore',
-                            numero_fattura: f.numero_documento || f.invoice_number || '',
-                          });
-                          await fetchFatture();
-                          setTimeout(() => window.scrollTo(0, scrollPos), 100);
-                        } catch (err) {
-                          alert(`❌ Errore: ${err.response?.data?.detail || err.message}`);
-                        }
-                      }}
-                      style={{
-                        padding: '7px 11px',
-                        background: '#16a34a',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: 6,
-                        cursor: 'pointer',
-                        fontSize: 12,
-                        fontWeight: '600',
-                      }}
-                      title="Il fornitore paga in contanti — clicca per confermare"
-                    >
-                      💵 Conferma Cassa
-                    </button>
                   )}
                   {/* Se la fattura è pagata: mostra SOLO il bottone col check del metodo effettivo */}
                   {isPaid && metodoPagEffettivo === 'cassa' && (
@@ -742,79 +703,6 @@ export default function ArchivioFatture() {
                     >
                       🏦 ✓ Banca
                     </span>
-                  )}
-                  {/* Fallback: fornitore SENZA metodo definito e fattura non pagata → mostra entrambi i bottoni */}
-                  {!isPaid && !fornitoreHaMetodo && (
-                    <>
-                      <button
-                        disabled={isRiconciliata}
-                        onClick={async () => {
-                          if (isRiconciliata) return;
-                          try {
-                            const scrollPos = window.scrollY;
-                            await api.post('/api/fatture-ricevute/paga-manuale', {
-                              fattura_id: f.id,
-                              importo: f.importo_totale || 0,
-                              metodo: 'cassa',
-                              data_pagamento: f.data_documento || f.invoice_date,
-                              fornitore:
-                                f.fornitore_ragione_sociale || f.supplier_name || 'Fornitore',
-                              numero_fattura: f.numero_documento || f.invoice_number || '',
-                            });
-                            await fetchFatture();
-                            setTimeout(() => window.scrollTo(0, scrollPos), 100);
-                          } catch (err) {
-                            alert(`❌ Errore Cassa: ${err.response?.data?.detail || err.message}`);
-                          }
-                        }}
-                        style={{
-                          padding: '7px 11px',
-                          background: '#f0fdf4',
-                          color: '#16a34a',
-                          border: '2px solid #16a34a',
-                          borderRadius: 6,
-                          cursor: 'pointer',
-                          fontSize: 12,
-                          fontWeight: '600',
-                        }}
-                      >
-                        💵 Cassa
-                      </button>
-                      <button
-                        disabled={isRiconciliata}
-                        onClick={async () => {
-                          if (isRiconciliata) return;
-                          try {
-                            const scrollPos = window.scrollY;
-                            await api.post('/api/fatture-ricevute/paga-manuale', {
-                              fattura_id: f.id,
-                              importo: f.importo_totale || 0,
-                              metodo: 'banca',
-                              data_pagamento: f.data_documento || f.invoice_date,
-                              fornitore:
-                                f.fornitore_ragione_sociale || f.supplier_name || 'Fornitore',
-                              numero_fattura: f.numero_documento || f.invoice_number || '',
-                            });
-                            await fetchFatture();
-                            setTimeout(() => window.scrollTo(0, scrollPos), 100);
-                          } catch (err) {
-                            alert(`❌ Errore Banca: ${err.response?.data?.detail || err.message}`);
-                          }
-                        }}
-                        style={{
-                          padding: '7px 11px',
-                          background: '#eff6ff',
-                          color: '#2563eb',
-                          border: '2px solid #2563eb',
-                          borderRadius: 6,
-                          cursor: 'pointer',
-                          fontSize: 12,
-                          fontWeight: '600',
-                        }}
-                      >
-                        🏦 Banca
-                      </button>
-                    </>
                   )}
                 </div>
               );
@@ -1141,10 +1029,8 @@ export default function ArchivioFatture() {
                           >
                             📄 Vedi
                           </a>
-                          {/* UN solo indicatore di stato per riga (niente doppi bottoni):
-                              pagata → badge ✓; fornitore banca → badge fisso (si conferma
-                              da sola col match estratto conto); fornitore cassa → un solo
-                              bottone di conferma; senza metodo → scelta cassa/banca. */}
+                          {/* SOLO stato in sola lettura: la registrazione in
+                              cassa/banca si fa dalla pagina Prima Nota. */}
                           {isPaid ? (
                             <span
                               title={isRiconciliata ? 'Riconciliata con estratto conto' : 'Pagata'}
@@ -1160,129 +1046,28 @@ export default function ArchivioFatture() {
                               {metodoPagEffettivo === 'cassa' ? '💵 ✓ Cassa' : '🏦 ✓ Banca'}
                               {isRiconciliata ? ' · EC' : ''}
                             </span>
-                          ) : fornBanca ? (
+                          ) : fornBanca || fornCassa ? (
                             <span
-                              title="Il fornitore paga con bonifico: si conferma automaticamente quando il pagamento compare in estratto conto"
+                              title="Metodo del fornitore — la registrazione avviene in Prima Nota"
                               style={{
                                 padding: '8px 14px',
-                                background: '#eff6ff',
-                                color: '#2563eb',
-                                border: '1px solid #bfdbfe',
+                                background: fornCassa ? '#f0fdf4' : '#eff6ff',
+                                color: fornCassa ? '#16a34a' : '#2563eb',
+                                border: `1px solid ${fornCassa ? '#bbf7d0' : '#bfdbfe'}`,
                                 borderRadius: 6,
                                 fontSize: 12,
                                 fontWeight: '600',
                               }}
                             >
-                              🏦 Banca · auto
+                              {fornCassa ? '💵 Cassa' : '🏦 Banca'}
                             </span>
-                          ) : fornCassa ? (
-                            <button
-                              onClick={async () => {
-                                try {
-                                  const scrollPos = window.scrollY;
-                                  await api.post('/api/fatture-ricevute/paga-manuale', {
-                                    fattura_id: f.id,
-                                    importo: f.importo_totale || 0,
-                                    metodo: 'cassa',
-                                    data_pagamento: f.data_documento || f.invoice_date,
-                                    fornitore:
-                                      f.fornitore_ragione_sociale || f.supplier_name || 'Fornitore',
-                                    numero_fattura: f.numero_documento || f.invoice_number || '',
-                                  });
-                                  await fetchFatture();
-                                  setTimeout(() => window.scrollTo(0, scrollPos), 100);
-                                } catch (err) {
-                                  alert(
-                                    `❌ Errore Cassa: ${err.response?.data?.detail || err.message}`
-                                  );
-                                }
-                              }}
-                              style={{
-                                padding: '8px 14px',
-                                background: '#f0fdf4',
-                                color: '#16a34a',
-                                border: '2px solid #16a34a',
-                                borderRadius: 6,
-                                cursor: 'pointer',
-                                fontSize: 12,
-                                fontWeight: '600',
-                              }}
-                            >
-                              💵 Conferma Cassa
-                            </button>
                           ) : (
-                            <>
-                              <button
-                                onClick={async () => {
-                                  try {
-                                    const scrollPos = window.scrollY;
-                                    await api.post('/api/fatture-ricevute/paga-manuale', {
-                                      fattura_id: f.id,
-                                      importo: f.importo_totale || 0,
-                                      metodo: 'cassa',
-                                      data_pagamento: f.data_documento || f.invoice_date,
-                                      fornitore:
-                                        f.fornitore_ragione_sociale || f.supplier_name || 'Fornitore',
-                                      numero_fattura: f.numero_documento || f.invoice_number || '',
-                                    });
-                                    await fetchFatture();
-                                    setTimeout(() => window.scrollTo(0, scrollPos), 100);
-                                  } catch (err) {
-                                    alert(
-                                      `❌ Errore Cassa: ${err.response?.data?.detail || err.message}`
-                                    );
-                                  }
-                                }}
-                                style={{
-                                  padding: '8px 14px',
-                                  background: '#f0fdf4',
-                                  color: '#16a34a',
-                                  border: '2px solid #16a34a',
-                                  borderRadius: 6,
-                                  cursor: 'pointer',
-                                  fontSize: 12,
-                                  fontWeight: '600',
-                                  minWidth: 70,
-                                }}
-                              >
-                                💵 Cassa
-                              </button>
-                              <button
-                                onClick={async () => {
-                                  try {
-                                    const scrollPos = window.scrollY;
-                                    await api.post('/api/fatture-ricevute/paga-manuale', {
-                                      fattura_id: f.id,
-                                      importo: f.importo_totale || 0,
-                                      metodo: 'banca',
-                                      data_pagamento: f.data_documento || f.invoice_date,
-                                      fornitore:
-                                        f.fornitore_ragione_sociale || f.supplier_name || 'Fornitore',
-                                      numero_fattura: f.numero_documento || f.invoice_number || '',
-                                    });
-                                    await fetchFatture();
-                                    setTimeout(() => window.scrollTo(0, scrollPos), 100);
-                                  } catch (err) {
-                                    alert(
-                                      `❌ Errore Banca: ${err.response?.data?.detail || err.message}`
-                                    );
-                                  }
-                                }}
-                                style={{
-                                  padding: '8px 14px',
-                                  background: '#eff6ff',
-                                  color: '#2563eb',
-                                  border: '2px solid #2563eb',
-                                  borderRadius: 6,
-                                  cursor: 'pointer',
-                                  fontSize: 12,
-                                  fontWeight: '600',
-                                  minWidth: 70,
-                                }}
-                              >
-                                🏦 Banca
-                              </button>
-                            </>
+                            <span
+                              title="Fornitore senza metodo di pagamento — impostalo in Fornitori; la registrazione si fa in Prima Nota"
+                              style={{ color: '#9ca3af', fontSize: 12 }}
+                            >
+                              —
+                            </span>
                           )}
                         </div>
                       </td>
