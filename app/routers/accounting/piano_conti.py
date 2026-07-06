@@ -10,6 +10,7 @@ import logging
 
 from app.database import Database
 from app.utils.error_handler import handle_errors
+from app.utils.parsing import safe_float
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -780,8 +781,8 @@ async def get_movimenti_per_conto(
         movimenti = [
             {"data": d.get("data"),
              "descrizione": d.get("causale") or d.get("descrizione") or d.get("riferimento") or "—",
-             "importo": abs(d.get("importo", 0)),
-             "tipo": d.get("tipo") or ("entrata" if (d.get("importo", 0) or 0) >= 0 else "uscita"),
+             "importo": abs(safe_float(d.get("importo", 0))),
+             "tipo": d.get("tipo") or ("entrata" if safe_float(d.get("importo", 0)) >= 0 else "uscita"),
              "categoria": d.get("categoria", ""),
              "fonte": "Prima Nota Cassa"}
             for d in docs
@@ -798,25 +799,28 @@ async def get_movimenti_per_conto(
             q_banca, {"_id": 0}
         ).sort("data", -1).limit(limit).to_list(limit)
         if not docs:
-            # Fallback: movimenti_bancari (estratto conto completo)
-            docs = await db["movimenti_bancari"].find(
-                {}, {"_id": 0, "data_contabile": 1, "descrizione": 1, "importo": 1, "tipo": 1, "categoria": 1}
-            ).sort("data_contabile", -1).limit(limit).to_list(limit)
+            # Fallback: estratto_conto_movimenti (collection reale e aggiornata
+            # dell'estratto conto; "movimenti_bancari" era una tabella legacy
+            # pre-migrazione, ferma, senza scritture recenti)
+            docs = await db["estratto_conto_movimenti"].find(
+                q_banca, {"_id": 0, "data": 1, "data_contabile": 1, "descrizione": 1,
+                          "descrizione_originale": 1, "importo": 1, "tipo": 1, "categoria": 1}
+            ).sort("data", -1).limit(limit).to_list(limit)
             movimenti = [
-                {"data": d.get("data_contabile"),
-                 "descrizione": d.get("descrizione") or "—",
-                 "importo": abs(d.get("importo", 0)),
+                {"data": d.get("data") or d.get("data_contabile"),
+                 "descrizione": d.get("descrizione") or d.get("descrizione_originale") or "—",
+                 "importo": abs(safe_float(d.get("importo", 0))),
                  "tipo": d.get("tipo", "uscita"),
                  "categoria": d.get("categoria", ""),
                  "fonte": "Estratto Conto"}
                 for d in docs
             ]
-            fonte = "movimenti_bancari"
+            fonte = "estratto_conto_movimenti"
         else:
             movimenti = [
                 {"data": d.get("data"),
                  "descrizione": d.get("descrizione") or d.get("causale") or "—",
-                 "importo": abs(d.get("importo", 0)),
+                 "importo": abs(safe_float(d.get("importo", 0))),
                  "tipo": d.get("tipo", "uscita"),
                  "categoria": d.get("categoria", ""),
                  "fonte": "Prima Nota Banca"}
@@ -828,19 +832,25 @@ async def get_movimenti_per_conto(
     elif codice.startswith("01.02") or "crediti" in nome.lower():
         q_crediti: dict = {}
         if anno:
-            q_crediti["data_fattura"] = {"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31"}
-        docs = await db["fatture"].find(
-            q_crediti, {"_id": 0, "fornitore": 1, "numero_fattura": 1, "data_fattura": 1, "importo_totale": 1}
+            q_crediti["$or"] = [
+                {"data_fattura": {"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31"}},
+                {"date": {"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31"}},
+            ]
+        # "fatture" non è mai stata una collection reale (nessun altro punto del
+        # codice la scrive): le fatture emesse (crediti v/clienti) vivono in
+        # invoices_emesse. Prima questo ramo restituiva sempre lista vuota.
+        docs = await db["invoices_emesse"].find(
+            q_crediti, {"_id": 0}
         ).sort("data_fattura", -1).limit(limit).to_list(limit)
         movimenti = [
-            {"data": d.get("data_fattura"),
-             "descrizione": f"Fatt. {d.get('numero_fattura', '')} — {d.get('fornitore', '')}",
-             "importo": abs(d.get("importo_totale") or 0),
+            {"data": d.get("data_fattura") or d.get("date"),
+             "descrizione": f"Fatt. {d.get('numero_fattura') or d.get('number') or ''} — {d.get('fornitore') or d.get('cliente') or d.get('client') or ''}",
+             "importo": abs(safe_float(d.get("importo_totale") or d.get("amount") or 0)),
              "tipo": "entrata", "categoria": "fattura",
-             "fonte": "Fatture"}
+             "fonte": "Fatture Emesse"}
             for d in docs
         ]
-        fonte = "fatture"
+        fonte = "invoices_emesse"
 
     # ── DEBITI V/FORNITORI ────────────────────────────────────────────────────
     elif codice.startswith("02.01") or "debiti" in nome.lower():
@@ -854,7 +864,7 @@ async def get_movimenti_per_conto(
         movimenti = [
             {"data": d.get("data"),
              "descrizione": f"Fatt. {d.get('numero', '')} — {d.get('fornitore_denominazione', '')}",
-             "importo": abs(d.get("importo_totale") or 0),
+             "importo": abs(safe_float(d.get("importo_totale") or 0)),
              "tipo": "uscita", "categoria": d.get("stato", ""),
              "fonte": "Fatture Passive"}
             for d in docs
@@ -873,7 +883,7 @@ async def get_movimenti_per_conto(
         movimenti = [
             {"data": d.get("data"),
              "descrizione": f"Fatt. {d.get('numero', '')} — {d.get('fornitore_denominazione', '')}",
-             "importo": abs(d.get("importo_totale") or 0),
+             "importo": abs(safe_float(d.get("importo_totale") or 0)),
              "tipo": "uscita", "categoria": d.get("stato", ""),
              "fonte": "Fatture Passive"}
             for d in docs
@@ -891,7 +901,7 @@ async def get_movimenti_per_conto(
         movimenti = [
             {"data": d.get("data"),
              "descrizione": d.get("descrizione") or "Corrispettivo",
-             "importo": abs(d.get("importo") or d.get("totale") or 0),
+             "importo": abs(safe_float(d.get("importo") or d.get("totale") or 0)),
              "tipo": "entrata", "categoria": "corrispettivo",
              "fonte": "Corrispettivi"}
             for d in docs_corr
