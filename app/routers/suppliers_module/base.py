@@ -341,20 +341,6 @@ async def get_payment_deadlines(days_ahead: int = Query(30, ge=1, le=365)) -> Di
     }
 
 
-@router.post("/unifica-collection")
-async def unifica_fornitori_collection() -> Dict[str, Any]:
-    """Unifica le collection 'fornitori' e 'suppliers'."""
-    from app.scripts.unifica_fornitori_suppliers import unifica_fornitori_suppliers
-    return await unifica_fornitori_suppliers()
-
-
-@router.get("/verifica-unificazione")
-async def verifica_unificazione_stato() -> Dict[str, Any]:
-    """Verifica lo stato dell'unificazione delle collection."""
-    from app.scripts.unifica_fornitori_suppliers import verifica_unificazione
-    return await verifica_unificazione()
-
-
 @router.get("/filtered")
 async def list_suppliers_filtered(
     skip: int = Query(0, ge=0),

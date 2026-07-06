@@ -774,7 +774,7 @@ async def get_movimenti_per_conto(
         q_cassa: dict = {}
         if anno:
             q_cassa["data"] = {"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31"}
-        docs = await db["prima_nota"].find(
+        docs = await db["prima_nota_cassa"].find(
             q_cassa, {"_id": 0}
         ).sort("data", -1).limit(limit).to_list(limit)
         movimenti = [
@@ -786,7 +786,7 @@ async def get_movimenti_per_conto(
              "fonte": "Prima Nota Cassa"}
             for d in docs
         ]
-        fonte = "prima_nota"
+        fonte = "prima_nota_cassa"
 
     # ── BANCA C/C ─────────────────────────────────────────────────────────────
     elif codice in ("01.01.02", "01.01.03") or "banca" in nome.lower():

@@ -30,7 +30,6 @@ from .bulk import (
 from .base import (
     create_supplier,
     search_by_piva, list_suppliers, list_suppliers_filtered, get_suppliers_stats, get_payment_deadlines,
-    unifica_fornitori_collection, verifica_unificazione_stato,
     get_supplier, update_supplier, toggle_supplier_active, delete_supplier,
     get_supplier_fatturato, get_supplier_iban_from_invoices,
     update_supplier_payment_method, update_supplier_nome,
@@ -67,8 +66,6 @@ router.add_api_route("", create_supplier, methods=["POST"])
 router.add_api_route("/filtered", list_suppliers_filtered, methods=["GET"])
 router.add_api_route("/stats", get_suppliers_stats, methods=["GET"])
 router.add_api_route("/scadenze", get_payment_deadlines, methods=["GET"])
-router.add_api_route("/unifica-collection", unifica_fornitori_collection, methods=["POST"])
-router.add_api_route("/verifica-unificazione", verifica_unificazione_stato, methods=["GET"])
 
 # === ROTTE DINAMICHE (devono venire DOPO le statiche) ===
 router.add_api_route("/ricerca-iban-singolo/{supplier_id}", ricerca_iban_singolo_web, methods=["POST"])
