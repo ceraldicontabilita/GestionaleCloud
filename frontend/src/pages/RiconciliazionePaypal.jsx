@@ -664,6 +664,7 @@ export default function RiconciliazionePaypal() {
                     <th style={{ textAlign: 'left', padding: '10px 12px' }}>Controparte</th>
                     <th style={{ textAlign: 'right', padding: '10px 12px' }}>Importo</th>
                     <th style={{ textAlign: 'center', padding: '10px 12px' }}>Banca</th>
+                    <th style={{ textAlign: 'center', padding: '10px 12px' }}>Fattura</th>
                     <th style={{ textAlign: 'left', padding: '10px 12px' }}>ID</th>
                   </tr>
                 </thead>
@@ -731,6 +732,29 @@ export default function RiconciliazionePaypal() {
                           <CheckCircle2 size={16} style={{ color: '#22c55e' }} />
                         ) : (
                           <span style={{ color: '#d1d5db' }}>—</span>
+                        )}
+                      </td>
+                      <td
+                        style={{ padding: '8px 12px', textAlign: 'center' }}
+                        onClick={e => e.stopPropagation()}
+                      >
+                        {tx.fattura_associata ? (
+                          <a
+                            href={
+                              tx.fattura_associata.view_url ||
+                              `/api/fatture-ricevute/fattura/${tx.fattura_associata.fattura_id}/view-assoinvoice`
+                            }
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title={`Fatt. ${tx.fattura_associata.numero || ''} · ${tx.fattura_associata.fornitore || ''} — apri`}
+                            style={{ textDecoration: 'none', fontSize: 15 }}
+                          >
+                            📄
+                          </a>
+                        ) : (
+                          <span style={{ color: '#d1d5db' }} title="Nessuna fattura associata — clicca la riga e usa Cerca su Gmail">
+                            —
+                          </span>
                         )}
                       </td>
                       <td

@@ -388,12 +388,35 @@ export default function ArchivioFatture() {
             ) : (
               <>
                 La fattura <strong>{invoiceNotFoundWarning.numero}</strong> di{' '}
-                <strong>{invoiceNotFoundWarning.fornitore}</strong> è dell'anno{' '}
-                <strong>{invoiceNotFoundWarning.anno}</strong>, ma stai guardando l'anno{' '}
-                <strong>{anno}</strong>.
-                <br />
-                Cambia l'anno globale (in alto a destra) a <strong>{invoiceNotFoundWarning.anno}</strong>{' '}
-                per vederla.
+                <strong>{invoiceNotFoundWarning.fornitore}</strong>
+                {invoiceNotFoundWarning.anno ? (
+                  <>
+                    {' '}è dell'anno <strong>{invoiceNotFoundWarning.anno}</strong>, ma stai
+                    guardando l'anno <strong>{anno}</strong>.
+                  </>
+                ) : (
+                  <> non è nell'anno selezionato (<strong>{anno}</strong>).</>
+                )}
+                <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <a
+                    href={`/api/fatture-ricevute/fattura/${invoiceNotFoundWarning.id}/view-assoinvoice`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      padding: '6px 12px', background: '#1e3a5f', color: 'white',
+                      borderRadius: 6, fontSize: 12, fontWeight: 600, textDecoration: 'none',
+                    }}
+                  >
+                    📄 Vedi la fattura adesso
+                  </a>
+                  <span style={{ fontSize: 12, color: '#92400e', alignSelf: 'center' }}>
+                    oppure cambia l'anno globale (in alto a destra)
+                    {invoiceNotFoundWarning.anno ? (
+                      <> a <strong>{invoiceNotFoundWarning.anno}</strong></>
+                    ) : null}{' '}
+                    per vederla in elenco.
+                  </span>
+                </div>
               </>
             )}
           </div>

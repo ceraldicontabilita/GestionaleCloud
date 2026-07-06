@@ -2,7 +2,7 @@
 Router per gestione estratti conto PayPal (MSR/CSR).
 Import PDF, visualizzazione transazioni, riconciliazione con estratto conto bancario.
 """
-from fastapi import APIRouter, HTTPException, Query, UploadFile, File
+from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Body
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 import uuid
@@ -70,7 +70,17 @@ async def get_paypal_transactions(
     transactions = await db[COLL_PAYPAL_TRANSACTIONS].find(
         query, {"_id": 0}
     ).sort("data", -1).limit(limit).to_list(limit)
-    
+
+    # Descrizione leggibile: le transazioni da API PayPal non hanno il campo
+    # "descrizione" ma trasportano oggetto/nota/numero fattura del fornitore.
+    for t in transactions:
+        if not t.get("descrizione"):
+            t["descrizione"] = (
+                t.get("transaction_subject")
+                or t.get("transaction_note")
+                or (f"Fatt. {t['invoice_id_fornitore']}" if t.get("invoice_id_fornitore") else "")
+            )
+
     # Statistiche
     totale_pagamenti = sum(t['lordo'] for t in transactions if t.get('lordo', 0) < 0)
     totale_accrediti = sum(t['lordo'] for t in transactions if t.get('lordo', 0) > 0)
@@ -563,6 +573,31 @@ async def dettaglio_transazione_paypal(transaction_id: str) -> Dict[str, Any]:
              "stato_pagamento": 1}
         ).sort("invoice_date", -1).limit(5).to_list(5)
 
+    # STRATEGIA D: match per IMPORTO su QUALSIASI anno.
+    # Fondamentale per le transazioni senza controparte (es. T0200) e per le
+    # fatture registrate in anni diversi da quello del filtro globale.
+    importo_tx = abs(float(tx.get("importo") or tx.get("lordo") or 0))
+    if not fatture_collegate and importo_tx > 0:
+        fatture_collegate = await db[COLL_INVOICES].find(
+            {"$or": [
+                {"total_amount": {"$gte": importo_tx - 0.05, "$lte": importo_tx + 0.05}},
+                {"importo_totale": {"$gte": importo_tx - 0.05, "$lte": importo_tx + 0.05}},
+            ]},
+            {"_id": 0, "id": 1, "invoice_number": 1, "numero_fattura": 1,
+             "invoice_date": 1, "data_fattura": 1,
+             "total_amount": 1, "importo_totale": 1,
+             "supplier_name": 1, "cedente_denominazione": 1,
+             "stato_pagamento": 1}
+        ).sort("invoice_date", -1).limit(10).to_list(10)
+        for f in fatture_collegate:
+            f["match"] = "importo"
+
+    # Link diretto alla vista AssoSoftware: la fattura si può SEMPRE vedere,
+    # indipendentemente dall'anno selezionato nel gestionale.
+    for f in fatture_collegate:
+        if f.get("id"):
+            f["view_url"] = f"/api/fatture-ricevute/fattura/{f['id']}/view-assoinvoice"
+
     # --- Flag riconciliato in banca: il DB può avere diversi nomi di campo ---
     # Storicamente: "riconciliato_banca" (boolean)
     # Aggiunto dal service: "riconciliato_con_estratto_banca" (boolean)
@@ -584,3 +619,149 @@ async def dettaglio_transazione_paypal(transaction_id: str) -> Dict[str, Any]:
         "mapping_fornitore": mapping_fornitore,
         "fatture_collegate": fatture_collegate,
     }
+
+
+@router.get("/transazione/{transaction_id}/cerca-gmail")
+async def cerca_gmail_transazione(transaction_id: str) -> Dict[str, Any]:
+    """Cerca su Gmail email compatibili con la transazione (fatture ESTERNE
+    che non passano dal Sistema di Interscambio: SaaS, fornitori esteri).
+
+    Cerca per importo (punto e virgola) e prima parola della controparte in
+    una finestra di date intorno alla transazione. Ritorna oggetto/mittente/
+    data e il link per aprire il messaggio direttamente in Gmail.
+    """
+    import asyncio as _asyncio
+    from app.services.gmail_search import (
+        get_gmail_credentials, search_gmail_sync, build_transaction_query,
+    )
+
+    db = Database.get_db()
+    tx = await db[COLL_PAYPAL_TRANSACTIONS].find_one(
+        {"$or": [{"transaction_id": transaction_id}, {"id": transaction_id}]},
+        {"_id": 0},
+    )
+    if not tx:
+        raise HTTPException(status_code=404, detail="Transazione PayPal non trovata")
+
+    user, pwd, server = await get_gmail_credentials(db)
+    if not user or not pwd:
+        return {"ok": False, "risultati": [],
+                "errore": "Nessun account Gmail configurato (Admin → Email, con App Password)"}
+
+    query = build_transaction_query(
+        importo=tx.get("importo") or tx.get("lordo") or 0,
+        nome_controparte=tx.get("nome_controparte") or "",
+        data_iso=tx.get("data") or "",
+    )
+    if not query:
+        return {"ok": False, "risultati": [], "errore": "Dati transazione insufficienti per la ricerca"}
+    try:
+        risultati = await _asyncio.to_thread(search_gmail_sync, user, pwd, server, query, 10)
+    except Exception as e:
+        return {"ok": False, "risultati": [], "query": query,
+                "errore": f"Ricerca Gmail non riuscita: {e}"}
+    return {"ok": True, "query": query, "account": user, "risultati": risultati}
+
+
+@router.post("/transazione/{transaction_id}/associa")
+async def associa_transazione(transaction_id: str, body: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    """Associa manualmente la transazione a una fattura del gestionale
+    (body: {fattura_id}) oppure a un'email Gmail (body: {gmail: {...}})."""
+    db = Database.get_db()
+    tx = await db[COLL_PAYPAL_TRANSACTIONS].find_one(
+        {"$or": [{"transaction_id": transaction_id}, {"id": transaction_id}]},
+        {"_id": 0, "transaction_id": 1, "id": 1},
+    )
+    if not tx:
+        raise HTTPException(status_code=404, detail="Transazione PayPal non trovata")
+
+    set_data: Dict[str, Any] = {}
+    if body.get("fattura_id"):
+        fatt = await db[COLL_INVOICES].find_one(
+            {"id": body["fattura_id"]},
+            {"_id": 0, "id": 1, "invoice_number": 1, "invoice_date": 1,
+             "supplier_name": 1, "total_amount": 1})
+        if not fatt:
+            raise HTTPException(status_code=404, detail="Fattura non trovata")
+        set_data["fattura_associata"] = {
+            "fattura_id": fatt["id"],
+            "numero": fatt.get("invoice_number"),
+            "data": fatt.get("invoice_date"),
+            "fornitore": fatt.get("supplier_name"),
+            "importo": fatt.get("total_amount"),
+            "view_url": f"/api/fatture-ricevute/fattura/{fatt['id']}/view-assoinvoice",
+            "auto": False,
+        }
+    elif body.get("gmail"):
+        g = body["gmail"]
+        set_data["gmail_associata"] = {
+            "subject": g.get("subject"), "from": g.get("from"),
+            "date": g.get("date"), "message_id": g.get("message_id"),
+            "gmail_link": g.get("gmail_link"),
+        }
+    else:
+        raise HTTPException(status_code=400, detail="Indicare fattura_id oppure gmail")
+
+    await db[COLL_PAYPAL_TRANSACTIONS].update_one(
+        {"$or": [{"transaction_id": transaction_id}, {"id": transaction_id}]},
+        {"$set": set_data},
+    )
+    return {"success": True, **set_data}
+
+
+@router.post("/auto-associa")
+async def auto_associa_transazioni() -> Dict[str, Any]:
+    """Associa AUTOMATICAMENTE i pagamenti PayPal alle fatture del gestionale:
+    match per importo esatto (±0,05 €, qualsiasi anno); se più candidate,
+    sceglie quella col nome fornitore compatibile con la controparte.
+    Le transazioni senza match restano da cercare su Gmail (fatture esterne)."""
+    db = Database.get_db()
+    txs = await db[COLL_PAYPAL_TRANSACTIONS].find(
+        {"lordo": {"$lt": 0}, "fattura_associata": {"$exists": False}},
+        {"_id": 0, "transaction_id": 1, "importo": 1, "lordo": 1,
+         "nome_controparte": 1, "data": 1},
+    ).to_list(2000)
+
+    associate = 0
+    for tx in txs:
+        importo = abs(float(tx.get("importo") or tx.get("lordo") or 0))
+        if importo <= 0 or not tx.get("transaction_id"):
+            continue
+        cands = await db[COLL_INVOICES].find(
+            {"$or": [
+                {"total_amount": {"$gte": importo - 0.05, "$lte": importo + 0.05}},
+                {"importo_totale": {"$gte": importo - 0.05, "$lte": importo + 0.05}},
+            ]},
+            {"_id": 0, "id": 1, "invoice_number": 1, "invoice_date": 1,
+             "supplier_name": 1, "cedente_denominazione": 1, "total_amount": 1},
+        ).limit(10).to_list(10)
+        if not cands:
+            continue
+        scelta = None
+        nome = (tx.get("nome_controparte") or "").lower()
+        parole = [w for w in nome.replace(",", " ").split() if len(w) >= 4]
+        if parole:
+            for c in cands:
+                forn = ((c.get("supplier_name") or c.get("cedente_denominazione") or "")).lower()
+                if any(w in forn for w in parole):
+                    scelta = c
+                    break
+        if scelta is None and len(cands) == 1:
+            scelta = cands[0]
+        if scelta is None:
+            continue
+        await db[COLL_PAYPAL_TRANSACTIONS].update_one(
+            {"transaction_id": tx["transaction_id"]},
+            {"$set": {"fattura_associata": {
+                "fattura_id": scelta["id"],
+                "numero": scelta.get("invoice_number"),
+                "data": scelta.get("invoice_date"),
+                "fornitore": scelta.get("supplier_name") or scelta.get("cedente_denominazione"),
+                "importo": scelta.get("total_amount"),
+                "view_url": f"/api/fatture-ricevute/fattura/{scelta['id']}/view-assoinvoice",
+                "auto": True,
+            }}},
+        )
+        associate += 1
+
+    return {"success": True, "analizzate": len(txs), "associate": associate}

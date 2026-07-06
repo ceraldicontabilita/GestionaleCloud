@@ -335,6 +335,12 @@ def start_scheduler():
             logger.info(f"[SCHEDULER-PN-RICONCILIA] {r.get('message')}")
         except Exception as e:
             logger.error(f"[SCHEDULER-PN-RICONCILIA] errore: {e}")
+        try:
+            from app.routers.paypal_statements import auto_associa_transazioni
+            r = await auto_associa_transazioni()
+            logger.info(f"[SCHEDULER-PAYPAL-ASSOCIA] associate={r.get('associate')}/{r.get('analizzate')}")
+        except Exception as e:
+            logger.error(f"[SCHEDULER-PAYPAL-ASSOCIA] errore: {e}")
 
     scheduler.add_job(
         _scan_gmail_verbali_job,

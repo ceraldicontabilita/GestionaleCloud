@@ -63,6 +63,7 @@ def extract_enriched_fields(tx: Dict[str, Any]) -> Dict[str, Any]:
         "importo": importo_f,
         "tipo": info.get("transaction_event_code"),
         "nome_controparte": nome_controparte.strip(),
+        "email_controparte": payer_info.get("email_address"),
         "currency": amount.get("currency_code"),
         "shipping_amount": float(shipping.get("value") or 0),
         "invoice_id_fornitore": invoice or None,

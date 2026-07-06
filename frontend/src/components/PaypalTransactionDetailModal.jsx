@@ -75,6 +75,8 @@ export default function PaypalTransactionDetailModal({ open, onClose, transactio
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
+  const [gmailLoading, setGmailLoading] = useState(false);
+  const [gmailData, setGmailData] = useState(null);
 
   useEffect(() => {
     if (!open || !transactionId) return;
@@ -83,6 +85,7 @@ export default function PaypalTransactionDetailModal({ open, onClose, transactio
       setLoading(true);
       setError(null);
       setData(null);
+      setGmailData(null);
       try {
         const r = await api.get(`/api/paypal-statements/transazione/${encodeURIComponent(transactionId)}/dettaglio`);
         if (!cancelled) setData(r.data);
@@ -395,9 +398,24 @@ export default function PaypalTransactionDetailModal({ open, onClose, transactio
                                 </span>
                               )}
                             </span>
-                            <span>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                               {fmtEuro(importoFattura)}
-                              <ExternalLink size={11} style={{ marginLeft: 6, verticalAlign: 'middle', color: '#64748b' }} />
+                              <span
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  window.open(
+                                    f.view_url || `/api/fatture-ricevute/fattura/${f.id}/view-assoinvoice`,
+                                    '_blank'
+                                  );
+                                }}
+                                title="Apri la fattura (funziona anche se è di un altro anno)"
+                                style={{
+                                  padding: '2px 8px', borderRadius: 5, fontSize: 10, fontWeight: 700,
+                                  background: '#1e3a5f', color: 'white', cursor: 'pointer',
+                                }}
+                              >
+                                📄 Vedi
+                              </span>
                             </span>
                           </div>
                         );
@@ -428,6 +446,79 @@ export default function PaypalTransactionDetailModal({ open, onClose, transactio
                         variant="secondary"
                       />
                     </div>
+                  </div>
+                )}
+              </Section>
+
+              {/* Ricerca su GMAIL: fatture esterne che non passano dallo SDI
+                  (SaaS, fornitori esteri: Spotify, MongoDB, OpenAI...) */}
+              <Section icon={<Mail size={15} />} title="Cerca su Gmail (fatture esterne)">
+                <div style={{ fontSize: 11, color: '#94a3b8', fontStyle: 'italic', marginBottom: 8 }}>
+                  Se la fattura non è nel gestionale potrebbe essere una ricevuta esterna che non
+                  passa dal Sistema di Interscambio: cerco su Gmail per importo
+                  ({fmtEuro(tx.lordo ?? tx.amount)}) e controparte intorno alla data della transazione.
+                </div>
+                {!gmailData && (
+                  <Button
+                    onClick={async () => {
+                      setGmailLoading(true);
+                      try {
+                        const r = await api.get(
+                          `/api/paypal-statements/transazione/${encodeURIComponent(
+                            tx.transaction_id || transactionId
+                          )}/cerca-gmail`
+                        );
+                        setGmailData(r.data);
+                      } catch (e2) {
+                        setGmailData({
+                          ok: false,
+                          risultati: [],
+                          errore: e2?.response?.data?.detail || e2?.message || 'Errore ricerca Gmail',
+                        });
+                      } finally {
+                        setGmailLoading(false);
+                      }
+                    }}
+                    icon={gmailLoading ? <Loader2 size={13} className="animate-spin" /> : <Mail size={13} />}
+                    text={gmailLoading ? 'Ricerca in corso…' : '✉️ Cerca su Gmail'}
+                    variant="primary"
+                  />
+                )}
+                {gmailData && !gmailData.ok && (
+                  <div style={{ fontSize: 12, color: '#b91c1c' }}>
+                    {gmailData.errore || 'Ricerca non riuscita'}
+                  </div>
+                )}
+                {gmailData && gmailData.ok && gmailData.risultati.length === 0 && (
+                  <EmptyMsg text="Nessuna email trovata per importo/controparte in quel periodo." />
+                )}
+                {gmailData && gmailData.ok && gmailData.risultati.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {gmailData.risultati.map((m, i) => (
+                      <a
+                        key={m.message_id || i}
+                        href={m.gmail_link || 'https://mail.google.com'}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                          padding: '8px 10px', background: '#f8fafc', borderRadius: 6,
+                          border: '1px solid #e2e8f0', fontSize: 12, textDecoration: 'none',
+                          color: '#0f172a', gap: 8,
+                        }}
+                        title="Apri il messaggio in Gmail"
+                      >
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          <strong>{m.subject || '(senza oggetto)'}</strong>
+                          <span style={{ color: '#64748b', marginLeft: 8 }}>{m.from}</span>
+                        </span>
+                        <span style={{ whiteSpace: 'nowrap', color: '#64748b', fontSize: 11 }}>
+                          {m.has_attachment ? '📎 ' : ''}
+                          {m.date ? m.date.slice(0, 22) : ''}
+                          <ExternalLink size={11} style={{ marginLeft: 6, verticalAlign: 'middle' }} />
+                        </span>
+                      </a>
+                    ))}
                   </div>
                 )}
               </Section>
