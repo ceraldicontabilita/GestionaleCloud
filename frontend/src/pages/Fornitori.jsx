@@ -1642,8 +1642,10 @@ export default function Fornitori() {
     }
     if (filterIncomplete && (s.partita_iva || s.piva) && s.email) return false;
     if (filterSenzaMetodo) {
+      // 'misto' è un metodo scelto esplicitamente (uno dei 6 di METODI_PAGAMENTO),
+      // non equivale a "nessun metodo impostato".
       const m = (s.metodo_pagamento || '').toLowerCase().trim();
-      const senzaMetodo = !m || m === 'da_configurare' || m === 'misto' || m === 'altro';
+      const senzaMetodo = !m || m === 'da_configurare' || m === 'altro';
       if (!senzaMetodo) return false;
     }
     return true;
