@@ -173,6 +173,9 @@ async def get_archivio_fatture(
         q_inv.setdefault("$and", []).append({"$or": [
             {"anno": anno},
             {"data_documento": {"$regex": f"^{anno}"}},
+            # Fatture da Drive/bulk (schema inglese) importate prima del
+            # backfill di `anno`: hanno solo invoice_date.
+            {"invoice_date": {"$regex": f"^{anno}"}},
         ]})
         if mese:
             mese_str = str(mese).zfill(2)
@@ -488,12 +491,15 @@ async def get_statistiche(anno: Optional[int] = Query(None)) -> Dict[str, Any]:
     """
     db = Database.get_db()
 
-    # Filtro per anno (invoices ha campo `anno` numerico e `invoice_date` ISO)
+    # Filtro per anno (invoices ha campo `anno` numerico e `invoice_date` ISO;
+    # i doc importati prima del backfill hanno solo invoice_date)
     query: dict = {}
     if anno:
-        query["anno"] = anno
+        query["$or"] = [
+            {"anno": anno},
+            {"invoice_date": {"$regex": f"^{anno}"}},
+        ]
 
-    import asyncio as _asyncio
     pipeline_inv = [
         {"$match": query},
         {"$group": {

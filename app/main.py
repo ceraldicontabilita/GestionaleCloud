@@ -76,6 +76,27 @@ async def lifespan(app: FastAPI):
     except Exception:
         pass
 
+    # Backfill: fatture importate da Drive/bulk prima del fix campi — senza
+    # `anno`/`data_documento` non comparivano nei filtri per anno.
+    try:
+        db = Database.get_db()
+        if db is not None:
+            r = await db["invoices"].update_many(
+                {"anno": {"$exists": False},
+                 "invoice_date": {"$regex": r"^\d{4}-"}},
+                [{"$set": {
+                    "anno": {"$toInt": {"$substrCP": ["$invoice_date", 0, 4]}},
+                    "data_documento": {"$ifNull": ["$data_documento", "$invoice_date"]},
+                    "numero_fattura": {"$ifNull": ["$numero_fattura", "$invoice_number"]},
+                    "cedente_denominazione": {"$ifNull": ["$cedente_denominazione", "$supplier_name"]},
+                    "cedente_piva": {"$ifNull": ["$cedente_piva", "$supplier_vat"]},
+                }}],
+            )
+            if r.modified_count:
+                logger.info(f"Backfill fatture senza anno: {r.modified_count} aggiornate")
+    except Exception as e:
+        logger.warning(f"Backfill anno fatture non eseguito: {e}")
+
     logger.info("Application startup complete")
     yield
 

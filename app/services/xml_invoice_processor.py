@@ -48,12 +48,45 @@ def is_p7m_content(filename: str) -> bool:
     return '.xml.p7m' in filename.lower() or filename.lower().endswith('.p7m')
 
 
+def _extract_cms_payload(data: bytes):
+    """Estrae il contenuto firmato dalla busta CMS/PKCS#7 con un vero parser ASN.1.
+
+    Indispensabile per i P7M con contenuto BER "a blocchi" (OCTET STRING
+    multipli, es. firme ArubaPEC): il vecchio taglio testuale lasciava i byte
+    dei separatori DENTRO l'XML, corrompendolo (parse impossibile).
+    """
+    try:
+        from asn1crypto import cms
+        info = cms.ContentInfo.load(data)
+        if info["content_type"].native != "signed_data":
+            return None
+        content = info["content"]["encap_content_info"]["content"]
+        if content is None:
+            return None
+        payload = content.native
+        return payload if isinstance(payload, bytes) else None
+    except Exception:
+        return None
+
+
 def extract_xml_from_p7m(data: bytes) -> bytes:
     """
     Estrae l'XML FatturaPA embedded in un file .p7m (PKCS#7/CMS SignedData).
-    L'XML è incluso nel payload CMS e inizia con '<?xml'.
+    Prima con il parser CMS (ricompone anche i contenuti a blocchi), poi con
+    il fallback testuale storico.
     """
-    # Cerca <?xml nel payload
+    payload = _extract_cms_payload(data)
+    if payload is None and data[:1] != b"\x30":
+        # P7M ri-codificato in base64 (capita via email/PEC)
+        try:
+            payload = _extract_cms_payload(base64.b64decode(data, validate=False))
+        except Exception:
+            payload = None
+    if payload is not None:
+        idx = payload.find(b"<?xml")
+        return payload[idx:] if idx > 0 else payload
+
+    # Fallback testuale storico (P7M non parsabili come CMS)
     idx = data.find(b'<?xml')
     if idx >= 0:
         xml_bytes = data[idx:]
