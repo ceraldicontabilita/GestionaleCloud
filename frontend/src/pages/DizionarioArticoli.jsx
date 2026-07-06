@@ -3,7 +3,7 @@ import api from '../api';
 import { formatEuro, STYLES, COLORS, button, badge } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
 
-const CATEGORIE_HACCP_COLORS = {
+const CATEGORIE_COLORS = {
   carni_fresche: { bg: '#fecaca', text: '#991b1b', label: 'Carni Fresche' },
   pesce_fresco: { bg: '#bae6fd', text: '#0369a1', label: 'Pesce Fresco' },
   latticini: { bg: '#fef3c7', text: '#92400e', label: 'Latticini' },
@@ -47,7 +47,6 @@ export default function DizionarioArticoli() {
   const [articoli, setArticoli] = useState([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState(null);
-  const [categorieHaccp, setCategorieHaccp] = useState({});
 
   // Filtri
   const [search, setSearch] = useState('');
@@ -100,17 +99,7 @@ export default function DizionarioArticoli() {
     }
   };
 
-  const loadCategorieHaccp = async () => {
-    try {
-      const res = await api.get('/api/dizionario-articoli/categorie-haccp');
-      setCategorieHaccp(res.data.categorie || {});
-    } catch (err) {
-      console.error('Errore caricamento categorie:', err);
-    }
-  };
-
   useEffect(() => {
-    loadCategorieHaccp();
     loadStats();
   }, []);
 
@@ -219,13 +208,13 @@ export default function DizionarioArticoli() {
   };
 
   const getCategoriaStyle = cat => {
-    return CATEGORIE_HACCP_COLORS[cat] || CATEGORIE_HACCP_COLORS.non_alimentare;
+    return CATEGORIE_COLORS[cat] || CATEGORIE_COLORS.non_alimentare;
   };
 
   return (
     <PageLayout
       title="Dizionario Articoli"
-      subtitle="Mappatura automatica prodotti fatture → Piano dei Conti e Categorie HACCP"
+      subtitle="Mappatura automatica prodotti fatture → Piano dei Conti"
     >
       <div>
         {/* Header */}
@@ -234,7 +223,7 @@ export default function DizionarioArticoli() {
             📦 Dizionario Articoli
           </h1>
           <p style={{ color: '#64748b' }}>
-            Mappatura automatica prodotti fatture → Piano dei Conti e Categorie HACCP
+            Mappatura automatica prodotti fatture → Piano dei Conti
           </p>
         </div>
 
@@ -388,8 +377,8 @@ export default function DizionarioArticoli() {
             }}
             style={{ padding: '10px 14px', borderRadius: 8, border: '1px solid #e2e8f0' }}
           >
-            <option value="">Tutte le categorie HACCP</option>
-            {Object.entries(CATEGORIE_HACCP_COLORS).map(([key, val]) => (
+            <option value="">Tutte le categorie</option>
+            {Object.entries(CATEGORIE_COLORS).map(([key, val]) => (
               <option key={key} value={key}>
                 {val.label}
               </option>
@@ -437,7 +426,7 @@ export default function DizionarioArticoli() {
                   <tr style={{ background: '#1e3a5f', color: 'white' }}>
                     <th style={{ padding: 12, textAlign: 'left', width: '35%' }}>Descrizione</th>
                     <th style={{ padding: 12, textAlign: 'center' }}>Occorrenze</th>
-                    <th style={{ padding: 12, textAlign: 'left' }}>Categoria HACCP</th>
+                    <th style={{ padding: 12, textAlign: 'left' }}>Categoria</th>
                     <th style={{ padding: 12, textAlign: 'left' }}>Conto</th>
                     <th style={{ padding: 12, textAlign: 'center' }}>Confidenza</th>
                     <th style={{ padding: 12, textAlign: 'center', width: 80 }}>Azioni</th>
@@ -479,22 +468,6 @@ export default function DizionarioArticoli() {
                           >
                             {catStyle.label}
                           </span>
-                          {art.rischio_haccp && art.rischio_haccp !== 'N/A' && (
-                            <span
-                              style={{
-                                marginLeft: 6,
-                                fontSize: 10,
-                                color:
-                                  art.rischio_haccp === 'alto'
-                                    ? '#dc2626'
-                                    : art.rischio_haccp === 'medio'
-                                      ? '#f59e0b'
-                                      : '#22c55e',
-                              }}
-                            >
-                              ({art.rischio_haccp})
-                            </span>
-                          )}
                         </td>
                         <td style={{ padding: 12 }}>
                           <div style={{ fontSize: 12, fontWeight: 500 }}>{art.conto}</div>
@@ -652,7 +625,7 @@ export default function DizionarioArticoli() {
               <div style={{ display: 'grid', gap: 16 }}>
                 <div>
                   <label style={{ display: 'block', marginBottom: 6, fontWeight: 500 }}>
-                    Categoria HACCP
+                    Categoria
                   </label>
                   <select
                     value={editForm.categoria_haccp}
@@ -665,7 +638,7 @@ export default function DizionarioArticoli() {
                     }}
                   >
                     <option value="">-- Seleziona --</option>
-                    {Object.entries(CATEGORIE_HACCP_COLORS).map(([key, val]) => (
+                    {Object.entries(CATEGORIE_COLORS).map(([key, val]) => (
                       <option key={key} value={key}>
                         {val.label}
                       </option>

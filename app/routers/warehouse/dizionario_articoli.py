@@ -1,12 +1,16 @@
 """
-Router per Dizionario Articoli - Mappatura Prodotti a Piano dei Conti e HACCP
+Router per Dizionario Articoli - Mappatura Prodotti a Piano dei Conti
 
 Funzionalità:
 1. Estrazione automatica articoli unici dalle fatture
-2. Categorizzazione automatica con pattern matching
+2. Categorizzazione automatica con pattern matching (categoria merceologica -> conto)
 3. Mappatura a Piano dei Conti per contabilità
-4. Mappatura a categorie HACCP per tracciabilità alimentare
-5. Interfaccia CRUD per gestione manuale mappature
+4. Interfaccia CRUD per gestione manuale mappature
+
+Nota: il campo categoria_haccp è il nome storico della categoria merceologica
+usata per scegliere il conto; qui restano solo dati contabili (niente
+temperature di conservazione, rischio o tracciabilità alimentare — quella
+è competenza dell'app HACCP separata, ceraldiapp.it).
 """
 from fastapi import APIRouter, HTTPException, Query, Body, Path
 from typing import Dict, Any, List, Optional
@@ -45,136 +49,25 @@ def sum_prices(prices: List) -> float:
     return total
 
 
-# ============== CATEGORIE HACCP ==============
-CATEGORIE_HACCP = {
-    "carni_fresche": {
-        "nome": "Carni Fresche",
-        "descrizione": "Carne bovina, suina, avicola, ovina",
-        "temperatura_conservazione": "0-4°C",
-        "rischio": "alto",
-        "tracciabilita": ["lotto", "origine", "data_macellazione", "scadenza"],
-        "ccp": ["temperatura", "separazione_crudo_cotto"]
-    },
-    "pesce_fresco": {
-        "nome": "Pesce e Prodotti Ittici Freschi",
-        "descrizione": "Pesce, molluschi, crostacei freschi",
-        "temperatura_conservazione": "0-2°C",
-        "rischio": "alto",
-        "tracciabilita": ["lotto", "zona_pesca", "data_pesca", "scadenza"],
-        "ccp": ["temperatura", "catena_freddo", "parassiti"]
-    },
-    "latticini": {
-        "nome": "Latticini e Derivati del Latte",
-        "descrizione": "Latte, formaggi, yogurt, panna, burro",
-        "temperatura_conservazione": "0-4°C",
-        "rischio": "alto",
-        "tracciabilita": ["lotto", "origine_latte", "scadenza"],
-        "ccp": ["temperatura", "pastorizzazione"]
-    },
-    "uova": {
-        "nome": "Uova e Ovoprodotti",
-        "descrizione": "Uova fresche, tuorli, albumi pastorizzati",
-        "temperatura_conservazione": "4-8°C",
-        "rischio": "alto",
-        "tracciabilita": ["lotto", "codice_allevamento", "categoria", "scadenza"],
-        "ccp": ["temperatura", "salmonella"]
-    },
-    "frutta_verdura": {
-        "nome": "Frutta e Verdura Fresca",
-        "descrizione": "Ortaggi, frutta fresca, erbe aromatiche",
-        "temperatura_conservazione": "4-8°C",
-        "rischio": "medio",
-        "tracciabilita": ["lotto", "origine", "produttore"],
-        "ccp": ["lavaggio", "conservazione"]
-    },
-    "surgelati": {
-        "nome": "Prodotti Surgelati",
-        "descrizione": "Alimenti congelati e surgelati",
-        "temperatura_conservazione": "≤-18°C",
-        "rischio": "medio",
-        "tracciabilita": ["lotto", "data_congelamento", "scadenza"],
-        "ccp": ["catena_freddo", "scongelamento"]
-    },
-    "prodotti_forno": {
-        "nome": "Prodotti da Forno e Pasticceria",
-        "descrizione": "Pane, dolci, cornetti, pasticceria fresca",
-        "temperatura_conservazione": "ambiente o refrigerato",
-        "rischio": "medio",
-        "tracciabilita": ["lotto", "data_produzione", "allergeni"],
-        "ccp": ["cottura", "conservazione", "allergeni"]
-    },
-    "farine_cereali": {
-        "nome": "Farine e Cereali",
-        "descrizione": "Farina, semola, cereali, riso, pasta secca",
-        "temperatura_conservazione": "ambiente",
-        "rischio": "basso",
-        "tracciabilita": ["lotto", "origine_grano", "scadenza"],
-        "ccp": ["stoccaggio_asciutto", "parassiti"]
-    },
-    "conserve_scatolame": {
-        "nome": "Conserve e Scatolame",
-        "descrizione": "Pomodori pelati, legumi, tonno, sottoli",
-        "temperatura_conservazione": "ambiente",
-        "rischio": "basso",
-        "tracciabilita": ["lotto", "scadenza"],
-        "ccp": ["integrita_confezione"]
-    },
-    "bevande_analcoliche": {
-        "nome": "Bevande Analcoliche",
-        "descrizione": "Acqua, succhi, soft drink, the, caffè",
-        "temperatura_conservazione": "ambiente o refrigerato",
-        "rischio": "basso",
-        "tracciabilita": ["lotto", "scadenza"],
-        "ccp": ["conservazione"]
-    },
-    "bevande_alcoliche": {
-        "nome": "Bevande Alcoliche",
-        "descrizione": "Vino, birra, liquori, aperitivi",
-        "temperatura_conservazione": "ambiente controllato",
-        "rischio": "basso",
-        "tracciabilita": ["lotto", "annata", "denominazione"],
-        "ccp": ["conservazione"]
-    },
-    "spezie_condimenti": {
-        "nome": "Spezie e Condimenti",
-        "descrizione": "Sale, olio, aceto, spezie, aromi",
-        "temperatura_conservazione": "ambiente",
-        "rischio": "basso",
-        "tracciabilita": ["lotto", "scadenza"],
-        "ccp": ["stoccaggio"]
-    },
-    "salumi_insaccati": {
-        "nome": "Salumi e Insaccati",
-        "descrizione": "Prosciutto, salame, mortadella, wurstel",
-        "temperatura_conservazione": "0-4°C",
-        "rischio": "alto",
-        "tracciabilita": ["lotto", "origine", "scadenza", "nitrati"],
-        "ccp": ["temperatura", "listeria"]
-    },
-    "dolciumi_snack": {
-        "nome": "Dolciumi e Snack",
-        "descrizione": "Cioccolato, caramelle, biscotti, snack",
-        "temperatura_conservazione": "ambiente",
-        "rischio": "basso",
-        "tracciabilita": ["lotto", "scadenza", "allergeni"],
-        "ccp": ["allergeni"]
-    },
-    "additivi_ingredienti": {
-        "nome": "Additivi e Ingredienti Speciali",
-        "descrizione": "Lieviti, addensanti, coloranti, aromi",
-        "temperatura_conservazione": "come da etichetta",
-        "rischio": "basso",
-        "tracciabilita": ["lotto", "scadenza", "scheda_tecnica"],
-        "ccp": ["dosaggio"]
-    },
-    "non_alimentare": {
-        "nome": "Prodotti Non Alimentari",
-        "descrizione": "Detersivi, imballaggi, attrezzature, servizi",
-        "temperatura_conservazione": "N/A",
-        "rischio": "N/A",
-        "tracciabilita": [],
-        "ccp": []
-    }
+# ============== CATEGORIE MERCEOLOGICHE ==============
+# Usate solo per scegliere il conto del Piano dei Conti più adatto.
+CATEGORIE_MERCEOLOGICHE = {
+    "carni_fresche": {"nome": "Carni Fresche", "descrizione": "Carne bovina, suina, avicola, ovina"},
+    "pesce_fresco": {"nome": "Pesce e Prodotti Ittici Freschi", "descrizione": "Pesce, molluschi, crostacei freschi"},
+    "latticini": {"nome": "Latticini e Derivati del Latte", "descrizione": "Latte, formaggi, yogurt, panna, burro"},
+    "uova": {"nome": "Uova e Ovoprodotti", "descrizione": "Uova fresche, tuorli, albumi pastorizzati"},
+    "frutta_verdura": {"nome": "Frutta e Verdura Fresca", "descrizione": "Ortaggi, frutta fresca, erbe aromatiche"},
+    "surgelati": {"nome": "Prodotti Surgelati", "descrizione": "Alimenti congelati e surgelati"},
+    "prodotti_forno": {"nome": "Prodotti da Forno e Pasticceria", "descrizione": "Pane, dolci, cornetti, pasticceria fresca"},
+    "farine_cereali": {"nome": "Farine e Cereali", "descrizione": "Farina, semola, cereali, riso, pasta secca"},
+    "conserve_scatolame": {"nome": "Conserve e Scatolame", "descrizione": "Pomodori pelati, legumi, tonno, sottoli"},
+    "bevande_analcoliche": {"nome": "Bevande Analcoliche", "descrizione": "Acqua, succhi, soft drink, the, caffè"},
+    "bevande_alcoliche": {"nome": "Bevande Alcoliche", "descrizione": "Vino, birra, liquori, aperitivi"},
+    "spezie_condimenti": {"nome": "Spezie e Condimenti", "descrizione": "Sale, olio, aceto, spezie, aromi"},
+    "salumi_insaccati": {"nome": "Salumi e Insaccati", "descrizione": "Prosciutto, salame, mortadella, wurstel"},
+    "dolciumi_snack": {"nome": "Dolciumi e Snack", "descrizione": "Cioccolato, caramelle, biscotti, snack"},
+    "additivi_ingredienti": {"nome": "Additivi e Ingredienti Speciali", "descrizione": "Lieviti, addensanti, coloranti, aromi"},
+    "non_alimentare": {"nome": "Prodotti Non Alimentari", "descrizione": "Detersivi, imballaggi, attrezzature, servizi"},
 }
 
 
@@ -635,7 +528,7 @@ PATTERNS_ARTICOLI = {
 def categorizza_articolo(descrizione: str) -> Dict[str, Any]:
     """
     Categorizza un articolo in base alla sua descrizione.
-    Ritorna categoria HACCP, conto piano dei conti, e confidenza.
+    Ritorna categoria merceologica, conto piano dei conti, e confidenza.
     """
     if not descrizione:
         return {
@@ -672,16 +565,14 @@ def categorizza_articolo(descrizione: str) -> Dict[str, Any]:
                         }
     
     if best_match:
-        haccp_info = CATEGORIE_HACCP.get(best_match["categoria_haccp"], {})
+        cat_info = CATEGORIE_MERCEOLOGICHE.get(best_match["categoria_haccp"], {})
         return {
             "categoria_haccp": best_match["categoria_haccp"],
-            "categoria_haccp_nome": haccp_info.get("nome", best_match["categoria_haccp"]),
+            "categoria_haccp_nome": cat_info.get("nome", best_match["categoria_haccp"]),
             "conto": best_match["conto"],
             "conto_nome": best_match["conto_nome"],
             "confidenza": round(best_confidenza, 2),
             "matched_pattern": best_match["pattern"],
-            "rischio_haccp": haccp_info.get("rischio", "N/A"),
-            "temperatura": haccp_info.get("temperatura_conservazione", "N/A")
         }
     
     # Default: non classificato
@@ -761,7 +652,7 @@ async def estrai_articoli_fatture(
         else:
             stats["non_categorizzati"] += 1
         
-        # Per categoria HACCP
+        # Per categoria merceologica
         haccp = cat["categoria_haccp"]
         if haccp not in stats["per_categoria_haccp"]:
             stats["per_categoria_haccp"][haccp] = 0
@@ -776,17 +667,6 @@ async def estrai_articoli_fatture(
     return {
         "articoli": articoli,
         "statistiche": stats
-    }
-
-
-@router.get("/categorie-haccp")
-async def get_categorie_haccp() -> Dict[str, Any]:
-    """
-    Ritorna tutte le categorie HACCP disponibili con le loro caratteristiche.
-    """
-    return {
-        "categorie": CATEGORIE_HACCP,
-        "totale": len(CATEGORIE_HACCP)
     }
 
 
@@ -872,8 +752,6 @@ async def genera_dizionario() -> Dict[str, Any]:
             "conto": cat["conto"],
             "conto_nome": cat["conto_nome"],
             "confidenza": cat["confidenza"],
-            "rischio_haccp": cat.get("rischio_haccp", "N/A"),
-            "temperatura_conservazione": cat.get("temperatura", "N/A"),
             "updated_at": datetime.now(timezone.utc).isoformat()
         }
         
@@ -924,22 +802,20 @@ async def aggiorna_mappatura_articolo(
     if not existing:
         raise HTTPException(status_code=404, detail="Articolo non trovato")
     
-    # Valida categoria HACCP
-    if data.get("categoria_haccp") and data["categoria_haccp"] not in CATEGORIE_HACCP and data["categoria_haccp"] != "non_alimentare":
-        raise HTTPException(status_code=400, detail=f"Categoria HACCP non valida: {data['categoria_haccp']}")
-    
+    # Valida categoria merceologica
+    if data.get("categoria_haccp") and data["categoria_haccp"] not in CATEGORIE_MERCEOLOGICHE and data["categoria_haccp"] != "non_alimentare":
+        raise HTTPException(status_code=400, detail=f"Categoria non valida: {data['categoria_haccp']}")
+
     # Prepara update
     update_data = {
         "mappatura_manuale": True,
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
-    
+
     if "categoria_haccp" in data:
         update_data["categoria_haccp"] = data["categoria_haccp"]
-        haccp_info = CATEGORIE_HACCP.get(data["categoria_haccp"], {})
-        update_data["categoria_haccp_nome"] = haccp_info.get("nome", data["categoria_haccp"])
-        update_data["rischio_haccp"] = haccp_info.get("rischio", "N/A")
-        update_data["temperatura_conservazione"] = haccp_info.get("temperatura_conservazione", "N/A")
+        cat_info = CATEGORIE_MERCEOLOGICHE.get(data["categoria_haccp"], {})
+        update_data["categoria_haccp_nome"] = cat_info.get("nome", data["categoria_haccp"])
     
     if "conto" in data:
         update_data["conto"] = data["conto"]
@@ -968,8 +844,8 @@ async def get_statistiche_dizionario() -> Dict[str, Any]:
     total = await db.dizionario_articoli.count_documents({})
     manuali = await db.dizionario_articoli.count_documents({"mappatura_manuale": True})
     
-    # Per categoria HACCP
-    pipeline_haccp = [
+    # Per categoria merceologica
+    pipeline_categoria = [
         {"$group": {
             "_id": "$categoria_haccp",
             "count": {"$sum": 1},
@@ -977,7 +853,7 @@ async def get_statistiche_dizionario() -> Dict[str, Any]:
         }},
         {"$sort": {"count": -1}}
     ]
-    per_haccp = await db.dizionario_articoli.aggregate(pipeline_haccp).to_list(50)
+    per_categoria = await db.dizionario_articoli.aggregate(pipeline_categoria).to_list(50)
     
     # Per conto
     pipeline_conto = [
@@ -1001,7 +877,7 @@ async def get_statistiche_dizionario() -> Dict[str, Any]:
     return {
         "totale_articoli": total,
         "mappature_manuali": manuali,
-        "per_categoria_haccp": per_haccp,
+        "per_categoria_haccp": per_categoria,
         "per_conto": per_conto,
         "confidenza": {
             "alta": alta_conf,

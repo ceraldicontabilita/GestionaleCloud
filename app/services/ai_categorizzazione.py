@@ -3,7 +3,7 @@ Servizio AI per Categorizzazione Articoli - GPT-5.2
 
 Usa LLM per:
 1. Categorizzare articoli non classificati (confidenza 0)
-2. Suggerire categoria HACCP e Piano dei Conti
+2. Suggerire categoria prodotto e Piano dei Conti
 3. Migliorare il pattern matching nel tempo
 """
 import os
@@ -17,24 +17,26 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-# Categorie HACCP disponibili per il prompt
-CATEGORIE_HACCP_AI = {
-    "carni_fresche": "Carne bovina, suina, avicola, ovina - rischio alto, 0-4°C",
-    "pesce_fresco": "Pesce, molluschi, crostacei freschi - rischio alto, 0-2°C",
-    "latticini": "Latte, formaggi, yogurt, panna, burro - rischio alto, 0-4°C",
-    "uova": "Uova fresche, tuorli, albumi - rischio alto, 4-8°C",
-    "frutta_verdura": "Ortaggi, frutta fresca, erbe aromatiche - rischio medio, 4-8°C",
-    "surgelati": "Alimenti congelati e surgelati - rischio medio, ≤-18°C",
-    "prodotti_forno": "Pane, dolci, cornetti, pasticceria fresca - rischio medio",
-    "farine_cereali": "Farina, semola, cereali, riso, pasta secca - rischio basso",
-    "conserve_scatolame": "Pomodori pelati, legumi, tonno, sottoli - rischio basso",
-    "bevande_analcoliche": "Acqua, succhi, soft drink, the, caffè - rischio basso",
-    "bevande_alcoliche": "Vino, birra, liquori, aperitivi - rischio basso",
-    "spezie_condimenti": "Sale, olio, aceto, spezie, aromi - rischio basso",
-    "salumi_insaccati": "Prosciutto, salame, mortadella, wurstel - rischio alto",
-    "dolciumi_snack": "Cioccolato, caramelle, biscotti, snack - rischio basso",
-    "additivi_ingredienti": "Lieviti, addensanti, coloranti, aromi - rischio basso",
-    "non_alimentare": "Detersivi, imballaggi, attrezzature, servizi - N/A"
+# Categorie merceologiche disponibili per il prompt (mappano a un conto del
+# Piano dei Conti; il campo DB si chiama ancora categoria_haccp per
+# compatibilità con i documenti già salvati in dizionario_articoli/invoices).
+CATEGORIE_PRODOTTO_AI = {
+    "carni_fresche": "Carne bovina, suina, avicola, ovina",
+    "pesce_fresco": "Pesce, molluschi, crostacei freschi",
+    "latticini": "Latte, formaggi, yogurt, panna, burro",
+    "uova": "Uova fresche, tuorli, albumi",
+    "frutta_verdura": "Ortaggi, frutta fresca, erbe aromatiche",
+    "surgelati": "Alimenti congelati e surgelati",
+    "prodotti_forno": "Pane, dolci, cornetti, pasticceria fresca",
+    "farine_cereali": "Farina, semola, cereali, riso, pasta secca",
+    "conserve_scatolame": "Pomodori pelati, legumi, tonno, sottoli",
+    "bevande_analcoliche": "Acqua, succhi, soft drink, the, caffè",
+    "bevande_alcoliche": "Vino, birra, liquori, aperitivi",
+    "spezie_condimenti": "Sale, olio, aceto, spezie, aromi",
+    "salumi_insaccati": "Prosciutto, salame, mortadella, wurstel",
+    "dolciumi_snack": "Cioccolato, caramelle, biscotti, snack",
+    "additivi_ingredienti": "Lieviti, addensanti, coloranti, aromi",
+    "non_alimentare": "Detersivi, imballaggi, attrezzature, servizi"
 }
 
 CONTI_PIANO_AI = {
@@ -100,8 +102,8 @@ async def categorizza_articoli_con_ai(
         system_message = f"""Sei un esperto di categorizzazione prodotti per un sistema ERP italiano di bar/pasticceria.
 Devi categorizzare prodotti alimentari e non alimentari.
 
-CATEGORIE HACCP DISPONIBILI:
-{json.dumps(CATEGORIE_HACCP_AI, indent=2, ensure_ascii=False)}
+CATEGORIE MERCEOLOGICHE DISPONIBILI:
+{json.dumps(CATEGORIE_PRODOTTO_AI, indent=2, ensure_ascii=False)}
 
 CONTI PIANO DEI CONTI:
 {json.dumps(CONTI_PIANO_AI, indent=2, ensure_ascii=False)}
@@ -109,7 +111,7 @@ CONTI PIANO DEI CONTI:
 REGOLE:
 1. Analizza la descrizione del prodotto
 2. Determina se è alimentare o non alimentare
-3. Assegna la categoria HACCP più appropriata
+3. Assegna la categoria merceologica più appropriata
 4. Assegna il conto del piano dei conti più appropriato
 5. Indica la confidenza (0.6-1.0) basata sulla chiarezza della descrizione
 
