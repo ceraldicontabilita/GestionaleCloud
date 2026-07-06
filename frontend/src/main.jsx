@@ -29,20 +29,6 @@ const DashboardHub = lazy(() => import("./pages/hub/DashboardHub.jsx"));
 const FornitoriHub = lazy(() => import("./pages/hub/FornitoriHub.jsx"));
 const PrimaNotaHub = lazy(() => import("./pages/hub/PrimaNotaHub.jsx"));
 const PuliziaPrimaNota = lazy(() => import("./pages/PuliziaPrimaNota.jsx"));
-const DipendentiHub = lazy(() => import("./pages/hr/HRPresenze.jsx"));
-const HRDipendenti = lazy(() => import("./pages/hr/HRDipendenti.jsx"));
-const HRCedolini = lazy(() => import("./pages/hr/HRCedolini.jsx"));
-const HRTFR = lazy(() => import("./pages/hr/HRTFR.jsx"));
-const HRTurni = lazy(() => import("./pages/hr/HRTurni.jsx"));
-const HRAcconti = lazy(() => import("./pages/hr/HRAcconti.jsx"));
-const HRPrimaNotaSalari = lazy(() => import("./pages/hr/HRPrimaNotaSalari.jsx"));
-const HRBustePaga = lazy(() => import("./pages/hr/HRBustePaga.jsx"));
-const HRMissioni = lazy(() => import("./pages/hr/HRMissioni.jsx"));
-const HRDocumenti = lazy(() => import("./pages/hr/HRDocumenti.jsx"));
-const HRFeriePermessi = lazy(() => import("./pages/hr/HRFeriePermessi.jsx"));
-const Attendance = lazy(() => import("./pages/Attendance.jsx"));
-const SaldiFeriePermessi = lazy(() => import("./pages/SaldiFeriePermessi.jsx"));
-const HRHub = lazy(() => import("./pages/hr/HRHub.jsx"));
 const VeicoliHub = lazy(() => import("./pages/hub/VeicoliHub.jsx"));
 const ContabilitaHub = lazy(() => import("./pages/hub/ContabilitaHub.jsx"));
 const MagazzinoHub = lazy(() => import("./pages/hub/MagazzinoHub.jsx"));
@@ -117,37 +103,6 @@ const router = createBrowserRouter([
       { path: "prima-nota/:tipo", element: <LazyPage><PrimaNotaHub /></LazyPage> },
       { path: "prima-nota/:tipo/:anno/:mese", element: <LazyPage><PrimaNotaHub /></LazyPage> },
       { path: "dati-provvisori", element: <LazyPage><DatiProvvisoriPage /></LazyPage> },
-      
-      // === DIPENDENTI ===
-      { path: "hr", element: <LazyPage><HRHub /></LazyPage> },
-      { path: "dipendenti", element: <LazyPage><HRDipendenti /></LazyPage> },
-      { path: "dipendenti/:tab", element: <LazyPage><HRDipendenti /></LazyPage> },
-      { path: "dipendenti/:tab/:subtab", element: <LazyPage><HRDipendenti /></LazyPage> },
-      { path: "presenze", element: <LazyPage><DipendentiHub /></LazyPage> },
-      { path: "presenze/:dipendente", element: <LazyPage><DipendentiHub /></LazyPage> },
-      { path: "presenze/:dipendente/:mese", element: <LazyPage><DipendentiHub /></LazyPage> },
-      { path: "saldi-ferie-permessi", element: <LazyPage><DipendentiHub /></LazyPage> },
-      { path: "turni", element: <LazyPage><HRTurni /></LazyPage> },
-      { path: "acconti", element: <LazyPage><HRAcconti /></LazyPage> },
-      { path: "prima-nota-salari", element: <LazyPage><HRPrimaNotaSalari /></LazyPage> },
-      { path: "buste-paga", element: <LazyPage><HRBustePaga /></LazyPage> },
-      { path: "buste-paga/:competenza", element: <LazyPage><HRBustePaga /></LazyPage> },
-      { path: "missioni", element: <LazyPage><HRMissioni /></LazyPage> },
-      { path: "hr-documenti", element: <LazyPage><HRDocumenti /></LazyPage> },
-      { path: "ferie-permessi", element: <LazyPage><HRFeriePermessi /></LazyPage> },
-      { path: "presenze/attendance", element: <LazyPage><Attendance /></LazyPage> },
-      { path: "saldi-ferie-permessi", element: <LazyPage><SaldiFeriePermessi /></LazyPage> },
-      
-      // === CEDOLINI & TFR ===
-      { path: "paghe", element: <Navigate to="/cedolini" replace /> },
-      { path: "cedolini", element: <LazyPage><HRCedolini /></LazyPage> },
-      { path: "cedolini/:anno", element: <LazyPage><HRCedolini /></LazyPage> },
-      { path: "cedolini/:anno/:mese", element: <LazyPage><HRCedolini /></LazyPage> },
-      { path: "cedolini-calcolo", element: <LazyPage><HRCedolini /></LazyPage> },
-      { path: "prima-nota-salari", element: <LazyPage><HRCedolini /></LazyPage> },
-      { path: "prima-nota-salari/:anno/:mese", element: <LazyPage><HRCedolini /></LazyPage> },
-      { path: "tfr", element: <LazyPage><HRTFR /></LazyPage> },
-      { path: "tfr/:tab", element: <LazyPage><HRTFR /></LazyPage> },
       
       // === VEICOLI/NOLEGGIO ===
       { path: "noleggio", element: <LazyPage><VeicoliHub /></LazyPage> },

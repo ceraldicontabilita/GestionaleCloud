@@ -23,12 +23,17 @@ import { AnnoSelector } from '../../contexts/AnnoContext';
 import { COLORS } from '../../lib/utils';
 
 /* ─── Costanti navigazione (definite fuori dal componente → nessuna ricreazione) ─── */
+
+// URL dell'app esterna AppDipendenti (gestione HR spostata fuori dal gestionale).
+// Segnaposto: sostituire con l'indirizzo definitivo quando disponibile.
+const APP_DIPENDENTI_URL = 'https://app-dipendenti.example.com';
+
 const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', Icon: LayoutDashboard },
   { to: '/fatture', label: 'Fatture', Icon: FileText },
   { to: '/prima-nota', label: 'Prima Nota', Icon: BookOpen },
   { to: '/fornitori', label: 'Fornitori', Icon: Building2 },
-  { to: '/dipendenti', label: 'HR', Icon: Users },
+  { to: null, href: APP_DIPENDENTI_URL, label: 'HR', Icon: Users, external: true },
   {
     to: null,
     href: 'https://www.ceraldiapp.it',

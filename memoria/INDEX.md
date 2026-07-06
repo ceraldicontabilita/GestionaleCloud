@@ -31,7 +31,7 @@ f24_unificato (~83)               → Modelli F24                [NON f24_models
 assegni (~210)                    → Assegni emessi per carnet
 scadenziario_fornitori (~903)     → Scadenze fornitori
 
-# HR
+# Paghe (gestione HR spostata nell'app esterna AppDipendenti, stesso DB)
 bonifici_stipendi (~736)          → Bonifici stipendi
 prima_nota_salari (~696)          → Movimenti stipendiali
 presenze_mensili (~211)           → Da parser Libro Unico
@@ -67,9 +67,6 @@ veicoli_noleggio (~4)             → Flotta aziendale
 /fatture/corrispettivi  Corrispettivi giornalieri
 /prima-nota             Cassa + Banca + Provvisori
 /fornitori              Fornitori
-/dipendenti             HR dipendenti
-/cedolini               Buste paga (Per Mese / Per Dipendente)
-/presenze               Calendario presenze + import PDF Libro Unico
 /noleggio               Flotta + verbali + costi
 /magazzino              Giacenze + inventario + ricerca
 /riconciliazione        Riconciliazione bancaria unificata

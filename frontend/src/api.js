@@ -116,17 +116,6 @@ export async function createWarehouseProduct(data) {
   return r.data;
 }
 
-// Employees API
-export async function getEmployees(skip = 0, limit = 50) {
-  const r = await api.get(`/api/employees?skip=${skip}&limit=${limit}`);
-  return r.data;
-}
-
-export async function createEmployee(data) {
-  const r = await api.post('/api/employees', data);
-  return r.data;
-}
-
 // Cash Register API
 export async function getCashMovements(skip = 0, limit = 50) {
   const r = await api.get(`/api/cash?skip=${skip}&limit=${limit}`);

@@ -1,7 +1,7 @@
 # Ceraldi ERP (GestionaleCloud / gestionale2) — Riassunto applicazione
 
 **Gestionale web interno full-stack** di **Ceraldi Group S.R.L.** (Napoli), usato da un team di
-~16 persone. Owner: Enzo Ceraldi. Unifica contabilità, ciclo passivo, prima nota, HR, magazzino,
+~16 persone. Owner: Enzo Ceraldi. Unifica contabilità, ciclo passivo, prima nota, magazzino,
 noleggio auto, riconciliazione bancaria e tracciabilità HACCP, con **acquisizione automatica dei
 documenti da PEC e Gmail**.
 
@@ -49,7 +49,8 @@ Servizi core in `app/services/`:
 - **Fatture / Ciclo passivo** — fatture SDI (`invoices`), corrispettivi (unica fonte ricavi)
 - **Contabilità** — prima nota cassa/banca, piano conti, bilancio, F24, cespiti, IVA, chiusura
   esercizio, budget, mutui
-- **HR** — dipendenti, cedolini (buste paga Zucchetti), presenze (Libro Unico), bonifici stipendi
+- **Paghe (solo contabilità)** — la gestione HR è nell'app esterna AppDipendenti (stesso DB);
+  qui restano solo pipeline cedolini→prima nota salari/TFR e anagrafica in lettura
 - **Magazzino** — giacenze (`warehouse_inventory`), storico acquisti, dizionario prodotti
 - **Riconciliazione bancaria** — movimenti BPM, assegni, riconciliazione PayPal
 - **Noleggio auto** — flotta, verbali/sanzioni stradali (PagoPA)

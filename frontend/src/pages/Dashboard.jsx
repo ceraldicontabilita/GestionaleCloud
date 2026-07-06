@@ -50,7 +50,6 @@ export default function Dashboard() {
   const [scadenzeF24, setScadenzeF24] = useState(null);
 
   // Alert Limiti Giustificativi
-  const [alertGiustificativi, setAlertGiustificativi] = useState(null);
 
   // Alert Pagamenti (Stipendi + F24 DA_PAGARE)
   const [alertPagamenti, setAlertPagamenti] = useState(null);
@@ -209,11 +208,6 @@ export default function Dashboard() {
           })
           .catch(() => {});
 
-        // alert-limiti caricato SEPARATAMENTE perché può essere lento (non blocca gli altri)
-        api
-          .get(`/api/giustificativi/alert-limiti?soglia_percentuale=80&anno=${anno}`)
-          .then(res => setAlertGiustificativi(res.data))
-          .catch(() => {});
       } catch (e) {
         console.error('Dashboard error:', e);
         setErr('Backend non raggiungibile. Verifica che il server sia attivo.');
@@ -307,9 +301,6 @@ export default function Dashboard() {
       <WidgetAgenti />
 
       {/* Alert Limiti Giustificativi */}
-      {alertGiustificativi && alertGiustificativi.totale_alerts > 0 && (
-        <AlertGiustificativiWidget data={alertGiustificativi} />
-      )}
 
       {/* Alert Pagamenti DA_PAGARE (Stipendi + F24) */}
       {alertPagamenti && <AlertPagamentiWidget data={alertPagamenti} />}
@@ -1735,22 +1726,6 @@ export default function Dashboard() {
               ⏰ Report Scadenze
             </a>
             <a
-              href="/api/report-pdf/dipendenti"
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                padding: '8px 14px',
-                background: '#8b5cf6',
-                color: 'white',
-                borderRadius: 6,
-                textDecoration: 'none',
-                fontSize: 13,
-                fontWeight: 500,
-              }}
-            >
-              👥 Report Dipendenti
-            </a>
-            <a
               href="/api/report-pdf/magazzino"
               target="_blank"
               rel="noopener noreferrer"
@@ -1919,167 +1894,6 @@ function POSCalendarWidget({ data }) {
 }
 
 // Widget Alert Limiti Giustificativi
-function AlertGiustificativiWidget({ data }) {
-  if (!data || !data.alerts || data.alerts.length === 0) return null;
-
-  const criticalCount = data.alerts.filter(a => a.livello === 'critical').length;
-  const warningCount = data.alerts.filter(a => a.livello === 'warning').length;
-
-  // Mostra solo i primi 5 alert
-  const displayAlerts = data.alerts.slice(0, 5);
-
-  const getLevelStyle = livello => {
-    if (livello === 'critical') {
-      return { bg: '#fef2f2', border: '#fecaca', text: '#dc2626', badge: '#dc2626' };
-    }
-    return { bg: '#fffbeb', border: '#fde68a', text: '#d97706', badge: '#f59e0b' };
-  };
-
-  return (
-    <div
-      style={{
-        background: 'white',
-        border: '1px solid #e5e7eb',
-        borderRadius: 10,
-        padding: 16,
-        marginBottom: 12,
-        boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-      }}
-      data-testid="widget-alert-giustificativi"
-    >
-      {/* Header */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: 12,
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: '50%',
-              background: criticalCount > 0 ? '#fef2f2' : '#fffbeb',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <AlertTriangle size={18} color={criticalCount > 0 ? '#dc2626' : '#f59e0b'} />
-          </div>
-          <div>
-            <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#1f2937' }}>
-              Alert Ferie e Permessi
-            </h3>
-            <span style={{ fontSize: 11, color: '#6b7280' }}>
-              {data.dipendenti_coinvolti} dipendenti vicini al limite
-            </span>
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', gap: 8 }}>
-          {criticalCount > 0 && (
-            <span
-              style={{
-                padding: '4px 10px',
-                background: '#fef2f2',
-                color: '#dc2626',
-                borderRadius: 12,
-                fontSize: 11,
-                fontWeight: 600,
-              }}
-            >
-              {criticalCount} superati
-            </span>
-          )}
-          {warningCount > 0 && (
-            <span
-              style={{
-                padding: '4px 10px',
-                background: '#fffbeb',
-                color: '#d97706',
-                borderRadius: 12,
-                fontSize: 11,
-                fontWeight: 600,
-              }}
-            >
-              {warningCount} in esaurimento
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* Lista Alert */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {displayAlerts.map((alert, idx) => {
-          const style = getLevelStyle(alert.livello);
-          return (
-            <div
-              key={idx}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '10px 12px',
-                background: style.bg,
-                borderRadius: 8,
-                borderLeft: `3px solid ${style.badge}`,
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <Users size={14} color={style.text} />
-                <div>
-                  <div style={{ fontWeight: 500, fontSize: 13, color: '#1f2937' }}>
-                    {alert.employee_nome}
-                  </div>
-                  <div style={{ fontSize: 11, color: '#6b7280' }}>
-                    {alert.descrizione} ({alert.codice})
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ textAlign: 'right' }}>
-                <div
-                  style={{
-                    fontWeight: 600,
-                    fontSize: 13,
-                    color: style.text,
-                  }}
-                >
-                  {alert.percentuale}%
-                </div>
-                <div style={{ fontSize: 10, color: '#6b7280' }}>
-                  {alert.ore_usate}h / {alert.limite}h
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Footer */}
-      {data.totale_alerts > 5 && (
-        <div style={{ marginTop: 10, textAlign: 'center' }}>
-          <Link
-            to="/presenze?tab=giustificativi"
-            style={{
-              fontSize: 12,
-              color: '#3b82f6',
-              textDecoration: 'none',
-              fontWeight: 500,
-            }}
-          >
-            Vedi tutti ({data.totale_alerts} alert) →
-          </Link>
-        </div>
-      )}
-    </div>
-  );
-}
-
 // Widget Scadenze Component
 function ScadenzeWidget({ scadenze }) {
   const [pagaModal, setPagaModal] = useState(null);

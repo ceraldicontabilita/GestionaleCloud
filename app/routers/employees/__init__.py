@@ -1,16 +1,5 @@
-# Employees Module - Gestione Dipendenti
+# Employees Module — solo anagrafica dipendenti (in lettura per flussi non-HR).
+# La gestione HR completa è nell'app esterna AppDipendenti (stesso database).
 from . import dipendenti
-from . import employees_payroll
-from . import employee_contracts
-from . import buste_paga
-from . import shifts
-from . import staff
 
-__all__ = [
-    'dipendenti',
-    'employees_payroll',
-    'employee_contracts',
-    'buste_paga',
-    'shifts',
-    'staff'
-]
+__all__ = ['dipendenti']

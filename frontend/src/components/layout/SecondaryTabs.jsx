@@ -13,12 +13,6 @@ const TAB_CONFIGS = {
     { to: '/archivio-bonifici', label: 'Bonifici' },
     { to: '/gestione-assegni', label: 'Assegni' },
   ],
-  '/dipendenti': [
-    { to: '/dipendenti', label: 'Dipendenti', exact: true },
-    { to: '/cedolini', label: 'Cedolini' },
-    { to: '/presenze', label: 'Presenze' },
-    { to: '/tfr', label: 'TFR' },
-  ],
 };
 
 export default function SecondaryTabs() {
@@ -41,14 +35,6 @@ export default function SecondaryTabs() {
     // Check specific route patterns
     if (path.startsWith('/fatture-ricevute') || path.startsWith('/corrispettivi')) {
       return TAB_CONFIGS['/fatture'];
-    }
-    if (
-      path.startsWith('/cedolini') ||
-      path.startsWith('/presenze') ||
-      path.startsWith('/attendance') ||
-      path.startsWith('/tfr')
-    ) {
-      return TAB_CONFIGS['/dipendenti'];
     }
     if (path.startsWith('/archivio-bonifici') || path.startsWith('/gestione-assegni')) {
       return TAB_CONFIGS['/riconciliazione'];

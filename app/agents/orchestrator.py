@@ -5,7 +5,6 @@ logger = logging.getLogger(__name__)
 
 SCHEDULE = {
     "FiscaleSentinella": 600,    # ogni 10 minuti
-    "HRGuardiano": 1800,          # ogni 30 minuti
     "LearningCervello": 3600,     # ogni ora
 }
 
@@ -13,13 +12,11 @@ SCHEDULE = {
 async def run_agenti(db):
     from dateutil.parser import parse as parse_date
     from app.agents.fiscale_sentinella import FiscaleSentinella
-    from app.agents.hr_guardiano import HRGuardiano
     from app.agents.learning_brain import LearningCervello
 
     ora = datetime.now(timezone.utc)
     mappa = {
         "FiscaleSentinella": FiscaleSentinella,
-        "HRGuardiano": HRGuardiano,
         "LearningCervello": LearningCervello,
     }
 

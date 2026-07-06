@@ -224,63 +224,6 @@ export default function Scadenze() {
                 gap: 12,
               }}
             >
-              {alertWidget.libretti_sanitari?.scaduti > 0 && (
-                <div
-                  onClick={() => navigate('/dipendenti')}
-                  style={{
-                    background: 'rgba(255,255,255,0.15)',
-                    padding: 12,
-                    borderRadius: 8,
-                    cursor: 'pointer',
-                    transition: 'all 0.2s',
-                  }}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.25)')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.15)')}
-                >
-                  <div style={{ fontSize: 28, fontWeight: 700 }}>
-                    {alertWidget?.libretti_sanitari?.scaduti}
-                  </div>
-                  <div style={{ fontSize: 12, opacity: 0.9 }}>🔴 Libretti Scaduti</div>
-                </div>
-              )}
-              {alertWidget.libretti_sanitari?.in_scadenza_30gg > 0 && (
-                <div
-                  onClick={() => navigate('/dipendenti')}
-                  style={{
-                    background: 'rgba(255,255,255,0.15)',
-                    padding: 12,
-                    borderRadius: 8,
-                    cursor: 'pointer',
-                    transition: 'all 0.2s',
-                  }}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.25)')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.15)')}
-                >
-                  <div style={{ fontSize: 28, fontWeight: 700 }}>
-                    {alertWidget?.libretti_sanitari?.in_scadenza_30gg}
-                  </div>
-                  <div style={{ fontSize: 12, opacity: 0.9 }}>🟡 Libretti in Scadenza</div>
-                </div>
-              )}
-              {alertWidget.contratti?.in_scadenza_60gg > 0 && (
-                <div
-                  onClick={() => navigate('/dipendenti')}
-                  style={{
-                    background: 'rgba(255,255,255,0.15)',
-                    padding: 12,
-                    borderRadius: 8,
-                    cursor: 'pointer',
-                    transition: 'all 0.2s',
-                  }}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.25)')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.15)')}
-                >
-                  <div style={{ fontSize: 28, fontWeight: 700 }}>
-                    {alertWidget?.contratti?.in_scadenza_60gg}
-                  </div>
-                  <div style={{ fontSize: 12, opacity: 0.9 }}>📋 Contratti in Scadenza</div>
-                </div>
-              )}
               {alertWidget.f24?.da_pagare_30gg > 0 && (
                 <div
                   onClick={() => navigate('/contabilita/calendario')}

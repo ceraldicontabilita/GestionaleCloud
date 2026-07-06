@@ -27,14 +27,12 @@ def register_all_routers(app: FastAPI) -> None:
     _register_ai(app)
     _register_tracciabilita(app)
 
-    # Sistema relazionale (Chat 9e) + Fascicolo dipendenti (Chat 9 fix)
+    # Sistema relazionale (Chat 9e)
     try:
         from app.routers.partite_aperte_api import router as partite_router
         from app.routers.riconciliazione_stats_api import router as ric_stats_router
-        from app.routers.employees.fascicolo_dipendente import router as fascicolo_router
         app.include_router(partite_router, prefix="/api", tags=["Partite Aperte"])
         app.include_router(ric_stats_router, prefix="/api", tags=["Riconciliazione Stats"])
-        app.include_router(fascicolo_router, prefix="/api", tags=["Fascicolo Dipendente"])
     except Exception as e:
         logger.warning(f"Router relazionali non registrati: {e}")
 
@@ -205,41 +203,21 @@ def _register_invoices(app: FastAPI):
         import logging; logging.getLogger(__name__).warning(f"Router fatture_foto_ocr non registrato: {e}")
 
 
-# ─── Employees Module ────────────────────────────────────────────────────────
+# ─── Employees Module (ridotto) ──────────────────────────────────────────────
+# La gestione HR è stata spostata nell'app esterna AppDipendenti (stesso DB).
+# Restano solo i router usati da flussi NON-HR di questo gestionale:
+#   - dipendenti: anagrafica in lettura (verbali noleggio, inserimento rapido, portale)
+#   - tfr: riepilogo fondo TFR mostrato in Gestione Cespiti (contabilità)
+#   - libro_unico_parser / f24_parser: pipeline paghe -> prima nota/TFR e
+#     widget "buste paga / distinte F24 da pagare" della Dashboard
 def _register_employees(app: FastAPI):
-    from app.routers.employees import dipendenti, employees_payroll, employee_contracts, buste_paga, shifts, staff, giustificativi
-    from app.routers import payroll, cedolini, cedolini_riconciliazione, tfr, attendance, dimissioni
-    from app.routers import salari_unificati_v2, bonifici_stipendi, libro_unico_parser, f24_parser
-    from app.routers.attendance_module import presenze as attendance_presenze
-    
+    from app.routers.employees import dipendenti
+    from app.routers import tfr, libro_unico_parser, f24_parser
+
     app.include_router(dipendenti.router, prefix="/api/dipendenti", tags=["Dipendenti"])
-    app.include_router(employees_payroll.router, prefix="/api/employees", tags=["Employees Payroll"])
-    app.include_router(employee_contracts.router, prefix="/api/contracts", tags=["Contracts"])
-    app.include_router(buste_paga.router, prefix="/api", tags=["Buste Paga"])
-    app.include_router(shifts.router, prefix="/api/shifts", tags=["Shifts"])
-    app.include_router(staff.router, prefix="/api/staff", tags=["Staff"])
-    app.include_router(giustificativi.router, prefix="/api/giustificativi", tags=["Giustificativi"])
-    app.include_router(payroll.router, prefix="/api/payroll", tags=["Payroll"])
-    # IMPORTANTE: cedolini_riconciliazione PRIMA di cedolini perché quest'ultimo
-    # ha una catch-all GET "/{cedolino_id}" che intercetterebbe le route specifiche
-    # (lista-completa, riepilogo-pagamenti, ...).
-    app.include_router(cedolini_riconciliazione.router, prefix="/api/cedolini", tags=["Cedolini Riconciliazione"])
-    app.include_router(cedolini.router, prefix="/api/cedolini", tags=["Cedolini"])
     app.include_router(tfr.router, prefix="/api/tfr", tags=["TFR"])
-    app.include_router(attendance.router, prefix="/api/attendance", tags=["Attendance"])
-    app.include_router(attendance_presenze.router, prefix="/api/attendance", tags=["Presenze"])
-    app.include_router(salari_unificati_v2.router, prefix="/api/salari-v2", tags=["Salari V2"])
-    app.include_router(bonifici_stipendi.router, tags=["Bonifici Stipendi"])
-    app.include_router(dimissioni.router, prefix="/api/dimissioni", tags=["Dimissioni"])
     app.include_router(libro_unico_parser.router, prefix="/api/paghe", tags=["Libro Unico Parser"])
     app.include_router(f24_parser.router, prefix="/api/paghe", tags=["F24 Parser"])
-
-    # Timbrature (attendance_module)
-    try:
-        from app.routers.attendance_module.timbrature import router as timbrature_router
-        app.include_router(timbrature_router, prefix="/api/attendance", tags=["Timbrature"])
-    except Exception as e:
-        logger.warning(f"Router timbrature non registrato: {e}")
 
 
 # ─── Reports Module ──────────────────────────────────────────────────────────
