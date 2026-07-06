@@ -65,9 +65,6 @@ async def get_summary(
         async def get_products_count():
             return await db[Collections.WAREHOUSE_PRODUCTS].count_documents({})
         
-        async def get_haccp_count():
-            return await db[Collections.HACCP_TEMPERATURES].count_documents({})
-        
         async def get_employees_count():
             return await db[Collections.EMPLOYEES].count_documents({})
         
@@ -86,7 +83,6 @@ async def get_summary(
             get_invoices_amount(),
             get_suppliers_count(),
             get_products_count(),
-            get_haccp_count(),
             get_employees_count(),
             get_reconciled_count()
         )
@@ -95,11 +91,10 @@ async def get_summary(
             "anno": anno,
             "invoices_total": results[0],
             "invoices_amount": round(results[1] or 0, 2),
-            "reconciled": results[6],
+            "reconciled": results[5],
             "products": results[3],
-            "haccp_items": results[4],
             "suppliers": results[2],
-            "employees": results[5]
+            "employees": results[4]
         }
         
         # Salva in cache per 60 secondi
@@ -115,7 +110,6 @@ async def get_summary(
             "invoices_amount": 0,
             "reconciled": 0,
             "products": 0,
-            "haccp_items": 0,
             "suppliers": 0,
             "employees": 0
         }

@@ -201,53 +201,6 @@ async def get_f24_dashboard_public(
     }
 
 
-# ============== HACCP BASIC (Legacy) ==============
-
-OPERATORI_HACCP = ["VALERIO", "VINCENZO", "POCCI"]
-AZIENDA_INFO = {
-    "ragione_sociale": "Ceraldi Group SRL",
-    "indirizzo": "Piazza Carità 14 - 80134 Napoli (NA)",
-    "piva": "04523831214",
-    "telefono": "+393937415426",
-    "email": "ceraldigroupsrl@gmail.com"
-}
-
-
-@router.get("/haccp/config")
-async def get_haccp_config() -> Dict[str, Any]:
-    """Configurazione HACCP."""
-    return {
-        "operatori": OPERATORI_HACCP,
-        "temperature_limits": {"frigo": {"min": 2, "max": 5}, "congelatori": {"min": -25, "max": -15}},
-        "azienda": AZIENDA_INFO
-    }
-
-
-@router.get("/haccp/temperatures")
-async def list_temperatures(skip: int = 0, limit: int = 10000) -> List[Dict[str, Any]]:
-    """Lista temperature HACCP legacy."""
-    db = Database.get_db()
-    return await db[Collections.HACCP_TEMPERATURES].find({}, {"_id": 0}).sort("recorded_at", -1).skip(skip).limit(limit).to_list(limit)
-
-
-@router.post("/haccp/temperatures")
-async def create_temperature(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
-    """Crea record temperatura HACCP."""
-    db = Database.get_db()
-    temp = {
-        "id": str(uuid.uuid4()),
-        "equipment_name": data.get("equipment_name", ""),
-        "temperature": data.get("temperature", 0),
-        "location": data.get("location", ""),
-        "notes": data.get("notes", ""),
-        "recorded_at": data.get("recorded_at", datetime.now(timezone.utc).isoformat()),
-        "created_at": datetime.now(timezone.utc).isoformat()
-    }
-    await db[Collections.HACCP_TEMPERATURES].insert_one(temp.copy())
-    temp.pop("_id", None)
-    return temp
-
-
 # ============== INVOICES ==============
 
 @router.get("/invoices")

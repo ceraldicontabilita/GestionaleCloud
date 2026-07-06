@@ -2,9 +2,14 @@
 Fatture Module - Gestione Fatture Ricevute (Passive).
 Modulo suddiviso per funzionalità:
 - helpers: Funzioni di utilità condivise
-- import_xml: Import fatture XML singole, multiple, ZIP
 - crud: Archivio, visualizzazione, aggiornamento
 - pagamento: Pagamento manuale, cambio metodo, riconciliazione
+
+L'import fatture XML/P7M passa dalla pipeline unica in
+app/routers/invoices/fatture_upload.py (Drive sync, upload manuale, email).
+Il vecchio import_xml.py di questo modulo era una pipeline duplicata mai
+collegata al frontend (nessun bottone la chiamava) che registrava anche
+lotti HACCP nel gestionale: rimossa.
 """
 from fastapi import APIRouter, UploadFile, File, Query
 from typing import Dict, Any, List, Optional
@@ -12,9 +17,6 @@ from typing import Dict, Any, List, Optional
 router = APIRouter()
 
 # Import functions from modules
-from .import_xml import (
-    import_fattura_xml, import_fatture_xml_multipli, import_fatture_zip
-)
 from .crud import (
     get_archivio_fatture, view_fattura_assoinvoice, download_pdf_allegato,
     get_fattura_dettaglio, update_fattura, get_fornitori, get_statistiche,
@@ -29,11 +31,6 @@ from .pagamento import (
 )
 
 # === ROTTE STATICHE (devono venire PRIMA delle dinamiche) ===
-
-# Import
-router.add_api_route("/import-xml", import_fattura_xml, methods=["POST"])
-router.add_api_route("/import-xml-multipli", import_fatture_xml_multipli, methods=["POST"])
-router.add_api_route("/import-zip", import_fatture_zip, methods=["POST"])
 
 # Archivio e Lista
 router.add_api_route("/archivio", get_archivio_fatture, methods=["GET"])

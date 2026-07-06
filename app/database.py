@@ -345,6 +345,3 @@ class Collections:
     # Settings
     WAREHOUSE_SETTINGS = "warehouse_settings"
     SYSTEM_SETTINGS = "system_settings"
-    
-    # HACCP
-    HACCP_TEMPERATURES = "haccp_temperatures"

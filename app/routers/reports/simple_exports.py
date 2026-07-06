@@ -267,38 +267,6 @@ async def export_salari(
 
 
 @router.get(
-    "/haccp",
-    summary="Export HACCP Temperature"
-)
-async def export_haccp(
-    format: str = Query("xlsx")
-):
-    """Export registrazioni HACCP."""
-    db = Database.get_db()
-    
-    records = await db["haccp_temperatures"].find({}, {"_id": 0}).sort("timestamp", -1).to_list(10000)
-    
-    if format == "json":
-        return {"records": records, "count": len(records)}
-    
-    import pandas as pd
-    df = pd.DataFrame(records)
-    if df.empty:
-        df = pd.DataFrame(columns=["timestamp", "zona", "temperatura", "operatore"])
-    
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, sheet_name="HACCP", index=False)
-    output.seek(0)
-    
-    return StreamingResponse(
-        output,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f"attachment; filename=haccp_{date.today()}.xlsx"}
-    )
-
-
-@router.get(
     "/riconciliazione",
     summary="Export Riconciliazione Bancaria"
 )

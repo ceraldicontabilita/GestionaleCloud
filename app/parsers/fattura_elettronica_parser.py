@@ -2,7 +2,6 @@
 Parser per Fatture Elettroniche Italiane (FatturaPA)
 Supporta il formato XML FPR12 dell'Agenzia delle Entrate
 Gestisce tutti i formati: con namespace, con prefissi, senza namespace.
-Include estrazione intelligente lotti e scadenze dalla descrizione.
 """
 import xml.etree.ElementTree as ET
 from typing import Dict, Any, List, Optional
@@ -11,134 +10,6 @@ import logging
 import re
 
 logger = logging.getLogger(__name__)
-
-
-def estrai_lotto_fornitore(descrizione: str) -> Optional[str]:
-    """
-    Estrae il codice lotto del fornitore dalla descrizione della riga fattura.
-    Cerca pattern comuni: 'Lotto:', 'L.', 'Batch:', 'LOT:', etc.
-    
-    Returns:
-        Codice lotto estratto o None se non trovato
-    """
-    if not descrizione:
-        return None
-    
-    # Pattern comuni per lotti fornitori (case-insensitive)
-    patterns = [
-        r'LOTTO[:\s]+([A-Z0-9\-\/\.]+)',          # LOTTO: ABC123
-        r'LOT[:\s]+([A-Z0-9\-\/\.]+)',             # LOT: ABC123
-        r'L\.\s*([A-Z0-9\-\/\.]+)',                # L. ABC123
-        r'L[:\s]+([A-Z0-9\-\/\.]+)',               # L: ABC123
-        r'BATCH[:\s]+([A-Z0-9\-\/\.]+)',           # BATCH: ABC123
-        r'N\.?\s*LOTTO[:\s]+([A-Z0-9\-\/\.]+)',    # N.LOTTO: ABC123
-        r'LOTTO\s+N\.?\s*([A-Z0-9\-\/\.]+)',       # LOTTO N. ABC123
-        r'\bLOT\s*([A-Z0-9]{4,})\b',               # LOT ABC123 (almeno 4 caratteri)
-        r'\(L[:\s]*([A-Z0-9\-\/\.]+)\)',           # (L: ABC123)
-        r'\[LOTTO[:\s]*([A-Z0-9\-\/\.]+)\]',       # [LOTTO: ABC123]
-        r'PARTITA[:\s]+([A-Z0-9\-\/\.]+)',         # PARTITA: ABC123
-        r'\b(L\d{2}[A-Z]\d{3,})\b',                # L25A001 (formato comune)
-        r'\b([A-Z]{2,3}\d{6,}[A-Z]?)\b',           # AB123456 o AB123456A
-    ]
-    
-    descrizione_upper = descrizione.upper()
-    
-    for pattern in patterns:
-        match = re.search(pattern, descrizione_upper)
-        if match:
-            lotto = match.group(1).strip()
-            # Valida che il lotto abbia almeno 3 caratteri alfanumerici
-            if len(lotto) >= 3 and re.search(r'[A-Z0-9]', lotto):
-                return lotto
-    
-    return None
-
-
-def estrai_scadenza_prodotto(descrizione: str) -> Optional[str]:
-    """
-    Estrae la data di scadenza dalla descrizione della riga fattura.
-    Cerca pattern comuni: 'Scad:', 'Exp:', date in vari formati.
-    
-    Returns:
-        Data scadenza in formato ISO (YYYY-MM-DD) o None se non trovata
-    """
-    if not descrizione:
-        return None
-    
-    descrizione_upper = descrizione.upper()
-    
-    # Pattern per date con prefisso (SCAD, EXP, etc.)
-    patterns_prefisso = [
-        r'SCAD[A-Z]*[:\.\s]+(\d{1,2}[\-/\.]\d{1,2}[\-/\.]\d{2,4})',
-        r'EXP[A-Z]*[:\.\s]+(\d{1,2}[\-/\.]\d{1,2}[\-/\.]\d{2,4})',
-        r'SCADENZA[:\.\s]+(\d{1,2}[\-/\.]\d{1,2}[\-/\.]\d{2,4})',
-        r'TMC[:\.\s]+(\d{1,2}[\-/\.]\d{1,2}[\-/\.]\d{2,4})',
-        r'BEST\s*BEFORE[:\.\s]+(\d{1,2}[\-/\.]\d{1,2}[\-/\.]\d{2,4})',
-        r'BB[:\.\s]+(\d{1,2}[\-/\.]\d{1,2}[\-/\.]\d{2,4})',
-    ]
-    
-    for pattern in patterns_prefisso:
-        match = re.search(pattern, descrizione_upper)
-        if match:
-            try:
-                data_str = match.group(1)
-                return normalizza_data(data_str)
-            except (ValueError, IndexError):
-                continue
-    
-    # Pattern per date standalone (DD/MM/YYYY o simili)
-    patterns_date = [
-        r'\b(\d{2}[\-/\.]\d{2}[\-/\.]\d{4})\b',  # DD/MM/YYYY o DD-MM-YYYY
-        r'\b(\d{2}[\-/\.]\d{2}[\-/\.]\d{2})\b',  # DD/MM/YY
-    ]
-    
-    for pattern in patterns_date:
-        matches = re.findall(pattern, descrizione_upper)
-        for match in matches:
-            try:
-                data_normalizzata = normalizza_data(match)
-                # Verifica che sia una data futura (probabile scadenza)
-                if data_normalizzata:
-                    data_obj = datetime.strptime(data_normalizzata, "%Y-%m-%d")
-                    if data_obj > datetime.now():
-                        return data_normalizzata
-            except (ValueError, IndexError):
-                continue
-    
-    return None
-
-
-def normalizza_data(data_str: str) -> Optional[str]:
-    """
-    Converte una data in formato ISO (YYYY-MM-DD).
-    Supporta: DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY, DD/MM/YY
-    """
-    if not data_str:
-        return None
-    
-    # Sostituisce tutti i separatori con /
-    data_str = data_str.replace('-', '/').replace('.', '/')
-    parts = data_str.split('/')
-    
-    if len(parts) != 3:
-        return None
-    
-    try:
-        giorno = int(parts[0])
-        mese = int(parts[1])
-        anno = int(parts[2])
-        
-        # Gestisce anno a 2 cifre
-        if anno < 100:
-            anno = 2000 + anno if anno < 50 else 1900 + anno
-        
-        # Valida la data
-        if 1 <= giorno <= 31 and 1 <= mese <= 12 and 2000 <= anno <= 2100:
-            return f"{anno:04d}-{mese:02d}-{giorno:02d}"
-    except (ValueError, IndexError):
-        pass
-    
-    return None
 
 
 def clean_xml_namespaces(xml_content: str) -> str:
@@ -340,17 +211,11 @@ def parse_fattura_xml(xml_content: str) -> Dict[str, Any]:
             if ordine:
                 dati_ordine.append(ordine)
         
-        # Estrai linee dettaglio con estrazione intelligente lotto/scadenza
+        # Estrai linee dettaglio
         linee = []
         for linea in find_all_elements(body, 'DettaglioLinee'):
             descrizione = get_text(linea, 'Descrizione')
-            
-            # Estrai lotto fornitore dalla descrizione
-            lotto_fornitore = estrai_lotto_fornitore(descrizione)
-            
-            # Estrai data scadenza dalla descrizione
-            scadenza_prodotto = estrai_scadenza_prodotto(descrizione)
-            
+
             linea_data = {
                 "numero_linea": get_text(linea, 'NumeroLinea'),
                 "descrizione": descrizione,
@@ -360,10 +225,6 @@ def parse_fattura_xml(xml_content: str) -> Dict[str, Any]:
                 "prezzo_totale": get_text(linea, 'PrezzoTotale', '0'),
                 "aliquota_iva": get_text(linea, 'AliquotaIVA', '0'),
                 "natura": get_text(linea, 'Natura'),
-                # Dati estratti per tracciabilità HACCP
-                "lotto_fornitore": lotto_fornitore,
-                "scadenza_prodotto": scadenza_prodotto,
-                "lotto_estratto_automaticamente": lotto_fornitore is not None,
             }
             linee.append(linea_data)
         

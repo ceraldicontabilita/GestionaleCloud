@@ -130,9 +130,6 @@ async def salva_dettaglio_righe(db, fattura_id: str, linee: List[Dict]) -> int:
             "prezzo_totale": prezzo_totale,
             "aliquota_iva": aliquota_iva,
             "natura_iva": linea.get("natura", ""),
-            "lotto_fornitore": linea.get("lotto_fornitore"),
-            "data_scadenza": linea.get("scadenza_prodotto"),
-            "lotto_estratto_auto": linea.get("lotto_estratto_automaticamente", False),
             "created_at": datetime.now(timezone.utc).isoformat()
         }
         righe_da_inserire.append(riga)

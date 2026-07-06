@@ -1,7 +1,6 @@
 """
 Fatture XML Upload Router - Gestione upload fatture elettroniche.
 Supporta upload singolo XML, multiplo XML e file ZIP.
-Include popolamento automatico tracciabilità HACCP.
 Include riconciliazione automatica con estratto conto per numeri assegni.
 """
 from fastapi import APIRouter, HTTPException, UploadFile, File, Query, Body

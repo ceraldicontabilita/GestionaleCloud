@@ -22,7 +22,6 @@ class EmailService:
     Sends notifications for:
     - Invoice payment reminders
     - Low stock alerts
-    - HACCP violations
     - Employee document expiry
     - Payroll ready notifications
     """
@@ -98,25 +97,6 @@ class EmailService:
         subject = f"⚠️ Allarme Scorte Basse - {len(products)} prodotti"
         
         body = self._build_low_stock_html(products)
-        
-        return await self._send_email(to_email, subject, body)
-    
-    async def send_haccp_violation_alert(
-        self,
-        violations: List[Dict[str, Any]],
-        to_email: str
-    ) -> bool:
-        """
-        Send HACCP violation alert.
-        
-        Critical: temperatures out of range.
-        """
-        if not self.enabled:
-            return False
-        
-        subject = f"🚨 ALLARME HACCP - {len(violations)} Violazioni"
-        
-        body = self._build_haccp_alert_html(violations)
         
         return await self._send_email(to_email, subject, body)
     
@@ -309,42 +289,6 @@ class EmailService:
                 <a href="#" style="background-color: #dc3545; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">
                     Visualizza Magazzino
                 </a>
-            </p>
-        </body>
-        </html>
-        """
-    
-    def _build_haccp_alert_html(self, violations: List[Dict[str, Any]]) -> str:
-        """Build HTML for HACCP alert."""
-        violations_html = ""
-        for violation in violations[:5]:
-            violations_html += f"""
-            <tr style="background-color: #ffe6e6;">
-                <td style="padding: 8px; border: 1px solid #ddd;">{violation.get('equipment_type')}</td>
-                <td style="padding: 8px; border: 1px solid #ddd;">{violation.get('temperature')}°C</td>
-                <td style="padding: 8px; border: 1px solid #ddd;">{violation.get('recorded_at')}</td>
-            </tr>
-            """
-        
-        return f"""
-        <html>
-        <body style="font-family: Arial, sans-serif;">
-            <h2 style="color: #dc3545;">🚨 ALLARME HACCP</h2>
-            <p><strong>Rilevate temperature fuori norma!</strong></p>
-            <table style="border-collapse: collapse; width: 100%; max-width: 600px;">
-                <thead>
-                    <tr style="background-color: #dc3545; color: white;">
-                        <th style="padding: 8px; border: 1px solid #ddd;">Attrezzatura</th>
-                        <th style="padding: 8px; border: 1px solid #ddd;">Temperatura</th>
-                        <th style="padding: 8px; border: 1px solid #ddd;">Ora</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {violations_html}
-                </tbody>
-            </table>
-            <p style="margin-top: 20px; color: #dc3545;">
-                <strong>AZIONE RICHIESTA: Verificare immediatamente le attrezzature!</strong>
             </p>
         </body>
         </html>

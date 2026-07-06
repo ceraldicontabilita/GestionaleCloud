@@ -312,7 +312,6 @@ async def get_categorie() -> Dict[str, Any]:
         "scadenze",
         "dipendenti",
         "noleggio",
-        "haccp",
         "altro"
     ]
     

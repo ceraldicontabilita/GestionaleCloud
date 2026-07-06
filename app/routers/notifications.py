@@ -22,7 +22,7 @@ router = APIRouter()
 )
 async def get_all_notifications(
     limit: int = Query(100, ge=1, le=500),
-    tipo: Optional[str] = Query(None, description="Tipo notifica: scadenza, alert, verbale, haccp")
+    tipo: Optional[str] = Query(None, description="Tipo notifica: scadenza, alert, verbale")
 ) -> List[Dict[str, Any]]:
     """Get all notifications."""
     db = Database.get_db()
