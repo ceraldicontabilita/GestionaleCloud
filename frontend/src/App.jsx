@@ -3,7 +3,6 @@ import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import api, { setAuthToken } from "./api";
 import ErrorBoundary from "./components/ErrorBoundary";
 import TopNav from "./components/layout/TopNav";
-import SecondaryTabs from "./components/layout/SecondaryTabs";
 import { UploadProvider } from "./contexts/UploadContext";
 import { UploadStatusBar } from "./components/UploadStatusBar";
 import ChatIntelligente from "./components/ChatIntelligente";
@@ -20,7 +19,12 @@ const MOBILE_NAV = [
   { to: "/more", label: "Menu", icon: "☰", isMenu: true },
 ];
 
-// Full menu items for mobile overlay
+// URL dell'app esterna AppDipendenti (gestione HR spostata fuori dal gestionale).
+const APP_DIPENDENTI_URL = "https://appdipendenti.onrender.com";
+
+// Full menu items for mobile overlay.
+// NOTA: elenco mantenuto a mano in parallelo a NAV_ITEMS/ALTRO_ITEMS di TopNav.jsx
+// (menu desktop) — se aggiungi una voce lì, aggiungila anche qui o sparisce su mobile.
 const ALL_NAV_ITEMS = [
   { to: "/", label: "Dashboard", icon: "📊" },
   { to: "/rapido", label: "Inserimento Rapido", icon: "📱" },
@@ -28,10 +32,13 @@ const ALL_NAV_ITEMS = [
   { to: "/fornitori", label: "Fornitori", icon: "🏢" },
   { to: "/prima-nota", label: "Prima Nota", icon: "📒" },
   { to: "/riconciliazione", label: "Riconciliazione", icon: "🏦" },
+  { to: "/riconciliazione/paypal", label: "PayPal", icon: "💳" },
+  { to: "/riconciliazione/assegni", label: "Assegni", icon: "📑" },
   { to: "/bilancio", label: "Bilancio", icon: "📊" },
   { to: "/mutui", label: "Mutui", icon: "🏦" },
   { to: "/contabilita-hub", label: "Contabilità", icon: "📈" },
   { to: "/magazzino", label: "Magazzino", icon: "📦" },
+  { to: "/noleggio", label: "Noleggio Auto", icon: "🚗" },
   { to: "/scadenze", label: "Scadenze", icon: "🔔" },
   { to: "/todo", label: "To-Do", icon: "📝" },
   { to: "/import-documenti", label: "Import", icon: "📥" },
@@ -39,6 +46,8 @@ const ALL_NAV_ITEMS = [
   { to: "/strumenti", label: "Strumenti", icon: "🔧" },
   { to: "/integrazioni", label: "Integrazioni", icon: "🔗" },
   { to: "/agenti", label: "Agenti AI", icon: "🤖" },
+  { to: null, href: APP_DIPENDENTI_URL, label: "HR", icon: "👥", external: true },
+  { to: null, href: "https://www.ceraldiapp.it", label: "Tracciabilità", icon: "🧪", external: true },
   { to: "/admin", label: "Admin", icon: "⚙️" },
 ];
 
@@ -195,16 +204,30 @@ export default function App() {
               </div>
               <div className="mobile-menu-items">
                 {ALL_NAV_ITEMS.map((item) => (
-                  <NavLink
-                    key={item.to}
-                    to={item.to}
-                    end={item.to === '/'}
-                    className={({ isActive }) => `mobile-menu-item ${isActive ? "active" : ""}`}
-                    onClick={() => setShowMobileMenu(false)}
-                  >
-                    <span style={{ fontSize: 20 }}>{item.icon}</span>
-                    <span>{item.label}</span>
-                  </NavLink>
+                  item.external ? (
+                    <a
+                      key={item.href}
+                      href={item.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mobile-menu-item"
+                      onClick={() => setShowMobileMenu(false)}
+                    >
+                      <span style={{ fontSize: 20 }}>{item.icon}</span>
+                      <span>{item.label}</span>
+                    </a>
+                  ) : (
+                    <NavLink
+                      key={item.to}
+                      to={item.to}
+                      end={item.to === '/'}
+                      className={({ isActive }) => `mobile-menu-item ${isActive ? "active" : ""}`}
+                      onClick={() => setShowMobileMenu(false)}
+                    >
+                      <span style={{ fontSize: 20 }}>{item.icon}</span>
+                      <span>{item.label}</span>
+                    </NavLink>
+                  )
                 ))}
               </div>
             </div>
