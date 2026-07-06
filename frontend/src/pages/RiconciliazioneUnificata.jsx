@@ -448,31 +448,6 @@ export default function RiconciliazioneUnificata() {
     }
   };
 
-  // Assegna automaticamente metodi pagamento basandosi su estratto conto
-  const handleAssegnaMetodiAuto = async () => {
-    setProcessing('assegna-metodi');
-    try {
-      const res = await api.post('/api/riconciliazione-auto/assegna-metodi-auto');
-      const data = res.data;
-
-      alert(
-        `✅ Assegnazione completata!\n\n` +
-          `📊 Risultati:\n` +
-          `• Bonifico: ${data.assegnate_bonifico || 0}\n` +
-          `• Assegno: ${data.assegnate_assegno || 0}\n` +
-          `• Cassa: ${data.assegnate_cassa || 0}\n` +
-          `• Sospese: ${data.lasciate_sospese || 0}\n` +
-          `\n📅 Ultimo estratto conto: ${data.data_ultimo_estratto_conto || 'N/D'}`
-      );
-
-      loadAllData();
-    } catch (e) {
-      alert('Errore: ' + (e.response?.data?.detail || e.message));
-    } finally {
-      setProcessing(null);
-    }
-  };
-
   if (loading) {
     return (
       <div style={{ padding: 'clamp(12px, 3vw, 20px)' }}>
@@ -774,24 +749,6 @@ export default function RiconciliazioneUnificata() {
             </button>
           );
         })}
-        <button
-          onClick={handleAssegnaMetodiAuto}
-          disabled={processing === 'assegna-metodi'}
-          title="Assegna i metodi di pagamento alle fatture in base all'estratto conto"
-          style={{
-            marginLeft: 'auto',
-            padding: '12px 20px',
-            background: '#0f2744',
-            color: 'white',
-            border: 'none',
-            borderRadius: 8,
-            fontWeight: 600,
-            cursor: 'pointer',
-            fontSize: 13,
-          }}
-        >
-          {processing === 'assegna-metodi' ? '⏳ Assegnazione...' : '⚙️ Assegna Metodi Auto'}
-        </button>
       </div>
 
       {/* Tab Content */}

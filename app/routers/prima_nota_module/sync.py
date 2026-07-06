@@ -20,6 +20,27 @@ logger = logging.getLogger(__name__)
 TIPI_FATTURA_ATTIVA = ["TD24", "TD25", "TD26", "TD27"]
 TIPI_NOTA_CREDITO = ["TD04", "TD08"]
 
+# Metodi fornitore -> destinazione Prima Nota (REGOLA UNICA: il metodo
+# fornitore comanda). Usata sia dalla pagina Provvisori (get_fatture_provvisorie)
+# sia dal job schedulato (auto_conferma_provvisori_per_metodo): prima erano
+# due liste diverse e un fornitore con metodo "assegno"/"carta"/"altro" veniva
+# auto-confermato aprendo la pagina ma restava bloccato in provvisori nel job
+# automatico (o viceversa) — incoerenza silenziosa tra i due percorsi.
+METODI_CASSA = {"cassa", "contanti", "cash", "contante"}
+METODI_BANCA = {"bonifico", "banca", "riba", "sepa", "rid", "sdd", "assegno"}
+# paypal/carta/compensazione/misto/sospesa/altro/senza-metodo: restano in
+# provvisoria in attesa di un match con l'estratto conto o di una decisione manuale.
+
+
+def classifica_metodo_fornitore(metodo: str) -> str:
+    """Ritorna 'cassa' | 'banca' | 'sospesa' per un metodo pagamento fornitore."""
+    m = (metodo or "").strip().lower()
+    if m in METODI_CASSA:
+        return "cassa"
+    if m in METODI_BANCA:
+        return "banca"
+    return "sospesa"
+
 
 def determina_tipo_movimento_fattura(fattura: Dict) -> tuple:
     """Determina tipo movimento (entrata/uscita) e categoria dalla fattura."""
@@ -587,23 +608,12 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
         if stato_pag == "sospesa":
             suggerimento = "sospesa"
             stato_match = "in_attesa"
-        # PRIORITÀ 1 (UNICA): Metodo dal fornitore in anagrafica
+        # PRIORITÀ 1 (UNICA): Metodo dal fornitore in anagrafica, con la
+        # STESSA classificazione usata dal job automatico (classifica_metodo_fornitore)
         # REGOLA: il metodo XML della fattura NON viene MAI usato
-        elif metodo_per_piva.get(piva, ""):
-            metodo_fornitore = metodo_per_piva.get(piva, "")
-            if metodo_fornitore in ["contanti", "cassa"]:
-                suggerimento = "cassa"
-                stato_match = "confermato"
-            elif metodo_fornitore in ["sospesa", "misto"]:
-                suggerimento = "sospesa"
-                stato_match = "in_attesa"
-            else:
-                suggerimento = "banca"
-                stato_match = "confermato"
-        # NESSUN METODO FORNITORE → sospesa (da decidere manualmente)
         else:
-            suggerimento = "sospesa"
-            stato_match = "in_attesa"
+            suggerimento = classifica_metodo_fornitore(metodo_per_piva.get(piva, ""))
+            stato_match = "confermato" if suggerimento != "sospesa" else "in_attesa"
         
         # Se banca: cerca INTELLIGENTEMENTE nell'estratto conto
         movimento_match = None
@@ -1037,18 +1047,13 @@ async def auto_conferma_provvisori_per_metodo(
     anno: int = Query(..., description="Anno da processare"),
 ) -> Dict[str, Any]:
     """Auto-confermazione bulk delle fatture provvisorie basata sul metodo pagamento
-    dell'anagrafica fornitore.
-
-    REGOLE (come da specifiche utente):
-      - Fornitore con metodo 'cassa' o 'contanti'
-          → tutte le fatture (pagate o no) vanno in Prima Nota CASSA
-      - Fornitore con metodo 'banca' o 'bonifico'
-          → solo le fatture PAGATE vanno in Prima Nota BANCA
-          → le fatture NON pagate restano in Provvisoria (aspettano il match EC)
-      - Fornitore con metodo 'paypal', 'carta', 'carta_di_credito', 'misto'
-          → restano in Provvisoria (aspettano EC PayPal / carta)
-      - Fornitore senza metodo in anagrafica
-          → resta in Provvisoria
+    dell'anagrafica fornitore (vedi classifica_metodo_fornitore per la regola unica,
+    condivisa con la pagina Provvisori):
+      - cassa/contanti → sempre in Prima Nota CASSA (pagata o no)
+      - bonifico/banca/riba/sepa/rid/sdd/assegno → sempre in Prima Nota BANCA
+        (la riconciliazione con l'estratto conto aggancia il movimento in seguito)
+      - paypal/carta/compensazione/misto/altro/senza metodo → restano in
+        Provvisoria (aspettano un match con l'estratto conto o una decisione manuale)
 
     Ogni movimento creato viene marcato con source='auto_confirm_provvisoria' in
     modo da essere identificabile per rollback.
@@ -1138,24 +1143,18 @@ async def auto_conferma_provvisori_per_metodo(
 
             metodo = metodo_per_piva.get(piva, "")
 
-            # --- APPLICA REGOLE ---
-            destinazione = None
+            # --- APPLICA REGOLE (stessa classificazione della pagina Provvisori,
+            # vedi classifica_metodo_fornitore: prima erano due liste diverse) ---
+            destinazione_calcolata = classifica_metodo_fornitore(metodo)
 
-            if metodo in ("cassa", "contanti"):
-                # Regola: cassa → sempre in Prima Nota Cassa, pagata o no
-                destinazione = "cassa"
-            elif metodo in ("banca", "bonifico", "riba", "sepa", "rid", "sdd"):
-                # Regola aggiornata: il metodo fornitore comanda → sempre in
-                # Prima Nota Banca (la riconciliazione EC aggancia il movimento)
-                destinazione = "banca"
-            elif metodo in ("paypal", "carta", "carta_di_credito", "carta_credito", "misto"):
-                # Regola: paypal/carta → sempre in provvisoria, aspettano EC
-                report["restate_in_provvisoria_paypal_o_carta"] += 1
+            if destinazione_calcolata == "sospesa":
+                if metodo:
+                    report["restate_in_provvisoria_paypal_o_carta"] += 1
+                else:
+                    report["restate_in_provvisoria_fornitore_senza_metodo"] += 1
                 continue
-            else:
-                # Fornitore senza metodo in anagrafica
-                report["restate_in_provvisoria_fornitore_senza_metodo"] += 1
-                continue
+
+            destinazione = destinazione_calcolata
 
             # --- CREA MOVIMENTO ---
             collection = COLLECTION_PRIMA_NOTA_CASSA if destinazione == "cassa" else COLLECTION_PRIMA_NOTA_BANCA
