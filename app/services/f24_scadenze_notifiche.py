@@ -24,6 +24,13 @@ logger = logging.getLogger(__name__)
 
 # Costanti
 COLLECTION_F24 = "f24_unificato"
+# f24_commercialista: secondo archivio F24 vivo, alimentato dalla scansione
+# email automatica (schema campi diverso: status/scadenza invece di
+# stato/data_scadenza). Prima non veniva controllato da questo servizio:
+# le scadenze fiscali arrivate via email non generavano MAI un alert
+# proattivo (Telegram/email/campanella), a prescindere da quanto fossero
+# imminenti o scadute.
+COLLECTION_F24_COMMERCIALISTA = "f24_commercialista"
 COLLECTION_ALERT = "alert_scadenze_f24"
 COLLECTION_NOTIFICHE = "notifiche_scadenze"
 
@@ -102,10 +109,17 @@ async def controlla_scadenze_f24() -> Dict[str, Any]:
     oggi = date.today()
     limite = oggi + timedelta(days=15)
     
-    # Trova F24 non pagati
+    # Trova F24 non pagati — su ENTRAMBI gli archivi vivi (schema campi diverso
+    # tra i due, vedi commento su COLLECTION_F24_COMMERCIALISTA sopra).
     f24_list = await db[COLLECTION_F24].find(
         {
             "stato": {"$nin": ["pagato", "annullato", "deleted"]},
+        },
+        {"_id": 0}
+    ).to_list(500)
+    f24_list += await db[COLLECTION_F24_COMMERCIALISTA].find(
+        {
+            "status": {"$nin": ["pagato", "annullato", "deleted"]},
         },
         {"_id": 0}
     ).to_list(500)
@@ -126,7 +140,7 @@ async def controlla_scadenze_f24() -> Dict[str, Any]:
             continue
         
         urgenza = _calcola_urgenza(data_scadenza)
-        importo = float(f24.get("importo_totale", 0) or f24.get("totale", 0) or 0)
+        importo = float(f24.get("importo_totale", 0) or f24.get("totale", 0) or f24.get("totale_versato", 0) or 0)
         
         alert_data = {
             "f24_id": f24.get("id", str(uuid.uuid4())),

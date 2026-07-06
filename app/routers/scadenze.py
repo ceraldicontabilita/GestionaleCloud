@@ -634,10 +634,20 @@ async def get_dashboard_scadenze() -> Dict[str, Any]:
     })
     
     # F24 da pagare
-    f24_da_pagare = await db["f24_unificato"].count_documents({
+    # NB: esistono due archivi F24 vivi, alimentati da percorsi diversi
+    # (upload manuale -> f24_unificato, scansione email automatica ->
+    # f24_commercialista, con schema campi diverso: status/scadenza invece
+    # di pagato/data_scadenza). Contare solo il primo faceva scomparire da
+    # questo alert i F24 arrivati via email (spesso la maggioranza).
+    f24_da_pagare_unificato = await db["f24_unificato"].count_documents({
         "data_scadenza": {"$lte": limite_30},
         "pagato": {"$ne": True}
     })
+    f24_da_pagare_commercialista = await db["f24_commercialista"].count_documents({
+        "scadenza": {"$lte": limite_30},
+        "status": {"$ne": "pagato"}
+    })
+    f24_da_pagare = f24_da_pagare_unificato + f24_da_pagare_commercialista
     
     # Scadenze fiscali prossime
     scadenze_fiscali = _genera_scadenze_fiscali(oggi.year, oggi.month, False)
