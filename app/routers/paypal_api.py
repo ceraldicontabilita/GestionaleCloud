@@ -141,11 +141,16 @@ async def account_ids_non_mappati():
 
     # Aggrega i paypal_account_id dalle transazioni.
     # Solo importi in uscita: un incasso da cliente non è mai un fornitore da mappare.
+    # Il $sort precedente il $group mette le transazioni CON nome_controparte
+    # prima di quelle senza, così il $first del gruppo non prende un documento
+    # vuoto quando un'altra transazione dello stesso account il nome ce l'ha
+    # (PayPal non lo riporta su ogni singola transazione, es. eventi T0200).
     pipeline = [
         {"$match": {
             "paypal_account_id": {"$exists": True, "$nin": [None, ""]},
             "importo": {"$lt": 0},
         }},
+        {"$sort": {"nome_controparte": -1}},
         {"$group": {
             "_id": "$paypal_account_id",
             "n_tx": {"$sum": 1},

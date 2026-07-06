@@ -28,6 +28,37 @@ UPLOAD_DIR = "/tmp/uploads/msr_statements"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
+def _backfill_controparte(transactions: List[Dict[str, Any]]) -> None:
+    """Completa nome_controparte/email_controparte mancanti usando altre
+    transazioni con lo stesso paypal_account_id.
+
+    PayPal non riporta sempre il payer_name su ogni singola transazione dello
+    stesso account (es. eventi 'carta ospite' T0200): se un'altra transazione
+    con lo stesso account_id lo conosce, è certamente la stessa controparte
+    reale, quindi lo riusiamo invece di lasciare il dato vuoto.
+    """
+    per_account: Dict[str, Dict[str, str]] = {}
+    for t in transactions:
+        acc = t.get("paypal_account_id")
+        if not acc:
+            continue
+        entry = per_account.setdefault(acc, {})
+        if t.get("nome_controparte") and "nome_controparte" not in entry:
+            entry["nome_controparte"] = t["nome_controparte"]
+        if t.get("email_controparte") and "email_controparte" not in entry:
+            entry["email_controparte"] = t["email_controparte"]
+
+    for t in transactions:
+        acc = t.get("paypal_account_id")
+        known = per_account.get(acc) if acc else None
+        if not known:
+            continue
+        if not t.get("nome_controparte") and known.get("nome_controparte"):
+            t["nome_controparte"] = known["nome_controparte"]
+        if not t.get("email_controparte") and known.get("email_controparte"):
+            t["email_controparte"] = known["email_controparte"]
+
+
 @router.get("/statements")
 async def get_paypal_statements(
     anno: Optional[int] = None,
@@ -71,6 +102,8 @@ async def get_paypal_transactions(
         query, {"_id": 0}
     ).sort("data", -1).limit(limit).to_list(limit)
 
+    _backfill_controparte(transactions)
+
     # Descrizione leggibile: le transazioni da API PayPal non hanno il campo
     # "descrizione" ma trasportano oggetto/nota/numero fattura del fornitore.
     for t in transactions:
@@ -113,9 +146,10 @@ async def paypal_dashboard(
     # Transazioni solo pagamenti (lordo < 0)
     pag_query = {**tx_query, "lordo": {"$lt": 0}}
     pagamenti = await db[COLL_PAYPAL_TRANSACTIONS].find(
-        pag_query, {"_id": 0, "lordo": 1, "tipo": 1, "nome_controparte": 1}
+        pag_query, {"_id": 0, "lordo": 1, "tipo": 1, "nome_controparte": 1, "paypal_account_id": 1}
     ).to_list(2000)
-    
+    _backfill_controparte(pagamenti)
+
     totale_speso = sum(p['lordo'] for p in pagamenti)
     
     # Top fornitori
