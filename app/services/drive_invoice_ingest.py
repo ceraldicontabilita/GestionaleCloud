@@ -12,6 +12,7 @@ Configurazione (env / settings):
 
 Se non configurato, `get_status` lo segnala e `sync` è un no-op.
 """
+import asyncio
 import io
 import json
 import logging
@@ -26,6 +27,23 @@ _SCOPES = ["https://www.googleapis.com/auth/drive"]
 _ELABORATE_FOLDER_NAME = "Elaborate"
 _SYNC_STATE_COLLECTION = "drive_sync_state"
 _SYNC_STATE_ID = "fatture_drive"
+
+# Un solo sync alla volta (manuale + job 15 min non devono sovrapporsi).
+_sync_lock = asyncio.Lock()
+_bg_task: Optional[asyncio.Task] = None
+
+
+def is_sync_running() -> bool:
+    return _sync_lock.locked()
+
+
+def start_background_sync(db) -> bool:
+    """Avvia un sync in background. Ritorna False se ce n'è già uno in corso."""
+    global _bg_task
+    if _sync_lock.locked():
+        return False
+    _bg_task = asyncio.create_task(sync(db))
+    return True
 
 
 def is_configured() -> bool:
@@ -168,13 +186,23 @@ async def get_status(db) -> Dict[str, Any]:
         "credenziali_ok": is_configured() and credenziali_errore is None,
         "credenziali_errore": credenziali_errore,
         "folder_id": settings.GOOGLE_DRIVE_FATTURE_FOLDER_ID,
+        "sync_running": is_sync_running(),
         "last_sync": state.get("last_sync"),
         "last_result": state.get("last_result"),
+        "last_error": state.get("last_error"),
         "total_imported": state.get("total_imported", 0),
     }
 
 
 async def sync(db) -> Dict[str, Any]:
+    """Esegue un ciclo di import. Se un sync è già in corso, non fa nulla."""
+    if _sync_lock.locked():
+        return {"status": "running", "message": "Sincronizzazione già in corso"}
+    async with _sync_lock:
+        return await _do_sync(db)
+
+
+async def _do_sync(db) -> Dict[str, Any]:
     if not is_configured():
         return {
             "status": "not_configured",
@@ -224,6 +252,16 @@ async def sync(db) -> Dict[str, Any]:
                 result["details"].append({"file": fname, "error": str(e)})
     except Exception as e:
         logger.error(f"Drive ingest: errore sync: {e}")
+        # Persisti l'errore globale: il sync gira in background e la card
+        # Admin lo legge dallo stato, non dalla risposta HTTP.
+        await db[_SYNC_STATE_COLLECTION].update_one(
+            {"_id": _SYNC_STATE_ID},
+            {"$set": {
+                "last_sync": datetime.now(timezone.utc).isoformat(),
+                "last_error": str(e),
+            }},
+            upsert=True,
+        )
         return {"status": "error", "message": str(e)}
 
     prev = await db[_SYNC_STATE_COLLECTION].find_one({"_id": _SYNC_STATE_ID}) or {}
@@ -236,6 +274,7 @@ async def sync(db) -> Dict[str, Any]:
         {"$set": {
             "last_sync": datetime.now(timezone.utc).isoformat(),
             "last_result": last_result,
+            "last_error": None,
             "total_imported": prev.get("total_imported", 0) + result["imported"],
         }},
         upsert=True,

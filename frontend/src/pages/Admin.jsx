@@ -161,23 +161,48 @@ export default function Admin() {
     setSyncingDrive(true);
     setDriveMsg(null);
     try {
+      // Il backend avvia il sync in background e risponde subito:
+      // qui si fa polling dello stato finché il giro non è finito
+      // (niente più timeout HTTP con tanti file da elaborare).
       const r = await api.post('/api/fatture/drive/sync');
       const d = r.data || {};
       if (d.status === 'not_configured' || d.status === 'error') {
         setDriveMsg({ ok: false, testo: d.message || 'Sincronizzazione non riuscita' });
+        return;
+      }
+      const inizio = Date.now();
+      let stato = null;
+      while (Date.now() - inizio < 15 * 60 * 1000) {
+        await new Promise(res => setTimeout(res, 4000));
+        try {
+          const s = await api.get('/api/fatture/drive/status');
+          stato = s.data || null;
+          if (stato && !stato.sync_running) break;
+        } catch {
+          // errore transitorio: riprova al prossimo giro
+        }
+      }
+      if (stato) setDriveStatus(stato);
+      if (stato?.last_error) {
+        setDriveMsg({ ok: false, testo: `Sincronizzazione fallita: ${stato.last_error}` });
+      } else if (stato?.sync_running) {
+        setDriveMsg({
+          ok: true,
+          testo: 'Sincronizzazione ancora in corso: la card si aggiornerà al prossimo caricamento.',
+        });
       } else {
-        const dettagliErrori = (d.details || [])
+        const lr = stato?.last_result || {};
+        const dettagliErrori = (lr.details || [])
           .slice(0, 3)
           .map(x => `${x.file}: ${x.error}`)
           .join(' · ');
         setDriveMsg({
-          ok: (d.errors || 0) === 0,
+          ok: (lr.errors || 0) === 0,
           testo:
-            `Sync completato: ${d.imported || 0} importate, ${d.duplicates || 0} già presenti, ${d.errors || 0} errori (su ${d.total || 0} file trovati)` +
+            `Sync completato: ${lr.imported || 0} importate, ${lr.duplicates || 0} già presenti, ${lr.errors || 0} errori (su ${lr.total || 0} file trovati)` +
             (dettagliErrori ? ` — ${dettagliErrori}` : ''),
         });
       }
-      loadDriveStatus();
     } catch (e) {
       setDriveMsg({
         ok: false,

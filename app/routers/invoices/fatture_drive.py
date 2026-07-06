@@ -26,6 +26,15 @@ async def drive_status() -> Dict[str, Any]:
 
 @router.post("/drive/sync")
 async def drive_sync() -> Dict[str, Any]:
-    """Esegue subito l'import delle fatture XML dalla cartella Drive."""
+    """Avvia l'import dalla cartella Drive in background e risponde subito.
+
+    Con molti file l'elaborazione può superare il timeout HTTP del browser:
+    il lavoro gira in background e la card Admin segue l'avanzamento
+    facendo polling su /drive/status (campo sync_running).
+    """
     db = Database.get_db()
-    return await drive_invoice_ingest.sync(db)
+    if not drive_invoice_ingest.is_configured():
+        return await drive_invoice_ingest.sync(db)  # ritorna il not_configured
+    if not drive_invoice_ingest.start_background_sync(db):
+        return {"status": "running", "message": "Sincronizzazione già in corso"}
+    return {"status": "started", "message": "Sincronizzazione avviata"}
