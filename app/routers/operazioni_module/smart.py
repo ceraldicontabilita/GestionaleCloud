@@ -6,7 +6,8 @@ from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 
 from app.database import Database
-from .common import RiconciliaManuale, logger
+from app.utils.parsing import safe_float
+from .common import RiconciliaManuale, logger, QUERY_FATTURA_NON_PAGATA, set_fattura_pagata
 
 
 async def banca_veloce(
@@ -31,7 +32,7 @@ async def banca_veloce(
     ).sort("data_emissione", -1).limit(50).to_list(50)
     
     fatture_da_pagare = await db.invoices.find(
-        {"pagata": {"$ne": True}, "metodo_pagamento": {"$nin": [None, "", "contanti"]}},
+        {**QUERY_FATTURA_NON_PAGATA, "metodo_pagamento": {"$nin": [None, "", "contanti"]}},
         {"_id": 0, "id": 1, "invoice_number": 1, "invoice_date": 1, "supplier_name": 1, "total_amount": 1}
     ).sort("invoice_date", -1).limit(50).to_list(50)
     
@@ -95,20 +96,20 @@ async def riconcilia_automatico(
     
     for mov in movimenti:
         try:
-            importo = abs(float(mov.get("importo", 0)))
+            importo = abs(safe_float(mov.get("importo", 0)))
             descrizione = (mov.get("descrizione") or mov.get("descrizione_originale") or "").upper()
-            
+
             match_found = False
-            
+
             # Match fatture per importo esatto
             fattura = await db.invoices.find_one({
-                "pagata": {"$ne": True},
+                **QUERY_FATTURA_NON_PAGATA,
                 "$or": [
                     {"total_amount": {"$gte": importo * 0.99, "$lte": importo * 1.01}},
                     {"importo_totale": {"$gte": importo * 0.99, "$lte": importo * 1.01}}
                 ]
             }, {"_id": 0, "id": 1, "supplier_name": 1})
-            
+
             if fattura:
                 await db.estratto_conto_movimenti.update_one(
                     {"id": mov["id"]},
@@ -121,7 +122,7 @@ async def riconcilia_automatico(
                 )
                 await db.invoices.update_one(
                     {"id": fattura["id"]},
-                    {"$set": {"pagata": True, "movimento_bancario_id": mov["id"]}}
+                    {"$set": set_fattura_pagata({"movimento_bancario_id": mov["id"]})}
                 )
                 riconciliati += 1
                 match_found = True
@@ -178,7 +179,7 @@ async def riconcilia_manuale(request: RiconciliaManuale) -> Dict[str, Any]:
         update_fields["fattura_id"] = request.entita_id
         await db.invoices.update_one(
             {"id": request.entita_id},
-            {"$set": {"pagata": True, "movimento_bancario_id": request.movimento_id}}
+            {"$set": set_fattura_pagata({"movimento_bancario_id": request.movimento_id})}
         )
 
         # Propaga il pagamento: senza questo evento la partita aperta
@@ -219,8 +220,8 @@ async def cerca_fatture_per_associazione(
     """Cerca fatture per associazione manuale."""
     db = Database.get_db()
     
-    query = {"pagata": {"$ne": True}}
-    
+    query = dict(QUERY_FATTURA_NON_PAGATA)
+
     if importo:
         tolleranza = importo * 0.05
         query["$or"] = [

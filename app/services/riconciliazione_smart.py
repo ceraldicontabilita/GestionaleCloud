@@ -17,6 +17,7 @@ from datetime import datetime, timedelta
 from rapidfuzz import fuzz
 
 from app.database import Database
+from app.utils.parsing import safe_float
 
 logger = logging.getLogger(__name__)
 
@@ -440,8 +441,8 @@ async def analizza_movimento(movimento: Dict[str, Any]) -> Dict[str, Any]:
     """
     db = Database.get_db()
     descrizione = movimento.get("descrizione_originale") or movimento.get("descrizione") or ""
-    importo = movimento.get("importo", 0)
-    data = movimento.get("data", "")[:10]
+    importo = safe_float(movimento.get("importo"))
+    data = (movimento.get("data") or "")[:10]
     
     result = {
         "movimento_id": movimento.get("id"),
@@ -480,7 +481,7 @@ async def analizza_movimento(movimento: Dict[str, Any]) -> Dict[str, Any]:
                 }
                 
                 # Verifica match importo
-                importo_assegno = assegno.get("importo") or 0
+                importo_assegno = safe_float(assegno.get("importo"))
                 if abs(importo_assegno - abs(importo)) < 0.01:
                     result["associazione_automatica"] = True
                     result["richiede_conferma"] = False
@@ -825,9 +826,28 @@ async def analizza_estratto_conto_batch(limit: int = 100, solo_non_riconciliati:
     }
     
     for mov in movimenti:
-        analisi = await analizza_movimento_con_cache(mov, cache)
+        try:
+            analisi = await analizza_movimento_con_cache(mov, cache)
+        except Exception as e:
+            # Un singolo movimento con dati malformati (es. importo non numerico
+            # su un doc legacy) non deve far fallire l'intera analisi: prima
+            # bastava un record del genere per far tornare 500 tutta la pagina
+            # Riconciliazione, mostrando tutti i tab vuoti senza spiegazione.
+            logger.warning(f"Errore analisi movimento {mov.get('id')}: {e}")
+            analisi = {
+                "movimento_id": mov.get("id"),
+                "descrizione": (mov.get("descrizione_originale") or mov.get("descrizione") or "-")[:100],
+                "importo": safe_float(mov.get("importo")),
+                "data": mov.get("data"),
+                "tipo": "non_riconosciuto",
+                "categoria_suggerita": None,
+                "suggerimenti": [],
+                "associazione_automatica": False,
+                "richiede_conferma": True,
+                "note": f"Errore analisi automatica: {e}",
+            }
         risultati.append(analisi)
-        
+
         stats[analisi["tipo"]] = stats.get(analisi["tipo"], 0) + 1
         if analisi.get("associazione_automatica"):
             stats["auto_riconciliabili"] += 1
@@ -843,7 +863,7 @@ async def analizza_movimento_con_cache(movimento: Dict[str, Any], cache: Dict[st
     Versione ottimizzata di analizza_movimento che usa cache pre-caricata.
     """
     descrizione = movimento.get("descrizione_originale") or movimento.get("descrizione") or movimento.get("causale") or ""
-    importo = float(movimento.get("importo") or movimento.get("amount") or 0)
+    importo = safe_float(movimento.get("importo") or movimento.get("amount") or 0)
     data = movimento.get("data") or movimento.get("date")
     ragione_sociale = movimento.get("ragione_sociale") or ""
     numero_fattura = movimento.get("numero_fattura") or ""
@@ -890,7 +910,7 @@ async def analizza_movimento_con_cache(movimento: Dict[str, Any], cache: Dict[st
             
             if assegno:
                 result["assegno"] = assegno
-                importo_assegno = assegno.get("importo") or 0
+                importo_assegno = safe_float(assegno.get("importo"))
                 if abs(importo_assegno - abs(importo)) < 0.01:
                     result["associazione_automatica"] = True
                     result["richiede_conferma"] = False

@@ -59,6 +59,7 @@ export default function RiconciliazioneUnificata() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [processing, setProcessing] = useState(null);
+  const [loadError, setLoadError] = useState(null);
 
   // Aggiorna URL quando cambia tab
   const handleTabChange = tabId => {
@@ -172,19 +173,38 @@ export default function RiconciliazioneUnificata() {
 
   const loadAllData = async (limit = 50) => {
     setLoading(true);
+    setLoadError(null);
     try {
-      // Carica dati primari: usa /smart/analizza per suggerimenti + assegni da banca-veloce
+      // Carica dati primari: usa /smart/analizza per suggerimenti + assegni da banca-veloce.
+      // Ogni chiamata ha un fallback silenzioso (pagina comunque utilizzabile se una sola
+      // fonte fallisce), ma se TUTTE falliscono l'utente deve saperlo: prima la pagina
+      // restava semplicemente vuota in ogni tab, senza nessuna indicazione dell'errore.
+      const erroriCaricamento = [];
       const [analizzaRes, assegniRes, stipendiRes] = await Promise.all([
         api
           .get(`/api/operazioni-da-confermare/smart/analizza?limit=${limit}`)
-          .catch(() => ({ data: { movimenti: [], stats: {} } })),
+          .catch(e => {
+            erroriCaricamento.push(e.response?.data?.detail || e.message);
+            return { data: { movimenti: [], stats: {} } };
+          }),
         api
           .get(`/api/operazioni-da-confermare/smart/banca-veloce?limit=50`)
-          .catch(() => ({ data: { movimenti: [], stats: {}, assegni: [] } })),
+          .catch(e => {
+            erroriCaricamento.push(e.response?.data?.detail || e.message);
+            return { data: { movimenti: [], stats: {}, assegni: [] } };
+          }),
         api
           .get('/api/operazioni-da-confermare/smart/cerca-stipendi')
-          .catch(() => ({ data: { stipendi: [] } })),
+          .catch(e => {
+            erroriCaricamento.push(e.response?.data?.detail || e.message);
+            return { data: { stipendi: [] } };
+          }),
       ]);
+      if (erroriCaricamento.length > 0) {
+        setLoadError(
+          `Alcuni dati non si sono caricati correttamente (${erroriCaricamento.length}/3 sorgenti in errore): ${erroriCaricamento[0]}`
+        );
+      }
 
       const movimenti = analizzaRes.data?.movimenti || [];
       const assegniDaApi = (assegniRes.data?.assegni || []).map(a => ({
@@ -483,6 +503,41 @@ export default function RiconciliazioneUnificata() {
 
   return (
     <div style={{ position: 'relative', padding: '16px' }}>
+      {loadError && (
+        <div
+          style={{
+            marginBottom: 16,
+            padding: '12px 16px',
+            background: '#fef2f2',
+            border: '1px solid #fecaca',
+            borderRadius: 8,
+            color: '#991b1b',
+            fontSize: 13,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 12,
+          }}
+        >
+          <span>⚠️ {loadError}</span>
+          <button
+            onClick={() => loadAllData(currentLimit)}
+            style={{
+              padding: '6px 12px',
+              background: '#991b1b',
+              color: 'white',
+              border: 'none',
+              borderRadius: 6,
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            Riprova
+          </button>
+        </div>
+      )}
       {/* Action Bar - senza cornice blu */}
       <div
         style={{

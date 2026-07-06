@@ -6,7 +6,8 @@ from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 
 from app.database import Database
-from .common import RiconciliaCartaRequest
+from app.utils.parsing import safe_float
+from .common import RiconciliaCartaRequest, QUERY_FATTURA_NON_PAGATA, set_fattura_pagata
 
 
 async def lista_transazioni_carta(
@@ -42,19 +43,19 @@ async def riconcilia_carta_automatico() -> Dict[str, Any]:
     riconciliate = 0
     
     for t in transazioni:
-        importo = abs(float(t.get("importo", 0)))
+        importo = abs(safe_float(t.get("importo", 0)))
         if importo <= 0:
             continue
-        
+
         # Cerca fattura con importo simile
         fattura = await db.invoices.find_one({
-            "pagata": {"$ne": True},
+            **QUERY_FATTURA_NON_PAGATA,
             "$or": [
                 {"total_amount": {"$gte": importo * 0.98, "$lte": importo * 1.02}},
                 {"importo_totale": {"$gte": importo * 0.98, "$lte": importo * 1.02}}
             ]
         }, {"_id": 0, "id": 1})
-        
+
         if fattura:
             await db.transazioni_carta.update_one(
                 {"id": t["id"]},
@@ -66,7 +67,7 @@ async def riconcilia_carta_automatico() -> Dict[str, Any]:
             )
             await db.invoices.update_one(
                 {"id": fattura["id"]},
-                {"$set": {"pagata": True, "transazione_carta_id": t["id"]}}
+                {"$set": set_fattura_pagata({"transazione_carta_id": t["id"]})}
             )
             riconciliate += 1
     
@@ -96,7 +97,7 @@ async def riconcilia_carta_manuale(request: RiconciliaCartaRequest) -> Dict[str,
         update_fields["fattura_id"] = request.entita_id
         await db.invoices.update_one(
             {"id": request.entita_id},
-            {"$set": {"pagata": True, "transazione_carta_id": request.transazione_id}}
+            {"$set": set_fattura_pagata({"transazione_carta_id": request.transazione_id})}
         )
     
     await db.transazioni_carta.update_one(
@@ -117,7 +118,7 @@ async def esegui_supervisione() -> Dict[str, Any]:
     }
     
     # 1. Fatture non pagate
-    fatture_non_pagate = await db.invoices.count_documents({"pagata": {"$ne": True}})
+    fatture_non_pagate = await db.invoices.count_documents(QUERY_FATTURA_NON_PAGATA)
     risultati["controlli"].append({
         "nome": "Fatture non pagate",
         "valore": fatture_non_pagate,
