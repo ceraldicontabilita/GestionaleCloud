@@ -17,7 +17,6 @@ from pymongo.errors import DuplicateKeyError
 
 from app.database import Database, Collections
 from app.parsers.fattura_elettronica_parser import parse_fattura_xml
-from app.utils.warehouse_helpers import auto_populate_warehouse_from_invoice
 from app.utils.error_handler import handle_errors
 
 logger = logging.getLogger(__name__)
@@ -822,7 +821,9 @@ async def upload_fattura_xml(file: UploadFile = File(...)) -> Dict[str, Any]:
         except Exception as e:
             logger.debug(f"Associazione PDF non disponibile: {e}")
         
-        warehouse_result = await auto_populate_warehouse_from_invoice(db, parsed, invoice["id"])
+        # Giacenze magazzino: gestite SOLO dall'app esterna Lotti (stesso DB).
+        # L'import fatture qui NON aggiorna warehouse_inventory.
+        warehouse_result = {"products_created": 0, "products_updated": 0}
 
         prima_nota_result = {"cassa": None, "banca": None}
         # Registra in Prima Nota SOLO se non è stato già riconciliato automaticamente
@@ -959,11 +960,8 @@ async def process_xml_bytes(db, content: bytes, filename: str, source: str = "xm
     }
     await db[Collections.INVOICES].insert_one(invoice.copy())
 
-    # 6. Auto-popola magazzino (fail-safe)
-    try:
-        await auto_populate_warehouse_from_invoice(db, parsed, invoice["id"])
-    except Exception:
-        pass
+    # Giacenze magazzino: gestite SOLO dall'app esterna Lotti — nessun
+    # aggiornamento di warehouse_inventory dall'import fatture.
 
     return {"status": "imported", "filename": filename,
             "invoice_number": parsed.get("invoice_number"),
@@ -1182,70 +1180,6 @@ async def sync_suppliers_from_invoices() -> Dict[str, Any]:
         "suppliers_updated": updated,
         "suppliers_skipped": skipped,
         "total_unique_vat": len(supplier_groups)
-    }
-
-
-@router.post("/repopulate-warehouse")
-@handle_errors
-async def repopulate_warehouse_from_invoices() -> Dict[str, Any]:
-    """
-    Ripopola il magazzino da tutte le fatture esistenti.
-    Utile per ricostruire il catalogo prodotti dopo un reset.
-    """
-    db = Database.get_db()
-    
-    # Reset warehouse
-    await db["warehouse_inventory"].delete_many({})
-    await db["price_history"].delete_many({})
-    
-    # Ottieni tutte le fatture attive (non cancellate)
-    invoices = await db[Collections.INVOICES].find({
-        "$or": [
-            {"entity_status": {"$ne": "deleted"}},
-            {"entity_status": {"$exists": False}}
-        ]
-    }).to_list(10000)
-    
-    total_products_created = 0
-    total_products_updated = 0
-    total_price_records = 0
-    processed_invoices = 0
-    errors = []
-    
-    for invoice in invoices:
-        try:
-            # Costruisci dati nel formato atteso dal helper
-            invoice_data = {
-                "linee": invoice.get("linee", []),
-                "fornitore": {
-                    "denominazione": invoice.get("supplier_name", ""),
-                    "partita_iva": invoice.get("supplier_vat", "")
-                },
-                "numero_fattura": invoice.get("invoice_number", ""),
-                "data_fattura": invoice.get("invoice_date", "")
-            }
-            
-            result = await auto_populate_warehouse_from_invoice(
-                db, 
-                invoice_data, 
-                invoice.get("id", "")
-            )
-            
-            total_products_created += result.get("products_created", 0)
-            total_products_updated += result.get("products_updated", 0)
-            total_price_records += result.get("price_records", 0)
-            processed_invoices += 1
-            
-        except Exception as e:
-            errors.append(f"Fattura {invoice.get('invoice_number', 'N/A')}: {str(e)}")
-    
-    return {
-        "success": True,
-        "processed_invoices": processed_invoices,
-        "products_created": total_products_created,
-        "products_updated": total_products_updated,
-        "price_records": total_price_records,
-        "errors": errors[:20] if errors else []
     }
 
 

@@ -209,21 +209,15 @@ async def import_fattura_xml(file: UploadFile = File(...)) -> Dict[str, Any]:
     
     risultato_integrazione = {}
     
+    # NOTA GIACENZE: per decisione del proprietario le giacenze di magazzino
+    # sono gestite SOLO dall'app esterna Lotti (stesso database). Qui l'import
+    # fattura registra lotti HACCP e movimenti (processa_carico_magazzino) ma
+    # NON deve aggiornare l'inventario (warehouse_inventory).
     try:
         mag_result = await processa_carico_magazzino(db, fattura_id, fornitore_obj, parsed.get("linee", []), parsed.get("invoice_date", ""), numero_doc)
         risultato_integrazione["magazzino"] = mag_result
     except Exception as e:
         risultato_integrazione["magazzino"] = {"error": str(e)}
-
-    # processa_carico_magazzino scrive prodotti su "warehouse_stocks" (collection
-    # deprecata, invisibile alla pagina Magazzino che legge "warehouse_inventory").
-    # Aggiorna anche l'inventario canonico con l'helper condiviso, come fa già
-    # l'upload XML di /api/fatture.
-    try:
-        from app.utils.warehouse_helpers import auto_populate_warehouse_from_invoice
-        await auto_populate_warehouse_from_invoice(db, parsed, fattura_id)
-    except Exception as e:
-        risultato_integrazione["magazzino_inventario"] = {"error": str(e)}
     
     # ── AUTO-ROUTING: se il fornitore ha un metodo di pagamento riconoscibile,
     # crea subito il movimento in prima_nota_cassa o prima_nota_banca.
