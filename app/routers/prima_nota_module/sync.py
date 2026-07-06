@@ -529,6 +529,7 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
             "invoice_date": {"$regex": f"^{anno}"},
             "total_amount": {"$gt": 0},
             "stato_pagamento": {"$nin": ["pagata", "paid"]},
+            "pagato": {"$ne": True},  # coerenza: alcuni flussi settano solo questo flag
             "$or": [
                 {"prima_nota_id": None}, {"prima_nota_id": ""},
                 {"prima_nota_id": {"$exists": False}},
@@ -536,14 +537,23 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
         },
         {"_id": 0, "xml_raw": 0, "linee": 0}
     ).sort("invoice_date", -1).to_list(500)
-    
-    # Movimenti banca per match
+
+    # Movimenti banca per match.
+    # NB: l'importer EC scrive la data nel campo "data" (YYYY-MM-DD); i record
+    # legacy usano "data_contabile" (DD/MM/YYYY). Coprire entrambi, e indicizzare
+    # per importo ASSOLUTO arrotondato (la collection ha sia importi assoluti
+    # sia con segno negativo).
     movimenti_banca = {}
     async for m in db["estratto_conto_movimenti"].find(
-        {"tipo": "uscita", "data_contabile": {"$regex": f"/{anno}$"}},
-        {"_id": 0, "id": 1, "importo": 1, "descrizione": 1, "data_contabile": 1}
+        {"tipo": "uscita",
+         "riconciliato": {"$ne": True},
+         "$or": [
+             {"data": {"$regex": f"^{anno}"}},
+             {"data_contabile": {"$regex": f"/{anno}$"}},
+         ]},
+        {"_id": 0, "id": 1, "importo": 1, "descrizione": 1, "data": 1, "data_contabile": 1}
     ):
-        imp = float(m.get("importo", 0))
+        imp = round(abs(float(m.get("importo", 0))), 2)
         if imp not in movimenti_banca:
             movimenti_banca[imp] = []
         movimenti_banca[imp].append(m)
@@ -592,7 +602,7 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
         # Se banca: cerca INTELLIGENTEMENTE nell'estratto conto
         movimento_match = None
         if suggerimento == "banca":
-            candidati = movimenti_banca.get(importo, [])
+            candidati = movimenti_banca.get(round(importo, 2), [])
             nome = (f.get("supplier_name") or "").upper()
             numero_fatt = (f.get("invoice_number") or "").upper()
             
@@ -639,7 +649,7 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
             "suggerimento": suggerimento,
             "stato_match": stato_match,
             "movimento_banca": {
-                "data": movimento_match.get("data_contabile", "") if movimento_match else None,
+                "data": (movimento_match.get("data") or movimento_match.get("data_contabile", "")) if movimento_match else None,
                 "descrizione": (movimento_match.get("descrizione", "")[:80]) if movimento_match else None,
                 "id": movimento_match.get("id") if movimento_match else None,
             } if movimento_match else None,
@@ -685,6 +695,7 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
                 
                 pn_id = str(uuid.uuid4())
                 metodo_label = "contanti" if suggerimento == "cassa" else p.get("metodo_xml") or "bonifico"
+                mov_ec_id = (p.get("movimento_banca") or {}).get("id")
                 await db[collection].insert_one({
                     "id": pn_id,
                     "data": data_mov,
@@ -695,6 +706,7 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
                     "riferimento": ref,
                     "fattura_id": fatt_id,
                     "metodo_pagamento": metodo_label,
+                    "estratto_conto_id": mov_ec_id,
                     "source": "auto_conferma",
                     "created_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
                 })
@@ -702,10 +714,22 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
                     {"id": fatt_id},
                     {"$set": {
                         "stato_pagamento": "pagata",
+                        "pagato": True,
+                        "paid": True,
                         "prima_nota_id": pn_id,
                         "prima_nota_tipo": suggerimento,
                     }}
                 )
+                # Consuma il movimento EC: non deve poter confermare altre fatture
+                if mov_ec_id:
+                    await db["estratto_conto_movimenti"].update_one(
+                        {"id": mov_ec_id},
+                        {"$set": {
+                            "riconciliato": True,
+                            "tipo_riconciliazione": "auto_conferma_provvisori",
+                            "dettagli_riconciliazione": {"fattura_id": fatt_id, "prima_nota_id": pn_id},
+                        }}
+                    )
                 auto_confermati += 1
             else:
                 await db["invoices"].update_one(

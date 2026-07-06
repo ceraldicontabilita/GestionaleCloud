@@ -433,38 +433,63 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
         logger.error(f"Errore riconciliazione paghe: {e}")
     
     # ===== RICONCILIAZIONE FATTURE PROVVISORIE =====
-    # Cerca pagamenti nell'EC per fatture non ancora pagate
+    # Cerca pagamenti nell'EC per fatture non ancora pagate.
+    # Il match e la registrazione passano dall'helper condiviso (stessa logica
+    # dell'import fatture): segno importo tollerato, finestra date, movimento
+    # EC consumato (riconciliato=True), flag fattura coerenti.
     provvisori_riconciliati = 0
     try:
         import uuid as _uuid
+        from app.routers.invoices.fatture_upload import find_ec_match_for_invoice
         provvisori = await db["invoices"].find({
             "total_amount": {"$gt": 0},
             "stato_pagamento": {"$nin": ["pagata", "paid"]},
+            "pagato": {"$ne": True},
             "$or": [{"prima_nota_id": None}, {"prima_nota_id": {"$exists": False}}, {"prima_nota_id": ""}]
-        }, {"_id": 0, "id": 1, "supplier_name": 1, "total_amount": 1, "invoice_date": 1, "invoice_number": 1}).to_list(500)
-        
+        }, {"_id": 0, "id": 1, "supplier_name": 1, "supplier_vat": 1, "total_amount": 1,
+            "invoice_date": 1, "invoice_number": 1}).to_list(500)
+
         for f in provvisori:
             importo = float(f.get("total_amount", 0))
-            nome = (f.get("supplier_name", "") or "").upper()[:10]
-            ec_query = {"importo": {"$gte": importo - 1, "$lte": importo + 1}, "tipo": "uscita"}
-            if nome and len(nome) > 3:
-                ec_query["descrizione"] = {"$regex": nome[:8], "$options": "i"}
-            
-            match = await db["estratto_conto_movimenti"].find_one(ec_query)
+            match = await find_ec_match_for_invoice(
+                db, importo, f.get("supplier_name", ""), f.get("invoice_date", "")
+            )
             if match:
-                pn_id = str(_uuid.uuid4())
-                await db["prima_nota_banca"].insert_one({
-                    "id": pn_id, "data": match.get("data_contabile", f.get("invoice_date", "")),
-                    "tipo": "uscita", "categoria": "Fatture",
-                    "descrizione": f"Fatt. {f.get('invoice_number','')} - {(f.get('supplier_name',''))[:30]}",
-                    "importo": importo, "fattura_id": f["id"],
-                    "source": "riconciliazione_ec_auto",
-                    "created_at": datetime.now(timezone.utc).isoformat(),
+                # Dedup: se esiste già un movimento prima nota per questa fattura, non duplicare
+                rif = f"FATT-{f['id']}"
+                existing_pn = await db["prima_nota_banca"].find_one({
+                    "$or": [{"riferimento": rif}, {"fattura_id": f["id"]}],
+                    "status": {"$nin": ["deleted", "archived"]},
                 })
+                if existing_pn:
+                    pn_id = existing_pn.get("id")
+                else:
+                    pn_id = str(_uuid.uuid4())
+                    await db["prima_nota_banca"].insert_one({
+                        "id": pn_id, "data": match.get("data") or match.get("data_contabile") or f.get("invoice_date", ""),
+                        "tipo": "uscita", "categoria": "Fatture",
+                        "descrizione": f"Fatt. {f.get('invoice_number','')} - {(f.get('supplier_name',''))[:30]}",
+                        "importo": importo, "fattura_id": f["id"],
+                        "riferimento": rif,
+                        "fornitore_piva": f.get("supplier_vat", ""),
+                        "estratto_conto_id": match.get("id"),
+                        "source": "riconciliazione_ec_auto",
+                        "created_at": datetime.now(timezone.utc).isoformat(),
+                    })
                 await db["invoices"].update_one({"id": f["id"]}, {"$set": {
                     "prima_nota_id": pn_id, "prima_nota_tipo": "banca", "prima_nota_banca_id": pn_id,
-                    "stato_pagamento": "pagata",
+                    "stato_pagamento": "pagata", "pagato": True, "paid": True,
+                    "data_pagamento": match.get("data") or match.get("data_contabile") or f.get("invoice_date"),
+                    "riconciliato_con_ec": match.get("id"),
                 }})
+                await db["estratto_conto_movimenti"].update_one(
+                    {"id": match.get("id")},
+                    {"$set": {
+                        "riconciliato": True,
+                        "tipo_riconciliazione": "fattura_provvisoria",
+                        "dettagli_riconciliazione": {"fattura_id": f["id"], "prima_nota_id": pn_id},
+                    }}
+                )
                 provvisori_riconciliati += 1
 
                 # --- EVENT BUS: propaga FATTURA_PAGATA (riconciliazione provvisori EC) ---
@@ -473,13 +498,13 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
                     await propagate_event(EventTypes.FATTURA_PAGATA, {
                         "fattura_id": f["id"],
                         "metodo_pagamento": "banca",
-                        "data_pagamento": match.get("data_contabile") or match.get("data") or f.get("invoice_date"),
+                        "data_pagamento": match.get("data") or match.get("data_contabile") or f.get("invoice_date"),
                         "movimento_id": match.get("id"),
                         "importo": importo,
                     }, db, source_module="ec_riconciliazione_provvisori")
                 except Exception:
                     logger.exception("Errore propagazione fattura.pagata (riconcilia provvisori EC)")
-        
+
         if provvisori_riconciliati > 0:
             logger.info(f"[EC Import] Riconciliate {provvisori_riconciliati} fatture provvisorie con EC")
     except Exception as e:

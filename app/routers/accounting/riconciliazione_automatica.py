@@ -82,6 +82,61 @@ async def _propaga_f24_pagato(db, f24_id: str, data_pag: str,
         logger.exception(f"Errore propagazione f24.pagato ({source}) f24={f24_id}")
 
 
+async def _applica_pagamento_banca(db, fattura: Dict[str, Any], metodo_label: str,
+                                   data_ec: str, mov_id: Optional[str], score: int,
+                                   now: str, source: str) -> None:
+    """Applica il pagamento via banca in modo COERENTE con il resto dell'app:
+    crea (idempotente) il movimento in prima_nota_banca, aggiorna TUTTI i flag
+    usati dalle varie pagine (pagato/paid/stato_pagamento/prima_nota_*) e
+    propaga l'evento FATTURA_PAGATA.
+
+    Prima di questo helper la riconciliazione settava solo pagato/in_banca:
+    la fattura risultava pagata ma NON compariva mai in Prima Nota Banca.
+    """
+    from app.routers.prima_nota_module.sync import registra_pagamento_fattura
+
+    fattura_id = str(fattura.get("id") or fattura.get("_id"))
+    update = {
+        "pagato": True,
+        "paid": True,
+        "stato_pagamento": "pagata",
+        "metodo_pagamento": metodo_label,
+        "in_banca": True,
+        "data_pagamento": data_ec,
+        "riconciliato_con_ec": mov_id,
+        "riconciliato_automaticamente": True,
+        "match_score": score,
+        "updated_at": now,
+    }
+    try:
+        pn = await registra_pagamento_fattura(fattura, "banca")
+        if pn.get("banca"):
+            update["prima_nota_id"] = pn["banca"]
+            update["prima_nota_tipo"] = "banca"
+            update["prima_nota_banca_id"] = pn["banca"]
+    except Exception:
+        logger.exception(f"Errore registrazione prima nota banca per fattura {fattura_id}")
+
+    filtro = {"_id": fattura["_id"]} if fattura.get("_id") is not None else {"id": fattura.get("id")}
+    await db[Collections.INVOICES].update_one(filtro, {"$set": update})
+    await _propaga_fattura_pagata(
+        db, fattura_id=fattura_id, metodo=metodo_label, data_pag=data_ec,
+        movimento_id=mov_id,
+        importo=fattura.get("total_amount") or fattura.get("importo_totale"),
+        source=source,
+    )
+
+
+def _giorni_pagamento_plausibili(data_ec: str, data_fattura: str) -> Optional[int]:
+    """Giorni fra data fattura e movimento EC (None se date non parsabili)."""
+    try:
+        dt_ec = datetime.strptime(str(data_ec)[:10], "%Y-%m-%d")
+        dt_fatt = datetime.strptime(str(data_fattura)[:10], "%Y-%m-%d")
+        return (dt_ec - dt_fatt).days
+    except (ValueError, TypeError):
+        return None
+
+
 def is_commissione(desc: str, imp: float) -> bool:
     """Verifica se è una commissione bancaria da ignorare."""
     desc_upper = (desc or "").upper()
@@ -289,8 +344,20 @@ async def riconcilia_estratto_conto() -> Dict[str, Any]:
     movimenti_ec = await db[COLLECTION_ESTRATTO_CONTO].find({
         "riconciliato": {"$ne": True}
     }, {"_id": 0}).to_list(5000)
-    
+
     results["movimenti_analizzati"] = len(movimenti_ec)
+
+    # Metodo pagamento per fornitore (fonte di verità: anagrafica fornitori).
+    # Se il fornitore paga in CONTANTI, un match banca sul solo importo è
+    # quasi certamente un falso positivo: serve evidenza forte.
+    metodo_fornitori: Dict[str, str] = {}
+    async for s in db[COLLECTION_SUPPLIERS].find(
+        {"metodo_pagamento": {"$exists": True, "$ne": ""}},
+        {"_id": 0, "partita_iva": 1, "vat_number": 1, "metodo_pagamento": 1}
+    ):
+        for k in (s.get("partita_iva"), s.get("vat_number")):
+            if k:
+                metodo_fornitori[k] = (s.get("metodo_pagamento") or "").lower()
     
     for mov in movimenti_ec:
         try:
@@ -334,6 +401,8 @@ async def riconcilia_estratto_conto() -> Dict[str, Any]:
                 fatture_candidate = await db[Collections.INVOICES].find({
                     "$and": [
                         {"pagato": {"$ne": True}},
+                        # Coerenza: alcuni flussi marcano il pagamento solo qui
+                        {"stato_pagamento": {"$nin": ["pagata", "paid"]}},
                         {"$or": [
                             # Match esatto
                             {"importo_totale": {"$gte": importo - 0.05, "$lte": importo + 0.05}},
@@ -343,7 +412,9 @@ async def riconcilia_estratto_conto() -> Dict[str, Any]:
                             {"total_amount": {"$gte": importo * 0.5, "$lte": importo * 2}}
                         ]}
                     ]
-                }, {"_id": 0}).to_list(50)
+                    # NB: niente proiezione {"_id": 0} — l'_id serve per l'update
+                    # (prima ogni match falliva con KeyError '_id' e finiva in errors)
+                }).to_list(50)
                 
                 # Calcola score per ogni fattura
                 fatture_scored = []
@@ -390,7 +461,21 @@ async def riconcilia_estratto_conto() -> Dict[str, Any]:
                                 score += 2
                         except Exception:
                             pass
-                    
+
+                    # Sanità date: un pagamento non precede la fattura né
+                    # dista oltre ~13 mesi. Penalizza i match cross-periodo
+                    # (il solo importo non basta più a marcarli "pagati").
+                    giorni = _giorni_pagamento_plausibili(data_ec, data_fatt)
+                    if giorni is not None and (giorni < -5 or giorni > 400):
+                        score -= 5
+
+                    # Metodo fornitore: se in anagrafica paga in CONTANTI,
+                    # accetta il match banca solo con evidenza forte
+                    # (importo + fornitore/numero in descrizione).
+                    piva_fatt = f.get("supplier_vat") or f.get("cedente_piva") or ""
+                    if metodo_fornitori.get(piva_fatt) in ("contanti", "cassa", "cash", "contante") and score < 15:
+                        continue
+
                     fatture_scored.append((f, score))
                 
                 # Ordina per score decrescente
@@ -420,28 +505,9 @@ async def riconcilia_estratto_conto() -> Dict[str, Any]:
                         )
                         results["riconciliati_assegni"] += 1
                     
-                    await db[Collections.INVOICES].update_one(
-                        {"_id": fattura["_id"]},
-                        {"$set": {
-                            "pagato": True,
-                            "paid": True,
-                            "metodo_pagamento": metodo_pagamento,
-                            "in_banca": True,
-                            "data_pagamento": data_ec,
-                            "riconciliato_con_ec": mov_id,
-                            "riconciliato_automaticamente": True,
-                            "match_score": fatture_scored[0][1],
-                            "updated_at": now
-                        }}
-                    )
-                    await _propaga_fattura_pagata(
-                        db,
-                        fattura_id=str(fattura.get("id") or fattura.get("_id")),
-                        metodo=metodo_pagamento,
-                        data_pag=data_ec,
-                        movimento_id=mov_id,
-                        importo=fattura.get("total_amount") or fattura.get("importo_totale"),
-                        source="ric_auto_esatto_multi",
+                    await _applica_pagamento_banca(
+                        db, fattura, metodo_pagamento, data_ec, mov_id,
+                        fatture_scored[0][1], now, source="ric_auto_esatto_multi",
                     )
 
                     match_details = {
@@ -468,28 +534,9 @@ async def riconcilia_estratto_conto() -> Dict[str, Any]:
                         if num_assegno:
                             metodo_pagamento = f"Assegno N.{num_assegno}"
                         
-                        await db[Collections.INVOICES].update_one(
-                            {"_id": fattura["_id"]},
-                            {"$set": {
-                                "pagato": True,
-                                "paid": True,
-                                "metodo_pagamento": metodo_pagamento,
-                                "in_banca": True,
-                                "data_pagamento": data_ec,
-                                "riconciliato_con_ec": mov_id,
-                                "riconciliato_automaticamente": True,
-                                "match_score": fatture_scored[0][1],
-                                "updated_at": now
-                            }}
-                        )
-                        await _propaga_fattura_pagata(
-                            db,
-                            fattura_id=str(fattura.get("id") or fattura.get("_id")),
-                            metodo=metodo_pagamento,
-                            data_pag=data_ec,
-                            movimento_id=mov_id,
-                            importo=fattura.get("total_amount") or fattura.get("importo_totale"),
-                            source="ric_auto_parziale_singolo",
+                        await _applica_pagamento_banca(
+                            db, fattura, metodo_pagamento, data_ec, mov_id,
+                            fatture_scored[0][1], now, source="ric_auto_parziale_singolo",
                         )
 
                         match_details = {
@@ -552,28 +599,9 @@ async def riconcilia_estratto_conto() -> Dict[str, Any]:
                         if num_assegno:
                             metodo_pagamento = f"Assegno N.{num_assegno}"
                         
-                        await db[Collections.INVOICES].update_one(
-                            {"_id": fattura["_id"]},
-                            {"$set": {
-                                "pagato": True,
-                                "paid": True,
-                                "metodo_pagamento": metodo_pagamento,
-                                "in_banca": True,
-                                "data_pagamento": data_ec,
-                                "riconciliato_con_ec": mov_id,
-                                "riconciliato_automaticamente": True,
-                                "match_score": 10,
-                                "updated_at": now
-                            }}
-                        )
-                        await _propaga_fattura_pagata(
-                            db,
-                            fattura_id=str(fattura.get("id") or fattura.get("_id")),
-                            metodo=metodo_pagamento,
-                            data_pag=data_ec,
-                            movimento_id=mov_id,
-                            importo=fattura.get("total_amount") or fattura.get("importo_totale"),
-                            source="ric_auto_solo_importo",
+                        await _applica_pagamento_banca(
+                            db, fattura, metodo_pagamento, data_ec, mov_id,
+                            10, now, source="ric_auto_solo_importo",
                         )
 
                         match_details = {
@@ -870,25 +898,14 @@ async def conferma_operazione(
     
     if azione == "conferma" and fattura_id:
         # Aggiorna fattura come pagata - TROVATA IN BANCA
-        await db[Collections.INVOICES].update_one(
-            {"$or": [{"id": fattura_id}, {"_id": fattura_id}]},
-            {"$set": {
-                "pagato": True,
-                "paid": True,
-                "metodo_pagamento": "Bonifico",
-                "in_banca": True,
-                "data_pagamento": operazione["data"],
-                "riconciliato_con_ec": operazione["movimento_ec_id"],
-                "updated_at": now
-            }}
+        fattura = await db[Collections.INVOICES].find_one(
+            {"$or": [{"id": fattura_id}, {"_id": fattura_id}]}
         )
-        await _propaga_fattura_pagata(
-            db,
-            fattura_id=fattura_id,
-            metodo="Bonifico",
-            data_pag=operazione["data"],
-            movimento_id=operazione.get("movimento_ec_id"),
-            importo=operazione.get("importo"),
+        if not fattura:
+            raise HTTPException(status_code=404, detail="Fattura non trovata")
+        await _applica_pagamento_banca(
+            db, fattura, "Bonifico", operazione["data"],
+            operazione.get("movimento_ec_id"), 0, now,
             source="ric_auto_conferma_operazione",
         )
 
