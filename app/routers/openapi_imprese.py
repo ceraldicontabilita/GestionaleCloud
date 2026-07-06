@@ -25,12 +25,6 @@ class UpdateFornitoreRequest(BaseModel):
     force_update: bool = False
 
 
-class BulkUpdateRequest(BaseModel):
-    """Request per aggiornamento massivo"""
-    partite_iva: List[str]
-    force_update: bool = False
-
-
 @router.get("/status")
 async def check_api_status() -> Dict[str, Any]:
     """
@@ -162,72 +156,6 @@ async def aggiorna_fornitore(
         }
 
 
-@router.post("/aggiorna-bulk")
-async def aggiorna_fornitori_bulk(
-    request: BulkUpdateRequest,
-    token: Optional[str] = Query(None)
-) -> Dict[str, Any]:
-    """
-    Aggiorna più fornitori in batch.
-    """
-    api_token = token or OPENAPI_TOKEN
-    
-    if not api_token:
-        raise HTTPException(status_code=400, detail="Token OpenAPI non fornito")
-    
-    results = {
-        "totale": len(request.partite_iva),
-        "aggiornati": 0,
-        "creati": 0,
-        "errori": 0,
-        "dettagli": []
-    }
-    
-    client = OpenAPICompany(api_token)
-    db = Database.get_db()
-    
-    # Deduplicazione P.IVA
-    piive_uniche = list(dict.fromkeys([p.strip().replace(" ", "") for p in request.partite_iva if len(p.strip()) == 11 and p.strip().isdigit()]))
-
-    for piva in piive_uniche:
-        try:
-            result = await client.get_start_info(piva)
-            
-            if result.get("success"):
-                company_data = result.get("data", {})
-                fornitore_update = map_company_to_fornitore(company_data)
-                if fornitore_update.get("ragione_sociale"):
-                    fornitore_update["nome"] = fornitore_update["ragione_sociale"]
-                fornitore_update["updated_at"] = datetime.now(timezone.utc).isoformat()
-                
-                # Aggiorna nella collection corretta "fornitori"
-                update_result = await db["fornitori"].update_one(
-                    {"$or": [{"partita_iva": piva}, {"piva": piva}]},
-                    {"$set": fornitore_update}
-                )
-                
-                if update_result.matched_count == 0:
-                    # Non trovato: non creare nuovi nella bulk (solo aggiorna esistenti)
-                    results["errori"] += 1
-                    results["dettagli"].append({"piva": piva, "status": "not_found", "error": "Fornitore non presente nel database"})
-                else:
-                    results["aggiornati"] += 1
-                    results["dettagli"].append({"piva": piva, "status": "updated", "nome": fornitore_update.get("ragione_sociale", "")})
-            else:
-                results["errori"] += 1
-                results["dettagli"].append({
-                    "piva": piva, 
-                    "status": "error", 
-                    "error": result.get("error")
-                })
-                
-        except Exception as e:
-            results["errori"] += 1
-            results["dettagli"].append({"piva": piva, "status": "error", "error": str(e)})
-    
-    return results
-
-
 @router.get("/cerca")
 async def cerca_azienda(
     query: str = Query(..., description="Nome azienda (parziale)"),
@@ -337,45 +265,3 @@ async def get_sdi_azienda(
         return {"success": True, "partita_iva": piva, "codice_sdi": result.get("codice_sdi")}
     else:
         raise HTTPException(status_code=404, detail=result.get("error"))
-
-
-@router.get("/fornitori-da-aggiornare")
-async def get_fornitori_da_aggiornare(
-    limit: int = Query(100)
-) -> Dict[str, Any]:
-    """
-    Lista fornitori con P.IVA valida e senza comune/dati OpenAPI.
-    Legge dalla collection 'fornitori' (collection canonica dell'app).
-    """
-    db = Database.get_db()
-    
-    # Fornitori con P.IVA valida (11 cifre) e senza comune popolato
-    fornitori = await db["fornitori"].find({
-        "partita_iva": {"$exists": True, "$nin": [None, ""]},
-        "$or": [
-            {"comune": {"$exists": False}},
-            {"comune": None},
-            {"comune": ""}
-        ]
-    }, {"_id": 0, "id": 1, "nome": 1, "ragione_sociale": 1, "denominazione": 1, "partita_iva": 1}).limit(limit).to_list(length=limit)
-    
-    # Filtra P.IVA valide (11 cifre numeriche) e deduplicazione
-    seen = set()
-    unique = []
-    for f in fornitori:
-        piva = str(f.get("partita_iva", "")).strip()
-        if piva and len(piva) == 11 and piva.isdigit() and piva not in seen:
-            seen.add(piva)
-            unique.append(f)
-    
-    return {
-        "count": len(unique),
-        "fornitori": [
-            {
-                "id": f.get("id"),
-                "ragione_sociale": f.get("ragione_sociale") or f.get("nome") or f.get("denominazione", ""),
-                "partita_iva": f.get("partita_iva")
-            }
-            for f in unique
-        ]
-    }

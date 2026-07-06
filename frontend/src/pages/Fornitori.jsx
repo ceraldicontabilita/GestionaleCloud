@@ -1526,7 +1526,7 @@ export default function Fornitori() {
   const [filterSenzaMetodo, setFilterSenzaMetodo] = useState(false);
   // PR #5e850c8: filtri avanzati backend
   const [filterMagazzino, setFilterMagazzino] = useState('tutti'); // tutti | popolano | esclusi
-  const [filterAnzianita, setFilterAnzianita] = useState('tutti'); // tutti | nuovo | storico | mai_fatturato
+  const [filterAnzianita, setFilterAnzianita] = useState('tutti'); // tutti | nuovo | storico
   const [giorniNuovo, setGiorniNuovo] = useState(90);
   const [filtroProdotto, setFiltroProdotto] = useState('');
   const debouncedProdotto = useDebounce(filtroProdotto, 500);
@@ -2005,54 +2005,6 @@ export default function Fornitori() {
             🔄 {loading ? 'Caricamento...' : 'Aggiorna'}
           </button>
           <button
-            onClick={async () => {
-              if (
-                !window.confirm(
-                  'Vuoi aggiornare tutti i fornitori con i dati della Camera di Commercio?'
-                )
-              )
-                return;
-              try {
-                const res = await api.get('/api/openapi-imprese/fornitori-da-aggiornare?limit=50');
-                if (res.data.count === 0) {
-                  alert('Tutti i fornitori sono già aggiornati!');
-                  return;
-                }
-                const partiteIva = (res.data?.fornitori || [])
-                  .map(f => f.partita_iva)
-                  .filter(Boolean);
-                if (partiteIva.length === 0) {
-                  alert('Nessun fornitore con P.IVA valida da aggiornare');
-                  return;
-                }
-                const bulkRes = await api.post('/api/openapi-imprese/aggiorna-bulk', {
-                  partite_iva: partiteIva,
-                });
-                alert(
-                  `Aggiornati: ${(bulkRes.data?.aggiornati ?? 0)}\nCreati: ${(bulkRes.data?.creati ?? 0)}\nErrori: ${(bulkRes.data?.errori ?? 0)}`
-                );
-                reloadData();
-              } catch (err) {
-                alert('Errore: ' + (err.response?.data?.detail || err.message));
-              }
-            }}
-            style={{
-              padding: '10px 20px',
-              background: '#15803d',
-              color: 'white',
-              border: 'none',
-              borderRadius: 8,
-              cursor: 'pointer',
-              fontWeight: '600',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-            }}
-            data-testid="btn-aggiorna-openapi-bulk"
-          >
-            <RefreshCw size={18} /> Aggiorna da OpenAPI
-          </button>
-          <button
             onClick={() => {
               setCurrentSupplier(null);
               setModalOpen(true);
@@ -2361,7 +2313,6 @@ export default function Fornitori() {
                 { k: 'tutti', l: 'Tutti' },
                 { k: 'nuovo', l: '🆕 Nuovi' },
                 { k: 'storico', l: '📜 Storici' },
-                { k: 'mai_fatturato', l: '❌ Mai fatturato' },
               ].map(opt => (
                 <button
                   key={opt.k}

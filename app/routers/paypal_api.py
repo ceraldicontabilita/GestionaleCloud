@@ -139,9 +139,13 @@ async def account_ids_non_mappati():
 
     db = Database.get_db()
 
-    # Aggrega i paypal_account_id dalle transazioni
+    # Aggrega i paypal_account_id dalle transazioni.
+    # Solo importi in uscita: un incasso da cliente non è mai un fornitore da mappare.
     pipeline = [
-        {"$match": {"paypal_account_id": {"$exists": True, "$nin": [None, ""]}}},
+        {"$match": {
+            "paypal_account_id": {"$exists": True, "$nin": [None, ""]},
+            "importo": {"$lt": 0},
+        }},
         {"$group": {
             "_id": "$paypal_account_id",
             "n_tx": {"$sum": 1},

@@ -121,7 +121,7 @@ async def list_suppliers(
     metodo_pagamento: Optional[str] = Query(None),
     attivo: Optional[bool] = Query(None),
     esclude_magazzino: Optional[bool] = Query(None, description="True=fornitori esclusi da magazzino, False=fornitori che popolano magazzino"),
-    stato_anagrafica: Optional[str] = Query(None, description="'nuovo' (prima fattura < giorni_nuovo gg) | 'storico' (prima fattura >= giorni_nuovo gg) | 'mai_fatturato'"),
+    stato_anagrafica: Optional[str] = Query(None, description="'nuovo' (prima fattura < giorni_nuovo gg) | 'storico' (prima fattura >= giorni_nuovo gg)"),
     giorni_nuovo: int = Query(90, ge=1, le=3650, description="Soglia giorni per definire 'nuovo'"),
     prodotto: Optional[str] = Query(None, description="Cerca fornitori che hanno un prodotto in magazzino con nome/descrizione che matcha"),
     use_cache: bool = Query(True)
@@ -257,8 +257,6 @@ async def list_suppliers(
         
         def _match_stato(s):
             prima = s.get("prima_fattura_data")
-            if stato_anagrafica == "mai_fatturato":
-                return not prima
             if not prima:
                 return False
             # Normalizza stringhe (potrebbe essere "2024-03-15T00:00:00" o "2024-03-15")
@@ -347,7 +345,7 @@ async def list_suppliers_filtered(
     limit: int = Query(500, ge=1, le=1000),
     search: Optional[str] = Query(None, description="Ricerca per nome/ragione sociale/P.IVA"),
     esclude_magazzino: Optional[bool] = Query(None, description="True=esclusi da magazzino | False=popolano magazzino | None=tutti"),
-    stato_anagrafica: Optional[str] = Query(None, regex="^(nuovo|storico|mai_fatturato)$", description="nuovo | storico | mai_fatturato"),
+    stato_anagrafica: Optional[str] = Query(None, regex="^(nuovo|storico)$", description="nuovo | storico"),
     giorni_nuovo: int = Query(90, ge=1, le=3650),
     prodotto: Optional[str] = Query(None, description="Cerca fornitori che vendono questo prodotto (match su nome/descrizione magazzino)"),
     attivo: Optional[bool] = Query(None),
