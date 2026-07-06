@@ -220,8 +220,9 @@ async def auto_registra_prima_nota(db, invoice: Dict[str, Any], metodo_pagamento
     """Applica la REGOLA prima nota all'import (metodo SEMPRE dal fornitore):
 
       - contanti/cassa   → registra subito in prima_nota_cassa (pagata)
-      - metodo bancario  → registra in prima_nota_banca SOLO se il pagamento
-                           esiste nell'estratto conto (altrimenti provvisoria)
+      - metodo bancario  → registra subito in prima_nota_banca (pagata);
+                           se il pagamento è già in estratto conto viene anche
+                           collegato al movimento (riconciliazione)
       - sospesa/misto/nessun metodo → provvisoria (nessun movimento)
 
     Ritorna il dict di update applicato alla fattura, o None se resta provvisoria.
@@ -233,6 +234,8 @@ async def auto_registra_prima_nota(db, invoice: Dict[str, Any], metodo_pagamento
 
     ec_match = None
     if not is_cassa:
+        # Best-effort: collega il movimento EC se esiste, ma la registrazione
+        # in banca avviene COMUNQUE (regola: il metodo fornitore comanda).
         ec_match = await find_ec_match_for_invoice(
             db,
             float(invoice.get("total_amount") or 0),
@@ -240,9 +243,6 @@ async def auto_registra_prima_nota(db, invoice: Dict[str, Any], metodo_pagamento
             invoice.get("invoice_date", ""),
             session=session,
         )
-        if ec_match is None:
-            logger.info("  → Pagamento NON trovato in EC → provvisorio")
-            return None
 
     now = datetime.now(timezone.utc).isoformat()
     pn_id = str(uuid.uuid4())

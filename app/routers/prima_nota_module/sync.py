@@ -655,10 +655,10 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
             } if movimento_match else None,
         })
     
-    # Auto-conferma SOLO se CERTO:
-    # 1. CASSA: contanti confermato → auto
-    # 2. BANCA: fornitore dice banca + trovato in estratto conto → auto
-    # 3. SOSPESA/MISTO/IN_ATTESA → provvisorio
+    # Auto-conferma in base al METODO FORNITORE (il metodo comanda):
+    # 1. CASSA: fornitore a contanti → auto in CASSA
+    # 2. BANCA: fornitore a bonifico/banca → auto in BANCA
+    # 3. SOSPESA/MISTO/senza metodo → provvisorio (decide l'utente)
     auto_confermati = 0
     provvisori_finali = []
     
@@ -673,9 +673,11 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
         # CONTANTI: sempre auto-conferma in CASSA
         if suggerimento == "cassa" and stato == "confermato":
             auto_confirm = True
-        
-        # BANCA: SOLO se verificato al 100% nell'estratto conto
-        elif suggerimento == "banca" and stato == "confermato" and p.get("movimento_banca"):
+
+        # BANCA: il fornitore ha metodo bancario in anagrafica → auto-conferma
+        # (il movimento EC, se trovato, viene collegato; altrimenti la
+        # riconciliazione lo aggancia in seguito)
+        elif suggerimento == "banca":
             auto_confirm = True
         
         # SOSPESA, MISTO, IN_ATTESA → provvisorio (utente decide)
@@ -1135,13 +1137,10 @@ async def auto_conferma_provvisori_per_metodo(
             if metodo in ("cassa", "contanti"):
                 # Regola: cassa → sempre in Prima Nota Cassa, pagata o no
                 destinazione = "cassa"
-            elif metodo in ("banca", "bonifico", "riba", "sepa"):
-                # Regola: banca → solo se pagata
-                if pagata:
-                    destinazione = "banca"
-                else:
-                    report["restate_in_provvisoria_banca_non_pagata"] += 1
-                    continue
+            elif metodo in ("banca", "bonifico", "riba", "sepa", "rid", "sdd"):
+                # Regola aggiornata: il metodo fornitore comanda → sempre in
+                # Prima Nota Banca (la riconciliazione EC aggancia il movimento)
+                destinazione = "banca"
             elif metodo in ("paypal", "carta", "carta_di_credito", "carta_credito", "misto"):
                 # Regola: paypal/carta → sempre in provvisoria, aspettano EC
                 report["restate_in_provvisoria_paypal_o_carta"] += 1
