@@ -589,8 +589,100 @@ function PrimaNotaDesktop() {
         </div>
       </div>
 
-      {/* ===== PROVVISORI ===== */}
-      {provvisori.length > 0 && (
+
+      <div
+        style={{
+          display: 'flex',
+          gap: 8,
+          marginBottom: 16,
+          position: 'sticky',
+          top: 0,
+          zIndex: 100,
+          background: '#f9fafb',
+          padding: '8px 0',
+        }}
+      >
+        <button
+          data-testid="btn-prima-nota-cassa"
+          onClick={() => setActiveSection('cassa')}
+          style={{
+            flex: 1,
+            padding: '12px 16px',
+            fontSize: 14,
+            fontWeight: 'bold',
+            background:
+              activeSection === 'cassa'
+                ? '#1d4ed8'
+                : '#f3f4f6',
+            color: activeSection === 'cassa' ? 'white' : '#374151',
+            border: 'none',
+            borderRadius: 10,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+            boxShadow: activeSection === 'cassa' ? '0 4px 15px rgba(79, 70, 229, 0.4)' : 'none',
+          }}
+        >
+          <span style={{ fontSize: 18 }}>💵</span>
+          CASSA {selectedYear}
+        </button>
+
+        <button
+          data-testid="btn-prima-nota-banca"
+          onClick={() => setActiveSection('banca')}
+          style={{
+            flex: 1,
+            padding: '12px 16px',
+            fontSize: 14,
+            fontWeight: 'bold',
+            background:
+              activeSection === 'banca'
+                ? '#0f2744'
+                : '#f3f4f6',
+            color: activeSection === 'banca' ? 'white' : '#374151',
+            border: 'none',
+            borderRadius: 10,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+            boxShadow: activeSection === 'banca' ? '0 4px 15px rgba(37, 99, 235, 0.4)' : 'none',
+          }}
+        >
+          <span style={{ fontSize: 18 }}>🏦</span>
+          BANCA {selectedYear}
+        </button>
+        <button
+          data-testid="btn-prima-nota-provvisori"
+          onClick={() => setActiveSection('provvisori')}
+          style={{
+            flex: 1,
+            padding: '12px 16px',
+            fontSize: 14,
+            fontWeight: 'bold',
+            background: activeSection === 'provvisori' ? '#b45309' : '#f3f4f6',
+            color: activeSection === 'provvisori' ? 'white' : '#374151',
+            border: 'none',
+            borderRadius: 10,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+            boxShadow: activeSection === 'provvisori' ? '0 4px 15px rgba(180, 83, 9, 0.4)' : 'none',
+          }}
+        >
+          <span style={{ fontSize: 18 }}>📋</span>
+          PROVVISORI{provvisori.length > 0 ? ` (${provvisori.length})` : ''}
+        </button>
+        <CopyLinkButton style={{ flexShrink: 0 }} />
+      </div>
+
+      {/* ===== TAB PROVVISORI ===== */}
+      {activeSection === 'provvisori' && provvisori.length > 0 && (
         <div
           style={{
             background: '#fffbeb',
@@ -906,74 +998,21 @@ function PrimaNotaDesktop() {
         </div>
       )}
 
-      {/* SECTION BUTTONS - Sticky su mobile */}
-      <div
-        style={{
-          display: 'flex',
-          gap: 8,
-          marginBottom: 16,
-          position: 'sticky',
-          top: 0,
-          zIndex: 100,
-          background: '#f9fafb',
-          padding: '8px 0',
-        }}
-      >
-        <button
-          data-testid="btn-prima-nota-cassa"
-          onClick={() => setActiveSection('cassa')}
+      {/* SECTION BUTTONS - Sticky su mobile */}      {activeSection === 'provvisori' && provvisori.length === 0 && (
+        <div
           style={{
-            flex: 1,
-            padding: '12px 16px',
-            fontSize: 14,
-            fontWeight: 'bold',
-            background:
-              activeSection === 'cassa'
-                ? '#1d4ed8'
-                : '#f3f4f6',
-            color: activeSection === 'cassa' ? 'white' : '#374151',
-            border: 'none',
-            borderRadius: 10,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 8,
-            boxShadow: activeSection === 'cassa' ? '0 4px 15px rgba(79, 70, 229, 0.4)' : 'none',
+            background: 'white', border: '1px solid #e5e7eb', borderRadius: 12,
+            padding: 40, textAlign: 'center', color: '#6b7280', marginBottom: 16,
           }}
         >
-          <span style={{ fontSize: 18 }}>💵</span>
-          CASSA {selectedYear}
-        </button>
-
-        <button
-          data-testid="btn-prima-nota-banca"
-          onClick={() => setActiveSection('banca')}
-          style={{
-            flex: 1,
-            padding: '12px 16px',
-            fontSize: 14,
-            fontWeight: 'bold',
-            background:
-              activeSection === 'banca'
-                ? '#0f2744'
-                : '#f3f4f6',
-            color: activeSection === 'banca' ? 'white' : '#374151',
-            border: 'none',
-            borderRadius: 10,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 8,
-            boxShadow: activeSection === 'banca' ? '0 4px 15px rgba(37, 99, 235, 0.4)' : 'none',
-          }}
-        >
-          <span style={{ fontSize: 18 }}>🏦</span>
-          BANCA {selectedYear}
-        </button>
-        <CopyLinkButton style={{ flexShrink: 0 }} />
-      </div>
+          <div style={{ fontSize: 28, marginBottom: 8 }}>✅</div>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>Nessuna fattura provvisoria</div>
+          <div style={{ fontSize: 13 }}>
+            Le fatture con metodo fornitore impostato vengono registrate in automatico
+            (job ogni 30 minuti). Qui restano solo sospese, misto e fornitori senza metodo.
+          </div>
+        </div>
+      )}
 
       {/* ========== SEZIONE CASSA ========== */}
       {activeSection === 'cassa' && (
@@ -1604,6 +1643,19 @@ function QuickEntryCard({ title, color, children }) {
   );
 }
 
+
+// Estrae il numero fattura dal movimento: campo dedicato se presente,
+// altrimenti dal prefisso della descrizione ("Fatt. 123 - Fornitore").
+function splitNumeroFattura(mov) {
+  const desc = mov.descrizione || mov.descrizione_originale || '';
+  const m = desc.match(
+    /^(?:Fatt\.|Pagamento fattura|Incasso fattura|Nota credito(?: fornitore)?)\s+(\S+)\s*-\s*(.+)$/i
+  );
+  if (mov.numero_fattura) return { numero: mov.numero_fattura, descr: m ? m[2] : desc };
+  if (m) return { numero: m[1], descr: m[2] };
+  return { numero: '', descr: desc };
+}
+
 function MovementsTable({
   movimenti,
   tipo,
@@ -1630,6 +1682,8 @@ function MovementsTable({
   const [filtroDataA, setFiltroDataA] = useState('');
   const [filtroImportoMin, setFiltroImportoMin] = useState('');
   const [filtroImportoMax, setFiltroImportoMax] = useState('');
+  const [filtroNumeroFattura, setFiltroNumeroFattura] = useState('');
+  const [filtroDataText, setFiltroDataText] = useState('');
 
   // Lista categorie uniche
   const categorieUniche = [...new Set(movimenti.map(m => m.categoria).filter(Boolean))].sort();
@@ -1651,6 +1705,22 @@ function MovementsTable({
 
   if (filtroCategoria) {
     movimentiFiltrati = movimentiFiltrati.filter(m => m.categoria === filtroCategoria);
+  }
+
+  if (filtroNumeroFattura) {
+    const q = filtroNumeroFattura.toLowerCase();
+    movimentiFiltrati = movimentiFiltrati.filter(m =>
+      splitNumeroFattura(m).numero.toLowerCase().includes(q)
+    );
+  }
+
+  if (filtroDataText) {
+    const q = filtroDataText.trim();
+    movimentiFiltrati = movimentiFiltrati.filter(m => {
+      const iso = m.data || '';
+      const it = iso.length >= 10 ? `${iso.slice(8, 10)}-${iso.slice(5, 7)}-${iso.slice(0, 4)}` : '';
+      return iso.includes(q) || it.includes(q);
+    });
   }
 
   if (filtroTipo) {
@@ -1718,6 +1788,8 @@ function MovementsTable({
     setFiltroDataA('');
     setFiltroImportoMin('');
     setFiltroImportoMax('');
+    setFiltroNumeroFattura('');
+    setFiltroDataText('');
     setCurrentPage(1);
   };
 
@@ -1728,7 +1800,9 @@ function MovementsTable({
     filtroDataDa ||
     filtroDataA ||
     filtroImportoMin !== '' ||
-    filtroImportoMax !== '';
+    filtroImportoMax !== '' ||
+    filtroNumeroFattura ||
+    filtroDataText;
 
   return (
     <div
@@ -2064,6 +2138,9 @@ function MovementsTable({
               <th style={{ padding: '8px 8px', textAlign: 'left', fontWeight: 600, fontSize: 11 }}>
                 Descrizione
               </th>
+              <th style={{ padding: '8px 8px', textAlign: 'left', fontWeight: 600, fontSize: 11 }}>
+                N. Fattura
+              </th>
               <th style={{ padding: '8px 8px', textAlign: 'right', fontWeight: 600, fontSize: 11 }}>
                 DARE
               </th>
@@ -2085,6 +2162,48 @@ function MovementsTable({
                   Azioni
                 </th>
               )}
+            </tr>
+            <tr style={{ background: '#f3f4f6', borderBottom: '1px solid #e5e7eb' }}>
+              <th style={{ padding: '4px 6px' }}>
+                <input value={filtroDataText} onChange={e => { setFiltroDataText(e.target.value); setCurrentPage(1); }}
+                  placeholder="gg-mm…" style={{ width: '100%', padding: '3px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 10, boxSizing: 'border-box' }} />
+              </th>
+              <th style={{ padding: '4px 6px' }}>
+                <select value={filtroDareAvere} onChange={e => { setFiltroDareAvere(e.target.value); setCurrentPage(1); }}
+                  style={{ width: '100%', padding: '3px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 10, boxSizing: 'border-box' }}>
+                  <option value="">•</option>
+                  <option value="dare">↑</option>
+                  <option value="avere">↓</option>
+                </select>
+              </th>
+              <th style={{ padding: '4px 6px' }}>
+                <select value={filtroCategoria} onChange={e => { setFiltroCategoria(e.target.value); setCurrentPage(1); }}
+                  style={{ width: '100%', padding: '3px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 10, boxSizing: 'border-box' }}>
+                  <option value="">Tutte</option>
+                  {categorieUniche.map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </th>
+              <th style={{ padding: '4px 6px' }}>
+                <input value={filtroDescrizione} onChange={e => { setFiltroDescrizione(e.target.value); setCurrentPage(1); }}
+                  placeholder="Cerca…" style={{ width: '100%', padding: '3px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 10, boxSizing: 'border-box' }} />
+              </th>
+              <th style={{ padding: '4px 6px' }}>
+                <input value={filtroNumeroFattura} onChange={e => { setFiltroNumeroFattura(e.target.value); setCurrentPage(1); }}
+                  placeholder="N.…" style={{ width: '100%', padding: '3px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 10, boxSizing: 'border-box' }} />
+              </th>
+              <th style={{ padding: '4px 6px' }}>
+                <input value={filtroImportoMin} onChange={e => { setFiltroImportoMin(e.target.value); setCurrentPage(1); }}
+                  placeholder="Min €" style={{ width: '100%', padding: '3px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 10, boxSizing: 'border-box' }} />
+              </th>
+              <th style={{ padding: '4px 6px' }}>
+                <input value={filtroImportoMax} onChange={e => { setFiltroImportoMax(e.target.value); setCurrentPage(1); }}
+                  placeholder="Max €" style={{ width: '100%', padding: '3px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 10, boxSizing: 'border-box' }} />
+              </th>
+              <th />
+              <th />
+              {!readOnly && <th />}
             </tr>
           </thead>
           <tbody>
@@ -2136,7 +2255,10 @@ function MovementsTable({
                     lineHeight: 1.3,
                   }}
                 >
-                  {mov.descrizione || mov.descrizione_originale || '-'}
+                  {splitNumeroFattura(mov).descr || '-'}
+                </td>
+                <td style={{ padding: '6px 8px', fontFamily: 'monospace', fontSize: 11, whiteSpace: 'nowrap' }}>
+                  {splitNumeroFattura(mov).numero || '-'}
                 </td>
                 <td
                   style={{
