@@ -10,7 +10,6 @@ from . import contabilita_avanzata
 from . import regole_categorizzazione
 from . import iva_calcolo
 from . import liquidazione_iva
-from . import riconciliazione_automatica
 from . import contabilita_gestionale
 
 __all__ = [
@@ -25,6 +24,5 @@ __all__ = [
     'regole_categorizzazione',
     'iva_calcolo',
     'liquidazione_iva',
-    'riconciliazione_automatica',
     'contabilita_gestionale'
 ]

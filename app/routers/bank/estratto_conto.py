@@ -418,8 +418,8 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
     # Dopo l'import, avvia la riconciliazione automatica
     riconciliazione_results = None
     try:
-        from app.routers.accounting.riconciliazione_automatica import riconcilia_estratto_conto
-        riconciliazione_results = await riconcilia_estratto_conto()
+        from app.services.riconciliazione_bancaria import riconcilia_movimenti_banca
+        riconciliazione_results = await riconcilia_movimenti_banca()
     except Exception as e:
         logger.error(f"Errore riconciliazione automatica: {e}")
         riconciliazione_results = {"error": str(e)}

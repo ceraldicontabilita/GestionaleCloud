@@ -330,8 +330,8 @@ def start_scheduler():
         except Exception as e:
             logger.error(f"[SCHEDULER-PN-AUTOCONFERMA] errore: {e}")
         try:
-            from app.routers.accounting.riconciliazione_automatica import riconcilia_estratto_conto
-            r = await riconcilia_estratto_conto()
+            from app.services.riconciliazione_bancaria import riconcilia_movimenti_banca
+            r = await riconcilia_movimenti_banca()
             logger.info(f"[SCHEDULER-PN-RICONCILIA] {r.get('message')}")
         except Exception as e:
             logger.error(f"[SCHEDULER-PN-RICONCILIA] errore: {e}")

@@ -196,18 +196,13 @@ def register_all_handlers():
     except Exception as e:
         logger.warning(f"Handler fatture non registrati: {e}")
 
-    # --- Fase 3: Banca ↔ Riconciliazione (Chat 9b) ---
-    try:
-        from app.services.handlers.banca_handlers import (
-            on_movimento_banca_cerca_match,
-            on_match_confermato_propaga,
-            on_movimento_banca_audit,
-        )
-        register_handler(EventTypes.MOVIMENTO_BANCA_IMPORTATO, on_movimento_banca_cerca_match)
-        register_handler(EventTypes.MOVIMENTO_BANCA_IMPORTATO, on_movimento_banca_audit)
-        register_handler(EventTypes.MATCH_CONFERMATO, on_match_confermato_propaga)
-    except Exception as e:
-        logger.warning(f"Handler banca non registrati: {e}")
+    # NOTA: la "Fase 3: Banca ↔ Riconciliazione" (banca_handlers.py, motore di
+    # matching a 4 livelli su MOVIMENTO_BANCA_IMPORTATO/MATCH_CONFERMATO) è
+    # stata rimossa: quell'evento non veniva mai propagato dal vero upload
+    # estratto conto (PrimaNota.jsx -> /api/estratto-conto-movimenti/import),
+    # quindi il motore non aveva mai girato su dati reali. La riconciliazione
+    # automatica live è ora unica, in app/services/riconciliazione_bancaria.py
+    # — vedi memoria/endpoints/RICONCILIAZIONE_AUDIT.md.
 
     # --- Fase 4: F24 (Chat 9c) ---
     try:
