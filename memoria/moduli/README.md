@@ -51,6 +51,15 @@ in `app/routers/invoices/fatture_upload.py`).
   commenti fuorvianti (Magazzino "gestito solo da Lotti", Dipendenti "SOLO LETTURA").
 - Restano da migrare sullo stesso pattern (documentato in `app/core/handlers_registry.py`):
   learning fornitore da fattura, costo ricette da fattura diretta, notifiche websocket.
+- **Alert**: wired `RIC_MATCH_AMBIGUO` nel motore di riconciliazione (era definito ma mai
+  generato). Backlog alert ancora morti, in ordine di sforzo/valore: `BNK_TRASFERIMENTO_INCOMPLETO`
+  (richiede uno scan periodico dei movimenti `trasferimento_interno` senza
+  `trasferimento_collegato_id`, non un semplice hook), `CAS_FAT_CONTANTI_NON_REGOLATA`
+  (richiede uno scan fatture a pagamento contanti non ancora regolate in cassa),
+  `RIC_DIFFERENZA_IMPORTO`/`RIC_PARTITA_VECCHIA`/`RIC_POS_NON_QUADRATO`/`RIC_PAGAMENTO_MULTIPLO`,
+  `DOC_REPROCESSING_NECESSARIO`, e i restanti `BNK_*`/`CAS_*`/`F24_*` elencati nei singoli
+  documenti — tutti richiedono progettare la condizione di trigger, non solo collegare una
+  chiamata già pronta.
 
 ## Gap trasversali più rilevanti (ricorrono in più documenti)
 
