@@ -70,7 +70,11 @@ export default function RiconciliazionePaypal() {
   const [report, setReport] = useState(null);
   const [statements, setStatements] = useState([]);
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [annoFiltro, setAnnoFiltro] = useState(anno);
+  // Anno unico e globale (barra di navigazione in alto) — nessun selettore
+  // locale duplicato: una pagina con un filtro anno proprio, indipendente
+  // da quello globale, dava l'impressione che cambiare l'anno in alto non
+  // avesse alcun effetto sulla pagina.
+  const annoFiltro = anno;
   const [soloPagamenti, setSoloPagamenti] = useState(true);
   const [searchTx, setSearchTx] = useState('');
   const [modalTxId, setModalTxId] = useState(null); // transaction_id aperto nel modale
@@ -82,11 +86,6 @@ export default function RiconciliazionePaypal() {
   const csvInputRef = useRef(null);
   const [syncMesi, setSyncMesi] = useState(3);
   const [syncing, setSyncing] = useState(false);
-
-  // Sincronizza il filtro locale con l'anno globale quando cambia nel TopNav
-  useEffect(() => {
-    setAnnoFiltro(anno);
-  }, [anno]);
 
   const loadDashboard = useCallback(async () => {
     try {
@@ -345,30 +344,6 @@ export default function RiconciliazionePaypal() {
             </p>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <select
-              value={annoFiltro || ''}
-              onChange={e => setAnnoFiltro(e.target.value ? parseInt(e.target.value) : null)}
-              style={{
-                padding: '8px 12px',
-                borderRadius: 6,
-                border: '1px solid rgba(255,255,255,0.3)',
-                background: 'rgba(255,255,255,0.15)',
-                color: 'white',
-                fontSize: 13,
-              }}
-            >
-              <option value="" style={{ color: '#333' }}>
-                Tutti gli anni
-              </option>
-              {[...Array(5)].map((_, i) => {
-                const y = new Date().getFullYear() - i;
-                return (
-                  <option key={y} value={y} style={{ color: '#333' }}>
-                    {y}
-                  </option>
-                );
-              })}
-            </select>
             <button
               onClick={() => navigate('/documenti/import')}
               style={{

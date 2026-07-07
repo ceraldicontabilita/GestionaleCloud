@@ -17,9 +17,12 @@ import { toast } from 'sonner';
 
 export default function NoleggioAuto() {
   const isMobile = useIsMobile();
-  // Usa anno globale come default, null = tutti gli anni
+  // Anno unico e globale (barra di navigazione in alto) — nessun selettore
+  // locale duplicato: una pagina con un filtro anno proprio, indipendente
+  // da quello globale, dava l'impressione che cambiare l'anno in alto non
+  // avesse alcun effetto sulla pagina.
   const { anno } = useAnnoGlobale();
-  const [annoFiltro, setAnnoFiltro] = useState(anno);
+  const annoFiltro = anno;
   const [veicoli, setVeicoli] = useState([]);
   const [statistiche, setStatistiche] = useState({});
   const [loading, setLoading] = useState(true);
@@ -234,33 +237,6 @@ export default function NoleggioAuto() {
           <p style={{ margin: '4px 0 0 0', fontSize: 13, opacity: 0.9 }}>
             Flotta aziendale • Dati estratti da fatture XML
           </p>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <select
-            data-testid="select-anno-noleggio"
-            value={annoFiltro || ''}
-            onChange={e => setAnnoFiltro(e.target.value ? parseInt(e.target.value) : null)}
-            style={{
-              padding: '10px 15px',
-              fontSize: 14,
-              fontWeight: 'bold',
-              borderRadius: 8,
-              border: 'none',
-              background: 'rgba(255,255,255,0.95)',
-              color: '#1e3a5f',
-              cursor: 'pointer',
-            }}
-          >
-            <option value="">📊 Tutti gli anni</option>
-            {[...Array(5)].map((_, i) => {
-              const y = new Date().getFullYear() - i;
-              return (
-                <option key={y} value={y}>
-                  📅 {y}
-                </option>
-              );
-            })}
-          </select>
         </div>
       </div>
 
