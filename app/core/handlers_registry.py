@@ -27,8 +27,7 @@ def registra_tutti_gli_handler():
     from app.handlers.estratto_conto import handler_matching_estratto_conto
     from app.handlers.corrispettivi  import (handler_prima_nota_corrispettivi,
                                               handler_check_coerenza_pos)
-    from app.handlers.fornitore      import (handler_aggiorna_learning_fornitore,
-                                              handler_controlla_iban_mancante)
+    from app.handlers.fornitore      import handler_aggiorna_learning_fornitore
     from app.handlers.ricette        import handler_aggiorna_costo_ricette
 
     # NOTA: "fattura.importata" e "fattura.pagata" non vengono MAI pubblicati
@@ -39,8 +38,10 @@ def registra_tutti_gli_handler():
     # non si sono MAI attivati in produzione. Migrati sul bus realmente vivo
     # (app/services/event_bus.py, EventTypes.FATTURA_CREATED): il carico
     # magazzino (on_fattura_righe_magazzino), la creazione scadenza
-    # (handler_crea_scadenza) e la classificazione centro di
-    # costo/deducibilità (handler_classifica_cdc).
+    # (handler_crea_scadenza), la classificazione centro di
+    # costo/deducibilità (handler_classifica_cdc) e il controllo IBAN
+    # mancante su fornitore nuovo (handler_controlla_iban_mancante, prima
+    # su "fornitore.creato", anch'esso mai pubblicato).
     # Restano gap documentati in memoria/moduli/ e
     # memoria/endpoints/RICONCILIAZIONE_AUDIT.md — da migrare in un intervento
     # dedicato: learning fornitore da fattura (keyword extraction al momento
@@ -71,11 +72,13 @@ def registra_tutti_gli_handler():
                  priority=20, name="check_coerenza_pos")
 
     # ─── FORNITORE CREATO / AGGIORNATO ───────────────────────────────────
+    # "fornitore.creato" non è mai pubblicato (stesso pattern morto degli
+    # altri): handler_aggiorna_learning_fornitore resta comunque vivo tramite
+    # "fornitore.aggiornato" (pubblicato da suppliers_module/base.py).
+    # handler_controlla_iban_mancante è stato migrato su FATTURA_CREATED
+    # (app/services/event_bus.py) — vedi commento in testa al file.
     bus.register("fornitore.creato", handler_aggiorna_learning_fornitore,
                  priority=10, name="learning_fornitore_nuovo")
-
-    bus.register("fornitore.creato", handler_controlla_iban_mancante,
-                 priority=20, name="check_iban_mancante")
 
     bus.register("fornitore.aggiornato", handler_aggiorna_learning_fornitore,
                  priority=10, name="learning_fornitore_update")

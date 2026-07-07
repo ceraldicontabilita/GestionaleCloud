@@ -114,13 +114,22 @@ async def handler_controlla_iban_mancante(payload: Dict[str, Any], db) -> Dict[s
     """
     Quando viene creato un fornitore con metodo pagamento "bonifico" ma senza IBAN,
     crea una segnalazione di avviso.
+
+    Migrato da "fornitore.creato" (app.core.event_bus, mai pubblicato) a
+    FATTURA_CREATED (app.services.event_bus, vivo) — si attiva solo quando
+    la fattura ha creato un fornitore nuovo (fornitore_nuovo), per mantenere
+    la semantica originale "al momento della creazione".
     """
     if db is None:
         return {"skipped": True}
 
+    if not payload.get("fornitore_nuovo", True):
+        return {"skipped": True, "reason": "fornitore non nuovo"}
+
     metodo = (payload.get("metodo_pagamento") or "").lower()
-    iban   = payload.get("iban") or ""
-    nome   = payload.get("ragione_sociale") or payload.get("denominazione") or "?"
+    iban   = payload.get("iban") or payload.get("fornitore_iban") or ""
+    nome   = (payload.get("ragione_sociale") or payload.get("denominazione")
+              or payload.get("fornitore_ragione_sociale") or "?")
 
     metodi_bancari = {"bonifico", "sepa", "rid", "riba", "sdd"}
     if metodo not in metodi_bancari or iban:

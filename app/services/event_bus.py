@@ -280,6 +280,14 @@ def register_all_handlers():
     except Exception as e:
         logger.warning(f"Handler classificazione CDC non registrato: {e}")
 
+    # --- Controllo IBAN mancante su fornitore nuovo ---
+    # Stesso pattern: era su "fornitore.creato" (app.core.event_bus, mai pubblicato).
+    try:
+        from app.handlers.fornitore import handler_controlla_iban_mancante
+        register_handler(EventTypes.FATTURA_CREATED, handler_controlla_iban_mancante)
+    except Exception as e:
+        logger.warning(f"Handler controllo IBAN non registrato: {e}")
+
     # --- Documenti/Inbox (Chat 9d) ---
     try:
         from app.services.handlers.documento_handlers import (

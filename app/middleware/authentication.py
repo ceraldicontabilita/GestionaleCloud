@@ -46,7 +46,6 @@ PUBLIC_PREFIXES = [
     "/api/public/",      # Explicit public API
     "/api/f24-public/",  # F24 public endpoints
     "/api/enhanced-parser/info",  # Parser info endpoint
-    "/api/openclaw/",    # OpenClaw AI assistant
     "/docs",             # Swagger UI assets
     "/redoc",            # ReDoc assets
 ]

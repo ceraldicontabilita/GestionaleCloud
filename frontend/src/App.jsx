@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import api, { setAuthToken } from "./api";
+import api from "./api";
 import ErrorBoundary from "./components/ErrorBoundary";
 import TopNav from "./components/layout/TopNav";
 import { UploadProvider } from "./contexts/UploadContext";
@@ -55,43 +55,11 @@ export default function App() {
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [alertCommercialista, setAlertCommercialista] = useState(null);
   const [showF24Sync, setShowF24Sync] = useState(false);
-  const [processingGoogleAuth, setProcessingGoogleAuth] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
 
   // Connessione WebSocket real-time — gestisce notifiche push dallo scheduler
   useWebSocketNotifications();
-
-  // Google OAuth processing
-  useEffect(() => {
-    const processGoogleAuth = async () => {
-      const hash = window.location.hash;
-      if (hash && hash.includes('session_id=')) {
-        setProcessingGoogleAuth(true);
-        const sessionIdMatch = hash.match(/session_id=([^&]+)/);
-        if (sessionIdMatch) {
-          const sessionId = sessionIdMatch[1];
-          try {
-            
-            const response = await api.post('/api/auth/google/session', { session_id: sessionId });
-            if (response.data.success) {
-              
-              if (response.data.access_token) {
-                setAuthToken(response.data.access_token);
-              }
-              window.history.replaceState(null, '', window.location.pathname);
-              navigate('/', { replace: true });
-            }
-          } catch (error) {
-            console.error('[App] Errore Google OAuth:', error);
-            window.history.replaceState(null, '', window.location.pathname);
-          }
-        }
-        setProcessingGoogleAuth(false);
-      }
-    };
-    processGoogleAuth();
-  }, []);
 
   // Load commercialista alert
   useEffect(() => {
@@ -111,33 +79,6 @@ export default function App() {
     };
     loadAlertCommercialista();
   }, []);
-
-  // Google Auth loading screen
-  if (processingGoogleAuth) {
-    return (
-      <div style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: '#daeafc',
-        color: '#1a40b5',
-      }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{
-            width: 48, height: 48,
-            border: '3px solid #1a40b5',
-            borderTopColor: 'transparent',
-            borderRadius: '50%',
-            animation: 'spin 1s linear infinite',
-            margin: '0 auto 16px',
-          }} />
-          <p style={{ fontWeight: 600 }}>Accesso con Google in corso...</p>
-          <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <UploadProvider>

@@ -12,7 +12,6 @@ import { queryClient } from "./lib/queryClient.js";
 import { ConfirmProvider } from "./components/ui/ConfirmDialog.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import Login from "./pages/Login.jsx";
-import AuthCallback from "./pages/AuthCallback.jsx";
 
 const PageLoader = () => (
   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh', flexDirection: 'column', gap: 16 }}>
@@ -56,7 +55,6 @@ const LazyPage = ({ children }) => (
 );
 
 const router = createBrowserRouter([
-  { path: "/auth/callback", element: <AuthCallback /> },
   { path: "/login", element: <Login /> },
   { path: "/gestione-riservata", element: <LazyPage><GestioneRiservata /></LazyPage> },
   {
@@ -234,10 +232,6 @@ const router = createBrowserRouter([
       // === MAPPA GESTIONALE ===
       { path: "mappa-gestionale", element: <LazyPage><MappaGestionale /></LazyPage> },
 
-      // === AI (redirect to OpenClaw) ===
-      { path: "assistente-ai", element: <Navigate to="/api/openclaw/ui/" replace /> },
-      { path: "claude", element: <Navigate to="/api/openclaw/ui/" replace /> },
-      
       // === REDIRECT ROTTE LEGACY / MANCANTI ===
       { path: "fisco", element: <Navigate to="/contabilita/calendario" replace /> },
       { path: "fisco/*", element: <Navigate to="/contabilita/calendario" replace /> },
