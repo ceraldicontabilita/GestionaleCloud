@@ -12,6 +12,7 @@ Copre le specifiche di Magazzino_Acquisti_Prodotti.txt:
 import logging
 import re
 import uuid
+from difflib import SequenceMatcher
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
 
@@ -198,6 +199,29 @@ def _normalizza_nome_prodotto(testo: str) -> str:
     return t
 
 
+async def _trova_prodotto_simile_fuzzy(norm: str, db, soglia: float = 0.85) -> Optional[Dict[str, Any]]:
+    """Cerca, tra i prodotti attivi, quello con nome normalizzato più simile
+    a `norm` secondo difflib — un controllo di fuzzy matching reale
+    (a differenza del prefix-regex del livello 3 di _cerca_prodotto_3_livelli,
+    che manca i casi in cui la differenza è all'inizio del nome)."""
+    candidati = await db["warehouse_inventory"].find(
+        {"attivo": {"$ne": False}, "nome_normalizzato": {"$exists": True, "$ne": ""}},
+        {"_id": 0, "id": 1, "nome": 1, "nome_normalizzato": 1},
+    ).limit(2000).to_list(2000)
+
+    migliore = None
+    miglior_score = 0.0
+    for c in candidati:
+        score = SequenceMatcher(None, norm, c.get("nome_normalizzato", "")).ratio()
+        if score > miglior_score:
+            miglior_score = score
+            migliore = c
+
+    if migliore and miglior_score >= soglia:
+        return {"id": migliore["id"], "nome": migliore.get("nome", ""), "score": round(miglior_score, 2)}
+    return None
+
+
 def _is_servizio(descrizione: str) -> bool:
     """Euristica: la riga è un servizio/costo, non merce."""
     desc = (descrizione or "").upper()
@@ -209,6 +233,24 @@ def _is_servizio(descrizione: str) -> bool:
 
 async def _aggiorna_prodotto_esistente(prod_id, qta, prezzo, udm, fattura_id, fornitore_id, db):
     """Aggiorna giacenza e storico acquisti di un prodotto esistente."""
+    # Unità di misura incoerente tra fatture diverse dello stesso prodotto
+    # (es. comprato in "kg" e ora la riga dice "pz"): segnale di un match
+    # 3-livelli sbagliato o di un fornitore che fattura in unità diverse.
+    # Vedi memoria/moduli/MAGAZZINO.md gap #4.
+    if udm:
+        prodotto_attuale = await db["warehouse_inventory"].find_one(
+            {"id": prod_id}, {"_id": 0, "unita_misura": 1, "nome": 1}
+        )
+        udm_attuale = (prodotto_attuale or {}).get("unita_misura")
+        if udm_attuale and udm_attuale.strip().lower() != udm.strip().lower():
+            from app.services.alert_engine import genera_alert
+            await genera_alert(
+                "MAG_UNITA_INCOERENTE", prod_id, "warehouse_inventory",
+                f"Prodotto '{(prodotto_attuale or {}).get('nome', '')[:50]}': unità "
+                f"registrata '{udm_attuale}', riga fattura '{udm}'",
+                db, extra={"fattura_id": fattura_id, "unita_precedente": udm_attuale, "unita_nuova": udm}
+            )
+
     update = {
         "ultimo_acquisto_data": datetime.now(timezone.utc).isoformat(),
         "ultimo_acquisto_fattura_id": fattura_id,
@@ -246,6 +288,24 @@ async def _crea_prodotto_nuovo(desc, qta, prezzo, udm, fornitore_id, fornitore_n
     """Crea un nuovo prodotto e genera alert di configurazione incompleta."""
     prod_id = str(uuid.uuid4())
     norm = _normalizza_nome_prodotto(desc)
+
+    # Se arriviamo qui, il matching 3 livelli non ha trovato nulla — ma può
+    # comunque trattarsi di un duplicato che il prefix-match (livello 3) non
+    # ha riconosciuto (es. nome che varia all'inizio: "Farina 00 Barilla" vs
+    # "Barilla Farina 00"). Un controllo fuzzy reale, sull'intero dataset
+    # attivo, cattura questi casi — segnala ma NON blocca la creazione,
+    # perché a differenza del match in ingestion qui la certezza è "media".
+    # Vedi memoria/moduli/MAGAZZINO.md gap #4/#5.
+    if len(norm) >= 5:
+        simile = await _trova_prodotto_simile_fuzzy(norm, db)
+        if simile:
+            from app.services.alert_engine import genera_alert
+            await genera_alert(
+                "MAG_DUPLICATO_PRODOTTO", prod_id, "warehouse_inventory",
+                f"Nuovo prodotto '{desc[:50]}' simile a '{simile['nome'][:50]}' "
+                f"(già in anagrafica) — verificare se è un duplicato",
+                db, extra={"prodotto_simile_id": simile["id"], "similarita": simile["score"]}
+            )
 
     await db["warehouse_inventory"].insert_one({
         "id": prod_id,

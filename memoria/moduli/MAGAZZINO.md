@@ -45,15 +45,17 @@ fatture come innesco per il popolamento magazzino, la fonte reale è Google Driv
    `suppliers_module/base.py:580`) — **questo handler non si attiva mai**. L'handler
    realmente vivo è `magazzino_handlers.py` (bus diverso, `EventTypes.FATTURA_CREATED`).
    Stesso pattern di doppio-event-bus già segnalato come irrisolto nell'audit generale.
-3. **`on_verifica_sotto_scorta` non è mai chiamata**: la funzione che genera l'alert
-   `MAG_SOTTO_SCORTA` esiste ma non è schedulata da nessun cron/scheduler
-   (`app/scheduler.py` non ha alcun job magazzino/scorta) — nessuna sottoscorta viene mai
-   segnalata nella pratica, nonostante il codice esista.
-4. **Solo 2 alert su 5 registrati sono realmente generati**: `MAG_MATCH_DUBBIO` e
-   `MAG_PRODOTTO_INCOMPLETO` sono vivi; `MAG_SOTTO_SCORTA` (morto, vedi punto 3),
-   `MAG_UNITA_INCOERENTE` e `MAG_DUPLICATO_PRODOTTO` sono registrati in
-   `app/services/alert_engine.py:317-347` ma non triggerati da nessun punto del codice.
-   La spec ne richiede 6 — nel codice reale ne esistono 5 definiti, di cui solo 2 attivi.
+3. ~~**`on_verifica_sotto_scorta` non è mai chiamata**~~ — **RISOLTO**. Schedulato job
+   giornaliero (ore 6:30, `app/scheduler.py::check_scorta_magazzino_task`).
+4. ~~**Solo 2 alert su 5 registrati sono realmente generati**~~ — **RISOLTO per altri 2**:
+   `MAG_UNITA_INCOERENTE` ora scatta in `_aggiorna_prodotto_esistente` quando l'unità di
+   misura di una riga fattura differisce da quella già registrata sul prodotto;
+   `MAG_DUPLICATO_PRODOTTO` scatta in `_crea_prodotto_nuovo` con un vero controllo fuzzy
+   (`difflib.SequenceMatcher`, soglia 0.85) sul dataset attivo, prima di creare un prodotto
+   che il matching 3 livelli non ha riconosciuto — cattura typo/varianti minime, non
+   riordini di parole (limite noto e condiviso con `fornitori_dedupe.py`). Ora 4 alert su 5
+   sono vivi (solo `MAG_SOTTO_SCORTA` restava da sbloccare, vedi punto 3 sopra — anch'esso
+   ora attivo). La spec ne richiede 6, nel codice ne esistono 5 definiti.
 5. **Matching fuzzy vero esiste ma è isolato dalla pipeline di ingestion**: la funzione con
    fuzzy matching reale (`difflib.SequenceMatcher`, soglia 0.3) serve solo la ricerca/
    autocomplete lato utente (`search_products_predictive`), non viene mai chiamata quando
