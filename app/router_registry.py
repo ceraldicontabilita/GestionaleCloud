@@ -94,7 +94,7 @@ def _register_accounting(app: FastAPI):
         prima_nota_automation, prima_nota_salari, prima_nota_salari_v2,
         piano_conti, bilancio, centri_costo, contabilita_avanzata,
         regole_categorizzazione, iva_calcolo, liquidazione_iva,
-        riconciliazione_automatica, contabilita_gestionale
+        contabilita_gestionale
     )
     from app.routers.prima_nota_module import router as prima_nota_router
     from app.routers import accounting_engine, contabilita_italiana, fiscalita_italiana
@@ -115,7 +115,6 @@ def _register_accounting(app: FastAPI):
     app.include_router(regole_categorizzazione.router, prefix="/api/regole", tags=["Regole"])
     app.include_router(iva_calcolo.router, prefix="/api/iva", tags=["IVA"])
     app.include_router(liquidazione_iva.router, prefix="/api", tags=["Liquidazione IVA"])
-    app.include_router(riconciliazione_automatica.router, prefix="/api/riconciliazione-auto", tags=["Riconciliazione Auto"])
     app.include_router(riconciliazione_intelligente_api.router, prefix="/api/riconciliazione-intelligente", tags=["Riconciliazione Intelligente"])
     app.include_router(batch_operations.router, prefix="/api/batch", tags=["Batch Operations"])
     app.include_router(accounting_engine.router, prefix="/api/accounting", tags=["Accounting Engine"])
@@ -301,13 +300,12 @@ def _register_core(app: FastAPI):
 # ─── Email Module ────────────────────────────────────────────────────────────
 def _register_email(app: FastAPI):
     from app.routers import (
-        email_scanner, email_download, email_reconciliation, email_mongodb,
+        email_scanner, email_download, email_mongodb,
         documenti_non_associati, document_ai, ai_parser
     )
-    
+
     app.include_router(email_scanner.router, prefix="/api/email-scanner", tags=["Email Scanner"])
     app.include_router(email_download.router, prefix="/api/email-download", tags=["Email Download"])
-    app.include_router(email_reconciliation.router, tags=["Email Riconciliazione"])
     app.include_router(email_mongodb.router, prefix="/api", tags=["Email MongoDB"])
 
     # Auto-classify documents_inbox (Gmail/PEC)

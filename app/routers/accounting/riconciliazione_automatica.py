@@ -7,8 +7,15 @@ REGOLE FONDAMENTALI:
 3. Devo rispettare il metodo di pagamento del fornitore (Cassa, Bonifico, etc.)
 4. Match ESATTO per importo (±0.05€) o match parziale (pagamento rate)
 5. Fuzzy matching per nome fornitore
+
+`riconcilia_estratto_conto()` non è più esposta come route HTTP (nessun
+chiamante frontend/backend la usava via /api/riconciliazione-auto): resta
+una funzione importabile, richiamata dallo scheduler (ogni 30 min) e da
+app/routers/bank/estratto_conto.py dopo ogni upload. Le route ausiliarie
+(stats/reset/conferma-operazione/operazioni-dubbi/correggi-metodi-pagamento/
+stato-aruba) sono state rimosse: zero chiamanti verificati ovunque nel repo,
+vedi memoria/endpoints/RICONCILIAZIONE_AUDIT.md.
 """
-from fastapi import APIRouter, HTTPException
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone, timedelta
 import uuid
@@ -26,7 +33,6 @@ except ImportError:
     FUZZY_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
 
 COLLECTION_ESTRATTO_CONTO = "estratto_conto_movimenti"
 COLLECTION_PRIMA_NOTA_CASSA = "prima_nota_cassa"
@@ -313,7 +319,6 @@ def extract_supplier_name(descrizione: str) -> Optional[str]:
     return None
 
 
-@router.post("/riconcilia-estratto-conto")
 async def riconcilia_estratto_conto() -> Dict[str, Any]:
     """
     Riconciliazione automatica con logica corretta:
@@ -822,302 +827,3 @@ async def riconcilia_estratto_conto() -> Dict[str, Any]:
     }
 
 
-@router.get("/stats-riconciliazione")
-async def get_stats_riconciliazione() -> Dict[str, Any]:
-    """Statistiche riconciliazione."""
-    db = Database.get_db()
-    
-    ec_totali = await db[COLLECTION_ESTRATTO_CONTO].count_documents({})
-    ec_riconciliati = await db[COLLECTION_ESTRATTO_CONTO].count_documents({"riconciliato": True})
-    ec_auto = await db[COLLECTION_ESTRATTO_CONTO].count_documents({"riconciliato_automaticamente": True})
-    
-    odc_totali = await db[COLLECTION_OPERAZIONI_DA_CONFERMARE].count_documents({"stato": "da_confermare"})
-    fatture_auto = await db[Collections.INVOICES].count_documents({"riconciliato_automaticamente": True})
-    fatture_in_banca = await db[Collections.INVOICES].count_documents({"in_banca": True})
-    
-    return {
-        "estratto_conto": {
-            "totali": ec_totali,
-            "riconciliati": ec_riconciliati,
-            "automatici": ec_auto,
-            "percentuale": round(ec_riconciliati / ec_totali * 100, 1) if ec_totali > 0 else 0
-        },
-        "operazioni_da_confermare": odc_totali,
-        "fatture_riconciliate_auto": fatture_auto,
-        "fatture_in_banca": fatture_in_banca
-    }
-
-
-@router.delete("/reset-riconciliazione")
-async def reset_riconciliazione() -> Dict[str, Any]:
-    """Reset completo riconciliazione."""
-    db = Database.get_db()
-    
-    r1 = await db[COLLECTION_OPERAZIONI_DA_CONFERMARE].delete_many({})
-    
-    r2 = await db[COLLECTION_ESTRATTO_CONTO].update_many(
-        {},
-        {"$unset": {
-            "riconciliato": "",
-            "riconciliato_automaticamente": "",
-            "tipo_riconciliazione": "",
-            "dettagli_riconciliazione": ""
-        }}
-    )
-    
-    # Reset anche flag sulle fatture
-    r3 = await db[Collections.INVOICES].update_many(
-        {"riconciliato_automaticamente": True},
-        {"$unset": {
-            "riconciliato_con_ec": "",
-            "riconciliato_automaticamente": ""
-        }}
-    )
-    
-    return {
-        "success": True,
-        "operazioni_eliminate": r1.deleted_count,
-        "movimenti_resettati": r2.modified_count,
-        "fatture_resettate": r3.modified_count
-    }
-
-
-@router.post("/conferma-operazione/{operazione_id}")
-async def conferma_operazione(
-    operazione_id: str,
-    fattura_id: Optional[str] = None,
-    azione: str = "conferma"
-) -> Dict[str, Any]:
-    """Conferma/rifiuta operazione dubbia."""
-    db = Database.get_db()
-    now = datetime.now(timezone.utc).isoformat()
-    
-    operazione = await db[COLLECTION_OPERAZIONI_DA_CONFERMARE].find_one({"id": operazione_id})
-    if not operazione:
-        raise HTTPException(status_code=404, detail="Operazione non trovata")
-    
-    if azione == "conferma" and fattura_id:
-        # Aggiorna fattura come pagata - TROVATA IN BANCA
-        fattura = await db[Collections.INVOICES].find_one(
-            {"$or": [{"id": fattura_id}, {"_id": fattura_id}]}
-        )
-        if not fattura:
-            raise HTTPException(status_code=404, detail="Fattura non trovata")
-        await _applica_pagamento_banca(
-            db, fattura, "Bonifico", operazione["data"],
-            operazione.get("movimento_ec_id"), 0, now,
-            source="ric_auto_conferma_operazione",
-        )
-
-        # Aggiorna EC
-        await db[COLLECTION_ESTRATTO_CONTO].update_one(
-            {"id": operazione["movimento_ec_id"]},
-            {"$set": {
-                "riconciliato": True,
-                "riconciliato_manualmente": True,
-                "updated_at": now
-            }}
-        )
-        
-        await db[COLLECTION_OPERAZIONI_DA_CONFERMARE].update_one(
-            {"id": operazione_id},
-            {"$set": {"stato": "confermato", "fattura_confermata": fattura_id, "updated_at": now}}
-        )
-        
-        return {"success": True, "message": "Confermato - Fattura pagata via Banca"}
-    
-    elif azione in ["rifiuta", "ignora"]:
-        await db[COLLECTION_OPERAZIONI_DA_CONFERMARE].update_one(
-            {"id": operazione_id},
-            {"$set": {"stato": azione, "updated_at": now}}
-        )
-        return {"success": True, "message": f"Operazione {azione}ta"}
-    
-    raise HTTPException(status_code=400, detail="Azione non valida")
-
-
-@router.get("/operazioni-dubbi")
-async def get_operazioni_dubbi(limit: int = 100, offset: int = 0) -> Dict[str, Any]:
-    """Lista operazioni dubbie."""
-    db = Database.get_db()
-    
-    operazioni = await db[COLLECTION_OPERAZIONI_DA_CONFERMARE].find(
-        {"stato": "da_confermare"},
-        {"_id": 0}
-    ).sort("created_at", -1).skip(offset).limit(limit).to_list(limit)
-    
-    totale = await db[COLLECTION_OPERAZIONI_DA_CONFERMARE].count_documents({"stato": "da_confermare"})
-    
-    return {"operazioni": operazioni, "totale": totale}
-
-
-@router.post("/correggi-metodi-pagamento")
-async def correggi_metodi_pagamento() -> Dict[str, Any]:
-    """
-    BONIFICA COMPLETA: Corregge i metodi di pagamento errati.
-    
-    REGOLE APPLICATE:
-    1. Se metodo="Bonifico" o "Assegno" ma in_banca=false → ERRORE
-       - Resetta pagato=false, status="imported"
-       - Applica metodo fornitore se definito, altrimenti rimuovi metodo
-    
-    2. Se pagato=true ma in_banca=false E metodo="Bonifico/Assegno" → ERRORE
-       - Stesso trattamento sopra
-    
-    3. Se fornitore ha metodo definito (es. "Cassa") → rispettalo
-    """
-    db = Database.get_db()
-    now = datetime.now(timezone.utc).isoformat()
-    
-    results = {
-        "bancario_errati": 0,
-        "assegno_errati": 0,
-        "metodo_fornitore_applicato": 0,
-        "metodo_rimosso": 0,
-        "totale_corrette": 0
-    }
-    
-    # CASO 1: Fatture con metodo bancario (bonifico, banca, sepa) ma senza in_banca=true
-    # Case-insensitive per catturare tutte le varianti
-    fatture_bancarie = await db[Collections.INVOICES].find({
-        "metodo_pagamento": {"$regex": "^(bonifico|banca|sepa)$", "$options": "i"},
-        "in_banca": {"$ne": True}
-    }, {"_id": 0}).to_list(5000)
-    
-    # CASO 2: Fatture con "Assegno" (qualsiasi variante) ma senza in_banca=true
-    fatture_assegno = await db[Collections.INVOICES].find({
-        "metodo_pagamento": {"$regex": "^assegno", "$options": "i"},
-        "in_banca": {"$ne": True}
-    }, {"_id": 0}).to_list(5000)
-    
-    fatture_errate = fatture_bancarie + fatture_assegno
-    
-    for fattura in fatture_errate:
-        piva = fattura.get("cedente_partita_iva") or fattura.get("supplier_vat")
-        metodo_attuale = fattura.get("metodo_pagamento", "")
-        
-        # Cerca metodo default del fornitore
-        supplier = None
-        metodo_fornitore = None
-        if piva:
-            supplier = await db[COLLECTION_SUPPLIERS].find_one(
-                {"$or": [{"partita_iva": piva}, {"vat_number": piva}]}
-            )
-            if supplier:
-                metodo_fornitore = supplier.get("metodo_pagamento")
-        
-        # Prepara update
-        update_set = {
-            "updated_at": now,
-            "pagato": False,
-            "paid": False,
-            "status": "imported",
-            "bonifica_applicata": now,
-            "bonifica_motivo": f"metodo '{metodo_attuale}' non valido senza corrispondenza in estratto conto"
-        }
-        
-        update_unset = {
-            "riconciliato_con_ec": "",
-            "riconciliato_automaticamente": ""
-        }
-        
-        if metodo_fornitore and metodo_fornitore.lower() not in ["bonifico", "assegno"]:
-            # Fornitore ha metodo diverso (es. Cassa) → usa quello
-            update_set["metodo_pagamento"] = metodo_fornitore
-            results["metodo_fornitore_applicato"] += 1
-        else:
-            # Rimuovi metodo pagamento
-            update_unset["metodo_pagamento"] = ""
-            results["metodo_rimosso"] += 1
-        
-        await db[Collections.INVOICES].update_one(
-            {"_id": fattura["_id"]},
-            {"$set": update_set, "$unset": update_unset}
-        )
-        
-        if metodo_attuale.lower() in ["bonifico", "banca", "sepa"]:
-            results["bancario_errati"] += 1
-        elif "assegno" in metodo_attuale.lower():
-            results["assegno_errati"] += 1
-        
-        results["totale_corrette"] += 1
-    
-    return {
-        "success": True,
-        "message": f"Bonifica completata: {results['totale_corrette']} fatture corrette",
-        **results,
-        "dettaglio": {
-            "regola": "Se metodo=Bonifico/Assegno ma in_banca=false → errore logico → reset a stato iniziale",
-            "azione": "pagato=false, status=imported, metodo=fornitore_default o rimosso"
-        }
-    }
-
-
-@router.get("/stato-riconciliazione-aruba")
-async def get_stato_riconciliazione_aruba() -> Dict[str, Any]:
-    """
-    Restituisce lo stato attuale della riconciliazione per le fatture Aruba.
-    Include statistiche e data ultimo estratto conto.
-    """
-    db = Database.get_db()
-    
-    # Data ultimo estratto conto
-    ultimo_ec = await db[COLLECTION_ESTRATTO_CONTO].find_one(
-        {},
-        sort=[("data", -1)],
-        projection={"data": 1, "created_at": 1}
-    )
-    
-    # Statistiche fatture
-    stats = {
-        "totale_da_confermare": 0,
-        "bonifico": 0,
-        "assegno": 0,
-        "cassa": 0,
-        "sospese": 0,
-        "pagate": 0
-    }
-    
-    pipeline = [
-        {
-            "$group": {
-                "_id": {
-                    "metodo": "$metodo_pagamento",
-                    "pagato": "$pagato",
-                    "sospesa": "$stato_riconciliazione"
-                },
-                "count": {"$sum": 1},
-                "totale": {"$sum": {"$toDouble": {"$ifNull": ["$total_amount", 0]}}}
-            }
-        }
-    ]
-    
-    agg_results = await db[Collections.INVOICES].aggregate(pipeline).to_list(100)
-    
-    for agg in agg_results:
-        metodo = (agg["_id"].get("metodo") or "").lower()
-        pagato = agg["_id"].get("pagato")
-        sospesa = agg["_id"].get("sospesa")
-        count = agg["count"]
-        
-        if pagato:
-            stats["pagate"] += count
-        elif sospesa == "sospesa":
-            stats["sospese"] += count
-        elif metodo in ["bonifico", "banca", "sepa"]:
-            stats["bonifico"] += count
-        elif "assegno" in metodo:
-            stats["assegno"] += count
-        elif metodo in ["cassa", "contanti", "cash"]:
-            stats["cassa"] += count
-        else:
-            stats["totale_da_confermare"] += count
-    
-    return {
-        "ultimo_estratto_conto": {
-            "data": ultimo_ec.get("data") if ultimo_ec else None,
-            "caricato_il": ultimo_ec.get("created_at") if ultimo_ec else None
-        },
-        "statistiche": stats,
-        "prossimo_refresh_consigliato": "Carica nuovo estratto conto per aggiornare le fatture sospese"
-    }
