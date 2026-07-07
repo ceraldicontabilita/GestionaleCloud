@@ -1,5 +1,10 @@
 import React, { lazy, Suspense, useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import {
+  BarChart3, TrendingUp, BadgeCheck, CalendarCheck, Calendar,
+  Building2, Banknote, Lock, ClipboardList, Landmark, Wrench,
+  Target, Package,
+} from 'lucide-react';
 import { useAnnoGlobale } from '../../contexts/AnnoContext';
 import { useHashState } from '../../hooks/useHashState';
 
@@ -17,20 +22,23 @@ const AvanzataContent = lazy(() => import('../ContabilitaAvanzata.jsx'));
 const UtileObiettivoContent = lazy(() => import('../UtileObiettivo.jsx'));
 const PrevisioniAcquistiContent = lazy(() => import('../PrevisioniAcquisti.jsx'));
 
+// Design system Ceraldi ERP: un solo colore attivo (navy #0f2744), icone
+// Lucide, niente arcobaleno di colori per-tab (era incoerente col resto
+// del sito e illeggibile).
 const TABS = [
-  { id: 'piano-conti', label: '📊 Piano dei Conti', color: '#1a40b5' },
-  { id: 'bilancio', label: '📈 Bilancio', color: '#10b981' },
-  { id: 'verifica', label: '✅ Verifica Bilancio', color: '#06b6d4' },
-  { id: 'controllo', label: '🔍 Controllo Mensile', color: '#3b82f6' },
-  { id: 'calendario', label: '📅 Calendario Fiscale', color: '#f59e0b' },
-  { id: 'cespiti', label: '🏢 Cespiti', color: '#8b5cf6' },
-  { id: 'finanziaria', label: '💰 Finanziaria', color: '#ec4899' },
-  { id: 'chiusura', label: '🔒 Chiusura Esercizio', color: '#ef4444' },
-  { id: 'budget', label: '📋 Budget Previsionale', color: '#84cc16' },
-  { id: 'mutui', label: '🏠 Mutui', color: '#f97316' },
-  { id: 'avanzata', label: '🔧 Contab. Avanzata', color: '#0ea5e9' },
-  { id: 'utile', label: '🎯 Utile Obiettivo', color: '#14b8a6' },
-  { id: 'previsioni-acquisti', label: '📦 Previsioni Acquisti', color: '#a855f7' },
+  { id: 'piano-conti', label: 'Piano dei Conti', Icon: BarChart3 },
+  { id: 'bilancio', label: 'Bilancio', Icon: TrendingUp },
+  { id: 'verifica', label: 'Verifica Bilancio', Icon: BadgeCheck },
+  { id: 'controllo', label: 'Controllo Mensile', Icon: CalendarCheck },
+  { id: 'calendario', label: 'Calendario Fiscale', Icon: Calendar },
+  { id: 'cespiti', label: 'Cespiti', Icon: Building2 },
+  { id: 'finanziaria', label: 'Finanziaria', Icon: Banknote },
+  { id: 'chiusura', label: 'Chiusura Esercizio', Icon: Lock },
+  { id: 'budget', label: 'Budget', Icon: ClipboardList },
+  { id: 'mutui', label: 'Mutui', Icon: Landmark },
+  { id: 'avanzata', label: 'Contab. Avanzata', Icon: Wrench },
+  { id: 'utile', label: 'Utile Obiettivo', Icon: Target },
+  { id: 'previsioni-acquisti', label: 'Previsioni Acquisti', Icon: Package },
 ];
 
 const Loading = () => (
@@ -40,7 +48,7 @@ const Loading = () => (
         width: 32,
         height: 32,
         border: '3px solid #e2e8f0',
-        borderTop: '3px solid #1a40b5',
+        borderTop: '3px solid #0f2744',
         borderRadius: '50%',
         animation: 'spin 1s linear infinite',
         margin: '0 auto 12px',
@@ -112,41 +120,52 @@ export default function ContabilitaHub() {
 
   return (
     <div style={{ width: '100%' }}>
-      {/* Tab Bar — stile uniforme */}
+      {/* Tab Bar — design system: navy attivo, scroll orizzontale su mobile */}
       <div
         style={{
           display: 'flex',
           gap: 6,
-          padding: '8px 16px',
+          padding: '8px 12px',
           background: 'white',
           borderBottom: '1px solid #e2e8f0',
           borderRadius: '8px 8px 0 0',
-          flexWrap: 'wrap',
-          marginBottom: 0,
+          flexWrap: 'nowrap',
+          overflowX: 'auto',
+          WebkitOverflowScrolling: 'touch',
+          scrollbarWidth: 'thin',
         }}
       >
-        {TABS.map(tab => (
-          <button
-            key={tab.id}
-            data-testid={`tab-contabilita-${tab.id}`}
-            onClick={() => handleTabChange(tab.id)}
-            style={{
-              padding: '7px 13px',
-              borderRadius: 6,
-              border: `1px solid ${activeTab === tab.id ? tab.color : '#e2e8f0'}`,
-              fontWeight: activeTab === tab.id ? 700 : 500,
-              fontSize: 12,
-              cursor: 'pointer',
-              transition: 'all 140ms ease',
-              background: activeTab === tab.id ? tab.color : '#ffffff',
-              color: activeTab === tab.id ? 'white' : '#64748b',
-              boxShadow: activeTab === tab.id ? '0 1px 2px rgba(15,39,68,0.08)' : 'none',
-              marginBottom: 4,
-            }}
-          >
-            {tab.label}
-          </button>
-        ))}
+        {TABS.map(({ id, label, Icon }) => {
+          const attivo = activeTab === id;
+          return (
+            <button
+              key={id}
+              data-testid={`tab-contabilita-${id}`}
+              onClick={() => handleTabChange(id)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '9px 13px',
+                minHeight: 40,
+                borderRadius: 6,
+                border: `1px solid ${attivo ? '#0f2744' : '#e2e8f0'}`,
+                fontWeight: attivo ? 700 : 500,
+                fontSize: 12,
+                whiteSpace: 'nowrap',
+                flexShrink: 0,
+                cursor: 'pointer',
+                transition: 'all 140ms ease',
+                background: attivo ? '#0f2744' : '#ffffff',
+                color: attivo ? '#fff' : '#64748b',
+                boxShadow: attivo ? '0 1px 2px rgba(15,39,68,0.12)' : 'none',
+              }}
+            >
+              <Icon size={14} />
+              {label}
+            </button>
+          );
+        })}
       </div>
 
       {/* Tab Content - mount-once */}
