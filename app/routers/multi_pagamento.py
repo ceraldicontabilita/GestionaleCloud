@@ -222,7 +222,10 @@ async def assegno_copre_piu_fatture(data: Dict[str, Any] = Body(...)) -> Dict[st
         fatt_id = f.get("fattura_id")
         importo = float(f.get("importo", 0))
         
-        result = await registra_pagamento(Body(**{
+        # Chiamata diretta con dict: passare Body(**{...}) creava un FieldInfo
+        # e ogni data.get() dentro registra_pagamento crashava (endpoint mai
+        # funzionato — bug #2 audit memoria/endpoints/README.md).
+        result = await registra_pagamento({
             "fattura_id": fatt_id,
             "importo": importo,
             "metodo": "assegno",
@@ -230,7 +233,7 @@ async def assegno_copre_piu_fatture(data: Dict[str, Any] = Body(...)) -> Dict[st
             "assegno_id": assegno_id,
             "assegno_numero": assegno_numero,
             "note": f"Assegno N.{assegno_numero} (multi-fattura)",
-        }))
+        })
         risultati.append(result)
     
     return {"success": True, "assegno": assegno_numero, "fatture_pagate": len(risultati), "dettagli": risultati}
@@ -261,14 +264,15 @@ async def fattura_pagata_multi_metodo(data: Dict[str, Any] = Body(...)) -> Dict[
     
     risultati = []
     for p in pagamenti_list:
-        result = await registra_pagamento(Body(**{
+        # Dict diretto, non Body(**{...}): vedi commento in assegno_copre_piu_fatture.
+        result = await registra_pagamento({
             "fattura_id": fattura_id,
             "importo": p.get("importo", 0),
             "metodo": p.get("metodo", "contanti"),
             "data": p.get("data", ""),
             "assegno_numero": p.get("assegno_numero", ""),
             "note": p.get("note", ""),
-        }))
+        })
         risultati.append(result)
     
     return {"success": True, "fattura_id": fattura_id, "pagamenti_registrati": len(risultati), "dettagli": risultati}

@@ -158,31 +158,35 @@ async def get_bilancino_verifica(anno: int) -> Dict[str, Any]:
     data_inizio = f"{anno}-01-01"
     data_fine = f"{anno}-12-31"
     
-    # RICAVI
+    # RICAVI — SOLO corrispettivi. La collection `invoices` contiene SOLO
+    # fatture RICEVUTE dai fornitori: trattare le TD01/TD24/TD26 come
+    # "fatture emesse" gonfiava i ricavi con i costi e al tempo stesso li
+    # toglieva dai costi (bug #10 audit memoria/endpoints/README.md).
     corrispettivi = await db["corrispettivi"].aggregate([
         {"$match": {"data": {"$gte": data_inizio, "$lte": data_fine}}},
         {"$group": {"_id": None, "totale": {"$sum": "$totale"}}}
     ]).to_list(1)
-    
-    fatture_emesse = await db["invoices"].aggregate([
-        {"$match": {
-            "invoice_date": {"$gte": data_inizio, "$lte": data_fine},
-            "tipo_documento": {"$in": ["TD01", "TD24", "TD26"]}
-        }},
-        {"$group": {"_id": None, "totale": {"$sum": "$total_amount"}}}
-    ]).to_list(1)
-    
-    totale_ricavi = (corrispettivi[0]["totale"] if corrispettivi else 0) + \
-                    (fatture_emesse[0]["totale"] if fatture_emesse else 0)
-    
-    # COSTI
+
+    totale_ricavi = corrispettivi[0]["totale"] if corrispettivi else 0
+
+    # COSTI — tutte le fatture ricevute tranne le note di credito (che
+    # vengono sottratte), come nel motore canonico di bilancio.py.
     acquisti = await db["invoices"].aggregate([
         {"$match": {
             "invoice_date": {"$gte": data_inizio, "$lte": data_fine},
-            "tipo_documento": {"$nin": ["TD01", "TD04", "TD24", "TD26"]}
+            "tipo_documento": {"$nin": ["TD04", "TD08"]}
         }},
         {"$group": {"_id": None, "totale": {"$sum": "$total_amount"}}}
     ]).to_list(1)
+
+    note_credito = await db["invoices"].aggregate([
+        {"$match": {
+            "invoice_date": {"$gte": data_inizio, "$lte": data_fine},
+            "tipo_documento": {"$in": ["TD04", "TD08"]}
+        }},
+        {"$group": {"_id": None, "totale": {"$sum": "$total_amount"}}}
+    ]).to_list(1)
+    totale_note_credito = note_credito[0]["totale"] if note_credito else 0
     
     personale = await db["prima_nota_salari"].aggregate([
         {"$match": {"anno": anno}},
@@ -199,23 +203,23 @@ async def get_bilancino_verifica(anno: int) -> Dict[str, Any]:
         {"$group": {"_id": None, "totale": {"$sum": "$importo"}}}
     ]).to_list(1)
     
-    totale_costi = (acquisti[0]["totale"] if acquisti else 0) + \
+    totale_costi = (acquisti[0]["totale"] if acquisti else 0) - totale_note_credito + \
                    (personale[0]["totale"] if personale else 0) + \
                    (ammortamenti[0]["totale"] if ammortamenti else 0) + \
                    (tfr[0]["totale"] if tfr else 0)
-    
+
     utile_perdita = totale_ricavi - totale_costi
-    
+
     return {
         "anno": anno,
         "bilancino": {
             "ricavi": {
                 "corrispettivi": round(corrispettivi[0]["totale"] if corrispettivi else 0, 2),
-                "fatture_emesse": round(fatture_emesse[0]["totale"] if fatture_emesse else 0, 2),
                 "totale": round(totale_ricavi, 2)
             },
             "costi": {
-                "acquisti_merce": round(acquisti[0]["totale"] if acquisti else 0, 2),
+                "acquisti_merce": round((acquisti[0]["totale"] if acquisti else 0) - totale_note_credito, 2),
+                "note_credito_dedotte": round(totale_note_credito, 2),
                 "personale": round(personale[0]["totale"] if personale else 0, 2),
                 "ammortamenti": round(ammortamenti[0]["totale"] if ammortamenti else 0, 2),
                 "tfr": round(tfr[0]["totale"] if tfr else 0, 2),

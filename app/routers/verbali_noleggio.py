@@ -728,28 +728,9 @@ async def get_tutti_verbali(
     return risultato
 
 
-@router.post("/unifica-verbali")
-@handle_errors
-async def unifica_verbali() -> Dict[str, Any]:
-    """
-    Unifica i PDF scaricati dalla posta con i verbali estratti dalle fatture.
-    Aggiorna verbali_noleggio_completi con i PDF da verbali_noleggio.
-    """
-    db = Database.get_db()
-    
-    # Prendi verbali con PDF dalla posta
-    verbali_posta = await db["verbali_noleggio"].find(
-        {"pdf_allegati": {"$exists": True, "$ne": []}}
-    ).to_list(1000)
-    
-    aggiornati = 0
-    non_trovati = []
-    
-    for v_posta in verbali_posta:
-        numero = v_posta.get("numero_verbale")
-        if not numero:
-            continue
-        
+# NB: l'endpoint POST /unifica-verbali che era qui è stato rimosso: il corpo
+# del loop era vuoto (endpoint tronco che rispondeva sempre null senza fare
+# nulla — bug #16 audit memoria/endpoints/README.md), zero chiamanti.
 
 
 @router.post("/classifica-verbali-posta")

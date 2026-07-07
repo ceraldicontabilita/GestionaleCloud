@@ -492,10 +492,9 @@ async def upload_f24(
     return await upload_f24_pdf(file)
 
 
-@router.get(
-    "/{f24_id}",
-    summary="Get single F24"
-)
+# NB: la route GET /{f24_id} è definita in fondo al file, DOPO tutte le
+# route statiche: definita qui shadowava GET /quietanze (registrata dopo
+# nel file), che rispondeva sempre "F24 non trovato" — bug #14 audit.
 async def get_f24(
     f24_id: str = Path(...),
     current_user: Dict[str, Any] = Depends(get_current_user)
@@ -1064,3 +1063,9 @@ async def statistiche_tributi_quietanze() -> Dict[str, Any]:
         "erario": [{"codice": s["_id"], "debito": round(s["totale_debito"], 2), "credito": round(s.get("totale_credito", 0), 2), "count": s["count"]} for s in erario_stats],
         "inps": [{"causale": s["_id"], "totale": round(s["totale_debito"], 2), "count": s["count"]} for s in inps_stats]
     }
+
+
+# Registrata per ULTIMA di proposito: una route dinamica a un segmento
+# cattura qualunque path statico definito dopo di lei (era il caso di
+# GET /quietanze, che non veniva mai raggiunta).
+router.add_api_route("/{f24_id}", get_f24, methods=["GET"], summary="Get single F24")

@@ -23,24 +23,24 @@ duplicate/shadowate contate una volta per modulo che le implementa).
 ### 🔴 Bug bloccanti (crash a runtime, dati corrotti)
 
 1. **Assegni**: quattro schemi diversi coesistono per collegare un assegno a una fattura (fix parziale già applicato: nuovo endpoint canonico `PUT /api/assegni/{id}/fatture-collegate`, ma i 3 meccanismi legacy — `auto-associa`, `ricostruisci-dati`, `associa-beneficiari-robusto`, `cerca-combinazioni-assegni`, `sync-da-estratto-conto` — scrivono ancora solo campi flat). *(04)*
-2. `POST /api/pagamenti/assegno-multi-fatture` e `/fattura-multi-metodo` → **TypeError certo** (`registra_pagamento(Body(**dict))`). *(04)*
-3. `POST/GET /api/cash/corrispettivi` → **AttributeError certo** (`CashService(repo, None)`). *(04)*
+2. ✔ RISOLTO (lug 2026) — `POST /api/pagamenti/assegno-multi-fatture` e `/fattura-multi-metodo`: ora chiamano `registra_pagamento` con dict diretto (prima TypeError certo). *(04)*
+3. ✔ RISOLTO (lug 2026) — `/api/cash/*`: `get_cash_service` ora inietta un vero `CorrissettivoRepository` (prima `CashService(repo, None)` → AttributeError certo). *(04)*
 4. `POST /api/riconciliazione-auto/correggi-metodi-pagamento` → **KeyError** (`_id` letto dopo proiezione che lo esclude): la bonifica non fa nulla. *(04)*
 5. `sposta-cassa`/`sposta-banca` (dati_provvisori) salvano importi **negativi** con `tipo:"uscita"`: nelle aggregate un'uscita negativa **aumenta** il saldo cassa/banca invece di diminuirlo. *(01)*
 6. **F24**: `COLL_F24_COMMERCIALISTA` in `db_collections.py` vale `"f24_unificato"`, ma le costanti omonime locali in `f24_riconciliazione.py`/`email_f24.py` valgono `"f24_commercialista"` → sotto lo stesso prefisso, moduli diversi scrivono/leggono **due archivi diversi** senza saperlo. *(05)*
 7. `PUT /api/sync/update-fattura-everywhere` **azzera a null** importo/data/pagato dei movimenti di prima nota per i campi non inviati nel body. *(08)*
 8. `POST /verbali-riconciliazione/riconcilia/{n}` — `ObjectId(driver_id)` su un id in formato UUID → 500 non gestito. *(07)*
 9. **Ammortamenti cespiti** registrati come uscita di cassa reale in `prima_nota_cassa` (`cespiti/registra/{anno}`) — un costo non monetario altera il saldo cassa. *(02)*
-10. **Ricavi gonfiati**: TD01/TD24/TD26 (fatture emesse) classificate come "ricavi" dentro `chiusura_esercizio`, `indici_bilancio`, `controllo_gestione` — pur essendo la collezione `invoices` dedicata alle sole fatture **ricevute**. *(02)*
+10. ✔ RISOLTO (lug 2026) — Ricavi gonfiati: `chiusura_esercizio`, `indici_bilancio` e `controllo_gestione` ora trattano `invoices` come sole fatture ricevute (ricavi = corrispettivi, costi = tutte le fatture − note credito). *(02)*
 
 ### 🟠 Shadowing / route irraggiungibili (il codice "vince" non è quello che sembra)
 
 11. **`/api/fatture` upload**: `fatture_overlay` è montato PRIMA di `fatture_upload` → `POST /api/fatture/upload-xml[-bulk]` gira SEMPRE sull'overlay, che **rifiuta i P7M** e non emette l'evento `FATTURA_CREATED` (niente scadenzario/alert automatici). La pipeline "cuore" (`process_xml_bytes`) su questo canale non gira mai. *(03)*
 12. **`/api/invoices`**: `invoices_main_overlay` vince su `invoices_main`; dentro `invoices_main` un decoratore duplicato fa sì che `GET /{invoice_id}` risponda con la lista `bank-pending` (bug indipendente dallo shadowing, mascherato dall'overlay). `invoices_export.py` è un intero modulo-stub mai raggiunto. *(03)*
 13. **Verbali noleggio**: `/stats`, `/pdf/{n}`, `/dettaglio/{n}` definiti in due router sotto lo stesso prefisso — vince sempre `verbali_noleggio.py`, la versione più ricca in `verbali_noleggio_api.py` è morta. Anche `GET /api/dipendenti/contratti` definito due volte. *(07)*
-14. `GET /api/f24/quietanze` shadowato da `GET /api/f24/{f24_id}` (registrato prima) → risponde sempre "F24 non trovato". *(05)*
-15. `GET /api/iva/daily/{date}`: il path param si chiama `{date}` ma il parametro Python è `date_param` → FastAPI lo tratta come query obbligatoria, il segmento path è ignorato. *(02)*
-16. `POST /api/verbali-noleggio/unifica-verbali`: endpoint tronco/morto, il corpo del loop non fa nulla, ritorna sempre `null` nonostante il docstring. *(07)*
+14. ✔ RISOLTO (lug 2026) — `GET /api/f24/{f24_id}` è ora registrato per ultimo: `/quietanze` non è più shadowata. *(05)*
+15. ✔ RISOLTO (lug 2026) — `GET /api/iva/daily/{date_param}`: path param allineato al parametro Python. *(02)*
+16. ✔ RIMOSSO (lug 2026) — `POST /api/verbali-noleggio/unifica-verbali`: endpoint tronco eliminato. *(07)*
 
 ### 🟡 Architetture parallele non comunicanti (stessa funzione, N implementazioni)
 

@@ -566,12 +566,6 @@ export default function ChiusuraEsercizio() {
                       <span>{formatEuro(bilancino.bilancino.ricavi.corrispettivi)}</span>
                     </div>
                     <div
-                      style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}
-                    >
-                      <span style={{ color: '#64748b' }}>Fatture Emesse</span>
-                      <span>{formatEuro(bilancino.bilancino.ricavi.fatture_emesse)}</span>
-                    </div>
-                    <div
                       style={{
                         display: 'flex',
                         justifyContent: 'space-between',

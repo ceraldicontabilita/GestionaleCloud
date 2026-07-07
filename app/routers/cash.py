@@ -12,6 +12,7 @@ import logging
 from app.database import Database, Collections
 from app.repositories.cash_repository import (
     CashMovementRepository,
+    CorrissettivoRepository,
 )
 from app.services.cash_service import CashService
 from app.models.cash import (
@@ -32,8 +33,11 @@ async def get_cash_service() -> CashService:
     """Get cash service with injected dependencies."""
     db = Database.get_db()
     movement_repo = CashMovementRepository(db[Collections.CASH_MOVEMENTS])
-    
-    return CashService(movement_repo, None)
+    # Prima veniva passato None come corrispettivo_repo: ogni endpoint
+    # corrispettivi crashava con AttributeError (bug #3 audit memoria).
+    corrispettivo_repo = CorrissettivoRepository(db[Collections.CORRISPETTIVI])
+
+    return CashService(movement_repo, corrispettivo_repo)
 
 
 @router.get(

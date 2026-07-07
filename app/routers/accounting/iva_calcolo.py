@@ -64,7 +64,7 @@ def format_date_italian(date_str: str) -> str:
         return date_str
 
 
-@router.get("/daily/{date}")
+@router.get("/daily/{date_param}")
 @handle_errors
 async def get_iva_daily(date_param: str) -> Dict[str, Any]:
     """IVA giornaliera: debito (corrispettivi) vs credito (fatture).

@@ -45,20 +45,19 @@ async def calcola_indici_bilancio(anno: int) -> Dict[str, Any]:
     
     disponibilita_liquide = disponibilita_liquide_cassa + disponibilita_liquide_banca
     
-    # Crediti vs clienti (fatture emesse non incassate)
-    crediti = await db["invoices"].aggregate([
-        {"$match": {
-            "tipo_documento": {"$in": ["TD01", "TD24", "TD26"]},
-            "pagato": {"$ne": True}
-        }},
-        {"$group": {"_id": None, "totale": {"$sum": "$total_amount"}}}
-    ]).to_list(1)
-    crediti_clienti = crediti[0]["totale"] if crediti else 0
-    
-    # Debiti vs fornitori (fatture ricevute non pagate)
+    # Crediti vs clienti: la collection `invoices` contiene SOLO fatture
+    # RICEVUTE (nessuna fattura emessa in questo sistema, le vendite sono
+    # corrispettivi incassati subito): niente crediti da qui. Prima le
+    # TD01/TD24/TD26 ricevute venivano contate come "crediti clienti",
+    # gonfiando l'attivo (bug #10 audit memoria/endpoints/README.md).
+    crediti_clienti = 0
+
+    # Debiti vs fornitori: TUTTE le fatture ricevute non pagate tranne le
+    # note di credito (prima le TD01/TD24/TD26 — la quasi totalità — erano
+    # escluse, sottostimando i debiti).
     debiti = await db["invoices"].aggregate([
         {"$match": {
-            "tipo_documento": {"$nin": ["TD01", "TD04", "TD24", "TD26"]},
+            "tipo_documento": {"$nin": ["TD04", "TD08"]},
             "pagato": {"$ne": True}
         }},
         {"$group": {"_id": None, "totale": {"$sum": "$total_amount"}}}
@@ -81,33 +80,33 @@ async def calcola_indici_bilancio(anno: int) -> Dict[str, Any]:
     
     # === DATI ECONOMICI ===
     
-    # Ricavi (corrispettivi + fatture emesse)
+    # Ricavi = SOLO corrispettivi (vedi nota sopra: niente fatture emesse)
     corrispettivi = await db["corrispettivi"].aggregate([
         {"$match": {"data": {"$gte": data_inizio, "$lte": data_fine}}},
         {"$group": {"_id": None, "totale": {"$sum": "$totale"}}}
     ]).to_list(1)
     totale_corrispettivi = corrispettivi[0]["totale"] if corrispettivi else 0
-    
-    fatture_emesse = await db["invoices"].aggregate([
-        {"$match": {
-            "invoice_date": {"$gte": data_inizio, "$lte": data_fine},
-            "tipo_documento": {"$in": ["TD01", "TD24", "TD26"]}
-        }},
-        {"$group": {"_id": None, "totale": {"$sum": "$total_amount"}}}
-    ]).to_list(1)
-    totale_fatture_emesse = fatture_emesse[0]["totale"] if fatture_emesse else 0
-    
-    ricavi_totali = totale_corrispettivi + totale_fatture_emesse
-    
-    # Costi operativi
+
+    ricavi_totali = totale_corrispettivi
+
+    # Costi operativi: tutte le fatture ricevute, note credito dedotte
     acquisti = await db["invoices"].aggregate([
         {"$match": {
             "invoice_date": {"$gte": data_inizio, "$lte": data_fine},
-            "tipo_documento": {"$nin": ["TD01", "TD04", "TD24", "TD26"]}
+            "tipo_documento": {"$nin": ["TD04", "TD08"]}
         }},
         {"$group": {"_id": None, "totale": {"$sum": "$total_amount"}}}
     ]).to_list(1)
     costi_acquisti = acquisti[0]["totale"] if acquisti else 0
+
+    note_credito = await db["invoices"].aggregate([
+        {"$match": {
+            "invoice_date": {"$gte": data_inizio, "$lte": data_fine},
+            "tipo_documento": {"$in": ["TD04", "TD08"]}
+        }},
+        {"$group": {"_id": None, "totale": {"$sum": "$total_amount"}}}
+    ]).to_list(1)
+    costi_acquisti -= note_credito[0]["totale"] if note_credito else 0
     
     # Costo personale
     personale = await db["prima_nota_salari"].aggregate([

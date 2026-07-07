@@ -70,17 +70,10 @@ async def get_analisi_costi_ricavi(
     ]).to_list(1)
     totale_corrispettivi = corrispettivi[0]["totale"] if corrispettivi else 0
     
-    # Fatture emesse
-    fatture_emesse = await db["invoices"].aggregate([
-        {"$match": {
-            "invoice_date": {"$gte": data_inizio, "$lt": data_fine},
-            "tipo_documento": {"$in": ["TD01", "TD24", "TD26"]}
-        }},
-        {"$group": {"_id": None, "totale": {"$sum": "$total_amount"}}}
-    ]).to_list(1)
-    totale_fatture_emesse = fatture_emesse[0]["totale"] if fatture_emesse else 0
-    
-    ricavi_totali = totale_corrispettivi + totale_fatture_emesse
+    # Ricavi = SOLO corrispettivi: `invoices` contiene solo fatture RICEVUTE,
+    # le TD01/TD24/TD26 non sono fatture emesse — contarle nei ricavi
+    # gonfiava i ricavi coi costi (bug #10 audit memoria/endpoints/README.md).
+    ricavi_totali = totale_corrispettivi
     
     # === COSTI ===
     # Costo personale (cedolini)
@@ -98,15 +91,25 @@ async def get_analisi_costi_ricavi(
         ]).to_list(1)
         totale_personale = salari[0]["totale"] if salari else 0
     
-    # Acquisti (fatture ricevute)
+    # Acquisti: TUTTE le fatture ricevute (prima le TD01/TD24/TD26 — la quasi
+    # totalità — erano escluse), con le note di credito dedotte
     acquisti = await db["invoices"].aggregate([
         {"$match": {
             "invoice_date": {"$gte": data_inizio, "$lt": data_fine},
-            "tipo_documento": {"$nin": ["TD01", "TD04", "TD24", "TD26"]}
+            "tipo_documento": {"$nin": ["TD04", "TD08"]}
         }},
         {"$group": {"_id": None, "totale": {"$sum": "$total_amount"}}}
     ]).to_list(1)
     totale_acquisti = acquisti[0]["totale"] if acquisti else 0
+
+    note_credito = await db["invoices"].aggregate([
+        {"$match": {
+            "invoice_date": {"$gte": data_inizio, "$lt": data_fine},
+            "tipo_documento": {"$in": ["TD04", "TD08"]}
+        }},
+        {"$group": {"_id": None, "totale": {"$sum": "$total_amount"}}}
+    ]).to_list(1)
+    totale_acquisti -= note_credito[0]["totale"] if note_credito else 0
     
     # Prima nota cassa (uscite)
     uscite_cassa = await db["prima_nota_cassa"].aggregate([
@@ -130,7 +133,6 @@ async def get_analisi_costi_ricavi(
         "mese": mese,
         "ricavi": {
             "corrispettivi": round(totale_corrispettivi, 2),
-            "fatture_emesse": round(totale_fatture_emesse, 2),
             "totale": round(ricavi_totali, 2)
         },
         "costi": {
