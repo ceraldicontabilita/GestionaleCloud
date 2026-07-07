@@ -328,13 +328,17 @@ async def sincronizza_corrispettivi_prima_nota() -> Dict[str, Any]:
                 "numero_documenti": int(corr.get("numero_documenti", 0) or 0)
             }
             
+            # In cassa va SOLO la quota contanti del corrispettivo, mai l'elettronico/POS
+            # (che confluisce in prima_nota_banca): vedi memoria/moduli/PRIMA_NOTA_CASSA.md
+            importo_cassa = dettaglio["contanti"]
+
             if movimento:
                 # Aggiorna dettaglio
                 await db["prima_nota_cassa"].update_one(
                     {"_id": movimento["_id"]},
                     {"$set": {
                         "dettaglio": dettaglio,
-                        "importo": float(corr.get("totale", 0) or 0),
+                        "importo": importo_cassa,
                         "updated_at": datetime.now(timezone.utc).isoformat()
                     }}
                 )
@@ -345,7 +349,7 @@ async def sincronizza_corrispettivi_prima_nota() -> Dict[str, Any]:
                     "id": f"corr_{corr.get('id', str(uuid.uuid4()))}",
                     "data": data_corr,
                     "tipo": "entrata",
-                    "importo": float(corr.get("totale", 0) or 0),
+                    "importo": importo_cassa,
                     "descrizione": f"Corrispettivo {data_corr} - RT {corr.get('matricola_rt', '')}",
                     "categoria": "Corrispettivi",
                     "dettaglio": dettaglio,

@@ -639,7 +639,10 @@ async def bulk_upsert_preview(payload: Dict[str, Any] = Body(...)) -> Dict[str, 
         if not nome_completo and (cognome or nome):
             nome_completo = f"{cognome} {nome}".strip()
 
-        # SOLO LETTURA
+        # SOLO LETTURA per questo import bulk (non sovrascrive senza overwrite=True) —
+        # non si applica al resto del modulo, che ha CRUD completo. Vedi
+        # memoria/moduli/DIPENDENTI.md per la correzione di un'analisi precedente
+        # che aveva interpretato questo commento come riferito all'intero modulo.
         esistente = await db[Collections.EMPLOYEES].find_one(
             {"codice_fiscale": cf}, {"_id": 0}
         )

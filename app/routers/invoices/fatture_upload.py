@@ -909,8 +909,11 @@ async def process_xml_bytes(db, content: bytes, filename: str, source: str = "xm
     await db[Collections.INVOICES].insert_one(invoice.copy())
     invoice.pop("_id", None)
 
-    # Giacenze magazzino: gestite SOLO dall'app esterna Lotti — nessun
-    # aggiornamento di warehouse_inventory dall'import fatture.
+    # Giacenze magazzino: aggiornate qui sotto tramite l'event bus (punto 7,
+    # EventTypes.FATTURA_CREATED -> on_fattura_righe_magazzino), NON in modo
+    # sincrono in questa funzione. Vedi memoria/moduli/MAGAZZINO.md — questo
+    # commento diceva erroneamente che l'import fatture non tocca mai
+    # warehouse_inventory; in realtà l'handler dell'event bus lo aggiorna.
 
     # 6. Prima Nota: stessa regola dell'upload manuale (contanti → cassa;
     #    bancario → banca solo se il pagamento è in estratto conto).
@@ -1105,7 +1108,9 @@ async def sync_suppliers_from_invoices() -> Dict[str, Any]:
             "comune": fornitore_data.get("comune", ""),
             "provincia": fornitore_data.get("provincia", ""),
             "nazione": fornitore_data.get("nazione", "IT"),
-            "metodo_pagamento": "bonifico",
+            # Regola generale: nessun metodo finché non configurato esplicitamente
+            # sul fornitore (vedi ensure_supplier_exists) — mai un default arbitrario.
+            "metodo_pagamento": "sospesa",
             "giorni_pagamento": 30,
             "iban": "",
             "fatture_count": group["count"],

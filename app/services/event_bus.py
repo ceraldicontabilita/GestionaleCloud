@@ -260,6 +260,18 @@ def register_all_handlers():
     except Exception as e:
         logger.warning(f"Handler magazzino non registrati: {e}")
 
+    # --- Scadenziario fornitori ---
+    # Migrato dal vecchio app.core.event_bus: era registrato su "fattura.importata",
+    # un evento mai pubblicato nel percorso reale di import fattura (solo questo bus,
+    # con FATTURA_CREATED, viene davvero attivato) — la scheda "scadenzario" in
+    # GestioneCespiti.jsx (/api/scadenzario-fornitori/) restava quindi vuota per ogni
+    # fattura importata. Vedi memoria/moduli/MAGAZZINO.md per lo stesso pattern di bug.
+    try:
+        from app.handlers.scadenziario import handler_crea_scadenza
+        register_handler(EventTypes.FATTURA_CREATED, handler_crea_scadenza)
+    except Exception as e:
+        logger.warning(f"Handler scadenziario non registrato: {e}")
+
     # --- Documenti/Inbox (Chat 9d) ---
     try:
         from app.services.handlers.documento_handlers import (

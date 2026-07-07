@@ -34,7 +34,13 @@ async def handler_crea_scadenza(payload: Dict[str, Any], db) -> Dict[str, Any]:
 
     fattura_id    = payload.get("fattura_id") or payload.get("id")
     importo       = float(payload.get("importo_totale") or payload.get("total_amount") or 0)
-    fornitore_obj = payload.get("fornitore", {})
+    # Il payload reale pubblicato da fatture_upload.py usa campi piatti
+    # (fornitore_id/fornitore_ragione_sociale), non un oggetto "fornitore"
+    # annidato — supportiamo entrambe le forme per compatibilità.
+    fornitore_obj = payload.get("fornitore") or {
+        "id": payload.get("fornitore_id"),
+        "ragione_sociale": payload.get("fornitore_ragione_sociale", ""),
+    }
     data_fattura  = payload.get("data_documento") or payload.get("invoice_date", "")
     metodo_pag    = payload.get("metodo_pagamento") or "da_configurare"
     numero_doc    = payload.get("numero_documento") or payload.get("invoice_number", "")
@@ -42,8 +48,8 @@ async def handler_crea_scadenza(payload: Dict[str, Any], db) -> Dict[str, Any]:
     if importo <= 0:
         return {"skipped": True, "reason": "importo zero o negativo"}
 
-    # Calcola data scadenza
-    data_scadenza = payload.get("data_scadenza_pagamento")
+    # Calcola data scadenza (usa quella già calcolata dal chiamante se presente)
+    data_scadenza = payload.get("data_scadenza_pagamento") or payload.get("data_scadenza")
     if not data_scadenza and data_fattura:
         try:
             giorni = GIORNI_PER_MODALITA.get(metodo_pag.lower(), 30)

@@ -2,14 +2,12 @@
 HANDLERS REGISTRY — Registro centrale di tutti gli handler.
 Importa qui UNA VOLTA all'avvio. Registra tutto sul bus degli eventi.
 
-TABELLA COMPLETA:
-  fattura.importata         → magazzino, scadenziario, learning_cdc,
-                              fornitore_learning, ricette, notifica
-  fattura.pagata            → prima_nota_fattura, notifica
+TABELLA COMPLETA (eventi realmente pubblicati — "fattura.importata" e
+"fattura.pagata" non lo sono mai, vedi nota nel corpo della funzione):
   cedolino.importato        → prima_nota_cedolino, tfr, notifica
   estratto_conto.importato  → matching_banca (fatture, cedolini, f24, pos)
   corrispettivi.importati   → prima_nota_corrispettivi, check_pos
-  fornitore.creato          → learning_fornitore, controlla_iban
+  fornitore.creato          → learning_fornitore, controlla_iban (mai pubblicato)
   fornitore.aggiornato      → learning_fornitore
   ingrediente.prezzo_cambiato → aggiorna_costo_ricette
 """
@@ -23,14 +21,9 @@ def registra_tutti_gli_handler():
     """Chiama questa funzione UNA VOLTA all'avvio del server."""
 
     # Import lazy per evitare circular imports
-    from app.handlers.magazzino    import handler_carico_magazzino
-    from app.handlers.scadenziario import handler_crea_scadenza
-    from app.handlers.prima_nota   import (handler_prima_nota_fattura,
-                                            handler_prima_nota_cedolino)
+    from app.handlers.prima_nota   import handler_prima_nota_cedolino
     from app.handlers.tfr          import handler_aggiorna_tfr
-    from app.handlers.learning     import handler_classifica_cdc
-    from app.handlers.notifiche    import (handler_notifica_fattura,
-                                            handler_notifica_cedolino)
+    from app.handlers.notifiche    import handler_notifica_cedolino
     from app.handlers.estratto_conto import handler_matching_estratto_conto
     from app.handlers.corrispettivi  import (handler_prima_nota_corrispettivi,
                                               handler_check_coerenza_pos)
@@ -38,31 +31,20 @@ def registra_tutti_gli_handler():
                                               handler_controlla_iban_mancante)
     from app.handlers.ricette        import handler_aggiorna_costo_ricette
 
-    # ─── FATTURA IMPORTATA ────────────────────────────────────────────────
-    bus.register("fattura.importata", handler_carico_magazzino,
-                 priority=10, name="magazzino_carico")
-
-    bus.register("fattura.importata", handler_crea_scadenza,
-                 priority=20, name="scadenziario_pagamento")
-
-    bus.register("fattura.importata", handler_classifica_cdc,
-                 priority=30, name="learning_centro_costo")
-
-    bus.register("fattura.importata", handler_aggiorna_learning_fornitore,
-                 priority=35, name="learning_fornitore_keywords")
-
-    bus.register("fattura.importata", handler_aggiorna_costo_ricette,
-                 priority=40, name="ricette_aggiorna_costi")
-
-    bus.register("fattura.importata", handler_notifica_fattura,
-                 priority=90, name="notifica_ws_fattura")
-
-    # ─── FATTURA PAGATA ───────────────────────────────────────────────────
-    bus.register("fattura.pagata", handler_prima_nota_fattura,
-                 priority=10, name="prima_nota_pagamento")
-
-    bus.register("fattura.pagata", handler_notifica_fattura,
-                 priority=90, name="notifica_ws_pagamento")
+    # NOTA: "fattura.importata" e "fattura.pagata" non vengono MAI pubblicati
+    # da nessun punto reale del codice (verificato: nessun bus.publish su questi
+    # due eventi in tutto app/) — i relativi handler (magazzino_carico,
+    # scadenziario_pagamento, learning_centro_costo, learning_fornitore_keywords,
+    # ricette_aggiorna_costi, notifica_ws_fattura/pagamento, prima_nota_pagamento)
+    # non si sono MAI attivati in produzione. Il carico magazzino e la creazione
+    # scadenza sono stati migrati sul bus realmente vivo
+    # (app/services/event_bus.py, EventTypes.FATTURA_CREATED — vedi
+    # on_fattura_righe_magazzino e handler_crea_scadenza registrati lì).
+    # Gli altri (classificazione CDC, learning fornitore da fattura, costo
+    # ricette, notifiche websocket, prima nota su pagamento) restano gap
+    # documentati in memoria/moduli/ e memoria/endpoints/RICONCILIAZIONE_AUDIT.md
+    # — da migrare in un intervento dedicato, non rimossi per non perdere
+    # il codice già scritto.
 
     # ─── CEDOLINO IMPORTATO ───────────────────────────────────────────────
     bus.register("cedolino.importato", handler_prima_nota_cedolino,
