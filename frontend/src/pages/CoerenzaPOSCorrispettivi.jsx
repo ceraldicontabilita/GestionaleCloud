@@ -909,6 +909,7 @@ function ControlloDueFasi({ dati, alertOggi, isMobile, onReload }) {
               <th style={{ padding: '6px 8px', textAlign: 'right' }}>POS reale</th>
               <th style={{ padding: '6px 8px', textAlign: 'right' }}>Accredito banca</th>
               <th style={{ padding: '6px 8px', textAlign: 'right' }}>Diff. accr.</th>
+              <th style={{ padding: '6px 8px', textAlign: 'right' }}>Saldo progr.</th>
             </tr>
           </thead>
           <tbody>
@@ -916,6 +917,28 @@ function ControlloDueFasi({ dati, alertOggi, isMobile, onReload }) {
               <RigaGiornaliera key={g.data} g={g} even={i % 2 === 0} />
             ))}
           </tbody>
+          {stats && (
+            <tfoot>
+              <tr style={{ background: '#0f2744', color: '#fff', fontWeight: 700 }}>
+                <td colSpan={5} style={{ padding: '10px 8px', textAlign: 'right' }}>
+                  TOTALI (accrediti maturati)
+                </td>
+                <td style={{ padding: '10px 8px', textAlign: 'right' }}>
+                  {formatEuro(stats.fase2_pos_totale || 0)}
+                </td>
+                <td style={{ padding: '10px 8px', textAlign: 'right' }}>
+                  {formatEuro(stats.fase2_accrediti_totale || 0)}
+                </td>
+                <td colSpan={2} style={{
+                  padding: '10px 8px',
+                  textAlign: 'right',
+                  color: (stats.fase2_saldo_finale || 0) >= 0 ? '#4ade80' : '#f87171',
+                }}>
+                  SALDO {formatEuro(stats.fase2_saldo_finale || 0)}
+                </td>
+              </tr>
+            </tfoot>
+          )}
         </table>
         {giorniFiltrati.length === 0 && (
           <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>
@@ -955,16 +978,20 @@ function RigaGiornaliera({ g, even }) {
   const diffSerColor = g.stato_serale === 'ok' ? '#16a34a' :
                        g.stato_serale === 'no_dati' ? '#94a3b8' :
                        g.stato_serale === 'in_attesa_xml' ? '#8b5cf6' : '#dc2626';
+  // Regola colori richiesta: differenza POSITIVA (banca ha accreditato di
+  // più) → VERDE; NEGATIVA (accredito minore o mancante) → ROSSO.
   const diffAccrColor = g.stato_accredito === 'ok' ? '#16a34a' :
                         g.stato_accredito === 'in_attesa' ? '#3b82f6' :
                         g.stato_accredito === 'no_pos_manuale' ? '#94a3b8' :
+                        g.stato_accredito === 'raggruppato' ? '#94a3b8' :
                         g.stato_accredito === 'mancante' ? '#dc2626' :
-                        g.stato_accredito === 'extra' ? '#eab308' : '#dc2626';
+                        (g.diff_accredito || 0) >= 0 ? '#16a34a' : '#dc2626';
 
   const statoAccrLabel = {
     'ok': 'OK',
     'in_attesa': 'In attesa',
     'no_pos_manuale': '—',
+    'raggruppato': '↳ nel gruppo',
     'mancante': 'Mancante',
     'differenza': 'Diff.',
     'extra': 'Extra',
@@ -1016,9 +1043,16 @@ function RigaGiornaliera({ g, even }) {
       </td>
       <td style={{ padding: '6px 8px', textAlign: 'right' }}>
         {g.pos_manuale > 0 ? formatEuro(g.pos_manuale) : '—'}
+        {g.capogruppo && g.giorni_gruppo > 1 && (
+          <div style={{ fontSize: 10, color: '#64748b' }}>
+            gruppo {g.giorni_gruppo} gg: {formatEuro(g.pos_gruppo)}
+          </div>
+        )}
       </td>
       <td style={{ padding: '6px 8px', textAlign: 'right' }}>
-        {g.accredito_banca > 0 ? formatEuro(g.accredito_banca) : '—'}
+        {g.stato_accredito === 'raggruppato'
+          ? <em style={{ color: '#94a3b8', fontSize: 11 }}>↳ accr. {formatDateIT(g.data_accredito_attesa)}</em>
+          : g.accredito_banca > 0 ? formatEuro(g.accredito_banca) : '—'}
       </td>
       <td style={{
         padding: '6px 8px',
@@ -1031,7 +1065,18 @@ function RigaGiornaliera({ g, even }) {
         </div>
         {g.stato_accredito === 'ok' || g.stato_accredito === 'differenza' || g.stato_accredito === 'extra'
           ? formatEuro(g.diff_accredito)
-          : null}
+          : g.stato_accredito === 'mancante'
+            ? formatEuro(g.diff_accredito)
+            : null}
+      </td>
+      <td style={{
+        padding: '6px 8px',
+        textAlign: 'right',
+        fontWeight: 700,
+        color: g.saldo_progressivo == null ? '#94a3b8'
+          : g.saldo_progressivo >= 0 ? '#16a34a' : '#dc2626',
+      }}>
+        {g.saldo_progressivo == null ? '' : formatEuro(g.saldo_progressivo)}
       </td>
     </tr>
   );

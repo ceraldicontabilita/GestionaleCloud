@@ -895,6 +895,38 @@ async def controllo_incassi_due_fasi(
     # Per semplicità d'implementazione, calcolo la diff sul giorno X e marco
     # alert_attivo_il = giorno successivo in formato stringa.
 
+    # ── FASE 2 (v4): raggruppamento per data di accredito ────────────────────
+    # Ven/Sab/Dom maturano tutti nello stesso accredito del lunedì: la vecchia
+    # logica confrontava il TOTALE del lunedì con OGNI singolo giorno,
+    # producendo "EXTRA" fittizi ripetuti (lo stesso accredito contato 3 volte)
+    # e falsi "MANCANTE". Ora: somma dei POS che maturano nella stessa data di
+    # accredito vs accredito banca di quella data, consumato UNA volta sola.
+    gruppi_accr: Dict[str, Dict[str, Any]] = {}
+    for d in sorted(date_note):
+        pos_v = float(pos_manuali.get(d) or 0)
+        if pos_v <= 0:
+            continue
+        ga = _data_accredito_attesa(d)
+        g = gruppi_accr.setdefault(ga, {"giorni": [], "pos_tot": 0.0})
+        g["giorni"].append(d)
+        g["pos_tot"] += pos_v
+
+    for ga, g in gruppi_accr.items():
+        g["pos_tot"] = round(g["pos_tot"], 2)
+        accr = float(accrediti.get(ga) or 0)
+        if ga > oggi:
+            g.update(stato="in_attesa", accredito=0.0, diff=0.0)
+        elif accr == 0:
+            g.update(stato="mancante", accredito=0.0, diff=round(-g["pos_tot"], 2))
+        else:
+            diff = round(accr - g["pos_tot"], 2)
+            stato = "ok" if abs(diff) <= tolleranza_euro else ("differenza" if diff < 0 else "extra")
+            g.update(stato=stato, accredito=round(accr, 2), diff=diff)
+
+    saldo_progressivo = 0.0
+    stats["fase2_pos_totale"] = 0.0
+    stats["fase2_accrediti_totale"] = 0.0
+
     for d in sorted(date_note):
         c_row = corr_by_date.get(d, {})
         xml_el = float(c_row.get("pagato_elettronico") or 0)
@@ -977,33 +1009,49 @@ async def controllo_incassi_due_fasi(
         if stato_serale == "ok":
             stats["fase1_ok"] += 1
 
-        # FASE 2: calcolo data accredito attesa + confronto con banca
+        # FASE 2 (v4): confronto a livello di GRUPPO di accredito.
+        # Il primo giorno del gruppo ("capogruppo") porta accredito, differenza
+        # e saldo progressivo; gli altri giorni dello stesso gruppo sono marcati
+        # "raggruppato" (il loro POS è già dentro il totale del capogruppo).
         data_accr_attesa = _data_accredito_attesa(d)
-        accredito = float(accrediti.get(data_accr_attesa) or 0)
+        gruppo = gruppi_accr.get(data_accr_attesa)
+        capogruppo = bool(gruppo and pos_man > 0 and gruppo["giorni"][0] == d)
+        pos_gruppo = 0.0
+        giorni_gruppo = 0
 
-        if pos_man <= 0:
+        if pos_man <= 0 or not gruppo:
             diff_accr = 0.0
+            accredito = 0.0
             stato_accr = "no_pos_manuale"
-        elif data_accr_attesa > oggi:
+        elif not capogruppo:
             diff_accr = 0.0
-            stato_accr = "in_attesa"
-            stats["fase2_attesa"] += 1
-        elif accredito == 0:
-            diff_accr = -pos_man
-            stato_accr = "mancante"
-            stats["fase2_mancante"] += 1
-            stats["importo_tot_mancante_banca"] += pos_man
+            accredito = 0.0
+            stato_accr = "raggruppato"
         else:
-            diff_accr = round(accredito - pos_man, 2)
-            if abs(diff_accr) <= tolleranza_euro:
-                stato_accr = "ok"
+            stato_accr = gruppo["stato"]
+            diff_accr = gruppo["diff"]
+            accredito = gruppo["accredito"]
+            pos_gruppo = gruppo["pos_tot"]
+            giorni_gruppo = len(gruppo["giorni"])
+            # Statistiche e saldo: una volta per gruppo (solo sul capogruppo)
+            if stato_accr == "in_attesa":
+                stats["fase2_attesa"] += 1
+            elif stato_accr == "mancante":
+                stats["fase2_mancante"] += 1
+                stats["importo_tot_mancante_banca"] += pos_gruppo
+                saldo_progressivo += diff_accr
+            elif stato_accr == "ok":
                 stats["fase2_ok"] += 1
-            elif diff_accr < 0:
-                stato_accr = "differenza"
+                saldo_progressivo += diff_accr
+            elif stato_accr == "differenza":
                 stats["fase2_diff"] += 1
-            else:
-                stato_accr = "extra"
+                saldo_progressivo += diff_accr
+            else:  # extra
                 stats["fase2_extra"] += 1
+                saldo_progressivo += diff_accr
+            if stato_accr != "in_attesa":
+                stats["fase2_pos_totale"] += pos_gruppo
+                stats["fase2_accrediti_totale"] += accredito
 
         giorni.append({
             "data": d,
@@ -1017,11 +1065,15 @@ async def controllo_incassi_due_fasi(
             "diff_serale": diff_serale,
             "stato_serale": stato_serale,
             "alert_compensazione": alert_serale,
-            # Fase 2
+            # Fase 2 (v4, a gruppi di accredito)
             "data_accredito_attesa": data_accr_attesa,
             "accredito_banca": round(accredito, 2),
             "diff_accredito": diff_accr,
             "stato_accredito": stato_accr,
+            "capogruppo": capogruppo,
+            "pos_gruppo": round(pos_gruppo, 2),
+            "giorni_gruppo": giorni_gruppo,
+            "saldo_progressivo": round(saldo_progressivo, 2) if capogruppo and stato_accr != "in_attesa" else None,
         })
         stats["tot_giorni"] += 1
 
@@ -1029,6 +1081,9 @@ async def controllo_incassi_due_fasi(
     stats["importo_tot_da_compensare_piu"] = round(stats["importo_tot_da_compensare_piu"], 2)
     stats["importo_tot_da_compensare_meno"] = round(stats["importo_tot_da_compensare_meno"], 2)
     stats["importo_tot_mancante_banca"] = round(stats["importo_tot_mancante_banca"], 2)
+    stats["fase2_pos_totale"] = round(stats["fase2_pos_totale"], 2)
+    stats["fase2_accrediti_totale"] = round(stats["fase2_accrediti_totale"], 2)
+    stats["fase2_saldo_finale"] = round(saldo_progressivo, 2)
 
     return {
         "success": True,
