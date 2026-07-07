@@ -6,11 +6,9 @@ import {
   BookOpen,
   Building2,
   Users,
-  FlaskConical,
   ChevronDown,
   Bell,
   Calendar,
-  Warehouse,
   Settings,
   Wrench,
   FileBarChart,
@@ -33,19 +31,12 @@ const NAV_ITEMS = [
   { to: '/prima-nota', label: 'Prima Nota', Icon: BookOpen },
   { to: '/fornitori', label: 'Fornitori', Icon: Building2 },
   { to: null, href: APP_DIPENDENTI_URL, label: 'HR', Icon: Users, external: true },
-  {
-    to: null,
-    href: 'https://www.ceraldiapp.it',
-    label: 'Tracciabilità',
-    Icon: FlaskConical,
-    external: true,
-  },
+  { to: '/coerenza-pos', label: 'Coerenza POS', Icon: CreditCard },
   { to: '/riconciliazione/assegni', label: 'Assegni', Icon: FileBarChart },
 ];
 
 const ALTRO_ITEMS = [
   { to: '/contabilita', label: 'Contabilità', Icon: FileBarChart },
-  { to: '/magazzino', label: 'Magazzino', Icon: Warehouse },
   { to: '/documenti', label: 'Documenti', Icon: BookMarked },
   { to: '/noleggio', label: 'Noleggio Auto', Icon: Car },
   { to: '/riconciliazione', label: 'Riconciliazione', Icon: FileBarChart },
@@ -286,7 +277,7 @@ const TopNav = memo(function TopNav() {
         <div style={S.items} className="topnav-items-scroll topnav-items">
           {NAV_ITEMS.map(({ to, href, label, Icon, external }) =>
             external ? (
-              /* Link esterno (es. Tracciabilità → ceraldiapp.it) */
+              /* Link esterno (es. HR → AppDipendenti) */
               <a
                 key={label}
                 href={href}

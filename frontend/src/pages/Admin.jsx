@@ -12,7 +12,6 @@ export default function Admin() {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [dbStatus, setDbStatus] = useState(null);
-  const [schedulerStatus, setSchedulerStatus] = useState(null);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -120,11 +119,6 @@ export default function Admin() {
     } catch (e) {
       setDbStatus({ status: 'error', database: 'disconnected' });
     }
-  }
-
-  async function loadSchedulerStatus() {
-    // HACCP Scheduler removed - set null
-    setSchedulerStatus(null);
   }
 
   async function loadEmailAccounts() {
@@ -289,11 +283,6 @@ export default function Admin() {
       alert('Errore: ' + (e.response?.data?.detail || e.message));
     }
   }
-
-  const handleTriggerHACCP = async () => {
-    // HACCP Scheduler removed
-    alert('Modulo HACCP rimosso');
-  };
 
   // Aggiungi parola chiave all'account (nuovo o in modifica)
   const addKeywordToAccount = isEditing => {

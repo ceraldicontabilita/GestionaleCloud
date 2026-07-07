@@ -37,7 +37,7 @@ const ALL_NAV_ITEMS = [
   { to: "/bilancio", label: "Bilancio", icon: "📊" },
   { to: "/mutui", label: "Mutui", icon: "🏦" },
   { to: "/contabilita-hub", label: "Contabilità", icon: "📈" },
-  { to: "/magazzino", label: "Magazzino", icon: "📦" },
+  { to: "/coerenza-pos", label: "Coerenza POS", icon: "💳" },
   { to: "/noleggio", label: "Noleggio Auto", icon: "🚗" },
   { to: "/scadenze", label: "Scadenze", icon: "🔔" },
   { to: "/todo", label: "To-Do", icon: "📝" },
@@ -47,7 +47,6 @@ const ALL_NAV_ITEMS = [
   { to: "/integrazioni", label: "Integrazioni", icon: "🔗" },
   { to: "/agenti", label: "Agenti AI", icon: "🤖" },
   { to: null, href: APP_DIPENDENTI_URL, label: "HR", icon: "👥", external: true },
-  { to: null, href: "https://www.ceraldiapp.it", label: "Tracciabilità", icon: "🧪", external: true },
   { to: "/admin", label: "Admin", icon: "⚙️" },
 ];
 
