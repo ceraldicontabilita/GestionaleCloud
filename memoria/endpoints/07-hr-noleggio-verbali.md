@@ -718,11 +718,23 @@ email/PagoPA e prima nota. Vivi dal frontend (VerbaliRiconciliazione.jsx): /dash
 
 ---
 
-## noleggio.py (prefisso /api/noleggio — 14 endpoint)
+## noleggio.py (prefisso /api/noleggio — 12 endpoint)
 
 Flotta a noleggio: aggrega i costi dai XML fatture (servizio `scan_fatture_noleggio` +
 `categorizza_spesa`) con i dati salvati in `veicoli_noleggio` e i verbali. Vivo: NoleggioAuto.jsx,
 VeicoliHub.jsx, Dashboard.jsx usano /veicoli, /drivers, /fornitori, ecc.
+
+**Aggiornamento**: risolte le anomalie sotto segnalate — PUT /veicoli/{targa} ora accetta anche
+canone_mensile/anno_immatricolazione/alimentazione/potenza_kw/cilindrata (prima scartati
+silenziosamente); rimossi i 4 endpoint morti /migra-dati /persisti-anno /costi-persistiti
+/statistiche-persistenza e il file data_persistence.py (costi_noleggio/audit_noleggio, zero
+chiamanti, duplicava i dati già calcolati live da questo router); rimosso
+`app/routers/veicoli.py` (prefisso legacy /api/noleggio-auto, stesso schema incompatibile su
+veicoli_noleggio, zero chiamanti); i verbali mostrati per veicolo ora uniscono
+`verbali_noleggio` (posta) E `verbali_noleggio_completi` (fatture) invece di solo il primo;
+nuovo endpoint `GET /veicoli/{targa}/completo` per la vista singola aggregata. Il modulo verbali
+(verbali_noleggio.py, verbali_noleggio_api.py, verbali_riconciliazione.py — anomalie elencate
+sotto) non è stato toccato in questo intervento.
 
 ### GET /api/noleggio/veicoli — flotta con costi per categoria
 **Cosa fa**: per ogni veicolo somma canoni/pedaggio/verbali/bollo/extra/riparazioni dell'anno da fatture + verbali dal DB.
