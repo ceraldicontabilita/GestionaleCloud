@@ -32,7 +32,7 @@ const RiconciliazionePaypalLazy = lazy(() => import('./RiconciliazionePaypal.jsx
 const TABS = [
   { id: 'dashboard', label: '📊 Dashboard', color: '#3b82f6' },
   { id: 'banca', label: '🏦 Banca', color: '#10b981' },
-  { id: 'assegni', label: '📝 Assegni', color: '#f59e0b' },
+  { id: 'assegni', label: '📝 Prelievi Assegno', color: '#f59e0b' },
   { id: 'f24', label: '📄 F24', color: '#ef4444' },
   { id: 'stipendi', label: '👤 Stipendi', color: '#06b6d4' },
   { id: 'documenti', label: '📎 Documenti', color: '#ec4899' },
@@ -61,13 +61,17 @@ export default function RiconciliazioneUnificata() {
   const [processing, setProcessing] = useState(null);
   const [loadError, setLoadError] = useState(null);
 
-  // Aggiorna URL quando cambia tab
+  // Aggiorna URL quando cambia tab. Usa sempre il prefisso "/riconciliazione":
+  // è l'unico effettivamente instradato in main.jsx — "/riconciliazione-unificata"
+  // esiste solo come redirect legacy verso "/riconciliazione" SENZA sotto-tab,
+  // quindi navigare a "/riconciliazione-unificata/<tab>" cadeva sul catch-all e
+  // rimandava l'utente alla Dashboard invece di cambiare tab.
   const handleTabChange = tabId => {
     setActiveTab(tabId);
     if (tabId === 'dashboard') {
-      navigate('/riconciliazione-unificata');
+      navigate('/riconciliazione');
     } else {
-      navigate(`/riconciliazione-unificata/${tabId}`);
+      navigate(`/riconciliazione/${tabId}`);
     }
   };
 
