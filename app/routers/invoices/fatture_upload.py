@@ -30,6 +30,95 @@ from app.utils.error_handler import handle_errors
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+# Tipi documento FatturaPA che rappresentano una nota di credito (TD04) o di
+# debito (TD08 è nota di debito, non di credito, ma segue la stessa logica
+# "collegata a un documento precedente" — vedi memoria/moduli/FATTURE_RICEVUTE.md).
+NOTE_CREDITO_TIPI_DOCUMENTO = {"TD04", "TD08"}
+
+
+async def _collega_nota_credito(db, invoice: Dict[str, Any], session=None) -> Optional[Dict[str, Any]]:
+    """
+    Se la fattura appena importata è una nota di credito (TD04/TD08) con
+    riferimenti DatiFattureCollegate, cerca la fattura originale (stesso
+    fornitore, invoice_number == IdDocumento del riferimento) e collega le
+    due entità nei due sensi:
+      - sulla nota di credito: fattura_collegata_id
+      - sulla fattura originale: note_credito_collegate (lista id) e
+        importo_netto (total_amount - somma delle note di credito collegate)
+
+    Netting best-effort: se l'originale non si trova (fattura mai importata,
+    riferimento incompleto), la nota di credito resta comunque salvata ma
+    senza collegamento — non blocca l'import. Vedi memoria/moduli/
+    FATTURE_RICEVUTE.md gap #1: prima di questa funzione non esisteva alcun
+    collegamento automatico, rischio di doppio conteggio nello scadenzario.
+    """
+    if (invoice.get("tipo_documento") or "").upper() not in NOTE_CREDITO_TIPI_DOCUMENTO:
+        return None
+
+    riferimenti = invoice.get("dati_fatture_collegate") or []
+    if not riferimenti:
+        return None
+
+    supplier_vat = invoice.get("supplier_vat", "")
+    originale = None
+    for rif in riferimenti:
+        id_doc = (rif or {}).get("id_documento")
+        if not id_doc:
+            continue
+        originale = await db[Collections.INVOICES].find_one(
+            {
+                "invoice_number": id_doc,
+                "supplier_vat": supplier_vat,
+                "tipo_documento": {"$nin": list(NOTE_CREDITO_TIPI_DOCUMENTO)},
+            },
+            session=session,
+        )
+        if originale:
+            break
+
+    if not originale:
+        return None
+
+    importo_nc = float(invoice.get("total_amount") or 0)
+    importo_originale = float(originale.get("total_amount") or 0)
+    note_credito_collegate = list(originale.get("note_credito_collegate") or [])
+    if invoice["id"] not in note_credito_collegate:
+        note_credito_collegate.append(invoice["id"])
+
+    # Somma tutte le NC collegate a questo originale (non solo quella corrente)
+    # per calcolare il netto corretto anche con più note di credito parziali.
+    totale_nc = 0.0
+    for nc_id in note_credito_collegate:
+        if nc_id == invoice["id"]:
+            totale_nc += importo_nc
+            continue
+        nc_doc = await db[Collections.INVOICES].find_one(
+            {"id": nc_id}, {"total_amount": 1}, session=session
+        )
+        if nc_doc:
+            totale_nc += float(nc_doc.get("total_amount") or 0)
+
+    importo_netto = round(importo_originale - totale_nc, 2)
+
+    await db[Collections.INVOICES].update_one(
+        {"id": originale["id"]},
+        {"$set": {
+            "note_credito_collegate": note_credito_collegate,
+            "importo_netto": importo_netto,
+        }},
+        session=session,
+    )
+    await db[Collections.INVOICES].update_one(
+        {"id": invoice["id"]},
+        {"$set": {"fattura_collegata_id": originale["id"]}},
+        session=session,
+    )
+    logger.info(
+        f"Nota di credito {invoice.get('invoice_number')} collegata a "
+        f"fattura {originale.get('invoice_number')} (netto: €{importo_netto})"
+    )
+    return {"fattura_collegata_id": originale["id"], "importo_netto_originale": importo_netto}
+
 
 async def ensure_supplier_exists(db, parsed_invoice: Dict[str, Any], session=None) -> Dict[str, Any]:
     """
@@ -242,6 +331,13 @@ async def auto_registra_prima_nota(db, invoice: Dict[str, Any], metodo_pagamento
 
     Ritorna il dict di update applicato alla fattura, o None se resta provvisoria.
     """
+    # Le note di credito (TD04/TD08) NON sono un pagamento in uscita: riducono
+    # quanto dovuto su una fattura collegata (vedi _collega_nota_credito) e
+    # non vanno mai registrate come uscita cassa/banca — altrimenti risultano
+    # come un pagamento fantasma. Vedi memoria/moduli/FATTURE_RICEVUTE.md, gap #1.
+    if (invoice.get("tipo_documento") or "").upper() in NOTE_CREDITO_TIPI_DOCUMENTO:
+        return None
+
     metodo = (metodo_pagamento or "").lower()
     if not metodo or metodo in ("misto", "sospesa"):
         return None
@@ -423,6 +519,12 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
             # (l'invoice salvata risulterebbe "provvisoria" nella risposta
             # anche quando è stata correttamente auto-registrata).
             invoice.update(prima_nota_update)
+
+        # Nota di credito: collega alla fattura originale e ricalcola il netto
+        # (best-effort, non blocca l'import se l'originale non si trova).
+        nc_update = await _collega_nota_credito(db, invoice, session=session)
+        if nc_update:
+            invoice.update(nc_update)
 
         return {"invoice": invoice, "supplier_id": supplier_id, "supplier_result": supplier_result}
 
@@ -923,6 +1025,14 @@ async def process_xml_bytes(db, content: bytes, filename: str, source: str = "xm
         await auto_registra_prima_nota(db, invoice, metodo_pagamento)
     except Exception:
         logger.exception(f"Errore auto-registrazione prima nota per {filename}")
+
+    # Nota di credito: collega alla fattura originale e ricalcola il netto.
+    try:
+        nc_update = await _collega_nota_credito(db, invoice)
+        if nc_update:
+            invoice.update(nc_update)
+    except Exception:
+        logger.exception(f"Errore collegamento nota di credito per {filename}")
 
     # 7. Event bus: crea partita scadenziario, alert fornitore, audit.
     #    Best-effort: un errore qui non deve far fallire l'import.

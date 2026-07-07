@@ -38,11 +38,15 @@ in `app/routers/invoices/fatture_upload.py` — non ci sono più percorsi di imp
 
 ## Gap confermati (in ordine di priorità)
 
-1. **TD04 (nota di credito) con segno negativo**: DA VERIFICARE nel dettaglio — il parser
-   tagga `tipo_documento="TD04"` ma non è confermato se il sistema applica sistematicamente
-   segno negativo/netting automatico con la fattura collegata (`DatiFattureCollegate` letto
-   ma non risulta usato per netting attivo). **Rischio concreto**: una nota di credito
-   potrebbe essere trattata come una fattura normale nello scadenzario/partitario.
+1. ~~**TD04 (nota di credito) con segno negativo**~~ — **RISOLTO**. Implementato netting
+   automatico (`_collega_nota_credito` in `fatture_upload.py`): la nota di credito viene
+   cercata e collegata alla fattura originale via `DatiFattureCollegate` (stesso fornitore
+   + `invoice_number` == `IdDocumento`), l'originale riceve `note_credito_collegate` e
+   `importo_netto` ricalcolato; la NC stessa non genera più né una scadenza in
+   `scadenziario_fornitori` né un movimento fantasma in prima nota (era registrata come
+   pagamento in uscita nonostante fosse un credito). Verificato con test end-to-end.
+   Limite noto: il matching richiede che la fattura originale sia già stata importata nel
+   sistema — se arriva prima la NC, resta senza collegamento (log ma nessun errore/alert).
 2. **Righe merce → Magazzino**: la maggior parte della gestione giacenze è delegata
    all'app esterna **Lotti** (commento esplicito in `fatture_upload.py`: *"Giacenze
    magazzino: gestite SOLO dall'app esterna Lotti (stesso DB). L'import fatture qui NON

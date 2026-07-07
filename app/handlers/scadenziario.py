@@ -32,6 +32,14 @@ async def handler_crea_scadenza(payload: Dict[str, Any], db) -> Dict[str, Any]:
     if db is None:
         return {"skipped": True, "reason": "db non disponibile"}
 
+    # Le note di credito (TD04/TD08) non generano una scadenza da pagare:
+    # riducono quanto dovuto su una fattura già collegata (vedi
+    # _collega_nota_credito in fatture_upload.py) — una riga scadenziario
+    # separata le tratterebbe erroneamente come un debito aggiuntivo.
+    # Vedi memoria/moduli/FATTURE_RICEVUTE.md gap #1.
+    if (payload.get("tipo_documento") or "").upper() in {"TD04", "TD08"}:
+        return {"skipped": True, "reason": "nota di credito, nessuna scadenza"}
+
     fattura_id    = payload.get("fattura_id") or payload.get("id")
     importo       = float(payload.get("importo_totale") or payload.get("total_amount") or 0)
     # Il payload reale pubblicato da fatture_upload.py usa campi piatti
