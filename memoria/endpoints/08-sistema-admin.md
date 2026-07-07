@@ -597,3 +597,140 @@ Endpoint "quick-entry" per la pagina Inserimento Rapido: registrazioni veloci in
 **Cosa fa**: registra una presenza (tipo/ore/note) per un dipendente.
 **Logica codice**: valida `dipendente_id`; `insert_one` su `presenze_giornaliere` con default `tipo=presente`, `ore=8`, `source=rapido`.
 **Note**: nessun anti-duplicato (stessa persona/data inseribile più volte) né verifica esistenza dipendente.
+
+## batch_operations.py (prefisso `/api/batch`)
+Operazioni massive "N operazioni con 1 chiamata API": riconciliazione, pagamenti, categorizzazione, chiusura scadenze e processamento fatture pendenti. Nessuna autorizzazione per ruolo. Il docstring del modulo elenca solo 4 endpoint, ma ne esistono 6.
+
+### POST /api/batch/riconcilia — riconciliazione massiva movimenti
+**Cosa fa**: marca N movimenti bancari come riconciliati con fattura/F24/cedolino e chiude le scadenze.
+**Logica codice**: per ogni item aggiorna `estratto_conto_movimenti` (`riconciliato="riconciliato"`, `{tipo_match}_id`, timestamp); poi il documento collegato in `invoices`/`f24_unificato`/`cedolini` (`status` o `stato_pagamento`="pagato" + `movimento_banca_id`); infine `update_one` su `scadenzario` (stato="pagato"). Errori raccolti per item, non bloccanti.
+**Note**: nessuna verifica di esistenza — un ID inesistente conta come "successo" (update a 0 match). Non propaga eventi sul bus (incoerente con `/auto-riconcilia-tutto`). Chiusura scadenza con `update_one`: se più scadenze matchano ne chiude una sola.
+
+### POST /api/batch/paga — pagamento massivo con bonifici cumulativi
+**Cosa fa**: genera bonifici raggruppando N fatture per IBAN fornitore e le mette "in_pagamento".
+**Logica codice**: legge `invoices` per gli id richiesti, raggruppa per `iban_fornitore` (fallback "NO_IBAN"), inserisce un doc per gruppo in `bonifici_generati` (id `bon-<timestamp>-<ultime4 IBAN>`, stato "da_eseguire") e aggiorna ogni fattura con `status="in_pagamento"` e `bonifico_id`.
+**Note**: id bonifico basato su timestamp al secondo → collisione possibile; non controlla se la fattura è già pagata; id inesistenti ignorati in silenzio. Scrive in `bonifici_generati` mentre `verifica-bonifici-vs-banca` legge `bonifici_transfers`.
+
+### POST /api/batch/categorizza — assegnazione massiva centro di costo
+**Cosa fa**: assegna un centro di costo a N fatture.
+**Logica codice**: carica `centri_costo` per risolvere il nome (mappa `_id` e `id`); per ogni item aggiorna `invoices` con `centro_costo_id`, `centro_costo_nome`, timestamp.
+**Note**: validazione solo cosmetica: se il centro non esiste usa l'id come nome e scrive comunque (nessun 404/400).
+
+### POST /api/batch/chiudi-scadenze — chiusura massiva scadenze
+**Cosa fa**: marca N scadenze come pagate con nota di chiusura.
+**Logica codice**: `update_many` su `scadenzario` (`stato="pagato"`, `data_chiusura`, `nota_chiusura`); ritorna i documenti modificati.
+
+### POST /api/batch/auto-riconcilia-tutto — riconciliazione automatica euristica
+**Cosa fa**: matcha automaticamente movimenti bancari in uscita non riconciliati con fatture aperte per importo simile.
+**Logica codice**: legge fino a 500 `estratto_conto_movimenti` non riconciliati con importo negativo; per ciascuno cerca in `invoices` (status aperti, importo ±2€), score 90 se diff<0.5€, 70 se <2€, +20 se il nome fornitore compare nella descrizione; se score ≥ `min_confidence` e non `dry_run`: aggiorna movimento, fattura a `status="pagato"`, chiude scadenza in `scadenzario`, propaga `FATTURA_PAGATA` via event bus. Primo match e `break`.
+**Note**: RISCHIO: `dry_run=False` di default (scrive subito) e con `min_confidence=90` basta la sola corrispondenza di importo (diff<0.5€) senza riscontro fornitore; salta la fase "in_pagamento" (incoerente con `/paga`).
+
+### POST /api/batch/processa-fatture-pendenti — processamento fatture in attesa
+**Cosa fa**: classifica per centro di costo e/o crea la scadenza mancante per le fatture pendenti.
+**Logica codice**: legge `invoices` con status in attesa; keyword da `fornitori_learning` (`keywords` → `centro_costo_suggerito`); azione "classifica": primo match keyword nel nome fornitore → set `centro_costo_id`; azione "scadenza": se assente in `scadenzario`, insert con id deterministico `scad-<fattura_id>` e stato "da_pagare".
+**Note**: la classificazione imposta solo `centro_costo_id` senza `centro_costo_nome` (incoerente con `/categorizza`).
+
+## batch_reprocessing.py (prefisso `/api/batch-reprocess`)
+Riprocessamento massivo dei PDF di F24 e cedolini tramite `BatchReprocessingService`. Job in background con `asyncio.create_task` e stato in variabile globale di modulo `_job_state`.
+
+### GET /api/batch-reprocess/preview — anteprima documenti riprocessabili
+**Cosa fa**: conta i documenti con PDF disponibili per il riprocessamento.
+**Logica codice**: `count_documents` su collezioni F24 (`f24_models`, `f24`, `f24_uploaded`, filtro `pdf_data`) e cedolini (`cedolini`, `payslips`, `buste_paga`, `extracted_documents`, filtro `pdf_data`/`file_base64`/`pdf_base64`); errori per collezione silenziati con `except: pass`.
+
+### GET /api/batch-reprocess/status — stato del job
+**Cosa fa**: restituisce lo stato corrente (`running`, `progress`, `result`, `error`).
+**Logica codice**: ritorna il dizionario globale `_job_state`; nessun DB.
+
+### POST /api/batch-reprocess/start — avvia riprocessamento completo
+**Cosa fa**: lancia in background il riprocessamento F24 + cedolini.
+**Logica codice**: se `_job_state["running"]` risponde "Job gia in corso" (HTTP 200); altrimenti `asyncio.create_task(_run_job(...))` → `BatchReprocessingService.reprocess_all(dry_run)`; `dry_run` query param, default `True`.
+**Note**: stato in-process, non condiviso tra worker: lock e status non affidabili con più worker; rifiuto per job in corso risponde 200 anziché 409.
+
+### POST /api/batch-reprocess/f24-only — solo F24
+**Cosa fa**: come `/start` ma chiama `reprocess_all_f24(dry_run)`.
+**Logica codice**: identica a `/start` con method "f24"; stesse note su `_job_state`.
+
+### POST /api/batch-reprocess/cedolini-only — solo cedolini
+**Cosa fa**: come `/start` ma chiama `reprocess_all_cedolini(dry_run)`.
+**Logica codice**: identica a `/start` con method "cedolini".
+
+## auto_repair.py (prefisso `/api/auto-repair`)
+Micro-modulo con un solo endpoint di riparazione dati sui verbali di noleggio orfani.
+
+### POST /api/auto-repair/collega-targa-driver — collega targa a driver
+**Cosa fa**: assegna il driver a tutti i verbali di noleggio con quella targa privi di driver.
+**Logica codice**: valida il dipendente su `dipendenti` (404 se assente), calcola il nome (`nome_completo` o `cognome nome`); `update_many` su `verbali_noleggio` (targa uppercase, `driver_id` nullo/vuoto/assente); setta `driver_id`, `driver_nome`, `auto_repaired=True`, `updated_at`. Parametri via query string.
+
+## sync_relazionale.py (montato su `/api` + prefisso interno `/sync` → `/api/sync`)
+Sincronizza fatture ↔ prima nota cassa/banca ↔ corrispettivi ↔ estratto conto con helper interni (`sync_fattura_to_prima_nota`, `sync_corrispettivo_to_prima_nota`, ecc.). Nel codice restano commenti su un endpoint eliminato perché "pericoloso" (`/fatture-to-banca`). 8 endpoint.
+
+### POST /api/sync/match-fatture-cassa — match fatture ↔ prima nota cassa
+**Cosa fa**: aggancia i movimenti di cassa "pagamento fornitore" alle fatture e le marca pagate in Cassa.
+**Logica codice**: legge `prima_nota_cassa` (uscite categoria fornitori senza `fattura_id`), estrae il numero fattura da `riferimento` o via regex dalla descrizione, cerca in `invoices` per numero (regex) + importo ±0,50€; se trova: aggiorna fattura (`metodo_pagamento="Cassa"`, `pagato/paid=True`, `data_pagamento`, `prima_nota_cassa_id`) e movimento (`fattura_id`, `riconciliato=True`).
+**Note**: il docstring dichiara match per "numero + fornitore + importo" ma il fornitore NON è verificato. Numero fattura iniettato non-escapato in regex (caratteri speciali alterano il match). Contatore `already_linked` mai incrementato.
+
+### POST /api/sync/match-fatture-banca — match fatture ↔ estratto conto
+**Cosa fa**: aggancia le fatture "Bonifico" non associate ai movimenti bancari e le marca pagate.
+**Logica codice**: legge `invoices` con metodo bonifico e senza `estratto_conto_id`; cerca in `estratto_conto_movimenti` un'uscita con importo ±1€, senza `fattura_id`, descrizione che matcha (regex) fornitore[:20] o numero fattura; aggiorna fattura (`estratto_conto_id`, `pagato/paid=True`, `data_pagamento`) e movimento.
+**Note**: se `numero` è stringa vuota la regex `""` matcha qualunque descrizione → match sul solo importo (falsi positivi di pagamento). Regex non escapate. `already_matched` mai incrementato.
+
+### GET /api/sync/fatture-cassa-dettaglio — dettaglio associazioni cassa
+**Cosa fa**: riepilogo di fatture collegate alla cassa e movimenti cassa con fattura.
+**Logica codice**: conta/lista `invoices` con `prima_nota_cassa_id` e `prima_nota_cassa` con `fattura_id`; conteggi e primi 10 esempi. Sola lettura.
+
+### POST /api/sync/sync-fattura/{fattura_id} — sincronizza fattura → prima nota
+**Cosa fa**: crea/aggiorna il movimento di prima nota (cassa o banca in base al metodo pagamento) per una fattura.
+**Logica codice**: `sync_fattura_to_prima_nota`: legge `invoices`; metodo "cassa"/"contanti" → `prima_nota_cassa`, altrimenti `prima_nota_banca`; upsert manuale (cerca per `fattura_id`, update o insert con uuid) di un movimento "uscita" categoria "Fornitori" con `riconciliato=True`. Errori ritornati come `{"success":False}` con HTTP 200.
+
+### POST /api/sync/sync-corrispettivo/{corrispettivo_id} — sincronizza corrispettivo → cassa
+**Cosa fa**: crea/aggiorna in prima nota cassa l'entrata lorda (imponibile+IVA) di un corrispettivo.
+**Logica codice**: `sync_corrispettivo_to_prima_nota`: legge `corrispettivi`, calcola `totale_lordo`, upsert su `prima_nota_cassa` per `corrispettivo_id` con tipo "entrata", categoria "Corrispettivi", dettaglio (imponibile/IVA/n. scontrini), `riconciliato=False`.
+
+### POST /api/sync/sync-all-corrispettivi — sincronizza corrispettivi di un anno
+**Cosa fa**: applica il sync a tutti i corrispettivi dell'anno indicato.
+**Logica codice**: `Body {anno}`; legge `corrispettivi` con `data` regex anno (max 1000) e itera `sync_corrispettivo_to_prima_nota`; contatori created/updated/errors.
+**Note**: limite fisso 1000: oltre, i rimanenti vengono ignorati silenziosamente.
+
+### PUT /api/sync/update-fattura-everywhere/{fattura_id} — aggiornamento propagato
+**Cosa fa**: aggiorna campi di una fattura e propaga a prima nota cassa/banca, spostando il movimento se cambia il metodo di pagamento.
+**Logica codice**: whitelist campi (`metodo_pagamento`, `pagato`, `data_pagamento`, `importo`, `note`); sincronizza `pagato`→`paid`; aggiorna `invoices` (404 se assente); poi `update_one` su `prima_nota_cassa` e `prima_nota_banca` per `fattura_id`; se cambia metodo, `delete_one` dal registro sbagliato e ricreazione via `sync_fattura_to_prima_nota`.
+**Note**: BUG: gli update su prima nota fanno `$set` incondizionato di `importo`, `pagato` e `data` con `update_data.get(...)` → i campi non inviati vengono sovrascritti con `null` sui movimenti collegati (es. aggiornare solo `note` azzera importo/data/pagato in prima nota).
+
+### GET /api/sync/stato-sincronizzazione — stato sincronizzazione
+**Cosa fa**: dashboard di conteggi sullo stato di sync del sistema.
+**Logica codice**: serie di `count_documents` su `invoices` (totali, pagate, cassa, banca, senza metodo), `prima_nota_cassa` (uscite/entrate/con fattura), `prima_nota_banca`, `corrispettivi`. Sola lettura.
+
+## verifica_coerenza.py (prefisso `/api/verifica-coerenza`)
+Endpoint di sola lettura per il controllo di consistenza dati (IVA, versamenti, bonifici, saldi) delegati al service `app/services/verifica_coerenza.py` (`VerificaCoerenza`, `esegui_verifica_completa`, `esegui_verifica_iva`). 7 endpoint.
+
+### GET /api/verifica-coerenza/completa/{anno} — verifica completa annuale
+**Cosa fa**: esegue tutte le verifiche di coerenza (IVA, versamenti, saldi, F24) per l'anno.
+**Logica codice**: delega a `esegui_verifica_completa(anno)`; eccezioni → HTTP 500.
+
+### GET /api/verifica-coerenza/iva/{anno}/{mese} — verifica IVA mensile
+**Cosa fa**: confronta i valori IVA tra fatture, corrispettivi e liquidazione per un mese.
+**Logica codice**: valida mese 1-12 (400), delega a `esegui_verifica_iva(anno, mese)`.
+
+### GET /api/verifica-coerenza/discrepanze/{anno} — solo discrepanze
+**Cosa fa**: restituisce le sole discrepanze dell'anno, filtrabili per severità.
+**Logica codice**: esegue l'INTERA `esegui_verifica_completa(anno)` e filtra in memoria per `severita` (`critical`/`warning`/`info`).
+**Note**: costo pieno della verifica completa anche per un semplice filtro.
+
+### GET /api/verifica-coerenza/widget — widget alert discrepanze
+**Cosa fa**: check veloce del mese corrente per il widget mostrato in tutte le pagine.
+**Logica codice**: `VerificaCoerenza(db)`, chiama `verifica_coerenza_iva_tra_pagine` e `verifica_versamenti_vs_banca` per il mese corrente; max 5 discrepanze in output, più aggregati IVA e flag versamenti.
+**Note**: in caso di eccezione risponde HTTP 200 con `has_discrepanze=False` e campo `error` — può mascherare guasti come "tutto ok".
+
+### GET /api/verifica-coerenza/confronto-iva-completo/{anno} — confronto IVA 12 mesi
+**Cosa fa**: tabella mese-per-mese di IVA a credito (fatture) vs debito (corrispettivi) con saldo annuale.
+**Logica codice**: loop 1-12 su `verifica_coerenza_iva_tra_pagine`, accumula totali, calcola saldo/da_versare/a_credito per mese; include le discrepanze accumulate.
+
+### GET /api/verifica-coerenza/verifica-bonifici-vs-banca/{anno} — bonifici vs banca
+**Cosa fa**: confronta il totale dei bonifici registrati con i bonifici in uscita dell'estratto conto.
+**Logica codice**: aggregation su `bonifici_transfers` (totale, count, riconciliati per anno via regex data) e su `estratto_conto_movimenti` (importi negativi con "BONIFICO"/"SEPA" in `descrizione_originale`); differenza, flag `coerente` (<1€), alert warning/critical.
+**Note**: legge `bonifici_transfers`, mentre `/api/batch/paga` scrive in `bonifici_generati`: i bonifici del batch sfuggono a questa verifica.
+
+### GET /api/verifica-coerenza/riepilogo-giornaliero — dashboard verifiche
+**Cosa fa**: verifica completa dell'anno corrente con stato semaforico (OK/ATTENZIONE/CRITICO).
+**Logica codice**: `VerificaCoerenza.verifica_completa(anno corrente)`; arricchisce con `data_verifica`, mese corrente e `stato_generale`/`stato_colore` dai contatori critical/warning.
+**Note**: duplica in gran parte `/completa/{anno}` (stesso motore, decorazioni in più).

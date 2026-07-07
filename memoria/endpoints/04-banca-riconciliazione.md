@@ -417,3 +417,131 @@ Mini-CRUD autenticato sulla collezione legacy `bank_statements` più due stub. 5
 6. `commit`/`import-direct` accettano `collection` libera dal client (rischio integrità/sicurezza); `import-direct` non lancia la riconciliazione paghe che `commit` esegue.
 7. Riconciliazione asimmetrica: `riconcilia-manuale` marca solo `prima_nota_banca`; il flusso di estratto_conto.py marca anche il lato EC.
 8. Due event bus diversi per lo stesso dominio (`app.services.event_bus` vs `app.core.event_bus`).
+
+---
+
+## bonifici_module/ + bonifici_import_unificato.py (/api/archivio-bonifici)
+
+Gestione Archivio Bonifici PDF: il router del package (`__init__.py`) monta 18 rotte con `add_api_route` da `jobs.py`, `transfers.py`, `riconciliazione.py`; `associazioni.py` ha prefix interno `/archivio-bonifici` ed è registrato con `/api` (stessi percorsi finali); `bank/bonifici_import_unificato.py` è un wrapper per la UI ImportUnificato. Collezioni: `bonifici_transfers` (moderna, UUID), `bonifici_jobs`, `archivio_bonifici` (LEGACY, ObjectId), `estratto_conto_movimenti`, `bonifici_email_attachments`, `prima_nota_salari`, `invoices`, `employees`, `suppliers`. Le costanti `COL_JOBS`/`COL_TRANSFERS`/`COL_RICONCILIAZIONE_TASKS` in `common.py` sono dichiarate ma MAI usate.
+
+### POST /api/archivio-bonifici/jobs — crea job import
+**Cosa fa**: crea un job di import vuoto e ne restituisce l'id (UUID).
+**Logica codice**: insert in `bonifici_jobs` con `status='created'`, contatori a 0.
+
+### GET /api/archivio-bonifici/jobs — lista job
+**Cosa fa**: ultimi 100 job ordinati per created_at desc. **Logica codice**: find su `bonifici_jobs`.
+
+### GET /api/archivio-bonifici/jobs/{job_id} — stato job
+**Cosa fa**: documento del job (status, processed_files, errors, duplicates_skipped...). **Logica codice**: find_one, 404 se assente.
+
+### POST /api/archivio-bonifici/jobs/{job_id}/upload — upload PDF/ZIP e avvio elaborazione
+**Cosa fa**: riceve PDF e/o ZIP, li salva su disco e avvia l'elaborazione in background.
+**Logica codice**: salva in `/tmp/bonifici_uploads/{job_id}` (nomi sanificati); estrae i PDF dagli ZIP (errori raccolti, max 50 sul job); job a `queued`; schedula `process_files_background`: per ogni PDF estrae testo (`pdf_parser.read_pdf_text`: pdfminer con fallback PyMuPDF) → `extract_transfers_from_text`, fallback `parse_filename_data` (pattern `IBAN_IMPORTO_DATA_CAUSALE.pdf`); PDF salvato Base64 in `pdf_data`; dedup via `build_dedup_key` (MD5 di iban|importo|data|causale) contro le chiavi già in `bonifici_transfers`; insert; infine `_auto_associate_bonifici`: match fuzzy per importo (±2%) + nome su `prima_nota_salari` (setta `salario_associato`, `operazione_salario_id` + back-link) e su `invoices` (setta `fattura_associata`, `fattura_id` + `bonifico_associato` sulla fattura); job `completed`.
+**Note**: bug nell'auto-associazione: filtro anti-riuso `{"fattura_associata": {"$ne": True}}` su `invoices` ma sulla fattura viene settato `bonifico_associato` → la stessa fattura può agganciarsi a più bonifici. La dedup key usa i campi dello schema "filename" (`iban_beneficiario`, `data_esecuzione`) che il parser testuale non produce (`beneficiario.iban`, `data`) → per i bonifici da testo la chiave degenera a importo+causale.
+
+### GET /api/archivio-bonifici/transfers — lista bonifici
+**Cosa fa**: lista filtrabile per job, testo libero, ordinante, beneficiario, anno.
+**Logica codice**: query su `bonifici_transfers`; search in `$or` regex (escaped) su `ordinante.nome`, `beneficiario.nome`, `causale`, `cro_trn`; `year` regex `^YYYY-` su `data`; sort data desc, limit 1000.
+
+### GET /api/archivio-bonifici/transfers/count — conteggio
+**Cosa fa**: conta i bonifici (opz. per job). **Logica codice**: `count_documents`.
+
+### GET /api/archivio-bonifici/transfers/summary — riepilogo per anno
+**Cosa fa**: count e somma importi per anno. **Logica codice**: aggregate `$substr` su `data` + `$group`.
+
+### DELETE /api/archivio-bonifici/transfers/bulk — cancellazione massiva
+**Cosa fa**: elimina i bonifici di un job, oppure TUTTI se `job_id` omesso.
+**Logica codice**: `delete_many` su `bonifici_transfers` con query `{}` se job_id assente.
+**Note**: senza job_id svuota l'intera collezione, nessuna conferma.
+
+### DELETE /api/archivio-bonifici/transfers/{transfer_id} — elimina bonifico
+**Cosa fa**: delete_one per id UUID, 404 se non trovato.
+
+### PUT /api/archivio-bonifici/transfers/{transfer_id} — aggiorna bonifico
+**Cosa fa**: aggiorna i campi editabili.
+**Logica codice**: whitelist `causale, importo, data, note, categoria, salario_associato, operazione_salario_id, fattura_associata, fattura_id`; setta `updated_at`; 404 se assente.
+
+### GET /api/archivio-bonifici/transfers/{transfer_id}/pdf — PDF originale
+**Cosa fa**: restituisce il PDF del bonifico inline.
+**Logica codice**: in ordine: campo `pdf_data` Base64; file su disco in `/tmp/bonifici_uploads` (se trovato lo cache-a in `pdf_data`); allegato in `bonifici_email_attachments` per filename non associato (se trovato copia il Base64 sul bonifico e marca l'allegato associato); 404 altrimenti.
+**Note**: GET con side-effect di scrittura su due collezioni; firma dichiara StreamingResponse ma restituisce Response.
+
+### GET /api/archivio-bonifici/export — export CSV/XLSX
+**Cosa fa**: esporta i bonifici (max 10000, filtro job) in CSV (`;`) o XLSX.
+**Logica codice**: colonne data/importo/valuta/ordinante(+iban)/beneficiario(+iban)/causale/cro_trn; XLSX via pandas+openpyxl (500 se pandas assente).
+
+### POST /api/archivio-bonifici/riconcilia — riconcilia con estratto conto
+**Cosa fa**: matcha i bonifici non riconciliati con i movimenti EC per importo (±0,01€ in valore assoluto) e data ±1 giorno.
+**Logica codice**: carica `bonifici_transfers` non riconciliati (10k) e TUTTI gli `estratto_conto_movimenti` (50k); loop O(n·m) con set `movimenti_usati`; a match setta sul bonifico `riconciliato`, `data_riconciliazione`, `movimento_estratto_conto_id`, `movimento_data`, `movimento_descrizione`. Con `?background=true` crea un task nel dict in memoria `_riconciliazione_task` (asyncio.create_task).
+**Note**: la variante background duplica la logica ma NON salva `movimento_data`/`movimento_descrizione`; nessuna scrittura sul movimento EC (link mono-direzionale); match solo importo+data → rischio falsi positivi su importi ricorrenti.
+
+### GET /api/archivio-bonifici/riconcilia/task/{task_id} — stato task background
+**Cosa fa**: progresso del task di riconciliazione. **Logica codice**: legge il dict in memoria, 404 se assente.
+**Note**: stato volatile (perso al restart, non multi-worker); la persistenza Mongo suggerita da `COL_RICONCILIAZIONE_TASKS` non è mai stata implementata.
+
+### GET /api/archivio-bonifici/stato-riconciliazione — statistiche riconciliazione
+**Cosa fa**: totali/percentuale riconciliati e importi. **Logica codice**: count + aggregate `$group` per `riconciliato`.
+
+### GET /api/archivio-bonifici/dashboard — dashboard bonifici
+**Cosa fa**: contatori, percentuale, totali importi, ultimi 5 job, breakdown per anno.
+**Logica codice**: aggregates su `bonifici_transfers` + find su `bonifici_jobs` limit 5.
+
+### POST /api/archivio-bonifici/reset-riconciliazione — reset globale
+**Cosa fa**: azzera la riconciliazione di TUTTI i bonifici.
+**Logica codice**: `update_many({})`: `riconciliato: False`, `$unset` di `movimento_estratto_conto_id`/`data_riconciliazione`.
+**Note**: non rimuove `movimento_data`/`movimento_descrizione` scritti dalla variante sincrona.
+
+### POST /api/archivio-bonifici/associa-dipendenti — associa bonifici a dipendenti
+**Cosa fa**: propone (default `dry_run=true`) o applica l'associazione bonifico→dipendente per IBAN uguale o nome contenuto.
+**Logica codice**: bonifici con `salario_associato != True` × `employees` (nome+cognome+iban); se non dry_run setta `salario_associato`, `dipendente_id`, `dipendente_nome`; primi 50 candidati in risposta.
+**Note**: non scrive nulla su `prima_nota_salari` (diversamente dall'auto-associazione di jobs.py).
+
+### POST /api/archivio-bonifici/associa-fattura — associa fattura a bonifico (associazioni.py)
+**Cosa fa**: collega una fattura a un bonifico (query param `bonifico_id`, `fattura_id`, `collection`).
+**Logica codice**: 422 se fattura_id vuoto; 409 se `fattura_associata_id` già diverso; su `bonifici_transfers` setta `fattura_associata_id`, `fattura_collection`, `stato_riconciliazione="associato"`, `data_associazione`; fallback su `archivio_bonifici` via ObjectId; 404 se assente ovunque.
+**Note**: usa campi (`fattura_associata_id`) DIVERSI da quelli di jobs/transfers (`fattura_associata`/`fattura_id`): due schemi di associazione paralleli e non interoperabili.
+
+### DELETE /api/archivio-bonifici/disassocia-fattura/{bonifico_id} — rimuovi associazione fattura
+**Cosa fa**: rimuove il collegamento fattura dal bonifico.
+**Logica codice**: `$unset` di `fattura_associata_id/fattura_collection/data_associazione` + `stato_riconciliazione="non_riconciliato"`, prima su `bonifici_transfers` poi fallback legacy; non ripulisce nulla lato fattura.
+
+### POST /api/archivio-bonifici/associa-salario — associa salario a bonifico
+**Cosa fa**: collega un'operazione di prima nota salari a un bonifico.
+**Logica codice**: update SOLO su `archivio_bonifici` per ObjectId: setta `operazione_salario_id`, `stato_riconciliazione="associato_salario"`.
+**Note**: LEGACY-only: nessun fallback su `bonifici_transfers` → inutilizzabile sui bonifici della pipeline moderna (id UUID).
+
+### DELETE /api/archivio-bonifici/disassocia-salario/{bonifico_id} — rimuovi associazione salario
+**Cosa fa**: `$unset` su `archivio_bonifici` (solo legacy) + stato "non_riconciliato".
+
+### GET /api/archivio-bonifici/fatture-compatibili/{bonifico_id} — fatture candidate
+**Cosa fa**: propone fatture con importo entro ±5% del bonifico.
+**Logica codice**: bonifico da `archivio_bonifici` (solo legacy); query `invoices` con `$or` su `totale`/`importo_totale`; max 50.
+**Note**: il docstring promette anche match per "fornitore simile" MAI implementato; campi importo diversi da quelli usati dall'auto-associazione di jobs.py (`total_amount`).
+
+### GET /api/archivio-bonifici/operazioni-salari/{bonifico_id} — salari candidati
+**Cosa fa**: propone operazioni salari con `netto` entro ±5% dell'importo.
+**Logica codice**: bonifico da `archivio_bonifici` (solo legacy); find su `prima_nota_salari`, max 50.
+**Note**: campo `netto` mentre jobs.py matcha `importo_busta`/`importo_bonifico`: terzo schema importi.
+
+### POST /api/archivio-bonifici/sync-iban-anagrafica — sync IBAN in anagrafica
+**Cosa fa**: copia gli IBAN beneficiario dei bonifici legacy su dipendenti/fornitori che ne sono privi.
+**Logica codice**: legge `archivio_bonifici` con `iban_beneficiario` (5000); regex-match del nome su `employees` e `suppliers` (primi 10 char); setta `iban` solo se mancante.
+**Note**: `beneficiario` non regex-escaped (crash/injection con caratteri speciali); N+1 query; solo collezione legacy.
+
+### GET /api/archivio-bonifici/dipendente/{dipendente_id} — bonifici di un dipendente
+**Cosa fa**: elenca i bonifici legati a un dipendente (per id o nome).
+**Logica codice**: risolve dipendente per ObjectId poi per `id`; query `archivio_bonifici` con `$or` su (operazione_salario_id+dipendente_id) o regex sul beneficiario; sort desc, max 100.
+**Note**: se il dipendente non ha nome il `$or` contiene `{}` → matcha TUTTI i documenti; solo collezione legacy.
+
+### POST /api/archivio-bonifici/jobs/import — crea job per ImportUnificato (bonifici_import_unificato.py)
+**Cosa fa**: crea un job di import bonifici e restituisce `job_id`; la UI deve poi chiamare `POST /jobs/{job_id}/upload`.
+**Logica codice**: chiama `create_job()` di bonifici_module.jobs e risponde `{success, message, job_id}`. Nessun file accettato.
+**Note**: il docstring dichiara "crea job + carica file + restituisce conteggi" — FALSO: esegue solo il passo 1.
+
+### Anomalie (gruppo bonifici)
+1. Doppia collezione bonifici: `bonifici_transfers` (moderna) vs `archivio_bonifici` (legacy). In associazioni.py solo associa/disassocia-fattura gestiscono entrambe; gli altri 6 endpoint operano SOLO sulla legacy e non funzionano sui bonifici importati dalla pipeline corrente.
+2. Tre schemi di associazione incompatibili: jobs/transfers (`fattura_associata`+`fattura_id`, `salario_associato`+`operazione_salario_id`) vs associazioni.py (`fattura_associata_id`+`fattura_collection`+`stato_riconciliazione`); campi importo per il match diversi tra i moduli.
+3. Costanti collezioni in common.py mai usate; task riconciliazione in dict in memoria (volatile).
+4. Dedup debole per i PDF parsati dal testo (chiave ridotta a importo+causale).
+5. Bug `_auto_associate_bonifici`: la stessa fattura può essere associata a più bonifici (flag scritto ≠ flag verificato).
+6. Docstring mendaci (import unificato, fatture-compatibili, bulk delete); GET /pdf con side-effect di scrittura; riconciliazione O(n·m) in memoria fino a 10k×50k; PDF Base64 nei documenti Mongo (limite 16MB/doc).
