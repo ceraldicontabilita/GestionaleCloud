@@ -171,7 +171,6 @@ def _register_invoices(app: FastAPI):
     from app.routers.invoices import (
         invoices_main,
         invoices_emesse,
-        fatture_overlay,
         fatture_upload,
         fatture_drive,
         corrispettivi,
@@ -180,7 +179,6 @@ def _register_invoices(app: FastAPI):
 
     app.include_router(invoices_emesse.router, prefix="/api/invoices/emesse", tags=["Invoices Emesse"])
     app.include_router(invoices_main.router, prefix="/api/invoices", tags=["Invoices"])
-    app.include_router(fatture_overlay.router, prefix="/api/fatture", tags=["Fatture Overlay"])
     app.include_router(fatture_upload.router, prefix="/api/fatture", tags=["Fatture Upload"])
     app.include_router(fatture_drive.router, prefix="/api/fatture", tags=["Fatture Drive"])
     app.include_router(fatture_ricevute_router, prefix="/api/fatture-ricevute", tags=["Fatture Ricevute"])

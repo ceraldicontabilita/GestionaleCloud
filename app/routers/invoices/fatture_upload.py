@@ -2,6 +2,14 @@
 Fatture XML Upload Router - Gestione upload fatture elettroniche.
 Supporta upload singolo XML, multiplo XML e file ZIP.
 Include riconciliazione automatica con estratto conto per numeri assegni.
+
+Router canonico di /api/fatture: assorbe la logica di fatture_overlay.py
+(rimosso). Upload singolo e bulk condividono ora la stessa pipeline
+process_xml_bytes (P7M, prima nota, event bus) già usata da Drive/Email/
+Documenti inbox. GET/PUT /{id} delegano a fatture_module.crud, la stessa
+logica usata da /api/fatture-ricevute/fattura/{id}. cleanup-duplicates è
+stato rimosso: la pulizia duplicati canonica gira già in automatico ogni
+30 min via fatture_module.crud.pulisci_duplicati_invoices (app/scheduler.py).
 """
 from fastapi import APIRouter, HTTPException, UploadFile, File, Query, Body
 from typing import Dict, Any, List, Optional
@@ -765,239 +773,35 @@ def extract_xml_from_zip(zip_content: bytes, zip_filename: str = "archive.zip") 
 @router.post("/upload-xml")
 @handle_errors
 async def upload_fattura_xml(file: UploadFile = File(...)) -> Dict[str, Any]:
-    """Upload e parse di una singola fattura elettronica XML."""
-    if not (file.filename.endswith('.xml') or is_p7m_content(file.filename)):
+    """Upload e parse di una singola fattura elettronica XML (o P7M firmato).
+
+    Usa la stessa pipeline condivisa (process_xml_bytes) di Drive/Email/
+    Documenti inbox, per non avere logiche di import diverse a seconda del
+    canale (metodo fornitore, prima nota, event bus, dedup: tutti uguali).
+    """
+    filename = file.filename or "upload.xml"
+    if not (filename.lower().endswith(".xml") or is_p7m_content(filename)):
         raise HTTPException(status_code=400, detail="Il file deve essere in formato XML o P7M")
 
-    try:
-        content = await file.read()
-        if is_p7m_content(file.filename):
-            extracted = extract_xml_from_p7m(content)
-            if extracted is None:
-                raise HTTPException(status_code=400,
-                                    detail="Impossibile estrarre l'XML dalla busta firmata .p7m")
-            content = extracted
-        xml_content = content.decode('utf-8')
-        parsed = parse_fattura_xml(xml_content)
-        
-        if parsed.get("error"):
-            raise HTTPException(status_code=400, detail=parsed["error"])
-        
-        db = Database.get_db()
-        
-        invoice_key = generate_invoice_key(
-            parsed.get("invoice_number", ""),
-            parsed.get("supplier_vat", ""),
-            parsed.get("invoice_date", "")
-        )
-        
-        existing = await db[Collections.INVOICES].find_one({"invoice_key": invoice_key})
-        if existing:
-            raise HTTPException(
-                status_code=409, 
-                detail=f"Fattura già presente: {parsed.get('invoice_number')} del {parsed.get('invoice_date')}"
-            )
-        
-        # Assicura che il fornitore esista nel database (crea se nuovo + alert)
-        supplier_result = await ensure_supplier_exists(db, parsed)
-        supplier_id = supplier_result.get("supplier_id")
-        supplier_created = supplier_result.get("supplier_created", False)
-        alert_created = supplier_result.get("alert_created", False)
-        
-        # Se il fornitore ha metodo_pagamento configurato, usalo. Altrimenti default a "bonifico"
-        metodo_pagamento = supplier_result.get("metodo_pagamento") or "bonifico"
-        
-        # Recupera giorni_pagamento dal fornitore se esiste
-        giorni_pagamento = 30
-        if supplier_id:
-            supplier_doc = await db[Collections.SUPPLIERS].find_one(
-                {"id": supplier_id}, {"giorni_pagamento": 1}
-            )
-            if supplier_doc:
-                giorni_pagamento = supplier_doc.get("giorni_pagamento", 30)
-        
-        # === RICONCILIAZIONE AUTOMATICA CON ESTRATTO CONTO ===
-        importo_fattura = parsed.get("total_amount", 0)
-        data_fattura_ricerca = parsed.get("invoice_date", "")
-        fornitore_nome = parsed.get("supplier_name", "")
-        
-        riconciliazione = await riconcilia_con_estratto_conto(
-            db, importo_fattura, data_fattura_ricerca, fornitore_nome
-        )
-        
-        # Se trovato in banca, aggiorna metodo pagamento e stato
-        riconciliato_automaticamente = False
-        if riconciliazione.get("trovato"):
-            metodo_suggerito = riconciliazione.get("metodo_suggerito", metodo_pagamento)
-            # Solo aggiorna se diverso da quello del fornitore
-            if metodo_suggerito:
-                metodo_pagamento = metodo_suggerito
-            riconciliato_automaticamente = True
-            logger.info(f"Riconciliazione automatica per fattura {parsed.get('invoice_number')}: {metodo_pagamento}")
-        
-        # === RICONCILIAZIONE ASSEGNI (per dettagli aggiuntivi) ===
-        numeri_assegni = None
-        riconciliazione_assegni = None
-        
-        if metodo_pagamento and metodo_pagamento.lower() == "assegno":
-            riconciliazione_assegni = await find_check_numbers_for_invoice(
-                db, importo_fattura, data_fattura_ricerca, fornitore_nome
-            )
-            
-            if riconciliazione_assegni:
-                numeri_assegni = riconciliazione_assegni.get("numero_assegno")
-                logger.info(f"Assegni trovati per fattura {parsed.get('invoice_number')}: {numeri_assegni}")
-        
-        data_fattura_str = parsed.get("invoice_date", "")
-        data_scadenza = None
-        if data_fattura_str:
-            try:
-                data_fattura = datetime.strptime(data_fattura_str, "%Y-%m-%d")
-                data_scadenza = (data_fattura + timedelta(days=giorni_pagamento)).strftime("%Y-%m-%d")
-            except (ValueError, TypeError):
-                pass
-        
-        supplier_vat = parsed.get("supplier_vat", "")
-        
-        invoice = {
-            "id": str(uuid.uuid4()),
-            "invoice_key": invoice_key,
-            "supplier_id": supplier_id,  # Link al fornitore
-            "invoice_number": parsed.get("invoice_number", ""),
-            "invoice_date": parsed.get("invoice_date", ""),
-            "data_ricezione": parsed.get("invoice_date", ""),  # Default = data fattura, può essere aggiornato
-            "data_scadenza": data_scadenza,
-            "tipo_documento": parsed.get("tipo_documento", ""),
-            "tipo_documento_desc": parsed.get("tipo_documento_desc", ""),
-            "supplier_name": parsed.get("supplier_name", ""),
-            "supplier_vat": parsed.get("supplier_vat", ""),
-            "total_amount": parsed.get("total_amount", 0),
-            "imponibile": parsed.get("imponibile", 0),
-            "iva": parsed.get("iva", 0),
-            "divisa": parsed.get("divisa", "EUR"),
-            "fornitore": parsed.get("fornitore", {}),
-            "cliente": parsed.get("cliente", {}),
-            "linee": parsed.get("linee", []),
-            "riepilogo_iva": parsed.get("riepilogo_iva", []),
-            "pagamento": parsed.get("pagamento", {}),
-            "causali": parsed.get("causali", []),
-            "metodo_pagamento": metodo_pagamento,
-            "numeri_assegni": numeri_assegni,  # Pre-compilato se trovato nell'estratto conto
-            "riconciliazione_assegni": riconciliazione_assegni,  # Dettagli riconciliazione
-            "riconciliato": riconciliato_automaticamente,  # Se trovato automaticamente in banca
-            "riconciliazione_auto": riconciliazione if riconciliazione.get("trovato") else None,
-            "pagato": riconciliato_automaticamente,  # Se riconciliato, è pagato
-            "data_pagamento": riconciliazione.get("data_pagamento") if riconciliato_automaticamente else None,
-            "status": "paid" if riconciliato_automaticamente else "imported",
-            "source": "xml_upload",
-            "filename": file.filename,
-            "xml_content": xml_content,  # Salva XML per visualizzazione allegato
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "cedente_piva": supplier_vat,
-            "cedente_denominazione": parsed.get("supplier_name", ""),
-            "numero_fattura": parsed.get("invoice_number", ""),
-            "data_fattura": parsed.get("invoice_date", ""),
-            "importo_totale": parsed.get("total_amount", 0)
-        }
-        
-        await db[Collections.INVOICES].insert_one(invoice.copy())
-        invoice.pop("_id", None)
-        
-        # === ASSOCIAZIONE AUTOMATICA PDF ARCHIVIATO ===
-        # Cerca se esiste un PDF in archivio da associare a questo XML
-        pdf_association_result = None
-        try:
-            from app.services.upload_ai_processor import associate_pdf_to_xml_on_upload
-            pdf_association_result = await associate_pdf_to_xml_on_upload(
-                db=db,
-                invoice_id=invoice["id"],
-                supplier_vat=supplier_vat,
-                invoice_number=parsed.get("invoice_number", ""),
-                invoice_date=parsed.get("invoice_date", ""),
-                total_amount=parsed.get("total_amount", 0)
-            )
-            if pdf_association_result and pdf_association_result.get("pdf_associated"):
-                logger.info(f"📎 PDF associato automaticamente: {pdf_association_result.get('pdf_filename')}")
-        except Exception as e:
-            logger.debug(f"Associazione PDF non disponibile: {e}")
-        
-        # Giacenze magazzino: gestite SOLO dall'app esterna Lotti (stesso DB).
-        # L'import fatture qui NON aggiorna warehouse_inventory.
-        warehouse_result = {"products_created": 0, "products_updated": 0}
+    content = await file.read()
+    db = Database.get_db()
+    result = await process_xml_bytes(db, content, filename, source="xml_upload_manuale")
 
-        prima_nota_result = {"cassa": None, "banca": None}
-        # Registra in Prima Nota SOLO se non è stato già riconciliato automaticamente
-        # O se il metodo non è misto
-        if metodo_pagamento != "misto":
-            try:
-                from app.routers.prima_nota_module.sync import registra_pagamento_fattura
-                prima_nota_result = await registra_pagamento_fattura(
-                    fattura=invoice,
-                    metodo_pagamento=metodo_pagamento
-                )
-                
-                # Aggiorna fattura con riferimenti Prima Nota
-                update_fields = {
-                    "prima_nota_cassa_id": prima_nota_result.get("cassa"),
-                    "prima_nota_banca_id": prima_nota_result.get("banca")
-                }
-                
-                # Se già riconciliato automaticamente, mantieni lo stato
-                if not riconciliato_automaticamente:
-                    update_fields["pagato"] = True
-                    update_fields["data_pagamento"] = datetime.now(timezone.utc).isoformat()[:10]
-                    update_fields["status"] = "paid"
-                
-                await db[Collections.INVOICES].update_one(
-                    {"id": invoice["id"]},
-                    {"$set": update_fields}
-                )
-            except Exception as e:
-                logger.warning(f"Prima nota registration failed: {e}")
-        
-        provvisoria_associata = None
+    if result.get("status") == "duplicate":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Fattura già presente: {result.get('invoice_number')}"
+        )
+    if result.get("status") == "error":
+        raise HTTPException(status_code=400, detail=result.get("error", "Errore import fattura"))
 
-        # === AUTOMAZIONE VERBALI DA FATTURE NOLEGGIO ===
-        # Se è una fattura di un noleggiatore (ALD, Leasys, etc.), cerca verbali
-        verbali_result = {"verbali_trovati": 0, "verbali_creati": 0, "driver_associati": 0}
-        try:
-            from app.services.verbali_automation import processa_verbali_da_fattura
-            verbali_result = await processa_verbali_da_fattura(db, parsed, invoice["id"])
-            if verbali_result.get("verbali_trovati", 0) > 0:
-                logger.info(f"🚗 Verbali trovati: {verbali_result['verbali_trovati']}, Driver associati: {verbali_result['driver_associati']}")
-        except Exception as e:
-            logger.warning(f"Errore automazione verbali: {e}")
-        
-        return {
-            "success": True,
-            "message": f"Fattura {parsed.get('invoice_number')} importata",
-            "invoice": invoice,
-            "supplier": {
-                "id": supplier_id,
-                "nome": parsed.get("supplier_name"),
-                "created": supplier_created
-            },
-            "warehouse": {
-                "products_created": warehouse_result.get("products_created", 0),
-                "products_updated": warehouse_result.get("products_updated", 0)
-            },
-            "prima_nota": prima_nota_result,
-            "pdf_associato": pdf_association_result.get("pdf_associated", False) if pdf_association_result else False,
-            "pdf_filename": pdf_association_result.get("pdf_filename") if pdf_association_result else None,
-            "provvisoria_associata": provvisoria_associata.get("id") if provvisoria_associata else None,
-            "verbali": {
-                "trovati": verbali_result.get("verbali_trovati", 0),
-                "creati": verbali_result.get("verbali_creati", 0),
-                "driver_associati": verbali_result.get("driver_associati", 0),
-                "costi_dipendente": verbali_result.get("costi_dipendente_creati", 0)
-            }
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Errore upload fattura: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    invoice = await db[Collections.INVOICES].find_one({"id": result["id"]}, {"_id": 0})
+    return {
+        "success": True,
+        "message": f"Fattura {result.get('invoice_number')} importata",
+        "invoice": invoice,
+        "supplier": {"nome": result.get("supplier")},
+    }
 
 
 async def process_xml_bytes(db, content: bytes, filename: str, source: str = "xml_upload") -> Dict[str, Any]:
@@ -1228,36 +1032,6 @@ async def delete_all_invoices(
     return {"deleted_count": result.deleted_count}
 
 
-@router.post("/cleanup-duplicates")
-@handle_errors
-async def cleanup_duplicate_invoices() -> Dict[str, Any]:
-    """Pulisce le fatture duplicate."""
-    db = Database.get_db()
-    
-    pipeline = [
-        {"$group": {
-            "_id": {"invoice_number": "$invoice_number", "supplier_vat": "$supplier_vat", "invoice_date": "$invoice_date"},
-            "count": {"$sum": 1},
-            "ids": {"$push": "$id"},
-            "first_id": {"$first": "$id"}
-        }},
-        {"$match": {"count": {"$gt": 1}}}
-    ]
-    
-    duplicates = await db[Collections.INVOICES].aggregate(pipeline).to_list(1000)
-    
-    deleted_count = 0
-    for dup in duplicates:
-        ids_to_delete = [id for id in dup["ids"] if id != dup["first_id"]]
-        result = await db[Collections.INVOICES].delete_many({"id": {"$in": ids_to_delete}})
-        deleted_count += result.deleted_count
-    
-    return {
-        "duplicate_groups_found": len(duplicates),
-        "invoices_deleted": deleted_count
-    }
-
-
 @router.post("/sync-suppliers")
 @handle_errors
 async def sync_suppliers_from_invoices() -> Dict[str, Any]:
@@ -1450,59 +1224,17 @@ async def categorize_all_movements() -> Dict[str, Any]:
 @router.get("/{invoice_id}")
 @handle_errors
 async def get_fattura(invoice_id: str) -> Dict[str, Any]:
-    """Recupera una singola fattura per ID."""
-    db = Database.get_db()
-    
-    invoice = await db[Collections.INVOICES].find_one(
-        {"id": invoice_id},
-        {"_id": 0}
-    )
-    
-    if not invoice:
-        raise HTTPException(status_code=404, detail="Fattura non trovata")
-    
-    return invoice
+    """Recupera una singola fattura per ID (stessa logica di /api/fatture-ricevute/fattura/{id})."""
+    from app.routers.fatture_module.crud import get_fattura_dettaglio
+    return await get_fattura_dettaglio(invoice_id)
 
 
 @router.put("/{invoice_id}")
 @handle_errors
 async def update_fattura(invoice_id: str, data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
-    """
-    Aggiorna una fattura.
-    Campi aggiornabili: metodo_pagamento, pagato, status, data_pagamento, numeri_assegni, note,
-                        centro_costo_id, centro_costo_nome, classificazione_manuale
-    """
-    db = Database.get_db()
-    
-    # Campi aggiornabili
-    allowed_fields = [
-        "metodo_pagamento", "pagato", "paid", "status", "data_pagamento",
-        "numeri_assegni", "note", "in_banca", "categoria_contabile", "centro_costo",
-        "centro_costo_id", "centro_costo_nome", "classificazione_manuale"
-    ]
-    
-    update_data = {k: v for k, v in data.items() if k in allowed_fields}
-    
-    if not update_data:
-        raise HTTPException(status_code=400, detail="Nessun campo valido da aggiornare")
-    
-    # Sincronizza pagato e paid
-    if "pagato" in update_data:
-        update_data["paid"] = update_data["pagato"]
-    elif "paid" in update_data:
-        update_data["pagato"] = update_data["paid"]
-    
-    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
-    
-    result = await db[Collections.INVOICES].update_one(
-        {"id": invoice_id},
-        {"$set": update_data}
-    )
-    
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Fattura non trovata")
-    
-    return {"success": True, "message": "Fattura aggiornata", "updated_fields": list(update_data.keys())}
+    """Aggiorna una fattura (stessa logica di /api/fatture-ricevute/fattura/{id})."""
+    from app.routers.fatture_module.crud import update_fattura as _update_fattura_ricevute
+    return await _update_fattura_ricevute(invoice_id, data)
 
 
 @router.put("/{invoice_id}/classifica")
