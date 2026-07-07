@@ -99,73 +99,94 @@ async def disassocia_fattura(bonifico_id: str) -> Dict[str, Any]:
     raise HTTPException(404, "Bonifico non trovato")
 
 
+async def _trova_bonifico(db, bonifico_id: str) -> Optional[Dict[str, Any]]:
+    """Cerca un bonifico in entrambe le collection: bonifici_transfers (attiva,
+    id stringa UUID) e archivio_bonifici (legacy, _id ObjectId). I bonifici
+    caricati dal flusso attivo (frontend ArchivioBonifici.jsx) hanno sempre id
+    UUID: un lookup che provasse solo ObjectId(bonifico_id) fallirebbe sempre
+    per loro con InvalidId."""
+    bonifico = await db["bonifici_transfers"].find_one({"id": bonifico_id})
+    if bonifico:
+        return bonifico
+    from bson import ObjectId
+    try:
+        return await db["archivio_bonifici"].find_one({"_id": ObjectId(bonifico_id)})
+    except Exception:
+        return None
+
+
 @router.post("/associa-salario")
 async def associa_salario_a_bonifico(
     bonifico_id: str = Query(...),
     operazione_id: str = Query(...)
 ) -> Dict[str, Any]:
-    """Associa un'operazione salario a un bonifico."""
+    """Associa un'operazione salario a un bonifico. Supporta sia bonifici_transfers (UUID) sia archivio_bonifici (ObjectId)."""
     db = Database.get_db()
+
+    aggiornamento = {
+        "operazione_salario_id": operazione_id,
+        "stato_riconciliazione": "associato_salario",
+        "data_associazione": datetime.now(timezone.utc).isoformat()
+    }
+
+    result = await db["bonifici_transfers"].update_one({"id": bonifico_id}, {"$set": aggiornamento})
+    if result.modified_count > 0:
+        return {"success": True, "message": "Salario associato al bonifico (transfers)"}
+
     from bson import ObjectId
-    
     try:
-        result = await db["archivio_bonifici"].update_one(
+        result2 = await db["archivio_bonifici"].update_one(
             {"_id": ObjectId(bonifico_id)},
-            {"$set": {
-                "operazione_salario_id": operazione_id,
-                "stato_riconciliazione": "associato_salario",
-                "data_associazione": datetime.now(timezone.utc)
-            }}
+            {"$set": aggiornamento}
         )
-        if result.modified_count == 0:
-            raise HTTPException(404, "Bonifico non trovato")
-        return {"success": True, "message": "Salario associato al bonifico"}
-    except Exception as e:
-        if "InvalidId" in str(type(e).__name__):
-            raise HTTPException(400, "ID non valido")
-        raise
+        if result2.modified_count > 0:
+            return {"success": True, "message": "Salario associato al bonifico (archivio)"}
+    except Exception:
+        pass
+
+    raise HTTPException(404, "Bonifico non trovato in nessuna collection")
 
 
 @router.delete("/disassocia-salario/{bonifico_id}")
 async def disassocia_salario(bonifico_id: str) -> Dict[str, Any]:
-    """Rimuove l'associazione salario da un bonifico."""
+    """Rimuove l'associazione salario da un bonifico. Supporta entrambe le collection."""
     db = Database.get_db()
+
+    rimozione = {"operazione_salario_id": "", "data_associazione": ""}
+
+    result = await db["bonifici_transfers"].update_one(
+        {"id": bonifico_id},
+        {"$unset": rimozione, "$set": {"stato_riconciliazione": "non_riconciliato"}}
+    )
+    if result.modified_count > 0:
+        return {"success": True, "message": "Associazione salario rimossa (transfers)"}
+
     from bson import ObjectId
-    
     try:
-        result = await db["archivio_bonifici"].update_one(
+        result2 = await db["archivio_bonifici"].update_one(
             {"_id": ObjectId(bonifico_id)},
-            {"$unset": {
-                "operazione_salario_id": "",
-                "data_associazione": ""
-            }, "$set": {"stato_riconciliazione": "non_riconciliato"}}
+            {"$unset": rimozione, "$set": {"stato_riconciliazione": "non_riconciliato"}}
         )
-        if result.modified_count == 0:
-            raise HTTPException(404, "Bonifico non trovato")
-        return {"success": True, "message": "Associazione salario rimossa"}
-    except Exception as e:
-        if "InvalidId" in str(type(e).__name__):
-            raise HTTPException(400, "ID non valido")
-        raise
+        if result2.modified_count > 0:
+            return {"success": True, "message": "Associazione salario rimossa (archivio)"}
+    except Exception:
+        pass
+
+    raise HTTPException(404, "Bonifico non trovato in nessuna collection")
 
 
 @router.get("/fatture-compatibili/{bonifico_id}")
 async def get_fatture_compatibili(bonifico_id: str) -> List[Dict[str, Any]]:
     """Trova fatture compatibili con un bonifico (per importo/fornitore simile)."""
     db = Database.get_db()
-    from bson import ObjectId
-    
-    try:
-        bonifico = await db["archivio_bonifici"].find_one({"_id": ObjectId(bonifico_id)})
-    except Exception:
-        raise HTTPException(400, "ID non valido")
-    
+
+    bonifico = await _trova_bonifico(db, bonifico_id)
     if not bonifico:
         raise HTTPException(404, "Bonifico non trovato")
-    
+
     importo = abs(bonifico.get("importo", 0))
     beneficiario = bonifico.get("beneficiario", "")
-    
+
     # Cerca fatture con importo simile (±5%)
     query = {}
     if importo > 0:
@@ -174,12 +195,12 @@ async def get_fatture_compatibili(bonifico_id: str) -> List[Dict[str, Any]]:
             {"totale": {"$gte": importo - tolerance, "$lte": importo + tolerance}},
             {"importo_totale": {"$gte": importo - tolerance, "$lte": importo + tolerance}},
         ]
-    
+
     fatture = await db[Collections.INVOICES].find(
         query, {"_id": 0, "id": 1, "fornitore": 1, "totale": 1, "importo_totale": 1,
                 "invoice_number": 1, "invoice_date": 1, "fornitore_denominazione": 1}
     ).to_list(50)
-    
+
     return fatture
 
 
@@ -187,28 +208,23 @@ async def get_fatture_compatibili(bonifico_id: str) -> List[Dict[str, Any]]:
 async def get_operazioni_salari(bonifico_id: str) -> List[Dict[str, Any]]:
     """Trova operazioni salari compatibili con un bonifico."""
     db = Database.get_db()
-    from bson import ObjectId
-    
-    try:
-        bonifico = await db["archivio_bonifici"].find_one({"_id": ObjectId(bonifico_id)})
-    except Exception:
-        raise HTTPException(400, "ID non valido")
-    
+
+    bonifico = await _trova_bonifico(db, bonifico_id)
     if not bonifico:
         raise HTTPException(404, "Bonifico non trovato")
-    
+
     importo = abs(bonifico.get("importo", 0))
-    
+
     # Cerca in prima_nota_salari
     query = {}
     if importo > 0:
         tolerance = importo * 0.05
         query["netto"] = {"$gte": importo - tolerance, "$lte": importo + tolerance}
-    
+
     operazioni = await db["prima_nota_salari"].find(
         query, {"_id": 0}
     ).to_list(50)
-    
+
     return operazioni
 
 
