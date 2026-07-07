@@ -1272,27 +1272,38 @@ async def auto_associa_assegni() -> Dict[str, Any]:
             continue
         importo_fattura = round(fattura.get("total_amount", 0), 2)
         fornitore_fattura = normalize_name(fattura.get("supplier_name", ""))
-        
-        for assegno in assegni_da_associare:
-            if assegno["id"] in assegni_associati:
-                continue
-            importo_assegno = round(assegno.get("importo", 0), 2)
-            
-            # Match esatto importo (tolleranza 0.5€)
-            if abs(importo_fattura - importo_assegno) < 0.5:
-                associazioni.append({
-                    "tipo": "esatto",
-                    "confidenza": 1.0,
-                    "assegno_id": assegno["id"],
-                    "assegno_numero": assegno.get("numero"),
-                    "fattura_id": fattura.get("id"),
-                    "fattura_numero": fattura.get("invoice_number"),
-                    "fornitore": fattura.get("supplier_name"),
-                    "importo": importo_fattura
-                })
-                assegni_associati.add(assegno["id"])
-                fatture_usate.add(fattura.get("id"))
-                break
+
+        # Tutti gli assegni ancora liberi compatibili per importo (tolleranza
+        # 0.5€): prima si prendeva sempre il primo trovato con confidenza
+        # 1.0 "finta", anche quando più assegni erano ugualmente compatibili
+        # — un caso ambiguo veniva applicato come fosse certo.
+        candidati_assegno = [
+            a for a in assegni_da_associare
+            if a["id"] not in assegni_associati
+            and abs(importo_fattura - round(a.get("importo", 0), 2)) < 0.5
+        ]
+        if not candidati_assegno:
+            continue
+
+        assegno = candidati_assegno[0]
+        ambiguo = len(candidati_assegno) > 1
+        associazioni.append({
+            "tipo": "esatto" if not ambiguo else "esatto_ambiguo",
+            # Ambiguo → confidenza sotto MIN_CONFIDENCE_AUTO: diventa proposta
+            # manuale invece di essere applicato automaticamente come certo.
+            "confidenza": 1.0 if not ambiguo else 0.5,
+            "assegno_id": assegno["id"],
+            "assegno_numero": assegno.get("numero"),
+            "fattura_id": fattura.get("id"),
+            "fattura_numero": fattura.get("invoice_number"),
+            "fornitore": fattura.get("supplier_name"),
+            "importo": importo_fattura,
+            **({"nota": f"Ambiguo: {len(candidati_assegno)} assegni con importo compatibile "
+                         f"({', '.join(a.get('numero', '') for a in candidati_assegno[:5])})"}
+               if ambiguo else {}),
+        })
+        assegni_associati.add(assegno["id"])
+        fatture_usate.add(fattura.get("id"))
     
     # === FASE 2: Match con learning (stesso importo + fornitore conosciuto) ===
     for fattura in fatture:

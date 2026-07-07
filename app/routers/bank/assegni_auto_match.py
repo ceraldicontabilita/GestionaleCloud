@@ -635,6 +635,22 @@ async def run_auto_match(db, *, dry_run: bool = False) -> Dict[str, Any]:
                     for a in assegni_sub:
                         matched_ids.add(a["id"])
                     break
+                elif status == "ambiguous":
+                    # Prima questo caso non veniva controllato affatto: gli
+                    # assegni finivano silenziosamente tra i "non_trovati"
+                    # generici invece che segnalati come ambigui da risolvere.
+                    _, assegni_sub = payload
+                    candidates_residuo = [f for f in fatture_disp
+                                           if abs(f["_residuo"] - round(sum(_f(a.get("importo")) for a in assegni_sub), 2)) <= TOLL * n]
+                    report["ambigui"].append({
+                        "livello": "L2",
+                        "assegno_id": assegni_sub[0].get("id"),
+                        "assegno_numero": assegni_sub[0].get("numero"),
+                        "assegni_gruppo": [a.get("numero") for a in assegni_sub],
+                        "candidates": [{"fattura_id": c.get("id"), "numero": c.get("invoice_number"),
+                                        "importo": c["_residuo"]} for c in candidates_residuo],
+                    })
+                    break
 
     # ── LIVELLO 3: N assegni diversi → 1 fattura
     for piva, lista_ass in assegni_by_piva.items():
