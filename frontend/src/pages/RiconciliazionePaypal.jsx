@@ -80,6 +80,8 @@ export default function RiconciliazionePaypal() {
   const [createModal, setCreateModal] = useState(null); // {paypal_account_id, nome_controparte, ...} | null
   const [importingCsv, setImportingCsv] = useState(false);
   const csvInputRef = useRef(null);
+  const [syncMesi, setSyncMesi] = useState(3);
+  const [syncing, setSyncing] = useState(false);
 
   // Sincronizza il filtro locale con l'anno globale quando cambia nel TopNav
   useEffect(() => {
@@ -379,14 +381,41 @@ export default function RiconciliazionePaypal() {
             >
               {importingCsv ? 'Import…' : '+ Importa CSV'}
             </button>
+            <select
+              value={syncMesi}
+              onChange={e => setSyncMesi(parseInt(e.target.value))}
+              style={{
+                padding: '8px 10px',
+                borderRadius: 6,
+                border: '1px solid rgba(255,255,255,0.3)',
+                background: 'rgba(255,255,255,0.15)',
+                color: 'white',
+                fontSize: 13,
+              }}
+            >
+              <option value={1} style={{ color: '#333' }}>
+                Ultimo mese
+              </option>
+              <option value={3} style={{ color: '#333' }}>
+                Ultimi 3 mesi
+              </option>
+              <option value={6} style={{ color: '#333' }}>
+                Ultimi 6 mesi
+              </option>
+              <option value={12} style={{ color: '#333' }}>
+                Ultimo anno
+              </option>
+            </select>
             <button
               data-testid="sync-paypal-api-btn"
+              disabled={syncing}
               onClick={async () => {
+                setSyncing(true);
                 try {
                   toast.info('Sincronizzazione PayPal API in corso…');
                   const today = new Date();
                   const end = today.toISOString().slice(0, 10);
-                  const startDate = new Date(today.getFullYear(), today.getMonth() - 3, 1);
+                  const startDate = new Date(today.getFullYear(), today.getMonth() - syncMesi, 1);
                   const start = startDate.toISOString().slice(0, 10);
                   const res = await api.post('/api/paypal-api/sync', {
                     start_date: start,
@@ -394,13 +423,30 @@ export default function RiconciliazionePaypal() {
                   });
                   const r = res.data || {};
                   toast.success(
-                    `✓ Sync OK — ${r.total || 0} transazioni (${r.enriched || 0} arricchite)`
+                    `✓ Sync OK — ${r.total || 0} transazioni (${r.enriched || 0} arricchite), riconciliazione in corso…`
                   );
-                  // reload
+                  // Dopo la sync, riconcilia subito con fatture/banca — senza
+                  // questo passaggio le transazioni restavano senza riferimento
+                  // a fattura/controparte finché qualcuno non lo lanciava a mano.
+                  try {
+                    const ric = await api.post('/api/paypal-api/riconcilia', {
+                      start_date: start,
+                      end_date: end,
+                    });
+                    const fatt = ric.data?.fatture?.riconciliati ?? 0;
+                    toast.success(`✓ Riconciliazione OK — ${fatt} transazioni associate a fatture`);
+                  } catch (ricErr) {
+                    toast.error(
+                      'Sync OK ma riconciliazione fallita: ' +
+                        (ricErr.response?.data?.detail || ricErr.message)
+                    );
+                  }
                   loadDashboard();
                   loadTransactions();
                 } catch (e) {
                   toast.error('Errore sync: ' + (e.response?.data?.detail || e.message));
+                } finally {
+                  setSyncing(false);
                 }
               }}
               style={{
@@ -409,13 +455,14 @@ export default function RiconciliazionePaypal() {
                 color: 'white',
                 border: '1px solid rgba(253, 224, 71, 0.5)',
                 borderRadius: 6,
-                cursor: 'pointer',
+                cursor: syncing ? 'default' : 'pointer',
                 fontSize: 13,
                 fontWeight: 600,
+                opacity: syncing ? 0.6 : 1,
               }}
-              title="Sincronizza le ultime 3 mesi di transazioni PayPal via API (Transaction Search)"
+              title="Sincronizza le transazioni PayPal via API (Transaction Search) e le riconcilia con fatture/banca"
             >
-              🔄 Sync PayPal API (ultimi 3 mesi)
+              {syncing ? '⏳ Sync…' : '🔄 Sync PayPal API'}
             </button>
           </div>
         </div>
@@ -522,13 +569,19 @@ export default function RiconciliazionePaypal() {
               {(dashboard.top_fornitori || []).map(f => (
                 <div
                   key={f.nome || f.id}
+                  onClick={() => {
+                    setSearchTx(f.nome && f.nome !== 'N/D' ? f.nome : '');
+                    setActiveTab('transazioni');
+                  }}
                   style={{
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
                     padding: '8px 0',
                     borderBottom: '1px solid #f3f4f6',
+                    cursor: 'pointer',
                   }}
+                  title={`Vedi le transazioni di ${f.nome}`}
                 >
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 500 }}>{f.nome}</div>
