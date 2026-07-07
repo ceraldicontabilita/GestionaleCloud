@@ -946,3 +946,334 @@ Integrazione con il servizio Automotive di OpenAPI.com (`automotive.openapi.com`
 ### GET /api/openapi-automotive/assicurazione/{targa} — info assicurazione
 **Cosa fa**: recupera lo stato assicurativo del veicolo dal provider.
 **Logica codice**: `get_insurance_info(targa_normalizzata)`; 404 se non trovata; nessuna scrittura DB.
+
+## pianificazione.py (prefisso `/api/pianificazione`)
+CRUD minimale dei costi previsionali (budget planning) sulla collection `costi_previsionali`. Tutti gli endpoint richiedono `Depends(get_current_user)` + middleware. Nessun modello Pydantic (body libero). 3 endpoint in questo file (gli eventi `/api/pianificazione/events` sono definiti in `public_api.py`).
+
+### GET /api/pianificazione/costi-previsionali — lista costi previsionali
+**Cosa fa**: restituisce fino a 500 costi pianificati, più recenti prima.
+**Logica codice**: `costi_previsionali` con proiezione `{_id:0}`, sort su `date` desc, `to_list(500)`.
+**Note**: sort sul campo `date` senza garanzia che i documenti lo contengano.
+
+### POST /api/pianificazione/costi-previsionali — crea costo previsionale
+**Cosa fa**: inserisce un costo pianificato e ne restituisce l'id.
+**Logica codice**: body arbitrario + `id` uuid4 + `created_at` UTC; `insert_one`; risponde 201.
+**Note**: nessuna validazione: qualunque JSON viene salvato tal quale.
+
+### DELETE /api/pianificazione/costi-previsionali/{costo_id} — elimina costo
+**Cosa fa**: hard delete del costo con l'id indicato.
+**Logica codice**: `delete_one({"id": costo_id})`; risponde sempre "Cost deleted".
+**Note**: non controlla `deleted_count` — successo anche se l'id non esiste.
+
+## whatsapp_webhook.py (prefisso `/api/whatsapp`)
+Integrazione WhatsApp Business Cloud API (Meta): verifica webhook, ricezione notifiche e invio messaggi tramite `app/services/whatsapp_notifications`. Token di verifica `WHATSAPP_VERIFY_TOKEN` (fallback hardcoded `"ceraldi_erp_webhook_2026"`). 5 endpoint.
+
+### GET /api/whatsapp/webhook — verifica webhook Meta
+**Cosa fa**: risponde alla challenge di sottoscrizione del webhook Meta.
+**Logica codice**: legge query `hub.mode`, `hub.verify_token`, `hub.challenge`; se `mode=="subscribe"` e token corrisponde restituisce la challenge in `PlainTextResponse`, altrimenti 403. Nessun DB.
+**Note**: NON è in whitelist pubblica: essendo sotto `/api/`, richiede JWT — Meta riceverebbe 401 e la verifica fallirebbe (integrazione webhook di fatto rotta). Il token in chiaro viene loggato.
+
+### POST /api/whatsapp/webhook — ricezione notifiche Meta
+**Cosa fa**: riceve messaggi in arrivo e status update (sent/delivered/read) da Meta.
+**Logica codice**: parsa `entry[].changes[].value`, itera `messages` e `statuses` e li LOGGA soltanto (testo troncato a 100 caratteri); eccezioni inghiottite; risponde sempre `{"status":"ok"}`. Nessuna scrittura DB.
+**Note**: il docstring dice "gestisce ricezione messaggi" ma i messaggi non vengono persistiti né processati (solo log). Anche questo endpoint è bloccato dal middleware auth.
+
+### GET /api/whatsapp/status — stato configurazione
+**Cosa fa**: riporta lo stato di configurazione della Cloud API senza esporre il token.
+**Logica codice**: delega a `get_whatsapp_config_status()` (import lazy). Nessun DB.
+
+### POST /api/whatsapp/send — invio messaggio
+**Cosa fa**: invia un messaggio WhatsApp a un numero, al destinatario di default o in broadcast.
+**Logica codice**: valida solo `text` non vuoto (400); `broadcast` truthy → `send_whatsapp_to_all(text)`, altrimenti `send_whatsapp_message(text, to)`.
+**Note**: nessun controllo ruolo: qualunque utente autenticato può inviare/broadcastare.
+
+### POST /api/whatsapp/send-test — messaggio di test
+**Cosa fa**: invia un messaggio di prova al primo destinatario configurato (`WHATSAPP_RECIPIENT_1`).
+**Logica codice**: testo fisso con data/ora locale + `send_whatsapp_message(msg)`.
+
+## erp_bridge.py (montato senza prefisso extra: prefisso interno `/api/erp/ponte`)
+Ponte fire-and-forget tra l'app Tracciabilità (ceraldiapp.it) e il Gestionale: riceve le fatture importate dalla PEC e le upserta in `fatture_passive`. 2 endpoint.
+
+### POST /api/erp/ponte/fattura-ricevuta — upsert fattura da Tracciabilità
+**Cosa fa**: registra/aggiorna in `fatture_passive` una fattura ricevuta da Tracciabilità, deduplicata.
+**Logica codice**: payload Pydantic `FatturaRicevutaPayload` (numero, fornitore, P.IVA, data, importi, righe); `_normalizza_data` converte DD/MM/YYYY → YYYY-MM-DD; `dedup_key = numero_fattura|partita_iva (o fornitore)`; `update_one(..., upsert=True)` con `$set` del documento (stato `importata`, source `tracciabilita`) e `$setOnInsert` di `id`/`created_at`.
+**Note**: gli header `X-Source`/`X-Azienda` citati nel docstring sono solo loggati, mai validati (nessuna autenticazione propria). Essendo sotto `/api/`, il middleware richiede JWT: le chiamate server-to-server senza token vengono respinte con 401 (integrazione di fatto rotta, salvo che il chiamante possieda un JWT).
+
+### GET /api/erp/ponte/status — health check del ponte
+**Cosa fa**: verifica raggiungibilità del ponte e conta le fatture importate.
+**Logica codice**: `count_documents({"source":"tracciabilita"})` su `fatture_passive`.
+**Note**: anch'esso dietro JWT (middleware).
+
+## websocket_realtime.py (montato su `/api` — route effettive `/api/ws/*` e `/api/realtime/status`)
+WebSocket per dashboard e notifiche real-time più un endpoint HTTP di stato. Usa `ws_manager` (`app/services/websocket_manager`) per i canali.
+
+### WS /api/ws/dashboard — WebSocket KPI dashboard
+**Cosa fa**: alla connessione invia i KPI dell'anno (query `anno`, default 2026) e poi risponde a comandi `refresh`/`ping`.
+**Logica codice**: `calculate_live_kpi()` legge intere collection in memoria: `corrispettivi` (fatturato, regex `^anno` su `data`), `prima_nota_cassa`/`prima_nota_banca`/`prima_nota_salari` (entrate/uscite per `tipo`), conta `invoices`, `dipendenti`, `f24_unificato` non pagati, scadenze ≤7gg su `scadenzario_fornitori`. Loop con timeout 300s: `refresh` ricalcola, `ping`/timeout → `pong`.
+**Note**: il docstring promette "aggiornamenti ogni 30 secondi" ma il codice NON invia push periodici (solo su richiesta). Il controllo `?token=` del middleware sta in `BaseHTTPMiddleware.dispatch`, che NON intercetta lo scope ASGI `websocket`: l'endpoint è di fatto SENZA autenticazione. Query pesanti (`to_list(length=None)`); anno default hardcoded 2026.
+
+### WS /api/ws/notifications — WebSocket notifiche
+**Cosa fa**: mantiene un canale per notifiche push generali (fatture, scadenze, movimenti).
+**Logica codice**: si registra sul canale `notifications` di `ws_manager`; loop timeout 25s: `pong` ai `ping`, `heartbeat` al timeout; l'invio effettivo avviene altrove via `ws_manager`.
+**Note**: come sopra, nessuna autenticazione effettiva.
+
+### GET /api/realtime/status — stato connessioni WS
+**Cosa fa**: numero di connessioni WebSocket attive per canale.
+**Logica codice**: `ws_manager.get_connection_count()` (totale, dashboard, notifications). Nessun DB; protetto da JWT (è HTTP).
+
+## legal_pages.py (percorsi `/privacy`, `/terms`, `/data-deletion` + alias `/api/...`)
+Pagine HTML statiche (Privacy, Termini, Eliminazione dati) per la compliance Meta/WhatsApp, con HTML inline nel modulo. Ogni pagina è registrata su due percorsi: con e senza prefisso `/api`. Nessun accesso DB. 6 route.
+
+### GET /privacy (alias GET /api/privacy) — informativa privacy
+**Cosa fa**: restituisce l'informativa GDPR HTML di Ceraldi Group S.R.L.
+**Logica codice**: ritorna la costante `PRIVACY_HTML` come `HTMLResponse`.
+**Note**: `/privacy` è PUBBLICO (non sotto `/api/`, il middleware lo lascia passare); l'alias `/api/privacy` invece richiede JWT — inutilizzabile da Meta/visitatori anonimi.
+
+### GET /terms (alias GET /api/terms) — condizioni d'uso
+**Cosa fa**: restituisce le condizioni d'uso HTML.
+**Logica codice**: ritorna la costante `TERMS_HTML`.
+**Note**: `/terms` pubblico; `/api/terms` dietro JWT (stessa asimmetria).
+
+### GET /data-deletion (alias GET /api/data-deletion) — istruzioni eliminazione dati
+**Cosa fa**: pagina con istruzioni per la cancellazione dati (art. 17 GDPR), richiesta da Meta.
+**Logica codice**: HTML inline costruito nel corpo della funzione.
+**Note**: `/data-deletion` pubblico; `/api/data-deletion` dietro JWT.
+
+## public_api.py (montato su `/api` — route sparse su più namespace)
+Contenitore di endpoint legacy non ancora refactorizzati (dichiarato nel docstring), montato su `/api`: definisce route sotto `/api/f24-public`, `/api/invoices`, `/api/suppliers`, `/api/warehouse`, `/api/cash`, `/api/bank`, `/api/assegni`, `/api/pianificazione`, `/api/portal`, `/api/dashboard`, `/api/fornitori`, `/api/ricerca-globale`, `/api/v1`. SOVRAPPONE ALIAS a namespace di altri moduli (pianificazione.py, suppliers, F24, dashboard). Nessun endpoint usa `get_current_user`: protezione solo dal middleware, tranne `/api/f24-public/*` che è in whitelist PUBBLICA.
+
+### GET /api/f24-public/alerts — alert scadenze F24
+**Cosa fa**: genera alert di scadenza F24 con severità (critical/high/medium/low) ordinati per giorni mancanti.
+**Logica codice**: due query ENTRAMBE su `f24_unificato` (una "models": `pagato≠true`; una "commercialista": `status` non pagato/eliminato), filtro anno opzionale via regex; parse scadenze in più formati; classifica per giorni residui (scarta >30gg).
+**Note**: PUBBLICO senza auth (`/api/f24-public/` in `PUBLIC_PREFIXES`): espone importi e contribuenti a chiunque. Il docstring parla di "tutte le collection" ma entrambe le query leggono la stessa collection `f24_unificato`: un documento che soddisfa entrambi i filtri genera alert duplicati.
+
+### GET /api/f24-public/dashboard — dashboard F24
+**Cosa fa**: totali F24 pagati/da pagare e conteggio alert entro 7 giorni.
+**Logica codice**: legge `f24_unificato` (fino a 10000), partiziona su `status=="paid"`, somma campo `importo`, calcola giorni su `scadenza`.
+**Note**: pubblico senza auth. Usa campi (`status=="paid"`, `importo`, `scadenza`) diversi da `/alerts` (`pagato`, `saldo_finale`, `data_scadenza`): rischio conteggi/somme a zero sullo schema reale.
+
+### GET /api/invoices — lista fatture
+**Cosa fa**: lista fatture con filtro anno e paginazione.
+**Logica codice**: aggregation su `invoices`: filtro anno su `invoice_date` O `data_documento` (provvisorie Aruba), `$addFields data_effettiva = ifNull(...)`, sort desc, skip/limit, senza `_id`.
+
+### POST /api/invoices — crea fattura manuale
+**Cosa fa**: inserisce una fattura minimale creata a mano.
+**Logica codice**: documento con `id` uuid, `invoice_number`, `supplier_name`, `total_amount`, `invoice_date`, `status` (default `pending`), `created_at`; `insert_one` su `invoices`.
+**Note**: nessuna validazione tipi/duplicati.
+
+### DELETE /api/invoices/{invoice_id} — elimina fattura (soft-delete)
+**Cosa fa**: soft-delete di una fattura con regole di business (no pagate/registrate).
+**Logica codice**: `find_one` (404); `BusinessRules.can_delete_invoice` → 400 se non eliminabile; se warnings e `force=false` risponde `require_force`; altrimenti `$set entity_status=deleted, status=deleted, deleted_at`.
+
+### POST /api/suppliers — crea fornitore + auto-associazione fatture
+**Cosa fa**: crea un fornitore e collega automaticamente le fatture esistenti con la stessa P.IVA.
+**Logica codice**: normalizza campi doppi ITA/ENG (`partita_iva`/`vat_number`, `denominazione`/`name`...), `insert_one` su `fornitori`; poi `update_many` su `invoices` (`cedente_piva==piva`, `supplier_id` assente) impostando `supplier_id`/`supplier_name`; ritorna il fornitore con `fatture_associate`.
+**Note**: il GET /suppliers vive nel router suppliers (commento nel file). Indice unique sparse su `fornitori.partita_iva`: P.IVA duplicata → `DuplicateKeyError` non gestita (500).
+
+### GET /api/warehouse/products — lista prodotti magazzino
+**Cosa fa**: lista prodotti con filtri `category`/`source` e paginazione.
+**Logica codice**: `find` su `warehouse_inventory`, skip/limit (default 5000).
+
+### POST /api/warehouse/products — crea prodotto
+**Cosa fa**: inserisce un prodotto di magazzino.
+**Logica codice**: documento con `id` uuid e campi inglesi (`name`, `code`, `quantity`, `unit`, `unit_price`, `category`, `supplier_vat`); `insert_one` su `warehouse_inventory`.
+
+### PUT /api/warehouse/products/{product_id} — aggiorna prodotto
+**Cosa fa**: aggiorna i campi non-null del prodotto e lo restituisce.
+**Logica codice**: `$set` con `updated_at`; 404 se `matched_count==0`; rilegge il documento.
+
+### DELETE /api/warehouse/products/{product_id} — elimina prodotto
+**Cosa fa**: hard delete del prodotto.
+**Logica codice**: `delete_one({"id":...})` su `warehouse_inventory`, 404 se `deleted_count==0`.
+
+### GET /api/warehouse/movements — lista movimenti magazzino
+**Cosa fa**: lista movimenti (filtro opzionale `product_id`), più recenti prima.
+**Logica codice**: `find` su `warehouse_movements`, sort `date` desc, skip/limit.
+
+### POST /api/warehouse/movements — crea movimento carico/scarico
+**Cosa fa**: registra un movimento e aggiorna la giacenza del prodotto.
+**Logica codice**: documento con `type` `in`/`out`, `quantity`, `date`, `reference`; se il prodotto esiste applica delta ±quantity su `warehouse_inventory.quantity`; poi `insert_one` su `warehouse_movements`.
+**Note**: aggiornamento giacenza non atomico (read-modify-write, race condition); il movimento viene salvato anche se `product_id` non esiste.
+
+### GET /api/suppliers/{supplier_id}/inventory — inventario prodotti fornitore
+**Cosa fa**: estrae il catalogo prodotti di un fornitore dalle righe delle sue fatture.
+**Logica codice**: risolve il fornitore per `id` o `partita_iva` su `fornitori` (404); legge fino a 1000 fatture (`supplier_vat` o `cedente_piva`); deduplica le righe per descrizione (chiave: primi 100 caratteri lowercase) accumulando quantità, conteggio fatture, ultimo prezzo.
+
+### GET /api/cash — lista movimenti cassa
+**Cosa fa**: lista movimenti dalla prima nota cassa.
+**Logica codice**: `find` su `prima_nota_cassa`, sort su `date` desc, skip/limit.
+**Note**: ordina per `date` ma la prima nota usa `data`: sort probabilmente inefficace sui dati reali.
+
+### POST /api/cash — crea movimento cassa
+**Cosa fa**: inserisce un movimento cassa.
+**Logica codice**: documento con campi inglesi (`date`, `type`, `amount`, `description`, `category`) su `prima_nota_cassa`.
+**Note**: schema incoerente con il resto della prima nota (`data`/`tipo`/`importo`): i movimenti creati qui sono invisibili ai calcoli KPI/statistiche che usano i campi italiani.
+
+### GET /api/bank/statements — lista movimenti banca
+**Cosa fa**: lista movimenti dell'estratto conto.
+**Logica codice**: `find` su `estratto_conto_movimenti`, sort su `date` desc, skip/limit.
+**Note**: stessa ambiguità `date`/`data` della cassa.
+
+### POST /api/bank/statements — crea movimento banca
+**Cosa fa**: inserisce un movimento banca manuale.
+**Logica codice**: documento con campi inglesi su `estratto_conto_movimenti`, struttura identica a POST /cash.
+
+### GET /api/assegni — lista assegni
+**Cosa fa**: lista assegni non eliminati, filtrabili per anno.
+**Logica codice**: query `entity_status≠deleted` su `assegni`; filtro anno via regex su `data_emissione`/`created_at`/`data`/`numero_assegno`; sort su `numero_assegno` desc.
+
+### POST /api/assegni — crea assegno
+**Cosa fa**: inserisce un assegno.
+**Logica codice**: documento con `numero`, `importo`, `beneficiario`, `data_emissione`, `stato` (default `emesso`) su `assegni`.
+**Note**: il GET filtra/ordina su `numero_assegno` ma il POST salva `numero`: gli assegni creati qui non si ordinano/filtrano correttamente.
+
+### GET /api/pianificazione/events — lista eventi pianificazione
+**Cosa fa**: lista eventi del calendario di pianificazione.
+**Logica codice**: legge tutta `planning_events`, sort IN MEMORIA su `scheduled_date` o `start_date` (schema misto vecchio/nuovo), poi slicing skip/limit.
+**Note**: convive nel namespace `/api/pianificazione` con pianificazione.py (dominio spezzato su due moduli); qui senza `get_current_user`.
+
+### POST /api/pianificazione/events — crea evento pianificazione
+**Cosa fa**: crea un evento accettando sia lo schema nuovo (scheduled_date/event_type/notes) sia il vecchio (start_date/type/description).
+**Logica codice**: normalizza i campi e salva il documento con ENTRAMBI i set di nomi su `planning_events` per retrocompatibilità; `status` default `scheduled`.
+
+### POST /api/portal/upload — upload portale con routing per tipo
+**Cosa fa**: upload generico; se `kind=estratto-conto` parsa il file e tenta la riconciliazione con la prima nota.
+**Logica codice**: per `estratto-conto` importa da `bank_statement_import` i parser PDF/Excel/CSV e `reconcile_movement`; deduplica per `data_tipo_importo`; per ogni movimento cerca il match in prima nota e compila il report `reconciled`/`not_found`. Altri `kind`: restituisce solo nome e dimensione file ("non elaborato").
+**Note**: nonostante il messaggio "Importati N movimenti", NESSUN movimento viene salvato su DB: solo parsing e riconciliazione in memoria (messaggio ingannevole).
+
+### GET /api/dashboard/stats (definito anche qui) — statistiche dashboard
+**Cosa fa**: conteggi rapidi per la dashboard.
+**Logica codice**: `count_documents({})` su `invoices`, `fornitori`, `dipendenti`, `corrispettivi`.
+**Note**: stesso path di `GET /api/dashboard/stats` di reports/dashboard.py — public_api è registrato PRIMA, quindi questa versione vince (l'altra è di fatto oscurata).
+
+### GET /api/fornitori/metodi-pagamento — metodi di pagamento
+**Cosa fa**: restituisce la lista statica dei metodi pagamento supportati.
+**Logica codice**: array hardcoded (`contanti`, `bonifico`, `assegno`, `carta`, `riba`, `mav`, `rid`, `altro`); nessun DB.
+
+### POST /api/fornitori/import-metodi-da-fatture — import metodi da fatture
+**Cosa fa**: deduce il metodo di pagamento dei fornitori dai codici SDI (MP01/MP02...) delle fatture.
+**Logica codice**: legge fino a 10000 `invoices` con `pagamento.ModalitaPagamento`; mappa MP01→contanti, MP02/03→assegno, MP05/06/07→bonifico; aggiorna in `fornitori` solo chi non ha già `metodo_pagamento`; ritorna `{updated}`.
+
+### GET /api/ricerca-globale — ricerca globale
+**Cosa fa**: ricerca unificata (min 2 caratteri) su fatture, fornitori, prodotti e dipendenti per la barra di ricerca.
+**Logica codice**: regex case-insensitive su campi doppi ITA/ENG di `invoices`, `fornitori` (parole in AND), `warehouse_inventory`, `dipendenti`; per ogni fornitore trovato una aggregation su `invoices` per conteggio/totale; risultati normalizzati `{tipo, id, titolo, sottotitolo}`.
+**Note**: N+1 aggregation per fornitore; il ramo `else` della query fornitori (ricerca P.IVA) è irraggiungibile perché `q` ha `min_length=2` e `words` non è mai vuoto.
+
+### POST /api/v1/keys/generate — genera API Key
+**Cosa fa**: crea una API key (`ak_...`) per integrazioni esterne.
+**Logica codice**: token urlsafe; salva su `api_clients` solo hash SHA-256 + `key_prefix`, `permessi` (default `["read"]`), `active=true`; restituisce la key in chiaro una sola volta.
+**Note**: nessun controllo ruolo admin: qualunque utente JWT può generare chiavi.
+
+### GET /api/v1/keys — lista API Keys
+**Cosa fa**: elenca i client API senza esporre gli hash.
+**Logica codice**: `find` su `api_clients` con proiezione che esclude `_id` e `key_hash` (max 100).
+
+### GET /api/v1/fatture — API esterna fatture (API key)
+**Cosa fa**: lista fatture ricevute o emesse per integrazioni esterne.
+**Logica codice**: `verify_api_key_header` (hash SHA-256 vs `api_clients` attivi, aggiorna `last_used` e `request_count`, 401 se invalida); legge `fatture_ricevute` o `fatture_emesse` con filtro anno via regex.
+**Note**: la key viaggia come query param `api_key` (finisce nei log/URL); l'endpoint non è whitelistato quindi il middleware pretende ANCHE il JWT: la sola API key non basta (doppio requisito che vanifica l'uso esterno). `fatture_ricevute`/`fatture_emesse` sono collezioni diverse da `invoices`. Il campo `permessi` non viene mai verificato.
+
+### GET /api/v1/movimenti — API esterna prima nota
+**Cosa fa**: lista movimenti prima nota cassa filtrati per intervallo date.
+**Logica codice**: verifica API key; `find` su `prima_nota_cassa` con range su `data`, sort desc, limit ≤500.
+**Note**: stesse criticità di /v1/fatture (key in query string + JWT comunque richiesto).
+
+### GET /api/v1/stats — API esterna statistiche
+**Cosa fa**: statistiche aggregate per anno.
+**Logica codice**: verifica API key; conta su `invoices` (`data_ricezione`), `fatture_emesse` (`data_fattura`), `prima_nota_cassa` (`data`), `dipendenti` attivi.
+**Note**: conta le fatture ricevute su `invoices` mentre /v1/fatture le legge da `fatture_ricevute`: numeri potenzialmente incoerenti.
+
+## warehouse/dizionario_articoli.py (prefisso `/api/dizionario-articoli`)
+Mappatura degli articoli delle fatture al Piano dei Conti: estrazione articoli unici dalle righe fattura, categorizzazione automatica via ~35 gruppi di regex (`PATTERNS_ARTICOLI` → categoria merceologica + conto), fallback AI per i non classificati, CRUD sulla collezione `dizionario_articoli`. IMPORTANTE: il campo `categoria_haccp` è solo il NOME STORICO del campo — oggi rappresenta la categoria merceologica usata per il Piano dei Conti; HACCP è stato eliminato dal gestionale (la materia alimentare è dell'app separata ceraldiapp.it). 11 endpoint.
+
+### GET /api/dizionario-articoli/estrai-articoli — estrazione e categorizzazione al volo
+**Cosa fa**: estrae gli articoli unici dalle fatture e li categorizza senza salvarli.
+**Logica codice**: aggregation su `invoices` (`$unwind $linee`, group per descrizione con count/fornitori/prezzi), poi `categorizza_articolo()` in Python (regex + confidenza basata su lunghezza match) e somma prezzi con `sum_prices`/`safe_parse_float` (gestisce virgole decimali). Ritorna articoli + statistiche per categoria/conto/confidenza. Sola lettura.
+
+### GET /api/dizionario-articoli/dizionario — lettura dizionario
+**Cosa fa**: lista paginata del dizionario salvato.
+**Logica codice**: `find` su `dizionario_articoli` con filtri opzionali `categoria_haccp` (categoria merceologica) e `non_mappati` (`mappatura_manuale != True`); sort occorrenze desc, skip/limit, più count totale.
+
+### POST /api/dizionario-articoli/genera-dizionario — genera/aggiorna dizionario
+**Cosa fa**: rigenera il dizionario dalle fatture applicando la categorizzazione euristica.
+**Logica codice**: stessa aggregation di `/estrai-articoli` (max 10000); per ogni descrizione find su `dizionario_articoli`: se esiste aggiorna (preservando categoria/conto se `mappatura_manuale=True`), altrimenti insert con uuid. Ritorna created/updated.
+**Note**: N+1 (una find + una write per articolo); nel ramo "manuale" preserva categoria e conto ma SOVRASCRIVE `categoria_haccp_nome` e `confidenza` con i valori ricalcolati (nome categoria potenzialmente incoerente con la categoria preservata).
+
+### PUT /api/dizionario-articoli/articolo/{descrizione_encoded} — mappatura manuale
+**Cosa fa**: aggiorna manualmente categoria merceologica/conto/note di un articolo.
+**Logica codice**: chiave = descrizione URL-encoded (decodificata con `urllib.parse.unquote`); 404 se assente; valida `categoria_haccp` contro `CATEGORIE_MERCEOLOGICHE` (400); setta `mappatura_manuale=True`; ritorna il documento aggiornato.
+
+### GET /api/dizionario-articoli/statistiche — statistiche dizionario
+**Cosa fa**: aggregati del dizionario per categoria, conto e fascia di confidenza.
+**Logica codice**: count totale e manuali; due aggregation (group per `categoria_haccp` e per `conto` con importi); count per confidenza alta (≥0.5), media, zero. Sola lettura.
+
+### POST /api/dizionario-articoli/ricategorizza-fatture — applica dizionario alle fatture
+**Cosa fa**: scrive su ogni fattura il conto di costo dominante derivato dal dizionario.
+**Logica codice**: carica tutto `dizionario_articoli` in memoria; scorre `invoices` con `linee` non vuote; somma gli importi riga per conto e sceglie il conto con importo maggiore; aggiorna la fattura con `conto_costo_codice`, `conto_costo_nome`, `categoria_haccp_dominante` (= categoria merceologica dominante), `dizionario_applied_at`.
+**Note**: assegna un solo conto per fattura (il dominante), non una ripartizione per riga.
+
+### GET /api/dizionario-articoli/cerca — ricerca articoli
+**Cosa fa**: ricerca testuale nel dizionario.
+**Logica codice**: `find` con `$regex` case-insensitive sulla descrizione (min 2 caratteri), sort occorrenze, limit.
+**Note**: il termine `q` non è regex-escaped: caratteri speciali possono causare errori o match imprevisti.
+
+### DELETE /api/dizionario-articoli/reset-dizionario — reset totale
+**Cosa fa**: svuota completamente la collezione del dizionario.
+**Logica codice**: `delete_many({})` su `dizionario_articoli`, ritorna il conteggio.
+**Note**: distruttivo, senza conferma né backup; cancella anche tutte le mappature manuali (che `/genera-dizionario` non può ricostruire).
+
+### POST /api/dizionario-articoli/categorizza-ai — categorizzazione AI
+**Cosa fa**: fa categorizzare dall'AI gli articoli con confidenza 0 e aggiorna il dizionario.
+**Logica codice**: delega a `app.services.ai_categorizzazione.aggiorna_dizionario_con_ai(db, limite)`; 500 se il servizio non è importabile o fallisce.
+**Note**: IL DOCSTRING MENTE: dichiara "GPT-5.2", ma il service usa il modello `claude-haiku-4-5` e per giunta etichetta i record con `categorizzato_da: "claude-sonnet-4.5"` — tre nomi diversi tra docstring, modello reale e marcatura dati.
+
+### GET /api/dizionario-articoli/non-classificati — articoli non classificati
+**Cosa fa**: lista gli articoli con confidenza 0 ordinati per occorrenze.
+**Logica codice**: `find` con `confidenza: 0`, sort occorrenze desc, limit. Sola lettura.
+
+### POST /api/dizionario-articoli/riclassifica-completo — rigenera + AI in un colpo
+**Cosa fa**: rigenera il dizionario dalle fatture e poi passa all'AI i non classificati (pulsante "Ricategorizza con AI" della pagina Piano dei Conti).
+**Logica codice**: step 1 chiama direttamente `genera_dizionario()`; step 2 chiama `aggiorna_dizionario_con_ai(db, limite_ai)` con degradazione controllata se il servizio AI manca. Ritorna i risultati dei due step.
+**Note**: il docstring dello step 2 dice "Claude Haiku" (coerente col service), in contraddizione con il "GPT-5.2" di `/categorizza-ai`.
+
+---
+
+## Anomalie principali rilevate (trasversali)
+
+**Autenticazione / sicurezza**
+- `POST /api/login` e `POST /api/logout` legacy sono irraggiungibili da non autenticati (non in whitelist middleware): funziona solo l'alias `/api/auth/login`; logica di login duplicata riga per riga in `auth.py`.
+- Due stack JWT paralleli: `auth.py` (PyJWT, `sub`=email, "HS256" hardcoded) vs `pin_login.py`/middleware (jose, `settings.ALGORITHM`, `sub`=user_id): `request.state.user_id` vale un'email o un ObjectId a seconda del login.
+- I WebSocket `/api/ws/*` sono di fatto SENZA autenticazione: il controllo `?token=` sta in `BaseHTTPMiddleware.dispatch` che non intercetta lo scope ASGI `websocket` (ramo di codice morto).
+- `/api/f24-public/*` è completamente pubblico ed espone importi F24 e contribuenti senza auth.
+- Webhook WhatsApp (`/api/whatsapp/webhook`) e ponte ERP (`/api/erp/ponte/*`) NON sono in whitelist: Meta e Tracciabilità senza JWT ricevono 401 — integrazioni server-to-server di fatto rotte. Gli header `X-Source`/`X-Azienda` del ponte sono solo loggati, mai validati.
+- Alias legali `/api/privacy|terms|data-deletion` dietro JWT (inutilizzabili per compliance Meta); le versioni senza `/api` sono pubbliche.
+- API v1 (public_api): doppio requisito contraddittorio API key + JWT; key passata come query param; `permessi` mai verificato; `/v1/keys/generate` senza controllo ruolo admin.
+- Nessun controllo di RUOLO in tutto il perimetro: qualunque utente JWT può usare endpoint distruttivi (reset collezioni/dizionario), dati riservati, invio WhatsApp, chiamate a pagamento verso OpenAPI.*.
+- `gestione_riservata`: il codice `GESTIONE_RISERVATA_CODE` protegge solo `/login` (gating cosmetico lato client); il codice errato viene loggato in chiaro.
+- Password in chiaro su MongoDB: `email_accounts.app_password`, `settings.gmail_app_password`; `GET /api/config/email` restituisce il documento senza mascheramenti; `ADMIN_PASSWORD` in chiaro ha priorità sul bcrypt; cookie con `secure=False`; PIN hashato SHA-256 senza salt e anti brute-force solo in-memory per processo.
+
+**Docstring che mentono**
+- `admin_export.py` dichiara `/app/uploads/` ma usa `/tmp/uploads`.
+- `GET /api/dashboard/summary` si dichiara "public endpoint" ma richiede JWT.
+- `/api/dizionario-articoli/categorizza-ai` dichiara "GPT-5.2" ma il service usa `claude-haiku-4-5` (e marca i record `claude-sonnet-4.5`).
+- `sync match-fatture-cassa` dichiara match "numero + fornitore + importo" ma il fornitore non è verificato.
+- `report-pdf/mensile` promette "Scadenze" assenti; `report-pdf/dipendenti` promette buste paga mai lette; `analytics/self-repair` non ripara nulla; WS dashboard promette push ogni 30s mai implementato; webhook WhatsApp "gestisce" messaggi che in realtà solo logga; `batch_operations` docstring elenca 4 endpoint su 6; `portal/upload` risponde "Importati N movimenti" senza salvare nulla.
+
+**Bug e rischi dati**
+- `PUT /api/sync/update-fattura-everywhere/{id}`: `$set` incondizionato di `importo`/`pagato`/`data` sui movimenti prima nota → i campi non inviati vengono azzerati a `null`.
+- Riconciliazioni automatiche rischiose: `/api/batch/auto-riconcilia-tutto` (`dry_run=False` default, match sul solo importo ±0,50€) e `/api/openapi/aisp/riconcilia-automatica` (±1€, prima fattura trovata) marcano fatture "pagate" senza riscontro fornitore/data.
+- Regex non escapate (numero fattura/fornitore in sync_relazionale, `q` in dizionario/cerca); in `match-fatture-banca` numero vuoto → regex `""` che matcha tutto.
+- `exports.py` filtra sul campo `date` inesistente nelle fatture (`invoice_date`/`data_ricezione`): export/report mensile rischiano di essere vuoti; `GET /api/exports/excel` è uno stub che restituisce un xlsx di 0 byte.
+- Collezioni incoerenti per lo stesso dominio: `warehouse_products` vs `warehouse_inventory`; `employees` vs `dipendenti`; `suppliers` vs `fornitori`; `bonifici_generati` (batch/paga) vs `bonifici_transfers` (verifica-coerenza); `invoices` vs `fatture_ricevute`/`fatture_passive`; doppio archivio F24 `f24_unificato` + `f24_commercialista` con schemi diversi (`pagato`/`data_scadenza` vs `status`/`scadenza`) — il widget scadenze li somma correttamente, ma `/f24-public/dashboard` usa campi che sullo schema reale possono dare totali a zero.
+- Campi ITA/ENG incoerenti: `POST /api/cash` e `POST /api/bank/statements` scrivono `date`/`type`/`amount` mentre il resto legge `data`/`tipo`/`importo`; `POST /api/assegni` salva `numero` ma il GET filtra su `numero_assegno`.
+- `rapido.py`: `versamento-banca` registra solo l'uscita cassa (giroconto incompleto); `corrispettivo` non alimenta la collezione `corrispettivi` (fuori dal calcolo IVA); `paga-fattura` anti-duplicato solo sulla collezione del metodo scelto.
+- IVA con aliquota fissa 10% hardcoded negli export commercialista e nel report PDF mensile (imprecisa con aliquote miste).
+- `alerts.py`: doppio schema non riconciliato — `/risolvi` scrive solo i campi legacy, un alert relazionale resta "aperto" per `/summary`.
+- GET con side-effect di scrittura (`/api/config/email-accounts`, `/api/config/parole-chiave`); `parole-chiave/aggiungi|rimuovi` non validano `categoria` (iniezione campi nel doc di config).
+- Errori mascherati con HTTP 200: dashboard/kpi/stats/bilancio (zeri), widget verifica-coerenza (`has_discrepanze=False` su eccezione), notifications (`[]`), agenti `/run`, test IMAP/Gmail, sync helper.
+- Stato job in-process (`batch_reprocessing._job_state`) e lock PIN in-memory: non affidabili con più worker.
+- `openapi_it`: link download XBRL rotti (endpoint inesistente), richieste riclassificato/visure senza persistenza, `consent_status` mai portato a "valid", base URL AISP sul dominio SDI.
+- `openapi_automotive`: upsert bulk crea veicoli senza `id`/`created_at`/`stato`/`source`; `openapi_last_update` mai scritto → `/veicoli-da-aggiornare` sempre pieno.
+- `commercialista`: `schedula-export` legge il campo `totale` (probabilmente sempre 0) e `scheduled_exports` non ha alcun processore; email inviate "con allegato" anche senza PDF; alert invio sparisce dopo il giorno 2 anche se mai inviata.
+- `public_api` definisce `GET /api/dashboard/stats` che oscura l'omonimo endpoint di reports/dashboard.py (public_api è registrato prima); duplicazioni funzionali multiple tra `/api/exports/*` (exports vs simple_exports), `/api/dashboard/*` vs `/api/analytics/*`, tre sistemi di configurazione email (config.py, configurazioni.py, settings_router.py).
+- Endpoint legacy/one-shot da rimuovere: `DELETE /api/admin/cleanup-trattenute-disciplinari`, `GET /api/exports/excel` (stub), triplo alias `GET /api/scadenze|/|/tutte`, costante morta `SCADENZE_FISCALI`, modello `ParolaChiaveInput` mai usato, parametro `delete_files` di reset-collections ignorato.

@@ -727,3 +727,462 @@ Sistema di riconciliazione basato sul campo `stato_riconciliazione` di `invoices
 6. Docstring bugiardi: header del file (7 endpoint su 25), supervisione "esegue" ma è read-only, `dettagli` di migra-fatture-legacy sempre vuoto.
 7. Gestione campi legacy incompleta: filtro anno solo su `data_documento`, statistiche solo su `importo_totale`.
 8. `/smart/ignora` scrive anche su `bank_movements` (migrazione non completata); 404 fuorvianti su modified_count==0.
+
+---
+
+## riconciliazione_stats_api.py (/api/riconciliazione — 1 endpoint)
+
+Micro-router (prefix interno `/riconciliazione`, registrato con `/api`). Legge `riconciliazioni_match` (match del "sistema relazionale", collezione diversa da quelle della riconciliazione automatica).
+
+### GET /api/riconciliazione/stats — statistiche match per stato
+**Cosa fa**: conteggio e totale importi dei match di riconciliazione raggruppati per stato.
+**Logica codice**: aggregate su `riconciliazioni_match` con `$group` per `stato` (count + somma `importo_riconciliato`), sort per count desc; scarta stati nulli; risponde `{stato: {count, totale}}`.
+**Note**: nessun filtro/paginazione; nessun handling errori.
+
+---
+
+## email_reconciliation.py (/api/riconciliazione — 8 endpoint)
+
+Riconciliazione email ↔ documenti gestionale: indice master (`indice_documenti`), scansione IMAP con associazione PDF, statistiche, download PDF. Router con prefix interno hardcoded `/api/riconciliazione`, registrato SENZA prefix. Logica delegata a `app/services/email_reconciliation.py`.
+
+### POST /api/riconciliazione/costruisci-indice — costruzione indice documenti
+**Cosa fa**: costruisce/aggiorna l'indice master dei documenti (fatture, verbali, contratti, costi noleggio, F24) con chiavi di ricerca per il matching.
+**Logica codice**: delega a `costruisci_indice_documenti()`; scrive `indice_documenti`.
+**Note**: `db_collections.py` marca `indice_documenti` come DEPRECATA (dati migrati in `invoices`), ma questo router la usa ancora attivamente.
+
+### POST /api/riconciliazione/scansiona-posta — scansione posta e riconciliazione
+**Cosa fa**: scansiona tutte le cartelle email (max `limit_per_cartella`, default 50) e associa i PDF trovati ai documenti dell'indice.
+**Logica codice**: ricostruisce SEMPRE l'indice, poi `scansiona_tutta_posta_e_riconcilia(limit)`; scrive `indice_documenti`, `pdf_archive` e log match.
+**Note**: operazione sincrona lunga (il docstring avvisa "diversi minuti"): rischio timeout HTTP, nessun job in background.
+
+### GET /api/riconciliazione/statistiche — statistiche indice
+**Cosa fa**: statistiche su indice e riconciliazioni. **Logica codice**: delega a `get_statistiche_indice()`.
+
+### GET /api/riconciliazione/cerca — test matching su testo
+**Cosa fa**: cerca match tra un testo libero e l'indice (per testare il matching).
+**Logica codice**: `cerca_match_in_indice(testo)`; testo troncato a 200 char in risposta.
+
+### GET /api/riconciliazione/documenti-senza-pdf — documenti senza allegati
+**Cosa fa**: elenca documenti dell'indice privi di PDF, filtrabili per tipo.
+**Logica codice**: find su `indice_documenti` con `$or` su `pdf_associati` (inesistente/vuoto/None) + count.
+
+### GET /api/riconciliazione/pdf/{hash_pdf} — download PDF archiviato
+**Cosa fa**: restituisce inline un PDF archiviato per hash.
+**Logica codice**: find_one su `pdf_archive` per `hash`; decodifica `content_base64`; 404 se assente.
+**Note**: PDF base64 in Mongo (non GridFS): limite 16MB/documento.
+
+### GET /api/riconciliazione/log-riconciliazioni — log scansioni
+**Cosa fa**: log delle riconciliazioni (default ultime 50), opz. solo con match.
+**Logica codice**: find sul log ordinato per timestamp desc; filtro `matches_trovati > 0` se richiesto.
+
+### DELETE /api/riconciliazione/reset-indice — reset indice
+**Cosa fa**: svuota completamente l'indice documenti.
+**Logica codice**: `delete_many({})` su `indice_documenti`.
+**Note**: distruttivo, senza conferma né autorizzazione specifica.
+
+---
+
+## accounting/riconciliazione_automatica.py (/api/riconciliazione-auto — 7 endpoint)
+
+Motore di riconciliazione automatica tra `estratto_conto_movimenti` e fatture/F24/POS/versamenti. Regola cardine: metodo "Bonifico"/"Assegno" valido solo con riscontro in estratto conto. Scoring multi-criterio (importo ±0,05€, fuzzy fornitore via rapidfuzz opzionale, numero fattura, plausibilità date); helper `_applica_pagamento_banca` (update `invoices` + prima nota banca + evento FATTURA_PAGATA). Richiamato anche dallo scheduler e dall'import estratto conto.
+
+### POST /api/riconciliazione-auto/riconcilia-estratto-conto — riconciliazione automatica completa
+**Cosa fa**: analizza fino a 5000 movimenti EC non riconciliati e li matcha con fatture, F24, POS e versamenti; i casi ambigui vanno in `operazioni_da_confermare`.
+**Logica codice**: legge `estratto_conto_movimenti` e la mappa metodi da `fornitori` (per P.IVA). Per movimento: (a) ignora commissioni (keyword o importi ≤3€ noti); (b) uscite → candidate `invoices` non pagate per importo esatto/parziale con score: importo (+10/+5/+2), fornitore in descrizione (+5/+3 fuzzy), numero fattura (+5), scadenza vicina (+2), penalità −5 per date implausibili, skip se fornitore paga in contanti e score<15. Score ≥15 → match; 10-14 con candidata unica → match; multiple → dubbio. Applica `_applica_pagamento_banca` e upsert su `assegni` se estratto un numero assegno; (c) uscite "F24" → match importo su `f24_unificato` + evento F24_PAGATO; (d) entrate POS → match su `prima_nota_cassa` categoria POS con logica giorni (lunedì → somma weekend Ven-Dom ±1€); (e) entrate versamenti → `prima_nota_cassa` categoria Versamento stessa data ±0,05€. Marca il movimento EC con `tipo_riconciliazione` e dettagli.
+**Note**: nel ramo F24 il match è `find_one` per solo importo senza vincolo data (rischio falso positivo su importi ricorrenti); i commenti documentano bug storici corretti (alias suppliers vuoto, proiezione senza `_id` che faceva fallire gli update).
+
+### GET /api/riconciliazione-auto/stats-riconciliazione — statistiche
+**Cosa fa**: contatori sintetici. **Logica codice**: count su `estratto_conto_movimenti` (totali/riconciliati/automatici), `operazioni_da_confermare` (da_confermare), `invoices` (riconciliato_automaticamente, in_banca).
+
+### DELETE /api/riconciliazione-auto/reset-riconciliazione — reset completo
+**Cosa fa**: azzera la riconciliazione automatica.
+**Logica codice**: `delete_many` su `operazioni_da_confermare`; `$unset` dei flag su TUTTI i movimenti EC; `$unset` di `riconciliato_con_ec`/`riconciliato_automaticamente` sulle fatture auto-riconciliate.
+**Note**: NON resetta `pagato`/`in_banca`/prima nota sulle fatture né i flag su cassa/assegni/F24: le fatture restano "pagate" senza più il collegamento EC.
+
+### POST /api/riconciliazione-auto/conferma-operazione/{operazione_id} — conferma/rifiuto dubbio
+**Cosa fa**: risolve un'operazione dubbia: conferma un match fattura o la rifiuta/ignora.
+**Logica codice**: legge `operazioni_da_confermare` (404); su conferma applica `_applica_pagamento_banca` con metodo "Bonifico" fisso, marca il movimento EC `riconciliato_manualmente` e l'operazione confermata.
+**Note**: forza sempre "Bonifico" anche per assegni; `fattura_id` e `azione` come query param su un POST.
+
+### GET /api/riconciliazione-auto/operazioni-dubbi — lista dubbi
+**Cosa fa**: operazioni in stato `da_confermare` con limit/offset. **Logica codice**: find + count su `operazioni_da_confermare`.
+
+### POST /api/riconciliazione-auto/correggi-metodi-pagamento — bonifica metodi errati
+**Cosa fa**: corregge le fatture marcate Bonifico/Banca/Sepa/Assegno senza riscontro banca (`in_banca != true`): le riporta a non pagate applicando il metodo del fornitore.
+**Logica codice**: due find regex su `invoices` con proiezione `{"_id": 0}`; per ciascuna lookup metodo in `fornitori`; `$set` pagato/paid=false, status="imported", `bonifica_motivo`; `$unset` flag riconciliazione e/o `metodo_pagamento`.
+**Note**: BUG VERIFICATO: le fatture sono lette con `{"_id": 0}` ma l'update filtra per `{"_id": fattura["_id"]}` → KeyError alla prima iterazione: la bonifica non corregge nulla. Lo stesso bug è stato corretto altrove nel file (commento a riga ~415) ma non qui.
+
+### GET /api/riconciliazione-auto/stato-riconciliazione-aruba — stato fatture
+**Cosa fa**: riepilogo fatture per metodo/stato pagamento + data ultimo estratto conto.
+**Logica codice**: find_one ultimo movimento EC; aggregate su `invoices` per (metodo, pagato, stato_riconciliazione) classificato in pagate/sospese/bonifico/assegno/cassa/da_confermare.
+**Note**: "Aruba" nel nome è fuorviante: opera su tutte le fatture.
+
+---
+
+## paypal_statements.py (/api/paypal-statements — 12 endpoint)
+
+Estratti conto PayPal MSR/CSR: import PDF (`paypal_msr_parser`), consultazione (`paypal_transactions`, `paypal_statements`), riconciliazione con `estratto_conto_movimenti`, associazione fatture e ricerca Gmail. In `paypal_transactions` il campo `paypal_account_id` è la CONTROPARTE; l'`invoice_id` PayPal NON è univoco per addebito (il dedup usa `transaction_id`). Helper: `_backfill_controparte` (propaga nome/email tra transazioni con stesso account), `_auto_riconcilia` (match importo+data ±3gg), `_save_parsed_statement` (dedup per transaction_id). `auto-associa` e `auto-cerca-gmail` sono invocati anche dallo scheduler.
+
+### GET /api/paypal-statements/statements — lista estratti conto
+**Cosa fa**: statements importati, filtro anno, max 500. **Logica codice**: find su `paypal_statements` sort periodo desc.
+
+### GET /api/paypal-statements/transactions — lista transazioni
+**Cosa fa**: transazioni con filtri anno/mese/tipo/solo_pagamenti (lordo<0) e totali.
+**Logica codice**: find su `paypal_transactions` (data via regex YYYY-MM); `_backfill_controparte`; sintetizza `descrizione` da subject/note/invoice_id per le transazioni da API.
+**Note**: il backfill agisce solo in memoria sulla pagina restituita (non persiste).
+
+### GET /api/paypal-statements/dashboard — dashboard riepilogativa
+**Cosa fa**: KPI: n. statements/transazioni, totale speso, top-10 fornitori, spesa per tipo, contatori riconciliazione banca.
+**Logica codice**: count + pagamenti (lordo<0, max 2000) con backfill; aggregazioni in Python; conta `riconciliato_banca: true` e movimenti EC con "paypal" in descrizione.
+
+### POST /api/paypal-statements/import-pdf — import singolo PDF
+**Cosa fa**: importa un PDF MSR/CSR, salva statement+transazioni e riconcilia subito con la banca.
+**Logica codice**: valida .pdf, salva in `/tmp/uploads/msr_statements` (basename anti path-traversal); `parse_paypal_msr` (422 se fallisce); `_save_parsed_statement` (upsert statement per periodo, insert transazioni dedup per transaction_id); `_auto_riconcilia`.
+
+### POST /api/paypal-statements/import-all-local — import massivo cartella locale
+**Cosa fa**: importa tutti i PDF in `/tmp/uploads/msr_statements` e riconcilia.
+**Logica codice**: loop parse+save per file, errori raccolti; `_auto_riconcilia` finale.
+
+### POST /api/paypal-statements/riconcilia-banca — riconciliazione manuale banca
+**Cosa fa**: rilancia la riconciliazione PayPal ↔ estratto conto.
+**Logica codice**: `_auto_riconcilia`: pagamenti non riconciliati (lordo<0) × movimenti EC con "paypal" in descrizione; matching greedy per importo (±0,02€) e data più vicina entro 3 giorni, ogni movimento usato una volta; setta `riconciliato_banca`, `movimento_banca_id`, `data_banca`.
+**Note**: l'update filtra per `transaction_id`: transazioni senza transaction_id matchano `{"transaction_id": ""}` → update sul documento sbagliato/nessuno.
+
+### GET /api/paypal-statements/report — report spese per fornitore/mese
+**Cosa fa**: report pagamenti raggruppato per controparte e mese con dettaglio.
+**Logica codice**: find pagamenti (max 5000); raggruppamento in Python per `nome_controparte` (fallback descrizione) e YYYY-MM.
+**Note**: non usa il backfill → transazioni senza payer_name frammentano i totali per fornitore rispetto alla dashboard.
+
+### GET /api/paypal-statements/transazione/{transaction_id}/dettaglio — dettaglio per modale
+**Cosa fa**: vista a 360°: verbale collegato, dipendente, trattenuta busta paga, mapping fornitore, fatture candidate, flag riconciliazione unificato.
+**Logica codice**: lookup per transaction_id (fallback id, 404); `verbali_noleggio` per paypal_transaction_id; `employees` per driver_id; `trattenute_dipendenti` per verbale_id; `paypal_mapping_fornitori` per paypal_account_id. Fatture a cascata: (A) P.IVA del mapping, (B) parole significative del nome controparte, (C) email, (D) solo importo ±0,05€ (marcate `match: "importo"`). Unifica in lettura i flag `riconciliato_banca`/`riconciliato_con_estratto_banca`.
+**Note**: doppio sistema di mapping fornitore: qui `paypal_mapping_fornitori`, in paypal_api.py il campo `fornitori.paypal_account_id` — non comunicano.
+
+### GET /api/paypal-statements/transazione/{transaction_id}/cerca-gmail — ricerca email fattura
+**Cosa fa**: cerca su Gmail (IMAP) email compatibili con la transazione (fatture estere/SaaS fuori SDI).
+**Logica codice**: credenziali via `get_gmail_credentials` (errore soft); `build_transaction_query` (importo+controparte+finestra date); `search_gmail_sync` in thread, max 10 risultati con link.
+
+### POST /api/paypal-statements/transazione/{transaction_id}/associa — associazione manuale
+**Cosa fa**: associa la transazione a una fattura (`{fattura_id}`) o a un'email (`{gmail}`).
+**Logica codice**: valida transazione e fattura (404); scrive `fattura_associata` (snapshot + auto:false) o `gmail_associata`; 400 se body vuoto.
+
+### POST /api/paypal-statements/auto-associa — associazione automatica fatture
+**Cosa fa**: collega in batch i pagamenti senza `fattura_associata` alle fatture per importo esatto (±0,05€), preferendo il candidato con nome fornitore compatibile.
+**Logica codice**: aggregate su `invoices` con importo coalescato (`$ifNull` total_amount/importo_totale); scelta per parole ≥4 lettere della controparte; candidato unico senza conferma nome → `match: "solo_importo"`; scrive `fattura_associata` con auto:true.
+**Note**: più transazioni di pari importo possono agganciarsi alla stessa fattura (nessun consumo della candidata nel loop).
+
+### POST /api/paypal-statements/auto-cerca-gmail — ricerca Gmail automatica batch
+**Cosa fa**: per i pagamenti senza fattura né email, cerca su Gmail (max 12 per giro) e associa il miglior risultato.
+**Logica codice**: filtro senza `fattura_associata`/`gmail_associata`/`gmail_cercato_at` (ogni tx cercata una sola volta); salva `gmail_candidati` (top 5) e `gmail_associata` = primo risultato con allegato; su errore IMAP interrompe il giro.
+
+---
+
+## paypal_api.py (/api/paypal-api — 9 endpoint)
+
+Integrazione API REST PayPal: sync transazioni (service `paypal_api_sync`), riconciliazione unificata multe PagoPA/fatture/banca (service `paypal_riconciliazione`), ricevute PDF e mapping `paypal_account_id` → fornitore direttamente su `fornitori`.
+
+### POST /api/paypal-api/sync — sync periodo arbitrario
+**Cosa fa**: scarica/arricchisce da API PayPal le transazioni del periodo `{start_date, end_date}`.
+**Logica codice**: parse ISO (400 se invalide); `sync_paypal_period(db, start, end)` scrive `paypal_transactions` con source `paypal_api`.
+
+### POST /api/paypal-api/sync/month — sync mese corrente
+**Cosa fa**: come /sync sul mese solare corrente calcolato server-side (`calendar.monthrange`).
+
+### GET /api/paypal-api/status — stato sync
+**Cosa fa**: transazioni totali, arricchite da API, PagoPA, timestamp ultimo sync.
+**Logica codice**: count su `paypal_transactions` + find_one per `enriched_at` desc.
+
+### POST /api/paypal-api/riconcilia — riconciliazione unificata
+**Cosa fa**: processa i pagamenti in uscita in tre passi: multe PagoPA → `verbali_noleggio`, fatture → `invoices` (match per paypal_account_id), allineamento con `estratto_conto_movimenti`.
+**Logica codice**: find su `paypal_transactions` (importo<0, filtro data opzionale); split per `is_pagopa`; `riconcilia_multe_pagopa`, `riconcilia_pagamenti_paypal`, `collega_a_estratto_conto`.
+**Note**: terzo circuito di riconciliazione banca-PayPal indipendente da `_auto_riconcilia` (flag diversi: `riconciliato_con_estratto_banca` vs `riconciliato_banca`), unificati solo in lettura nel dettaglio transazione.
+
+### GET /api/paypal-api/ricevuta-pdf/{transaction_id} — download ricevuta PDF
+**Cosa fa**: restituisce (o genera al volo) la ricevuta PDF; per le PagoPA prova prima la ricevuta ufficiale.
+**Logica codice**: lookup (404); usa `pdf_ricevuta_path`/`pdf_generato_path` se esistono; altrimenti `fetch_ricevuta_pagopa` poi `genera_pdf_transazione_paypal`; FileResponse.
+
+### GET /api/paypal-api/account-ids-non-mappati — controparti da mappare
+**Cosa fa**: elenca i `paypal_account_id` in uscita non mappati a fornitori, con aggregati e candidati suggeriti.
+**Logica codice**: aggregate su `paypal_transactions` (importo<0) per account, `$sort` sul nome prima del `$group` così `$first` prende il nome quando presente; esclude account già in `fornitori.paypal_account_id` e i PagoPA. Candidati: match nome su `fornitori` (exact/partial/fuzzy ≥0.6) con fallback su fornitori con fatture di importo simile (±40% della media) via `invoices`+`fornitori`.
+**Note**: raccoglie gli `invoice_id_fornitore` solo come indizio testuale (coerente con la non-univocità dell'invoice_id PayPal).
+
+### POST /api/paypal-api/mappa-fornitore — mappa account su fornitore esistente
+**Cosa fa**: scrive `paypal_account_id` su un fornitore.
+**Logica codice**: 400 senza i due campi; 404 fornitore inesistente; 409 se l'account è già mappato ad ALTRO fornitore; update su `fornitori`.
+
+### POST /api/paypal-api/smappa-fornitore — rimuove mapping
+**Cosa fa**: `$unset paypal_account_id` dal fornitore. **Note**: nessun 404 se il fornitore non esiste (`modified: 0`).
+
+### POST /api/paypal-api/crea-fornitore-e-mappa — crea fornitore e mappa
+**Cosa fa**: crea un fornitore (tipico SaaS estero) già mappato all'account PayPal.
+**Logica codice**: valida account e ragione_sociale (400); 409 se account già mappato o P.IVA esistente; insert in `fornitori` con default `metodo_pagamento: "paypal"`, `esclude_magazzino: true`, `source: "paypal_mapping"`; ritorna il conteggio transazioni ora collegabili.
+
+### Anomalie (gruppo riconciliazione stats/auto + PayPal)
+1. BUG verificato in `correggi-metodi-pagamento`: proiezione `{"_id": 0}` + update per `fattura["_id"]` → KeyError, la bonifica non modifica alcuna fattura.
+2. Doppio sistema di mapping fornitore PayPal (`paypal_mapping_fornitori` vs `fornitori.paypal_account_id`), non sincronizzati.
+3. Tre circuiti di riconciliazione banca↔PayPal paralleli con flag diversi, unificati solo in lettura.
+4. Doppia associazione fattura↔pagamento PayPal (auto-associa per importo vs riconcilia per account) indipendenti; in auto-associa la stessa fattura può agganciarsi a più transazioni.
+5. `/api/riconciliazione/stats` vs `/api/riconciliazione-auto/stats-riconciliazione`: due statistiche su sistemi diversi con nomi quasi identici.
+6. Collezione `indice_documenti` deprecata ma interamente usata da email_reconciliation.py.
+7. `reset-riconciliazione` asimmetrico: rimuove i collegamenti EC ma lascia fatture "pagate" senza riscontro.
+8. `conferma-operazione` forza metodo "Bonifico" anche per assegni; match F24 per solo importo senza data; "aruba" nel nome senza filtro provenienza.
+
+---
+
+## bank/pos_accredito.py (/api/pos-accredito — 5 endpoint)
+
+Calcolo dello sfasamento temporale degli accrediti POS (Lun-Gio → +1 giorno lavorativo, Ven/Sab/Dom → Lun/Mar, slittamento su festivi). Logica negli helper di `app/utils/pos_accredito.py`. Nessuna autenticazione.
+
+### GET /api/pos-accredito/calcola-accredito — calcolo data accredito
+**Cosa fa**: data una data di pagamento, restituisce la data di accredito POS attesa, i giorni di sfasamento e le note.
+**Logica codice**: valida YYYY-MM-DD (400); `calcola_data_accredito_pos`; nessun DB.
+
+### GET /api/pos-accredito/calendario-mensile/{anno}/{mese} — calendario sfasamento mensile
+**Cosa fa**: per ogni giorno del mese, lo sfasamento POS previsto.
+**Logica codice**: valida mese 1-12 (400); delega a `get_calendario_sfasamento_mese`. Nessun DB.
+
+### GET /api/pos-accredito/festivi/{anno} — festivi dell'anno
+**Cosa fa**: festivi italiani dell'anno (fissi + Pasqua/Pasquetta calcolate).
+**Logica codice**: `get_festivi_anno` + `_get_nome_festivo` locale. Nessun DB.
+**Note**: `timedelta` importato DOPO la funzione che lo usa (funziona solo perché l'import avviene al load del modulo); re-import duplicato di `handle_errors`.
+
+### GET /api/pos-accredito/accrediti-attesi/{data_accredito} — pagamenti attesi in accredito
+**Cosa fa**: elenca i corrispettivi elettronici che dovrebbero essere accreditati quel giorno, con totale atteso.
+**Logica codice**: legge `corrispettivi` (data negli ultimi 10 giorni, `pagato_elettronico > 0`), poi filtra in memoria con `get_accrediti_attesi_per_data`. Sola lettura.
+
+### GET /api/pos-accredito/riconciliazione-pos/{anno}/{mese} — report riconciliazione POS mensile
+**Cosa fa**: confronta giorno per giorno i pagamenti elettronici (proiettati alla data di accredito attesa) con gli accrediti POS reali in banca; stato OK/ECCEDENZA/MANCANTE (tolleranza €1).
+**Logica codice**: legge `corrispettivi` (mese) e `estratto_conto_movimenti` (mese +5 giorni, regex `POS|PDV|INCAS.*P\.O\.S` su descrizione/causale); raggruppa per data accredito calcolata; importo banca con fallback su `dare` in valore assoluto. Sola lettura.
+**Note**: unico endpoint POS che usa la collezione canonica; matching banca per regex sulla descrizione (rischio falsi positivi — lo stesso tipo di problema corretto in pos_corrispettivi_check).
+
+---
+
+## pos_corrispettivi_check.py (/api/pos-corrispettivi — 8 endpoint)
+
+Verifica coerenza tra corrispettivi XML, chiusure POS manuali e accrediti bancari. Due generazioni di logica: v1 (`verifica-coerenza`, dichiarata superata nei commenti ma attiva) e v2/v3 "a 2 fasi" (`controllo-due-fasi`, `alert-oggi`). ATTENZIONE: come fonte "banca" usa `prima_nota_banca`, NON la canonica `estratto_conto_movimenti`.
+
+### GET /api/pos-corrispettivi/verifica-coerenza — coerenza POS/corrispettivi (v1)
+**Cosa fa**: per ogni giorno del periodo confronta il `pagato_elettronico` dei corrispettivi con gli accrediti POS bancari; classifica ok / in_transito / mancante / extra / differenza (tolleranza 2% o €5).
+**Logica codice**: legge `corrispettivi`, `prima_nota_banca` (solo entrate con categoria in whitelist di 6 categorie POS, escluso `source: import_manuale_pos` — fix del 22/04/2026 contro i falsi positivi regex) e `chiusure_pos_manuali` (fallback su prima_nota_banca `source: import_manuale_pos`); se esiste la chiusura manuale del giorno, quella è il riferimento invece dell'XML. Sola lettura.
+**Note**: dichiarata SOSTITUITA da controllo-due-fasi ma senza marcatore deprecated; il calcolo Ven-Dom (`7 - weekday + 1`) fa atterrare il venerdì a MARTEDÌ (+4), incoerente con la v2 (Ven→Lun +3); `if 'dt' in dir()` sempre vero (codice morto); confronta l'accreditato del giorno D con l'incasso del giorno D senza shift effettivo.
+
+### GET /api/pos-corrispettivi/riepilogo-mensile — riepilogo mensile per anno
+**Cosa fa**: per i 12 mesi, totali corrispettivi/contanti/elettronico/POS accreditato e differenza con stato ok/warning/error (soglie €50/€200).
+**Logica codice**: 12 iterazioni × 2 aggregate `$group` (su `corrispettivi` e `prima_nota_banca` con stessa whitelist categorie).
+**Note**: 24 round-trip invece di un group per mese; whitelist duplicata copia-incolla.
+
+### POST /api/pos-corrispettivi/riconcilia-pos-giorno — riconciliazione automatica di un giorno
+**Cosa fa**: per una data cerca in banca un accredito POS compatibile (±5%) nelle 2 date di accredito possibili e marca il corrispettivo riconciliato.
+**Logica codice**: `corrispettivi` find_one per data; date candidate (Lun-Gio: +1/+2; Ven-Dom: stesso bug della v1); cerca in `prima_nota_banca` per categoria POS o regex `POS|NEXI|SUMUP`; scrive `pos_riconciliato`, `pos_data_accredito`, `pos_importo_accredito` sul corrispettivo.
+**Note**: reintroduce la regex sulla descrizione eliminata dal fix del 22/04; parametro in query su POST.
+
+### GET /api/pos-corrispettivi/anomalie-gravi — anomalie sopra soglia
+**Cosa fa**: filtra le anomalie di verifica-coerenza tenendo solo differenze ≥ soglia (default €100), con warning AdE.
+**Logica codice**: chiama internamente `verifica_coerenza_pos_corrispettivi` e filtra in memoria.
+**Note**: eredita tutti i limiti della v1.
+
+### PUT /api/pos-corrispettivi/chiusura-giornaliera — upsert chiusura POS giornaliera
+**Cosa fa**: crea/aggiorna la chiusura POS di un giorno (da app mobile) come movimento di entrata in prima nota banca, con audit trail.
+**Logica codice**: autenticato; valida data e importo (400); cerca in `prima_nota_banca` per data con source in [corrispettivo_pos, chiusura_pos_mobile] o categoria "Corrispettivi POS": aggiorna (audit `importo_originale` alla prima modifica; no-op idempotente se identico) o inserisce con `source: chiusura_pos_mobile` e campi doppi it/en; audit best-effort in `pos_chiusure_audit`.
+**Note**: la costante `COLLECTION_CHIUSURE_POS="chiusure_pos_manuali"` esiste, ma le chiusure vengono scritte in `prima_nota_banca`: dato gestionale mischiato ai movimenti banca, distinto solo dal `source`.
+
+### GET /api/pos-corrispettivi/chiusura-giornaliera/audit — audit log chiusure
+**Cosa fa**: audit log delle modifiche alle chiusure POS, filtro anno/data.
+**Logica codice**: autenticato; legge `pos_chiusure_audit`, sort timestamp desc, limit ≤500.
+
+### GET /api/pos-corrispettivi/controllo-due-fasi — controllo incassi a 2 fasi (v2/v3)
+**Cosa fa**: per ogni giorno: Fase 0 (stato corrispettivo: provvisorio/definitivo_xml/manca_xml se >7gg), Fase 1 (POS serale manuale vs elettronico XML → alert compensazione errori di battitura RT), Fase 2 (accredito banca alla data attesa vs POS manuale, calendario corretto Ven→Lun +3).
+**Logica codice**: legge `corrispettivi` (campi v2: stato, totale_manuale, totale_xml); `_carica_pos_manuale_per_data` unisce `chiusure_pos_manuali` e `prima_nota_banca` (source chiusure mobile, quest'ultima vince); `_carica_accrediti_banca_pos` legge `prima_nota_banca` (entrate, keyword POS/MONETICA/NEXI/PAGOBANCOMAT). Tolleranza default €0,50. Sola lettura.
+**Note**: `_carica_pos_manuale_per_data` scandisce le fonti SENZA filtro data (tutto lo storico a ogni chiamata); la Fase 2 non somma Ven+Sab+Dom quando confluiscono nello stesso lunedì → falsi "extra"/"differenza".
+
+### GET /api/pos-corrispettivi/alert-oggi — alert per la dashboard
+**Cosa fa**: alert correnti: compensazioni da battere al RT, accrediti mancanti/difformi, XML mancanti.
+**Logica codice**: chiama `controllo_incassi_due_fasi` sugli ultimi 30 giorni e ripartisce i giorni problematici in tre liste. Nessun DB diretto.
+
+---
+
+## multi_pagamento.py (/api/pagamenti — 6 endpoint)
+
+Pagamenti multipli fattura: N pagamenti per fattura, un assegno su N fatture; stato fattura calcolato da `_ricalcola_stato_fattura` (non_pagata/parzialmente_pagata/pagata/eccedenza, tolleranza €0,05) che aggiorna `invoices` (`stato_pagamento`, `totale_pagato`, `residuo_da_pagare`, `num_pagamenti`). Nessuna autenticazione.
+
+### GET /api/pagamenti/fattura/{fattura_id} — pagamenti di una fattura
+**Cosa fa**: fattura, lista pagamenti, totale pagato, residuo, flag completamente pagata.
+**Logica codice**: `invoices` (404) + `pagamenti` per fattura_id; somme in memoria.
+
+### POST /api/pagamenti/registra — registra pagamento (anche parziale)
+**Cosa fa**: registra un pagamento su una fattura, lo riporta in prima nota e ricalcola lo stato.
+**Logica codice**: valida importo>0 (400) e fattura (404); insert in `pagamenti` (snapshot fornitore/numero); insert in `prima_nota_cassa` (contanti/cassa/carta) o `prima_nota_banca` (assegno/bonifico/sepa) come uscita, source `multi_pagamento`; link `prima_nota_id` sul pagamento; se assegno con numero, `$addToSet fatture_associate` su `assegni`; `_ricalcola_stato_fattura`.
+**Note**: "carta" va in prima nota CASSA (scelta discutibile ma intenzionale); 4-5 scritture non atomiche.
+
+### POST /api/pagamenti/assegno-multi-fatture — un assegno paga N fatture
+**Cosa fa**: dichiara di registrare un pagamento assegno per ogni fattura della lista riusando /registra.
+**Logica codice**: legge `assegni` per numero; per ogni fattura invoca `registra_pagamento(Body(**{...}))`.
+**Note**: BUG BLOCCANTE: `Body(**dict)` passa i dati come kwargs alla factory `fastapi.Body` → TypeError a runtime (500 via handle_errors). L'endpoint non può funzionare come scritto.
+
+### POST /api/pagamenti/fattura-multi-metodo — una fattura pagata con N metodi
+**Cosa fa**: dichiara di registrare più pagamenti con metodi diversi sulla stessa fattura.
+**Logica codice**: cicla su `pagamenti` e invoca `registra_pagamento(Body(**{...}))`.
+**Note**: STESSO BUG BLOCCANTE del precedente: endpoint non funzionante a runtime.
+
+### GET /api/pagamenti/riepilogo-fornitore/{piva} — riepilogo per fornitore
+**Cosa fa**: fatture, pagamenti, totale fatturato/pagato e residuo per P.IVA.
+**Logica codice**: `invoices` per supplier_vat (500) + `pagamenti` per fornitore_piva (1000); aggregati in memoria.
+
+### DELETE /api/pagamenti/{pagamento_id} — elimina pagamento
+**Cosa fa**: elimina un pagamento, la riga di prima nota collegata e ricalcola lo stato fattura.
+**Logica codice**: `pagamenti` (404); delete della prima nota provando su ENTRAMBE `prima_nota_cassa` e `prima_nota_banca`; delete pagamento; `_ricalcola_stato_fattura`.
+**Note**: route catch-all a livello di prefisso: qualsiasi DELETE su /api/pagamenti/<x> finisce qui.
+
+---
+
+## ocr_assegni.py (/api/ocr-assegni — 6 endpoint)
+
+Registro OCR degli assegni + due endpoint di estrazione OCR che sono STUB non implementati. Tutti autenticati.
+
+### GET /api/ocr-assegni/registro — lista registro OCR
+**Cosa fa**: fino a 500 voci di `ocr_assegni`, più recenti prima.
+
+### POST /api/ocr-assegni/registro — aggiungi voce
+**Cosa fa**: inserisce una voce arbitraria (201). **Logica codice**: dict libero senza validazione + uuid + created_at.
+
+### DELETE /api/ocr-assegni/registro/{entry_id} — elimina voce
+**Cosa fa**: delete_one per id; risponde "Entry deleted" anche se l'id non esiste (nessun 404).
+
+### DELETE /api/ocr-assegni/registro — svuota registro
+**Cosa fa**: `delete_many({})` su `ocr_assegni`. **Note**: distruttivo totale, senza conferma.
+
+### POST /api/ocr-assegni/estrai-dati — estrazione OCR (STUB)
+**Cosa fa**: dichiara di estrarre dati da un'immagine assegno ma NON fa nulla: restituisce `{"message": "OCR extraction completed", "data": {}}` fisso; il file non viene letto.
+**Note**: docstring e risposta mentono ("completed").
+
+### POST /api/ocr-assegni/leggi-carnet — lettura carnet (STUB)
+**Cosa fa**: dichiara di leggere le pagine di un carnet ma restituisce `{"checks": []}` fisso.
+
+---
+
+## cash.py (/api/cash — 8 endpoint reali, non 10)
+
+Gestione cassa "strutturata": modelli Pydantic, layer service/repository (`CashService`, `CashMovementRepository`). Opera su `Collections.CASH_MOVEMENTS` = `prima_nota_cassa`. Tutti autenticati.
+
+### GET /api/cash/movements — lista movimenti cassa
+**Cosa fa**: movimenti con filtri data/tipo/categoria e paginazione, filtrati per `user_id` dell'utente corrente.
+**Logica codice**: `CashService.list_movements` su `prima_nota_cassa`.
+
+### POST /api/cash/movements — crea movimento
+**Cosa fa**: crea un movimento validato (201). **Logica codice**: body `CashMovementCreate` (Pydantic); insert con user_id.
+
+### PUT /api/cash/movements/{movement_id} — aggiorna movimento
+**Cosa fa**: aggiorna i soli campi forniti. **Logica codice**: `CashMovementUpdate`; 404 dal service.
+
+### DELETE /api/cash/movements/{movement_id} — elimina movimento
+**Cosa fa**: delete per id; 404 dal service se non trovato.
+
+### GET /api/cash/stats — statistiche cassa
+**Cosa fa**: entrate/uscite/saldo/conteggio + breakdown per categoria e metodo nel periodo (date obbligatorie).
+**Logica codice**: `service.get_cash_stats` (aggregazioni filtrate per user_id).
+
+### POST /api/cash/corrispettivi — crea corrispettivo (chiusura giornaliera)
+**Cosa fa**: dichiara di creare la chiusura giornaliera con controllo duplicati e saldo atteso/differenza.
+**Logica codice**: `service.create_corrispettivo` → `corrispettivo_repo.find_by_date` + create.
+**Note**: BUG BLOCCANTE: `get_cash_service` istanzia `CashService(movement_repo, None)` → `corrispettivo_repo` è None → AttributeError → 500. Endpoint non funzionante.
+
+### GET /api/cash/corrispettivi/{target_date} — leggi corrispettivo per data
+**Cosa fa**: dichiara di restituire il corrispettivo di una data.
+**Note**: STESSO BUG BLOCCANTE (`corrispettivo_repo=None`): 500 a runtime.
+
+### GET /api/cash/export/excel — export movimenti in Excel
+**Cosa fa**: .xlsx dei movimenti nel periodo con saldo progressivo (501 se openpyxl assente).
+**Logica codice**: BYPASSA il service: query diretta su `prima_nota_cassa` con campo `data` (italiano) `$gte/$lte`, max 10000; workbook + StreamingResponse.
+**Note**: NON filtra per user_id (esporta i movimenti di tutti); usa `data` mentre cash_register.py usa `date` sulla stessa collezione — schema misto.
+
+---
+
+## cash_register.py (/api/cash-register — 9 endpoint)
+
+Seconda interfaccia CRUD sulla STESSA collezione `prima_nota_cassa`, senza Pydantic, senza service, senza filtro utente, con campo data `date` (inglese) invece di `data`. Tutti autenticati.
+
+### GET /api/cash-register/movements — lista movimenti
+**Cosa fa**: fino a 500 movimenti, filtrabili per intervallo `date`.
+**Note**: duplica GET /api/cash/movements senza filtro utente né paginazione, su campo data diverso.
+
+### POST /api/cash-register/movements — crea movimento
+**Cosa fa**: insert con body dict arbitrario (201) + id/user_id/created_at.
+**Note**: duplicazione non validata di POST /api/cash/movements.
+
+### PUT /api/cash-register/movements/{movement_id} — aggiorna movimento
+**Cosa fa**: `$set` dei campi passati; risponde "Movement updated" anche con body vuoto o id inesistente.
+
+### DELETE /api/cash-register/movements/{movement_id} — elimina movimento
+**Cosa fa**: delete_one per id; nessun 404 se assente.
+
+### DELETE /api/cash-register/movements — elimina movimenti in intervallo
+**Cosa fa**: dichiara di eliminare i movimenti in un intervallo di date.
+**Logica codice**: filtro `date` costruito SOLO se presenti ENTRAMBE start_date e end_date; poi `delete_many(query)`.
+**Note**: RISCHIO GRAVE: se manca anche uno solo dei parametri (entrambi opzionali) la query resta `{}` → cancella TUTTA `prima_nota_cassa` senza conferma.
+
+### GET /api/cash-register/stats-annulli — statistiche annulli
+**Cosa fa**: dichiara statistiche sulle operazioni annullate ma restituisce solo il conteggio.
+**Logica codice**: `count_documents({"status": "cancelled"})`; `total_cancelled_amount` hardcoded a 0, `by_month` sempre vuoto.
+**Note**: implementazione placeholder: 2 campi su 3 finti.
+
+### GET /api/cash-register/last-upload — ultimo import
+**Cosa fa**: data/filename/record dell'ultimo caricamento registratore di cassa.
+**Logica codice**: find_one su `cash_uploads` per created_at desc.
+
+### GET /api/cash-register/stats-documenti-commerciali — statistiche documenti commerciali
+**Cosa fa**: conta i movimenti `category: "Corrispettivo"` e i giorni distinti nel periodo.
+**Logica codice**: count + `distinct("date")` su `prima_nota_cassa`.
+
+### GET /api/cash-register/stats-pos-comparison — confronto POS XML vs manuale (FINTO)
+**Cosa fa**: dichiara di confrontare POS da XML vs manuale ma il confronto è finto.
+**Logica codice**: somma `amount` dei movimenti `category: "POS"`, poi imposta `pos_xml = pos_manual` (dummy dichiarato nei commenti): differenza sempre 0, stato sempre "ok"/"Dati allineati".
+**Note**: endpoint ingannevole; il confronto vero è in /api/pos-corrispettivi/*.
+
+---
+
+## pagopa.py (/api/pagopa — 7 endpoint)
+
+Associazione ricevute PagoPA ↔ movimenti bancari tramite l'identificativo bolletta (codice CBILL) nella descrizione del movimento. Usa la collezione canonica `estratto_conto_movimenti` + `ricevute_pagopa`. Helper `cerca_movimento_per_bolletta` (find_one regex del codice su descrizione_originale/descrizione). Nessuna autenticazione.
+
+### GET /api/pagopa/ricevute — lista ricevute
+**Cosa fa**: ricevute caricate, filtrabili per anno e stato associazione.
+**Logica codice**: `ricevute_pagopa` (anno regex su data_pagamento; associata = esistenza `movimento_id`), sort desc, limit 100.
+
+### POST /api/pagopa/ricevute/upload — upload ricevuta + auto-associazione
+**Cosa fa**: carica una ricevuta (metadati passati a mano) e, se c'è l'identificativo bolletta, la associa subito al movimento bancario.
+**Logica codice**: legge il file solo per la dimensione (il CONTENUTO NON VIENE SALVATO); crea il doc in `ricevute_pagopa`; se `identificativo_bolletta` presente, `cerca_movimento_per_bolletta` e a match scrive su entrambi i lati (`movimento_id` sulla ricevuta, `ricevuta_pagopa_id`/`ricevuta_filename` sul movimento).
+**Note**: la docstring promette il parsing del PDF ma nessun parsing esiste; il binario viene scartato: la ricevuta non è recuperabile.
+
+### POST /api/pagopa/ricevute/associa-manuale — associazione manuale
+**Cosa fa**: collega manualmente una ricevuta a un movimento per id.
+**Logica codice**: valida i due id (400); aggiorna `ricevute_pagopa` (404 se modified_count==0) poi `estratto_conto_movimenti` con riferimento incrociato.
+**Note**: il 404 scatta anche se la ricevuta è già associata allo stesso movimento; non verifica che il movimento esista.
+
+### POST /api/pagopa/auto-associa — auto-associazione massiva
+**Cosa fa**: scandisce le ricevute non associate con bolletta e tenta il match automatico con l'estratto conto; report associate/non trovate/errori.
+**Logica codice**: `ricevute_pagopa` (movimento_id nullo, bolletta presente, max 1000); per ognuna `cerca_movimento_per_bolletta`; a match aggiorna entrambe le collezioni.
+
+### POST /api/pagopa/cerca-movimenti-pagopa — ricerca movimenti PagoPA/CBILL
+**Cosa fa**: elenca i movimenti EC riconducibili a PagoPA/CBILL/AdER (default solo non associati), estraendo il codice bolletta e raggruppando per beneficiario (AdE-R, INPS, INAIL, Altro).
+**Logica codice**: regex `CBILL|PAGOPA|AGENZIA.DELLE.ENTRATE.*R|RISCOSSIONE` su descrizione_originale/descrizione + filtro anno + `ricevuta_pagopa_id` nullo; estrae il codice con `CBILL\s*(\d{15,18})`; aggregati in memoria. Sola lettura.
+**Note**: ricerca read-only esposta come POST (l'alias GET sotto la richiama).
+
+### GET /api/pagopa/stats — statistiche PagoPA
+**Cosa fa**: movimenti PagoPA totali/con ricevuta/senza, ricevute caricate/associate, totale importi, opz. per anno.
+**Logica codice**: quattro count (riusando/mutando i dict query) + aggregate `$sum $abs importo` su `estratto_conto_movimenti`.
+**Note**: la regex dell'aggregazione importi (senza `PAGOPA`) è più stretta di quella del conteggio → totale e conteggio su insiemi diversi.
+
+### GET /api/pagopa/movimenti-agenzia-entrate — alias movimenti AdE-R
+**Cosa fa**: TUTTI i movimenti PagoPA (anche associati) per anno.
+**Logica codice**: delega a `cerca_movimenti_pagopa(anno, solo_non_associati=False)`; alias di compatibilità.
+
+### Anomalie (gruppo POS / pagamenti / cassa / PagoPA)
+1. Due endpoint di multi_pagamento.py NON funzionanti (`assegno-multi-fatture`, `fattura-multi-metodo`): `registra_pagamento(Body(**dict))` → TypeError a runtime.
+2. Due endpoint di cash.py NON funzionanti (`POST/GET corrispettivi`): `CashService(movement_repo, None)` → AttributeError su `corrispettivo_repo`.
+3. CRUD duplicato su `prima_nota_cassa`: cash.py (Pydantic, filtro user_id, campo `data`) vs cash_register.py (dict liberi, nessun filtro utente, campo `date`) — movimenti creati da un modulo possono non comparire nei filtri dell'altro.
+4. DELETE massivo pericoloso: `DELETE /api/cash-register/movements` senza entrambe le date esegue `delete_many({})` sull'intera `prima_nota_cassa`.
+5. Endpoint finti con risposte di successo: `stats-pos-comparison` (pos_xml=pos_manual), `stats-annulli` (importi hardcoded), `ocr-assegni/estrai-dati` e `leggi-carnet` (nessun OCR), `pagopa/ricevute/upload` (nessun parsing, file scartato).
+6. Fonte banca incoerente: pos_corrispettivi_check usa `prima_nota_banca`, pos_accredito e pagopa usano la canonica `estratto_conto_movimenti` → le riconciliazioni POS dei due moduli possono divergere.
+7. Tre calendari accredito POS in conflitto: v1 manda Ven-Dom a martedì, v2 correttamente a lunedì, pos_accredito usa un terzo helper con festivi.
+8. Deprecazione solo nei commenti (verifica-coerenza), regex banca reintrodotta dopo il fix del 22/04/2026 (riconcilia-pos-giorno, _carica_accrediti_banca_pos), chiusure POS scritte in `prima_nota_banca` invece che nella collezione dedicata.
+9. Autenticazione a macchia di leopardo: ocr_assegni/cash/cash_register e 2 endpoint POS-check autenticati; pos_accredito, multi_pagamento, pagopa e gli altri POS-check no (inclusi endpoint che scrivono).
