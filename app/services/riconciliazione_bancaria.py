@@ -140,6 +140,23 @@ async def _registra_match_partita_aperta(db, tipo: str, documento_id: str, impor
         logger.exception(f"Errore convergenza partita_aperta per {tipo}/{documento_id}")
 
 
+async def _alert_match_ambiguo(db, mov_id: Optional[str], motivo: str) -> None:
+    """Genera l'alert RIC_MATCH_AMBIGUO quando più fatture candidate hanno
+    punteggio di match simile per lo stesso movimento bancario e l'operazione
+    finisce in operazioni_da_confermare — prima definito in alert_engine.py
+    ma mai generato (vedi memoria/moduli/RICONCILIAZIONE.md). Best-effort,
+    non blocca la riconciliazione principale."""
+    if not mov_id:
+        return
+    try:
+        from app.services.alert_engine import genera_alert
+        await genera_alert(
+            "RIC_MATCH_AMBIGUO", mov_id, COLLECTION_ESTRATTO_CONTO, motivo, db,
+        )
+    except Exception:
+        logger.exception(f"Errore generazione alert RIC_MATCH_AMBIGUO per {mov_id}")
+
+
 async def _applica_pagamento_banca(db, fattura: Dict[str, Any], metodo_label: str,
                                    data_ec: str, mov_id: Optional[str], score: int,
                                    now: str, source: str) -> None:
@@ -646,6 +663,7 @@ async def riconcilia_movimenti_banca() -> Dict[str, Any]:
 
                         await db[COLLECTION_OPERAZIONI_DA_CONFERMARE].insert_one(operazione.copy())
                         results["dubbi"] += 1
+                        await _alert_match_ambiguo(db, mov_id, operazione["dettagli"]["motivo_dubbio"])
 
                 # Se solo importo esatto (score = 10) e UNA sola fattura → riconcilia
                 elif fatture_scored and fatture_scored[0][1] == 10:
@@ -712,6 +730,7 @@ async def riconcilia_movimenti_banca() -> Dict[str, Any]:
 
                         await db[COLLECTION_OPERAZIONI_DA_CONFERMARE].insert_one(operazione.copy())
                         results["dubbi"] += 1
+                        await _alert_match_ambiguo(db, mov_id, operazione["dettagli"]["motivo_dubbio"])
 
             # === 2. CERCA F24 (per USCITE) ===
             if tipo == "uscita" and not match_found and "F24" in descrizione.upper():
