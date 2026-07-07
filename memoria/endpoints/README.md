@@ -28,9 +28,9 @@ duplicate/shadowate contate una volta per modulo che le implementa).
 4. `POST /api/riconciliazione-auto/correggi-metodi-pagamento` → **KeyError** (`_id` letto dopo proiezione che lo esclude): la bonifica non fa nulla. *(04)*
 5. `sposta-cassa`/`sposta-banca` (dati_provvisori) salvano importi **negativi** con `tipo:"uscita"`: nelle aggregate un'uscita negativa **aumenta** il saldo cassa/banca invece di diminuirlo. *(01)*
 6. **F24**: `COLL_F24_COMMERCIALISTA` in `db_collections.py` vale `"f24_unificato"`, ma le costanti omonime locali in `f24_riconciliazione.py`/`email_f24.py` valgono `"f24_commercialista"` → sotto lo stesso prefisso, moduli diversi scrivono/leggono **due archivi diversi** senza saperlo. *(05)*
-7. `PUT /api/sync/update-fattura-everywhere` **azzera a null** importo/data/pagato dei movimenti di prima nota per i campi non inviati nel body. *(08)*
-8. `POST /verbali-riconciliazione/riconcilia/{n}` — `ObjectId(driver_id)` su un id in formato UUID → 500 non gestito. *(07)*
-9. **Ammortamenti cespiti** registrati come uscita di cassa reale in `prima_nota_cassa` (`cespiti/registra/{anno}`) — un costo non monetario altera il saldo cassa. *(02)*
+7. ✔ RISOLTO (lug 2026) — `PUT /api/sync/update-fattura-everywhere`: aggiorna in prima nota solo i campi realmente inviati (prima azzerava a null quelli assenti). *(08)*
+8. ✔ RISOLTO (lug 2026) — verbali-riconciliazione: lookup fattura ora prova prima l'id UUID e usa ObjectId solo se valido (il crash su driver_id era già stato corretto in precedenza). *(07)*
+9. ✔ RISOLTO (lug 2026) — Ammortamenti cespiti: non vengono più scritti in `prima_nota_cassa` (costo non monetario); migrazione all'avvio soft-deleta i movimenti già creati dal bug. *(02)*
 10. ✔ RISOLTO (lug 2026) — Ricavi gonfiati: `chiusura_esercizio`, `indici_bilancio` e `controllo_gestione` ora trattano `invoices` come sole fatture ricevute (ricavi = corrispettivi, costi = tutte le fatture − note credito). *(02)*
 
 ### 🟠 Shadowing / route irraggiungibili (il codice "vince" non è quello che sembra)

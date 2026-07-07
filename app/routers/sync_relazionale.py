@@ -480,29 +480,29 @@ async def api_update_fattura_everywhere(
         raise HTTPException(status_code=404, detail="Fattura non trovata")
     
     updates = {"invoices": 1}
-    
-    # 2. Aggiorna prima nota cassa se collegata
+
+    # 2./3. Aggiorna prima nota cassa/banca se collegate.
+    # Solo i campi realmente inviati nel body: prima venivano scritti
+    # importo/pagato/data anche quando assenti, azzerandoli a null sui
+    # movimenti di prima nota (bug #7 audit memoria/endpoints/README.md).
+    pn_set = {"updated_at": update_data["updated_at"]}
+    if "importo" in update_data:
+        pn_set["importo"] = update_data["importo"]
+    if "pagato" in update_data:
+        pn_set["pagato"] = update_data["pagato"]
+    if "data_pagamento" in update_data:
+        pn_set["data"] = update_data["data_pagamento"]
+
     pn_cassa = await db["prima_nota_cassa"].update_one(
         {"fattura_id": fattura_id},
-        {"$set": {
-            "importo": update_data.get("importo") if "importo" in update_data else None,
-            "pagato": update_data.get("pagato"),
-            "data": update_data.get("data_pagamento"),
-            "updated_at": update_data["updated_at"]
-        }}
+        {"$set": pn_set}
     )
     if pn_cassa.modified_count > 0:
         updates["prima_nota_cassa"] = 1
-    
-    # 3. Aggiorna prima nota banca se collegata
+
     pn_banca = await db["prima_nota_banca"].update_one(
         {"fattura_id": fattura_id},
-        {"$set": {
-            "importo": update_data.get("importo") if "importo" in update_data else None,
-            "pagato": update_data.get("pagato"),
-            "data": update_data.get("data_pagamento"),
-            "updated_at": update_data["updated_at"]
-        }}
+        {"$set": pn_set}
     )
     if pn_banca.modified_count > 0:
         updates["prima_nota_banca"] = 1

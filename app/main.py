@@ -112,6 +112,23 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Pulizia beneficiari fittizi assegni non eseguita: {e}")
 
+    # Migrazione: gli ammortamenti cespiti venivano registrati anche come
+    # "uscita" reale in prima_nota_cassa (costo non monetario che abbassava
+    # il saldo cassa). Soft-delete dei movimenti generati da quel bug:
+    # riconoscibili senza ambiguità dal source dedicato.
+    try:
+        db = Database.get_db()
+        if db is not None:
+            r = await db["prima_nota_cassa"].update_many(
+                {"source": "ammortamento_cespiti", "status": {"$ne": "deleted"}},
+                {"$set": {"status": "deleted",
+                          "nota_migrazione": "ammortamento non monetario, rimosso dalla cassa"}},
+            )
+            if r.modified_count:
+                logger.info(f"Neutralizzati {r.modified_count} movimenti cassa da ammortamenti (non monetari)")
+    except Exception as e:
+        logger.warning(f"Pulizia ammortamenti in cassa non eseguita: {e}")
+
     logger.info("Application startup complete")
     yield
 

@@ -552,23 +552,13 @@ async def registra_ammortamenti_anno(anno: int) -> Dict[str, Any]:
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db["movimenti_contabili"].insert_one(movimento.copy())
-    
-    # G1: Registra anche in prima_nota_cassa
-    from uuid import uuid4
-    mov_ammort = {
-        "id": str(uuid4()),
-        "tipo": "uscita",
-        "importo": calcolo["totale_ammortamenti"],
-        "data": f"{anno}-12-31",
-        "descrizione": f"Ammortamenti cespiti {anno} ({len(calcolo['ammortamenti'])} beni)",
-        "categoria": "Ammortamenti",
-        "source": "ammortamento_cespiti",
-        "anno": anno,
-        "riconciliato": True,
-        "created_at": datetime.now(timezone.utc).isoformat()
-    }
-    await db["prima_nota_cassa"].insert_one(mov_ammort.copy())
-    
+
+    # NB: l'ammortamento è un costo NON monetario: registrarlo anche in
+    # prima_nota_cassa come "uscita" (come faceva il blocco rimosso qui)
+    # abbassava il saldo cassa reale di migliaia di euro mai usciti dalla
+    # cassa (bug #9 audit memoria/endpoints/README.md). Resta solo il
+    # movimento contabile in movimenti_contabili, che è la sede corretta.
+
     return {
         "success": True,
         "anno": anno,

@@ -973,12 +973,15 @@ async def associa_verbale_completo(db, verbale_doc: dict) -> dict:
     if verbale_doc.get("fattura_id") or updates.get("fattura_id"):
         fattura_id = verbale_doc.get("fattura_id") or updates.get("fattura_id")
         try:
-            from bson import ObjectId
-            from bson.errors import InvalidId
-            fattura = await db["invoices"].find_one({"_id": ObjectId(fattura_id)})
-            if not fattura:
-                fattura = await db["invoices"].find_one({"id": fattura_id})
-            
+            # Prima per id UUID (formato standard delle fatture); il tentativo
+            # ObjectId solo se il valore è un ObjectId valido. Prima era
+            # invertito: ObjectId(uuid) sollevava InvalidId e l'except saltava
+            # anche il fallback per id → la fattura non veniva mai trovata
+            # (bug #8 audit memoria/endpoints/README.md).
+            fattura = await db["invoices"].find_one({"id": fattura_id})
+            if not fattura and ObjectId.is_valid(fattura_id):
+                fattura = await db["invoices"].find_one({"_id": ObjectId(fattura_id)})
+
             if fattura:
                 if not updates.get("fornitore") and fattura.get("supplier_name"):
                     updates["fornitore"] = fattura["supplier_name"]
