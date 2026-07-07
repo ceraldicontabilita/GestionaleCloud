@@ -74,5 +74,30 @@ class PayPalAPIClient:
             cursor = window_end + timedelta(seconds=1)
         return result
 
+    async def verify_webhook_signature(
+        self, webhook_id: str, headers: Dict[str, str], webhook_event: Dict[str, Any],
+    ) -> bool:
+        """Verifica l'autenticità di una notifica webhook tramite l'endpoint
+        ufficiale PayPal, invece di validare la firma RSA a mano (evita di
+        dover scaricare/verificare il certificato X.509 di paypal-cert-url)."""
+        await self._ensure_token()
+        payload = {
+            "auth_algo": headers.get("paypal-auth-algo", ""),
+            "cert_url": headers.get("paypal-cert-url", ""),
+            "transmission_id": headers.get("paypal-transmission-id", ""),
+            "transmission_sig": headers.get("paypal-transmission-sig", ""),
+            "transmission_time": headers.get("paypal-transmission-time", ""),
+            "webhook_id": webhook_id,
+            "webhook_event": webhook_event,
+        }
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(
+                f"{PAYPAL_BASE}/v1/notifications/verify-webhook-signature",
+                headers={"Authorization": f"Bearer {self._token}"},
+                json=payload,
+            )
+            resp.raise_for_status()
+            return resp.json().get("verification_status") == "SUCCESS"
+
 
 paypal_client = PayPalAPIClient()

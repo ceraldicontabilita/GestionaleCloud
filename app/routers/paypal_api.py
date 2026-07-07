@@ -8,17 +8,20 @@ import re
 
 from app.database import Database
 from app.services.paypal_api_sync import sync_paypal_period
+from app.services.paypal_api_client import paypal_client
 from app.services.paypal_riconciliazione import match_fornitore, normalize_string
 
 router = APIRouter(tags=["PayPal API"])
 logger = logging.getLogger(__name__)
 
 # Popolato al momento della creazione del webhook su developer.paypal.com
-# (Applicazioni e credenziali > Webhook in tempo reale > Aggiungi Webhook).
-# Se assente, il webhook viene comunque processato ma SENZA verifica della
-# firma: accettabile perché l'endpoint non si fida mai del corpo della
-# richiesta per i dati finanziari, si limita a ri-sincronizzare dalla vera
-# API Reporting per il giorno dell'evento.
+# (Applicazioni e credenziali > Webhook in tempo reale > Aggiungi Webhook,
+# colonna "ID Webhook"). Se assente, il webhook viene comunque processato ma
+# SENZA verifica della firma: accettabile come fallback perché l'endpoint
+# non si fida mai del corpo della richiesta per i dati finanziari, si limita
+# a ri-sincronizzare dalla vera API Reporting per il giorno dell'evento —
+# ma con l'ID impostato la verifica evita di innescare sync su richieste
+# spoofate.
 PAYPAL_WEBHOOK_ID = os.environ.get("PAYPAL_WEBHOOK_ID", "")
 
 # Eventi che indicano un movimento di denaro reale — solo questi triggerano
@@ -49,6 +52,19 @@ async def ricevi_webhook(request: Request):
     create_time = body.get("create_time", "")
     logger.info("[PayPal Webhook] %s (%s) create_time=%s", event_type, event_id, create_time)
 
+    verificato = None
+    if PAYPAL_WEBHOOK_ID:
+        try:
+            verificato = await paypal_client.verify_webhook_signature(
+                PAYPAL_WEBHOOK_ID, request.headers, body
+            )
+        except Exception:
+            logger.exception("[PayPal Webhook] Errore durante la verifica della firma")
+            verificato = False
+        if not verificato:
+            logger.warning("[PayPal Webhook] Firma non valida per evento %s, scartato", event_id)
+            raise HTTPException(status_code=400, detail="Firma webhook non valida")
+
     db = Database.get_db()
     await db["paypal_webhook_events"].update_one(
         {"event_id": event_id},
@@ -58,6 +74,7 @@ async def ricevi_webhook(request: Request):
             "create_time": create_time,
             "resource_type": body.get("resource_type", ""),
             "received_at": datetime.now(timezone.utc).isoformat(),
+            "firma_verificata": verificato,
             "processed": False,
         }},
         upsert=True,
