@@ -1,0 +1,71 @@
+# Fatture Ricevute — stato reale vs specifica
+
+Fonte specifica: `Fatture Ricevute E Flussi Automatici.txt` (fornita dall'utente).
+Verificato leggendo il codice attuale (post-consolidamento router del 2026-07-07).
+
+## Da dove entra davvero una fattura (correzione: non "Aruba PEC", ma SDI generico)
+
+La specifica originale parla di "PEC Aruba" come canale. **Correzione**: nel codice e nella
+tabella mittenti reale non esiste un fornitore "Aruba" nominato — il canale è PEC generico
+via SDI, pattern mittente `@pec.fatturapa.it`, canale `pec` (riga 14 della tabella mittenti
+attendibili fornita dall'utente: *"SDI - tutte le fatture PEC"*). Il secondo canale, quello
+oggi effettivamente predominante e **già attivo**, è **Google Drive**:
+
+- `app/services/drive_invoice_ingest.py`: legge XML/XML.P7M da una cartella Drive
+  (env `GOOGLE_DRIVE_FATTURE_FOLDER_ID`), importa con la pipeline condivisa
+  `process_xml_bytes(source="google_drive")`, sposta i file elaborati in `Elaborate/`.
+  **Schedulato automaticamente ogni 15 minuti** (`app/scheduler.py`, job `drive_fatture_ingest`).
+  Card Admin dedicata con stato e sync manuale (`frontend/src/pages/Admin.jsx`).
+- Canale PEC/SDI: entra tramite la stessa casella Gmail (non una mailbox separata — vedi
+  `memoria/moduli/DOCUMENTI_INBOX.md`), instradato dalla tabella `mittenti_email`.
+- Import manuale (`/upload-xml`, `/upload-xml-bulk`): resta per lo storico pre-attivazione
+  del canale automatico — canale complementare, non da sostituire.
+
+**Tutti e tre convergono sulla stessa pipeline**: `process_xml_bytes`/`process_fattura_to_db`
+in `app/routers/invoices/fatture_upload.py` — non ci sono più percorsi di import paralleli
+(consolidato oggi, vedi commit "Consolida /api/fatture").
+
+## Cosa è confermato implementato
+
+| Requisito spec | Stato | Evidenza |
+|---|---|---|
+| Estrazione XML/P7M (fornitore, righe, IVA) | ✅ | `fatture_upload.py::process_xml_bytes`, `app/parsers/fattura_elettronica_parser.py` |
+| Creazione automatica fornitore se non esiste | ✅ | `ensure_supplier_exists()` in `fatture_upload.py` |
+| Metodo pagamento fornitore guida l'instradamento (cassa/banca/sospesa) | ✅ | `auto_registra_prima_nota()`: contanti→cassa, bancario→banca SOLO se confermato in EC, altrimenti provvisorio |
+| Deduplica per numero+P.IVA+data | ✅ | `generate_invoice_key()`, indice univoco `invoice_key` |
+| Riconciliazione fattura↔banca | ✅ (unico tipo di match davvero vivo nel motore automatico) | `app/services/riconciliazione_bancaria.py` |
+| Pagamento manuale (cassa/banca) | ✅ live | `POST /api/fatture-ricevute/paga-manuale` |
+
+## Gap confermati (in ordine di priorità)
+
+1. **TD04 (nota di credito) con segno negativo**: DA VERIFICARE nel dettaglio — il parser
+   tagga `tipo_documento="TD04"` ma non è confermato se il sistema applica sistematicamente
+   segno negativo/netting automatico con la fattura collegata (`DatiFattureCollegate` letto
+   ma non risulta usato per netting attivo). **Rischio concreto**: una nota di credito
+   potrebbe essere trattata come una fattura normale nello scadenzario/partitario.
+2. **Righe merce → Magazzino**: la maggior parte della gestione giacenze è delegata
+   all'app esterna **Lotti** (commento esplicito in `fatture_upload.py`: *"Giacenze
+   magazzino: gestite SOLO dall'app esterna Lotti (stesso DB). L'import fatture qui NON
+   aggiorna warehouse_inventory."*) — vedi `memoria/moduli/MAGAZZINO.md` per il dettaglio.
+   Le righe fattura restano dati grezzi sulla fattura, non alimentano un'entità "prodotto"
+   strutturata in questo repo.
+3. **Stati fattura granulari**: la specifica chiede 9 stati distinti (acquisita/parse
+   ok/collegata a fornitore/da completare/da pagare/pagata/parzialmente riconciliata/
+   duplicata/errore parsing). Il sistema reale usa essenzialmente un booleano
+   `pagato`/`paid` + `stato_pagamento` stringa (pagata/aperta/sospesa) — non un vero
+   automa a stati.
+4. **Pagamento parziale/rateale**: `riconciliazione_intelligente_api.py` implementava
+   questa logica (pagamento-parziale, nota di credito, bonifico cumulativo) ma è stata
+   trovata oggi come **sostanzialmente non funzionante** (0/25 endpoint ricevono traffico
+   reale funzionante) — vedi `memoria/endpoints/RICONCILIAZIONE_AUDIT.md`. Non esiste oggi
+   un percorso alternativo funzionante per pagamenti parziali su fatture.
+5. **Sistema di alert dedicato** (7 tipi richiesti dalla specifica: senza fornitore,
+   anagrafica incompleta, duplicata, tipo ambiguo, righe merce non risolte, metodo
+   mancante, dati incompleti): esistono alert isolati (es. `"fornitore_senza_metodo_pagamento"`
+   creato da `ensure_supplier_exists`) ma non un sistema sistematico che copra tutti i 7 casi.
+
+## Bug/incoerenze note (da correggere)
+
+- Diversi punti isolati (es. `sync-suppliers` in `fatture_upload.py`) default ancora a
+  `"bonifico"` invece di rispettare la regola "nessun metodo finché non configurato" —
+  violazione isolata della regola generale già rispettata dal percorso principale.
