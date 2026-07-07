@@ -330,6 +330,7 @@ def _aggiungi_verbale(veicolo: dict, invoice_data: dict, desc: str, importo: flo
         "iva": iva_calc,
         "totale": totale,
         "pagato": invoice_data.get("pagato", False),
+        "pagato_confermato_banca": invoice_data.get("pagato_confermato_banca", False),
         "numero_verbale": metadata.get("numero_verbale"),
         "data_verbale": metadata.get("data_verbale")
     }
@@ -379,9 +380,27 @@ async def scan_fatture_noleggio(anno: Optional[int] = None) -> Tuple[Dict[str, A
         "causali": 1
     }
     
-    cursor = db["invoices"].find(query, projection)
-    
-    async for invoice in cursor:
+    invoices_list = await db["invoices"].find(query, projection).to_list(5000)
+
+    # "pagato" sulla fattura viene marcato True anche quando il sistema NON
+    # trova un movimento bancario reale (regola "il metodo fornitore comanda",
+    # vedi auto_registra_prima_nota in fatture_upload.py) — per non dare
+    # l'impressione fuorviante che ogni pagamento sia stato verificato in
+    # banca, controlliamo se il prima_nota_banca collegato ha davvero un
+    # estratto_conto_id (match reale) o no (assunto dal metodo fornitore).
+    pn_ids = {inv.get("prima_nota_banca_id") for inv in invoices_list if inv.get("prima_nota_banca_id")}
+    pn_confermati: set = set()
+    if pn_ids:
+        cursor_pn = db["prima_nota_banca"].find(
+            {"id": {"$in": list(pn_ids)}, "estratto_conto_id": {"$nin": [None, ""]}},
+            {"_id": 0, "id": 1},
+        )
+        pn_confermati = {pn["id"] async for pn in cursor_pn}
+
+    for invoice in invoices_list:
+        invoice["pagato_confermato_banca"] = bool(
+            invoice.get("pagato") and invoice.get("prima_nota_banca_id") in pn_confermati
+        )
         invoice_number = invoice.get("invoice_number", "")
         invoice_date = invoice.get("invoice_date", "")
         supplier = invoice.get("supplier_name", "")
@@ -457,11 +476,12 @@ async def scan_fatture_noleggio(anno: Optional[int] = None) -> Tuple[Dict[str, A
                     "codice_cliente": codice_cliente,
                     "total": invoice.get("total_amount", 0),
                     "pagato": invoice.get("pagato", False),
+                    "pagato_confermato_banca": invoice.get("pagato_confermato_banca", False),
                     "prima_nota_banca_id": invoice.get("prima_nota_banca_id"),
                     "linee": linee
                 })
                 continue
-        
+
         # Prepara dati fattura per processamento
         invoice_data = {
             "invoice_number": invoice_number,
@@ -470,7 +490,8 @@ async def scan_fatture_noleggio(anno: Optional[int] = None) -> Tuple[Dict[str, A
             "supplier": supplier,
             "supplier_vat": supplier_vat,
             "codice_cliente": codice_cliente,
-            "pagato": invoice.get("pagato", False)
+            "pagato": invoice.get("pagato", False),
+            "pagato_confermato_banca": invoice.get("pagato_confermato_banca", False),
         }
         
         # Processa linee (usa invoice_data internamente)
@@ -497,9 +518,10 @@ async def scan_fatture_noleggio(anno: Optional[int] = None) -> Tuple[Dict[str, A
                     "imponibile": imponibile,
                     "iva": iva,
                     "totale": totale,
-                    "pagato": invoice.get("pagato", False)
+                    "pagato": invoice.get("pagato", False),
+                    "pagato_confermato_banca": invoice.get("pagato_confermato_banca", False),
                 }
-                
+
                 veicoli[targa][categoria].append(record)
                 veicoli[targa][f"totale_{categoria}"] += totale
     

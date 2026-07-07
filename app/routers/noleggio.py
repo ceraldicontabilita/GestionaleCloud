@@ -257,7 +257,20 @@ async def get_veicoli(
             veicolo["data_fine"] = salvato.get("data_fine")
             veicolo["note"] = salvato.get("note")
             veicolo["id"] = salvato.get("id")
-        
+            veicolo["canone_mensile"] = salvato.get("canone_mensile")
+
+        # Canone mensile: se non è stato configurato a mano, lo stimiamo dal
+        # canone più recente effettivamente fatturato — meglio di lasciarlo
+        # sempre vuoto. Segnaliamo la stima con canone_mensile_stimato=True
+        # così la UI può distinguerla da un valore inserito manualmente.
+        if not veicolo.get("canone_mensile"):
+            canoni_ordinati = sorted(
+                veicolo.get("canoni", []), key=lambda c: c.get("data") or "", reverse=True
+            )
+            if canoni_ordinati:
+                veicolo["canone_mensile"] = canoni_ordinati[0].get("imponibile")
+                veicolo["canone_mensile_stimato"] = True
+
         risultato.append(veicolo)
     
     # Aggiungi veicoli salvati non presenti nelle fatture dell'anno

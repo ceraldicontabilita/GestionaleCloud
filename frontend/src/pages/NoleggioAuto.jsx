@@ -587,6 +587,14 @@ export default function NoleggioAuto() {
                   <strong>
                     {selectedVeicolo.canone_mensile ? formatEuro(selectedVeicolo.canone_mensile) : '-'}
                   </strong>
+                  {selectedVeicolo.canone_mensile_stimato && (
+                    <span
+                      style={{ color: '#9ca3af', fontSize: 11, marginLeft: 4 }}
+                      title="Stimato dall'ultimo canone fatturato, non configurato manualmente"
+                    >
+                      (stimato)
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
@@ -783,11 +791,21 @@ export default function NoleggioAuto() {
                             </td>
                             <td style={{ padding: '8px 10px', textAlign: 'center' }}>
                               {s.pagato ? (
-                                <span
-                                  style={{ color: '#16a34a', fontWeight: 'bold', fontSize: 10 }}
-                                >
-                                  ✓ Pagato
-                                </span>
+                                s.pagato_confermato_banca ? (
+                                  <span
+                                    style={{ color: '#16a34a', fontWeight: 'bold', fontSize: 10 }}
+                                    title="Collegato a un movimento reale in estratto conto"
+                                  >
+                                    ✓ Pagato
+                                  </span>
+                                ) : (
+                                  <span
+                                    style={{ color: '#b45309', fontWeight: 'bold', fontSize: 10 }}
+                                    title="Il fornitore ha un metodo di pagamento bancario configurato, ma nessun movimento corrispondente è stato trovato in estratto conto — il pagamento non è verificato"
+                                  >
+                                    ✓ Pagato (presunto)
+                                  </span>
+                                )
                               ) : (
                                 <span style={{ color: '#dc2626', fontSize: 10 }}>Da pagare</span>
                               )}
