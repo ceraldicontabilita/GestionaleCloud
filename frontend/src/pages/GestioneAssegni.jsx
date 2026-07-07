@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { formatEuro, formatDateIT, STYLES, COLORS, button, badge } from '../lib/utils';
+import { formatEuro, formatDateIT, STYLES, COLORS, button, badge, useIsMobile } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
+import ModalFattura from '../components/ModalFattura';
 
 const STATI_ASSEGNO = {
   vuoto: { label: 'Valido', color: '#4caf50' },
@@ -34,6 +35,26 @@ export default function GestioneAssegni() {
   const [filterSoloDaAssociare, setFilterSoloDaAssociare] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [filterAnno, setFilterAnno] = useState(anno); // Filtro anno - inizia da anno globale
+
+  // Responsive (telefono/tablet)
+  const isMobile = useIsMobile();
+
+  // Menu "⚙️ Altro" (azioni secondarie consolidate)
+  const [showAltroMenu, setShowAltroMenu] = useState(false);
+  const altroMenuRef = useRef(null);
+  useEffect(() => {
+    if (!showAltroMenu) return;
+    const handle = e => {
+      if (altroMenuRef.current && !altroMenuRef.current.contains(e.target)) {
+        setShowAltroMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handle);
+    return () => document.removeEventListener('mousedown', handle);
+  }, [showAltroMenu]);
+
+  // Modale visualizzazione fattura in-page ({id, numero}) - niente nuove schede
+  const [fatturaView, setFatturaView] = useState(null);
 
   // Generate modal
   const [showGenerate, setShowGenerate] = useState(false);
@@ -963,9 +984,33 @@ export default function GestioneAssegni() {
     setSelectedAssegni(new Set());
   };
 
+  // Stile voce del menu "⚙️ Altro" (pattern dropdown TopNav)
+  const menuItemStyle = {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    width: '100%',
+    padding: '11px 16px',
+    minHeight: 44,
+    background: 'transparent',
+    border: 'none',
+    textAlign: 'left',
+    fontSize: 13,
+    fontWeight: 500,
+    color: '#374151',
+    cursor: 'pointer',
+  };
+
   return (
-    <div style={{ maxWidth: 1400, margin: '0 auto', padding: '16px' }}>
-      {/* Action Bar - responsive */}
+    <div
+      style={{
+        maxWidth: 1400,
+        margin: '0 auto',
+        padding: isMobile ? '12px' : '16px',
+        overflowX: 'hidden',
+      }}
+    >
+      {/* Action Bar consolidata: 3 azioni principali + menu "⚙️ Altro" */}
       <div
         style={{
           display: 'flex',
@@ -980,7 +1025,8 @@ export default function GestioneAssegni() {
           data-testid="genera-assegni-btn"
           style={{
             padding: '10px 16px',
-            background: '#4caf50',
+            minHeight: 40,
+            background: '#16a34a',
             color: 'white',
             border: 'none',
             borderRadius: 8,
@@ -992,25 +1038,7 @@ export default function GestioneAssegni() {
           + Genera Assegni
         </button>
 
-        <button
-          onClick={handleAutoAssocia}
-          disabled={autoAssociating}
-          data-testid="auto-associa-btn"
-          style={{
-            padding: '10px 16px',
-            background: autoAssociating ? '#ccc' : '#2196f3',
-            color: 'white',
-            border: 'none',
-            borderRadius: 8,
-            cursor: autoAssociating ? 'not-allowed' : 'pointer',
-            fontWeight: 'bold',
-            fontSize: 13,
-          }}
-        >
-          {autoAssociating ? 'Associando...' : 'Auto-Associa'}
-        </button>
-
-        {/* Nuovo: Auto-Match rigoroso a 4 livelli (LOGICA_OPERATIVA) */}
+        {/* Auto-Match rigoroso a 4 livelli (LOGICA_OPERATIVA) */}
         <button
           onClick={() => handleAutoMatch(false)}
           disabled={autoAssociating}
@@ -1018,9 +1046,8 @@ export default function GestioneAssegni() {
           title="Auto-match rigoroso: 4 livelli (L1 1→1, L2 N uguali→1, L3 N diversi→1, L4 1→N) con tolleranza ±0,005€"
           style={{
             padding: '10px 16px',
-            background: autoAssociating
-              ? '#ccc'
-              : '#15803d',
+            minHeight: 40,
+            background: autoAssociating ? '#ccc' : '#15803d',
             color: 'white',
             border: 'none',
             borderRadius: 8,
@@ -1032,42 +1059,218 @@ export default function GestioneAssegni() {
         >
           {autoAssociating ? '🤖 …' : '🤖 Auto-collega'}
         </button>
-        <button
-          onClick={() => handleAutoMatch(true)}
-          disabled={autoAssociating}
-          data-testid="auto-match-preview-btn"
-          title="Anteprima: mostra cosa collegherebbe senza scrivere sul DB"
-          style={{
-            padding: '10px 14px',
-            background: '#f3f4f6',
-            color: '#374151',
-            border: '1px solid #d1d5db',
-            borderRadius: 8,
-            cursor: autoAssociating ? 'not-allowed' : 'pointer',
-            fontWeight: 600,
-            fontSize: 12,
-          }}
-        >
-          👁️ Anteprima
-        </button>
 
         <button
-          onClick={toggleAmbiguiSection}
-          data-testid="ambigui-toggle-btn"
+          onClick={() => setShowFilters(!showFilters)}
+          data-testid="toggle-filters-btn"
           style={{
-            flexShrink: 0,
-            padding: '10px 14px',
-            background: ambiguiOpen ? '#fef3c7' : 'white',
-            color: '#92400e',
-            border: '1px solid #fcd34d',
+            padding: '10px 16px',
+            minHeight: 40,
+            background: showFilters ? '#1e3a5f' : 'white',
+            color: showFilters ? 'white' : '#1e3a5f',
+            border: '1px solid #1e3a5f',
             borderRadius: 8,
             cursor: 'pointer',
-            fontWeight: 600,
-            fontSize: 12,
+            fontWeight: 'bold',
+            fontSize: 13,
           }}
         >
-          {ambiguiOpen ? '▲ Nascondi ambigui' : '⚠ Risolvi ambigui'}
+          🔍 Filtri{' '}
+          {(filterFornitore ||
+            filterImportoMin ||
+            filterImportoMax ||
+            filterNumeroAssegno ||
+            filterNumeroFattura) &&
+            '●'}
         </button>
+
+        {/* Menu "⚙️ Altro": tutte le azioni secondarie consolidate qui */}
+        <div ref={altroMenuRef} style={{ position: 'relative' }}>
+          <button
+            onClick={() => setShowAltroMenu(v => !v)}
+            aria-expanded={showAltroMenu}
+            data-testid="altro-menu-btn"
+            style={{
+              padding: '10px 16px',
+              minHeight: 40,
+              background: showAltroMenu ? '#0f2744' : 'white',
+              color: showAltroMenu ? 'white' : '#0f2744',
+              border: '1px solid #0f2744',
+              borderRadius: 8,
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              fontSize: 13,
+            }}
+          >
+            ⚙️ Altro {showAltroMenu ? '▴' : '▾'}
+          </button>
+          {showAltroMenu && (
+            <div
+              data-testid="altro-menu"
+              style={{
+                position: 'absolute',
+                top: 'calc(100% + 6px)',
+                left: 0,
+                background: '#fff',
+                borderRadius: 10,
+                boxShadow: '0 12px 32px rgba(15,39,68,0.18)',
+                border: '1px solid #e2e8f0',
+                minWidth: 240,
+                padding: '6px 0',
+                zIndex: 1500,
+                maxHeight: '70vh',
+                overflowY: 'auto',
+              }}
+            >
+              <button
+                onClick={() => {
+                  setShowAltroMenu(false);
+                  handleAutoAssocia();
+                }}
+                disabled={autoAssociating}
+                data-testid="auto-associa-btn"
+                style={menuItemStyle}
+              >
+                🔁 {autoAssociating ? 'Associando...' : 'Auto-Associa'}
+              </button>
+              <button
+                onClick={() => {
+                  setShowAltroMenu(false);
+                  handleAutoMatch(true);
+                }}
+                disabled={autoAssociating}
+                data-testid="auto-match-preview-btn"
+                title="Anteprima: mostra cosa collegherebbe senza scrivere sul DB"
+                style={menuItemStyle}
+              >
+                👁️ Anteprima auto-match
+              </button>
+              <button
+                onClick={() => {
+                  setShowAltroMenu(false);
+                  toggleAmbiguiSection();
+                }}
+                data-testid="ambigui-toggle-btn"
+                style={menuItemStyle}
+              >
+                ⚠️ {ambiguiOpen ? 'Nascondi ambigui' : 'Risolvi ambigui'}
+              </button>
+              <button
+                onClick={() => {
+                  setShowAltroMenu(false);
+                  handleAssociaCombinazioni();
+                }}
+                disabled={combinazioneLoading}
+                data-testid="associa-combinazioni-btn"
+                style={menuItemStyle}
+              >
+                🔗 {combinazioneLoading ? 'Cercando...' : 'Combinazioni'}
+              </button>
+              <button
+                onClick={() => {
+                  setShowAltroMenu(false);
+                  generateSelectedPDF();
+                }}
+                disabled={selectedAssegni.size === 0}
+                data-testid="stampa-selezionati-btn"
+                style={{
+                  ...menuItemStyle,
+                  color: selectedAssegni.size === 0 ? '#9ca3af' : '#374151',
+                  cursor: selectedAssegni.size === 0 ? 'not-allowed' : 'pointer',
+                }}
+              >
+                🖨️ Stampa Selezionati
+                {selectedAssegni.size > 0 ? ` (${selectedAssegni.size})` : ''}
+              </button>
+              <div style={{ height: 1, background: '#e2e8f0', margin: '6px 0' }} />
+              <button
+                onClick={() => {
+                  setShowAltroMenu(false);
+                  handleLearn();
+                }}
+                disabled={learningLoading}
+                data-testid="learn-btn"
+                title="Apprende dai dati esistenti per migliorare le associazioni future"
+                style={menuItemStyle}
+              >
+                🧠 {learningLoading ? 'Learning...' : 'Learn'}
+              </button>
+              <button
+                onClick={() => {
+                  setShowAltroMenu(false);
+                  handleAssociaIntelligente();
+                }}
+                disabled={autoAssociating}
+                data-testid="associa-intelligente-btn"
+                title="Usa i pattern appresi per associazioni più accurate"
+                style={menuItemStyle}
+              >
+                🤖 Smart
+              </button>
+              <button
+                onClick={() => {
+                  setShowAltroMenu(false);
+                  handlePuliziaDuplicati(true);
+                }}
+                disabled={puliziaLoading}
+                data-testid="pulizia-duplicati-btn"
+                title="Identifica e rimuove duplicati"
+                style={menuItemStyle}
+              >
+                🧹 Pulizia
+              </button>
+              <Link
+                to="/learning-machine?tab=assegni"
+                onClick={() => setShowAltroMenu(false)}
+                title="Dashboard Learning Machine completa"
+                style={{ ...menuItemStyle, textDecoration: 'none' }}
+              >
+                📊 Dashboard Learning
+              </Link>
+              <div style={{ height: 1, background: '#e2e8f0', margin: '6px 0' }} />
+              <button
+                onClick={() => {
+                  setShowAltroMenu(false);
+                  handleClearEmpty();
+                }}
+                data-testid="svuota-btn"
+                style={{ ...menuItemStyle, color: '#dc2626' }}
+              >
+                🗑️ Svuota (assegni vuoti)
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Selettore Anno */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Anno:</span>
+          <select
+            value={filterAnno}
+            onChange={e => setFilterAnno(parseInt(e.target.value))}
+            data-testid="select-anno"
+            style={{
+              padding: '8px 12px',
+              minHeight: 40,
+              border: '2px solid #1e3a5f',
+              borderRadius: 8,
+              fontSize: 14,
+              fontWeight: 'bold',
+              color: '#1e3a5f',
+              background: 'white',
+              cursor: 'pointer',
+            }}
+          >
+            {[...Array(5)].map((_, i) => {
+              const y = new Date().getFullYear() - i;
+              return (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              );
+            })}
+          </select>
+        </div>
       </div>
 
       {/* Pannello risoluzione ambigui */}
@@ -1238,225 +1441,14 @@ export default function GestioneAssegni() {
         </div>
       )}
 
-      {/* chiusura bottoniera originale continua dopo */}
-      <div
-        style={{
-          display: 'flex',
-          gap: 8,
-          flexWrap: 'wrap',
-          alignItems: 'center',
-          marginBottom: 12,
-        }}
-      >
-        {/* Pulsante Associazione Combinata (somma assegni = fattura) */}
-        <button
-          onClick={handleAssociaCombinazioni}
-          disabled={combinazioneLoading}
-          data-testid="associa-combinazioni-btn"
-          style={{
-            padding: '10px 16px',
-            background: combinazioneLoading
-              ? '#ccc'
-              : '#0f2744',
-            color: 'white',
-            border: 'none',
-            borderRadius: 8,
-            cursor: combinazioneLoading ? 'not-allowed' : 'pointer',
-            fontWeight: 'bold',
-            fontSize: 13,
-            boxShadow: '0 2px 4px rgba(102,126,234,0.3)',
-          }}
-        >
-          {combinazioneLoading ? '⏳ Cercando...' : '🔗 Combinazioni'}
-        </button>
-
-        {/* Pulsante Stampa Selezionati */}
-        {selectedAssegni.size > 0 && (
-          <button
-            onClick={generateSelectedPDF}
-            data-testid="stampa-selezionati-btn"
-            style={{
-              padding: '10px 16px',
-              background: '#9c27b0',
-              color: 'white',
-              border: 'none',
-              borderRadius: 8,
-              cursor: 'pointer',
-              fontWeight: 'bold',
-              fontSize: 13,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-            }}
-          >
-            🖨️ Stampa {selectedAssegni.size} Selezionati
-          </button>
-        )}
-
-        <button
-          onClick={() => setShowFilters(!showFilters)}
-          data-testid="toggle-filters-btn"
-          style={{
-            padding: '10px 16px',
-            background: showFilters ? '#1e3a5f' : 'transparent',
-            color: showFilters ? 'white' : '#1e3a5f',
-            border: '1px solid #1e3a5f',
-            borderRadius: 8,
-            cursor: 'pointer',
-            fontWeight: 'bold',
-            fontSize: 13,
-          }}
-        >
-          🔍 Filtri{' '}
-          {(filterFornitore ||
-            filterImportoMin ||
-            filterImportoMax ||
-            filterNumeroAssegno ||
-            filterNumeroFattura) &&
-            '●'}
-        </button>
-
-        {/* Selettore Anno */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Anno:</span>
-          <select
-            value={filterAnno}
-            onChange={e => setFilterAnno(parseInt(e.target.value))}
-            data-testid="select-anno"
-            style={{
-              padding: '10px 16px',
-              border: '2px solid #1e3a5f',
-              borderRadius: 8,
-              fontSize: 14,
-              fontWeight: 'bold',
-              color: '#1e3a5f',
-              background: 'white',
-              cursor: 'pointer',
-            }}
-          >
-            {[...Array(5)].map((_, i) => {
-              const y = new Date().getFullYear() - i;
-              return (
-                <option key={y} value={y}>
-                  {y}
-                </option>
-              );
-            })}
-          </select>
-        </div>
-
-        <button
-          onClick={handleClearEmpty}
-          data-testid="svuota-btn"
-          style={{
-            padding: '10px 16px',
-            background: 'transparent',
-            color: '#666',
-            border: '1px solid #ddd',
-            borderRadius: 8,
-            cursor: 'pointer',
-            fontSize: 13,
-          }}
-        >
-          Svuota
-        </button>
-
-        {/* === LEARNING MACHINE BUTTONS === */}
-        <div
-          style={{
-            display: 'flex',
-            gap: 6,
-            marginLeft: 'auto',
-            padding: '4px 8px',
-            background: '#0f2744',
-            borderRadius: 8,
-          }}
-        >
-          <button
-            onClick={handleLearn}
-            disabled={learningLoading}
-            data-testid="learn-btn"
-            title="Apprende dai dati esistenti per migliorare le associazioni future"
-            style={{
-              padding: '8px 12px',
-              background: learningLoading ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.15)',
-              color: 'white',
-              border: 'none',
-              borderRadius: 6,
-              cursor: learningLoading ? 'not-allowed' : 'pointer',
-              fontSize: 12,
-              fontWeight: 600,
-            }}
-          >
-            {learningLoading ? '⏳' : '🧠'} Learn
-          </button>
-
-          <button
-            onClick={handleAssociaIntelligente}
-            disabled={autoAssociating}
-            data-testid="associa-intelligente-btn"
-            title="Usa i pattern appresi per associazioni più accurate"
-            style={{
-              padding: '8px 12px',
-              background: autoAssociating ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.15)',
-              color: 'white',
-              border: 'none',
-              borderRadius: 6,
-              cursor: autoAssociating ? 'not-allowed' : 'pointer',
-              fontSize: 12,
-              fontWeight: 600,
-            }}
-          >
-            {autoAssociating ? '⏳' : '🤖'} Smart
-          </button>
-
-          <button
-            onClick={() => handlePuliziaDuplicati(true)}
-            disabled={puliziaLoading}
-            data-testid="pulizia-duplicati-btn"
-            title="Identifica e rimuove duplicati"
-            style={{
-              padding: '8px 12px',
-              background: puliziaLoading ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.15)',
-              color: 'white',
-              border: 'none',
-              borderRadius: 6,
-              cursor: puliziaLoading ? 'not-allowed' : 'pointer',
-              fontSize: 12,
-              fontWeight: 600,
-            }}
-          >
-            {puliziaLoading ? '⏳' : '🧹'} Pulizia
-          </button>
-
-          <Link
-            to="/learning-machine?tab=assegni"
-            style={{
-              padding: '8px 12px',
-              background: 'rgba(255,255,255,0.15)',
-              color: 'white',
-              border: 'none',
-              borderRadius: 6,
-              textDecoration: 'none',
-              fontSize: 12,
-              fontWeight: 600,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-            }}
-            title="Dashboard Learning Machine completa"
-          >
-            📊 Dashboard
-          </Link>
-        </div>
-      </div>
-
       {/* STATS AVANZATE BADGE */}
       {statsAvanzate && (
         <div
           style={{
             display: 'flex',
-            gap: 16,
+            flexDirection: isMobile ? 'column' : 'row',
+            alignItems: isMobile ? 'stretch' : 'center',
+            gap: isMobile ? 10 : 16,
             marginBottom: 16,
             padding: 12,
             background: '#dbeafe',
@@ -1597,10 +1589,16 @@ export default function GestioneAssegni() {
             </div>
             <button
               onClick={() => setLearningResult(null)}
+              aria-label="Chiudi"
               style={{
-                padding: '4px 8px',
+                width: 40,
+                height: 40,
+                flexShrink: 0,
                 background: 'transparent',
                 border: 'none',
+                borderRadius: 8,
+                fontSize: 16,
+                color: '#64748b',
                 cursor: 'pointer',
               }}
             >
@@ -1658,10 +1656,16 @@ export default function GestioneAssegni() {
             </div>
             <button
               onClick={() => setPuliziaResult(null)}
+              aria-label="Chiudi"
               style={{
-                padding: '4px 8px',
+                width: 40,
+                height: 40,
+                flexShrink: 0,
                 background: 'transparent',
                 border: 'none',
+                borderRadius: 8,
+                fontSize: 16,
+                color: '#64748b',
                 cursor: 'pointer',
               }}
             >
@@ -1677,16 +1681,39 @@ export default function GestioneAssegni() {
           style={{
             position: 'fixed',
             top: 60,
-            left: 200,
-            right: 20,
+            left: isMobile ? 12 : 200,
+            right: isMobile ? 12 : 20,
             zIndex: 100,
             background: '#f8fafc',
             borderRadius: 12,
-            padding: 16,
+            padding: '48px 16px 16px',
             border: '1px solid #e2e8f0',
             boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+            maxHeight: '80vh',
+            overflowY: 'auto',
           }}
         >
+          {/* X di chiusura ben tappabile */}
+          <button
+            onClick={() => setShowFilters(false)}
+            aria-label="Chiudi filtri"
+            data-testid="close-filters-btn"
+            style={{
+              position: 'absolute',
+              top: 6,
+              right: 6,
+              width: 40,
+              height: 40,
+              background: 'transparent',
+              border: 'none',
+              borderRadius: 8,
+              fontSize: 20,
+              color: '#64748b',
+              cursor: 'pointer',
+            }}
+          >
+            ✕
+          </button>
           <div
             style={{
               display: 'grid',
@@ -1800,7 +1827,8 @@ export default function GestioneAssegni() {
                 data-testid="reset-filters-btn"
                 style={{
                   padding: '8px 16px',
-                  background: '#ef4444',
+                  minHeight: 40,
+                  background: '#dc2626',
                   color: 'white',
                   border: 'none',
                   borderRadius: 6,
@@ -1809,20 +1837,6 @@ export default function GestioneAssegni() {
                 }}
               >
                 Reset
-              </button>
-              <button
-                onClick={() => setShowFilters(false)}
-                style={{
-                  padding: '8px 12px',
-                  background: '#64748b',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: 6,
-                  cursor: 'pointer',
-                  fontSize: 13,
-                }}
-              >
-                ✕
               </button>
             </div>
           </div>
@@ -1918,7 +1932,21 @@ export default function GestioneAssegni() {
                 </details>
               )}
             </div>
-            <button onClick={() => setAutoAssocResult(null)} style={{ padding: '5px 10px' }}>
+            <button
+              onClick={() => setAutoAssocResult(null)}
+              aria-label="Chiudi"
+              style={{
+                width: 40,
+                height: 40,
+                flexShrink: 0,
+                background: 'transparent',
+                border: 'none',
+                borderRadius: 8,
+                fontSize: 16,
+                color: '#64748b',
+                cursor: 'pointer',
+              }}
+            >
               ✕
             </button>
           </div>
@@ -1963,7 +1991,21 @@ export default function GestioneAssegni() {
                 </div>
               )}
             </div>
-            <button onClick={() => setAutoAssocResult(null)} style={{ padding: '5px 10px' }}>
+            <button
+              onClick={() => setAutoAssocResult(null)}
+              aria-label="Chiudi"
+              style={{
+                width: 40,
+                height: 40,
+                flexShrink: 0,
+                background: 'transparent',
+                border: 'none',
+                borderRadius: 8,
+                fontSize: 16,
+                color: '#64748b',
+                cursor: 'pointer',
+              }}
+            >
               ✕
             </button>
           </div>
@@ -2066,7 +2108,19 @@ export default function GestioneAssegni() {
             </div>
             <button
               onClick={() => setCombinazioneResult(null)}
-              style={{ padding: '5px 10px', marginLeft: 10 }}
+              aria-label="Chiudi"
+              style={{
+                width: 40,
+                height: 40,
+                flexShrink: 0,
+                marginLeft: 10,
+                background: 'transparent',
+                border: 'none',
+                borderRadius: 8,
+                fontSize: 16,
+                color: '#64748b',
+                cursor: 'pointer',
+              }}
             >
               ✕
             </button>
@@ -2201,7 +2255,8 @@ export default function GestioneAssegni() {
                                     }
                                   }}
                                   style={{
-                                    padding: '6px 14px',
+                                    padding: '10px 14px',
+                                    minHeight: 40,
                                     background: '#3b82f6',
                                     color: 'white',
                                     border: 'none',
@@ -2361,12 +2416,25 @@ export default function GestioneAssegni() {
                         </span>
                       </div>
 
-                      {/* Row 2: Beneficiario */}
-                      {assegno.beneficiario && (
+                      {/* Row 2: Beneficiario (o fornitore dedotto dalla fattura collegata) */}
+                      {assegno.beneficiario ? (
                         <div style={{ fontSize: 13, marginBottom: 6 }}>
                           <span style={{ color: '#666' }}>👤</span> {assegno.beneficiario}
                         </div>
-                      )}
+                      ) : assegno.fornitore_fattura ? (
+                        <div
+                          style={{
+                            fontSize: 13,
+                            marginBottom: 6,
+                            fontStyle: 'italic',
+                            color: '#64748b',
+                          }}
+                          title="Fornitore dedotto dalla fattura collegata"
+                        >
+                          <span style={{ color: '#666' }}>👤</span> →{' '}
+                          {assegno.fornitore_fattura}
+                        </div>
+                      ) : null}
 
                       {/* Row 3: Fattura (se presente) */}
                       {assegno.numero_fattura && (
@@ -2386,24 +2454,32 @@ export default function GestioneAssegni() {
                               ({formatDateIT(assegno.data_fattura)})
                             </span>
                           )}
-                          {/* Link alla fattura - usa fattura_collegata o prima di fatture_collegate */}
+                          {/* Apre la fattura in un modale in-page (niente nuove schede) */}
                           {(assegno.fattura_collegata ||
                             assegno.fatture_collegate?.[0]?.fattura_id) && (
-                            <a
-                              href={`/api/fatture-ricevute/fattura/${assegno.fattura_collegata || assegno.fatture_collegate?.[0]?.fattura_id}/view-assoinvoice`}
-                              target="_blank"
-                              rel="noopener noreferrer"
+                            <button
+                              onClick={() =>
+                                setFatturaView({
+                                  id:
+                                    assegno.fattura_collegata ||
+                                    assegno.fatture_collegate?.[0]?.fattura_id,
+                                  numero: assegno.numero_fattura,
+                                })
+                              }
                               style={{
-                                padding: '2px 8px',
-                                background: '#4caf50',
+                                padding: '8px 14px',
+                                minHeight: 40,
+                                background: '#16a34a',
                                 color: 'white',
-                                borderRadius: 4,
-                                fontSize: 11,
-                                textDecoration: 'none',
+                                border: 'none',
+                                borderRadius: 6,
+                                fontSize: 12,
+                                fontWeight: 'bold',
+                                cursor: 'pointer',
                               }}
                             >
-                              Vedi
-                            </a>
+                              📄 Vedi
+                            </button>
                           )}
                         </div>
                       )}
@@ -2414,7 +2490,8 @@ export default function GestioneAssegni() {
                           onClick={() => startEdit(assegno)}
                           style={{
                             flex: 1,
-                            padding: '8px',
+                            padding: '10px 8px',
+                            minHeight: 40,
                             background: '#f5f5f5',
                             border: 'none',
                             borderRadius: 6,
@@ -2428,7 +2505,8 @@ export default function GestioneAssegni() {
                           onClick={() => openFattureModal(assegno)}
                           style={{
                             flex: 1,
-                            padding: '8px',
+                            padding: '10px 8px',
+                            minHeight: 40,
                             background: '#e3f2fd',
                             border: 'none',
                             borderRadius: 6,
@@ -2441,16 +2519,19 @@ export default function GestioneAssegni() {
                         <button
                           onClick={() => handleDelete(assegno)}
                           style={{
-                            padding: '8px 12px',
+                            padding: '10px 14px',
+                            minWidth: 44,
+                            minHeight: 40,
                             background: '#ffebee',
                             border: 'none',
                             borderRadius: 6,
                             cursor: 'pointer',
                             color: '#c62828',
-                            fontSize: 12,
+                            fontSize: 14,
                           }}
+                          title="Elimina"
                         >
-                          ✕
+                          🗑️
                         </button>
                       </div>
                     </div>
@@ -2635,7 +2716,18 @@ export default function GestioneAssegni() {
                             ) : (
                               <div>
                                 <div style={{ fontWeight: 500, fontSize: 13 }}>
-                                  {assegno.beneficiario || '-'}
+                                  {assegno.beneficiario ? (
+                                    assegno.beneficiario
+                                  ) : assegno.fornitore_fattura ? (
+                                    <span
+                                      style={{ fontStyle: 'italic', color: '#64748b' }}
+                                      title="Fornitore dedotto dalla fattura collegata"
+                                    >
+                                      → {assegno.fornitore_fattura}
+                                    </span>
+                                  ) : (
+                                    '-'
+                                  )}
                                 </div>
                                 {assegno.note && (
                                   <div style={{ fontSize: 11, color: '#666', marginTop: 2 }}>
@@ -2719,33 +2811,38 @@ export default function GestioneAssegni() {
                                   gap: 6,
                                 }}
                               >
-                                {/* Pulsante per visualizzare fattura */}
+                                {/* Pulsante per visualizzare fattura in modale in-page */}
                                 {(assegno.fattura_collegata ||
                                   assegno.fatture_collegate?.[0]?.fattura_id) && (
-                                  <a
-                                    href={`/api/fatture-ricevute/fattura/${assegno.fattura_collegata || assegno.fatture_collegate?.[0]?.fattura_id}/view-assoinvoice`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    onClick={e => e.stopPropagation()}
+                                  <button
+                                    onClick={e => {
+                                      e.stopPropagation();
+                                      setFatturaView({
+                                        id:
+                                          assegno.fattura_collegata ||
+                                          assegno.fatture_collegate?.[0]?.fattura_id,
+                                        numero: assegno.numero_fattura,
+                                      });
+                                    }}
                                     style={{
-                                      padding: '3px 8px',
-                                      background: '#4caf50',
+                                      padding: '8px 10px',
+                                      minHeight: 40,
+                                      background: '#16a34a',
                                       color: 'white',
                                       border: 'none',
-                                      borderRadius: 4,
+                                      borderRadius: 6,
                                       cursor: 'pointer',
                                       fontSize: 11,
                                       fontWeight: 'bold',
                                       display: 'inline-flex',
                                       alignItems: 'center',
                                       gap: 3,
-                                      textDecoration: 'none',
                                     }}
                                     title="Visualizza Fattura"
                                     data-testid={`view-fattura-${assegno.id}`}
                                   >
                                     📄 Vedi
-                                  </a>
+                                  </button>
                                 )}
                                 {/* Info fattura */}
                                 <div>
@@ -2766,34 +2863,40 @@ export default function GestioneAssegni() {
 
                           {/* Azioni - STAMPA ed ELIMINA nella stessa riga */}
                           <td style={{ padding: '6px', textAlign: 'center' }}>
-                            <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
+                            <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
                               {editingId === assegno.id ? (
                                 <>
                                   <button
                                     onClick={handleSaveEdit}
                                     style={{
-                                      padding: '4px 8px',
+                                      minWidth: 40,
+                                      minHeight: 40,
+                                      padding: 8,
                                       cursor: 'pointer',
-                                      background: '#4caf50',
+                                      background: '#16a34a',
                                       color: 'white',
                                       border: 'none',
-                                      borderRadius: 4,
-                                      fontSize: 11,
+                                      borderRadius: 6,
+                                      fontSize: 15,
                                     }}
+                                    title="Salva"
                                   >
                                     ✓
                                   </button>
                                   <button
                                     onClick={cancelEdit}
                                     style={{
-                                      padding: '4px 8px',
+                                      minWidth: 40,
+                                      minHeight: 40,
+                                      padding: 8,
                                       cursor: 'pointer',
-                                      background: '#f44336',
+                                      background: '#dc2626',
                                       color: 'white',
                                       border: 'none',
-                                      borderRadius: 4,
-                                      fontSize: 11,
+                                      borderRadius: 6,
+                                      fontSize: 15,
                                     }}
+                                    title="Annulla"
                                   >
                                     ✕
                                   </button>
@@ -2804,11 +2907,14 @@ export default function GestioneAssegni() {
                                     onClick={() => startEdit(assegno)}
                                     data-testid={`edit-${assegno.id}`}
                                     style={{
-                                      padding: '4px 6px',
+                                      minWidth: 40,
+                                      minHeight: 40,
+                                      padding: 8,
                                       cursor: 'pointer',
                                       background: '#f5f5f5',
                                       border: 'none',
-                                      borderRadius: 4,
+                                      borderRadius: 6,
+                                      fontSize: 15,
                                     }}
                                     title="Modifica"
                                   >
@@ -2818,11 +2924,14 @@ export default function GestioneAssegni() {
                                     onClick={() => openFattureModal(assegno)}
                                     data-testid={`fatture-${assegno.id}`}
                                     style={{
-                                      padding: '4px 6px',
+                                      minWidth: 40,
+                                      minHeight: 40,
+                                      padding: 8,
                                       cursor: 'pointer',
                                       background: '#f5f5f5',
                                       border: 'none',
-                                      borderRadius: 4,
+                                      borderRadius: 6,
+                                      fontSize: 15,
                                     }}
                                     title="Collega Fatture"
                                   >
@@ -2836,12 +2945,15 @@ export default function GestioneAssegni() {
                                     }}
                                     data-testid={`print-${assegno.id}`}
                                     style={{
-                                      padding: '4px 6px',
+                                      minWidth: 40,
+                                      minHeight: 40,
+                                      padding: 8,
                                       cursor: 'pointer',
                                       background: '#2196f3',
                                       color: 'white',
                                       border: 'none',
-                                      borderRadius: 4,
+                                      borderRadius: 6,
+                                      fontSize: 15,
                                     }}
                                     title="Stampa"
                                   >
@@ -2852,12 +2964,15 @@ export default function GestioneAssegni() {
                                     onClick={() => handleDelete(assegno)}
                                     data-testid={`delete-${assegno.id}`}
                                     style={{
-                                      padding: '4px 6px',
+                                      minWidth: 40,
+                                      minHeight: 40,
+                                      padding: 8,
                                       cursor: 'pointer',
                                       background: '#ffebee',
                                       border: 'none',
-                                      borderRadius: 4,
+                                      borderRadius: 6,
                                       color: '#c62828',
+                                      fontSize: 15,
                                     }}
                                     title="Elimina"
                                   >
@@ -2901,7 +3016,34 @@ export default function GestioneAssegni() {
             }}
             onClick={e => e.stopPropagation()}
           >
-            <h2 style={{ marginTop: 0 }}>Genera 10 Assegni Progressivi</h2>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'flex-start',
+                gap: 8,
+              }}
+            >
+              <h2 style={{ marginTop: 0 }}>Genera 10 Assegni Progressivi</h2>
+              <button
+                onClick={() => setShowGenerate(false)}
+                aria-label="Chiudi"
+                data-testid="close-generate-btn"
+                style={{
+                  width: 40,
+                  height: 40,
+                  flexShrink: 0,
+                  background: '#f1f5f9',
+                  border: 'none',
+                  borderRadius: 8,
+                  fontSize: 18,
+                  color: '#334155',
+                  cursor: 'pointer',
+                }}
+              >
+                ✕
+              </button>
+            </div>
             <p style={{ color: '#666', fontSize: 14, marginBottom: 20 }}>
               Inserisci il numero del primo assegno nel formato PREFISSO-NUMERO
             </p>
@@ -2984,7 +3126,7 @@ export default function GestioneAssegni() {
               background: 'white',
               borderRadius: 12,
               padding: 0,
-              maxWidth: 700,
+              maxWidth: 560,
               width: '95%',
               maxHeight: '85vh',
               overflow: 'hidden',
@@ -2996,7 +3138,7 @@ export default function GestioneAssegni() {
             {/* Header Draggable */}
             <div
               style={{
-                padding: '16px 24px',
+                padding: '10px 10px 10px 16px',
                 background: '#0f2744',
                 color: 'white',
                 cursor: 'grab',
@@ -3022,8 +3164,8 @@ export default function GestioneAssegni() {
               onMouseLeave={() => setIsDragging(false)}
             >
               <div>
-                <h2 style={{ margin: 0, fontSize: 18 }}>📄 Collega Fatture all'Assegno</h2>
-                <p style={{ margin: '4px 0 0', fontSize: 12, opacity: 0.8 }}>
+                <h2 style={{ margin: 0, fontSize: 16 }}>📄 Collega Fatture all'Assegno</h2>
+                <p style={{ margin: '2px 0 0', fontSize: 11, opacity: 0.8 }}>
                   Trascina per spostare
                 </p>
               </div>
@@ -3033,30 +3175,35 @@ export default function GestioneAssegni() {
                   setSelectedFatture([]);
                   setModalPosition({ x: 0, y: 0 });
                 }}
+                aria-label="Chiudi"
+                data-testid="close-fatture-modal-btn"
+                onMouseDown={e => e.stopPropagation()}
                 style={{
                   background: 'rgba(255,255,255,0.2)',
                   border: 'none',
                   color: 'white',
-                  width: 32,
-                  height: 32,
-                  borderRadius: '50%',
+                  width: 40,
+                  height: 40,
+                  flexShrink: 0,
+                  borderRadius: 8,
                   cursor: 'pointer',
-                  fontSize: 18,
+                  fontSize: 20,
+                  lineHeight: 1,
                 }}
               >
-                ×
+                ✕
               </button>
             </div>
 
             {/* Content */}
-            <div style={{ padding: 24, maxHeight: 'calc(85vh - 120px)', overflowY: 'auto' }}>
+            <div style={{ padding: 16, maxHeight: 'calc(85vh - 100px)', overflowY: 'auto' }}>
               {/* Info Assegno con Importo */}
               <div
                 style={{
                   background: '#f8fafc',
-                  padding: 16,
+                  padding: 12,
                   borderRadius: 8,
-                  marginBottom: 20,
+                  marginBottom: 12,
                   border: '1px solid #e2e8f0',
                 }}
               >
@@ -3075,7 +3222,7 @@ export default function GestioneAssegni() {
                     </div>
                     <div
                       style={{
-                        fontSize: 18,
+                        fontSize: 16,
                         fontWeight: 'bold',
                         color: '#1e293b',
                         fontFamily: 'monospace',
@@ -3088,7 +3235,7 @@ export default function GestioneAssegni() {
                     <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>
                       Importo Assegno
                     </div>
-                    <div style={{ fontSize: 22, fontWeight: 'bold', color: '#1e3a5f' }}>
+                    <div style={{ fontSize: 18, fontWeight: 'bold', color: '#1e3a5f' }}>
                       {formatEuro(editingAssegnoForFatture?.importo || 0)}
                     </div>
                   </div>
@@ -3112,9 +3259,9 @@ export default function GestioneAssegni() {
                 <div
                   style={{
                     background: '#ecfdf5',
-                    padding: 16,
+                    padding: 12,
                     borderRadius: 8,
-                    marginBottom: 20,
+                    marginBottom: 12,
                     border: '1px solid #a7f3d0',
                   }}
                 >
@@ -3241,7 +3388,7 @@ export default function GestioneAssegni() {
                 ) : (
                   <div
                     style={{
-                      maxHeight: 280,
+                      maxHeight: 270,
                       overflow: 'auto',
                       border: '1px solid #e2e8f0',
                       borderRadius: 8,
@@ -3297,7 +3444,7 @@ export default function GestioneAssegni() {
                               })
                             }
                             style={{
-                              padding: 14,
+                              padding: '10px 12px',
                               borderBottom: '1px solid #f1f5f9',
                               cursor: 'pointer',
                               background: isSelected
@@ -3407,6 +3554,15 @@ export default function GestioneAssegni() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modale visualizzazione fattura in-page (niente nuove schede del browser) */}
+      {fatturaView && (
+        <ModalFattura
+          fatturaId={fatturaView.id}
+          numero={fatturaView.numero}
+          onClose={() => setFatturaView(null)}
+        />
       )}
     </div>
   );

@@ -387,7 +387,9 @@ export default function PaypalTransactionDetailModal({ open, onClose, transactio
                       {fatture.map((f) => {
                         const importoFattura = Math.abs(Number(f.total_amount ?? f.importo_totale ?? 0));
                         const importoTx = Math.abs(Number(tx.lordo ?? tx.amount ?? 0));
-                        const matchImporto = importoTx > 0 && Math.abs(importoFattura - importoTx) < 0.02;
+                        const matchRiferimento = f.match === 'riferimento';
+                        const matchImporto = matchRiferimento ||
+                          (importoTx > 0 && Math.abs(importoFattura - importoTx) < 0.06);
                         return (
                           <div
                             key={f.id}
@@ -410,7 +412,11 @@ export default function PaypalTransactionDetailModal({ open, onClose, transactio
                               <span style={{ color: '#64748b', marginLeft: 8 }}>
                                 {fmtDate(f.invoice_date || f.data_fattura)}
                               </span>
-                              {matchImporto && (
+                              {matchRiferimento ? (
+                                <span style={{ marginLeft: 8, fontSize: 10, color: '#166534', fontWeight: 700 }}>
+                                  ✓ fattura indicata da PayPal
+                                </span>
+                              ) : matchImporto && (
                                 <span style={{ marginLeft: 8, fontSize: 10, color: '#92400e', fontWeight: 700 }}>
                                   ★ stesso importo
                                 </span>
