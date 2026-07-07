@@ -170,9 +170,7 @@ def _register_warehouse(app: FastAPI):
 def _register_invoices(app: FastAPI):
     from app.routers.invoices import (
         invoices_main,
-        invoices_main_overlay,
         invoices_emesse,
-        invoices_export,
         fatture_overlay,
         fatture_upload,
         fatture_drive,
@@ -181,9 +179,7 @@ def _register_invoices(app: FastAPI):
     from app.routers.fatture_module import router as fatture_ricevute_router
 
     app.include_router(invoices_emesse.router, prefix="/api/invoices/emesse", tags=["Invoices Emesse"])
-    app.include_router(invoices_main_overlay.router, prefix="/api/invoices", tags=["Invoices Overlay"])
     app.include_router(invoices_main.router, prefix="/api/invoices", tags=["Invoices"])
-    app.include_router(invoices_export.router, prefix="/api/invoices", tags=["Invoices Export"])
     app.include_router(fatture_overlay.router, prefix="/api/fatture", tags=["Fatture Overlay"])
     app.include_router(fatture_upload.router, prefix="/api/fatture", tags=["Fatture Upload"])
     app.include_router(fatture_drive.router, prefix="/api/fatture", tags=["Fatture Drive"])

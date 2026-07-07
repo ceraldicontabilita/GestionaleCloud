@@ -9,7 +9,6 @@ ARCHITETTURA:
 - *_service.py: Altri servizi specifici
 """
 from .auth_service import AuthService
-from .invoice_service import InvoiceService
 from .invoice_service_v2 import InvoiceServiceV2, get_invoice_service_v2
 from .warehouse_service import WarehouseService
 from .accounting_service import AccountingService
@@ -27,7 +26,6 @@ from .data_propagation import DataPropagationService, get_propagation_service
 __all__ = [
     # Core Services
     "AuthService",
-    "InvoiceService",
     "InvoiceServiceV2",
     "get_invoice_service_v2",
     "WarehouseService",

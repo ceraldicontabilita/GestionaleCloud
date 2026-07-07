@@ -202,104 +202,11 @@ async def get_f24_dashboard_public(
 
 
 # ============== INVOICES ==============
-
-@router.get("/invoices")
-async def list_invoices(
-    skip: int = 0, 
-    limit: int = 10000,
-    anno: Optional[int] = Query(None, description="Filter by year (YYYY)")
-) -> List[Dict[str, Any]]:
-    """Lista fatture con filtro opzionale per anno."""
-    db = Database.get_db()
-    query = {}
-    
-    # Filtro per anno
-    # IMPORTANTE: Consideriamo sia invoice_date (fatture XML complete) 
-    # che data_documento (fatture provvisorie da Aruba)
-    if anno is not None:
-        anno_start = f"{anno}-01-01"
-        anno_end = f"{anno}-12-31"
-        query["$or"] = [
-            {"invoice_date": {"$gte": anno_start, "$lte": anno_end}},
-            {"data_documento": {"$gte": anno_start, "$lte": anno_end}}
-        ]
-    
-    # Usa aggregazione per ordinare correttamente (prende invoice_date se esiste, altrimenti data_documento)
-    pipeline = [
-        {"$match": query} if query else {"$match": {}},
-        {"$addFields": {
-            "data_effettiva": {"$ifNull": ["$invoice_date", "$data_documento"]}
-        }},
-        {"$sort": {"data_effettiva": -1}},
-        {"$skip": skip},
-        {"$limit": limit},
-        {"$project": {"_id": 0}}
-    ]
-    
-    results = await db[Collections.INVOICES].aggregate(pipeline).to_list(limit)
-    return results
-
-
-@router.post("/invoices")
-async def create_invoice(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
-    """Crea fattura manuale."""
-    db = Database.get_db()
-    invoice = {
-        "id": str(uuid.uuid4()),
-        "invoice_number": data.get("invoice_number", ""),
-        "supplier_name": data.get("supplier_name", ""),
-        "total_amount": data.get("total_amount", 0),
-        "invoice_date": data.get("invoice_date", ""),
-        "status": data.get("status", "pending"),
-        "created_at": datetime.now(timezone.utc).isoformat()
-    }
-    await db[Collections.INVOICES].insert_one(invoice.copy())
-    invoice.pop("_id", None)
-    return invoice
-
-
-@router.delete("/invoices/{invoice_id}")
-async def delete_invoice(
-    invoice_id: str,
-    force: bool = Query(False, description="Forza eliminazione")
-) -> Dict[str, Any]:
-    """
-    Elimina fattura con validazione business rules.
-    
-    **Regole:**
-    - Non può eliminare fatture pagate
-    - Non può eliminare fatture registrate
-    """
-    from app.services.business_rules import BusinessRules, EntityStatus
-    from datetime import timezone
-    
-    db = Database.get_db()
-    invoice = await db[Collections.INVOICES].find_one({"id": invoice_id})
-    if not invoice:
-        raise HTTPException(status_code=404, detail="Fattura non trovata")
-    
-    # Valida con business rules
-    validation = BusinessRules.can_delete_invoice(invoice)
-    
-    if not validation.is_valid:
-        raise HTTPException(
-            status_code=400,
-            detail={"message": "Eliminazione non consentita", "errors": validation.errors}
-        )
-    
-    if validation.warnings and not force:
-        return {"status": "warning", "warnings": validation.warnings, "require_force": True}
-    
-    # Soft-delete
-    await db[Collections.INVOICES].update_one(
-        {"id": invoice_id},
-        {"$set": {
-            "entity_status": EntityStatus.DELETED.value,
-            "status": "deleted",
-            "deleted_at": datetime.now(timezone.utc).isoformat()
-        }}
-    )
-    return {"success": True, "deleted_id": invoice_id}
+# NOTE: GET/POST /invoices e DELETE /invoices/{id} sono gestiti da
+# app/routers/invoices/invoices_main.py (schema coalescente EN/IT + dedup):
+# qui c'erano tre route quasi omonime, registrate PRIMA nel router_registry
+# e quindi vincenti su quelle corrette (nessun chiamante frontend le usava
+# comunque). Vedi memoria/endpoints/03-fatture-fornitori.md.
 
 
 # ============== SUPPLIERS ==============
