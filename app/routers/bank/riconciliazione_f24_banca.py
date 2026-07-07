@@ -13,9 +13,18 @@ import logging
 from app.database import Database
 from app.db_collections import (
     COLL_ESTRATTO_CONTO,
-    COLL_F24_COMMERCIALISTA,
     QUERY_F24_PATTERN
 )
+
+# NON importare COLL_F24_COMMERCIALISTA da db_collections: lì l'alias punta
+# a "f24_unificato" (retrocompatibilità con un'altra pipeline F24), ma il
+# flusso "F24 commercialista → Quietanza → Banca" che questo router
+# completa lavora sulla stessa collection di f24_riconciliazione.py ed
+# email_f24.py: "f24_commercialista". Prima questo file leggeva/scriveva
+# silenziosamente un archivio diverso da quello popolato dall'upload F24
+# commercialista, quindi la riconciliazione con l'estratto conto non
+# trovava mai nulla (bug #6 audit memoria/endpoints/README.md).
+COLL_F24_COMMERCIALISTA = "f24_commercialista"
 from app.services.estratto_conto_bpm_parser import (
     parse_estratto_conto_bpm,
     riconcilia_f24_con_estratto,

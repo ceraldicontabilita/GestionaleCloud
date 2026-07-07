@@ -8,6 +8,7 @@ Header attesi:
   X-Source: tracciabilita
   X-Azienda: <uuid azienda>
 """
+import os
 import uuid
 import logging
 from datetime import datetime, timezone
@@ -21,6 +22,16 @@ from app.database import Database
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/erp/ponte", tags=["ERP Bridge"])
+
+# Segreto condiviso con Tracciabilità (ceraldiapp.it). Il middleware globale
+# (app/middleware/authentication.py) richiede sempre un JWT nostro su ogni
+# /api/*, ma questo endpoint riceve chiamate da un'app ESTERNA che non può
+# averne uno: prima restava semplicemente escluso da nessuna whitelist e
+# rispondeva sempre 401 (bug #24 audit memoria/endpoints/README.md) — il
+# ponte non ha mai funzionato in produzione. Ora il path è whitelistato
+# (vedi PUBLIC_PATHS) ma protetto qui da un segreto dedicato invece di
+# restare aperto a chiunque.
+ERP_BRIDGE_SECRET = os.environ.get("ERP_BRIDGE_SECRET", "")
 
 
 # ── Schema payload in arrivo da Tracciabilità ─────────────────────────────────
@@ -63,11 +74,21 @@ async def ricevi_fattura_da_tracciabilita(
     request: Request,
     x_source: Optional[str] = Header(None),
     x_azienda: Optional[str] = Header(None),
+    x_erp_secret: Optional[str] = Header(None),
 ):
     """
     Riceve una fattura importata da Tracciabilità e la upserta in `fatture_passive`.
     Usa dedup_key = numero_fattura + partita_iva per evitare duplicati.
     """
+    if ERP_BRIDGE_SECRET:
+        if x_erp_secret != ERP_BRIDGE_SECRET:
+            raise HTTPException(status_code=401, detail="Segreto ponte non valido o mancante")
+    else:
+        logger.warning(
+            "[PONTE] ERP_BRIDGE_SECRET non configurato: endpoint pubblico senza verifica. "
+            "Impostare la variabile d'ambiente su Render per proteggerlo."
+        )
+
     db = Database.get_db()
 
     data_iso = _normalizza_data(payload.data)

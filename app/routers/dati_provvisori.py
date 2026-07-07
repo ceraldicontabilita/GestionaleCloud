@@ -77,7 +77,12 @@ async def sposta_in_cassa(data: Dict[str, Any]) -> Dict[str, Any]:
         "tipo": "uscita",
         "categoria": "fornitori",
         "descrizione": f"{data['fornitore']} - Fattura {data['numero_documento']}",
-        "importo": -abs(float(data["importo"])),  # Negativo = uscita
+        # Convenzione della collection: importo SEMPRE positivo, il segno lo
+        # dà "tipo" nelle aggregazioni (entrate - uscite). Salvarlo negativo
+        # con tipo="uscita" faceva sì che le aggregate sottraessero un
+        # numero negativo, AUMENTANDO il saldo invece di diminuirlo (bug #5
+        # audit memoria/endpoints/README.md).
+        "importo": abs(float(data["importo"])),
         "fornitore": data["fornitore"],
         "numero_documento": data["numero_documento"],
         "fonte": "dato_provvisorio",
@@ -126,11 +131,18 @@ async def sposta_in_banca(data: Dict[str, Any]) -> Dict[str, Any]:
     # Crea movimento in Prima Nota Banca
     movimento_banca = {
         "id": str(uuid.uuid4()),
+        # "data" è il campo canonico letto da tutte le query su
+        # estratto_conto_movimenti (piano conti, riconciliazione, prima
+        # nota...): senza di esso il movimento era invisibile ovunque tranne
+        # che nella sua stessa collection.
+        "data": data["data_documento"],
         "data_valuta": data["data_documento"],
         "tipo": "uscita",
         "categoria": "fornitori",
         "descrizione_originale": f"{data['fornitore']} - Fattura {data['numero_documento']}",
-        "importo": -abs(float(data["importo"])),  # Negativo = uscita
+        "descrizione": f"{data['fornitore']} - Fattura {data['numero_documento']}",
+        # Importo sempre positivo, vedi commento in sposta_in_cassa.
+        "importo": abs(float(data["importo"])),
         "fornitore": data["fornitore"],
         "numero_documento": data["numero_documento"],
         "fonte": "dato_provvisorio",

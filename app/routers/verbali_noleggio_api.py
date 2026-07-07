@@ -15,6 +15,10 @@ router = APIRouter()
 COLLECTION = "verbali_noleggio"
 
 
+# NOTA: verbali_noleggio.py definisce lo stesso path con param str (registrato
+# prima di questo router): per numeri verbale senza "/" vince sempre quello,
+# questa route serve solo il caso "numero con slash" (es. "S/2259") grazie a
+# {numero_verbale:path} che, a differenza di str, matcha anche "/".
 @router.get("/dettaglio/{numero_verbale:path}")
 @handle_errors
 async def get_verbale_dettaglio(numero_verbale: str) -> Dict[str, Any]:

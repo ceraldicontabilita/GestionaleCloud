@@ -3,14 +3,40 @@ WebSocket Router per Dashboard Real-time.
 Fornisce endpoint WebSocket per aggiornamenti live.
 """
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
+from jose import jwt, JWTError
 from app.services.websocket_manager import ws_manager
 from app.database import Database, Collections
+from app.config import settings
 from app.utils.logger import get_logger
 import asyncio
 from datetime import datetime, timezone
 
 logger = get_logger(__name__)
 router = APIRouter()
+
+
+async def _autentica_websocket(websocket: WebSocket) -> bool:
+    """Verifica il JWT prima di accettare la connessione.
+
+    AuthenticationMiddleware (app/middleware/authentication.py) NON
+    intercetta mai lo scope "websocket": BaseHTTPMiddleware di Starlette
+    salta il dispatch per qualunque scope diverso da "http" (bypassa
+    dispatch()), quindi il controllo lì scritto per i websocket non
+    veniva mai eseguito — questi due endpoint erano di fatto pubblici
+    (bug #25 audit memoria/endpoints/README.md). Il token arriva dal
+    cookie di sessione (stesso meccanismo dell'HTTP, il browser lo manda
+    in automatico sull'handshake) o da ?token= per client non-browser.
+    """
+    token = websocket.query_params.get("token") or websocket.cookies.get("access_token")
+    if not token:
+        await websocket.close(code=4401, reason="Authentication required")
+        return False
+    try:
+        jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+    except JWTError:
+        await websocket.close(code=4401, reason="Invalid or expired token")
+        return False
+    return True
 
 
 async def calculate_live_kpi(db, anno: int) -> dict:
@@ -88,6 +114,8 @@ async def websocket_dashboard(
     
     Invia aggiornamenti KPI ogni 30 secondi e notifiche immediate per eventi.
     """
+    if not await _autentica_websocket(websocket):
+        return
     await ws_manager.connect(websocket, "dashboard")
     
     try:
@@ -154,6 +182,8 @@ async def websocket_notifications(websocket: WebSocket):
     - Scadenze imminenti
     - Movimenti bancari
     """
+    if not await _autentica_websocket(websocket):
+        return
     await ws_manager.connect(websocket, "notifications")
     
     try:

@@ -28,7 +28,23 @@ PUBLIC_PATHS = {
     "/api/auth/login",
     "/api/auth/setup",  # Setup iniziale admin (solo se nessun admin esiste)
     # RIMOSSO: "/api/auth/register" — ora richiede autenticazione (admin crea utenti)
-    
+
+    # Integrazioni esterne: chiamanti che non possono avere un nostro JWT.
+    # Prima nessuna era whitelistata → 401 sempre, integrazioni di fatto
+    # rotte in produzione (bug #24 audit memoria/endpoints/README.md).
+    # Ciascuna si autentica con un proprio meccanismo (vedi i rispettivi
+    # router): WhatsApp col verify_token di Meta, il ponte ERP con
+    # ERP_BRIDGE_SECRET.
+    "/api/whatsapp/webhook",
+    "/api/erp/ponte/fattura-ricevuta",
+
+    # Pagine legali: già pubbliche in versione non-/api (bypass generico
+    # "non è /api/"), whitelistate anche qui per coerenza sulla variante
+    # /api/ usata da eventuali link esterni (revisione app Meta ecc.).
+    "/api/privacy",
+    "/api/terms",
+    "/api/data-deletion",
+
     # OpenAPI docs (only in development)
     "/docs",
     "/redoc",
@@ -44,10 +60,18 @@ PUBLIC_PATHS = {
 PUBLIC_PREFIXES = [
     "/api/auth/",        # All auth endpoints
     "/api/public/",      # Explicit public API
-    "/api/f24-public/",  # F24 public endpoints
     "/docs",             # Swagger UI assets
     "/redoc",            # ReDoc assets
 ]
+
+# NOTA: "/api/f24-public/" era whitelistato qui ma il prefisso "-public" è
+# fuorviante: il router dietro (app/routers/f24/f24_public.py) espone lettura
+# E SCRITTURA di dati fiscali reali (importi, upload PDF, modifica, delete)
+# senza alcuna verifica — chiunque su internet poteva leggere/alterare gli
+# F24 aziendali (bug #24 audit memoria/endpoints/README.md e 08-sistema-admin.md).
+# L'unico chiamante reale è Dashboard.jsx che usa già il client axios
+# autenticato (stesso Bearer/cookie di ogni altra chiamata /api/*): rimosso
+# dalla whitelist, ora richiede JWT come tutto il resto.
 
 
 class AuthenticationMiddleware(BaseHTTPMiddleware):

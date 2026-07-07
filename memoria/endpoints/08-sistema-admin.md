@@ -3,7 +3,7 @@
 Documentazione endpoint dei moduli di sistema: autenticazione, amministrazione, configurazione, dashboard/report/export, scadenze/alert/notifiche, operazioni batch e coerenza dati, commercialista, integrazioni esterne (OpenAPI.it, WhatsApp), API pubbliche/alias e dizionario articoli.
 
 Contesto trasversale:
-- **Auth**: JWT HS256 firmato con `settings.SECRET_KEY` (env + segreto in `sistema_stato.auth_secret`). Middleware globale `app/middleware/authentication.py` protegge TUTTO `/api/*` salvo `PUBLIC_PATHS`/`PUBLIC_PREFIXES` (tra cui `/api/auth/*`, `/api/public/*`, `/api/f24-public/*`, `/api/openclaw/*`, `/api/enhanced-parser/info`, health, docs). Il token è accettato da header `Authorization: Bearer` o cookie `access_token`; per i WebSocket da query `?token=`.
+- **Auth**: JWT HS256 firmato con `settings.SECRET_KEY` (env + segreto in `sistema_stato.auth_secret`). Middleware globale `app/middleware/authentication.py` protegge TUTTO `/api/*` salvo `PUBLIC_PATHS`/`PUBLIC_PREFIXES` (tra cui `/api/auth/*`, `/api/public/*`, `/api/openclaw/*`, `/api/enhanced-parser/info`, health, docs). `/api/f24-public/*` **RIMOSSO dalla whitelist (lug 2026)**: esponeva lettura/scrittura di F24 reali senza alcuna verifica, vedi nota sotto. Il token è accettato da header `Authorization: Bearer` o cookie `access_token`; per i WebSocket da query `?token=` (verificato dentro l'handler stesso, non dal middleware — vedi nota sotto).
 - I prefissi indicati sono quelli effettivi da `app/router_registry.py`.
 
 ---
@@ -1045,7 +1045,7 @@ Contenitore di endpoint legacy non ancora refactorizzati (dichiarato nel docstri
 ### GET /api/f24-public/alerts — alert scadenze F24
 **Cosa fa**: genera alert di scadenza F24 con severità (critical/high/medium/low) ordinati per giorni mancanti.
 **Logica codice**: due query ENTRAMBE su `f24_unificato` (una "models": `pagato≠true`; una "commercialista": `status` non pagato/eliminato), filtro anno opzionale via regex; parse scadenze in più formati; classifica per giorni residui (scarta >30gg).
-**Note**: PUBBLICO senza auth (`/api/f24-public/` in `PUBLIC_PREFIXES`): espone importi e contribuenti a chiunque. Il docstring parla di "tutte le collection" ma entrambe le query leggono la stessa collection `f24_unificato`: un documento che soddisfa entrambi i filtri genera alert duplicati.
+**Note**: ✔ RISOLTO (lug 2026) — richiedeva PUBBLICO senza auth (`/api/f24-public/` in `PUBLIC_PREFIXES`): esponeva importi e contribuenti a chiunque. Rimosso dalla whitelist, ora richiede JWT come il resto di `/api/*`. Il docstring parla di "tutte le collection" ma entrambe le query leggono la stessa collection `f24_unificato`: un documento che soddisfa entrambi i filtri genera alert duplicati (ancora presente, non è un problema di auth).
 
 ### GET /api/f24-public/dashboard — dashboard F24
 **Cosa fa**: totali F24 pagati/da pagare e conteggio alert entro 7 giorni.
@@ -1243,10 +1243,10 @@ Mappatura degli articoli delle fatture al Piano dei Conti: estrazione articoli u
 **Autenticazione / sicurezza**
 - `POST /api/login` e `POST /api/logout` legacy sono irraggiungibili da non autenticati (non in whitelist middleware): funziona solo l'alias `/api/auth/login`; logica di login duplicata riga per riga in `auth.py`.
 - Due stack JWT paralleli: `auth.py` (PyJWT, `sub`=email, "HS256" hardcoded) vs `pin_login.py`/middleware (jose, `settings.ALGORITHM`, `sub`=user_id): `request.state.user_id` vale un'email o un ObjectId a seconda del login.
-- I WebSocket `/api/ws/*` sono di fatto SENZA autenticazione: il controllo `?token=` sta in `BaseHTTPMiddleware.dispatch` che non intercetta lo scope ASGI `websocket` (ramo di codice morto).
-- `/api/f24-public/*` è completamente pubblico ed espone importi F24 e contribuenti senza auth.
-- Webhook WhatsApp (`/api/whatsapp/webhook`) e ponte ERP (`/api/erp/ponte/*`) NON sono in whitelist: Meta e Tracciabilità senza JWT ricevono 401 — integrazioni server-to-server di fatto rotte. Gli header `X-Source`/`X-Azienda` del ponte sono solo loggati, mai validati.
-- Alias legali `/api/privacy|terms|data-deletion` dietro JWT (inutilizzabili per compliance Meta); le versioni senza `/api` sono pubbliche.
+- ✔ RISOLTO (lug 2026) — I WebSocket `/api/ws/*` erano di fatto SENZA autenticazione (`?token=` stava in `BaseHTTPMiddleware.dispatch` che non intercetta lo scope ASGI `websocket`, codice morto). Ora `_autentica_websocket()` verifica il JWT dentro l'handler stesso, prima di `ws_manager.connect()`.
+- ✔ RISOLTO (lug 2026) — `/api/f24-public/*` era completamente pubblico ed esponeva importi F24 e contribuenti (oltre a upload/modifica/delete) senza auth. Rimosso da `PUBLIC_PREFIXES`.
+- ✔ RISOLTO (lug 2026) — Webhook WhatsApp (`/api/whatsapp/webhook`) e ponte ERP (`/api/erp/ponte/*`) ora in whitelist; il ponte ERP è protetto da un segreto dedicato (`ERP_BRIDGE_SECRET` via header `X-Erp-Secret`) invece di restare aperto. Gli header `X-Source`/`X-Azienda` restano solo loggati (informativi, non di sicurezza).
+- ✔ RISOLTO (lug 2026) — Alias legali `/api/privacy|terms|data-deletion` ora pubblici in whitelist (erano dietro JWT, inutilizzabili per compliance Meta).
 - API v1 (public_api): doppio requisito contraddittorio API key + JWT; key passata come query param; `permessi` mai verificato; `/v1/keys/generate` senza controllo ruolo admin.
 - Nessun controllo di RUOLO in tutto il perimetro: qualunque utente JWT può usare endpoint distruttivi (reset collezioni/dizionario), dati riservati, invio WhatsApp, chiamate a pagamento verso OpenAPI.*.
 - `gestione_riservata`: il codice `GESTIONE_RISERVATA_CODE` protegge solo `/login` (gating cosmetico lato client); il codice errato viene loggato in chiaro.

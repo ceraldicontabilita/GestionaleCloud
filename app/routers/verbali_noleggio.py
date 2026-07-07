@@ -556,6 +556,10 @@ async def risolvi_sospeso_endpoint(
     }
 
 
+# NOTA: esiste un secondo /dettaglio/{numero_verbale} in verbali_noleggio_api.py
+# (stesso prefisso /api/verbali-noleggio, registrato dopo questo). Non è duplicato
+# morto: questo usa un path-param str che non matcha "/", quindi i numeri verbale
+# CON slash (es. "S/2259") cadono sull'altra route che usa {numero_verbale:path}.
 @router.get("/dettaglio/{numero_verbale}")
 @handle_errors
 async def get_dettaglio_verbale(numero_verbale: str) -> Dict[str, Any]:
