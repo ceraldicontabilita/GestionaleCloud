@@ -15,7 +15,7 @@ attendibili reale fornita dall'utente). Pipeline: `app/services/post_download_pi
 |---|---|---|
 | Cedolino come entità, tipo (mensile/acconto/tredicesima/quattordicesima/sospensione/solo_trattenute) | ✅ | campo `tipo_cedolino` popolato, es. `"mensile"` in `app/routers/employees/dipendenti.py:902`; struttura dati presente in `post_download_pipeline.py` |
 | Salvataggio effettivo del cedolino nuovo importato da email | ✅ (bug corretto in questa sessione) | `post_download_pipeline.py::processa_cedolini_da_email` — il ramo "nuovo cedolino" prima incrementava solo un contatore senza mai chiamare `insert_one`; corretto nella sessione corrente, verificato con pytest |
-| Regola "un cedolino non è automaticamente pagato solo perché importato" | DA VERIFICARE nel dettaglio | non riconfermato in questo passaggio se esiste un campo `pagato` separato dal semplice import, o se l'assenza di un flag esplicito lascia il cedolino implicitamente "non pagato" per default (che sarebbe comunque conforme alla regola, ma va verificato esplicitamente) |
+| Regola "un cedolino non è automaticamente pagato solo perché importato" | ✅ | campo `pagata` esplicito, `False` alla creazione (sia canale email che manuale), diventa `True` SOLO tramite match bancario reale (vedi gap #4, ora risolto) — mai un default implicito |
 | Dedup cedolino | ✅ | campo `dedup_key` presente nell'insert corretto (`post_download_pipeline.py`, basato su CF+mese+anno presumibilmente) |
 
 ## Gap confermati (in ordine di priorità)
@@ -31,14 +31,13 @@ attendibili reale fornita dall'utente). Pipeline: `app/services/post_download_pi
    collegamento automatico cedolino→TFR non è stato riverificato in questo passaggio.
 3. **Cedolino ↔ presenze: non riverificato**. Nessuna evidenza raccolta in questo passaggio
    sul collegamento tra cedolino e dati presenze/turni.
-4. **Cedolino ↔ pagamento banca ↔ riconciliazione: GAP CONFERMATO e già documentato in
-   modo incrociato**. `PRIMA_NOTA_BANCA.md` e `RICONCILIAZIONE.md` confermano
-   esplicitamente (grep su `riconciliazione_bancaria.py`) che **non esiste alcuna logica di
-   matching stipendi↔movimento bancario** nel motore di riconciliazione automatica — la
-   regola "un cedolino non è automaticamente pagato solo perché importato" è di fatto
-   rispettata per assenza di automazione, ma questo significa anche che la conferma di
-   pagamento cedolino via banca **non è automatizzata affatto**, richiedendo verifica
-   manuale sistematica non prevista come flusso strutturato.
+4. ~~**Cedolino ↔ pagamento banca ↔ riconciliazione**~~ — **RISOLTO** (vedi correzione
+   dettagliata in `PRIMA_NOTA_BANCA.md` gap #1). Il matching esisteva già ma copriva solo
+   `buste_paga` (canale Libro Unico), non `cedolini` (canale email, quello reale). Aggiunta
+   `riconcilia_tutti_cedolini()` in `paghe_riconciliazione.py`, agganciata allo stesso punto
+   già chiamato dopo ogni upload estratto conto. Anche l'evento `CEDOLINO_IMPORTATO` ora
+   viene propagato dal canale email (prima solo dall'inserimento manuale) — un cedolino
+   email genera correttamente la partita aperta stipendio.
 5. **9 alert richiesti dalla spec**: non riverificati in questo passaggio — audit dedicato
    necessario per determinare quanti sono realmente definiti in `alert_engine.py` e quanti
    effettivamente generati (pattern ricorrente in tutti gli altri moduli: spesso meno della

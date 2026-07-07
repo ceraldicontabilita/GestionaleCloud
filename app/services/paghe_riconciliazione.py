@@ -249,6 +249,98 @@ async def riconcilia_tutti_f24(db, anno: int = None) -> dict:
     }
 
 
+async def riconcilia_tutti_cedolini(db, anno: int = None, mese: int = None) -> dict:
+    """
+    Riconcilia con i movimenti bancari i cedolini non ancora marcati pagati
+    (collection 'cedolini', il canale email — DIVERSO da 'buste_paga', che
+    arriva solo dall'upload manuale del Libro Unico ed era l'unico coperto
+    da riconcilia_tutti_stipendi). Prima di questa funzione i cedolini
+    importati da email non venivano MAI confrontati con l'estratto conto:
+    "pagato" restava undefined a tempo indeterminato. Vedi
+    memoria/moduli/CEDOLINI.md e memoria/moduli/PRIMA_NOTA_BANCA.md.
+    """
+    query = {"pagata": {"$ne": True}, "netto": {"$gt": 0}}
+    if anno:
+        query["anno"] = anno
+    if mese:
+        query["mese"] = mese
+
+    cedolini = await db.cedolini.find(query, {"_id": 0}).to_list(length=500)
+
+    riconciliati = 0
+    non_trovati = 0
+
+    for ced in cedolini:
+        cf = ced.get("codice_fiscale", "")
+        netto = ced.get("netto", 0)
+        mese_c = ced.get("mese")
+        anno_c = ced.get("anno")
+        cedolino_id = ced.get("id")
+
+        if not cf or not mese_c or not anno_c or not cedolino_id:
+            continue
+
+        try:
+            import calendar
+            mese_int = int(mese_c)
+            anno_int = int(anno_c)
+            ultimo_giorno = calendar.monthrange(anno_int, mese_int)[1]
+            data_scad = f"{anno_int:04d}-{mese_int:02d}-{ultimo_giorno:02d}"
+        except (ValueError, TypeError):
+            continue
+
+        dipendente = await db.dipendenti.find_one(
+            {"codice_fiscale": cf}, {"_id": 0, "nome": 1, "cognome": 1, "nome_completo": 1}
+        )
+        keywords = ["STIPENDIO", "CEDOLINO"]
+        cognome = ""
+        if dipendente:
+            cognome = dipendente.get("cognome") or (dipendente.get("nome_completo") or "").split()[0] if dipendente.get("nome_completo") else ""
+        if cognome and len(cognome) > 3:
+            keywords.append(cognome.upper())
+
+        result = await cerca_in_estratto_conto(
+            db, netto, data_scad,
+            giorni_tolleranza=10,
+            keywords_descrizione=keywords
+        )
+
+        if result:
+            mov_id, collection = result
+            now_iso = datetime.now(timezone.utc).isoformat()
+
+            await db.cedolini.update_one(
+                {"id": cedolino_id},
+                {"$set": {
+                    "pagata": True,
+                    "data_pagamento": now_iso,
+                    "movimento_bancario_id": mov_id,
+                    "movimento_collection": collection,
+                }}
+            )
+            await marca_movimento_riconciliato(db, mov_id, collection, "cedolino", cedolino_id)
+
+            try:
+                from app.services.event_bus import propagate_event, EventTypes
+                await propagate_event(EventTypes.CEDOLINO_PAGATO, {
+                    "cedolino_id": cedolino_id, "codice_fiscale": cf,
+                    "movimento_bancario_id": mov_id,
+                }, db, source_module="paghe_riconciliazione")
+            except Exception:
+                logger.exception(f"Errore propagazione CEDOLINO_PAGATO per {cedolino_id}")
+
+            riconciliati += 1
+        else:
+            non_trovati += 1
+
+    logger.info(f"Riconciliazione cedolini: {riconciliati} saldati, {non_trovati} da saldare")
+    return {
+        "totale_analizzati": len(cedolini),
+        "riconciliati": riconciliati,
+        "non_trovati": non_trovati
+    }
+
+
 async def esegui_riconciliazione_paghe_completa(db) -> dict:
     """
     Entry point principale: riconcilia TUTTI i documenti paghe pendenti.
@@ -256,12 +348,16 @@ async def esegui_riconciliazione_paghe_completa(db) -> dict:
     """
     try:
         stipendi_result = await riconcilia_tutti_stipendi(db)
+        cedolini_result = await riconcilia_tutti_cedolini(db)
         f24_result = await riconcilia_tutti_f24(db)
-        
+
         return {
             "stipendi": stipendi_result,
+            "cedolini": cedolini_result,
             "f24": f24_result,
-            "totale_riconciliati": stipendi_result["riconciliati"] + f24_result["riconciliati"]
+            "totale_riconciliati": (
+                stipendi_result["riconciliati"] + cedolini_result["riconciliati"] + f24_result["riconciliati"]
+            )
         }
     except Exception as e:
         logger.error(f"Errore riconciliazione paghe completa: {e}")

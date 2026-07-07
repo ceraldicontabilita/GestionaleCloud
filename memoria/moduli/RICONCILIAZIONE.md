@@ -50,7 +50,7 @@ quella "approssimata" — sono la stessa logica di scoring con soglie diverse, n
 | POS: semplice | ✅ | matching giornaliero, righe 793-822 |
 | POS: cumulativo (weekend) | ✅ | somma su più giorni, righe 770-796 |
 | POS: netto commissioni | ❌ ASSENTE | tolleranza flat ±1€, nessuna sottrazione esplicita delle commissioni prima del confronto |
-| Stipendi: standard/cumulativo | ❌ ASSENTE | nessun codice di matching stipendi trovato nel motore (vedi anche `PRIMA_NOTA_BANCA.md`, gap #1) |
+| Stipendi: standard/cumulativo | ✅ CORRETTO — non in `riconciliazione_bancaria.py` ma in `paghe_riconciliazione.py`, già live sullo stesso trigger (upload EC). Vedi `PRIMA_NOTA_BANCA.md` gap #1 per la correzione completa |
 | Assegni | ⚠️ PARZIALE | solo verifica numero assegno (`num_assegno`, riga 558-567), nessuna gestione esplicita dei casi assegno della spec |
 | Trasferimenti interni | ✅ | gestiti da `trasferimento_handlers.py` (vedi `PRIMA_NOTA_BANCA.md`) |
 
@@ -63,8 +63,10 @@ quella "approssimata" — sono la stessa logica di scoring con soglie diverse, n
 2. **Nessuna gestione della nota di credito nel motore di riconciliazione** (coerente col
    gap #1 di `FATTURE_RICEVUTE.md`) — rischio concreto di doppio conteggio o mancata
    compensazione.
-3. **Nessun matching stipendi↔banca** — uno dei 5 tipi documento della spec non ha alcuna
-   integrazione col motore di riconciliazione automatica.
+3. ~~**Nessun matching stipendi↔banca**~~ — **CORREZIONE**: esisteva già, ma copriva solo
+   `buste_paga` (canale Libro Unico) e non `cedolini` (canale email reale) — risolto
+   estendendo `paghe_riconciliazione.py`, vedi `PRIMA_NOTA_BANCA.md` gap #1 e
+   `CEDOLINI.md` gap #4.
 4. **Nessun matching POS netto commissioni** — tolleranza flat, non calcolo delle commissioni.
 5. **Movimento reale senza vera macchina a stati**: solo booleano `riconciliato`, non gli
    8 stati richiesti dalla spec — nessuna distinzione tracciabile tra "non esaminato",

@@ -193,14 +193,16 @@ async def processa_cedolini_da_email(db: AsyncIOMotorDatabase) -> Dict[str, Any]
                             # il documento: il cedolino non risultava mai
                             # creato in DB nonostante l'anagrafica dipendente
                             # venisse comunque aggiornata sotto.
+                            nuovo_cedolino_id = str(uuid.uuid4())
                             await db["cedolini"].insert_one({
-                                "id": str(uuid.uuid4()),
+                                "id": nuovo_cedolino_id,
                                 "dedup_key": dedup_key,
                                 "codice_fiscale": cf,
                                 "mese": mese,
                                 "anno": anno,
                                 "netto": ced_data.get("netto"),
                                 "lordo": ced_data.get("lordo"),
+                                "pagata": False,
                                 "pdf_data": pdf_data,
                                 "pdf_filename": filename,
                                 "pdf_hash": doc.get("pdf_hash"),
@@ -208,6 +210,29 @@ async def processa_cedolini_da_email(db: AsyncIOMotorDatabase) -> Dict[str, Any]
                                 "created_at": datetime.now(timezone.utc).isoformat(),
                             })
                             stats["nuovi_cedolini"] += 1
+
+                            # Propaga CEDOLINO_IMPORTATO (crea partita aperta stipendio +
+                            # alert dipendente non trovato) — prima solo il percorso di
+                            # inserimento manuale (dipendenti.py) lo faceva; il canale
+                            # email, quello realmente usato, non era mai agganciato al
+                            # sistema relazionale. Vedi memoria/moduli/CEDOLINI.md.
+                            try:
+                                dipendente = await db["dipendenti"].find_one(
+                                    {"codice_fiscale": cf}, {"_id": 0, "id": 1, "nome_completo": 1, "nome": 1, "cognome": 1}
+                                )
+                                from app.services.event_bus import propagate_event, EventTypes
+                                await propagate_event(EventTypes.CEDOLINO_IMPORTATO, {
+                                    "cedolino_id": nuovo_cedolino_id,
+                                    "dipendente_id": (dipendente or {}).get("id"),
+                                    "dipendente_nome": (dipendente or {}).get("nome_completo")
+                                        or f"{(dipendente or {}).get('nome', '')} {(dipendente or {}).get('cognome', '')}".strip(),
+                                    "netto": ced_data.get("netto"),
+                                    "lordo": ced_data.get("lordo"),
+                                    "mese": mese,
+                                    "anno": anno,
+                                }, db, source_module="pipeline_cedolini_email")
+                            except Exception:
+                                logger.exception(f"[PIPELINE-CEDOLINI] Errore propagazione evento per {cf}")
                     
                     # Aggiorna dipendente con ultimo cedolino
                     if cf:

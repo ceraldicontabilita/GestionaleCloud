@@ -21,11 +21,21 @@ fatture→bonifici: la fonte reale è Google Drive/PEC-SDI generico, vedi
 
 ## Gap confermati (in ordine di priorità)
 
-1. **Stipendi ↔ banca: matching NON esiste**. Nessuna logica in
-   `riconciliazione_bancaria.py` collega un movimento bancario a un cedolino/stipendio
-   (grep per "stipendio"/"cedolino" in quel file: zero risultati). `paghe_riconciliazione.py`
-   e `cedolini_manager.py` esistono ma non sono agganciati al motore di riconciliazione
-   bancaria — uno dei 7 flussi richiesti dalla spec manca del tutto.
+1. ~~**Stipendi ↔ banca: matching NON esiste**~~ — **CORREZIONE + RISOLTO**. La formulazione
+   originale era imprecisa: il matching non è dentro `riconciliazione_bancaria.py` (corretto,
+   zero risultati per "stipendio"/"cedolino" lì), ma esiste in un servizio parallelo,
+   `app/services/paghe_riconciliazione.py::esegui_riconciliazione_paghe_completa`, **già
+   chiamato in produzione** subito dopo `riconciliazione_bancaria.py` ad ogni upload reale di
+   estratto conto (`app/routers/bank/estratto_conto.py:430`). Il gap REALE era più specifico:
+   quella funzione riconciliava solo `buste_paga` (collection alimentata unicamente
+   dall'upload manuale del Libro Unico PDF), MAI `cedolini` (collection del canale email,
+   quello davvero usato secondo `CEDOLINI.md`) — i cedolini email non avevano nemmeno un
+   campo `pagata` popolato, restavano "non pagati" a tempo indeterminato. Risolto: aggiunta
+   `riconcilia_tutti_cedolini()` (stessa logica di `riconcilia_tutti_stipendi`, adattata allo
+   schema `cedolini`), agganciata a `esegui_riconciliazione_paghe_completa`. Corretto anche a
+   monte: `post_download_pipeline.py` (canale email) ora propaga `CEDOLINO_IMPORTATO` come
+   già faceva solo l'inserimento manuale — prima un cedolino via email non generava mai una
+   partita aperta né l'alert dipendente-non-trovato. Verificato con test end-to-end.
 2. **"Movimenti provvisori" non è uno stato reale**: non esiste una macchina a stati per i
    movimenti non ancora conciliati — solo un booleano `riconciliato: True/False` e un flag
    `provvisorio` isolato usato solo nell'handler dei trasferimenti. La spec chiede una gestione
