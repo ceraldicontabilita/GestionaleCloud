@@ -1,7 +1,8 @@
-from fastapi import APIRouter, HTTPException, Body
+from fastapi import APIRouter, HTTPException, Body, Request
 from fastapi.responses import FileResponse
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Any
+import logging
 import os
 import re
 
@@ -10,6 +11,77 @@ from app.services.paypal_api_sync import sync_paypal_period
 from app.services.paypal_riconciliazione import match_fornitore, normalize_string
 
 router = APIRouter(tags=["PayPal API"])
+logger = logging.getLogger(__name__)
+
+# Popolato al momento della creazione del webhook su developer.paypal.com
+# (Applicazioni e credenziali > Webhook in tempo reale > Aggiungi Webhook).
+# Se assente, il webhook viene comunque processato ma SENZA verifica della
+# firma: accettabile perché l'endpoint non si fida mai del corpo della
+# richiesta per i dati finanziari, si limita a ri-sincronizzare dalla vera
+# API Reporting per il giorno dell'evento.
+PAYPAL_WEBHOOK_ID = os.environ.get("PAYPAL_WEBHOOK_ID", "")
+
+# Eventi che indicano un movimento di denaro reale — solo questi triggerano
+# una re-sync mirata; gli altri (es. CUSTOMER.DISPUTE.*, aggiornamenti di
+# stato senza importo) vengono solo loggati.
+EVENTI_PAGAMENTO = {
+    "PAYMENT.SALE.COMPLETED",
+    "PAYMENT.CAPTURE.COMPLETED",
+    "PAYMENT.CAPTURE.REFUNDED",
+    "CHECKOUT.ORDER.COMPLETED",
+    "INVOICING.INVOICE.PAID",
+}
+
+
+@router.post("/webhook")
+async def ricevi_webhook(request: Request):
+    """
+    Riceve le notifiche in tempo reale di PayPal (configurate su
+    developer.paypal.com > Applicazioni e credenziali > Webhook in tempo
+    reale). Non processa mai i dati finanziari letti dal corpo della
+    richiesta: per gli eventi di pagamento, ri-sincronizza dalla vera API
+    Reporting (stessa funzione usata da "Sync PayPal API") il giorno in cui
+    l'evento è avvenuto, così i dati salvati sono sempre quelli ufficiali.
+    """
+    body = await request.json()
+    event_type = body.get("event_type", "")
+    event_id = body.get("id", "")
+    create_time = body.get("create_time", "")
+    logger.info("[PayPal Webhook] %s (%s) create_time=%s", event_type, event_id, create_time)
+
+    db = Database.get_db()
+    await db["paypal_webhook_events"].update_one(
+        {"event_id": event_id},
+        {"$set": {
+            "event_id": event_id,
+            "event_type": event_type,
+            "create_time": create_time,
+            "resource_type": body.get("resource_type", ""),
+            "received_at": datetime.now(timezone.utc).isoformat(),
+            "processed": False,
+        }},
+        upsert=True,
+    )
+
+    if event_type not in EVENTI_PAGAMENTO or not create_time:
+        return {"success": True, "processato": False, "motivo": "evento non di pagamento o senza data"}
+
+    try:
+        evento_dt = datetime.fromisoformat(create_time.replace("Z", "+00:00"))
+    except ValueError:
+        return {"success": True, "processato": False, "motivo": "create_time non parsabile"}
+
+    # Finestra di un giorno prima/dopo: copre eventuali disallineamenti di
+    # fuso orario tra il timestamp dell'evento e la data del movimento.
+    start = (evento_dt - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    end = (evento_dt + timedelta(days=1)).replace(hour=23, minute=59, second=59, microsecond=0)
+
+    result = await sync_paypal_period(db, start, end)
+    await db["paypal_webhook_events"].update_one(
+        {"event_id": event_id},
+        {"$set": {"processed": True, "sync_result": result}},
+    )
+    return {"success": True, "processato": True, "sync": result}
 
 
 @router.post("/sync")
