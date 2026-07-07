@@ -570,8 +570,14 @@ export default function NoleggioAuto() {
                 <div>
                   {selectedVeicolo.alimentazione || '-'}
                   {selectedVeicolo.potenza_kw ? ` • ${selectedVeicolo.potenza_kw} kW` : ''}
+                  {selectedVeicolo.potenza_cv ? ` • ${selectedVeicolo.potenza_cv} CV` : ''}
                   {selectedVeicolo.cilindrata ? ` • ${selectedVeicolo.cilindrata} cc` : ''}
                 </div>
+                {selectedVeicolo.telaio && (
+                  <div style={{ fontSize: 12, color: '#9ca3af' }}>
+                    Telaio: <span style={{ fontFamily: 'monospace' }}>{selectedVeicolo.telaio}</span>
+                  </div>
+                )}
               </div>
             </div>
             <div>
@@ -747,14 +753,31 @@ export default function NoleggioAuto() {
                             )}
                             <td style={{ padding: '8px 10px' }}>
                               {s.voci?.map((v, vi) => (
-                                <div
-                                  key={vi}
-                                  style={{ fontSize: 11, color: '#4b5563', paddingBottom: 2 }}
-                                >
-                                  {v.descrizione
-                                    ?.replace(selectedVeicolo.targa, '')
-                                    .trim()
-                                    .slice(0, 70) || '-'}
+                                <div key={vi} style={{ paddingBottom: 4 }}>
+                                  <div style={{ fontSize: 11, color: '#4b5563' }}>
+                                    {v.descrizione
+                                      ?.replace(selectedVeicolo.targa, '')
+                                      .trim()
+                                      .slice(0, 70) || '-'}
+                                  </div>
+                                  {(v.noleggio_imponibile != null || v.servizio_imponibile != null) && (
+                                    <div style={{ fontSize: 10, color: '#9ca3af' }}>
+                                      {v.noleggio_imponibile != null &&
+                                        `Locazione: ${formatEuro(v.noleggio_imponibile)}`}
+                                      {v.noleggio_imponibile != null && v.servizio_imponibile != null && ' • '}
+                                      {v.servizio_imponibile != null &&
+                                        `Servizi: ${formatEuro(v.servizio_imponibile)}`}
+                                    </div>
+                                  )}
+                                  {v.causale && (
+                                    <div
+                                      style={{ fontSize: 10, color: '#9ca3af', fontStyle: 'italic' }}
+                                      title={v.causale}
+                                    >
+                                      {v.causale.split(' | ').find(p => p.toUpperCase().includes('CAUSALE')) ||
+                                        v.causale.slice(0, 60)}
+                                    </div>
+                                  )}
                                 </div>
                               ))}
                             </td>

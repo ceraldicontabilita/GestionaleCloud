@@ -13,6 +13,9 @@ from app.database import Database
 from .constants import FORNITORI_NOLEGGIO, TARGA_PATTERN, COLLECTION, KEYWORDS_VERBALI, KEYWORDS_BOLLO, KEYWORDS_PEDAGGIO, KEYWORDS_RIPARAZIONI
 from .parsers import (
     estrai_codice_cliente,
+    estrai_numero_contratto,
+    estrai_causale_note,
+    estrai_breakdown_linea,
     estrai_modello_marca,
     categorizza_spesa,
     is_nota_credito as check_nota_credito,
@@ -192,10 +195,13 @@ async def _processa_linee_fattura(
     supplier = invoice_data["supplier"]
     supplier_vat = invoice_data["supplier_vat"]
     codice_cliente = invoice_data["codice_cliente"]
-    
+    numero_contratto = invoice_data.get("numero_contratto")
+
     for linea in linee:
         desc = linea.get("descrizione") or linea.get("Descrizione", "")
-        
+        note_extra = estrai_causale_note(linea)
+        breakdown = estrai_breakdown_linea(linea)
+
         # Trova la targa per questa linea
         match = re.search(TARGA_PATTERN, desc)
         if match:
@@ -204,41 +210,43 @@ async def _processa_linee_fattura(
             targa = list(targhe_da_db)[0]
         else:
             continue
-        
+
         # Inizializza veicolo nel risultato finale se non esiste
         if targa not in veicoli:
             marca, modello = estrai_modello_marca(desc, targa)
             veicoli[targa] = _crea_struttura_veicolo(
-                targa, supplier, supplier_vat, codice_cliente, marca, modello
+                targa, supplier, supplier_vat, codice_cliente, numero_contratto, marca, modello
             )
         else:
-            _aggiorna_info_veicolo(veicoli[targa], desc, targa, codice_cliente)
-        
+            _aggiorna_info_veicolo(veicoli[targa], desc, targa, codice_cliente, numero_contratto)
+
+        _aggiorna_dati_tecnici_veicolo(veicoli[targa], breakdown)
+
         # Inizializza struttura per questa targa in questa fattura
         if targa not in linee_per_targa:
             linee_per_targa[targa] = {}
-        
+
         # Estrai importi
-        prezzo_totale = float(linea.get("prezzo_totale") or linea.get("PrezzoTotale") or 
+        prezzo_totale = float(linea.get("prezzo_totale") or linea.get("PrezzoTotale") or
                               linea.get("prezzo_unitario") or linea.get("PrezzoUnitario") or 0)
         aliquota_iva = float(linea.get("aliquota_iva") or linea.get("AliquotaIVA") or 22)
-        
+
         # Categorizza con metadata (o usa override per linee sintetiche)
         if linea.get("_categoria_override"):
             categoria = linea["_categoria_override"]
             importo = abs(prezzo_totale) * (-1 if is_nota_credito else 1)
             metadata = {}
         else:
-            categoria, importo, metadata = categorizza_spesa(desc, prezzo_totale, is_nota_credito)
+            categoria, importo, metadata = categorizza_spesa(desc, prezzo_totale, is_nota_credito, note_extra)
         iva = abs(importo) * aliquota_iva / 100
         if importo < 0:
             iva = -iva
-        
+
         # Per i verbali, crea un record separato per ogni riga
         if categoria == "verbali":
             _aggiungi_verbale(veicoli[targa], invoice_data, desc, importo, iva, metadata)
             continue
-        
+
         # Raggruppa per categoria (per le altre categorie)
         if categoria not in linee_per_targa[targa]:
             linee_per_targa[targa][categoria] = {
@@ -247,26 +255,35 @@ async def _processa_linee_fattura(
                 "totale_iva": 0,
                 "metadata": {}
             }
-        
-        linee_per_targa[targa][categoria]["voci"].append({
+
+        voce = {
             "descrizione": desc,
             "importo": round(importo, 2)
-        })
+        }
+        # Split noleggio/servizio dentro un'unica riga canone (es. ALD)
+        if breakdown.get("noleggio_imponibile") is not None:
+            voce["noleggio_imponibile"] = breakdown["noleggio_imponibile"]
+        if breakdown.get("servizio_imponibile") is not None:
+            voce["servizio_imponibile"] = breakdown["servizio_imponibile"]
+        if note_extra:
+            voce["causale"] = note_extra
+        linee_per_targa[targa][categoria]["voci"].append(voce)
         linee_per_targa[targa][categoria]["totale_imponibile"] += importo
         linee_per_targa[targa][categoria]["totale_iva"] += iva
-        
+
         for k, v in metadata.items():
             if k not in linee_per_targa[targa][categoria]["metadata"]:
                 linee_per_targa[targa][categoria]["metadata"][k] = v
-    
+
     return linee_per_targa
 
 
 def _crea_struttura_veicolo(
-    targa: str, 
-    supplier: str, 
-    supplier_vat: str, 
+    targa: str,
+    supplier: str,
+    supplier_vat: str,
     codice_cliente: Optional[str],
+    numero_contratto: Optional[str],
     marca: str,
     modello: str
 ) -> Dict[str, Any]:
@@ -280,7 +297,11 @@ def _crea_struttura_veicolo(
         "marca": marca,
         "driver": None,
         "driver_id": None,
-        "contratto": codice_cliente,
+        "contratto": numero_contratto or codice_cliente,
+        "telaio": None,
+        "data_immatricolazione": None,
+        "cilindrata": None,
+        "potenza_cv": None,
         "data_inizio": None,
         "data_fine": None,
         "note": None,
@@ -300,18 +321,30 @@ def _crea_struttura_veicolo(
     }
 
 
-def _aggiorna_info_veicolo(veicolo: dict, desc: str, targa: str, codice_cliente: Optional[str]):
+def _aggiorna_info_veicolo(
+    veicolo: dict, desc: str, targa: str, codice_cliente: Optional[str], numero_contratto: Optional[str] = None
+):
     """Aggiorna le info del veicolo se mancanti."""
     if codice_cliente and not veicolo["codice_cliente"]:
         veicolo["codice_cliente"] = codice_cliente
-        veicolo["contratto"] = codice_cliente
-    
+
+    if numero_contratto and not veicolo.get("contratto"):
+        veicolo["contratto"] = numero_contratto
+
     if not veicolo["modello"]:
         marca, modello = estrai_modello_marca(desc, targa)
         if modello:
             veicolo["modello"] = modello
         if marca:
             veicolo["marca"] = marca
+
+
+def _aggiorna_dati_tecnici_veicolo(veicolo: dict, breakdown: Dict[str, Any]):
+    """Riempie i dati tecnici del veicolo (telaio, immatricolazione, cilindrata,
+    potenza) da AltriDatiGestionali, solo se non già valorizzati."""
+    for campo in ("telaio", "data_immatricolazione", "cilindrata", "potenza_cv"):
+        if breakdown.get(campo) and not veicolo.get(campo):
+            veicolo[campo] = breakdown[campo]
 
 
 def _aggiungi_verbale(veicolo: dict, invoice_data: dict, desc: str, importo: float, iva: float, metadata: dict):
@@ -377,7 +410,8 @@ async def scan_fatture_noleggio(anno: Optional[int] = None) -> Tuple[Dict[str, A
         "pagato": 1,
         "prima_nota_banca_id": 1,
         "linee": 1,
-        "causali": 1
+        "causali": 1,
+        "dati_contratto": 1
     }
     
     invoices_list = await db["invoices"].find(query, projection).to_list(5000)
@@ -409,6 +443,7 @@ async def scan_fatture_noleggio(anno: Optional[int] = None) -> Tuple[Dict[str, A
         
         is_nota_credito = check_nota_credito(invoice)
         codice_cliente = estrai_codice_cliente(invoice, supplier)
+        numero_contratto = estrai_numero_contratto(invoice)
         
         linee = invoice.get("linee", [])
         targhe_trovate: set = set()
@@ -474,6 +509,7 @@ async def scan_fatture_noleggio(anno: Optional[int] = None) -> Tuple[Dict[str, A
                     "supplier_vat": supplier_vat,
                     "tipo_documento": invoice.get("tipo_documento", ""),
                     "codice_cliente": codice_cliente,
+                    "contratto": numero_contratto,
                     "total": invoice.get("total_amount", 0),
                     "pagato": invoice.get("pagato", False),
                     "pagato_confermato_banca": invoice.get("pagato_confermato_banca", False),
@@ -490,10 +526,11 @@ async def scan_fatture_noleggio(anno: Optional[int] = None) -> Tuple[Dict[str, A
             "supplier": supplier,
             "supplier_vat": supplier_vat,
             "codice_cliente": codice_cliente,
+            "numero_contratto": numero_contratto,
             "pagato": invoice.get("pagato", False),
             "pagato_confermato_banca": invoice.get("pagato_confermato_banca", False),
         }
-        
+
         # Processa linee (usa invoice_data internamente)
         linee_per_targa = await _processa_linee_fattura(
             linee, targhe_trovate, invoice_data, is_nota_credito, veicoli

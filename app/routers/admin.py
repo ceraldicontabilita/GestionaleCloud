@@ -310,3 +310,72 @@ async def cleanup_trattenute_disciplinari() -> Dict[str, Any]:
         "eliminati": result.deleted_count,
         "trovati_prima": count_before,
     }
+
+
+# ============================================================================
+# BACKFILL: AltriDatiGestionali/DatiContratto su fatture noleggio già importate
+# ============================================================================
+
+@router.post(
+    "/noleggio/backfill-dati-gestionali",
+    summary="Ri-parsa xml_raw delle fatture noleggio per popolare AltriDatiGestionali/DatiContratto"
+)
+async def backfill_noleggio_dati_gestionali(
+    dry_run: bool = Query(True, description="Se True, non scrive nulla: restituisce solo le statistiche"),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """
+    Il parser app/parsers/fattura_elettronica_parser.py scartava i blocchi
+    AltriDatiGestionali (codice cliente, contratto, telaio, causali reali) e
+    DatiContratto: le fatture importate PRIMA del fix non hanno questi dati.
+    Questo endpoint ri-parsa xml_raw (già salvato ad ogni import) delle
+    fatture dei fornitori noleggio e aggiorna solo linee/dati_contratto,
+    senza toccare il resto del documento.
+    """
+    from app.services.noleggio import FORNITORI_NOLEGGIO
+    from app.parsers.fattura_elettronica_parser import parse_fattura_xml
+
+    db = Database.get_db()
+
+    query = {
+        "supplier_vat": {"$in": list(FORNITORI_NOLEGGIO.values())},
+        "xml_raw": {"$exists": True, "$ne": ""},
+    }
+
+    aggiornate = 0
+    saltate_gia_ok = 0
+    errori = 0
+    esaminate = 0
+
+    cursor = db["invoices"].find(query, {"xml_raw": 1, "linee": 1, "dati_contratto": 1})
+    async for inv in cursor:
+        esaminate += 1
+        ha_gia_dati = bool(inv.get("dati_contratto")) or any(
+            l.get("altri_dati_gestionali") for l in (inv.get("linee") or [])
+        )
+        if ha_gia_dati:
+            saltate_gia_ok += 1
+            continue
+
+        parsed = parse_fattura_xml(inv["xml_raw"])
+        if parsed.get("error") or not parsed.get("linee"):
+            errori += 1
+            continue
+
+        if not dry_run:
+            await db["invoices"].update_one(
+                {"_id": inv["_id"]},
+                {"$set": {
+                    "linee": parsed["linee"],
+                    "dati_contratto": parsed.get("dati_contratto", []),
+                }},
+            )
+        aggiornate += 1
+
+    return {
+        "dry_run": dry_run,
+        "esaminate": esaminate,
+        "aggiornate": aggiornate,
+        "saltate_gia_ok": saltate_gia_ok,
+        "errori_parsing": errori,
+    }

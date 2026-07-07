@@ -19,7 +19,8 @@ from app.services.noleggio import (
     FORNITORI_NOLEGGIO,
     COLLECTION,
     scan_fatture_noleggio,
-    categorizza_spesa
+    categorizza_spesa,
+    estrai_causale_note
 )
 
 from app.utils.error_handler import handle_errors
@@ -178,7 +179,7 @@ async def get_veicoli(
                 "marca": salvato.get("marca", ""),
                 "driver": salvato.get("driver"),
                 "driver_id": salvato.get("driver_id"),
-                "contratto": salvato.get("contratto"),
+                "contratto": salvato.get("contratto") or fattura.get("contratto"),
                 "data_inizio": salvato.get("data_inizio"),
                 "data_fine": salvato.get("data_fine"),
                 "note": salvato.get("note"),
@@ -202,7 +203,8 @@ async def get_veicoli(
         for linea in fattura.get("linee", []):
             desc = linea.get("descrizione", "")
             prezzo = float(linea.get("prezzo_totale") or linea.get("prezzo_unitario") or 0)
-            categoria, importo, metadata = categorizza_spesa(desc, prezzo, is_nota_credito)
+            note_extra = estrai_causale_note(linea)
+            categoria, importo, metadata = categorizza_spesa(desc, prezzo, is_nota_credito, note_extra)
             
             if categoria not in linee_per_cat:
                 linee_per_cat[categoria] = {"voci": [], "imponibile": 0, "metadata": {}}
@@ -258,6 +260,16 @@ async def get_veicoli(
             veicolo["note"] = salvato.get("note")
             veicolo["id"] = salvato.get("id")
             veicolo["canone_mensile"] = salvato.get("canone_mensile")
+            # Specifiche veicolo: preferisci il valore inserito/confermato a
+            # mano, altrimenti usa quello estratto dalla fattura (AltriDatiGestionali).
+            # Prima questi campi non venivano proprio applicati dal merge:
+            # un valore modificato manualmente non veniva mai mostrato.
+            data_immat = veicolo.get("data_immatricolazione") or ""
+            veicolo["anno_immatricolazione"] = salvato.get("anno_immatricolazione") or (data_immat[:4] or None)
+            veicolo["alimentazione"] = salvato.get("alimentazione") or veicolo.get("alimentazione")
+            veicolo["potenza_kw"] = salvato.get("potenza_kw") or veicolo.get("potenza_kw")
+            veicolo["cilindrata"] = salvato.get("cilindrata") or veicolo.get("cilindrata")
+            veicolo["telaio"] = salvato.get("telaio") or veicolo.get("telaio")
 
         # Canone mensile: se non è stato configurato a mano, lo stimiamo dal
         # canone più recente effettivamente fatturato — meglio di lasciarlo

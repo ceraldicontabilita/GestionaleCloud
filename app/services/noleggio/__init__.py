@@ -6,6 +6,9 @@ Modulo per elaborazione fatture noleggio auto e gestione flotta aziendale.
 from .constants import FORNITORI_NOLEGGIO, TARGA_PATTERN, COLLECTION
 from .parsers import (
     estrai_codice_cliente,
+    estrai_numero_contratto,
+    estrai_causale_note,
+    estrai_breakdown_linea,
     estrai_numero_verbale,
     estrai_data_verbale,
     estrai_numero_verbale_completo,
@@ -24,6 +27,9 @@ __all__ = [
     "COLLECTION",
     # Parsers
     "estrai_codice_cliente",
+    "estrai_numero_contratto",
+    "estrai_causale_note",
+    "estrai_breakdown_linea",
     "estrai_numero_verbale",
     "estrai_data_verbale",
     "estrai_numero_verbale_completo",

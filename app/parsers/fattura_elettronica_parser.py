@@ -210,11 +210,42 @@ def parse_fattura_xml(xml_content: str) -> Dict[str, Any]:
             ordine = {k: v for k, v in ordine.items() if v}
             if ordine:
                 dati_ordine.append(ordine)
+
+        # Estrai DatiContratto (es. numero contratto di noleggio/leasing)
+        dati_contratto = []
+        for dc in find_all_elements(dati_generali_parent or body, 'DatiContratto'):
+            contratto = {
+                "id_documento": get_text(dc, 'IdDocumento'),
+                "data": get_text(dc, 'Data'),
+                "num_item": get_text(dc, 'NumItem'),
+                "codice_commessa": get_text(dc, 'CodiceCommessaConvenzione'),
+                "codice_cup": get_text(dc, 'CodiceCUP'),
+                "codice_cig": get_text(dc, 'CodiceCIG'),
+            }
+            contratto = {k: v for k, v in contratto.items() if v}
+            if contratto:
+                dati_contratto.append(contratto)
         
         # Estrai linee dettaglio
         linee = []
         for linea in find_all_elements(body, 'DettaglioLinee'):
             descrizione = get_text(linea, 'Descrizione')
+
+            # AltriDatiGestionali: campi liberi TipoDato/RiferimentoTesto usati da
+            # molti fornitori (es. Leasys, ALD) per veicolare dati strutturati
+            # (codice cliente, contratto, targa, telaio, causali reali) che non
+            # trovano posto nei campi standard e altrimenti andrebbero persi.
+            altri_dati_gestionali = []
+            for adg in find_all_elements(linea, 'AltriDatiGestionali'):
+                voce = {
+                    "tipo_dato": get_text(adg, 'TipoDato'),
+                    "riferimento_testo": get_text(adg, 'RiferimentoTesto'),
+                    "riferimento_numero": get_text(adg, 'RiferimentoNumero'),
+                    "riferimento_data": get_text(adg, 'RiferimentoData'),
+                }
+                voce = {k: v for k, v in voce.items() if v}
+                if voce:
+                    altri_dati_gestionali.append(voce)
 
             linea_data = {
                 "numero_linea": get_text(linea, 'NumeroLinea'),
@@ -225,6 +256,9 @@ def parse_fattura_xml(xml_content: str) -> Dict[str, Any]:
                 "prezzo_totale": get_text(linea, 'PrezzoTotale', '0'),
                 "aliquota_iva": get_text(linea, 'AliquotaIVA', '0'),
                 "natura": get_text(linea, 'Natura'),
+                "data_inizio_periodo": get_text(linea, 'DataInizioPeriodo'),
+                "data_fine_periodo": get_text(linea, 'DataFinePeriodo'),
+                "altri_dati_gestionali": altri_dati_gestionali,
             }
             linee.append(linea_data)
         
@@ -332,6 +366,7 @@ def parse_fattura_xml(xml_content: str) -> Dict[str, Any]:
             "causali": causali,
             "dati_fatture_collegate": dati_fatture_collegate,
             "dati_ordine_acquisto": dati_ordine,
+            "dati_contratto": dati_contratto,
             "fornitore": fornitore,
             "cliente": cliente,
             "linee": linee,

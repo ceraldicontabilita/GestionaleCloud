@@ -11,23 +11,123 @@ from .constants import (
 )
 
 
+def _altri_dati_gestionali_map(linea: dict) -> Dict[str, str]:
+    """
+    Raggruppa i blocchi AltriDatiGestionali di una riga per TipoDato
+    (normalizzato in minuscolo). TipoDato ripetuti (es. "NOTE" su Leasys)
+    vengono concatenati con ' | ' invece di sovrascriversi.
+    """
+    result: Dict[str, str] = {}
+    for voce in linea.get("altri_dati_gestionali") or []:
+        tipo = (voce.get("tipo_dato") or "").strip().lower()
+        testo = (voce.get("riferimento_testo") or "").strip()
+        if not tipo or not testo:
+            continue
+        result[tipo] = f"{result[tipo]} | {testo}" if tipo in result else testo
+    return result
+
+
+def estrai_causale_note(linea: dict) -> str:
+    """
+    Concatena le eventuali NOTE presenti in AltriDatiGestionali. Alcuni
+    fornitori (es. Leasys) mettono qui la causale reale della spesa
+    (es. "CAUSALE: Riaddebito tassa di proprietà") mentre la Descrizione
+    della riga resta generica (solo il nome del veicolo).
+    """
+    note = []
+    for voce in linea.get("altri_dati_gestionali") or []:
+        if (voce.get("tipo_dato") or "").strip().upper() == "NOTE":
+            testo = (voce.get("riferimento_testo") or "").strip()
+            if testo:
+                note.append(testo)
+    return " | ".join(note)
+
+
+def estrai_numero_contratto(invoice: dict) -> Optional[str]:
+    """
+    Estrae il numero di contratto di noleggio. Priorità:
+    1. DatiContratto a livello fattura (valorizzato sia da Leasys che ALD)
+    2. Campo strutturato "Contratto" in AltriDatiGestionali di riga (ALD)
+    """
+    for dc in invoice.get("dati_contratto") or []:
+        id_doc = dc.get("id_documento")
+        if id_doc:
+            return id_doc
+    for linea in invoice.get("linee", []):
+        valore = _altri_dati_gestionali_map(linea).get("contratto")
+        if valore:
+            return valore
+    return None
+
+
+def estrai_breakdown_linea(linea: dict) -> Dict[str, Any]:
+    """
+    Estrae dai AltriDatiGestionali di una riga i sotto-importi e i dati
+    tecnici del veicolo che alcuni fornitori (es. ALD) veicolano dentro
+    un'unica riga di "canone" invece di spezzarla in più righe:
+    - noleggio_imponibile / servizio_imponibile: split del canone
+    - telaio, data_immatricolazione, cilindrata, potenza_cv: dati veicolo
+    """
+    dati = _altri_dati_gestionali_map(linea)
+    breakdown: Dict[str, Any] = {}
+
+    for chiave, campo in (("noleggio", "noleggio_imponibile"), ("servizio", "servizio_imponibile")):
+        testo = dati.get(chiave)
+        if not testo:
+            continue
+        match = re.search(r'([\d.,]+)\s*$', testo)
+        if match:
+            try:
+                breakdown[campo] = float(match.group(1).replace(",", "."))
+            except ValueError:
+                pass
+
+    if dati.get("telaio"):
+        breakdown["telaio"] = dati["telaio"]
+    if dati.get("data immat"):
+        breakdown["data_immatricolazione"] = dati["data immat"]
+    if dati.get("cc"):
+        breakdown["cilindrata"] = dati["cc"]
+    if dati.get("cv"):
+        breakdown["potenza_cv"] = dati["cv"]
+
+    return breakdown
+
+
 def estrai_codice_cliente(invoice: dict, fornitore: str = "") -> Optional[str]:
     """
-    Estrae il codice cliente/contratto in base al fornitore.
+    Estrae il codice cliente in base al fornitore.
     Ogni fornitore ha un formato diverso.
     """
     supplier_vat = invoice.get("supplier_vat", "")
-    
-    # ALD: Contratto nella descrizione linea (numero 7-8 cifre)
+
+    # Priorità: campo strutturato "Cod. Cli." in AltriDatiGestionali (ALD)
+    for linea in invoice.get("linee", []):
+        dati = _altri_dati_gestionali_map(linea)
+        valore = dati.get("cod. cli.") or dati.get("cod.cli.")
+        if valore:
+            match = re.search(r'(\d{4,})', valore)
+            if match:
+                return match.group(1)
+
+    # Leasys: il codice cliente compare nelle NOTE, es.
+    # "UTILIZZATORE CERALDI GROUP SRL codice 1184586404"
+    for linea in invoice.get("linee", []):
+        note = estrai_causale_note(linea)
+        if note:
+            match = re.search(r'codice\s+(\d{6,})', note, re.I)
+            if match:
+                return match.group(1)
+
+    # ALD: fallback legacy, codice nella descrizione (numero 7-8 cifre seguito da data)
     if supplier_vat == FORNITORI_NOLEGGIO["ALD"]:
         for linea in invoice.get("linee", []):
             desc = linea.get("descrizione", "")
-            # Pattern: 7-8 cifre seguite da data
             match = re.search(r'\s(\d{7,8})\s+\d{4}-\d{2}', desc)
             if match:
                 return match.group(1)
         return None
-    
+
     # ARVAL: Codice cliente nel campo causali
     elif supplier_vat == FORNITORI_NOLEGGIO["ARVAL"]:
         causali = invoice.get("causali", [])
@@ -36,8 +136,7 @@ def estrai_codice_cliente(invoice: dict, fornitore: str = "") -> Optional[str]:
             if match:
                 return match.group(1)
         return None
-    
-    # Leasys e LeasePlan: Non hanno codice cliente in fattura
+
     return None
 
 
@@ -90,13 +189,15 @@ def estrai_numero_verbale_completo(descrizione: str) -> Optional[str]:
     return None
 
 
-def categorizza_spesa(descrizione: str, importo: float, is_nota_credito: bool = False) -> Tuple[str, float, Dict[str, Any]]:
+def categorizza_spesa(
+    descrizione: str, importo: float, is_nota_credito: bool = False, note_extra: str = ""
+) -> Tuple[str, float, Dict[str, Any]]:
     """
     Categorizza una spesa in base alla descrizione.
     Returns: (categoria, importo_con_segno, metadata)
-    
+
     IMPORTANTE: L'ordine dei controlli è cruciale per evitare falsi positivi.
-    
+
     Categorie:
     - verbali: Multe e sanzioni
     - riparazioni: Sinistri e danni
@@ -104,8 +205,12 @@ def categorizza_spesa(descrizione: str, importo: float, is_nota_credito: bool = 
     - pedaggio: Gestione pedaggi e telepass
     - costi_extra: Penalità varie
     - canoni: Locazione, servizi, conguagli (default)
+
+    note_extra: testo aggiuntivo (es. NOTE da AltriDatiGestionali) usato SOLO
+    per il matching delle keyword — alcuni fornitori (Leasys) mettono la vera
+    causale qui e lasciano la Descrizione generica.
     """
-    desc_lower = descrizione.lower()
+    desc_lower = f"{descrizione} {note_extra}".lower()
     importo_finale = abs(importo)
     metadata: Dict[str, Any] = {}
     
@@ -220,10 +325,14 @@ def estrai_targa(descrizione: str) -> Optional[str]:
 def is_fattura_bollo(linee: list) -> bool:
     """
     Verifica se una fattura è relativa a bollo/tassa proprietà.
+    Controlla anche le NOTE (AltriDatiGestionali) dove alcuni fornitori
+    (es. Leasys) mettono la causale reale al posto della Descrizione.
     """
     for linea in linee:
         desc = (linea.get("descrizione") or "").lower()
-        if any(kw in desc for kw in ["tassa di propriet", "bollo", "addebito bollo", "tassa automobilistic"]):
+        note = estrai_causale_note(linea).lower()
+        testo = f"{desc} {note}"
+        if any(kw in testo for kw in ["tassa di propriet", "bollo", "addebito bollo", "tassa automobilistic"]):
             return True
     return False
 
