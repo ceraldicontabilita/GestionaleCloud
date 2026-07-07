@@ -456,11 +456,20 @@ async def cerca_fattura_email_per_account(paypal_account_id: str) -> Dict[str, A
         search_keywords=[parola_chiave] if parola_chiave else None,
         allowed_senders=[email_controparte] if email_controparte else None,
     )
+
+    from app.services.paypal_email_recovery import _aggancia_documenti_trovati
+    aggancio = {"agganciati": 0}
+    if risultato.get("documents"):
+        aggancio = await _aggancia_documenti_trovati(
+            db, paypal_account_id, nome_controparte, risultato["documents"]
+        )
+
     return {
         "paypal_account_id": paypal_account_id,
         "nome_controparte": nome_controparte,
         "email_controparte": email_controparte,
         "cercato_per": parola_chiave or email_controparte,
+        "fornitore_agganciato": aggancio["agganciati"] > 0,
         **risultato,
     }
 
