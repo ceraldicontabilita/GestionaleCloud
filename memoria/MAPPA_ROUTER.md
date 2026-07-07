@@ -1,47 +1,38 @@
 # MAPPA ROUTER — GestionaleCloud
 
-Rigenerata automaticamente il 2026-07-07 importando `app.main:app` e leggendo la route
-table reale (solo route effettivamente registrate da `app/router_registry.py`).
-Totale: **1285 route API in 141 gruppi di prefisso**.
+Rigenerata automaticamente il 2026-07-07 (post audit/normalizzazione router)
+importando `app.main:app` e leggendo la route table reale.
+Totale: **1074 route API in 110 gruppi di prefisso**
+(erano 1.378 a inizio giornata: −304 route morte/duplicate rimosse).
 
-Colonna FE: ✓ = il prefisso è referenziato letteralmente nel frontend;
-— = nessun riferimento frontend (può comunque essere vivo via backend/scheduler/webhook).
+Colonna FE: ✓ = prefisso referenziato nel frontend; — = nessun riferimento
+frontend (vivo via backend/scheduler/webhook/API esterna, verificato con doppio audit).
 
 | Prefisso | Route | FE | Moduli |
 |---|---:|:-:|---|
 | `/` | 1 | — | main |
-| `/api/accounting` | 21 | — | accounting.accounting_extended, accounting.accounting_main, accounting_engine |
-| `/api/accounting-engine` | 11 | — | accounting.accounting_engine_api |
 | `/api/admin` | 12 | ✓ | admin, admin_export |
-| `/api/adr` | 7 | — | adr |
 | `/api/agenti` | 8 | ✓ | agenti |
 | `/api/ai-parser` | 11 | ✓ | ai_parser |
-| `/api/alert-verbali` | 2 | — | alert_verbali |
 | `/api/alerts` | 7 | ✓ | alerts |
-| `/api/analytics` | 4 | — | reports.analytics |
 | `/api/archivio-bonifici` | 27 | ✓ | bank.bonifici_import_unificato, bonifici_module.associazioni, bonifici_module.jobs, bonifici_module.riconciliazione, bonifici_module.transfers |
 | `/api/assegni` | 38 | ✓ | bank.assegni, bank.assegni_learning, public_api |
 | `/api/auth` | 5 | ✓ | auth, pin_login |
 | `/api/auto-repair` | 1 | ✓ | auto_repair |
 | `/api/bank` | 9 | ✓ | bank.bank_main, public_api |
-| `/api/bank-reconciliation` | 5 | — | bank.bank_reconciliation |
 | `/api/bank-statement` | 6 | ✓ | bank.bank_statement_import |
-| `/api/bank-statement-bulk` | 6 | — | bank.bank_statement_bulk_import |
 | `/api/batch` | 6 | ✓ | batch_operations |
 | `/api/batch-reprocess` | 5 | ✓ | batch_reprocessing |
 | `/api/bilancio` | 7 | ✓ | accounting.bilancio |
 | `/api/cash` | 10 | ✓ | cash, public_api |
-| `/api/cash-register` | 9 | — | cash_register |
 | `/api/centri-costo` | 11 | ✓ | accounting.centri_costo |
 | `/api/cespiti` | 11 | ✓ | cespiti |
-| `/api/chart-of-accounts` | 4 | — | chart_of_accounts |
 | `/api/chat` | 2 | ✓ | chat_router |
 | `/api/chiusura-esercizio` | 7 | ✓ | chiusura_esercizio |
-| `/api/codici-tributari` | 5 | — | codici_tributari |
 | `/api/commercialista` | 14 | ✓ | commercialista |
 | `/api/conferma` | 1 | ✓ | dati_provvisori |
 | `/api/conferma-tutte` | 1 | ✓ | dati_provvisori |
-| `/api/config` | 11 | ✓ | config, configurazioni |
+| `/api/config` | 9 | ✓ | configurazioni |
 | `/api/contabilita` | 21 | ✓ | accounting.contabilita_avanzata, contabilita_italiana |
 | `/api/contabilita-gestionale` | 9 | ✓ | accounting.contabilita_gestionale |
 | `/api/controllo-gestione` | 7 | — | controllo_gestione |
@@ -49,53 +40,35 @@ Colonna FE: ✓ = il prefisso è referenziato letteralmente nel frontend;
 | `/api/dashboard` | 9 | ✓ | public_api, reports.dashboard |
 | `/api/data-deletion` | 1 | — | legal_pages |
 | `/api/dati-provvisori` | 6 | — | dati_provvisori |
-| `/api/dipendenti` | 52 | ✓ | employees.dipendenti |
+| `/api/dipendenti` | 51 | ✓ | employees.dipendenti |
 | `/api/dizionario-articoli` | 11 | ✓ | warehouse.dizionario_articoli |
 | `/api/document-ai` | 10 | ✓ | document_ai |
 | `/api/documenti` | 32 | ✓ | documenti |
 | `/api/documenti-inbox` | 5 | ✓ | documents_inbox_classify |
 | `/api/documenti-non-associati` | 7 | ✓ | documenti_non_associati |
 | `/api/email-download` | 39 | ✓ | email_download |
-| `/api/email-mongodb` | 4 | — | email_mongodb |
 | `/api/email-scanner` | 5 | ✓ | email_scanner |
-| `/api/enhanced-parser` | 4 | — | enhanced_parser |
 | `/api/erp` | 2 | — | erp_bridge |
-| `/api/estratto-conto` | 6 | — | bank.bank_statement_parser |
 | `/api/estratto-conto-movimenti` | 12 | ✓ | bank.estratto_conto |
 | `/api/exports` | 13 | ✓ | reports.exports, reports.simple_exports |
 | `/api/f24` | 22 | ✓ | f24.f24_main |
-| `/api/f24-avanzato` | 11 | — | f24.f24_gestione_avanzata |
 | `/api/f24-email` | 7 | — | f24.email_f24 |
 | `/api/f24-email-settings` | 8 | ✓ | f24_email_settings |
-| `/api/f24-notifiche` | 6 | — | f24.f24_notifiche |
 | `/api/f24-public` | 11 | ✓ | f24.f24_public, public_api |
 | `/api/f24-riconciliazione` | 23 | ✓ | bank.riconciliazione_f24_banca, f24.f24_riconciliazione |
 | `/api/fatture` | 14 | ✓ | invoices.fatture_drive, invoices.fatture_upload |
 | `/api/fatture-ricevute` | 18 | ✓ | fatture_module.crud, fatture_module.pagamento |
 | `/api/finanziaria` | 4 | ✓ | finanziaria |
 | `/api/fiscalita` | 12 | ✓ | fiscalita_italiana |
-| `/api/fornitori` | 32 | — | public_api, suppliers_module.base, suppliers_module.bulk, suppliers_module.iban, suppliers_module.import_export, suppliers_module.validation |
 | `/api/fornitori-learning` | 14 | ✓ | fornitori_learning |
 | `/api/genera-proposte` | 1 | ✓ | dati_provvisori |
 | `/api/gestione-riservata` | 7 | ✓ | gestione_riservata |
 | `/api/health` | 1 | ✓ | main |
-| `/api/import-manuale` | 6 | — | import_manuale |
-| `/api/import-templates` | 4 | — | import_templates |
-| `/api/indici-bilancio` | 2 | — | indici_bilancio |
-| `/api/inps` | 9 | — | inps_documenti |
 | `/api/invoices` | 9 | ✓ | invoices.invoices_emesse, invoices.invoices_main |
-| `/api/iva` | 6 | — | accounting.iva_calcolo |
-| `/api/learning-cdc` | 5 | — | learning_machine_cdc |
 | `/api/learning-machine` | 7 | ✓ | learning_machine |
 | `/api/learning-universal` | 5 | ✓ | learning_universal |
-| `/api/liquidazione-iva` | 5 | — | accounting.liquidazione_iva |
-| `/api/login` | 1 | — | auth |
-| `/api/logout` | 1 | — | auth |
-| `/api/me` | 1 | — | auth |
 | `/api/mutui` | 13 | ✓ | mutui, mutui_parser |
 | `/api/noleggio` | 11 | ✓ | noleggio |
-| `/api/notifications` | 7 | — | notifications |
-| `/api/ocr-assegni` | 6 | — | ocr_assegni |
 | `/api/openapi` | 10 | ✓ | openapi_it |
 | `/api/openapi-automotive` | 6 | ✓ | openapi_automotive |
 | `/api/openapi-imprese` | 6 | ✓ | openapi_imprese |
@@ -114,12 +87,9 @@ Colonna FE: ✓ = il prefisso è referenziato letteralmente nel frontend;
 | `/api/pos-corrispettivi` | 8 | ✓ | pos_corrispettivi_check |
 | `/api/previsioni-acquisti` | 5 | ✓ | previsioni_acquisti |
 | `/api/prima-nota` | 57 | ✓ | prima_nota_module, prima_nota_module.banca, prima_nota_module.cassa, prima_nota_module.manutenzione, prima_nota_module.salari, prima_nota_module.stats, prima_nota_module.sync |
-| `/api/prima-nota-auto` | 10 | — | accounting.prima_nota_automation |
 | `/api/prima-nota-salari` | 14 | ✓ | accounting.prima_nota_salari |
-| `/api/prima-nota-salari-v2` | 2 | — | accounting.prima_nota_salari_v2 |
 | `/api/privacy` | 1 | — | legal_pages |
 | `/api/proposte` | 1 | ✓ | dati_provvisori |
-| `/api/quietanze-f24` | 6 | — | f24.quietanze |
 | `/api/rapido` | 8 | ✓ | rapido |
 | `/api/realtime` | 1 | — | websocket_realtime |
 | `/api/regole` | 7 | ✓ | accounting.regole_categorizzazione |

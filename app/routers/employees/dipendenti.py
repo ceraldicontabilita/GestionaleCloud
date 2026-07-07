@@ -1944,27 +1944,9 @@ async def genera_libretti_da_dipendenti() -> Dict[str, Any]:
 
 
 # ============== GESTIONE CONTRATTI ==============
-
-@router.get("/contratti")
-@handle_errors
-async def list_contratti(
-    dipendente_id: Optional[str] = Query(None),
-    tipo: Optional[str] = Query(None),
-    stato: Optional[str] = Query(None)
-) -> List[Dict[str, Any]]:
-    """Lista tutti i contratti."""
-    db = Database.get_db()
-    
-    query = {}
-    if dipendente_id:
-        query["dipendente_id"] = dipendente_id
-    if tipo:
-        query["tipo_contratto"] = tipo
-    if stato:
-        query["stato"] = stato
-    
-    contratti = await db["contratti_dipendenti"].find(query, {"_id": 0}).sort("data_inizio", -1).to_list(500)
-    return contratti
+# NB: la GET /contratti che era qui è stata rimossa (audit lug 2026): era
+# la seconda definizione identica dello stesso path — FastAPI usa la prima
+# registrata (list_contratti_proxy, più sopra), questa era irraggiungibile.
 
 
 @router.post("/contratti")

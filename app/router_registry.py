@@ -64,19 +64,17 @@ def _register_auth(app: FastAPI):
 
 
 # ─── F24 Module ──────────────────────────────────────────────────────────────
+# Rimossi (audit lug 2026, zero chiamanti verificati due volte): quietanze,
+# f24_gestione_avanzata, f24_notifiche, codici_tributari.
 def _register_f24(app: FastAPI):
-    from app.routers.f24 import f24_main, f24_riconciliazione, f24_public, quietanze, f24_gestione_avanzata, f24_notifiche
-    from app.routers import f24_email_settings, codici_tributari
+    from app.routers.f24 import f24_main, f24_riconciliazione, f24_public
+    from app.routers import f24_email_settings
     from app.routers.bank import riconciliazione_f24_banca
-    
+
     app.include_router(f24_main.router, prefix="/api/f24", tags=["F24"])
     app.include_router(f24_riconciliazione.router, prefix="/api/f24-riconciliazione", tags=["F24 Riconciliazione"])
     app.include_router(f24_public.router, prefix="/api/f24-public", tags=["F24 Public"])
-    app.include_router(quietanze.router, prefix="/api/quietanze-f24", tags=["Quietanze F24"])
-    app.include_router(f24_notifiche.router, prefix="/api/f24-notifiche", tags=["F24 Notifiche"])
-    app.include_router(f24_gestione_avanzata.router, prefix="/api/f24-avanzato", tags=["F24 Avanzato"])
     app.include_router(f24_email_settings.router, prefix="/api/f24-email-settings", tags=["F24 Email"])
-    app.include_router(codici_tributari.router, prefix="/api/codici-tributari", tags=["Codici Tributari"])
     app.include_router(riconciliazione_f24_banca.router, prefix="/api/f24-riconciliazione", tags=["Riconciliazione F24 Banca"])
 
     # Email F24 (scarica/processa allegati F24 da email)
@@ -88,55 +86,48 @@ def _register_f24(app: FastAPI):
 
 
 # ─── Accounting Module ───────────────────────────────────────────────────────
+# Rimossi (audit lug 2026, zero chiamanti verificati due volte):
+# accounting_main, accounting_extended, accounting_engine (router),
+# accounting_engine_api, prima_nota_automation, prima_nota_salari_v2,
+# iva_calcolo, liquidazione_iva (router; il service omonimo resta vivo).
 def _register_accounting(app: FastAPI):
     from app.routers.accounting import (
-        accounting_main, accounting_extended, accounting_engine_api,
-        prima_nota_automation, prima_nota_salari, prima_nota_salari_v2,
+        prima_nota_salari,
         piano_conti, bilancio, centri_costo, contabilita_avanzata,
-        regole_categorizzazione, iva_calcolo, liquidazione_iva,
-        contabilita_gestionale
+        regole_categorizzazione, contabilita_gestionale
     )
     from app.routers.prima_nota_module import router as prima_nota_router
-    from app.routers import accounting_engine, contabilita_italiana, fiscalita_italiana
+    from app.routers import contabilita_italiana, fiscalita_italiana
     from app.routers import batch_operations
-    
-    app.include_router(accounting_main.router, prefix="/api/accounting", tags=["Accounting"])
-    app.include_router(accounting_extended.router, prefix="/api/accounting", tags=["Accounting Extended"])
-    app.include_router(accounting_engine_api.router, prefix="/api/accounting-engine", tags=["Accounting Engine"])
+
     app.include_router(prima_nota_router, prefix="/api/prima-nota", tags=["Prima Nota"])
-    app.include_router(prima_nota_automation.router, prefix="/api/prima-nota-auto", tags=["Prima Nota Auto"])
     app.include_router(prima_nota_salari.router, prefix="/api/prima-nota-salari", tags=["Prima Nota Salari"])
-    app.include_router(prima_nota_salari_v2.router, prefix="/api/prima-nota-salari-v2", tags=["Prima Nota Salari V2 (DARE/AVERE)"])
     app.include_router(piano_conti.router, prefix="/api/piano-conti", tags=["Piano dei Conti"])
     app.include_router(bilancio.router, prefix="/api/bilancio", tags=["Bilancio"])
     app.include_router(contabilita_gestionale.router, prefix="/api/contabilita-gestionale", tags=["Contabilità Gestionale"])
     app.include_router(centri_costo.router, prefix="/api/centri-costo", tags=["Centri di Costo"])
     app.include_router(contabilita_avanzata.router, prefix="/api/contabilita", tags=["Contabilita Avanzata"])
     app.include_router(regole_categorizzazione.router, prefix="/api/regole", tags=["Regole"])
-    app.include_router(iva_calcolo.router, prefix="/api/iva", tags=["IVA"])
-    app.include_router(liquidazione_iva.router, prefix="/api", tags=["Liquidazione IVA"])
     app.include_router(batch_operations.router, prefix="/api/batch", tags=["Batch Operations"])
-    app.include_router(accounting_engine.router, prefix="/api/accounting", tags=["Accounting Engine"])
     app.include_router(contabilita_italiana.router, prefix="/api/contabilita", tags=["Contabilità Italiana"])
     app.include_router(fiscalita_italiana.router, prefix="/api/fiscalita", tags=["Fiscalità Italiana"])
 
 
 # ─── Bank Module ─────────────────────────────────────────────────────────────
 def _register_bank(app: FastAPI):
+    # Rimossi (audit lug 2026, zero chiamanti verificati due volte):
+    # bank_reconciliation, bank_statement_parser, bank_statement_bulk_import.
     from app.routers.bank import (
-        bank_main, bank_reconciliation, bank_statement_import,
-        bank_statement_parser, estratto_conto, assegni, pos_accredito,
-        bank_statement_bulk_import, assegni_learning
+        bank_main, bank_statement_import,
+        estratto_conto, assegni, pos_accredito,
+        assegni_learning
     )
     from app.routers.bonifici_module import router as archivio_bonifici_router
     from app.routers.bonifici_module import associazioni as bonifici_associazioni
     from app.routers import paypal_statements, distinte_bpm
-    
+
     app.include_router(bank_main.router, prefix="/api/bank", tags=["Bank"])
-    app.include_router(bank_reconciliation.router, prefix="/api/bank-reconciliation", tags=["Bank Reconciliation"])
     app.include_router(bank_statement_import.router, prefix="/api/bank-statement", tags=["Bank Statement"])
-    app.include_router(bank_statement_parser.router, prefix="/api/estratto-conto", tags=["Estratto Conto Parser"])
-    app.include_router(bank_statement_bulk_import.router, prefix="/api/bank-statement-bulk", tags=["Bank Bulk"])
     app.include_router(estratto_conto.router, prefix="/api/estratto-conto-movimenti", tags=["Estratto Conto"])
     app.include_router(archivio_bonifici_router, prefix="/api/archivio-bonifici", tags=["Archivio Bonifici"])
     app.include_router(assegni.router, prefix="/api/assegni", tags=["Assegni"])
@@ -203,47 +194,49 @@ def _register_employees(app: FastAPI):
 
 # ─── Reports Module ──────────────────────────────────────────────────────────
 def _register_reports(app: FastAPI):
-    from app.routers.reports import report_pdf, exports, simple_exports, analytics, dashboard
+    from app.routers.reports import report_pdf, exports, simple_exports, dashboard
     
     app.include_router(report_pdf.router, prefix="/api/report-pdf", tags=["Report PDF"])
     app.include_router(exports.router, prefix="/api/exports", tags=["Exports"])
     app.include_router(simple_exports.router, prefix="/api/exports", tags=["Simple Exports"])
-    app.include_router(analytics.router, prefix="/api/analytics", tags=["Analytics"])
     app.include_router(dashboard.router, prefix="/api/dashboard", tags=["Dashboard"])
 
 
 # ─── Core Routers ────────────────────────────────────────────────────────────
 def _register_core(app: FastAPI):
+    # Rimossi dai router "core" (audit lug 2026, zero chiamanti verificati
+    # due volte): chart_of_accounts, cash_register, ocr_assegni,
+    # indici_bilancio, notifications (la campanella usa /api/alerts),
+    # config.py (/api/config/email mai chiamato; /api/config/* vivo è
+    # configurazioni.py), import_templates, import_manuale, enhanced_parser,
+    # learning_machine_cdc (router; il service omonimo resta vivo),
+    # inps_documenti, adr, e l'alias doppio /api/fornitori (il frontend usa
+    # /api/suppliers). controllo_gestione resta: il chatbot ne importa
+    # get_trend_mensile.
     from app.routers import (
-        cash, chart_of_accounts, notifications, cash_register,
-        settings as settings_base, config, ocr_assegni,
+        cash,
+        settings as settings_base,
         finanziaria, gestione_riservata, commercialista, scadenze,
         pianificazione, admin, verifica_coerenza,
         documenti, cespiti, scadenzario_fornitori, controllo_gestione,
-        indici_bilancio, chiusura_esercizio,
-        configurazioni, alerts, import_templates,
-        todo, mutui, mutui_parser, import_manuale, auto_repair,
+        chiusura_esercizio,
+        configurazioni, alerts,
+        todo, mutui, mutui_parser, auto_repair,
         rapido, settings_router, dati_provvisori,
-        batch_reprocessing, pos_corrispettivi_check, enhanced_parser,
+        batch_reprocessing, pos_corrispettivi_check,
         chat_router, learning_universal, schede_tecniche
     )
     from app.routers.suppliers_module import router as suppliers_router
     from app.routers.operazioni_module import router as operazioni_router
     from app.routers import openapi_imprese, openapi_it, openapi_automotive
-    from app.routers import websocket_realtime, learning_machine, learning_machine_cdc, fornitori_learning
-    from app.routers import sync_relazionale, pagopa, inps_documenti, adr
-    
+    from app.routers import websocket_realtime, learning_machine, fornitori_learning
+    from app.routers import sync_relazionale, pagopa
+
     app.include_router(suppliers_router, prefix="/api/suppliers", tags=["Suppliers"])
-    app.include_router(suppliers_router, prefix="/api/fornitori", tags=["Fornitori"])
     app.include_router(cash.router, prefix="/api/cash", tags=["Cash"])
-    app.include_router(chart_of_accounts.router, prefix="/api/chart-of-accounts", tags=["Chart of Accounts"])
-    app.include_router(notifications.router, prefix="/api/notifications", tags=["Notifications"])
-    app.include_router(cash_register.router, prefix="/api/cash-register", tags=["Cash Register"])
     app.include_router(settings_router.router, prefix="/api/settings", tags=["Settings"])
     app.include_router(settings_base.router, prefix="/api/settings", tags=["Settings Base"])
-    app.include_router(config.router, prefix="/api/config", tags=["Config"])
     app.include_router(configurazioni.router, prefix="/api/config", tags=["Configurazioni"])
-    app.include_router(ocr_assegni.router, prefix="/api/ocr-assegni", tags=["OCR Assegni"])
     app.include_router(finanziaria.router, prefix="/api/finanziaria", tags=["Finanziaria"])
     app.include_router(gestione_riservata.router, prefix="/api/gestione-riservata", tags=["Gestione Riservata"])
     app.include_router(commercialista.router, prefix="/api/commercialista", tags=["Commercialista"])
@@ -256,34 +249,27 @@ def _register_core(app: FastAPI):
     app.include_router(cespiti.router, prefix="/api/cespiti", tags=["Cespiti"])
     app.include_router(scadenzario_fornitori.router, prefix="/api/scadenzario-fornitori", tags=["Scadenzario"])
     app.include_router(controllo_gestione.router, prefix="/api/controllo-gestione", tags=["Controllo Gestione"])
-    app.include_router(indici_bilancio.router, prefix="/api/indici-bilancio", tags=["Indici Bilancio"])
     app.include_router(chiusura_esercizio.router, prefix="/api/chiusura-esercizio", tags=["Chiusura Esercizio"])
     app.include_router(alerts.router, prefix="/api/alerts", tags=["Alert"])
-    app.include_router(import_templates.router, prefix="/api/import-templates", tags=["Import Templates"])
     app.include_router(todo.router, prefix="/api/todo", tags=["To-Do"])
     app.include_router(mutui.router, prefix="/api/mutui", tags=["Mutui"])
     app.include_router(mutui_parser.router, prefix="/api/mutui", tags=["Mutui Parser"])
-    app.include_router(import_manuale.router, prefix="/api/import-manuale", tags=["Import Manuale"])
     app.include_router(auto_repair.router, prefix="/api/auto-repair", tags=["Auto Riparazione"])
     app.include_router(rapido.router, prefix="/api/rapido", tags=["Inserimento Rapido"])
     app.include_router(dati_provvisori.router, prefix="/api", tags=["Dati Provvisori"])
     app.include_router(batch_reprocessing.router, prefix="/api/batch-reprocess", tags=["Batch Reprocessing"])
     app.include_router(pos_corrispettivi_check.router, prefix="/api", tags=["POS Check"])
-    app.include_router(enhanced_parser.router, prefix="/api", tags=["Enhanced Parser"])
     app.include_router(chat_router.router, prefix="/api", tags=["Chat"])
     app.include_router(schede_tecniche.router, prefix="/api/schede-tecniche", tags=["Schede Tecniche"])
     app.include_router(learning_universal.router, prefix="/api/learning-universal", tags=["Learning Universal"])
     app.include_router(websocket_realtime.router, prefix="/api", tags=["WebSocket"])
     app.include_router(learning_machine.router, prefix="/api/learning-machine", tags=["Learning Machine"])
-    app.include_router(learning_machine_cdc.router, prefix="/api", tags=["Learning CDC"])
     app.include_router(fornitori_learning.router, prefix="/api/fornitori-learning", tags=["Fornitori Learning"])
     app.include_router(openapi_imprese.router, prefix="/api/openapi-imprese", tags=["OpenAPI Imprese"])
     app.include_router(openapi_it.router, prefix="/api/openapi", tags=["OpenAPI.it"])
     app.include_router(openapi_automotive.router, prefix="/api/openapi-automotive", tags=["OpenAPI Automotive"])
     app.include_router(sync_relazionale.router, prefix="/api", tags=["Sync Relazionale"])
     app.include_router(pagopa.router, prefix="/api/pagopa", tags=["PagoPA"])
-    app.include_router(inps_documenti.router, prefix="/api/inps", tags=["INPS"])
-    app.include_router(adr.router, prefix="/api/adr", tags=["ADR"])
 
     # Agenti AI, PayPal, Previsioni Acquisti
     from app.routers import agenti, paypal_api, previsioni_acquisti
@@ -299,13 +285,12 @@ def _register_core(app: FastAPI):
 # ─── Email Module ────────────────────────────────────────────────────────────
 def _register_email(app: FastAPI):
     from app.routers import (
-        email_scanner, email_download, email_mongodb,
+        email_scanner, email_download,
         documenti_non_associati, document_ai, ai_parser
     )
 
     app.include_router(email_scanner.router, prefix="/api/email-scanner", tags=["Email Scanner"])
     app.include_router(email_download.router, prefix="/api/email-download", tags=["Email Download"])
-    app.include_router(email_mongodb.router, prefix="/api", tags=["Email MongoDB"])
 
     # Auto-classify documents_inbox (Gmail/PEC)
     from app.routers import documents_inbox_classify
@@ -323,13 +308,11 @@ def _register_noleggio(app: FastAPI):
     # memoria/endpoints/07-hr-noleggio-verbali.md. noleggio.py (prefisso
     # /api/noleggio) resta l'unico scrittore canonico della collezione.
     from app.routers import noleggio, verbali_noleggio, verbali_noleggio_api, verbali_riconciliazione
-    from app.routers import alert_verbali
 
     app.include_router(noleggio.router, prefix="/api/noleggio", tags=["Noleggio Auto"])
     app.include_router(verbali_noleggio.router, tags=["Verbali Noleggio"])
     app.include_router(verbali_noleggio_api.router, prefix="/api/verbali-noleggio", tags=["Verbali API"])
     app.include_router(verbali_riconciliazione.router, prefix="/api/verbali-riconciliazione", tags=["Verbali Riconciliazione"])
-    app.include_router(alert_verbali.router, prefix="/api", tags=["Alert Verbali"])
     from app.routers import admin_export
     app.include_router(admin_export.router, prefix="/api", tags=["Admin Export"])
 

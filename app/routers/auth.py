@@ -73,50 +73,9 @@ def verify_token(request: Request) -> str:
         raise HTTPException(status_code=401, detail="Token non valido")
 
 
-@router.post("/login")
-async def login(body: LoginRequest, response: Response):
-    if body.email.lower() != ADMIN_EMAIL.lower():
-        raise HTTPException(status_code=401, detail="Credenziali errate")
-    if not _check_password(body.password):
-        raise HTTPException(status_code=401, detail="Credenziali errate")
-
-    token = _make_token(body.email)
-
-    # Cookie httpOnly (sicuro, non accessibile da JS)
-    response.set_cookie(
-        key="access_token",
-        value=token,
-        httponly=True,
-        secure=False,      # True in produzione con HTTPS
-        samesite="lax",
-        max_age=TOKEN_EXPIRE_HOURS * 3600,
-        path="/",
-    )
-    # Cookie non httpOnly per il frontend (solo flag di sessione)
-    response.set_cookie(
-        key="session_active",
-        value="1",
-        httponly=False,
-        secure=False,
-        samesite="lax",
-        max_age=TOKEN_EXPIRE_HOURS * 3600,
-        path="/",
-    )
-
-    return {"ok": True, "email": body.email}
-
-
-@router.post("/logout")
-async def logout(response: Response):
-    response.delete_cookie("access_token")
-    response.delete_cookie("session_active")
-    return {"ok": True}
-
-
-@router.get("/me")
-async def me(request: Request):
-    email = verify_token(request)
-    return {"email": email, "ok": True}
+# NB: gli alias legacy /api/login, /api/logout, /api/me sono stati rimossi
+# (audit lug 2026): il frontend usa esclusivamente /api/auth/login,
+# /api/auth/logout, /api/auth/verify definiti qui sotto.
 
 
 @router.get("/auth/verify")

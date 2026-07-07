@@ -217,51 +217,7 @@ class TestVerbaliRiconciliaCompleto:
         assert len(data) > 0, f"risposta pipeline vuota: {data}"
 
 
-# ── FASE 4: /api/alert-verbali/... ───────────────────────────────────
-
-class TestAlertVerbali:
-    def test_contatore_alert(self, api_client):
-        r = api_client.get(
-            f"{BASE_URL}/api/alert-verbali/contatore", timeout=30
-        )
-        assert r.status_code == 200, r.text
-        data = r.json()
-        assert "scadenza_imminente_5gg" in data, data
-        assert "in_attesa_notifica" in data, data
-        assert isinstance(data["scadenza_imminente_5gg"], int)
-        assert isinstance(data["in_attesa_notifica"], int)
-        assert data["scadenza_imminente_5gg"] >= 0
-        assert data["in_attesa_notifica"] >= 0
-
-    def test_scadenza_imminente_default(self, api_client):
-        r = api_client.get(
-            f"{BASE_URL}/api/alert-verbali/scadenza-imminente", timeout=30
-        )
-        assert r.status_code == 200, r.text
-        data = r.json()
-        assert isinstance(data, list)
-        for item in data:
-            # Verifico struttura di ogni item
-            for k in ("numero_verbale", "targa", "data_scadenza",
-                      "giorni_mancanti", "urgenza"):
-                assert k in item, f"manca {k} in {item}"
-            assert item["urgenza"] in ("critica", "alta", "media"), item["urgenza"]
-            assert isinstance(item["giorni_mancanti"], int)
-
-    def test_scadenza_imminente_giorni_custom(self, api_client):
-        r = api_client.get(
-            f"{BASE_URL}/api/alert-verbali/scadenza-imminente?giorni_soglia=30",
-            timeout=30,
-        )
-        assert r.status_code == 200, r.text
-        data = r.json()
-        assert isinstance(data, list)
-
-        # con soglia 30 il numero di risultati deve essere >= rispetto a soglia 5
-        r5 = api_client.get(
-            f"{BASE_URL}/api/alert-verbali/scadenza-imminente?giorni_soglia=5",
-            timeout=30,
-        ).json()
-        assert len(data) >= len(r5), (
-            f"soglia 30 ({len(data)}) dovrebbe contenere almeno i risultati di soglia 5 ({len(r5)})"
-        )
+# ── FASE 4: /api/alert-verbali rimosso (audit lug 2026) ──────────────
+# Il router alert_verbali aveva zero chiamanti runtime (frontend e backend):
+# questi erano gli unici riferimenti rimasti. Gli alert verbali vivono nel
+# sistema alert generale (/api/alerts).

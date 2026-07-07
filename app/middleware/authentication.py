@@ -45,7 +45,6 @@ PUBLIC_PREFIXES = [
     "/api/auth/",        # All auth endpoints
     "/api/public/",      # Explicit public API
     "/api/f24-public/",  # F24 public endpoints
-    "/api/enhanced-parser/info",  # Parser info endpoint
     "/docs",             # Swagger UI assets
     "/redoc",            # ReDoc assets
 ]

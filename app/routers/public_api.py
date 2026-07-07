@@ -724,46 +724,11 @@ async def get_dashboard_stats() -> Dict[str, Any]:
     }
 
 
-# ============== FORNITORI METODI PAGAMENTO ==============
-
-@router.get("/fornitori/metodi-pagamento")
-async def get_metodi_pagamento() -> List[str]:
-    """Lista metodi pagamento disponibili."""
-    return ["contanti", "bonifico", "assegno", "carta", "riba", "mav", "rid", "altro"]
-
-
-@router.post("/fornitori/import-metodi-da-fatture")
-async def import_metodi_from_invoices() -> Dict[str, Any]:
-    """Importa metodi pagamento da fatture."""
-    db = Database.get_db()
-    
-    invoices = await db[Collections.INVOICES].find(
-        {"pagamento.ModalitaPagamento": {"$exists": True}},
-        {"supplier_vat": 1, "pagamento": 1}
-    ).to_list(10000)
-    
-    updated = 0
-    for inv in invoices:
-        vat = inv.get("supplier_vat")
-        modalita = inv.get("pagamento", {}).get("ModalitaPagamento")
-        
-        if vat and modalita:
-            metodo = "bonifico"
-            if modalita in ["MP01"]:
-                metodo = "contanti"
-            elif modalita in ["MP02", "MP03"]:
-                metodo = "assegno"
-            elif modalita in ["MP05", "MP06", "MP07"]:
-                metodo = "bonifico"
-            
-            result = await db[Collections.SUPPLIERS].update_one(
-                {"partita_iva": vat, "metodo_pagamento": {"$exists": False}},
-                {"$set": {"metodo_pagamento": metodo}}
-            )
-            if result.modified_count > 0:
-                updated += 1
-    
-    return {"updated": updated}
+# NB: le route legacy /fornitori/metodi-pagamento e
+# /fornitori/import-metodi-da-fatture sono state rimosse (audit lug 2026):
+# zero chiamanti, e l'import metodi da fatture vive già nel flusso
+# canonico dei fornitori (suppliers_module). Inoltre applicavano il
+# default "bonifico", vietato dalla regola fornitori.
 
 
 # ============== RICERCA GLOBALE ==============
