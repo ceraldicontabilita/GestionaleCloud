@@ -75,6 +75,21 @@ quella "approssimata" — sono la stessa logica di scoring con soglie diverse, n
    questi risulta mai chiamato (`genera_alert(...)`) in tutto il codice al di fuori della
    loro definizione. Il sistema di alert per la riconciliazione è interamente inerte.
 
+## Sovrapposizione da verificare (trovata nel nuovo audit generale)
+
+Oltre al motore canonico, restano attivi e con chiamanti reali 3 servizi di riconciliazione
+distinti che non sono stati assorbiti nell'unificazione:
+- `app/services/riconciliazione_completa.py` → chiamato da `app/routers/email_download.py:729`
+- `app/services/riconciliazione_smart.py` → chiamato da `app/routers/operazioni_module/smart.py:61,73`
+- `app/services/riconciliazione_intelligente.py` → montato con prefix `/api/riconciliazione-intelligente`
+
+Nessuno dei tre è codice morto (hanno chiamanti reali raggiungibili), quindi non sono stati
+toccati in questo passaggio — ma la sovrapposizione concettuale con
+`riconciliazione_bancaria.py` va chiarita in una review dedicata: potrebbero essere sistemi
+con scopi genuinamente distinti (smart = match manuale singolo movimento, completa = batch
+periodico via email, intelligente = API dedicata) oppure ulteriore duplicazione di logica
+da consolidare.
+
 ## Bug/incoerenze note (da correggere)
 
 - Il motore prende il primo match entro tolleranza in più punti (stesso pattern del bug
