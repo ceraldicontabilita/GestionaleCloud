@@ -10,7 +10,7 @@ Struttura dati:
 - Saldo (differenza)
 - Progressivo (riporto da mesi precedenti)
 """
-from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Body
+from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Body, Depends
 from fastapi.responses import StreamingResponse
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
@@ -19,6 +19,7 @@ import logging
 import io
 
 from app.database import Database
+from app.utils.dependencies import get_current_admin_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -557,7 +558,8 @@ async def get_dipendenti_lista() -> List[str]:
 
 @router.delete("/salari/reset")
 async def reset_prima_nota_salari(
-    tipo: Optional[str] = Query(None, description="Tipo di record da eliminare: 'busta', 'bonifico', 'aggiustamento' o None per tutti")
+    tipo: Optional[str] = Query(None, description="Tipo di record da eliminare: 'busta', 'bonifico', 'aggiustamento' o None per tutti"),
+    admin_user: Dict[str, Any] = Depends(get_current_admin_user),
 ) -> Dict[str, Any]:
     """
     Elimina i record della prima nota salari.

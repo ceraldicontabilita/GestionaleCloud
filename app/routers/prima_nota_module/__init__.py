@@ -8,7 +8,9 @@ Modulo suddiviso per funzionalità:
 - sync: Sincronizzazione corrispettivi, fatture, import batch
 - manutenzione: Fix, cleanup, verifica
 """
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+
+from app.utils.dependencies import get_current_admin_user
 
 router = APIRouter()
 
@@ -59,7 +61,7 @@ router.add_api_route("/export/excel", export_prima_nota_excel, methods=["GET"])
 # Cassa - Statiche
 router.add_api_route("/cassa", list_prima_nota_cassa, methods=["GET"])
 router.add_api_route("/cassa", create_prima_nota_cassa, methods=["POST"])
-router.add_api_route("/cassa/delete-all", delete_all_prima_nota_cassa, methods=["DELETE"])
+router.add_api_route("/cassa/delete-all", delete_all_prima_nota_cassa, methods=["DELETE"], dependencies=[Depends(get_current_admin_user)])
 router.add_api_route("/cassa/analisi-movimenti-bancari-errati", analisi_movimenti_bancari_errati_in_cassa, methods=["GET"])
 router.add_api_route("/cassa/elimina-movimenti-bancari-errati", elimina_movimenti_bancari_da_cassa, methods=["DELETE"])
 router.add_api_route("/cassa/sync-corrispettivi", sync_corrispettivi_anno, methods=["POST"])
@@ -71,7 +73,7 @@ router.add_api_route("/cassa/fix-corrispettivi-importo", fix_corrispettivi_impor
 # Banca - Statiche
 router.add_api_route("/banca", list_prima_nota_banca, methods=["GET"])
 router.add_api_route("/banca", create_prima_nota_banca, methods=["POST"])
-router.add_api_route("/banca/delete-all", delete_all_prima_nota_banca, methods=["DELETE"])
+router.add_api_route("/banca/delete-all", delete_all_prima_nota_banca, methods=["DELETE"], dependencies=[Depends(get_current_admin_user)])
 
 # Salari
 router.add_api_route("/salari", get_prima_nota_salari, methods=["GET"])

@@ -6,7 +6,7 @@ import logging
 import asyncio
 
 from app.database import Database
-from app.utils.dependencies import get_current_user
+from app.utils.dependencies import get_current_user, get_current_admin_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -163,7 +163,7 @@ async def get_collections(
 async def reset_collections(
     selected: List[str] = Query(None),
     delete_files: bool = False,
-    current_user: Dict[str, Any] = Depends(get_current_user)
+    current_user: Dict[str, Any] = Depends(get_current_admin_user)
 ) -> Dict[str, Any]:
     """
     Reset selected collections (Delete all data).
