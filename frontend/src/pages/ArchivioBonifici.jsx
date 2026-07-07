@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import {
@@ -43,7 +43,6 @@ export default function ArchivioBonifici() {
   const [loadingFatture, setLoadingFatture] = useState(false);
   const [dipendenteIbanMatch, setDipendenteIbanMatch] = useState(null);
 
-  const navigate = useNavigate();
   const location = useLocation();
 
   const getTabFromPath = () => {
@@ -61,8 +60,11 @@ export default function ArchivioBonifici() {
   const activeTab = hs.tab;
 
   const handleTabChange = tabId => {
+    // Il tab è gestito interamente via hash (vedi useHashState sopra): questa
+    // pagina è montata solo su /riconciliazione/archivio-bonifici, non esiste
+    // una route "/archivio-bonifici/:tab" nel router — un navigate() verso
+    // quel percorso finiva sul wildcard "*" e rimandava l'utente alla Dashboard.
     setHs('tab', tabId);
-    navigate(`/archivio-bonifici/${tabId}`);
   };
 
   useEffect(() => {
@@ -172,14 +174,17 @@ export default function ArchivioBonifici() {
             const statusRes = await api.get(`/api/archivio-bonifici/riconcilia/task/${taskId}`);
 
             if (statusRes.data.status === 'completed') {
-              const result = statusRes.data.result;
+              // Il task in background espone i campi direttamente sull'oggetto
+              // (non annidati in "result" — quello non esiste lato backend).
+              const riconciliati = statusRes.data.riconciliati || 0;
+              const totale = statusRes.data.total || 0;
               alert(
-                `✅ Riconciliazione completata!\n\nRiconciliati: ${result.riconciliati}\nNon trovati: ${result.non_riconciliati}`
+                `✅ Riconciliazione completata!\n\nRiconciliati: ${riconciliati}\nNon trovati: ${Math.max(totale - riconciliati, 0)}`
               );
               await Promise.all([loadTransfers(), loadRiconciliazioneStats()]);
               setRiconciliando(false);
             } else if (statusRes.data.status === 'error') {
-              alert(`❌ Errore: ${statusRes.data.error}`);
+              alert(`❌ Errore: ${statusRes.data.message || 'Errore sconosciuto'}`);
               setRiconciliando(false);
             } else if (attempts < maxAttempts) {
               attempts++;

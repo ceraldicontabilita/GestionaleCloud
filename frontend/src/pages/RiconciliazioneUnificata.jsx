@@ -605,7 +605,7 @@ export default function RiconciliazioneUnificata() {
           {processing === 'auto' ? '⏳' : '⚡'} Auto-Riconcilia
         </button>
         <button
-          onClick={loadAllData}
+          onClick={() => loadAllData(currentLimit)}
           disabled={processing}
           style={{
             padding: '10px 16px',

@@ -454,7 +454,13 @@ async def inizializza_piano_conti_base(db) -> List[Dict[str, Any]]:
     
     if conti:
         await db[COLLECTION_PIANO_CONTI].insert_many(conti)
-    
+        # insert_many muta ogni dict IN-PLACE aggiungendo "_id" (ObjectId,
+        # non serializzabile in JSON): senza questo pop, il primo GET su
+        # un'azienda con piano_conti vuoto va in 500 "Unable to serialize
+        # ObjectId" (trovato da QA end-to-end lug 2026).
+        for c in conti:
+            c.pop("_id", None)
+
     return conti
 
 

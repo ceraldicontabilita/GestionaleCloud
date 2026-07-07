@@ -361,6 +361,17 @@ const NotificationBellMinimal = memo(function NotificationBellMinimal() {
     per_modulo: {},
   });
   const [open, setOpen] = useState(false);
+  const wrapRef = useRef(null);
+
+  // Chiudi se si clicca fuori (stesso pattern di AltroDropdown)
+  useEffect(() => {
+    if (!open) return;
+    const handle = e => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handle);
+    return () => document.removeEventListener('mousedown', handle);
+  }, [open]);
 
   const fetchSummary = useCallback(async () => {
     try {
@@ -396,7 +407,7 @@ const NotificationBellMinimal = memo(function NotificationBellMinimal() {
   const badgeColor = critical > 0 ? '#ef4444' : warning > 0 ? '#f59e0b' : '#3b82f6';
 
   return (
-    <div style={{ position: 'relative' }}>
+    <div ref={wrapRef} style={{ position: 'relative' }}>
       <button
         onClick={handleOpen}
         style={{

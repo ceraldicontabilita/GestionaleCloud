@@ -243,6 +243,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
               </div>
               <button
                 onClick={onClose}
+                aria-label="Chiudi"
                 style={{
                   background: 'rgba(255,255,255,0.2)',
                   border: 'none',

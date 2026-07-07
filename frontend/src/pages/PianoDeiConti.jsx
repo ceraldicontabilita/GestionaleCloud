@@ -651,7 +651,30 @@ export default function PianoDeiConti() {
               }}
               onClick={e => e.stopPropagation()}
             >
-              <h2 style={{ marginTop: 0 }}>➕ Nuovo Conto</h2>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <h2 style={{ marginTop: 0 }}>➕ Nuovo Conto</h2>
+                <button
+                  onClick={() => setShowNewConto(false)}
+                  aria-label="Chiudi"
+                  style={{
+                    width: 32,
+                    height: 32,
+                    flexShrink: 0,
+                    background: '#f1f5f9',
+                    border: 'none',
+                    borderRadius: 8,
+                    color: '#475569',
+                    fontSize: 16,
+                    lineHeight: 1,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
 
               <div style={{ display: 'grid', gap: 15 }}>
                 <div>
@@ -799,7 +822,30 @@ export default function PianoDeiConti() {
               }}
               onClick={e => e.stopPropagation()}
             >
-              <h2 style={{ marginTop: 0 }}>⚙️ Nuova Regola Categorizzazione</h2>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <h2 style={{ marginTop: 0 }}>⚙️ Nuova Regola Categorizzazione</h2>
+                <button
+                  onClick={() => setShowNewRegola(false)}
+                  aria-label="Chiudi"
+                  style={{
+                    width: 32,
+                    height: 32,
+                    flexShrink: 0,
+                    background: '#f1f5f9',
+                    border: 'none',
+                    borderRadius: 8,
+                    color: '#475569',
+                    fontSize: 16,
+                    lineHeight: 1,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
 
               <div style={{ display: 'grid', gap: 15 }}>
                 <div>
