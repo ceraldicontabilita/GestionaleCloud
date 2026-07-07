@@ -164,11 +164,18 @@ async def recupera_fatture_mancanti_email(db, forza: bool = False) -> Dict[str, 
 
         parola_chiave = nome.split()[0] if nome else ""
         try:
+            # NON passare insieme search_keywords e allowed_senders: in
+            # download_documents_from_email() se allowed_senders è valorizzato
+            # la ricerca per parola chiave viene ignorata del tutto e si cerca
+            # solo FROM quell'indirizzo esatto — ma le fatture spesso arrivano
+            # da un indirizzo di sistema automatico (es. "MongoDB Cloud")
+            # diverso dall'email della persona di contatto salvata su PayPal,
+            # quindi con allowed_senders non trovava mai nulla anche quando i
+            # documenti erano chiaramente in posta.
             risultato = await download_documents_from_email(
                 db, user, pwd,
                 since_days=365,
                 search_keywords=[parola_chiave] if parola_chiave else None,
-                allowed_senders=[email] if email else None,
             )
         except Exception:
             logger.exception("[PayPal Email Recovery] Errore ricerca per %s", account_id)

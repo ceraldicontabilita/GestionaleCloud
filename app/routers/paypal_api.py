@@ -450,11 +450,16 @@ async def cerca_fattura_email_per_account(paypal_account_id: str) -> Dict[str, A
     if not user or not pwd:
         raise HTTPException(400, "Nessun account Gmail configurato (Admin → Email, con App Password)")
 
+    # NON passare allowed_senders insieme a search_keywords: se valorizzato,
+    # download_documents_from_email() ignora del tutto la ricerca per parola
+    # chiave e cerca solo FROM quell'indirizzo esatto — ma le fatture arrivano
+    # spesso da un indirizzo di sistema automatico diverso dalla persona di
+    # contatto salvata su PayPal (es. MongoDB fattura da "MongoDB Cloud", non
+    # dall'email del commerciale), quindi non trovava mai nulla.
     risultato = await download_documents_from_email(
         db, user, pwd,
         since_days=365,
         search_keywords=[parola_chiave] if parola_chiave else None,
-        allowed_senders=[email_controparte] if email_controparte else None,
     )
 
     from app.services.paypal_email_recovery import _aggancia_documenti_trovati
