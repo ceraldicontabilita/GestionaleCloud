@@ -2264,9 +2264,32 @@ function ScadenzeWidget({ scadenze }) {
               boxShadow: '0 25px 50px rgba(0,0,0,0.25)',
             }}
           >
-            <h3 style={{ margin: '0 0 16px', fontSize: 18, fontWeight: 700, color: '#1e293b' }}>
-              Registra Pagamento
-            </h3>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: '#1e293b' }}>
+                Registra Pagamento
+              </h3>
+              <button
+                onClick={() => setPagaModal(null)}
+                aria-label="Chiudi"
+                style={{
+                  width: 32,
+                  height: 32,
+                  flexShrink: 0,
+                  background: '#f1f5f9',
+                  border: 'none',
+                  borderRadius: 8,
+                  color: '#475569',
+                  fontSize: 16,
+                  lineHeight: 1,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                ✕
+              </button>
+            </div>
 
             <div
               style={{

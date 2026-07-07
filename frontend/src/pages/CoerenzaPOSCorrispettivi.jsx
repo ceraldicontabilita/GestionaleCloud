@@ -699,9 +699,11 @@ export default function CoerenzaPOSCorrispettivi() {
 function ControlloDueFasi({ dati, alertOggi, isMobile, onReload }) {
   const stats = dati?.statistiche || {};
   const giorni = dati?.giorni || [];
+  const riepilogoSettimanale = dati?.riepilogo_settimanale || [];
 
   const [filtroStato, setFiltroStato] = useState('tutti'); // tutti | problemi | ok
   const [modalAperta, setModalAperta] = useState(false);
+  const [vista, setVista] = useState('giornaliero'); // giornaliero | settimanale
 
   const giorniFiltrati = giorni.filter(g => {
     if (filtroStato === 'tutti') return true;
@@ -850,9 +852,31 @@ function ControlloDueFasi({ dati, alertOggi, isMobile, onReload }) {
         />
       </div>
 
-      {/* Filtro */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+      {/* Vista + Filtro */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
         {[
+          { k: 'giornaliero', l: 'Giornaliero' },
+          { k: 'settimanale', l: 'Settimana per settimana' },
+        ].map(o => (
+          <button
+            key={o.k}
+            onClick={() => setVista(o.k)}
+            style={{
+              padding: '6px 12px',
+              fontSize: 12,
+              fontWeight: 700,
+              background: vista === o.k ? '#b8860b' : '#f1f5f9',
+              color: vista === o.k ? '#fff' : '#475569',
+              border: 'none',
+              borderRadius: 6,
+              cursor: 'pointer',
+            }}
+          >
+            {o.l}
+          </button>
+        ))}
+        <div style={{ width: 1, background: '#e2e8f0', margin: '2px 4px' }} />
+        {vista === 'giornaliero' && [
           { k: 'tutti', l: 'Tutti' },
           { k: 'problemi', l: 'Solo problemi' },
           { k: 'ok', l: 'Solo OK' },
@@ -874,11 +898,17 @@ function ControlloDueFasi({ dati, alertOggi, isMobile, onReload }) {
             {o.l}
           </button>
         ))}
-        <div style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b', alignSelf: 'center' }}>
-          {giorniFiltrati.length} / {giorni.length} giorni
-        </div>
+        {vista === 'giornaliero' && (
+          <div style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b', alignSelf: 'center' }}>
+            {giorniFiltrati.length} / {giorni.length} giorni
+          </div>
+        )}
       </div>
 
+      {vista === 'settimanale' ? (
+        <TabellaSettimanale settimane={riepilogoSettimanale} />
+      ) : (
+      <>
       {/* Tabella giornaliera */}
       <div style={{
         background: 'white',
@@ -946,6 +976,73 @@ function ControlloDueFasi({ dati, alertOggi, isMobile, onReload }) {
           </div>
         )}
       </div>
+      </>
+      )}
+    </div>
+  );
+}
+
+// ─── Vista settimanale: quanto incassato vs quanto accreditato, settimana per settimana ───
+function TabellaSettimanale({ settimane }) {
+  if (!settimane || settimane.length === 0) {
+    return (
+      <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8', background: '#fff', borderRadius: 10, border: '1px solid #e2e8f0' }}>
+        Nessun dato settimanale disponibile per il periodo selezionato.
+      </div>
+    );
+  }
+  const statoLabel = {
+    ok: 'OK', in_attesa: 'In attesa', mancante: 'Mancante', differenza: 'Differenza',
+  };
+  const statoColor = {
+    ok: '#16a34a', in_attesa: '#3b82f6', mancante: '#dc2626', differenza: '#d97706',
+  };
+  return (
+    <div style={{ background: 'white', borderRadius: 10, overflow: 'auto', border: '1px solid #e2e8f0' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+        <thead>
+          <tr style={{ background: '#0f2744', color: '#fff' }}>
+            <th style={{ padding: '10px 8px', textAlign: 'left' }}>Settimana</th>
+            <th style={{ padding: '10px 8px', textAlign: 'right' }}>Incassato (POS reale)</th>
+            <th style={{ padding: '10px 8px', textAlign: 'right' }}>Accreditato in banca</th>
+            <th style={{ padding: '10px 8px', textAlign: 'right' }}>Differenza</th>
+            <th style={{ padding: '10px 8px', textAlign: 'center' }}>Stato</th>
+          </tr>
+        </thead>
+        <tbody>
+          {settimane.map((sw, i) => (
+            <tr key={sw.settimana} style={{ background: i % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #f1f5f9' }}>
+              <td style={{ padding: '8px', fontWeight: 600 }}>
+                {formatDateIT(sw.data_inizio)} – {formatDateIT(sw.data_fine)}
+                <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 400 }}>
+                  {sw.settimana} · {sw.num_giorni_con_pos} giorni con incasso
+                </div>
+              </td>
+              <td style={{ padding: '8px', textAlign: 'right', fontWeight: 600 }}>
+                {formatEuro(sw.pos_totale)}
+              </td>
+              <td style={{ padding: '8px', textAlign: 'right', fontWeight: 600 }}>
+                {sw.accredito_totale > 0 ? formatEuro(sw.accredito_totale) : '—'}
+              </td>
+              <td style={{
+                padding: '8px', textAlign: 'right', fontWeight: 700,
+                color: sw.stato === 'in_attesa' ? '#3b82f6' : sw.diff_totale >= 0 ? '#16a34a' : '#dc2626',
+              }}>
+                {sw.stato === 'in_attesa' ? '—' : formatEuro(sw.diff_totale)}
+              </td>
+              <td style={{ padding: '8px', textAlign: 'center' }}>
+                <span style={{
+                  display: 'inline-block', padding: '2px 10px', fontSize: 10, fontWeight: 700,
+                  borderRadius: 10, color: '#fff', background: statoColor[sw.stato] || '#64748b',
+                  textTransform: 'uppercase',
+                }}>
+                  {statoLabel[sw.stato] || sw.stato}
+                </span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -975,6 +1072,7 @@ function StatCard({ label, value, subtitle, color }) {
 }
 
 function RigaGiornaliera({ g, even }) {
+  const [espansa, setEspansa] = useState(false);
   const diffSerColor = g.stato_serale === 'ok' ? '#16a34a' :
                        g.stato_serale === 'no_dati' ? '#94a3b8' :
                        g.stato_serale === 'in_attesa_xml' ? '#8b5cf6' : '#dc2626';
@@ -1007,7 +1105,8 @@ function RigaGiornaliera({ g, even }) {
   }[statoCorr] || { label: '—', bg: '#f1f5f9', color: '#64748b' };
 
   return (
-    <tr style={{ background: even ? '#fff' : '#f8fafc', borderBottom: '1px solid #f1f5f9' }}>
+    <>
+    <tr style={{ background: even ? '#fff' : '#f8fafc', borderBottom: g.dettaglio_gruppo && espansa ? 'none' : '1px solid #f1f5f9' }}>
       <td style={{ padding: '8px', fontWeight: 600 }}>
         {formatDateIT(g.data)}
       </td>
@@ -1044,9 +1143,19 @@ function RigaGiornaliera({ g, even }) {
       <td style={{ padding: '6px 8px', textAlign: 'right' }}>
         {g.pos_manuale > 0 ? formatEuro(g.pos_manuale) : '—'}
         {g.capogruppo && g.giorni_gruppo > 1 && (
-          <div style={{ fontSize: 10, color: '#64748b' }}>
-            gruppo {g.giorni_gruppo} gg: {formatEuro(g.pos_gruppo)}
-          </div>
+          <button
+            type="button"
+            onClick={() => setEspansa(v => !v)}
+            style={{
+              display: 'block', marginLeft: 'auto', marginTop: 2,
+              fontSize: 10, color: '#0f2744', fontWeight: 700,
+              background: 'transparent', border: 'none', cursor: 'pointer', padding: 0,
+              textDecoration: 'underline', textDecorationStyle: 'dotted',
+            }}
+            title="Mostra il dettaglio giorno per giorno di questo accredito"
+          >
+            gruppo {g.giorni_gruppo} gg: {formatEuro(g.pos_gruppo)} {espansa ? '▲' : '▼'}
+          </button>
         )}
       </td>
       <td style={{ padding: '6px 8px', textAlign: 'right' }}>
@@ -1079,6 +1188,46 @@ function RigaGiornaliera({ g, even }) {
         {g.saldo_progressivo == null ? '' : formatEuro(g.saldo_progressivo)}
       </td>
     </tr>
+    {g.dettaglio_gruppo && espansa && (
+      <tr style={{ background: even ? '#fff' : '#f8fafc', borderBottom: '1px solid #f1f5f9' }}>
+        <td colSpan={8} style={{ padding: '0 8px 10px 24px' }}>
+          <div style={{
+            background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8,
+            padding: '8px 12px', fontSize: 11, color: '#334155',
+          }}>
+            <div style={{ fontWeight: 700, marginBottom: 4, color: '#0f2744' }}>
+              Accredito di {formatEuro(g.accredito_banca)} del {formatDateIT(g.data_accredito_attesa)} — da dove arriva:
+            </div>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <tbody>
+                {g.dettaglio_gruppo.map(dg => (
+                  <tr key={dg.data}>
+                    <td style={{ padding: '2px 8px 2px 0' }}>↳ {formatDateIT(dg.data)}</td>
+                    <td style={{ padding: '2px 0', textAlign: 'right', fontWeight: 600 }}>{formatEuro(dg.pos_manuale)}</td>
+                  </tr>
+                ))}
+                <tr style={{ borderTop: '1px solid #e2e8f0' }}>
+                  <td style={{ padding: '4px 8px 0 0', fontWeight: 700 }}>Totale incassato</td>
+                  <td style={{ padding: '4px 0 0', textAlign: 'right', fontWeight: 700 }}>{formatEuro(g.pos_gruppo)}</td>
+                </tr>
+                <tr>
+                  <td style={{ padding: '2px 8px 0 0', fontWeight: 700 }}>Accreditato in banca</td>
+                  <td style={{ padding: '2px 0 0', textAlign: 'right', fontWeight: 700 }}>{formatEuro(g.accredito_banca)}</td>
+                </tr>
+                <tr>
+                  <td style={{ padding: '2px 8px 0 0', fontWeight: 700 }}>Differenza</td>
+                  <td style={{
+                    padding: '2px 0 0', textAlign: 'right', fontWeight: 700,
+                    color: g.diff_accredito >= 0 ? '#16a34a' : '#dc2626',
+                  }}>{formatEuro(g.diff_accredito)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </td>
+      </tr>
+    )}
+    </>
   );
 }
 
