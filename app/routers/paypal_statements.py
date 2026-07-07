@@ -268,6 +268,45 @@ async def import_all_local_pdfs():
     return results
 
 
+@router.post("/import-csv")
+async def import_paypal_csv(file: UploadFile = File(...)):
+    """
+    Importa un estratto conto PayPal esportato in CSV (formato bulk export,
+    più mesi in un unico file) — alternativa a /import-pdf per chi non ha i
+    PDF MSR/CSR ma solo l'export CSV. Stessa persistenza/riconciliazione
+    automatica dei PDF: ogni "File" nel CSV diventa uno statement separato.
+    """
+    from app.parsers.paypal_csv_parser import parse_paypal_csv
+
+    if not file.filename.lower().endswith('.csv'):
+        raise HTTPException(status_code=400, detail="Solo file CSV accettati")
+
+    content = await file.read()
+    parsed = parse_paypal_csv(content)
+
+    db = Database.get_db()
+    risultati = []
+    transazioni_inserite = 0
+    transazioni_duplicate = 0
+    for statement in parsed['statements']:
+        save_result = await _save_parsed_statement(db, statement)
+        risultati.append(save_result)
+        transazioni_inserite += save_result.get('transazioni_inserite', 0)
+        transazioni_duplicate += save_result.get('transazioni_duplicate', 0)
+
+    ric_result = await _auto_riconcilia(db)
+
+    return {
+        "success": True,
+        "statements_importati": len(risultati),
+        "righe_totali_csv": parsed['righe_totali'],
+        "righe_scartate": parsed['righe_scartate'],
+        "transazioni_inserite": transazioni_inserite,
+        "transazioni_duplicate": transazioni_duplicate,
+        "riconciliazione": ric_result,
+    }
+
+
 @router.post("/riconcilia-banca")
 async def riconcilia_con_banca():
     """Riconcilia manualmente (normalmente è automatico dopo import)."""

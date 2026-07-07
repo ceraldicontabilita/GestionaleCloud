@@ -2,7 +2,7 @@
  * RiconciliazionePaypal.jsx
  * Gestione completa estratti conto PayPal: import PDF, transazioni, report, riconciliazione banca.
  */
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
@@ -78,6 +78,8 @@ export default function RiconciliazionePaypal() {
   const [mappingLoading, setMappingLoading] = useState(false);
   const [selectedForn, setSelectedForn] = useState({}); // {paypal_account_id: fornitore_id}
   const [createModal, setCreateModal] = useState(null); // {paypal_account_id, nome_controparte, ...} | null
+  const [importingCsv, setImportingCsv] = useState(false);
+  const csvInputRef = useRef(null);
 
   // Sincronizza il filtro locale con l'anno globale quando cambia nel TopNav
   useEffect(() => {
@@ -131,6 +133,30 @@ export default function RiconciliazionePaypal() {
     await Promise.all([loadDashboard(), loadTransactions(), loadReport(), loadStatements()]);
     setLoading(false);
   }, [loadDashboard, loadTransactions, loadReport, loadStatements]);
+
+  const handleImportCsv = async e => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // permette di ricaricare lo stesso file due volte
+    if (!file) return;
+    setImportingCsv(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await api.post('/api/paypal-statements/import-csv', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      const r = res.data || {};
+      toast.success(
+        `✓ CSV importato — ${r.transazioni_inserite} transazioni (${r.transazioni_duplicate} già presenti), ` +
+          `${r.riconciliazione?.riconciliati || 0} riconciliate con la banca`
+      );
+      await loadAll();
+    } catch (err) {
+      toast.error('Errore import CSV: ' + (err.response?.data?.detail || err.message));
+    } finally {
+      setImportingCsv(false);
+    }
+  };
 
   useEffect(() => {
     loadAll();
@@ -328,6 +354,30 @@ export default function RiconciliazionePaypal() {
               }}
             >
               + Importa PDF
+            </button>
+            <input
+              ref={csvInputRef}
+              type="file"
+              accept=".csv"
+              style={{ display: 'none' }}
+              onChange={handleImportCsv}
+            />
+            <button
+              onClick={() => csvInputRef.current?.click()}
+              disabled={importingCsv}
+              style={{
+                padding: '8px 14px',
+                background: 'rgba(255,255,255,0.2)',
+                color: 'white',
+                border: '1px solid rgba(255,255,255,0.3)',
+                borderRadius: 6,
+                cursor: importingCsv ? 'default' : 'pointer',
+                fontSize: 13,
+                opacity: importingCsv ? 0.6 : 1,
+              }}
+              title="Importa estratto conto PayPal esportato in CSV"
+            >
+              {importingCsv ? 'Import…' : '+ Importa CSV'}
             </button>
             <button
               data-testid="sync-paypal-api-btn"
