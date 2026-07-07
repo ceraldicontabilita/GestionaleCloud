@@ -159,26 +159,33 @@ async def riconcilia_automatico(
 async def riconcilia_manuale(request: RiconciliaManuale) -> Dict[str, Any]:
     """Riconciliazione manuale movimento con entità."""
     db = Database.get_db()
-    
+
     movimento = await db.estratto_conto_movimenti.find_one({"id": request.movimento_id})
     if not movimento:
         raise HTTPException(status_code=404, detail="Movimento non trovato")
-    
+
+    entita_id = request.associazioni[0].get("id") if request.associazioni else None
+    # "fattura_sdd" è il sotto-tipo prodotto dall'analizzatore per gli SDD con
+    # match su combinazione fatture: va saldato come una fattura normale,
+    # altrimenti il movimento risulta riconciliato ma la fattura resta "da
+    # pagare" ovunque nel resto del gestionale.
+    tipo_operazione = "fattura" if request.tipo == "fattura_sdd" else request.tipo
+
     update_fields = {
         "riconciliato": True,
         "tipo_riconciliazione": "manuale",
         "data_riconciliazione": datetime.now(timezone.utc).isoformat(),
         "note_riconciliazione": request.note
     }
-    
-    if request.tipo_operazione == "fattura":
-        fattura = await db.invoices.find_one({"id": request.entita_id})
+
+    if tipo_operazione == "fattura" and entita_id:
+        fattura = await db.invoices.find_one({"id": entita_id})
         if not fattura:
             raise HTTPException(status_code=404, detail="Fattura non trovata")
 
-        update_fields["fattura_id"] = request.entita_id
+        update_fields["fattura_id"] = entita_id
         await db.invoices.update_one(
-            {"id": request.entita_id},
+            {"id": entita_id},
             {"$set": set_fattura_pagata({"movimento_bancario_id": request.movimento_id})}
         )
 
@@ -189,26 +196,26 @@ async def riconcilia_manuale(request: RiconciliaManuale) -> Dict[str, Any]:
         try:
             from app.services.event_bus import propagate_event, EventTypes
             await propagate_event(EventTypes.FATTURA_PAGATA, {
-                "fattura_id": request.entita_id,
+                "fattura_id": entita_id,
                 "importo": movimento.get("importo"),
                 "metodo_pagamento": fattura.get("metodo_pagamento"),
                 "data_pagamento": update_fields["data_riconciliazione"],
             }, db, source_module="riconciliazione_smart_manuale")
         except Exception:
-            logger.exception(f"Errore propagazione FATTURA_PAGATA per {request.entita_id}")
+            logger.exception(f"Errore propagazione FATTURA_PAGATA per {entita_id}")
 
-    elif request.tipo_operazione == "stipendio":
-        update_fields["stipendio_id"] = request.entita_id
-        
-    elif request.tipo_operazione == "f24":
-        update_fields["f24_id"] = request.entita_id
-    
+    elif tipo_operazione == "stipendio" and entita_id:
+        update_fields["stipendio_id"] = entita_id
+
+    elif tipo_operazione == "f24" and entita_id:
+        update_fields["f24_id"] = entita_id
+
     await db.estratto_conto_movimenti.update_one(
         {"id": request.movimento_id},
         {"$set": update_fields}
     )
-    
-    return {"success": True, "movimento_id": request.movimento_id, "tipo": request.tipo_operazione}
+
+    return {"success": True, "movimento_id": request.movimento_id, "tipo": tipo_operazione}
 
 
 async def cerca_fatture_per_associazione(

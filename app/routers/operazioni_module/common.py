@@ -50,9 +50,15 @@ class ConfermaBatchRequest(BaseModel):
 
 
 class RiconciliaManuale(BaseModel):
+    # Payload reale inviato da RiconciliazioneUnificata.jsx: movimento_id, tipo
+    # (il tipo suggerito dall'analizzatore, es. "fattura"/"f24"/"stipendio"),
+    # associazioni (lista di 0-1 suggerimenti con "id" dell'entità), categoria.
+    # Il modello prima richiedeva tipo_operazione/entita_id, mai inviati dal
+    # frontend: ogni chiamata falliva con 422 prima di entrare nell'handler.
     movimento_id: str
-    tipo_operazione: str
-    entita_id: str
+    tipo: str
+    associazioni: List[Dict[str, Any]] = []
+    categoria: Optional[str] = None
     note: Optional[str] = None
 
 
