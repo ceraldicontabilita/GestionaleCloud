@@ -3,6 +3,7 @@ Checks (Assegni) router - Gestione Assegni.
 API per generazione, gestione e collegamento assegni.
 """
 from fastapi import APIRouter, HTTPException, Query, Body
+from pydantic import BaseModel, Field
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 import uuid
@@ -10,6 +11,7 @@ import logging
 
 from app.database import Database
 from app.models.stati import STATI_PAGATI
+from app.routers.bank.assegni_auto_match import _f, _norm_piva, TOLL, MAX_RATE
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -17,11 +19,17 @@ router = APIRouter()
 # Collection name
 COLLECTION_ASSEGNI = "assegni"
 
-# Stati assegno
+# Stati assegno.
+# "assegnato"/"parzialmente_assegnato" sono scritti dal collegamento a fatture
+# (auto-matcher in assegni_auto_match.py e endpoint manuale qui sotto) — devono
+# essere validi anche qui, altrimenti un PUT generico successivo con questi
+# stati verrebbe rifiutato dalla validazione più sotto.
 ASSEGNO_STATI = {
     "vuoto": {"label": "Vuoto", "color": "#9e9e9e"},
     "compilato": {"label": "Compilato", "color": "#2196f3"},
     "emesso": {"label": "Emesso", "color": "#ff9800"},
+    "parzialmente_assegnato": {"label": "Parzialmente assegnato", "color": "#ff9800"},
+    "assegnato": {"label": "Assegnato", "color": "#2196f3"},
     "incassato": {"label": "Incassato", "color": "#4caf50"},
     "annullato": {"label": "Annullato", "color": "#f44336"},
     "scaduto": {"label": "Scaduto", "color": "#795548"}
@@ -749,45 +757,193 @@ async def update_assegno(
     return {"message": "Assegno aggiornato con successo"}
 
 
-@router.post("/{assegno_id}/collega-fattura")
-async def collega_fattura(
-    assegno_id: str,
-    fattura_id: str = Body(..., embed=True)
-) -> Dict[str, str]:
+class FatturaQuotaIn(BaseModel):
+    fattura_id: str
+    # Positiva per una fattura normale, negativa per una nota di credito (TD04)
+    # che netta l'importo dovuto — vedi Caso F in memoria/LOGICA_OPERATIVA.md.
+    quota: float
+
+
+class FattureCollegateIn(BaseModel):
+    fatture: List[FatturaQuotaIn] = Field(default_factory=list)
+
+
+async def _applica_delta_quota_fattura(db, fattura_id: str, delta_quota: float, now: str) -> None:
+    """Applica un delta (positivo per collegare, negativo per scollegare) alla
+    quota pagata di una fattura. Non tocca assegni_collegati (gestito a parte)."""
+    inv = await db["invoices"].find_one({"id": fattura_id}, {"_id": 0})
+    if not inv:
+        return
+    total = _f(inv.get("total_amount") or inv.get("importo_totale"))
+    nuovo_pagato = round(max(0.0, _f(inv.get("importo_pagato", 0)) + delta_quota), 2)
+    nuovo_stato = "paid" if abs(nuovo_pagato - total) <= TOLL else ("partial" if nuovo_pagato > TOLL else "aperta")
+    await db["invoices"].update_one(
+        {"id": fattura_id},
+        {"$set": {
+            "importo_pagato": nuovo_pagato,
+            "importo_residuo": round(max(0, total - nuovo_pagato), 2),
+            "payment_status": nuovo_stato,
+            "pagato": nuovo_stato == "paid",
+            "updated_at": now,
+        }},
+    )
+
+
+async def _crea_mov_banca_manuale(db, assegno: Dict[str, Any], quota: float, fattura_id: str, now: str) -> None:
+    """Crea un movimento in prima_nota_banca per un collegamento manuale
+    (source distinto da 'assegno_auto_match' per non interferire con
+    l'idempotenza dell'auto-matcher)."""
+    mov = {
+        "id": str(uuid.uuid4()),
+        "data": str(assegno.get("data_emissione") or now[:10])[:10],
+        "date": str(assegno.get("data_emissione") or now[:10])[:10],
+        "tipo": "uscita",
+        "type": "uscita",
+        "importo": round(quota, 2),
+        "amount": round(quota, 2),
+        "descrizione": f"Assegno n. {assegno.get('numero', '')} - {assegno.get('beneficiario', '')}".strip(" -"),
+        "description": f"Assegno n. {assegno.get('numero', '')}",
+        "categoria": "Assegni",
+        "category": "Assegni",
+        "assegno_id": assegno.get("id"),
+        "assegno_numero": assegno.get("numero"),
+        "invoice_id": fattura_id,
+        "source": "assegno_manuale",
+        "riconciliato": False,
+        "created_at": now,
+    }
+    await db["prima_nota_banca"].insert_one(mov)
+
+
+@router.put("/{assegno_id}/fatture-collegate")
+async def collega_fatture_assegno(assegno_id: str, body: FattureCollegateIn) -> Dict[str, Any]:
     """
-    Collega assegno a una fattura fornitore.
+    Collega/scollega fatture a un assegno con il modello a quote N:M
+    documentato in memoria/LOGICA_OPERATIVA.md: ogni collegamento ha una
+    quota in euro (parte dell'importo dell'assegno che paga quella fattura).
+    L'importo nominale dell'assegno NON viene mai modificato da qui.
+
+    Sostituisce l'intero set di collegamenti esistenti dell'assegno con
+    quello passato (il modale "Collega Fatture" invia sempre la selezione
+    finale completa dell'utente): i vecchi collegamenti vengono prima
+    annullati sulle rispettive fatture, poi si applicano i nuovi.
     """
     db = Database.get_db()
-    
-    # Verifica assegno
+    now = datetime.now(timezone.utc).isoformat()
+
     assegno = await db[COLLECTION_ASSEGNI].find_one(
         {"$or": [{"id": assegno_id}, {"numero": assegno_id}]}
     )
-    
     if not assegno:
         raise HTTPException(status_code=404, detail="Assegno non trovato")
-    
-    # Verifica fattura
-    fattura = await db["invoices"].find_one({"$or": [{"id": fattura_id}, {"invoice_key": fattura_id}]})
-    
-    if not fattura:
-        raise HTTPException(status_code=404, detail="Fattura non trovata")
-    
-    # Aggiorna assegno
+
+    if len(body.fatture) > MAX_RATE:
+        raise HTTPException(status_code=400, detail=f"Massimo {MAX_RATE} fatture per assegno")
+    if any(abs(f.quota) < 0.005 for f in body.fatture):
+        raise HTTPException(status_code=400, detail="Le quote non possono essere zero")
+
+    importo_assegno = _f(assegno.get("importo"))
+
+    # Carica le fatture nuove: devono esistere e appartenere allo stesso fornitore
+    fatture_map: Dict[str, Dict[str, Any]] = {}
+    for f in body.fatture:
+        if f.fattura_id in fatture_map:
+            continue
+        inv = await db["invoices"].find_one({"id": f.fattura_id}, {"_id": 0})
+        if not inv:
+            raise HTTPException(status_code=404, detail=f"Fattura {f.fattura_id} non trovata")
+        fatture_map[f.fattura_id] = inv
+
+    piva_set = {
+        _norm_piva(inv.get("supplier_vat") or inv.get("cedente_piva") or inv.get("partita_iva"))
+        for inv in fatture_map.values()
+    }
+    piva_set.discard("")
+    if len(piva_set) > 1:
+        raise HTTPException(
+            status_code=400,
+            detail="Tutte le fatture collegate a uno stesso assegno devono essere dello stesso fornitore",
+        )
+
+    somma_quote = round(sum(f.quota for f in body.fatture), 2)
+    if somma_quote - importo_assegno > TOLL:
+        raise HTTPException(
+            status_code=400,
+            detail=f"La somma delle quote (€{somma_quote}) supera l'importo dell'assegno (€{importo_assegno})",
+        )
+
+    # 1) Annulla i vecchi collegamenti sulle fatture precedentemente collegate
+    vecchie = assegno.get("fatture_collegate") or []
+    for vc in vecchie:
+        old_fid = vc.get("fattura_id")
+        if not old_fid:
+            continue
+        await _applica_delta_quota_fattura(db, old_fid, -_f(vc.get("quota")), now)
+        await db["invoices"].update_one(
+            {"id": old_fid}, {"$pull": {"assegni_collegati": {"assegno_id": assegno["id"]}}}
+        )
+    await db["prima_nota_banca"].delete_many({"assegno_id": assegno["id"], "source": "assegno_manuale"})
+
+    # 2) Applica i nuovi collegamenti
+    fatture_collegate = []
+    for f in body.fatture:
+        quota = round(f.quota, 2)
+        fatture_collegate.append({
+            "fattura_id": f.fattura_id,
+            "quota": quota,
+            "data_collegamento": now,
+        })
+        await _applica_delta_quota_fattura(db, f.fattura_id, quota, now)
+        await db["invoices"].update_one(
+            {"id": f.fattura_id},
+            {"$push": {"assegni_collegati": {
+                "assegno_id": assegno["id"],
+                "numero": assegno.get("numero"),
+                "quota": quota,
+                "data_collegamento": now,
+            }}},
+        )
+        # Solo le quote positive (fatture normali) generano un movimento banca:
+        # una nota di credito (quota negativa, Caso F) netta l'importo dovuto
+        # ma non è di per sé un'uscita di denaro.
+        if quota > 0:
+            await _crea_mov_banca_manuale(db, assegno, quota, f.fattura_id, now)
+
+    fornitore_piva = next(iter(piva_set), None)
+    first_inv = next(iter(fatture_map.values()), None)
+    fornitore_nome = (first_inv.get("supplier_name") or first_inv.get("cedente_denominazione")) if first_inv else None
+    numeri_fatture = ", ".join(
+        (fatture_map[f.fattura_id].get("invoice_number") or fatture_map[f.fattura_id].get("numero_fattura") or "")
+        for f in body.fatture
+    )
+
+    if fatture_collegate:
+        nuovo_stato = "assegnato" if abs(somma_quote - importo_assegno) <= TOLL else "parzialmente_assegnato"
+    else:
+        nuovo_stato = "compilato" if assegno.get("beneficiario") else "vuoto"
+
     await db[COLLECTION_ASSEGNI].update_one(
-        {"_id": assegno["_id"]},
+        {"id": assegno["id"]},
         {"$set": {
-            "fattura_collegata": fattura_id,
-            "fornitore_piva": fattura.get("cedente_piva"),
-            "beneficiario": str(fattura.get("cedente_denominazione") or fattura.get("supplier_name") or "")[:100],
-            "importo": fattura.get("importo_totale"),
-            "causale": f"Pagamento fattura {fattura.get('numero_fattura')} del {fattura.get('data_fattura')}",
-            "stato": "compilato" if assegno.get("stato") == "vuoto" else assegno.get("stato"),
-            "updated_at": datetime.now(timezone.utc).isoformat()
+            "fatture_collegate": fatture_collegate,
+            "importo_assegnato": somma_quote,
+            "fornitore_piva": fornitore_piva or assegno.get("fornitore_piva"),
+            "fornitore_ragione_sociale": fornitore_nome or assegno.get("fornitore_ragione_sociale"),
+            "beneficiario": fornitore_nome or assegno.get("beneficiario"),
+            "numero_fattura": numeri_fatture or assegno.get("numero_fattura"),
+            "stato": nuovo_stato,
+            "match_auto": False,
+            "updated_at": now,
         }}
     )
-    
-    return {"message": "Assegno collegato alla fattura"}
+
+    return {
+        "success": True,
+        "assegno_id": assegno["id"],
+        "fatture_collegate": fatture_collegate,
+        "importo_assegnato": somma_quote,
+        "stato": nuovo_stato,
+    }
 
 
 @router.post("/{assegno_id}/emetti")
@@ -1376,36 +1532,6 @@ async def rifiuta_proposta_associazione(proposta_id: str) -> Dict[str, Any]:
         raise HTTPException(status_code=404, detail="Proposta non trovata")
     
     return {"success": True, "message": "Proposta rifiutata"}
-
-
-@router.get("/senza-associazione")
-async def get_assegni_senza_associazione() -> Dict[str, Any]:
-    """
-    Restituisce assegni che hanno importo ma nessun beneficiario/fattura associata.
-    Utile per debug e verifica manuale.
-    """
-    db = Database.get_db()
-    
-    assegni = await db[COLLECTION_ASSEGNI].find({
-        "$or": [
-            {"beneficiario": None},
-            {"beneficiario": ""},
-            {"beneficiario": "N/A"}
-        ],
-        "importo": {"$gt": 0}
-    }, {"_id": 0}).to_list(500)
-    
-    # Raggruppa per importo
-    from collections import defaultdict
-    per_importo = defaultdict(list)
-    for a in assegni:
-        imp = round(a.get("importo", 0), 2)
-        per_importo[imp].append(a.get("numero"))
-    
-    return {
-        "totale": len(assegni),
-        "per_importo": {f"€{k:.2f}": {"count": len(v), "numeri": v[:10]} for k, v in sorted(per_importo.items(), key=lambda x: -len(x[1]))}
-    }
 
 
 
@@ -2200,89 +2326,4 @@ async def cerca_combinazioni_assegni(
             })
     
     return risultati
-
-
-@router.get("/preview-combinazioni")
-async def preview_combinazioni_assegni(
-    max_assegni: int = Query(4, ge=2, le=6)
-) -> Dict[str, Any]:
-    """
-    🔎 PREVIEW: Mostra le possibili combinazioni di assegni che potrebbero matchare fatture.
-    Non esegue modifiche, solo analisi.
-    
-    Utile per verificare prima di eseguire l'associazione.
-    """
-    from itertools import combinations
-    db = Database.get_db()
-    
-    # Carica assegni senza beneficiario
-    assegni_senza_ben = await db[COLLECTION_ASSEGNI].find({
-        "$or": [
-            {"beneficiario": None},
-            {"beneficiario": ""},
-            {"beneficiario": "N/A"},
-            {"beneficiario": "-"}
-        ],
-        "importo": {"$gt": 0}
-    }, {"_id": 0, "numero": 1, "importo": 1}).to_list(100)
-    
-    # Filtra quelli non cancellati
-    assegni_senza_ben = [a for a in assegni_senza_ben if a.get("entity_status") != "deleted"]
-    
-    if len(assegni_senza_ben) < 2:
-        return {
-            "assegni_senza_beneficiario": len(assegni_senza_ben),
-            "combinazioni_possibili": [],
-            "message": "Servono almeno 2 assegni per cercare combinazioni"
-        }
-    
-    # Carica fatture non pagate
-    # Escludiamo RID/SDD/addebito diretto: non pagabili con assegno.
-    fatture = await db.invoices.find({
-        "$and": [
-            {"$or": [
-                {"status": {"$nin": STATI_PAGATI}},
-                {"pagato": {"$ne": True}}
-            ]},
-            {"total_amount": {"$gt": 0}},
-            {"$nor": [
-                {"metodo_pagamento": {"$regex": "rid|sdd|addebito", "$options": "i"}},
-                {"payment_method": {"$regex": "rid|sdd|addebito", "$options": "i"}},
-                {"modalita_pagamento": {"$regex": "rid|sdd|addebito", "$options": "i"}},
-            ]},
-        ]
-    }, {"_id": 0, "invoice_number": 1, "supplier_name": 1, "total_amount": 1}).to_list(10000)
-    
-    importi_fatture = {round(float(f.get("total_amount", 0)), 2): f for f in fatture}
-    
-    # Cerca combinazioni
-    possibili_match = []
-    importi = [(a.get("numero"), round(float(a.get("importo", 0)), 2)) for a in assegni_senza_ben]
-    
-    for r in range(2, min(max_assegni + 1, len(importi) + 1)):
-        for combo in combinations(importi, r):
-            somma = round(sum(imp for _, imp in combo), 2)
-            
-            # Cerca fattura con questo importo (±1€)
-            for delta in [0, -0.01, 0.01, -0.02, 0.02, -0.5, 0.5, -1, 1]:
-                imp_cerca = round(somma + delta, 2)
-                if imp_cerca in importi_fatture:
-                    f = importi_fatture[imp_cerca]
-                    possibili_match.append({
-                        "assegni": [num for num, _ in combo],
-                        "importi": [imp for _, imp in combo],
-                        "somma": somma,
-                        "fattura": f.get("invoice_number"),
-                        "fornitore": f.get("supplier_name", "")[:40],
-                        "importo_fattura": f.get("total_amount"),
-                        "differenza": round(f.get("total_amount", 0) - somma, 2)
-                    })
-                    break
-    
-    return {
-        "assegni_senza_beneficiario": len(assegni_senza_ben),
-        "fatture_non_pagate": len(fatture),
-        "combinazioni_con_match": len(possibili_match),
-        "dettagli": possibili_match[:20]  # Primi 20 per non sovraccaricare
-    }
 

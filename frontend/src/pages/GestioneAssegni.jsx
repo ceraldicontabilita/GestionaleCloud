@@ -11,6 +11,8 @@ const STATI_ASSEGNO = {
   vuoto: { label: 'Valido', color: '#4caf50' },
   compilato: { label: 'Compilato', color: '#2196f3' },
   emesso: { label: 'Emesso', color: '#ff9800' },
+  parzialmente_assegnato: { label: 'Parz. assegnato', color: '#ff9800' },
+  assegnato: { label: 'Assegnato', color: '#2196f3' },
   incassato: { label: 'Incassato', color: '#9c27b0' },
   annullato: { label: 'Annullato', color: '#f44336' },
 };
@@ -244,11 +246,54 @@ export default function GestioneAssegni() {
     setEditForm({});
   };
 
-  const openFattureModal = assegno => {
+  // Le fatture collegate salvate nel DB hanno lo schema canonico
+  // {fattura_id, quota}: qui le arricchiamo coi dati della fattura (numero,
+  // fornitore, importo) per poterle mostrare nel modale. Recuperiamo la
+  // fattura via API diretta invece di cercarla nell'elenco "disponibili"
+  // (che esclude quelle già pagate/di altri filtri) così il collegamento
+  // esistente è sempre visibile, anche se la fattura non è più "disponibile".
+  const openFattureModal = async assegno => {
     setEditingAssegnoForFatture(assegno);
-    setSelectedFatture(assegno.fatture_collegate || []);
-    loadFatture(assegno.beneficiario);
+    setSelectedFatture([]);
     setShowFattureModal(true);
+    loadFatture(assegno.beneficiario);
+
+    const collegate = assegno.fatture_collegate || [];
+    if (collegate.length === 0) return;
+    const arricchite = await Promise.all(
+      collegate.map(async fc => {
+        try {
+          const res = await api.get(`/api/invoices/${fc.fattura_id}`);
+          const inv = res.data;
+          const tipoDoc = inv.tipo_documento || inv.document_type || 'TD01';
+          const isNC = tipoDoc === 'TD04';
+          return {
+            id: fc.fattura_id,
+            numero: inv.invoice_number || inv.numero_fattura || fc.fattura_id,
+            fornitore: inv.supplier_name || inv.cedente_denominazione || '',
+            importo: isNC ? -Math.abs(fc.quota) : fc.quota,
+            quota: fc.quota,
+            data: inv.invoice_date || inv.data_fattura,
+            tipo_documento: tipoDoc,
+            is_nota_credito: isNC,
+          };
+        } catch {
+          // Fattura non più raggiungibile (es. cancellata): mostriamo comunque
+          // la quota così l'utente vede che l'assegno è impegnato per quella cifra.
+          return {
+            id: fc.fattura_id,
+            numero: fc.fattura_id,
+            fornitore: '(fattura non trovata)',
+            importo: fc.quota,
+            quota: fc.quota,
+            data: null,
+            tipo_documento: 'TD01',
+            is_nota_credito: false,
+          };
+        }
+      })
+    );
+    setSelectedFatture(arricchite);
   };
 
   const toggleFattura = fattura => {
@@ -289,6 +334,7 @@ export default function GestioneAssegni() {
           id: fattura.id,
           numero: fattura.invoice_number || fattura.numero_fattura,
           importo: importo,
+          quota: importo,
           data: fattura.invoice_date || fattura.data_fattura,
           fornitore: fornitoreNuovo,
           tipo_documento: tipoDoc,
@@ -303,21 +349,13 @@ export default function GestioneAssegni() {
   const saveFattureCollegate = async () => {
     if (!editingAssegnoForFatture) return;
 
-    const totaleImporto = selectedFatture.reduce((sum, f) => sum + (f.importo || 0), 0);
-    const numeriFacture = selectedFatture.map(f => f.numero).join(', ');
-    const beneficiario = selectedFatture[0]?.fornitore || '';
-    // Prendi il primo fattura_id come fattura_collegata
-    const fatturaCollegata = selectedFatture[0]?.id || null;
-
     try {
-      await api.put(`/api/assegni/${editingAssegnoForFatture.id}`, {
-        fatture_collegate: selectedFatture,
-        fattura_collegata: fatturaCollegata, // Aggiunto per il pulsante "Vedi Fattura"
-        importo: totaleImporto,
-        numero_fattura: numeriFacture,
-        beneficiario: beneficiario,
-        note: `Fatture: ${numeriFacture}`,
-        stato: selectedFatture.length > 0 ? 'compilato' : 'vuoto',
+      // Schema canonico (memoria/LOGICA_OPERATIVA.md): l'assegno mantiene il
+      // suo importo nominale, ogni fattura riceve una quota. Il backend
+      // aggiorna importo_pagato/assegni_collegati sulle fatture e lo stato
+      // dell'assegno (assegnato/parzialmente_assegnato) coerentemente.
+      await api.put(`/api/assegni/${editingAssegnoForFatture.id}/fatture-collegate`, {
+        fatture: selectedFatture.map(f => ({ fattura_id: f.id, quota: f.quota ?? f.importo })),
       });
 
       setShowFattureModal(false);
@@ -3107,7 +3145,7 @@ export default function GestioneAssegni() {
                     >
                       <span>TOTALE FATTURE:</span>
                       <span style={{ color: '#047857' }}>
-                        {formatEuro(selectedFatture.reduce((sum, f) => sum + (f.importo || 0), 0))}
+                        {formatEuro(selectedFatture.reduce((sum, f) => sum + (f.quota ?? f.importo ?? 0), 0))}
                       </span>
                     </div>
                     {/* Differenza con importo assegno */}
@@ -3121,7 +3159,7 @@ export default function GestioneAssegni() {
                           color:
                             Math.abs(
                               (editingAssegnoForFatture?.importo || 0) -
-                                selectedFatture.reduce((sum, f) => sum + (f.importo || 0), 0)
+                                selectedFatture.reduce((sum, f) => sum + (f.quota ?? f.importo ?? 0), 0)
                             ) < 1
                               ? '#10b981'
                               : '#f59e0b',
@@ -3131,7 +3169,7 @@ export default function GestioneAssegni() {
                         <span style={{ fontWeight: 600 }}>
                           {formatEuro(
                             (editingAssegnoForFatture?.importo || 0) -
-                              selectedFatture.reduce((sum, f) => sum + (f.importo || 0), 0)
+                              selectedFatture.reduce((sum, f) => sum + (f.quota ?? f.importo ?? 0), 0)
                           )}
                         </span>
                       </div>
