@@ -1431,22 +1431,34 @@ async def auto_associa_assegni() -> Dict[str, Any]:
     for assoc in associazioni_auto:
         try:
             nota = assoc.get("nota", f"Pagamento fattura {assoc['fattura_numero']}")
-            fornitore_str = (assoc.get('fornitore') or 'N/A')[:35]
-            beneficiario = f"Pag. fatt. {assoc['fattura_numero']} - {fornitore_str}"
-            
+
+            # Non si inventa mai un beneficiario a partire dal numero fattura:
+            # un assegno resta "da associare" finché non ha un beneficiario
+            # reale (dallo scan/OCR o inserito a mano). Il collegamento alla
+            # fattura viene comunque salvato, ma non finge una compilazione
+            # completa che non c'è.
+            assegno_corrente = await db[COLLECTION_ASSEGNI].find_one(
+                {"id": assoc["assegno_id"]}, {"_id": 0, "beneficiario": 1}
+            )
+            ha_beneficiario_reale = bool(
+                assegno_corrente and (assegno_corrente.get("beneficiario") or "") not in ("", "-", "N/A")
+            )
+
+            set_fields = {
+                "numero_fattura": assoc["fattura_numero"],
+                "fattura_collegata": assoc["fattura_id"],
+                "note": nota,
+                "match_type": assoc["tipo"],
+                "match_confidenza": assoc["confidenza"],
+                "associazione_auto": True,
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }
+            if ha_beneficiario_reale:
+                set_fields["stato"] = "compilato"
+
             result = await db[COLLECTION_ASSEGNI].update_one(
                 {"id": assoc["assegno_id"]},
-                {"$set": {
-                    "beneficiario": beneficiario,
-                    "numero_fattura": assoc["fattura_numero"],
-                    "fattura_collegata": assoc["fattura_id"],
-                    "note": nota,
-                    "stato": "compilato",
-                    "match_type": assoc["tipo"],
-                    "match_confidenza": assoc["confidenza"],
-                    "associazione_auto": True,
-                    "updated_at": datetime.now(timezone.utc).isoformat()
-                }}
+                {"$set": set_fields}
             )
             if result.modified_count > 0:
                 updated += 1
@@ -1510,23 +1522,31 @@ async def conferma_proposta_associazione(proposta_id: str) -> Dict[str, Any]:
     if not proposta:
         raise HTTPException(status_code=404, detail="Proposta non trovata")
     
-    # Applica l'associazione
-    fornitore_str = (proposta.get('fornitore') or 'N/A')[:35]
-    beneficiario = f"Pag. fatt. {proposta['fattura_numero']} - {fornitore_str}"
-    
+    # Applica l'associazione. Non si inventa il beneficiario dal numero
+    # fattura: se non c'è già un beneficiario reale, l'assegno resta
+    # "da associare" pur avendo la fattura collegata.
+    assegno_corrente = await db[COLLECTION_ASSEGNI].find_one(
+        {"id": proposta["assegno_id"]}, {"_id": 0, "beneficiario": 1}
+    )
+    ha_beneficiario_reale = bool(
+        assegno_corrente and (assegno_corrente.get("beneficiario") or "") not in ("", "-", "N/A")
+    )
+
+    set_fields = {
+        "numero_fattura": proposta["fattura_numero"],
+        "fattura_collegata": proposta["fattura_id"],
+        "note": f"{proposta.get('nota', '')} [Confermato manualmente]",
+        "match_type": proposta["tipo_match"],
+        "match_confidenza": proposta["confidenza"],
+        "associazione_manuale": True,
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    if ha_beneficiario_reale:
+        set_fields["stato"] = "compilato"
+
     result = await db[COLLECTION_ASSEGNI].update_one(
         {"id": proposta["assegno_id"]},
-        {"$set": {
-            "beneficiario": beneficiario,
-            "numero_fattura": proposta["fattura_numero"],
-            "fattura_collegata": proposta["fattura_id"],
-            "note": f"{proposta.get('nota', '')} [Confermato manualmente]",
-            "stato": "compilato",
-            "match_type": proposta["tipo_match"],
-            "match_confidenza": proposta["confidenza"],
-            "associazione_manuale": True,
-            "updated_at": datetime.now(timezone.utc).isoformat()
-        }}
+        {"$set": set_fields}
     )
     
     # Aggiorna stato proposta
@@ -1538,6 +1558,40 @@ async def conferma_proposta_associazione(proposta_id: str) -> Dict[str, Any]:
     return {
         "success": True,
         "message": f"Associazione confermata per assegno {proposta.get('assegno_numero')}"
+    }
+
+
+@router.post("/pulisci-beneficiari-fittizi")
+async def pulisci_beneficiari_fittizi() -> Dict[str, Any]:
+    """
+    Una tantum: gli assegni auto-associati in passato avevano un
+    beneficiario sintetico "Pag. fatt. X - Y" costruito dal numero
+    fattura invece di un vero nome beneficiario. Li riporta allo stato
+    reale (da associare) senza perdere il collegamento alla fattura.
+    """
+    db = Database.get_db()
+
+    candidati = await db[COLLECTION_ASSEGNI].find(
+        {"beneficiario": {"$regex": "^Pag\\. fatt\\. "}}, {"_id": 0}
+    ).to_list(10000)
+
+    corretti = 0
+    for a in candidati:
+        result = await db[COLLECTION_ASSEGNI].update_one(
+            {"id": a["id"]},
+            {"$set": {
+                "beneficiario": "",
+                "stato": "vuoto",
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }}
+        )
+        if result.modified_count > 0:
+            corretti += 1
+
+    return {
+        "success": True,
+        "message": f"Corretti {corretti} assegni con beneficiario fittizio (fattura collegata mantenuta)",
+        "assegni_corretti": corretti
     }
 
 

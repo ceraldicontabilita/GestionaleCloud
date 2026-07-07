@@ -456,7 +456,7 @@ async def save_extracted_data_to_gestionale(
     tipo_documento = data.get("tipo_documento", "").upper()
     
     save_func = SAVE_FUNCTIONS.get(tipo_documento)
-    
+
     if not save_func:
         logger.warning(f"Tipo documento non supportato per salvataggio: {tipo_documento}")
         return {
@@ -464,5 +464,18 @@ async def save_extracted_data_to_gestionale(
             "message": f"Tipo documento '{tipo_documento}' non supportato per salvataggio automatico",
             "tipo_documento": tipo_documento
         }
-    
-    return await save_func(db, data, source_info)
+
+    result = await save_func(db, data, source_info)
+
+    # Estratto conto appena caricato: sincronizza subito gli assegni trovati
+    # nei movimenti (prima era un bottone manuale "Sync da E/C").
+    if tipo_documento == "ESTRATTO_CONTO" and result.get("movimenti_salvati"):
+        try:
+            from app.routers.bank.assegni import sync_assegni_da_estratto_conto
+
+            sync_result = await sync_assegni_da_estratto_conto()
+            result["assegni_sync"] = sync_result
+        except Exception as e:
+            logger.warning(f"Sync assegni da estratto conto non eseguita: {e}")
+
+    return result

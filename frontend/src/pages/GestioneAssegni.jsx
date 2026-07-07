@@ -31,6 +31,7 @@ export default function GestioneAssegni() {
   const [filterImportoMax, setFilterImportoMax] = useState('');
   const [filterNumeroAssegno, setFilterNumeroAssegno] = useState('');
   const [filterNumeroFattura, setFilterNumeroFattura] = useState('');
+  const [filterSoloDaAssociare, setFilterSoloDaAssociare] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [filterAnno, setFilterAnno] = useState(anno); // Filtro anno - inizia da anno globale
 
@@ -621,6 +622,14 @@ export default function GestioneAssegni() {
     ) {
       return false;
     }
+    // Filtro "solo da associare": assegni senza un vero beneficiario
+    if (
+      filterSoloDaAssociare &&
+      a.beneficiario &&
+      !['', '-', 'N/A'].includes(a.beneficiario)
+    ) {
+      return false;
+    }
     return true;
   });
 
@@ -631,6 +640,7 @@ export default function GestioneAssegni() {
     setFilterImportoMax('');
     setFilterNumeroAssegno('');
     setFilterNumeroFattura('');
+    setFilterSoloDaAssociare(false);
   };
 
   // Raggruppa assegni per carnet (primi 10 cifre del numero) - usa filteredAssegni
@@ -1260,32 +1270,6 @@ export default function GestioneAssegni() {
           {combinazioneLoading ? '⏳ Cercando...' : '🔗 Combinazioni'}
         </button>
 
-        {/* Pulsante Sync da EC */}
-        <button
-          onClick={async () => {
-            try {
-              const res = await api.post('/api/assegni/sync-da-estratto-conto');
-              alert(`Sincronizzati ${res.data.assegni_creati} nuovi assegni dall'estratto conto`);
-              loadData();
-            } catch (e) {
-              alert('Errore sincronizzazione: ' + (e.response?.data?.detail || e.message));
-            }
-          }}
-          data-testid="sync-ec-btn"
-          style={{
-            padding: '10px 16px',
-            background: '#ff9800',
-            color: 'white',
-            border: 'none',
-            borderRadius: 8,
-            cursor: 'pointer',
-            fontWeight: 'bold',
-            fontSize: 13,
-          }}
-        >
-          🔄 Sync da E/C
-        </button>
-
         {/* Pulsante Stampa Selezionati */}
         {selectedAssegni.size > 0 && (
           <button
@@ -1535,7 +1519,20 @@ export default function GestioneAssegni() {
           )}
 
           {statsAvanzate.senza_beneficiario > 0 && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div
+              onClick={() => setFilterSoloDaAssociare(v => !v)}
+              title="Mostra solo gli assegni senza beneficiario reale"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                cursor: 'pointer',
+                padding: '2px 8px',
+                borderRadius: 6,
+                background: filterSoloDaAssociare ? '#fef3c7' : 'transparent',
+                border: filterSoloDaAssociare ? '1px solid #ca8a04' : '1px solid transparent',
+              }}
+            >
               <span style={{ fontSize: 20 }}>❓</span>
               <div>
                 <div style={{ fontSize: 11, color: '#ca8a04' }}>Da Associare</div>
@@ -1543,6 +1540,24 @@ export default function GestioneAssegni() {
                   {statsAvanzate.senza_beneficiario}
                 </div>
               </div>
+            </div>
+          )}
+          {filterSoloDaAssociare && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <button
+                onClick={() => setFilterSoloDaAssociare(false)}
+                style={{
+                  fontSize: 12,
+                  padding: '4px 10px',
+                  borderRadius: 6,
+                  border: '1px solid #ca8a04',
+                  background: '#fff',
+                  color: '#ca8a04',
+                  cursor: 'pointer',
+                }}
+              >
+                ✕ Mostra tutti
+              </button>
             </div>
           )}
         </div>

@@ -97,6 +97,21 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Backfill anno fatture non eseguito: {e}")
 
+    # Migrazione: assegni auto-associati con beneficiario sintetico
+    # "Pag. fatt. X - Y" invece di un vero nome beneficiario. Li riporta a
+    # "da associare" senza perdere il collegamento alla fattura già trovato.
+    try:
+        db = Database.get_db()
+        if db is not None:
+            r = await db["assegni"].update_many(
+                {"beneficiario": {"$regex": r"^Pag\. fatt\. "}},
+                {"$set": {"beneficiario": "", "stato": "vuoto"}},
+            )
+            if r.modified_count:
+                logger.info(f"Corretti {r.modified_count} assegni con beneficiario fittizio")
+    except Exception as e:
+        logger.warning(f"Pulizia beneficiari fittizi assegni non eseguita: {e}")
+
     logger.info("Application startup complete")
     yield
 

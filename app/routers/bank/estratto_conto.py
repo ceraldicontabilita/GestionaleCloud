@@ -510,7 +510,18 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Errore riconciliazione provvisori: {e}")
         riconciliazione_paghe = {"error": str(e)}
-    
+
+    # ===== SYNC ASSEGNI DA ESTRATTO CONTO =====
+    # Prima era un bottone manuale nella pagina Assegni ("Sync da E/C"):
+    # ora scatta automaticamente subito dopo ogni import dell'estratto conto.
+    assegni_sync = None
+    if inserted:
+        try:
+            from app.routers.bank.assegni import sync_assegni_da_estratto_conto
+            assegni_sync = await sync_assegni_da_estratto_conto()
+        except Exception as e:
+            logger.error(f"Errore sync assegni da estratto conto: {e}")
+
     # ── EVENTO: pubblica sul Bus per matching automatico ──
     try:
         from app.core.event_bus import bus
@@ -547,6 +558,7 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
         "riconciliazione_summary": (riconciliazione_results or {}).get("summary"),
         "riconciliazione_paghe": riconciliazione_paghe,
         "provvisori_riconciliati": provvisori_riconciliati,
+        "assegni_sync": assegni_sync,
     }
 
 
@@ -741,11 +753,20 @@ async def force_reimport_estratto_conto(file: UploadFile = File(...)) -> Dict[st
     
     if records:
         await db["estratto_conto_movimenti"].insert_many(records)
-    
+
+    # Sync assegni: prima era un bottone manuale, ora scatta ad ogni import.
+    assegni_sync = None
+    if records:
+        try:
+            from app.routers.bank.assegni import sync_assegni_da_estratto_conto
+            assegni_sync = await sync_assegni_da_estratto_conto()
+        except Exception as e:
+            logger.error(f"Errore sync assegni da estratto conto: {e}")
+
     # Calcola statistiche per la risposta
     entrate = sum(r["importo"] for r in records if r["tipo"] == "entrata")
     uscite = sum(r["importo"] for r in records if r["tipo"] == "uscita")
-    
+
     return {
         "message": f"Import completato: solo nuovi movimenti aggiunti",
         "periodo_csv": f"{data_min_csv} → {data_max_csv}",
@@ -755,6 +776,7 @@ async def force_reimport_estratto_conto(file: UploadFile = File(...)) -> Dict[st
         "record_cancellati": 0,
         "totale_entrate": round(entrate, 2),
         "totale_uscite": round(uscite, 2),
+        "assegni_sync": assegni_sync,
         "saldo": round(entrate - uscite, 2),
         "nota": "I record esistenti e le riconciliazioni NON sono stati toccati"
     }
