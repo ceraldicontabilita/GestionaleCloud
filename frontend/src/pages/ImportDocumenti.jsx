@@ -297,7 +297,16 @@ export default function ImportDocumenti() {
         </div>
 
         {/* Pulsante ZIP (opzionale) */}
-        <div style={{ marginBottom: 20, textAlign: 'center' }}>
+        <div
+          style={{
+            marginBottom: 20,
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 10,
+          }}
+        >
           <input
             type="file"
             ref={zipInputRef}
@@ -324,7 +333,7 @@ export default function ImportDocumenti() {
           >
             Carica ZIP
           </button>
-          <span style={{ marginLeft: 12, fontSize: 12, color: '#6b7280' }}>
+          <span style={{ fontSize: 12, color: '#6b7280' }}>
             Supporta ZIP annidati con estrazione automatica
           </span>
 
@@ -355,7 +364,6 @@ export default function ImportDocumenti() {
             data-testid="auto-classify-btn"
             title="Scansiona documents_inbox (Gmail/PEC) e classifica automaticamente F24, cedolini, CU, verbali, PEC…"
             style={{
-              marginLeft: 14,
               padding: '10px 16px',
               background: '#1d4ed8',
               color: 'white',
@@ -384,7 +392,6 @@ export default function ImportDocumenti() {
             }}
             data-testid="import-f24-btn"
             style={{
-              marginLeft: 8,
               padding: '10px 16px',
               background: '#b45309',
               color: 'white',
@@ -417,7 +424,6 @@ export default function ImportDocumenti() {
             }}
             data-testid="import-dipendenti-cu-btn"
             style={{
-              marginLeft: 8,
               padding: '10px 16px',
               background: '#15803d',
               color: 'white',

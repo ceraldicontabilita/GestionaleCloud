@@ -1363,8 +1363,10 @@ export default function Documenti() {
             Password.
           </div>
         </>
-      ) : (
-        /* TAB AI ESTRATTI */
+      ) : activeTab === 'ai' ? (
+        /* TAB AI ESTRATTI — solo quando il tab AI è attivo: prima il ramo
+           "else" del ternario faceva comparire questo blocco anche sotto il
+           tab Categorie (default), sovrapponendo i due moduli. */
         <div>
           {/* Stats AI */}
           {aiStats && (
@@ -1845,7 +1847,7 @@ export default function Documenti() {
             )}
           </div>
         </div>
-      )}
+      ) : null}
 
       {/* PDF Viewer Modal */}
       {selectedPdfDoc && (

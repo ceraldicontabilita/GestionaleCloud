@@ -269,15 +269,18 @@ async def scarica_documenti_email(
         )
     
     db = Database.get_db()
-    
-    # Recupera credenziali email
-    email_user = os.environ.get("EMAIL_USER") or os.environ.get("EMAIL_ADDRESS")
-    email_password = os.environ.get("EMAIL_APP_PASSWORD") or os.environ.get("EMAIL_PASSWORD")
-    
+
+    # Recupera credenziali email: prima dall'account configurato in
+    # email_accounts (stesso helper usato dalla ricerca fatture PayPal, che
+    # funziona), poi fallback alle env var. Prima leggeva SOLO le env var:
+    # su Render non sono impostate → il bottone rispondeva sempre 400.
+    from app.services.gmail_search import get_gmail_credentials
+    email_user, email_password, _imap = await get_gmail_credentials(db)
+
     if not email_user or not email_password:
         raise HTTPException(
             status_code=400,
-            detail="Credenziali email non configurate. Imposta EMAIL_USER e EMAIL_APP_PASSWORD nel .env"
+            detail="Credenziali email non configurate: nessun account in email_accounts e nessuna variabile EMAIL_USER/EMAIL_APP_PASSWORD"
         )
     
     # Parsing parole chiave
@@ -603,13 +606,14 @@ async def statistiche_documenti() -> Dict[str, Any]:
 async def get_cartelle_email() -> Dict[str, Any]:
     """Lista cartelle email disponibili."""
     import imaplib
-    
-    email_user = os.environ.get("EMAIL_USER") or os.environ.get("EMAIL_ADDRESS")
-    email_password = os.environ.get("EMAIL_APP_PASSWORD") or os.environ.get("EMAIL_PASSWORD")
-    
+
+    from app.services.gmail_search import get_gmail_credentials
+    db = Database.get_db()
+    email_user, email_password, _imap = await get_gmail_credentials(db)
+
     if not email_user or not email_password:
         return {"folders": ["INBOX"], "error": "Credenziali non configurate"}
-    
+
     try:
         conn = imaplib.IMAP4_SSL("imap.gmail.com")
         conn.login(email_user, email_password)
@@ -652,10 +656,10 @@ async def sync_f24_automatico(
     Chiamato all'avvio dell'app.
     """
     db = Database.get_db()
-    
-    email_user = os.environ.get("EMAIL_USER") or os.environ.get("EMAIL_ADDRESS")
-    email_password = os.environ.get("EMAIL_APP_PASSWORD") or os.environ.get("EMAIL_PASSWORD")
-    
+
+    from app.services.gmail_search import get_gmail_credentials
+    email_user, email_password, _imap = await get_gmail_credentials(db)
+
     if not email_user or not email_password:
         return {
             "success": False,
