@@ -13,13 +13,10 @@ Verificato leggendo il codice attuale (post-consolidamento router del 2026-07-07
 
 ## Gap confermati (in ordine di priorità)
 
-1. **Bug critico: un endpoint legacy VIOLA la regola "mai la quota POS in cassa"**.
-   `POST /sincronizza-prima-nota` in `app/routers/invoices/corrispettivi.py:291-360` scrive
-   in `prima_nota_cassa` l'importo `totale` completo del corrispettivo (righe 337/348),
-   **incluso** l'incasso POS — esattamente la violazione che la spec vieta esplicitamente.
-   Questo endpoint coesiste con quello corretto (`corrispettivi_helpers.py`) — se entrambi
-   sono raggiungibili, la stessa giornata di corrispettivi può generare cifre diverse in
-   cassa a seconda di quale endpoint viene chiamato.
+1. ~~**Bug critico: un endpoint legacy VIOLA la regola "mai la quota POS in cassa"**~~ —
+   **RISOLTO**. `POST /sincronizza-prima-nota` in `corrispettivi.py` scriveva l'importo
+   `totale` completo (incluso l'incasso POS) in `prima_nota_cassa`. Corretto: ora scrive
+   solo `dettaglio["contanti"]`, coerente con `corrispettivi_helpers.py`.
 2. **Codice morto/parallelo per lo stesso calcolo**:
    `app/services/corrispettivi_service.py::CorrispettiviService._create_prima_nota_entry`
    (righe 370-422) implementa una terza variante (netta corretta ma diversa architettura:
