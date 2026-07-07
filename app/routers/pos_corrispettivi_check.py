@@ -907,9 +907,14 @@ async def controllo_incassi_due_fasi(
         if pos_v <= 0:
             continue
         ga = _data_accredito_attesa(d)
-        g = gruppi_accr.setdefault(ga, {"giorni": [], "pos_tot": 0.0})
+        g = gruppi_accr.setdefault(ga, {"giorni": [], "pos_tot": 0.0, "dettaglio": []})
         g["giorni"].append(d)
         g["pos_tot"] += pos_v
+        # Dettaglio giorno-per-giorno: quando l'accredito raggruppa più giorni
+        # (es. venerdì+sabato+domenica → lunedì), qui teniamo traccia di quanto
+        # ha inciso ciascun giorno sul totale, per poterlo mostrare in chiaro
+        # invece di un unico importo cumulativo poco leggibile.
+        g["dettaglio"].append({"data": d, "pos_manuale": round(pos_v, 2)})
 
     for ga, g in gruppi_accr.items():
         g["pos_tot"] = round(g["pos_tot"], 2)
@@ -1019,6 +1024,7 @@ async def controllo_incassi_due_fasi(
         pos_gruppo = 0.0
         giorni_gruppo = 0
 
+        dettaglio_gruppo = None
         if pos_man <= 0 or not gruppo:
             diff_accr = 0.0
             accredito = 0.0
@@ -1033,6 +1039,10 @@ async def controllo_incassi_due_fasi(
             accredito = gruppo["accredito"]
             pos_gruppo = gruppo["pos_tot"]
             giorni_gruppo = len(gruppo["giorni"])
+            # Dettaglio per-giorno SOLO se il gruppo copre più di un giorno
+            # (es. weekend): per un giorno singolo sarebbe ridondante col totale.
+            if giorni_gruppo > 1:
+                dettaglio_gruppo = gruppo["dettaglio"]
             # Statistiche e saldo: una volta per gruppo (solo sul capogruppo)
             if stato_accr == "in_attesa":
                 stats["fase2_attesa"] += 1
@@ -1073,6 +1083,7 @@ async def controllo_incassi_due_fasi(
             "capogruppo": capogruppo,
             "pos_gruppo": round(pos_gruppo, 2),
             "giorni_gruppo": giorni_gruppo,
+            "dettaglio_gruppo": dettaglio_gruppo,
             "saldo_progressivo": round(saldo_progressivo, 2) if capogruppo and stato_accr != "in_attesa" else None,
         })
         stats["tot_giorni"] += 1
@@ -1085,6 +1096,67 @@ async def controllo_incassi_due_fasi(
     stats["fase2_accrediti_totale"] = round(stats["fase2_accrediti_totale"], 2)
     stats["fase2_saldo_finale"] = round(saldo_progressivo, 2)
 
+    # ── Riepilogo settimanale ─────────────────────────────────────────────────
+    # Raggruppa per settimana ISO del giorno di INCASSO (non di accredito): la
+    # domanda a cui risponde è "quanto abbiamo incassato questa settimana e
+    # quanto ce ne ha accreditato la banca", non "quanto è arrivato in banca
+    # questa settimana" — un venerdì di fine settimana porta il suo accredito
+    # (con sabato/domenica) nel totale della SUA settimana anche se il bonifico
+    # arriva materialmente il lunedì successivo (settimana ISO seguente).
+    settimane: Dict[str, Dict[str, Any]] = {}
+    for g in giorni:
+        try:
+            dt = datetime.strptime(g["data"], "%Y-%m-%d")
+        except (ValueError, TypeError):
+            continue
+        iso_anno, iso_settimana, _ = dt.isocalendar()
+        chiave = f"{iso_anno}-W{iso_settimana:02d}"
+        sw = settimane.setdefault(chiave, {
+            "settimana": chiave,
+            "data_inizio": None,
+            "data_fine": None,
+            "pos_totale": 0.0,
+            "accredito_totale": 0.0,
+            "num_giorni_con_pos": 0,
+            "num_giorni_in_attesa": 0,
+            "num_giorni_mancanti": 0,
+            "num_giorni_differenza": 0,
+        })
+        if sw["data_inizio"] is None or g["data"] < sw["data_inizio"]:
+            sw["data_inizio"] = g["data"]
+        if sw["data_fine"] is None or g["data"] > sw["data_fine"]:
+            sw["data_fine"] = g["data"]
+        if g["pos_manuale"] > 0:
+            sw["pos_totale"] += g["pos_manuale"]
+            sw["num_giorni_con_pos"] += 1
+        # L'accredito/diff sono già "una volta per gruppo" (solo sul capogruppo,
+        # gli altri giorni del gruppo hanno accredito_banca=0), quindi sommarli
+        # per ogni giorno della settimana non duplica nulla.
+        if g["capogruppo"]:
+            sw["accredito_totale"] += g["accredito_banca"]
+            if g["stato_accredito"] == "in_attesa":
+                sw["num_giorni_in_attesa"] += 1
+            elif g["stato_accredito"] == "mancante":
+                sw["num_giorni_mancanti"] += 1
+            elif g["stato_accredito"] == "differenza":
+                sw["num_giorni_differenza"] += 1
+
+    riepilogo_settimanale = []
+    for chiave in sorted(settimane.keys()):
+        sw = settimane[chiave]
+        sw["pos_totale"] = round(sw["pos_totale"], 2)
+        sw["accredito_totale"] = round(sw["accredito_totale"], 2)
+        sw["diff_totale"] = round(sw["accredito_totale"] - sw["pos_totale"], 2)
+        if sw["num_giorni_in_attesa"] > 0:
+            sw["stato"] = "in_attesa"
+        elif sw["num_giorni_mancanti"] > 0:
+            sw["stato"] = "mancante"
+        elif abs(sw["diff_totale"]) > tolleranza_euro:
+            sw["stato"] = "differenza"
+        else:
+            sw["stato"] = "ok"
+        riepilogo_settimanale.append(sw)
+
     return {
         "success": True,
         "data_da": data_da,
@@ -1092,6 +1164,7 @@ async def controllo_incassi_due_fasi(
         "tolleranza_euro": tolleranza_euro,
         "statistiche": stats,
         "giorni": giorni,
+        "riepilogo_settimanale": riepilogo_settimanale,
     }
 
 
