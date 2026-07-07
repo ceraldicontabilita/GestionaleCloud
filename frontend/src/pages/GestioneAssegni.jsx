@@ -2020,6 +2020,27 @@ export default function GestioneAssegni() {
                     </ul>
                   </div>
                 )}
+              {combinazioneResult.combinazioni_ambigue &&
+                combinazioneResult.combinazioni_ambigue.length > 0 && (
+                  <div style={{ marginTop: 10, fontSize: 13 }}>
+                    <strong style={{ color: '#f59e0b' }}>
+                      ⚠️ {combinazioneResult.combinazioni_ambigue.length} combinazioni ambigue (non
+                      associate automaticamente):
+                    </strong>
+                    <ul style={{ margin: '5px 0', paddingLeft: 20 }}>
+                      {combinazioneResult.combinazioni_ambigue.map((amb, i) => (
+                        <li key={i} style={{ marginBottom: 8, fontSize: 12, color: '#666' }}>
+                          Assegni {amb.assegni?.join(', ')} (somma {formatEuro(amb.somma_assegni)})
+                          corrispondono a più fatture:{' '}
+                          {amb.fatture_candidate
+                            ?.map(f => `${f.numero} (${f.fornitore || 'N/D'})`)
+                            .join(', ')}{' '}
+                          — scegli a mano quale associare.
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               {combinazioneResult.assegni_non_associabili &&
                 combinazioneResult.assegni_non_associabili.length > 0 && (
                   <div style={{ marginTop: 8, fontSize: 12, color: '#f59e0b' }}>

@@ -2140,6 +2140,20 @@ async def associa_pagamenti_multipli() -> Dict[str, Any]:
     return risultati
 
 
+MAX_GIORNI_TRA_ASSEGNI_COMBO = 60  # assegni della stessa combinazione non possono avere date troppo lontane tra loro
+MAX_GIORNI_ASSEGNO_DOPO_FATTURA = 180  # oltre i 6 mesi la fattura non è più un candidato plausibile
+
+
+def _parse_data_assegno(a: Dict[str, Any]) -> Optional[datetime]:
+    raw = a.get("data_emissione") or a.get("data")
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(str(raw)[:10])
+    except ValueError:
+        return None
+
+
 @router.post("/cerca-combinazioni-assegni")
 async def cerca_combinazioni_assegni(
     max_assegni: int = Query(4, ge=2, le=6, description="Numero massimo di assegni per combinazione"),
@@ -2148,18 +2162,25 @@ async def cerca_combinazioni_assegni(
     """
     🔍 LOGICA AVANZATA: Cerca combinazioni di assegni senza beneficiario che sommati
     corrispondono all'importo di una fattura non pagata.
-    
+
     CASO D'USO:
     - 3 assegni da €1.663,26 → cerca fattura da €4.989,78 (3 × 1.663,26)
     - Assegni €855,98 + €1.028,82 → cerca fattura da €1.884,80
-    
+
     ALGORITMO:
     1. Prende tutti gli assegni senza beneficiario
     2. Genera tutte le combinazioni possibili (da 2 a max_assegni elementi)
-    3. Per ogni combinazione, calcola la somma
-    4. Cerca fatture non pagate con importo corrispondente (± tolleranza)
-    5. Se trova match, associa tutti gli assegni della combinazione
-    
+    3. Scarta le combinazioni i cui assegni hanno date troppo distanti tra loro
+       (> MAX_GIORNI_TRA_ASSEGNI_COMBO): due assegni con lo stesso importo ma
+       emessi a distanza di mesi non sono verosimilmente lo stesso pagamento.
+    4. Per ogni combinazione, calcola la somma
+    5. Cerca fatture non pagate con importo corrispondente (± tolleranza) E
+       con data fattura antecedente (o di poco successiva) alla data degli
+       assegni — un assegno paga una fattura già emessa, non il contrario.
+       Se più fatture superano importo+data, la combinazione è ambigua e
+       NON viene associata automaticamente (finisce tra i "non associabili").
+    6. Se trova un match certo, associa tutti gli assegni della combinazione
+
     PARAMETRI:
     - max_assegni: numero massimo di assegni per combinazione (default: 4)
     - tolleranza: tolleranza in euro per il match (default: 1.0€)
@@ -2175,6 +2196,7 @@ async def cerca_combinazioni_assegni(
         "assegni_associati": 0,
         "dettagli_match": [],
         "assegni_non_associabili": [],
+        "combinazioni_ambigue": [],
         "errori": []
     }
     
@@ -2216,7 +2238,8 @@ async def cerca_combinazioni_assegni(
             ]},
         ]
     }, {"_id": 0, "id": 1, "invoice_number": 1, "supplier_name": 1, "total_amount": 1,
-        "metodo_pagamento": 1, "payment_method": 1}).to_list(10000)
+        "metodo_pagamento": 1, "payment_method": 1,
+        "invoice_date": 1, "data_fattura": 1}).to_list(10000)
     
     # Crea indice per importo arrotondato
     fatture_per_importo = {}
@@ -2228,45 +2251,90 @@ async def cerca_combinazioni_assegni(
     
     logger.info(f"Cerca combinazioni: {len(assegni_senza_ben)} assegni, {len(fatture_non_pagate)} fatture non pagate")
     
-    # 3. Prepara lista di importi con riferimento agli assegni
+    # 3. Prepara lista di importi con riferimento agli assegni (+ data, per i
+    # controlli temporali sotto — prima ignorata del tutto)
     assegni_con_importo = [
-        {"assegno": a, "importo": round(float(a.get("importo", 0)), 2)}
+        {"assegno": a, "importo": round(float(a.get("importo", 0)), 2), "data": _parse_data_assegno(a)}
         for a in assegni_senza_ben
         if float(a.get("importo", 0)) > 0
     ]
-    
+
+    def _fattura_compatibile_per_data(fattura: Dict[str, Any], data_assegni: Optional[datetime]) -> bool:
+        """Un assegno paga una fattura già emessa: la fattura deve essere
+        datata prima (o al più di poco dopo) della data dell'assegno, non il
+        contrario. Se una delle due date manca, non blocca il match (dato
+        insufficiente) ma non lo garantisce nemmeno."""
+        if not data_assegni:
+            return True
+        data_fatt_raw = fattura.get("invoice_date") or fattura.get("data_fattura")
+        if not data_fatt_raw:
+            return True
+        try:
+            data_fatt = datetime.fromisoformat(str(data_fatt_raw)[:10])
+        except ValueError:
+            return True
+        delta_giorni = (data_assegni - data_fatt).days
+        # Ammette qualche giorno di anticipo (fattura emessa a ridosso
+        # dell'assegno) ma non una fattura emessa DOPO l'assegno, e non oltre
+        # ~6 mesi di distanza (oltre quella finestra il match è casuale).
+        return -5 <= delta_giorni <= MAX_GIORNI_ASSEGNO_DOPO_FATTURA
+
     # 4. Genera e testa combinazioni (da 2 a max_assegni)
     assegni_gia_associati = set()
-    
+
     for num_assegni in range(2, min(max_assegni + 1, len(assegni_con_importo) + 1)):
         for combo in combinations(enumerate(assegni_con_importo), num_assegni):
             # Salta se qualche assegno è già stato associato
             indices = [c[0] for c in combo]
             if any(idx in assegni_gia_associati for idx in indices):
                 continue
-            
+
+            # Assegni con lo stesso importo ma emessi a distanza di mesi non
+            # sono verosimilmente un unico pagamento combinato — scarta la
+            # combinazione invece di abbinarli comunque (prima nessun controllo).
+            date_combo = [c[1]["data"] for c in combo if c[1]["data"]]
+            if len(date_combo) >= 2 and (max(date_combo) - min(date_combo)).days > MAX_GIORNI_TRA_ASSEGNI_COMBO:
+                continue
+
             risultati["combinazioni_testate"] += 1
-            
+
             assegni_combo = [c[1]["assegno"] for c in combo]
             somma = sum(c[1]["importo"] for c in combo)
             somma_round = round(somma, 2)
-            
-            # Cerca fattura con questo importo (con tolleranza)
-            fattura_match = None
+            data_riferimento = max(date_combo) if date_combo else None
+
+            # Cerca fatture con questo importo (con tolleranza) E data compatibile.
+            # Se più fatture superano entrambi i filtri, il match è ambiguo:
+            # meglio lasciarlo da associare a mano che sceglierne una a caso
+            # (comportamento precedente: prendeva sempre la prima trovata).
+            candidati = []
             for delta in [0, -0.01, 0.01, -0.02, 0.02, -0.5, 0.5, -1, 1]:
                 importo_cerca = round(somma_round + delta, 2)
-                if importo_cerca in fatture_per_importo:
-                    fattura_match = fatture_per_importo[importo_cerca][0]
+                for f in fatture_per_importo.get(importo_cerca, []):
+                    if _fattura_compatibile_per_data(f, data_riferimento):
+                        candidati.append(f)
+                if candidati:
                     break
-            
+
             # Se non trovato con lookup diretto, cerca con range
-            if not fattura_match:
+            if not candidati:
                 for f in fatture_non_pagate:
                     imp_fatt = round(float(f.get("total_amount", 0)), 2)
-                    if abs(imp_fatt - somma_round) <= tolleranza:
-                        fattura_match = f
-                        break
-            
+                    if abs(imp_fatt - somma_round) <= tolleranza and _fattura_compatibile_per_data(f, data_riferimento):
+                        candidati.append(f)
+
+            fattura_match = candidati[0] if len(candidati) == 1 else None
+            if len(candidati) > 1:
+                risultati["combinazioni_ambigue"].append({
+                    "assegni": [a.get("numero") for a in assegni_combo],
+                    "somma_assegni": somma_round,
+                    "fatture_candidate": [
+                        {"numero": f.get("invoice_number"), "fornitore": f.get("supplier_name"),
+                         "importo": f.get("total_amount")}
+                        for f in candidati[:5]
+                    ],
+                })
+
             if fattura_match:
                 # MATCH TROVATO!
                 risultati["match_trovati"] += 1
