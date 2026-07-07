@@ -56,9 +56,11 @@ class TestPublicPrefixes:
         """API esplicitamente pubbliche."""
         assert "/api/public/" in PUBLIC_PREFIXES
 
-    def test_f24_public_prefix(self):
-        """F24 pubblici (dashboard widget)."""
-        assert "/api/f24-public/" in PUBLIC_PREFIXES
+    def test_f24_public_prefix_ora_protetto(self):
+        """F24-public NON deve più essere pubblico: esponeva lettura/scrittura
+        di F24 reali senza auth (bug #24 memoria/endpoints/README.md, fix lug 2026).
+        L'unico chiamante (Dashboard.jsx) usa già il client autenticato."""
+        assert "/api/f24-public/" not in PUBLIC_PREFIXES
 
     def test_exports_non_pubblici(self):
         """Gli export NON devono essere pubblici (contengono dati sensibili)."""
@@ -117,8 +119,8 @@ class TestPathMatching:
         assert self._is_public("/static/app.js") is False  # non è API, non è public
         # Il middleware lascia passare i non-API paths
 
-    def test_f24_public_prefix(self):
-        assert self._is_public("/api/f24-public/models") is True
+    def test_f24_public_prefix_ora_protetto(self):
+        assert self._is_public("/api/f24-public/models") is False
 
     def test_f24_protetto(self):
         """F24 normali (non pubblici) sono protetti."""

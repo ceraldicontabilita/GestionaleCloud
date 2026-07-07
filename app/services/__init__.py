@@ -15,7 +15,6 @@ from .accounting_service import AccountingService
 from .accounting_entries_service import AccountingEntriesService
 from .employee_service import EmployeeService
 from .cash_service import CashService
-from .bank_service import BankService
 from .chart_service import ChartOfAccountsService
 from .email_service import EmailService
 from .business_rules import BusinessRules, ValidationResult, DataFlowManager
@@ -33,7 +32,6 @@ __all__ = [
     "AccountingEntriesService",
     "EmployeeService",
     "CashService",
-    "BankService",
     "ChartOfAccountsService",
     "EmailService",
     # V2 Services with Security

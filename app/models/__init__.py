@@ -134,17 +134,6 @@ __all__ = [
     "CashStats",
 ]
 
-from .bank import (
-    BankStatement,
-    BankStatementCreate,
-    BankStatementUpdate,
-    BankReconcile,
-    Assegno,
-    AssegnoCreate,
-    AssegnoUpdate,
-    AssegnoResponse
-)
-
 from .accounting_extended import (
     ChartOfAccount,
     ChartOfAccountCreate,

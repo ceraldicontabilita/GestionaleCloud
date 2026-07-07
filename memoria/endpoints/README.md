@@ -60,7 +60,7 @@ duplicate/shadowate contate una volta per modulo che le implementa).
 
 ### ⚪ Stub / codice morto che finge di funzionare
 
-27. OCR assegni (`estrai-dati`, `leggi-carnet`), `bank/reconcile`, `bank-reconciliation/reconcile|upload`, `cash-register/stats-pos-comparison`, upload ricevute PagoPA, `accounting_extended` (balance-sheet/income-statement/tax-simulation) — tutti rispondono "successo" senza fare il lavoro dichiarato. *(02, 04)*
+27. ✔ RISOLTO (lug 2026) — Riverificati tutti gli stub elencati: `ocr_assegni.py`, `cash_register.py`, `accounting_extended.py` (router) risultano già eliminati da un audit router precedente (nessun file, nessuna registrazione). `bank-reconciliation/reconcile|upload` era in `bank_reconciliation.py`/`bank_statement_bulk_import.py`, anch'essi già eliminati. `pagopa.py` (upload ricevute) NON è più uno stub: inserisce davvero in DB e associa il movimento. Restava vivo solo `bank_main.py` (`/api/bank/*`): router legacy MAI chiamato dal frontend (`getBankStatements` in `api.js` senza importer), con `/reconcile` e `/assegni` letteralmente `return {"message": "..."}` senza toccare il DB, e uno schema dati (`user_id`/`amount`/`date`) incompatibile con quello reale di `estratto_conto_movimenti` — eliminato interamente (router + service + repository + model dedicati), verificato con test suite (90/90 passati) e boot end-to-end dell'app. *(02, 04)*
 28. Numerosi endpoint AI/automazione con `BackgroundTasks` dichiarato ma esecuzione sincrona (nessun reale vantaggio asincrono), e diversi con `force_import`/parametri accettati e mai letti.
 
 ---

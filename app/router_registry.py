@@ -117,8 +117,15 @@ def _register_accounting(app: FastAPI):
 def _register_bank(app: FastAPI):
     # Rimossi (audit lug 2026, zero chiamanti verificati due volte):
     # bank_reconciliation, bank_statement_parser, bank_statement_bulk_import.
+    # Rimosso bank_main (audit lug 2026, item #27 memoria/endpoints/README.md):
+    # router legacy MAI usato dal frontend (getBankStatements in api.js senza
+    # chiamanti), con /reconcile e /assegni che erano stub letterali (return
+    # {"message": "..."} senza toccare il DB) e uno schema dati (user_id,
+    # amount, date) incompatibile con quello reale di estratto_conto_movimenti
+    # (tipo/importo sempre positivo/data) — se mai invocato avrebbe scritto
+    # documenti corrotti nella collezione condivisa con la riconciliazione vera.
     from app.routers.bank import (
-        bank_main, bank_statement_import,
+        bank_statement_import,
         estratto_conto, assegni, pos_accredito,
         assegni_learning
     )
@@ -126,7 +133,6 @@ def _register_bank(app: FastAPI):
     from app.routers.bonifici_module import associazioni as bonifici_associazioni
     from app.routers import paypal_statements, distinte_bpm
 
-    app.include_router(bank_main.router, prefix="/api/bank", tags=["Bank"])
     app.include_router(bank_statement_import.router, prefix="/api/bank-statement", tags=["Bank Statement"])
     app.include_router(estratto_conto.router, prefix="/api/estratto-conto-movimenti", tags=["Estratto Conto"])
     app.include_router(archivio_bonifici_router, prefix="/api/archivio-bonifici", tags=["Archivio Bonifici"])

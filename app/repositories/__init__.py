@@ -29,9 +29,6 @@ __all__ = [
     "LibrettoSanitarioRepository",
     "CashMovementRepository",
     "CorrissettivoRepository",
+    "ChartOfAccountsRepository",
 ]
-from .bank_repository import (
-    BankStatementRepository,
-    AssegnoRepository
-)
 from .chart_repository import ChartOfAccountsRepository
