@@ -468,7 +468,11 @@ async def extract_structured_data(
     
     # Seleziona il prompt appropriato
     prompt_template = PROMPTS.get(document_type, PROMPTS["generico"])
-    prompt = prompt_template.format(text=text[:15000])  # Limita a 15k caratteri
+    # Limite alzato da 15k a 150k caratteri (~40k token, ampiamente nel
+    # context window di Claude): 15k tagliava gli estratti conto e i PDF
+    # multi-pagina alla prima pagina circa — l'AI "non leggeva tutto il
+    # documento" come segnalato dall'utente.
+    prompt = prompt_template.format(text=text[:150000])
     
     try:
         # Inizializza chat LLM
