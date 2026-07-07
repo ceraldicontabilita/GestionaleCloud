@@ -1168,6 +1168,21 @@ async def controllo_incassi_due_fasi(
     }
 
 
+async def _alert_pos_non_quadrato(db, data_incasso: str, dettaglio: str) -> None:
+    """Genera l'alert RIC_POS_NON_QUADRATO quando l'accredito banca di un
+    giorno/gruppo POS manca o differisce dall'atteso — definito in
+    alert_engine.py ma mai generato (vedi memoria/moduli/RICONCILIAZIONE.md,
+    gap #6). Idempotente, best-effort, non tocca il calcolo di
+    controllo_incassi_due_fasi."""
+    try:
+        from app.services.alert_engine import genera_alert
+        await genera_alert(
+            "RIC_POS_NON_QUADRATO", data_incasso, "pos_corrispettivi_giorno", dettaglio, db,
+        )
+    except Exception:
+        logger.exception(f"Errore generazione alert RIC_POS_NON_QUADRATO per {data_incasso}")
+
+
 @router.get("/alert-oggi")
 @handle_errors
 async def alert_oggi(
@@ -1185,8 +1200,15 @@ async def alert_oggi(
     data_da = (oggi - timedelta(days=30)).strftime("%Y-%m-%d")
     data_a = oggi.strftime("%Y-%m-%d")
 
-    # Riusa la logica del controllo completo
-    full = await controllo_incassi_due_fasi(data_da=data_da, data_a=data_a, tolleranza_euro=tolleranza_euro)
+    # Riusa la logica del controllo completo. IMPORTANTE: passare anno=None
+    # esplicitamente — senza, il parametro "anno" di controllo_incassi_due_fasi
+    # riceve come default il sentinel Query(None, ...) non risolto (questa è
+    # una chiamata Python diretta, non una richiesta HTTP, quindi FastAPI non
+    # lo risolve), che è truthy: il ramo "if anno:" sovrascriveva data_da/data_a
+    # con stringhe corrotte tipo "<fastapi.params.Query object...>-01-01",
+    # rompendo silenziosamente la query Mongo e azzerando SEMPRE gli alert
+    # (bug trovato lug 2026, riproducibile in modo deterministico).
+    full = await controllo_incassi_due_fasi(data_da=data_da, data_a=data_a, anno=None, tolleranza_euro=tolleranza_euro)
 
     alerts_compensazione = []
     alerts_banca = []
@@ -1199,27 +1221,31 @@ async def alert_oggi(
                 **g["alert_compensazione"],
             })
         if g.get("stato_accredito") == "mancante":
+            msg = (
+                f"Accredito POS mancante: il {g['data']} hai incassato €{g['pos_manuale']:.2f} "
+                f"ma la banca non l'ha ancora accreditato (atteso il {g['data_accredito_attesa']})."
+            )
             alerts_banca.append({
                 "data_incasso": g["data"],
                 "data_accredito_attesa": g["data_accredito_attesa"],
                 "importo_atteso": g["pos_manuale"],
-                "messaggio": (
-                    f"Accredito POS mancante: il {g['data']} hai incassato €{g['pos_manuale']:.2f} "
-                    f"ma la banca non l'ha ancora accreditato (atteso il {g['data_accredito_attesa']})."
-                ),
+                "messaggio": msg,
             })
+            await _alert_pos_non_quadrato(db, g["data"], msg)
         elif g.get("stato_accredito") == "differenza":
+            msg = (
+                f"Accredito diverso dal previsto: il {g['data']} incasso POS €{g['pos_manuale']:.2f}, "
+                f"banca ha accreditato €{g['accredito_banca']:.2f} (differenza €{g['diff_accredito']:.2f})."
+            )
             alerts_banca.append({
                 "data_incasso": g["data"],
                 "data_accredito_attesa": g["data_accredito_attesa"],
                 "importo_atteso": g["pos_manuale"],
                 "importo_accreditato": g["accredito_banca"],
                 "differenza": g["diff_accredito"],
-                "messaggio": (
-                    f"Accredito diverso dal previsto: il {g['data']} incasso POS €{g['pos_manuale']:.2f}, "
-                    f"banca ha accreditato €{g['accredito_banca']:.2f} (differenza €{g['diff_accredito']:.2f})."
-                ),
+                "messaggio": msg,
             })
+            await _alert_pos_non_quadrato(db, g["data"], msg)
         # v3: alert XML mancante (>=7 giorni senza file ufficiale)
         if g.get("stato_corrispettivo") == "manca_xml":
             alerts_xml_mancante.append({

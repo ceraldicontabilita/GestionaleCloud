@@ -71,18 +71,28 @@ quella "approssimata" — sono la stessa logica di scoring con soglie diverse, n
 5. **Movimento reale senza vera macchina a stati**: solo booleano `riconciliato`, non gli
    8 stati richiesti dalla spec — nessuna distinzione tracciabile tra "non esaminato",
    "in verifica", "dubbio", "escluso manualmente", ecc.
-6. ~ PARZIALE (lug 2026) — 2 alert su 6 ora effettivamente generati in
-   `riconciliazione_bancaria.py`: `RIC_MATCH_AMBIGUO` (quando più fatture candidate hanno
-   score simile, già wired in una fase precedente di questa sessione — vedi
-   `_alert_match_ambiguo`) e `RIC_NON_RICONCILIATO` (quando un movimento EC esce dal
-   motore senza alcun match — nuovo, `_alert_non_riconciliato`, chiamato al punto
-   `results["non_trovati"] += 1`). Entrambe chiamate additive best-effort (try/except,
-   non toccano la logica di matching), verificate con mongomock: risultati di
-   riconciliazione invariati, alert generato una sola volta anche su run ripetuti
-   (idempotenza di `genera_alert`). Restano da wire `RIC_DIFFERENZA_IMPORTO`,
-   `RIC_PARTITA_VECCHIA` (va in `partite_aperte_engine.py`), `RIC_POS_NON_QUADRATO` (va
-   in `pos_corrispettivi_check.py`), `RIC_PAGAMENTO_MULTIPLO` — non fatti stanotte per
-   tempo, ciascuno richiede di individuare il punto di innesco giusto in file diversi.
+6. ~ PARZIALE (lug 2026) — 3 alert su 6 ora effettivamente generati:
+   `RIC_MATCH_AMBIGUO` e `RIC_NON_RICONCILIATO` in `riconciliazione_bancaria.py`,
+   `RIC_POS_NON_QUADRATO` in `pos_corrispettivi_check.py::alert_oggi()` (sui casi
+   `stato_accredito` mancante/differenza). Tutte chiamate additive best-effort
+   (try/except, non toccano la logica di calcolo), verificate con mongomock: risultati
+   invariati, alert generato una sola volta anche su run ripetuti (idempotenza di
+   `genera_alert`). Restano da wire `RIC_DIFFERENZA_IMPORTO`, `RIC_PARTITA_VECCHIA` (va
+   in `partite_aperte_engine.py`), `RIC_PAGAMENTO_MULTIPLO`.
+
+   **Bug collaterale trovato e corretto mentre si wired RIC_POS_NON_QUADRATO**:
+   `alert_oggi()` chiamava `controllo_incassi_due_fasi(data_da=..., data_a=...,
+   tolleranza_euro=...)` come funzione Python diretta (non richiesta HTTP), senza
+   passare `anno=None` esplicitamente. Il parametro `anno` di
+   `controllo_incassi_due_fasi` ha default `Query(None, ...)`: FastAPI risolve questo
+   sentinel a `None` SOLO quando la funzione è invocata come endpoint via richiesta
+   HTTP, non in una chiamata Python interna — quindi `anno` riceveva l'oggetto
+   `Query(...)` stesso, che è truthy, facendo scattare il ramo `if anno:` che
+   sovrascriveva `data_da`/`data_a` con stringhe corrotte (`"<fastapi.params.Query
+   object...>-01-01"`), azzerando la query Mongo e quindi SEMPRE tutti gli alert.
+   `GET /api/pos-corrispettivi/alert-oggi` (usato da `CoerenzaPOSCorrispettivi.jsx`)
+   ha quindi sempre restituito zero alert in produzione, indipendentemente da eventuali
+   incongruenze reali — bug riproducibile in modo deterministico, ora corretto.
 
 ## Sovrapposizione da verificare (trovata nel nuovo audit generale)
 
