@@ -120,7 +120,8 @@ export default function ContabilitaHub() {
 
   return (
     <div style={{ width: '100%' }}>
-      {/* Tab Bar — design system: navy attivo, scroll orizzontale su mobile */}
+      {/* Tab Bar — design system: navy attivo. Tutti i tab SEMPRE visibili
+          (a capo automatico): niente scroll orizzontale che nasconde le voci. */}
       <div
         style={{
           display: 'flex',
@@ -129,10 +130,7 @@ export default function ContabilitaHub() {
           background: 'white',
           borderBottom: '1px solid #e2e8f0',
           borderRadius: '8px 8px 0 0',
-          flexWrap: 'nowrap',
-          overflowX: 'auto',
-          WebkitOverflowScrolling: 'touch',
-          scrollbarWidth: 'thin',
+          flexWrap: 'wrap',
         }}
       >
         {TABS.map(({ id, label, Icon }) => {
