@@ -398,6 +398,48 @@ async def list_suppliers_filtered(
     }
 
 
+@router.get("/duplicati")
+async def get_fornitori_duplicati() -> Dict[str, Any]:
+    """
+    Gruppi di fornitori sospetti duplicati (stessa P.IVA o denominazione
+    simile). Colma il gap #1 di memoria/moduli/FORNITORI.md: prima non
+    esisteva alcuna funzione di deduplica per fornitori, a differenza di
+    Dipendenti (app/services/dipendenti_dedupe.py).
+    """
+    from app.services.fornitori_dedupe import trova_duplicati
+    return await trova_duplicati()
+
+
+@router.post("/duplicati/merge")
+async def merge_fornitori_duplicati(
+    target_id: str = Body(...),
+    duplicate_id: str = Body(...),
+    soft: bool = Body(True),
+) -> Dict[str, Any]:
+    """Unifica duplicate_id dentro target_id (fatture e scadenze re-puntate)."""
+    from app.services.fornitori_dedupe import merge_fornitori
+    if not target_id or not duplicate_id:
+        raise HTTPException(status_code=400, detail="target_id e duplicate_id sono obbligatori")
+    try:
+        return await merge_fornitori(target_id, duplicate_id, soft=soft)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/duplicati/auto-merge")
+async def auto_merge_fornitori_duplicati(
+    dry_run: bool = Query(True, description="True = solo anteprima, nessuna scrittura"),
+) -> Dict[str, Any]:
+    """
+    Merge automatico dei soli duplicati a certezza alta (stessa P.IVA).
+    I duplicati per solo nome simile richiedono sempre conferma manuale via
+    /duplicati/merge — un nome simile non è prova sufficiente per un'unione
+    automatica di un'anagrafica fiscale.
+    """
+    from app.services.fornitori_dedupe import auto_merge_tutti
+    return await auto_merge_tutti(dry_run=dry_run)
+
+
 @router.get("/{supplier_id}")
 async def get_supplier(supplier_id: str) -> Dict[str, Any]:
     """Dettaglio singolo fornitore."""

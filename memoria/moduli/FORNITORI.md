@@ -27,14 +27,20 @@ sulla stessa pipeline `process_xml_bytes` → `ensure_supplier_exists()`.
 
 ## Gap confermati (in ordine di priorità)
 
-1. **Nessuna funzione di merge/deduplica fornitori**: a differenza di Dipendenti
-   (`app/services/dipendenti_dedupe.py`, verificato esistente e usato), **non esiste un
-   analogo per Fornitori**. Se due fornitori duplicati vengono creati (es. stesso fornitore
-   con P.IVA scritta in formati diversi, o nome leggermente diverso che elude il match per
-   prefisso), non c'è un endpoint/servizio per unificarli — il duplicato resta permanente,
-   con fatture storicamente sparse su due `supplier_id` diversi.
-2. **Dedup per nome è solo "prefisso regex", non vera fuzzy-match**: la spec richiede
-   riconoscimento di denominazioni simili (es. "Rossi Srl" vs "Rossi S.r.l." vs "F.lli Rossi").
+1. ~~**Nessuna funzione di merge/deduplica fornitori**~~ — **RISOLTO**. Creato
+   `app/services/fornitori_dedupe.py` (analogo a `dipendenti_dedupe.py`): `trova_duplicati()`
+   (P.IVA identica anche tra i campi `partita_iva`/`piva`, + fuzzy match denominazione),
+   `merge_fornitori()` (re-punta `invoices.supplier_id` e `scadenziario_fornitori.fornitore_id`,
+   soft/hard delete), `auto_merge_tutti()` (solo per i duplicati a certezza alta = stessa
+   P.IVA; i duplicati per solo nome simile restano sempre a conferma manuale). Esposto via
+   `GET/POST /api/fornitori/duplicati[/merge|/auto-merge]`. Verificato con test end-to-end.
+2. ~~**Dedup per nome è solo "prefisso regex", non vera fuzzy-match**~~ — **RISOLTO** dallo
+   stesso servizio: `trova_duplicati()` usa `difflib.SequenceMatcher` con normalizzazione
+   della forma societaria (rimuove Srl/Spa/Snc/Sas prima del confronto), non più solo un
+   prefix-regex. Resta il gap originale nel percorso di *creazione* fattura
+   (`ensure_supplier_exists` in `fatture_upload.py` continua a usare il prefix-regex per
+   decidere se creare un fornitore nuovo o riusare uno esistente — il nuovo servizio dedup
+   serve a *sanare* i duplicati già creati, non a prevenirli a monte).
    Il codice reale confronta solo se il nome fattura inizia con lo stesso prefisso di un
    fornitore esistente (`^{safe_name}`) — non gestisce forme societarie diverse, IBAN
    condiviso, o CF come chiave di dedup alternativa alla P.IVA.
