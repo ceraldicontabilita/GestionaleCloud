@@ -123,6 +123,39 @@ export default function VerbaliRiconciliazione() {
     }
   };
 
+  const [pulendoDuplicati, setPulendoDuplicati] = useState(false);
+
+  const handlePulisciDuplicati = async () => {
+    setPulendoDuplicati(true);
+    setError('');
+    setSuccessMsg('');
+    try {
+      const anteprima = await api.post('/api/verbali-riconciliazione/pulisci-duplicati?dry_run=true');
+      const nGruppi = anteprima.data.gruppi_duplicati_trovati || 0;
+      if (nGruppi === 0) {
+        setSuccessMsg('Nessun verbale duplicato trovato');
+        return;
+      }
+      if (
+        !confirm(
+          `Trovati ${nGruppi} verbali duplicati (${anteprima.data.documenti_eliminati} righe da unire). Procedere con la pulizia?`
+        )
+      ) {
+        return;
+      }
+      const res = await api.post('/api/verbali-riconciliazione/pulisci-duplicati?dry_run=false');
+      setSuccessMsg(
+        `Puliti ${res.data.gruppi_processati} verbali duplicati (${res.data.documenti_eliminati} righe rimosse)`
+      );
+      loadDashboard();
+      loadVerbali();
+    } catch (e) {
+      setError('Errore durante pulizia duplicati');
+    } finally {
+      setPulendoDuplicati(false);
+    }
+  };
+
   const handleRiconcilia = async numeroVerbale => {
     try {
       const res = await api.post(`/api/verbali-riconciliazione/riconcilia/${numeroVerbale}`);
@@ -253,6 +286,27 @@ export default function VerbaliRiconciliazione() {
             data-testid="btn-associa-manuale"
           >
             🔗 Associazione Manuale
+          </button>
+          <button
+            onClick={handlePulisciDuplicati}
+            disabled={pulendoDuplicati}
+            style={{
+              padding: '12px 24px',
+              background: '#78716c',
+              color: 'white',
+              border: 'none',
+              borderRadius: 8,
+              cursor: pulendoDuplicati ? 'wait' : 'pointer',
+              fontWeight: 'bold',
+              fontSize: 14,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+            }}
+            data-testid="btn-pulisci-duplicati"
+            title="Unisce i verbali duplicati (stesso numero verbale in più righe)"
+          >
+            {pulendoDuplicati ? '⏳ Pulizia...' : '🧹 Pulisci Duplicati'}
           </button>
         </div>
 

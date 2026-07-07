@@ -419,11 +419,16 @@ async def scan_fatture_per_verbali() -> Dict[str, Any]:
                 fattura.get("subject", "") or "",
                 fattura.get("invoice_number", "") or "",
             ]
-            # Aggiungi tutti gli items
-            items = fattura.get("items", [])
-            for item in items:
-                campi_testo.append(item.get("descrizione", "") or item.get("description", "") or "")
-            
+            # Aggiungi le righe fattura reali salvate dal parser (chiave "linee",
+            # non "items" — "items" non esiste mai sui documenti invoices, quindi
+            # questo blocco non contribuiva mai nulla). Include anche
+            # AltriDatiGestionali: alcuni fornitori (es. Leasys) mettono la
+            # causale/il riferimento verbale reale solo lì, non in Descrizione.
+            for linea in fattura.get("linee", []):
+                campi_testo.append(linea.get("descrizione", "") or "")
+                for adg in linea.get("altri_dati_gestionali") or []:
+                    campi_testo.append(adg.get("riferimento_testo", "") or "")
+
             testo_completo = " ".join(campi_testo)
             
             # Cerca numero verbale nel testo completo
@@ -476,6 +481,91 @@ async def scan_fatture_per_verbali() -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Errore scan fatture verbali: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+def _punteggio_completezza(v: Dict[str, Any]) -> int:
+    """Quanto è completo un documento verbale: usato per scegliere quale dei
+    duplicati tenere come canonico durante il merge."""
+    campi = ("fattura_id", "fattura_numero", "numero_fattura", "importo",
+             "pagamento_id", "driver_id", "driver", "targa", "quietanza_ricevuta")
+    return sum(1 for c in campi if v.get(c))
+
+
+@router.post("/pulisci-duplicati")
+@handle_errors
+async def pulisci_duplicati_verbali(dry_run: bool = Query(True)) -> Dict[str, Any]:
+    """
+    verbali_noleggio è scritto da 8 percorsi indipendenti (scan email, scan
+    fatture, trigger fattura, pipeline post-download, scanner PagoPA, ecc.):
+    ognuno controlla i duplicati a modo suo prima di inserire, ma nessun
+    controllo è condiviso tra i percorsi né esiste un indice unico sul DB,
+    quindi due percorsi diversi possono creare due documenti per lo stesso
+    numero_verbale (visibile in /lista come righe duplicate con dati
+    diversi, es. una con l'importo e una senza).
+
+    Questo endpoint raggruppa per numero_verbale, sceglie come "canonico" il
+    documento più completo (più campi valorizzati, poi più recente), vi
+    riversa i campi mancanti dagli altri duplicati, ed elimina i duplicati.
+    Con dry_run=True (default) non scrive nulla, restituisce solo l'anteprima.
+    """
+    db = Database.get_db()
+
+    pipeline = [
+        {"$match": {"numero_verbale": {"$exists": True, "$nin": [None, ""]}}},
+        {"$group": {"_id": "$numero_verbale", "count": {"$sum": 1}, "ids": {"$push": "$_id"}}},
+        {"$match": {"count": {"$gt": 1}}},
+    ]
+    gruppi = await db["verbali_noleggio"].aggregate(pipeline).to_list(2000)
+
+    gruppi_processati = 0
+    documenti_eliminati = 0
+    dettaglio = []
+
+    for gruppo in gruppi:
+        numero_verbale = gruppo["_id"]
+        docs = await db["verbali_noleggio"].find({"numero_verbale": numero_verbale}).to_list(20)
+        if len(docs) < 2:
+            continue
+
+        docs.sort(
+            key=lambda v: (_punteggio_completezza(v), str(v.get("updated_at") or v.get("created_at") or "")),
+            reverse=True,
+        )
+        canonico, duplicati = docs[0], docs[1:]
+
+        campi_mancanti = {}
+        for dup in duplicati:
+            for k, v in dup.items():
+                if k in ("_id",):
+                    continue
+                if v not in (None, "", []) and canonico.get(k) in (None, "", []):
+                    campi_mancanti[k] = v
+
+        gruppi_processati += 1
+        documenti_eliminati += len(duplicati)
+        dettaglio.append({
+            "numero_verbale": numero_verbale,
+            "canonico_id": str(canonico["_id"]),
+            "duplicati_eliminati": len(duplicati),
+            "campi_recuperati": list(campi_mancanti.keys()),
+        })
+
+        if not dry_run:
+            if campi_mancanti:
+                await db["verbali_noleggio"].update_one(
+                    {"_id": canonico["_id"]}, {"$set": campi_mancanti}
+                )
+            await db["verbali_noleggio"].delete_many(
+                {"_id": {"$in": [d["_id"] for d in duplicati]}}
+            )
+
+    return {
+        "dry_run": dry_run,
+        "gruppi_duplicati_trovati": len(gruppi),
+        "gruppi_processati": gruppi_processati,
+        "documenti_eliminati": documenti_eliminati,
+        "dettaglio": dettaglio[:50],
+    }
 
 
 @router.post("/riconcilia/{numero_verbale}")
