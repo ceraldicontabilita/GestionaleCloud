@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Body, Request
+from fastapi import APIRouter, HTTPException, Body, Request, BackgroundTasks
 from fastapi.responses import FileResponse
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any
@@ -147,18 +147,24 @@ async def status():
 
 
 @router.post("/riconcilia")
-async def riconcilia_da_collection(body: Dict[str, Any] = Body(default={})):
+async def riconcilia_da_collection(
+    background_tasks: BackgroundTasks, body: Dict[str, Any] = Body(default={})
+):
     """
     FASE 2: riconciliazione unificata che processa in sequenza:
     1. Multe PagoPA → verbali_noleggio
     2. Fatture commerciali → invoices (match by paypal_account_id)
     3. Allineamento paypal_transactions ↔ estratto_conto_movimenti
+    4. Fornitori rimasti senza fattura (tipicamente esteri, mai su Drive/PEC):
+       ricerca automatica in posta in background, nessun click richiesto —
+       vedi app/services/paypal_email_recovery.py
     """
     from app.services.paypal_riconciliazione import (
         riconcilia_pagamenti_paypal,
         riconcilia_multe_pagopa,
         collega_a_estratto_conto,
     )
+    from app.services.paypal_email_recovery import recupera_fatture_mancanti_email
 
     db = Database.get_db()
     q: Dict[str, Any] = {"importo": {"$lt": 0}}
@@ -183,7 +189,16 @@ async def riconcilia_da_collection(body: Dict[str, Any] = Body(default={})):
         for t in fatture
     ])
     r_banca = await collega_a_estratto_conto(db)
-    return {"multe_pagopa": r_multe, "fatture": r_fatt, "banca": r_banca}
+
+    if body.get("recupera_email", True):
+        background_tasks.add_task(recupera_fatture_mancanti_email, db)
+
+    return {
+        "multe_pagopa": r_multe,
+        "fatture": r_fatt,
+        "banca": r_banca,
+        "recupero_email_avviato": bool(body.get("recupera_email", True)),
+    }
 
 
 @router.get("/ricevuta-pdf/{transaction_id}")

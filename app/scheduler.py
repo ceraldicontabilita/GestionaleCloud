@@ -254,6 +254,30 @@ async def check_scorta_magazzino_task():
         logger.error(f"📦 [SCHEDULER] Errore controllo scorta magazzino: {e}")
 
 
+async def paypal_recupera_fatture_email_task():
+    """
+    Task eseguito ogni giorno alle 5:30.
+    I fornitori PayPal non mappati sono tipicamente esteri (MongoDB, SaaS
+    vari): non emettono mai fattura elettronica XML, quindi Drive/PEC-SDI
+    non li troveranno mai, a prescindere da quanto tempo passa. Cerca da
+    sola nella posta invece di aspettare un click manuale — vedi
+    app/services/paypal_email_recovery.py.
+    """
+    logger.info("💳 [SCHEDULER] Recupero fatture PayPal mancanti dalla posta...")
+    try:
+        from app.database import Database
+        from app.services.paypal_email_recovery import recupera_fatture_mancanti_email
+
+        db = Database.get_db()
+        result = await recupera_fatture_mancanti_email(db)
+        logger.info(
+            f"💳 [SCHEDULER] Recupero fatture PayPal: {result.get('cercati', 0)} fornitori "
+            f"cercati, {result.get('documenti_trovati', 0)} documenti nuovi trovati"
+        )
+    except Exception as e:
+        logger.error(f"💳 [SCHEDULER] Errore recupero fatture PayPal: {e}")
+
+
 async def gmail_full_scan_task():
     """
     Task eseguito ogni ora.
@@ -460,13 +484,23 @@ def start_scheduler():
         name="Gmail Full Scan Multi-Cartella (ogni ora)",
         replace_existing=True
     )
-    
+
+    # Task Recupero Fatture PayPal mancanti - ogni giorno alle 5:30
+    scheduler.add_job(
+        paypal_recupera_fatture_email_task,
+        CronTrigger(hour=5, minute=30),
+        id="paypal_recupera_fatture_email",
+        name="Recupero Fatture PayPal mancanti dalla posta (ogni giorno ore 5:30)",
+        replace_existing=True
+    )
+
     scheduler.start()
     logger.info("✅ [SCHEDULER] Scheduler avviato")
     logger.info("   - Gmail Full Scan (tutte cartelle): ogni ora")
     logger.info("   - Verbali Email: ogni ora")
     logger.info("   - Scadenze Partite Aperte: ogni giorno ore 7:00")
     logger.info("   - Scadenze F24: ogni giorno ore 8:00 e 14:00")
+    logger.info("   - Recupero Fatture PayPal mancanti: ogni giorno ore 5:30")
 
 
 def stop_scheduler():
