@@ -363,3 +363,237 @@ Analytics di business: ricavi = corrispettivi (imponibile), costi = fatture rice
 **Cosa fa**: diagnostica di coerenza dati in sola lettura, nonostante il nome "repair".
 **Logica codice**: count su `corrispettivi` (totali e senza `totale_imponibile`), count su `invoices` (senza `imponibile`, warning se >50%), aggregate distribuzione `tipo_documento`; errori raccolti nel payload con `status:"error"`.
 **Note**: il nome promette "self-repair" ma NON ripara nulla: solo controlli in lettura.
+
+## scadenze.py (prefisso `/api/scadenze`)
+Sistema scadenze fiscali e pagamenti: genera scadenze fiscali fisse italiane (IVA trimestrale, F24 al 16 del mese), deriva scadenze di pagamento dalle fatture, gestisce scadenze personalizzate (CRUD su `notifiche_scadenze`) e calcola la liquidazione IVA trimestrale/mensile. Espone anche un widget riepilogo per la dashboard. 10 endpoint.
+
+### GET /api/scadenze — alias lista scadenze (senza slash)
+**Cosa fa**: restituisce tutte le scadenze; alias nascosto (`include_in_schema=False`) di `/tutte`.
+**Logica codice**: delega a `get_tutte_scadenze` con gli stessi parametri (`anno`, `mese`, `tipo`, `include_passate`, `limit`).
+**Note**: tripla duplicazione: ``, `/` e `/tutte` sono la stessa route.
+
+### GET /api/scadenze/ — alias lista scadenze (con slash)
+**Cosa fa**: identico al precedente, per chiamate con slash finale.
+**Logica codice**: delega a `get_tutte_scadenze`; anch'esso `include_in_schema=False`.
+
+### GET /api/scadenze/tutte — lista completa scadenze
+**Cosa fa**: unisce scadenze fiscali generate, fatture in scadenza e scadenze custom, ordinate per data con statistiche.
+**Logica codice**: legge `notifiche_scadenze` (filtro `completata:False` se non `include_passate`) e `invoices` via `_get_fatture_in_scadenza` (scadenza = data fattura + 30 giorni fissi; filtri `pagato≠True`, `status≠paid`, `stato_pagamento∉[pagata,pagato]`); genera scadenze fiscali con `_genera_scadenze_fiscali(anno, mese)` (F24 il 16, IVA nei mesi 3/5/8/11); arricchisce con `giorni_mancanti`/`urgente` e statistiche (urgenti ≤3gg, prossimi 7gg, totale importi); `limit` solo sulla lista.
+**Note**: la scadenza fattura è sempre stimata a +30gg dalla data fattura, ignorando i termini reali di pagamento.
+
+### GET /api/scadenze/prossime — prossime scadenze (widget dashboard)
+**Cosa fa**: scadenze entro N giorni (default 30), con `prossima_scadenza` in evidenza.
+**Logica codice**: genera scadenze fiscali per i mesi coperti dall'intervallo, legge `invoices` (`_get_fatture_in_scadenza`) e `notifiche_scadenze` (`completata:False`, `data_scadenza ≤ limite`); filtra a `[oggi, oggi+giorni]`, ordina, aggiunge `giorni_mancanti`/`urgente`, tronca a `limit`.
+
+### GET /api/scadenze/iva/{anno} — liquidazione IVA trimestrale
+**Cosa fa**: calcola per i 4 trimestri IVA a debito, a credito, saldo e importo da versare con date di scadenza (16/5, 20/8, 16/11, 16/3 anno+1).
+**Logica codice**: per ogni mese aggrega `corrispettivi` (somma `totale_iva`, regex su `data`) per il debito e `invoices` (somma `iva`, regex su `data_ricezione` o `invoice_date`) per il credito; ritorna anche totale annuo e prossima scadenza.
+**Note**: 24 aggregazioni separate; il credito somma l'IVA di tutte le fatture senza distinguere note di credito o esigibilità.
+
+### GET /api/scadenze/iva-mensile/{anno} — liquidazione IVA mensile
+**Cosa fa**: come sopra ma mese per mese (versamento il 16 del mese successivo), con saldo progressivo a riporto credito.
+**Logica codice**: stesse aggregazioni per ciascuno dei 12 mesi; calcola `saldo_progressivo` cumulato e `da_versare_effettivo` (F24 dovuto solo se il progressivo è > 0), oltre a totali annui.
+
+### POST /api/scadenze/crea — crea scadenza personalizzata
+**Cosa fa**: inserisce una scadenza/notifica custom.
+**Logica codice**: valida presenza `data_scadenza` e `descrizione` (400); genera `id` uuid4, default `tipo=CUSTOM`, `priorita=media`, `completata=False`; `insert_one` su `notifiche_scadenze`.
+
+### PUT /api/scadenze/completa/{notifica_id} — completa scadenza custom
+**Cosa fa**: marca una scadenza custom come completata.
+**Logica codice**: `update_one` su `notifiche_scadenze` per `id`, set `completata=True` + `completata_at`; 404 se `modified_count == 0`.
+
+### DELETE /api/scadenze/{notifica_id} — elimina scadenza custom
+**Cosa fa**: elimina una scadenza personalizzata.
+**Logica codice**: `delete_one` su `notifiche_scadenze` per `id`; 404 se non trovata.
+**Note**: route parametrica catch-all alla radice del prefisso.
+
+### GET /api/scadenze/dashboard-widget — riepilogo alert scadenze
+**Cosa fa**: contatori compatti per dashboard: fatture da pagare (30gg), contratti in scadenza (60gg), libretti sanitari scaduti/in scadenza, F24 da pagare, scadenze fiscali entro 15gg.
+**Logica codice**: `count_documents` su `invoices` (campo persistito `data_scadenza` + `stato_pagamento ∈ [non_pagata, da_pagare, null]`), `contratti_dipendenti` (`data_fine` entro 60gg, `stato=attivo`), `libretti_sanitari`. Il conteggio "F24 da pagare" (righe 642-650) SOMMA DUE collezioni: `f24_unificato` (`data_scadenza ≤ +30gg`, `pagato ≠ True`, alimentata da upload manuale) + `f24_commercialista` (`scadenza ≤ +30gg`, `status ≠ "pagato"`, alimentata dalla scansione email) — il commento nel codice spiega che contando solo la prima gli F24 arrivati via email sparivano dall'alert. Scadenze fiscali via `_genera_scadenze_fiscali` filtrate a 15gg.
+**Note**: i due archivi F24 hanno schemi diversi (`pagato`/`data_scadenza` vs `status`/`scadenza`); i criteri "fattura da pagare" qui differiscono da `/tutte` e `/prossime` (campo persistito vs +30gg calcolati): widget e lista possono divergere. Costante `SCADENZE_FISCALI` definita ma mai usata (le stesse date sono hardcoded in `_genera_scadenze_fiscali`).
+
+## alerts.py (prefisso `/api/alerts`)
+Gestione alert di sistema sulla collezione `alerts`, con doppio schema convivente: legacy (`letto`/`risolto` booleani) e relazionale (`stato: aperto|risolto`, `severita`, `modulo`). Include alert specifici per fornitori senza metodo di pagamento. 7 endpoint.
+
+### GET /api/alerts/summary — badge topnav alert aperti
+**Cosa fa**: conteggi degli alert aperti per severità e modulo, più i 5 critici recenti per il dropdown.
+**Logica codice**: query compatibile con entrambi gli schemi (`stato="aperto"` OR `stato` assente AND `risolto≠True`); due aggregate su `alerts` (group per `severita` e `modulo`), poi `find` dei critici recenti (sort `created_at` desc, limit 5).
+**Note**: severità fuori da {critical, warning, info} scartate dal totale (solo `null` mappato a `info`).
+
+### GET /api/alerts/lista — lista alert con statistiche
+**Cosa fa**: lista alert filtrabile per `tipo`, `letto`, `risolto` con statistiche globali.
+**Logica codice**: `find` su `alerts` sort `created_at` desc (limit 1-200); statistiche con `count_documents` (`{}`, `{letto:False}`, `{risolto:False}`) e aggregate per `tipo`.
+**Note**: le stats usano match esatto `False`: non contano i documenti dello schema relazionale privi di quei campi — numeri potenzialmente diversi da `/summary`.
+
+### GET /api/alerts/fornitori-senza-metodo — alert fornitori senza pagamento
+**Cosa fa**: lista gli alert non risolti di tipo `fornitore_senza_metodo_pagamento`.
+**Logica codice**: `find` su `alerts` con `{tipo, risolto:False}`, sort `created_at` desc, max 100.
+
+### POST /api/alerts/{alert_id}/segna-letto — segna letto
+**Cosa fa**: marca un alert come letto.
+**Logica codice**: `update_one` per `id`, set `letto=True` + `letto_il`; 404 se `modified_count == 0`.
+
+### POST /api/alerts/{alert_id}/risolvi — risolvi alert
+**Cosa fa**: marca un alert come risolto (e letto).
+**Logica codice**: `update_one` set `risolto=True`, `risolto_il`, `letto=True`; 404 se nessuna modifica.
+**Note**: scrive solo i campi legacy; non aggiorna `stato` dello schema relazionale: un alert relazionale risolto qui resta `stato:aperto` per `/summary`.
+
+### DELETE /api/alerts/{alert_id} — elimina alert
+**Cosa fa**: elimina un alert.
+**Logica codice**: `delete_one` per `id`; 404 se non trovato.
+
+### POST /api/alerts/risolvi-fornitore/{fornitore_piva} — risoluzione massiva per fornitore
+**Cosa fa**: risolve tutti gli alert "fornitore senza metodo pagamento" di una P.IVA quando il metodo viene configurato.
+**Logica codice**: `update_many` su `alerts` (tipo + `fornitore_piva` + `risolto:False`), set `risolto=True`, `risolto_il`, `note_risoluzione`; ritorna il numero risolti.
+
+## notifications.py (prefisso `/api/notifications`)
+Notifiche di sistema sulla collezione `notifications`, con flusso "da revisionare" basato sul flag `reviewed`. Modulo minimale: 6 funzioni / 7 route (la prima ha doppio path).
+
+### GET /api/notifications (e alias GET /api/notifications/all) — tutte le notifiche
+**Cosa fa**: restituisce le notifiche, opzionalmente filtrate per `tipo` (scadenza, alert, verbale).
+**Logica codice**: `find` su `notifications`, sort `created_at` desc, limit 1-500; due decoratori route sulla stessa funzione.
+**Note**: eccezioni loggate ma silenziate con `return []` (il client non distingue errore da lista vuota).
+
+### GET /api/notifications/review — notifiche da revisionare
+**Cosa fa**: lista notifiche non ancora revisionate.
+**Logica codice**: `find` con `{reviewed:{$ne:True}}`, sort `created_at` desc, limit 1-200; errori silenziati con `[]`.
+
+### GET /api/notifications/unread-count — conteggio non lette
+**Cosa fa**: numero di notifiche non revisionate (badge).
+**Logica codice**: `count_documents` con `{reviewed:{$ne:True}}`; in errore ritorna `{count:0}`.
+
+### POST /api/notifications/review/{notification_id}/mark-reviewed — segna revisionata
+**Cosa fa**: marca una singola notifica come revisionata.
+**Logica codice**: `update_one` per `id`, set `reviewed=True` + `reviewed_at` (datetime nativo, non stringa ISO come altrove).
+**Note**: risponde sempre 200; se non trovata cambia solo il messaggio, mai 404.
+
+### POST /api/notifications/mark-all-read — segna tutte lette
+**Cosa fa**: marca tutte le notifiche non revisionate come revisionate.
+**Logica codice**: `update_many` su `{reviewed:{$ne:True}}`, ritorna `count` = `modified_count`.
+
+### DELETE /api/notifications/{notification_id} — elimina notifica
+**Cosa fa**: cancella una notifica.
+**Logica codice**: `delete_one` per `id`.
+**Note**: 200 anche se non trovata (solo messaggio diverso).
+
+## todo.py (prefisso `/api/todo`)
+CRUD completo di task/promemoria sulla collezione `todo_tasks` con modelli Pydantic (`TaskCreate`, `TaskUpdate`), priorità con ordinamento numerico (`priorita_ordine`), scadenze e collegamento a documenti (fattura/verbale/fornitore). 10 endpoint.
+
+### GET /api/todo/lista — lista task con filtri e stats
+**Cosa fa**: lista filtrabile per stato, priorità, categoria, scadenza entro N giorni e ricerca testo.
+**Logica codice**: query dinamica su `todo_tasks` (regex case-insensitive su titolo/descrizione per `cerca`); sort composto `completato, priorita_ordine, scadenza`; 6 `count_documents` per statistiche.
+**Note**: il docstring del modulo promette "filtri per assegnatario", ma il filtro `assegnato_a` NON è implementato.
+
+### POST /api/todo/crea — crea task
+**Cosa fa**: crea un task con priorità, scadenza, categoria e documenti collegati.
+**Logica codice**: valida via `TaskCreate`; mappa priorità→`priorita_ordine` (alta=1, media=2, bassa=3); `id` uuid4, timestamps ISO UTC; `insert_one` su `todo_tasks`.
+
+### PUT /api/todo/{task_id} — aggiorna task
+**Cosa fa**: aggiornamento parziale di un task esistente.
+**Logica codice**: `find_one` per esistenza (404); `$set` solo dei campi non-None di `TaskUpdate` (riallinea `priorita_ordine`, gestisce `completato_at`); `update_one` e rilettura.
+
+### PUT /api/todo/{task_id}/completa — completa task
+**Cosa fa**: marca il task completato.
+**Logica codice**: `update_one` set `completato=True`, `completato_at`, `updated_at`; 404 se `modified_count == 0`.
+**Note**: un task già completato produce `modified_count=0` → 404 fuorviante (idem `/riapri`).
+
+### PUT /api/todo/{task_id}/riapri — riapre task
+**Cosa fa**: riporta un task completato a "da fare".
+**Logica codice**: `update_one` set `completato=False`, `completato_at=None`, `updated_at`; 404 se nessuna modifica.
+
+### DELETE /api/todo/{task_id} — elimina task
+**Cosa fa**: cancella un task.
+**Logica codice**: `delete_one` per `id`; 404 se `deleted_count == 0`.
+
+### GET /api/todo/categorie — categorie disponibili
+**Cosa fa**: unione di 9 categorie predefinite e categorie effettivamente usate.
+**Logica codice**: aggregate `$group` per `categoria`, merge con lista hardcoded, dedup e sort alfabetico.
+
+### GET /api/todo/scadenze-oggi — task in scadenza oggi
+**Cosa fa**: task non completati con scadenza esattamente oggi.
+**Logica codice**: `find` con `{completato:{$ne:True}, scadenza: oggi}` (confronto stringa `YYYY-MM-DD`), max 100.
+
+### GET /api/todo/scadenze-settimana — task in scadenza a 7 giorni
+**Cosa fa**: task non completati con scadenza tra oggi e +7 giorni.
+**Logica codice**: `find` con range stringa su `scadenza`, sort crescente, max 100.
+
+### GET /api/todo/statistiche — statistiche complete
+**Cosa fa**: totali, ripartizione per priorità, scaduti, in scadenza oggi, ripartizione per categoria, percentuale completamento.
+**Logica codice**: 8 `count_documents` + una aggregate per categoria sui non completati.
+
+## agenti.py (prefisso `/api/agenti`)
+Interfaccia verso il sottosistema Agenti AI: segnalazioni prodotte dagli agenti (`agenti_segnalazioni`), stato agenti (`agenti_stato`), pattern appresi (`agenti_apprendimenti`) ed esecuzione manuale dell'orchestratore. 8 endpoint.
+
+### GET /api/agenti/segnalazioni — lista segnalazioni
+**Cosa fa**: elenca le segnalazioni AI, filtrabili per `non_lette` e `tipo`.
+**Logica codice**: `find` su `agenti_segnalazioni` (se `non_lette=True` filtra `letta:False`), sort `created_at` desc, limit default 50.
+
+### GET /api/agenti/segnalazioni/count — badge non lette
+**Cosa fa**: conteggio segnalazioni non lette.
+**Logica codice**: `count_documents` con `{letta:False}` (match esatto: documenti senza il campo non contati).
+
+### GET /api/agenti/segnalazioni/summary — contatori per tipo (widget)
+**Cosa fa**: conta le segnalazioni non risolte per tipo, accorpando le "anomalia" nelle "urgente".
+**Logica codice**: aggregate `$group` per `tipo` su `{risolta:{$ne:True}}`; tipi fuori da {urgente, avviso, info, suggerimento, anomalia} ignorati; `totale` calcolato dopo il merge.
+
+### PUT /api/agenti/segnalazioni/{sid}/letta — segna letta
+**Cosa fa**: marca una segnalazione come letta.
+**Logica codice**: `update_one` per `id`, set `letta=True` + `letta_at`; risponde sempre `{status:ok}`.
+**Note**: nessun controllo di esistenza (mai 404), a differenza di alerts/todo.
+
+### PUT /api/agenti/segnalazioni/{sid}/risolta — segna risolta
+**Cosa fa**: marca una segnalazione come risolta.
+**Logica codice**: `update_one` set `risolta=True` + `risolta_at`; sempre `{status:ok}` anche se l'id non esiste.
+
+### GET /api/agenti/stato — stato agenti
+**Cosa fa**: restituisce lo stato di tutti gli agenti AI.
+**Logica codice**: `find` completo su `agenti_stato` (max 20 documenti).
+
+### POST /api/agenti/run — esecuzione manuale agenti
+**Cosa fa**: lancia in modo sincrono tutti gli agenti AI tramite l'orchestratore.
+**Logica codice**: import lazy di `app.agents.orchestrator.run_agenti` con il db; eccezioni catturate e restituite come `{status:"errore", error}`.
+**Note**: risponde comunque HTTP 200 in errore; endpoint potenzialmente lungo/costoso senza lock anti-concorrenza.
+
+### GET /api/agenti/pattern-appresi — pattern della LearningCervello
+**Cosa fa**: lista i pattern appresi con confidenza ≥ 0.3, opzionalmente per categoria.
+**Logica codice**: `find` su `agenti_apprendimenti` (`confidenza ≥ 0.3`), sort `occorrenze` desc, max 100; deriva l'elenco categorie dai risultati.
+
+## rapido.py (prefisso `/api/rapido`)
+Endpoint "quick-entry" per la pagina Inserimento Rapido: registrazioni veloci in prima nota cassa/banca (corrispettivi, versamenti, apporti soci, acconti), pagamento fatture con event bus e presenze giornaliere. 8 endpoint.
+
+### GET /api/rapido/dipendenti-attivi — anagrafica dipendenti attivi
+**Cosa fa**: lista compatta dei dipendenti attivi per le select del form.
+**Logica codice**: `find` su `dipendenti` (`attivo:True` o campo assente, esclusi i `merged_into`), proiezione id/nome, sort `nome_completo`, max 200.
+
+### GET /api/rapido/ultimi-inserimenti — storico inserimenti rapidi
+**Cosa fa**: ultimi movimenti creati dalla pagina rapida (default 5).
+**Logica codice**: `find` su `prima_nota_cassa` con `source` regex `rapido`, sort `created_at` desc.
+
+### POST /api/rapido/corrispettivo — registra corrispettivo in cassa
+**Cosa fa**: inserisce un'entrata di cassa categoria "Corrispettivi".
+**Logica codice**: valida `importo > 0` (400); `insert_one` su `prima_nota_cassa` con `tipo=entrata`, `source=rapido_corrispettivo`, data default oggi.
+**Note**: NON scrive nella collezione `corrispettivi`: questo incasso non entra nel calcolo IVA di `/api/scadenze/iva*`.
+
+### POST /api/rapido/versamento-banca — versamento contanti in banca
+**Cosa fa**: registra l'uscita di cassa per un versamento in banca.
+**Logica codice**: valida `importo > 0`; `insert_one` su `prima_nota_cassa` con `tipo=uscita`, categoria "Versamento", `source=rapido_versamento`.
+**Note**: registra SOLO l'uscita cassa — non crea la corrispondente entrata in `prima_nota_banca` (giroconto incompleto rispetto al nome).
+
+### POST /api/rapido/apporto-soci — finanziamento soci
+**Cosa fa**: registra un'entrata di cassa "Finanziamento soci".
+**Logica codice**: valida `importo > 0`; `insert_one` su `prima_nota_cassa` con `tipo=entrata`, `source=rapido_apporto_soci`.
+
+### POST /api/rapido/paga-fattura — pagamento rapido fattura
+**Cosa fa**: registra il pagamento di una fattura in cassa o banca, marca la fattura pagata e propaga l'evento.
+**Logica codice**: parametri in query string (`invoice_id`, `metodo_pagamento`, `importo`); 400 senza `invoice_id`, 404 se la fattura non esiste; importo default dal totale fattura; anti-duplicato via `find_one({fattura_id})` nella collezione scelta (`prima_nota_cassa` o `prima_nota_banca`); `insert_one` movimento uscita, `update_one` su `invoices` (`pagato=True`, `stato_pagamento=pagata`); `propagate_event(FATTURA_PAGATA)` sull'event bus (eccezioni solo loggate).
+**Note**: anti-duplicato solo sulla collezione del metodo corrente — pagamento doppio possibile con metodo diverso; parametri query string in un POST, atipico rispetto al resto del modulo.
+
+### POST /api/rapido/acconto-dipendente — acconto a dipendente
+**Cosa fa**: registra un'uscita di cassa come acconto a un dipendente.
+**Logica codice**: valida `importo > 0` e `dipendente_id` presente; `insert_one` su `prima_nota_cassa` categoria "Acconti dipendenti".
+**Note**: non verifica che il `dipendente_id` esista in `dipendenti`.
+
+### POST /api/rapido/presenza — presenza giornaliera
+**Cosa fa**: registra una presenza (tipo/ore/note) per un dipendente.
+**Logica codice**: valida `dipendente_id`; `insert_one` su `presenze_giornaliere` con default `tipo=presente`, `ore=8`, `source=rapido`.
+**Note**: nessun anti-duplicato (stessa persona/data inseribile più volte) né verifica esistenza dipendente.

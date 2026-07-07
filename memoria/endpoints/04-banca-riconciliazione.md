@@ -184,3 +184,236 @@ Motore CANONICO di auto-match assegni↔fatture richiamato da `/api/assegni/auto
 **Regole**: vincolo rigido P.IVA (assegni senza P.IVA vengono arricchiti da `fornitori` via ragione sociale normalizzata, altrimenti finiscono in `non_trovati`); conservativo (più candidate ⇒ `ambigui`, con dedup dei duplicati storici stessa fattura); idempotente (movimento `prima_nota_banca` con source `assegno_auto_match` creato solo se assente).
 **Scritture**: `assegni.fatture_collegate[]` a quote + stato assegnato/parzialmente_assegnato; `invoices.importo_pagato/importo_residuo/payment_status/pagato` + `$push assegni_collegati`; `prima_nota_banca` (uscita per quota).
 **Note**: in `_try_l2` il ramo "ambiguous" restituisce comunque la prima candidata ma l'orchestratore lo tratta come non-match senza segnalarlo nella lista ambigui (i gruppi L2 ambigui non emergono nel report).
+
+### Anomalie (gruppo assegni)
+1. Quattro schemi di collegamento fattura coesistono sugli assegni: canonico `fatture_collegate[]` + tre campi flat (`fattura_id`, `fattura_collegata`, `fattura_associata`) usati da endpoint diversi — un assegno può risultare "collegato" per un endpoint e "libero" per un altro.
+2. `correggi-associazione` scrive lo stato `"associato"` assente da `ASSEGNO_STATI` → un successivo PUT generico con quello stato viene rifiutato.
+3. Tre implementazioni quasi identiche della logica "combinazioni" (`preview-combinazioni`, `cerca-combinazioni-assegni`, `learning/associa-combinazioni-avanzato`) con tolleranze incoerenti (±1/±2/±10€) vs ±0,005€ del motore canonico.
+4. `learning/associa-intelligente` e `learning/associa-combinazioni-avanzato` caricano le fatture SENZA filtro pagamento: possono associare fatture già pagate (commento esplicito nel codice).
+5. `associa-pagamenti-multipli` usa il beneficiario come regex non-escaped su `supplier_name` (crash/match errati con caratteri speciali).
+6. Tre `source` diversi in `prima_nota_banca` (`assegno_emesso` importo intero, `assegno_manuale` e `assegno_auto_match` a quote) senza controlli incrociati → possibili uscite duplicate per lo stesso assegno.
+7. `incassa` e `sync-da-estratto-conto` propagano il pagamento solo dal campo flat `fattura_collegata`: un assegno collegato via schema canonico non chiude fattura/scadenzario all'incasso.
+8. Hard-delete (`clear-generated`, `learning/pulizia-duplicati`) senza le business rules del DELETE singolo; parametro `force` dichiarato ma mai usato.
+9. Endpoint pesanti: `verifica-associazioni` e `associa-beneficiari-robusto` caricano fino a 50k fatture in memoria; `GET /ambigui` riesegue l'intero auto-match a ogni chiamata.
+
+---
+
+## estratto_conto.py (/api/estratto-conto-movimenti)
+
+Modulo canonico per l'estratto conto: importa CSV/Excel home-banking (delimitatore `;`), scrive in `estratto_conto_movimenti` e orchestra le riconciliazioni automatiche (fatture, paghe, stipendi); include consultazione, riepiloghi ed export Excel. 12 endpoint.
+
+### POST /api/estratto-conto-movimenti/import — import CSV/Excel estratto conto
+**Cosa fa**: importa i movimenti da CSV/Excel, deduplica e avvia 3 riconciliazioni automatiche.
+**Logica codice**: parsing multi-encoding e varianti nomi colonna; helper `estrai_fornitore_pulito`/`estrai_numero_fattura`; dedup su (data, |importo|, descrizione[:80]); commissioni ≤2€ sempre inserite; forzatura `tipo=uscita` per keyword (DISPOSIZIONE, F24/I24, CBILL…); `insert_many` su `estratto_conto_movimenti` (importo in valore assoluto, `id=EC-data-importo-hash`). Post-import: `riconcilia_estratto_conto()`, `esegui_riconciliazione_paghe_completa()`, riconciliazione fatture provvisorie via `find_ec_match_for_invoice` (scrive `prima_nota_banca`, aggiorna `invoices`, marca il movimento riconciliato); eventi `fattura.pagata` e `estratto_conto.importato` su due event bus diversi.
+**Note**: endpoint "grasso": import + side-effect contabili su 4 collezioni in un'unica chiamata.
+
+### POST /api/estratto-conto-movimenti/force-reimport — reimport (solo CSV)
+**Cosa fa**: reimporta un CSV inserendo solo i movimenti nuovi; nonostante il nome, non forza nulla.
+**Logica codice**: stesso parsing CSV dell'import; dedup contro le chiavi esistenti nel range date; insert dei soli non-duplicati; nessuna cancellazione, nessuna riconciliazione automatica.
+**Note**: il docstring MENTE: dichiara "cancella TUTTI i record degli anni presenti nel CSV" e "inserisce senza deduplicazione", ma il codice non cancella mai e deduplica (anche le commissioni ≤2€ che l'import normale accetta sempre). Di fatto un duplicato di `/import` senza riconciliazioni.
+
+### GET /api/estratto-conto-movimenti/movimenti — lista movimenti con saldi
+**Cosa fa**: movimenti paginati (anno/mese/categoria/fornitore/tipo) con totali e saldi progressivi.
+**Logica codice**: filtro range lessicografico su campo stringa `data` (YYYY-MM-DD); sort desc + skip/limit; due aggregate per totali anno e saldo anni precedenti (`$toDouble`, split per `tipo`).
+
+### GET /api/estratto-conto-movimenti/categorie — categorie uniche
+**Cosa fa**: elenco ordinato delle categorie distinte. **Logica codice**: `distinct("categoria")`.
+
+### GET /api/estratto-conto-movimenti/fornitori — fornitori unici
+**Cosa fa**: elenco ordinato dei fornitori distinti. **Logica codice**: `distinct("fornitore")`.
+
+### GET /api/estratto-conto-movimenti/riepilogo — riepilogo aggregato
+**Cosa fa**: conteggi/totali entrate-uscite + top 10 categorie con filtri.
+**Logica codice**: filtro data via regex `^anno-mese` (diverso da `/movimenti` che usa range); due aggregate group per `tipo` e `categoria` (con `$abs`).
+
+### DELETE /api/estratto-conto-movimenti/clear — cancellazione massiva
+**Cosa fa**: elimina i movimenti EC di un anno o di tutto il DB.
+**Logica codice**: `delete_many` con filtro opzionale regex `^anno` su `data`.
+**Note**: senza `anno` svuota l'intera collezione canonica, incluse righe riconciliate; nessuna conferma.
+
+### DELETE /api/estratto-conto-movimenti/{movimento_id} — elimina singolo movimento
+**Cosa fa**: elimina un movimento per id applicativo. **Logica codice**: find_one (404) + delete_one.
+
+### GET /api/estratto-conto-movimenti/export-excel — export Excel
+**Cosa fa**: esporta i movimenti filtrati in .xlsx formattato con riga totali.
+**Logica codice**: stessa query a filtri di `/movimenti` (ma data via regex), `to_list(10000)`, workbook openpyxl, `StreamingResponse`.
+**Note**: BUG verificato: il tipo è ricalcolato dal segno (`importo >= 0` → "Entrata") ma gli importer salvano `importo` in valore assoluto → tutto risulta "Entrata" e `totale_uscite`=0; ignora il campo `tipo` dei documenti.
+
+### POST /api/estratto-conto-movimenti/riconcilia-stipendi — riconciliazione bonifici stipendio
+**Cosa fa**: collega i bonifici "VOSTRA DISPOSIZIONE … FAVORE <nome>" ai dipendenti e alla prima nota salari.
+**Logica codice**: mappa nomi da `prima_nota_salari.distinct("dipendente")` (fallback `dipendenti`) con varianti invertite e singole parole >3 char; match sul testo dopo "FAVORE"; setta `riconciliato_salario`, `dipendente_nome`, `categoria="Stipendi"` sul movimento e `estratto_conto_id` sul record salari (stesso mese/anno).
+**Note**: la regex `"VOSTRA DISPOSIZIONE.*FAVORE|FAVORE.*"` matcha di fatto qualunque descrizione con "FAVORE"; il match su singola parola può dare falsi positivi su cognomi corti.
+
+### GET /api/estratto-conto-movimenti/movimenti-stipendi — vista movimenti stipendio
+**Cosa fa**: elenca i movimenti che sembrano stipendi raggruppati per dipendente riconciliato.
+**Logica codice**: regex "VOSTRA DISPOSIZIONE|VS.DISP" + `tipo=uscita`, filtri anno/non-riconciliati; raggruppamento in Python con contatori.
+
+### POST /api/estratto-conto-movimenti/ricategorizza-batch — ricategorizzazione automatica
+**Cosa fa**: assegna categorie (stipendi, tributi, utenze…) ai movimenti senza categoria in base a keyword.
+**Logica codice**: fino a 5000 record senza categoria, match keyword su descrizione+causale, update con `auto_categorizzato=True`.
+**Note**: ANOMALIA: opera sulla collezione legacy `bank_movements`, NON su `estratto_conto_movimenti`: nel router canonico ma probabilmente senza effetto sui dati reali.
+
+---
+
+## bank_statement_parser.py (/api/estratto-conto)
+
+Parser dedicato ai PDF BANCO BPM (PyMuPDF, parsing riga-per-riga inline) e agli estratti carta Nexi (parser esterno `estratto_conto_nexi_parser`). L'import BPM scrive in `prima_nota_cassa`, quello Nexi in `estratto_conto_nexi`: nessuno tocca la collezione canonica. 6 endpoint.
+
+### POST /api/estratto-conto/parse — parse PDF BANCO BPM
+**Cosa fa**: estrae intestatario, IBAN, saldi e transazioni da un PDF BPM senza salvare.
+**Logica codice**: testo via `fitz`; `parse_banco_bpm_statement` (regex IBAN/saldi/periodo) + `extract_banco_bpm_transactions` (macchina a stati sulle righe, salta "SALDO INIZIALE"); totali entrate/uscite.
+**Note**: intestatario hard-coded "CERALDI GROUP S.R.L." se presente nel testo.
+
+### POST /api/estratto-conto/import — import PDF BPM in prima nota
+**Cosa fa**: parsa il PDF e inserisce i movimenti come record di prima nota.
+**Logica codice**: per ogni movimento dedup `find_one` su `prima_nota_cassa` {data, importo, tipo:"banca"}; insert con `tipo="banca"`, `tipo_movimento` entrata/uscita, `fonte="estratto_conto_import"`.
+**Note**: il docstring dice "Prima Nota Banca" ma scrive in `prima_nota_cassa` (non in `prima_nota_banca` né nella canonica); il parametro `auto_riconcilia` è dichiarato ma MAI usato; il dedup usa importo sempre positivo → entrata e uscita di pari importo nello stesso giorno collidono.
+
+### GET /api/estratto-conto/preview — info statica
+**Cosa fa**: messaggio informativo su come usare il parser. **Logica codice**: dizionario statico, nessun DB.
+
+### POST /api/estratto-conto/parse-nexi — parse PDF carta Nexi
+**Cosa fa**: estrae metadata e transazioni categorizzate da un estratto Nexi senza salvare.
+**Logica codice**: delega a `parse_estratto_conto_nexi`; 400 se il parser fallisce.
+
+### POST /api/estratto-conto/import-nexi — import transazioni Nexi
+**Cosa fa**: parsa e salva le transazioni carta nella collezione dedicata.
+**Logica codice**: dedup `find_one` su `estratto_conto_nexi` {data, importo, descrizione}; insert con `id=nexi-<import_id>-<n>`, categoria, carta mascherata, `riconciliato=False`.
+**Note**: collezione parallela `estratto_conto_nexi` separata dal flusso canonico (scelta voluta per la carta).
+
+### GET /api/estratto-conto/nexi/movimenti — lista movimenti Nexi
+**Cosa fa**: movimenti Nexi con filtri (anno, mese, categoria, riconciliato) e statistiche per categoria.
+**Logica codice**: find paginato + count + aggregate group su `estratto_conto_nexi`.
+
+---
+
+## bank_statement_import.py (/api/bank-statement)
+
+Secondo importer completo (PDF via pdfplumber con parser Intesa/UniCredit/generico, Excel/CSV via pandas) con riconciliazione automatica contro `prima_nota_banca`. Scrive in `estratto_conto_movimenti` con schema DIVERSO dall'importer canonico e traccia gli import in `bank_statements_imported`. 6 endpoint.
+
+### GET /api/bank-statement/movements — lista movimenti EC normalizzata
+**Cosa fa**: movimenti da `estratto_conto_movimenti` con normalizzazione date/tipo e totali.
+**Logica codice**: filtro per ANNO con `$or` regex su `data_contabile`/`data_valuta` (formato italiano) e `data` (ISO); sort su `data_contabile` desc + limit; in Python deriva `data` ISO e `tipo` mancanti, poi applica il filtro fine per range e somma entrate/uscite.
+**Note**: sort lessicografico su stringa gg/mm/aaaa (ordine errato tra mesi/anni) su un campo che l'importer canonico non scrive; il filtro per range è applicato DOPO il limit → possibili risultati mancanti.
+
+### POST /api/bank-statement/import — import PDF/Excel/CSV con riconciliazione
+**Cosa fa**: estrae movimenti dal file, li salva nell'EC e li riconcilia con la prima nota banca.
+**Logica codice**: `extract_movements_from_pdf` (pdfplumber, `detect_bank_format`, parser per banca, fallback testo) o `extract_movements_from_excel` (pandas, `identify_columns`, regole keyword POS/BONIFICO/F24); dedup in-memory (data, tipo, importo); header import in `bank_statements_imported`; se `auto_reconcile` cerca match in `prima_nota_banca` (stessa data/tipo, importo ±1%) e lo marca riconciliato; anti-duplicato su `estratto_conto_movimenti` poi insert con `data` ISO E `data_contabile` italiana; evento `MOVIMENTO_BANCA_IMPORTATO`.
+**Note**: duplica il flusso di `/api/estratto-conto-movimenti/import` con schema diverso (qui `data_contabile`, senza `fingerprint`/`riconciliato`); i duplicati saltati finiscono in `not_found_details` (semantica fuorviante).
+
+### GET /api/bank-statement/stats — statistiche import/riconciliazione
+**Cosa fa**: conta estratti importati e stato riconciliazione prima nota banca.
+**Logica codice**: `count_documents` su `bank_statements_imported` e `prima_nota_banca` (+percentuale).
+
+### POST /api/bank-statement/riconcilia-manuale — riconciliazione manuale
+**Cosa fa**: marca un movimento di prima nota banca come riconciliato con un movimento EC indicato.
+**Logica codice**: update su `prima_nota_banca` (`riconciliato`, `data_riconciliazione`, `estratto_conto_ref`); 404 se non modificato.
+**Note**: asimmetrica: il movimento in `estratto_conto_movimenti` NON viene marcato riconciliato (a differenza del flusso di estratto_conto.py).
+
+### POST /api/bank-statement/cleanup-duplicati — bonifica duplicati EC
+**Cosa fa**: elimina i duplicati storici in `estratto_conto_movimenti` creati da import con formati data misti.
+**Logica codice**: fino a 100k record, raggruppa per (data ISO normalizzata, importo, descrizione[:60], tipo); nei gruppi >1 tiene il record con più campi data (normalizzati via `bulk_write`) ed elimina gli altri a blocchi di 500.
+**Note**: endpoint di manutenzione nato per riparare i danni della doppia scrittura ISO/italiana dei due importer; ignora lo stato `riconciliato` nella scelta del record da tenere.
+
+### GET /api/bank-statement/formati-supportati — formati supportati
+**Cosa fa**: elenco statico di banche/formati/encoding supportati. Nessun DB.
+
+---
+
+## bank_statement_bulk_import.py (/api/bank-statement-bulk)
+
+Terzo importer: upload multiplo di PDF con parser universale (`universal_bank_statement_parser`), anteprima in cache in-memory (`PREVIEW_CACHE`, TTL 30 min) e commit su collezione a scelta (default `estratto_conto_movimenti`). 6 endpoint.
+
+### POST /api/bank-statement-bulk/parse-bulk — parse multiplo con anteprima
+**Cosa fa**: parsa N PDF, aggrega le transazioni in cache e restituisce un `preview_id`.
+**Logica codice**: `parse_bank_statement` per file; accumula transazioni/totali/errori in `PREVIEW_CACHE[uuid[:12]]`; cleanup delle cache >30 min; risponde con le prime 100 transazioni.
+**Note**: cache di processo (persa al riavvio, non multi-worker) — il commento stesso suggerisce Redis.
+
+### GET /api/bank-statement-bulk/preview/{preview_id} — pagina anteprima
+**Cosa fa**: transazioni in cache paginate skip/limit. **Logica codice**: lookup in `PREVIEW_CACHE`, 404 se scaduta.
+
+### POST /api/bank-statement-bulk/commit/{preview_id} — salvataggio anteprima
+**Cosa fa**: persiste le transazioni della preview nella collezione indicata e lancia la riconciliazione paghe.
+**Logica codice**: per ogni tx: dedup `find_one` su {data, descrizione[:100], importo}; insert con campi `entrata`/`uscita`/`importo`, `stato="da_riconciliare"`, `import_batch_id`; evento `MOVIMENTO_BANCA_IMPORTATO`; a fine ciclo elimina la preview e chiama `esegui_riconciliazione_paghe_completa`.
+**Note**: il parametro `collection` è testo libero dal client (può scrivere in QUALSIASI collezione Mongo); i record NON hanno `id` né `tipo` (l'evento pubblica `movimento_id=None`), schema incompatibile con l'importer canonico.
+
+### DELETE /api/bank-statement-bulk/preview/{preview_id} — annulla anteprima
+**Cosa fa**: elimina la preview dalla cache senza salvare. **Logica codice**: `del PREVIEW_CACHE[...]`; sempre success.
+
+### POST /api/bank-statement-bulk/parse-single — parse singolo PDF
+**Cosa fa**: parsa un PDF col parser universale, senza salvare né cachare.
+**Logica codice**: `parse_bank_statement(content)`; 400 se fallisce.
+**Note**: sovrapposto a `/api/estratto-conto/parse` (solo BPM) e a `/parse-bulk` con un file.
+
+### POST /api/bank-statement-bulk/import-direct — parse+import in un passo
+**Cosa fa**: parsa e importa direttamente più PDF saltando l'anteprima.
+**Logica codice**: stesso parsing di parse-bulk e stessa insert/dedup di commit (collezione parametrica, `import_batch_id` comune); riepilogo per file.
+**Note**: stesse anomalie di commit (collection libera, record senza id/tipo); NON lancia la riconciliazione paghe (incoerenza con commit) e non emette eventi.
+
+---
+
+## bank_main.py (/api/bank)
+
+Router "architetturale" a strati (repository `BankStatementRepository` + service `BankService` su `Collections.BANK_STATEMENTS`), autenticato. In gran parte scheletro: 3 endpoint delegano al service, 4 sono placeholder. **7 endpoint reali (non 9)**.
+
+### GET /api/bank/statements — lista bank statements (legacy)
+**Cosa fa**: elenca i movimenti della collezione `bank_statements` filtrati per utente e date.
+**Logica codice**: `BankService.list_statements(user_id, start_date, end_date)`.
+**Note**: collezione legacy `bank_statements`, scollegata da `estratto_conto_movimenti`.
+
+### POST /api/bank/statements/upload — crea bank statement (legacy)
+**Cosa fa**: inserisce una singola transazione bancaria (payload JSON), non un file.
+**Logica codice**: `service.create_statement()` → insert in `bank_statements`; 201.
+**Note**: nome "upload" fuorviante: è una create JSON.
+
+### POST /api/bank/reconcile — riconcilia (STUB)
+**Cosa fa**: NON fa nulla: risponde sempre "Statement reconciled successfully"; body ignorato, nessun DB.
+**Note**: endpoint finto: il client può credere che la riconciliazione sia avvenuta.
+
+### GET /api/bank/assegni — lista assegni (STUB)
+**Cosa fa**: restituisce sempre `[]`. **Note**: la gestione reale è in `bank/assegni.py`; residuo.
+
+### POST /api/bank/assegni — crea assegno (STUB)
+**Cosa fa**: non salva nulla: risponde `assegno_id: "placeholder"`.
+
+### PUT /api/bank/assegni/{assegno_id} — aggiorna assegno (STUB)
+**Cosa fa**: non fa nulla: risponde "Assegno updated".
+
+### GET /api/bank/balance — saldo banca
+**Cosa fa**: saldo calcolato dal service per utente (conto opzionale).
+**Logica codice**: `service.get_balance(user_id, account)` su `bank_statements`.
+**Note**: saldo sulla collezione legacy: non riflette `estratto_conto_movimenti`.
+
+---
+
+## bank_reconciliation.py (/api/bank-reconciliation)
+
+Mini-CRUD autenticato sulla collezione legacy `bank_statements` più due stub. 5 endpoint.
+
+### GET /api/bank-reconciliation/statements — lista statements
+**Cosa fa**: fino a 500 documenti da `bank_statements` ordinati per `date` desc.
+**Note**: nessun filtro per utente, a differenza di `/api/bank/statements` sulla stessa collezione.
+
+### POST /api/bank-reconciliation/statements — crea statement
+**Cosa fa**: inserisce un documento arbitrario in `bank_statements` (dict libero + uuid + created_at); 201.
+**Note**: nessuna validazione di schema.
+
+### DELETE /api/bank-reconciliation/statements/{statement_id} — elimina statement
+**Cosa fa**: `delete_one({"id": ...})`; risponde "deleted" anche se non esisteva (nessun check su deleted_count).
+
+### POST /api/bank-reconciliation/reconcile — riconcilia (STUB)
+**Cosa fa**: non fa nulla: risponde sempre "Reconciliation completed".
+
+### POST /api/bank-reconciliation/upload — upload file (STUB)
+**Cosa fa**: legge il file solo per misurarne la dimensione; non parsa e non salva; `transactions_found: 0` fisso.
+**Note**: fuorviante: sembra un import ma è un placeholder.
+
+### Anomalie (gruppo estratto conto / bank)
+1. Tre importer paralleli sulla stessa collezione con schemi diversi: `estratto_conto.py` (id `EC-…`, `fingerprint`, importo assoluto, `tipo`, `data` ISO), `bank_statement_import.py` (aggiunge `data_contabile` italiana, senza fingerprint/riconciliato), bulk (`entrata`/`uscita`, `stato`, SENZA `id` né `tipo`). Chiavi dedup diverse (desc[:80] vs esatta vs desc[:100]) → duplicati incrociati; `cleanup-duplicati` esiste apposta per ripararli.
+2. Docstring mendaci: `force-reimport` (non cancella e deduplica), `parser /import` ("Prima Nota Banca" ma scrive `prima_nota_cassa`, `auto_riconcilia` ignorato), stub di bank_main/bank_reconciliation che rispondono successo senza fare nulla.
+3. `ricategorizza-batch` opera su `bank_movements`, collezione mai scritta da questi router: probabile codice morto nel router canonico.
+4. Il concetto "movimento banca" è spalmato su almeno 5 collezioni: `estratto_conto_movimenti`, `bank_statements`, `bank_statements_imported`, `estratto_conto_nexi`, `prima_nota_cassa` con tipo "banca" vs `prima_nota_banca`.
+5. Bug export Excel (tipo derivato dal segno su importi assoluti → tutto "Entrata", verificato nel codice).
+6. `commit`/`import-direct` accettano `collection` libera dal client (rischio integrità/sicurezza); `import-direct` non lancia la riconciliazione paghe che `commit` esegue.
+7. Riconciliazione asimmetrica: `riconcilia-manuale` marca solo `prima_nota_banca`; il flusso di estratto_conto.py marca anche il lato EC.
+8. Due event bus diversi per lo stesso dominio (`app.services.event_bus` vs `app.core.event_bus`).
