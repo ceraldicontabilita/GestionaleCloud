@@ -734,3 +734,215 @@ Endpoint di sola lettura per il controllo di consistenza dati (IVA, versamenti, 
 **Cosa fa**: verifica completa dell'anno corrente con stato semaforico (OK/ATTENZIONE/CRITICO).
 **Logica codice**: `VerificaCoerenza.verifica_completa(anno corrente)`; arricchisce con `data_verifica`, mese corrente e `stato_generale`/`stato_colore` dai contatori critical/warning.
 **Note**: duplica in gran parte `/completa/{anno}` (stesso motore, decorazioni in più).
+
+## commercialista.py (prefisso `/api/commercialista`)
+Invio di documenti contabili mensili al commercialista via email SMTP (config da env `SMTP_HOST`/`SMTP_USER`/`SMTP_PASSWORD`), con export CSV/ZIP/Excel e sistema di alert/log. Email di default hardcoded (`rosaria.marotta@email.it`, "Dott.ssa Rosaria Marotta"). Tutti gli endpoint usano il decoratore `@handle_errors`. 14 endpoint.
+
+### GET /api/commercialista/config — configurazione commercialista
+**Cosa fa**: restituisce email/nome/alert del commercialista e lo stato SMTP.
+**Logica codice**: `find_one` su `commercialista_config`; default hardcoded se assente; aggiunge `smtp_configured` da `get_smtp_config()` (env).
+
+### PUT /api/commercialista/config — aggiorna configurazione
+**Cosa fa**: salva email, nome, `alert_giorni`, `invio_automatico`.
+**Logica codice**: upsert su `commercialista_config` con filtro vuoto `{}` (documento singolo). Nessuna validazione del formato email.
+
+### GET /api/commercialista/prima-nota-cassa/{anno}/{mese} — Prima Nota Cassa mensile
+**Cosa fa**: restituisce movimenti di cassa del mese con totali entrate/uscite/saldo.
+**Logica codice**: query su `prima_nota_cassa` per regex `^YYYY-MM` sul campo `data`, sort data+categoria; fallback su `prima_nota_cassa` con `tipo_conto:"cassa"`, poi su `cash`. Totali tolleranti su campi alternativi (`type`/`tipo`, `amount`/`importo`).
+**Note**: il commento dice "try prima_nota collection" ma il secondo tentativo interroga di nuovo `prima_nota_cassa` (fallback quasi inutile). Tutto ciò che non è "entrata/income/in" è classificato uscita.
+
+### GET /api/commercialista/fatture-cassa/{anno}/{mese} — fatture pagate in contanti
+**Cosa fa**: elenca le fatture del mese pagate per cassa/contanti con totale.
+**Logica codice**: query su `invoices` con `$and` di due `$or`: regex case-insensitive `contant|cassa` su `metodo_pagamento`/`payment_method`/`modalita_pagamento` E regex mese su `data_pagamento`/`invoice_date`/`data_fattura`. Totale da `total_amount`/`importo_totale`.
+
+### POST /api/commercialista/invia-prima-nota — invia Prima Nota via email
+**Cosa fa**: invia email HTML al commercialista con riepilogo mensile e PDF allegato.
+**Logica codice**: richiede `anno`/`mese` nel body; il PDF arriva DAL FRONTEND come `pdf_base64` (il backend non lo genera); riusa `get_prima_nota_cassa_mensile()` per il riepilogo; invia con `send_email_with_attachment()` (SMTP+STARTTLS); log in `commercialista_log`.
+**Note**: se il decode base64 fallisce o `pdf_base64` manca, l'email parte comunque SENZA allegato ma il testo dice "in allegato" e la risposta è success.
+
+### POST /api/commercialista/invia-carnet — invia carnet assegni via email
+**Cosa fa**: invia email con riepilogo carnet assegni e PDF allegato.
+**Logica codice**: richiede `carnet_id`; conteggi e totale (`assegni_count`, `totale_importo`) arrivano dal client senza verifica sul DB; log in `commercialista_log`.
+**Note**: nessuna verifica che il carnet esista; dati riepilogo interamente fiduciari dal frontend.
+
+### POST /api/commercialista/invia-fatture-cassa — invia fatture contanti via email
+**Cosa fa**: invia email con elenco fatture pagate per cassa del mese e PDF allegato.
+**Logica codice**: riusa `get_fatture_pagate_cassa()`; PDF da `pdf_base64` frontend; log in `commercialista_log`.
+**Note**: codice quasi duplicato di invia-prima-nota.
+
+### GET /api/commercialista/log — storico invii
+**Cosa fa**: restituisce gli ultimi N invii (default 50).
+**Logica codice**: `commercialista_log` sort `data_invio` desc.
+
+### POST /api/commercialista/segna-inviata — segna Prima Nota come inviata
+**Cosa fa**: registra manualmente un invio senza mandare email (spegne l'alert).
+**Logica codice**: insert in `commercialista_log` con `success:True` e nota "Segnata manualmente come inviata".
+
+### GET /api/commercialista/alert-status — stato alert invio mensile
+**Cosa fa**: dice al frontend se mostrare il promemoria di invio della Prima Nota del mese precedente.
+**Logica codice**: calcola mese precedente; deadline = giorno 2 del mese corrente h23:59 UTC; controlla in `commercialista_log` se esiste un invio `prima_nota_cassa` riuscito per quel mese; `show_alert = now <= deadline AND non inviata`.
+**Note**: dopo il giorno 2 l'alert sparisce anche se la Prima Nota non è mai stata inviata.
+
+### GET /api/commercialista/export-completo/{anno}/{mese} — export ZIP mensile
+**Cosa fa**: scarica uno ZIP con CSV di fatture, corrispettivi, prima nota, buste paga + riepilogo IVA in TXT.
+**Logica codice**: legge `invoices` (regex su `invoice_date`), `corrispettivi`, `prima_nota_cassa` (via `get_prima_nota_cassa_mensile`), `cedolini`; CSV (`;`) in memoria e `StreamingResponse` ZIP.
+**Note**: IVA a debito con aliquota FISSA 10% scorporata dai corrispettivi (hardcoded). Nel CSV prima nota entrata/uscita dedotta dal SEGNO di `importo` mentre altrove si usa il campo `tipo` — criterio incoerente.
+
+### GET /api/commercialista/export-excel/{anno}/{mese} — export Excel mensile
+**Cosa fa**: genera XLSX con 5 fogli (Fatture Acquisto, Corrispettivi, Prima Nota Cassa, Riepilogo IVA, Riepilogo).
+**Logica codice**: openpyxl con stili; legge `invoices`, `corrispettivi`, `prima_nota_cassa` con regex mese; totali in Python; IVA vendite = 10% fisso; `StreamingResponse` xlsx.
+**Note**: duplica in gran parte export-completo.
+
+### POST /api/commercialista/schedula-export — report mensile immediato o schedulato
+**Cosa fa**: con `immediato:true` (default) genera un Excel di riepilogo e lo invia subito via email; altrimenti salva una schedulazione.
+**Logica codice**: legge `commercialista_config` per l'email; se immediato legge `invoices` (range su `data_ricezione`), `corrispettivi`, `prima_nota_cassa`; crea Workbook riepilogativo, invia con `send_email_with_attachment`, logga in `export_log`. Se non immediato: insert in `scheduled_exports` con `status:"pending"`.
+**Note**: il totale fatture legge il campo `totale` (altrove `total_amount`) → probabilmente sempre 0; filtro su `data_ricezione` anziché `invoice_date` (incoerente con gli altri endpoint); eccezioni restituite come `{"success":false}` con HTTP 200; nessun worker nel router processa `scheduled_exports` (schedulazione potenzialmente morta).
+
+### GET /api/commercialista/export-log — storico export
+**Cosa fa**: restituisce gli ultimi export inviati (default 20) e il conteggio totale.
+**Logica codice**: `export_log` sort `inviato_at` desc + `count_documents`.
+**Note**: log separato da `commercialista_log` (due storici paralleli).
+
+## gestione_riservata.py (prefisso `/api/gestione-riservata`)
+Registro di incassi e spese NON fatturati ("dati riservati") su collezione `gestione_riservata`, con soft-delete e calcolo del "volume d'affari reale" (ufficiale + extra). L'accesso è dichiarato "protetto con codice da variabile d'ambiente" (`GESTIONE_RISERVATA_CODE`), ma il codice è verificato SOLO da `/login`: gli altri endpoint sono protetti unicamente dal JWT globale. 7 endpoint.
+
+### POST /api/gestione-riservata/login — verifica codice di accesso
+**Cosa fa**: confronta il codice inviato con `GESTIONE_RISERVATA_CODE` (env) e risponde ok/401.
+**Logica codice**: confronto stringa semplice; nessuna sessione/token dedicato: il "login" produce solo un flag lato client.
+**Note**: il codice errato tentato viene scritto IN CHIARO nei log (`logger.warning`). Gating puramente cosmetico: qualunque utente JWT può chiamare gli altri endpoint senza passare dal login — il docstring del modulo è fuorviante.
+
+### GET /api/gestione-riservata/movimenti — lista movimenti
+**Cosa fa**: elenca i movimenti non fatturati, filtrabili per anno/mese/tipo.
+**Logica codice**: `find` su `gestione_riservata` con `entity_status != "deleted"`, sort data desc, limite 10000.
+
+### POST /api/gestione-riservata/movimenti — crea movimento
+**Cosa fa**: inserisce un incasso o una spesa non fatturata.
+**Logica codice**: `id` uuid4, deriva `anno`/`mese` dalla `data` (fallback oggi), campi tipo/descrizione/importo/categoria/note, `entity_status:"active"`; insert in `gestione_riservata`.
+
+### PUT /api/gestione-riservata/movimenti/{movimento_id} — aggiorna movimento
+**Cosa fa**: modifica i campi consentiti di un movimento.
+**Logica codice**: `$set` selettivo su whitelist campi; ricalcola anno/mese se cambia la data; 404 se `matched_count == 0`; ritorna il documento aggiornato.
+**Note**: `importo` salvato così com'è dal body (nessuna coercizione a float, a differenza della create).
+
+### DELETE /api/gestione-riservata/movimenti/{movimento_id} — elimina movimento
+**Cosa fa**: soft-delete del movimento.
+**Logica codice**: `$set entity_status:"deleted"` + `deleted_at`; 404 se non trovato.
+
+### GET /api/gestione-riservata/riepilogo — totali incassi/spese
+**Cosa fa**: totali e conteggi per incassi, spese e saldo netto.
+**Logica codice**: aggregate `$group` per `tipo` (esclusi deleted), filtri opzionali anno/mese.
+
+### GET /api/gestione-riservata/volume-affari-reale — volume d'affari reale
+**Cosa fa**: calcola corrispettivi ufficiali + incassi non fatturati - spese non fatturate.
+**Logica codice**: aggregate su `corrispettivi` (regex anno o anno-mese su `data`) per il fatturato ufficiale; aggregate su `gestione_riservata` per gli extra; somma finale. Le fatture ricevute (`invoices`) sono deliberatamente escluse (sono costi).
+**Note**: `fatturato_ufficiale` e `corrispettivi` nella risposta sono lo stesso valore duplicato.
+
+## openapi_imprese.py (prefisso `/api/openapi-imprese`)
+Integrazione con il servizio Company di OpenAPI.com (provider commerciale esterno, `company.openapi.com` — NON lo schema OpenAPI di FastAPI) tramite `app/services/openapi_company.py`, per arricchire/creare le schede fornitore (ragione sociale, PEC, SDI, ATECO...). Token da env `OPENAPI_COMPANY_TOKEN`, sovrascrivibile via query param. Nota: esiste anche `app/services/openapi_imprese.py` (`imprese.openapi.it`) ma questo router NON lo usa. 6 endpoint.
+
+### GET /api/openapi-imprese/status — stato token/API
+**Cosa fa**: verifica che il token sia configurato e che l'API risponda.
+**Logica codice**: se il token esiste, chiama `OpenAPICompany.get_start_info("12485671007")` (P.IVA di OpenAPI stessa) come test reale.
+**Note**: il test consuma una chiamata (potenzialmente a pagamento) a ogni invocazione.
+
+### POST /api/openapi-imprese/aggiorna-fornitore — aggiorna/crea fornitore da P.IVA
+**Cosa fa**: scarica i dati aziendali dal provider e li scrive sulla scheda fornitore (update o create).
+**Logica codice**: valida P.IVA (11 cifre); cerca in `fornitori` per `partita_iva`/`piva`/`codice_fiscale`; `get_advanced_info` con fallback `get_start_info`; mappa con `map_company_to_fornitore`; recupera la PEC con chiamata separata se mancante; `$set` sul fornitore esistente o insert nuovo (uuid, `source:"openapi"`), con `openapi_last_update`.
+**Note**: `force_update` del request model mai usato. Token accettato come query param (rischio leak in log/URL).
+
+### GET /api/openapi-imprese/cerca — ricerca azienda per nome
+**Cosa fa**: cerca aziende per denominazione (con filtro provincia) sul provider.
+**Logica codice**: `OpenAPICompany.search_company(...)`; nessuna scrittura DB; errori del provider rilanciati come 400.
+
+### GET /api/openapi-imprese/info/{partita_iva} — preview dati azienda
+**Cosa fa**: recupera i dati aziendali senza toccare il database.
+**Logica codice**: `get_start_info`/`get_advanced_info`/`get_full_info` in base al query param `tipo`; restituisce dati grezzi + `campi_mappati` via `map_company_to_fornitore`.
+
+### GET /api/openapi-imprese/pec/{partita_iva} — solo PEC
+**Cosa fa**: recupera la PEC dell'azienda dal provider.
+**Logica codice**: `OpenAPICompany.get_pec(piva)`; 404 se non trovata; nessuna scrittura DB.
+
+### GET /api/openapi-imprese/sdi/{partita_iva} — solo codice SDI
+**Cosa fa**: recupera il Codice Destinatario SDI dal provider.
+**Logica codice**: `OpenAPICompany.get_sdi_code(piva)`; 404 se non trovato; nessuna scrittura DB.
+
+## openapi_it.py (prefisso `/api/openapi`)
+Integrazione diretta (httpx) con i servizi OpenAPI.it: AISP/Open Banking per riconciliazione bancaria, bilanci XBRL e visure camerali. Chiave da env `OPENAPI_IT_KEY`, ambiente sandbox/produzione via `OPENAPI_IT_ENV` (URL: `sdi.openapi.it|.com` per AISP, `[test.]visurecamerali.openapi.it` per visure/bilanci). 10 endpoint.
+
+### GET /api/openapi/aisp/status — info servizio AISP
+**Cosa fa**: restituisce una descrizione statica del servizio AISP e dei requisiti PSD2.
+**Logica codice**: risposta hardcoded, nessuna chiamata esterna né DB.
+**Note**: il nome suggerisce un check reale ma è solo testo statico ("status: available" sempre).
+
+### POST /api/openapi/aisp/connetti-conto — connetti conto bancario (consenso PSD2)
+**Cosa fa**: richiede al provider un consenso AISP per un IBAN e restituisce l'URL di autorizzazione.
+**Logica codice**: POST a `{base}/v1/aisp/consents` con IBAN/bank_code, `valid_until` hardcoded 2027-12-31; upsert in `conti_bancari_aisp` (consent_id, status, url).
+**Note**: l'URL base AISP è quello del servizio SDI (`sdi.openapi.it`) — endpoint verosimilmente errato/mai funzionante.
+
+### GET /api/openapi/aisp/movimenti — movimenti bancari via AISP
+**Cosa fa**: scarica le transazioni del conto dal provider.
+**Logica codice**: verifica in `conti_bancari_aisp` che `consent_status == "valid"` (400 altrimenti); GET `{base}/v1/aisp/accounts/{iban}/transactions` con header `Consent-ID`; nessuna persistenza.
+**Note**: `consent_status` viene salvato alla connessione e mai aggiornato da alcun flusso del router: il check può non diventare mai "valid".
+
+### POST /api/openapi/aisp/riconcilia-automatica — riconciliazione automatica
+**Cosa fa**: matcha i movimenti bancari con le fatture non pagate e le marca come pagate.
+**Logica codice**: chiama internamente `get_movimenti_bancari()`; per ogni movimento cerca in `invoices` una fattura con `total_amount` entro ±1€ e `status` non pagato; se trovata `$set status:"pagata"`, `data_pagamento`, `movimento_aisp_id`, `riconciliazione_automatica:True`.
+**Note**: matching solo per importo (nessun controllo data/fornitore, prende la PRIMA fattura trovata) → alto rischio di riconciliazioni errate con effetto scrittura. Eccezioni restituite come HTTP 200 con chiave `error`.
+
+### GET /api/openapi/xbrl/status — info servizio XBRL
+**Cosa fa**: descrizione statica del servizio bilanci (feature, tassonomia, costi stimati).
+**Logica codice**: risposta hardcoded; espone ambiente e base URL correnti.
+
+### POST /api/openapi/xbrl/richiedi-bilancio — richiedi bilancio XBRL
+**Cosa fa**: avvia la richiesta asincrona del bilancio (pronto in 10-15 min) e restituisce il request_id.
+**Logica codice**: POST `{visure}/bilancio-ottico` con `cf_piva_id` (+`anno_chiusura` opzionale); insert in `richieste_bilanci` con status pending.
+
+### GET /api/openapi/xbrl/bilancio/{request_id} — stato/contenuto bilancio
+**Cosa fa**: interroga il provider sullo stato della richiesta e restituisce i link di download quando completata.
+**Logica codice**: GET `{visure}/bilancio-ottico/{id}`; aggiorna `richieste_bilanci`; se completed espone `download_links` verso `/api/openapi/xbrl/download/{id}/{tipo}`.
+**Note**: gli endpoint di download `/xbrl/download/...` NON esistono nel router — i link restituiti sono rotti (404).
+
+### POST /api/openapi/xbrl/richiedi-riclassificato — bilancio riclassificato
+**Cosa fa**: richiede il bilancio riclassificato con indici (liquidità, redditività...).
+**Logica codice**: POST `{visure}/bilancio-riclassificato`; restituisce il request_id.
+**Note**: la richiesta NON viene salvata in `richieste_bilanci` e non c'è endpoint per recuperarne l'esito.
+
+### GET /api/openapi/xbrl/storico-richieste — storico richieste bilanci
+**Cosa fa**: elenca le richieste bilancio salvate (default 20).
+**Logica codice**: `find` su `richieste_bilanci` sort `created_at` desc.
+
+### POST /api/openapi/visure/richiedi — richiedi visura camerale
+**Cosa fa**: avvia la richiesta di visura ordinaria e restituisce il request_id.
+**Logica codice**: POST `{visure}/visura-ordinaria` con `cf_piva_id`.
+**Note**: nessuna persistenza e nessun endpoint di recupero → il request_id resta solo al client.
+
+## openapi_automotive.py (prefisso `/api/openapi-automotive`)
+Integrazione con il servizio Automotive di OpenAPI.com (`automotive.openapi.com`, via `app/services/openapi_automotive.py`) per visure veicoli da targa, usata per arricchire la flotta noleggio (`noleggio_veicoli`). Riusa il token env `OPENAPI_COMPANY_TOKEN`. 6 endpoint.
+
+### GET /api/openapi-automotive/status — stato token/API
+**Cosa fa**: verifica configurazione e raggiungibilità dell'API Automotive.
+**Logica codice**: chiama `get_car_info("AB123CD")` (targa fittizia); considera OK anche l'errore "non trovata".
+**Note**: ogni check consuma una chiamata reale al provider.
+
+### GET /api/openapi-automotive/info/{targa} — preview dati veicolo
+**Cosa fa**: recupera i dati del veicolo (auto/moto/assicurazione) senza scrivere sul DB.
+**Logica codice**: normalizza la targa (upper, no spazi/trattini); switch su `tipo` → `get_car_info`/`get_bike_info`/`get_insurance_info`; dati grezzi + `campi_mappati` via `map_automotive_to_veicolo`.
+
+### POST /api/openapi-automotive/aggiorna-veicolo — aggiorna/crea veicolo da targa
+**Cosa fa**: scarica i dati del veicolo e aggiorna (o crea) la scheda in flotta.
+**Logica codice**: cerca in `noleggio_veicoli` per targa (esatta o regex case-insensitive); `get_car_info`; `$set` dei campi mappati oppure insert con uuid, `stato:"attivo"`, `source:"openapi_automotive"`.
+**Note**: `force_update` mai usato; la regex senza ancore può matchare targhe diverse che contengono la stringa.
+
+### POST /api/openapi-automotive/aggiorna-bulk — aggiornamento massivo
+**Cosa fa**: aggiorna in batch una lista di targhe, con riepilogo creati/aggiornati/errori.
+**Logica codice**: loop sequenziale sulle targhe; `get_car_info` per ognuna; upsert su `noleggio_veicoli` con regex ancorata case-insensitive; contatori e dettagli per targa.
+**Note**: i documenti creati via upsert NON ricevono `id` uuid, `created_at`, `stato`, `source` (a differenza di aggiorna-veicolo) → veicoli "orfani" incoerenti.
+
+### GET /api/openapi-automotive/veicoli-da-aggiornare — veicoli senza dati OpenAPI
+**Cosa fa**: elenca i veicoli in flotta con targa ma mai arricchiti dal provider.
+**Logica codice**: `find` su `noleggio_veicoli` con `targa` esistente e `openapi_last_update` assente, projection minima.
+**Note**: nel percorso di aggiornamento di QUESTO router `openapi_last_update` non viene mai impostato → i veicoli restano per sempre "da aggiornare".
+
+### GET /api/openapi-automotive/assicurazione/{targa} — info assicurazione
+**Cosa fa**: recupera lo stato assicurativo del veicolo dal provider.
+**Logica codice**: `get_insurance_info(targa_normalizzata)`; 404 se non trovata; nessuna scrittura DB.

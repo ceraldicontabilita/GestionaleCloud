@@ -545,3 +545,185 @@ Gestione Archivio Bonifici PDF: il router del package (`__init__.py`) monta 18 r
 4. Dedup debole per i PDF parsati dal testo (chiave ridotta a importo+causale).
 5. Bug `_auto_associate_bonifici`: la stessa fattura può essere associata a più bonifici (flag scritto ≠ flag verificato).
 6. Docstring mendaci (import unificato, fatture-compatibili, bulk delete); GET /pdf con side-effect di scrittura; riconciliazione O(n·m) in memoria fino a 10k×50k; PDF Base64 nei documenti Mongo (limite 16MB/doc).
+
+---
+
+## operazioni_module/ (/api/operazioni-da-confermare)
+
+Package router: rotte dichiarate in `__init__.py` via `add_api_route`, handler in `smart.py` (riconciliazione banca) e `carta.py` (carta + supervisione). Helper in `common.py`: `QUERY_FATTURA_NON_PAGATA` = filtro canonico fattura non pagata (`pagato != True` AND `stato_pagamento` non in ["pagata","paid"]) — il commento documenta che in passato il modulo usava un campo proprio `pagata` mai letto altrove, causando riconciliazioni "invisibili"; `set_fattura_pagata(extra)` restituisce i campi canonici da scrivere su `invoices` al saldo (`pagato=True, paid=True, stato_pagamento="pagata", status="pagata", data_pagamento=oggi` + extra). 13 endpoint.
+
+### GET /api/operazioni-da-confermare/smart/banca-veloce — panoramica tab Banca
+**Cosa fa**: in una chiamata restituisce movimenti banca non riconciliati, assegni pendenti, fatture da pagare e statistiche.
+**Logica codice**: legge `estratto_conto_movimenti` (riconciliato != True se richiesto, limit 50), `assegni` (non incassati/annullati, non confermati), `invoices` (QUERY_FATTURA_NON_PAGATA + metodo non nullo/contanti); due count per le stats. Sola lettura.
+
+### GET /api/operazioni-da-confermare/smart/analizza — analisi batch con suggerimenti
+**Cosa fa**: analizza fino a `limit` movimenti EC producendo suggerimenti di riconciliazione.
+**Logica codice**: delega a `riconciliazione_smart.analizza_estratto_conto_batch(limit, solo_non_riconciliati)`.
+
+### GET /api/operazioni-da-confermare/smart/movimento/{movimento_id} — analisi singolo movimento
+**Cosa fa**: analizza un movimento e ne restituisce i suggerimenti.
+**Logica codice**: delega a `analizza_singolo_movimento`; qualsiasi eccezione → 500 (anche il "non trovato").
+
+### POST /api/operazioni-da-confermare/smart/riconcilia-auto — riconciliazione automatica banca
+**Cosa fa**: abbina i movimenti non riconciliati a fatture (importo ±1%) o F24 (descrizione "I24").
+**Logica codice**: per ogni movimento cerca in `invoices` (QUERY_FATTURA_NON_PAGATA + total_amount/importo_totale ±1%) — se match aggiorna movimento (`riconciliato`, `fattura_id`, `tipo_riconciliazione="auto_importo"`) e fattura con `set_fattura_pagata({movimento_bancario_id})`. Altrimenti se "I24" in descrizione cerca in `f24_commercialista` per importo ±1% e marca solo il movimento.
+**Note**: match per solo importo senza controllo fornitore/data/segno → rischio falsi positivi; l'F24 non viene marcato riconciliato nella sua collezione; NON emette `FATTURA_PAGATA` (a differenza della manuale) → scadenziario non chiuso.
+
+### POST /api/operazioni-da-confermare/smart/riconcilia-manuale — riconciliazione manuale movimento
+**Cosa fa**: collega manualmente un movimento banca a fattura, stipendio o F24.
+**Logica codice**: valida movimento (404); body `RiconciliaManuale`. Se fattura: valida esistenza (404), scrive `set_fattura_pagata` ed emette `FATTURA_PAGATA` via event bus (chiude lo scadenziario). Se stipendio/f24: salva solo `stipendio_id`/`f24_id`. Marca il movimento `riconciliato=True, tipo_riconciliazione="manuale"`.
+
+### GET /api/operazioni-da-confermare/smart/cerca-fatture — ricerca fatture per associazione
+**Cosa fa**: cerca fatture non pagate per importo (±5%) e/o fornitore.
+**Logica codice**: parte da QUERY_FATTURA_NON_PAGATA; importo → `$or` su total_amount/importo_totale; fornitore → regex appesa allo STESSO `$or`.
+**Note**: bug logico: importo e fornitore finiscono nello stesso `$or` → col fornitore passato il filtro importo è bypassato; parametro `data` accettato ma ignorato.
+
+### GET /api/operazioni-da-confermare/smart/cerca-stipendi — ricerca stipendi
+**Cosa fa**: cerca stipendi non riconciliati per importo (±5%) e/o nome dipendente.
+**Logica codice**: `prima_nota_salari` con riconciliato != True, range su importo, regex su nome.
+
+### GET /api/operazioni-da-confermare/smart/cerca-f24 — ricerca F24
+**Cosa fa**: cerca F24 non riconciliati per importo (±5%) e/o mese di scadenza.
+**Logica codice**: `f24_commercialista` con riconciliato != True, range su importo_totale, `data_scadenza` regex `^YYYY-MM`.
+
+### POST /api/operazioni-da-confermare/smart/ignora — ignora movimento
+**Cosa fa**: marca un movimento come da non processare (`ignorato=True`).
+**Logica codice**: handler in `__init__.py`; richiede `movimento_id` (400); aggiorna sia `estratto_conto_movimenti` sia la legacy `bank_movements`; 404 se nessuna matcha.
+**Note**: conferma l'esistenza della collezione legacy `bank_movements` parallela alla canonica.
+
+### GET /api/operazioni-da-confermare/carta/lista — lista transazioni carta
+**Cosa fa**: elenca le transazioni carta filtrabili per stato riconciliazione.
+**Logica codice**: `transazioni_carta`, sort data desc, limit 100.
+
+### POST /api/operazioni-da-confermare/carta/riconcilia-auto — riconciliazione automatica carta
+**Cosa fa**: abbina le transazioni carta non riconciliate a fatture non pagate per importo (±2%).
+**Logica codice**: fino a 1000 `transazioni_carta`; a match aggiorna transazione e fattura con `set_fattura_pagata({transazione_carta_id})`.
+**Note**: match per solo importo, nessun evento FATTURA_PAGATA.
+
+### POST /api/operazioni-da-confermare/carta/riconcilia-manuale — riconciliazione manuale carta
+**Cosa fa**: collega manualmente una transazione carta a un'entità (di fatto solo fattura).
+**Logica codice**: valida transazione (404); se tipo=="fattura" scrive `set_fattura_pagata` su `invoices` SENZA verificare che la fattura esista; marca la transazione riconciliata.
+**Note**: manca la validazione fattura e l'evento FATTURA_PAGATA (presenti nell'omologo banca).
+
+### POST /api/operazioni-da-confermare/supervisione/esegui — health-check contabile
+**Cosa fa**: esegue 4 controlli e restituisce stato ok/warning.
+**Logica codice**: count su `invoices` (non pagate, soglia 50), `estratto_conto_movimenti` (non riconciliati, 100), `assegni` (pendenti, 20), `fornitori` (senza metodo, 10).
+**Note**: nonostante POST e nome, è un report di sola lettura: non "esegue" azioni correttive.
+
+---
+
+## riconciliazione_intelligente_api.py (/api/riconciliazione-intelligente)
+
+Sistema di riconciliazione basato sul campo `stato_riconciliazione` di `invoices` (enum `StatoRiconciliazione`) e sul service `app/services/riconciliazione_intelligente.py`, che scrive anche `prima_nota_cassa`/`prima_nota_banca`, `scadenziario_fornitori`, `assegni`, `abbuoni_arrotondamenti`, `pagamenti_anticipati` e collega i movimenti in `estratto_conto_movimenti`. Il docstring in testa al file elenca 7 endpoint: in realtà sono 25.
+
+### GET /api/riconciliazione-intelligente/dashboard — dashboard operazioni da verificare
+**Cosa fa**: conteggi per ogni stato di riconciliazione + 5 liste (in attesa conferma, spostamenti proposti, match incerti, sospese, anomalie), max 50 ciascuna.
+**Logica codice**: un count per ogni valore di `StatoRiconciliazione`; 5 find con normalizzazione campi standard/legacy (numero_documento|invoice_number, data_documento|invoice_date, importo_totale|total_amount, fornitore|supplier_name); `get_ultima_data_estratto()` legge l'ultimo movimento EC.
+**Note**: blocco di normalizzazione copia-incollato 5 volte; N+1 count.
+
+### POST /api/riconciliazione-intelligente/conferma-pagamento — conferma metodo pagamento
+**Cosa fa**: conferma che una fattura è pagata in cassa o banca, creando il movimento di prima nota.
+**Logica codice**: valida fattura_id e metodo ∈ {cassa,banca} (400); `service.conferma_pagamento`: cassa → insert `prima_nota_cassa`; banca → cerca match in `estratto_conto_movimenti` (esatto/parziale), può sospendere in attesa estratto o segnalare anomalia; aggiorna `invoices`, `scadenziario_fornitori` e collega il movimento.
+
+### POST /api/riconciliazione-intelligente/conferma-multipla — conferma batch
+**Cosa fa**: come sopra per una lista di fatture, con report per-item.
+**Logica codice**: loop su `conferma_pagamento`; eccezioni per item conteggiate in `errori`; risponde sempre success complessivo.
+
+### POST /api/riconciliazione-intelligente/applica-spostamento — spostamento Cassa→Banca
+**Cosa fa**: accetta/rifiuta la proposta di spostare un pagamento da cassa a banca (match trovato in estratto).
+**Logica codice**: se conferma richiede `movimento_estratto_id` (400); `service.applica_spostamento`: elimina da `prima_nota_cassa`, inserisce in `prima_nota_banca`, aggiorna `invoices` e movimento EC; rifiuto → mantiene cassa (lock).
+
+### POST /api/riconciliazione-intelligente/rianalizza — ri-analisi post-upload estratto
+**Cosa fa**: rielabora le fatture sospese/anomale dopo il caricamento di un nuovo estratto conto.
+**Logica codice**: `service.rianalizza_operazioni_sospese()` (fino a 500 fatture): ricerca match EC e riclassifica.
+
+### GET /api/riconciliazione-intelligente/fatture-da-confermare — lista in attesa conferma
+**Cosa fa**: fatture con stato `in_attesa_conferma`, filtro anno opzionale.
+**Logica codice**: find su `invoices` escludendo xml_content/linee; anno via regex su `data_documento` (limit 1-500).
+**Note**: il filtro anno non copre il campo legacy `invoice_date`; duplica parte di /dashboard.
+
+### GET /api/riconciliazione-intelligente/spostamenti-proposti — lista spostamenti proposti
+**Cosa fa**: fatture in stato `da_verificare_spostamento` (max 100). **Note**: duplicato ridotto di /dashboard.
+
+### GET /api/riconciliazione-intelligente/anomalie — lista anomalie
+**Cosa fa**: fatture in stato `anomalia_non_in_estratto` (pagamento banca dichiarato ma non in estratto), max 100.
+
+### GET /api/riconciliazione-intelligente/stato-estratto — copertura estratto conto
+**Cosa fa**: ultima data estratto, totale movimenti, non riconciliati, distribuzione per anno.
+**Logica codice**: aggregate `$group` per anno su `estratto_conto_movimenti`; "non riconciliati" = `fattura_id: {$exists: False}`.
+**Note**: criterio diverso da operazioni_module (`riconciliato != True`): un movimento riconciliato a F24/stipendio qui risulta ancora non riconciliato → contatori incoerenti tra le due dashboard.
+
+### POST /api/riconciliazione-intelligente/lock-manuale — blocco fattura
+**Cosa fa**: blocca una fattura escludendola dalle verifiche automatiche.
+**Logica codice**: update su `invoices` (stato `lock_manuale`, motivo, timestamp); modified_count==0 → 404.
+
+### POST /api/riconciliazione-intelligente/sblocca — sblocco fattura
+**Cosa fa**: rimuove il lock e ripristina lo stato in base al metodo confermato.
+**Logica codice**: legge la fattura (404); nuovo stato = confermata_cassa/banca se `metodo_pagamento_confermato` presente, altrimenti in_attesa_conferma; `$set`+`$unset`.
+
+### GET /api/riconciliazione-intelligente/statistiche — statistiche riconciliazione
+**Cosa fa**: conteggi per stato, totale fatture, fatture legacy senza stato, importi per stato.
+**Logica codice**: loop count per stato; legacy = totale − somma stati; aggregate `$group` su stato sommando `importo_totale`.
+**Note**: la somma importi ignora il campo legacy `total_amount` → sottostima; duplica il loop di /dashboard.
+
+### POST /api/riconciliazione-intelligente/migra-fatture-legacy — migrazione fatture esistenti
+**Cosa fa**: assegna `stato_riconciliazione` alle fatture che non lo hanno, deducendolo dai campi storici.
+**Logica codice**: find con `stato_riconciliazione: {$exists: False}` (limit default 500); regole: riconciliato→riconciliata; pagato+prima_nota_cassa_id→confermata_cassa; pagato+prima_nota_banca_id→confermata_banca; pagato senza riferimenti → cassa se metodo contanti altrimenti banca; else in_attesa_conferma.
+**Note**: il campo `dettagli` del risultato è inizializzato ma mai popolato.
+
+### POST /api/riconciliazione-intelligente/imposta-stato-fattura — override manuale stato
+**Cosa fa**: imposta arbitrariamente lo `stato_riconciliazione` di una fattura.
+**Logica codice**: valida stato contro l'enum (400); update; modified_count==0 → 404.
+**Note**: il 404 scatta anche se la fattura esiste ma ha già quello stato.
+
+### POST /api/riconciliazione-intelligente/pagamento-parziale — pagamento parziale (caso 19)
+**Cosa fa**: registra un acconto tracciando il residuo.
+**Logica codice**: valida fattura_id/importo/metodo; `service.registra_pagamento_parziale`: insert `prima_nota_{metodo}` + update `invoices` (pagato/residuo/stato parziale).
+
+### POST /api/riconciliazione-intelligente/applica-nota-credito — nota di credito (caso 21)
+**Cosa fa**: applica una NC (esistente o inserita a mano) riducendo il dovuto.
+**Logica codice**: `service.applica_nota_credito(fattura_id, nota_credito_id | importo_nc+numero_nc)`; success=False → 400.
+
+### POST /api/riconciliazione-intelligente/cerca-bonifico-cumulativo — ricerca combinazioni fatture (caso 23)
+**Cosa fa**: dato un movimento, propone combinazioni di fatture stesso fornitore la cui somma corrisponde all'importo.
+**Logica codice**: `service.cerca_bonifico_cumulativo(importo, data, descrizione)`: subset-sum su `invoices` non riconciliate. Sola lettura.
+
+### POST /api/riconciliazione-intelligente/riconcilia-bonifico-cumulativo — 1 movimento ↔ N fatture
+**Cosa fa**: riconcilia un movimento EC con più fatture insieme.
+**Logica codice**: valida movimento_id e fatture_ids (400); il service inserisce in `prima_nota_banca` per ogni fattura, aggiorna `invoices` e marca il movimento.
+
+### POST /api/riconciliazione-intelligente/pagamento-con-sconto — sconto cassa (caso 31)
+**Cosa fa**: salda una fattura pagando meno del totale, registrando la differenza come sconto.
+**Logica codice**: `service.registra_pagamento_con_sconto`: insert prima nota, calcolo percentuale, chiusura fattura.
+
+### POST /api/riconciliazione-intelligente/assegni-multipli — assegni multipli (caso 36)
+**Cosa fa**: salda una fattura con più assegni registrati singolarmente.
+**Logica codice**: valida lista assegni con importo per ciascuno (400); il service inserisce ogni assegno in `assegni`, un movimento in `prima_nota_{metodo}` (default banca), aggiorna `invoices`.
+
+### POST /api/riconciliazione-intelligente/riconcilia-con-arrotondamento — tolleranza arrotondamenti (caso 37)
+**Cosa fa**: riconcilia anche con differenza di pochi centesimi/euro, registrando l'abbuono.
+**Logica codice**: `service.riconcilia_con_arrotondamento` (tolleranza default €1, max €5): prima nota + `abbuoni_arrotondamenti` + chiusura fattura.
+
+### POST /api/riconciliazione-intelligente/pagamento-anticipato — acconto senza fattura (caso 38)
+**Cosa fa**: registra un pagamento a fornitore prima dell'arrivo della fattura.
+**Logica codice**: valida importo>0 e metodo (400); insert in `pagamenti_anticipati` + movimento prima nota.
+
+### GET /api/riconciliazione-intelligente/pagamenti-anticipati — lista anticipi in attesa
+**Cosa fa**: anticipi non ancora collegati a fatture. **Logica codice**: `service.get_pagamenti_anticipati_in_attesa()`.
+
+### POST /api/riconciliazione-intelligente/cerca-pagamenti-anticipati — match anticipi ↔ fattura
+**Cosa fa**: dato l'id fattura, propone gli anticipi compatibili (fornitore/importo). Sola lettura.
+
+### POST /api/riconciliazione-intelligente/collega-pagamento-anticipato — collega anticipo a fattura
+**Cosa fa**: imputa un anticipo (tutto o in parte) a una fattura.
+**Logica codice**: valida i due id (400); il service aggiorna il residuo su `pagamenti_anticipati` e i campi pagamento su `invoices`.
+
+### Anomalie (gruppo operazioni / riconciliazione intelligente)
+1. Due sistemi di riconciliazione paralleli non comunicanti: operazioni_module marca `riconciliato`/`pagato`, riconciliazione_intelligente governa `stato_riconciliazione` + prima nota. Una fattura saldata da un flusso resta "da confermare" per l'altro.
+2. Definizioni divergenti di "movimento non riconciliato" (`riconciliato != True` vs `fattura_id $exists false`) → contatori incoerenti.
+3. Evento FATTURA_PAGATA emesso solo da riconcilia-manuale banca: le riconciliazioni auto banca e auto/manuale carta chiudono la fattura senza propagare → scadenziario non chiuso.
+4. Match automatici per solo importo (banca ±1%, carta ±2%) senza fornitore/data/segno; F24 abbinato mai marcato riconciliato in `f24_commercialista`.
+5. Bug filtro in cerca-fatture (importo bypassato col fornitore); riconcilia-carta-manuale non valida l'esistenza della fattura.
+6. Docstring bugiardi: header del file (7 endpoint su 25), supervisione "esegue" ma è read-only, `dettagli` di migra-fatture-legacy sempre vuoto.
+7. Gestione campi legacy incompleta: filtro anno solo su `data_documento`, statistiche solo su `importo_totale`.
+8. `/smart/ignora` scrive anche su `bank_movements` (migrazione non completata); 404 fuorvianti su modified_count==0.
