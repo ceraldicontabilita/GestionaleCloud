@@ -153,7 +153,30 @@ async def list_assegni(
         ("stato", 1),
         ("numero", 1)
     ]).skip(skip).limit(limit).to_list(limit)
-    
+
+    # Arricchimento display: per gli assegni con fattura collegata ma senza
+    # beneficiario reale, il frontend mostra il fornitore dedotto dalla
+    # fattura (richiesta utente: "conoscendo il numero della fattura è anche
+    # noto il fornitore"). Non scriviamo nulla sull'assegno: solo risposta.
+    da_arricchire = [a for a in assegni
+                     if not (a.get("beneficiario") or "").strip()
+                     and (a.get("fattura_collegata") or a.get("numero_fattura"))]
+    if da_arricchire:
+        ids = list({a.get("fattura_collegata") for a in da_arricchire if a.get("fattura_collegata")})
+        numeri = list({a.get("numero_fattura") for a in da_arricchire if a.get("numero_fattura")})
+        fatture = await db["invoices"].find(
+            {"$or": ([{"id": {"$in": ids}}] if ids else []) +
+                    ([{"invoice_number": {"$in": numeri}}] if numeri else [])},
+            {"_id": 0, "id": 1, "invoice_number": 1,
+             "supplier_name": 1, "cedente_denominazione": 1}
+        ).to_list(2000)
+        per_id = {f.get("id"): f for f in fatture}
+        per_numero = {f.get("invoice_number"): f for f in fatture}
+        for a in da_arricchire:
+            f = per_id.get(a.get("fattura_collegata")) or per_numero.get(a.get("numero_fattura"))
+            if f:
+                a["fornitore_fattura"] = f.get("supplier_name") or f.get("cedente_denominazione") or ""
+
     return assegni
 
 

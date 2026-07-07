@@ -589,8 +589,33 @@ async def dettaglio_transazione_paypal(transaction_id: str) -> Dict[str, Any]:
     fatture_collegate = []
     nome_controparte = (tx.get("nome_controparte") or tx.get("payer_name") or "").strip()
     email_controparte = (tx.get("email_controparte") or tx.get("payer_email") or "").strip().lower()
+    importo_tx = abs(float(tx.get("importo") or tx.get("lordo") or 0))
 
-    if mapping_fornitore and mapping_fornitore.get("fornitore_piva"):
+    # STRATEGIA 0 (prioritaria): la transazione PayPal porta spesso il numero
+    # fattura del fornitore (invoice_id_fornitore, es. Sklum "229819653").
+    # Se c'è, la fattura REALE è quella: cercarla per numero batte qualunque
+    # euristica. Prima questa informazione era ignorata e la Strategia A
+    # restituiva "le ultime 10 fatture del fornitore per data" senza alcuna
+    # correlazione con l'importo → dati sbagliati nel dettaglio (bug Sklum).
+    rif_fattura = str(tx.get("invoice_id_fornitore") or tx.get("invoice_id") or "").strip()
+    if rif_fattura:
+        import re as _re
+        fatture_collegate = await db[COLL_INVOICES].find(
+            {"$or": [
+                {"invoice_number": rif_fattura},
+                {"numero_fattura": rif_fattura},
+                {"invoice_number": {"$regex": _re.escape(rif_fattura) + "$"}},
+            ]},
+            {"_id": 0, "id": 1, "invoice_number": 1, "numero_fattura": 1,
+             "invoice_date": 1, "data_fattura": 1,
+             "total_amount": 1, "importo_totale": 1,
+             "supplier_name": 1, "cedente_denominazione": 1,
+             "stato_pagamento": 1}
+        ).sort("invoice_date", -1).limit(5).to_list(5)
+        for f in fatture_collegate:
+            f["match"] = "riferimento"
+
+    if not fatture_collegate and mapping_fornitore and mapping_fornitore.get("fornitore_piva"):
         # STRATEGIA A: P.IVA (il match più affidabile)
         piva = mapping_fornitore["fornitore_piva"]
         fatture_collegate = await db[COLL_INVOICES].find(
@@ -655,7 +680,6 @@ async def dettaglio_transazione_paypal(transaction_id: str) -> Dict[str, Any]:
     # STRATEGIA D: match per IMPORTO su QUALSIASI anno.
     # Fondamentale per le transazioni senza controparte (es. T0200) e per le
     # fatture registrate in anni diversi da quello del filtro globale.
-    importo_tx = abs(float(tx.get("importo") or tx.get("lordo") or 0))
     if not fatture_collegate and importo_tx > 0:
         fatture_collegate = await db[COLL_INVOICES].find(
             {"$or": [
@@ -670,6 +694,27 @@ async def dettaglio_transazione_paypal(transaction_id: str) -> Dict[str, Any]:
         ).sort("invoice_date", -1).limit(10).to_list(10)
         for f in fatture_collegate:
             f["match"] = "importo"
+
+    # Ordinamento e pulizia finale:
+    # 1) dedup per numero fattura (in collection esistono duplicati storici)
+    # 2) le fatture con importo uguale alla transazione (±0.05) in cima e
+    #    marcate, così il frontend le evidenzia; poi per data discendente.
+    visti = set()
+    dedup = []
+    for f in fatture_collegate:
+        chiave = (f.get("invoice_number") or f.get("numero_fattura") or f.get("id"))
+        if chiave in visti:
+            continue
+        visti.add(chiave)
+        imp_f = abs(float(f.get("total_amount") or f.get("importo_totale") or 0))
+        if importo_tx > 0 and abs(imp_f - importo_tx) <= 0.05 and not f.get("match"):
+            f["match"] = "importo"
+        dedup.append(f)
+    # sort stabile: entro la stessa priorità resta l'ordine per data desc
+    # già prodotto dalle query
+    dedup.sort(key=lambda f: 0 if f.get("match") == "riferimento"
+               else 1 if f.get("match") == "importo" else 2)
+    fatture_collegate = dedup[:6]
 
     # Link diretto alla vista AssoSoftware: la fattura si può SEMPRE vedere,
     # indipendentemente dall'anno selezionato nel gestionale.

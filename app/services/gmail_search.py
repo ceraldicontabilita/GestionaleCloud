@@ -67,7 +67,16 @@ def search_gmail_sync(user: str, password: str, server: str,
             except Exception:
                 continue
 
-        typ, data = conn.uid("SEARCH", "X-GM-RAW", f'"{raw_query}"')
+        # La query contiene quasi sempre virgolette interne (termini esatti
+        # tipo "4376.03"): avvolgerla in altre virgolette senza escape
+        # produceva un comando IMAP malformato → BAD "Could not parse
+        # command" (bug segnalato dal bottone "Cerca su Gmail"). Le
+        # virgolette interne vanno escapate e i caratteri non-ASCII
+        # normalizzati (IMAP SEARCH senza literal è ASCII-only).
+        import unicodedata
+        q_ascii = unicodedata.normalize("NFKD", raw_query).encode("ascii", "ignore").decode()
+        q_escaped = q_ascii.replace("\\", "\\\\").replace('"', '\\"')
+        typ, data = conn.uid("SEARCH", "X-GM-RAW", f'"{q_escaped}"')
         if typ != "OK" or not data or not data[0]:
             return []
         uids = data[0].split()
