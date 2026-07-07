@@ -157,55 +157,9 @@ async def get_verbali_lista(
     }
 
 
-@router.get("/pdf/{numero_verbale}")
-@handle_errors
-async def get_verbale_pdf(
-    numero_verbale: str,
-    indice: int = Query(0, description="Indice del PDF: 0=verbale, 1=quietanza")
-) -> Dict[str, Any]:
-    """
-    Ottiene il PDF allegato a un verbale.
-    Gestisce sia pdf_allegati (vecchio formato) che pdf_data/quietanza_pdf.
-    """
-    db = Database.get_db()
-    
-    verbale = await db[COLLECTION].find_one({
-        "$or": [
-            {"numero_verbale": numero_verbale},
-            {"numero_verbale_old": numero_verbale},
-            {"id": numero_verbale}
-        ]
-    })
-    
-    if not verbale:
-        raise HTTPException(status_code=404, detail=f"Verbale {numero_verbale} non trovato")
-    
-    # Vecchio formato: pdf_allegati array
-    pdf_allegati = verbale.get("pdf_allegati", [])
-    if pdf_allegati and indice < len(pdf_allegati):
-        pdf = pdf_allegati[indice]
-        return {
-            "filename": pdf.get("filename"),
-            "content_base64": pdf.get("content_base64"),
-            "content_type": "application/pdf"
-        }
-    
-    # Nuovo formato: pdf_data (verbale) e quietanza_pdf
-    if indice == 0 and verbale.get("pdf_data"):
-        return {
-            "filename": verbale.get("pdf_filename", f"verbale_{numero_verbale}.pdf"),
-            "content_base64": verbale["pdf_data"],
-            "content_type": "application/pdf"
-        }
-    
-    if indice == 1 and verbale.get("quietanza_pdf"):
-        return {
-            "filename": verbale.get("quietanza_filename", f"quietanza_{numero_verbale}.pdf"),
-            "content_base64": verbale["quietanza_pdf"],
-            "content_type": "application/pdf"
-        }
-    
-    raise HTTPException(status_code=404, detail="PDF non trovato per questo verbale")
+# NB: la route /pdf/{numero_verbale} che era qui è stata rimossa: era
+# shadowata al 100% dalla versione equivalente in verbali_noleggio.py
+# (registrato prima sotto lo stesso prefisso) e non veniva mai raggiunta.
 
 
 @router.post("/scarica-posta")
@@ -411,44 +365,9 @@ async def associa_driver_verbale(
     return {"message": "Driver associato", "driver": driver_nome_completo}
 
 
-@router.get("/stats")
-@handle_errors
-async def get_verbali_stats() -> Dict[str, Any]:
-    """
-    Statistiche sui verbali.
-    """
-    db = Database.get_db()
-    
-    totale = await db[COLLECTION].count_documents({})
-    
-    con_driver = await db[COLLECTION].count_documents({
-        "driver": {"$exists": True, "$nin": [None, ""]}
-    })
-    
-    senza_driver = totale - con_driver
-    
-    # Per stato
-    pipeline_stato = [
-        {"$group": {"_id": "$stato", "count": {"$sum": 1}}}
-    ]
-    stati = await db[COLLECTION].aggregate(pipeline_stato).to_list(100)
-    per_stato = {s["_id"] or "unknown": s["count"] for s in stati}
-    
-    # Importo totale
-    pipeline_importo = [
-        {"$group": {"_id": None, "totale": {"$sum": {"$toDouble": {"$ifNull": ["$importo", 0]}}}}}
-    ]
-    importo_result = await db[COLLECTION].aggregate(pipeline_importo).to_list(1)
-    importo_totale = importo_result[0]["totale"] if importo_result else 0
-    
-    return {
-        "totale": totale,
-        "con_driver": con_driver,
-        "senza_driver": senza_driver,
-        "per_stato": per_stato,
-        "importo_totale": round(importo_totale, 2),
-        "health_score": round((con_driver / totale * 100) if totale > 0 else 0, 1)
-    }
+# NB: la route /stats che era qui è stata rimossa: era shadowata al 100%
+# dalla versione in verbali_noleggio.py (registrato prima sotto lo stesso
+# prefisso) e non veniva mai raggiunta.
 
 
 # ═══════════════════════════════════════════════════════════════════════════

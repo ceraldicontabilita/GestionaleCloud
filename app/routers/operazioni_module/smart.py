@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 
 from app.database import Database
 from app.utils.parsing import safe_float
-from .common import RiconciliaManuale, logger, QUERY_FATTURA_NON_PAGATA, set_fattura_pagata
+from .common import RiconciliaManuale, ConfermaBatchRequest, logger, QUERY_FATTURA_NON_PAGATA, set_fattura_pagata
 
 
 async def banca_veloce(
@@ -279,16 +279,60 @@ async def cerca_f24_per_associazione(
 ) -> Dict[str, Any]:
     """Cerca F24 per associazione manuale."""
     db = Database.get_db()
-    
+
     query = {"riconciliato": {"$ne": True}}
-    
+
     if importo:
         tolleranza = importo * 0.05
         query["importo_totale"] = {"$gte": importo - tolleranza, "$lte": importo + tolleranza}
-    
+
     if data:
         query["data_scadenza"] = {"$regex": f"^{data[:7]}"}
-    
+
     f24_list = await db.f24_commercialista.find(query, {"_id": 0}).sort("data_scadenza", -1).limit(limit).to_list(limit)
-    
+
     return {"f24": f24_list, "totale": len(f24_list)}
+
+
+async def conferma_f24_batch(request: ConfermaBatchRequest) -> Dict[str, Any]:
+    """Conferma manuale di uno o più F24 pendenti con metodo di pagamento.
+
+    Sostituisce la vecchia chiamata a /api/riconciliazione-intelligente/
+    conferma-multipla, che si aspettava un payload di fatture e falliva
+    SEMPRE con 400 sui F24 inviati da RiconciliazioneUnificata.jsx.
+    Scrive sulla stessa collection letta da cerca_f24_per_associazione,
+    così l'F24 confermato sparisce dalla lista dei pendenti.
+    """
+    db = Database.get_db()
+
+    confermati = 0
+    errori = []
+    now = datetime.now(timezone.utc).isoformat()
+
+    for op in request.operazioni:
+        f24_id = op.get("operazione_id") or op.get("f24_id")
+        if not f24_id:
+            errori.append({"operazione": op, "errore": "operazione_id mancante"})
+            continue
+        result = await db.f24_commercialista.update_one(
+            {"id": f24_id},
+            {"$set": {
+                "riconciliato": True,
+                "status": "pagato",
+                "pagato_manualmente": True,
+                "metodo_pagamento": op.get("metodo_pagamento") or "banca",
+                "tipo_riconciliazione": "manuale",
+                "data_riconciliazione": now,
+                "updated_at": now,
+            }}
+        )
+        if result.matched_count == 0:
+            errori.append({"operazione": op, "errore": f"F24 {f24_id} non trovato"})
+        else:
+            confermati += 1
+
+    return {
+        "success": len(errori) == 0,
+        "confermati": confermati,
+        "errori": errori,
+    }

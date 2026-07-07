@@ -62,8 +62,3 @@ class RiconciliaManuale(BaseModel):
     note: Optional[str] = None
 
 
-class RiconciliaCartaRequest(BaseModel):
-    transazione_id: str
-    tipo: str
-    entita_id: str
-    note: Optional[str] = None

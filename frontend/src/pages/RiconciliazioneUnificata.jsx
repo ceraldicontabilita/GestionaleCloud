@@ -1404,7 +1404,7 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
           tipo: 'f24',
         }));
 
-      await api.post('/api/riconciliazione-intelligente/conferma-multipla', { operazioni });
+      await api.post('/api/operazioni-da-confermare/smart/conferma-f24', { operazioni });
       alert(`✅ Confermati ${selezionati.size} F24`);
       setSelezionati(new Set());
       // Ricarica dati senza reload pagina
@@ -1418,7 +1418,7 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
 
   const confermaF24Singolo = async (f24Item, metodo) => {
     try {
-      await api.post('/api/riconciliazione-intelligente/conferma-multipla', {
+      await api.post('/api/operazioni-da-confermare/smart/conferma-f24', {
         operazioni: [
           {
             operazione_id: f24Item.id,

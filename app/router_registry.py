@@ -98,7 +98,7 @@ def _register_accounting(app: FastAPI):
     )
     from app.routers.prima_nota_module import router as prima_nota_router
     from app.routers import accounting_engine, contabilita_italiana, fiscalita_italiana
-    from app.routers import riconciliazione_intelligente_api, batch_operations
+    from app.routers import batch_operations
     
     app.include_router(accounting_main.router, prefix="/api/accounting", tags=["Accounting"])
     app.include_router(accounting_extended.router, prefix="/api/accounting", tags=["Accounting Extended"])
@@ -115,7 +115,6 @@ def _register_accounting(app: FastAPI):
     app.include_router(regole_categorizzazione.router, prefix="/api/regole", tags=["Regole"])
     app.include_router(iva_calcolo.router, prefix="/api/iva", tags=["IVA"])
     app.include_router(liquidazione_iva.router, prefix="/api", tags=["Liquidazione IVA"])
-    app.include_router(riconciliazione_intelligente_api.router, prefix="/api/riconciliazione-intelligente", tags=["Riconciliazione Intelligente"])
     app.include_router(batch_operations.router, prefix="/api/batch", tags=["Batch Operations"])
     app.include_router(accounting_engine.router, prefix="/api/accounting", tags=["Accounting Engine"])
     app.include_router(contabilita_italiana.router, prefix="/api/contabilita", tags=["Contabilità Italiana"])
