@@ -4,6 +4,8 @@ import { formatEuro, STYLES, COLORS, button, badge, formatDateIT } from '../lib/
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { PageLayout } from '../components/PageLayout';
 
+const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace';
+
 /**
  * =====================================================================
  * CONTROLLO MENSILE - DOCUMENTAZIONE LOGICA
@@ -604,7 +606,7 @@ export default function ControlloMensile() {
         <div
           style={{
             background: 'white',
-            borderRadius: 12,
+            borderRadius: 8,
             padding: 20,
             maxWidth: 600,
             width: '90%',
@@ -633,12 +635,19 @@ export default function ControlloMensile() {
           </div>
 
           {versamentiDettaglio.length === 0 ? (
-            <p style={{ color: '#666' }}>Nessun versamento registrato per questo mese.</p>
+            <p style={{ color: '#64748b' }}>Nessun versamento registrato per questo mese.</p>
           ) : (
             <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
-                <tr style={{ background: '#f8fafc' }}>
+                <tr
+                  style={{
+                    background: '#f8fafc',
+                    fontSize: 11,
+                    textTransform: 'uppercase',
+                    color: '#64748b',
+                  }}
+                >
                   <th style={{ padding: 10, textAlign: 'left', borderBottom: '2px solid #e2e8f0' }}>
                     Data
                   </th>
@@ -662,6 +671,7 @@ export default function ControlloMensile() {
                         padding: 10,
                         textAlign: 'right',
                         fontWeight: 'bold',
+                        fontFamily: MONO,
                         color: '#16a34a',
                       }}
                     >
@@ -671,11 +681,13 @@ export default function ControlloMensile() {
                 ))}
               </tbody>
               <tfoot>
-                <tr style={{ background: '#1e293b', color: 'white' }}>
+                <tr style={{ background: '#0f2744', color: 'white' }}>
                   <td colSpan={2} style={{ padding: 10, fontWeight: 'bold' }}>
                     TOTALE
                   </td>
-                  <td style={{ padding: 10, textAlign: 'right', fontWeight: 'bold' }}>
+                  <td
+                    style={{ padding: 10, textAlign: 'right', fontWeight: 'bold', fontFamily: MONO }}
+                  >
                     {formatEuro(
                       versamentiDettaglio.reduce(
                         (sum, v) => sum + Math.abs(parseFloat(v.importo) || 0),
@@ -714,12 +726,12 @@ export default function ControlloMensile() {
           <div
             style={{
               padding: '10px 16px',
-              borderRadius: 8,
-              border: '2px solid #e0e0e0',
+              borderRadius: 6,
+              border: '1px solid #e2e8f0',
               fontSize: 16,
               minWidth: 100,
               background: '#f1f5f9',
-              color: '#6b7280',
+              color: '#64748b',
               fontWeight: 600,
             }}
             data-testid="year-display"
@@ -741,10 +753,11 @@ export default function ControlloMensile() {
                 disabled={meseSelezionato <= 1}
                 style={{
                   padding: '8px 14px',
-                  background: meseSelezionato > 1 ? '#1e3a5f' : '#94a3b8',
+                  minHeight: 40,
+                  background: meseSelezionato > 1 ? '#0f2744' : '#94a3b8',
                   color: 'white',
                   border: 'none',
-                  borderRadius: 8,
+                  borderRadius: 6,
                   cursor: meseSelezionato > 1 ? 'pointer' : 'not-allowed',
                   fontWeight: 'bold',
                   fontSize: 14,
@@ -759,8 +772,8 @@ export default function ControlloMensile() {
                   fontWeight: 'bold',
                   fontSize: 16,
                   padding: '8px 16px',
-                  background: '#f0f9ff',
-                  borderRadius: 8,
+                  background: '#f1f5f9',
+                  borderRadius: 6,
                   minWidth: 140,
                   textAlign: 'center',
                 }}
@@ -778,10 +791,11 @@ export default function ControlloMensile() {
                 disabled={meseSelezionato >= 12}
                 style={{
                   padding: '8px 14px',
-                  background: meseSelezionato < 12 ? '#1e3a5f' : '#94a3b8',
+                  minHeight: 40,
+                  background: meseSelezionato < 12 ? '#0f2744' : '#94a3b8',
                   color: 'white',
                   border: 'none',
-                  borderRadius: 8,
+                  borderRadius: 6,
                   cursor: meseSelezionato < 12 ? 'pointer' : 'not-allowed',
                   fontWeight: 'bold',
                   fontSize: 14,
@@ -796,11 +810,13 @@ export default function ControlloMensile() {
               onClick={handleBackToYear}
               style={{
                 padding: '8px 16px',
-                background: '#6b7280',
-                color: 'white',
-                border: 'none',
-                borderRadius: 8,
+                minHeight: 40,
+                background: 'white',
+                color: '#1e293b',
+                border: '1px solid #e2e8f0',
+                borderRadius: 6,
                 cursor: 'pointer',
+                fontSize: 13,
                 fontWeight: 'bold',
               }}
               data-testid="back-to-year-btn"
@@ -812,11 +828,13 @@ export default function ControlloMensile() {
               onClick={() => setShowVersamentiModal(true)}
               style={{
                 padding: '8px 16px',
-                background: '#16a34a',
+                minHeight: 40,
+                background: '#0f2744',
                 color: 'white',
                 border: 'none',
-                borderRadius: 8,
+                borderRadius: 6,
                 cursor: 'pointer',
+                fontSize: 13,
                 fontWeight: 'bold',
               }}
               data-testid="show-versamenti-btn"
@@ -835,174 +853,94 @@ export default function ControlloMensile() {
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
           gap: 12,
           marginBottom: 25,
         }}
       >
-        <div
-          style={{
-            background: '#0f2744',
-            borderRadius: 12,
-            padding: 14,
-            color: 'white',
-          }}
-        >
-          <div style={{ fontSize: 11, opacity: 0.9 }}>POS RT (XML)</div>
-          <div style={{ fontSize: 18, fontWeight: 'bold' }}>{formatEuro(yearTotals.posAuto)}</div>
-        </div>
-        <div
-          style={{
-            background: '#1d4ed8',
-            borderRadius: 12,
-            padding: 14,
-            color: 'white',
-          }}
-        >
-          <div style={{ fontSize: 11, opacity: 0.9 }}>POS Reale (Tuo)</div>
-          <div style={{ fontSize: 18, fontWeight: 'bold' }}>{formatEuro(yearTotals.posManual)}</div>
-        </div>
-        <div
-          style={{
-            background: '#b91c1c',
-            borderRadius: 12,
-            padding: 14,
-            color: 'white',
-          }}
-        >
-          <div style={{ fontSize: 11, opacity: 0.9 }}>🏦 POS Banca (PDV)</div>
-          <div style={{ fontSize: 18, fontWeight: 'bold' }}>
-            {formatEuro(yearTotals.posBanca || 0)}
-          </div>
-          {yearTotals.posBancaCommissioni > 0 && (
-            <div style={{ fontSize: 9, opacity: 0.8, marginTop: 2 }}>
-              Comm.: -{formatEuro(yearTotals.posBancaCommissioni)}
+        {[
+          { label: 'POS RT (XML)', value: formatEuro(yearTotals.posAuto) },
+          { label: 'POS Reale (Tuo)', value: formatEuro(yearTotals.posManual) },
+          {
+            label: '🏦 POS Banca (PDV)',
+            value: formatEuro(yearTotals.posBanca || 0),
+            sub:
+              yearTotals.posBancaCommissioni > 0
+                ? `Comm.: -${formatEuro(yearTotals.posBancaCommissioni)}`
+                : null,
+          },
+          { label: 'Corrisp. Auto (XML)', value: formatEuro(yearTotals.corrispettiviAuto) },
+          { label: 'Corrisp. Manuali', value: formatEuro(yearTotals.corrispettiviManual) },
+          { label: 'Versamenti', value: formatEuro(yearTotals.versamenti) },
+          {
+            label: 'Saldo Cassa',
+            value: formatEuro(yearTotals.saldoCassa),
+            color: yearTotals.saldoCassa >= 0 ? '#16a34a' : '#dc2626',
+          },
+          {
+            label: '📄 Doc. Commerciali',
+            value: (yearTotals.documentiCommerciali || 0).toLocaleString('it-IT'),
+          },
+          {
+            label: '🚫 Annulli',
+            value: (yearTotals.annulli || 0).toLocaleString('it-IT'),
+            color: yearTotals.annulli > 0 ? '#dc2626' : undefined,
+            sub: yearTotals.annulli === 0 || !yearTotals.annulli ? 'N/D negli XML' : null,
+          },
+          {
+            label: 'Pagato Non Riscosso',
+            value: formatEuro(yearTotals.pagatoNonRiscosso || 0),
+            color: (yearTotals.pagatoNonRiscosso || 0) > 0 ? '#d97706' : undefined,
+            sub: `${yearTotals.pagatoNonRiscossoCount || 0} occorrenze`,
+          },
+          {
+            label: '🗑️ Ammontare Annulli',
+            value: formatEuro(yearTotals.ammontareAnnulli || 0),
+            color: (yearTotals.ammontareAnnulli || 0) > 0 ? '#dc2626' : undefined,
+            sub: `${yearTotals.ammontareAnnulliCount || 0} occorrenze`,
+          },
+        ].map(({ label, value, sub, color }) => (
+          <div
+            key={label}
+            style={{
+              background: 'white',
+              border: '1px solid #e2e8f0',
+              borderLeft: '4px solid #0f2744',
+              borderRadius: 8,
+              padding: 14,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 11,
+                color: '#64748b',
+                textTransform: 'uppercase',
+                letterSpacing: 0.5,
+              }}
+            >
+              {label}
             </div>
-          )}
-        </div>
-        <div
-          style={{
-            background: '#b45309',
-            borderRadius: 12,
-            padding: 14,
-            color: 'white',
-          }}
-        >
-          <div style={{ fontSize: 11, opacity: 0.9 }}>Corrisp. Auto (XML)</div>
-          <div style={{ fontSize: 18, fontWeight: 'bold' }}>
-            {formatEuro(yearTotals.corrispettiviAuto)}
+            <div
+              style={{
+                fontSize: 20,
+                fontWeight: 700,
+                fontFamily: MONO,
+                color: color || '#0f2744',
+                marginTop: 4,
+              }}
+            >
+              {value}
+            </div>
+            {sub && <div style={{ fontSize: 10, color: '#64748b', marginTop: 2 }}>{sub}</div>}
           </div>
-        </div>
-        <div
-          style={{
-            background: '#15803d',
-            borderRadius: 12,
-            padding: 14,
-            color: 'white',
-          }}
-        >
-          <div style={{ fontSize: 11, opacity: 0.9 }}>Corrisp. Manuali</div>
-          <div style={{ fontSize: 18, fontWeight: 'bold' }}>
-            {formatEuro(yearTotals.corrispettiviManual)}
-          </div>
-        </div>
-        <div
-          style={{
-            background: '#15803d',
-            borderRadius: 12,
-            padding: 14,
-            color: 'white',
-          }}
-        >
-          <div style={{ fontSize: 11, opacity: 0.9 }}>Versamenti</div>
-          <div style={{ fontSize: 18, fontWeight: 'bold' }}>
-            {formatEuro(yearTotals.versamenti)}
-          </div>
-        </div>
-        <div
-          style={{
-            background: '#1d4ed8',
-            borderRadius: 12,
-            padding: 14,
-            color: 'white',
-          }}
-        >
-          <div style={{ fontSize: 11, opacity: 0.9 }}>Saldo Cassa</div>
-          <div style={{ fontSize: 18, fontWeight: 'bold' }}>
-            {formatEuro(yearTotals.saldoCassa)}
-          </div>
-        </div>
-        <div
-          style={{
-            background: '#475569',
-            borderRadius: 12,
-            padding: 14,
-            color: 'white',
-          }}
-        >
-          <div style={{ fontSize: 11, opacity: 0.9 }}>📄 Doc. Commerciali</div>
-          <div style={{ fontSize: 18, fontWeight: 'bold' }}>
-            {(yearTotals.documentiCommerciali || 0).toLocaleString('it-IT')}
-          </div>
-        </div>
-        <div
-          style={{
-            background: '#b91c1c',
-            borderRadius: 12,
-            padding: 14,
-            color: 'white',
-            position: 'relative',
-          }}
-        >
-          <div style={{ fontSize: 11, opacity: 0.9 }}>🚫 Annulli</div>
-          <div style={{ fontSize: 18, fontWeight: 'bold' }}>
-            {(yearTotals.annulli || 0).toLocaleString('it-IT')}
-          </div>
-          {(yearTotals.annulli === 0 || !yearTotals.annulli) && (
-            <div style={{ fontSize: 9, opacity: 0.7, marginTop: 4 }}>N/D negli XML</div>
-          )}
-        </div>
-        {/* Card Pagato Non Riscosso */}
-        <div
-          style={{
-            background: '#b45309',
-            borderRadius: 12,
-            padding: 14,
-            color: 'white',
-          }}
-        >
-          <div style={{ fontSize: 11, opacity: 0.9 }}>Pagato Non Riscosso</div>
-          <div style={{ fontSize: 18, fontWeight: 'bold' }}>
-            {formatEuro(yearTotals.pagatoNonRiscosso || 0)}
-          </div>
-          <div style={{ fontSize: 10, opacity: 0.8, marginTop: 2 }}>
-            {yearTotals.pagatoNonRiscossoCount || 0} occorrenze
-          </div>
-        </div>
-        {/* Card Ammontare Annulli */}
-        <div
-          style={{
-            background: '#b91c1c',
-            borderRadius: 12,
-            padding: 14,
-            color: 'white',
-          }}
-        >
-          <div style={{ fontSize: 11, opacity: 0.9 }}>🗑️ Ammontare Annulli</div>
-          <div style={{ fontSize: 18, fontWeight: 'bold' }}>
-            {formatEuro(yearTotals.ammontareAnnulli || 0)}
-          </div>
-          <div style={{ fontSize: 10, opacity: 0.8, marginTop: 2 }}>
-            {yearTotals.ammontareAnnulliCount || 0} occorrenze
-          </div>
-        </div>
+        ))}
       </div>
 
       {/* Info Box */}
       <div
         style={{
-          background: '#e0f2fe',
-          border: '2px solid #0284c7',
+          background: '#eff6ff',
+          border: '1px solid #bfdbfe',
           borderRadius: 8,
           padding: 15,
           marginBottom: 20,
@@ -1034,8 +972,8 @@ export default function ControlloMensile() {
         (viewMode === 'mese' && dailyComparison.some(d => d.hasDiscrepancy))) && (
         <div
           style={{
-            background: '#fef3c7',
-            border: '2px solid #ff9800',
+            background: '#fffbeb',
+            border: '1px solid #fde68a',
             borderRadius: 8,
             padding: 15,
             marginBottom: 20,
@@ -1060,7 +998,14 @@ export default function ControlloMensile() {
             data-testid="yearly-table"
           >
             <thead>
-              <tr style={{ background: '#f8fafc' }}>
+              <tr
+                  style={{
+                    background: '#f8fafc',
+                    fontSize: 11,
+                    textTransform: 'uppercase',
+                    color: '#64748b',
+                  }}
+                >
                 <th style={{ padding: 10, textAlign: 'left', borderBottom: '2px solid #e2e8f0' }}>
                   Mese
                 </th>
@@ -1069,7 +1014,6 @@ export default function ControlloMensile() {
                     padding: 10,
                     textAlign: 'right',
                     borderBottom: '2px solid #e2e8f0',
-                    background: '#dbeafe',
                   }}
                 >
                   POS RT (XML)
@@ -1079,7 +1023,6 @@ export default function ControlloMensile() {
                     padding: 10,
                     textAlign: 'right',
                     borderBottom: '2px solid #e2e8f0',
-                    background: '#ede9fe',
                   }}
                 >
                   POS Reale (Tuo)
@@ -1089,7 +1032,6 @@ export default function ControlloMensile() {
                     padding: 10,
                     textAlign: 'right',
                     borderBottom: '2px solid #e2e8f0',
-                    background: '#fce7f3',
                   }}
                 >
                   🏦 POS Banca
@@ -1102,7 +1044,6 @@ export default function ControlloMensile() {
                     padding: 10,
                     textAlign: 'right',
                     borderBottom: '2px solid #e2e8f0',
-                    background: '#fef3c7',
                   }}
                 >
                   Corr. Auto
@@ -1112,7 +1053,6 @@ export default function ControlloMensile() {
                     padding: 10,
                     textAlign: 'right',
                     borderBottom: '2px solid #e2e8f0',
-                    background: '#d1fae5',
                   }}
                 >
                   Corr. Man.
@@ -1125,7 +1065,6 @@ export default function ControlloMensile() {
                     padding: 10,
                     textAlign: 'right',
                     borderBottom: '2px solid #e2e8f0',
-                    background: '#ecfdf5',
                   }}
                 >
                   Versam.
@@ -1135,7 +1074,6 @@ export default function ControlloMensile() {
                     padding: 10,
                     textAlign: 'right',
                     borderBottom: '2px solid #e2e8f0',
-                    background: '#e0f2fe',
                   }}
                 >
                   Saldo
@@ -1174,7 +1112,7 @@ export default function ControlloMensile() {
                         padding: 10,
                         borderBottom: '1px solid #e2e8f0',
                         textAlign: 'right',
-                        background: '#f0f9ff',
+                        fontFamily: MONO,
                       }}
                     >
                       {row.posAuto > 0 ? formatEuro(row.posAuto) : '-'}
@@ -1184,7 +1122,7 @@ export default function ControlloMensile() {
                         padding: 10,
                         borderBottom: '1px solid #e2e8f0',
                         textAlign: 'right',
-                        background: '#faf5ff',
+                        fontFamily: MONO,
                       }}
                     >
                       {row.posManual > 0 ? formatEuro(row.posManual) : '-'}
@@ -1194,7 +1132,7 @@ export default function ControlloMensile() {
                         padding: 10,
                         borderBottom: '1px solid #e2e8f0',
                         textAlign: 'right',
-                        background: '#fdf2f8',
+                        fontFamily: MONO,
                       }}
                     >
                       {row.posBanca > 0 ? formatEuro(row.posBanca) : '-'}
@@ -1204,13 +1142,14 @@ export default function ControlloMensile() {
                         padding: 10,
                         borderBottom: '1px solid #e2e8f0',
                         textAlign: 'right',
+                        fontFamily: MONO,
                         fontWeight: Math.abs(row.posDiff) > 1 ? 'bold' : 'normal',
                         color:
                           Math.abs(row.posDiff) > 1
                             ? row.posDiff > 0
                               ? '#16a34a'
                               : '#dc2626'
-                            : '#666',
+                            : '#64748b',
                         fontSize: 12,
                       }}
                     >
@@ -1228,7 +1167,7 @@ export default function ControlloMensile() {
                         padding: 10,
                         borderBottom: '1px solid #e2e8f0',
                         textAlign: 'right',
-                        background: '#fffbeb',
+                        fontFamily: MONO,
                       }}
                     >
                       {row.corrispAuto > 0 ? formatEuro(row.corrispAuto) : '-'}
@@ -1238,7 +1177,7 @@ export default function ControlloMensile() {
                         padding: 10,
                         borderBottom: '1px solid #e2e8f0',
                         textAlign: 'right',
-                        background: '#ecfdf5',
+                        fontFamily: MONO,
                       }}
                     >
                       {row.corrispManual > 0 ? formatEuro(row.corrispManual) : '-'}
@@ -1248,13 +1187,14 @@ export default function ControlloMensile() {
                         padding: 10,
                         borderBottom: '1px solid #e2e8f0',
                         textAlign: 'right',
+                        fontFamily: MONO,
                         fontWeight: Math.abs(row.corrispDiff) > 1 ? 'bold' : 'normal',
                         color:
                           Math.abs(row.corrispDiff) > 1
                             ? row.corrispDiff > 0
                               ? '#16a34a'
                               : '#dc2626'
-                            : '#666',
+                            : '#64748b',
                         fontSize: 12,
                       }}
                     >
@@ -1272,7 +1212,7 @@ export default function ControlloMensile() {
                         padding: 12,
                         borderBottom: '1px solid #e2e8f0',
                         textAlign: 'right',
-                        background: '#f0fdf4',
+                        fontFamily: MONO,
                       }}
                     >
                       {row.versamenti > 0 ? formatEuro(row.versamenti) : '-'}
@@ -1282,7 +1222,7 @@ export default function ControlloMensile() {
                         padding: 12,
                         borderBottom: '1px solid #e2e8f0',
                         textAlign: 'right',
-                        background: '#e0f2fe',
+                        fontFamily: MONO,
                         fontWeight: 'bold',
                         color: row.saldoCassa >= 0 ? '#16a34a' : '#dc2626',
                       }}
@@ -1301,7 +1241,7 @@ export default function ControlloMensile() {
                           onClick={() => handleMonthClick(row.month)}
                           style={{
                             padding: '4px 8px',
-                            background: '#1e3a5f',
+                            background: '#0f2744',
                             color: 'white',
                             border: 'none',
                             borderRadius: 6,
@@ -1321,22 +1261,23 @@ export default function ControlloMensile() {
             </tbody>
             <tfoot>
               <tr
-                style={{ background: '#1e293b', color: 'white', fontWeight: 'bold', fontSize: 12 }}
+                style={{ background: '#0f2744', color: 'white', fontWeight: 'bold', fontSize: 12 }}
               >
                 <td style={{ padding: 10 }}>TOTALE {anno}</td>
-                <td style={{ padding: 10, textAlign: 'right' }}>
+                <td style={{ padding: 10, textAlign: 'right', fontFamily: MONO }}>
                   {formatEuro(yearTotals.posAuto)}
                 </td>
-                <td style={{ padding: 10, textAlign: 'right' }}>
+                <td style={{ padding: 10, textAlign: 'right', fontFamily: MONO }}>
                   {formatEuro(yearTotals.posManual)}
                 </td>
-                <td style={{ padding: 10, textAlign: 'right' }}>
+                <td style={{ padding: 10, textAlign: 'right', fontFamily: MONO }}>
                   {formatEuro(yearTotals.posBanca || 0)}
                 </td>
                 <td
                   style={{
                     padding: 10,
                     textAlign: 'right',
+                    fontFamily: MONO,
                     color:
                       Math.abs(yearTotals.posAuto - yearTotals.posManual) > 1
                         ? '#fbbf24'
@@ -1345,16 +1286,17 @@ export default function ControlloMensile() {
                 >
                   {formatEuro(yearTotals.posAuto - yearTotals.posManual)}
                 </td>
-                <td style={{ padding: 10, textAlign: 'right' }}>
+                <td style={{ padding: 10, textAlign: 'right', fontFamily: MONO }}>
                   {formatEuro(yearTotals.corrispettiviAuto)}
                 </td>
-                <td style={{ padding: 10, textAlign: 'right' }}>
+                <td style={{ padding: 10, textAlign: 'right', fontFamily: MONO }}>
                   {formatEuro(yearTotals.corrispettiviManual)}
                 </td>
                 <td
                   style={{
                     padding: 10,
                     textAlign: 'right',
+                    fontFamily: MONO,
                     color:
                       Math.abs(yearTotals.corrispettiviAuto - yearTotals.corrispettiviManual) > 1
                         ? '#fbbf24'
@@ -1363,10 +1305,10 @@ export default function ControlloMensile() {
                 >
                   {formatEuro(yearTotals.corrispettiviAuto - yearTotals.corrispettiviManual)}
                 </td>
-                <td style={{ padding: 10, textAlign: 'right' }}>
+                <td style={{ padding: 10, textAlign: 'right', fontFamily: MONO }}>
                   {formatEuro(yearTotals.versamenti)}
                 </td>
-                <td style={{ padding: 10, textAlign: 'right' }}>
+                <td style={{ padding: 10, textAlign: 'right', fontFamily: MONO }}>
                   {formatEuro(yearTotals.saldoCassa)}
                 </td>
                 <td style={{ padding: 10 }}></td>
@@ -1384,7 +1326,14 @@ export default function ControlloMensile() {
             data-testid="monthly-table"
           >
             <thead>
-              <tr style={{ background: '#f8fafc' }}>
+              <tr
+                  style={{
+                    background: '#f8fafc',
+                    fontSize: 11,
+                    textTransform: 'uppercase',
+                    color: '#64748b',
+                  }}
+                >
                 <th style={{ padding: 12, textAlign: 'left', borderBottom: '2px solid #e2e8f0' }}>
                   Data
                 </th>
@@ -1393,7 +1342,6 @@ export default function ControlloMensile() {
                     padding: 12,
                     textAlign: 'right',
                     borderBottom: '2px solid #e2e8f0',
-                    background: '#dbeafe',
                   }}
                 >
                   POS RT (XML)
@@ -1403,7 +1351,6 @@ export default function ControlloMensile() {
                     padding: 12,
                     textAlign: 'right',
                     borderBottom: '2px solid #e2e8f0',
-                    background: '#ede9fe',
                   }}
                 >
                   POS Reale (Tuo)
@@ -1416,7 +1363,6 @@ export default function ControlloMensile() {
                     padding: 12,
                     textAlign: 'right',
                     borderBottom: '2px solid #e2e8f0',
-                    background: '#fef3c7',
                   }}
                 >
                   Corrisp. Auto
@@ -1426,7 +1372,6 @@ export default function ControlloMensile() {
                     padding: 12,
                     textAlign: 'right',
                     borderBottom: '2px solid #e2e8f0',
-                    background: '#d1fae5',
                   }}
                 >
                   Corrisp. Man.
@@ -1439,7 +1384,6 @@ export default function ControlloMensile() {
                     padding: 12,
                     textAlign: 'right',
                     borderBottom: '2px solid #e2e8f0',
-                    background: '#ecfdf5',
                   }}
                 >
                   Versamento
@@ -1449,7 +1393,6 @@ export default function ControlloMensile() {
                     padding: 12,
                     textAlign: 'right',
                     borderBottom: '2px solid #e2e8f0',
-                    background: '#e0f2fe',
                   }}
                 >
                   Saldo Cassa
@@ -1485,7 +1428,7 @@ export default function ControlloMensile() {
                         padding: 10,
                         borderBottom: '1px solid #e2e8f0',
                         textAlign: 'right',
-                        background: '#f0f9ff',
+                        fontFamily: MONO,
                       }}
                     >
                       {row.posAuto > 0 ? formatEuro(row.posAuto) : '-'}
@@ -1495,7 +1438,7 @@ export default function ControlloMensile() {
                         padding: 10,
                         borderBottom: '1px solid #e2e8f0',
                         textAlign: 'right',
-                        background: '#faf5ff',
+                        fontFamily: MONO,
                       }}
                     >
                       {row.posManual > 0 ? formatEuro(row.posManual) : '-'}
@@ -1505,13 +1448,14 @@ export default function ControlloMensile() {
                         padding: 10,
                         borderBottom: '1px solid #e2e8f0',
                         textAlign: 'right',
+                        fontFamily: MONO,
                         fontWeight: Math.abs(row.posDiff) > 1 ? 'bold' : 'normal',
                         color:
                           Math.abs(row.posDiff) > 1
                             ? row.posDiff > 0
                               ? '#16a34a'
                               : '#dc2626'
-                            : '#666',
+                            : '#64748b',
                       }}
                     >
                       {Math.abs(row.posDiff) > 0.01 ? (
@@ -1528,7 +1472,7 @@ export default function ControlloMensile() {
                         padding: 10,
                         borderBottom: '1px solid #e2e8f0',
                         textAlign: 'right',
-                        background: '#fffbeb',
+                        fontFamily: MONO,
                       }}
                     >
                       {row.corrispettivoAuto > 0 ? formatEuro(row.corrispettivoAuto) : '-'}
@@ -1538,7 +1482,7 @@ export default function ControlloMensile() {
                         padding: 10,
                         borderBottom: '1px solid #e2e8f0',
                         textAlign: 'right',
-                        background: '#ecfdf5',
+                        fontFamily: MONO,
                       }}
                     >
                       {row.corrispettivoManual > 0 ? formatEuro(row.corrispettivoManual) : '-'}
@@ -1548,13 +1492,14 @@ export default function ControlloMensile() {
                         padding: 10,
                         borderBottom: '1px solid #e2e8f0',
                         textAlign: 'right',
+                        fontFamily: MONO,
                         fontWeight: Math.abs(row.corrispettivoDiff) > 1 ? 'bold' : 'normal',
                         color:
                           Math.abs(row.corrispettivoDiff) > 1
                             ? row.corrispettivoDiff > 0
                               ? '#16a34a'
                               : '#dc2626'
-                            : '#666',
+                            : '#64748b',
                       }}
                     >
                       {Math.abs(row.corrispettivoDiff) > 0.01 ? (
@@ -1571,7 +1516,7 @@ export default function ControlloMensile() {
                         padding: 10,
                         borderBottom: '1px solid #e2e8f0',
                         textAlign: 'right',
-                        background: '#f0fdf4',
+                        fontFamily: MONO,
                       }}
                     >
                       {row.versamento > 0 ? formatEuro(row.versamento) : '-'}
@@ -1581,7 +1526,7 @@ export default function ControlloMensile() {
                         padding: 10,
                         borderBottom: '1px solid #e2e8f0',
                         textAlign: 'right',
-                        background: '#e0f2fe',
+                        fontFamily: MONO,
                         fontWeight: 'bold',
                         color: row.saldoCassa >= 0 ? '#16a34a' : '#dc2626',
                       }}
@@ -1593,32 +1538,32 @@ export default function ControlloMensile() {
               )}
             </tbody>
             <tfoot>
-              <tr style={{ background: '#1e293b', color: 'white', fontWeight: 'bold' }}>
+              <tr style={{ background: '#0f2744', color: 'white', fontWeight: 'bold' }}>
                 <td style={{ padding: 12 }}>
                   TOTALE {monthNames[meseSelezionato - 1].toUpperCase()}
                 </td>
-                <td style={{ padding: 12, textAlign: 'right' }}>
+                <td style={{ padding: 12, textAlign: 'right', fontFamily: MONO }}>
                   {formatEuro(dailyComparison.reduce((s, d) => s + d.posAuto, 0))}
                 </td>
-                <td style={{ padding: 12, textAlign: 'right' }}>
+                <td style={{ padding: 12, textAlign: 'right', fontFamily: MONO }}>
                   {formatEuro(dailyComparison.reduce((s, d) => s + d.posManual, 0))}
                 </td>
-                <td style={{ padding: 12, textAlign: 'right' }}>
+                <td style={{ padding: 12, textAlign: 'right', fontFamily: MONO }}>
                   {formatEuro(dailyComparison.reduce((s, d) => s + d.posDiff, 0))}
                 </td>
-                <td style={{ padding: 12, textAlign: 'right' }}>
+                <td style={{ padding: 12, textAlign: 'right', fontFamily: MONO }}>
                   {formatEuro(dailyComparison.reduce((s, d) => s + d.corrispettivoAuto, 0))}
                 </td>
-                <td style={{ padding: 12, textAlign: 'right' }}>
+                <td style={{ padding: 12, textAlign: 'right', fontFamily: MONO }}>
                   {formatEuro(dailyComparison.reduce((s, d) => s + d.corrispettivoManual, 0))}
                 </td>
-                <td style={{ padding: 12, textAlign: 'right' }}>
+                <td style={{ padding: 12, textAlign: 'right', fontFamily: MONO }}>
                   {formatEuro(dailyComparison.reduce((s, d) => s + d.corrispettivoDiff, 0))}
                 </td>
-                <td style={{ padding: 12, textAlign: 'right' }}>
+                <td style={{ padding: 12, textAlign: 'right', fontFamily: MONO }}>
                   {formatEuro(dailyComparison.reduce((s, d) => s + d.versamento, 0))}
                 </td>
-                <td style={{ padding: 12, textAlign: 'right' }}>
+                <td style={{ padding: 12, textAlign: 'right', fontFamily: MONO }}>
                   {formatEuro(dailyComparison.reduce((s, d) => s + d.saldoCassa, 0))}
                 </td>
               </tr>
@@ -1647,19 +1592,19 @@ export default function ControlloMensile() {
           }}
         >
           <div>
-            <strong style={{ color: '#1e3a5f' }}>POS RT (chiusura)</strong> = Σ
+            <strong style={{ color: '#0f2744' }}>POS RT (chiusura)</strong> = Σ
             corrispettivi.pagato_elettronico (da XML)
           </div>
           <div>
-            <strong style={{ color: '#8b5cf6' }}>POS Reale (Tuo)</strong> = Σ prima_nota_cassa WHERE
+            <strong style={{ color: '#0f2744' }}>POS Reale (Tuo)</strong> = Σ prima_nota_cassa WHERE
             categoria="POS"
           </div>
           <div>
-            <strong style={{ color: '#ff9800' }}>Corrisp. Auto</strong> = Σ corrispettivi.totale (da
+            <strong style={{ color: '#d97706' }}>Corrisp. Auto</strong> = Σ corrispettivi.totale (da
             XML)
           </div>
           <div>
-            <strong style={{ color: '#4caf50' }}>Corrisp. Man.</strong> = Σ prima_nota_cassa WHERE
+            <strong style={{ color: '#16a34a' }}>Corrisp. Man.</strong> = Σ prima_nota_cassa WHERE
             categoria="Corrispettivi" AND tipo="entrata"
           </div>
           <div>
@@ -1667,11 +1612,11 @@ export default function ControlloMensile() {
             categoria="Versamento" AND tipo="uscita"
           </div>
           <div>
-            <strong style={{ color: '#0ea5e9' }}>Saldo Cassa</strong> = Σ entrate - Σ uscite (Prima
+            <strong style={{ color: '#3b82f6' }}>Saldo Cassa</strong> = Σ entrate - Σ uscite (Prima
             Nota Cassa)
           </div>
         </div>
-        <div style={{ marginTop: 10, color: '#666' }}>
+        <div style={{ marginTop: 10, color: '#64748b' }}>
           ⚠️ Righe gialle = Discrepanza &gt; €1 tra dati Auto e Manuali
         </div>
       </div>

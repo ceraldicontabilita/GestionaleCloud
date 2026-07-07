@@ -6,6 +6,8 @@ import { formatEuro } from '../lib/utils';
 import { PageLayout, PageSection, PageGrid, PageLoading } from '../components/PageLayout';
 import { FileText, Download, TrendingUp, TrendingDown, Scale } from 'lucide-react';
 
+const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace';
+
 export default function Bilancio() {
   const { anno } = useAnnoGlobale();
   const [statoPatrimoniale, setStatoPatrimoniale] = useState(null);
@@ -74,12 +76,19 @@ export default function Bilancio() {
     return (
       <PageGrid cols={2} gap={24}>
         {/* ATTIVO */}
-        <div style={{ background: '#f0fdf4', borderRadius: 12, padding: 24 }}>
+        <div
+          style={{
+            background: 'white',
+            border: '1px solid #e2e8f0',
+            borderRadius: 8,
+            padding: 24,
+          }}
+        >
           <h3
             style={{
-              color: '#166534',
+              color: '#16a34a',
               marginBottom: 20,
-              borderBottom: '2px solid #22c55e',
+              borderBottom: '2px solid #16a34a',
               paddingBottom: 10,
               display: 'flex',
               alignItems: 'center',
@@ -97,19 +106,25 @@ export default function Bilancio() {
               <tbody>
                 <tr>
                   <td style={{ padding: '8px 0', color: '#374151' }}>Cassa</td>
-                  <td style={{ padding: '8px 0', textAlign: 'right', fontWeight: 500 }}>
+                  <td
+                    style={{ padding: '8px 0', textAlign: 'right', fontWeight: 500, fontFamily: MONO }}
+                  >
                     {formatEuro(attivo.disponibilita_liquide.cassa)}
                   </td>
                 </tr>
                 <tr>
                   <td style={{ padding: '8px 0', color: '#374151' }}>Banca</td>
-                  <td style={{ padding: '8px 0', textAlign: 'right', fontWeight: 500 }}>
+                  <td
+                    style={{ padding: '8px 0', textAlign: 'right', fontWeight: 500, fontFamily: MONO }}
+                  >
                     {formatEuro(attivo.disponibilita_liquide.banca)}
                   </td>
                 </tr>
-                <tr style={{ borderTop: '1px solid #86efac' }}>
+                <tr style={{ borderTop: '1px solid #e2e8f0' }}>
                   <td style={{ padding: '8px 0', fontWeight: 600 }}>Totale</td>
-                  <td style={{ padding: '8px 0', textAlign: 'right', fontWeight: 600 }}>
+                  <td
+                    style={{ padding: '8px 0', textAlign: 'right', fontWeight: 600, fontFamily: MONO }}
+                  >
                     {formatEuro(attivo.disponibilita_liquide.totale)}
                   </td>
                 </tr>
@@ -124,7 +139,9 @@ export default function Bilancio() {
               <tbody>
                 <tr>
                   <td style={{ padding: '8px 0', color: '#374151' }}>Crediti vs Clienti</td>
-                  <td style={{ padding: '8px 0', textAlign: 'right', fontWeight: 500 }}>
+                  <td
+                    style={{ padding: '8px 0', textAlign: 'right', fontWeight: 500, fontFamily: MONO }}
+                  >
                     {formatEuro(attivo.crediti.crediti_vs_clienti)}
                   </td>
                 </tr>
@@ -136,28 +153,37 @@ export default function Bilancio() {
             style={{
               marginTop: 20,
               padding: 16,
-              background: '#22c55e',
+              background: '#0f2744',
               color: 'white',
               borderRadius: 8,
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: 8,
             }}
           >
-            <span style={{ fontSize: 18, fontWeight: 600 }}>TOTALE ATTIVO</span>
-            <span style={{ fontSize: 24, fontWeight: 700 }}>
+            <span style={{ fontSize: 16, fontWeight: 600 }}>TOTALE ATTIVO</span>
+            <span style={{ fontSize: 24, fontWeight: 700, fontFamily: MONO }}>
               {formatEuro(attivo.totale_attivo)}
             </span>
           </div>
         </div>
 
         {/* PASSIVO */}
-        <div style={{ background: '#fef2f2', borderRadius: 12, padding: 24 }}>
+        <div
+          style={{
+            background: 'white',
+            border: '1px solid #e2e8f0',
+            borderRadius: 8,
+            padding: 24,
+          }}
+        >
           <h3
             style={{
-              color: '#991b1b',
+              color: '#dc2626',
               marginBottom: 20,
-              borderBottom: '2px solid #ef4444',
+              borderBottom: '2px solid #dc2626',
               paddingBottom: 10,
               display: 'flex',
               alignItems: 'center',
@@ -173,7 +199,9 @@ export default function Bilancio() {
               <tbody>
                 <tr>
                   <td style={{ padding: '8px 0', color: '#374151' }}>Debiti vs Fornitori</td>
-                  <td style={{ padding: '8px 0', textAlign: 'right', fontWeight: 500 }}>
+                  <td
+                    style={{ padding: '8px 0', textAlign: 'right', fontWeight: 500, fontFamily: MONO }}
+                  >
                     {formatEuro(passivo.debiti.debiti_vs_fornitori)}
                   </td>
                 </tr>
@@ -182,7 +210,7 @@ export default function Bilancio() {
             </div>
           </div>
           <div style={{ marginBottom: 20 }}>
-            <h4 style={{ color: '#15803d', fontSize: 14, marginBottom: 12 }}>Patrimonio Netto</h4>
+            <h4 style={{ color: '#16a34a', fontSize: 14, marginBottom: 12 }}>Patrimonio Netto</h4>
             <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <tbody>
@@ -193,6 +221,7 @@ export default function Bilancio() {
                       padding: '8px 0',
                       textAlign: 'right',
                       fontWeight: 600,
+                      fontFamily: MONO,
                       color: passivo.patrimonio_netto >= 0 ? '#16a34a' : '#dc2626',
                     }}
                   >
@@ -207,16 +236,18 @@ export default function Bilancio() {
             style={{
               marginTop: 20,
               padding: 16,
-              background: '#ef4444',
+              background: '#0f2744',
               color: 'white',
               borderRadius: 8,
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: 8,
             }}
           >
-            <span style={{ fontSize: 18, fontWeight: 600 }}>TOTALE PASSIVO</span>
-            <span style={{ fontSize: 24, fontWeight: 700 }}>
+            <span style={{ fontSize: 16, fontWeight: 600 }}>TOTALE PASSIVO</span>
+            <span style={{ fontSize: 24, fontWeight: 700, fontFamily: MONO }}>
               {formatEuro(passivo.totale_passivo)}
             </span>
           </div>
@@ -232,12 +263,20 @@ export default function Bilancio() {
     return (
       <div style={{ maxWidth: 800, margin: '0 auto' }}>
         {/* RICAVI */}
-        <div style={{ background: '#f0fdf4', borderRadius: 12, padding: 24, marginBottom: 20 }}>
+        <div
+          style={{
+            background: 'white',
+            border: '1px solid #e2e8f0',
+            borderRadius: 8,
+            padding: 24,
+            marginBottom: 20,
+          }}
+        >
           <h3
             style={{
-              color: '#166534',
+              color: '#16a34a',
               marginBottom: 20,
-              borderBottom: '2px solid #22c55e',
+              borderBottom: '2px solid #16a34a',
               paddingBottom: 10,
             }}
           >
@@ -251,7 +290,13 @@ export default function Bilancio() {
                   Corrispettivi (Imponibile)
                 </td>
                 <td
-                  style={{ padding: '12px 0', textAlign: 'right', fontWeight: 500, fontSize: 16 }}
+                  style={{
+                    padding: '12px 0',
+                    textAlign: 'right',
+                    fontWeight: 500,
+                    fontSize: 16,
+                    fontFamily: MONO,
+                  }}
                 >
                   {formatEuro(ricavi.corrispettivi)}
                 </td>
@@ -271,7 +316,7 @@ export default function Bilancio() {
                   <td></td>
                 </tr>
               )}
-              <tr style={{ borderTop: '2px solid #22c55e', background: '#dcfce7' }}>
+              <tr style={{ borderTop: '2px solid #16a34a', background: '#dcfce7' }}>
                 <td style={{ padding: '12px 0', fontWeight: 700, fontSize: 16 }}>TOTALE RICAVI</td>
                 <td
                   style={{
@@ -279,6 +324,7 @@ export default function Bilancio() {
                     textAlign: 'right',
                     fontWeight: 700,
                     fontSize: 18,
+                    fontFamily: MONO,
                     color: '#16a34a',
                   }}
                 >
@@ -291,12 +337,20 @@ export default function Bilancio() {
         </div>
 
         {/* COSTI */}
-        <div style={{ background: '#fef2f2', borderRadius: 12, padding: 24, marginBottom: 20 }}>
+        <div
+          style={{
+            background: 'white',
+            border: '1px solid #e2e8f0',
+            borderRadius: 8,
+            padding: 24,
+            marginBottom: 20,
+          }}
+        >
           <h3
             style={{
-              color: '#991b1b',
+              color: '#dc2626',
               marginBottom: 20,
-              borderBottom: '2px solid #ef4444',
+              borderBottom: '2px solid #dc2626',
               paddingBottom: 10,
             }}
           >
@@ -310,7 +364,13 @@ export default function Bilancio() {
                   Acquisti (Imponibile)
                 </td>
                 <td
-                  style={{ padding: '12px 0', textAlign: 'right', fontWeight: 500, fontSize: 16 }}
+                  style={{
+                    padding: '12px 0',
+                    textAlign: 'right',
+                    fontWeight: 500,
+                    fontSize: 16,
+                    fontFamily: MONO,
+                  }}
                 >
                   {formatEuro(costi.acquisti)}
                 </td>
@@ -326,6 +386,7 @@ export default function Bilancio() {
                       textAlign: 'right',
                       fontWeight: 500,
                       fontSize: 16,
+                      fontFamily: MONO,
                       color: '#16a34a',
                     }}
                   >
@@ -333,7 +394,7 @@ export default function Bilancio() {
                   </td>
                 </tr>
               )}
-              <tr style={{ borderTop: '2px solid #ef4444', background: '#fee2e2' }}>
+              <tr style={{ borderTop: '2px solid #dc2626', background: '#fee2e2' }}>
                 <td style={{ padding: '12px 0', fontWeight: 700, fontSize: 16 }}>
                   TOTALE COSTI (Netto)
                 </td>
@@ -343,6 +404,7 @@ export default function Bilancio() {
                     textAlign: 'right',
                     fontWeight: 700,
                     fontSize: 18,
+                    fontFamily: MONO,
                     color: '#dc2626',
                   }}
                 >
@@ -357,19 +419,25 @@ export default function Bilancio() {
         {/* RISULTATO */}
         <div
           style={{
-            background: isProfit
-              ? '#15803d'
-              : '#b91c1c',
-            borderRadius: 16,
+            background: isProfit ? '#16a34a' : '#dc2626',
+            borderRadius: 8,
             padding: 32,
             color: 'white',
             textAlign: 'center',
           }}
         >
-          <div style={{ fontSize: 14, opacity: 0.9, marginBottom: 8 }}>
+          <div
+            style={{
+              fontSize: 12,
+              textTransform: 'uppercase',
+              letterSpacing: 0.5,
+              opacity: 0.9,
+              marginBottom: 8,
+            }}
+          >
             {isProfit ? 'UTILE DI ESERCIZIO' : 'PERDITA DI ESERCIZIO'}
           </div>
-          <div style={{ fontSize: 42, fontWeight: 700 }}>
+          <div style={{ fontSize: 'clamp(28px, 6vw, 40px)', fontWeight: 700, fontFamily: MONO }}>
             {formatEuro(Math.abs(risultato.utile_perdita))}
           </div>
           <div
@@ -377,7 +445,7 @@ export default function Bilancio() {
               marginTop: 16,
               padding: '8px 16px',
               background: 'rgba(255,255,255,0.2)',
-              borderRadius: 20,
+              borderRadius: 6,
               display: 'inline-block',
               fontSize: 13,
             }}
@@ -402,9 +470,11 @@ export default function Bilancio() {
             data-testid="bilancio-mese-select"
             style={{
               padding: '10px 16px',
-              borderRadius: 8,
+              minHeight: 40,
+              borderRadius: 6,
               border: '1px solid #e2e8f0',
-              fontSize: 14,
+              background: 'white',
+              fontSize: 13,
               fontWeight: 500,
               cursor: 'pointer',
             }}
@@ -422,11 +492,12 @@ export default function Bilancio() {
             data-testid="export-pdf-btn"
             style={{
               padding: '10px 20px',
-              borderRadius: 8,
+              minHeight: 40,
+              borderRadius: 6,
               border: 'none',
-              background: '#1e293b',
+              background: '#0f2744',
               color: 'white',
-              fontSize: 14,
+              fontSize: 13,
               fontWeight: 600,
               cursor: 'pointer',
               display: 'flex',
@@ -446,11 +517,12 @@ export default function Bilancio() {
             data-testid="export-confronto-pdf-btn"
             style={{
               padding: '10px 20px',
-              borderRadius: 8,
-              border: 'none',
-              background: '#7c3aed',
-              color: 'white',
-              fontSize: 14,
+              minHeight: 40,
+              borderRadius: 6,
+              border: '1px solid #e2e8f0',
+              background: 'white',
+              color: '#0f2744',
+              fontSize: 13,
               fontWeight: 600,
               cursor: 'pointer',
               display: 'flex',
@@ -464,19 +536,28 @@ export default function Bilancio() {
       }
     >
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: 0, marginBottom: 24, borderBottom: '2px solid #e2e8f0' }}>
+      <div
+        style={{
+          display: 'flex',
+          gap: 0,
+          marginBottom: 24,
+          borderBottom: '2px solid #e2e8f0',
+          flexWrap: 'wrap',
+        }}
+      >
         <button
           onClick={() => handleTabChange('patrimoniale')}
           data-testid="tab-stato-patrimoniale"
           style={{
-            padding: '14px 28px',
+            padding: '12px 24px',
+            minHeight: 40,
             border: 'none',
-            background: activeTab === 'patrimoniale' ? '#1e293b' : 'transparent',
+            background: activeTab === 'patrimoniale' ? '#0f2744' : 'transparent',
             color: activeTab === 'patrimoniale' ? 'white' : '#64748b',
-            fontSize: 15,
+            fontSize: 14,
             fontWeight: 600,
             cursor: 'pointer',
-            borderRadius: '8px 8px 0 0',
+            borderRadius: '6px 6px 0 0',
           }}
         >
           Stato Patrimoniale
@@ -485,14 +566,15 @@ export default function Bilancio() {
           onClick={() => handleTabChange('economico')}
           data-testid="tab-conto-economico"
           style={{
-            padding: '14px 28px',
+            padding: '12px 24px',
+            minHeight: 40,
             border: 'none',
-            background: activeTab === 'economico' ? '#1e293b' : 'transparent',
+            background: activeTab === 'economico' ? '#0f2744' : 'transparent',
             color: activeTab === 'economico' ? 'white' : '#64748b',
-            fontSize: 15,
+            fontSize: 14,
             fontWeight: 600,
             cursor: 'pointer',
-            borderRadius: '8px 8px 0 0',
+            borderRadius: '6px 6px 0 0',
           }}
         >
           Conto Economico

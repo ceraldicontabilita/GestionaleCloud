@@ -20,6 +20,8 @@ import {
   Info,
 } from 'lucide-react';
 
+const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace';
+
 export default function Finanziaria() {
   const { anno: selectedYear } = useAnnoGlobale();
   const [summary, setSummary] = useState(null);
@@ -43,20 +45,32 @@ export default function Finanziaria() {
     }
   }
 
-  const KPICard = ({ icon: Icon, label, value, subtext, color, bgColor }) => (
+  const KPICard = ({ icon: Icon, label, value, subtext, color }) => (
     <div
       style={{
-        background: bgColor || '#f8fafc',
-        borderRadius: 12,
+        background: 'white',
+        borderRadius: 8,
         padding: 20,
         border: '1px solid #e2e8f0',
+        borderLeft: '4px solid #0f2744',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
         <Icon size={18} color={color || '#64748b'} />
-        <span style={{ fontSize: 13, color: '#64748b' }}>{label}</span>
+        <span
+          style={{
+            fontSize: 11,
+            color: '#64748b',
+            textTransform: 'uppercase',
+            letterSpacing: 0.5,
+          }}
+        >
+          {label}
+        </span>
       </div>
-      <div style={{ fontSize: 28, fontWeight: 700, color: color || '#1e293b' }}>{value}</div>
+      <div style={{ fontSize: 24, fontWeight: 700, fontFamily: MONO, color: color || '#0f2744' }}>
+        {value}
+      </div>
       {subtext && <div style={{ fontSize: 12, color: '#64748b', marginTop: 6 }}>{subtext}</div>}
     </div>
   );
@@ -83,12 +97,13 @@ export default function Finanziaria() {
       actions={
         <div
           style={{
-            background: '#dbeafe',
+            background: '#eff6ff',
+            border: '1px solid #bfdbfe',
             padding: '10px 20px',
-            borderRadius: 8,
+            borderRadius: 6,
             color: '#1e40af',
             fontWeight: 600,
-            fontSize: 14,
+            fontSize: 13,
           }}
         >
           📅 Anno: {selectedYear}
@@ -99,22 +114,22 @@ export default function Finanziaria() {
       {hasNoData && (
         <div
           style={{
-            background: '#fff3cd',
-            borderRadius: 12,
+            background: '#fffbeb',
+            borderRadius: 8,
             padding: 16,
             marginBottom: 20,
-            border: '1px solid #ffc107',
+            border: '1px solid #fde68a',
             display: 'flex',
             alignItems: 'center',
             gap: 12,
           }}
         >
-          <AlertCircle size={24} color="#856404" />
+          <AlertCircle size={24} color="#d97706" />
           <div>
-            <div style={{ fontWeight: 600, color: '#856404' }}>
+            <div style={{ fontWeight: 600, color: '#92400e' }}>
               Nessun movimento registrato per {selectedYear}
             </div>
-            <div style={{ fontSize: 13, color: '#856404', marginTop: 4 }}>
+            <div style={{ fontSize: 13, color: '#92400e', marginTop: 4 }}>
               Se hai dati per altri anni, seleziona un anno diverso dalla barra laterale.
             </div>
           </div>
@@ -129,7 +144,6 @@ export default function Finanziaria() {
           value={formatEuro(summary?.total_income)}
           subtext={`Cassa: ${formatEuro(summary?.cassa?.entrate)} | Banca: ${formatEuro(summary?.banca?.entrate)}`}
           color="#16a34a"
-          bgColor="#f0fdf4"
         />
         <KPICard
           icon={TrendingDown}
@@ -137,14 +151,12 @@ export default function Finanziaria() {
           value={formatEuro(summary?.total_expenses)}
           subtext={`Cassa: ${formatEuro(summary?.cassa?.uscite)} | Banca: ${formatEuro(summary?.banca?.uscite)}`}
           color="#dc2626"
-          bgColor="#fef2f2"
         />
         <KPICard
           icon={Wallet}
           label="Saldo"
           value={formatEuro(summary?.balance)}
-          color={summary?.balance >= 0 ? '#2563eb' : '#ea580c'}
-          bgColor={summary?.balance >= 0 ? '#eff6ff' : '#fff7ed'}
+          color={summary?.balance >= 0 ? '#0f2744' : '#dc2626'}
         />
       </PageGrid>
 
@@ -154,27 +166,41 @@ export default function Finanziaria() {
           IVA estratta automaticamente da Corrispettivi XML (vendite) e Fatture XML (acquisti)
         </p>
         <PageGrid cols={3} gap={16}>
-          <div style={{ background: '#fff7ed', padding: 16, borderRadius: 8 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: '#c2410c', marginBottom: 4 }}>
+          <div
+            style={{
+              background: '#fffbeb',
+              border: '1px solid #fde68a',
+              padding: 16,
+              borderRadius: 8,
+            }}
+          >
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#92400e', marginBottom: 4 }}>
               📤 IVA a DEBITO (Corrispettivi)
             </div>
-            <div style={{ fontSize: 24, fontWeight: 700, color: '#ea580c' }}>
+            <div style={{ fontSize: 24, fontWeight: 700, fontFamily: MONO, color: '#d97706' }}>
               {formatEuro(summary?.vat_debit)}
             </div>
-            <div style={{ fontSize: 12, color: '#78716c', marginTop: 8 }}>
+            <div style={{ fontSize: 12, color: '#64748b', marginTop: 8 }}>
               Da {summary?.corrispettivi?.count || 0} corrispettivi
               <br />
               Totale vendite: {formatEuro(summary?.corrispettivi?.totale)}
             </div>
           </div>
-          <div style={{ background: '#f0fdf4', padding: 16, borderRadius: 8 }}>
+          <div
+            style={{
+              background: '#f0fdf4',
+              border: '1px solid #bbf7d0',
+              padding: 16,
+              borderRadius: 8,
+            }}
+          >
             <div style={{ fontSize: 12, fontWeight: 600, color: '#15803d', marginBottom: 4 }}>
               📥 IVA a CREDITO (Fatture)
             </div>
-            <div style={{ fontSize: 24, fontWeight: 700, color: '#16a34a' }}>
+            <div style={{ fontSize: 24, fontWeight: 700, fontFamily: MONO, color: '#16a34a' }}>
               {formatEuro(summary?.vat_credit)}
             </div>
-            <div style={{ fontSize: 12, color: '#78716c', marginTop: 8 }}>
+            <div style={{ fontSize: 12, color: '#64748b', marginTop: 8 }}>
               Da {summary?.fatture?.count || 0} fatture
               <br />
               Totale acquisti: {formatEuro(summary?.fatture?.totale)}
@@ -183,6 +209,7 @@ export default function Finanziaria() {
           <div
             style={{
               background: summary?.vat_balance > 0 ? '#fef2f2' : '#f0fdf4',
+              border: `1px solid ${summary?.vat_balance > 0 ? '#fecaca' : '#bbf7d0'}`,
               padding: 16,
               borderRadius: 8,
             }}
@@ -194,6 +221,7 @@ export default function Finanziaria() {
               style={{
                 fontSize: 24,
                 fontWeight: 700,
+                fontFamily: MONO,
                 color: summary?.vat_balance > 0 ? '#dc2626' : '#16a34a',
               }}
             >
@@ -205,7 +233,7 @@ export default function Finanziaria() {
                   background: summary?.vat_balance > 0 ? '#dc2626' : '#16a34a',
                   color: 'white',
                   padding: '3px 10px',
-                  borderRadius: 12,
+                  borderRadius: 6,
                   fontSize: 11,
                   fontWeight: 600,
                 }}
@@ -220,9 +248,17 @@ export default function Finanziaria() {
       {/* Dettaglio Prima Nota */}
       <PageSection title="Dettaglio Prima Nota" icon="📒" style={{ marginTop: 20 }}>
         <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
-            <tr style={{ borderBottom: '2px solid #e2e8f0' }}>
+            <tr
+              style={{
+                background: '#f8fafc',
+                borderBottom: '1px solid #e2e8f0',
+                fontSize: 11,
+                textTransform: 'uppercase',
+                color: '#64748b',
+              }}
+            >
               <th style={{ padding: 12, textAlign: 'left', fontWeight: 600 }}>Conto</th>
               <th style={{ padding: 12, textAlign: 'right', fontWeight: 600 }}>Entrate</th>
               <th style={{ padding: 12, textAlign: 'right', fontWeight: 600 }}>Uscite</th>
@@ -236,13 +272,29 @@ export default function Finanziaria() {
                   <Wallet size={16} color="#64748b" /> Cassa
                 </span>
               </td>
-              <td style={{ padding: 12, textAlign: 'right', color: '#16a34a', fontWeight: 500 }}>
+              <td
+                style={{
+                  padding: 12,
+                  textAlign: 'right',
+                  color: '#16a34a',
+                  fontWeight: 500,
+                  fontFamily: MONO,
+                }}
+              >
                 {formatEuro(summary?.cassa?.entrate)}
               </td>
-              <td style={{ padding: 12, textAlign: 'right', color: '#dc2626', fontWeight: 500 }}>
+              <td
+                style={{
+                  padding: 12,
+                  textAlign: 'right',
+                  color: '#dc2626',
+                  fontWeight: 500,
+                  fontFamily: MONO,
+                }}
+              >
                 {formatEuro(summary?.cassa?.uscite)}
               </td>
-              <td style={{ padding: 12, textAlign: 'right', fontWeight: 600 }}>
+              <td style={{ padding: 12, textAlign: 'right', fontWeight: 600, fontFamily: MONO }}>
                 {formatEuro(summary?.cassa?.saldo)}
               </td>
             </tr>
@@ -252,13 +304,29 @@ export default function Finanziaria() {
                   <Building2 size={16} color="#64748b" /> Banca
                 </span>
               </td>
-              <td style={{ padding: 12, textAlign: 'right', color: '#16a34a', fontWeight: 500 }}>
+              <td
+                style={{
+                  padding: 12,
+                  textAlign: 'right',
+                  color: '#16a34a',
+                  fontWeight: 500,
+                  fontFamily: MONO,
+                }}
+              >
                 {formatEuro(summary?.banca?.entrate)}
               </td>
-              <td style={{ padding: 12, textAlign: 'right', color: '#dc2626', fontWeight: 500 }}>
+              <td
+                style={{
+                  padding: 12,
+                  textAlign: 'right',
+                  color: '#dc2626',
+                  fontWeight: 500,
+                  fontFamily: MONO,
+                }}
+              >
                 {formatEuro(summary?.banca?.uscite)}
               </td>
-              <td style={{ padding: 12, textAlign: 'right', fontWeight: 600 }}>
+              <td style={{ padding: 12, textAlign: 'right', fontWeight: 600, fontFamily: MONO }}>
                 {formatEuro(summary?.banca?.saldo)}
               </td>
             </tr>
@@ -269,10 +337,26 @@ export default function Finanziaria() {
                 </span>
               </td>
               <td style={{ padding: 12, textAlign: 'right' }}>-</td>
-              <td style={{ padding: 12, textAlign: 'right', color: '#dc2626', fontWeight: 500 }}>
+              <td
+                style={{
+                  padding: 12,
+                  textAlign: 'right',
+                  color: '#dc2626',
+                  fontWeight: 500,
+                  fontFamily: MONO,
+                }}
+              >
                 {formatEuro(summary?.salari?.totale)}
               </td>
-              <td style={{ padding: 12, textAlign: 'right', fontWeight: 600, color: '#dc2626' }}>
+              <td
+                style={{
+                  padding: 12,
+                  textAlign: 'right',
+                  fontWeight: 600,
+                  fontFamily: MONO,
+                  color: '#dc2626',
+                }}
+              >
                 -{formatEuro(summary?.salari?.totale)}
               </td>
             </tr>
@@ -280,16 +364,17 @@ export default function Finanziaria() {
           <tfoot>
             <tr style={{ background: '#f8fafc', fontWeight: 600 }}>
               <td style={{ padding: 12 }}>TOTALE</td>
-              <td style={{ padding: 12, textAlign: 'right', color: '#16a34a' }}>
+              <td style={{ padding: 12, textAlign: 'right', color: '#16a34a', fontFamily: MONO }}>
                 {formatEuro(summary?.total_income)}
               </td>
-              <td style={{ padding: 12, textAlign: 'right', color: '#dc2626' }}>
+              <td style={{ padding: 12, textAlign: 'right', color: '#dc2626', fontFamily: MONO }}>
                 {formatEuro(summary?.total_expenses)}
               </td>
               <td
                 style={{
                   padding: 12,
                   textAlign: 'right',
+                  fontFamily: MONO,
                   color: summary?.balance >= 0 ? '#16a34a' : '#dc2626',
                 }}
               >
@@ -318,7 +403,7 @@ export default function Finanziaria() {
               <Receipt size={16} color="#dc2626" />
               Fatture da pagare (debiti vs fornitori)
             </span>
-            <span style={{ fontWeight: 700, color: '#dc2626' }}>
+            <span style={{ fontWeight: 700, color: '#dc2626', fontFamily: MONO }}>
               {formatEuro(summary?.payables)}
             </span>
           </div>
@@ -336,7 +421,7 @@ export default function Finanziaria() {
               <Receipt size={16} color="#16a34a" />
               Fatture da incassare (crediti vs clienti)
             </span>
-            <span style={{ fontWeight: 700, color: '#16a34a' }}>
+            <span style={{ fontWeight: 700, color: '#16a34a', fontFamily: MONO }}>
               {formatEuro(summary?.receivables)}
             </span>
           </div>
@@ -354,6 +439,7 @@ export default function Finanziaria() {
             <span
               style={{
                 fontWeight: 700,
+                fontFamily: MONO,
                 color: summary?.vat_balance > 0 ? '#dc2626' : '#16a34a',
               }}
             >

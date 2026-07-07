@@ -137,10 +137,10 @@ export default function CalendarioFiscale() {
   const getTipoColor = tipo => {
     const colors = {
       iva: '#3b82f6',
-      f24: '#ef4444',
-      dichiarazione: '#8b5cf6',
-      imu: '#f59e0b',
-      comunicazione: '#06b6d4',
+      f24: '#dc2626',
+      dichiarazione: '#0f2744',
+      imu: '#d97706',
+      comunicazione: '#64748b',
       default: '#64748b',
     };
     return colors[tipo] || colors.default;
@@ -195,14 +195,16 @@ export default function CalendarioFiscale() {
           {notifiche?.riepilogo?.critiche > 0 && (
             <div
               style={{
-                background: '#b91c1c',
-                borderRadius: 12,
+                background: '#dc2626',
+                borderRadius: 8,
                 padding: 16,
                 marginBottom: 20,
                 color: 'white',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: 12,
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -234,37 +236,45 @@ export default function CalendarioFiscale() {
           )}
 
           {/* KPI Cards */}
-          <PageGrid cols={4} gap={16}>
-            <Card>
-              <CardContent style={{ padding: 16, textAlign: 'center' }}>
-                <div style={{ fontSize: 32, fontWeight: 700, color: '#1e293b' }}>
+          <PageGrid cols={4} gap={16} minWidth={160}>
+            <Card style={{ borderLeft: '4px solid #0f2744', borderRadius: 8 }}>
+              <CardContent style={{ padding: 16 }}>
+                <div style={{ fontSize: 24, fontWeight: 700, color: '#0f2744' }}>
                   {calendario?.totale_scadenze || 0}
                 </div>
-                <div style={{ fontSize: 13, color: '#64748b' }}>Scadenze Totali</div>
+                <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}>
+                  Scadenze Totali
+                </div>
               </CardContent>
             </Card>
-            <Card>
-              <CardContent style={{ padding: 16, textAlign: 'center' }}>
-                <div style={{ fontSize: 32, fontWeight: 700, color: '#22c55e' }}>
+            <Card style={{ borderLeft: '4px solid #0f2744', borderRadius: 8 }}>
+              <CardContent style={{ padding: 16 }}>
+                <div style={{ fontSize: 24, fontWeight: 700, color: '#16a34a' }}>
                   {calendario?.completate || 0}
                 </div>
-                <div style={{ fontSize: 13, color: '#64748b' }}>Completate</div>
+                <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}>
+                  Completate
+                </div>
               </CardContent>
             </Card>
-            <Card>
-              <CardContent style={{ padding: 16, textAlign: 'center' }}>
-                <div style={{ fontSize: 32, fontWeight: 700, color: '#f59e0b' }}>
+            <Card style={{ borderLeft: '4px solid #0f2744', borderRadius: 8 }}>
+              <CardContent style={{ padding: 16 }}>
+                <div style={{ fontSize: 24, fontWeight: 700, color: '#d97706' }}>
                   {(calendario?.totale_scadenze || 0) - (calendario?.completate || 0)}
                 </div>
-                <div style={{ fontSize: 13, color: '#64748b' }}>Da Completare</div>
+                <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}>
+                  Da Completare
+                </div>
               </CardContent>
             </Card>
-            <Card>
-              <CardContent style={{ padding: 16, textAlign: 'center' }}>
-                <div style={{ fontSize: 32, fontWeight: 700, color: '#ef4444' }}>
+            <Card style={{ borderLeft: '4px solid #0f2744', borderRadius: 8 }}>
+              <CardContent style={{ padding: 16 }}>
+                <div style={{ fontSize: 24, fontWeight: 700, color: '#dc2626' }}>
                   {scadenzeImminenti.length}
                 </div>
-                <div style={{ fontSize: 13, color: '#64748b' }}>Prossime 7 gg</div>
+                <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}>
+                  Prossime 7 gg
+                </div>
               </CardContent>
             </Card>
           </PageGrid>
@@ -285,9 +295,11 @@ export default function CalendarioFiscale() {
                       alignItems: 'center',
                       justifyContent: 'space-between',
                       padding: 16,
-                      background: isScaduta(scad.data) ? '#fef2f2' : '#fefce8',
-                      borderRadius: 12,
-                      border: `1px solid ${isScaduta(scad.data) ? '#fca5a5' : '#fde047'}`,
+                      background: isScaduta(scad.data) ? '#fef2f2' : '#fffbeb',
+                      borderRadius: 8,
+                      border: `1px solid ${isScaduta(scad.data) ? '#fca5a5' : '#fde68a'}`,
+                      flexWrap: 'wrap',
+                      gap: 12,
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -320,7 +332,7 @@ export default function CalendarioFiscale() {
                           padding: '4px 12px',
                           background: '#dc2626',
                           color: '#fff',
-                          borderRadius: 20,
+                          borderRadius: 6,
                           fontSize: 12,
                           fontWeight: 600,
                         }}
@@ -357,9 +369,11 @@ export default function CalendarioFiscale() {
               onChange={e => setFiltroMese(e.target.value)}
               style={{
                 padding: '8px 12px',
-                borderRadius: 8,
+                minHeight: 40,
+                borderRadius: 6,
                 border: '1px solid #e2e8f0',
-                fontSize: 14,
+                background: 'white',
+                fontSize: 13,
               }}
             >
               {MESI.map(m => (
@@ -374,9 +388,11 @@ export default function CalendarioFiscale() {
               onChange={e => setFiltroStato(e.target.value)}
               style={{
                 padding: '8px 12px',
-                borderRadius: 8,
+                minHeight: 40,
+                borderRadius: 6,
                 border: '1px solid #e2e8f0',
-                fontSize: 14,
+                background: 'white',
+                fontSize: 13,
               }}
             >
               <option value="tutti">Tutte le scadenze</option>
@@ -396,9 +412,17 @@ export default function CalendarioFiscale() {
                 <PageEmpty icon="📅" message="Nessuna scadenza per i filtri selezionati" />
               ) : (
                 <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                   <thead>
-                    <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                    <tr
+                      style={{
+                        background: '#f8fafc',
+                        borderBottom: '1px solid #e2e8f0',
+                        fontSize: 11,
+                        textTransform: 'uppercase',
+                        color: '#64748b',
+                      }}
+                    >
                       <th style={{ padding: '12px 16px', textAlign: 'left' }}>Data</th>
                       <th style={{ padding: '12px 16px', textAlign: 'left' }}>Descrizione</th>
                       <th style={{ padding: '12px 16px', textAlign: 'center' }}>Tipo</th>
@@ -436,7 +460,7 @@ export default function CalendarioFiscale() {
                           <span
                             style={{
                               padding: '4px 10px',
-                              borderRadius: 12,
+                              borderRadius: 6,
                               fontSize: 12,
                               fontWeight: 600,
                               background: getTipoColor(scad.tipo),
@@ -450,7 +474,7 @@ export default function CalendarioFiscale() {
                           {scad.completato ? (
                             <span
                               style={{
-                                color: '#22c55e',
+                                color: '#16a34a',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
@@ -476,7 +500,7 @@ export default function CalendarioFiscale() {
                           ) : (
                             <span
                               style={{
-                                color: '#f59e0b',
+                                color: '#d97706',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',

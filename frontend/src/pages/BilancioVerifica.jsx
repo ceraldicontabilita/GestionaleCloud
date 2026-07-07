@@ -18,8 +18,10 @@ import {
   Printer,
 } from 'lucide-react';
 
+const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace';
+
 const TIPO_COLORS = {
-  attivo: { bg: '#ecfdf5', color: '#059669', label: 'Attivo' },
+  attivo: { bg: '#ecfdf5', color: '#16a34a', label: 'Attivo' },
   passivo: { bg: '#fef2f2', color: '#dc2626', label: 'Passivo' },
   ricavo: { bg: '#eff6ff', color: '#2563eb', label: 'Ricavo' },
   costo: { bg: '#fffbeb', color: '#d97706', label: 'Costo' },
@@ -151,65 +153,87 @@ export default function BilancioVerifica() {
   const SummaryCards = () => {
     if (!data) return null;
     const { totali, quadratura, riepilogo } = data;
+    const cardStyle = {
+      background: 'white',
+      border: '1px solid #e2e8f0',
+      borderLeft: '4px solid #0f2744',
+      padding: 16,
+      borderRadius: 8,
+    };
+    const labelStyle = {
+      fontSize: 11,
+      color: '#64748b',
+      fontWeight: 600,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+    };
     return (
-      <PageGrid cols={5} gap={16}>
-        <div style={{ background: '#ecfdf5', padding: 16, borderRadius: 12, textAlign: 'center' }}>
-          <div style={{ fontSize: 12, color: '#059669', fontWeight: 600 }}>TOTALE DARE</div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: '#059669', marginTop: 4 }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+          gap: 16,
+        }}
+      >
+        <div style={cardStyle}>
+          <div style={labelStyle}>TOTALE DARE</div>
+          <div
+            style={{ fontSize: 22, fontWeight: 700, color: '#0f2744', marginTop: 4, fontFamily: MONO }}
+          >
             {formatEuro(totali.dare)}
           </div>
         </div>
-        <div style={{ background: '#fef2f2', padding: 16, borderRadius: 12, textAlign: 'center' }}>
-          <div style={{ fontSize: 12, color: '#dc2626', fontWeight: 600 }}>TOTALE AVERE</div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: '#dc2626', marginTop: 4 }}>
+        <div style={cardStyle}>
+          <div style={labelStyle}>TOTALE AVERE</div>
+          <div
+            style={{ fontSize: 22, fontWeight: 700, color: '#0f2744', marginTop: 4, fontFamily: MONO }}
+          >
             {formatEuro(totali.avere)}
           </div>
         </div>
-        <div style={{ background: '#eff6ff', padding: 16, borderRadius: 12, textAlign: 'center' }}>
-          <div style={{ fontSize: 12, color: '#2563eb', fontWeight: 600 }}>SALDO DARE</div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: '#2563eb', marginTop: 4 }}>
+        <div style={cardStyle}>
+          <div style={labelStyle}>SALDO DARE</div>
+          <div
+            style={{ fontSize: 22, fontWeight: 700, color: '#0f2744', marginTop: 4, fontFamily: MONO }}
+          >
             {formatEuro(totali.saldo_dare)}
           </div>
         </div>
-        <div style={{ background: '#fdf4ff', padding: 16, borderRadius: 12, textAlign: 'center' }}>
-          <div style={{ fontSize: 12, color: '#9333ea', fontWeight: 600 }}>SALDO AVERE</div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: '#9333ea', marginTop: 4 }}>
+        <div style={cardStyle}>
+          <div style={labelStyle}>SALDO AVERE</div>
+          <div
+            style={{ fontSize: 22, fontWeight: 700, color: '#0f2744', marginTop: 4, fontFamily: MONO }}
+          >
             {formatEuro(totali.saldo_avere)}
           </div>
         </div>
         <div
           style={{
-            background: quadratura ? '#ecfdf5' : '#fef2f2',
-            padding: 16,
-            borderRadius: 12,
-            textAlign: 'center',
-            border: `2px solid ${quadratura ? '#22c55e' : '#ef4444'}`,
+            ...cardStyle,
+            borderLeft: `4px solid ${quadratura ? '#16a34a' : '#dc2626'}`,
           }}
         >
-          <div style={{ fontSize: 12, color: quadratura ? '#059669' : '#dc2626', fontWeight: 600 }}>
-            QUADRATURA
-          </div>
+          <div style={labelStyle}>QUADRATURA</div>
           <div
             style={{
               fontSize: 20,
               fontWeight: 700,
-              color: quadratura ? '#059669' : '#dc2626',
+              color: quadratura ? '#16a34a' : '#dc2626',
               marginTop: 4,
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center',
               gap: 6,
             }}
           >
             {quadratura ? <CheckCircle size={20} /> : <AlertTriangle size={20} />}
             {quadratura ? 'OK' : formatEuro(totali.sbilancio)}
           </div>
-          <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>
+          <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
             {riepilogo.n_conti} conti • {riepilogo.n_conti_attivo}A {riepilogo.n_conti_passivo}P{' '}
             {riepilogo.n_conti_ricavo}R {riepilogo.n_conti_costo}C
           </div>
         </div>
-      </PageGrid>
+      </div>
     );
   };
 
@@ -225,7 +249,8 @@ export default function BilancioVerifica() {
             disabled={loading}
             style={{
               padding: '8px 16px',
-              borderRadius: 8,
+              minHeight: 40,
+              borderRadius: 6,
               border: '1px solid #e2e8f0',
               background: 'white',
               cursor: 'pointer',
@@ -243,9 +268,10 @@ export default function BilancioVerifica() {
             disabled={!data}
             style={{
               padding: '8px 16px',
-              borderRadius: 8,
+              minHeight: 40,
+              borderRadius: 6,
               border: 'none',
-              background: '#1e3a5f',
+              background: '#0f2744',
               color: 'white',
               cursor: 'pointer',
               display: 'flex',
@@ -261,7 +287,8 @@ export default function BilancioVerifica() {
             onClick={handlePrint}
             style={{
               padding: '8px 16px',
-              borderRadius: 8,
+              minHeight: 40,
+              borderRadius: 6,
               border: '1px solid #e2e8f0',
               background: 'white',
               cursor: 'pointer',
@@ -305,8 +332,9 @@ export default function BilancioVerifica() {
                 style={{
                   width: '100%',
                   padding: '8px 12px 8px 36px',
+                  minHeight: 40,
                   border: '1px solid #e2e8f0',
-                  borderRadius: 8,
+                  borderRadius: 6,
                   fontSize: 14,
                 }}
               />
@@ -316,8 +344,10 @@ export default function BilancioVerifica() {
               onChange={e => setFiltroTipo(e.target.value)}
               style={{
                 padding: '8px 16px',
+                minHeight: 40,
                 border: '1px solid #e2e8f0',
-                borderRadius: 8,
+                borderRadius: 6,
+                background: 'white',
                 fontSize: 13,
                 fontWeight: 500,
               }}
@@ -364,6 +394,7 @@ export default function BilancioVerifica() {
               onClick={expandAll}
               style={{
                 padding: '6px 12px',
+                minHeight: 40,
                 border: '1px solid #e2e8f0',
                 borderRadius: 6,
                 background: 'white',
@@ -377,6 +408,7 @@ export default function BilancioVerifica() {
               onClick={collapseAll}
               style={{
                 padding: '6px 12px',
+                minHeight: 40,
                 border: '1px solid #e2e8f0',
                 borderRadius: 6,
                 background: 'white',
@@ -390,9 +422,17 @@ export default function BilancioVerifica() {
 
           {/* Tabella principale */}
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
-                <tr style={{ background: '#1e293b', color: 'white' }}>
+                <tr
+                  style={{
+                    background: '#f8fafc',
+                    color: '#64748b',
+                    fontSize: 11,
+                    textTransform: 'uppercase',
+                    borderBottom: '1px solid #e2e8f0',
+                  }}
+                >
                   <th style={{ padding: '12px 8px', textAlign: 'left', width: 100 }}>Codice</th>
                   <th style={{ padding: '12px 8px', textAlign: 'left' }}>Conto</th>
                   <th style={{ padding: '12px 8px', textAlign: 'center', width: 80 }}>Tipo</th>
@@ -405,7 +445,7 @@ export default function BilancioVerifica() {
                           padding: '12px 8px',
                           textAlign: 'right',
                           width: 130,
-                          background: '#334155',
+                          background: '#f1f5f9',
                         }}
                       >
                         Saldo Dare
@@ -415,7 +455,7 @@ export default function BilancioVerifica() {
                           padding: '12px 8px',
                           textAlign: 'right',
                           width: 130,
-                          background: '#334155',
+                          background: '#f1f5f9',
                         }}
                       >
                         Saldo Avere
@@ -455,7 +495,8 @@ export default function BilancioVerifica() {
                             padding: '10px 8px',
                             textAlign: 'right',
                             fontWeight: 600,
-                            color: '#059669',
+                            fontFamily: MONO,
+                            color: '#16a34a',
                           }}
                         >
                           {formatEuro(gruppo.totale_dare)}
@@ -465,6 +506,7 @@ export default function BilancioVerifica() {
                             padding: '10px 8px',
                             textAlign: 'right',
                             fontWeight: 600,
+                            fontFamily: MONO,
                             color: '#dc2626',
                           }}
                         >
@@ -477,8 +519,9 @@ export default function BilancioVerifica() {
                                 padding: '10px 8px',
                                 textAlign: 'right',
                                 fontWeight: 600,
-                                color: '#059669',
-                                background: '#e8f0fe',
+                                fontFamily: MONO,
+                                color: '#16a34a',
+                                background: '#f8fafc',
                               }}
                             >
                               {saldoGruppo > 0 ? formatEuro(saldoGruppo) : '-'}
@@ -488,8 +531,9 @@ export default function BilancioVerifica() {
                                 padding: '10px 8px',
                                 textAlign: 'right',
                                 fontWeight: 600,
+                                fontFamily: MONO,
                                 color: '#dc2626',
-                                background: '#e8f0fe',
+                                background: '#f8fafc',
                               }}
                             >
                               {saldoGruppo < 0 ? formatEuro(Math.abs(saldoGruppo)) : '-'}
@@ -527,7 +571,7 @@ export default function BilancioVerifica() {
                                 <td
                                   style={{
                                     padding: '8px 8px 8px 28px',
-                                    fontFamily: 'monospace',
+                                    fontFamily: MONO,
                                     fontSize: 13,
                                     color: '#475569',
                                   }}
@@ -554,7 +598,8 @@ export default function BilancioVerifica() {
                                     padding: '8px',
                                     textAlign: 'right',
                                     fontWeight: 500,
-                                    color: conto.dare > 0 ? '#059669' : '#cbd5e1',
+                                    fontFamily: MONO,
+                                    color: conto.dare > 0 ? '#16a34a' : '#cbd5e1',
                                   }}
                                 >
                                   {formatEuro(conto.dare)}
@@ -564,6 +609,7 @@ export default function BilancioVerifica() {
                                     padding: '8px',
                                     textAlign: 'right',
                                     fontWeight: 500,
+                                    fontFamily: MONO,
                                     color: conto.avere > 0 ? '#dc2626' : '#cbd5e1',
                                   }}
                                 >
@@ -576,7 +622,8 @@ export default function BilancioVerifica() {
                                         padding: '8px',
                                         textAlign: 'right',
                                         fontWeight: 600,
-                                        color: '#059669',
+                                        fontFamily: MONO,
+                                        color: '#16a34a',
                                         background: '#f8fafc',
                                       }}
                                     >
@@ -587,6 +634,7 @@ export default function BilancioVerifica() {
                                         padding: '8px',
                                         textAlign: 'right',
                                         fontWeight: 600,
+                                        fontFamily: MONO,
                                         color: '#dc2626',
                                         background: '#f8fafc',
                                       }}
@@ -621,7 +669,14 @@ export default function BilancioVerifica() {
                                       }}
                                     >
                                       <thead>
-                                        <tr style={{ color: '#94a3b8' }}>
+                                        <tr
+                                          style={{
+                                            color: '#64748b',
+                                            fontSize: 11,
+                                            textTransform: 'uppercase',
+                                            background: '#f8fafc',
+                                          }}
+                                        >
                                           <th style={{ padding: '4px 8px', textAlign: 'left' }}>
                                             Data
                                           </th>
@@ -652,7 +707,8 @@ export default function BilancioVerifica() {
                                               style={{
                                                 padding: '3px 8px',
                                                 textAlign: 'right',
-                                                color: '#059669',
+                                                fontFamily: MONO,
+                                                color: '#16a34a',
                                               }}
                                             >
                                               {m.dare > 0 ? formatEuro(m.dare) : ''}
@@ -661,6 +717,7 @@ export default function BilancioVerifica() {
                                               style={{
                                                 padding: '3px 8px',
                                                 textAlign: 'right',
+                                                fontFamily: MONO,
                                                 color: '#dc2626',
                                               }}
                                             >
@@ -683,27 +740,37 @@ export default function BilancioVerifica() {
               {/* Totali */}
               <tfoot>
                 <tr
-                  style={{ background: '#1e293b', color: 'white', fontWeight: 700, fontSize: 15 }}
+                  style={{ background: '#0f2744', color: 'white', fontWeight: 700, fontSize: 14 }}
                 >
                   <td colSpan={2} style={{ padding: '14px 8px' }}>
                     TOTALE GENERALE
                   </td>
                   <td></td>
-                  <td style={{ padding: '14px 8px', textAlign: 'right' }}>
+                  <td style={{ padding: '14px 8px', textAlign: 'right', fontFamily: MONO }}>
                     {formatEuro(data.totali.dare)}
                   </td>
-                  <td style={{ padding: '14px 8px', textAlign: 'right' }}>
+                  <td style={{ padding: '14px 8px', textAlign: 'right', fontFamily: MONO }}>
                     {formatEuro(data.totali.avere)}
                   </td>
                   {showSaldi && (
                     <>
                       <td
-                        style={{ padding: '14px 8px', textAlign: 'right', background: '#334155' }}
+                        style={{
+                          padding: '14px 8px',
+                          textAlign: 'right',
+                          fontFamily: MONO,
+                          background: '#1e3a5f',
+                        }}
                       >
                         {formatEuro(data.totali.saldo_dare)}
                       </td>
                       <td
-                        style={{ padding: '14px 8px', textAlign: 'right', background: '#334155' }}
+                        style={{
+                          padding: '14px 8px',
+                          textAlign: 'right',
+                          fontFamily: MONO,
+                          background: '#1e3a5f',
+                        }}
                       >
                         {formatEuro(data.totali.saldo_avere)}
                       </td>
