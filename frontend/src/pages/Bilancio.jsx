@@ -301,7 +301,7 @@ export default function Bilancio() {
                   {formatEuro(ricavi.corrispettivi)}
                 </td>
               </tr>
-              {ricavi.corrispettivi_lordi && (
+              {ricavi.corrispettivi_lordi > 0 && (
                 <tr>
                   <td
                     style={{

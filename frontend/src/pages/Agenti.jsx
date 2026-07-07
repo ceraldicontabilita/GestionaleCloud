@@ -319,6 +319,7 @@ export default function AgentiPage() {
           borderRadius: 10,
           padding: 4,
           alignItems: 'center',
+          flexWrap: 'wrap',
         }}
       >
         {TABS.map(t => (
@@ -327,7 +328,8 @@ export default function AgentiPage() {
             data-testid={`tab-agenti-${t.key}`}
             onClick={() => setActiveTab(t.key)}
             style={{
-              flex: 1,
+              flex: '1 1 auto',
+              minWidth: 80,
               padding: '8px 4px',
               border: 'none',
               borderRadius: 8,
