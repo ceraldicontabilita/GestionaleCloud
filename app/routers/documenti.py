@@ -3,7 +3,7 @@ Router Gestione Documenti
 API per scaricare, visualizzare e processare documenti dalle email.
 """
 
-from fastapi import APIRouter, Query, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Query, HTTPException
 from fastapi.responses import StreamingResponse
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
@@ -247,7 +247,6 @@ async def _execute_email_download(task_id: str, db, email_user: str, email_passw
 @router.post("/scarica-da-email")
 @handle_errors
 async def scarica_documenti_email(
-    background_tasks: BackgroundTasks,
     giorni: int = Query(30, ge=1, le=2000, description="Scarica email degli ultimi N giorni (max 2000 per storico)"),
     folder: str = Query("INBOX", description="Cartella email"),
     parole_chiave: Optional[str] = Query(None, description="Parole chiave separate da virgola per filtrare email"),

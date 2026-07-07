@@ -13,7 +13,7 @@ Funzionalità:
 - Report statistiche
 """
 
-from fastapi import APIRouter, HTTPException, Query, BackgroundTasks
+from fastapi import APIRouter, HTTPException, Query
 from typing import Dict, Any, List
 from datetime import datetime, timezone, timedelta
 from pydantic import BaseModel
@@ -382,7 +382,7 @@ async def submit_feedback(request: FeedbackRequest) -> Dict[str, Any]:
 
 
 @router.post("/scan")
-async def scan_emails_full(request: ScanRequest, background_tasks: BackgroundTasks) -> Dict[str, Any]:
+async def scan_emails_full(request: ScanRequest) -> Dict[str, Any]:
     """
     Avvia scansione email completa.
     """

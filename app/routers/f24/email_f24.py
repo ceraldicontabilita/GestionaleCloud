@@ -2,7 +2,7 @@
 Router Email F24
 Gestisce il download automatico email, parsing allegati e inserimento nel sistema
 """
-from fastapi import APIRouter, HTTPException, Query, BackgroundTasks
+from fastapi import APIRouter, HTTPException, Query
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 from app.database import Database
@@ -31,7 +31,6 @@ COLL_QUIETANZE = "quietanze_f24"
 @router.post("/scarica-email")
 async def scarica_email_allegati(
     giorni: int = Query(30, description="Scarica email degli ultimi N giorni"),
-    background_tasks: BackgroundTasks = None
 ) -> Dict[str, Any]:
     """
     Scarica gli allegati PDF dalle email dei mittenti configurati.
