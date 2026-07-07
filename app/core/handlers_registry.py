@@ -36,15 +36,18 @@ def registra_tutti_gli_handler():
     # due eventi in tutto app/) — i relativi handler (magazzino_carico,
     # scadenziario_pagamento, learning_centro_costo, learning_fornitore_keywords,
     # ricette_aggiorna_costi, notifica_ws_fattura/pagamento, prima_nota_pagamento)
-    # non si sono MAI attivati in produzione. Il carico magazzino e la creazione
-    # scadenza sono stati migrati sul bus realmente vivo
-    # (app/services/event_bus.py, EventTypes.FATTURA_CREATED — vedi
-    # on_fattura_righe_magazzino e handler_crea_scadenza registrati lì).
-    # Gli altri (classificazione CDC, learning fornitore da fattura, costo
-    # ricette, notifiche websocket, prima nota su pagamento) restano gap
-    # documentati in memoria/moduli/ e memoria/endpoints/RICONCILIAZIONE_AUDIT.md
-    # — da migrare in un intervento dedicato, non rimossi per non perdere
-    # il codice già scritto.
+    # non si sono MAI attivati in produzione. Migrati sul bus realmente vivo
+    # (app/services/event_bus.py, EventTypes.FATTURA_CREATED): il carico
+    # magazzino (on_fattura_righe_magazzino), la creazione scadenza
+    # (handler_crea_scadenza) e la classificazione centro di
+    # costo/deducibilità (handler_classifica_cdc).
+    # Restano gap documentati in memoria/moduli/ e
+    # memoria/endpoints/RICONCILIAZIONE_AUDIT.md — da migrare in un intervento
+    # dedicato: learning fornitore da fattura (keyword extraction al momento
+    # della creazione, oggi parte solo su aggiornamento fornitore), costo
+    # ricette da fattura diretta, notifiche websocket su fattura importata/
+    # pagata, prima nota su pagamento fattura via bus (già coperta altrove
+    # da auto_registra_prima_nota, quindi priorità bassa).
 
     # ─── CEDOLINO IMPORTATO ───────────────────────────────────────────────
     bus.register("cedolino.importato", handler_prima_nota_cedolino,

@@ -272,6 +272,14 @@ def register_all_handlers():
     except Exception as e:
         logger.warning(f"Handler scadenziario non registrato: {e}")
 
+    # --- Classificazione centro di costo / deducibilità IVA e IRES ---
+    # Stesso pattern di migrazione: era su "fattura.importata" (mai pubblicato).
+    try:
+        from app.handlers.learning import handler_classifica_cdc
+        register_handler(EventTypes.FATTURA_CREATED, handler_classifica_cdc)
+    except Exception as e:
+        logger.warning(f"Handler classificazione CDC non registrato: {e}")
+
     # --- Documenti/Inbox (Chat 9d) ---
     try:
         from app.services.handlers.documento_handlers import (

@@ -471,6 +471,8 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
             "stato": invoice.get("status", "imported"),
             "pagato": invoice.get("stato_pagamento") == "pagata",
             "righe_linee": invoice.get("linee", []),
+            "imponibile": invoice.get("imponibile", 0),
+            "iva": invoice.get("iva", 0),
         }, db, source_module="fatture_upload_manuale")
     except Exception:
         logger.exception("Errore propagazione evento fattura.created (upload manuale)")
@@ -942,6 +944,8 @@ async def process_xml_bytes(db, content: bytes, filename: str, source: str = "xm
             "stato": invoice.get("status", "imported"),
             "pagato": invoice.get("stato_pagamento") == "pagata",
             "righe_linee": invoice.get("linee", []),
+            "imponibile": invoice.get("imponibile", 0),
+            "iva": invoice.get("iva", 0),
         }, db, source_module=f"fatture_upload_{source}")
     except Exception:
         logger.exception(f"Errore propagazione evento fattura.created ({source})")

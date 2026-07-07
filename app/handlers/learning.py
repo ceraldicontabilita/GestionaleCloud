@@ -26,9 +26,13 @@ async def handler_classifica_cdc(payload: Dict[str, Any], db) -> Dict[str, Any]:
             calcola_importi_fiscali,
         )
 
-        fornitore_nome = payload.get("fornitore", {}).get("ragione_sociale", "")
+        # Il payload reale pubblicato da fatture_upload.py usa campi piatti
+        # (fornitore_ragione_sociale, righe_linee) non un oggetto "fornitore"
+        # annidato — supportiamo entrambe le forme per compatibilità.
+        fornitore_nome = (payload.get("fornitore") or {}).get("ragione_sociale") \
+            or payload.get("fornitore_ragione_sociale", "")
         descrizione    = payload.get("descrizione", "")
-        righe          = payload.get("righe") or payload.get("linee", [])
+        righe          = payload.get("righe") or payload.get("righe_linee") or payload.get("linee", [])
         imponibile     = float(payload.get("imponibile") or 0)
         iva            = float(payload.get("iva") or 0)
 

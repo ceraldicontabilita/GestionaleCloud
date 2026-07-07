@@ -33,6 +33,25 @@ in `app/routers/invoices/fatture_upload.py`).
 | `CEDOLINI.md` | Import cedolini da email, collegamenti a prima nota/TFR/banca |
 | `DOCUMENTI_INBOX.md` | Inbox documenti, dedup, classificazione a 7 vie |
 
+## Aggiornamento — interventi già effettuati dopo questa gap-analysis
+
+- **Fix Cassa** (bug critico): `/sincronizza-prima-nota` non scrive più la quota POS in
+  `prima_nota_cassa` — vedi `PRIMA_NOTA_CASSA.md`.
+- **Fix violazione "bonifico" default** su `sync-suppliers`.
+- **Bug funzionale confermato e corretto**: lo scadenzario fornitori
+  (`scadenziario_fornitori`, scheda "scadenzario" di `GestioneCespiti.jsx`) non veniva mai
+  popolato per le fatture importate — l'handler era registrato sul vecchio
+  `app.core.event_bus`, su un evento (`fattura.importata`) mai pubblicato. Migrato sul bus
+  vivo (`app.services.event_bus`, `FATTURA_CREATED`) e verificato con test end-to-end.
+- **Classificazione centro di costo/deducibilità IVA-IRES** (`handler_classifica_cdc`):
+  stesso bug, stessa migrazione, stesso pattern di verifica — ora una fattura importata
+  viene classificata automaticamente per centro di costo e vengono calcolati imponibile
+  deducibile IRES e IVA detraibile.
+- Rimosso l'handler magazzino duplicato/morto (`app/handlers/magazzino.py`), corretti i due
+  commenti fuorvianti (Magazzino "gestito solo da Lotti", Dipendenti "SOLO LETTURA").
+- Restano da migrare sullo stesso pattern (documentato in `app/core/handlers_registry.py`):
+  learning fornitore da fattura, costo ricette da fattura diretta, notifiche websocket.
+
 ## Gap trasversali più rilevanti (ricorrono in più documenti)
 
 1. **Matching stipendi↔banca completamente assente** — confermato incrociando
