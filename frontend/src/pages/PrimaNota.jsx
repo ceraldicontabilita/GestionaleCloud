@@ -610,12 +610,13 @@ function PrimaNotaDesktop() {
       <div
         style={{
           display: 'flex',
+          flexWrap: 'wrap',
           gap: 8,
           marginBottom: 16,
           position: 'sticky',
           top: 0,
           zIndex: 100,
-          background: '#f9fafb',
+          background: '#f1f5f9',
           padding: '8px 0',
         }}
       >
@@ -629,17 +630,17 @@ function PrimaNotaDesktop() {
             fontWeight: 'bold',
             background:
               activeSection === 'cassa'
-                ? '#1d4ed8'
+                ? '#0f2744'
                 : '#f3f4f6',
             color: activeSection === 'cassa' ? 'white' : '#374151',
             border: 'none',
-            borderRadius: 10,
+            borderRadius: 6,
+            minHeight: 40,
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             gap: 8,
-            boxShadow: activeSection === 'cassa' ? '0 4px 15px rgba(79, 70, 229, 0.4)' : 'none',
           }}
         >
           <span style={{ fontSize: 18 }}>💵</span>
@@ -660,13 +661,13 @@ function PrimaNotaDesktop() {
                 : '#f3f4f6',
             color: activeSection === 'banca' ? 'white' : '#374151',
             border: 'none',
-            borderRadius: 10,
+            borderRadius: 6,
+            minHeight: 40,
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             gap: 8,
-            boxShadow: activeSection === 'banca' ? '0 4px 15px rgba(37, 99, 235, 0.4)' : 'none',
           }}
         >
           <span style={{ fontSize: 18 }}>🏦</span>
@@ -680,16 +681,16 @@ function PrimaNotaDesktop() {
             padding: '12px 16px',
             fontSize: 14,
             fontWeight: 'bold',
-            background: activeSection === 'provvisori' ? '#b45309' : '#f3f4f6',
+            background: activeSection === 'provvisori' ? '#0f2744' : '#f3f4f6',
             color: activeSection === 'provvisori' ? 'white' : '#374151',
             border: 'none',
-            borderRadius: 10,
+            borderRadius: 6,
+            minHeight: 40,
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             gap: 8,
-            boxShadow: activeSection === 'provvisori' ? '0 4px 15px rgba(180, 83, 9, 0.4)' : 'none',
           }}
         >
           <span style={{ fontSize: 18 }}>📋</span>
@@ -703,7 +704,7 @@ function PrimaNotaDesktop() {
         <div
           style={{
             background: '#fffbeb',
-            border: '2px solid #fbbf24',
+            border: '1px solid #d97706',
             borderRadius: 12,
             padding: '16px',
             marginBottom: 16,
@@ -738,7 +739,7 @@ function PrimaNotaDesktop() {
               }}
               style={{
                 padding: '8px 16px',
-                background: '#22c55e',
+                background: '#16a34a',
                 color: 'white',
                 border: 'none',
                 borderRadius: 6,
@@ -754,13 +755,13 @@ function PrimaNotaDesktop() {
           {provvisori.slice(0, 30).map(p => {
             const isCassa = p.suggerimento === 'cassa';
             const isSospesa = p.suggerimento === 'sospesa';
-            const badgeBg = isCassa ? '#fef3c7' : isSospesa ? '#fee2e2' : '#1e40af';
+            const badgeBg = isCassa ? '#fef3c7' : isSospesa ? '#fee2e2' : '#0f2744';
             const badgeColor = isCassa ? '#92400e' : isSospesa ? '#dc2626' : 'white';
             const badgeBorder = isCassa
-              ? '2px solid #f59e0b'
+              ? '2px solid #d97706'
               : isSospesa
                 ? '2px solid #dc2626'
-                : '2px solid #1e40af';
+                : '2px solid #0f2744';
             const badgeText = isCassa ? '🏪 CASSA' : isSospesa ? '⏳ SOSPESA' : '🏦 BANCA';
             return (
               <div
@@ -784,7 +785,7 @@ function PrimaNotaDesktop() {
                   }}
                 >
                   <div style={{ flex: 1, minWidth: 150 }}>
-                    <span style={{ fontWeight: 700, fontSize: 15, color: '#1e3a5f' }}>
+                    <span style={{ fontWeight: 700, fontSize: 15, color: '#0f2744' }}>
                       {(p.fornitore || '').substring(0, 30)}
                     </span>
                     <span style={{ fontSize: 12, color: '#94a3b8', marginLeft: 6 }}>
@@ -792,7 +793,7 @@ function PrimaNotaDesktop() {
                     </span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontWeight: 800, fontSize: 18, color: '#059669' }}>
+                    <span style={{ fontWeight: 800, fontSize: 18, color: '#16a34a', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>
                       € {(p.importo || 0).toFixed(2)}
                     </span>
                     <span
@@ -857,7 +858,7 @@ function PrimaNotaDesktop() {
                         }}
                         style={{
                           padding: '6px 16px',
-                          background: '#22c55e',
+                          background: '#16a34a',
                           color: 'white',
                           border: 'none',
                           borderRadius: 6,
@@ -883,7 +884,7 @@ function PrimaNotaDesktop() {
                       }}
                       style={{
                         padding: '6px 12px',
-                        background: isCassa ? '#22c55e' : '#f1f5f9',
+                        background: isCassa ? '#16a34a' : '#f1f5f9',
                         color: isCassa ? 'white' : '#475569',
                         border: isCassa ? 'none' : '1px solid #d1d5db',
                         borderRadius: 6,
@@ -908,7 +909,7 @@ function PrimaNotaDesktop() {
                       }}
                       style={{
                         padding: '6px 12px',
-                        background: !isCassa && !isSospesa ? '#22c55e' : '#f1f5f9',
+                        background: !isCassa && !isSospesa ? '#16a34a' : '#f1f5f9',
                         color: !isCassa && !isSospesa ? 'white' : '#475569',
                         border: !isCassa && !isSospesa ? 'none' : '1px solid #d1d5db',
                         borderRadius: 6,
@@ -992,7 +993,7 @@ function PrimaNotaDesktop() {
                         padding: '6px 10px',
                         background: '#fef3c7',
                         color: '#92400e',
-                        border: '1px solid #f59e0b',
+                        border: '1px solid #d97706',
                         borderRadius: 6,
                         fontSize: 11,
                         cursor: 'pointer',
@@ -1046,12 +1047,12 @@ function PrimaNotaDesktop() {
             <MiniCard
               title={`Entrate (DARE) ${selectedYear}`}
               value={formatEuro(cassaData.totale_entrate)}
-              color="#4caf50"
+              color="#16a34a"
             />
             <MiniCard
               title={`Uscite (AVERE) ${selectedYear}`}
               value={formatEuro(cassaData.totale_uscite)}
-              color="#ef4444"
+              color="#dc2626"
             />
             <MiniCard
               title={`Saldo Cassa ${selectedYear}`}
@@ -1060,8 +1061,8 @@ function PrimaNotaDesktop() {
               )}
               color={
                 (cassaData.saldo_anno || cassaData.totale_entrate - cassaData.totale_uscite) >= 0
-                  ? '#4caf50'
-                  : '#ef4444'
+                  ? '#16a34a'
+                  : '#dc2626'
               }
               highlight
             />
@@ -1081,11 +1082,11 @@ function PrimaNotaDesktop() {
             <TinyStatCard
               title="Corrispettivi"
               value={formatEuro(totaleCorrispettivi)}
-              color="#ff9800"
+              color="#d97706"
             />
-            <TinyStatCard title="POS" value={formatEuro(totalePOS)} color="#1e3a5f" />
-            <TinyStatCard title="Versamenti" value={formatEuro(totaleVersamenti)} color="#4caf50" />
-            <TinyStatCard title="Fatture" value={formatEuro(totaleFattureCassa)} color="#ef4444" />
+            <TinyStatCard title="POS" value={formatEuro(totalePOS)} color="#0f2744" />
+            <TinyStatCard title="Versamenti" value={formatEuro(totaleVersamenti)} color="#16a34a" />
+            <TinyStatCard title="Fatture" value={formatEuro(totaleFattureCassa)} color="#dc2626" />
           </div>
 
           {/* Chiusure Giornaliere - Menu Compatto a Tendina */}
@@ -1116,7 +1117,7 @@ function PrimaNotaDesktop() {
                     marginLeft: 'auto',
                     fontSize: 11,
                     background: '#dbeafe',
-                    color: '#1d4ed8',
+                    color: '#0f2744',
                     padding: '2px 8px',
                     borderRadius: 4,
                   }}
@@ -1139,7 +1140,7 @@ function PrimaNotaDesktop() {
                     background: 'white',
                     borderRadius: 8,
                     padding: 10,
-                    borderLeft: '3px solid #ff9800',
+                    borderLeft: '3px solid #d97706',
                   }}
                 >
                   <div
@@ -1168,7 +1169,7 @@ function PrimaNotaDesktop() {
                       onClick={handleSaveCorrispettivo}
                       disabled={savingCorrisp}
                       style={{
-                        ...buttonStyleCompact('#92400e', savingCorrisp),
+                        ...buttonStyleCompact('#0f2744', savingCorrisp),
                         padding: '4px 8px',
                         minWidth: 32,
                       }}
@@ -1184,11 +1185,11 @@ function PrimaNotaDesktop() {
                     background: 'white',
                     borderRadius: 8,
                     padding: 10,
-                    borderLeft: '3px solid #1e3a5f',
+                    borderLeft: '3px solid #0f2744',
                   }}
                 >
                   <div
-                    style={{ fontSize: 11, fontWeight: 'bold', color: '#1d4ed8', marginBottom: 6 }}
+                    style={{ fontSize: 11, fontWeight: 'bold', color: '#0f2744', marginBottom: 6 }}
                   >
                     💳 POS
                   </div>
@@ -1211,7 +1212,7 @@ function PrimaNotaDesktop() {
                       onClick={handleSavePos}
                       disabled={savingPos}
                       style={{
-                        ...buttonStyleCompact('#1d4ed8', savingPos),
+                        ...buttonStyleCompact('#0f2744', savingPos),
                         padding: '4px 8px',
                         minWidth: 32,
                       }}
@@ -1227,11 +1228,11 @@ function PrimaNotaDesktop() {
                     background: 'white',
                     borderRadius: 8,
                     padding: 10,
-                    borderLeft: '3px solid #4caf50',
+                    borderLeft: '3px solid #16a34a',
                   }}
                 >
                   <div
-                    style={{ fontSize: 11, fontWeight: 'bold', color: '#059669', marginBottom: 6 }}
+                    style={{ fontSize: 11, fontWeight: 'bold', color: '#16a34a', marginBottom: 6 }}
                   >
                     🏦 Versamento
                   </div>
@@ -1254,7 +1255,7 @@ function PrimaNotaDesktop() {
                       onClick={handleSaveVersamento}
                       disabled={savingVers}
                       style={{
-                        ...buttonStyleCompact('#059669', savingVers),
+                        ...buttonStyleCompact('#0f2744', savingVers),
                         padding: '4px 8px',
                         minWidth: 32,
                       }}
@@ -1270,11 +1271,11 @@ function PrimaNotaDesktop() {
                     background: 'white',
                     borderRadius: 8,
                     padding: 10,
-                    borderLeft: '3px solid #f97316',
+                    borderLeft: '3px solid #d97706',
                   }}
                 >
                   <div
-                    style={{ fontSize: 11, fontWeight: 'bold', color: '#ea580c', marginBottom: 6 }}
+                    style={{ fontSize: 11, fontWeight: 'bold', color: '#d97706', marginBottom: 6 }}
                   >
                     ✏️ Altro
                   </div>
@@ -1318,7 +1319,7 @@ function PrimaNotaDesktop() {
                       onClick={handleSaveMovimento}
                       disabled={savingMov}
                       style={{
-                        ...buttonStyleCompact('#ea580c', savingMov),
+                        ...buttonStyleCompact('#0f2744', savingMov),
                         padding: '4px 8px',
                         minWidth: 32,
                       }}
@@ -1346,7 +1347,8 @@ function PrimaNotaDesktop() {
               onClick={() => setSelectedMonth(null)}
               style={{
                 padding: '6px 12px',
-                background: selectedMonth === null ? '#4f46e5' : '#f3f4f6',
+                minHeight: 40,
+                background: selectedMonth === null ? '#0f2744' : '#f3f4f6',
                 color: selectedMonth === null ? 'white' : '#374151',
                 border: 'none',
                 borderRadius: 6,
@@ -1363,7 +1365,8 @@ function PrimaNotaDesktop() {
                 onClick={() => setSelectedMonth(i)}
                 style={{
                   padding: '6px 10px',
-                  background: selectedMonth === i ? '#4f46e5' : '#f3f4f6',
+                  minHeight: 40,
+                  background: selectedMonth === i ? '#0f2744' : '#f3f4f6',
                   color: selectedMonth === i ? 'white' : '#374151',
                   border: 'none',
                   borderRadius: 6,
@@ -1421,14 +1424,14 @@ function PrimaNotaDesktop() {
             <SummaryCard
               title={`Accrediti ${selectedYear}`}
               value={formatEuro(bancaData.totale_entrate)}
-              color="#4caf50"
+              color="#16a34a"
               icon="📈"
               subtitle="Totale accrediti bancari (POS + bonifici + altro)"
             />
             <SummaryCard
               title={`Pagamenti ${selectedYear}`}
               value={formatEuro(bancaData.totale_uscite)}
-              color="#ef4444"
+              color="#dc2626"
               icon="📉"
               subtitle="Totale addebiti (fornitori, tasse, stipendi)"
             />
@@ -1439,8 +1442,8 @@ function PrimaNotaDesktop() {
               )}
               color={
                 (bancaData.saldo_anno || bancaData.totale_entrate - bancaData.totale_uscite) >= 0
-                  ? '#4caf50'
-                  : '#ef4444'
+                  ? '#16a34a'
+                  : '#dc2626'
               }
               icon="📊"
               subtitle={`Accrediti - Pagamenti ${selectedYear}`}
@@ -1449,7 +1452,7 @@ function PrimaNotaDesktop() {
               <SummaryCard
                 title="Saldo Cumulativo"
                 value={formatEuro(bancaData.saldo)}
-                color="#1e3a5f"
+                color="#0f2744"
                 icon="🏦"
                 subtitle="Saldo totale complessivo"
                 highlight
@@ -1470,7 +1473,7 @@ function PrimaNotaDesktop() {
           <div
             style={{
               background: '#fefce8',
-              border: '1px solid #ca8a04',
+              border: '1px solid #d97706',
               borderRadius: 10,
               padding: '10px 16px',
               marginBottom: 14,
@@ -1499,10 +1502,11 @@ function PrimaNotaDesktop() {
               onClick={() => setSelectedMonth(null)}
               style={{
                 padding: '8px 14px',
-                background: selectedMonth === null ? '#1e3a5f' : '#f3f4f6',
+                minHeight: 40,
+                background: selectedMonth === null ? '#0f2744' : '#f3f4f6',
                 color: selectedMonth === null ? 'white' : '#374151',
                 border: 'none',
-                borderRadius: 8,
+                borderRadius: 6,
                 cursor: 'pointer',
                 fontWeight: selectedMonth === null ? 'bold' : 'normal',
               }}
@@ -1515,10 +1519,11 @@ function PrimaNotaDesktop() {
                 onClick={() => setSelectedMonth(i)}
                 style={{
                   padding: '8px 12px',
-                  background: selectedMonth === i ? '#1e3a5f' : '#f3f4f6',
+                  minHeight: 40,
+                  background: selectedMonth === i ? '#0f2744' : '#f3f4f6',
                   color: selectedMonth === i ? 'white' : '#374151',
                   border: 'none',
-                  borderRadius: 8,
+                  borderRadius: 6,
                   cursor: 'pointer',
                   fontWeight: selectedMonth === i ? 'bold' : 'normal',
                 }}
@@ -1549,18 +1554,19 @@ function PrimaNotaDesktop() {
 
 // Sub-components
 
-function MiniCard({ title, value, color, highlight }) {
+function MiniCard({ title, value, color, highlight: _highlight }) {
   return (
     <div
       style={{
-        background: highlight ? `${color}15` : 'white',
+        background: 'white',
         borderRadius: 8,
         padding: 10,
-        border: highlight ? `2px solid ${color}` : '1px solid #e5e7eb',
+        border: '1px solid #e2e8f0',
+        borderLeft: '4px solid #0f2744',
       }}
     >
-      <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 2 }}>{title}</div>
-      <div style={{ fontSize: 18, fontWeight: 'bold', color }}>{value}</div>
+      <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>{title}</div>
+      <div style={{ fontSize: 20, fontWeight: 700, color, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>{value}</div>
     </div>
   );
 }
@@ -1572,12 +1578,12 @@ function TinyStatCard({ title, value, color }) {
         background: 'white',
         borderRadius: 6,
         padding: 8,
-        border: '1px solid #e5e7eb',
+        border: '1px solid #e2e8f0',
         borderLeft: `3px solid ${color}`,
       }}
     >
-      <div style={{ fontSize: 10, color: '#6b7280' }}>{title}</div>
-      <div style={{ fontSize: 13, fontWeight: 'bold', color }}>{value}</div>
+      <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5 }}>{title}</div>
+      <div style={{ fontSize: 13, fontWeight: 700, color, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>{value}</div>
     </div>
   );
 }
@@ -1598,14 +1604,15 @@ function CompactEntryCard({ title, color, children }) {
   );
 }
 
-function SummaryCard({ title, value, color, icon, highlight, subtitle }) {
+function SummaryCard({ title, value, color, icon, highlight: _highlight, subtitle }) {
   return (
     <div
       style={{
-        background: highlight ? `${color}` : 'white',
-        borderRadius: 12,
+        background: 'white',
+        borderRadius: 8,
         padding: 16,
-        border: highlight ? `2px solid ${color}` : '1px solid #e5e7eb',
+        border: '1px solid #e2e8f0',
+        borderLeft: '4px solid #0f2744',
       }}
     >
       <div
@@ -1616,11 +1623,11 @@ function SummaryCard({ title, value, color, icon, highlight, subtitle }) {
           marginBottom: 8,
         }}
       >
-        <span style={{ fontSize: 13, color: '#6b7280' }}>{title}</span>
+        <span style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5 }}>{title}</span>
         <span style={{ fontSize: 18 }}>{icon}</span>
       </div>
-      <div style={{ fontSize: 24, fontWeight: 'bold', color }}>{value}</div>
-      {subtitle && <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>{subtitle}</div>}
+      <div style={{ fontSize: 22, fontWeight: 700, color, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>{value}</div>
+      {subtitle && <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>{subtitle}</div>}
     </div>
   );
 }
@@ -2043,7 +2050,7 @@ function MovementsTable({
               onClick={resetFilters}
               style={{
                 padding: '6px 12px',
-                background: '#ef4444',
+                background: '#dc2626',
                 color: 'white',
                 border: 'none',
                 borderRadius: 6,
@@ -2063,7 +2070,7 @@ function MovementsTable({
         <div
           style={{
             padding: '12px 16px',
-            background: tipo === 'cassa' ? '#4f46e5' : '#1e3a5f',
+            background: '#0f2744',
             color: 'white',
             display: 'flex',
             justifyContent: 'space-between',
@@ -2134,8 +2141,8 @@ function MovementsTable({
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
           <thead>
-            <tr style={{ background: '#f9fafb', borderBottom: '2px solid #e5e7eb' }}>
-              <th style={{ padding: '8px 8px', textAlign: 'left', fontWeight: 600, fontSize: 11 }}>
+            <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+              <th style={{ padding: '8px 8px', textAlign: 'left', fontWeight: 600, fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}>
                 Data
               </th>
               <th
@@ -2144,37 +2151,39 @@ function MovementsTable({
                   textAlign: 'center',
                   fontWeight: 600,
                   fontSize: 11,
+                  color: '#64748b',
+                  textTransform: 'uppercase',
                   width: 40,
                 }}
               >
                 T
               </th>
-              <th style={{ padding: '8px 8px', textAlign: 'left', fontWeight: 600, fontSize: 11 }}>
+              <th style={{ padding: '8px 8px', textAlign: 'left', fontWeight: 600, fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}>
                 Cat.
               </th>
-              <th style={{ padding: '8px 8px', textAlign: 'left', fontWeight: 600, fontSize: 11 }}>
+              <th style={{ padding: '8px 8px', textAlign: 'left', fontWeight: 600, fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}>
                 Descrizione
               </th>
-              <th style={{ padding: '8px 8px', textAlign: 'left', fontWeight: 600, fontSize: 11 }}>
+              <th style={{ padding: '8px 8px', textAlign: 'left', fontWeight: 600, fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}>
                 N. Fattura
               </th>
-              <th style={{ padding: '8px 8px', textAlign: 'right', fontWeight: 600, fontSize: 11 }}>
+              <th style={{ padding: '8px 8px', textAlign: 'right', fontWeight: 600, fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}>
                 DARE
               </th>
-              <th style={{ padding: '8px 8px', textAlign: 'right', fontWeight: 600, fontSize: 11 }}>
+              <th style={{ padding: '8px 8px', textAlign: 'right', fontWeight: 600, fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}>
                 AVERE
               </th>
-              <th style={{ padding: '8px 8px', textAlign: 'right', fontWeight: 600, fontSize: 11 }}>
+              <th style={{ padding: '8px 8px', textAlign: 'right', fontWeight: 600, fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}>
                 Saldo
               </th>
               <th
-                style={{ padding: '8px 8px', textAlign: 'center', fontWeight: 600, fontSize: 11 }}
+                style={{ padding: '8px 8px', textAlign: 'center', fontWeight: 600, fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}
               >
                 Documento
               </th>
               {!readOnly && (
                 <th
-                  style={{ padding: '8px 8px', textAlign: 'center', fontWeight: 600, fontSize: 11 }}
+                  style={{ padding: '8px 8px', textAlign: 'center', fontWeight: 600, fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}
                 >
                   Azioni
                 </th>
@@ -2228,8 +2237,8 @@ function MovementsTable({
               <tr
                 key={mov.id || idx}
                 style={{
-                  borderBottom: '1px solid #e5e7eb',
-                  background: idx % 2 === 0 ? 'white' : '#f9fafb',
+                  borderBottom: '1px solid #f1f5f9',
+                  background: idx % 2 === 0 ? 'white' : '#f8fafc',
                 }}
                 data-testid={`movimento-row-${mov.id || idx}`}
               >
@@ -2281,9 +2290,10 @@ function MovementsTable({
                   style={{
                     padding: '6px 8px',
                     textAlign: 'right',
-                    color: '#166534',
+                    color: '#16a34a',
                     fontWeight: mov.tipo === 'entrata' ? 'bold' : 'normal',
                     fontSize: 12,
+                    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
                   }}
                 >
                   {mov.tipo === 'entrata' ? formatEuro(mov.importo) : '-'}
@@ -2292,9 +2302,10 @@ function MovementsTable({
                   style={{
                     padding: '6px 8px',
                     textAlign: 'right',
-                    color: '#991b1b',
+                    color: '#dc2626',
                     fontWeight: mov.tipo === 'uscita' ? 'bold' : 'normal',
                     fontSize: 12,
+                    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
                   }}
                 >
                   {mov.tipo === 'uscita' ? formatEuro(mov.importo) : '-'}
@@ -2304,8 +2315,9 @@ function MovementsTable({
                     padding: '6px 8px',
                     textAlign: 'right',
                     fontWeight: 'bold',
-                    color: mov.saldoProgressivo >= 0 ? '#166534' : '#991b1b',
+                    color: mov.saldoProgressivo >= 0 ? '#16a34a' : '#dc2626',
                     fontSize: 12,
+                    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
                   }}
                 >
                   {formatEuro(mov.saldoProgressivo)}
@@ -2320,7 +2332,7 @@ function MovementsTable({
                       style={{
                         display: 'inline-block',
                         padding: '6px 12px',
-                        background: '#2196f3',
+                        background: '#3b82f6',
                         color: 'white',
                         border: 'none',
                         borderRadius: 6,
@@ -2342,7 +2354,7 @@ function MovementsTable({
                       style={{
                         display: 'inline-block',
                         padding: '6px 12px',
-                        background: '#9c27b0',
+                        background: '#0f2744',
                         color: 'white',
                         border: 'none',
                         borderRadius: 6,
@@ -2364,7 +2376,7 @@ function MovementsTable({
                       style={{
                         display: 'inline-block',
                         padding: '6px 12px',
-                        background: '#ef4444',
+                        background: '#dc2626',
                         color: 'white',
                         border: 'none',
                         borderRadius: 6,
@@ -2390,7 +2402,7 @@ function MovementsTable({
                       style={{
                         display: 'inline-block',
                         padding: '6px 12px',
-                        background: '#4caf50',
+                        background: '#16a34a',
                         color: 'white',
                         border: 'none',
                         borderRadius: 6,
@@ -2412,7 +2424,7 @@ function MovementsTable({
                         padding: '6px 12px',
                         background: '#fef3c7',
                         color: '#92400e',
-                        border: '1px solid #ff9800',
+                        border: '1px solid #d97706',
                         borderRadius: 6,
                         fontSize: 11,
                         fontWeight: 'bold',
@@ -2438,7 +2450,7 @@ function MovementsTable({
                       }}
                       disabled={spostando === mov.id}
                       style={{
-                        background: tipo === 'cassa' ? '#1e3a5f' : '#7c3aed',
+                        background: '#0f2744',
                         color: 'white',
                         border: 'none',
                         borderRadius: 4,
@@ -2685,7 +2697,7 @@ function EditMovimentoModal({ movimento, tipo, onClose, onSave }) {
       <div
         style={{
           background: 'white',
-          borderRadius: 16,
+          borderRadius: 10,
           width: '100%',
           maxWidth: 500,
           maxHeight: '90vh',
@@ -2699,8 +2711,8 @@ function EditMovimentoModal({ movimento, tipo, onClose, onSave }) {
           style={{
             padding: '16px 24px',
             borderBottom: '1px solid #e5e7eb',
-            background: tipo === 'cassa' ? '#4f46e5' : '#1e3a5f',
-            borderRadius: '16px 16px 0 0',
+            background: '#0f2744',
+            borderRadius: '10px 10px 0 0',
             color: 'white',
             display: 'flex',
             justifyContent: 'space-between',
@@ -2716,10 +2728,15 @@ function EditMovimentoModal({ movimento, tipo, onClose, onSave }) {
               background: 'rgba(255,255,255,0.2)',
               border: 'none',
               borderRadius: 8,
-              padding: '4px 8px',
+              minWidth: 40,
+              minHeight: 40,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
               cursor: 'pointer',
               color: 'white',
             }}
+            aria-label="Chiudi"
           >
             ✕
           </button>
@@ -2858,9 +2875,9 @@ function EditMovimentoModal({ movimento, tipo, onClose, onSave }) {
               disabled={saving}
               style={{
                 padding: '10px 20px',
-                borderRadius: 8,
+                borderRadius: 6,
                 border: 'none',
-                background: tipo === 'cassa' ? '#4f46e5' : '#1e3a5f',
+                background: '#0f2744',
                 color: 'white',
                 cursor: saving ? 'not-allowed' : 'pointer',
                 fontSize: 14,

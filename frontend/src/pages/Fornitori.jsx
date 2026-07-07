@@ -58,10 +58,10 @@ function useDebounce(value, delay) {
 const METODI_PAGAMENTO = {
   contanti: { label: 'Contanti', bg: '#dcfce7', color: '#16a34a' },
   assegno: { label: 'Assegno', bg: '#fef3c7', color: '#d97706' },
-  bonifico: { label: 'Bonifico', bg: '#dbeafe', color: '#2563eb' },
-  misto: { label: 'Misto', bg: '#f3e8ff', color: '#9333ea' },
-  rid: { label: 'R.I.D.', bg: '#e0f2fe', color: '#0284c7' },
-  carta: { label: 'Carta', bg: '#fce7f3', color: '#db2777' },
+  bonifico: { label: 'Bonifico', bg: '#dbeafe', color: '#3b82f6' },
+  misto: { label: 'Misto', bg: '#e2e8f0', color: '#0f2744' },
+  rid: { label: 'R.I.D.', bg: '#e0f2fe', color: '#3b82f6' },
+  carta: { label: 'Carta', bg: '#f1f5f9', color: '#64748b' },
 };
 
 const getMetodo = key => METODI_PAGAMENTO[key] || METODI_PAGAMENTO.bonifico;
@@ -215,7 +215,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
         <div
           style={{
             backgroundColor: 'white',
-            borderRadius: '16px',
+            borderRadius: '10px',
             width: '100%',
             maxWidth: '600px',
             maxHeight: '85vh',
@@ -247,7 +247,11 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                   background: 'rgba(255,255,255,0.2)',
                   border: 'none',
                   borderRadius: '8px',
-                  padding: '8px',
+                  minWidth: '40px',
+                  minHeight: '40px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                   cursor: 'pointer',
                   color: 'white',
                 }}
@@ -266,7 +270,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                   style={{
                     padding: '12px 16px',
                     background: '#fffbeb',
-                    border: '1px solid #fbbf24',
+                    border: '1px solid #d97706',
                     borderRadius: '10px',
                     display: 'flex',
                     alignItems: 'flex-start',
@@ -294,7 +298,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                           .filter(Boolean)
                           .join(', ')}
                       </div>
-                      <div style={{ fontSize: '12px', color: '#b45309' }}>
+                      <div style={{ fontSize: '12px', color: '#d97706' }}>
                         Compilare manualmente o usa "Cerca in fatture" per leggere dagli XML
                       </div>
                     </div>
@@ -412,7 +416,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                         borderRadius: '8px',
                         background: loadingOpenAPI
                           ? '#9ca3af'
-                          : '#15803d',
+                          : '#0f2744',
                         color: 'white',
                         cursor: loadingOpenAPI || !form.partita_iva ? 'not-allowed' : 'pointer',
                         display: 'flex',
@@ -778,7 +782,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                             padding: '2px 8px',
                             cursor: 'pointer',
                             fontSize: '11px',
-                            color: '#0369a1',
+                            color: '#0f2744',
                           }}
                         >
                           Usa come principale
@@ -864,8 +868,8 @@ function StatCard({ icon: Icon, label, value, color, bgColor }) {
         display: 'flex',
         alignItems: 'center',
         gap: '12px',
-        boxShadow: '0 1px 2px rgba(0,0,0,0.08)',
-        border: '1px solid #f0f0f0',
+        border: '1px solid #e2e8f0',
+        borderLeft: '4px solid #0f2744',
       }}
     >
       <div
@@ -883,10 +887,10 @@ function StatCard({ icon: Icon, label, value, color, bgColor }) {
         <Icon size={20} color={color} />
       </div>
       <div>
-        <div style={{ fontSize: '22px', fontWeight: 700, color: color, lineHeight: 1 }}>
+        <div style={{ fontSize: '22px', fontWeight: 700, color: color, lineHeight: 1, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>
           {value}
         </div>
-        <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '2px' }}>{label}</div>
+        <div style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: '2px' }}>{label}</div>
       </div>
     </div>
   );
@@ -919,7 +923,7 @@ function SupplierCard({
   const metodoKey = supplier.metodo_pagamento || '';
   const metodo = metodoKey
     ? getMetodo(metodoKey)
-    : { label: '⚠️ Da impostare', color: '#b45309' };
+    : { label: '⚠️ Da impostare', color: '#d97706' };
   const [showMetodoMenu, setShowMetodoMenu] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [searching, setSearching] = useState(false);
@@ -1001,7 +1005,7 @@ function SupplierCard({
         style={{
           height: '4px',
           background: hasIncomplete
-            ? '#b45309'
+            ? '#d97706'
             : '#0f2744',
         }}
       />
@@ -1038,7 +1042,7 @@ function SupplierCard({
               <div
                 style={{
                   fontWeight: 600,
-                  color: '#1f2937',
+                  color: '#1e293b',
                   fontSize: '15px',
                   whiteSpace: 'nowrap',
                   overflow: 'hidden',
@@ -1113,18 +1117,18 @@ function SupplierCard({
             alignItems: 'center',
             justifyContent: 'space-between',
             paddingTop: '12px',
-            borderTop: '1px solid #f3f4f6',
+            borderTop: '1px solid #f1f5f9',
           }}
         >
           <div style={{ display: 'flex', gap: '20px' }}>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '18px', fontWeight: 700, color: '#1f2937' }}>
+              <div style={{ fontSize: '18px', fontWeight: 700, color: '#1e293b' }}>
                 {supplier.fatture_count || 0}
               </div>
               <div style={{ fontSize: '11px', color: '#9ca3af' }}>Fatture</div>
             </div>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '18px', fontWeight: 700, color: '#1f2937' }}>
+              <div style={{ fontSize: '18px', fontWeight: 700, color: '#1e293b' }}>
                 {supplier.giorni_pagamento || 30}
               </div>
               <div style={{ fontSize: '11px', color: '#9ca3af' }}>Giorni</div>
@@ -1188,7 +1192,7 @@ function SupplierCard({
               gap: '5px',
               background: supplier.esclude_magazzino ? '#fef3c7' : '#f0fdf4',
               color: supplier.esclude_magazzino ? '#92400e' : '#166534',
-              border: supplier.esclude_magazzino ? '1px solid #fbbf24' : '1px solid #86efac',
+              border: supplier.esclude_magazzino ? '1px solid #d97706' : '1px solid #86efac',
             }}
           >
             {supplier.esclude_magazzino ? '🚫 Escluso magazzino' : '📦 In magazzino'}
@@ -1200,7 +1204,7 @@ function SupplierCard({
       <div
         style={{
           display: 'flex',
-          borderTop: '1px solid #f3f4f6',
+          borderTop: '1px solid #f1f5f9',
           backgroundColor: '#f9fafb',
           flexWrap: 'wrap',
         }}
@@ -1221,7 +1225,7 @@ function SupplierCard({
               justifyContent: 'center',
               gap: '6px',
               fontSize: '13px',
-              color: '#0284c7',
+              color: '#3b82f6',
               transition: 'all 0.2s',
               minWidth: '70px',
             }}
@@ -1267,7 +1271,7 @@ function SupplierCard({
             }}
             onMouseEnter={e => {
               if (!loadingFatturato) {
-                e.currentTarget.style.backgroundColor = '#f3f4f6';
+                e.currentTarget.style.backgroundColor = '#f1f5f9';
               }
             }}
             onMouseLeave={e => {
@@ -1329,11 +1333,11 @@ function SupplierCard({
             justifyContent: 'center',
             gap: '6px',
             fontSize: '13px',
-            color: '#8b5cf6',
+            color: '#0f2744',
             transition: 'all 0.2s',
           }}
           onMouseEnter={e => {
-            e.currentTarget.style.backgroundColor = '#f3e8ff';
+            e.currentTarget.style.backgroundColor = '#f1f5f9';
           }}
           onMouseLeave={e => {
             e.currentTarget.style.backgroundColor = 'transparent';
@@ -1361,8 +1365,8 @@ function SupplierCard({
             transition: 'all 0.2s',
           }}
           onMouseEnter={e => {
-            e.currentTarget.style.backgroundColor = '#eef2ff';
-            e.currentTarget.style.color = '#4f46e5';
+            e.currentTarget.style.backgroundColor = '#f1f5f9';
+            e.currentTarget.style.color = '#0f2744';
           }}
           onMouseLeave={e => {
             e.currentTarget.style.backgroundColor = 'transparent';
@@ -1389,8 +1393,8 @@ function SupplierCard({
             transition: 'all 0.2s',
           }}
           onMouseEnter={e => {
-            e.currentTarget.style.backgroundColor = '#eef2ff';
-            e.currentTarget.style.color = '#4f46e5';
+            e.currentTarget.style.backgroundColor = '#f1f5f9';
+            e.currentTarget.style.color = '#0f2744';
           }}
           onMouseLeave={e => {
             e.currentTarget.style.backgroundColor = 'transparent';
@@ -1970,7 +1974,7 @@ export default function Fornitori() {
     <div
       style={{
         minHeight: '100vh',
-        backgroundColor: '#f3f4f6',
+        backgroundColor: '#f1f5f9',
         padding: isMobile ? '12px 10px' : '16px',
         position: 'relative',
       }}
@@ -1992,8 +1996,9 @@ export default function Fornitori() {
             disabled={loading}
             style={{
               padding: '8px 14px',
-              background: '#f1f5f9',
-              color: '#1e3a5f',
+              minHeight: 40,
+              background: 'white',
+              color: '#0f2744',
               border: '1px solid #e2e8f0',
               borderRadius: 6,
               cursor: loading ? 'wait' : 'pointer',
@@ -2013,12 +2018,14 @@ export default function Fornitori() {
             }}
             style={{
               padding: '10px 20px',
-              background: '#10b981',
+              minHeight: 40,
+              background: '#0f2744',
               color: 'white',
               border: 'none',
-              borderRadius: 8,
+              borderRadius: 6,
               cursor: 'pointer',
               fontWeight: '600',
+              fontSize: 13,
               display: 'flex',
               alignItems: 'center',
               gap: 6,
@@ -2041,29 +2048,29 @@ export default function Fornitori() {
             icon={Users}
             label="Totale Fornitori"
             value={stats.total}
-            color="#1e3a5f"
-            bgColor="#eef2ff"
+            color="#0f2744"
+            bgColor="#f1f5f9"
           />
           <StatCard
             icon={FileText}
             label="Con Fatture"
             value={stats.withInvoices}
-            color="#10b981"
-            bgColor="#d1fae5"
+            color="#16a34a"
+            bgColor="#dcfce7"
           />
           <StatCard
             icon={AlertCircle}
             label="Dati Incompleti"
             value={stats.incomplete}
-            color="#f59e0b"
+            color="#d97706"
             bgColor="#fef3c7"
           />
           <StatCard
             icon={CreditCard}
             label="Pagamento Contanti"
             value={stats.cash}
-            color="#8b5cf6"
-            bgColor="#ede9fe"
+            color="#0f2744"
+            bgColor="#e2e8f0"
           />
         </div>
 
@@ -2120,7 +2127,7 @@ export default function Fornitori() {
               color: '#92400e',
               fontSize: 13,
               fontWeight: 600,
-              border: '1px solid #fbbf24',
+              border: '1px solid #d97706',
               display: 'flex',
               alignItems: 'center',
               gap: '8px',
@@ -2134,11 +2141,11 @@ export default function Fornitori() {
             style={{
               padding: '8px 14px',
               borderRadius: '8px',
-              background: '#eef2ff',
-              color: '#1e3a5f',
+              background: '#f1f5f9',
+              color: '#0f2744',
               fontSize: 13,
               fontWeight: 600,
-              border: '1px solid #c7d2fe',
+              border: '1px solid #e2e8f0',
               display: 'flex',
               alignItems: 'center',
               gap: '8px',
@@ -2244,7 +2251,7 @@ export default function Fornitori() {
                 alignItems: 'center',
                 gap: '8px',
                 padding: '10px 14px',
-                border: filterSenzaMetodo ? '1px solid #f59e0b' : '1px solid #e5e7eb',
+                border: filterSenzaMetodo ? '1px solid #d97706' : '1px solid #e5e7eb',
                 borderRadius: '8px',
                 cursor: 'pointer',
                 fontSize: '14px',
@@ -2258,7 +2265,7 @@ export default function Fornitori() {
                 type="checkbox"
                 checked={filterSenzaMetodo}
                 onChange={e => setFilterSenzaMetodo(e.target.checked)}
-                style={{ width: '16px', height: '16px', accentColor: '#f59e0b' }}
+                style={{ width: '16px', height: '16px', accentColor: '#d97706' }}
               />
               ⚠️ Fatture senza metodo
             </label>
@@ -2294,6 +2301,7 @@ export default function Fornitori() {
                   data-testid={`filter-magazzino-${opt.k}`}
                   style={{
                     padding: '6px 12px',
+                    minHeight: 40,
                     border: filterMagazzino === opt.k ? '1px solid #0f2744' : '1px solid #e5e7eb',
                     background: filterMagazzino === opt.k ? '#0f2744' : 'white',
                     color: filterMagazzino === opt.k ? '#b8860b' : '#374151',
@@ -2323,6 +2331,7 @@ export default function Fornitori() {
                   data-testid={`filter-anzianita-${opt.k}`}
                   style={{
                     padding: '6px 12px',
+                    minHeight: 40,
                     border: filterAnzianita === opt.k ? '1px solid #0f2744' : '1px solid #e5e7eb',
                     background: filterAnzianita === opt.k ? '#0f2744' : 'white',
                     color: filterAnzianita === opt.k ? '#b8860b' : '#374151',
@@ -2389,7 +2398,7 @@ export default function Fornitori() {
                   data-testid="filter-prodotto-clear"
                   style={{
                     padding: '4px 8px',
-                    background: '#f3f4f6',
+                    background: '#f1f5f9',
                     border: '1px solid #e5e7eb',
                     borderRadius: 6,
                     fontSize: 12,
@@ -2451,7 +2460,7 @@ export default function Fornitori() {
                 width: '40px',
                 height: '40px',
                 border: '4px solid #e5e7eb',
-                borderTopColor: '#1e3a5f',
+                borderTopColor: '#0f2744',
                 borderRadius: '50%',
                 animation: 'spin 1s linear infinite',
                 margin: '0 auto',
@@ -2540,7 +2549,7 @@ export default function Fornitori() {
             <div
               style={{
                 backgroundColor: 'white',
-                borderRadius: '16px',
+                borderRadius: '10px',
                 width: '100%',
                 maxWidth: '500px',
                 overflow: 'hidden',
@@ -2551,7 +2560,7 @@ export default function Fornitori() {
               {/* Header */}
               <div
                 style={{
-                  background: '#1d4ed8',
+                  background: '#0f2744',
                   padding: '20px 24px',
                   color: 'white',
                 }}
@@ -2582,7 +2591,11 @@ export default function Fornitori() {
                       background: 'rgba(255,255,255,0.2)',
                       border: 'none',
                       borderRadius: '8px',
-                      padding: '8px',
+                      minWidth: '40px',
+                      minHeight: '40px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
                       cursor: 'pointer',
                       color: 'white',
                     }}
@@ -2602,7 +2615,7 @@ export default function Fornitori() {
                         width: '40px',
                         height: '40px',
                         border: '4px solid #e5e7eb',
-                        borderTopColor: '#0284c7',
+                        borderTopColor: '#3b82f6',
                         borderRadius: '50%',
                         animation: 'spin 1s linear infinite',
                         margin: '0 auto',
@@ -2622,13 +2635,13 @@ export default function Fornitori() {
                         textAlign: 'center',
                       }}
                     >
-                      <div style={{ fontSize: '14px', color: '#0369a1', marginBottom: '4px' }}>
+                      <div style={{ fontSize: '14px', color: '#0f2744', marginBottom: '4px' }}>
                         TOTALE FATTURATO {(fatturatoModal.data?.anno ?? '')}
                       </div>
-                      <div style={{ fontSize: '36px', fontWeight: 700, color: '#0c4a6e' }}>
+                      <div style={{ fontSize: '32px', fontWeight: 700, color: '#0f2744', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>
                         {formatEuro(fatturatoModal.data.totale_fatturato || 0)}
                       </div>
-                      <div style={{ fontSize: '14px', color: '#0369a1', marginTop: '8px' }}>
+                      <div style={{ fontSize: '14px', color: '#0f2744', marginTop: '8px' }}>
                         {(fatturatoModal.data?.numero_fatture ?? 0)} fatture
                       </div>
                     </div>
@@ -2651,7 +2664,7 @@ export default function Fornitori() {
                         }}
                       >
                         <div style={{ fontSize: '12px', color: '#16a34a' }}>Pagate</div>
-                        <div style={{ fontSize: '20px', fontWeight: 700, color: '#15803d' }}>
+                        <div style={{ fontSize: '20px', fontWeight: 700, color: '#16a34a' }}>
                           {(fatturatoModal.data?.fatture_pagate ?? 0) || 0}
                         </div>
                         <div style={{ fontSize: '11px', color: '#6b7280' }}>
@@ -2667,7 +2680,7 @@ export default function Fornitori() {
                         }}
                       >
                         <div style={{ fontSize: '12px', color: '#dc2626' }}>Da Pagare</div>
-                        <div style={{ fontSize: '20px', fontWeight: 700, color: '#b91c1c' }}>
+                        <div style={{ fontSize: '20px', fontWeight: 700, color: '#dc2626' }}>
                           {(fatturatoModal.data?.fatture_non_pagate ?? 0) || 0}
                         </div>
                         <div style={{ fontSize: '11px', color: '#6b7280' }}>
@@ -2698,12 +2711,12 @@ export default function Fornitori() {
                                   display: 'flex',
                                   justifyContent: 'space-between',
                                   padding: '8px 12px',
-                                  borderBottom: '1px solid #f3f4f6',
+                                  borderBottom: '1px solid #f1f5f9',
                                   fontSize: '13px',
                                 }}
                               >
                                 <span style={{ color: '#6b7280' }}>{m.mese_nome}</span>
-                                <span style={{ fontWeight: 600, color: '#1f2937' }}>
+                                <span style={{ fontWeight: 600, color: '#1e293b' }}>
                                   {formatEuro(m.totale || 0)}
                                   <span
                                     style={{ fontWeight: 400, color: '#9ca3af', marginLeft: '8px' }}
@@ -2753,7 +2766,7 @@ export default function Fornitori() {
               id="estratto-fatture-content"
               style={{
                 backgroundColor: 'white',
-                borderRadius: '16px',
+                borderRadius: '10px',
                 width: '95%',
                 maxWidth: '1200px',
                 maxHeight: '90vh',
@@ -2788,8 +2801,8 @@ export default function Fornitori() {
                   <button
                     onClick={() => setEstrattoModal(prev => ({ ...prev, open: false }))}
                     style={{
-                      width: '36px',
-                      height: '36px',
+                      width: '40px',
+                      height: '40px',
                       borderRadius: '50%',
                       border: 'none',
                       background: 'rgba(255,255,255,0.2)',
@@ -2977,7 +2990,7 @@ export default function Fornitori() {
                   disabled={estrattoModal.loading}
                   style={{
                     padding: '8px 16px',
-                    background: '#2563eb',
+                    background: '#0f2744',
                     color: 'white',
                     border: 'none',
                     borderRadius: 6,
@@ -3019,8 +3032,8 @@ export default function Fornitori() {
                           textAlign: 'center',
                         }}
                       >
-                        <div style={{ fontSize: 11, color: '#0369a1' }}>Documenti</div>
-                        <div style={{ fontSize: 24, fontWeight: 700, color: '#0c4a6e' }}>
+                        <div style={{ fontSize: 11, color: '#0f2744' }}>Documenti</div>
+                        <div style={{ fontSize: 24, fontWeight: 700, color: '#0f2744' }}>
                           {estrattoModal.data.totali?.numero_documenti || 0}
                         </div>
                       </div>
@@ -3033,7 +3046,7 @@ export default function Fornitori() {
                         }}
                       >
                         <div style={{ fontSize: 11, color: '#16a34a' }}>Totale</div>
-                        <div style={{ fontSize: 20, fontWeight: 700, color: '#15803d' }}>
+                        <div style={{ fontSize: 20, fontWeight: 700, color: '#16a34a' }}>
                           {formatEuro(estrattoModal.data.totali?.importo_totale || 0)}
                         </div>
                       </div>
@@ -3046,7 +3059,7 @@ export default function Fornitori() {
                         }}
                       >
                         <div style={{ fontSize: 11, color: '#dc2626' }}>Note Credito</div>
-                        <div style={{ fontSize: 20, fontWeight: 700, color: '#b91c1c' }}>
+                        <div style={{ fontSize: 20, fontWeight: 700, color: '#dc2626' }}>
                           - {formatEuro(estrattoModal.data.totali?.note_credito || 0)}
                         </div>
                       </div>
@@ -3069,49 +3082,49 @@ export default function Fornitori() {
                     <div style={{ overflowX: 'auto' }}>
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                         <thead>
-                          <tr style={{ background: '#f3f4f6' }}>
+                          <tr style={{ background: '#f8fafc' }}>
                             <th
-                              style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600 }}
+                              style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}
                             >
                               Data
                             </th>
                             <th
-                              style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600 }}
+                              style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}
                             >
                               Numero
                             </th>
                             <th
-                              style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600 }}
+                              style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}
                             >
                               Tipo
                             </th>
                             <th
-                              style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600 }}
+                              style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}
                             >
                               Imponibile
                             </th>
                             <th
-                              style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600 }}
+                              style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}
                             >
                               IVA
                             </th>
                             <th
-                              style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600 }}
+                              style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}
                             >
                               Totale
                             </th>
                             <th
-                              style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600 }}
+                              style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}
                             >
                               Metodo Pag.
                             </th>
                             <th
-                              style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600 }}
+                              style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}
                             >
                               Stato
                             </th>
                             <th
-                              style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600 }}
+                              style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}
                             >
                               Azioni
                             </th>
@@ -3149,7 +3162,7 @@ export default function Fornitori() {
                                   <span
                                     style={{
                                       background: '#dbeafe',
-                                      color: '#1e40af',
+                                      color: '#0f2744',
                                       padding: '2px 8px',
                                       borderRadius: 4,
                                       fontSize: 11,
@@ -3159,10 +3172,10 @@ export default function Fornitori() {
                                   </span>
                                 )}
                               </td>
-                              <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                              <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>
                                 {formatEuro(f.imponibile || 0)}
                               </td>
-                              <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                              <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>
                                 {formatEuro(f.iva || 0)}
                               </td>
                               <td
@@ -3170,6 +3183,7 @@ export default function Fornitori() {
                                   padding: '10px 12px',
                                   textAlign: 'right',
                                   fontWeight: 600,
+                                  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
                                 }}
                               >
                                 {f.is_nota_credito ? '-' : ''} {formatEuro(f.importo_totale || 0)}
@@ -3189,7 +3203,7 @@ export default function Fornitori() {
                                       f.metodo_pagamento === 'cassa' ||
                                       f.metodo_pagamento === 'contanti'
                                         ? '#166534'
-                                        : '#1e40af',
+                                        : '#0f2744',
                                   }}
                                 >
                                   {f.metodo_pagamento || '-'}
@@ -3199,7 +3213,7 @@ export default function Fornitori() {
                                 {f.riconciliato ? (
                                   <span
                                     style={{
-                                      background: '#10b981',
+                                      background: '#16a34a',
                                       color: 'white',
                                       padding: '2px 8px',
                                       borderRadius: 12,
@@ -3212,7 +3226,7 @@ export default function Fornitori() {
                                 ) : f.pagato ? (
                                   <span
                                     style={{
-                                      background: '#22c55e',
+                                      background: '#16a34a',
                                       color: 'white',
                                       padding: '2px 8px',
                                       borderRadius: 12,
@@ -3224,7 +3238,7 @@ export default function Fornitori() {
                                 ) : (
                                   <span
                                     style={{
-                                      background: '#f59e0b',
+                                      background: '#d97706',
                                       color: 'white',
                                       padding: '2px 8px',
                                       borderRadius: 12,
@@ -3314,7 +3328,7 @@ export default function Fornitori() {
                                         border: 'none',
                                         cursor: 'pointer',
                                         background: '#dbeafe',
-                                        color: '#1e40af',
+                                        color: '#0f2744',
                                         fontSize: 10,
                                         fontWeight: 600,
                                       }}
@@ -3375,14 +3389,14 @@ export default function Fornitori() {
                       body{font-family:Arial,sans-serif;padding:20px}
                       table{width:100%;border-collapse:collapse;font-size:12px}
                       th,td{border:1px solid #ddd;padding:8px;text-align:left}
-                      th{background:#1e3a5f;color:white}
+                      th{background:#0f2744;color:white}
                     </style></head><body>${modal.innerHTML}</body></html>`);
                       printWin.document.close();
                       printWin.print();
                     }}
                     style={{
                       padding: '8px 16px',
-                      background: '#f3f4f6',
+                      background: '#f1f5f9',
                       color: '#374151',
                       border: '1px solid #d1d5db',
                       borderRadius: 6,
@@ -3396,7 +3410,7 @@ export default function Fornitori() {
                     onClick={() => setEstrattoModal(prev => ({ ...prev, open: false }))}
                     style={{
                       padding: '8px 16px',
-                      background: '#1e3a5f',
+                      background: '#0f2744',
                       color: 'white',
                       border: 'none',
                       borderRadius: 6,
@@ -3437,7 +3451,7 @@ export default function Fornitori() {
             <div
               style={{
                 background: 'white',
-                borderRadius: 16,
+                borderRadius: 10,
                 width: '90%',
                 maxWidth: 800,
                 maxHeight: '85vh',
@@ -3483,8 +3497,8 @@ export default function Fornitori() {
                       background: 'rgba(255,255,255,0.2)',
                       border: 'none',
                       borderRadius: '50%',
-                      width: 32,
-                      height: 32,
+                      width: 40,
+                      height: 40,
                       cursor: 'pointer',
                       color: 'white',
                       fontSize: 18,
@@ -3526,7 +3540,7 @@ export default function Fornitori() {
                         margin: '0 auto 20px',
                       }}
                     />
-                    <h3 style={{ color: '#1e3a5f', margin: '0 0 8px 0', fontSize: 16 }}>
+                    <h3 style={{ color: '#0f2744', margin: '0 0 8px 0', fontSize: 16 }}>
                       Ricerca in corso...
                     </h3>
                     <p style={{ color: '#6b7280', fontSize: 13 }}>
@@ -3547,7 +3561,7 @@ export default function Fornitori() {
                             margin: '0 0 8px 0',
                             fontWeight: 600,
                             fontSize: 13,
-                            color: '#0369a1',
+                            color: '#0f2744',
                           }}
                         >
                           Prodotti trovati nelle fatture (
@@ -3596,7 +3610,7 @@ export default function Fornitori() {
                     <button
                       onClick={handleCercaSchedeTecniche}
                       style={{
-                        background: '#1e3a5f',
+                        background: '#0f2744',
                         color: 'white',
                         border: 'none',
                         borderRadius: 8,
@@ -3635,7 +3649,7 @@ export default function Fornitori() {
                         onClick={handleCercaSchedeTecniche}
                         style={{
                           background: '#f0f9ff',
-                          color: '#0369a1',
+                          color: '#0f2744',
                           border: '1px solid #bae6fd',
                           borderRadius: 6,
                           padding: '6px 14px',
@@ -3678,9 +3692,9 @@ export default function Fornitori() {
                                   : scheda.stato === 'url_trovato'
                                     ? '#fef3c7'
                                     : scheda.stato === 'url_suggerito'
-                                      ? '#e0e7ff'
+                                      ? '#e2e8f0'
                                       : scheda.stato === 'non_cercato'
-                                        ? '#f3f4f6'
+                                        ? '#f1f5f9'
                                         : '#f1f5f9',
                               display: 'flex',
                               alignItems: 'center',
@@ -3703,7 +3717,7 @@ export default function Fornitori() {
                               style={{
                                 fontWeight: 600,
                                 fontSize: 14,
-                                color: '#1e3a5f',
+                                color: '#0f2744',
                                 marginBottom: 3,
                               }}
                             >
@@ -3744,7 +3758,7 @@ export default function Fornitori() {
                               rel="noopener noreferrer"
                               style={{
                                 padding: '6px 14px',
-                                background: scheda.stato === 'trovato' ? '#3b82f6' : '#6366f1',
+                                background: scheda.stato === 'trovato' ? '#3b82f6' : '#0f2744',
                                 color: 'white',
                                 borderRadius: 6,
                                 textDecoration: 'none',
@@ -3784,7 +3798,7 @@ export default function Fornitori() {
                   }
                   style={{
                     padding: '10px 20px',
-                    background: '#1e3a5f',
+                    background: '#0f2744',
                     color: 'white',
                     border: 'none',
                     borderRadius: 8,
