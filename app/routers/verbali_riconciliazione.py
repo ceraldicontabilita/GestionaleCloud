@@ -540,8 +540,10 @@ async def riconcilia_verbale(numero_verbale: str) -> Dict[str, Any]:
                 if veicolo.get("driver_id"):
                     updates["driver_id"] = veicolo["driver_id"]
                     
-                    # Trova nome driver
-                    driver = await db["dipendenti"].find_one({"_id": ObjectId(veicolo["driver_id"])})
+                    # Trova nome driver (driver_id è un UUID stringa, non ObjectId —
+                    # vedi il pattern corretto già usato in associa_verbale_completo
+                    # in questo stesso file)
+                    driver = await db["dipendenti"].find_one({"id": veicolo["driver_id"]})
                     if driver:
                         updates["driver_nome"] = f"{driver.get('nome', '')} {driver.get('cognome', '')}"
                         messages.append(f"Driver: {updates['driver_nome']}")

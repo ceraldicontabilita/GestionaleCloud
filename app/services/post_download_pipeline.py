@@ -188,6 +188,25 @@ async def processa_cedolini_da_email(db: AsyncIOMotorDatabase) -> Dict[str, Any]
                             )
                             stats["aggiornati"] += 1
                         else:
+                            # Prima di questo fix il ramo "nuovo cedolino"
+                            # incrementava solo il contatore senza mai salvare
+                            # il documento: il cedolino non risultava mai
+                            # creato in DB nonostante l'anagrafica dipendente
+                            # venisse comunque aggiornata sotto.
+                            await db["cedolini"].insert_one({
+                                "id": str(uuid.uuid4()),
+                                "dedup_key": dedup_key,
+                                "codice_fiscale": cf,
+                                "mese": mese,
+                                "anno": anno,
+                                "netto": ced_data.get("netto"),
+                                "lordo": ced_data.get("lordo"),
+                                "pdf_data": pdf_data,
+                                "pdf_filename": filename,
+                                "pdf_hash": doc.get("pdf_hash"),
+                                "source": "email_pipeline",
+                                "created_at": datetime.now(timezone.utc).isoformat(),
+                            })
                             stats["nuovi_cedolini"] += 1
                     
                     # Aggiorna dipendente con ultimo cedolino
