@@ -1276,27 +1276,6 @@ async def classifica_fattura_manuale(invoice_id: str, data: Dict[str, Any] = Bod
     }
 
 
-@router.put("/{invoice_id}/metodo-pagamento")
-@handle_errors
-async def update_metodo_pagamento(invoice_id: str, data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
-    """Aggiorna il metodo di pagamento di una fattura."""
-    db = Database.get_db()
-    
-    metodo = data.get("metodo_pagamento")
-    if not metodo:
-        raise HTTPException(status_code=400, detail="Metodo pagamento richiesto")
-    
-    result = await db[Collections.INVOICES].update_one(
-        {"id": invoice_id},
-        {"$set": {"metodo_pagamento": metodo, "updated_at": datetime.now(timezone.utc).isoformat()}}
-    )
-    
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Fattura non trovata")
-    
-    return {"success": True, "message": "Metodo pagamento aggiornato"}
-
-
 @router.put("/{invoice_id}/paga")
 @handle_errors
 async def paga_fattura(invoice_id: str) -> Dict[str, Any]:
