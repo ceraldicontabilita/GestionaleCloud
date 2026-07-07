@@ -444,6 +444,19 @@ async def cerca_fattura_email_per_account(paypal_account_id: str) -> Dict[str, A
     if not nome_controparte and not email_controparte:
         raise HTTPException(400, "Nessun nome o email controparte disponibile per la ricerca")
 
+    # Se il fornitore è già censito (fattura arrivata da Drive/PEC), basta
+    # collegarlo — cercare in posta sarebbe inutile e solo rumore.
+    from app.services.paypal_email_recovery import _mappa_da_fornitore_esistente
+    if await _mappa_da_fornitore_esistente(db, paypal_account_id, nome_controparte):
+        return {
+            "paypal_account_id": paypal_account_id,
+            "nome_controparte": nome_controparte,
+            "fornitore_agganciato": True,
+            "fonte": "fornitore_gia_censito",
+            "documents": [],
+            "stats": {"emails_found": 0, "new_documents": 0},
+        }
+
     parola_chiave = nome_controparte.split()[0] if nome_controparte else ""
 
     user, pwd, _ = await get_gmail_credentials(db)

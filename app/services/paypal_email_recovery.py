@@ -124,6 +124,57 @@ async def _aggancia_documenti_trovati(
     return {"agganciati": agganciati}
 
 
+async def _mappa_da_fornitore_esistente(db, account_id: str, nome_controparte: str) -> bool:
+    """
+    Per i fornitori italiani (la fattura arriva già via Drive/PEC, esiste già
+    in anagrafica): niente da cercare in posta, basta collegare l'account
+    PayPal al fornitore che ha già un nome compatibile. La ricerca email ha
+    senso solo per chi non ha ancora nessun fornitore/fattura in anagrafica
+    (fornitori esteri come MongoDB) — provarla anche per un fornitore
+    italiano già censito sarebbe solo rumore nella casella di posta.
+    Ritorna True se ha trovato ed eseguito un match certo.
+    """
+    from app.services.paypal_riconciliazione import match_fornitore, normalize_string
+
+    if not nome_controparte:
+        return False
+
+    norm_cp = normalize_string(nome_controparte)
+    parole = [w for w in nome_controparte.split() if len(w) >= 4]
+    ricerca = parole[0] if parole else nome_controparte
+
+    import re as _re
+    candidati = await db["fornitori"].find(
+        {"$or": [
+            {"nome": {"$regex": _re.escape(ricerca), "$options": "i"}},
+            {"ragione_sociale": {"$regex": _re.escape(ricerca), "$options": "i"}},
+        ]},
+        {"_id": 0, "id": 1, "nome": 1, "ragione_sociale": 1, "paypal_account_id": 1},
+    ).to_list(20)
+
+    for forn in candidati:
+        if forn.get("paypal_account_id"):
+            continue  # già mappato ad un altro account, non è questo
+        forn_nome = forn.get("ragione_sociale") or forn.get("nome") or ""
+        norm_fn = normalize_string(forn_nome)
+        match_certo = norm_cp == norm_fn or norm_cp in norm_fn or norm_fn in norm_cp
+        if not match_certo:
+            match_certo = match_fornitore(nome_controparte, forn_nome) >= 0.85
+        if match_certo:
+            await db["fornitori"].update_one(
+                {"id": forn["id"]},
+                {"$set": {"paypal_account_id": account_id,
+                          "updated_at": datetime.now(timezone.utc).isoformat()}},
+            )
+            logger.info(
+                "[PayPal Email Recovery] Fornitore italiano già censito '%s' mappato a %s "
+                "(nessuna ricerca email necessaria)", forn_nome, account_id,
+            )
+            return True
+
+    return False
+
+
 async def recupera_fatture_mancanti_email(db, forza: bool = False) -> Dict[str, Any]:
     """
     Per ogni fornitore PayPal non mappato, cerca ed allega la fattura dalla
@@ -161,6 +212,19 @@ async def recupera_fatture_mancanti_email(db, forza: bool = False) -> Dict[str, 
             )
             if tentativo and tentativo.get("ultima_ricerca", "") > soglia:
                 continue
+
+        # Prova prima il match con un fornitore già censito (fattura arrivata
+        # da Drive/PEC): se lo trova non serve cercare in posta.
+        if await _mappa_da_fornitore_esistente(db, account_id, nome):
+            dettaglio.append({
+                "paypal_account_id": account_id,
+                "nome_controparte": nome,
+                "cercato_per": None,
+                "documenti_trovati": 0,
+                "fornitore_agganciato": True,
+                "fonte": "fornitore_gia_censito",
+            })
+            continue
 
         parola_chiave = nome.split()[0] if nome else ""
         try:
