@@ -328,15 +328,29 @@ async def riconcilia_mutui_con_estratto_conto(
                 importo_min = rata["importo_totale"] - tolleranza_importo
                 importo_max = rata["importo_totale"] + tolleranza_importo
                 
-                # Query movimenti bancari (cerco uscite con importo negativo corrispondente)
-                # Match su importo e data (senza filtro descrizione per maggiore precisione)
+                # Query movimenti bancari. L'estratto conto salva SEMPRE
+                # importi POSITIVI con tipo entrata/uscita: la vecchia query
+                # cercava importi negativi e non trovava MAI nulla (gap
+                # documentato in memoria/endpoints/02-contabilita.md §mutui).
                 query_movimenti = {
                     "data": {"$gte": data_min, "$lte": data_max},
-                    "importo": {"$gte": -importo_max, "$lte": -importo_min},
-                    "riconciliato": {"$ne": True}
+                    "tipo": "uscita",
+                    "importo": {"$gte": importo_min, "$lte": importo_max},
+                    "riconciliato": {"$ne": True},
+                    "$or": [
+                        {"descrizione": {"$regex": "MUTUO|RATA|FINANZIAMENTO", "$options": "i"}},
+                        {"descrizione_originale": {"$regex": "MUTUO|RATA|FINANZIAMENTO", "$options": "i"}},
+                    ],
                 }
-                
+
                 movimento = await db.estratto_conto_movimenti.find_one(query_movimenti)
+                # Fallback senza filtro descrizione (banche con causali generiche),
+                # solo se il match per importo+data è univoco.
+                if not movimento:
+                    query_no_desc = {k: v for k, v in query_movimenti.items() if k != "$or"}
+                    candidati = await db.estratto_conto_movimenti.find(query_no_desc).to_list(2)
+                    if len(candidati) == 1:
+                        movimento = candidati[0]
                 
                 if movimento:
                     # MATCH TROVATO - Riconcilia automaticamente
