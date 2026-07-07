@@ -227,6 +227,30 @@ export default function RiconciliazionePaypal() {
     }
   };
 
+  const [cercandoEmail, setCercandoEmail] = useState(null); // paypal_account_id in corso
+
+  const handleCercaFatturaEmail = async paypalAccountId => {
+    setCercandoEmail(paypalAccountId);
+    try {
+      const res = await api.post(`/api/paypal-api/account/${paypalAccountId}/cerca-fattura-email`);
+      const r = res.data || {};
+      const trovati = r.stats?.new_documents ?? 0;
+      if (trovati > 0) {
+        toast.success(
+          `✓ Trovati ${trovati} documenti in posta per "${r.cercato_per}" — vai su Documenti per vederli`
+        );
+      } else {
+        toast.info(
+          `Nessun nuovo documento trovato in posta per "${r.cercato_per}" (${r.stats?.emails_found ?? 0} email esaminate)`
+        );
+      }
+    } catch (e) {
+      toast.error('Errore ricerca email: ' + (e.response?.data?.detail || e.message));
+    } finally {
+      setCercandoEmail(null);
+    }
+  };
+
   useEffect(() => {
     if (activeTab === 'mapping' && !mappingData) {
       loadMapping();
@@ -1394,6 +1418,27 @@ export default function RiconciliazionePaypal() {
                       title="Crea un nuovo fornitore in anagrafica e mappalo subito"
                     >
                       ➕ Crea nuovo
+                    </button>
+                    <button
+                      data-testid={`cerca-email-btn-${item.paypal_account_id}`}
+                      disabled={cercandoEmail === item.paypal_account_id}
+                      onClick={() => handleCercaFatturaEmail(item.paypal_account_id)}
+                      style={{
+                        padding: '8px 14px',
+                        background: 'transparent',
+                        color: '#6b7280',
+                        border: '1px dashed #9ca3af',
+                        borderRadius: 6,
+                        cursor: cercandoEmail === item.paypal_account_id ? 'wait' : 'pointer',
+                        fontWeight: 600,
+                        fontSize: 11,
+                        opacity: cercandoEmail === item.paypal_account_id ? 0.6 : 1,
+                      }}
+                      title="Cerca la fattura nella posta (fornitori esteri: mai su Drive/PEC, esiste solo come PDF via email)"
+                    >
+                      {cercandoEmail === item.paypal_account_id
+                        ? '⏳ Cerco nella posta…'
+                        : '📧 Cerca fattura via email'}
                     </button>
                   </div>
                 </div>

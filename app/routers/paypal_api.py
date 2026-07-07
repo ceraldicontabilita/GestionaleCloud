@@ -396,6 +396,60 @@ async def account_ids_non_mappati():
     }
 
 
+@router.post("/account/{paypal_account_id}/cerca-fattura-email")
+async def cerca_fattura_email_per_account(paypal_account_id: str) -> Dict[str, Any]:
+    """
+    Per i fornitori esteri/non SDI (es. MongoDB Limited, RTA SRL): la fattura
+    non passa mai da Drive/PEC (quei canali leggono solo XML FatturaPA, che un
+    fornitore estero non emette mai), esiste SOLO come PDF nella posta. Cerca
+    e scarica quel PDF via email usando il nome controparte del PayPal account
+    come parola chiave, riusando la pipeline già esistente di
+    app/services/email_document_downloader.py (categorizzazione, dedup per
+    hash, parsing AI automatico) — stessa pipeline usata da Documenti Inbox.
+    """
+    from app.services.gmail_search import get_gmail_credentials
+    from app.services.email_document_downloader import download_documents_from_email
+
+    db = Database.get_db()
+
+    agg = await db["paypal_transactions"].aggregate([
+        {"$match": {"paypal_account_id": paypal_account_id}},
+        {"$sort": {"nome_controparte": -1}},
+        {"$group": {
+            "_id": "$paypal_account_id",
+            "nome_controparte": {"$first": "$nome_controparte"},
+            "email_controparte": {"$first": "$email_controparte"},
+        }},
+    ]).to_list(1)
+    if not agg:
+        raise HTTPException(404, "Nessuna transazione trovata per questo account PayPal")
+
+    nome_controparte = (agg[0].get("nome_controparte") or "").strip()
+    email_controparte = (agg[0].get("email_controparte") or "").strip()
+    if not nome_controparte and not email_controparte:
+        raise HTTPException(400, "Nessun nome o email controparte disponibile per la ricerca")
+
+    parola_chiave = nome_controparte.split()[0] if nome_controparte else ""
+
+    user, pwd, _ = await get_gmail_credentials(db)
+    if not user or not pwd:
+        raise HTTPException(400, "Nessun account Gmail configurato (Admin → Email, con App Password)")
+
+    risultato = await download_documents_from_email(
+        db, user, pwd,
+        since_days=365,
+        search_keywords=[parola_chiave] if parola_chiave else None,
+        allowed_senders=[email_controparte] if email_controparte else None,
+    )
+    return {
+        "paypal_account_id": paypal_account_id,
+        "nome_controparte": nome_controparte,
+        "email_controparte": email_controparte,
+        "cercato_per": parola_chiave or email_controparte,
+        **risultato,
+    }
+
+
 @router.post("/mappa-fornitore")
 async def mappa_fornitore(body: Dict[str, Any] = Body(...)):
     """Associa un paypal_account_id a un fornitore esistente."""
