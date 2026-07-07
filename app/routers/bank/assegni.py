@@ -1029,12 +1029,23 @@ async def incassa_assegno(
         raise HTTPException(status_code=404, detail="Assegno non trovato")
     
     data_incasso = data_incasso or datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    
-    # 1. Aggiorna stato assegno
+
+    # 1. Aggiorna stato assegno. "incassato_confermato_banca" distingue un
+    # riscontro reale (movimento_estratto_conto_id valorizzato) da un
+    # semplice "segna come incassato" manuale senza alcun movimento bancario
+    # collegato — prima il campo "incassato" non permetteva questa distinzione,
+    # dando l'impressione che ogni assegno incassato fosse verificato in banca.
+    set_data = {
+        "stato": "incassato",
+        "data_incasso": data_incasso,
+        "incassato_confermato_banca": bool(movimento_estratto_conto_id),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    if movimento_estratto_conto_id:
+        set_data["movimento_estratto_conto_id"] = movimento_estratto_conto_id
     await db[COLLECTION_ASSEGNI].update_one(
         {"id": assegno["id"]},
-        {"$set": {"stato": "incassato", "data_incasso": data_incasso,
-                  "updated_at": datetime.now(timezone.utc).isoformat()}}
+        {"$set": set_data}
     )
     # 2. Prima nota banca → riconciliata
     if assegno.get("prima_nota_banca_id"):
@@ -1084,7 +1095,8 @@ async def incassa_assegno(
         )
     return {"message": "Assegno incassato",
             "fattura_chiusa": bool(assegno.get("fattura_collegata")),
-            "prima_nota_riconciliata": bool(assegno.get("prima_nota_banca_id"))}
+            "prima_nota_riconciliata": bool(assegno.get("prima_nota_banca_id")),
+            "confermato_banca": bool(movimento_estratto_conto_id)}
 
 
 @router.post("/{assegno_id}/annulla")
@@ -1638,6 +1650,7 @@ async def sync_assegni_da_estratto_conto() -> Dict[str, Any]:
                 {"id": assegno_carnet["id"]},
                 {"$set": {"stato": "incassato", "data_incasso": data,
                           "movimento_estratto_conto_id": mov.get("id"),
+                          "incassato_confermato_banca": True,
                           "updated_at": datetime.now(timezone.utc).isoformat()}}
             )
             if assegno_carnet.get("fattura_collegata"):
