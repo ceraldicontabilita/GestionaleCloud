@@ -27,6 +27,8 @@ import {
 } from 'lucide-react';
 import { PageLayout } from '../components/PageLayout';
 
+const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace';
+
 export default function ChiusuraEsercizio() {
   const isMobile = useIsMobile();
   const { anno } = useAnnoGlobale();
@@ -137,7 +139,7 @@ export default function ChiusuraEsercizio() {
           width: 36,
           height: 36,
           borderRadius: '50%',
-          background: completed ? '#22c55e' : active ? '#2563eb' : '#e2e8f0',
+          background: completed ? '#16a34a' : active ? '#0f2744' : '#e2e8f0',
           color: completed || active ? 'white' : '#64748b',
           display: 'flex',
           alignItems: 'center',
@@ -206,7 +208,7 @@ export default function ChiusuraEsercizio() {
           gap: 16,
         }}
       >
-        <RefreshCw size={32} style={{ animation: 'spin 1s linear infinite' }} color="#2563eb" />
+        <RefreshCw size={32} style={{ animation: 'spin 1s linear infinite' }} color="#0f2744" />
         <span style={{ color: '#64748b' }}>Caricamento...</span>
       </div>
     );
@@ -218,14 +220,14 @@ export default function ChiusuraEsercizio() {
       icon="📅"
       subtitle={`Wizard guidato per la chiusura annuale - Anno ${anno}`}
       actions={
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <span
             style={{
               padding: '10px 16px',
-              borderRadius: 8,
-              background: '#1e3a5f',
+              borderRadius: 6,
+              background: '#0f2744',
               color: 'white',
-              fontSize: 16,
+              fontSize: 14,
               fontWeight: 600,
             }}
           >
@@ -236,9 +238,12 @@ export default function ChiusuraEsercizio() {
             onClick={loadData}
             style={{
               padding: '10px 16px',
-              borderRadius: 8,
+              minHeight: 40,
+              borderRadius: 6,
               border: '1px solid #e2e8f0',
               background: 'white',
+              color: '#1e293b',
+              fontSize: 13,
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
@@ -298,19 +303,27 @@ export default function ChiusuraEsercizio() {
         <div
           style={{
             background: stato?.stato === 'chiuso' ? '#f0fdf4' : '#eff6ff',
-            borderRadius: 12,
+            borderRadius: 8,
             padding: 24,
             marginBottom: 32,
             border: `1px solid ${stato?.stato === 'chiuso' ? '#86efac' : '#bfdbfe'}`,
           }}
           data-testid="stato-card"
         >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: 12,
+            }}
+          >
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
               {stato?.stato === 'chiuso' ? (
                 <Lock size={32} color="#16a34a" />
               ) : (
-                <Unlock size={32} color="#2563eb" />
+                <Unlock size={32} color="#0f2744" />
               )}
               <div>
                 <div
@@ -339,6 +352,7 @@ export default function ChiusuraEsercizio() {
                     fontSize: 24,
                     fontWeight: 700,
                     color: stato.risultato_esercizio >= 0 ? '#16a34a' : '#dc2626',
+                    fontFamily: MONO,
                     display: 'flex',
                     alignItems: 'center',
                     gap: 8,
@@ -361,11 +375,14 @@ export default function ChiusuraEsercizio() {
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: 24,
+            flexWrap: 'wrap',
+            gap: 16,
             marginBottom: 32,
             padding: 20,
             background: '#f8fafc',
-            borderRadius: 12,
+            border: '1px solid #e2e8f0',
+            borderLeft: '4px solid #0f2744',
+            borderRadius: 8,
           }}
         >
           <StepIndicator
@@ -405,7 +422,8 @@ export default function ChiusuraEsercizio() {
             <div
               style={{
                 background: 'white',
-                borderRadius: 12,
+                borderRadius: 8,
+                border: '1px solid #e2e8f0',
                 padding: 24,
                 boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
               }}
@@ -442,6 +460,7 @@ export default function ChiusuraEsercizio() {
                   style={{
                     fontSize: 36,
                     fontWeight: 700,
+                    fontFamily: MONO,
                     color:
                       verifica?.punteggio_completezza >= 80
                         ? '#16a34a'
@@ -467,10 +486,10 @@ export default function ChiusuraEsercizio() {
                       width: `${verifica?.punteggio_completezza || 0}%`,
                       background:
                         verifica?.punteggio_completezza >= 80
-                          ? '#22c55e'
+                          ? '#16a34a'
                           : verifica?.punteggio_completezza >= 50
-                            ? '#f59e0b'
-                            : '#ef4444',
+                            ? '#d97706'
+                            : '#dc2626',
                       borderRadius: 4,
                       transition: 'width 0.5s ease',
                     }}
@@ -534,7 +553,8 @@ export default function ChiusuraEsercizio() {
             <div
               style={{
                 background: 'white',
-                borderRadius: 12,
+                borderRadius: 8,
+                border: '1px solid #e2e8f0',
                 padding: 24,
                 boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
                 marginBottom: 24,
@@ -563,7 +583,7 @@ export default function ChiusuraEsercizio() {
                       style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}
                     >
                       <span style={{ color: '#64748b' }}>Corrispettivi</span>
-                      <span>{formatEuro(bilancino.bilancino.ricavi.corrispettivi)}</span>
+                      <span style={{ fontFamily: MONO }}>{formatEuro(bilancino.bilancino.ricavi.corrispettivi)}</span>
                     </div>
                     <div
                       style={{
@@ -575,7 +595,7 @@ export default function ChiusuraEsercizio() {
                       }}
                     >
                       <span>Totale Ricavi</span>
-                      <span style={{ color: '#16a34a' }}>
+                      <span style={{ color: '#16a34a', fontFamily: MONO }}>
                         {formatEuro(bilancino.bilancino.ricavi.totale)}
                       </span>
                     </div>
@@ -595,25 +615,25 @@ export default function ChiusuraEsercizio() {
                       style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}
                     >
                       <span style={{ color: '#64748b' }}>Acquisti Merce</span>
-                      <span>{formatEuro(bilancino.bilancino.costi.acquisti_merce)}</span>
+                      <span style={{ fontFamily: MONO }}>{formatEuro(bilancino.bilancino.costi.acquisti_merce)}</span>
                     </div>
                     <div
                       style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}
                     >
                       <span style={{ color: '#64748b' }}>Personale</span>
-                      <span>{formatEuro(bilancino.bilancino.costi.personale)}</span>
+                      <span style={{ fontFamily: MONO }}>{formatEuro(bilancino.bilancino.costi.personale)}</span>
                     </div>
                     <div
                       style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}
                     >
                       <span style={{ color: '#64748b' }}>Ammortamenti</span>
-                      <span>{formatEuro(bilancino.bilancino.costi.ammortamenti)}</span>
+                      <span style={{ fontFamily: MONO }}>{formatEuro(bilancino.bilancino.costi.ammortamenti)}</span>
                     </div>
                     <div
                       style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}
                     >
                       <span style={{ color: '#64748b' }}>TFR</span>
-                      <span>{formatEuro(bilancino.bilancino.costi.tfr)}</span>
+                      <span style={{ fontFamily: MONO }}>{formatEuro(bilancino.bilancino.costi.tfr)}</span>
                     </div>
                     <div
                       style={{
@@ -625,7 +645,7 @@ export default function ChiusuraEsercizio() {
                       }}
                     >
                       <span>Totale Costi</span>
-                      <span style={{ color: '#dc2626' }}>
+                      <span style={{ color: '#dc2626', fontFamily: MONO }}>
                         {formatEuro(bilancino.bilancino.costi.totale)}
                       </span>
                     </div>
@@ -646,6 +666,7 @@ export default function ChiusuraEsercizio() {
                       style={{
                         fontSize: 28,
                         fontWeight: 700,
+                        fontFamily: MONO,
                         color:
                           bilancino.bilancino.risultato.utile_perdita >= 0 ? '#16a34a' : '#dc2626',
                         display: 'flex',
@@ -681,7 +702,8 @@ export default function ChiusuraEsercizio() {
               <div
                 style={{
                   background: 'white',
-                  borderRadius: 12,
+                  borderRadius: 8,
+                  border: '1px solid #e2e8f0',
                   padding: 24,
                   boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
                 }}
@@ -702,7 +724,7 @@ export default function ChiusuraEsercizio() {
                     style={{
                       width: '100%',
                       padding: 12,
-                      borderRadius: 8,
+                      borderRadius: 6,
                       border: '1px solid #e2e8f0',
                       minHeight: 80,
                       resize: 'vertical',
@@ -717,9 +739,10 @@ export default function ChiusuraEsercizio() {
                   style={{
                     width: '100%',
                     padding: '14px 24px',
-                    borderRadius: 8,
+                    minHeight: 40,
+                    borderRadius: 6,
                     border: 'none',
-                    background: verifica?.pronto_per_chiusura ? '#2563eb' : '#94a3b8',
+                    background: verifica?.pronto_per_chiusura ? '#0f2744' : '#94a3b8',
                     color: 'white',
                     fontWeight: 600,
                     fontSize: 16,
@@ -743,7 +766,7 @@ export default function ChiusuraEsercizio() {
                   <p
                     style={{
                       fontSize: 13,
-                      color: '#ef4444',
+                      color: '#dc2626',
                       marginTop: 12,
                       textAlign: 'center',
                     }}
@@ -759,7 +782,8 @@ export default function ChiusuraEsercizio() {
               <div
                 style={{
                   background: 'white',
-                  borderRadius: 12,
+                  borderRadius: 8,
+                  border: '1px solid #e2e8f0',
                   padding: 24,
                   boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
                 }}
@@ -780,9 +804,10 @@ export default function ChiusuraEsercizio() {
                   style={{
                     width: '100%',
                     padding: '14px 24px',
-                    borderRadius: 8,
+                    minHeight: 40,
+                    borderRadius: 6,
                     border: 'none',
-                    background: '#16a34a',
+                    background: '#0f2744',
                     color: 'white',
                     fontWeight: 600,
                     fontSize: 16,
@@ -811,7 +836,8 @@ export default function ChiusuraEsercizio() {
           <div
             style={{
               background: 'white',
-              borderRadius: 12,
+              borderRadius: 8,
+              border: '1px solid #e2e8f0',
               padding: 24,
               boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
               marginTop: 32,
@@ -823,22 +849,35 @@ export default function ChiusuraEsercizio() {
             <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
-                <tr style={{ borderBottom: '2px solid #e2e8f0' }}>
-                  <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600 }}>Anno</th>
-                  <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600 }}>
-                    Data Chiusura
-                  </th>
-                  <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600 }}>
-                    Risultato
-                  </th>
-                  <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600 }}>Note</th>
+                <tr style={{ background: '#f8fafc' }}>
+                  {[
+                    ['Anno', 'left'],
+                    ['Data Chiusura', 'left'],
+                    ['Risultato', 'right'],
+                    ['Note', 'left'],
+                  ].map(([label, align]) => (
+                    <th
+                      key={label}
+                      style={{
+                        padding: '10px 16px',
+                        textAlign: align,
+                        fontWeight: 600,
+                        fontSize: 11,
+                        textTransform: 'uppercase',
+                        letterSpacing: 0.5,
+                        color: '#64748b',
+                      }}
+                    >
+                      {label}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
                 {storico.map((c, i) => (
                   <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                    <td style={{ padding: '12px 16px', fontWeight: 600 }}>{c.anno}</td>
-                    <td style={{ padding: '12px 16px', color: '#64748b' }}>
+                    <td style={{ padding: '12px 16px', fontWeight: 600, fontSize: 13 }}>{c.anno}</td>
+                    <td style={{ padding: '12px 16px', color: '#64748b', fontSize: 13 }}>
                       {formatDateIT(c.created_at)}
                     </td>
                     <td
@@ -846,12 +885,16 @@ export default function ChiusuraEsercizio() {
                         padding: '12px 16px',
                         textAlign: 'right',
                         fontWeight: 600,
+                        fontSize: 13,
+                        fontFamily: MONO,
                         color: c.risultato_esercizio >= 0 ? '#16a34a' : '#dc2626',
                       }}
                     >
                       {formatEuro(c.risultato_esercizio)}
                     </td>
-                    <td style={{ padding: '12px 16px', color: '#64748b' }}>{c.note || '-'}</td>
+                    <td style={{ padding: '12px 16px', color: '#64748b', fontSize: 13 }}>
+                      {c.note || '-'}
+                    </td>
                   </tr>
                 ))}
               </tbody>

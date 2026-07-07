@@ -4,6 +4,8 @@ import { formatEuro, STYLES, COLORS, button, badge } from '../lib/utils';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { PageLayout } from '../components/PageLayout';
 
+const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace';
+
 export default function PrevisioniAcquisti() {
   const { anno: annoGlobale } = useAnnoGlobale();
   const [activeTab, setActiveTab] = useState('statistiche');
@@ -69,7 +71,7 @@ export default function PrevisioniAcquisti() {
 
   const cardStyle = {
     background: 'white',
-    borderRadius: 12,
+    borderRadius: 8,
     boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
     border: '1px solid #e2e8f0',
     overflow: 'hidden',
@@ -97,10 +99,11 @@ export default function PrevisioniAcquisti() {
 
   const buttonStyle = (variant = 'default') => ({
     padding: '8px 16px',
-    borderRadius: 8,
+    minHeight: 40,
+    borderRadius: 6,
     border: variant === 'outline' ? '1px solid #e2e8f0' : 'none',
-    background: variant === 'outline' ? 'transparent' : variant === 'green' ? '#059669' : '#3b82f6',
-    color: variant === 'outline' ? '#64748b' : 'white',
+    background: variant === 'outline' ? 'white' : '#0f2744',
+    color: variant === 'outline' ? '#1e293b' : 'white',
     fontWeight: 500,
     cursor: 'pointer',
     fontSize: 13,
@@ -129,9 +132,9 @@ export default function PrevisioniAcquisti() {
             <span
               style={{
                 padding: '4px 10px',
-                background: '#8b5cf6',
+                background: '#0f2744',
                 color: 'white',
-                borderRadius: 16,
+                borderRadius: 8,
                 fontSize: 12,
                 fontWeight: 'bold',
               }}
@@ -158,11 +161,12 @@ export default function PrevisioniAcquisti() {
             onClick={() => setActiveTab('statistiche')}
             style={{
               padding: '8px 16px',
-              borderRadius: 8,
-              border: 'none',
-              background: activeTab === 'statistiche' ? '#3b82f6' : '#e2e8f0',
+              minHeight: 40,
+              borderRadius: 6,
+              border: activeTab === 'statistiche' ? 'none' : '1px solid #e2e8f0',
+              background: activeTab === 'statistiche' ? '#0f2744' : 'white',
               color: activeTab === 'statistiche' ? 'white' : '#64748b',
-              fontWeight: 'bold',
+              fontWeight: 600,
               cursor: 'pointer',
               fontSize: 13,
             }}
@@ -173,11 +177,12 @@ export default function PrevisioniAcquisti() {
             onClick={() => setActiveTab('previsioni')}
             style={{
               padding: '8px 16px',
-              borderRadius: 8,
-              border: 'none',
-              background: activeTab === 'previsioni' ? '#8b5cf6' : '#e2e8f0',
+              minHeight: 40,
+              borderRadius: 6,
+              border: activeTab === 'previsioni' ? 'none' : '1px solid #e2e8f0',
+              background: activeTab === 'previsioni' ? '#0f2744' : 'white',
               color: activeTab === 'previsioni' ? 'white' : '#64748b',
-              fontWeight: 'bold',
+              fontWeight: 600,
               cursor: 'pointer',
               fontSize: 13,
             }}
@@ -193,8 +198,10 @@ export default function PrevisioniAcquisti() {
               onChange={e => setSettimanePrevisione(Number(e.target.value))}
               style={{
                 padding: '8px 12px',
-                borderRadius: 8,
+                minHeight: 40,
+                borderRadius: 6,
                 border: '1px solid #e2e8f0',
+                background: 'white',
                 fontSize: 13,
               }}
             >
@@ -246,7 +253,7 @@ export default function PrevisioniAcquisti() {
             style={{
               width: '100%',
               padding: '10px 12px 10px 40px',
-              borderRadius: 8,
+              borderRadius: 6,
               border: '1px solid #e2e8f0',
               fontSize: 14,
               boxSizing: 'border-box',
@@ -261,7 +268,7 @@ export default function PrevisioniAcquisti() {
             style={{
               ...cardStyle,
               marginBottom: 16,
-              background: '#1d4ed8',
+              borderLeft: '4px solid #0f2744',
             }}
           >
             <div style={{ ...cardContentStyle, paddingTop: 16 }}>
@@ -270,14 +277,26 @@ export default function PrevisioniAcquisti() {
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
-                  color: 'white',
+                  color: '#1e293b',
                 }}
               >
                 <div>
-                  <div style={{ fontSize: 13, opacity: 0.9 }}>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: '#64748b',
+                      fontWeight: 600,
+                      textTransform: 'uppercase',
+                      letterSpacing: 0.5,
+                    }}
+                  >
                     Costo stimato prossime {settimanePrevisione} settimane
                   </div>
-                  <div style={{ fontSize: 28, fontWeight: 'bold' }}>{formatEuro(costoTotale)}</div>
+                  <div
+                    style={{ fontSize: 24, fontWeight: 700, color: '#0f2744', fontFamily: MONO }}
+                  >
+                    {formatEuro(costoTotale)}
+                  </div>
                 </div>
                 <span style={{ fontSize: 40, opacity: 0.3 }}>🛒</span>
               </div>
@@ -485,10 +504,11 @@ export default function PrevisioniAcquisti() {
           style={{
             marginTop: 16,
             padding: 12,
-            background: '#f0fdf4',
+            background: '#eff6ff',
+            border: '1px solid #bfdbfe',
             borderRadius: 8,
             fontSize: 12,
-            color: '#166534',
+            color: '#1e40af',
           }}
         >
           💡 <strong>Come funziona:</strong> Il sistema analizza lo storico acquisti dalle fatture

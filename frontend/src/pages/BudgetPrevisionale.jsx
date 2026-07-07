@@ -18,6 +18,8 @@ import {
   Edit2,
 } from 'lucide-react';
 
+const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace';
+
 const NOMI_MESI = [
   '',
   'Gen',
@@ -210,7 +212,8 @@ export default function BudgetPrevisionale() {
           disabled={loading}
           style={{
             padding: '8px 16px',
-            borderRadius: 8,
+            minHeight: 40,
+            borderRadius: 6,
             border: '1px solid #e2e8f0',
             background: 'white',
             cursor: 'pointer',
@@ -226,7 +229,15 @@ export default function BudgetPrevisionale() {
       }
     >
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: 0, marginBottom: 24, borderBottom: '2px solid #e2e8f0' }}>
+      <div
+        style={{
+          display: 'flex',
+          gap: 0,
+          marginBottom: 24,
+          borderBottom: '2px solid #e2e8f0',
+          flexWrap: 'wrap',
+        }}
+      >
         {[
           { id: 'budget', label: 'Budget', icon: <BarChart3 size={16} /> },
           { id: 'confronto', label: 'Budget vs Consuntivo', icon: <Target size={16} /> },
@@ -236,14 +247,15 @@ export default function BudgetPrevisionale() {
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
             style={{
-              padding: '14px 24px',
+              padding: '12px 20px',
+              minHeight: 40,
               border: 'none',
-              background: activeTab === tab.id ? '#1e293b' : 'transparent',
+              background: activeTab === tab.id ? '#0f2744' : 'transparent',
               color: activeTab === tab.id ? 'white' : '#64748b',
-              fontSize: 14,
+              fontSize: 13,
               fontWeight: 600,
               cursor: 'pointer',
-              borderRadius: '8px 8px 0 0',
+              borderRadius: '6px 6px 0 0',
               display: 'flex',
               alignItems: 'center',
               gap: 8,
@@ -266,58 +278,55 @@ export default function BudgetPrevisionale() {
                 <PageGrid cols={4} gap={16}>
                   <div
                     style={{
-                      background: '#f0fdf4',
+                      background: 'white',
                       padding: 16,
-                      borderRadius: 12,
-                      textAlign: 'center',
+                      borderRadius: 8,
+                      border: '1px solid #e2e8f0',
+                      borderLeft: '4px solid #0f2744',
                     }}
                   >
-                    <div style={{ fontSize: 12, color: '#059669', fontWeight: 600 }}>
+                    <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600, letterSpacing: 0.5 }}>
                       RICAVI BUDGET
                     </div>
-                    <div style={{ fontSize: 20, fontWeight: 700, color: '#059669', marginTop: 4 }}>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: '#16a34a', marginTop: 4, fontFamily: MONO }}>
                       {formatEuro(budget.totali.ricavi_budget)}
                     </div>
                   </div>
                   <div
                     style={{
-                      background: '#fef2f2',
+                      background: 'white',
                       padding: 16,
-                      borderRadius: 12,
-                      textAlign: 'center',
+                      borderRadius: 8,
+                      border: '1px solid #e2e8f0',
+                      borderLeft: '4px solid #0f2744',
                     }}
                   >
-                    <div style={{ fontSize: 12, color: '#dc2626', fontWeight: 600 }}>
+                    <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600, letterSpacing: 0.5 }}>
                       COSTI BUDGET
                     </div>
-                    <div style={{ fontSize: 20, fontWeight: 700, color: '#dc2626', marginTop: 4 }}>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: '#dc2626', marginTop: 4, fontFamily: MONO }}>
                       {formatEuro(budget.totali.costi_budget)}
                     </div>
                   </div>
                   <div
                     style={{
-                      background: budget.totali.margine_budget >= 0 ? '#ecfdf5' : '#fef2f2',
+                      background: 'white',
                       padding: 16,
-                      borderRadius: 12,
-                      textAlign: 'center',
-                      border: `2px solid ${budget.totali.margine_budget >= 0 ? '#22c55e' : '#ef4444'}`,
+                      borderRadius: 8,
+                      border: '1px solid #e2e8f0',
+                      borderLeft: `4px solid ${budget.totali.margine_budget >= 0 ? '#16a34a' : '#dc2626'}`,
                     }}
                   >
-                    <div
-                      style={{
-                        fontSize: 12,
-                        fontWeight: 600,
-                        color: budget.totali.margine_budget >= 0 ? '#059669' : '#dc2626',
-                      }}
-                    >
+                    <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', letterSpacing: 0.5 }}>
                       MARGINE
                     </div>
                     <div
                       style={{
-                        fontSize: 20,
+                        fontSize: 22,
                         fontWeight: 700,
                         marginTop: 4,
-                        color: budget.totali.margine_budget >= 0 ? '#059669' : '#dc2626',
+                        fontFamily: MONO,
+                        color: budget.totali.margine_budget >= 0 ? '#16a34a' : '#dc2626',
                       }}
                     >
                       {formatEuro(budget.totali.margine_budget)}
@@ -325,14 +334,15 @@ export default function BudgetPrevisionale() {
                   </div>
                   <div
                     style={{
-                      background: '#f8fafc',
+                      background: 'white',
                       padding: 16,
-                      borderRadius: 12,
-                      textAlign: 'center',
+                      borderRadius: 8,
+                      border: '1px solid #e2e8f0',
+                      borderLeft: '4px solid #0f2744',
                     }}
                   >
-                    <div style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>MARGINE %</div>
-                    <div style={{ fontSize: 20, fontWeight: 700, color: '#1e293b', marginTop: 4 }}>
+                    <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600, letterSpacing: 0.5 }}>MARGINE %</div>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: '#0f2744', marginTop: 4, fontFamily: MONO }}>
                       {budget.totali.margine_pct}%
                     </div>
                   </div>
@@ -348,9 +358,10 @@ export default function BudgetPrevisionale() {
                   }}
                   style={{
                     padding: '8px 16px',
-                    borderRadius: 8,
+                    minHeight: 40,
+                    borderRadius: 6,
                     border: 'none',
-                    background: '#059669',
+                    background: '#0f2744',
                     color: 'white',
                     cursor: 'pointer',
                     display: 'flex',
@@ -366,7 +377,8 @@ export default function BudgetPrevisionale() {
                   onClick={() => setShowDuplica(true)}
                   style={{
                     padding: '8px 16px',
-                    borderRadius: 8,
+                    minHeight: 40,
+                    borderRadius: 6,
                     border: '1px solid #e2e8f0',
                     background: 'white',
                     cursor: 'pointer',
@@ -383,9 +395,10 @@ export default function BudgetPrevisionale() {
                   onClick={exportCSV}
                   style={{
                     padding: '8px 16px',
-                    borderRadius: 8,
+                    minHeight: 40,
+                    borderRadius: 6,
                     border: 'none',
-                    background: '#1e3a5f',
+                    background: '#0f2744',
                     color: 'white',
                     cursor: 'pointer',
                     display: 'flex',
@@ -405,7 +418,7 @@ export default function BudgetPrevisionale() {
                   style={{
                     background: '#f8fafc',
                     border: '1px solid #e2e8f0',
-                    borderRadius: 12,
+                    borderRadius: 8,
                     padding: 20,
                     marginBottom: 20,
                   }}
@@ -418,7 +431,18 @@ export default function BudgetPrevisionale() {
                     </h3>
                     <button
                       onClick={resetForm}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer' }}
+                      aria-label="Chiudi"
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        minWidth: 40,
+                        minHeight: 40,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: '#64748b',
+                      }}
                     >
                       <X size={20} />
                     </button>
@@ -426,7 +450,7 @@ export default function BudgetPrevisionale() {
                   <div
                     style={{
                       display: 'grid',
-                      gridTemplateColumns: '2fr 1fr 1fr 2fr',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
                       gap: 12,
                       marginBottom: 16,
                     }}
@@ -452,7 +476,7 @@ export default function BudgetPrevisionale() {
                           width: '100%',
                           padding: '8px 12px',
                           border: '1px solid #e2e8f0',
-                          borderRadius: 8,
+                          borderRadius: 6,
                           fontSize: 14,
                         }}
                       />
@@ -476,7 +500,7 @@ export default function BudgetPrevisionale() {
                           width: '100%',
                           padding: '8px 12px',
                           border: '1px solid #e2e8f0',
-                          borderRadius: 8,
+                          borderRadius: 6,
                           fontSize: 14,
                         }}
                       >
@@ -504,7 +528,7 @@ export default function BudgetPrevisionale() {
                           width: '100%',
                           padding: '8px 12px',
                           border: '1px solid #e2e8f0',
-                          borderRadius: 8,
+                          borderRadius: 6,
                           fontSize: 14,
                         }}
                       />
@@ -528,7 +552,7 @@ export default function BudgetPrevisionale() {
                           width: '100%',
                           padding: '8px 12px',
                           border: '1px solid #e2e8f0',
-                          borderRadius: 8,
+                          borderRadius: 6,
                           fontSize: 14,
                         }}
                       />
@@ -556,7 +580,11 @@ export default function BudgetPrevisionale() {
                       </button>
                     </div>
                     <div
-                      style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 4 }}
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(64px, 1fr))',
+                        gap: 4,
+                      }}
                     >
                       {NOMI_MESI.slice(1).map((nome, i) => (
                         <div key={i}>
@@ -586,6 +614,7 @@ export default function BudgetPrevisionale() {
                               borderRadius: 4,
                               fontSize: 11,
                               textAlign: 'center',
+                              fontFamily: MONO,
                             }}
                           />
                         </div>
@@ -597,12 +626,13 @@ export default function BudgetPrevisionale() {
                     disabled={saving || !formVoce.trim() || !formImporto}
                     style={{
                       padding: '10px 24px',
-                      borderRadius: 8,
+                      minHeight: 40,
+                      borderRadius: 6,
                       border: 'none',
-                      background: '#059669',
+                      background: '#0f2744',
                       color: 'white',
                       cursor: 'pointer',
-                      fontSize: 14,
+                      fontSize: 13,
                       fontWeight: 600,
                       display: 'flex',
                       alignItems: 'center',
@@ -621,7 +651,7 @@ export default function BudgetPrevisionale() {
                   style={{
                     background: '#fffbeb',
                     border: '1px solid #fbbf24',
-                    borderRadius: 12,
+                    borderRadius: 8,
                     padding: 20,
                     marginBottom: 20,
                   }}
@@ -645,8 +675,9 @@ export default function BudgetPrevisionale() {
                         style={{
                           padding: '8px 12px',
                           border: '1px solid #e2e8f0',
-                          borderRadius: 8,
+                          borderRadius: 6,
                           width: 100,
+                          fontFamily: MONO,
                         }}
                       />
                     </div>
@@ -663,8 +694,9 @@ export default function BudgetPrevisionale() {
                         style={{
                           padding: '8px 12px',
                           border: '1px solid #e2e8f0',
-                          borderRadius: 8,
+                          borderRadius: 6,
                           width: 100,
+                          fontFamily: MONO,
                         }}
                       />
                     </div>
@@ -673,9 +705,10 @@ export default function BudgetPrevisionale() {
                       disabled={saving}
                       style={{
                         padding: '8px 16px',
-                        borderRadius: 8,
+                        minHeight: 40,
+                        borderRadius: 6,
                         border: 'none',
-                        background: '#d97706',
+                        background: '#0f2744',
                         color: 'white',
                         cursor: 'pointer',
                         fontSize: 13,
@@ -688,7 +721,8 @@ export default function BudgetPrevisionale() {
                       onClick={() => setShowDuplica(false)}
                       style={{
                         padding: '8px 16px',
-                        borderRadius: 8,
+                        minHeight: 40,
+                        borderRadius: 6,
                         border: '1px solid #e2e8f0',
                         background: 'white',
                         cursor: 'pointer',
@@ -706,12 +740,12 @@ export default function BudgetPrevisionale() {
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                     <thead>
-                      <tr style={{ background: '#1e293b', color: 'white' }}>
-                        <th style={{ padding: '10px 8px', textAlign: 'left' }}>Voce</th>
-                        <th style={{ padding: '10px 8px', textAlign: 'center', width: 70 }}>
+                      <tr style={{ background: '#f8fafc', color: '#64748b' }}>
+                        <th style={{ padding: '10px 8px', textAlign: 'left', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>Voce</th>
+                        <th style={{ padding: '10px 8px', textAlign: 'center', width: 70, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>
                           Tipo
                         </th>
-                        <th style={{ padding: '10px 8px', textAlign: 'right', width: 110 }}>
+                        <th style={{ padding: '10px 8px', textAlign: 'right', width: 110, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>
                           Annuale
                         </th>
                         {NOMI_MESI.slice(1).map((m, i) => (
@@ -722,6 +756,8 @@ export default function BudgetPrevisionale() {
                               textAlign: 'right',
                               width: 65,
                               fontSize: 11,
+                              textTransform: 'uppercase',
+                              letterSpacing: 0.5,
                             }}
                           >
                             {m}
@@ -761,7 +797,8 @@ export default function BudgetPrevisionale() {
                                 padding: '8px',
                                 textAlign: 'right',
                                 fontWeight: 700,
-                                color: isR ? '#059669' : '#dc2626',
+                                fontFamily: MONO,
+                                color: isR ? '#16a34a' : '#dc2626',
                               }}
                             >
                               {formatEuro(v.importo_annuale)}
@@ -774,6 +811,7 @@ export default function BudgetPrevisionale() {
                                   textAlign: 'right',
                                   fontSize: 11,
                                   color: '#64748b',
+                                  fontFamily: MONO,
                                 }}
                               >
                                 {v.mensile?.[i + 1] ? formatEuro(v.mensile[i + 1]) : '-'}
@@ -787,17 +825,23 @@ export default function BudgetPrevisionale() {
                                   border: 'none',
                                   cursor: 'pointer',
                                   marginRight: 4,
+                                  padding: 6,
                                 }}
                                 title="Modifica"
                               >
-                                <Edit2 size={14} color="#6b7280" />
+                                <Edit2 size={14} color="#0f2744" />
                               </button>
                               <button
                                 onClick={() => handleDelete(v.voce)}
-                                style={{ background: 'none', border: 'none', cursor: 'pointer' }}
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  cursor: 'pointer',
+                                  padding: 6,
+                                }}
                                 title="Elimina"
                               >
-                                <Trash2 size={14} color="#ef4444" />
+                                <Trash2 size={14} color="#dc2626" />
                               </button>
                             </td>
                           </tr>
@@ -805,11 +849,11 @@ export default function BudgetPrevisionale() {
                       })}
                     </tbody>
                     <tfoot>
-                      <tr style={{ background: '#1e293b', color: 'white', fontWeight: 700 }}>
+                      <tr style={{ background: '#0f2744', color: 'white', fontWeight: 700 }}>
                         <td colSpan={2} style={{ padding: '12px 8px' }}>
                           TOTALI
                         </td>
-                        <td style={{ padding: '12px 8px', textAlign: 'right' }}>
+                        <td style={{ padding: '12px 8px', textAlign: 'right', fontFamily: MONO }}>
                           {formatEuro(budget.totali.ricavi_budget - budget.totali.costi_budget)}
                         </td>
                         <td colSpan={13}></td>
@@ -840,8 +884,10 @@ export default function BudgetPrevisionale() {
                   onChange={e => handleMeseChange(e.target.value)}
                   style={{
                     padding: '8px 16px',
+                    minHeight: 40,
                     border: '1px solid #e2e8f0',
-                    borderRadius: 8,
+                    borderRadius: 6,
+                    background: 'white',
                     fontSize: 13,
                     fontWeight: 500,
                   }}
@@ -862,20 +908,21 @@ export default function BudgetPrevisionale() {
                     const t = confronto.totali[key];
                     const color =
                       key === 'ricavi'
-                        ? '#059669'
+                        ? '#16a34a'
                         : key === 'costi'
                           ? '#dc2626'
                           : t.consuntivo >= t.budget
-                            ? '#059669'
+                            ? '#16a34a'
                             : '#dc2626';
                     return (
                       <div
                         key={key}
                         style={{
-                          background: '#f8fafc',
+                          background: 'white',
                           padding: 16,
-                          borderRadius: 12,
+                          borderRadius: 8,
                           border: '1px solid #e2e8f0',
+                          borderLeft: '4px solid #0f2744',
                         }}
                       >
                         <div
@@ -898,13 +945,13 @@ export default function BudgetPrevisionale() {
                         >
                           <div>
                             <div style={{ fontSize: 11, color: '#94a3b8' }}>Budget</div>
-                            <div style={{ fontSize: 18, fontWeight: 700, color: '#475569' }}>
+                            <div style={{ fontSize: 18, fontWeight: 700, color: '#475569', fontFamily: MONO }}>
                               {formatEuro(t.budget)}
                             </div>
                           </div>
                           <div>
                             <div style={{ fontSize: 11, color: '#94a3b8' }}>Consuntivo</div>
-                            <div style={{ fontSize: 18, fontWeight: 700, color }}>
+                            <div style={{ fontSize: 18, fontWeight: 700, color, fontFamily: MONO }}>
                               {formatEuro(t.consuntivo)}
                             </div>
                           </div>
@@ -918,6 +965,7 @@ export default function BudgetPrevisionale() {
                             textAlign: 'center',
                             fontSize: 13,
                             fontWeight: 600,
+                            fontFamily: MONO,
                             color: t.scostamento >= 0 ? '#16a34a' : '#dc2626',
                           }}
                         >
@@ -937,22 +985,22 @@ export default function BudgetPrevisionale() {
                 <div style={{ overflowX: 'auto', marginTop: 20 }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
                     <thead>
-                      <tr style={{ background: '#1e293b', color: 'white' }}>
-                        <th style={{ padding: '12px 8px', textAlign: 'left' }}>Voce</th>
-                        <th style={{ padding: '12px 8px', textAlign: 'center', width: 70 }}>
+                      <tr style={{ background: '#f8fafc', color: '#64748b' }}>
+                        <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>Voce</th>
+                        <th style={{ padding: '12px 8px', textAlign: 'center', width: 70, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>
                           Tipo
                         </th>
-                        <th style={{ padding: '12px 8px', textAlign: 'right', width: 120 }}>
+                        <th style={{ padding: '12px 8px', textAlign: 'right', width: 120, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>
                           Budget
                         </th>
-                        <th style={{ padding: '12px 8px', textAlign: 'right', width: 120 }}>
+                        <th style={{ padding: '12px 8px', textAlign: 'right', width: 120, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>
                           Consuntivo
                         </th>
-                        <th style={{ padding: '12px 8px', textAlign: 'right', width: 120 }}>
+                        <th style={{ padding: '12px 8px', textAlign: 'right', width: 120, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>
                           Scostamento
                         </th>
-                        <th style={{ padding: '12px 8px', textAlign: 'center', width: 80 }}>%</th>
-                        <th style={{ padding: '12px 8px', textAlign: 'center', width: 80 }}>
+                        <th style={{ padding: '12px 8px', textAlign: 'center', width: 80, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>%</th>
+                        <th style={{ padding: '12px 8px', textAlign: 'center', width: 80, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>
                           Esito
                         </th>
                       </tr>
@@ -985,7 +1033,12 @@ export default function BudgetPrevisionale() {
                               </span>
                             </td>
                             <td
-                              style={{ padding: '10px 8px', textAlign: 'right', color: '#475569' }}
+                              style={{
+                                padding: '10px 8px',
+                                textAlign: 'right',
+                                color: '#475569',
+                                fontFamily: MONO,
+                              }}
                             >
                               {formatEuro(v.budget)}
                             </td>
@@ -994,7 +1047,8 @@ export default function BudgetPrevisionale() {
                                 padding: '10px 8px',
                                 textAlign: 'right',
                                 fontWeight: 600,
-                                color: isR ? '#059669' : '#dc2626',
+                                fontFamily: MONO,
+                                color: isR ? '#16a34a' : '#dc2626',
                               }}
                             >
                               {formatEuro(v.consuntivo)}
@@ -1004,7 +1058,8 @@ export default function BudgetPrevisionale() {
                                 padding: '10px 8px',
                                 textAlign: 'right',
                                 fontWeight: 600,
-                                color: v.scostamento >= 0 ? '#059669' : '#dc2626',
+                                fontFamily: MONO,
+                                color: v.scostamento >= 0 ? '#16a34a' : '#dc2626',
                               }}
                             >
                               {v.scostamento >= 0 ? '+' : ''}
@@ -1015,7 +1070,7 @@ export default function BudgetPrevisionale() {
                                 padding: '10px 8px',
                                 textAlign: 'center',
                                 fontSize: 12,
-                                color: v.scostamento_pct >= 0 ? '#059669' : '#dc2626',
+                                color: v.scostamento_pct >= 0 ? '#16a34a' : '#dc2626',
                               }}
                             >
                               {v.scostamento_pct >= 0 ? '+' : ''}
@@ -1058,28 +1113,31 @@ export default function BudgetPrevisionale() {
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                   <thead>
-                    <tr style={{ background: '#1e293b', color: 'white' }}>
-                      <th style={{ padding: '12px 8px', textAlign: 'left' }}>Mese</th>
-                      <th style={{ padding: '12px 8px', textAlign: 'right' }}>Ricavi Budget</th>
-                      <th style={{ padding: '12px 8px', textAlign: 'right' }}>Ricavi Reali</th>
-                      <th style={{ padding: '12px 8px', textAlign: 'right' }}>Δ Ricavi</th>
-                      <th
-                        style={{ padding: '12px 8px', textAlign: 'right', background: '#334155' }}
-                      >
-                        Costi Budget
-                      </th>
-                      <th
-                        style={{ padding: '12px 8px', textAlign: 'right', background: '#334155' }}
-                      >
-                        Costi Reali
-                      </th>
-                      <th
-                        style={{ padding: '12px 8px', textAlign: 'right', background: '#334155' }}
-                      >
-                        Δ Costi
-                      </th>
-                      <th style={{ padding: '12px 8px', textAlign: 'right' }}>Margine Budget</th>
-                      <th style={{ padding: '12px 8px', textAlign: 'right' }}>Margine Reale</th>
+                    <tr style={{ background: '#f8fafc', color: '#64748b' }}>
+                      {[
+                        ['Mese', 'left'],
+                        ['Ricavi Budget', 'right'],
+                        ['Ricavi Reali', 'right'],
+                        ['Δ Ricavi', 'right'],
+                        ['Costi Budget', 'right'],
+                        ['Costi Reali', 'right'],
+                        ['Δ Costi', 'right'],
+                        ['Margine Budget', 'right'],
+                        ['Margine Reale', 'right'],
+                      ].map(([label, align]) => (
+                        <th
+                          key={label}
+                          style={{
+                            padding: '12px 8px',
+                            textAlign: align,
+                            fontSize: 11,
+                            textTransform: 'uppercase',
+                            letterSpacing: 0.5,
+                          }}
+                        >
+                          {label}
+                        </th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
@@ -1101,7 +1159,14 @@ export default function BudgetPrevisionale() {
                           <td style={{ padding: '10px 8px', fontWeight: 500 }}>
                             {NOMI_MESI[m.mese]}
                           </td>
-                          <td style={{ padding: '10px 8px', textAlign: 'right', color: '#94a3b8' }}>
+                          <td
+                            style={{
+                              padding: '10px 8px',
+                              textAlign: 'right',
+                              color: '#94a3b8',
+                              fontFamily: MONO,
+                            }}
+                          >
                             {formatEuro(m.ricavi_budget)}
                           </td>
                           <td
@@ -1109,7 +1174,8 @@ export default function BudgetPrevisionale() {
                               padding: '10px 8px',
                               textAlign: 'right',
                               fontWeight: 600,
-                              color: '#059669',
+                              fontFamily: MONO,
+                              color: '#16a34a',
                             }}
                           >
                             {formatEuro(m.ricavi_consuntivo)}
@@ -1119,7 +1185,8 @@ export default function BudgetPrevisionale() {
                               padding: '10px 8px',
                               textAlign: 'right',
                               fontSize: 12,
-                              color: deltaRic >= 0 ? '#059669' : '#dc2626',
+                              fontFamily: MONO,
+                              color: deltaRic >= 0 ? '#16a34a' : '#dc2626',
                             }}
                           >
                             {hasData ? `${deltaRic >= 0 ? '+' : ''}${formatEuro(deltaRic)}` : '-'}
@@ -1129,7 +1196,8 @@ export default function BudgetPrevisionale() {
                               padding: '10px 8px',
                               textAlign: 'right',
                               color: '#94a3b8',
-                              background: '#fafbfc',
+                              fontFamily: MONO,
+                              background: '#f8fafc',
                             }}
                           >
                             {formatEuro(m.costi_budget)}
@@ -1139,8 +1207,9 @@ export default function BudgetPrevisionale() {
                               padding: '10px 8px',
                               textAlign: 'right',
                               fontWeight: 600,
+                              fontFamily: MONO,
                               color: '#dc2626',
-                              background: '#fafbfc',
+                              background: '#f8fafc',
                             }}
                           >
                             {formatEuro(m.costi_consuntivo)}
@@ -1150,15 +1219,23 @@ export default function BudgetPrevisionale() {
                               padding: '10px 8px',
                               textAlign: 'right',
                               fontSize: 12,
-                              background: '#fafbfc',
-                              color: deltaCosti <= 0 ? '#059669' : '#dc2626',
+                              fontFamily: MONO,
+                              background: '#f8fafc',
+                              color: deltaCosti <= 0 ? '#16a34a' : '#dc2626',
                             }}
                           >
                             {hasData
                               ? `${deltaCosti >= 0 ? '+' : ''}${formatEuro(deltaCosti)}`
                               : '-'}
                           </td>
-                          <td style={{ padding: '10px 8px', textAlign: 'right', color: '#64748b' }}>
+                          <td
+                            style={{
+                              padding: '10px 8px',
+                              textAlign: 'right',
+                              color: '#64748b',
+                              fontFamily: MONO,
+                            }}
+                          >
                             {formatEuro(margineBudget)}
                           </td>
                           <td
@@ -1166,7 +1243,8 @@ export default function BudgetPrevisionale() {
                               padding: '10px 8px',
                               textAlign: 'right',
                               fontWeight: 700,
-                              color: margineReale >= 0 ? '#059669' : '#dc2626',
+                              fontFamily: MONO,
+                              color: margineReale >= 0 ? '#16a34a' : '#dc2626',
                             }}
                           >
                             {hasData ? formatEuro(margineReale) : '-'}
@@ -1176,25 +1254,25 @@ export default function BudgetPrevisionale() {
                     })}
                   </tbody>
                   <tfoot>
-                    <tr style={{ background: '#1e293b', color: 'white', fontWeight: 700 }}>
+                    <tr style={{ background: '#0f2744', color: 'white', fontWeight: 700 }}>
                       <td style={{ padding: '12px 8px' }}>TOTALE</td>
-                      <td style={{ padding: '12px 8px', textAlign: 'right' }}>
+                      <td style={{ padding: '12px 8px', textAlign: 'right', fontFamily: MONO }}>
                         {formatEuro(
                           confronto.andamento_mensile.reduce((s, m) => s + m.ricavi_budget, 0)
                         )}
                       </td>
-                      <td style={{ padding: '12px 8px', textAlign: 'right' }}>
+                      <td style={{ padding: '12px 8px', textAlign: 'right', fontFamily: MONO }}>
                         {formatEuro(
                           confronto.andamento_mensile.reduce((s, m) => s + m.ricavi_consuntivo, 0)
                         )}
                       </td>
                       <td style={{ padding: '12px 8px' }}></td>
-                      <td style={{ padding: '12px 8px', textAlign: 'right' }}>
+                      <td style={{ padding: '12px 8px', textAlign: 'right', fontFamily: MONO }}>
                         {formatEuro(
                           confronto.andamento_mensile.reduce((s, m) => s + m.costi_budget, 0)
                         )}
                       </td>
-                      <td style={{ padding: '12px 8px', textAlign: 'right' }}>
+                      <td style={{ padding: '12px 8px', textAlign: 'right', fontFamily: MONO }}>
                         {formatEuro(
                           confronto.andamento_mensile.reduce((s, m) => s + m.costi_consuntivo, 0)
                         )}
@@ -1242,7 +1320,7 @@ export default function BudgetPrevisionale() {
                             style={{
                               width: 12,
                               height: Math.max(hRicavi, 2),
-                              background: '#22c55e',
+                              background: '#16a34a',
                               borderRadius: '3px 3px 0 0',
                             }}
                             title={`Ricavi: ${formatEuro(m.ricavi_consuntivo)}`}
@@ -1251,7 +1329,7 @@ export default function BudgetPrevisionale() {
                             style={{
                               width: 12,
                               height: Math.max(hCosti, 2),
-                              background: '#ef4444',
+                              background: '#dc2626',
                               borderRadius: '3px 3px 0 0',
                             }}
                             title={`Costi: ${formatEuro(m.costi_consuntivo)}`}
@@ -1268,7 +1346,7 @@ export default function BudgetPrevisionale() {
                       style={{
                         width: 12,
                         height: 12,
-                        background: '#22c55e',
+                        background: '#16a34a',
                         borderRadius: 2,
                         display: 'inline-block',
                       }}
@@ -1280,7 +1358,7 @@ export default function BudgetPrevisionale() {
                       style={{
                         width: 12,
                         height: 12,
-                        background: '#ef4444',
+                        background: '#dc2626',
                         borderRadius: 2,
                         display: 'inline-block',
                       }}

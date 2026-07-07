@@ -19,6 +19,8 @@ import {
   FileText,
 } from 'lucide-react';
 
+const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace';
+
 export default function Mutui() {
   const isMobile = useIsMobile();
   const { anno } = useAnnoGlobale();
@@ -87,12 +89,16 @@ export default function Mutui() {
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 12,
             marginBottom: 24,
+            paddingLeft: 12,
+            borderLeft: '4px solid #0f2744',
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <Landmark size={28} style={{ color: '#6366f1' }} />
-            <h1 style={{ fontSize: 24, fontWeight: 700, color: '#1f2937' }}>Gestione Mutui</h1>
+            <Landmark size={28} style={{ color: '#0f2744' }} />
+            <h1 style={{ fontSize: 24, fontWeight: 700, color: '#1e293b' }}>Gestione Mutui</h1>
           </div>
           <button
             onClick={riconciliaAutomatico}
@@ -103,10 +109,12 @@ export default function Mutui() {
               alignItems: 'center',
               gap: 8,
               padding: '10px 20px',
-              background: riconciliaLoading ? '#9ca3af' : '#6366f1',
+              minHeight: 40,
+              fontSize: 13,
+              background: riconciliaLoading ? '#9ca3af' : '#0f2744',
               color: 'white',
               border: 'none',
-              borderRadius: 8,
+              borderRadius: 6,
               cursor: riconciliaLoading ? 'not-allowed' : 'pointer',
               fontWeight: 500,
               transition: 'all 0.2s',
@@ -122,7 +130,7 @@ export default function Mutui() {
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
               gap: 16,
               marginBottom: 24,
             }}
@@ -130,19 +138,21 @@ export default function Mutui() {
             <div
               data-testid="stat-importo-totale"
               style={{
-                background: '#1d4ed8',
+                background: 'white',
                 padding: 20,
-                borderRadius: 12,
-                color: 'white',
+                borderRadius: 8,
+                border: '1px solid #e2e8f0',
+                borderLeft: '4px solid #0f2744',
+                color: '#1e293b',
               }}
             >
-              <div style={{ fontSize: 14, opacity: 0.9, marginBottom: 4 }}>
+              <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
                 Importo Totale Accordato
               </div>
-              <div style={{ fontSize: 24, fontWeight: 700 }}>
+              <div style={{ fontSize: 22, fontWeight: 700, color: '#0f2744', fontFamily: MONO }}>
                 {formatEuro(stats.importo_totale_accordato)}
               </div>
-              <div style={{ fontSize: 12, opacity: 0.8, marginTop: 4 }}>
+              <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>
                 {stats.numero_mutui} mutui attivi
               </div>
             </div>
@@ -150,17 +160,19 @@ export default function Mutui() {
             <div
               data-testid="stat-pagato"
               style={{
-                background: '#15803d',
+                background: 'white',
                 padding: 20,
-                borderRadius: 12,
-                color: 'white',
+                borderRadius: 8,
+                border: '1px solid #e2e8f0',
+                borderLeft: '4px solid #0f2744',
+                color: '#1e293b',
               }}
             >
-              <div style={{ fontSize: 14, opacity: 0.9, marginBottom: 4 }}>Già Pagato</div>
-              <div style={{ fontSize: 24, fontWeight: 700 }}>
+              <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>Già Pagato</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: '#16a34a', fontFamily: MONO }}>
                 {formatEuro(stats.totale_pagato || stats.totale_pagato_capitale)}
               </div>
-              <div style={{ fontSize: 12, opacity: 0.8, marginTop: 4 }}>
+              <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>
                 {stats.rate_pagate} rate pagate
               </div>
             </div>
@@ -168,17 +180,19 @@ export default function Mutui() {
             <div
               data-testid="stat-residuo"
               style={{
-                background: '#b45309',
+                background: 'white',
                 padding: 20,
-                borderRadius: 12,
-                color: 'white',
+                borderRadius: 8,
+                border: '1px solid #e2e8f0',
+                borderLeft: '4px solid #0f2744',
+                color: '#1e293b',
               }}
             >
-              <div style={{ fontSize: 14, opacity: 0.9, marginBottom: 4 }}>Debito Residuo</div>
-              <div style={{ fontSize: 24, fontWeight: 700 }}>
+              <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>Debito Residuo</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: '#b45309', fontFamily: MONO }}>
                 {formatEuro(stats.debito_residuo_totale)}
               </div>
-              <div style={{ fontSize: 12, opacity: 0.8, marginTop: 4 }}>
+              <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>
                 {stats.rate_da_pagare} rate da pagare
               </div>
             </div>
@@ -186,21 +200,23 @@ export default function Mutui() {
             <div
               data-testid="stat-completamento"
               style={{
-                background: '#1d4ed8',
+                background: 'white',
                 padding: 20,
-                borderRadius: 12,
-                color: 'white',
+                borderRadius: 8,
+                border: '1px solid #e2e8f0',
+                borderLeft: '4px solid #0f2744',
+                color: '#1e293b',
               }}
             >
-              <div style={{ fontSize: 14, opacity: 0.9, marginBottom: 4 }}>Completamento</div>
-              <div style={{ fontSize: 24, fontWeight: 700 }}>
+              <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>Completamento</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: '#0f2744', fontFamily: MONO }}>
                 {stats.percentuale_completamento?.toFixed(1) || 0}%
               </div>
               <div
                 style={{
                   width: '100%',
                   height: 6,
-                  background: 'rgba(255,255,255,0.3)',
+                  background: '#e2e8f0',
                   borderRadius: 3,
                   marginTop: 8,
                   overflow: 'hidden',
@@ -210,7 +226,7 @@ export default function Mutui() {
                   style={{
                     width: `${stats.percentuale_completamento || 0}%`,
                     height: '100%',
-                    background: 'white',
+                    background: '#0f2744',
                     borderRadius: 3,
                   }}
                 />
@@ -225,7 +241,7 @@ export default function Mutui() {
             style={{
               background: '#fef3c7',
               border: '1px solid #fbbf24',
-              borderRadius: 12,
+              borderRadius: 8,
               padding: 16,
               marginBottom: 24,
             }}
@@ -267,8 +283,8 @@ export default function Mutui() {
               data-testid={`mutuo-card-${mutuo.mutuo_id}`}
               style={{
                 background: 'white',
-                borderRadius: 12,
-                border: '1px solid #e5e7eb',
+                borderRadius: 8,
+                border: '1px solid #e2e8f0',
                 overflow: 'hidden',
                 boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
               }}
@@ -288,6 +304,8 @@ export default function Mutui() {
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'flex-start',
+                    flexWrap: 'wrap',
+                    gap: 8,
                   }}
                 >
                   <div>
@@ -305,7 +323,7 @@ export default function Mutui() {
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontSize: 13, color: '#6b7280' }}>Importo accordato</div>
-                    <div style={{ fontSize: 22, fontWeight: 700, color: '#6366f1' }}>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: '#0f2744', fontFamily: MONO }}>
                       {formatEuro(mutuo.importo_accordato)}
                     </div>
                   </div>
@@ -315,7 +333,7 @@ export default function Mutui() {
                 <div
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
                     gap: 16,
                     marginTop: 16,
                     paddingTop: 16,
@@ -326,7 +344,7 @@ export default function Mutui() {
                     <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 2 }}>
                       Totale pagato
                     </div>
-                    <div style={{ fontSize: 16, fontWeight: 600, color: '#22c55e' }}>
+                    <div style={{ fontSize: 16, fontWeight: 600, color: '#16a34a', fontFamily: MONO }}>
                       {formatEuro(mutuo.totale_pagato)}
                     </div>
                     <div style={{ fontSize: 11, color: '#9ca3af' }}>
@@ -337,7 +355,7 @@ export default function Mutui() {
                     <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 2 }}>
                       Debito residuo
                     </div>
-                    <div style={{ fontSize: 16, fontWeight: 600, color: '#f97316' }}>
+                    <div style={{ fontSize: 16, fontWeight: 600, color: '#b45309', fontFamily: MONO }}>
                       {formatEuro(mutuo.debito_residuo_totale)}
                     </div>
                   </div>
@@ -403,38 +421,37 @@ export default function Mutui() {
                       overflowY: 'auto',
                       background: 'white',
                       borderRadius: 8,
-                      border: '1px solid #e5e7eb',
+                      border: '1px solid #e2e8f0',
                       overflowX: 'auto',
                     }}
                   >
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                       <thead>
-                        <tr style={{ background: '#f3f4f6' }}>
-                          <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600 }}>
-                            N°
-                          </th>
-                          <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600 }}>
-                            Scadenza
-                          </th>
-                          <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600 }}>
-                            Capitale
-                          </th>
-                          <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600 }}>
-                            Interessi
-                          </th>
-                          <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600 }}>
-                            Totale
-                          </th>
-                          <th
-                            style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600 }}
-                          >
-                            Stato
-                          </th>
-                          <th
-                            style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600 }}
-                          >
-                            Riconciliata
-                          </th>
+                        <tr style={{ background: '#f8fafc' }}>
+                          {[
+                            ['N°', 'left'],
+                            ['Scadenza', 'left'],
+                            ['Capitale', 'right'],
+                            ['Interessi', 'right'],
+                            ['Totale', 'right'],
+                            ['Stato', 'center'],
+                            ['Riconciliata', 'center'],
+                          ].map(([label, align]) => (
+                            <th
+                              key={label}
+                              style={{
+                                padding: '10px 12px',
+                                textAlign: align,
+                                fontWeight: 600,
+                                fontSize: 11,
+                                textTransform: 'uppercase',
+                                letterSpacing: 0.5,
+                                color: '#64748b',
+                              }}
+                            >
+                              {label}
+                            </th>
+                          ))}
                         </tr>
                       </thead>
                       <tbody>
@@ -442,7 +459,7 @@ export default function Mutui() {
                           <tr
                             key={idx}
                             style={{
-                              borderBottom: '1px solid #e5e7eb',
+                              borderBottom: '1px solid #f1f5f9',
                               background:
                                 rata.stato === 'Pagata'
                                   ? '#f0fdf4'
@@ -455,16 +472,26 @@ export default function Mutui() {
                               {rata.numero_rata}
                             </td>
                             <td style={{ padding: '10px 12px' }}>{formatDateIT(rata.data_scadenza)}</td>
-                            <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                            <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: MONO }}>
                               {formatEuro(rata.quota_capitale)}
                             </td>
                             <td
-                              style={{ padding: '10px 12px', textAlign: 'right', color: '#6b7280' }}
+                              style={{
+                                padding: '10px 12px',
+                                textAlign: 'right',
+                                color: '#64748b',
+                                fontFamily: MONO,
+                              }}
                             >
                               {formatEuro(rata.quota_interessi)}
                             </td>
                             <td
-                              style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600 }}
+                              style={{
+                                padding: '10px 12px',
+                                textAlign: 'right',
+                                fontWeight: 600,
+                                fontFamily: MONO,
+                              }}
                             >
                               {formatEuro(rata.importo_totale)}
                             </td>
@@ -478,7 +505,7 @@ export default function Mutui() {
                                     padding: '2px 8px',
                                     background: '#dcfce7',
                                     color: '#166534',
-                                    borderRadius: 12,
+                                    borderRadius: 8,
                                     fontSize: 11,
                                     fontWeight: 500,
                                   }}
@@ -495,7 +522,7 @@ export default function Mutui() {
                                     padding: '2px 8px',
                                     background: '#e5e7eb',
                                     color: '#374151',
-                                    borderRadius: 12,
+                                    borderRadius: 8,
                                     fontSize: 11,
                                     fontWeight: 500,
                                   }}
@@ -512,7 +539,7 @@ export default function Mutui() {
                                     padding: '2px 8px',
                                     background: '#fee2e2',
                                     color: '#991b1b',
-                                    borderRadius: 12,
+                                    borderRadius: 8,
                                     fontSize: 11,
                                     fontWeight: 500,
                                   }}
@@ -523,9 +550,9 @@ export default function Mutui() {
                             </td>
                             <td style={{ padding: '10px 12px', textAlign: 'center' }}>
                               {rata.riconciliata ? (
-                                <CheckCircle2 size={18} style={{ color: '#22c55e' }} />
+                                <CheckCircle2 size={18} style={{ color: '#16a34a' }} />
                               ) : rata.stato === 'Pagata' ? (
-                                <Clock size={18} style={{ color: '#f97316' }} />
+                                <Clock size={18} style={{ color: '#d97706' }} />
                               ) : (
                                 <span style={{ color: '#d1d5db' }}>-</span>
                               )}
@@ -540,7 +567,7 @@ export default function Mutui() {
                   <div
                     style={{
                       display: 'grid',
-                      gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
                       gap: 16,
                       marginTop: 16,
                     }}
@@ -556,7 +583,7 @@ export default function Mutui() {
                       <div style={{ fontSize: 12, color: '#166534', marginBottom: 4 }}>
                         Capitale Pagato
                       </div>
-                      <div style={{ fontSize: 18, fontWeight: 700, color: '#15803d' }}>
+                      <div style={{ fontSize: 18, fontWeight: 700, color: '#15803d', fontFamily: MONO }}>
                         {formatEuro(mutuo.totale_pagato_capitale)}
                       </div>
                     </div>
@@ -571,22 +598,23 @@ export default function Mutui() {
                       <div style={{ fontSize: 12, color: '#92400e', marginBottom: 4 }}>
                         Interessi Pagati
                       </div>
-                      <div style={{ fontSize: 18, fontWeight: 700, color: '#d97706' }}>
+                      <div style={{ fontSize: 18, fontWeight: 700, color: '#d97706', fontFamily: MONO }}>
                         {formatEuro(mutuo.totale_pagato_interessi)}
                       </div>
                     </div>
                     <div
                       style={{
                         padding: 12,
-                        background: '#ede9fe',
+                        background: 'white',
                         borderRadius: 8,
-                        border: '1px solid #c4b5fd',
+                        border: '1px solid #e2e8f0',
+                        borderLeft: '4px solid #0f2744',
                       }}
                     >
-                      <div style={{ fontSize: 12, color: '#5b21b6', marginBottom: 4 }}>
+                      <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>
                         Totale Versato
                       </div>
-                      <div style={{ fontSize: 18, fontWeight: 700, color: '#7c3aed' }}>
+                      <div style={{ fontSize: 18, fontWeight: 700, color: '#0f2744', fontFamily: MONO }}>
                         {formatEuro(mutuo.totale_pagato)}
                       </div>
                     </div>
@@ -602,8 +630,8 @@ export default function Mutui() {
             style={{
               textAlign: 'center',
               padding: 60,
-              background: '#f9fafb',
-              borderRadius: 12,
+              background: '#f8fafc',
+              borderRadius: 8,
             }}
           >
             <Landmark size={48} style={{ color: '#d1d5db', marginBottom: 16 }} />

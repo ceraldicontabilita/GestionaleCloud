@@ -5,6 +5,8 @@ import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { PageLayout, PageSection, PageGrid, PageLoading } from '../components/PageLayout';
 import { Target, TrendingUp, TrendingDown, Save, Calculator, BarChart3 } from 'lucide-react';
 
+const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace';
+
 export default function UtileObiettivo() {
   const { anno } = useAnnoGlobale();
   const [loading, setLoading] = useState(true);
@@ -68,17 +70,28 @@ export default function UtileObiettivo() {
   const MetricCard = ({ label, value, icon: Icon, color, bgColor }) => (
     <div
       style={{
-        background: bgColor,
-        padding: 20,
-        borderRadius: 12,
-        border: `1px solid ${color}22`,
+        background: 'white',
+        padding: 16,
+        borderRadius: 8,
+        border: '1px solid #e2e8f0',
+        borderLeft: '4px solid #0f2744',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-        <Icon size={20} color={color} />
-        <span style={{ fontSize: 13, color: '#6b7280', fontWeight: 500 }}>{label}</span>
+        <Icon size={18} color={color} />
+        <span
+          style={{
+            fontSize: 11,
+            color: '#64748b',
+            fontWeight: 600,
+            textTransform: 'uppercase',
+            letterSpacing: 0.5,
+          }}
+        >
+          {label}
+        </span>
       </div>
-      <div style={{ fontSize: 24, fontWeight: 700, color }}>{value}</div>
+      <div style={{ fontSize: 22, fontWeight: 700, color, fontFamily: MONO }}>{value}</div>
     </div>
   );
 
@@ -116,8 +129,8 @@ export default function UtileObiettivo() {
                   style={{
                     width: '100%',
                     padding: 12,
-                    border: '1px solid #e5e7eb',
-                    borderRadius: 8,
+                    border: '1px solid #e2e8f0',
+                    borderRadius: 6,
                     fontSize: 16,
                     fontWeight: 600,
                   }}
@@ -148,8 +161,8 @@ export default function UtileObiettivo() {
                   style={{
                     width: '100%',
                     padding: 12,
-                    border: '1px solid #e5e7eb',
-                    borderRadius: 8,
+                    border: '1px solid #e2e8f0',
+                    borderRadius: 6,
                     fontSize: 16,
                     fontWeight: 600,
                   }}
@@ -163,12 +176,13 @@ export default function UtileObiettivo() {
                   data-testid="save-target-btn"
                   style={{
                     padding: '12px 24px',
+                    minHeight: 40,
                     background: '#0f2744',
                     color: 'white',
                     border: 'none',
-                    borderRadius: 8,
+                    borderRadius: 6,
                     cursor: saving ? 'not-allowed' : 'pointer',
-                    fontSize: 14,
+                    fontSize: 13,
                     fontWeight: 600,
                     display: 'flex',
                     alignItems: 'center',
@@ -193,6 +207,8 @@ export default function UtileObiettivo() {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: 12,
                     marginBottom: 24,
                   }}
                 >
@@ -200,13 +216,13 @@ export default function UtileObiettivo() {
                     <div style={{ fontSize: 14, color: '#6b7280', marginBottom: 4 }}>
                       Percentuale
                     </div>
-                    <div style={{ fontSize: 48, fontWeight: 700, color: progressColor }}>
+                    <div style={{ fontSize: 48, fontWeight: 700, color: progressColor, fontFamily: MONO }}>
                       {percentualeRaggiungimento.toFixed(1)}%
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontSize: 14, color: '#6b7280', marginBottom: 4 }}>Target</div>
-                    <div style={{ fontSize: 32, fontWeight: 700, color: '#1f2937' }}>
+                    <div style={{ fontSize: 32, fontWeight: 700, color: '#1e293b', fontFamily: MONO }}>
                       {formatEuro(status.target_utile || 0)}
                     </div>
                   </div>
@@ -215,8 +231,8 @@ export default function UtileObiettivo() {
                 {/* Progress Bar */}
                 <div
                   style={{
-                    background: '#f3f4f6',
-                    borderRadius: 12,
+                    background: '#f1f5f9',
+                    borderRadius: 8,
                     height: 24,
                     overflow: 'hidden',
                     marginBottom: 16,
@@ -227,7 +243,7 @@ export default function UtileObiettivo() {
                       width: `${Math.min(percentualeRaggiungimento, 100)}%`,
                       height: '100%',
                       background: `${progressColor}`,
-                      borderRadius: 12,
+                      borderRadius: 8,
                       transition: 'width 0.5s ease',
                     }}
                   />
@@ -240,7 +256,7 @@ export default function UtileObiettivo() {
                       background: isOnTrack ? '#dcfce7' : isAtRisk ? '#fef3c7' : '#fef2f2',
                       color: progressColor,
                       padding: '8px 20px',
-                      borderRadius: 20,
+                      borderRadius: 8,
                       fontSize: 14,
                       fontWeight: 600,
                       display: 'flex',
@@ -319,7 +335,7 @@ export default function UtileObiettivo() {
                         }}
                       >
                         <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>{cdc}</div>
-                        <div style={{ fontSize: 18, fontWeight: 700, color: '#1e293b' }}>
+                        <div style={{ fontSize: 18, fontWeight: 700, color: '#1e293b', fontFamily: MONO }}>
                           {formatEuro(data.totale || 0)}
                         </div>
                         <div style={{ fontSize: 12, color: '#6b7280' }}>
