@@ -30,13 +30,13 @@ const RiconciliazionePaypalLazy = lazy(() => import('./RiconciliazionePaypal.jsx
  */
 
 const TABS = [
-  { id: 'dashboard', label: '📊 Dashboard', color: '#3b82f6' },
-  { id: 'banca', label: '🏦 Banca', color: '#10b981' },
-  { id: 'assegni', label: '📝 Prelievi Assegno', color: '#f59e0b' },
-  { id: 'f24', label: '📄 F24', color: '#ef4444' },
-  { id: 'stipendi', label: '👤 Stipendi', color: '#06b6d4' },
-  { id: 'documenti', label: '📎 Documenti', color: '#ec4899' },
-  { id: 'paypal', label: '💳 PayPal', color: '#003087' },
+  { id: 'dashboard', label: '📊 Dashboard', color: '#0f2744' },
+  { id: 'banca', label: '🏦 Banca', color: '#0f2744' },
+  { id: 'assegni', label: '📝 Prelievi Assegno', color: '#0f2744' },
+  { id: 'f24', label: '📄 F24', color: '#0f2744' },
+  { id: 'stipendi', label: '👤 Stipendi', color: '#0f2744' },
+  { id: 'documenti', label: '📎 Documenti', color: '#0f2744' },
+  { id: 'paypal', label: '💳 PayPal', color: '#0f2744' },
 ];
 
 export default function RiconciliazioneUnificata() {
@@ -484,7 +484,7 @@ export default function RiconciliazioneUnificata() {
             alignItems: 'center',
             padding: '15px 20px',
             background: '#0f2744',
-            borderRadius: 12,
+            borderRadius: 8,
             color: 'white',
           }}
         >
@@ -497,7 +497,7 @@ export default function RiconciliazioneUnificata() {
             </p>
           </div>
         </div>
-        <div style={{ padding: 40, textAlign: 'center', background: 'white', borderRadius: 12 }}>
+        <div style={{ padding: 40, textAlign: 'center', background: 'white', borderRadius: 8, border: '1px solid #e2e8f0' }}>
           <div style={{ fontSize: 48, marginBottom: 16 }}>⏳</div>
           <div style={{ color: '#64748b' }}>Caricamento riconciliazione...</div>
         </div>
@@ -559,10 +559,11 @@ export default function RiconciliazioneUnificata() {
           data-testid="btn-auto-repair"
           style={{
             padding: '8px 14px',
-            background: autoRepairRunning ? '#9ca3af' : '#1e3a5f',
+            minHeight: 40,
+            background: autoRepairRunning ? '#9ca3af' : '#0f2744',
             color: 'white',
             border: 'none',
-            borderRadius: 8,
+            borderRadius: 6,
             fontWeight: 600,
             fontSize: 13,
             cursor: autoRepairRunning ? 'wait' : 'pointer',
@@ -591,11 +592,13 @@ export default function RiconciliazioneUnificata() {
           disabled={processing}
           style={{
             padding: '10px 20px',
-            background: '#10b981',
+            minHeight: 40,
+            background: '#0f2744',
             color: 'white',
             border: 'none',
-            borderRadius: 8,
+            borderRadius: 6,
             fontWeight: 600,
+            fontSize: 13,
             cursor: 'pointer',
           }}
         >
@@ -606,12 +609,14 @@ export default function RiconciliazioneUnificata() {
           disabled={processing}
           style={{
             padding: '10px 16px',
-            background: 'rgba(255,255,255,0.9)',
-            color: '#1e3a5f',
-            border: 'none',
-            borderRadius: 8,
+            minHeight: 40,
+            background: 'white',
+            color: '#0f2744',
+            border: '1px solid #e2e8f0',
+            borderRadius: 6,
             cursor: 'pointer',
             fontWeight: 600,
+            fontSize: 13,
           }}
         >
           🔄 Aggiorna
@@ -622,12 +627,14 @@ export default function RiconciliazioneUnificata() {
           onClick={() => setShowFilters(!showFilters)}
           style={{
             padding: '10px 16px',
-            background: showFilters ? '#3b82f6' : '#f1f5f9',
-            color: showFilters ? 'white' : '#374151',
-            border: 'none',
-            borderRadius: 8,
+            minHeight: 40,
+            background: showFilters ? '#0f2744' : 'white',
+            color: showFilters ? 'white' : '#1e293b',
+            border: '1px solid #e2e8f0',
+            borderRadius: 6,
             cursor: 'pointer',
             fontWeight: 600,
+            fontSize: 13,
           }}
         >
           🔍 Filtri {showFilters ? '▲' : '▼'}
@@ -639,10 +646,10 @@ export default function RiconciliazioneUnificata() {
         <div
           style={{
             background: 'white',
-            borderRadius: 12,
+            borderRadius: 8,
             padding: 16,
             marginBottom: 16,
-            boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+            border: '1px solid #e2e8f0',
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
             gap: 12,
@@ -659,7 +666,7 @@ export default function RiconciliazioneUnificata() {
               style={{
                 width: '100%',
                 padding: 8,
-                border: '1px solid #e5e7eb',
+                border: '1px solid #e2e8f0',
                 borderRadius: 6,
                 fontSize: 13,
               }}
@@ -676,7 +683,7 @@ export default function RiconciliazioneUnificata() {
               style={{
                 width: '100%',
                 padding: 8,
-                border: '1px solid #e5e7eb',
+                border: '1px solid #e2e8f0',
                 borderRadius: 6,
                 fontSize: 13,
               }}
@@ -694,7 +701,7 @@ export default function RiconciliazioneUnificata() {
               style={{
                 width: '100%',
                 padding: 8,
-                border: '1px solid #e5e7eb',
+                border: '1px solid #e2e8f0',
                 borderRadius: 6,
                 fontSize: 13,
               }}
@@ -712,7 +719,7 @@ export default function RiconciliazioneUnificata() {
               style={{
                 width: '100%',
                 padding: 8,
-                border: '1px solid #e5e7eb',
+                border: '1px solid #e2e8f0',
                 borderRadius: 6,
                 fontSize: 13,
               }}
@@ -730,7 +737,7 @@ export default function RiconciliazioneUnificata() {
               style={{
                 width: '100%',
                 padding: 8,
-                border: '1px solid #e5e7eb',
+                border: '1px solid #e2e8f0',
                 borderRadius: 6,
                 fontSize: 13,
               }}
@@ -743,6 +750,7 @@ export default function RiconciliazioneUnificata() {
               }
               style={{
                 padding: '8px 16px',
+                minHeight: 40,
                 background: '#fee2e2',
                 color: '#dc2626',
                 border: 'none',
@@ -767,8 +775,8 @@ export default function RiconciliazioneUnificata() {
           flexWrap: 'wrap',
           background: 'white',
           padding: 8,
-          borderRadius: 12,
-          boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+          borderRadius: 8,
+          border: '1px solid #e2e8f0',
         }}
       >
         {TABS.map(tab => {
@@ -779,10 +787,11 @@ export default function RiconciliazioneUnificata() {
               onClick={() => handleTabChange(tab.id)}
               style={{
                 padding: '12px 20px',
+                minHeight: 40,
                 background: activeTab === tab.id ? tab.color : '#f8fafc',
-                color: activeTab === tab.id ? 'white' : '#374151',
+                color: activeTab === tab.id ? 'white' : '#1e293b',
                 border: 'none',
-                borderRadius: 8,
+                borderRadius: 6,
                 fontWeight: 600,
                 cursor: 'pointer',
                 fontSize: 13,
@@ -814,8 +823,8 @@ export default function RiconciliazioneUnificata() {
       <div
         style={{
           background: 'white',
-          borderRadius: 12,
-          boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+          borderRadius: 8,
+          border: '1px solid #e2e8f0',
           overflow: 'hidden',
         }}
       >
@@ -882,7 +891,7 @@ export default function RiconciliazioneUnificata() {
                     width: 36,
                     height: 36,
                     border: '3px solid #e2e8f0',
-                    borderTop: '3px solid #003087',
+                    borderTop: '3px solid #0f2744',
                     borderRadius: '50%',
                     animation: 'spin 1s linear infinite',
                     margin: '0 auto 12px',
@@ -907,12 +916,13 @@ export default function RiconciliazioneUnificata() {
             disabled={loadingMore}
             style={{
               padding: '12px 28px',
-              background: loadingMore ? '#94a3b8' : '#3b82f6',
+              minHeight: 40,
+              background: loadingMore ? '#94a3b8' : '#0f2744',
               color: 'white',
               border: 'none',
-              borderRadius: 8,
+              borderRadius: 6,
               fontWeight: 600,
-              fontSize: 14,
+              fontSize: 13,
               cursor: loadingMore ? 'wait' : 'pointer',
               transition: 'all 0.2s',
             }}
@@ -935,8 +945,8 @@ function DashboardTab({ stats, autoMatchStats }) {
       <div
         style={{
           padding: 40,
-          background: '#1d4ed8',
-          borderRadius: 16,
+          background: '#0f2744',
+          borderRadius: 8,
           color: 'white',
           maxWidth: 500,
           margin: '0 auto',
@@ -987,12 +997,12 @@ function MovimentiTab({
 
   return (
     <div>
-      <div style={{ padding: 16, background: '#f8fafc', borderBottom: '1px solid #e5e7eb' }}>
-        <h3 style={{ margin: 0, fontSize: 16 }}>
+      <div style={{ padding: 16, background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+        <h3 style={{ margin: 0, fontSize: 16, color: '#0f2744' }}>
           {title} ({movimenti.length})
         </h3>
       </div>
-      <div style={{ maxHeight: 800, overflow: 'auto' }}>
+      <div>
         {movimenti.map((m, idx) => (
           <MovimentoCard
             key={m.movimento_id || m.id || idx}
@@ -1032,7 +1042,7 @@ function MovimentoCard({ movimento, onConferma, onIgnora, onElimina, processing,
         background: hasMatch ? '#f0fdf4' : datiIncompleti ? '#fef3c7' : 'white',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
         <div
           style={{
             width: 44,
@@ -1087,9 +1097,10 @@ function MovimentoCard({ movimento, onConferma, onIgnora, onElimina, processing,
             <span>•</span>
             <span
               style={{
-                color: movimento.importo < 0 ? '#dc2626' : '#15803d',
+                color: movimento.importo < 0 ? '#dc2626' : '#16a34a',
                 fontWeight: 700,
                 fontSize: 15,
+                fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
               }}
             >
               {movimento.importo ? formatEuro(Math.abs(movimento.importo)) : '€ 0,00'}
@@ -1131,7 +1142,7 @@ function MovimentoCard({ movimento, onConferma, onIgnora, onElimina, processing,
               style={{
                 marginTop: 2,
                 fontSize: 11,
-                color: '#8b5cf6',
+                color: '#3b82f6',
               }}
             >
               📄 Fattura: {numeroFattura}
@@ -1144,7 +1155,7 @@ function MovimentoCard({ movimento, onConferma, onIgnora, onElimina, processing,
               style={{
                 marginTop: 4,
                 fontSize: 11,
-                color: '#f59e0b',
+                color: '#d97706',
                 display: 'flex',
                 flexWrap: 'wrap',
                 gap: 8,
@@ -1229,9 +1240,9 @@ function MovimentoCard({ movimento, onConferma, onIgnora, onElimina, processing,
                     width: '100%',
                     marginTop: 4,
                     padding: '4px 8px',
-                    background: '#fce7f3',
+                    background: '#dbeafe',
                     borderRadius: 4,
-                    color: '#9d174d',
+                    color: '#1e40af',
                   }}
                 >
                   ℹ️ {movimento.nota_td24}
@@ -1246,7 +1257,7 @@ function MovimentoCard({ movimento, onConferma, onIgnora, onElimina, processing,
               style={{
                 marginTop: 2,
                 fontSize: 11,
-                color: '#f59e0b',
+                color: '#d97706',
               }}
             >
               👤 Beneficiario: {movimento.beneficiario}
@@ -1270,19 +1281,20 @@ function MovimentoCard({ movimento, onConferma, onIgnora, onElimina, processing,
           )}
         </div>
 
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button
             onClick={() => onConferma(movimento)}
             disabled={processing}
             style={{
               padding: '8px 16px',
-              background: '#10b981',
+              minHeight: 40,
+              background: '#0f2744',
               color: 'white',
               border: 'none',
               borderRadius: 6,
               fontWeight: 600,
               cursor: 'pointer',
-              fontSize: 12,
+              fontSize: 13,
             }}
           >
             {processing ? '⏳' : '✓'} Conferma
@@ -1292,12 +1304,14 @@ function MovimentoCard({ movimento, onConferma, onIgnora, onElimina, processing,
             disabled={processing}
             style={{
               padding: '8px 12px',
-              background: '#f1f5f9',
+              minHeight: 40,
+              minWidth: 40,
+              background: 'white',
               color: '#64748b',
-              border: 'none',
+              border: '1px solid #e2e8f0',
               borderRadius: 6,
               cursor: 'pointer',
-              fontSize: 12,
+              fontSize: 13,
             }}
           >
             ✕
@@ -1310,12 +1324,14 @@ function MovimentoCard({ movimento, onConferma, onIgnora, onElimina, processing,
               title="Elimina definitivamente"
               style={{
                 padding: '8px 12px',
+                minHeight: 40,
+                minWidth: 40,
                 background: '#fee2e2',
                 color: '#dc2626',
                 border: 'none',
                 borderRadius: 6,
                 cursor: 'pointer',
-                fontSize: 12,
+                fontSize: 13,
               }}
             >
               🗑️
@@ -1348,12 +1364,14 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
             style={{
               marginTop: 16,
               padding: '10px 20px',
-              background: '#3b82f6',
+              minHeight: 40,
+              background: '#0f2744',
               color: 'white',
               border: 'none',
-              borderRadius: 8,
+              borderRadius: 6,
               cursor: f24Loading ? 'wait' : 'pointer',
               fontWeight: 600,
+              fontSize: 13,
             }}
           >
             {f24Loading ? '⏳ Caricamento F24...' : '🔍 Carica F24 pendenti'}
@@ -1435,7 +1453,7 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
 
   return (
     <div>
-      <div style={{ padding: 16, background: '#fef2f2', borderBottom: '1px solid #fecaca' }}>
+      <div style={{ padding: 16, background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
         <div
           style={{
             display: 'flex',
@@ -1445,10 +1463,18 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
             gap: 12,
           }}
         >
-          <h3 style={{ margin: 0, fontSize: 16, color: '#991b1b' }}>
+          <h3 style={{ margin: 0, fontSize: 16, color: '#0f2744' }}>
             📄 F24 Pendenti ({f24Validi.length})
           </h3>
-          <div style={{ fontWeight: 700, color: '#dc2626' }}>Totale: {formatEuro(totale)}</div>
+          <div
+            style={{
+              fontWeight: 700,
+              color: '#dc2626',
+              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+            }}
+          >
+            Totale: {formatEuro(totale)}
+          </div>
         </div>
 
         {/* Azioni batch */}
@@ -1459,11 +1485,13 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
             onClick={toggleTutti}
             style={{
               padding: '8px 12px',
-              background: '#e5e7eb',
-              border: 'none',
+              minHeight: 40,
+              background: 'white',
+              color: '#1e293b',
+              border: '1px solid #e2e8f0',
               borderRadius: 6,
               cursor: 'pointer',
-              fontSize: 12,
+              fontSize: 13,
             }}
           >
             {selezionati.size === f24Validi.length ? '☐ Deseleziona' : '☑ Seleziona tutti'}
@@ -1490,7 +1518,8 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
                 disabled={salvandoBatch}
                 style={{
                   padding: '8px 16px',
-                  background: '#dc2626',
+                  minHeight: 40,
+                  background: '#0f2744',
                   color: 'white',
                   border: 'none',
                   borderRadius: 6,
@@ -1507,7 +1536,7 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
         </div>
       </div>
 
-      <div style={{ maxHeight: 800, overflow: 'auto' }}>
+      <div>
         {f24Validi.map((f, idx) => {
           const importo = f.importo_totale || f.importo || 0;
           const scadenzaStr = formatDateIT(f.data_scadenza);
@@ -1554,22 +1583,36 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
 
                 {/* Importo e azioni */}
                 <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontWeight: 700, fontSize: 18, color: '#dc2626' }}>
+                  <div
+                    style={{
+                      fontWeight: 700,
+                      fontSize: 18,
+                      color: '#dc2626',
+                      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                    }}
+                  >
                     {formatEuro(importo)}
                   </div>
                   <div
-                    style={{ display: 'flex', gap: 4, marginTop: 8, justifyContent: 'flex-end' }}
+                    style={{
+                      display: 'flex',
+                      gap: 4,
+                      marginTop: 8,
+                      justifyContent: 'flex-end',
+                      flexWrap: 'wrap',
+                    }}
                   >
                     <button
                       onClick={() => confermaF24Singolo(f, 'banca')}
                       style={{
-                        padding: '4px 8px',
-                        background: '#10b981',
+                        padding: '4px 10px',
+                        minHeight: 40,
+                        background: '#16a34a',
                         color: 'white',
                         border: 'none',
-                        borderRadius: 4,
+                        borderRadius: 6,
                         cursor: 'pointer',
-                        fontSize: 11,
+                        fontSize: 12,
                       }}
                       title="Conferma pagamento F24 tramite Banca"
                     >
@@ -1586,13 +1629,14 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
                         }
                       }}
                       style={{
-                        padding: '4px 8px',
-                        background: f.pdf_url || f.file_path ? '#6366f1' : '#94a3b8',
+                        padding: '4px 10px',
+                        minHeight: 40,
+                        background: f.pdf_url || f.file_path ? '#0f2744' : '#94a3b8',
                         color: 'white',
                         border: 'none',
-                        borderRadius: 4,
+                        borderRadius: 6,
                         cursor: 'pointer',
-                        fontSize: 11,
+                        fontSize: 12,
                       }}
                       title={
                         f.pdf_url || f.file_path ? 'Visualizza PDF F24' : 'PDF non disponibile'
@@ -1695,10 +1739,10 @@ function DocumentiTab({ documenti, stats, onRefresh, processing }) {
   const getCategoryColor = category => {
     const colors = {
       fattura: '#3b82f6',
-      f24: '#ef4444',
-      busta_paga: '#22c55e',
-      verbale: '#f97316',
-      cartella: '#8b5cf6',
+      f24: '#dc2626',
+      busta_paga: '#16a34a',
+      verbale: '#d97706',
+      cartella: '#0f2744',
     };
     return colors[category] || '#64748b';
   };
@@ -1718,7 +1762,7 @@ function DocumentiTab({ documenti, stats, onRefresh, processing }) {
   return (
     <div>
       {/* Header con stats */}
-      <div style={{ padding: 16, background: '#fdf4ff', borderBottom: '1px solid #f5d0fe' }}>
+      <div style={{ padding: 16, background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
         <div
           style={{
             display: 'flex',
@@ -1728,7 +1772,7 @@ function DocumentiTab({ documenti, stats, onRefresh, processing }) {
             gap: 12,
           }}
         >
-          <h3 style={{ margin: 0, fontSize: 16, color: '#a21caf' }}>
+          <h3 style={{ margin: 0, fontSize: 16, color: '#0f2744' }}>
             📎 Documenti Non Associati ({documenti.length})
           </h3>
           {stats && (
@@ -1783,9 +1827,9 @@ function DocumentiTab({ documenti, stats, onRefresh, processing }) {
                 padding: 14,
                 borderBottom: '1px solid #f1f5f9',
                 cursor: 'pointer',
-                background: selectedDoc?.id === doc.id ? '#fdf4ff' : 'white',
+                background: selectedDoc?.id === doc.id ? '#f8fafc' : 'white',
                 borderLeft:
-                  selectedDoc?.id === doc.id ? '3px solid #a21caf' : '3px solid transparent',
+                  selectedDoc?.id === doc.id ? '3px solid #0f2744' : '3px solid transparent',
               }}
             >
               <div
@@ -1823,7 +1867,7 @@ function DocumentiTab({ documenti, stats, onRefresh, processing }) {
                       fontSize: 11,
                       borderRadius: 4,
                       background: '#dbeafe',
-                      color: '#1d4ed8',
+                      color: '#1e40af',
                     }}
                   >
                     {doc?.proposta?.anno_suggerito}
@@ -1844,13 +1888,14 @@ function DocumentiTab({ documenti, stats, onRefresh, processing }) {
                 style={{
                   width: '100%',
                   padding: 14,
-                  background: '#a21caf',
+                  minHeight: 40,
+                  background: '#0f2744',
                   color: 'white',
                   border: 'none',
-                  borderRadius: 8,
+                  borderRadius: 6,
                   fontWeight: 600,
                   cursor: 'pointer',
-                  fontSize: 14,
+                  fontSize: 13,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -1893,7 +1938,7 @@ function DocumentiTab({ documenti, stats, onRefresh, processing }) {
                     marginBottom: 16,
                   }}
                 >
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#1d4ed8', marginBottom: 8 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#1e40af', marginBottom: 8 }}>
                     💡 Proposta Intelligente
                   </div>
                   {selectedDoc?.proposta?.tipo_suggerito && (
@@ -1971,7 +2016,8 @@ function DocumentiTab({ documenti, stats, onRefresh, processing }) {
                 style={{
                   flex: 1,
                   padding: 12,
-                  background: associazioneForm.collezione ? '#22c55e' : '#94a3b8',
+                  minHeight: 40,
+                  background: associazioneForm.collezione ? '#16a34a' : '#94a3b8',
                   color: 'white',
                   border: 'none',
                   borderRadius: 6,
@@ -1986,6 +2032,8 @@ function DocumentiTab({ documenti, stats, onRefresh, processing }) {
                 onClick={() => handleDelete(selectedDoc.id)}
                 style={{
                   padding: '12px 16px',
+                  minHeight: 40,
+                  minWidth: 40,
                   background: '#fee2e2',
                   color: '#dc2626',
                   border: 'none',

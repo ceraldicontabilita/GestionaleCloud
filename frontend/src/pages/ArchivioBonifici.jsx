@@ -407,11 +407,12 @@ export default function ArchivioBonifici() {
           to="/import-export"
           style={{
             padding: '8px 14px',
-            background: '#3b82f6',
+            minHeight: 40,
+            background: '#0f2744',
             color: 'white',
             fontWeight: 600,
             fontSize: 13,
-            borderRadius: 8,
+            borderRadius: 6,
             textDecoration: 'none',
             display: 'inline-flex',
             alignItems: 'center',
@@ -424,12 +425,13 @@ export default function ArchivioBonifici() {
           onClick={handleSyncIbanToAnagrafica}
           style={{
             padding: '8px 14px',
-            background: '#10b981',
+            minHeight: 40,
+            background: '#0f2744',
             color: 'white',
             fontWeight: 600,
             fontSize: 13,
             border: 'none',
-            borderRadius: 8,
+            borderRadius: 6,
             cursor: 'pointer',
           }}
           title="Sincronizza gli IBAN dei bonifici nell'anagrafica dipendenti"
@@ -444,10 +446,11 @@ export default function ArchivioBonifici() {
           }}
           style={{
             padding: '8px 14px',
-            background: '#f5f5f5',
-            color: '#333',
-            border: '1px solid #ddd',
-            borderRadius: 8,
+            minHeight: 40,
+            background: 'white',
+            color: '#1e293b',
+            border: '1px solid #e2e8f0',
+            borderRadius: 6,
             cursor: 'pointer',
             fontSize: 13,
           }}
@@ -460,70 +463,99 @@ export default function ArchivioBonifici() {
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
           gap: 16,
           marginBottom: 24,
         }}
       >
         <div
           style={{
-            background: '#f0f9ff',
-            padding: 20,
-            borderRadius: 12,
-            border: '1px solid #bae6fd',
+            background: 'white',
+            padding: 16,
+            borderRadius: 8,
+            border: '1px solid #e2e8f0',
+            borderLeft: '4px solid #0f2744',
           }}
         >
-          <div style={{ fontSize: 13, color: '#0369a1' }}>Bonifici Totali in DB</div>
-          <div style={{ fontSize: 32, fontWeight: 'bold', color: '#0c4a6e' }}>{count}</div>
+          <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}>
+            Bonifici Totali in DB
+          </div>
+          <div
+            style={{
+              fontSize: 24,
+              fontWeight: 700,
+              color: '#1e293b',
+              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+            }}
+          >
+            {count}
+          </div>
         </div>
         <div
           style={{
-            background: '#f0fdf4',
-            padding: 20,
-            borderRadius: 12,
-            border: '1px solid #bbf7d0',
+            background: 'white',
+            padding: 16,
+            borderRadius: 8,
+            border: '1px solid #e2e8f0',
+            borderLeft: '4px solid #0f2744',
           }}
         >
-          <div style={{ fontSize: 13, color: '#16a34a' }}>Bonifici Filtrati</div>
-          <div style={{ fontSize: 32, fontWeight: 'bold', color: '#166534' }}>
+          <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}>
+            Bonifici Filtrati
+          </div>
+          <div
+            style={{
+              fontSize: 24,
+              fontWeight: 700,
+              color: '#1e293b',
+              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+            }}
+          >
             {transfers.length}
           </div>
         </div>
         <div
           style={{
-            background: '#fefce8',
-            padding: 20,
-            borderRadius: 12,
-            border: '1px solid #fef08a',
+            background: 'white',
+            padding: 16,
+            borderRadius: 8,
+            border: '1px solid #e2e8f0',
+            borderLeft: '4px solid #0f2744',
           }}
         >
-          <div style={{ fontSize: 13, color: '#ca8a04' }}>Totale Importi Filtrati</div>
-          <div style={{ fontSize: 24, fontWeight: 'bold', color: '#854d0e' }}>
+          <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}>
+            Totale Importi Filtrati
+          </div>
+          <div
+            style={{
+              fontSize: 22,
+              fontWeight: 700,
+              color: '#1e293b',
+              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+            }}
+          >
             {formatEuro(totaleImporto)}
           </div>
         </div>
         {/* Card Riconciliazione */}
         <div
           style={{
-            background: riconciliazioneStats?.riconciliati > 0 ? '#f0fdf4' : '#fef2f2',
-            padding: 20,
-            borderRadius: 12,
-            border: `1px solid ${riconciliazioneStats?.riconciliati > 0 ? '#bbf7d0' : '#fecaca'}`,
+            background: 'white',
+            padding: 16,
+            borderRadius: 8,
+            border: '1px solid #e2e8f0',
+            borderLeft: '4px solid #0f2744',
           }}
         >
-          <div
-            style={{
-              fontSize: 13,
-              color: riconciliazioneStats?.riconciliati > 0 ? '#16a34a' : '#dc2626',
-            }}
-          >
+          <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}>
             ✓ Riconciliati
           </div>
           <div
             style={{
-              fontSize: 32,
-              fontWeight: 'bold',
-              color: riconciliazioneStats?.riconciliati > 0 ? '#166534' : '#991b1b',
+              fontSize: 24,
+              fontWeight: 700,
+              color: riconciliazioneStats?.riconciliati > 0 ? '#16a34a' : '#dc2626',
+              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
             }}
           >
             {riconciliazioneStats?.riconciliati || 0}/{riconciliazioneStats?.totale || 0}
@@ -537,13 +569,15 @@ export default function ArchivioBonifici() {
       {/* Pulsante Riconciliazione */}
       <div
         style={{
-          background: '#1d4ed8',
+          background: '#0f2744',
           padding: 16,
-          borderRadius: 12,
+          borderRadius: 8,
           marginBottom: 24,
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: 12,
           color: 'white',
         }}
       >
@@ -560,13 +594,14 @@ export default function ArchivioBonifici() {
           disabled={riconciliando}
           style={{
             padding: '12px 24px',
-            borderRadius: 8,
+            minHeight: 40,
+            borderRadius: 6,
             background: riconciliando ? '#94a3b8' : 'white',
-            color: '#0369a1',
+            color: '#0f2744',
             border: 'none',
             cursor: riconciliando ? 'not-allowed' : 'pointer',
             fontWeight: 'bold',
-            fontSize: 14,
+            fontSize: 13,
           }}
           data-testid="riconcilia-bonifici-btn"
         >
@@ -576,8 +611,16 @@ export default function ArchivioBonifici() {
 
       {/* Riepilogo per Anno con Download ZIP */}
       {Object.keys(summary).length > 0 && (
-        <div style={{ background: '#f8fafc', padding: 16, borderRadius: 12, marginBottom: 24 }}>
-          <h3 style={{ fontSize: 14, fontWeight: 'bold', marginBottom: 12, color: '#475569' }}>
+        <div
+          style={{
+            background: 'white',
+            padding: 16,
+            borderRadius: 8,
+            border: '1px solid #e2e8f0',
+            marginBottom: 24,
+          }}
+        >
+          <h3 style={{ fontSize: 14, fontWeight: 'bold', marginBottom: 12, color: '#0f2744' }}>
             📊 Riepilogo per Anno (clicca per scaricare ZIP)
           </h3>
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
@@ -589,7 +632,8 @@ export default function ArchivioBonifici() {
                   style={{
                     background: 'white',
                     padding: '8px 16px',
-                    borderRadius: 8,
+                    minHeight: 40,
+                    borderRadius: 6,
                     border: '1px solid #e2e8f0',
                     cursor: 'pointer',
                     transition: 'all 0.2s',
@@ -601,7 +645,7 @@ export default function ArchivioBonifici() {
                   <div
                     style={{
                       fontWeight: 'bold',
-                      color: '#1e3a5f',
+                      color: '#0f2744',
                       display: 'flex',
                       alignItems: 'center',
                       gap: 8,
@@ -629,7 +673,7 @@ export default function ArchivioBonifici() {
         style={{
           background: 'white',
           padding: 16,
-          borderRadius: 12,
+          borderRadius: 8,
           border: '1px solid #e2e8f0',
           marginBottom: 24,
           display: 'flex',
@@ -648,8 +692,10 @@ export default function ArchivioBonifici() {
           }}
           style={{
             padding: '8px 12px',
-            borderRadius: 8,
+            minHeight: 40,
+            borderRadius: 6,
             border: '1px solid #e2e8f0',
+            fontSize: 13,
             minWidth: 200,
           }}
           data-testid="bonifici-search"
@@ -658,8 +704,9 @@ export default function ArchivioBonifici() {
           onClick={loadTransfers}
           style={{
             padding: '8px 16px',
-            borderRadius: 8,
-            background: '#3b82f6',
+            minHeight: 40,
+            borderRadius: 6,
+            background: '#0f2744',
             color: 'white',
             border: 'none',
             cursor: 'pointer',
@@ -677,8 +724,10 @@ export default function ArchivioBonifici() {
           onChange={e => setOrdinanteFilter(e.target.value)}
           style={{
             padding: '8px 12px',
-            borderRadius: 8,
+            minHeight: 40,
+            borderRadius: 6,
             border: '1px solid #e2e8f0',
+            fontSize: 13,
             minWidth: 150,
           }}
         />
@@ -689,8 +738,10 @@ export default function ArchivioBonifici() {
           onChange={e => setBeneficiarioFilter(e.target.value)}
           style={{
             padding: '8px 12px',
-            borderRadius: 8,
+            minHeight: 40,
+            borderRadius: 6,
             border: '1px solid #e2e8f0',
+            fontSize: 13,
             minWidth: 150,
           }}
         />
@@ -699,7 +750,14 @@ export default function ArchivioBonifici() {
           placeholder="Anno (es. 2024)"
           value={yearFilter}
           onChange={e => setYearFilter(e.target.value)}
-          style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e2e8f0', width: 120 }}
+          style={{
+            padding: '8px 12px',
+            minHeight: 40,
+            borderRadius: 6,
+            border: '1px solid #e2e8f0',
+            fontSize: 13,
+            width: 120,
+          }}
         />
         {/* Bottone Reset Filtri */}
         {(search || ordinanteFilter || beneficiarioFilter || yearFilter) && (
@@ -712,29 +770,32 @@ export default function ArchivioBonifici() {
             }}
             style={{
               padding: '8px 12px',
-              borderRadius: 8,
-              background: '#f1f5f9',
+              minHeight: 40,
+              borderRadius: 6,
+              background: 'white',
               color: '#64748b',
               border: '1px solid #e2e8f0',
               cursor: 'pointer',
-              fontSize: 12,
+              fontSize: 13,
             }}
           >
             ✕ Reset
           </button>
         )}
 
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button
             onClick={() => handleExport('xlsx')}
             style={{
               padding: '8px 16px',
-              borderRadius: 8,
-              background: '#16a34a',
+              minHeight: 40,
+              borderRadius: 6,
+              background: '#0f2744',
               color: 'white',
               border: 'none',
               cursor: 'pointer',
               fontSize: 13,
+              fontWeight: 600,
             }}
           >
             📥 Export XLSX
@@ -743,12 +804,14 @@ export default function ArchivioBonifici() {
             onClick={() => handleExport('csv')}
             style={{
               padding: '8px 16px',
-              borderRadius: 8,
-              background: '#64748b',
-              color: 'white',
-              border: 'none',
+              minHeight: 40,
+              borderRadius: 6,
+              background: 'white',
+              color: '#1e293b',
+              border: '1px solid #e2e8f0',
               cursor: 'pointer',
               fontSize: 13,
+              fontWeight: 600,
             }}
           >
             📥 Export CSV
@@ -757,18 +820,21 @@ export default function ArchivioBonifici() {
       </div>
 
       {/* TABS */}
-      <div style={{ display: 'flex', gap: 0, marginBottom: 0, alignItems: 'flex-end' }}>
+      <div
+        style={{ display: 'flex', gap: 0, marginBottom: 0, alignItems: 'flex-end', flexWrap: 'wrap' }}
+      >
         <button
           onClick={() => handleTabChange('da_associare')}
           style={{
             padding: '12px 24px',
-            background: activeTab === 'da_associare' ? '#1e3a5f' : '#f1f5f9',
+            minHeight: 40,
+            background: activeTab === 'da_associare' ? '#0f2744' : '#f1f5f9',
             color: activeTab === 'da_associare' ? 'white' : '#475569',
             border: 'none',
             borderRadius: '8px 8px 0 0',
             cursor: 'pointer',
             fontWeight: 600,
-            fontSize: 14,
+            fontSize: 13,
             display: 'flex',
             alignItems: 'center',
             gap: 8,
@@ -791,13 +857,14 @@ export default function ArchivioBonifici() {
           onClick={() => handleTabChange('associati')}
           style={{
             padding: '12px 24px',
-            background: activeTab === 'associati' ? '#16a34a' : '#f1f5f9',
+            minHeight: 40,
+            background: activeTab === 'associati' ? '#0f2744' : '#f1f5f9',
             color: activeTab === 'associati' ? 'white' : '#475569',
             border: 'none',
             borderRadius: '8px 8px 0 0',
             cursor: 'pointer',
             fontWeight: 600,
-            fontSize: 14,
+            fontSize: 13,
             display: 'flex',
             alignItems: 'center',
             gap: 8,
@@ -808,8 +875,8 @@ export default function ArchivioBonifici() {
           ✅ Associati
           <span
             style={{
-              background: activeTab === 'associati' ? 'rgba(255,255,255,0.2)' : '#dcfce7',
-              color: activeTab === 'associati' ? 'white' : '#16a34a',
+              background: activeTab === 'associati' ? 'rgba(255,255,255,0.2)' : '#e2e8f0',
+              color: activeTab === 'associati' ? 'white' : '#475569',
               padding: '2px 8px',
               borderRadius: 10,
               fontSize: 12,
@@ -826,7 +893,7 @@ export default function ArchivioBonifici() {
       <div
         style={{
           background: 'white',
-          borderRadius: '0 12px 12px 12px',
+          borderRadius: '0 8px 8px 8px',
           border: '1px solid #e2e8f0',
           overflow: 'hidden',
         }}
@@ -843,12 +910,14 @@ export default function ArchivioBonifici() {
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr
                   style={{
-                    background: activeTab === 'associati' ? '#16a34a' : '#1e3a5f',
-                    color: 'white',
+                    background: '#f8fafc',
+                    color: '#64748b',
+                    fontSize: 11,
+                    textTransform: 'uppercase',
                   }}
                 >
                   <th style={{ padding: 8, textAlign: 'center', width: 40 }}>✓</th>
@@ -896,6 +965,7 @@ export default function ArchivioBonifici() {
                         fontWeight: 'bold',
                         color: '#16a34a',
                         whiteSpace: 'nowrap',
+                        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
                       }}
                     >
                       {formatEuro(t.importo)}
@@ -950,7 +1020,7 @@ export default function ArchivioBonifici() {
                             onClick={() => toggleAssociaDropdown(t.id)}
                             style={{
                               padding: '4px 10px',
-                              background: associaDropdown === t.id ? '#3b82f6' : '#f1f5f9',
+                              background: associaDropdown === t.id ? '#0f2744' : '#f1f5f9',
                               color: associaDropdown === t.id ? 'white' : '#475569',
                               border: 'none',
                               borderRadius: 6,
@@ -1107,7 +1177,13 @@ export default function ArchivioBonifici() {
                                           ? `${op.mese}/${op.anno}`
                                           : formatDate(op.data)}
                                       </span>
-                                      <span style={{ fontWeight: 600 }}>
+                                      <span
+                                        style={{
+                                          fontWeight: 600,
+                                          fontFamily:
+                                            'ui-monospace, SFMono-Regular, Menlo, monospace',
+                                        }}
+                                      >
                                         {formatEuro(op.importo_display)}
                                       </span>
                                     </div>
@@ -1126,7 +1202,7 @@ export default function ArchivioBonifici() {
                           <span
                             style={{
                               background: '#dbeafe',
-                              color: '#1d4ed8',
+                              color: '#1e40af',
                               padding: '4px 8px',
                               borderRadius: 6,
                               fontSize: 10,
@@ -1155,7 +1231,7 @@ export default function ArchivioBonifici() {
                             onClick={() => toggleAssociaFatturaDropdown(t.id)}
                             style={{
                               padding: '4px 10px',
-                              background: associaFatturaDropdown === t.id ? '#1d4ed8' : '#f1f5f9',
+                              background: associaFatturaDropdown === t.id ? '#0f2744' : '#f1f5f9',
                               color: associaFatturaDropdown === t.id ? 'white' : '#475569',
                               border: 'none',
                               borderRadius: 6,
@@ -1316,7 +1392,7 @@ export default function ArchivioBonifici() {
                           }}
                           style={{
                             cursor: 'pointer',
-                            color: t.note ? '#1e3a5f' : '#94a3b8',
+                            color: t.note ? '#0f2744' : '#94a3b8',
                             fontSize: 11,
                           }}
                           title="Clicca per modificare"

@@ -48,16 +48,16 @@ const TIPO_LABELS = {
 };
 
 const TIPO_COLORS = {
-  express_checkout: '#ef4444',
-  pagamento_utenza: '#f59e0b',
-  pagamento_web: '#8b5cf6',
+  express_checkout: '#dc2626',
+  pagamento_utenza: '#d97706',
+  pagamento_web: '#0f2744',
   pagamento: '#dc2626',
-  accredito: '#22c55e',
+  accredito: '#16a34a',
   bonifico_paypal: '#3b82f6',
-  rimborso: '#06b6d4',
-  conversione_valuta: '#6b7280',
-  prelievo: '#f97316',
-  altro: '#9ca3af',
+  rimborso: '#16a34a',
+  conversione_valuta: '#64748b',
+  prelievo: '#b8860b',
+  altro: '#64748b',
 };
 
 export default function RiconciliazionePaypal() {
@@ -279,7 +279,7 @@ export default function RiconciliazionePaypal() {
         }}
       >
         <RefreshCw
-          style={{ width: 32, height: 32, animation: 'spin 1s linear infinite', color: '#0070ba' }}
+          style={{ width: 32, height: 32, animation: 'spin 1s linear infinite', color: '#0f2744' }}
         />
       </div>
     );
@@ -317,10 +317,12 @@ export default function RiconciliazionePaypal() {
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 12,
             marginBottom: 20,
             padding: '16px 20px',
-            background: '#1d4ed8',
-            borderRadius: 12,
+            background: '#0f2744',
+            borderRadius: 8,
             color: 'white',
           }}
         >
@@ -343,11 +345,12 @@ export default function RiconciliazionePaypal() {
               {formatEuro(Math.abs(dashboard?.totale_speso || 0))} spesi
             </p>
           </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <button
               onClick={() => navigate('/documenti/import')}
               style={{
                 padding: '8px 14px',
+                minHeight: 40,
                 background: 'rgba(255,255,255,0.2)',
                 color: 'white',
                 border: '1px solid rgba(255,255,255,0.3)',
@@ -370,6 +373,7 @@ export default function RiconciliazionePaypal() {
               disabled={importingCsv}
               style={{
                 padding: '8px 14px',
+                minHeight: 40,
                 background: 'rgba(255,255,255,0.2)',
                 color: 'white',
                 border: '1px solid rgba(255,255,255,0.3)',
@@ -387,6 +391,7 @@ export default function RiconciliazionePaypal() {
               onChange={e => setSyncMesi(parseInt(e.target.value))}
               style={{
                 padding: '8px 10px',
+                minHeight: 40,
                 borderRadius: 6,
                 border: '1px solid rgba(255,255,255,0.3)',
                 background: 'rgba(255,255,255,0.15)',
@@ -452,9 +457,10 @@ export default function RiconciliazionePaypal() {
               }}
               style={{
                 padding: '8px 14px',
-                background: 'rgba(253, 224, 71, 0.25)',
+                minHeight: 40,
+                background: 'rgba(184, 134, 11, 0.35)',
                 color: 'white',
-                border: '1px solid rgba(253, 224, 71, 0.5)',
+                border: '1px solid rgba(184, 134, 11, 0.7)',
                 borderRadius: 6,
                 cursor: syncing ? 'default' : 'pointer',
                 fontSize: 13,
@@ -472,39 +478,55 @@ export default function RiconciliazionePaypal() {
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(5, 1fr)',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
             gap: 12,
             marginBottom: 20,
           }}
         >
           {[
-            { label: 'Estratti Conto', value: dashboard?.total_statements, color: '#0070ba' },
-            { label: 'Transazioni', value: dashboard?.total_transactions, color: '#6366f1' },
+            { label: 'Estratti Conto', value: dashboard?.total_statements },
+            { label: 'Transazioni', value: dashboard?.total_transactions },
             {
               label: 'Totale Speso',
               value: formatEuro(Math.abs(dashboard?.totale_speso || 0)),
-              color: '#ef4444',
+              color: '#dc2626',
               isText: true,
             },
-            { label: 'Riconciliati Banca', value: dashboard?.riconciliati_banca, color: '#22c55e' },
             {
-              label: 'Movimenti Banca',
-              value: dashboard?.movimenti_banca_paypal,
-              color: '#f59e0b',
+              label: 'Riconciliati Banca',
+              value: dashboard?.riconciliati_banca,
+              color: '#16a34a',
             },
+            { label: 'Movimenti Banca', value: dashboard?.movimenti_banca_paypal },
           ].map(s => (
             <div
               key={s.label}
               style={{
                 background: 'white',
-                borderRadius: 10,
+                borderRadius: 8,
                 padding: 16,
-                boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
-                borderLeft: `3px solid ${s.color}`,
+                border: '1px solid #e2e8f0',
+                borderLeft: '4px solid #0f2744',
               }}
             >
-              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>{s.label}</div>
-              <div style={{ fontSize: s.isText ? 20 : 28, fontWeight: 'bold', color: s.color }}>
+              <div
+                style={{
+                  fontSize: 11,
+                  color: '#64748b',
+                  textTransform: 'uppercase',
+                  marginBottom: 4,
+                }}
+              >
+                {s.label}
+              </div>
+              <div
+                style={{
+                  fontSize: s.isText ? 20 : 24,
+                  fontWeight: 700,
+                  color: s.color || '#1e293b',
+                  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                }}
+              >
                 {s.value || 0}
               </div>
             </div>
@@ -513,7 +535,13 @@ export default function RiconciliazionePaypal() {
 
         {/* Tabs */}
         <div
-          style={{ display: 'flex', gap: 4, borderBottom: '2px solid #e5e7eb', marginBottom: 16 }}
+          style={{
+            display: 'flex',
+            gap: 4,
+            flexWrap: 'wrap',
+            borderBottom: '2px solid #e2e8f0',
+            marginBottom: 16,
+          }}
         >
           {tabs.map(t => (
             <button
@@ -521,12 +549,13 @@ export default function RiconciliazionePaypal() {
               onClick={() => setActiveTab(t.id)}
               style={{
                 padding: '8px 14px',
+                minHeight: 40,
                 fontSize: 13,
                 fontWeight: activeTab === t.id ? 'bold' : 'normal',
                 borderRadius: '6px 6px 0 0',
                 border: 'none',
-                background: activeTab === t.id ? '#0070ba' : 'transparent',
-                color: activeTab === t.id ? 'white' : '#6b7280',
+                background: activeTab === t.id ? '#0f2744' : 'transparent',
+                color: activeTab === t.id ? 'white' : '#64748b',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
@@ -538,7 +567,7 @@ export default function RiconciliazionePaypal() {
                 <span
                   style={{
                     padding: '1px 6px',
-                    background: activeTab === t.id ? 'rgba(255,255,255,0.2)' : '#e5e7eb',
+                    background: activeTab === t.id ? 'rgba(255,255,255,0.2)' : '#e2e8f0',
                     borderRadius: 8,
                     fontSize: 11,
                   }}
@@ -559,9 +588,9 @@ export default function RiconciliazionePaypal() {
             <div
               style={{
                 background: 'white',
-                borderRadius: 10,
+                borderRadius: 8,
                 padding: 16,
-                boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+                border: '1px solid #e2e8f0',
               }}
             >
               <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: '#1f2937' }}>
@@ -579,7 +608,7 @@ export default function RiconciliazionePaypal() {
                     justifyContent: 'space-between',
                     alignItems: 'center',
                     padding: '8px 0',
-                    borderBottom: '1px solid #f3f4f6',
+                    borderBottom: '1px solid #f1f5f9',
                     cursor: 'pointer',
                   }}
                   title={`Vedi le transazioni di ${f.nome}`}
@@ -588,7 +617,7 @@ export default function RiconciliazionePaypal() {
                     <div style={{ fontSize: 13, fontWeight: 500 }}>{f.nome}</div>
                     <div style={{ fontSize: 11, color: '#9ca3af' }}>{f.count} transazioni</div>
                   </div>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: '#ef4444' }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: '#dc2626' }}>
                     {formatEuro(Math.abs(f.totale))}
                   </div>
                 </div>
@@ -604,9 +633,9 @@ export default function RiconciliazionePaypal() {
             <div
               style={{
                 background: 'white',
-                borderRadius: 10,
+                borderRadius: 8,
                 padding: 16,
-                boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+                border: '1px solid #e2e8f0',
               }}
             >
               <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: '#1f2937' }}>
@@ -620,7 +649,7 @@ export default function RiconciliazionePaypal() {
                     justifyContent: 'space-between',
                     alignItems: 'center',
                     padding: '8px 0',
-                    borderBottom: '1px solid #f3f4f6',
+                    borderBottom: '1px solid #f1f5f9',
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -651,9 +680,9 @@ export default function RiconciliazionePaypal() {
               <div
                 style={{
                   background: 'white',
-                  borderRadius: 10,
+                  borderRadius: 8,
                   padding: 16,
-                  boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+                  border: '1px solid #e2e8f0',
                   gridColumn: '1 / -1',
                 }}
               >
@@ -681,7 +710,7 @@ export default function RiconciliazionePaypal() {
                             style={{
                               width: '70%',
                               height: `${Math.max(pct, 5)}%`,
-                              background: '#0070ba',
+                              background: '#0f2744',
                               borderRadius: '4px 4px 0 0',
                               minHeight: 4,
                             }}
@@ -708,18 +737,19 @@ export default function RiconciliazionePaypal() {
           <div
             style={{
               background: 'white',
-              borderRadius: 10,
-              boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+              borderRadius: 8,
+              border: '1px solid #e2e8f0',
               overflow: 'hidden',
             }}
           >
             <div
               style={{
                 padding: '12px 16px',
-                borderBottom: '1px solid #e5e7eb',
+                borderBottom: '1px solid #e2e8f0',
                 display: 'flex',
                 gap: 12,
                 alignItems: 'center',
+                flexWrap: 'wrap',
               }}
             >
               <div style={{ position: 'relative', flex: 1 }}>
@@ -734,7 +764,7 @@ export default function RiconciliazionePaypal() {
                   style={{
                     width: '100%',
                     padding: '8px 8px 8px 32px',
-                    border: '1px solid #d1d5db',
+                    border: '1px solid #e2e8f0',
                     borderRadius: 6,
                     fontSize: 13,
                   }}
@@ -756,20 +786,20 @@ export default function RiconciliazionePaypal() {
                 />
                 Solo pagamenti
               </label>
-              <span style={{ fontSize: 12, color: '#6b7280' }}>{filteredTx.length} risultati</span>
+              <span style={{ fontSize: 12, color: '#64748b' }}>{filteredTx.length} risultati</span>
             </div>
             <div style={{ overflowX: 'auto', maxHeight: 600, overflowY: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
-                  <tr style={{ background: '#f9fafb', position: 'sticky', top: 0 }}>
-                    <th style={{ textAlign: 'left', padding: '10px 12px' }}>Data</th>
-                    <th style={{ textAlign: 'left', padding: '10px 12px' }}>Tipo</th>
-                    <th style={{ textAlign: 'left', padding: '10px 12px' }}>Descrizione</th>
-                    <th style={{ textAlign: 'left', padding: '10px 12px' }}>Controparte</th>
-                    <th style={{ textAlign: 'right', padding: '10px 12px' }}>Importo</th>
-                    <th style={{ textAlign: 'center', padding: '10px 12px' }}>Banca</th>
-                    <th style={{ textAlign: 'center', padding: '10px 12px' }}>Fattura</th>
-                    <th style={{ textAlign: 'left', padding: '10px 12px' }}>ID</th>
+                  <tr style={{ background: '#f8fafc', position: 'sticky', top: 0 }}>
+                    <th style={{ textAlign: 'left', padding: '10px 12px', fontSize: 11, textTransform: 'uppercase', color: '#64748b' }}>Data</th>
+                    <th style={{ textAlign: 'left', padding: '10px 12px', fontSize: 11, textTransform: 'uppercase', color: '#64748b' }}>Tipo</th>
+                    <th style={{ textAlign: 'left', padding: '10px 12px', fontSize: 11, textTransform: 'uppercase', color: '#64748b' }}>Descrizione</th>
+                    <th style={{ textAlign: 'left', padding: '10px 12px', fontSize: 11, textTransform: 'uppercase', color: '#64748b' }}>Controparte</th>
+                    <th style={{ textAlign: 'right', padding: '10px 12px', fontSize: 11, textTransform: 'uppercase', color: '#64748b' }}>Importo</th>
+                    <th style={{ textAlign: 'center', padding: '10px 12px', fontSize: 11, textTransform: 'uppercase', color: '#64748b' }}>Banca</th>
+                    <th style={{ textAlign: 'center', padding: '10px 12px', fontSize: 11, textTransform: 'uppercase', color: '#64748b' }}>Fattura</th>
+                    <th style={{ textAlign: 'left', padding: '10px 12px', fontSize: 11, textTransform: 'uppercase', color: '#64748b' }}>ID</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -778,7 +808,7 @@ export default function RiconciliazionePaypal() {
                       key={tx.id || tx.transaction_id || tx.data + tx.importo}
                       onClick={() => (tx.transaction_id || tx.id) && setModalTxId(tx.transaction_id || tx.id)}
                       style={{
-                        borderBottom: '1px solid #f3f4f6',
+                        borderBottom: '1px solid #f1f5f9',
                         cursor: (tx.transaction_id || tx.id) ? 'pointer' : 'default',
                         transition: 'background 120ms',
                       }}
@@ -793,7 +823,7 @@ export default function RiconciliazionePaypal() {
                         <span
                           style={{
                             padding: '2px 8px',
-                            borderRadius: 10,
+                            borderRadius: 8,
                             fontSize: 11,
                             background: `${TIPO_COLORS[tx.tipo] || '#9ca3af'}15`,
                             color: TIPO_COLORS[tx.tipo] || '#9ca3af',
@@ -826,16 +856,17 @@ export default function RiconciliazionePaypal() {
                           padding: '8px 12px',
                           textAlign: 'right',
                           fontWeight: 600,
-                          color: tx.lordo < 0 ? '#ef4444' : '#22c55e',
+                          color: tx.lordo < 0 ? '#dc2626' : '#16a34a',
+                          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
                         }}
                       >
                         {formatEuro(tx.lordo)}
                       </td>
                       <td style={{ padding: '8px 12px', textAlign: 'center' }}>
                         {tx.riconciliato_banca ? (
-                          <CheckCircle2 size={16} style={{ color: '#22c55e' }} />
+                          <CheckCircle2 size={16} style={{ color: '#16a34a' }} />
                         ) : (
-                          <span style={{ color: '#d1d5db' }}>—</span>
+                          <span style={{ color: '#cbd5e1' }}>—</span>
                         )}
                       </td>
                       <td
@@ -870,7 +901,7 @@ export default function RiconciliazionePaypal() {
                             ✉️
                           </a>
                         ) : (
-                          <span style={{ color: '#d1d5db' }} title="Ricerca automatica in corso (fatture + Gmail ogni 30 min)">
+                          <span style={{ color: '#cbd5e1' }} title="Ricerca automatica in corso (fatture + Gmail ogni 30 min)">
                             —
                           </span>
                         )}
@@ -909,9 +940,9 @@ export default function RiconciliazionePaypal() {
             <div
               style={{
                 background: 'white',
-                borderRadius: 10,
+                borderRadius: 8,
                 padding: 16,
-                boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+                border: '1px solid #e2e8f0',
                 marginBottom: 16,
               }}
             >
@@ -926,11 +957,18 @@ export default function RiconciliazionePaypal() {
                 <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>
                   Report Spese PayPal {annoFiltro || 'Totale'}
                 </h3>
-                <div style={{ fontSize: 20, fontWeight: 'bold', color: '#ef4444' }}>
+                <div
+                  style={{
+                    fontSize: 20,
+                    fontWeight: 'bold',
+                    color: '#dc2626',
+                    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                  }}
+                >
                   {formatEuro(Math.abs(report.totale_speso))}
                 </div>
               </div>
-              <div style={{ fontSize: 13, color: '#6b7280' }}>
+              <div style={{ fontSize: 13, color: '#64748b' }}>
                 {report.totale_transazioni} pagamenti
               </div>
             </div>
@@ -939,16 +977,16 @@ export default function RiconciliazionePaypal() {
             <div
               style={{
                 background: 'white',
-                borderRadius: 10,
-                boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+                borderRadius: 8,
+                border: '1px solid #e2e8f0',
                 overflow: 'hidden',
               }}
             >
               <div
                 style={{
                   padding: '12px 16px',
-                  background: '#f9fafb',
-                  borderBottom: '1px solid #e5e7eb',
+                  background: '#f8fafc',
+                  borderBottom: '1px solid #e2e8f0',
                   fontWeight: 600,
                   fontSize: 14,
                 }}
@@ -957,7 +995,7 @@ export default function RiconciliazionePaypal() {
               </div>
               <div style={{ maxHeight: 500, overflowY: 'auto' }}>
                 {(report.per_fornitore || []).map(f => (
-                  <details key={f.nome || f.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                  <details key={f.nome || f.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                     <summary
                       style={{
                         padding: '10px 16px',
@@ -976,7 +1014,7 @@ export default function RiconciliazionePaypal() {
                         )}
                       </div>
                       <div>
-                        <span style={{ fontSize: 13, fontWeight: 600, color: '#ef4444' }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: '#dc2626' }}>
                           {formatEuro(Math.abs(f.totale))}
                         </span>
                         <span style={{ fontSize: 11, color: '#9ca3af', marginLeft: 8 }}>
@@ -998,7 +1036,7 @@ export default function RiconciliazionePaypal() {
                               justifyContent: 'space-between',
                               padding: '6px 8px',
                               fontSize: 12,
-                              color: '#6b7280',
+                              color: '#64748b',
                               cursor: txId ? 'pointer' : 'default',
                               borderRadius: 4,
                               transition: 'background 120ms',
@@ -1025,16 +1063,16 @@ export default function RiconciliazionePaypal() {
           <div
             style={{
               background: 'white',
-              borderRadius: 10,
-              boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+              borderRadius: 8,
+              border: '1px solid #e2e8f0',
               overflow: 'hidden',
             }}
           >
             <div
               style={{
                 padding: '12px 16px',
-                background: '#f9fafb',
-                borderBottom: '1px solid #e5e7eb',
+                background: '#f8fafc',
+                borderBottom: '1px solid #e2e8f0',
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
@@ -1045,26 +1083,26 @@ export default function RiconciliazionePaypal() {
               </span>
             </div>
             <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
-                <tr style={{ background: '#f9fafb' }}>
-                  <th style={{ textAlign: 'left', padding: '10px 12px' }}>Tipo</th>
-                  <th style={{ textAlign: 'left', padding: '10px 12px' }}>Periodo</th>
-                  <th style={{ textAlign: 'center', padding: '10px 12px' }}>Transazioni</th>
-                  <th style={{ textAlign: 'right', padding: '10px 12px' }}>Pag. Inviati</th>
-                  <th style={{ textAlign: 'right', padding: '10px 12px' }}>Depositi</th>
-                  <th style={{ textAlign: 'right', padding: '10px 12px' }}>Saldo Finale</th>
-                  <th style={{ textAlign: 'left', padding: '10px 12px' }}>File</th>
+                <tr style={{ background: '#f8fafc' }}>
+                  <th style={{ textAlign: 'left', padding: '10px 12px', fontSize: 11, textTransform: 'uppercase', color: '#64748b' }}>Tipo</th>
+                  <th style={{ textAlign: 'left', padding: '10px 12px', fontSize: 11, textTransform: 'uppercase', color: '#64748b' }}>Periodo</th>
+                  <th style={{ textAlign: 'center', padding: '10px 12px', fontSize: 11, textTransform: 'uppercase', color: '#64748b' }}>Transazioni</th>
+                  <th style={{ textAlign: 'right', padding: '10px 12px', fontSize: 11, textTransform: 'uppercase', color: '#64748b' }}>Pag. Inviati</th>
+                  <th style={{ textAlign: 'right', padding: '10px 12px', fontSize: 11, textTransform: 'uppercase', color: '#64748b' }}>Depositi</th>
+                  <th style={{ textAlign: 'right', padding: '10px 12px', fontSize: 11, textTransform: 'uppercase', color: '#64748b' }}>Saldo Finale</th>
+                  <th style={{ textAlign: 'left', padding: '10px 12px', fontSize: 11, textTransform: 'uppercase', color: '#64748b' }}>File</th>
                 </tr>
               </thead>
               <tbody>
                 {statements.map(s => (
-                  <tr key={s.id || s.statement_id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                  <tr key={s.id || s.statement_id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                     <td style={{ padding: '8px 12px' }}>
                       <span
                         style={{
                           padding: '2px 8px',
-                          borderRadius: 10,
+                          borderRadius: 8,
                           fontSize: 11,
                           background: s.tipo_documento === 'CSR' ? '#fef3c7' : '#eff6ff',
                           color: s.tipo_documento === 'CSR' ? '#92400e' : '#1e40af',
@@ -1079,13 +1117,13 @@ export default function RiconciliazionePaypal() {
                     <td style={{ padding: '8px 12px', textAlign: 'center' }}>
                       {s.totale_transazioni}
                     </td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right', color: '#ef4444' }}>
+                    <td style={{ padding: '8px 12px', textAlign: 'right', color: '#dc2626', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>
                       {formatEuro(s.riepilogo?.pagamenti_inviati)}
                     </td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right', color: '#22c55e' }}>
+                    <td style={{ padding: '8px 12px', textAlign: 'right', color: '#16a34a', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>
                       {formatEuro(s.riepilogo?.depositi_accrediti)}
                     </td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right' }}>
+                    <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>
                       {formatEuro(s.riepilogo?.saldo_finale)}
                     </td>
                     <td style={{ padding: '8px 12px', fontSize: 11, color: '#9ca3af' }}>
@@ -1110,19 +1148,21 @@ export default function RiconciliazionePaypal() {
             data-testid="mapping-fornitori-panel"
             style={{
               background: 'white',
-              borderRadius: 10,
-              boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+              borderRadius: 8,
+              border: '1px solid #e2e8f0',
               overflow: 'hidden',
             }}
           >
             <div
               style={{
                 padding: '14px 18px',
-                background: '#f9fafb',
-                borderBottom: '1px solid #e5e7eb',
+                background: '#f8fafc',
+                borderBottom: '1px solid #e2e8f0',
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: 10,
               }}
             >
               <div>
@@ -1133,7 +1173,7 @@ export default function RiconciliazionePaypal() {
                       style={{
                         marginLeft: 10,
                         padding: '2px 10px',
-                        borderRadius: 10,
+                        borderRadius: 8,
                         background: '#fef3c7',
                         color: '#92400e',
                         fontSize: 12,
@@ -1143,7 +1183,7 @@ export default function RiconciliazionePaypal() {
                     </span>
                   )}
                 </div>
-                <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>
+                <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>
                   Associa l'ID PayPal del beneficiario al fornitore corretto per abilitare la
                   riconciliazione automatica delle fatture.
                 </div>
@@ -1154,7 +1194,8 @@ export default function RiconciliazionePaypal() {
                 disabled={mappingLoading}
                 style={{
                   padding: '8px 14px',
-                  background: '#0070ba',
+                  minHeight: 40,
+                  background: '#0f2744',
                   color: 'white',
                   border: 'none',
                   borderRadius: 6,
@@ -1173,10 +1214,11 @@ export default function RiconciliazionePaypal() {
                 style={{
                   padding: '12px 18px',
                   background: '#dcfce7',
-                  borderBottom: '1px solid #22c55e',
+                  borderBottom: '1px solid #16a34a',
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
+                  flexWrap: 'wrap',
                   gap: 12,
                 }}
               >
@@ -1192,7 +1234,8 @@ export default function RiconciliazionePaypal() {
                   onClick={mappaTuttiCerti}
                   style={{
                     padding: '8px 18px',
-                    background: '#15803d',
+                    minHeight: 40,
+                    background: '#0f2744',
                     color: 'white',
                     border: 'none',
                     borderRadius: 6,
@@ -1214,14 +1257,14 @@ export default function RiconciliazionePaypal() {
                     width: 24,
                     height: 24,
                     animation: 'spin 1s linear infinite',
-                    color: '#0070ba',
+                    color: '#0f2744',
                   }}
                 />
               </div>
             )}
 
             {mappingData && mappingData.items.length === 0 && (
-              <div style={{ padding: 40, textAlign: 'center', color: '#22c55e', fontWeight: 600 }}>
+              <div style={{ padding: 40, textAlign: 'center', color: '#16a34a', fontWeight: 600 }}>
                 ✅ Tutti gli account PayPal sono mappati!
               </div>
             )}
@@ -1233,7 +1276,7 @@ export default function RiconciliazionePaypal() {
                   data-testid={`mapping-row-${item.paypal_account_id}`}
                   style={{
                     padding: '14px 18px',
-                    borderBottom: '1px solid #f3f4f6',
+                    borderBottom: '1px solid #f1f5f9',
                     display: 'grid',
                     gridTemplateColumns: isMobile ? '1fr' : '260px 1fr 260px',
                     gap: 14,
@@ -1244,7 +1287,7 @@ export default function RiconciliazionePaypal() {
                   <div>
                     {item.nome_controparte && (
                       <div
-                        style={{ fontSize: 13, fontWeight: 700, color: '#15803d', marginBottom: 4 }}
+                        style={{ fontSize: 13, fontWeight: 700, color: '#1e293b', marginBottom: 4 }}
                       >
                         🏢 {item.nome_controparte}
                       </div>
@@ -1254,12 +1297,12 @@ export default function RiconciliazionePaypal() {
                         fontFamily: 'Courier New, monospace',
                         fontSize: 11,
                         fontWeight: 600,
-                        color: '#003087',
+                        color: '#0f2744',
                       }}
                     >
                       {item.paypal_account_id}
                     </div>
-                    <div style={{ fontSize: 11, color: '#6b7280', marginTop: 3 }}>
+                    <div style={{ fontSize: 11, color: '#64748b', marginTop: 3 }}>
                       {item.n_tx} tx · {formatEuro(item.importo_totale)}
                     </div>
                     <div style={{ fontSize: 10, color: '#9ca3af' }}>
@@ -1267,7 +1310,7 @@ export default function RiconciliazionePaypal() {
                       {formatDate(item.ultima_data)}
                     </div>
                     {item.email_controparte && (
-                      <div style={{ fontSize: 10, color: '#6b7280', marginTop: 3 }}>
+                      <div style={{ fontSize: 10, color: '#64748b', marginTop: 3 }}>
                         ✉️ {item.email_controparte}
                       </div>
                     )}
@@ -1289,7 +1332,7 @@ export default function RiconciliazionePaypal() {
                           marginBottom: 4,
                           background: '#dcfce7',
                           padding: '3px 8px',
-                          borderRadius: 10,
+                          borderRadius: 8,
                           display: 'inline-block',
                         }}
                       >
@@ -1311,8 +1354,8 @@ export default function RiconciliazionePaypal() {
                         border:
                           item.suggested_fornitore_id &&
                           selectedForn[item.paypal_account_id] === item.suggested_fornitore_id
-                            ? '2px solid #22c55e'
-                            : '1px solid #d1d5db',
+                            ? '2px solid #16a34a'
+                            : '1px solid #e2e8f0',
                         borderRadius: 6,
                         fontSize: 13,
                         background: 'white',
@@ -1344,7 +1387,7 @@ export default function RiconciliazionePaypal() {
                       )}
                     </select>
                     {item.candidati?.length === 0 && (
-                      <div style={{ fontSize: 11, color: '#ef4444', marginTop: 4 }}>
+                      <div style={{ fontSize: 11, color: '#dc2626', marginTop: 4 }}>
                         Nessun candidato. Crea il fornitore in anagrafica.
                       </div>
                     )}
@@ -1360,9 +1403,10 @@ export default function RiconciliazionePaypal() {
                       disabled={!selectedForn[item.paypal_account_id]}
                       style={{
                         padding: '10px 16px',
+                        minHeight: 40,
                         background: selectedForn[item.paypal_account_id]
-                          ? '#15803d'
-                          : '#e5e7eb',
+                          ? '#0f2744'
+                          : '#e2e8f0',
                         color: selectedForn[item.paypal_account_id] ? 'white' : '#9ca3af',
                         border: 'none',
                         borderRadius: 6,
@@ -1384,9 +1428,10 @@ export default function RiconciliazionePaypal() {
                       })}
                       style={{
                         padding: '8px 14px',
+                        minHeight: 40,
                         background: 'transparent',
-                        color: '#0070ba',
-                        border: '1px dashed #0070ba',
+                        color: '#0f2744',
+                        border: '1px dashed #0f2744',
                         borderRadius: 6,
                         cursor: 'pointer',
                         fontWeight: 600,
@@ -1402,8 +1447,9 @@ export default function RiconciliazionePaypal() {
                       onClick={() => handleCercaFatturaEmail(item.paypal_account_id)}
                       style={{
                         padding: '8px 14px',
+                        minHeight: 40,
                         background: 'transparent',
-                        color: '#6b7280',
+                        color: '#64748b',
                         border: '1px dashed #9ca3af',
                         borderRadius: 6,
                         cursor: cercandoEmail === item.paypal_account_id ? 'wait' : 'pointer',
@@ -1426,7 +1472,7 @@ export default function RiconciliazionePaypal() {
                 style={{
                   padding: '14px 18px',
                   background: '#f0f9ff',
-                  borderTop: '2px solid #0070ba',
+                  borderTop: '2px solid #0f2744',
                   fontSize: 12,
                   color: '#075985',
                 }}
@@ -1510,12 +1556,32 @@ function CreaFornitorePaypalModal({ context, onClose, onCreated }) {
       <div
         onClick={e => e.stopPropagation()}
         style={{
-          background: 'white', borderRadius: 12, width: '100%', maxWidth: 560,
-          padding: 24, boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+          background: 'white', borderRadius: 10, width: '100%', maxWidth: 560,
+          padding: 24, boxShadow: '0 20px 60px rgba(0,0,0,0.3)', position: 'relative',
         }}
       >
+        <button
+          onClick={onClose}
+          aria-label="Chiudi"
+          style={{
+            position: 'absolute',
+            top: 8,
+            right: 8,
+            width: 40,
+            height: 40,
+            background: 'transparent',
+            border: 'none',
+            borderRadius: 6,
+            cursor: 'pointer',
+            fontSize: 18,
+            color: '#64748b',
+            lineHeight: 1,
+          }}
+        >
+          ✕
+        </button>
         <div style={{ marginBottom: 16 }}>
-          <h2 style={{ margin: 0, fontSize: 18, color: '#0070ba' }}>
+          <h2 style={{ margin: 0, fontSize: 18, color: '#0f2744' }}>
             ➕ Crea fornitore PayPal
           </h2>
           <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>
@@ -1616,7 +1682,7 @@ function CreaFornitorePaypalModal({ context, onClose, onCreated }) {
             onClick={onClose}
             disabled={loading}
             style={{
-              padding: '8px 16px', background: 'white', color: '#64748b',
+              padding: '8px 16px', minHeight: 40, background: 'white', color: '#64748b',
               border: '1px solid #e2e8f0', borderRadius: 6, cursor: 'pointer', fontSize: 13,
             }}
           >
@@ -1627,8 +1693,9 @@ function CreaFornitorePaypalModal({ context, onClose, onCreated }) {
             disabled={loading || !form.ragione_sociale.trim()}
             style={{
               padding: '8px 18px',
+              minHeight: 40,
               background: form.ragione_sociale.trim() && !loading
-                ? '#1d4ed8'
+                ? '#0f2744'
                 : '#cbd5e1',
               color: 'white', border: 'none', borderRadius: 6,
               cursor: form.ragione_sociale.trim() && !loading ? 'pointer' : 'not-allowed',
