@@ -525,7 +525,13 @@ async def get_partitario_singolo_fornitore(
     anno: int = Query(..., description="Anno")
 ) -> Dict[str, Any]:
     """Estratto conto singolo fornitore."""
-    result = await get_partitario_fornitori(anno=anno, fornitore_piva=piva)
+    # solo_aperti=False esplicito: senza, il parametro riceve il default non
+    # risolto Query(False, ...) (chiamata Python diretta, non richiesta HTTP),
+    # che è truthy — un fornitore con saldo esattamente 0 (conto chiuso/saldato)
+    # veniva escluso dal risultato, facendo rispondere erroneamente "nessun
+    # movimento" anche quando lo storico esiste (bug trovato lug 2026, stesso
+    # pattern di alert_oggi in pos_corrispettivi_check.py).
+    result = await get_partitario_fornitori(anno=anno, fornitore_piva=piva, solo_aperti=False)
     if result["fornitori"]:
         return {
             "success": True,
