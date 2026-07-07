@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from app.database import Database
 from app.services.parser_f24 import parse_f24_commercialista, confronta_codici_tributo
 from app.services.f24_parser import parse_quietanza_f24
+from app.services.alert_engine import genera_alert
 import os
 import uuid
 import base64
@@ -370,7 +371,16 @@ async def riconcilia_con_quietanza(
                     "created_at": datetime.now(timezone.utc).isoformat()
                 }
                 await db[COLL_F24_ALERTS].insert_one(alert.copy())
-    
+                # Bridge verso il catalogo alert unificato (alert_engine), oltre
+                # al sistema ad-hoc COLL_F24_ALERTS già usato dalla UI dedicata.
+                await genera_alert(
+                    "F24_DUPLICATO",
+                    f24["id"],
+                    COLL_F24_COMMERCIALISTA,
+                    alert["message"],
+                    db,
+                )
+
     return risultati
 
 

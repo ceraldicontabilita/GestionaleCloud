@@ -21,6 +21,7 @@ from app.services.estratto_conto_bpm_parser import (
     riconcilia_f24_con_estratto,
     genera_report_riconciliazione
 )
+from app.services.alert_engine import genera_alert
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -201,11 +202,41 @@ async def riconcilia_f24_con_banca():
             )
         
         for f24_non_pagato in result["f24_non_pagati"]:
-            await db[COLL_F24_COMMERCIALISTA].update_one(
-                {"id": f24_non_pagato.get("id")},
-                {"$set": {"stato_pagamento": "DA_PAGARE"}}
+            f24_id = f24_non_pagato.get("id")
+            esistente = await db[COLL_F24_COMMERCIALISTA].find_one(
+                {"id": f24_id}, {"_id": 0, "stato_pagamento": 1}
             )
-        
+            era_gia_pagato = (esistente or {}).get("stato_pagamento") == "PAGATO"
+            if era_gia_pagato:
+                # Non declassare un F24 già segnato pagato (es. da quietanza
+                # arrivata via email) solo perché QUESTO giro di matching non
+                # ha trovato il movimento bancario corrispondente — possibile
+                # pagamento con altro conto/mezzo. Segnala invece di sovrascrivere.
+                await genera_alert(
+                    "F24_NON_RICONCILIATO",
+                    f24_id,
+                    COLL_F24_COMMERCIALISTA,
+                    f"F24 {f24_non_pagato.get('file_name', '')} risulta pagato ma nessun "
+                    f"movimento bancario corrispondente trovato in questo giro di riconciliazione",
+                    db,
+                )
+            else:
+                await db[COLL_F24_COMMERCIALISTA].update_one(
+                    {"id": f24_id},
+                    {"$set": {"stato_pagamento": "DA_PAGARE"}}
+                )
+
+        for mov in result["movimenti_non_associati"]:
+            mov_id = mov.get("id") or "_".join(str(mov.get(k, "")) for k in ("data_contabile", "importo", "descrizione"))
+            await genera_alert(
+                "BNK_F24_NON_RICONCILIATO",
+                mov_id,
+                COLL_ESTRATTO_CONTO,
+                f"Movimento banca del {mov.get('data_contabile')} per "
+                f"{abs(mov.get('importo', 0))}€ con pattern F24 non associato a nessun F24 commercialista",
+                db,
+            )
+
         # Genera report
         report = genera_report_riconciliazione(result)
         
