@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../api';
-import { formatDateIT, STYLES, COLORS, button, badge } from '../lib/utils';
+import { formatDateIT, STYLES, COLORS, button, badge, useIsMobile } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
 import { StatCard } from '../components/ds/StatCard';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
@@ -16,6 +16,7 @@ import { useAnnoGlobale } from '../contexts/AnnoContext';
  * - Collegamento a documenti
  */
 export default function ToDo() {
+  const isMobile = useIsMobile();
   const [tasks, setTasks] = useState([]);
   const [stats, setStats] = useState({});
   const [loading, setLoading] = useState(true);
@@ -215,12 +216,12 @@ export default function ToDo() {
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit, minmax(200px, 1fr))',
                 gap: 16,
               }}
             >
               {/* Titolo */}
-              <div style={{ gridColumn: 'span 2' }}>
+              <div style={{ gridColumn: isMobile ? 'auto' : 'span 2' }}>
                 <label
                   style={{
                     display: 'block',
@@ -343,7 +344,7 @@ export default function ToDo() {
               </div>
 
               {/* Descrizione */}
-              <div style={{ gridColumn: 'span 2' }}>
+              <div style={{ gridColumn: isMobile ? 'auto' : 'span 2' }}>
                 <label
                   style={{
                     display: 'block',

@@ -249,7 +249,7 @@ export default function BatchReprocessing() {
                 Esegue il riprocessamento senza salvare le modifiche. Usa per verificare quanti
                 documenti verrebbero aggiornati.
               </p>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <button
                   onClick={() => startReprocessing(true, 'all')}
                   disabled={loading || status?.running}
@@ -287,7 +287,7 @@ export default function BatchReprocessing() {
                 ⚠️ Attenzione: questa operazione modificherà permanentemente i dati nel database. I
                 nuovi dati estratti verranno salvati nei campi *_enhanced.
               </p>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <button
                   onClick={() => {
                     if (

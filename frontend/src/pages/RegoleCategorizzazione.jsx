@@ -469,7 +469,14 @@ export default function RegoleCategorizzazione() {
           />
 
           <div
-            style={{ display: 'flex', gap: 4, background: '#f1f5f9', padding: 4, borderRadius: 8 }}
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: 4,
+              background: '#f1f5f9',
+              padding: 4,
+              borderRadius: 8,
+            }}
           >
             {['associazioni', 'fornitori', 'descrizioni', 'categorie'].map(tab => (
               <button

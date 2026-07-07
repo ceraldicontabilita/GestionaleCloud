@@ -40,6 +40,7 @@ export function PageSection({ title, icon, children, className = '', style = {} 
   return (
     <div
       style={{
+        position: 'relative',
         background: '#fff',
         borderRadius: 12,
         border: '1px solid #e2e8f0',

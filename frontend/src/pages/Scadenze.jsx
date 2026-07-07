@@ -1042,7 +1042,37 @@ export default function Scadenze() {
               }}
               onClick={e => e.stopPropagation()}
             >
-              <h3 style={{ margin: '0 0 20px 0' }}>➕ Nuova Scadenza</h3>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: 20,
+                }}
+              >
+                <h3 style={{ margin: 0 }}>➕ Nuova Scadenza</h3>
+                <button
+                  onClick={() => setShowModal(false)}
+                  aria-label="Chiudi"
+                  style={{
+                    width: 32,
+                    height: 32,
+                    flexShrink: 0,
+                    background: '#f1f5f9',
+                    border: 'none',
+                    borderRadius: 8,
+                    color: '#475569',
+                    fontSize: 16,
+                    lineHeight: 1,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 15 }}>
                 <div>
@@ -1255,9 +1285,39 @@ export default function Scadenze() {
               }}
               onClick={e => e.stopPropagation()}
             >
-              <h3 style={{ margin: '0 0 8px', fontSize: 18, color: '#1e3a5f' }}>
-                💰 Registra Pagamento
-              </h3>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  justifyContent: 'space-between',
+                  gap: 12,
+                }}
+              >
+                <h3 style={{ margin: '0 0 8px', fontSize: 18, color: '#1e3a5f' }}>
+                  💰 Registra Pagamento
+                </h3>
+                <button
+                  onClick={() => setPagaModal(null)}
+                  aria-label="Chiudi"
+                  style={{
+                    width: 32,
+                    height: 32,
+                    flexShrink: 0,
+                    background: '#f1f5f9',
+                    border: 'none',
+                    borderRadius: 8,
+                    color: '#475569',
+                    fontSize: 16,
+                    lineHeight: 1,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
               <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 16 }}>
                 {pagaModal.fornitore || pagaModal.descrizione}
               </div>

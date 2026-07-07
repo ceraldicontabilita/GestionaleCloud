@@ -459,6 +459,7 @@ export default function LearningMachine() {
       <div
         style={{
           display: 'flex',
+          flexWrap: 'wrap',
           gap: 4,
           marginBottom: 20,
           background: '#f1f5f9',
@@ -476,7 +477,7 @@ export default function LearningMachine() {
               );
             }}
             style={{
-              flex: 1,
+              flex: '1 1 auto',
               padding: '12px 16px',
               border: 'none',
               borderRadius: 8,
@@ -487,6 +488,7 @@ export default function LearningMachine() {
               alignItems: 'center',
               justifyContent: 'center',
               gap: 8,
+              whiteSpace: 'nowrap',
               background: activeTab === tab.id ? 'white' : 'transparent',
               color: activeTab === tab.id ? '#1e3a5f' : '#64748b',
               boxShadow: activeTab === tab.id ? '0 2px 4px rgba(0,0,0,0.1)' : 'none',

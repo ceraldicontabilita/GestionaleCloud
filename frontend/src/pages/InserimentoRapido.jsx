@@ -49,6 +49,7 @@ const styles = {
     fontSize: '18px',
     fontWeight: '600',
     margin: 0,
+    color: 'white',
   },
   headerSub: {
     fontSize: '13px',
@@ -57,7 +58,7 @@ const styles = {
   },
   grid: {
     display: 'grid',
-    gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)',
+    gridTemplateColumns: '1fr',
     gap: '12px',
     marginBottom: '20px',
   },
@@ -878,7 +879,7 @@ export default function InserimentoRapido() {
         {/* Menu principale o form attivo */}
         {!activeSection ? (
           <>
-            <div style={styles.grid}>
+            <div style={{ ...styles.grid, gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)' }}>
               {MENU_ITEMS.map(item => (
                 <div
                   key={item.id}
