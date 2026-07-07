@@ -157,6 +157,25 @@ async def _alert_match_ambiguo(db, mov_id: Optional[str], motivo: str) -> None:
         logger.exception(f"Errore generazione alert RIC_MATCH_AMBIGUO per {mov_id}")
 
 
+async def _alert_non_riconciliato(db, mov_id: Optional[str], importo: float, descrizione: str) -> None:
+    """Genera l'alert RIC_NON_RICONCILIATO quando un movimento EC esce dal
+    motore senza alcun match (nessuna fattura/F24/POS/versamento candidato) —
+    stesso gap di RIC_MATCH_AMBIGUO: definito in alert_engine.py ma mai
+    generato (vedi memoria/moduli/RICONCILIAZIONE.md, gap #6). Idempotente
+    (genera_alert non duplica se già aperto), best-effort, non blocca la
+    riconciliazione principale."""
+    if not mov_id:
+        return
+    try:
+        from app.services.alert_engine import genera_alert
+        await genera_alert(
+            "RIC_NON_RICONCILIATO", mov_id, COLLECTION_ESTRATTO_CONTO,
+            f"Movimento di €{importo:.2f} ({descrizione[:80]}) senza match automatico", db,
+        )
+    except Exception:
+        logger.exception(f"Errore generazione alert RIC_NON_RICONCILIATO per {mov_id}")
+
+
 async def _applica_pagamento_banca(db, fattura: Dict[str, Any], metodo_label: str,
                                    data_ec: str, mov_id: Optional[str], score: int,
                                    now: str, source: str) -> None:
@@ -884,6 +903,7 @@ async def riconcilia_movimenti_banca() -> Dict[str, Any]:
                 )
             else:
                 results["non_trovati"] += 1
+                await _alert_non_riconciliato(db, mov_id, importo, descrizione)
 
         except Exception as e:
             results["errors"].append({"id": mov.get("id"), "error": str(e)})

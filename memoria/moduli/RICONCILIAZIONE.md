@@ -71,11 +71,18 @@ quella "approssimata" — sono la stessa logica di scoring con soglie diverse, n
 5. **Movimento reale senza vera macchina a stati**: solo booleano `riconciliato`, non gli
    8 stati richiesti dalla spec — nessuna distinzione tracciabile tra "non esaminato",
    "in verifica", "dubbio", "escluso manualmente", ecc.
-6. **6 alert su 8 definiti, ZERO effettivamente generati**: `alert_engine.py` definisce
-   `RIC_NON_RICONCILIATO`, `RIC_MATCH_AMBIGUO`, `RIC_DIFFERENZA_IMPORTO`,
-   `RIC_PARTITA_VECCHIA`, `RIC_POS_NON_QUADRATO`, `RIC_PAGAMENTO_MULTIPLO` — nessuno di
-   questi risulta mai chiamato (`genera_alert(...)`) in tutto il codice al di fuori della
-   loro definizione. Il sistema di alert per la riconciliazione è interamente inerte.
+6. ~ PARZIALE (lug 2026) — 2 alert su 6 ora effettivamente generati in
+   `riconciliazione_bancaria.py`: `RIC_MATCH_AMBIGUO` (quando più fatture candidate hanno
+   score simile, già wired in una fase precedente di questa sessione — vedi
+   `_alert_match_ambiguo`) e `RIC_NON_RICONCILIATO` (quando un movimento EC esce dal
+   motore senza alcun match — nuovo, `_alert_non_riconciliato`, chiamato al punto
+   `results["non_trovati"] += 1`). Entrambe chiamate additive best-effort (try/except,
+   non toccano la logica di matching), verificate con mongomock: risultati di
+   riconciliazione invariati, alert generato una sola volta anche su run ripetuti
+   (idempotenza di `genera_alert`). Restano da wire `RIC_DIFFERENZA_IMPORTO`,
+   `RIC_PARTITA_VECCHIA` (va in `partite_aperte_engine.py`), `RIC_POS_NON_QUADRATO` (va
+   in `pos_corrispettivi_check.py`), `RIC_PAGAMENTO_MULTIPLO` — non fatti stanotte per
+   tempo, ciascuno richiede di individuare il punto di innesco giusto in file diversi.
 
 ## Sovrapposizione da verificare (trovata nel nuovo audit generale)
 
