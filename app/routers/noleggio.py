@@ -24,18 +24,88 @@ from app.services.noleggio import (
 
 from app.utils.error_handler import handle_errors
 
-# Import servizio persistenza dati
-from app.services.noleggio.data_persistence import (
-    persisti_dati_da_fatture,
-    recupera_costi_veicolo,
-    migra_dati_esistenti,
-    COLLECTION_COSTI,
-    COLLECTION_VEICOLI,
-    COLLECTION_AUDIT
-)
-
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+# Le due fonti di verbali/multe che esistono nel sistema: quelli scaricati
+# dalla posta PEC/Gmail (verbali_noleggio) e quelli estratti dalle fatture
+# dei noleggiatori (verbali_noleggio_completi, popolata da verbali_service.py).
+# Stesso verbale può comparire in entrambe — vengono uniti qui per numero_verbale
+# così il veicolo mostra un'unica lista, mai duplicata. Vedi
+# memoria/endpoints/07-hr-noleggio-verbali.md per la mappa completa del modulo.
+COLLECTION_VERBALI_POSTA = "verbali_noleggio"
+COLLECTION_VERBALI_FATTURE = "verbali_noleggio_completi"
+
+
+async def _get_verbali_completi_per_targa(
+    db, targa: str, anno: Optional[int] = None
+) -> list:
+    """
+    Motore centralizzato verbali per veicolo: unisce verbali_noleggio (posta)
+    e verbali_noleggio_completi (fatture), deduplicati per numero_verbale.
+    Ogni verbale riporta stato pagamento, riferimento fattura e se è
+    disponibile un bollettino/ricevuta di pagamento scaricabile.
+    """
+    targa_upper = (targa or "").upper()
+    if not targa_upper:
+        return []
+
+    verbali_per_numero: Dict[str, Dict[str, Any]] = {}
+
+    query_posta: Dict[str, Any] = {"targa": targa_upper}
+    if anno:
+        query_posta["$or"] = [
+            {"data_verbale": {"$regex": f"^{anno}"}},
+            {"created_at": {"$regex": f"^{anno}"}},
+        ]
+    cursor_posta = db[COLLECTION_VERBALI_POSTA].find(
+        query_posta, {"_id": 0, "pdf_data": 0, "pdf_allegati": 0, "quietanza_pdf": 0}
+    )
+    async for v in cursor_posta:
+        numero = v.get("numero_verbale") or v.get("numero_verbale_old")
+        if not numero:
+            continue
+        verbali_per_numero[numero] = {
+            "numero_verbale": numero,
+            "data_verbale": v.get("data_verbale") or (v.get("created_at") or "")[:10],
+            "importo": float(v.get("importo") or 0),
+            "stato": v.get("stato"),
+            "pagato": v.get("stato") == "pagato",
+            "fattura_id": v.get("fattura_id"),
+            "fattura_numero": v.get("fattura_numero"),
+            "ha_ricevuta": bool(v.get("pdf_ricevuta_path") or v.get("quietanza_ricevuta")),
+            "metodo_pagamento": v.get("psp") or v.get("metodo"),
+            "fonte": "posta",
+        }
+
+    query_fatture: Dict[str, Any] = {"targa": targa_upper}
+    if anno:
+        query_fatture["anno"] = anno
+    cursor_fatture = db[COLLECTION_VERBALI_FATTURE].find(query_fatture, {"_id": 0})
+    async for v in cursor_fatture:
+        numero = v.get("numero_verbale")
+        if not numero:
+            continue
+        esistente = verbali_per_numero.get(numero, {})
+        stato_pagamento = v.get("stato_pagamento")
+        verbali_per_numero[numero] = {
+            **esistente,
+            "numero_verbale": numero,
+            "data_verbale": esistente.get("data_verbale") or v.get("data_verbale") or v.get("data"),
+            "importo": esistente.get("importo") or float(v.get("importo") or 0),
+            "stato": esistente.get("stato") or stato_pagamento,
+            "pagato": esistente.get("pagato", False) or stato_pagamento == "pagato",
+            "fattura_id": esistente.get("fattura_id") or v.get("fattura_id"),
+            "fattura_numero": esistente.get("fattura_numero") or v.get("numero_fattura"),
+            "ha_ricevuta": esistente.get("ha_ricevuta", False),
+            "fonte": "posta+fattura" if esistente else "fattura",
+        }
+
+    return sorted(
+        verbali_per_numero.values(),
+        key=lambda x: x.get("data_verbale") or "",
+        reverse=True,
+    )
 
 
 @router.get("/veicoli")
@@ -210,55 +280,39 @@ async def get_veicoli(
                 "totale_generale": 0
             })
     
-    # ── ARRICCHISCI CON VERBALI DAL DB verbali_noleggio ──────────────────────
-    # I verbali/multe vengono anche dalla collection verbali_noleggio
-    # (scaricati dalla PEC/Gmail), non solo dalle fatture XML
-    verbali_query = {}
-    if anno:
-        verbali_query["$or"] = [
-            {"data_verbale": {"$regex": f"^{anno}"}},
-            {"created_at": {"$regex": f"^{anno}"}}
-        ]
-    
-    verbali_db = await db["verbali_noleggio"].find(
-        {**verbali_query, "targa": {"$nin": [None, ""]}},
-        {"_id": 0, "pdf_data": 0, "quietanza_pdf": 0}
-    ).to_list(500)
-    
-    # Aggiungi verbali come costi ai veicoli
-    for verbale in verbali_db:
-        targa = (verbale.get("targa") or "").upper()
-        importo = float(verbale.get("importo") or 0)
-        
-        # Trova il veicolo nel risultato
-        veicolo_target = None
-        for v in risultato:
-            if (v.get("targa") or "").upper() == targa:
-                veicolo_target = v
-                break
-        
-        if veicolo_target:
-            # Aggiungi come costo verbale
-            verbale_record = {
-                "data": verbale.get("data_verbale") or verbale.get("created_at", "")[:10],
-                "numero_verbale": verbale.get("numero_verbale"),
-                "descrizione": f"Verbale {verbale.get('numero_verbale', '')}",
+    # ── ARRICCHISCI CON I VERBALI (motore centralizzato, entrambe le fonti) ──
+    # Per ogni veicolo del risultato, unisce verbali_noleggio (posta/PEC) e
+    # verbali_noleggio_completi (estratti dalle fatture) deduplicati per
+    # numero_verbale — un veicolo mostra così TUTTI i suoi verbali con stato
+    # pagamento e disponibilità del bollettino/ricevuta, indipendentemente
+    # da dove sono arrivati.
+    for veicolo_target in risultato:
+        targa = veicolo_target.get("targa")
+        if not targa:
+            continue
+        verbali_completi = await _get_verbali_completi_per_targa(db, targa, anno)
+        existing_nums = {v.get("numero_verbale") for v in veicolo_target.get("verbali", [])}
+        for verbale in verbali_completi:
+            if verbale["numero_verbale"] in existing_nums:
+                continue
+            importo = verbale["importo"]
+            veicolo_target.setdefault("verbali", []).append({
+                "data": verbale["data_verbale"],
+                "numero_verbale": verbale["numero_verbale"],
+                "descrizione": f"Verbale {verbale['numero_verbale']}",
                 "importo": importo,
                 "iva": 0,
                 "totale": importo,
-                "stato": verbale.get("stato"),
-                "pagato": verbale.get("stato") == "pagato",
-                "fattura_id": verbale.get("fattura_id"),
-                "fattura_numero": verbale.get("fattura_numero"),
-            }
-            
-            # Evita duplicati (se il verbale è già in fattura)
-            existing_nums = [v.get("numero_verbale") for v in veicolo_target.get("verbali", [])]
-            if verbale.get("numero_verbale") not in existing_nums:
-                veicolo_target.setdefault("verbali", []).append(verbale_record)
-                veicolo_target["totale_verbali"] = veicolo_target.get("totale_verbali", 0) + importo
-                veicolo_target["totale_generale"] = veicolo_target.get("totale_generale", 0) + importo
-    
+                "stato": verbale["stato"],
+                "pagato": verbale["pagato"],
+                "ha_ricevuta": verbale["ha_ricevuta"],
+                "fonte": verbale["fonte"],
+                "fattura_id": verbale["fattura_id"],
+                "fattura_numero": verbale["fattura_numero"],
+            })
+            veicolo_target["totale_verbali"] = veicolo_target.get("totale_verbali", 0) + importo
+            veicolo_target["totale_generale"] = veicolo_target.get("totale_generale", 0) + importo
+
     # Conta fatture davvero non associate
     fornitori_con_veicoli = set(v.get("fornitore_piva") for v in veicoli_salvati.values())
     fatture_davvero_non_associate = [
@@ -285,6 +339,27 @@ async def get_veicoli(
         "anno": anno
     }
 
+
+@router.get("/veicoli/{targa}/completo")
+@handle_errors
+async def get_veicolo_completo(targa: str, anno: Optional[int] = Query(None)) -> Dict[str, Any]:
+    """
+    Motore centralizzato del veicolo: un'unica vista con anagrafica,
+    contratto, tutte le fatture/costi per categoria e tutti i verbali
+    (posta + fatture, deduplicati) con stato pagamento e disponibilità
+    del bollettino/ricevuta. Stessa aggregazione di GET /veicoli, filtrata
+    su una targa — nessuna logica duplicata, nessun rischio di incoerenza
+    tra la lista e il dettaglio.
+    """
+    dati = await get_veicoli(anno=anno)
+    targa_upper = targa.upper()
+    veicolo = next(
+        (v for v in dati["veicoli"] if (v.get("targa") or "").upper() == targa_upper),
+        None,
+    )
+    if not veicolo:
+        raise HTTPException(status_code=404, detail=f"Veicolo {targa} non trovato")
+    return veicolo
 
 
 @router.get("/export-pdf-costi")
@@ -516,6 +591,10 @@ async def create_veicolo(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
         "data_inizio": data.get("data_inizio"),
         "data_fine": data.get("data_fine"),
         "canone_mensile": float(data.get("canone_mensile", 0) or 0),
+        "anno_immatricolazione": data.get("anno_immatricolazione"),
+        "alimentazione": data.get("alimentazione"),
+        "potenza_kw": data.get("potenza_kw"),
+        "cilindrata": data.get("cilindrata"),
         "note": data.get("note", ""),
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -548,10 +627,15 @@ async def update_veicolo(
         "updated_at": datetime.now(timezone.utc)
     }
     
-    # Campi aggiornabili
-    for campo in ["driver", "driver_id", "marca", "modello", "contratto", 
+    # Campi aggiornabili. Include i campi specifica veicolo (anno_immatricolazione,
+    # alimentazione, potenza_kw, cilindrata) valorizzati dal lookup OpenAPI
+    # Automotive e canone_mensile: prima venivano persi in salvataggio perché
+    # assenti da questa whitelist, nonostante il frontend li raccogliesse.
+    for campo in ["driver", "driver_id", "marca", "modello", "contratto",
                   "codice_cliente", "centro_fatturazione",
-                  "data_inizio", "data_fine", "note", "fornitore_noleggio", "fornitore_piva"]:
+                  "data_inizio", "data_fine", "note", "fornitore_noleggio", "fornitore_piva",
+                  "canone_mensile", "anno_immatricolazione", "alimentazione",
+                  "potenza_kw", "cilindrata"]:
         if campo in data:
             update_data[campo] = data[campo]
     
@@ -629,135 +713,6 @@ async def associa_fornitore(
         "message": f"Targa {targa} associata a {fornitore_nome}"
     }
 
-
-
-@router.post("/migra-dati")
-@handle_errors
-async def migra_dati() -> Dict[str, Any]:
-    """
-    Migra tutti i dati estratti dalle fatture nel database persistente.
-    Esegue scansione di tutti gli anni (2018-2026) e salva in MongoDB.
-    
-    OPERAZIONE SICURA: Non elimina dati esistenti, solo aggiunge.
-    """
-    db = Database.get_db()
-    
-    try:
-        risultato = await migra_dati_esistenti(db)
-        
-        return {
-            "success": True,
-            "message": "Migrazione completata con successo",
-            "anni_elaborati": risultato.get("anni_elaborati", []),
-            "totale_veicoli": risultato.get("totale_veicoli", 0),
-            "totale_costi": risultato.get("totale_costi", 0)
-        }
-    except Exception as e:
-        logger.error(f"Errore migrazione: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/persisti-anno/{anno}")
-@handle_errors
-async def persisti_anno(anno: int) -> Dict[str, Any]:
-    """
-    Persiste i dati di un anno specifico nel database.
-    Utile per aggiornare solo dati recenti.
-    """
-    db = Database.get_db()
-    
-    if anno < 2018 or anno > 2030:
-        raise HTTPException(status_code=400, detail="Anno non valido (2018-2030)")
-    
-    try:
-        # Scansiona fatture dell'anno
-        veicoli_fatture, _ = await scan_fatture_noleggio(anno)
-        
-        if not veicoli_fatture:
-            return {
-                "success": True,
-                "message": f"Nessun veicolo trovato per {anno}",
-                "veicoli_salvati": 0,
-                "costi_salvati": 0
-            }
-        
-        # Persisti nel database
-        risultato = await persisti_dati_da_fatture(db, list(veicoli_fatture.values()))
-        
-        return {
-            "success": True,
-            "anno": anno,
-            "veicoli_salvati": risultato.get("veicoli_salvati", 0),
-            "costi_salvati": risultato.get("costi_salvati", 0),
-            "errori": risultato.get("errori", 0)
-        }
-    except Exception as e:
-        logger.error(f"Errore persistenza anno {anno}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/costi-persistiti/{targa}")
-@handle_errors
-async def get_costi_persistiti(
-    targa: str,
-    anno: Optional[int] = Query(None),
-    tipo_costo: Optional[str] = Query(None)
-) -> Dict[str, Any]:
-    """
-    Recupera i costi persistiti per un veicolo dal database.
-    I dati persistiti sono la fonte di verità per verbali, bolli, riparazioni.
-    """
-    db = Database.get_db()
-    
-    costi = await recupera_costi_veicolo(db, targa, anno, tipo_costo)
-    
-    # Raggruppa per tipo
-    raggruppati = {}
-    for c in costi:
-        tipo = c.get("tipo_costo", "altro")
-        if tipo not in raggruppati:
-            raggruppati[tipo] = []
-        raggruppati[tipo].append(c)
-    
-    return {
-        "targa": targa.upper(),
-        "anno": anno,
-        "totale_costi": len(costi),
-        "costi_per_tipo": raggruppati,
-        "totale_importo": sum(c.get("importo", 0) for c in costi)
-    }
-
-
-@router.get("/statistiche-persistenza")
-@handle_errors
-async def get_statistiche_persistenza() -> Dict[str, Any]:
-    """
-    Statistiche sulla persistenza dati per verificare integrità.
-    """
-    db = Database.get_db()
-    
-    # Conta documenti per collection
-    veicoli_count = await db[COLLECTION_VEICOLI].count_documents({})
-    costi_count = await db[COLLECTION_COSTI].count_documents({"eliminato": {"$ne": True}})
-    audit_count = await db[COLLECTION_AUDIT].count_documents({})
-    
-    # Statistiche per tipo costo
-    pipeline = [
-        {"$match": {"eliminato": {"$ne": True}}},
-        {"$group": {
-            "_id": "$tipo_costo",
-            "count": {"$sum": 1},
-            "totale_importo": {"$sum": "$importo"}
-        }}
-    ]
-    tipo_stats = await db[COLLECTION_COSTI].aggregate(pipeline).to_list(100)
-    
-    return {
-        "veicoli_salvati": veicoli_count,
-        "costi_salvati": costi_count,
-        "audit_logs": audit_count,
-        "costi_per_tipo": {s["_id"]: {"count": s["count"], "totale": s["totale_importo"]} for s in tipo_stats}
-    }
 
 
 

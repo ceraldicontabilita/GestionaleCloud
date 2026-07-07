@@ -308,19 +308,20 @@ export default function NoleggioAuto() {
           onClick={handleBulkUpdateFromOpenAPI}
           disabled={bulkUpdateLoading || veicoli.length === 0}
           style={{
-            padding: '10px 20px',
-            background: bulkUpdateLoading ? '#9ca3af' : '#059669',
-            color: 'white',
-            border: 'none',
+            padding: '9px 16px',
+            background: 'transparent',
+            color: bulkUpdateLoading ? '#9ca3af' : '#059669',
+            border: `1px solid ${bulkUpdateLoading ? '#e5e7eb' : '#a7f3d0'}`,
             borderRadius: 8,
             cursor: bulkUpdateLoading ? 'wait' : 'pointer',
-            fontWeight: '600',
+            fontWeight: '500',
+            fontSize: 13,
             opacity: veicoli.length === 0 ? 0.5 : 1,
           }}
           data-testid="noleggio-bulk-update-btn"
-          title="Aggiorna marca, modello e altri dati da OpenAPI Automotive"
+          title="Azione di manutenzione occasionale: recupera marca, modello, alimentazione, potenza e cilindrata da OpenAPI Automotive per tutti i veicoli in elenco"
         >
-          {bulkUpdateLoading ? '⏳ Aggiornamento...' : '🚗 Aggiorna Dati Veicoli'}
+          {bulkUpdateLoading ? '⏳ Aggiornamento...' : '🚗 Aggiorna dati da targa (tutti)'}
         </button>
         {fattureNonAssociate > 0 && (
           <span
@@ -554,7 +555,7 @@ export default function NoleggioAuto() {
             }}
           >
             <div>
-              <h3 style={{ margin: '0 0 8px 0', fontSize: 14, color: '#6b7280' }}>Dati Veicolo</h3>
+              <h3 style={{ margin: '0 0 8px 0', fontSize: 14, color: '#6b7280' }}>Veicolo</h3>
               <div style={{ fontSize: 13, lineHeight: 1.8 }}>
                 <div>
                   Targa: <strong>{selectedVeicolo.targa}</strong>
@@ -566,6 +567,11 @@ export default function NoleggioAuto() {
                     {selectedVeicolo.fornitore_piva || '-'}
                   </span>
                 </div>
+                <div>
+                  {selectedVeicolo.alimentazione || '-'}
+                  {selectedVeicolo.potenza_kw ? ` • ${selectedVeicolo.potenza_kw} kW` : ''}
+                  {selectedVeicolo.cilindrata ? ` • ${selectedVeicolo.cilindrata} cc` : ''}
+                </div>
               </div>
             </div>
             <div>
@@ -576,6 +582,12 @@ export default function NoleggioAuto() {
                 </div>
                 <div>Cod. Cliente: {selectedVeicolo.codice_cliente || '-'}</div>
                 <div>Centro Fatt.: {selectedVeicolo.centro_fatturazione || '-'}</div>
+                <div>
+                  Canone mensile:{' '}
+                  <strong>
+                    {selectedVeicolo.canone_mensile ? formatEuro(selectedVeicolo.canone_mensile) : '-'}
+                  </strong>
+                </div>
               </div>
             </div>
             <div>
@@ -590,7 +602,7 @@ export default function NoleggioAuto() {
             </div>
             <div>
               <h3 style={{ margin: '0 0 8px 0', fontSize: 14, color: '#6b7280' }}>
-                Totale {annoFiltro}
+                Totale {annoFiltro || 'tutti gli anni'}
               </h3>
               <div style={{ fontSize: 24, fontWeight: 'bold', color: '#1e3a5f' }}>
                 {formatEuro(selectedVeicolo.totale_generale)}
@@ -778,6 +790,16 @@ export default function NoleggioAuto() {
                                 </span>
                               ) : (
                                 <span style={{ color: '#dc2626', fontSize: 10 }}>Da pagare</span>
+                              )}
+                              {cat.key === 'verbali' && s.ha_ricevuta && (
+                                <div style={{ color: '#2563eb', fontSize: 9, marginTop: 2 }}>
+                                  📎 bollettino
+                                </div>
+                              )}
+                              {cat.key === 'verbali' && s.fonte === 'posta+fattura' && (
+                                <div style={{ color: '#9ca3af', fontSize: 9, marginTop: 2 }}>
+                                  posta + fattura
+                                </div>
                               )}
                             </td>
                             <td style={{ padding: '8px 10px', textAlign: 'center' }}>
@@ -1496,6 +1518,123 @@ export default function NoleggioAuto() {
                       fontSize: 13,
                     }}
                   />
+                </div>
+              </div>
+
+              {/* Canone mensile e specifiche veicolo */}
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: isMobile ? '1fr 1fr' : '1fr 1fr 1fr 1fr',
+                  gap: 12,
+                }}
+              >
+                <div>
+                  <label
+                    style={{ display: 'block', fontSize: 12, fontWeight: '500', marginBottom: 4 }}
+                  >
+                    Canone mensile
+                  </label>
+                  <input
+                    type="number"
+                    value={editingVeicolo.canone_mensile ?? ''}
+                    onChange={e =>
+                      setEditingVeicolo({ ...editingVeicolo, canone_mensile: e.target.value })
+                    }
+                    placeholder="€"
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      border: '1px solid #e5e7eb',
+                      borderRadius: 6,
+                      fontSize: 13,
+                    }}
+                  />
+                </div>
+                <div>
+                  <label
+                    style={{ display: 'block', fontSize: 12, fontWeight: '500', marginBottom: 4 }}
+                  >
+                    Anno immatr.
+                  </label>
+                  <input
+                    type="number"
+                    value={editingVeicolo.anno_immatricolazione ?? ''}
+                    onChange={e =>
+                      setEditingVeicolo({
+                        ...editingVeicolo,
+                        anno_immatricolazione: e.target.value,
+                      })
+                    }
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      border: '1px solid #e5e7eb',
+                      borderRadius: 6,
+                      fontSize: 13,
+                    }}
+                  />
+                </div>
+                <div>
+                  <label
+                    style={{ display: 'block', fontSize: 12, fontWeight: '500', marginBottom: 4 }}
+                  >
+                    Alimentazione
+                  </label>
+                  <input
+                    type="text"
+                    value={editingVeicolo.alimentazione || ''}
+                    onChange={e =>
+                      setEditingVeicolo({ ...editingVeicolo, alimentazione: e.target.value })
+                    }
+                    placeholder="Diesel, Benzina..."
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      border: '1px solid #e5e7eb',
+                      borderRadius: 6,
+                      fontSize: 13,
+                    }}
+                  />
+                </div>
+                <div>
+                  <label
+                    style={{ display: 'block', fontSize: 12, fontWeight: '500', marginBottom: 4 }}
+                  >
+                    Potenza / Cilindrata
+                  </label>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <input
+                      type="number"
+                      value={editingVeicolo.potenza_kw ?? ''}
+                      onChange={e =>
+                        setEditingVeicolo({ ...editingVeicolo, potenza_kw: e.target.value })
+                      }
+                      placeholder="kW"
+                      style={{
+                        width: '100%',
+                        padding: '8px 10px',
+                        border: '1px solid #e5e7eb',
+                        borderRadius: 6,
+                        fontSize: 13,
+                      }}
+                    />
+                    <input
+                      type="number"
+                      value={editingVeicolo.cilindrata ?? ''}
+                      onChange={e =>
+                        setEditingVeicolo({ ...editingVeicolo, cilindrata: e.target.value })
+                      }
+                      placeholder="cc"
+                      style={{
+                        width: '100%',
+                        padding: '8px 10px',
+                        border: '1px solid #e5e7eb',
+                        borderRadius: 6,
+                        fontSize: 13,
+                      }}
+                    />
+                  </div>
                 </div>
               </div>
 

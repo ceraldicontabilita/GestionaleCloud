@@ -318,14 +318,18 @@ def _register_email(app: FastAPI):
 
 # ─── Noleggio & Verbali Module ───────────────────────────────────────────────
 def _register_noleggio(app: FastAPI):
-    from app.routers import noleggio, verbali_noleggio, verbali_noleggio_api, verbali_riconciliazione, veicoli
+    # veicoli.py (prefisso legacy /api/noleggio-auto) rimosso: scriveva sulla
+    # stessa collezione veicoli_noleggio con uno schema incompatibile
+    # (stato/anno/data_scadenza_noleggio) e zero chiamanti frontend — vedi
+    # memoria/endpoints/07-hr-noleggio-verbali.md. noleggio.py (prefisso
+    # /api/noleggio) resta l'unico scrittore canonico della collezione.
+    from app.routers import noleggio, verbali_noleggio, verbali_noleggio_api, verbali_riconciliazione
     from app.routers import alert_verbali
-    
+
     app.include_router(noleggio.router, prefix="/api/noleggio", tags=["Noleggio Auto"])
     app.include_router(verbali_noleggio.router, tags=["Verbali Noleggio"])
     app.include_router(verbali_noleggio_api.router, prefix="/api/verbali-noleggio", tags=["Verbali API"])
     app.include_router(verbali_riconciliazione.router, prefix="/api/verbali-riconciliazione", tags=["Verbali Riconciliazione"])
-    app.include_router(veicoli.router, tags=["Veicoli"])
     app.include_router(alert_verbali.router, prefix="/api", tags=["Alert Verbali"])
     from app.routers import admin_export
     app.include_router(admin_export.router, prefix="/api", tags=["Admin Export"])
