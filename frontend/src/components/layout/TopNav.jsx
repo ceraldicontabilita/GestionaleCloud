@@ -18,7 +18,8 @@ import {
   CreditCard,
 } from 'lucide-react';
 import { AnnoSelector } from '../../contexts/AnnoContext';
-import { COLORS } from '../../lib/utils';
+import { COLORS, useIsMobile } from '../../lib/utils';
+import InstallAppButton from '../InstallAppButton';
 
 /* ─── Costanti navigazione (definite fuori dal componente → nessuna ricreazione) ─── */
 
@@ -241,6 +242,7 @@ const AltroDropdown = memo(function AltroDropdown({ isAltroActive }) {
 /* ─── TopNav principale — React.memo per evitare re-render da parent ─── */
 const TopNav = memo(function TopNav() {
   const location = useLocation();
+  const isMobile = useIsMobile(768);
 
   const isAltroActive = ALTRO_ITEMS.some(
     item =>
@@ -310,9 +312,9 @@ const TopNav = memo(function TopNav() {
 
         {/* Destra: Anno + Notifiche + Avatar */}
         <div style={S.right} className="topnav-right">
-          {/* Selettore Anno */}
+          {/* Selettore Anno — label "ANNO" nascosta sotto 768px per fare spazio alle icone */}
           <div style={S.annoWrap} data-testid="anno-selector">
-            <span style={S.annoLabel}>ANNO</span>
+            {!isMobile && <span style={S.annoLabel}>ANNO</span>}
             <AnnoSelector
               style={{
                 background: 'transparent',
@@ -324,10 +326,13 @@ const TopNav = memo(function TopNav() {
                 cursor: 'pointer',
                 padding: '4px 8px',
                 outline: 'none',
-                minWidth: 70,
+                minWidth: isMobile ? 44 : 70,
               }}
             />
           </div>
+
+          {/* Installa come app (PWA) — visibile solo se non già installata */}
+          <InstallAppButton />
 
           {/* Campana notifiche */}
           <NotificationBellMinimal />

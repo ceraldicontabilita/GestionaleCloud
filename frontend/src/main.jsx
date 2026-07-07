@@ -262,12 +262,16 @@ ReactDOM.createRoot(document.getElementById("root")).render(
   </ErrorBoundary>
 );
 
-// Service Worker DISABILITATO: kill switch attivo per pulire cache stale.
-// Se un dispositivo ha ancora un SW registrato, lo disinstalliamo proattivamente.
+// Service Worker: registrazione minima solo per abilitare "Installa app"
+// (PWA) su Chrome/Android. Non fa cache di nulla (vedi service-worker.js),
+// quindi non può servire contenuti stale dopo un deploy. Il browser rifà
+// sempre il fetch dello script del SW bypassando l'eventuale SW attivo,
+// quindi questa registrazione sostituisce da sé il vecchio kill-switch
+// (o un SW ancora più vecchio con cache) su qualunque dispositivo.
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.getRegistrations()
-    .then((regs) => regs.forEach((r) => { try { r.unregister(); } catch {} }))
-    .catch(() => {});
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/service-worker.js').catch(() => {});
+  });
 }
 
 

@@ -1,35 +1,21 @@
-/* Ceraldi ERP — KILL SWITCH service worker.
+/* Ceraldi ERP — Service Worker minimo per installabilità PWA.
  *
- * Questo SW non fa cache. Il suo unico scopo è:
- *   1. Disinstallare se stesso (unregister)
- *   2. Cancellare TUTTE le cache (anche quelle del SW v1/v2/v3 precedenti)
- *   3. Forzare reload di tutti i client che lo controllavano
- *
- * Effetto: qualsiasi dispositivo con SW vecchio viene "ripulito" al primo
- * refresh e da quel momento il sito gira come SPA pura, senza SW di mezzo.
+ * NON fa cache di nulla: ogni richiesta va sempre in rete (pass-through).
+ * Un SW precedente qui faceva cache aggressiva e serviva bundle JS vecchi
+ * dopo un deploy (bug stale-cache) — per questo era stato sostituito da un
+ * kill-switch che si disinstallava da solo. Questa versione esiste solo
+ * per soddisfare il criterio di installabilità di Chrome/Android (serve un
+ * SW registrato con un handler 'fetch'), senza correre lo stesso rischio:
+ * zero caching, quindi zero possibilità di servire contenuti stale.
  */
 
-self.addEventListener('install', (event) => {
+self.addEventListener('install', () => {
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    (async () => {
-      try {
-        const keys = await caches.keys();
-        await Promise.all(keys.map((k) => caches.delete(k)));
-      } catch {}
-      try {
-        await self.registration.unregister();
-      } catch {}
-      try {
-        const wins = await self.clients.matchAll({ type: 'window' });
-        wins.forEach((c) => { try { c.navigate(c.url); } catch {} });
-      } catch {}
-    })()
-  );
+  event.waitUntil(self.clients.claim());
 });
 
-// Pass-through totale: nessun intercept, fetch va al network normale
+// Nessun intercept reale: lascia che ogni richiesta vada normalmente in rete.
 self.addEventListener('fetch', () => {});

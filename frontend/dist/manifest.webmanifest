@@ -5,25 +5,25 @@
   "start_url": "/",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#0f172a",
-  "theme_color": "#0f172a",
+  "background_color": "#0f2744",
+  "theme_color": "#0f2744",
   "lang": "it-IT",
   "scope": "/",
   "icons": [
     {
-      "src": "/logo-ceraldi.png",
+      "src": "/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/logo_ceraldi.png",
+      "src": "/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/logo_ceraldi_white.png",
+      "src": "/icon-512-maskable.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
@@ -35,19 +35,19 @@
       "name": "Dashboard",
       "short_name": "Home",
       "url": "/",
-      "icons": [{"src": "/logo-ceraldi.png", "sizes": "192x192"}]
+      "icons": [{"src": "/icon-192.png", "sizes": "192x192"}]
     },
     {
       "name": "Prima Nota",
       "short_name": "Prima Nota",
       "url": "/prima-nota",
-      "icons": [{"src": "/logo-ceraldi.png", "sizes": "192x192"}]
+      "icons": [{"src": "/icon-192.png", "sizes": "192x192"}]
     },
     {
       "name": "Fatture",
       "short_name": "Fatture",
       "url": "/fatture",
-      "icons": [{"src": "/logo-ceraldi.png", "sizes": "192x192"}]
+      "icons": [{"src": "/icon-192.png", "sizes": "192x192"}]
     }
   ]
 }
