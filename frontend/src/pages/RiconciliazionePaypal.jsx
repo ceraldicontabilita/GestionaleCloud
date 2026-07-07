@@ -167,7 +167,8 @@ export default function RiconciliazionePaypal() {
   const loadMapping = useCallback(async () => {
     setMappingLoading(true);
     try {
-      const res = await api.get('/api/paypal-api/account-ids-non-mappati');
+      const params = annoFiltro ? `?anno=${annoFiltro}` : '';
+      const res = await api.get(`/api/paypal-api/account-ids-non-mappati${params}`);
       setMappingData(res.data);
       // Pre-seleziona automaticamente i fornitori con match certo (nome_controparte ↔ ragione_sociale)
       const autoSelect = {};
@@ -184,7 +185,7 @@ export default function RiconciliazionePaypal() {
     } finally {
       setMappingLoading(false);
     }
-  }, []);
+  }, [annoFiltro]);
 
   const mappaTuttiCerti = async () => {
     if (!mappingData) return;
@@ -252,10 +253,11 @@ export default function RiconciliazionePaypal() {
   };
 
   useEffect(() => {
-    if (activeTab === 'mapping' && !mappingData) {
+    if (activeTab === 'mapping') {
       loadMapping();
     }
-  }, [activeTab, mappingData, loadMapping]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, annoFiltro]);
 
   const filteredTx = transactions.filter(tx => {
     if (!searchTx) return true;

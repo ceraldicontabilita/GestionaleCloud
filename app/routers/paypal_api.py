@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Body, Request, BackgroundTasks
 from fastapi.responses import FileResponse
 from datetime import datetime, timedelta, timezone
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import logging
 import os
 import re
@@ -232,12 +232,16 @@ async def scarica_ricevuta_pdf(transaction_id: str):
 
 
 @router.get("/account-ids-non-mappati")
-async def account_ids_non_mappati():
+async def account_ids_non_mappati(anno: Optional[int] = None):
     """
     Ritorna lista di paypal_account_id presenti in paypal_transactions
     ma NON ancora mappati a un fornitore. Per ciascun account_id aggrega:
     - n. transazioni, importo totale, ultima data, lista transaction_subject/invoice_id
     - fornitori candidati (per importo vicino + nome simile)
+
+    Rispetta il filtro anno globale (come dashboard/transactions/report):
+    prima non lo faceva affatto, quindi cambiare anno in UI non cambiava mai
+    questa lista.
     """
     from app.services.paypal_riconciliazione import normalize_string, match_fornitore  # noqa: F811
 
@@ -249,11 +253,15 @@ async def account_ids_non_mappati():
     # prima di quelle senza, così il $first del gruppo non prende un documento
     # vuoto quando un'altra transazione dello stesso account il nome ce l'ha
     # (PayPal non lo riporta su ogni singola transazione, es. eventi T0200).
+    match_stage: Dict[str, Any] = {
+        "paypal_account_id": {"$exists": True, "$nin": [None, ""]},
+        "importo": {"$lt": 0},
+    }
+    if anno:
+        match_stage["data"] = {"$regex": f"^{anno}"}
+
     pipeline = [
-        {"$match": {
-            "paypal_account_id": {"$exists": True, "$nin": [None, ""]},
-            "importo": {"$lt": 0},
-        }},
+        {"$match": match_stage},
         {"$sort": {"nome_controparte": -1}},
         {"$group": {
             "_id": "$paypal_account_id",
