@@ -5,19 +5,26 @@ import { useAnnoGlobale } from '../contexts/AnnoContext';
 import {
   formatEuro,
   formatDateIT,
-  STYLES,
   COLORS,
   SHADOWS,
   BORDER_RADIUS,
-  button,
-  badge,
   useIsMobile,
-  RG,
-  pagePad,
 } from '../lib/utils';
 import { useHashState } from '../hooks/useHashState';
 import { CopyLinkButton } from '../components/CopyLinkButton';
 import ModalFattura from '../components/ModalFattura';
+import {
+  Button,
+  Badge,
+  StatCard,
+  Card,
+  Input,
+  Select,
+  Table,
+  TableWrap,
+  Th,
+  Td,
+} from '../components/ds';
 
 const MESI = [
   { value: '', label: 'Tutti i mesi' },
@@ -34,89 +41,6 @@ const MESI = [
   { value: '11', label: 'Novembre' },
   { value: '12', label: 'Dicembre' },
 ];
-
-// Stili inline Ò��¢Ò¢â��š�¬Ò¢â�a¬� allineati a STYLES.card/button() (design system unificato in lib/utils.js)
-const cardStyle = STYLES.card;
-const btnPrimary = { ...button('primary'), fontSize: 14 };
-const btnSecondary = { ...button('secondary'), fontSize: 14 };
-const inputStyle = {
-  padding: '10px 12px',
-  borderRadius: BORDER_RADIUS.sm,
-  border: `1px solid ${COLORS.border}`,
-  fontSize: 14,
-  boxSizing: 'border-box',
-};
-const selectStyle = {
-  padding: '10px 12px',
-  borderRadius: BORDER_RADIUS.sm,
-  border: `1px solid ${COLORS.border}`,
-  fontSize: 14,
-  background: 'white',
-};
-
-// Stili aggiuntivi per riconciliazione
-const styles = {
-  badge: color => ({
-    display: 'inline-flex',
-    alignItems: 'center',
-    padding: '4px 10px',
-    borderRadius: 20,
-    fontSize: 12,
-    fontWeight: 600,
-    background: `${color}15`,
-    color: color,
-  }),
-  button: (variant = 'primary') => ({
-    padding: '8px 14px',
-    borderRadius: 8,
-    border: 'none',
-    cursor: 'pointer',
-    fontWeight: 500,
-    fontSize: 13,
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: 6,
-    transition: 'all 0.2s',
-    ...(variant === 'primary'
-      ? { background: '#3b82f6', color: 'white' }
-      : variant === 'success'
-        ? { background: '#10b981', color: 'white' }
-        : variant === 'danger'
-          ? { background: '#ef4444', color: 'white' }
-          : { background: '#f1f5f9', color: '#475569', border: '1px solid #e2e8f0' }),
-  }),
-  uploadZone: {
-    border: '2px dashed #cbd5e1',
-    borderRadius: 12,
-    padding: '40px 20px',
-    textAlign: 'center',
-    cursor: 'pointer',
-    transition: 'all 0.2s',
-    background: '#f8fafc',
-  },
-  uploadZoneActive: {
-    borderColor: '#3b82f6',
-    background: '#eff6ff',
-  },
-  table: { width: '100%', borderCollapse: 'collapse', fontSize: 14 },
-  th: {
-    padding: '12px 16px',
-    textAlign: 'left',
-    fontWeight: 600,
-    color: '#475569',
-    borderBottom: '2px solid #e2e8f0',
-    background: '#f8fafc',
-  },
-  td: { padding: '12px 16px', borderBottom: '1px solid #f1f5f9', color: '#334155' },
-  emptyState: { textAlign: 'center', padding: '60px 20px', color: '#64748b' },
-  splitView: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))',
-    gap: 24,
-  },
-  rowHighlight: { background: '#fef3c7', cursor: 'pointer' },
-  rowSelected: { background: '#dbeafe' },
-};
 
 export default function ArchivioFatture() {
   const isMobile = useIsMobile();
@@ -295,53 +219,15 @@ export default function ArchivioFatture() {
       }
 
       return (
-        <span
-          style={{
-            padding: '4px 10px',
-            background: '#dcfce7',
-            color: '#16a34a',
-            borderRadius: 6,
-            fontSize: 11,
-            fontWeight: '600',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 4,
-          }}
-        >
+        <Badge variant="success" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
           {icon} {label}
-        </span>
+        </Badge>
       );
     }
     if (fattura.stato === 'anomala') {
-      return (
-        <span
-          style={{
-            padding: '4px 10px',
-            background: '#fee2e2',
-            color: '#dc2626',
-            borderRadius: 6,
-            fontSize: 12,
-            fontWeight: '600',
-          }}
-        >
-          Anomala
-        </span>
-      );
+      return <Badge variant="danger">Anomala</Badge>;
     }
-    return (
-      <span
-        style={{
-          padding: '4px 10px',
-          background: '#fef3c7',
-          color: '#d97706',
-          borderRadius: 6,
-          fontSize: 12,
-          fontWeight: '600',
-        }}
-      >
-        Da pagare
-      </span>
-    );
+    return <Badge variant="warning">Da pagare</Badge>;
   };
 
   // ==================== RENDER ====================
@@ -351,15 +237,15 @@ export default function ArchivioFatture() {
       style={{ maxWidth: 1600, margin: '0 auto', position: 'relative', padding: '16px 0' }}
       data-testid="archivio-fatture-ricevute"
     >
-      {/* Warning deep-link: la fattura richiesta non Ò�� �"Ò�a�¨ nella lista corrente */}
+      {/* Warning deep-link: la fattura richiesta non e nella lista corrente */}
       {invoiceNotFoundWarning && (
         <div style={{
-          marginBottom: 16, padding: 14, borderRadius: 10,
-          background: '#fffbeb', border: '1px solid #fcd34d',
+          marginBottom: 16, padding: 14, borderRadius: BORDER_RADIUS.lg,
+          background: COLORS.warningLight, border: `1px solid ${COLORS.warning}`,
           display: 'flex', alignItems: 'flex-start', gap: 12,
         }}>
           <div style={{ fontSize: 20 }}>Ò��¢Ò⬦�¡Ò�a� Ò��¯Ò�a�¸Ò�a�</div>
-          <div style={{ flex: 1, fontSize: 13, color: '#78350f', lineHeight: 1.5 }}>
+          <div style={{ flex: 1, fontSize: 13, color: COLORS.warning, lineHeight: 1.5 }}>
             {invoiceNotFoundWarning.notExist ? (
               <>
                 La fattura che cercavi non esiste piÒ�� �"Ò�a�¹ o Ò�� �"Ò�a�¨ stata eliminata
@@ -378,16 +264,14 @@ export default function ArchivioFatture() {
                   <> non Ò�� �"Ò�a�¨ nell'anno selezionato (<strong>{anno}</strong>).</>
                 )}
                 <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 10 }}>
-                  <button
+                  <Button
+                    variant="primary"
+                    size="sm"
                     onClick={() => setFatturaView({ id: invoiceNotFoundWarning.id, numero: invoiceNotFoundWarning.numero_fattura || invoiceNotFoundWarning.fornitore })}
-                    style={{
-                      padding: '6px 12px', background: '#1e3a5f', color: 'white',
-                      border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                    }}
                   >
                     Vedi la fattura adesso
-                  </button>
-                  <span style={{ fontSize: 12, color: '#92400e', alignSelf: 'center' }}>
+                  </Button>
+                  <span style={{ fontSize: 12, color: COLORS.warning, alignSelf: 'center' }}>
                     oppure cambia l'anno globale (in alto a destra)
                     {invoiceNotFoundWarning.anno ? (
                       <> a <strong>{invoiceNotFoundWarning.anno}</strong></>
@@ -398,7 +282,9 @@ export default function ArchivioFatture() {
               </>
             )}
           </div>
-          <button
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => {
               setInvoiceNotFoundWarning(null);
               const p = new URLSearchParams(searchParams);
@@ -406,13 +292,10 @@ export default function ArchivioFatture() {
               p.delete('id');
               setSearchParams(p, { replace: true });
             }}
-            style={{
-              background: 'transparent', border: 'none', cursor: 'pointer',
-              fontSize: 18, color: '#78350f', padding: 0,
-            }}
+            style={{ fontSize: 18, color: COLORS.warning, padding: 0 }}
           >
             Ò��¢Ò⬦â���Ò¢â�a¬�¢
-          </button>
+          </Button>
         </div>
       )}
 
@@ -426,83 +309,68 @@ export default function ArchivioFatture() {
             marginBottom: 20,
           }}
         >
-          <div style={{ ...cardStyle, textAlign: 'center', padding: 14 }}>
-            <div style={{ fontSize: 22, fontWeight: 'bold', color: '#1e3a5f' }}>
-              {statistiche.totale_fatture}
-            </div>
-            <div style={{ fontSize: 12, color: '#6b7280' }}>Fatture Totali</div>
-          </div>
-          <div style={{ ...cardStyle, textAlign: 'center', padding: 14 }}>
-            <div style={{ fontSize: 18, fontWeight: 'bold', color: '#16a34a' }}>
-              {formatCurrency(statistiche.totale_importo)}
-            </div>
-            <div style={{ fontSize: 12, color: '#6b7280' }}>Importo Totale</div>
-          </div>
-          <div style={{ ...cardStyle, textAlign: 'center', padding: 14 }}>
-            <div style={{ fontSize: 22, fontWeight: 'bold', color: '#2196f3' }}>
-              {statistiche.fornitori_unici}
-            </div>
-            <div style={{ fontSize: 12, color: '#6b7280' }}>Fornitori</div>
-          </div>
-          <div style={{ ...cardStyle, textAlign: 'center', padding: 14 }}>
-            <div
-              style={{
-                fontSize: 22,
-                fontWeight: 'bold',
-                color: statistiche.fatture_anomale > 0 ? '#dc2626' : '#16a34a',
-              }}
-            >
-              {statistiche.fatture_anomale}
-            </div>
-            <div style={{ fontSize: 12, color: '#6b7280' }}>Anomale</div>
-          </div>
+          <StatCard label="Fatture Totali" value={statistiche.totale_fatture} accent="primary" />
+          <StatCard
+            label="Importo Totale"
+            value={formatCurrency(statistiche.totale_importo)}
+            accent="success"
+          />
+          <StatCard label="Fornitori" value={statistiche.fornitori_unici} accent="info" />
+          <StatCard
+            label="Anomale"
+            value={statistiche.fatture_anomale}
+            accent={statistiche.fatture_anomale > 0 ? 'danger' : 'success'}
+          />
         </div>
       )}
 
       {/* Filtri */}
-      <div style={{ ...cardStyle, marginBottom: 20 }}>
+      <Card style={{ marginBottom: 20 }}>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
           <div>
-            <label style={{ fontSize: 11, color: '#6b7280', display: 'block', marginBottom: 4 }}>
+            <label style={{ fontSize: 11, color: COLORS.textMuted, display: 'block', marginBottom: 4 }}>
               Anno
             </label>
             <div
               style={{
-                ...selectStyle,
+                padding: '9px 12px',
+                borderRadius: BORDER_RADIUS.sm,
+                border: `1px solid ${COLORS.border}`,
                 minWidth: 80,
-                background: '#f1f5f9',
-                color: '#64748b',
+                background: COLORS.gray[100],
+                color: COLORS.textMuted,
                 fontWeight: 600,
                 fontSize: 13,
+                boxSizing: 'border-box',
               }}
             >
               {anno} <span style={{ fontSize: 9, opacity: 0.7 }}>(globale)</span>
             </div>
           </div>
           <div>
-            <label style={{ fontSize: 11, color: '#6b7280', display: 'block', marginBottom: 4 }}>
+            <label style={{ fontSize: 11, color: COLORS.textMuted, display: 'block', marginBottom: 4 }}>
               Mese
             </label>
-            <select
+            <Select
               value={mese}
               onChange={e => setHs('mese', e.target.value)}
-              style={{ ...selectStyle, minWidth: 110, fontSize: 13 }}
+              style={{ minWidth: 110, fontSize: 13 }}
             >
               {MESI.map(m => (
                 <option key={m.value} value={m.value}>
                   {m.label}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
           <div>
-            <label style={{ fontSize: 11, color: '#6b7280', display: 'block', marginBottom: 4 }}>
+            <label style={{ fontSize: 11, color: COLORS.textMuted, display: 'block', marginBottom: 4 }}>
               Fornitore
             </label>
-            <select
+            <Select
               value={fornitore}
               onChange={e => setHs('fornitore', e.target.value)}
-              style={{ ...selectStyle, minWidth: 180, fontSize: 13 }}
+              style={{ minWidth: 180, fontSize: 13 }}
             >
               <option value="">Tutti i fornitori</option>
               {fornitori.map(f => (
@@ -510,54 +378,54 @@ export default function ArchivioFatture() {
                   {f.ragione_sociale} ({f.partita_iva})
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
           <div>
-            <label style={{ fontSize: 11, color: '#6b7280', display: 'block', marginBottom: 4 }}>
+            <label style={{ fontSize: 11, color: COLORS.textMuted, display: 'block', marginBottom: 4 }}>
               Stato
             </label>
-            <select
+            <Select
               value={stato}
               onChange={e => setHs('stato', e.target.value)}
-              style={{ ...selectStyle, minWidth: 100, fontSize: 13 }}
+              style={{ minWidth: 100, fontSize: 13 }}
             >
               <option value="">Tutti</option>
               <option value="importata">Importate</option>
               <option value="anomala">Anomale</option>
               <option value="pagata">Pagate</option>
               <option value="senza_metodo">Ò��¢Ò⬦�¡Ò�a� Ò��¯Ò�a�¸Ò�a� Senza metodo pagamento</option>
-            </select>
+            </Select>
           </div>
           <div style={{ flex: 1, minWidth: 180 }}>
-            <label style={{ fontSize: 11, color: '#6b7280', display: 'block', marginBottom: 4 }}>
+            <label style={{ fontSize: 11, color: COLORS.textMuted, display: 'block', marginBottom: 4 }}>
               Ricerca
             </label>
-            <input
+            <Input
               type="text"
               placeholder="Numero fattura, fornitore..."
               value={search}
               onChange={e => setHs('search', e.target.value)}
               onKeyDown={e => e.key === 'Enter' && fetchFatture()}
-              style={{ ...inputStyle, width: '100%', fontSize: 13 }}
+              style={{ fontSize: 13 }}
             />
           </div>
           <div style={{ alignSelf: 'flex-end', display: 'flex', gap: 8 }}>
-            <button onClick={fetchFatture} style={{ ...btnPrimary, fontSize: 13 }}>
+            <Button variant="primary" size="sm" onClick={fetchFatture} style={{ fontSize: 13 }}>
               Cerca
-            </button>
+            </Button>
             <CopyLinkButton />
           </div>
         </div>
-      </div>
+      </Card>
 
       {/* Tabella Fatture */}
-      <div style={cardStyle}>
+      <Card>
         {loading ? (
-          <div style={{ padding: 40, textAlign: 'center', color: '#6b7280' }}>
+          <div style={{ padding: 40, textAlign: 'center', color: COLORS.textMuted }}>
             Ò��¢Ò�a�Ò�a�³ Caricamento...
           </div>
         ) : fatture.length === 0 ? (
-          <div style={{ padding: 40, textAlign: 'center', color: '#6b7280' }}>
+          <div style={{ padding: 40, textAlign: 'center', color: COLORS.textMuted }}>
             <div style={{ fontSize: 48, marginBottom: 16 }}>Ò��°Ò⬦�¸Ò¢â�a¬�&�SÒ�a�­</div>
             <p style={{ margin: 0 }}>Nessuna fattura trovata</p>
             <p style={{ margin: '8px 0 0 0', fontSize: 14 }}>
@@ -627,78 +495,36 @@ export default function ArchivioFatture() {
               const azioniButtons = (
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                   {isRiconciliata && (
-                    <span
-                      style={{
-                        padding: '5px 8px',
-                        background: '#10b981',
-                        color: 'white',
-                        borderRadius: 6,
-                        fontSize: 11,
-                        fontWeight: 'bold',
-                      }}
-                    >
+                    <Badge variant="success" style={{ fontSize: 11 }}>
                       Ò��¢Ò⬦â���Ò¢â�a¬�&�S RICONC.
-                    </span>
+                    </Badge>
                   )}
-                  <button
+                  <Button
+                    variant="info"
+                    size="sm"
                     onClick={() => setFatturaView({ id: f.id, numero: f.numero_fattura || f.numero || f.fornitore })}
-                    style={{
-                      padding: '7px 11px',
-                      background: '#3b82f6',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: 6,
-                      cursor: 'pointer',
-                      fontSize: 12,
-                      fontWeight: '600',
-                    }}
                   >
                     Vedi
-                  </button>
+                  </Button>
                   {!isPaid && (isFornitoreBanca || isFornitoreCassa) && (
-                    <span
+                    <Badge
+                      variant={isFornitoreCassa ? 'success' : 'info'}
                       title="Metodo del fornitore Ò��¢Ò¢â��š�¬Ò¢â�a¬� la registrazione avviene in Prima Nota"
-                      style={{
-                        padding: '7px 11px',
-                        background: isFornitoreCassa ? '#f0fdf4' : '#eff6ff',
-                        color: isFornitoreCassa ? '#16a34a' : '#2563eb',
-                        border: `1px solid ${isFornitoreCassa ? '#bbf7d0' : '#bfdbfe'}`,
-                        borderRadius: 6,
-                        fontSize: 12,
-                        fontWeight: '600',
-                      }}
+                      style={{ fontSize: 12 }}
                     >
                       {isFornitoreCassa ? 'Ò��°Ò⬦�¸Ò¢â�a¬â�~¢Ò�a�µ Cassa' : 'Ò��°Ò⬦�¸Ò�a�Ò�a�¦ Banca'}
-                    </span>
+                    </Badge>
                   )}
-                  {/* Se la fattura Ò�� �"Ò�a�¨ pagata: mostra SOLO il bottone col check del metodo effettivo */}
+                  {/* Se la fattura e pagata: mostra SOLO il bottone col check del metodo effettivo */}
                   {isPaid && metodoPagEffettivo === 'cassa' && (
-                    <span
-                      style={{
-                        padding: '7px 11px',
-                        background: '#10b981',
-                        color: 'white',
-                        borderRadius: 6,
-                        fontSize: 12,
-                        fontWeight: '600',
-                      }}
-                    >
+                    <Badge variant="success" style={{ fontSize: 12 }}>
                       Ò��°Ò⬦�¸Ò¢â�a¬â�~¢Ò�a�µ Ò��¢Ò⬦â���Ò¢â�a¬�&�S Cassa
-                    </span>
+                    </Badge>
                   )}
                   {isPaid && metodoPagEffettivo === 'banca' && (
-                    <span
-                      style={{
-                        padding: '7px 11px',
-                        background: '#3b82f6',
-                        color: 'white',
-                        borderRadius: 6,
-                        fontSize: 12,
-                        fontWeight: '600',
-                      }}
-                    >
+                    <Badge variant="info" style={{ fontSize: 12 }}>
                       Ò��°Ò⬦�¸Ò�a�Ò�a�¦ Ò��¢Ò⬦â���Ò¢â�a¬�&�S Banca
-                    </span>
+                    </Badge>
                   )}
                 </div>
               );
@@ -708,13 +534,13 @@ export default function ArchivioFatture() {
                   key={f.id || `fattura-${idx}`}
                   ref={f.id === highlightedId ? highlightedRowRef : null}
                   style={{
-                    background: f.id === highlightedId ? '#fef3c7' : 'white',
-                    borderRadius: 10,
+                    background: f.id === highlightedId ? COLORS.warningLight : COLORS.card,
+                    borderRadius: BORDER_RADIUS.lg,
                     padding: '14px 16px',
                     boxShadow: f.id === highlightedId
-                      ? '0 0 0 3px #b8860b, 0 8px 25px rgba(184,134,11,0.25)'
-                      : '0 1px 4px rgba(0,0,0,0.08)',
-                    border: f.id === highlightedId ? '1px solid #b8860b' : '1px solid #e5e7eb',
+                      ? `0 0 0 3px ${COLORS.accent}, 0 8px 25px rgba(184,134,11,0.25)`
+                      : SHADOWS.sm,
+                    border: f.id === highlightedId ? `1px solid ${COLORS.accent}` : `1px solid ${COLORS.border}`,
                     overflow: 'hidden',
                     minWidth: 0,
                     transition: 'all 300ms ease',
@@ -733,7 +559,7 @@ export default function ArchivioFatture() {
                       <div
                         style={{
                           fontWeight: 700,
-                          color: '#1e3a5f',
+                          color: COLORS.primary,
                           fontSize: 14,
                           wordBreak: 'break-word',
                           overflowWrap: 'anywhere',
@@ -744,7 +570,7 @@ export default function ArchivioFatture() {
                       <div
                         style={{
                           fontSize: 11,
-                          color: '#9ca3af',
+                          color: COLORS.textSubtle,
                           marginTop: 2,
                           wordBreak: 'break-word',
                         }}
@@ -756,7 +582,7 @@ export default function ArchivioFatture() {
                       style={{
                         fontWeight: 700,
                         fontSize: 15,
-                        color: '#1e3a5f',
+                        color: COLORS.primary,
                         whiteSpace: 'nowrap',
                         flexShrink: 0,
                       }}
@@ -770,7 +596,7 @@ export default function ArchivioFatture() {
                       gap: 10,
                       rowGap: 4,
                       fontSize: 12,
-                      color: '#64748b',
+                      color: COLORS.textMuted,
                       marginBottom: 10,
                       flexWrap: 'wrap',
                       minWidth: 0,
@@ -799,90 +625,19 @@ export default function ArchivioFatture() {
           </div>
         ) : (
           // VISTA DESKTOP: tabella classica
-          <div style={{ overflowX: 'auto' }}>
-            <table
-              style={{
-                width: '100%',
-                borderCollapse: 'separate',
-                borderSpacing: '0 4px',
-                fontSize: 13,
-              }}
-            >
+          <TableWrap>
+            <Table>
               <thead>
-                <tr style={{ background: '#f1f5f9' }}>
-                  <th
-                    style={{
-                      padding: '14px 16px',
-                      textAlign: 'left',
-                      fontWeight: '600',
-                      color: '#1e293b',
-                      borderRadius: '8px 0 0 8px',
-                    }}
-                  >
-                    Data
-                  </th>
-                  <th
-                    style={{
-                      padding: '14px 16px',
-                      textAlign: 'left',
-                      fontWeight: '600',
-                      color: '#1e293b',
-                    }}
-                  >
-                    Numero
-                  </th>
-                  <th
-                    style={{
-                      padding: '14px 16px',
-                      textAlign: 'left',
-                      fontWeight: '600',
-                      color: '#1e293b',
-                    }}
-                  >
-                    Fornitore
-                  </th>
-                  <th
-                    style={{
-                      padding: '14px 16px',
-                      textAlign: 'right',
-                      fontWeight: '600',
-                      color: '#1e293b',
-                    }}
-                  >
-                    Imponibile
-                  </th>
-                  <th
-                    style={{
-                      padding: '14px 16px',
-                      textAlign: 'right',
-                      fontWeight: '600',
-                      color: '#1e293b',
-                    }}
-                  >
-                    IVA
-                  </th>
-                  <th
-                    style={{
-                      padding: '14px 16px',
-                      textAlign: 'right',
-                      fontWeight: '600',
-                      color: '#1e293b',
-                    }}
-                  >
-                    Totale
-                  </th>
-                  <th
-                    style={{
-                      padding: '14px 16px',
-                      textAlign: 'center',
-                      fontWeight: '600',
-                      color: '#1e293b',
-                      borderRadius: '0 8px 8px 0',
-                      minWidth: 220,
-                    }}
-                  >
+                <tr>
+                  <Th>Data</Th>
+                  <Th>Numero</Th>
+                  <Th>Fornitore</Th>
+                  <Th align="right">Imponibile</Th>
+                  <Th align="right">IVA</Th>
+                  <Th align="right">Totale</Th>
+                  <Th align="center" style={{ minWidth: 220 }}>
                     Azioni
-                  </th>
+                  </Th>
                 </tr>
               </thead>
               <tbody>
@@ -939,65 +694,36 @@ export default function ArchivioFatture() {
                       ref={f.id === highlightedId ? highlightedRowRef : null}
                       style={{
                         background: f.id === highlightedId
-                          ? '#fef3c7'
-                          : idx % 2 === 0 ? 'white' : '#f8fafc',
+                          ? COLORS.warningLight
+                          : idx % 2 === 0 ? COLORS.card : COLORS.bgAlt,
                         boxShadow: f.id === highlightedId
-                          ? '0 0 0 3px #b8860b inset, 0 4px 12px rgba(184,134,11,0.2)'
-                          : '0 1px 3px rgba(0,0,0,0.05)',
+                          ? `0 0 0 3px ${COLORS.accent} inset, 0 4px 12px rgba(184,134,11,0.2)`
+                          : SHADOWS.sm,
                         transition: 'background 300ms, box-shadow 300ms',
                       }}
                     >
-                      <td style={{ padding: '14px 16px', borderRadius: '8px 0 0 8px' }}>
-                        {formatDateIT(f.invoice_date || f.data_documento)}
-                      </td>
-                      <td style={{ padding: '14px 16px', fontWeight: '600', color: '#1e3a5f' }}>
+                      <Td>{formatDateIT(f.invoice_date || f.data_documento)}</Td>
+                      <Td style={{ fontWeight: 600, color: COLORS.primary }}>
                         {f.invoice_number || f.numero_documento}
-                      </td>
-                      <td style={{ padding: '14px 16px' }}>
-                        <div style={{ fontWeight: '500', fontSize: 13, color: '#374151' }}>
+                      </Td>
+                      <Td>
+                        <div style={{ fontWeight: 500, fontSize: 13, color: COLORS.gray[700] }}>
                           {f.supplier_name || f.fornitore_ragione_sociale}
                         </div>
-                        <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>
+                        <div style={{ fontSize: 11, color: COLORS.textSubtle, marginTop: 2 }}>
                           {f.supplier_vat || f.fornitore_partita_iva}
                         </div>
-                      </td>
-                      <td
-                        style={{
-                          padding: '14px 16px',
-                          textAlign: 'right',
-                          fontFamily: 'monospace',
-                        }}
-                      >
+                      </Td>
+                      <Td align="right" mono>
                         {formatCurrency(f.imponibile)}
-                      </td>
-                      <td
-                        style={{
-                          padding: '14px 16px',
-                          textAlign: 'right',
-                          fontFamily: 'monospace',
-                          color: '#6b7280',
-                        }}
-                      >
+                      </Td>
+                      <Td align="right" mono style={{ color: COLORS.textMuted }}>
                         {formatCurrency(f.iva)}
-                      </td>
-                      <td
-                        style={{
-                          padding: '14px 16px',
-                          textAlign: 'right',
-                          fontWeight: 'bold',
-                          fontFamily: 'monospace',
-                          color: '#1e3a5f',
-                        }}
-                      >
+                      </Td>
+                      <Td align="right" mono style={{ fontWeight: 700, color: COLORS.primary }}>
                         {formatCurrency(f.total_amount || f.importo_totale)}
-                      </td>
-                      <td
-                        style={{
-                          padding: '14px 16px',
-                          textAlign: 'center',
-                          borderRadius: '0 8px 8px 0',
-                        }}
-                      >
+                      </Td>
+                      <Td align="center">
                         <div
                           style={{
                             display: 'flex',
@@ -1007,71 +733,48 @@ export default function ArchivioFatture() {
                             flexWrap: 'wrap',
                           }}
                         >
-                          <button
+                          <Button
+                            variant="info"
+                            size="sm"
                             onClick={() => setFatturaView({ id: f.id, numero: f.numero_fattura || f.numero || f.fornitore })}
-                            style={{
-                              padding: '8px 12px',
-                              background: '#3b82f6',
-                              color: 'white',
-                              border: 'none',
-                              borderRadius: 6,
-                              cursor: 'pointer',
-                              fontSize: 12,
-                              fontWeight: '600',
-                            }}
                           >
                             Vedi
-                          </button>
+                          </Button>
                           {isPaid ? (
-                            <span
+                            <Badge
+                              variant={metodoPagEffettivo === 'cassa' ? 'success' : 'info'}
                               title={isRiconciliata ? 'Riconciliata con estratto conto' : 'Pagata'}
-                              style={{
-                                padding: '8px 14px',
-                                background: metodoPagEffettivo === 'cassa' ? '#10b981' : '#3b82f6',
-                                color: 'white',
-                                borderRadius: 6,
-                                fontSize: 12,
-                                fontWeight: '600',
-                              }}
                             >
                               {metodoPagEffettivo === 'cassa'
                                 ? 'Cassa'
                                 : 'Banca'}
                               {isRiconciliata ? ' � EC' : ''}
-                            </span>
+                            </Badge>
                           ) : fornBanca || fornCassa ? (
-                            <span
+                            <Badge
+                              variant={fornCassa ? 'success' : 'info'}
                               title="Metodo del fornitore Ò��¢Ò¢â��š�¬Ò¢â�a¬� la registrazione avviene in Prima Nota"
-                              style={{
-                                padding: '8px 14px',
-                                background: fornCassa ? '#f0fdf4' : '#eff6ff',
-                                color: fornCassa ? '#16a34a' : '#2563eb',
-                                border: `1px solid ${fornCassa ? '#bbf7d0' : '#bfdbfe'}`,
-                                borderRadius: 6,
-                                fontSize: 12,
-                                fontWeight: '600',
-                              }}
                             >
                               {fornCassa ? 'Ò��°Ò⬦�¸Ò¢â�a¬â�~¢Ò�a�µ Cassa' : 'Ò��°Ò⬦�¸Ò�a�Ò�a�¦ Banca'}
-                            </span>
+                            </Badge>
                           ) : (
                             <span
                               title="Fornitore senza metodo di pagamento Ò��¢Ò¢â��š�¬Ò¢â�a¬� impostalo in Fornitori; la registrazione si fa in Prima Nota"
-                              style={{ color: '#9ca3af', fontSize: 12 }}
+                              style={{ color: COLORS.textSubtle, fontSize: 12 }}
                             >
                               Ò��¢Ò¢â��š�¬Ò¢â�a¬�
                             </span>
                           )}
                         </div>
-                      </td>
+                      </Td>
                     </tr>
                   );
                 })}
               </tbody>
-            </table>
-          </div>
+            </Table>
+          </TableWrap>
         )}
-      </div>
+      </Card>
       {fatturaView && (
         <ModalFattura
           fatturaId={fatturaView.id}
