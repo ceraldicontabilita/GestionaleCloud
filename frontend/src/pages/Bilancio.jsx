@@ -2,11 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
-import { formatEuro } from '../lib/utils';
+import { formatEuro, COLORS, BORDER_RADIUS, FONT } from '../lib/utils';
 import { PageLayout, PageSection, PageGrid, PageLoading } from '../components/PageLayout';
+import { Button, Select, TableWrap, Table, Td } from '../components/ds';
 import { FileText, Download, TrendingUp, TrendingDown, Scale } from 'lucide-react';
-
-const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace';
 
 export default function Bilancio() {
   const { anno } = useAnnoGlobale();
@@ -78,17 +77,17 @@ export default function Bilancio() {
         {/* ATTIVO */}
         <div
           style={{
-            background: 'white',
-            border: '1px solid #e2e8f0',
-            borderRadius: 8,
+            background: COLORS.card,
+            border: `1px solid ${COLORS.border}`,
+            borderRadius: BORDER_RADIUS.md,
             padding: 24,
           }}
         >
           <h3
             style={{
-              color: '#16a34a',
+              color: COLORS.success,
               marginBottom: 20,
-              borderBottom: '2px solid #16a34a',
+              borderBottom: `2px solid ${COLORS.success}`,
               paddingBottom: 10,
               display: 'flex',
               alignItems: 'center',
@@ -98,64 +97,56 @@ export default function Bilancio() {
             <TrendingUp size={20} /> ATTIVO
           </h3>
           <div style={{ marginBottom: 20 }}>
-            <h4 style={{ color: '#15803d', fontSize: 14, marginBottom: 12 }}>
+            <h4 style={{ color: COLORS.success, fontSize: 14, marginBottom: 12 }}>
               Disponibilità Liquide
             </h4>
-            <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <tbody>
-                <tr>
-                  <td style={{ padding: '8px 0', color: '#374151' }}>Cassa</td>
-                  <td
-                    style={{ padding: '8px 0', textAlign: 'right', fontWeight: 500, fontFamily: MONO }}
-                  >
-                    {formatEuro(attivo.disponibilita_liquide.cassa)}
-                  </td>
-                </tr>
-                <tr>
-                  <td style={{ padding: '8px 0', color: '#374151' }}>Banca</td>
-                  <td
-                    style={{ padding: '8px 0', textAlign: 'right', fontWeight: 500, fontFamily: MONO }}
-                  >
-                    {formatEuro(attivo.disponibilita_liquide.banca)}
-                  </td>
-                </tr>
-                <tr style={{ borderTop: '1px solid #e2e8f0' }}>
-                  <td style={{ padding: '8px 0', fontWeight: 600 }}>Totale</td>
-                  <td
-                    style={{ padding: '8px 0', textAlign: 'right', fontWeight: 600, fontFamily: MONO }}
-                  >
-                    {formatEuro(attivo.disponibilita_liquide.totale)}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-            </div>
+            <TableWrap>
+              <Table>
+                <tbody>
+                  <tr>
+                    <Td style={{ color: COLORS.gray[700] }}>Cassa</Td>
+                    <Td align="right" mono style={{ fontWeight: 500 }}>
+                      {formatEuro(attivo.disponibilita_liquide.cassa)}
+                    </Td>
+                  </tr>
+                  <tr>
+                    <Td style={{ color: COLORS.gray[700] }}>Banca</Td>
+                    <Td align="right" mono style={{ fontWeight: 500 }}>
+                      {formatEuro(attivo.disponibilita_liquide.banca)}
+                    </Td>
+                  </tr>
+                  <tr style={{ borderTop: `1px solid ${COLORS.border}` }}>
+                    <Td style={{ fontWeight: 600 }}>Totale</Td>
+                    <Td align="right" mono style={{ fontWeight: 600 }}>
+                      {formatEuro(attivo.disponibilita_liquide.totale)}
+                    </Td>
+                  </tr>
+                </tbody>
+              </Table>
+            </TableWrap>
           </div>
           <div style={{ marginBottom: 20 }}>
-            <h4 style={{ color: '#15803d', fontSize: 14, marginBottom: 12 }}>Crediti</h4>
-            <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <tbody>
-                <tr>
-                  <td style={{ padding: '8px 0', color: '#374151' }}>Crediti vs Clienti</td>
-                  <td
-                    style={{ padding: '8px 0', textAlign: 'right', fontWeight: 500, fontFamily: MONO }}
-                  >
-                    {formatEuro(attivo.crediti.crediti_vs_clienti)}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-            </div>
+            <h4 style={{ color: COLORS.success, fontSize: 14, marginBottom: 12 }}>Crediti</h4>
+            <TableWrap>
+              <Table>
+                <tbody>
+                  <tr>
+                    <Td style={{ color: COLORS.gray[700] }}>Crediti vs Clienti</Td>
+                    <Td align="right" mono style={{ fontWeight: 500 }}>
+                      {formatEuro(attivo.crediti.crediti_vs_clienti)}
+                    </Td>
+                  </tr>
+                </tbody>
+              </Table>
+            </TableWrap>
           </div>
           <div
             style={{
               marginTop: 20,
               padding: 16,
-              background: '#0f2744',
+              background: COLORS.primary,
               color: 'white',
-              borderRadius: 8,
+              borderRadius: BORDER_RADIUS.md,
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
@@ -164,7 +155,7 @@ export default function Bilancio() {
             }}
           >
             <span style={{ fontSize: 16, fontWeight: 600 }}>TOTALE ATTIVO</span>
-            <span style={{ fontSize: 24, fontWeight: 700, fontFamily: MONO }}>
+            <span style={{ fontSize: 24, fontWeight: 700, fontFamily: FONT.mono }}>
               {formatEuro(attivo.totale_attivo)}
             </span>
           </div>
@@ -173,17 +164,17 @@ export default function Bilancio() {
         {/* PASSIVO */}
         <div
           style={{
-            background: 'white',
-            border: '1px solid #e2e8f0',
-            borderRadius: 8,
+            background: COLORS.card,
+            border: `1px solid ${COLORS.border}`,
+            borderRadius: BORDER_RADIUS.md,
             padding: 24,
           }}
         >
           <h3
             style={{
-              color: '#dc2626',
+              color: COLORS.danger,
               marginBottom: 20,
-              borderBottom: '2px solid #dc2626',
+              borderBottom: `2px solid ${COLORS.danger}`,
               paddingBottom: 10,
               display: 'flex',
               alignItems: 'center',
@@ -193,52 +184,51 @@ export default function Bilancio() {
             <TrendingDown size={20} /> PASSIVO
           </h3>
           <div style={{ marginBottom: 20 }}>
-            <h4 style={{ color: '#b91c1c', fontSize: 14, marginBottom: 12 }}>Debiti</h4>
-            <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <tbody>
-                <tr>
-                  <td style={{ padding: '8px 0', color: '#374151' }}>Debiti vs Fornitori</td>
-                  <td
-                    style={{ padding: '8px 0', textAlign: 'right', fontWeight: 500, fontFamily: MONO }}
-                  >
-                    {formatEuro(passivo.debiti.debiti_vs_fornitori)}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-            </div>
+            <h4 style={{ color: COLORS.danger, fontSize: 14, marginBottom: 12 }}>Debiti</h4>
+            <TableWrap>
+              <Table>
+                <tbody>
+                  <tr>
+                    <Td style={{ color: COLORS.gray[700] }}>Debiti vs Fornitori</Td>
+                    <Td align="right" mono style={{ fontWeight: 500 }}>
+                      {formatEuro(passivo.debiti.debiti_vs_fornitori)}
+                    </Td>
+                  </tr>
+                </tbody>
+              </Table>
+            </TableWrap>
           </div>
           <div style={{ marginBottom: 20 }}>
-            <h4 style={{ color: '#16a34a', fontSize: 14, marginBottom: 12 }}>Patrimonio Netto</h4>
-            <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <tbody>
-                <tr>
-                  <td style={{ padding: '8px 0', color: '#374151' }}>Capitale</td>
-                  <td
-                    style={{
-                      padding: '8px 0',
-                      textAlign: 'right',
-                      fontWeight: 600,
-                      fontFamily: MONO,
-                      color: passivo.patrimonio_netto >= 0 ? '#16a34a' : '#dc2626',
-                    }}
-                  >
-                    {formatEuro(passivo.patrimonio_netto)}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-            </div>
+            <h4 style={{ color: COLORS.success, fontSize: 14, marginBottom: 12 }}>
+              Patrimonio Netto
+            </h4>
+            <TableWrap>
+              <Table>
+                <tbody>
+                  <tr>
+                    <Td style={{ color: COLORS.gray[700] }}>Capitale</Td>
+                    <Td
+                      align="right"
+                      mono
+                      style={{
+                        fontWeight: 600,
+                        color: passivo.patrimonio_netto >= 0 ? COLORS.success : COLORS.danger,
+                      }}
+                    >
+                      {formatEuro(passivo.patrimonio_netto)}
+                    </Td>
+                  </tr>
+                </tbody>
+              </Table>
+            </TableWrap>
           </div>
           <div
             style={{
               marginTop: 20,
               padding: 16,
-              background: '#0f2744',
+              background: COLORS.primary,
               color: 'white',
-              borderRadius: 8,
+              borderRadius: BORDER_RADIUS.md,
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
@@ -247,7 +237,7 @@ export default function Bilancio() {
             }}
           >
             <span style={{ fontSize: 16, fontWeight: 600 }}>TOTALE PASSIVO</span>
-            <span style={{ fontSize: 24, fontWeight: 700, fontFamily: MONO }}>
+            <span style={{ fontSize: 24, fontWeight: 700, fontFamily: FONT.mono }}>
               {formatEuro(passivo.totale_passivo)}
             </span>
           </div>
@@ -265,162 +255,120 @@ export default function Bilancio() {
         {/* RICAVI */}
         <div
           style={{
-            background: 'white',
-            border: '1px solid #e2e8f0',
-            borderRadius: 8,
+            background: COLORS.card,
+            border: `1px solid ${COLORS.border}`,
+            borderRadius: BORDER_RADIUS.md,
             padding: 24,
             marginBottom: 20,
           }}
         >
           <h3
             style={{
-              color: '#16a34a',
+              color: COLORS.success,
               marginBottom: 20,
-              borderBottom: '2px solid #16a34a',
+              borderBottom: `2px solid ${COLORS.success}`,
               paddingBottom: 10,
             }}
           >
             RICAVI (Vendite al Pubblico)
           </h3>
-          <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <tbody>
-              <tr>
-                <td style={{ padding: '12px 0', color: '#374151', fontSize: 15 }}>
-                  Corrispettivi (Imponibile)
-                </td>
-                <td
-                  style={{
-                    padding: '12px 0',
-                    textAlign: 'right',
-                    fontWeight: 500,
-                    fontSize: 16,
-                    fontFamily: MONO,
-                  }}
-                >
-                  {formatEuro(ricavi.corrispettivi)}
-                </td>
-              </tr>
-              {ricavi.corrispettivi_lordi > 0 && (
+          <TableWrap>
+            <Table>
+              <tbody>
                 <tr>
-                  <td
-                    style={{
-                      padding: '12px 0',
-                      color: '#6b7280',
-                      fontSize: 13,
-                      fontStyle: 'italic',
-                    }}
-                  >
-                    (Lordo incl. IVA: {formatEuro(ricavi.corrispettivi_lordi)})
-                  </td>
-                  <td></td>
+                  <Td style={{ color: COLORS.gray[700], fontSize: 15 }}>
+                    Corrispettivi (Imponibile)
+                  </Td>
+                  <Td align="right" mono style={{ fontWeight: 500, fontSize: 16 }}>
+                    {formatEuro(ricavi.corrispettivi)}
+                  </Td>
                 </tr>
-              )}
-              <tr style={{ borderTop: '2px solid #16a34a', background: '#dcfce7' }}>
-                <td style={{ padding: '12px 0', fontWeight: 700, fontSize: 16 }}>TOTALE RICAVI</td>
-                <td
-                  style={{
-                    padding: '12px 0',
-                    textAlign: 'right',
-                    fontWeight: 700,
-                    fontSize: 18,
-                    fontFamily: MONO,
-                    color: '#16a34a',
-                  }}
-                >
-                  {formatEuro(ricavi.totale_ricavi)}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-          </div>
+                {ricavi.corrispettivi_lordi > 0 && (
+                  <tr>
+                    <Td style={{ color: COLORS.textMuted, fontSize: 13, fontStyle: 'italic' }}>
+                      (Lordo incl. IVA: {formatEuro(ricavi.corrispettivi_lordi)})
+                    </Td>
+                    <Td></Td>
+                  </tr>
+                )}
+                <tr style={{ borderTop: `2px solid ${COLORS.success}`, background: COLORS.successLight }}>
+                  <Td style={{ fontWeight: 700, fontSize: 16 }}>TOTALE RICAVI</Td>
+                  <Td
+                    align="right"
+                    mono
+                    style={{ fontWeight: 700, fontSize: 18, color: COLORS.success }}
+                  >
+                    {formatEuro(ricavi.totale_ricavi)}
+                  </Td>
+                </tr>
+              </tbody>
+            </Table>
+          </TableWrap>
         </div>
 
         {/* COSTI */}
         <div
           style={{
-            background: 'white',
-            border: '1px solid #e2e8f0',
-            borderRadius: 8,
+            background: COLORS.card,
+            border: `1px solid ${COLORS.border}`,
+            borderRadius: BORDER_RADIUS.md,
             padding: 24,
             marginBottom: 20,
           }}
         >
           <h3
             style={{
-              color: '#dc2626',
+              color: COLORS.danger,
               marginBottom: 20,
-              borderBottom: '2px solid #dc2626',
+              borderBottom: `2px solid ${COLORS.danger}`,
               paddingBottom: 10,
             }}
           >
             COSTI (Fatture Ricevute da Fornitori)
           </h3>
-          <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <tbody>
-              <tr>
-                <td style={{ padding: '12px 0', color: '#374151', fontSize: 15 }}>
-                  Acquisti (Imponibile)
-                </td>
-                <td
-                  style={{
-                    padding: '12px 0',
-                    textAlign: 'right',
-                    fontWeight: 500,
-                    fontSize: 16,
-                    fontFamily: MONO,
-                  }}
-                >
-                  {formatEuro(costi.acquisti)}
-                </td>
-              </tr>
-              {costi.note_credito > 0 && (
+          <TableWrap>
+            <Table>
+              <tbody>
                 <tr>
-                  <td style={{ padding: '12px 0', color: '#16a34a', fontSize: 15 }}>
-                    - Note di Credito Ricevute
-                  </td>
-                  <td
-                    style={{
-                      padding: '12px 0',
-                      textAlign: 'right',
-                      fontWeight: 500,
-                      fontSize: 16,
-                      fontFamily: MONO,
-                      color: '#16a34a',
-                    }}
-                  >
-                    -{formatEuro(costi.note_credito)}
-                  </td>
+                  <Td style={{ color: COLORS.gray[700], fontSize: 15 }}>Acquisti (Imponibile)</Td>
+                  <Td align="right" mono style={{ fontWeight: 500, fontSize: 16 }}>
+                    {formatEuro(costi.acquisti)}
+                  </Td>
                 </tr>
-              )}
-              <tr style={{ borderTop: '2px solid #dc2626', background: '#fee2e2' }}>
-                <td style={{ padding: '12px 0', fontWeight: 700, fontSize: 16 }}>
-                  TOTALE COSTI (Netto)
-                </td>
-                <td
-                  style={{
-                    padding: '12px 0',
-                    textAlign: 'right',
-                    fontWeight: 700,
-                    fontSize: 18,
-                    fontFamily: MONO,
-                    color: '#dc2626',
-                  }}
-                >
-                  {formatEuro(costi.totale_costi)}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-          </div>
+                {costi.note_credito > 0 && (
+                  <tr>
+                    <Td style={{ color: COLORS.success, fontSize: 15 }}>
+                      - Note di Credito Ricevute
+                    </Td>
+                    <Td
+                      align="right"
+                      mono
+                      style={{ fontWeight: 500, fontSize: 16, color: COLORS.success }}
+                    >
+                      -{formatEuro(costi.note_credito)}
+                    </Td>
+                  </tr>
+                )}
+                <tr style={{ borderTop: `2px solid ${COLORS.danger}`, background: COLORS.dangerLight }}>
+                  <Td style={{ fontWeight: 700, fontSize: 16 }}>TOTALE COSTI (Netto)</Td>
+                  <Td
+                    align="right"
+                    mono
+                    style={{ fontWeight: 700, fontSize: 18, color: COLORS.danger }}
+                  >
+                    {formatEuro(costi.totale_costi)}
+                  </Td>
+                </tr>
+              </tbody>
+            </Table>
+          </TableWrap>
         </div>
 
         {/* RISULTATO */}
         <div
           style={{
-            background: isProfit ? '#16a34a' : '#dc2626',
-            borderRadius: 8,
+            background: isProfit ? COLORS.success : COLORS.danger,
+            borderRadius: BORDER_RADIUS.md,
             padding: 32,
             color: 'white',
             textAlign: 'center',
@@ -437,7 +385,7 @@ export default function Bilancio() {
           >
             {isProfit ? 'UTILE DI ESERCIZIO' : 'PERDITA DI ESERCIZIO'}
           </div>
-          <div style={{ fontSize: 'clamp(28px, 6vw, 40px)', fontWeight: 700, fontFamily: MONO }}>
+          <div style={{ fontSize: 'clamp(28px, 6vw, 40px)', fontWeight: 700, fontFamily: FONT.mono }}>
             {formatEuro(Math.abs(risultato.utile_perdita))}
           </div>
           <div
@@ -445,7 +393,7 @@ export default function Bilancio() {
               marginTop: 16,
               padding: '8px 16px',
               background: 'rgba(255,255,255,0.2)',
-              borderRadius: 6,
+              borderRadius: BORDER_RADIUS.sm,
               display: 'inline-block',
               fontSize: 13,
             }}
@@ -464,50 +412,34 @@ export default function Bilancio() {
       subtitle={`Stato Patrimoniale e Conto Economico - Anno ${anno}`}
       actions={
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-          <select
+          <Select
             value={mese || ''}
             onChange={e => setMese(e.target.value ? parseInt(e.target.value) : null)}
             data-testid="bilancio-mese-select"
-            style={{
-              padding: '10px 16px',
-              minHeight: 40,
-              borderRadius: 6,
-              border: '1px solid #e2e8f0',
-              background: 'white',
-              fontSize: 13,
-              fontWeight: 500,
-              cursor: 'pointer',
-            }}
+            style={{ minHeight: 40 }}
           >
             {mesi.map(m => (
               <option key={m.label} value={m.value || ''}>
                 {m.label}
               </option>
             ))}
-          </select>
-          <button
+          </Select>
+          <Button
+            variant="primary"
+            size="lg"
+            iconLeft={<Download size={16} />}
             onClick={() =>
               window.open(`${api.defaults.baseURL}/api/bilancio/export-pdf?anno=${anno}`, '_blank')
             }
             data-testid="export-pdf-btn"
-            style={{
-              padding: '10px 20px',
-              minHeight: 40,
-              borderRadius: 6,
-              border: 'none',
-              background: '#0f2744',
-              color: 'white',
-              fontSize: 13,
-              fontWeight: 600,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-            }}
+            style={{ minHeight: 40 }}
           >
-            <Download size={16} /> PDF {anno}
-          </button>
-          <button
+            PDF {anno}
+          </Button>
+          <Button
+            variant="outline"
+            size="lg"
+            iconLeft={<FileText size={16} />}
             onClick={() =>
               window.open(
                 `${api.defaults.baseURL}/api/bilancio/export/pdf/confronto?anno_corrente=${anno}&anno_precedente=${anno - 1}`,
@@ -515,23 +447,10 @@ export default function Bilancio() {
               )
             }
             data-testid="export-confronto-pdf-btn"
-            style={{
-              padding: '10px 20px',
-              minHeight: 40,
-              borderRadius: 6,
-              border: '1px solid #e2e8f0',
-              background: 'white',
-              color: '#0f2744',
-              fontSize: 13,
-              fontWeight: 600,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-            }}
+            style={{ minHeight: 40 }}
           >
-            <FileText size={16} /> Confronto {anno - 1}/{anno}
-          </button>
+            Confronto {anno - 1}/{anno}
+          </Button>
         </div>
       }
     >
@@ -541,44 +460,34 @@ export default function Bilancio() {
           display: 'flex',
           gap: 0,
           marginBottom: 24,
-          borderBottom: '2px solid #e2e8f0',
+          borderBottom: `2px solid ${COLORS.border}`,
           flexWrap: 'wrap',
         }}
       >
-        <button
+        <Button
+          variant={activeTab === 'patrimoniale' ? 'primary' : 'ghost'}
           onClick={() => handleTabChange('patrimoniale')}
           data-testid="tab-stato-patrimoniale"
           style={{
-            padding: '12px 24px',
             minHeight: 40,
+            borderRadius: `${BORDER_RADIUS.sm}px ${BORDER_RADIUS.sm}px 0 0`,
             border: 'none',
-            background: activeTab === 'patrimoniale' ? '#0f2744' : 'transparent',
-            color: activeTab === 'patrimoniale' ? 'white' : '#64748b',
-            fontSize: 14,
-            fontWeight: 600,
-            cursor: 'pointer',
-            borderRadius: '6px 6px 0 0',
           }}
         >
           Stato Patrimoniale
-        </button>
-        <button
+        </Button>
+        <Button
+          variant={activeTab === 'economico' ? 'primary' : 'ghost'}
           onClick={() => handleTabChange('economico')}
           data-testid="tab-conto-economico"
           style={{
-            padding: '12px 24px',
             minHeight: 40,
+            borderRadius: `${BORDER_RADIUS.sm}px ${BORDER_RADIUS.sm}px 0 0`,
             border: 'none',
-            background: activeTab === 'economico' ? '#0f2744' : 'transparent',
-            color: activeTab === 'economico' ? 'white' : '#64748b',
-            fontSize: 14,
-            fontWeight: 600,
-            cursor: 'pointer',
-            borderRadius: '6px 6px 0 0',
           }}
         >
           Conto Economico
-        </button>
+        </Button>
       </div>
 
       {loading ? (
@@ -592,7 +501,7 @@ export default function Bilancio() {
 
       {/* Info */}
       <PageSection title="Note" icon="ℹ️" style={{ marginTop: 30 }}>
-        <p style={{ margin: 0, fontSize: 13, color: '#64748b' }}>
+        <p style={{ margin: 0, fontSize: 13, color: COLORS.textMuted }}>
           I dati sono calcolati in base ai movimenti registrati in Prima Nota e alle fatture
           caricate. Lo Stato Patrimoniale mostra la situazione alla data selezionata, il Conto
           Economico mostra i flussi del periodo.
