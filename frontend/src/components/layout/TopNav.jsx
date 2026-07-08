@@ -17,6 +17,7 @@ import {
   Download,
   CreditCard,
 } from 'lucide-react';
+import api from '../../api';
 import { AnnoSelector } from '../../contexts/AnnoContext';
 import { COLORS, useIsMobile } from '../../lib/utils';
 import InstallAppButton from '../InstallAppButton';
@@ -375,7 +376,6 @@ const NotificationBellMinimal = memo(function NotificationBellMinimal() {
 
   const fetchSummary = useCallback(async () => {
     try {
-      const { default: api } = await import('../../api');
       const r = await api.get('/api/alerts/summary');
       setSummary(
         r.data || { totale_aperti: 0, per_severita: {}, critical_recenti: [], per_modulo: {} }

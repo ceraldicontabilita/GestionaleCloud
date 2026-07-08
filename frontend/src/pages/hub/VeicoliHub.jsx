@@ -1,5 +1,6 @@
 import React, { lazy, Suspense, useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import api from '../../api';
 import { useAnnoGlobale } from '../../contexts/AnnoContext';
 
 const FlottaContent = lazy(() => import('../NoleggioAuto.jsx'));
@@ -45,13 +46,11 @@ function RiepilogoCosti({ anno }) {
 
   React.useEffect(() => {
     setLoading(true);
-    import('../../api').then(({ default: api }) => {
-      api
-        .get(`/api/noleggio/veicoli?anno=${anno}`)
-        .then(r => setData(r.data))
-        .catch(() => setData(null))
-        .finally(() => setLoading(false));
-    });
+    api
+      .get(`/api/noleggio/veicoli?anno=${anno}`)
+      .then(r => setData(r.data))
+      .catch(() => setData(null))
+      .finally(() => setLoading(false));
   }, [anno]);
 
   if (loading) return <Loading />;
