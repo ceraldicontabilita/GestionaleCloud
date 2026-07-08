@@ -1571,15 +1571,12 @@ export default function Fornitori() {
   const [filterIncomplete, setFilterIncomplete] = useState(false);
   const [filterSenzaMetodo, setFilterSenzaMetodo] = useState(false);
   // PR #5e850c8: filtri avanzati backend
-  const [filterMagazzino, setFilterMagazzino] = useState('tutti'); // tutti | popolano | esclusi
   const [filterAnzianita, setFilterAnzianita] = useState('tutti'); // tutti | nuovo | storico
   const [giorniNuovo, setGiorniNuovo] = useState(90);
   const [filtroProdotto, setFiltroProdotto] = useState('');
   const debouncedProdotto = useDebounce(filtroProdotto, 500);
   const [totaliFiltrati, setTotaliFiltrati] = useState({
     totale_fornitori: 0,
-    popolano_magazzino: 0,
-    esclusi_magazzino: 0,
     attivi: 0,
   });
   const [modalOpen, setModalOpen] = useState(false);
@@ -1617,8 +1614,6 @@ export default function Fornitori() {
         if (debouncedSearch) params.append('search', debouncedSearch);
         params.append('limit', '1000'); // Carica tutti i fornitori
         // PR #5e850c8: filtri avanzati
-        if (filterMagazzino === 'popolano') params.append('esclude_magazzino', 'false');
-        else if (filterMagazzino === 'esclusi') params.append('esclude_magazzino', 'true');
         if (filterAnzianita !== 'tutti') params.append('stato_anagrafica', filterAnzianita);
         if (giorniNuovo && giorniNuovo !== 90) params.append('giorni_nuovo', String(giorniNuovo));
         if (debouncedProdotto && debouncedProdotto.trim()) params.append('prodotto', debouncedProdotto.trim());
@@ -1630,8 +1625,6 @@ export default function Fornitori() {
         setSuppliers(res.data.items || []);
         setTotaliFiltrati(res.data.totali || {
           totale_fornitori: 0,
-          popolano_magazzino: 0,
-          esclusi_magazzino: 0,
           attivi: 0,
         });
       } catch (error) {
@@ -1650,7 +1643,7 @@ export default function Fornitori() {
     return () => {
       controller.abort();
     };
-  }, [debouncedSearch, filterMagazzino, filterAnzianita, giorniNuovo, debouncedProdotto]);
+  }, [debouncedSearch, filterAnzianita, giorniNuovo, debouncedProdotto]);
 
   // Funzione per ricaricare i dati (usata dopo save/delete)
   const reloadData = useCallback(async () => {
@@ -1659,8 +1652,6 @@ export default function Fornitori() {
       const params = new URLSearchParams();
       if (debouncedSearch) params.append('search', debouncedSearch);
       params.append('limit', '1000');
-      if (filterMagazzino === 'popolano') params.append('esclude_magazzino', 'false');
-      else if (filterMagazzino === 'esclusi') params.append('esclude_magazzino', 'true');
       if (filterAnzianita !== 'tutti') params.append('stato_anagrafica', filterAnzianita);
       if (giorniNuovo && giorniNuovo !== 90) params.append('giorni_nuovo', String(giorniNuovo));
       if (debouncedProdotto && debouncedProdotto.trim()) params.append('prodotto', debouncedProdotto.trim());
@@ -1669,8 +1660,6 @@ export default function Fornitori() {
       setSuppliers(res.data.items || []);
       setTotaliFiltrati(res.data.totali || {
         totale_fornitori: 0,
-        popolano_magazzino: 0,
-        esclusi_magazzino: 0,
         attivi: 0,
       });
     } catch (error) {
@@ -1678,7 +1667,7 @@ export default function Fornitori() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, filterMagazzino, filterAnzianita, giorniNuovo, debouncedProdotto]);
+  }, [debouncedSearch, filterAnzianita, giorniNuovo, debouncedProdotto]);
 
   const filteredSuppliers = suppliers.filter(s => {
     if (filterMetodo !== 'tutti') {
@@ -2147,42 +2136,6 @@ export default function Fornitori() {
             style={{
               padding: '8px 14px',
               borderRadius: '8px',
-              background: '#f0fdf4',
-              color: '#166534',
-              fontSize: 13,
-              fontWeight: 600,
-              border: '1px solid #86efac',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-            }}
-            data-testid="badge-popolano"
-          >
-            <span>📦 Popolano magazzino</span>
-            <span style={{ fontSize: 16 }}>{totaliFiltrati.popolano_magazzino}</span>
-          </div>
-          <div
-            style={{
-              padding: '8px 14px',
-              borderRadius: '8px',
-              background: '#fef3c7',
-              color: '#92400e',
-              fontSize: 13,
-              fontWeight: 600,
-              border: '1px solid #d97706',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-            }}
-            data-testid="badge-esclusi"
-          >
-            <span>🚫 Esclusi magazzino</span>
-            <span style={{ fontSize: 16 }}>{totaliFiltrati.esclusi_magazzino}</span>
-          </div>
-          <div
-            style={{
-              padding: '8px 14px',
-              borderRadius: '8px',
               background: '#f1f5f9',
               color: '#0f2744',
               fontSize: 13,
@@ -2328,36 +2281,6 @@ export default function Fornitori() {
             }}
             data-testid="filtri-avanzati-row"
           >
-            {/* Segmented: Magazzino */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ fontSize: 13, color: '#0f2744', fontWeight: 600 }}>Magazzino:</span>
-              {[
-                { k: 'tutti', l: 'Tutti' },
-                { k: 'popolano', l: '📦 Popolano' },
-                { k: 'esclusi', l: '🚫 Esclusi' },
-              ].map(opt => (
-                <button
-                  key={opt.k}
-                  type="button"
-                  onClick={() => setFilterMagazzino(opt.k)}
-                  data-testid={`filter-magazzino-${opt.k}`}
-                  style={{
-                    padding: '6px 12px',
-                    minHeight: 40,
-                    border: filterMagazzino === opt.k ? '1px solid #0f2744' : '1px solid #e5e7eb',
-                    background: filterMagazzino === opt.k ? '#0f2744' : 'white',
-                    color: filterMagazzino === opt.k ? '#b8860b' : '#374151',
-                    borderRadius: 6,
-                    fontSize: 13,
-                    fontWeight: filterMagazzino === opt.k ? 700 : 500,
-                    cursor: 'pointer',
-                  }}
-                >
-                  {opt.l}
-                </button>
-              ))}
-            </div>
-
             {/* Segmented: Anzianità */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <span style={{ fontSize: 13, color: '#0f2744', fontWeight: 600 }}>Anzianità:</span>
@@ -2454,14 +2377,12 @@ export default function Fornitori() {
             </div>
 
             {/* Reset filtri avanzati */}
-            {(filterMagazzino !== 'tutti' ||
-              filterAnzianita !== 'tutti' ||
+            {(filterAnzianita !== 'tutti' ||
               giorniNuovo !== 90 ||
               filtroProdotto) && (
               <button
                 type="button"
                 onClick={() => {
-                  setFilterMagazzino('tutti');
                   setFilterAnzianita('tutti');
                   setGiorniNuovo(90);
                   setFiltroProdotto('');

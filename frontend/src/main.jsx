@@ -40,7 +40,6 @@ const FattureHub = lazy(() => import("./pages/hub/FattureHub.jsx"));
 // === STANDALONE PAGES ===
 const InserimentoRapido = lazy(() => import("./pages/InserimentoRapido.jsx"));
 const Scadenze = lazy(() => import("./pages/Scadenze.jsx"));
-const ToDo = lazy(() => import("./pages/ToDo.jsx"));
 const GestioneRiservata = lazy(() => import("./pages/GestioneRiservata.jsx"));
 const DettaglioVerbale = lazy(() => import("./pages/DettaglioVerbale.jsx"));
 const ImpostazioniF24Email = lazy(() => import("./pages/ImpostazioniF24Email.jsx"));
@@ -180,11 +179,7 @@ const router = createBrowserRouter([
       { path: "riconciliazione/:tab", element: <LazyPage><RiconciliazioneHub /></LazyPage> },
       { path: "gestione-assegni", element: <LazyPage><RiconciliazioneHub /></LazyPage> },
       { path: "assegni", element: <Navigate to="/riconciliazione/assegni" replace /> },
-      
-      // === TO-DO ===
-      { path: "todo", element: <LazyPage><ToDo /></LazyPage> },
-      { path: "todo/:stato", element: <LazyPage><ToDo /></LazyPage> },
-      
+
       // === IMPORT DOCUMENTI → tab in /documenti/import ===
       { path: "import-documenti", element: <Navigate to="/documenti/import" replace /> },
       { path: "import-unificato", element: <Navigate to="/documenti/import" replace /> },

@@ -227,7 +227,7 @@ def _register_core(app: FastAPI):
         documenti, cespiti, scadenzario_fornitori, controllo_gestione,
         chiusura_esercizio,
         configurazioni, alerts,
-        todo, mutui, mutui_parser, auto_repair,
+        mutui, mutui_parser, auto_repair,
         rapido, settings_router, dati_provvisori,
         batch_reprocessing, pos_corrispettivi_check,
         chat_router, learning_universal, schede_tecniche
@@ -258,7 +258,6 @@ def _register_core(app: FastAPI):
     app.include_router(controllo_gestione.router, prefix="/api/controllo-gestione", tags=["Controllo Gestione"])
     app.include_router(chiusura_esercizio.router, prefix="/api/chiusura-esercizio", tags=["Chiusura Esercizio"])
     app.include_router(alerts.router, prefix="/api/alerts", tags=["Alert"])
-    app.include_router(todo.router, prefix="/api/todo", tags=["To-Do"])
     app.include_router(mutui.router, prefix="/api/mutui", tags=["Mutui"])
     app.include_router(mutui_parser.router, prefix="/api/mutui", tags=["Mutui Parser"])
     app.include_router(auto_repair.router, prefix="/api/auto-repair", tags=["Auto Riparazione"])

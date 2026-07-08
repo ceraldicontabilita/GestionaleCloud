@@ -40,7 +40,6 @@ const ALL_NAV_ITEMS = [
   { to: "/coerenza-pos", label: "Coerenza POS", icon: "💳" },
   { to: "/noleggio", label: "Noleggio Auto", icon: "🚗" },
   { to: "/scadenze", label: "Scadenze", icon: "🔔" },
-  { to: "/todo", label: "To-Do", icon: "📝" },
   { to: "/import-documenti", label: "Import", icon: "📥" },
   { to: "/documenti", label: "Documenti", icon: "📨" },
   { to: "/strumenti", label: "Strumenti", icon: "🔧" },
