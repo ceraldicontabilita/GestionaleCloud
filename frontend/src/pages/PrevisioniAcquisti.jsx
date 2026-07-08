@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api';
-import { formatEuro, STYLES, COLORS, button, badge } from '../lib/utils';
+import { formatEuro, COLORS, BORDER_RADIUS } from '../lib/utils';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { PageLayout } from '../components/PageLayout';
-
-const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace';
+import { toast } from 'sonner';
+import { Button, Badge, Card, Input, Select, Tabs, StatCard } from '../components/ds';
 
 export default function PrevisioniAcquisti() {
   const { anno: annoGlobale } = useAnnoGlobale();
@@ -47,12 +47,12 @@ export default function PrevisioniAcquisti() {
     setPopolando(true);
     try {
       const res = await api.post('/api/previsioni-acquisti/popola-storico');
-      alert(
-        `✅ Storico popolato!\n\nFatture processate: ${res.data.fatture_processate}\nProdotti registrati: ${res.data.prodotti_registrati}`
+      toast.success(
+        `Storico popolato! Fatture processate: ${res.data.fatture_processate}, prodotti registrati: ${res.data.prodotti_registrati}`
       );
       loadData();
     } catch (error) {
-      alert(`❌ Errore: ${error.response?.data?.detail || error.message}`);
+      toast.error(`Errore: ${error.response?.data?.detail || error.message}`);
     } finally {
       setPopolando(false);
     }
@@ -63,54 +63,11 @@ export default function PrevisioniAcquisti() {
       ? statistiche.filter(s => s.descrizione?.toLowerCase().includes(searchTerm.toLowerCase()))
       : previsioni.filter(p => p.prodotto?.toLowerCase().includes(searchTerm.toLowerCase()));
 
-  const getTrendColor = trend => {
-    if (trend === '↑') return '#16a34a';
-    if (trend === '↓') return '#dc2626';
-    return '#64748b';
+  const getTrendVariant = trend => {
+    if (trend === '↑') return 'success';
+    if (trend === '↓') return 'danger';
+    return 'neutral';
   };
-
-  const cardStyle = {
-    background: 'white',
-    borderRadius: 8,
-    boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-    border: '1px solid #e2e8f0',
-    overflow: 'hidden',
-  };
-
-  const cardHeaderStyle = {
-    padding: '16px 20px',
-    borderBottom: '1px solid #e2e8f0',
-    background: '#f8fafc',
-  };
-
-  const cardTitleStyle = {
-    margin: 0,
-    fontSize: 16,
-    fontWeight: 600,
-    color: '#1e293b',
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-  };
-
-  const cardContentStyle = {
-    padding: 20,
-  };
-
-  const buttonStyle = (variant = 'default') => ({
-    padding: '8px 16px',
-    minHeight: 40,
-    borderRadius: 6,
-    border: variant === 'outline' ? '1px solid #e2e8f0' : 'none',
-    background: variant === 'outline' ? 'white' : '#0f2744',
-    color: variant === 'outline' ? '#1e293b' : 'white',
-    fontWeight: 500,
-    cursor: 'pointer',
-    fontSize: 13,
-    display: 'flex',
-    alignItems: 'center',
-    gap: 6,
-  });
 
   return (
     <PageLayout title="Previsioni Acquisti" subtitle="Analisi consumi e previsioni ordinazioni">
@@ -126,23 +83,12 @@ export default function PrevisioniAcquisti() {
               marginBottom: 8,
             }}
           >
-            <h1 style={{ margin: 0, fontSize: 22, fontWeight: 'bold', color: '#1e293b' }}>
+            <h1 style={{ margin: 0, fontSize: 22, fontWeight: 'bold', color: COLORS.text }}>
               📊 Previsioni Acquisti
             </h1>
-            <span
-              style={{
-                padding: '4px 10px',
-                background: '#0f2744',
-                color: 'white',
-                borderRadius: 8,
-                fontSize: 12,
-                fontWeight: 'bold',
-              }}
-            >
-              {annoGlobale}
-            </span>
+            <Badge variant="primary">{annoGlobale}</Badge>
           </div>
-          <p style={{ margin: 0, color: '#64748b', fontSize: 13 }}>
+          <p style={{ margin: 0, color: COLORS.textMuted, fontSize: 13 }}>
             Analisi storico acquisti e previsioni basate sui consumi
           </p>
         </div>
@@ -157,358 +103,257 @@ export default function PrevisioniAcquisti() {
             alignItems: 'center',
           }}
         >
-          <button
-            onClick={() => setActiveTab('statistiche')}
-            style={{
-              padding: '8px 16px',
-              minHeight: 40,
-              borderRadius: 6,
-              border: activeTab === 'statistiche' ? 'none' : '1px solid #e2e8f0',
-              background: activeTab === 'statistiche' ? '#0f2744' : 'white',
-              color: activeTab === 'statistiche' ? 'white' : '#64748b',
-              fontWeight: 600,
-              cursor: 'pointer',
-              fontSize: 13,
-            }}
-          >
-            📈 Statistiche {annoGlobale}
-          </button>
-          <button
-            onClick={() => setActiveTab('previsioni')}
-            style={{
-              padding: '8px 16px',
-              minHeight: 40,
-              borderRadius: 6,
-              border: activeTab === 'previsioni' ? 'none' : '1px solid #e2e8f0',
-              background: activeTab === 'previsioni' ? '#0f2744' : 'white',
-              color: activeTab === 'previsioni' ? 'white' : '#64748b',
-              fontWeight: 600,
-              cursor: 'pointer',
-              fontSize: 13,
-            }}
-          >
-            🔮 Previsioni
-          </button>
+          <Tabs
+            items={[
+              { key: 'statistiche', label: `📈 Statistiche ${annoGlobale}` },
+              { key: 'previsioni', label: '🔮 Previsioni' },
+            ]}
+            value={activeTab}
+            onChange={setActiveTab}
+          />
 
           <div style={{ flex: 1 }} />
 
           {activeTab === 'previsioni' && (
-            <select
+            <Select
               value={settimanePrevisione}
               onChange={e => setSettimanePrevisione(Number(e.target.value))}
-              style={{
-                padding: '8px 12px',
-                minHeight: 40,
-                borderRadius: 6,
-                border: '1px solid #e2e8f0',
-                background: 'white',
-                fontSize: 13,
-              }}
             >
               <option value={1}>1 settimana</option>
               <option value={2}>2 settimane</option>
               <option value={4}>4 settimane</option>
               <option value={8}>8 settimane</option>
               <option value={12}>12 settimane</option>
-            </select>
+            </Select>
           )}
 
-          <button
+          <Button
+            variant="outline"
             onClick={loadData}
             disabled={loading}
-            style={buttonStyle('outline')}
             data-testid="refresh-btn"
           >
             🔄
-          </button>
+          </Button>
 
-          <button
+          <Button
+            variant="primary"
             onClick={handlePopolaStorico}
             disabled={popolando}
-            style={buttonStyle('green')}
             data-testid="popola-storico-btn"
           >
             {popolando ? 'Popolando...' : '🔄 Popola Storico'}
-          </button>
+          </Button>
         </div>
 
         {/* Ricerca */}
-        <div style={{ marginBottom: 16, position: 'relative' }}>
-          <span
-            style={{
-              position: 'absolute',
-              left: 12,
-              top: '50%',
-              transform: 'translateY(-50%)',
-              fontSize: 16,
-            }}
-          >
-            🔍
-          </span>
-          <input
+        <div style={{ marginBottom: 16 }}>
+          <Input
             type="text"
+            iconLeft="🔍"
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
             placeholder="Cerca prodotto (es: caffè, prosecco, farina...)"
-            style={{
-              width: '100%',
-              padding: '10px 12px 10px 40px',
-              borderRadius: 6,
-              border: '1px solid #e2e8f0',
-              fontSize: 14,
-              boxSizing: 'border-box',
-            }}
             data-testid="search-input"
           />
         </div>
 
         {/* Riepilogo Previsioni */}
         {activeTab === 'previsioni' && costoTotale > 0 && (
-          <div
-            style={{
-              ...cardStyle,
-              marginBottom: 16,
-              borderLeft: '4px solid #0f2744',
-            }}
-          >
-            <div style={{ ...cardContentStyle, paddingTop: 16 }}>
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  color: '#1e293b',
-                }}
-              >
-                <div>
-                  <div
-                    style={{
-                      fontSize: 11,
-                      color: '#64748b',
-                      fontWeight: 600,
-                      textTransform: 'uppercase',
-                      letterSpacing: 0.5,
-                    }}
-                  >
-                    Costo stimato prossime {settimanePrevisione} settimane
-                  </div>
-                  <div
-                    style={{ fontSize: 24, fontWeight: 700, color: '#0f2744', fontFamily: MONO }}
-                  >
-                    {formatEuro(costoTotale)}
-                  </div>
-                </div>
-                <span style={{ fontSize: 40, opacity: 0.3 }}>🛒</span>
-              </div>
-            </div>
-          </div>
+          <StatCard
+            icon="🛒"
+            label={`Costo stimato prossime ${settimanePrevisione} settimane`}
+            value={formatEuro(costoTotale)}
+            accent="primary"
+            style={{ marginBottom: 16 }}
+          />
         )}
 
         {/* Lista Prodotti */}
-        <div style={cardStyle}>
-          <div style={cardHeaderStyle}>
-            <h2 style={cardTitleStyle}>
-              {activeTab === 'statistiche' ? (
-                <>
-                  📊 Consumi {annoGlobale} vs {annoGlobale - 1}
-                </>
-              ) : (
-                <>📦 Acquisti Previsti ({filteredData.length} prodotti)</>
-              )}
-            </h2>
-          </div>
-          <div style={cardContentStyle}>
-            {loading ? (
-              <div style={{ textAlign: 'center', padding: 40, color: '#64748b' }}>
-                <div style={{ fontSize: 32, marginBottom: 16 }}>⏳</div>
-                Caricamento...
-              </div>
-            ) : filteredData.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: 40, color: '#64748b' }}>
-                <div style={{ fontSize: 48, marginBottom: 16, opacity: 0.3 }}>📦</div>
-                <p>Nessun dato trovato</p>
-                <p style={{ fontSize: 13 }}>
-                  Clicca &quot;Popola Storico&quot; per importare i dati dalle fatture
-                </p>
-              </div>
+        <Card
+          title={
+            activeTab === 'statistiche' ? (
+              <>
+                📊 Consumi {annoGlobale} vs {annoGlobale - 1}
+              </>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {filteredData.slice(0, 50).map((item, idx) => (
+              <>📦 Acquisti Previsti ({filteredData.length} prodotti)</>
+            )
+          }
+        >
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: 40, color: COLORS.textMuted }}>
+              <div style={{ fontSize: 32, marginBottom: 16 }}>⏳</div>
+              Caricamento...
+            </div>
+          ) : filteredData.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 40, color: COLORS.textMuted }}>
+              <div style={{ fontSize: 48, marginBottom: 16, opacity: 0.3 }}>📦</div>
+              <p>Nessun dato trovato</p>
+              <p style={{ fontSize: 13 }}>
+                Clicca &quot;Popola Storico&quot; per importare i dati dalle fatture
+              </p>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {filteredData.slice(0, 50).map((item, idx) => (
+                <div
+                  key={item.id || idx}
+                  style={{
+                    padding: 12,
+                    background: COLORS.bgAlt,
+                    borderRadius: BORDER_RADIUS.md,
+                    border: `1px solid ${COLORS.border}`,
+                  }}
+                  data-testid={`product-item-${idx}`}
+                >
                   <div
-                    key={item.id || idx}
                     style={{
-                      padding: 12,
-                      background: '#f8fafc',
-                      borderRadius: 8,
-                      border: '1px solid #e2e8f0',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      cursor: 'pointer',
                     }}
-                    data-testid={`product-item-${idx}`}
+                    onClick={() => setExpandedId(expandedId === item.id ? null : item.id)}
                   >
-                    <div
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        cursor: 'pointer',
-                      }}
-                      onClick={() => setExpandedId(expandedId === item.id ? null : item.id)}
-                    >
-                      <div style={{ flex: 1 }}>
-                        <div
-                          style={{
-                            fontWeight: 'bold',
-                            fontSize: 14,
-                            color: '#1e293b',
-                            marginBottom: 4,
-                          }}
-                        >
-                          {activeTab === 'statistiche' ? item.descrizione : item.prodotto}
-                        </div>
-                        <div
-                          style={{
-                            display: 'flex',
-                            gap: 12,
-                            fontSize: 12,
-                            color: '#64748b',
-                            flexWrap: 'wrap',
-                          }}
-                        >
-                          {activeTab === 'statistiche' ? (
-                            <>
-                              <span>
-                                📦 {item.quantita_totale?.toFixed(1)} {item.unita_misura}
-                              </span>
-                              <span>📅 Media/gg: {item.media_giornaliera}</span>
-                              <span>📆 Media/sett: {item.media_settimanale}</span>
-                            </>
-                          ) : (
-                            <>
-                              <span>
-                                Prev: {item.quantita_prevista?.toFixed(1)} {item.unita_misura}
-                              </span>
-                              <span>{item.media_settimanale}/sett</span>
-                              <span>{formatEuro(item.costo_stimato)}</span>
-                            </>
-                          )}
-                        </div>
-                      </div>
-
-                      {activeTab === 'statistiche' && item.trend && (
-                        <div
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 4,
-                            padding: '4px 8px',
-                            borderRadius: 4,
-                            background:
-                              item.trend === '↑'
-                                ? '#dcfce7'
-                                : item.trend === '↓'
-                                  ? '#fee2e2'
-                                  : '#f3f4f6',
-                            color: getTrendColor(item.trend),
-                            fontSize: 12,
-                            fontWeight: 'bold',
-                          }}
-                        >
-                          {item.trend === '↑' ? '📈' : item.trend === '↓' ? '📉' : ''}
-                          {item.variazione_pct > 0 ? '+' : ''}
-                          {item.variazione_pct}%
-                        </div>
-                      )}
-
-                      <span style={{ marginLeft: 8 }}>{expandedId === item.id ? '▲' : '▼'}</span>
-                    </div>
-
-                    {/* Dettagli espansi */}
-                    {expandedId === item.id && (
+                    <div style={{ flex: 1 }}>
                       <div
                         style={{
-                          marginTop: 12,
-                          paddingTop: 12,
-                          borderTop: '1px solid #e2e8f0',
+                          fontWeight: 'bold',
+                          fontSize: 14,
+                          color: COLORS.text,
+                          marginBottom: 4,
+                        }}
+                      >
+                        {activeTab === 'statistiche' ? item.descrizione : item.prodotto}
+                      </div>
+                      <div
+                        style={{
+                          display: 'flex',
+                          gap: 12,
                           fontSize: 12,
-                          color: '#64748b',
+                          color: COLORS.textMuted,
+                          flexWrap: 'wrap',
                         }}
                       >
                         {activeTab === 'statistiche' ? (
-                          <div
-                            style={{
-                              display: 'grid',
-                              gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-                              gap: 8,
-                            }}
-                          >
-                            <div>
-                              <strong>Spesa totale:</strong> {formatEuro(item.spesa_totale)}
-                            </div>
-                            <div>
-                              <strong>N. ordini:</strong> {item.num_acquisti}
-                            </div>
-                            <div>
-                              <strong>Ogni:</strong> {item.frequenza_giorni} giorni
-                            </div>
-                            <div>
-                              <strong>Anno prec.:</strong> {item.quantita_anno_prec?.toFixed(1)}{' '}
-                              {item.unita_misura}
-                            </div>
-                            <div>
-                              <strong>Primo:</strong> {item.primo_acquisto}
-                            </div>
-                            <div>
-                              <strong>Ultimo:</strong> {item.ultimo_acquisto}
-                            </div>
-                          </div>
+                          <>
+                            <span>
+                              📦 {item.quantita_totale?.toFixed(1)} {item.unita_misura}
+                            </span>
+                            <span>📅 Media/gg: {item.media_giornaliera}</span>
+                            <span>📆 Media/sett: {item.media_settimanale}</span>
+                          </>
                         ) : (
-                          <div
-                            style={{
-                              display: 'grid',
-                              gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-                              gap: 8,
-                            }}
-                          >
-                            <div>
-                              <strong>Anno rif.:</strong> {item.quantita_anno_rif?.toFixed(1)}{' '}
-                              {item.unita_misura}
-                            </div>
-                            <div>
-                              <strong>Prezzo medio:</strong> {formatEuro(item.prezzo_medio)}
-                            </div>
-                            <div>
-                              <strong>Ordina ogni:</strong>{' '}
-                              {item.frequenza_ordine_settimane?.toFixed(1)} sett.
-                            </div>
-                            <div>
-                              <strong>Prossimo ordine:</strong> tra{' '}
-                              {item.prossimo_ordine_tra_giorni} gg
-                            </div>
-                            {item.fornitori_abituali?.length > 0 && (
-                              <div style={{ gridColumn: 'span 2' }}>
-                                <strong>Fornitori:</strong> {item.fornitori_abituali.join(', ')}
-                              </div>
-                            )}
-                          </div>
+                          <>
+                            <span>
+                              Prev: {item.quantita_prevista?.toFixed(1)} {item.unita_misura}
+                            </span>
+                            <span>{item.media_settimanale}/sett</span>
+                            <span>{formatEuro(item.costo_stimato)}</span>
+                          </>
                         )}
                       </div>
+                    </div>
+
+                    {activeTab === 'statistiche' && item.trend && (
+                      <Badge variant={getTrendVariant(item.trend)}>
+                        {item.trend === '↑' ? '📈' : item.trend === '↓' ? '📉' : ''}
+                        {item.variazione_pct > 0 ? '+' : ''}
+                        {item.variazione_pct}%
+                      </Badge>
                     )}
+
+                    <span style={{ marginLeft: 8 }}>{expandedId === item.id ? '▲' : '▼'}</span>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+
+                  {/* Dettagli espansi */}
+                  {expandedId === item.id && (
+                    <div
+                      style={{
+                        marginTop: 12,
+                        paddingTop: 12,
+                        borderTop: `1px solid ${COLORS.border}`,
+                        fontSize: 12,
+                        color: COLORS.textMuted,
+                      }}
+                    >
+                      {activeTab === 'statistiche' ? (
+                        <div
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+                            gap: 8,
+                          }}
+                        >
+                          <div>
+                            <strong>Spesa totale:</strong> {formatEuro(item.spesa_totale)}
+                          </div>
+                          <div>
+                            <strong>N. ordini:</strong> {item.num_acquisti}
+                          </div>
+                          <div>
+                            <strong>Ogni:</strong> {item.frequenza_giorni} giorni
+                          </div>
+                          <div>
+                            <strong>Anno prec.:</strong> {item.quantita_anno_prec?.toFixed(1)}{' '}
+                            {item.unita_misura}
+                          </div>
+                          <div>
+                            <strong>Primo:</strong> {item.primo_acquisto}
+                          </div>
+                          <div>
+                            <strong>Ultimo:</strong> {item.ultimo_acquisto}
+                          </div>
+                        </div>
+                      ) : (
+                        <div
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+                            gap: 8,
+                          }}
+                        >
+                          <div>
+                            <strong>Anno rif.:</strong> {item.quantita_anno_rif?.toFixed(1)}{' '}
+                            {item.unita_misura}
+                          </div>
+                          <div>
+                            <strong>Prezzo medio:</strong> {formatEuro(item.prezzo_medio)}
+                          </div>
+                          <div>
+                            <strong>Ordina ogni:</strong>{' '}
+                            {item.frequenza_ordine_settimane?.toFixed(1)} sett.
+                          </div>
+                          <div>
+                            <strong>Prossimo ordine:</strong> tra{' '}
+                            {item.prossimo_ordine_tra_giorni} gg
+                          </div>
+                          {item.fornitori_abituali?.length > 0 && (
+                            <div style={{ gridColumn: 'span 2' }}>
+                              <strong>Fornitori:</strong> {item.fornitori_abituali.join(', ')}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
 
         {/* Info */}
         <div
           style={{
             marginTop: 16,
             padding: 12,
-            background: '#eff6ff',
-            border: '1px solid #bfdbfe',
-            borderRadius: 8,
+            background: COLORS.infoLight,
+            border: `1px solid ${COLORS.info}`,
+            borderRadius: BORDER_RADIUS.md,
             fontSize: 12,
-            color: '#1e40af',
+            color: COLORS.info,
           }}
         >
           💡 <strong>Come funziona:</strong> Il sistema analizza lo storico acquisti dalle fatture
