@@ -28,6 +28,37 @@ from app.services.xml_invoice_processor import extract_xml_from_p7m, is_p7m_cont
 from app.utils.error_handler import handle_errors
 
 logger = logging.getLogger(__name__)
+
+
+def _piva_italiana_valida(piva: str) -> bool:
+    """P.IVA italiana: esattamente 11 cifre numeriche. Usata solo per
+    fornitori con nazione IT/vuota — le P.IVA estere hanno formati diversi
+    e non vanno validate con questa regola."""
+    return bool(re.fullmatch(r"\d{11}", (piva or "").strip()))
+
+
+async def _controlla_dati_fornitore_incoerenti(
+    db, supplier_id: str, supplier_vat: str, supplier_name: str, nazione: str, session=None
+) -> None:
+    """Genera FORN_DATI_INCOERENTI se la P.IVA di un fornitore italiano non
+    ha il formato standard (11 cifre) — era definito in alert_engine.py ma
+    mai generato (vedi memoria/moduli/FORNITORI.md). Additivo: non blocca
+    la creazione/aggiornamento del fornitore, solo lo segnala."""
+    nazione_norm = (nazione or "IT").strip().upper()
+    if nazione_norm not in ("IT", "ITALIA", ""):
+        return
+    if _piva_italiana_valida(supplier_vat):
+        return
+    try:
+        from app.services.alert_engine import genera_alert
+        await genera_alert(
+            "FORN_DATI_INCOERENTI", supplier_id, Collections.SUPPLIERS,
+            f"Fornitore {supplier_name}: P.IVA '{supplier_vat}' non ha il formato standard "
+            f"italiano (11 cifre)",
+            db,
+        )
+    except Exception:
+        logger.exception(f"Errore generazione alert FORN_DATI_INCOERENTI per {supplier_id}")
 router = APIRouter()
 
 # Tipi documento FatturaPA che rappresentano una nota di credito (TD04) o di
@@ -195,6 +226,11 @@ async def ensure_supplier_exists(db, parsed_invoice: Dict[str, Any], session=Non
             except Exception:
                 logger.exception(f"Errore generazione alert FORN_INATTIVO_USATO per {supplier_id}")
 
+        await _controlla_dati_fornitore_incoerenti(
+            db, supplier_id, supplier_vat, supplier_name,
+            existing.get("nazione") or fornitore_data.get("nazione") or "IT", session=session,
+        )
+
         # Aggiorna SEMPRE i campi anagrafici mancanti (non sovrascrive quelli già compilati)
         update_data = {}
         field_map = {
@@ -283,6 +319,11 @@ async def ensure_supplier_exists(db, parsed_invoice: Dict[str, Any], session=Non
     }
     await db["alerts"].insert_one(alert.copy(), session=session)
     result["alert_created"] = True
+
+    await _controlla_dati_fornitore_incoerenti(
+        db, new_supplier["id"], supplier_vat, supplier_name,
+        new_supplier.get("nazione") or "IT", session=session,
+    )
 
     return result
 
