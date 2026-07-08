@@ -1,8 +1,24 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../api';
-import { STYLES, COLORS, button, badge, formatEuro, formatDateIT } from '../lib/utils';
+import { COLORS, BORDER_RADIUS, FONT } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
+import {
+  Button,
+  Badge,
+  StatCard,
+  Input,
+  Select,
+  Tabs,
+  TableWrap,
+  Table,
+  Th,
+  Td,
+} from '../components/ds';
 
+// Palette categoriale dedicata: 12 categorie contabili devono restare
+// distinguibili a colpo d'occhio. Non è mappabile sui token di stato
+// (success/danger/warning/info) senza far collassare più categorie sullo
+// stesso colore, quindi resta una palette custom di dominio (non chrome UI).
 const CATEGORIA_COLORS = {
   acquisti_merci: { bg: '#dbeafe', text: '#1e40af', label: 'Acquisti Merci' },
   acquisti_servizi: { bg: '#fef3c7', text: '#92400e', label: 'Servizi' },
@@ -15,29 +31,8 @@ const CATEGORIA_COLORS = {
   noleggi: { bg: '#fda4af', text: '#9f1239', label: 'Noleggi' },
   telefonia: { bg: '#c4b5fd', text: '#5b21b6', label: 'Telefonia' },
   pubblicita: { bg: '#fde68a', text: '#92400e', label: 'Pubblicità' },
-  non_categorizzato: { bg: '#e5e7eb', text: '#374151', label: 'Non Categorizzato' },
+  non_categorizzato: { bg: COLORS.gray[100], text: COLORS.gray[700], label: 'Non Categorizzato' },
 };
-
-// Stat Card Component
-const StatCard = ({ label, value, color, icon }) => (
-  <div
-    style={{
-      background: 'white',
-      borderRadius: 12,
-      padding: 16,
-      boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-      border: '1px solid #e5e7eb',
-    }}
-  >
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-      {icon && <span style={{ fontSize: 18 }}>{icon}</span>}
-      <span style={{ fontSize: 12, color: '#6b7280', textTransform: 'uppercase', fontWeight: 500 }}>
-        {label}
-      </span>
-    </div>
-    <div style={{ fontSize: 28, fontWeight: 700, color: color }}>{value}</div>
-  </div>
-);
 
 export default function RegoleCategorizzazione() {
   const [regole, setRegole] = useState(null);
@@ -193,7 +188,7 @@ export default function RegoleCategorizzazione() {
     return (
       <div style={{ padding: 24, textAlign: 'center', paddingTop: 100 }}>
         <div style={{ fontSize: 32, marginBottom: 16 }}>⏳</div>
-        <div style={{ color: '#6b7280' }}>Caricamento regole...</div>
+        <div style={{ color: COLORS.textMuted }}>Caricamento regole...</div>
       </div>
     );
   }
@@ -215,7 +210,7 @@ export default function RegoleCategorizzazione() {
             style={{
               fontSize: 28,
               fontWeight: 700,
-              color: '#1e3a5f',
+              color: COLORS.primaryLight,
               marginBottom: 8,
               display: 'flex',
               alignItems: 'center',
@@ -224,7 +219,7 @@ export default function RegoleCategorizzazione() {
           >
             <span>⚙️</span> Regole di Categorizzazione
           </h1>
-          <p style={{ color: '#64748b' }}>
+          <p style={{ color: COLORS.textMuted }}>
             Associazioni Fornitore/Descrizione → Categoria Contabile
           </p>
         </div>
@@ -234,32 +229,34 @@ export default function RegoleCategorizzazione() {
           <div
             style={{
               padding: 16,
-              borderRadius: 8,
+              borderRadius: BORDER_RADIUS.md,
               marginBottom: 20,
               background:
                 message.type === 'success'
-                  ? '#dcfce7'
+                  ? COLORS.successLight
                   : message.type === 'error'
-                    ? '#fee2e2'
-                    : '#dbeafe',
+                    ? COLORS.dangerLight
+                    : COLORS.infoLight,
               color:
                 message.type === 'success'
-                  ? '#166534'
+                  ? COLORS.success
                   : message.type === 'error'
-                    ? '#991b1b'
-                    : '#1e40af',
+                    ? COLORS.danger
+                    : COLORS.info,
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
             }}
           >
             {message.text}
-            <button
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => setMessage(null)}
-              style={{ cursor: 'pointer', background: 'none', border: 'none', fontSize: 18 }}
+              style={{ fontSize: 18, padding: '2px 8px', color: 'inherit' }}
             >
               ✕
-            </button>
+            </Button>
           </div>
         )}
 
@@ -272,20 +269,10 @@ export default function RegoleCategorizzazione() {
             marginBottom: 24,
           }}
         >
-          <StatCard
-            label="Regole Fornitori"
-            value={regole?.regole_fornitori?.length || 0}
-            color="#3b82f6"
-            icon="🏢"
-          />
-          <StatCard
-            label="Regole Descrizioni"
-            value={regole?.regole_descrizioni?.length || 0}
-            color="#8b5cf6"
-            icon="📝"
-          />
-          <StatCard label="Categorie" value={totaleCategorie} color="#10b981" icon="📁" />
-          <StatCard label="Totale Regole" value={totaleRegole} color="#f59e0b" icon="📊" />
+          <StatCard label="Regole Fornitori" value={regole?.regole_fornitori?.length || 0} accent="info" icon="🏢" />
+          <StatCard label="Regole Descrizioni" value={regole?.regole_descrizioni?.length || 0} accent="accent" icon="📝" />
+          <StatCard label="Categorie" value={totaleCategorie} accent="success" icon="📁" />
+          <StatCard label="Totale Regole" value={totaleRegole} accent="warning" icon="📊" />
         </div>
 
         {/* Azioni */}
@@ -295,38 +282,30 @@ export default function RegoleCategorizzazione() {
             gap: 12,
             marginBottom: 20,
             flexWrap: 'wrap',
+            alignItems: 'center',
             padding: 16,
-            background: '#f8fafc',
-            borderRadius: 12,
+            background: COLORS.bgAlt,
+            borderRadius: BORDER_RADIUS.md,
           }}
         >
-          <button
-            onClick={handleDownloadExcel}
-            style={{
-              padding: '10px 20px',
-              background: '#15803d',
-              color: 'white',
-              border: 'none',
-              borderRadius: 8,
-              cursor: 'pointer',
-              fontWeight: 600,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-            }}
-          >
-            📥 Scarica Excel
-          </button>
+          <Button variant="success" onClick={handleDownloadExcel} iconLeft="📥">
+            Scarica Excel
+          </Button>
 
+          {/* Trigger upload file: deve restare un <label> nativo (wrappa l'<input type="file">
+              nascosto che apre il file picker) — <Button> renderizza un <button>, non un <label>,
+              quindi non può assolvere a questo ruolo. Stile tokenizzato. */}
           <label
             style={{
-              padding: '10px 20px',
-              background: uploading ? '#9ca3af' : '#1d4ed8',
-              color: 'white',
-              borderRadius: 8,
+              padding: '8px 16px',
+              background: uploading ? COLORS.gray[400] : COLORS.info,
+              color: '#fff',
+              borderRadius: BORDER_RADIUS.sm,
               cursor: uploading ? 'wait' : 'pointer',
               fontWeight: 600,
-              display: 'flex',
+              fontSize: 13,
+              fontFamily: FONT.family,
+              display: 'inline-flex',
               alignItems: 'center',
               gap: 8,
             }}
@@ -341,81 +320,39 @@ export default function RegoleCategorizzazione() {
             />
           </label>
 
-          <button
-            onClick={handleRicategorizza}
-            disabled={ricategorizzando}
-            style={{
-              padding: '10px 20px',
-              background: ricategorizzando
-                ? '#9ca3af'
-                : '#1d4ed8',
-              color: 'white',
-              border: 'none',
-              borderRadius: 8,
-              cursor: ricategorizzando ? 'wait' : 'pointer',
-              fontWeight: 600,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-            }}
-          >
-            🔄 {ricategorizzando ? 'Elaborazione...' : 'Applica alle Fatture'}
-          </button>
+          <Button variant="info" onClick={handleRicategorizza} disabled={ricategorizzando} iconLeft="🔄">
+            {ricategorizzando ? 'Elaborazione...' : 'Applica alle Fatture'}
+          </Button>
 
-          <button
-            onClick={() => setShowAddForm(!showAddForm)}
-            style={{
-              padding: '10px 20px',
-              background: '#b45309',
-              color: 'white',
-              border: 'none',
-              borderRadius: 8,
-              cursor: 'pointer',
-              fontWeight: 600,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-            }}
-          >
-            ➕ Nuova Regola
-          </button>
+          <Button variant="warning" onClick={() => setShowAddForm(!showAddForm)} iconLeft="➕">
+            Nuova Regola
+          </Button>
         </div>
 
         {/* Form Nuova Regola */}
         {showAddForm && (
           <div
             style={{
-              background: 'white',
-              border: '1px solid #e5e7eb',
-              borderRadius: 12,
+              background: COLORS.card,
+              border: `1px solid ${COLORS.border}`,
+              borderRadius: BORDER_RADIUS.md,
               padding: 20,
               marginBottom: 20,
             }}
           >
             <h3 style={{ marginTop: 0, marginBottom: 16 }}>➕ Aggiungi Nuova Regola</h3>
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-              <input
+              <Input
                 type="text"
                 placeholder="Pattern fornitore (es. ENEL)"
                 value={newRule.pattern}
                 onChange={e => setNewRule({ ...newRule, pattern: e.target.value })}
-                style={{
-                  flex: 1,
-                  minWidth: 200,
-                  padding: '10px 14px',
-                  borderRadius: 8,
-                  border: '1px solid #d1d5db',
-                }}
+                style={{ flex: 1, minWidth: 200 }}
               />
-              <select
+              <Select
                 value={newRule.categoria}
                 onChange={e => setNewRule({ ...newRule, categoria: e.target.value })}
-                style={{
-                  padding: '10px 14px',
-                  borderRadius: 8,
-                  border: '1px solid #d1d5db',
-                  minWidth: 180,
-                }}
+                style={{ minWidth: 180 }}
               >
                 <option value="">-- Seleziona Categoria --</option>
                 {Object.keys(CATEGORIA_COLORS).map(cat => (
@@ -423,33 +360,13 @@ export default function RegoleCategorizzazione() {
                     {formatCategoryName(cat)}
                   </option>
                 ))}
-              </select>
-              <button
-                onClick={handleAddRule}
-                style={{
-                  padding: '10px 20px',
-                  background: '#10b981',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: 8,
-                  cursor: 'pointer',
-                }}
-              >
-                ✅ Salva
-              </button>
-              <button
-                onClick={() => setShowAddForm(false)}
-                style={{
-                  padding: '10px 20px',
-                  background: '#6b7280',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: 8,
-                  cursor: 'pointer',
-                }}
-              >
-                ✕ Annulla
-              </button>
+              </Select>
+              <Button variant="success" onClick={handleAddRule} iconLeft="✅">
+                Salva
+              </Button>
+              <Button variant="secondary" onClick={() => setShowAddForm(false)} iconLeft="✕">
+                Annulla
+              </Button>
             </div>
           </div>
         )}
@@ -464,57 +381,32 @@ export default function RegoleCategorizzazione() {
             flexWrap: 'wrap',
           }}
         >
-          <input
+          <Input
             type="text"
             placeholder="🔍 Cerca regola..."
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
-            style={{
-              padding: '10px 14px',
-              borderRadius: 8,
-              border: '1px solid #e2e8f0',
-              minWidth: 250,
-            }}
+            style={{ minWidth: 250 }}
           />
 
-          <div
-            style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: 4,
-              background: '#f1f5f9',
-              padding: 4,
-              borderRadius: 8,
-            }}
-          >
-            {['associazioni', 'fornitori', 'descrizioni', 'categorie'].map(tab => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                style={{
-                  padding: '8px 16px',
-                  background: activeTab === tab ? 'white' : 'transparent',
-                  border: 'none',
-                  borderRadius: 6,
-                  cursor: 'pointer',
-                  fontWeight: activeTab === tab ? 600 : 400,
-                  color: activeTab === tab ? '#3b82f6' : '#64748b',
-                  boxShadow: activeTab === tab ? '0 1px 2px rgba(0,0,0,0.05)' : 'none',
-                  textTransform: 'capitalize',
-                }}
-              >
-                {tab}
-              </button>
-            ))}
-          </div>
+          <Tabs
+            items={[
+              { key: 'associazioni', label: 'Associazioni' },
+              { key: 'fornitori', label: 'Fornitori' },
+              { key: 'descrizioni', label: 'Descrizioni' },
+              { key: 'categorie', label: 'Categorie' },
+            ]}
+            value={activeTab}
+            onChange={setActiveTab}
+          />
         </div>
 
         {/* Tab Content */}
         <div
           style={{
-            background: 'white',
-            borderRadius: 12,
-            border: '1px solid #e5e7eb',
+            background: COLORS.card,
+            borderRadius: BORDER_RADIUS.md,
+            border: `1px solid ${COLORS.border}`,
             overflow: 'hidden',
           }}
         >
@@ -527,13 +419,13 @@ export default function RegoleCategorizzazione() {
                   return (
                     <div
                       key={categoria}
-                      style={{ border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}
+                      style={{ border: `1px solid ${COLORS.border}`, borderRadius: BORDER_RADIUS.md, overflow: 'hidden' }}
                     >
                       <div
                         style={{
                           padding: '12px 16px',
                           background: style.bg,
-                          borderBottom: '1px solid #e5e7eb',
+                          borderBottom: `1px solid ${COLORS.border}`,
                           display: 'flex',
                           justifyContent: 'space-between',
                           alignItems: 'center',
@@ -550,7 +442,7 @@ export default function RegoleCategorizzazione() {
                         {data.fornitori.length > 0 && (
                           <div style={{ marginBottom: 8 }}>
                             <span
-                              style={{ fontSize: 11, color: '#6b7280', textTransform: 'uppercase' }}
+                              style={{ fontSize: 11, color: COLORS.textMuted, textTransform: 'uppercase' }}
                             >
                               Fornitori:
                             </span>
@@ -562,8 +454,8 @@ export default function RegoleCategorizzazione() {
                                   key={i}
                                   style={{
                                     padding: '4px 10px',
-                                    background: '#f1f5f9',
-                                    borderRadius: 6,
+                                    background: COLORS.bgAlt,
+                                    borderRadius: BORDER_RADIUS.sm,
                                     fontSize: 13,
                                     display: 'flex',
                                     alignItems: 'center',
@@ -577,7 +469,7 @@ export default function RegoleCategorizzazione() {
                                       background: 'none',
                                       border: 'none',
                                       cursor: 'pointer',
-                                      color: '#ef4444',
+                                      color: COLORS.danger,
                                       padding: 0,
                                     }}
                                   >
@@ -591,7 +483,7 @@ export default function RegoleCategorizzazione() {
                         {data.descrizioni.length > 0 && (
                           <div>
                             <span
-                              style={{ fontSize: 11, color: '#6b7280', textTransform: 'uppercase' }}
+                              style={{ fontSize: 11, color: COLORS.textMuted, textTransform: 'uppercase' }}
                             >
                               Descrizioni:
                             </span>
@@ -603,8 +495,8 @@ export default function RegoleCategorizzazione() {
                                   key={i}
                                   style={{
                                     padding: '4px 10px',
-                                    background: '#e0f2fe',
-                                    borderRadius: 6,
+                                    background: COLORS.infoLight,
+                                    borderRadius: BORDER_RADIUS.sm,
                                     fontSize: 13,
                                     display: 'flex',
                                     alignItems: 'center',
@@ -618,7 +510,7 @@ export default function RegoleCategorizzazione() {
                                       background: 'none',
                                       border: 'none',
                                       cursor: 'pointer',
-                                      color: '#ef4444',
+                                      color: COLORS.danger,
                                       padding: 0,
                                     }}
                                   >
@@ -639,184 +531,82 @@ export default function RegoleCategorizzazione() {
 
           {/* Tab Fornitori */}
           {activeTab === 'fornitori' && (
-            <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ background: '#f9fafb' }}>
-                  <th
-                    style={{
-                      padding: 14,
-                      textAlign: 'left',
-                      fontSize: 12,
-                      fontWeight: 600,
-                      color: '#6b7280',
-                      textTransform: 'uppercase',
-                      borderBottom: '1px solid #e5e7eb',
-                    }}
-                  >
-                    Pattern
-                  </th>
-                  <th
-                    style={{
-                      padding: 14,
-                      textAlign: 'left',
-                      fontSize: 12,
-                      fontWeight: 600,
-                      color: '#6b7280',
-                      textTransform: 'uppercase',
-                      borderBottom: '1px solid #e5e7eb',
-                    }}
-                  >
-                    Categoria
-                  </th>
-                  <th
-                    style={{
-                      padding: 14,
-                      textAlign: 'center',
-                      fontSize: 12,
-                      fontWeight: 600,
-                      color: '#6b7280',
-                      textTransform: 'uppercase',
-                      borderBottom: '1px solid #e5e7eb',
-                    }}
-                  >
-                    Azioni
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredRules(regole?.regole_fornitori).map((r, i) => {
-                  const style = getCategoryStyle(r.categoria);
-                  return (
-                    <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                      <td style={{ padding: 14, fontWeight: 500 }}>{r.pattern}</td>
-                      <td style={{ padding: 14 }}>
-                        <span
-                          style={{
-                            padding: '4px 12px',
-                            borderRadius: 9999,
-                            fontSize: 12,
-                            fontWeight: 500,
-                            background: style.bg,
-                            color: style.text,
-                          }}
-                        >
-                          {formatCategoryName(r.categoria)}
-                        </span>
-                      </td>
-                      <td style={{ padding: 14, textAlign: 'center' }}>
-                        <button
-                          onClick={() => handleDeleteRule('fornitore', r.pattern)}
-                          style={{
-                            padding: '6px 12px',
-                            background: '#fee2e2',
-                            color: '#991b1b',
-                            border: 'none',
-                            borderRadius: 6,
-                            cursor: 'pointer',
-                            fontSize: 12,
-                          }}
-                        >
-                          🗑️ Elimina
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-            </div>
+            <TableWrap style={{ border: 'none', borderRadius: 0 }}>
+              <Table>
+                <thead>
+                  <tr>
+                    <Th>Pattern</Th>
+                    <Th>Categoria</Th>
+                    <Th align="center">Azioni</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredRules(regole?.regole_fornitori).map((r, i) => {
+                    const style = getCategoryStyle(r.categoria);
+                    return (
+                      <tr key={i}>
+                        <Td style={{ fontWeight: 500 }}>{r.pattern}</Td>
+                        <Td>
+                          <Badge style={{ background: style.bg, color: style.text }}>
+                            {formatCategoryName(r.categoria)}
+                          </Badge>
+                        </Td>
+                        <Td align="center">
+                          <Button
+                            variant="danger"
+                            size="sm"
+                            onClick={() => handleDeleteRule('fornitore', r.pattern)}
+                            iconLeft="🗑️"
+                          >
+                            Elimina
+                          </Button>
+                        </Td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </Table>
+            </TableWrap>
           )}
 
           {/* Tab Descrizioni */}
           {activeTab === 'descrizioni' && (
-            <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ background: '#f9fafb' }}>
-                  <th
-                    style={{
-                      padding: 14,
-                      textAlign: 'left',
-                      fontSize: 12,
-                      fontWeight: 600,
-                      color: '#6b7280',
-                      textTransform: 'uppercase',
-                      borderBottom: '1px solid #e5e7eb',
-                    }}
-                  >
-                    Pattern
-                  </th>
-                  <th
-                    style={{
-                      padding: 14,
-                      textAlign: 'left',
-                      fontSize: 12,
-                      fontWeight: 600,
-                      color: '#6b7280',
-                      textTransform: 'uppercase',
-                      borderBottom: '1px solid #e5e7eb',
-                    }}
-                  >
-                    Categoria
-                  </th>
-                  <th
-                    style={{
-                      padding: 14,
-                      textAlign: 'center',
-                      fontSize: 12,
-                      fontWeight: 600,
-                      color: '#6b7280',
-                      textTransform: 'uppercase',
-                      borderBottom: '1px solid #e5e7eb',
-                    }}
-                  >
-                    Azioni
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredRules(regole?.regole_descrizioni).map((r, i) => {
-                  const style = getCategoryStyle(r.categoria);
-                  return (
-                    <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                      <td style={{ padding: 14, fontWeight: 500 }}>{r.pattern}</td>
-                      <td style={{ padding: 14 }}>
-                        <span
-                          style={{
-                            padding: '4px 12px',
-                            borderRadius: 9999,
-                            fontSize: 12,
-                            fontWeight: 500,
-                            background: style.bg,
-                            color: style.text,
-                          }}
-                        >
-                          {formatCategoryName(r.categoria)}
-                        </span>
-                      </td>
-                      <td style={{ padding: 14, textAlign: 'center' }}>
-                        <button
-                          onClick={() => handleDeleteRule('descrizione', r.pattern)}
-                          style={{
-                            padding: '6px 12px',
-                            background: '#fee2e2',
-                            color: '#991b1b',
-                            border: 'none',
-                            borderRadius: 6,
-                            cursor: 'pointer',
-                            fontSize: 12,
-                          }}
-                        >
-                          🗑️ Elimina
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-            </div>
+            <TableWrap style={{ border: 'none', borderRadius: 0 }}>
+              <Table>
+                <thead>
+                  <tr>
+                    <Th>Pattern</Th>
+                    <Th>Categoria</Th>
+                    <Th align="center">Azioni</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredRules(regole?.regole_descrizioni).map((r, i) => {
+                    const style = getCategoryStyle(r.categoria);
+                    return (
+                      <tr key={i}>
+                        <Td style={{ fontWeight: 500 }}>{r.pattern}</Td>
+                        <Td>
+                          <Badge style={{ background: style.bg, color: style.text }}>
+                            {formatCategoryName(r.categoria)}
+                          </Badge>
+                        </Td>
+                        <Td align="center">
+                          <Button
+                            variant="danger"
+                            size="sm"
+                            onClick={() => handleDeleteRule('descrizione', r.pattern)}
+                            iconLeft="🗑️"
+                          >
+                            Elimina
+                          </Button>
+                        </Td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </Table>
+            </TableWrap>
           )}
 
           {/* Tab Categorie */}
@@ -836,7 +626,7 @@ export default function RegoleCategorizzazione() {
                       key={i}
                       style={{
                         background: style.bg,
-                        borderRadius: 12,
+                        borderRadius: BORDER_RADIUS.md,
                         padding: 16,
                         border: `1px solid ${style.text}20`,
                       }}
@@ -860,18 +650,18 @@ export default function RegoleCategorizzazione() {
         {/* Info Box */}
         <div
           style={{
-            background: '#eff6ff',
-            border: '1px solid #bfdbfe',
-            borderRadius: 12,
+            background: COLORS.infoLight,
+            border: `1px solid ${COLORS.info}40`,
+            borderRadius: BORDER_RADIUS.md,
             padding: 16,
             marginTop: 24,
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
             <span>ℹ️</span>
-            <strong style={{ color: '#1e40af' }}>Come funziona</strong>
+            <strong style={{ color: COLORS.info }}>Come funziona</strong>
           </div>
-          <ul style={{ margin: 0, paddingLeft: 20, color: '#1e40af', fontSize: 13 }}>
+          <ul style={{ margin: 0, paddingLeft: 20, color: COLORS.info, fontSize: 13 }}>
             <li>
               <strong>Regole Fornitori:</strong> Associa un fornitore ad una categoria (es. "ENEL" →
               "utenze")
