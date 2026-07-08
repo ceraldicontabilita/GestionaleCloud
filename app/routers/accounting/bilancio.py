@@ -55,7 +55,18 @@ from io import BytesIO
 import logging
 
 from app.models.stati import STATI_PAGATI
+from app.routers.prima_nota_module.common import CATEGORIE_ESCLUSE
 from app.utils.error_handler import handle_errors
+
+# Esclude movimenti soft-deleted (status deleted/archived) e i duplicati POS
+# già identificati — stesso filtro già applicato a tutte le altre query di
+# riepilogo prima nota (finanziaria.py, prima_nota_module/cassa.py, banca.py,
+# sync.py). Prima mancava qui: cancellare un movimento da Prima Nota non lo
+# toglieva dal Totale Attivo del Bilancio, che restava quindi gonfiato.
+PRIMA_NOTA_MATCH = {
+    "status": {"$nin": ["deleted", "archived"]},
+    "categoria": {"$nin": CATEGORIE_ESCLUSE},
+}
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -105,7 +116,7 @@ async def get_stato_patrimoniale(
     
     # Cassa
     pipeline_cassa = [
-        {"$match": {"data": {"$lte": data_fine}}},
+        {"$match": {**PRIMA_NOTA_MATCH, "data": {"$lte": data_fine}}},
         {"$group": {
             "_id": None,
             "entrate": {"$sum": {"$cond": [{"$eq": ["$tipo", "entrata"]}, "$importo", 0]}},
@@ -119,7 +130,7 @@ async def get_stato_patrimoniale(
     
     # Banca
     pipeline_banca = [
-        {"$match": {"data": {"$lte": data_fine}}},
+        {"$match": {**PRIMA_NOTA_MATCH, "data": {"$lte": data_fine}}},
         {"$group": {
             "_id": None,
             "entrate": {"$sum": {"$cond": [{"$eq": ["$tipo", "entrata"]}, "$importo", 0]}},
@@ -154,11 +165,13 @@ async def get_stato_patrimoniale(
     
     # Debiti (fatture ricevute non pagate)
     # NOTA: Tutte le fatture in 'invoices' sono RICEVUTE (da fornitori)
-    # Il filtro esclude solo le note di credito (TD04, TD08)
+    # Il filtro esclude le note di credito (TD04, TD08) e le fatture
+    # eliminate (cascade_operations.py le marca status="deleted") — prima
+    # mancava, una fattura cancellata restava sommata nei Debiti.
     debiti = await db[Collections.INVOICES].aggregate([
         {"$match": {
             "tipo_documento": {"$nin": ["TD04", "TD08"]},
-            "status": {"$nin": STATI_PAGATI},
+            "status": {"$nin": STATI_PAGATI + ["deleted", "archived"]},
             "pagato": {"$ne": True},
             "$or": [
                 {"invoice_date": {"$lte": data_fine}},
@@ -247,7 +260,11 @@ async def get_conto_economico(
     
     corrispettivi_result = await db["corrispettivi"].aggregate([
         {"$match": {
-            "data": {"$gte": data_inizio, "$lte": data_fine}
+            "data": {"$gte": data_inizio, "$lte": data_fine},
+            # Esclude i corrispettivi eliminati (soft-delete su entity_status,
+            # vedi corrispettivi.py) — prima mancava, un doppione cancellato
+            # restava sommato nei Ricavi.
+            "entity_status": {"$ne": "deleted"},
         }},
         {"$group": {
             "_id": None,
@@ -257,19 +274,23 @@ async def get_conto_economico(
             "count": {"$sum": 1}
         }}
     ]).to_list(1)
-    
+
     totale_corrispettivi = corrispettivi_result[0]["totale_imponibile"] if corrispettivi_result else 0
     iva_vendite = corrispettivi_result[0]["totale_iva"] if corrispettivi_result else 0
     num_corrispettivi = corrispettivi_result[0]["count"] if corrispettivi_result else 0
     totale_lordo_corrispettivi = corrispettivi_result[0]["totale_lordo"] if corrispettivi_result else 0
-    
+
     # === COSTI ===
-    
-    # 1. TUTTE le Fatture Ricevute (acquisti) - ESCLUSE solo le Note Credito (TD04, TD08)
+
+    # 1. TUTTE le Fatture Ricevute (acquisti) - ESCLUSE le Note Credito (TD04,
+    # TD08) e le fatture eliminate (status="deleted", vedi
+    # cascade_operations.py) — quest'ultimo filtro mancava del tutto: una
+    # fattura cancellata restava interamente sommata nei Costi.
     # La collezione 'invoices' contiene SOLO fatture RICEVUTE da fornitori
     fatture_ricevute = await db[Collections.INVOICES].aggregate([
         {"$match": {
             "tipo_documento": {"$nin": ["TD04", "TD08"]},  # Escludi solo Note Credito
+            "status": {"$nin": ["deleted", "archived"]},
             "$or": [
                 {"invoice_date": {"$gte": data_inizio, "$lte": data_fine}},
                 {"data_ricezione": {"$gte": data_inizio, "$lte": data_fine}}
@@ -292,6 +313,7 @@ async def get_conto_economico(
     note_credito = await db[Collections.INVOICES].aggregate([
         {"$match": {
             "tipo_documento": {"$in": ["TD04", "TD08"]},
+            "status": {"$nin": ["deleted", "archived"]},
             "$or": [
                 {"invoice_date": {"$gte": data_inizio, "$lte": data_fine}},
                 {"data_ricezione": {"$gte": data_inizio, "$lte": data_fine}}
@@ -424,7 +446,10 @@ async def get_conto_economico_dettagliato(
     # === A) RICAVI ===
     # A1: Ricavi delle vendite (Corrispettivi)
     corrispettivi = await db["corrispettivi"].aggregate([
-        {"$match": {"data": {"$gte": data_inizio, "$lte": data_fine}}},
+        {"$match": {
+            "data": {"$gte": data_inizio, "$lte": data_fine},
+            "entity_status": {"$ne": "deleted"},
+        }},
         {"$group": {
             "_id": None,
             "totale_imponibile": {"$sum": {"$ifNull": ["$totale_imponibile", 0]}},
@@ -433,14 +458,15 @@ async def get_conto_economico_dettagliato(
             "count": {"$sum": 1}
         }}
     ]).to_list(1)
-    
+
     ricavi_vendite = corrispettivi[0]["totale_imponibile"] if corrispettivi else 0
     iva_vendite = corrispettivi[0]["totale_iva"] if corrispettivi else 0
-    
+
     # === B) COSTI DELLA PRODUZIONE ===
     # Recupera tutte le fatture e classifica per categoria
     fatture = await db[Collections.INVOICES].find({
         "tipo_documento": {"$nin": ["TD04", "TD08"]},
+        "status": {"$nin": ["deleted", "archived"]},
         "$or": [
             {"invoice_date": {"$gte": data_inizio, "$lte": data_fine}},
             {"data_ricezione": {"$gte": data_inizio, "$lte": data_fine}}
@@ -472,6 +498,7 @@ async def get_conto_economico_dettagliato(
     note_credito = await db[Collections.INVOICES].aggregate([
         {"$match": {
             "tipo_documento": {"$in": ["TD04", "TD08"]},
+            "status": {"$nin": ["deleted", "archived"]},
             "$or": [
                 {"invoice_date": {"$gte": data_inizio, "$lte": data_fine}},
                 {"data_ricezione": {"$gte": data_inizio, "$lte": data_fine}}
@@ -1051,7 +1078,7 @@ async def _get_stato_patrimoniale_data(anno: int) -> Dict[str, Any]:
     
     # Cassa
     pipeline_cassa = [
-        {"$match": {"data": {"$lte": data_fine}}},
+        {"$match": {**PRIMA_NOTA_MATCH, "data": {"$lte": data_fine}}},
         {"$group": {
             "_id": None,
             "entrate": {"$sum": {"$cond": [{"$eq": ["$tipo", "entrata"]}, "$importo", 0]}},
@@ -1065,7 +1092,7 @@ async def _get_stato_patrimoniale_data(anno: int) -> Dict[str, Any]:
     
     # Banca
     pipeline_banca = [
-        {"$match": {"data": {"$lte": data_fine}}},
+        {"$match": {**PRIMA_NOTA_MATCH, "data": {"$lte": data_fine}}},
         {"$group": {
             "_id": None,
             "entrate": {"$sum": {"$cond": [{"$eq": ["$tipo", "entrata"]}, "$importo", 0]}},
@@ -1077,22 +1104,23 @@ async def _get_stato_patrimoniale_data(anno: int) -> Dict[str, Any]:
     if banca_result:
         saldo_banca = banca_result[0].get("entrate", 0) - banca_result[0].get("uscite", 0)
     
-    # Crediti
+    # Crediti — esclude anche le fatture eliminate (status="deleted" da
+    # cascade_operations.py), prima mancava.
     crediti = await db[Collections.INVOICES].aggregate([
         {"$match": {
             "tipo_documento": {"$in": ["TD01", "TD24", "TD26"]},
-            "status": {"$ne": "paid"},
+            "status": {"$nin": ["paid", "deleted", "archived"]},
             "invoice_date": {"$lte": data_fine}
         }},
         {"$group": {"_id": None, "totale": {"$sum": "$total_amount"}}}
     ]).to_list(1)
     totale_crediti = crediti[0]["totale"] if crediti else 0
-    
-    # Debiti
+
+    # Debiti — stessa esclusione delle fatture eliminate.
     debiti = await db[Collections.INVOICES].aggregate([
         {"$match": {
             "tipo_documento": {"$nin": ["TD01", "TD24", "TD26"]},
-            "status": {"$ne": "paid"},
+            "status": {"$nin": ["paid", "deleted", "archived"]},
             "pagato": {"$ne": True},
             "invoice_date": {"$lte": data_fine}
         }},
@@ -1146,7 +1174,8 @@ async def _get_conto_economico_data(anno: int) -> Dict[str, Any]:
     # Solo corrispettivi (vendite al pubblico)
     corrispettivi_result = await db["corrispettivi"].aggregate([
         {"$match": {
-            "data": {"$gte": data_inizio, "$lte": data_fine}
+            "data": {"$gte": data_inizio, "$lte": data_fine},
+            "entity_status": {"$ne": "deleted"},
         }},
         {"$group": {
             "_id": None,
@@ -1154,12 +1183,13 @@ async def _get_conto_economico_data(anno: int) -> Dict[str, Any]:
         }}
     ]).to_list(1)
     totale_corrispettivi = corrispettivi_result[0]["totale_imponibile"] if corrispettivi_result else 0
-    
+
     # === COSTI ===
-    # TUTTE le fatture ricevute (escluse solo le note credito)
+    # TUTTE le fatture ricevute (escluse le note credito e le eliminate)
     fatture_ricevute = await db[Collections.INVOICES].aggregate([
         {"$match": {
             "tipo_documento": {"$nin": ["TD04", "TD08"]},  # Escludi solo Note Credito
+            "status": {"$nin": ["deleted", "archived"]},
             "$or": [
                 {"invoice_date": {"$gte": data_inizio, "$lte": data_fine}},
                 {"data_ricezione": {"$gte": data_inizio, "$lte": data_fine}}
@@ -1176,6 +1206,7 @@ async def _get_conto_economico_data(anno: int) -> Dict[str, Any]:
     note_credito = await db[Collections.INVOICES].aggregate([
         {"$match": {
             "tipo_documento": {"$in": ["TD04", "TD08"]},
+            "status": {"$nin": ["deleted", "archived"]},
             "$or": [
                 {"invoice_date": {"$gte": data_inizio, "$lte": data_fine}},
                 {"data_ricezione": {"$gte": data_inizio, "$lte": data_fine}}
