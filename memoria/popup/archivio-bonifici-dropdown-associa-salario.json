@@ -1,0 +1,37 @@
+{
+  "nome_popup": "Dropdown 'Associa Salario' (NON è un vero modale)",
+  "nota_tipologia": "IMPORTANTE: non è un popup/overlay centrato ma un pannello posizionato in absolute (top:100%, left:0, zIndex:100) subito sotto il bottone che lo apre, dentro la cella della tabella (position:relative sul <td>). Non ha sfondo scuro/overlay, non blocca l'interazione col resto della pagina, e più dropdown non possono restare aperti insieme (aprirne uno chiude sia quello fatture sia un eventuale altro dropdown salario già aperto su un'altra riga).",
+  "file_sorgente": "/home/user/GestionaleCloud/frontend/src/pages/ArchivioBonifici.jsx (bottone/dropdown righe ~1031-1210; logica toggleAssociaDropdown riga 296, handleAssocia riga 312, handleDisassocia riga 326; endpoint backend in app/routers/bonifici_module/associazioni.py)",
+  "pagine_da_cui_si_apre": ["Archivio Bonifici (/riconciliazione/archivio-bonifici)"],
+  "come_si_apre": "Click sul bottone '+ Associa' (data-testid=btn-associa-{id}) nella colonna 'Associa Salario' di una riga bonifico NON ancora associato (visibile solo se !t.salario_associato). toggleAssociaDropdown(bonifico_id): chiude prima l'eventuale dropdown fatture aperto su qualunque riga, poi se questo stesso dropdown era già aperto lo richiude, altrimenti lo apre e chiama subito loadOperazioniCompatibili(bonifico_id). Si chiude anche cliccando in qualunque punto fuori dalla tabella grazie a un listener globale mousedown su dropdownRef (il ref è sull'intero contenitore <div> della pagina).",
+  "scopo": "Proporre e collegare un bonifico bancario a un'operazione di Prima Nota Salari (pagamento stipendio a un dipendente) con un punteggio di compatibilità basato su importo (±5%).",
+  "dati_mostrati": "Banner verde '🔗 IBAN riconosciuto' con nome dipendente se dipendenteIbanMatch è valorizzato (match sull'IBAN beneficiario del bonifico). Se in caricamento: '⏳ Caricamento...'. Se lista vuota: messaggio diverso a seconda che ci sia un match IBAN o meno. Per ciascuna operazione compatibile: nome dipendente/descrizione, badge 'IBAN ✓' se op.iban_match, punteggio percentuale colorato (verde >=70%, giallo >=40%, rosso <40%), mese/anno o data, importo (op.importo_display) in formato euro monospace.",
+  "campi_e_bottoni": [
+    {
+      "elemento": "Bottone '+ Associa' / '▼ Seleziona' (stesso bottone, cambia testo/colore in base allo stato aperto/chiuso)",
+      "cosa_fa": "Apre/chiude il dropdown come descritto sopra.",
+      "endpoint_chiamato": "GET /api/archivio-bonifici/operazioni-salari/{bonifico_id} (solo in apertura)",
+      "validazioni": "nessuna"
+    },
+    {
+      "elemento": "Riga operazione salario nel dropdown (click)",
+      "cosa_fa": "handleAssocia(bonifico_id, operazione_id): associa il bonifico all'operazione salario scelta.",
+      "endpoint_chiamato": "POST /api/archivio-bonifici/associa-salario?bonifico_id=...&operazione_id=...",
+      "validazioni": "Nessuna validazione client (nessuna selezione visibile/conferma intermedia: un solo click associa direttamente). Lato server (associazioni.py::associa_salario_a_bonifico): prova update_one su 'bonifici_transfers' {id: bonifico_id}, fallback su 'archivio_bonifici' (ObjectId) se non trovato. NOTA IMPORTANTE: l'endpoint imposta operazione_salario_id, stato_riconciliazione='associato_salario', data_associazione MA NON imposta il flag salario_associato=true — quel flag è impostato solo dal percorso di auto-associazione automatica dei job di import (bonifici_module/jobs.py). Di conseguenza, dopo un'associazione MANUALE da questo dropdown, il bonifico continua a comparire nel tab 'Da Associare' (che filtra su salario_associato/fattura_associata) finché il flag non viene sistemato altrove."
+    },
+    {
+      "elemento": "MISMATCH CONTRATTO DATI (bug reale nel codice)",
+      "cosa_fa": "Il frontend legge res.data.operazioni_compatibili e res.data.dipendente_iban_match dalla risposta di GET /operazioni-salari/{id}, ma il backend (get_operazioni_salari) restituisce direttamente una LISTA semplice (non un oggetto con quelle chiavi), senza i campi compatibilita_score e iban_match usati per colorare/ordinare le righe.",
+      "endpoint_chiamato": "GET /api/archivio-bonifici/operazioni-salari/{bonifico_id}",
+      "validazioni": "Effetto pratico: res.data.operazioni_compatibili è undefined, il fallback `|| []` fa sì che il dropdown mostri SEMPRE 'Nessuna operazione salari compatibile trovata', anche quando il backend ha effettivamente trovato operazioni valide con netto entro ±5% dell'importo del bonifico. Questa funzionalità risulta rotta nello stato attuale del repository."
+    }
+  ],
+  "cosa_succede_alla_conferma": "Se il match funzionasse (ignorando il bug del contratto dati sopra), la POST scriverebbe su 'bonifici_transfers' (o fallback legacy 'archivio_bonifici'): operazione_salario_id, stato_riconciliazione='associato_salario', data_associazione. Il frontend chiude il dropdown (setAssociaDropdown(null), svuota operazioniCompatibili) e richiama loadTransfers() per ricaricare l'intera tabella.",
+  "come_si_chiude": [
+    "Ricliccando lo stesso bottone '+ Associa'/'▼ Seleziona' (toggle)",
+    "Aprendo il dropdown fatture su qualunque riga (i due dropdown si escludono a vicenda)",
+    "Click in qualunque punto della pagina fuori dal container principale (listener globale mousedown)",
+    "Automaticamente dopo un click riuscito su una riga operazione (handleAssocia chiude e ricarica)"
+  ],
+  "effetto_su_pagina_sottostante": "loadTransfers() ricarica l'intera tabella bonifici; se il flag salario_associato non viene impostato (vedi bug sopra), il bonifico resta visibile nel tab 'Da Associare' anche dopo un'associazione apparentemente riuscita, il che può confondere l'operatore facendogli credere che l'azione non abbia avuto effetto."
+}
