@@ -4,7 +4,6 @@ import {
   FileText,
   User,
   CreditCard,
-  CheckCircle,
   AlertCircle,
   ExternalLink,
   Download,
@@ -17,7 +16,10 @@ import {
   Receipt,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import api from '../api';
+import { Button, Badge } from './ds';
+import { COLORS, SHADOWS, BORDER_RADIUS, FONT } from '../lib/utils';
 
 // Traduzione codici PayPal in labels leggibili.
 // Fonte: https://developer.paypal.com/api/rest/reference/transactions-search/event-codes/
@@ -150,7 +152,7 @@ export default function PaypalTransactionDetailModal({
       );
       const b64 = r.data?.content_base64;
       if (!b64) {
-        alert('PDF non disponibile');
+        toast.error('PDF non disponibile');
         return;
       }
       // base64 → blob → URL → nuova tab
@@ -163,7 +165,7 @@ export default function PaypalTransactionDetailModal({
       // libero l'URL dopo qualche secondo
       setTimeout(() => URL.revokeObjectURL(url), 30000);
     } catch (e) {
-      alert('Errore apertura PDF: ' + (e?.response?.data?.detail || e?.message));
+      toast.error('Errore apertura PDF: ' + (e?.response?.data?.detail || e?.message));
     }
   };
 
@@ -212,7 +214,7 @@ export default function PaypalTransactionDetailModal({
       onClick={(e) => { if (e.target === e.currentTarget) onClose?.(); }}
       style={{
         position: 'fixed', inset: 0, zIndex: 9999,
-        background: 'rgba(15,23,42,0.55)',
+        background: 'rgba(15,39,68,0.55)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: 16,
       }}
@@ -220,10 +222,10 @@ export default function PaypalTransactionDetailModal({
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: '#fff', borderRadius: 12,
+          background: COLORS.card, borderRadius: BORDER_RADIUS.lg,
           width: '100%', maxWidth: 720, maxHeight: '90vh',
           display: 'flex', flexDirection: 'column',
-          boxShadow: '0 25px 50px rgba(0,0,0,0.25)',
+          boxShadow: SHADOWS.modal,
           overflow: 'hidden',
         }}
       >
@@ -231,28 +233,26 @@ export default function PaypalTransactionDetailModal({
         <div style={{
           display: 'flex', alignItems: 'center', gap: 10,
           padding: '14px 18px',
-          background: '#0f2744', color: '#fff',
+          background: COLORS.primary, color: '#fff',
         }}>
           <CreditCard size={18} />
           <div style={{ fontSize: 15, fontWeight: 600, flex: 1 }}>
             Dettaglio Transazione PayPal
           </div>
-          <button
+          <Button
+            variant="ghost"
             onClick={onClose}
-            style={{
-              background: 'transparent', border: 'none', color: '#fff',
-              cursor: 'pointer', padding: 4, display: 'flex',
-            }}
             aria-label="Chiudi"
+            style={{ color: '#fff', padding: 4, width: 28, height: 28 }}
           >
             <X size={20} />
-          </button>
+          </Button>
         </div>
 
         {/* Body */}
         <div style={{ padding: 20, overflowY: 'auto', flex: 1 }}>
           {loading && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#64748b', padding: 30 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: COLORS.textMuted, padding: 30 }}>
               <Loader2 size={18} className="animate-spin" />
               Caricamento dettagli…
             </div>
@@ -260,8 +260,8 @@ export default function PaypalTransactionDetailModal({
 
           {error && (
             <div style={{
-              background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b',
-              padding: 12, borderRadius: 8, fontSize: 13,
+              background: COLORS.dangerLight, border: `1px solid ${COLORS.danger}`, color: COLORS.danger,
+              padding: 12, borderRadius: BORDER_RADIUS.sm, fontSize: 13,
             }}>
               <AlertCircle size={16} style={{ verticalAlign: 'text-bottom' }} /> {String(error)}
             </div>
@@ -274,7 +274,7 @@ export default function PaypalTransactionDetailModal({
                 <Row icon={<Hash size={12} />} label="Transaction ID" value={<code style={{ fontSize: 11 }}>{tx.transaction_id || tx.id || '—'}</code>} />
                 <Row icon={<Calendar size={12} />} label="Data" value={fmtDate(tx.data || tx.date)} />
                 <Row icon={<Euro size={12} />} label="Importo" value={
-                  <span style={{ fontWeight: 700, color: (tx.lordo ?? tx.amount ?? 0) < 0 ? '#dc2626' : '#16a34a' }}>
+                  <span style={{ fontWeight: 700, color: (tx.lordo ?? tx.amount ?? 0) < 0 ? COLORS.danger : COLORS.success }}>
                     {fmtEuro(tx.lordo ?? tx.amount)}
                   </span>
                 } />
@@ -297,8 +297,8 @@ export default function PaypalTransactionDetailModal({
                 )}
                 <Row label="Riconciliato in banca" value={
                   tx.riconciliato_banca
-                    ? <Badge color="#16a34a" text="Sì" icon={<CheckCircle size={11} />} />
-                    : <Badge color="#94a3b8" text="No" />
+                    ? <Badge variant="success">Sì</Badge>
+                    : <Badge variant="neutral">No</Badge>
                 } />
               </Section>
 
@@ -312,14 +312,18 @@ export default function PaypalTransactionDetailModal({
                   <Row label="Importo verbale" value={fmtEuro(verbale.importo)} />
                   <Row label="Stato" value={
                     verbale.stato === 'pagato'
-                      ? <Badge color="#16a34a" text="Pagato" icon={<CheckCircle size={11} />} />
-                      : <Badge color="#f59e0b" text={verbale.stato || 'Da pagare'} />
+                      ? <Badge variant="success">Pagato</Badge>
+                      : <Badge variant="warning">{verbale.stato || 'Da pagare'}</Badge>
                   } />
                   <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
                     {data.has_pdf_verbale && (
-                      <Button onClick={handleOpenVerbalePdf} icon={<Download size={13} />} text="Apri PDF verbale" />
+                      <Button variant="primary" size="sm" onClick={handleOpenVerbalePdf} iconLeft={<Download size={13} />}>
+                        Apri PDF verbale
+                      </Button>
                     )}
-                    <Button onClick={handleGoToVerbale} icon={<ExternalLink size={13} />} text="Vai alla scheda verbale" variant="secondary" />
+                    <Button variant="secondary" size="sm" onClick={handleGoToVerbale} iconLeft={<ExternalLink size={13} />}>
+                      Vai alla scheda verbale
+                    </Button>
                   </div>
                 </Section>
               ) : (
@@ -337,15 +341,15 @@ export default function PaypalTransactionDetailModal({
 
                   {trattenuta ? (
                     <div style={{
-                      marginTop: 10, padding: 10, borderRadius: 8,
-                      background: trattenuta.stato === 'applicata' ? '#f0fdf4' : '#fefce8',
-                      border: `1px solid ${trattenuta.stato === 'applicata' ? '#86efac' : '#fde68a'}`,
+                      marginTop: 10, padding: 10, borderRadius: BORDER_RADIUS.sm,
+                      background: trattenuta.stato === 'applicata' ? COLORS.successLight : COLORS.warningLight,
+                      border: `1px solid ${trattenuta.stato === 'applicata' ? COLORS.success : COLORS.warning}`,
                     }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600 }}>
                         <Receipt size={13} />
                         Trattenuta in busta paga
                       </div>
-                      <div style={{ fontSize: 12, color: '#475569', marginTop: 6 }}>
+                      <div style={{ fontSize: 12, color: COLORS.gray[600], marginTop: 6 }}>
                         Importo: <strong>{fmtEuro(trattenuta.importo)}</strong>
                         {trattenuta.mese && trattenuta.anno && (
                           <> · Mese {trattenuta.mese}/{trattenuta.anno}</>
@@ -355,9 +359,9 @@ export default function PaypalTransactionDetailModal({
                     </div>
                   ) : verbale && (
                     <div style={{
-                      marginTop: 10, padding: 10, borderRadius: 8,
-                      background: '#fef2f2', border: '1px solid #fecaca',
-                      fontSize: 12, color: '#991b1b',
+                      marginTop: 10, padding: 10, borderRadius: BORDER_RADIUS.sm,
+                      background: COLORS.dangerLight, border: `1px solid ${COLORS.danger}`,
+                      fontSize: 12, color: COLORS.danger,
                     }}>
                       <AlertCircle size={13} style={{ verticalAlign: 'text-bottom', marginRight: 4 }} />
                       Questa transazione è collegata al dipendente ma non c'è ancora una trattenuta in busta paga.
@@ -365,7 +369,9 @@ export default function PaypalTransactionDetailModal({
                   )}
 
                   <div style={{ marginTop: 10 }}>
-                    <Button onClick={handleGoToDipendente} icon={<ExternalLink size={13} />} text="Scheda dipendente" variant="secondary" />
+                    <Button variant="secondary" size="sm" onClick={handleGoToDipendente} iconLeft={<ExternalLink size={13} />}>
+                      Scheda dipendente
+                    </Button>
                   </div>
                 </Section>
               )}
@@ -377,28 +383,21 @@ export default function PaypalTransactionDetailModal({
                     <strong>{mapping.fornitore_nome || mapping.fornitore_ragione_sociale || '—'}</strong>
                   } />
                 ) : (
-                  <div style={{ fontSize: 12, color: '#f59e0b', marginBottom: 8 }}>
-                    <AlertCircle size={13} style={{ verticalAlign: 'text-bottom', marginRight: 4 }} />
+                  <div style={{ fontSize: 12, color: COLORS.warning, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <AlertCircle size={13} style={{ verticalAlign: 'text-bottom' }} />
                     Account PayPal non mappato a un fornitore.
-                    <button
-                      onClick={handleMapFornitore}
-                      style={{
-                        marginLeft: 8, padding: '3px 8px', fontSize: 11,
-                        background: '#fef3c7', border: '1px solid #fcd34d',
-                        borderRadius: 4, cursor: 'pointer', color: '#92400e',
-                      }}
-                    >
+                    <Badge variant="warning" onClick={handleMapFornitore} style={{ cursor: 'pointer' }}>
                       Mappa fornitore
-                    </button>
+                    </Badge>
                   </div>
                 )}
 
                 {fatture.length > 0 ? (
                   <div style={{ marginTop: 8 }}>
-                    <div style={{ fontSize: 11, color: '#64748b', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.3 }}>
+                    <div style={{ fontSize: 11, color: COLORS.textMuted, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.3 }}>
                       Altre fatture di questo fornitore ({fatture.length})
                     </div>
-                    <div style={{ fontSize: 11, color: '#94a3b8', fontStyle: 'italic', marginBottom: 8 }}>
+                    <div style={{ fontSize: 11, color: COLORS.textSubtle, fontStyle: 'italic', marginBottom: 8 }}>
                       Sono le fatture di {tx.nome_controparte || tx.payer_name || 'questo fornitore'} nel gestionale.
                       Le fatture con importo uguale a questa transazione (<strong>{fmtEuro(tx.lordo ?? tx.amount)}</strong>) sono evidenziate in oro —
                       potrebbero essere ciò che questo pagamento PayPal ha saldato.
@@ -417,34 +416,35 @@ export default function PaypalTransactionDetailModal({
                             style={{
                               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                               padding: '8px 10px',
-                              background: matchImporto ? '#fef3c7' : '#f8fafc',
-                              borderRadius: 6,
+                              background: matchImporto ? COLORS.accentSoft : COLORS.bgAlt,
+                              borderRadius: BORDER_RADIUS.sm,
                               cursor: 'pointer', fontSize: 12,
-                              border: `1px solid ${matchImporto ? '#fcd34d' : '#e2e8f0'}`,
+                              border: `1px solid ${matchImporto ? COLORS.accent : COLORS.border}`,
                               transition: 'background 120ms',
                             }}
-                            onMouseEnter={e => { e.currentTarget.style.background = matchImporto ? '#fde68a' : '#eef2f7'; }}
-                            onMouseLeave={e => { e.currentTarget.style.background = matchImporto ? '#fef3c7' : '#f8fafc'; }}
+                            onMouseEnter={e => { e.currentTarget.style.background = matchImporto ? '#fde68a' : COLORS.gray[100]; }}
+                            onMouseLeave={e => { e.currentTarget.style.background = matchImporto ? COLORS.accentSoft : COLORS.bgAlt; }}
                             title="Clicca per aprire la fattura"
                           >
                             <span>
                               <strong>{f.invoice_number || f.numero_fattura}</strong>
-                              <span style={{ color: '#64748b', marginLeft: 8 }}>
+                              <span style={{ color: COLORS.textMuted, marginLeft: 8 }}>
                                 {fmtDate(f.invoice_date || f.data_fattura)}
                               </span>
                               {matchRiferimento ? (
-                                <span style={{ marginLeft: 8, fontSize: 10, color: '#166534', fontWeight: 700 }}>
+                                <span style={{ marginLeft: 8, fontSize: 10, color: COLORS.success, fontWeight: 700 }}>
                                   ✓ fattura indicata da PayPal
                                 </span>
                               ) : matchImporto && (
-                                <span style={{ marginLeft: 8, fontSize: 10, color: '#92400e', fontWeight: 700 }}>
+                                <span style={{ marginLeft: 8, fontSize: 10, color: COLORS.accent, fontWeight: 700 }}>
                                   ★ stesso importo
                                 </span>
                               )}
                             </span>
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                               {fmtEuro(importoFattura)}
-                              <span
+                              <Badge
+                                variant="primary"
                                 onClick={e => {
                                   e.stopPropagation();
                                   if (onOpenInvoice) {
@@ -460,13 +460,10 @@ export default function PaypalTransactionDetailModal({
                                   );
                                 }}
                                 title="Apri la fattura (funziona anche se è di un altro anno)"
-                                style={{
-                                  padding: '2px 8px', borderRadius: 5, fontSize: 10, fontWeight: 700,
-                                  background: '#1e3a5f', color: 'white', cursor: 'pointer',
-                                }}
+                                style={{ background: COLORS.primary, color: '#fff', cursor: 'pointer' }}
                               >
-                                📄 Vedi
-                              </span>
+                                Vedi
+                              </Badge>
                             </span>
                           </div>
                         );
@@ -476,17 +473,19 @@ export default function PaypalTransactionDetailModal({
                 ) : (
                   <div>
                     <EmptyMsg text="Nessuna fattura trovata automaticamente." />
-                    <div style={{ marginTop: 6, fontSize: 11, color: '#94a3b8' }}>
+                    <div style={{ marginTop: 6, fontSize: 11, color: COLORS.textSubtle }}>
                       Il sistema ha cercato per P.IVA del fornitore mappato, per parole nel nome controparte
                       {email_controparte ? `, e per email ${email_controparte}` : ''}.
                     </div>
                     <div style={{ marginTop: 8 }}>
                       <Button
-                        onClick={handleManualInvoiceSearch}
-                        icon={<ExternalLink size={13} />}
-                        text="Cerca fattura manualmente"
                         variant="secondary"
-                      />
+                        size="sm"
+                        onClick={handleManualInvoiceSearch}
+                        iconLeft={<ExternalLink size={13} />}
+                      >
+                        Cerca fattura manualmente
+                      </Button>
                     </div>
                   </div>
                 )}
@@ -495,13 +494,15 @@ export default function PaypalTransactionDetailModal({
               {/* Ricerca su GMAIL: fatture esterne che non passano dallo SDI
                   (SaaS, fornitori esteri: Spotify, MongoDB, OpenAI...) */}
               <Section icon={<Mail size={15} />} title="Cerca su Gmail (fatture esterne)">
-                <div style={{ fontSize: 11, color: '#94a3b8', fontStyle: 'italic', marginBottom: 8 }}>
+                <div style={{ fontSize: 11, color: COLORS.textSubtle, fontStyle: 'italic', marginBottom: 8 }}>
                   Se la fattura non è nel gestionale potrebbe essere una ricevuta esterna che non
                   passa dal Sistema di Interscambio: cerco su Gmail per importo
                   ({fmtEuro(tx.lordo ?? tx.amount)}) e controparte intorno alla data della transazione.
                 </div>
                 {!gmailShown && (
                   <Button
+                    variant="primary"
+                    size="sm"
                     onClick={async () => {
                       setGmailLoading(true);
                       try {
@@ -521,13 +522,13 @@ export default function PaypalTransactionDetailModal({
                         setGmailLoading(false);
                       }
                     }}
-                    icon={gmailLoading ? <Loader2 size={13} className="animate-spin" /> : <Mail size={13} />}
-                    text={gmailLoading ? 'Ricerca in corso…' : '✉️ Cerca su Gmail'}
-                    variant="primary"
-                  />
+                    iconLeft={gmailLoading ? <Loader2 size={13} className="animate-spin" /> : <Mail size={13} />}
+                  >
+                    {gmailLoading ? 'Ricerca in corso…' : 'Cerca su Gmail'}
+                  </Button>
                 )}
                 {gmailShown && !gmailShown.ok && (
-                  <div style={{ fontSize: 12, color: '#b91c1c' }}>
+                  <div style={{ fontSize: 12, color: COLORS.danger }}>
                     {gmailShown.errore || 'Ricerca non riuscita'}
                   </div>
                 )}
@@ -544,17 +545,17 @@ export default function PaypalTransactionDetailModal({
                         rel="noopener noreferrer"
                         style={{
                           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                          padding: '8px 10px', background: '#f8fafc', borderRadius: 6,
-                          border: '1px solid #e2e8f0', fontSize: 12, textDecoration: 'none',
-                          color: '#0f172a', gap: 8,
+                          padding: '8px 10px', background: COLORS.bgAlt, borderRadius: BORDER_RADIUS.sm,
+                          border: `1px solid ${COLORS.border}`, fontSize: 12, textDecoration: 'none',
+                          color: COLORS.text, gap: 8,
                         }}
                         title="Apri il messaggio in Gmail"
                       >
                         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           <strong>{m.subject || '(senza oggetto)'}</strong>
-                          <span style={{ color: '#64748b', marginLeft: 8 }}>{m.from}</span>
+                          <span style={{ color: COLORS.textMuted, marginLeft: 8 }}>{m.from}</span>
                         </span>
-                        <span style={{ whiteSpace: 'nowrap', color: '#64748b', fontSize: 11 }}>
+                        <span style={{ whiteSpace: 'nowrap', color: COLORS.textMuted, fontSize: 11 }}>
                           {m.has_attachment ? '📎 ' : ''}
                           {m.date ? m.date.slice(0, 22) : ''}
                           <ExternalLink size={11} style={{ marginLeft: 6, verticalAlign: 'middle' }} />
@@ -571,20 +572,13 @@ export default function PaypalTransactionDetailModal({
         {/* Footer */}
         <div style={{
           padding: '10px 18px',
-          background: '#f8fafc',
-          borderTop: '1px solid #e2e8f0',
+          background: COLORS.bgAlt,
+          borderTop: `1px solid ${COLORS.border}`,
           display: 'flex', justifyContent: 'flex-end',
         }}>
-          <button
-            onClick={onClose}
-            style={{
-              padding: '7px 14px', fontSize: 13, fontWeight: 500,
-              background: '#fff', color: '#475569',
-              border: '1px solid #e2e8f0', borderRadius: 6, cursor: 'pointer',
-            }}
-          >
+          <Button variant="secondary" size="sm" onClick={onClose}>
             Chiudi
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -596,14 +590,14 @@ export default function PaypalTransactionDetailModal({
 function Section({ icon, title, children }) {
   return (
     <div style={{
-      border: '1px solid #e2e8f0', borderRadius: 10,
+      border: `1px solid ${COLORS.border}`, borderRadius: BORDER_RADIUS.lg,
       overflow: 'hidden',
     }}>
       <div style={{
-        padding: '8px 12px', background: '#f8fafc',
-        borderBottom: '1px solid #e2e8f0',
+        padding: '8px 12px', background: COLORS.bgAlt,
+        borderBottom: `1px solid ${COLORS.border}`,
         display: 'flex', alignItems: 'center', gap: 6,
-        fontSize: 12, fontWeight: 600, color: '#0f2744',
+        fontSize: 12, fontWeight: 600, color: COLORS.primary,
         textTransform: 'uppercase', letterSpacing: 0.4,
       }}>
         {icon} {title}
@@ -620,54 +614,22 @@ function Row({ icon, label, value }) {
     <div style={{
       display: 'flex', justifyContent: 'space-between', alignItems: 'center',
       fontSize: 13, padding: '3px 0', minHeight: 22,
-      borderBottom: '1px dashed #f1f5f9',
+      borderBottom: `1px dashed ${COLORS.gray[100]}`,
     }}>
-      <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#64748b', fontSize: 12 }}>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: COLORS.textMuted, fontSize: 12 }}>
         {icon}
         {label}
       </span>
-      <span style={{ color: '#0f2744', textAlign: 'right', maxWidth: '60%', wordBreak: 'break-word' }}>
+      <span style={{ color: COLORS.primary, textAlign: 'right', maxWidth: '60%', wordBreak: 'break-word' }}>
         {value}
       </span>
     </div>
   );
 }
 
-function Badge({ color, text, icon }) {
-  return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: 3,
-      padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 600,
-      background: `${color}18`, color,
-    }}>
-      {icon}{text}
-    </span>
-  );
-}
-
-function Button({ onClick, icon, text, variant = 'primary' }) {
-  const styles = {
-    primary: { background: '#b8860b', color: '#fff', border: '1px solid #b8860b' },
-    secondary: { background: '#fff', color: '#475569', border: '1px solid #cbd5e1' },
-  };
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        display: 'inline-flex', alignItems: 'center', gap: 5,
-        padding: '6px 11px', fontSize: 12, fontWeight: 500,
-        borderRadius: 6, cursor: 'pointer',
-        ...styles[variant],
-      }}
-    >
-      {icon}{text}
-    </button>
-  );
-}
-
 function EmptyMsg({ text }) {
   return (
-    <div style={{ padding: '6px 4px', fontSize: 12, color: '#94a3b8', fontStyle: 'italic' }}>
+    <div style={{ padding: '6px 4px', fontSize: 12, color: COLORS.textSubtle, fontStyle: 'italic' }}>
       {text}
     </div>
   );

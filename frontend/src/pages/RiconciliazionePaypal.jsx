@@ -18,11 +18,17 @@ import {
   TrendingDown,
   BarChart3,
   Link2,
+  Plus,
+  Mail,
+  X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageLayout } from '../components/PageLayout';
 import ModalFattura from '../components/ModalFattura';
 import PaypalTransactionDetailModal from '../components/PaypalTransactionDetailModal';
+import { Button, Badge, Card, Input, Select, StatCard, TableWrap, Table, Th, Td } from '../components/ds';
+import { COLORS, SPACING, SHADOWS, BORDER_RADIUS, FONT } from '../lib/utils';
+import { useConfirm } from '../components/ui/ConfirmDialog';
 
 const formatEuro = v =>
   new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(v || 0);
@@ -48,17 +54,32 @@ const TIPO_LABELS = {
   altro: 'Altro',
 };
 
+// Colore del pallino nella lista "Spese per Tipo" del dashboard.
 const TIPO_COLORS = {
-  express_checkout: '#dc2626',
-  pagamento_utenza: '#d97706',
-  pagamento_web: '#0f2744',
-  pagamento: '#dc2626',
-  accredito: '#16a34a',
-  bonifico_paypal: '#3b82f6',
-  rimborso: '#16a34a',
-  conversione_valuta: '#64748b',
-  prelievo: '#b8860b',
-  altro: '#64748b',
+  express_checkout: COLORS.danger,
+  pagamento_utenza: COLORS.warning,
+  pagamento_web: COLORS.primary,
+  pagamento: COLORS.danger,
+  accredito: COLORS.success,
+  bonifico_paypal: COLORS.info,
+  rimborso: COLORS.success,
+  conversione_valuta: COLORS.textMuted,
+  prelievo: COLORS.accent,
+  altro: COLORS.textMuted,
+};
+
+// Variante <Badge> corrispondente, usata per la pillola "Tipo" in tabella.
+const TIPO_VARIANT = {
+  express_checkout: 'danger',
+  pagamento_utenza: 'warning',
+  pagamento_web: 'primary',
+  pagamento: 'danger',
+  accredito: 'success',
+  bonifico_paypal: 'info',
+  rimborso: 'success',
+  conversione_valuta: 'neutral',
+  prelievo: 'accent',
+  altro: 'neutral',
 };
 
 export default function RiconciliazionePaypal() {
@@ -66,13 +87,14 @@ export default function RiconciliazionePaypal() {
   const { anno } = useAnnoGlobale();
   const navigate = useNavigate();
   const location = useLocation();
+  const confirm = useConfirm();
   const [loading, setLoading] = useState(true);
   const [dashboard, setDashboard] = useState(null);
   const [transactions, setTransactions] = useState([]);
   const [report, setReport] = useState(null);
   const [statements, setStatements] = useState([]);
   // Deep link ?tab=mapping (usato dal bottone "Mappa fornitore" del modale
-  // dettaglio transazione, PaypalTransactionDetailModal.jsx) ï¿½ prima veniva
+  // dettaglio transazione, PaypalTransactionDetailModal.jsx) — prima veniva
   // ignorato e la pagina apriva sempre su "dashboard".
   const [activeTab, setActiveTab] = useState(
     () => new URLSearchParams(location.search).get('tab') || 'dashboard'
@@ -81,7 +103,7 @@ export default function RiconciliazionePaypal() {
     const tab = new URLSearchParams(location.search).get('tab');
     if (tab) setActiveTab(tab);
   }, [location.search]);
-  // Anno unico e globale (barra di navigazione in alto) ï¿½ nessun selettore
+  // Anno unico e globale (barra di navigazione in alto) — nessun selettore
   // locale duplicato: una pagina con un filtro anno proprio, indipendente
   // da quello globale, dava l'impressione che cambiare l'anno in alto non
   // avesse alcun effetto sulla pagina.
@@ -160,7 +182,7 @@ export default function RiconciliazionePaypal() {
       });
       const r = res.data || {};
       toast.success(
-        `ï¿½S CSV importato ï¿½ ${r.transazioni_inserite} transazioni (${r.transazioni_duplicate} giï¿½ presenti), ` +
+        `CSV importato — ${r.transazioni_inserite} transazioni (${r.transazioni_duplicate} già presenti), ` +
           `${r.riconciliazione?.riconciliati || 0} riconciliate con la banca`
       );
       await loadAll();
@@ -181,7 +203,7 @@ export default function RiconciliazionePaypal() {
       const params = annoFiltro ? `?anno=${annoFiltro}` : '';
       const res = await api.get(`/api/paypal-api/account-ids-non-mappati${params}`);
       setMappingData(res.data);
-      // Pre-seleziona automaticamente i fornitori con match certo (nome_controparte ï¿½  ragione_sociale)
+      // Pre-seleziona automaticamente i fornitori con match certo (nome_controparte == ragione_sociale)
       const autoSelect = {};
       for (const item of res.data.items || []) {
         if (item.suggested_fornitore_id) {
@@ -205,20 +227,25 @@ export default function RiconciliazionePaypal() {
       toast.info('Nessun match certo da mappare');
       return;
     }
-    if (!confirm(`Mappare automaticamente ${certi.length} fornitori con match certo?`)) return;
-    let ok = 0;
+    const ok = await confirm({
+      title: 'Mappatura automatica',
+      message: `Mappare automaticamente ${certi.length} fornitori con match certo?`,
+      confirmText: 'Mappa tutti',
+    });
+    if (!ok) return;
+    let mappati = 0;
     for (const item of certi) {
       try {
         await api.post('/api/paypal-api/mappa-fornitore', {
           paypal_account_id: item.paypal_account_id,
           fornitore_id: item.suggested_fornitore_id,
         });
-        ok++;
+        mappati++;
       } catch {
         // continua col prossimo
       }
     }
-    toast.success(`ï¿½S Mappati ${ok}/${certi.length} fornitori`);
+    toast.success(`Mappati ${mappati}/${certi.length} fornitori`);
     loadMapping();
   };
 
@@ -232,7 +259,7 @@ export default function RiconciliazionePaypal() {
         paypal_account_id: paypalAccountId,
         fornitore_id: fornitoreId,
       });
-      toast.success(`ï¿½S Mappato: ${res.data.fornitore}`);
+      toast.success(`Mappato: ${res.data.fornitore}`);
       loadMapping();
     } catch (e) {
       toast.error('Errore: ' + (e.response?.data?.detail || e.message));
@@ -249,7 +276,7 @@ export default function RiconciliazionePaypal() {
       const trovati = r.stats?.new_documents ?? 0;
       if (trovati > 0) {
         toast.success(
-          `ï¿½S Trovati ${trovati} documenti in posta per "${r.cercato_per}" ï¿½ vai su Documenti per vederli`
+          `Trovati ${trovati} documenti in posta per "${r.cercato_per}" — vai su Documenti per vederli`
         );
       } else {
         toast.info(
@@ -291,7 +318,7 @@ export default function RiconciliazionePaypal() {
         }}
       >
         <RefreshCw
-          style={{ width: 32, height: 32, animation: 'spin 1s linear infinite', color: '#0f2744' }}
+          style={{ width: 32, height: 32, animation: 'spin 1s linear infinite', color: COLORS.primary }}
         />
       </div>
     );
@@ -330,11 +357,11 @@ export default function RiconciliazionePaypal() {
             justifyContent: 'space-between',
             alignItems: 'center',
             flexWrap: 'wrap',
-            gap: 12,
-            marginBottom: 20,
+            gap: SPACING.md,
+            marginBottom: SPACING.xl,
             padding: '16px 20px',
-            background: '#0f2744',
-            borderRadius: 8,
+            background: COLORS.primary,
+            borderRadius: BORDER_RADIUS.md,
             color: 'white',
           }}
         >
@@ -347,32 +374,31 @@ export default function RiconciliazionePaypal() {
                 display: 'flex',
                 alignItems: 'center',
                 gap: 10,
+                fontFamily: FONT.family,
               }}
             >
               <CreditCard size={24} /> Gestione PayPal
             </h1>
             <p style={{ margin: '4px 0 0', fontSize: 13, opacity: 0.85 }}>
-              {dashboard?.total_statements || 0} estratti conto ï¿½{' '}
-              {dashboard?.total_transactions || 0} transazioni ï¿½{' '}
+              {dashboard?.total_statements || 0} estratti conto ·{' '}
+              {dashboard?.total_transactions || 0} transazioni ·{' '}
               {formatEuro(Math.abs(dashboard?.totale_speso || 0))} spesi
             </p>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <button
+            <Button
+              variant="secondary"
+              size="sm"
+              iconLeft={<Download size={14} />}
               onClick={() => navigate('/documenti/import')}
               style={{
-                padding: '8px 14px',
-                minHeight: 40,
                 background: 'rgba(255,255,255,0.2)',
                 color: 'white',
-                border: '1px solid rgba(255,255,255,0.3)',
-                borderRadius: 6,
-                cursor: 'pointer',
-                fontSize: 13,
+                borderColor: 'rgba(255,255,255,0.3)',
               }}
             >
-              + Importa PDF
-            </button>
+              Importa PDF
+            </Button>
             <input
               ref={csvInputRef}
               type="file"
@@ -380,57 +406,59 @@ export default function RiconciliazionePaypal() {
               style={{ display: 'none' }}
               onChange={handleImportCsv}
             />
-            <button
-              onClick={() => csvInputRef.current?.click()}
+            <Button
+              variant="secondary"
+              size="sm"
+              iconLeft={
+                importingCsv ? (
+                  <RefreshCw size={14} style={{ animation: 'spin 1s linear infinite' }} />
+                ) : (
+                  <Plus size={14} />
+                )
+              }
               disabled={importingCsv}
+              onClick={() => csvInputRef.current?.click()}
+              title="Importa estratto conto PayPal esportato in CSV"
               style={{
-                padding: '8px 14px',
-                minHeight: 40,
                 background: 'rgba(255,255,255,0.2)',
                 color: 'white',
-                border: '1px solid rgba(255,255,255,0.3)',
-                borderRadius: 6,
-                cursor: importingCsv ? 'default' : 'pointer',
-                fontSize: 13,
-                opacity: importingCsv ? 0.6 : 1,
+                borderColor: 'rgba(255,255,255,0.3)',
               }}
-              title="Importa estratto conto PayPal esportato in CSV"
             >
-              {importingCsv ? 'Import&' : '+ Importa CSV'}
-            </button>
-            <select
+              {importingCsv ? 'Importazione…' : 'Importa CSV'}
+            </Button>
+            <Select
               value={syncMesi}
               onChange={e => setSyncMesi(parseInt(e.target.value))}
               style={{
-                padding: '8px 10px',
-                minHeight: 40,
-                borderRadius: 6,
-                border: '1px solid rgba(255,255,255,0.3)',
                 background: 'rgba(255,255,255,0.15)',
                 color: 'white',
-                fontSize: 13,
+                borderColor: 'rgba(255,255,255,0.3)',
               }}
             >
-              <option value={1} style={{ color: '#333' }}>
+              <option value={1} style={{ color: COLORS.text }}>
                 Ultimo mese
               </option>
-              <option value={3} style={{ color: '#333' }}>
+              <option value={3} style={{ color: COLORS.text }}>
                 Ultimi 3 mesi
               </option>
-              <option value={6} style={{ color: '#333' }}>
+              <option value={6} style={{ color: COLORS.text }}>
                 Ultimi 6 mesi
               </option>
-              <option value={12} style={{ color: '#333' }}>
+              <option value={12} style={{ color: COLORS.text }}>
                 Ultimo anno
               </option>
-            </select>
-            <button
+            </Select>
+            <Button
               data-testid="sync-paypal-api-btn"
               disabled={syncing}
+              iconLeft={
+                syncing ? <RefreshCw size={14} style={{ animation: 'spin 1s linear infinite' }} /> : null
+              }
               onClick={async () => {
                 setSyncing(true);
                 try {
-                  toast.info('Sincronizzazione PayPal API in corso&');
+                  toast.info('Sincronizzazione PayPal API in corso…');
                   const today = new Date();
                   const end = today.toISOString().slice(0, 10);
                   const startDate = new Date(today.getFullYear(), today.getMonth() - syncMesi, 1);
@@ -441,18 +469,18 @@ export default function RiconciliazionePaypal() {
                   });
                   const r = res.data || {};
                   toast.success(
-                    `ï¿½S Sync OK ï¿½ ${r.total || 0} transazioni (${r.enriched || 0} arricchite), riconciliazione in corso&`
+                    `Sync OK — ${r.total || 0} transazioni (${r.enriched || 0} arricchite), riconciliazione in corso…`
                   );
-                  // Dopo la sync, riconcilia subito con fatture/banca ï¿½ senza
+                  // Dopo la sync, riconcilia subito con fatture/banca — senza
                   // questo passaggio le transazioni restavano senza riferimento
-                  // a fattura/controparte finchï¿½ qualcuno non lo lanciava a mano.
+                  // a fattura/controparte finché qualcuno non lo lanciava a mano.
                   try {
                     const ric = await api.post('/api/paypal-api/riconcilia', {
                       start_date: start,
                       end_date: end,
                     });
                     const fatt = ric.data?.fatture?.riconciliati ?? 0;
-                    toast.success(`ï¿½S Riconciliazione OK ï¿½ ${fatt} transazioni associate a fatture`);
+                    toast.success(`Riconciliazione OK — ${fatt} transazioni associate a fatture`);
                   } catch (ricErr) {
                     toast.error(
                       'Sync OK ma riconciliazione fallita: ' +
@@ -468,21 +496,14 @@ export default function RiconciliazionePaypal() {
                 }
               }}
               style={{
-                padding: '8px 14px',
-                minHeight: 40,
                 background: 'rgba(184, 134, 11, 0.35)',
                 color: 'white',
-                border: '1px solid rgba(184, 134, 11, 0.7)',
-                borderRadius: 6,
-                cursor: syncing ? 'default' : 'pointer',
-                fontSize: 13,
-                fontWeight: 600,
-                opacity: syncing ? 0.6 : 1,
+                borderColor: 'rgba(184, 134, 11, 0.7)',
               }}
               title="Sincronizza le transazioni PayPal via API (Transaction Search) e le riconcilia con fatture/banca"
             >
-              {syncing ? 'ï¿½ Sync&' : 'ï¿½x Sync PayPal API'}
-            </button>
+              {syncing ? 'Sync…' : 'Sync PayPal API'}
+            </Button>
           </div>
         </div>
 
@@ -491,58 +512,40 @@ export default function RiconciliazionePaypal() {
           style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-            gap: 12,
-            marginBottom: 20,
+            gap: SPACING.md,
+            marginBottom: SPACING.xl,
           }}
         >
-          {[
-            { label: 'Estratti Conto', value: dashboard?.total_statements },
-            { label: 'Transazioni', value: dashboard?.total_transactions },
-            {
-              label: 'Totale Speso',
-              value: formatEuro(Math.abs(dashboard?.totale_speso || 0)),
-              color: '#dc2626',
-              isText: true,
-            },
-            {
-              label: 'Riconciliati Banca',
-              value: dashboard?.riconciliati_banca,
-              color: '#16a34a',
-            },
-            { label: 'Movimenti Banca', value: dashboard?.movimenti_banca_paypal },
-          ].map(s => (
-            <div
-              key={s.label}
-              style={{
-                background: 'white',
-                borderRadius: 8,
-                padding: 16,
-                border: '1px solid #e2e8f0',
-                borderLeft: '4px solid #0f2744',
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 11,
-                  color: '#64748b',
-                  textTransform: 'uppercase',
-                  marginBottom: 4,
-                }}
-              >
-                {s.label}
-              </div>
-              <div
-                style={{
-                  fontSize: s.isText ? 20 : 24,
-                  fontWeight: 700,
-                  color: s.color || '#1e293b',
-                  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-                }}
-              >
-                {s.value || 0}
-              </div>
-            </div>
-          ))}
+          <StatCard
+            icon={<FileText size={16} />}
+            label="Estratti Conto"
+            value={dashboard?.total_statements || 0}
+            accent="primary"
+          />
+          <StatCard
+            icon={<CreditCard size={16} />}
+            label="Transazioni"
+            value={dashboard?.total_transactions || 0}
+            accent="primary"
+          />
+          <StatCard
+            icon={<TrendingDown size={16} />}
+            label="Totale Speso"
+            value={formatEuro(Math.abs(dashboard?.totale_speso || 0))}
+            accent="danger"
+          />
+          <StatCard
+            icon={<CheckCircle2 size={16} />}
+            label="Riconciliati Banca"
+            value={dashboard?.riconciliati_banca || 0}
+            accent="success"
+          />
+          <StatCard
+            icon={<Link2 size={16} />}
+            label="Movimenti Banca"
+            value={dashboard?.movimenti_banca_paypal || 0}
+            accent="info"
+          />
         </div>
 
         {/* Tabs */}
@@ -551,43 +554,33 @@ export default function RiconciliazionePaypal() {
             display: 'flex',
             gap: 4,
             flexWrap: 'wrap',
-            borderBottom: '2px solid #e2e8f0',
+            borderBottom: `2px solid ${COLORS.border}`,
             marginBottom: 16,
           }}
         >
           {tabs.map(t => (
-            <button
+            <Button
               key={t.id}
+              variant={activeTab === t.id ? 'primary' : 'ghost'}
+              size="sm"
+              iconLeft={t.icon}
               onClick={() => setActiveTab(t.id)}
-              style={{
-                padding: '8px 14px',
-                minHeight: 40,
-                fontSize: 13,
-                fontWeight: activeTab === t.id ? 'bold' : 'normal',
-                borderRadius: '6px 6px 0 0',
-                border: 'none',
-                background: activeTab === t.id ? '#0f2744' : 'transparent',
-                color: activeTab === t.id ? 'white' : '#64748b',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-              }}
+              style={{ borderRadius: '6px 6px 0 0', border: 'none', boxShadow: 'none' }}
             >
-              {t.icon} {t.label}
+              {t.label}
               {t.count !== undefined && (
-                <span
+                <Badge
+                  variant="neutral"
                   style={{
-                    padding: '1px 6px',
-                    background: activeTab === t.id ? 'rgba(255,255,255,0.2)' : '#e2e8f0',
-                    borderRadius: 8,
-                    fontSize: 11,
+                    marginLeft: 4,
+                    background: activeTab === t.id ? 'rgba(255,255,255,0.2)' : COLORS.border,
+                    color: activeTab === t.id ? '#fff' : COLORS.textMuted,
                   }}
                 >
                   {t.count}
-                </span>
+                </Badge>
               )}
-            </button>
+            </Button>
           ))}
         </div>
 
@@ -597,17 +590,7 @@ export default function RiconciliazionePaypal() {
             style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 16 }}
           >
             {/* Top Fornitori */}
-            <div
-              style={{
-                background: 'white',
-                borderRadius: 8,
-                padding: 16,
-                border: '1px solid #e2e8f0',
-              }}
-            >
-              <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: '#1f2937' }}>
-                Top Fornitori PayPal
-              </h3>
+            <Card title="Top Fornitori PayPal">
               {(dashboard.top_fornitori || []).map(f => (
                 <div
                   key={f.nome || f.id}
@@ -620,39 +603,29 @@ export default function RiconciliazionePaypal() {
                     justifyContent: 'space-between',
                     alignItems: 'center',
                     padding: '8px 0',
-                    borderBottom: '1px solid #f1f5f9',
+                    borderBottom: `1px solid ${COLORS.gray[100]}`,
                     cursor: 'pointer',
                   }}
                   title={`Vedi le transazioni di ${f.nome}`}
                 >
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 500 }}>{f.nome}</div>
-                    <div style={{ fontSize: 11, color: '#9ca3af' }}>{f.count} transazioni</div>
+                    <div style={{ fontSize: 11, color: COLORS.textSubtle }}>{f.count} transazioni</div>
                   </div>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: '#dc2626' }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: COLORS.danger }}>
                     {formatEuro(Math.abs(f.totale))}
                   </div>
                 </div>
               ))}
               {(!dashboard.top_fornitori || dashboard.top_fornitori.length === 0) && (
-                <p style={{ color: '#9ca3af', fontSize: 13, textAlign: 'center', padding: 20 }}>
+                <p style={{ color: COLORS.textSubtle, fontSize: 13, textAlign: 'center', padding: 20 }}>
                   Nessun dato. Importa i PDF prima.
                 </p>
               )}
-            </div>
+            </Card>
 
             {/* Per Tipo */}
-            <div
-              style={{
-                background: 'white',
-                borderRadius: 8,
-                padding: 16,
-                border: '1px solid #e2e8f0',
-              }}
-            >
-              <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: '#1f2937' }}>
-                Spese per Tipo
-              </h3>
+            <Card title="Spese per Tipo">
               {(dashboard.per_tipo || []).map(t => (
                 <div
                   key={t.tipo}
@@ -661,7 +634,7 @@ export default function RiconciliazionePaypal() {
                     justifyContent: 'space-between',
                     alignItems: 'center',
                     padding: '8px 0',
-                    borderBottom: '1px solid #f1f5f9',
+                    borderBottom: `1px solid ${COLORS.gray[100]}`,
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -669,38 +642,27 @@ export default function RiconciliazionePaypal() {
                       style={{
                         width: 10,
                         height: 10,
-                        borderRadius: '50%',
-                        background: TIPO_COLORS[t.tipo] || '#9ca3af',
+                        borderRadius: BORDER_RADIUS.full,
+                        background: TIPO_COLORS[t.tipo] || COLORS.textSubtle,
                       }}
                     />
                     <span style={{ fontSize: 13 }}>{TIPO_LABELS[t.tipo] || t.tipo}</span>
                   </div>
                   <div>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: COLORS.gray[700] }}>
                       {formatEuro(Math.abs(t.totale))}
                     </span>
-                    <span style={{ fontSize: 11, color: '#9ca3af', marginLeft: 8 }}>
+                    <span style={{ fontSize: 11, color: COLORS.textSubtle, marginLeft: 8 }}>
                       ({t.count})
                     </span>
                   </div>
                 </div>
               ))}
-            </div>
+            </Card>
 
             {/* Report Mensile */}
             {report && report.per_mese && report.per_mese.length > 0 && (
-              <div
-                style={{
-                  background: 'white',
-                  borderRadius: 8,
-                  padding: 16,
-                  border: '1px solid #e2e8f0',
-                  gridColumn: '1 / -1',
-                }}
-              >
-                <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: '#1f2937' }}>
-                  Andamento Mensile
-                </h3>
+              <Card title="Andamento Mensile" style={{ gridColumn: '1 / -1' }}>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   {report.per_mese.map(m => {
                     const maxVal = Math.max(...report.per_mese.map(x => Math.abs(x.totale)));
@@ -722,64 +684,47 @@ export default function RiconciliazionePaypal() {
                             style={{
                               width: '70%',
                               height: `${Math.max(pct, 5)}%`,
-                              background: '#0f2744',
+                              background: COLORS.primary,
                               borderRadius: '4px 4px 0 0',
                               minHeight: 4,
                             }}
                           />
                         </div>
                         <div
-                          style={{ fontSize: 11, fontWeight: 600, color: '#374151', marginTop: 4 }}
+                          style={{ fontSize: 11, fontWeight: 600, color: COLORS.gray[700], marginTop: 4 }}
                         >
                           {formatEuro(Math.abs(m.totale))}
                         </div>
-                        <div style={{ fontSize: 10, color: '#9ca3af' }}>{m.mese}</div>
-                        <div style={{ fontSize: 10, color: '#9ca3af' }}>{m.count} tx</div>
+                        <div style={{ fontSize: 10, color: COLORS.textSubtle }}>{m.mese}</div>
+                        <div style={{ fontSize: 10, color: COLORS.textSubtle }}>{m.count} tx</div>
                       </div>
                     );
                   })}
                 </div>
-              </div>
+              </Card>
             )}
           </div>
         )}
 
         {/* Transazioni Tab */}
         {activeTab === 'transazioni' && (
-          <div
-            style={{
-              background: 'white',
-              borderRadius: 8,
-              border: '1px solid #e2e8f0',
-              overflow: 'hidden',
-            }}
-          >
+          <Card bodyStyle={{ padding: 0 }}>
             <div
               style={{
                 padding: '12px 16px',
-                borderBottom: '1px solid #e2e8f0',
+                borderBottom: `1px solid ${COLORS.border}`,
                 display: 'flex',
                 gap: 12,
                 alignItems: 'center',
                 flexWrap: 'wrap',
               }}
             >
-              <div style={{ position: 'relative', flex: 1 }}>
-                <Search
-                  size={14}
-                  style={{ position: 'absolute', left: 10, top: 10, color: '#9ca3af' }}
-                />
-                <input
+              <div style={{ flex: 1, minWidth: 220 }}>
+                <Input
+                  iconLeft={<Search size={14} />}
                   value={searchTx}
                   onChange={e => setSearchTx(e.target.value)}
                   placeholder="Cerca fornitore, descrizione..."
-                  style={{
-                    width: '100%',
-                    padding: '8px 8px 8px 32px',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: 6,
-                    fontSize: 13,
-                  }}
                 />
               </div>
               <label
@@ -798,20 +743,20 @@ export default function RiconciliazionePaypal() {
                 />
                 Solo pagamenti
               </label>
-              <span style={{ fontSize: 12, color: '#64748b' }}>{filteredTx.length} risultati</span>
+              <span style={{ fontSize: 12, color: COLORS.textMuted }}>{filteredTx.length} risultati</span>
             </div>
-            <div style={{ overflowX: 'auto', maxHeight: 600, overflowY: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <TableWrap style={{ maxHeight: 600, overflowY: 'auto', border: 'none', borderRadius: 0 }}>
+              <Table>
                 <thead>
-                  <tr style={{ background: '#f8fafc', position: 'sticky', top: 0 }}>
-                    <th style={{ textAlign: 'left', padding: '10px 12px', fontSize: 11, textTransform: 'uppercase', color: '#64748b' }}>Data</th>
-                    <th style={{ textAlign: 'left', padding: '10px 12px', fontSize: 11, textTransform: 'uppercase', color: '#64748b' }}>Tipo</th>
-                    <th style={{ textAlign: 'left', padding: '10px 12px', fontSize: 11, textTransform: 'uppercase', color: '#64748b' }}>Descrizione</th>
-                    <th style={{ textAlign: 'left', padding: '10px 12px', fontSize: 11, textTransform: 'uppercase', color: '#64748b' }}>Controparte</th>
-                    <th style={{ textAlign: 'right', padding: '10px 12px', fontSize: 11, textTransform: 'uppercase', color: '#64748b' }}>Importo</th>
-                    <th style={{ textAlign: 'center', padding: '10px 12px', fontSize: 11, textTransform: 'uppercase', color: '#64748b' }}>Banca</th>
-                    <th style={{ textAlign: 'center', padding: '10px 12px', fontSize: 11, textTransform: 'uppercase', color: '#64748b' }}>Fattura</th>
-                    <th style={{ textAlign: 'left', padding: '10px 12px', fontSize: 11, textTransform: 'uppercase', color: '#64748b' }}>ID</th>
+                  <tr style={{ position: 'sticky', top: 0 }}>
+                    <Th>Data</Th>
+                    <Th>Tipo</Th>
+                    <Th>Descrizione</Th>
+                    <Th>Controparte</Th>
+                    <Th align="right">Importo</Th>
+                    <Th align="center">Banca</Th>
+                    <Th align="center">Fattura</Th>
+                    <Th>ID</Th>
                   </tr>
                 </thead>
                 <tbody>
@@ -820,73 +765,48 @@ export default function RiconciliazionePaypal() {
                       key={tx.id || tx.transaction_id || tx.data + tx.importo}
                       onClick={() => (tx.transaction_id || tx.id) && setModalTxId(tx.transaction_id || tx.id)}
                       style={{
-                        borderBottom: '1px solid #f1f5f9',
                         cursor: (tx.transaction_id || tx.id) ? 'pointer' : 'default',
                         transition: 'background 120ms',
                       }}
-                      onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
+                      onMouseEnter={e => (e.currentTarget.style.background = COLORS.bgAlt)}
                       onMouseLeave={e => (e.currentTarget.style.background = '')}
                       title="Clicca per vedere il dettaglio completo"
                     >
-                      <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
-                        {formatDate(tx.data)}
-                      </td>
-                      <td style={{ padding: '8px 12px' }}>
-                        <span
-                          style={{
-                            padding: '2px 8px',
-                            borderRadius: 8,
-                            fontSize: 11,
-                            background: `${TIPO_COLORS[tx.tipo] || '#9ca3af'}15`,
-                            color: TIPO_COLORS[tx.tipo] || '#9ca3af',
-                            fontWeight: 500,
-                          }}
-                        >
+                      <Td style={{ whiteSpace: 'nowrap' }}>{formatDate(tx.data)}</Td>
+                      <Td>
+                        <Badge variant={TIPO_VARIANT[tx.tipo] || 'neutral'}>
                           {TIPO_LABELS[tx.tipo] || tx.tipo}
-                        </span>
-                      </td>
-                      <td
-                        style={{
-                          padding: '8px 12px',
-                          maxWidth: 200,
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                        }}
-                      >
+                        </Badge>
+                      </Td>
+                      <Td style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {tx.descrizione}
-                      </td>
-                      <td style={{ padding: '8px 12px' }}>
+                      </Td>
+                      <Td>
                         <div style={{ fontWeight: 500 }}>{tx.nome_controparte || '-'}</div>
                         {tx.email_controparte && (
-                          <div style={{ fontSize: 10, color: '#9ca3af' }}>
+                          <div style={{ fontSize: 10, color: COLORS.textSubtle }}>
                             {tx.email_controparte}
                           </div>
                         )}
-                      </td>
-                      <td
-                        style={{
-                          padding: '8px 12px',
-                          textAlign: 'right',
-                          fontWeight: 600,
-                          color: tx.lordo < 0 ? '#dc2626' : '#16a34a',
-                          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-                        }}
+                      </Td>
+                      <Td
+                        align="right"
+                        mono
+                        style={{ fontWeight: 600, color: tx.lordo < 0 ? COLORS.danger : COLORS.success }}
                       >
                         {formatEuro(tx.lordo)}
-                      </td>
-                      <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                      </Td>
+                      <Td align="center">
                         {tx.riconciliato_banca ? (
-                          <CheckCircle2 size={16} style={{ color: '#16a34a' }} />
+                          <CheckCircle2 size={16} style={{ color: COLORS.success }} />
                         ) : (
-                          <span style={{ color: '#cbd5e1' }}>ï¿½</span>
+                          <span style={{ color: COLORS.borderDark }}>—</span>
                         )}
-                      </td>
-                      <td
-                        style={{ padding: '8px 12px', textAlign: 'center' }}
-                        onClick={e => e.stopPropagation()}
-                      >
+                      </Td>
+                      <Td align="center" onClick={e => e.stopPropagation()}>
                         {tx.fattura_associata ? (
-                          <button
+                          <Badge
+                            variant={tx.fattura_associata.match === 'solo_importo' ? 'warning' : 'info'}
                             onClick={() =>
                               setFatturaView({
                                 id: tx.fattura_associata.fattura_id,
@@ -896,133 +816,81 @@ export default function RiconciliazionePaypal() {
                             }
                             title={
                               tx.fattura_associata.match === 'solo_importo'
-                                ? `ï¿½aï¿½ Match SOLO per importo (da verificare): Fatt. ${tx.fattura_associata.numero || ''} ï¿½ ${tx.fattura_associata.fornitore || ''} ï¿½ apri`
-                                : `Fatt. ${tx.fattura_associata.numero || ''} ï¿½ ${tx.fattura_associata.fornitore || ''} ï¿½ apri`
+                                ? `Match SOLO per importo (da verificare): Fatt. ${tx.fattura_associata.numero || ''} — ${tx.fattura_associata.fornitore || ''} — apri`
+                                : `Fatt. ${tx.fattura_associata.numero || ''} — ${tx.fattura_associata.fornitore || ''} — apri`
                             }
-                            style={{
-                              fontSize: 12,
-                              padding: '4px 8px',
-                              border: 'none',
-                              borderRadius: 6,
-                              background:
-                                tx.fattura_associata.match === 'solo_importo'
-                                  ? '#fef3c7'
-                                  : '#dbeafe',
-                              color:
-                                tx.fattura_associata.match === 'solo_importo'
-                                  ? '#92400e'
-                                  : '#1d4ed8',
-                              cursor: 'pointer',
-                            }}
+                            style={{ cursor: 'pointer' }}
                           >
                             Vedi fattura
-                          </button>
+                          </Badge>
                         ) : tx.gmail_associata?.gmail_link ? (
                           <a
                             href={tx.gmail_associata.gmail_link}
                             target="_blank"
                             rel="noopener noreferrer"
-                            title={`Email trovata su Gmail: ${tx.gmail_associata.subject || ''} ï¿½ apri in Gmail`}
-                            style={{ textDecoration: 'none', fontSize: 15 }}
+                            title={`Email trovata su Gmail: ${tx.gmail_associata.subject || ''} — apri in Gmail`}
+                            style={{ color: COLORS.info, display: 'inline-flex' }}
                           >
-                            ï¿½S0
+                            <Mail size={15} />
                           </a>
                         ) : (
-                          <span style={{ color: '#cbd5e1' }} title="Ricerca automatica in corso (fatture + Gmail ogni 30 min)">
-                            ï¿½
+                          <span
+                            style={{ color: COLORS.borderDark }}
+                            title="Ricerca automatica in corso (fatture + Gmail ogni 30 min)"
+                          >
+                            —
                           </span>
                         )}
-                      </td>
-                      <td
+                      </Td>
+                      <Td
+                        mono
                         style={{
-                          padding: '8px 12px',
-                          fontFamily: 'monospace',
                           fontSize: 10,
-                          color: '#9ca3af',
+                          color: COLORS.textSubtle,
                           maxWidth: 140,
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
                         }}
                       >
                         {tx.transaction_id || '-'}
-                      </td>
+                      </Td>
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </Table>
               {filteredTx.length === 0 && (
-                <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>
+                <div style={{ padding: 40, textAlign: 'center', color: COLORS.textSubtle }}>
                   {dashboard?.total_transactions === 0
                     ? 'Nessuna transazione. Importa i PDF PayPal.'
                     : 'Nessun risultato per il filtro.'}
                 </div>
               )}
-            </div>
-          </div>
+            </TableWrap>
+          </Card>
         )}
 
         {/* Report Tab */}
         {activeTab === 'report' && report && (
           <div>
-            <div
-              style={{
-                background: 'white',
-                borderRadius: 8,
-                padding: 16,
-                border: '1px solid #e2e8f0',
-                marginBottom: 16,
-              }}
-            >
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  marginBottom: 16,
-                }}
-              >
-                <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>
-                  Report Spese PayPal {annoFiltro || 'Totale'}
-                </h3>
-                <div
-                  style={{
-                    fontSize: 20,
-                    fontWeight: 'bold',
-                    color: '#dc2626',
-                    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-                  }}
-                >
+            <Card
+              style={{ marginBottom: 16 }}
+              title={`Report Spese PayPal ${annoFiltro || 'Totale'}`}
+              actions={
+                <div style={{ fontSize: 20, fontWeight: 'bold', color: COLORS.danger, fontFamily: FONT.mono }}>
                   {formatEuro(Math.abs(report.totale_speso))}
                 </div>
-              </div>
-              <div style={{ fontSize: 13, color: '#64748b' }}>
+              }
+            >
+              <div style={{ fontSize: 13, color: COLORS.textMuted }}>
                 {report.totale_transazioni} pagamenti
               </div>
-            </div>
+            </Card>
 
             {/* Per Fornitore */}
-            <div
-              style={{
-                background: 'white',
-                borderRadius: 8,
-                border: '1px solid #e2e8f0',
-                overflow: 'hidden',
-              }}
-            >
-              <div
-                style={{
-                  padding: '12px 16px',
-                  background: '#f8fafc',
-                  borderBottom: '1px solid #e2e8f0',
-                  fontWeight: 600,
-                  fontSize: 14,
-                }}
-              >
-                Dettaglio per Fornitore
-              </div>
+            <Card title="Dettaglio per Fornitore" bodyStyle={{ padding: 0 }}>
               <div style={{ maxHeight: 500, overflowY: 'auto' }}>
                 {(report.per_fornitore || []).map(f => (
-                  <details key={f.nome || f.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                  <details key={f.nome || f.id} style={{ borderBottom: `1px solid ${COLORS.gray[100]}` }}>
                     <summary
                       style={{
                         padding: '10px 16px',
@@ -1035,16 +903,16 @@ export default function RiconciliazionePaypal() {
                       <div>
                         <span style={{ fontWeight: 500, fontSize: 13 }}>{f.nome}</span>
                         {f.email && (
-                          <span style={{ fontSize: 11, color: '#9ca3af', marginLeft: 8 }}>
+                          <span style={{ fontSize: 11, color: COLORS.textSubtle, marginLeft: 8 }}>
                             {f.email}
                           </span>
                         )}
                       </div>
                       <div>
-                        <span style={{ fontSize: 13, fontWeight: 600, color: '#dc2626' }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: COLORS.danger }}>
                           {formatEuro(Math.abs(f.totale))}
                         </span>
-                        <span style={{ fontSize: 11, color: '#9ca3af', marginLeft: 8 }}>
+                        <span style={{ fontSize: 11, color: COLORS.textSubtle, marginLeft: 8 }}>
                           ({f.count} tx)
                         </span>
                       </div>
@@ -1056,16 +924,16 @@ export default function RiconciliazionePaypal() {
                           <div
                             key={t.id || t.transaction_id || j}
                             onClick={() => txId && setModalTxId(txId)}
-                            onMouseEnter={e => { if (txId) e.currentTarget.style.background = '#f1f5f9'; }}
+                            onMouseEnter={e => { if (txId) e.currentTarget.style.background = COLORS.gray[100]; }}
                             onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                             style={{
                               display: 'flex',
                               justifyContent: 'space-between',
                               padding: '6px 8px',
                               fontSize: 12,
-                              color: '#64748b',
+                              color: COLORS.textMuted,
                               cursor: txId ? 'pointer' : 'default',
-                              borderRadius: 4,
+                              borderRadius: BORDER_RADIUS.sm,
                               transition: 'background 120ms',
                             }}
                             title={txId ? 'Clicca per il dettaglio' : ''}
@@ -1081,92 +949,59 @@ export default function RiconciliazionePaypal() {
                   </details>
                 ))}
               </div>
-            </div>
+            </Card>
           </div>
         )}
 
         {/* Estratti Conto Tab */}
         {activeTab === 'estratti' && (
-          <div
-            style={{
-              background: 'white',
-              borderRadius: 8,
-              border: '1px solid #e2e8f0',
-              overflow: 'hidden',
-            }}
-          >
-            <div
-              style={{
-                padding: '12px 16px',
-                background: '#f8fafc',
-                borderBottom: '1px solid #e2e8f0',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-              }}
-            >
-              <span style={{ fontWeight: 600, fontSize: 14 }}>
-                Estratti Conto Importati ({statements.length})
-              </span>
-            </div>
-            <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead>
-                <tr style={{ background: '#f8fafc' }}>
-                  <th style={{ textAlign: 'left', padding: '10px 12px', fontSize: 11, textTransform: 'uppercase', color: '#64748b' }}>Tipo</th>
-                  <th style={{ textAlign: 'left', padding: '10px 12px', fontSize: 11, textTransform: 'uppercase', color: '#64748b' }}>Periodo</th>
-                  <th style={{ textAlign: 'center', padding: '10px 12px', fontSize: 11, textTransform: 'uppercase', color: '#64748b' }}>Transazioni</th>
-                  <th style={{ textAlign: 'right', padding: '10px 12px', fontSize: 11, textTransform: 'uppercase', color: '#64748b' }}>Pag. Inviati</th>
-                  <th style={{ textAlign: 'right', padding: '10px 12px', fontSize: 11, textTransform: 'uppercase', color: '#64748b' }}>Depositi</th>
-                  <th style={{ textAlign: 'right', padding: '10px 12px', fontSize: 11, textTransform: 'uppercase', color: '#64748b' }}>Saldo Finale</th>
-                  <th style={{ textAlign: 'left', padding: '10px 12px', fontSize: 11, textTransform: 'uppercase', color: '#64748b' }}>File</th>
-                </tr>
-              </thead>
-              <tbody>
-                {statements.map(s => (
-                  <tr key={s.id || s.statement_id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                    <td style={{ padding: '8px 12px' }}>
-                      <span
-                        style={{
-                          padding: '2px 8px',
-                          borderRadius: 8,
-                          fontSize: 11,
-                          background: s.tipo_documento === 'CSR' ? '#fef3c7' : '#eff6ff',
-                          color: s.tipo_documento === 'CSR' ? '#92400e' : '#1e40af',
-                        }}
-                      >
-                        {s.tipo_documento}
-                      </span>
-                    </td>
-                    <td style={{ padding: '8px 12px', fontWeight: 500 }}>
-                      {formatDate(s.periodo_inizio)} ï¿½ {formatDate(s.periodo_fine)}
-                    </td>
-                    <td style={{ padding: '8px 12px', textAlign: 'center' }}>
-                      {s.totale_transazioni}
-                    </td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right', color: '#dc2626', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>
-                      {formatEuro(s.riepilogo?.pagamenti_inviati)}
-                    </td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right', color: '#16a34a', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>
-                      {formatEuro(s.riepilogo?.depositi_accrediti)}
-                    </td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>
-                      {formatEuro(s.riepilogo?.saldo_finale)}
-                    </td>
-                    <td style={{ padding: '8px 12px', fontSize: 11, color: '#9ca3af' }}>
-                      {s.file_name}
-                    </td>
+          <Card title={`Estratti Conto Importati (${statements.length})`} bodyStyle={{ padding: 0 }}>
+            <TableWrap style={{ border: 'none', borderRadius: 0 }}>
+              <Table>
+                <thead>
+                  <tr>
+                    <Th>Tipo</Th>
+                    <Th>Periodo</Th>
+                    <Th align="center">Transazioni</Th>
+                    <Th align="right">Pag. Inviati</Th>
+                    <Th align="right">Depositi</Th>
+                    <Th align="right">Saldo Finale</Th>
+                    <Th>File</Th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-            </div>
+                </thead>
+                <tbody>
+                  {statements.map(s => (
+                    <tr key={s.id || s.statement_id}>
+                      <Td>
+                        <Badge variant={s.tipo_documento === 'CSR' ? 'warning' : 'info'}>
+                          {s.tipo_documento}
+                        </Badge>
+                      </Td>
+                      <Td style={{ fontWeight: 500 }}>
+                        {formatDate(s.periodo_inizio)} — {formatDate(s.periodo_fine)}
+                      </Td>
+                      <Td align="center">{s.totale_transazioni}</Td>
+                      <Td align="right" mono style={{ color: COLORS.danger }}>
+                        {formatEuro(s.riepilogo?.pagamenti_inviati)}
+                      </Td>
+                      <Td align="right" mono style={{ color: COLORS.success }}>
+                        {formatEuro(s.riepilogo?.depositi_accrediti)}
+                      </Td>
+                      <Td align="right" mono>
+                        {formatEuro(s.riepilogo?.saldo_finale)}
+                      </Td>
+                      <Td style={{ fontSize: 11, color: COLORS.textSubtle }}>{s.file_name}</Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            </TableWrap>
             {statements.length === 0 && (
-              <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>
+              <div style={{ padding: 40, textAlign: 'center', color: COLORS.textSubtle }}>
                 Nessun estratto conto importato.
               </div>
             )}
-          </div>
+          </Card>
         )}
 
         {/* Mapping Fornitori Tab */}
@@ -1174,17 +1009,17 @@ export default function RiconciliazionePaypal() {
           <div
             data-testid="mapping-fornitori-panel"
             style={{
-              background: 'white',
-              borderRadius: 8,
-              border: '1px solid #e2e8f0',
+              background: COLORS.card,
+              borderRadius: BORDER_RADIUS.md,
+              border: `1px solid ${COLORS.border}`,
               overflow: 'hidden',
             }}
           >
             <div
               style={{
                 padding: '14px 18px',
-                background: '#f8fafc',
-                borderBottom: '1px solid #e2e8f0',
+                background: COLORS.bgAlt,
+                borderBottom: `1px solid ${COLORS.border}`,
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
@@ -1193,46 +1028,33 @@ export default function RiconciliazionePaypal() {
               }}
             >
               <div>
-                <div style={{ fontWeight: 700, fontSize: 14 }}>
-                  ï¿½x Account PayPal da mappare ai Fornitori
+                <div style={{ fontWeight: 700, fontSize: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Link2 size={15} /> Account PayPal da mappare ai Fornitori
                   {mappingData?.totale_non_mappati !== undefined && (
-                    <span
-                      style={{
-                        marginLeft: 10,
-                        padding: '2px 10px',
-                        borderRadius: 8,
-                        background: '#fef3c7',
-                        color: '#92400e',
-                        fontSize: 12,
-                      }}
-                    >
+                    <Badge variant="warning" style={{ marginLeft: 4 }}>
                       {mappingData.totale_non_mappati} non mappati
-                    </span>
+                    </Badge>
                   )}
                 </div>
-                <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>
+                <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 4 }}>
                   Associa l'ID PayPal del beneficiario al fornitore corretto per abilitare la
                   riconciliazione automatica delle fatture.
                 </div>
               </div>
-              <button
+              <Button
                 data-testid="reload-mapping-btn"
                 onClick={loadMapping}
                 disabled={mappingLoading}
-                style={{
-                  padding: '8px 14px',
-                  minHeight: 40,
-                  background: '#0f2744',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: 6,
-                  cursor: 'pointer',
-                  fontSize: 13,
-                  fontWeight: 600,
-                }}
+                variant="primary"
+                iconLeft={
+                  <RefreshCw
+                    size={14}
+                    style={mappingLoading ? { animation: 'spin 1s linear infinite' } : undefined}
+                  />
+                }
               >
-                {mappingLoading ? 'ï¿½ Caricamento...' : 'ï¿½x Ricarica'}
-              </button>
+                {mappingLoading ? 'Caricamento...' : 'Ricarica'}
+              </Button>
             </div>
 
             {/* Banner azione massiva match certi */}
@@ -1240,8 +1062,8 @@ export default function RiconciliazionePaypal() {
               <div
                 style={{
                   padding: '12px 18px',
-                  background: '#dcfce7',
-                  borderBottom: '1px solid #16a34a',
+                  background: COLORS.successLight,
+                  borderBottom: `1px solid ${COLORS.success}`,
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
@@ -1249,50 +1071,35 @@ export default function RiconciliazionePaypal() {
                   gap: 12,
                 }}
               >
-                <div style={{ fontSize: 13, color: '#166534' }}>
+                <div style={{ fontSize: 13, color: COLORS.success }}>
                   Match certi{' '}
                   <strong>
                     {mappingData.items.filter(i => i.suggested_fornitore_id).length} match certi
                   </strong>{' '}
                   trovati tramite nome PayPal. Puoi mapparli tutti con un click.
                 </div>
-                <button
-                  data-testid="mappa-tutti-certi-btn"
-                  onClick={mappaTuttiCerti}
-                  style={{
-                    padding: '8px 18px',
-                    minHeight: 40,
-                    background: '#0f2744',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: 6,
-                    cursor: 'pointer',
-                    fontSize: 13,
-                    fontWeight: 600,
-                    whiteSpace: 'nowrap',
-                  }}
-                >
+                <Button data-testid="mappa-tutti-certi-btn" onClick={mappaTuttiCerti} variant="primary">
                   Mappa tutti i certi
-                </button>
+                </Button>
               </div>
             )}
 
             {mappingLoading && !mappingData && (
-              <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>
+              <div style={{ padding: 40, textAlign: 'center', color: COLORS.textSubtle }}>
                 <RefreshCw
                   style={{
                     width: 24,
                     height: 24,
                     animation: 'spin 1s linear infinite',
-                    color: '#0f2744',
+                    color: COLORS.primary,
                   }}
                 />
               </div>
             )}
 
             {mappingData && mappingData.items.length === 0 && (
-              <div style={{ padding: 40, textAlign: 'center', color: '#16a34a', fontWeight: 600 }}>
-                ï¿½S& Tutti gli account PayPal sono mappati!
+              <div style={{ padding: 40, textAlign: 'center', color: COLORS.success, fontWeight: 600 }}>
+                Tutti gli account PayPal sono mappati!
               </div>
             )}
 
@@ -1303,7 +1110,7 @@ export default function RiconciliazionePaypal() {
                   data-testid={`mapping-row-${item.paypal_account_id}`}
                   style={{
                     padding: '14px 18px',
-                    borderBottom: '1px solid #f1f5f9',
+                    borderBottom: `1px solid ${COLORS.gray[100]}`,
                     display: 'grid',
                     gridTemplateColumns: isMobile ? '1fr' : '260px 1fr 260px',
                     gap: 14,
@@ -1314,35 +1121,35 @@ export default function RiconciliazionePaypal() {
                   <div>
                     {item.nome_controparte && (
                       <div
-                        style={{ fontSize: 13, fontWeight: 700, color: '#1e293b', marginBottom: 4 }}
+                        style={{ fontSize: 13, fontWeight: 700, color: COLORS.gray[800], marginBottom: 4 }}
                       >
-                        ï¿½xï¿½ï¿½ {item.nome_controparte}
+                        {item.nome_controparte}
                       </div>
                     )}
                     <div
                       style={{
-                        fontFamily: 'Courier New, monospace',
+                        fontFamily: FONT.mono,
                         fontSize: 11,
                         fontWeight: 600,
-                        color: '#0f2744',
+                        color: COLORS.primary,
                       }}
                     >
                       {item.paypal_account_id}
                     </div>
-                    <div style={{ fontSize: 11, color: '#64748b', marginTop: 3 }}>
-                      {item.n_tx} tx ï¿½ {formatEuro(item.importo_totale)}
+                    <div style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 3 }}>
+                      {item.n_tx} tx · {formatEuro(item.importo_totale)}
                     </div>
-                    <div style={{ fontSize: 10, color: '#9ca3af' }}>
-                      Media: {formatEuro(item.importo_medio)} ï¿½ Ultima:{' '}
+                    <div style={{ fontSize: 10, color: COLORS.textSubtle }}>
+                      Media: {formatEuro(item.importo_medio)} · Ultima:{' '}
                       {formatDate(item.ultima_data)}
                     </div>
                     {item.email_controparte && (
-                      <div style={{ fontSize: 10, color: '#64748b', marginTop: 3 }}>
-                        ï¿½S0 {item.email_controparte}
+                      <div style={{ fontSize: 10, color: COLORS.textMuted, marginTop: 3, display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <Mail size={10} /> {item.email_controparte}
                       </div>
                     )}
                     {item.invoice_ids?.length > 0 && (
-                      <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 3 }}>
+                      <div style={{ fontSize: 10, color: COLORS.textSubtle, marginTop: 3 }}>
                         Invoice: {item.invoice_ids.slice(0, 2).join(', ')}
                       </div>
                     )}
@@ -1351,22 +1158,11 @@ export default function RiconciliazionePaypal() {
                   {/* Colonna 2: selezione fornitore con badge match certo */}
                   <div>
                     {item.suggested_fornitore_id && (
-                      <div
-                        style={{
-                          fontSize: 11,
-                          color: '#166534',
-                          fontWeight: 700,
-                          marginBottom: 4,
-                          background: '#dcfce7',
-                          padding: '3px 8px',
-                          borderRadius: 8,
-                          display: 'inline-block',
-                        }}
-                      >
+                      <Badge variant="success" style={{ marginBottom: 4 }}>
                         Match certo da nome PayPal
-                      </div>
+                      </Badge>
                     )}
-                    <select
+                    <Select
                       data-testid={`select-fornitore-${item.paypal_account_id}`}
                       value={selectedForn[item.paypal_account_id] || ''}
                       onChange={e =>
@@ -1377,75 +1173,62 @@ export default function RiconciliazionePaypal() {
                       }
                       style={{
                         width: '100%',
-                        padding: '8px 10px',
                         border:
                           item.suggested_fornitore_id &&
                           selectedForn[item.paypal_account_id] === item.suggested_fornitore_id
-                            ? '2px solid #16a34a'
-                            : '1px solid #e2e8f0',
-                        borderRadius: 6,
-                        fontSize: 13,
-                        background: 'white',
+                            ? `2px solid ${COLORS.success}`
+                            : `1px solid ${COLORS.border}`,
                       }}
                     >
-                      <option value="">ï¿½ Seleziona fornitore ï¿½</option>
+                      <option value="">— Seleziona fornitore —</option>
                       {item.candidati?.filter(c => c.source?.startsWith('nome_paypal')).length >
                         0 && (
-                        <optgroup label="ï¿½x}ï¿½ Match certo (nome PayPal)">
+                        <optgroup label="Match certo (nome PayPal)">
                           {item.candidati
                             .filter(c => c.source?.startsWith('nome_paypal'))
                             .map(c => (
                               <option key={c.fornitore_id} value={c.fornitore_id}>
-                                {c.nome} ï¿½ P.IVA {c.piva} ï¿½ score {c.score}
+                                {c.nome} — P.IVA {c.piva} — score {c.score}
                               </option>
                             ))}
                         </optgroup>
                       )}
                       {item.candidati?.filter(c => c.source === 'importo_simile').length > 0 && (
-                        <optgroup label="ï¿½xï¿½ Candidati (importo simile)">
+                        <optgroup label="Candidati (importo simile)">
                           {item.candidati
                             .filter(c => c.source === 'importo_simile')
                             .map(c => (
                               <option key={c.fornitore_id} value={c.fornitore_id}>
-                                {c.nome} ï¿½ P.IVA {c.piva} ï¿½ {c.n_fatture_simili} fatture
+                                {c.nome} — P.IVA {c.piva} — {c.n_fatture_simili} fatture
                               </option>
                             ))}
                         </optgroup>
                       )}
-                    </select>
+                    </Select>
                     {item.candidati?.length === 0 && (
-                      <div style={{ fontSize: 11, color: '#dc2626', marginTop: 4 }}>
-                        Nessun candidato. Crea il fornitore in anagrafica.
+                      <div style={{ fontSize: 11, color: COLORS.danger, marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <AlertTriangle size={11} /> Nessun candidato. Crea il fornitore in anagrafica.
                       </div>
                     )}
                   </div>
 
                   {/* Colonna 3: bottoni azione */}
                   <div style={{ display: 'flex', gap: 8, flexDirection: 'column' }}>
-                    <button
+                    <Button
                       data-testid={`mappa-btn-${item.paypal_account_id}`}
+                      variant="primary"
                       onClick={() =>
                         mappaFornitore(item.paypal_account_id, selectedForn[item.paypal_account_id])
                       }
                       disabled={!selectedForn[item.paypal_account_id]}
-                      style={{
-                        padding: '10px 16px',
-                        minHeight: 40,
-                        background: selectedForn[item.paypal_account_id]
-                          ? '#0f2744'
-                          : '#e2e8f0',
-                        color: selectedForn[item.paypal_account_id] ? 'white' : '#9ca3af',
-                        border: 'none',
-                        borderRadius: 6,
-                        cursor: selectedForn[item.paypal_account_id] ? 'pointer' : 'not-allowed',
-                        fontWeight: 600,
-                        fontSize: 13,
-                      }}
                     >
-                      ï¿½x Collega
-                    </button>
-                    <button
+                      Collega
+                    </Button>
+                    <Button
                       data-testid={`crea-forn-btn-${item.paypal_account_id}`}
+                      variant="outline"
+                      size="sm"
+                      iconLeft={<Plus size={12} />}
                       onClick={() => setCreateModal({
                         paypal_account_id: item.paypal_account_id,
                         nome_controparte: item.nome_controparte || '',
@@ -1453,43 +1236,29 @@ export default function RiconciliazionePaypal() {
                         importo_totale: item.importo_totale || 0,
                         n_tx: item.n_tx || 0,
                       })}
-                      style={{
-                        padding: '8px 14px',
-                        minHeight: 40,
-                        background: 'transparent',
-                        color: '#0f2744',
-                        border: '1px dashed #0f2744',
-                        borderRadius: 6,
-                        cursor: 'pointer',
-                        fontWeight: 600,
-                        fontSize: 11,
-                      }}
                       title="Crea un nuovo fornitore in anagrafica e mappalo subito"
+                      style={{ borderStyle: 'dashed', fontSize: 11 }}
                     >
-                      ï¿½~" Crea nuovo
-                    </button>
-                    <button
+                      Crea nuovo
+                    </Button>
+                    <Button
                       data-testid={`cerca-email-btn-${item.paypal_account_id}`}
+                      variant="ghost"
+                      size="sm"
                       disabled={cercandoEmail === item.paypal_account_id}
+                      iconLeft={
+                        cercandoEmail === item.paypal_account_id ? (
+                          <RefreshCw size={12} style={{ animation: 'spin 1s linear infinite' }} />
+                        ) : (
+                          <Mail size={12} />
+                        )
+                      }
                       onClick={() => handleCercaFatturaEmail(item.paypal_account_id)}
-                      style={{
-                        padding: '8px 14px',
-                        minHeight: 40,
-                        background: 'transparent',
-                        color: '#64748b',
-                        border: '1px dashed #9ca3af',
-                        borderRadius: 6,
-                        cursor: cercandoEmail === item.paypal_account_id ? 'wait' : 'pointer',
-                        fontWeight: 600,
-                        fontSize: 11,
-                        opacity: cercandoEmail === item.paypal_account_id ? 0.6 : 1,
-                      }}
                       title="Cerca la fattura nella posta (fornitori esteri: mai su Drive/PEC, esiste solo come PDF via email)"
+                      style={{ border: `1px dashed ${COLORS.borderDark}`, fontSize: 11 }}
                     >
-                      {cercandoEmail === item.paypal_account_id
-                        ? 'ï¿½ Cerco nella posta&'
-                        : 'ï¿½xï¿½ Cerca fattura via email'}
-                    </button>
+                      {cercandoEmail === item.paypal_account_id ? 'Cerco nella posta…' : 'Cerca fattura via email'}
+                    </Button>
                   </div>
                 </div>
               ))}
@@ -1498,14 +1267,14 @@ export default function RiconciliazionePaypal() {
               <div
                 style={{
                   padding: '14px 18px',
-                  background: '#f0f9ff',
-                  borderTop: '2px solid #0f2744',
+                  background: COLORS.infoLight,
+                  borderTop: `2px solid ${COLORS.primary}`,
                   fontSize: 12,
-                  color: '#075985',
+                  color: COLORS.info,
                 }}
               >
-                ï¿½xï¿½ <strong>Suggerimento</strong>: una volta mappati i fornitori, esegui{' '}
-                <code style={{ padding: '1px 4px', background: '#dbeafe', borderRadius: 3 }}>
+                <strong>Suggerimento</strong>: una volta mappati i fornitori, esegui{' '}
+                <code style={{ padding: '1px 4px', background: COLORS.primarySoft, borderRadius: BORDER_RADIUS.sm }}>
                   POST /api/paypal-api/riconcilia
                 </code>{' '}
                 per riconciliare tutte le fatture commerciali PayPal.
@@ -1538,7 +1307,7 @@ export default function RiconciliazionePaypal() {
           onCreated={() => {
             setCreateModal(null);
             loadMapping();
-            toast.success('ï¿½S Fornitore creato e mappato');
+            toast.success('Fornitore creato e mappato');
           }}
         />
       )}
@@ -1546,7 +1315,7 @@ export default function RiconciliazionePaypal() {
   );
 }
 
-// ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ Modale: crea fornitore inline + mappa al paypal_account_id ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+// ------ Modale: crea fornitore inline + mappa al paypal_account_id ------
 function CreaFornitorePaypalModal({ context, onClose, onCreated }) {
   const [form, setForm] = useState({
     ragione_sociale: context.nome_controparte || '',
@@ -1555,14 +1324,14 @@ function CreaFornitorePaypalModal({ context, onClose, onCreated }) {
     email: context.email_controparte || '',
     metodo_pagamento: 'paypal',
     esclude_magazzino: true,
-    note: `Creato da PayPal mapping (${context.n_tx} transazioni, totale ï¿½ï¿½${Math.abs(context.importo_totale).toFixed(2)})`,
+    note: `Creato da PayPal mapping (${context.n_tx} transazioni, totale ${Math.abs(context.importo_totale).toFixed(2)})`,
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
   const submit = async () => {
     if (!form.ragione_sociale.trim()) {
-      setError('La ragione sociale ï¿½ obbligatoria');
+      setError('La ragione sociale è obbligatoria');
       return;
     }
     setLoading(true);
@@ -1584,97 +1353,89 @@ function CreaFornitorePaypalModal({ context, onClose, onCreated }) {
     <div
       onClick={onClose}
       style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+        position: 'fixed', inset: 0, background: 'rgba(15,39,68,0.55)',
         zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
       }}
     >
       <div
         onClick={e => e.stopPropagation()}
         style={{
-          background: 'white', borderRadius: 10, width: '100%', maxWidth: 560,
-          padding: 24, boxShadow: '0 20px 60px rgba(0,0,0,0.3)', position: 'relative',
+          background: COLORS.card, borderRadius: BORDER_RADIUS.lg, width: '100%', maxWidth: 560,
+          padding: 24, boxShadow: SHADOWS.modal, position: 'relative',
         }}
       >
-        <button
+        <Button
+          variant="ghost"
           onClick={onClose}
           aria-label="Chiudi"
           style={{
             position: 'absolute',
             top: 8,
             right: 8,
+            padding: 0,
             width: 40,
             height: 40,
-            background: 'transparent',
-            border: 'none',
-            borderRadius: 6,
-            cursor: 'pointer',
-            fontSize: 18,
-            color: '#64748b',
-            lineHeight: 1,
           }}
         >
-          ï¿½S"
-        </button>
+          <X size={18} />
+        </Button>
         <div style={{ marginBottom: 16 }}>
-          <h2 style={{ margin: 0, fontSize: 18, color: '#0f2744' }}>
-            ï¿½~" Crea fornitore PayPal
+          <h2 style={{ margin: 0, fontSize: 18, color: COLORS.primary, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Plus size={18} /> Crea fornitore PayPal
           </h2>
-          <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>
-            Account ID: <code>{context.paypal_account_id}</code> ï¿½ {context.n_tx} transazioni
+          <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 4 }}>
+            Account ID: <code>{context.paypal_account_id}</code> · {context.n_tx} transazioni
           </div>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <Field label="Ragione sociale *" required>
-            <input
+            <Input
               type="text"
               value={form.ragione_sociale}
               onChange={e => setForm(f => ({ ...f, ragione_sociale: e.target.value }))}
               autoFocus
-              style={inputStyle}
             />
           </Field>
 
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 10 }}>
             <Field label="P.IVA / VAT">
-              <input
+              <Input
                 type="text"
                 value={form.piva}
                 onChange={e => setForm(f => ({ ...f, piva: e.target.value.toUpperCase() }))}
                 placeholder="es. IE9952657T"
-                style={inputStyle}
               />
             </Field>
             <Field label="Nazione">
-              <select
+              <Select
                 value={form.nazione}
                 onChange={e => setForm(f => ({ ...f, nazione: e.target.value }))}
-                style={inputStyle}
               >
-                <option value="IT">ï¿½x!ï¿½ï¿½x!ï¿½ Italia</option>
-                <option value="IE">ï¿½x!ï¿½ï¿½x!ï¿½ Irlanda</option>
-                <option value="NL">ï¿½x!ï¿½ï¿½x!ï¿½ Paesi Bassi</option>
-                <option value="DE">ï¿½x!ï¿½ï¿½x!ï¿½ Germania</option>
-                <option value="FR">ï¿½x!ï¿½ï¿½x!ï¿½ Francia</option>
-                <option value="ES">ï¿½x!ï¿½ï¿½x!ï¿½ Spagna</option>
-                <option value="GB">ï¿½x!ï¿½ï¿½x!ï¿½ Regno Unito</option>
-                <option value="US">ï¿½x!ï¿½ï¿½x!ï¿½ USA</option>
-                <option value="LU">ï¿½x!ï¿½ï¿½x!ï¿½ Lussemburgo</option>
+                <option value="IT">Italia</option>
+                <option value="IE">Irlanda</option>
+                <option value="NL">Paesi Bassi</option>
+                <option value="DE">Germania</option>
+                <option value="FR">Francia</option>
+                <option value="ES">Spagna</option>
+                <option value="GB">Regno Unito</option>
+                <option value="US">USA</option>
+                <option value="LU">Lussemburgo</option>
                 <option value="OTHER">Altro</option>
-              </select>
+              </Select>
             </Field>
           </div>
 
           <Field label="Email">
-            <input
+            <Input
               type="email"
               value={form.email}
               onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-              style={inputStyle}
             />
           </Field>
 
           <Field label="Note">
+            {/* Textarea nativa: nessun componente ds dedicato al testo multi-riga. */}
             <textarea
               value={form.note}
               onChange={e => setForm(f => ({ ...f, note: e.target.value }))}
@@ -1686,7 +1447,7 @@ function CreaFornitorePaypalModal({ context, onClose, onCreated }) {
           <label
             style={{
               display: 'flex', alignItems: 'flex-start', gap: 8, padding: 10,
-              background: '#f8fafc', borderRadius: 6, fontSize: 12,
+              background: COLORS.bgAlt, borderRadius: BORDER_RADIUS.sm, fontSize: 12,
             }}
           >
             <input
@@ -1704,41 +1465,27 @@ function CreaFornitorePaypalModal({ context, onClose, onCreated }) {
         {error && (
           <div
             style={{
-              marginTop: 12, padding: 10, background: '#fee2e2',
-              border: '1px solid #fca5a5', borderRadius: 6, color: '#b91c1c', fontSize: 13,
+              marginTop: 12, padding: 10, background: COLORS.dangerLight,
+              border: `1px solid ${COLORS.danger}`, borderRadius: BORDER_RADIUS.sm, color: COLORS.danger, fontSize: 13,
+              display: 'flex', alignItems: 'center', gap: 6,
             }}
           >
-            ï¿½aï¿½ {error}
+            <AlertTriangle size={14} /> {error}
           </div>
         )}
 
         <div style={{ marginTop: 20, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          <button
-            onClick={onClose}
-            disabled={loading}
-            style={{
-              padding: '8px 16px', minHeight: 40, background: 'white', color: '#64748b',
-              border: '1px solid #e2e8f0', borderRadius: 6, cursor: 'pointer', fontSize: 13,
-            }}
-          >
+          <Button variant="secondary" onClick={onClose} disabled={loading}>
             Annulla
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="primary"
             onClick={submit}
             disabled={loading || !form.ragione_sociale.trim()}
-            style={{
-              padding: '8px 18px',
-              minHeight: 40,
-              background: form.ragione_sociale.trim() && !loading
-                ? '#0f2744'
-                : '#cbd5e1',
-              color: 'white', border: 'none', borderRadius: 6,
-              cursor: form.ragione_sociale.trim() && !loading ? 'pointer' : 'not-allowed',
-              fontSize: 13, fontWeight: 600,
-            }}
+            iconLeft={<Plus size={14} />}
           >
-            {loading ? 'ï¿½ Creazione&' : 'ï¿½~" Crea e mappa'}
-          </button>
+            {loading ? 'Creazione…' : 'Crea e mappa'}
+          </Button>
         </div>
       </div>
     </div>
@@ -1748,7 +1495,7 @@ function CreaFornitorePaypalModal({ context, onClose, onCreated }) {
 function Field({ label, children }) {
   return (
     <label style={{ display: 'block' }}>
-      <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+      <div style={{ fontSize: 11, fontWeight: 600, color: COLORS.textMuted, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
         {label}
       </div>
       {children}
@@ -1759,9 +1506,10 @@ function Field({ label, children }) {
 const inputStyle = {
   width: '100%',
   padding: '8px 10px',
-  border: '1px solid #e2e8f0',
-  borderRadius: 6,
+  border: `1px solid ${COLORS.border}`,
+  borderRadius: BORDER_RADIUS.sm,
   fontSize: 13,
   outline: 'none',
   boxSizing: 'border-box',
+  fontFamily: FONT.family,
 };
