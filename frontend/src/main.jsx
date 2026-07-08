@@ -30,7 +30,6 @@ const PrimaNotaHub = lazy(() => import("./pages/hub/PrimaNotaHub.jsx"));
 const PuliziaPrimaNota = lazy(() => import("./pages/PuliziaPrimaNota.jsx"));
 const VeicoliHub = lazy(() => import("./pages/hub/VeicoliHub.jsx"));
 const ContabilitaHub = lazy(() => import("./pages/hub/ContabilitaHub.jsx"));
-const CoerenzaPOS = lazy(() => import("./pages/CoerenzaPOSCorrispettivi.jsx"));
 const DocumentiHub = lazy(() => import("./pages/hub/DocumentiHub.jsx"));
 const StrumentiHub = lazy(() => import("./pages/hub/StrumentiHub.jsx"));
 const IntegrazioniHub = lazy(() => import("./pages/hub/IntegrazioniHub.jsx"));
@@ -144,21 +143,19 @@ const router = createBrowserRouter([
       { path: "previsioni-acquisti", element: <Navigate to="/contabilita/previsioni-acquisti" replace /> },
       { path: "previsioni-acquisti/:anno", element: <LazyPage><ContabilitaHub /></LazyPage> },
       
-      // === COERENZA POS (ex pagina Magazzino, eliminata su richiesta) ===
-      // Il dizionario articoli resta come motore backend per lo split costi
-      // del Piano dei Conti, senza pagina UI dedicata.
-      { path: "coerenza-pos", element: <LazyPage><CoerenzaPOS /></LazyPage> },
-      { path: "magazzino", element: <Navigate to="/coerenza-pos" replace /> },
-      { path: "magazzino/:tab", element: <Navigate to="/coerenza-pos" replace /> },
-      { path: "inventario", element: <Navigate to="/coerenza-pos" replace /> },
-      { path: "inventario/:data", element: <Navigate to="/coerenza-pos" replace /> },
-      { path: "ricerca-prodotti", element: <Navigate to="/coerenza-pos" replace /> },
-      { path: "ricerca-prodotti/:query", element: <Navigate to="/coerenza-pos" replace /> },
-      { path: "dizionario-articoli", element: <Navigate to="/coerenza-pos" replace /> },
-      { path: "dizionario-articoli/:articolo", element: <Navigate to="/coerenza-pos" replace /> },
-      { path: "dizionario-prodotti", element: <Navigate to="/coerenza-pos" replace /> },
-      { path: "dizionario-prodotti/:prodotto", element: <Navigate to="/coerenza-pos" replace /> },
-      { path: "magazzino-dv", element: <Navigate to="/coerenza-pos" replace /> },
+      // === COERENZA POS sotto RICONCILIAZIONE ===
+      { path: "coerenza-pos", element: <Navigate to="/riconciliazione/coerenza-pos" replace /> },
+      { path: "magazzino", element: <Navigate to="/riconciliazione/coerenza-pos" replace /> },
+      { path: "magazzino/:tab", element: <Navigate to="/riconciliazione/coerenza-pos" replace /> },
+      { path: "inventario", element: <Navigate to="/riconciliazione/coerenza-pos" replace /> },
+      { path: "inventario/:data", element: <Navigate to="/riconciliazione/coerenza-pos" replace /> },
+      { path: "ricerca-prodotti", element: <Navigate to="/riconciliazione/coerenza-pos" replace /> },
+      { path: "ricerca-prodotti/:query", element: <Navigate to="/riconciliazione/coerenza-pos" replace /> },
+      { path: "dizionario-articoli", element: <Navigate to="/riconciliazione/coerenza-pos" replace /> },
+      { path: "dizionario-articoli/:articolo", element: <Navigate to="/riconciliazione/coerenza-pos" replace /> },
+      { path: "dizionario-prodotti", element: <Navigate to="/riconciliazione/coerenza-pos" replace /> },
+      { path: "dizionario-prodotti/:prodotto", element: <Navigate to="/riconciliazione/coerenza-pos" replace /> },
+      { path: "magazzino-dv", element: <Navigate to="/riconciliazione/coerenza-pos" replace /> },
       
       // === REDIRECT CUCINA → MAGAZZINO (la sezione cucina è stata rimossa) ===
       { path: "cucina", element: <Navigate to="/magazzino" replace /> },
@@ -180,6 +177,8 @@ const router = createBrowserRouter([
       { path: "riconciliazione/:tab", element: <LazyPage><RiconciliazioneHub /></LazyPage> },
       { path: "gestione-assegni", element: <LazyPage><RiconciliazioneHub /></LazyPage> },
       { path: "assegni", element: <Navigate to="/riconciliazione/assegni" replace /> },
+      { path: "archivio-bonifici", element: <Navigate to="/riconciliazione/archivio-bonifici" replace /> },
+      { path: "paypal", element: <Navigate to="/riconciliazione/paypal" replace /> },
 
       // === IMPORT DOCUMENTI → tab in /documenti/import ===
       { path: "import-documenti", element: <Navigate to="/documenti/import" replace /> },
@@ -214,10 +213,10 @@ const router = createBrowserRouter([
       
       // === INTEGRAZIONI ===
       { path: "integrazioni", element: <LazyPage><IntegrazioniHub /></LazyPage> },
-      { path: "integrazioni-openapi", element: <LazyPage><IntegrazioniHub /></LazyPage> },
+      { path: "integrazioni-openapi", element: <Navigate to="/integrazioni" replace /> },
       { path: "integrazioni-openapi/:tab", element: <LazyPage><IntegrazioniHub /></LazyPage> },
-      { path: "pagopa", element: <LazyPage><IntegrazioniHub /></LazyPage> },
-      { path: "pagopa/:pratica", element: <LazyPage><IntegrazioniHub /></LazyPage> },
+      { path: "pagopa", element: <Navigate to="/integrazioni/pagopa" replace /> },
+      { path: "pagopa/:pratica", element: <Navigate to="/integrazioni/pagopa" replace /> },
 
       // === ADMIN ===
       { path: "admin", element: <LazyPage><AdminHub /></LazyPage> },

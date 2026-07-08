@@ -36,7 +36,7 @@ const ALL_NAV_ITEMS = [
   { to: "/riconciliazione/paypal", label: "PayPal", icon: "💳" },
   { to: "/riconciliazione/f24", label: "F24", icon: "🗂️" },
   { to: "/contabilita", label: "Contabilità", icon: "📈" },
-  { to: "/coerenza-pos", label: "Incassi POS", icon: "💳" },
+  { to: "/riconciliazione/coerenza-pos", label: "Incassi POS", icon: "💳" },
   { to: "/noleggio", label: "Noleggi", icon: "🚗" },
   { to: "/scadenze", label: "Scadenze", icon: "🔔" },
   { to: "/documenti", label: "Documenti", icon: "📨" },

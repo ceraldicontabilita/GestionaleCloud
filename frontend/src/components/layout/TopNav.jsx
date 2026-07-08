@@ -46,7 +46,7 @@ const ALTRO_ITEMS = [
   { to: '/contabilita', label: 'Contabilità', Icon: FileBarChart },
   { to: '/documenti', label: 'Documenti', Icon: BookMarked },
   { to: '/documenti/import', label: 'Import Documenti', Icon: BookMarked },
-  { to: '/coerenza-pos', label: 'Incassi POS', Icon: CreditCard },
+  { to: '/riconciliazione/coerenza-pos', label: 'Incassi POS', Icon: CreditCard },
   { to: '/noleggio', label: 'Noleggi', Icon: Car },
   { to: '/strumenti', label: 'Strumenti', Icon: Wrench },
   { to: '/mappa-gestionale', label: 'Mappa', Icon: Map },
