@@ -1,0 +1,154 @@
+{
+  "pagina": "Contabilità Avanzata",
+  "url": "https://impresasemplice.online/contabilita/avanzata",
+  "file_sorgente_frontend": [
+    "/home/user/GestionaleCloud/frontend/src/pages/ContabilitaAvanzata.jsx"
+  ],
+  "file_sorgente_backend": [
+    "/home/user/GestionaleCloud/app/routers/accounting/contabilita_avanzata.py",
+    "/home/user/GestionaleCloud/app/routers/contabilita_italiana.py",
+    "/home/user/GestionaleCloud/app/services/calcolo_imposte.py",
+    "/home/user/GestionaleCloud/app/services/categorizzazione_contabile.py"
+  ],
+  "scopo_generale": "Pagina che calcola in tempo reale IRES e IRAP dovute, mostra la disponibilità liquida (cassa+banca), statistiche di categorizzazione automatica delle fatture sul Piano dei Conti, e un bilancio dettagliato (Stato Patrimoniale + Conto Economico) con deducibilità fiscale voce per voce. Ha 3 sotto-tab interne (gestite solo in stato React, nessuna route separata: 'imposte', 'statistiche', 'bilancio') più una card fissa di disponibilità liquide sempre visibile in alto. Nulla di quanto mostrato in questa pagina è filtrato per anno tranne il calcolo imposte e la disponibilità liquide: il bilancio dettagliato e le statistiche di categorizzazione leggono SEMPRE tutti i saldi correnti del Piano dei Conti, senza distinzione di anno.",
+  "bottoni_azioni": [
+    {
+      "etichetta": "Scarica PDF (handleDownloadPDF)",
+      "cosa_fa_al_click": "Scarica un PDF con il prospetto per la dichiarazione dei redditi (riepilogo imposte, variazioni fiscali IRES, dettaglio IRAP, quadro RF/RN) per l'anno e la regione correnti",
+      "endpoint_chiamato": "GET /api/contabilita/export/pdf-dichiarazione?anno=&regione=",
+      "logica_backend": "export_pdf_dichiarazione: richiama CalcolatoreImposte(regione).calcola_imposte_da_db(db, anno) (stessa logica dell'endpoint calcolo-imposte) e genera un PDF con reportlab: Sezione 1 Riepilogo Imposte, Sezione 2 Variazioni IRES in aumento, Sezione 3 Variazioni IRES in diminuzione, Sezione 4 Dettaglio IRAP, Sezione 5 Quadro riassuntivo IRES (righe RF1/RF5/RF55/RF63/RN4)",
+      "formula_matematica": "Identica al calcolo di /calcolo-imposte (vedi sotto)",
+      "aggiornamento_ui": "Scarica il file dichiarazione_redditi_{anno}.pdf via Blob, mostra messaggio di successo 'PDF dichiarazione {anno} scaricato!'",
+      "casi_errore": "In caso di eccezione: setMessage({type:'error', text:'Errore download PDF'})"
+    },
+    {
+      "etichetta": "🔄 Ricategorizza Fatture (tab Calcolo Imposte, handleRicategorizza)",
+      "cosa_fa_al_click": "Rielabora TUTTE le fatture passive e i corrispettivi esistenti, ricategorizzandoli sul Piano dei Conti con il motore di categorizzazione intelligente (categorizzazione_contabile.py) e ricostruendo da zero i movimenti contabili",
+      "endpoint_chiamato": "POST /api/contabilita/ricategorizza-fatture",
+      "logica_backend": "ricategorizza_tutte_fatture(): 1) Azzera il saldo di TUTTI i conti del piano_conti tranne Cassa (01.01.01) e Banca (01.01.02); 2) cancella TUTTI i documenti della collection 'movimenti_contabili' (delete_many({})); 3) per ogni fattura non eliminata (entity_status != 'deleted') in 'invoices': analizza le righe con categorizza_fattura_completa(linee, fornitore), sceglie il conto costo con importo maggiore tra quelli categorizzati (default 05.01.01 'Acquisto merci'), crea un movimento contabile con 3 righe (Dare: conto costo per l'imponibile, Dare: IVA a credito 01.04.01, Avere: Debiti v/fornitori 02.01.01), aggiorna il saldo dei 3 conti coinvolti (funzione aggiorna_saldo_conto), e aggiorna la fattura stessa con registrata_contabilita=true, categoria_contabile, conto_costo_codice/nome, percentuali di deducibilità IRES/IRAP; 4) per ogni corrispettivo in 'corrispettivi': calcola IVA al 10% (aliquota ristorazione fissa: iva = totale*0.10/1.10), crea righe Dare Cassa/Banca (in base a pagato_contante/pagato_elettronico, se entrambi 0 assume tutto contante) e Avere Ricavi vendite bar (04.01.02) + IVA a debito (02.03.01), aggiorna i saldi e marca il corrispettivo con registrato_contabilita=true",
+      "formula_matematica": "IVA corrispettivo = round(totale * 0.10 / 1.10, 2); imponibile = totale - IVA. Regola di aggiornamento saldo (aggiorna_saldo_conto): per conti categoria 'attivo'/'costi' il Dare aumenta il saldo e l'Avere lo diminuisce; per 'passivo'/'patrimonio_netto'/'ricavi' vale il contrario (Avere aumenta, Dare diminuisce)",
+      "aggiornamento_ui": "Mostra messaggio di successo con conteggio 'Ricategorizzate N fatture. M movimenti creati.' e richiama fetchData() per ricaricare tutti i dati della pagina",
+      "casi_errore": "Se data.success è false: setMessage({type:'error', text:'Errore nella ricategorizzazione'}); eventuali errori per singola fattura/corrispettivo vengono raccolti in stats.errori (max 20 restituiti) e NON bloccano il resto dell'elaborazione; il pulsante mostra '⏳ Elaborazione...' ed è disabilitato durante processing"
+    },
+    {
+      "etichetta": "📋 Aggiorna Piano dei Conti (tab Statistiche, handleInizializzaPiano)",
+      "cosa_fa_al_click": "Inizializza/espande il Piano dei Conti aggiungendo tutti i conti mancanti dal piano esteso predefinito (106 conti in PIANO_CONTI_ESTESO) e aggiornando nome/categoria di quelli già esistenti se diversi",
+      "endpoint_chiamato": "POST /api/contabilita/inizializza-piano-esteso",
+      "logica_backend": "inizializza_piano_conti_esteso(): per ciascuno dei 106 codici conto definiti in PIANO_CONTI_ESTESO (categorizzazione_contabile.py): se il conto esiste già in 'piano_conti' e nome/categoria differiscono, li aggiorna (update_one $set nome/categoria/natura/updated_at) SENZA toccare il saldo esistente; se non esiste, crea un nuovo documento con id uuid4, codice, nome, categoria, natura, gruppo_codice=primi 2 caratteri del codice, attivo=true, saldo=0",
+      "formula_matematica": "n/a",
+      "aggiornamento_ui": "Messaggio di successo 'Piano dei Conti aggiornato: N nuovi conti aggiunti.' (non ricarica automaticamente fetchData)",
+      "casi_errore": "Se data.success è false: setMessage({type:'error', text:'Aggiornamento Piano dei Conti non riuscito'}); eccezioni catturate con err.message"
+    },
+    {
+      "etichetta": "🔄 Ricategorizza Tutte le Fatture (tab Statistiche, duplicato)",
+      "cosa_fa_al_click": "Stesso comportamento del bottone 'Ricategorizza Fatture' della tab Imposte (stessa funzione handleRicategorizza)",
+      "endpoint_chiamato": "POST /api/contabilita/ricategorizza-fatture",
+      "logica_backend": "Vedi sopra",
+      "formula_matematica": "Vedi sopra",
+      "aggiornamento_ui": "Vedi sopra",
+      "casi_errore": "Vedi sopra"
+    },
+    {
+      "etichetta": "Selettore Regione IRAP (select #select-regione)",
+      "cosa_fa_al_click": "Cambia lo state 'regione' (default 'campania'), che triggera il ricaricamento completo dei dati (useEffect su [regione, selectedYear])",
+      "endpoint_chiamato": "Rilancia in parallelo: GET /api/contabilita/calcolo-imposte?regione=&anno=, GET /api/contabilita/statistiche-categorizzazione?anno=, GET /api/contabilita/bilancio-dettagliato?anno=, GET /api/contabilita/aliquote-irap, GET /api/contabilita/disponibilita-liquide?anno=",
+      "logica_backend": "Vedi endpoint dedicati sotto",
+      "formula_matematica": "n/a",
+      "aggiornamento_ui": "Ricalcola tutte le card e tabelle della tab Imposte con la nuova aliquota IRAP regionale",
+      "casi_errore": "Ogni chiamata ha .catch(() => null): se una fallisce, il relativo blocco dati semplicemente non viene mostrato, senza bloccare le altre"
+    }
+  ],
+  "operazioni_di_registrazione": [
+    {
+      "nome": "Calcolo IRES/IRAP in tempo reale (GET /calcolo-imposte)",
+      "sequenza_esatta": "Nessuna scrittura: è un calcolo di sola lettura eseguito da CalcolatoreImposte.calcola_imposte_da_db(db, anno). 1) Aggregazione MongoDB su 'invoices' filtrate per invoice_date che inizia con l'anno, raggruppate per conto_costo_codice, sommando total_amount → totale_costi e costi_per_tipo{codice: importo}. 2) Aggregazione su 'corrispettivi' filtrati per data dell'anno, sommando 'totale' → totale_lordo, poi SCORPORATO dell'IVA al 10% fisso: totale_ricavi = totale_lordo / 1.10. 3) utile_civilistico = totale_ricavi - totale_costi.",
+      "collezioni_coinvolte": ["invoices", "corrispettivi", "piano_conti (indirettamente, via conto_costo_codice salvato sulle fatture)"],
+      "campi_scritti": {},
+      "effetti_collaterali": "Nessuno: endpoint puramente di lettura/calcolo, non scrive nulla nel database"
+    },
+    {
+      "nome": "Ricategorizzazione massiva fatture e corrispettivi (POST /ricategorizza-fatture)",
+      "sequenza_esatta": "1) Azzera saldi piano_conti (tranne Cassa/Banca). 2) delete_many({}) su movimenti_contabili (cancellazione TOTALE, non incrementale). 3) Per ogni fattura: crea 1 movimento in movimenti_contabili + aggiorna 3 conti in piano_conti + aggiorna il documento fattura in invoices. 4) Per ogni corrispettivo: crea 1 movimento in movimenti_contabili + aggiorna 2-4 conti in piano_conti + aggiorna il documento in corrispettivi",
+      "collezioni_coinvolte": ["piano_conti", "movimenti_contabili", "invoices", "corrispettivi"],
+      "campi_scritti": {
+        "movimenti_contabili.id/tipo/data/descrizione/fattura_id (o corrispettivo_id)": "identificativi del movimento",
+        "movimenti_contabili.righe": "array di {conto_codice, conto_nome, dare, avere}",
+        "movimenti_contabili.categoria_principale/percentuale_deducibilita_ires/irap": "solo per fatture",
+        "piano_conti.saldo": "float ricalcolato in base a Dare/Avere secondo la natura del conto",
+        "invoices.registrata_contabilita": "bool true",
+        "invoices.movimento_contabile_id/categoria_contabile/conto_costo_codice/conto_costo_nome/percentuale_deducibilita_ires/irap": "esito della categorizzazione",
+        "corrispettivi.registrato_contabilita": "bool true",
+        "corrispettivi.movimento_contabile_id": "id del movimento creato"
+      },
+      "effetti_collaterali": "Operazione distruttiva sui movimenti contabili esistenti (cancellazione totale e ricostruzione); se una fattura o corrispettivo genera un'eccezione durante l'elaborazione, viene loggato in stats.errori e SALTATO, senza interrompere l'intero batch"
+    },
+    {
+      "nome": "Inizializzazione/espansione Piano dei Conti (POST /inizializza-piano-esteso)",
+      "sequenza_esatta": "Per ciascuno dei 106 conti definiti in PIANO_CONTI_ESTESO: upsert su piano_conti preservando il saldo esistente se il conto già c'è (aggiorna solo nome/categoria/natura se differenti), altrimenti crea il conto con saldo=0",
+      "collezioni_coinvolte": ["piano_conti"],
+      "campi_scritti": {
+        "piano_conti.codice/nome/categoria/natura/gruppo_codice": "definiti da PIANO_CONTI_ESTESO",
+        "piano_conti.attivo": "bool true (solo alla creazione)",
+        "piano_conti.saldo": "0 (solo alla creazione, MAI sovrascritto se il conto esiste già)"
+      },
+      "effetti_collaterali": "Nessuna perdita di dati: i saldi esistenti sono sempre preservati"
+    }
+  ],
+  "formule_fiscali_dettagliate": {
+    "IRES": {
+      "aliquota": "24% fissa (ALIQUOTA_IRES = 24.0)",
+      "base_imponibile": "reddito_imponibile_ires = utile_civilistico + totale_variazioni_in_aumento - totale_variazioni_in_diminuzione, con floor a 0 (non può essere negativo)",
+      "variazioni_in_aumento_automatiche": [
+        "Telefonia (conto 05.02.07): 20% dell'importo indeducibile (Art. 102 TUIR)",
+        "Carburante auto uso promiscuo (conto 05.02.11): 80% indeducibile (Art. 164 TUIR)",
+        "Noleggio auto lungo termine (conto 05.02.22): 80% indeducibile per uso promiscuo (Art. 164 TUIR)",
+        "IMU (conto 05.06.05): 100% indeducibile ai fini IRES (Art. 14 D.Lgs. 23/2011), NON applicabile a IRAP",
+        "IRAP esercizio precedente (conto 05.06.04): 90% indeducibile, deducibile solo il 10% (Art. 99 TUIR), NON applicabile a IRAP"
+      ],
+      "variazioni_in_diminuzione_automatiche": [
+        "Deduzione forfettaria 10% dell'IRAP dovuta (Art. 99 TUIR) — calcolata DOPO aver determinato l'IRAP, poi l'IRES viene ricalcolata una seconda volta con questa deduzione applicata"
+      ],
+      "formula_finale": "ires_dovuta = reddito_imponibile_ires * 24 / 100"
+    },
+    "IRAP": {
+      "aliquote_per_regione": "Dizionario ALIQUOTE_IRAP in calcolo_imposte.py: default/molti valori 3.9%, campania 4.97%, lazio 4.82%, liguria 4.9%, marche 4.73%, piemonte 4.20%, puglia 4.82%, sicilia 4.82%, trentino_alto_adige 2.68%, umbria 4.82%, valle_aosta 2.98% (elenco completo nell'endpoint GET /aliquote-irap)",
+      "valore_produzione": "valore_produzione = utile_civilistico + costo_personale + costo_interessi, dove costo_personale = somma dei conti 05.03.01 (Salari) + 05.03.02 (Contributi) + 05.03.03 (TFR) + 05.03.04 (Altri costi personale), e costo_interessi = somma dei conti 05.05.01 (Interessi bancari) + 05.05.03 (Interessi mutui) + 05.05.04 (Interessi leasing)",
+      "deduzioni": "deduzioni_irap = DEDUZIONE_IRAP_BASE (8.000€, per soggetti con base imponibile <= 180.759,91€) + (numero_dipendenti_stimato * DEDUZIONE_IRAP_DIPENDENTI (7.500€ a dipendente)). Il numero di dipendenti è STIMATO dividendo costo_personale per un costo medio forfettario di 25.000€ (n_dipendenti_stimato = int(costo_personale / 25000)), non è un dato reale da anagrafica dipendenti",
+      "base_imponibile": "base_imponibile_irap = valore_produzione + variazioni_in_aumento_applicabili_a_irap - variazioni_in_diminuzione_applicabili_a_irap - deduzioni_irap, con floor a 0",
+      "formula_finale": "irap_dovuta = base_imponibile_irap * aliquota_regione / 100",
+      "nota": "Le variazioni applicabili a IRAP sono un sottoinsieme di quelle IRES: escludono IMU e IRAP-esercizio-precedente (flag applicabile_irap=False su quelle due)"
+    },
+    "totale_e_aliquota_effettiva": "totale_imposte = ires_dovuta + irap_dovuta; aliquota_effettiva = (totale_imposte / utile_civilistico * 100) se utile_civilistico > 0, altrimenti 0"
+  },
+  "endpoint_get_dettaglio": [
+    {
+      "endpoint": "GET /api/contabilita/bilancio-dettagliato",
+      "nota_importante": "Il frontend chiama questo endpoint passando ?anno={selectedYear}, MA la funzione backend get_bilancio_dettagliato() NON accetta alcun parametro anno (nessun Query() nella firma) — il parametro viene semplicemente ignorato da FastAPI. L'endpoint legge SEMPRE tutti i saldi correnti della collection 'piano_conti' senza alcun filtro temporale, quindi il bilancio mostrato NON cambia cambiando anno nella UI",
+      "logica": "Itera tutti i documenti di piano_conti e li smista per 'categoria' (attivo/passivo/patrimonio_netto/ricavi/costi) in Stato Patrimoniale e Conto Economico. Per i conti costo applica una mappa di deducibilità fissa: 05.02.07 Telefonia 80%/80%, 05.02.11 Carburante uso promiscuo 20%/20%, 05.06.05 IMU 0%/100% (deducibilita_ires/deducibilita_irap); tutti gli altri conti costo sono considerati 100%/100% deducibili. risultato_operativo = totale_ricavi - totale_costi; utile_ante_imposte = risultato_operativo (nessuna gestione separata di oneri straordinari/finanziari)"
+    },
+    {
+      "endpoint": "GET /api/contabilita/aliquote-irap",
+      "logica": "Ritorna staticamente il dizionario ALIQUOTE_IRAP con le aliquote 2024-2025 per ciascuna regione italiana, nessuna lettura da database"
+    },
+    {
+      "endpoint": "GET /api/contabilita/disponibilita-liquide?anno=&data_rif=",
+      "nota_router": "Servito da app/routers/contabilita_italiana.py (montato sullo stesso prefix /api/contabilita di contabilita_avanzata.py), NON da contabilita_avanzata.py",
+      "logica": "cassa = entrate - uscite aggregate da collection 'prima_nota_cassa' nel range [1 gennaio anno, data_rif] (default data_rif=oggi); banca = stesso calcolo su 'prima_nota_banca'; totale_disponibilita_liquide = cassa.saldo + banca.saldo; versamenti_cassa_to_banca = somma dei movimenti di tipo 'uscita' in prima_nota_cassa con categoria o descrizione che contiene 'versament' (regex case-insensitive), nell'intervallo dell'anno",
+      "formula_matematica": "saldo_cassa = entrate_cassa - uscite_cassa (aggregazione $group per tipo su importo); saldo_banca analogo; totale = saldo_cassa + saldo_banca"
+    },
+    {
+      "endpoint": "GET /api/contabilita/statistiche-categorizzazione?anno=",
+      "nota_importante": "Anche qui il frontend passa ?anno= ma la funzione backend get_statistiche_categorizzazione() non accetta alcun parametro anno — ignora il filtro e considera SEMPRE tutte le fatture in 'invoices' indipendentemente dall'anno",
+      "logica": "Aggregazione MongoDB su invoices raggruppata per categoria_contabile: count, sum(total_amount), avg(percentuale_deducibilita_ires), avg(percentuale_deducibilita_irap). percentuale_copertura = totale_categorizzate / (totale_categorizzate + totale_non_categorizzate) * 100"
+    }
+  ],
+  "collegamenti_con_altre_pagine": [
+    "I saldi mostrati in Stato Patrimoniale/Conto Economico (tab Bilancio) dipendono interamente dai movimenti creati dal bottone 'Ricategorizza Fatture', che a sua volta legge da Fatture Passive (collection invoices) e Corrispettivi/POS (collection corrispettivi)",
+    "La disponibilità liquide legge da 'prima_nota_cassa' e 'prima_nota_banca', le stesse collezioni gestite dalle pagine di Prima Nota Cassa/Banca",
+    "Usa il selettore Anno globale dell'applicazione (contexts/AnnoContext, useAnnoGlobale), condiviso con le altre tab di Contabilità, anche se — come segnalato sopra — bilancio-dettagliato e statistiche-categorizzazione lo ignorano lato backend",
+    "Il Piano dei Conti esteso (106 conti) è condiviso con la pagina Piano dei Conti (app/routers/accounting/piano_conti.py) che presumibilmente lo visualizza/modifica"
+  ],
+  "popup_e_modali_presenti": [
+    "Nessun popup o modale vero e proprio in questa pagina: solo banner inline di messaggio successo/errore (styles.messageSuccess / styles.messageError) che appaiono sopra le card dopo un'azione"
+  ]
+}

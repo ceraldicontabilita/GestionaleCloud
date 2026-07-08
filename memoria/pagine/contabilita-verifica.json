@@ -1,0 +1,104 @@
+{
+  "pagina": "Verifica Bilancio (Bilancio di Verifica)",
+  "url": "https://impresasemplice.online/contabilita/verifica",
+  "file_sorgente_frontend": [
+    "/home/user/GestionaleCloud/frontend/src/pages/BilancioVerifica.jsx",
+    "/home/user/GestionaleCloud/frontend/src/pages/hub/ContabilitaHub.jsx"
+  ],
+  "file_sorgente_backend": [
+    "/home/user/GestionaleCloud/app/routers/accounting/contabilita_gestionale.py"
+  ],
+  "scopo_generale": "Pagina di controllo di quadratura contabile: costruisce il classico 'Bilancio di Verifica' (Trial Balance) elencando, per ciascun conto del piano dei conti coinvolto in almeno un movimento, i totali Dare/Avere dell'anno e il saldo (Dare o Avere) risultante, raggruppati per gruppo di conti (01 Attività, 02 Passività, 03 Patrimonio Netto, 04 Ricavi, 05 Costi). In fondo mostra il TOTALE GENERALE Dare/Avere e una card/riga di 'QUADRATURA' che segnala in verde 'OK' se Totale Dare = Totale Avere (entro 0,01€ di tolleranza) o in rosso lo sbilancio con l'invito a verificare le registrazioni. È una pagina di sola lettura/reportistica pensata per il controllo interno (nessuna correzione automatica): l'utente può filtrare per tipo conto, cercare per codice/nome, mostrare il dettaglio dei singoli movimenti per conto, esportare in CSV e stampare.",
+  "bottoni_azioni": [
+    {
+      "etichetta": "🔄 Aggiorna",
+      "cosa_fa_al_click": "Richiama loadData() che rifà la fetch dei dati per l'anno e il flag dettaglio correnti.",
+      "endpoint_chiamato": "GET /api/contabilita-gestionale/bilancio-verifica?anno=&dettaglio=",
+      "logica_backend": "get_bilancio_verifica_completo(): ricostruisce da zero (nessuna cache) il quadro dare/avere aggregando in Python (non con MongoDB aggregation pipeline, ma find() + loop) più fonti per l'anno richiesto: 1) invoices (fatture ricevute, filtrate su data_documento/data_ricezione/anno che iniziano con l'anno) → alimentano conto costo (05.xx, scelto in base a keyword nella categoria_contabile: 'personale'/'stipend'→05.03.01, 'utenz'/'energia'→05.02.02, 'affitto'→05.02.01, 'manutenzione'→05.02.03, 'assicuraz'→05.02.04, 'consulenz'/'profession'→05.04.01, default 05.01.01), conto Debiti v/fornitori 02.01.01, conto IVA a credito 01.04.01 (se iva>0 e non nota credito); le note di credito TD04/TD08 invertono dare/avere. 2) corrispettivi → Ricavi 04.01.01 (AVERE), IVA a debito 02.03.01 (AVERE), Cassa 01.01.01 (DARE per il totale lordo). 3) prima_nota_cassa (esclusi i record con corrispettivo_id o source='corrispettivo' per non contare due volte) → Cassa 01.01.01, con gestione speciale 'versamento_banca' che genera un giroconto (Cassa AVERE, Banca 01.02.01 DARE). 4) prima_nota_banca → Banca 01.02.01 (entrata/incasso/accredito=DARE, uscita/pagamento/addebito/bonifico=AVERE). 5) prima_nota_salari → Costi personale 05.03.01 (DARE) e Debiti v/dipendenti 02.02.01 (AVERE). 6) cespiti (filtrati per anno_acquisto=anno) → Immobilizzazioni 01.05.01 (DARE, valore_acquisto), Fondo ammortamento 01.05.02 (AVERE) e Ammortamenti 05.05.01 costo (DARE, ammortamento_annuo). Alla fine filtra i conti con dare=avere=0 (esclusi dal risultato), calcola saldo=dare-avere per ciascun conto (saldo_dare se positivo, saldo_avere se negativo) e i totali generali.",
+      "formula_matematica": "Per ogni conto: saldo = dare − avere; saldo_dare = saldo se saldo>0 altrimenti 0; saldo_avere = |saldo| se saldo<0 altrimenti 0. Totali generali: totale_dare = Σ dare di tutti i conti; totale_avere = Σ avere di tutti i conti; totale_saldo_dare = Σ saldo_dare; totale_saldo_avere = Σ saldo_avere; sbilancio = totale_dare − totale_avere; quadratura = |sbilancio| < 0.01.",
+      "aggiornamento_ui": "Ricarica l'intera tabella (SummaryCards con Totale Dare/Avere/Saldo Dare/Saldo Avere/Quadratura, e la tabella conti raggruppati). Il pulsante è disabilitato durante il caricamento.",
+      "casi_errore": "In caso di errore, console.error('Errore BV:', err); i dati precedenti restano visualizzati o, se non ce n'erano, viene mostrato lo stato vuoto 'Nessun dato disponibile per l'anno {anno}'."
+    },
+    {
+      "etichetta": "⬇️ CSV",
+      "cosa_fa_al_click": "handleExportCSV(): costruisce lato client (senza chiamare il backend) un file CSV con intestazione 'Codice;Conto;Tipo;Dare;Avere;Saldo Dare;Saldo Avere', una riga per ogni conto in data.conti e una riga finale 'TOTALI' con i totali generali; crea un Blob con BOM UTF-8 (\\uFEFF) e lo scarica come bilancio-verifica-{anno}.csv tramite un link <a> temporaneo.",
+      "endpoint_chiamato": "n/a (elaborazione client-side, nessuna chiamata API — usa i dati già caricati in memoria dallo stato 'data')",
+      "logica_backend": "n/a",
+      "formula_matematica": "n/a (riusa i valori dare/avere/saldo_dare/saldo_avere già calcolati dal backend)",
+      "aggiornamento_ui": "Avvia il download del file nel browser, nessun cambiamento visivo nella pagina.",
+      "casi_errore": "Se data.conti non è disponibile (data è null), la funzione esce subito senza fare nulla (return anticipato); il pulsante è comunque disabled quando !data."
+    },
+    {
+      "etichetta": "🖨️ Stampa",
+      "cosa_fa_al_click": "handlePrint(): chiama window.print() nativo del browser.",
+      "endpoint_chiamato": "n/a",
+      "logica_backend": "n/a",
+      "formula_matematica": "n/a",
+      "aggiornamento_ui": "Apre la finestra di stampa del browser con il contenuto della pagina corrente.",
+      "casi_errore": "n/a"
+    },
+    {
+      "etichetta": "Checkbox 'Dettaglio movimenti'",
+      "cosa_fa_al_click": "Cambia lo stato 'dettaglio' (bool); essendo tra le dipendenze dell'useEffect, questo forza una nuova chiamata a loadData().",
+      "endpoint_chiamato": "GET /api/contabilita-gestionale/bilancio-verifica?anno=&dettaglio=true",
+      "logica_backend": "Con dettaglio=True, per ogni movimento su un conto (attualmente implementato SOLO per le fatture ricevute nel ramo invoices, vedi codice: 'if dettaglio: mov = {...}; conto[\"movimenti\"].append(mov)') viene salvata in memoria una entry {data, descrizione, dare, avere}; nel risultato finale ogni conto include 'movimenti' troncato ai primi 50 elementi (entry['movimenti'] = c['movimenti'][:50]). Gli altri rami dati (corrispettivi, prima nota cassa/banca/salari, cespiti) NON popolano l'array movimenti anche con dettaglio=True.",
+      "formula_matematica": "n/a",
+      "aggiornamento_ui": "Se dettaglio=True e il conto espanso ha movimenti, mostra una sotto-tabella con Data/Descrizione/Dare/Avere per ciascun movimento (max 50 per conto, dal backend).",
+      "casi_errore": "Nessun errore specifico; se un conto non ha l'array 'movimenti' popolato (perché la fonte dati non lo scrive), semplicemente non appare la sotto-tabella per quel conto anche con dettaglio attivo."
+    },
+    {
+      "etichetta": "Checkbox 'Colonne Saldo'",
+      "cosa_fa_al_click": "Toggle client-side dello stato showSaldi; nessuna chiamata API.",
+      "endpoint_chiamato": "n/a",
+      "logica_backend": "n/a",
+      "formula_matematica": "n/a",
+      "aggiornamento_ui": "Mostra/nasconde le colonne 'Saldo Dare' e 'Saldo Avere' nella tabella (sia nell'intestazione, nelle righe gruppo, nelle righe conto e nel footer totali).",
+      "casi_errore": "n/a"
+    },
+    {
+      "etichetta": "Campo ricerca 'Cerca per codice o nome conto...' e select 'Tutti i tipi / Attivo / Passivo / Ricavi / Costi'",
+      "cosa_fa_al_click": "Filtro client-side (useMemo contiFiltered) sui conti già caricati: confronta codice/nome (case-insensitive, substring) e il campo 'tipo' del conto.",
+      "endpoint_chiamato": "n/a",
+      "logica_backend": "n/a",
+      "formula_matematica": "n/a",
+      "aggiornamento_ui": "Ricalcola contiRaggruppati (raggruppamento per prefisso codice a 2 cifre) e ridisegna solo i gruppi/conti che passano il filtro.",
+      "casi_errore": "n/a"
+    },
+    {
+      "etichetta": "Espandi tutti / Comprimi tutti",
+      "cosa_fa_al_click": "expandAll()/collapseAll(): impostano expandedConti a un Set con tutti i codici gruppo o a un Set vuoto.",
+      "endpoint_chiamato": "n/a",
+      "logica_backend": "n/a",
+      "formula_matematica": "n/a",
+      "aggiornamento_ui": "Espande o comprime tutte le righe-gruppo della tabella mostrando/nascondendo i conti al loro interno.",
+      "casi_errore": "n/a"
+    },
+    {
+      "etichetta": "Click su riga-gruppo (es. '01 — Attività')",
+      "cosa_fa_al_click": "toggleExpand(codice): aggiunge/rimuove il prefisso dal Set expandedConti.",
+      "endpoint_chiamato": "n/a",
+      "logica_backend": "n/a",
+      "formula_matematica": "saldoGruppo (mostrato nella riga) = Σ dare dei conti del gruppo − Σ avere dei conti del gruppo",
+      "aggiornamento_ui": "Espande/comprime le righe conto sotto quel gruppo.",
+      "casi_errore": "n/a"
+    }
+  ],
+  "operazioni_di_registrazione": [
+    {
+      "nome": "Nessuna operazione di scrittura",
+      "sequenza_esatta": "Questa pagina è di sola lettura/reportistica. L'unico endpoint backend coinvolto (GET /api/contabilita-gestionale/bilancio-verifica) esegue solo find() in lettura su invoices, corrispettivi, prima_nota_cassa, prima_nota_banca, prima_nota_salari e cespiti, aggrega i risultati in memoria Python e li restituisce: non scrive, aggiorna o cancella nulla nel database. Non esistono pulsanti per 'correggere' uno sbilancio: se quadratura=false, la UI si limita a mostrare l'alert visivo con l'importo dello sbilancio e il testo 'Verificare le registrazioni', senza alcuna azione correttiva automatica o guidata disponibile in questa pagina.",
+      "collezioni_coinvolte": [],
+      "campi_scritti": {},
+      "effetti_collaterali": "Nessuno sul database. L'export CSV avviene interamente nel browser (Blob locale), non genera file lato server."
+    }
+  ],
+  "collegamenti_con_altre_pagine": [
+    "Piano dei Conti (tab 'piano-conti'): condivide la codifica dei conti (gruppi 01-05) ma NON la stessa fonte di calcolo saldi; qui i saldi sono ricostruiti indipendentemente in contabilita_gestionale.py, mentre il Piano dei Conti usa _calcola_saldi_piano_conti in piano_conti.py — i due possono quindi mostrare importi leggermente diversi per lo stesso conto a causa di filtri/logiche differenti (es. qui il costo va sempre su un conto 05.xx scelto per keyword sulla 'categoria_contabile' della fattura, mentre nel Piano dei Conti la sotto-categorizzazione usa il dizionario_articoli riga per riga).",
+    "Bilancio (tab 'bilancio'): il Bilancio di Verifica è il dettaglio conto-per-conto che sottostà ai totali aggregati (Ricavi, Costi, Attivo, Passivo) mostrati nel tab Bilancio, anche se calcolati con query separate.",
+    "Fatture Ricevute (invoices), Corrispettivi, Prima Nota Cassa/Banca/Salari, Cespiti: fonti dati dirette da cui il bilancio di verifica viene ricostruito ad ogni richiesta."
+  ],
+  "popup_e_modali_presenti": [
+    "Nessun modal: la sotto-tabella dei movimenti per conto (visibile solo quando il checkbox 'Dettaglio movimenti' è attivo E il gruppo/conto è espanso) è inline nella tabella principale, non un popup separato.",
+    "La stampa (pulsante Stampa) usa il dialog di stampa nativo del browser (window.print()), non un componente React."
+  ]
+}
