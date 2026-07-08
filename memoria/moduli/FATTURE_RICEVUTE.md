@@ -75,11 +75,15 @@ in `app/routers/invoices/fatture_upload.py` — non ci sono più percorsi di imp
      generato un nuovo prodotto — prima esistevano solo alert granulari per singolo prodotto
      (`MAG_MATCH_DUBBIO`), la fattura stessa non risultava mai segnalata come "ha righe da
      verificare".
-   Restano morti `FAT_DUPLICATA` (esiste già `deduplica.py::cerca_duplicato_fattura()`, ma il
+   ✔ RISOLTO anche `FAT_TIPO_AMBIGUO`: `tipo_doc_map` (18 codici TD01-TD27 standard
+   FatturaPA) era definito solo dentro `parse_fattura_xml()`, non riusabile — estratto a
+   livello di modulo come `TIPO_DOC_MAP` in `fattura_elettronica_parser.py` (nessun cambio
+   di comportamento del parser, stesso identico dizionario). `process_fattura_to_db()` ora
+   genera l'alert quando `tipo_documento` è valorizzato ma non è una chiave nota — tipico
+   di XML non standard o codici TD futuri non ancora mappati.
+   Resta morto `FAT_DUPLICATA`: esiste già `deduplica.py::cerca_duplicato_fattura()`, ma il
    modulo non è importato da nessuna parte — va agganciato con attenzione al flusso 409 di
-   import esistente, non affrontato stanotte per rischio di impattare un percorso critico) e
-   `FAT_TIPO_AMBIGUO` (nessuna validazione esiste ancora su `tipo_documento`, servirebbe un
-   nuovo controllo contro l'enum noto in fase di parsing).
+   import esistente, non affrontato per rischio di impattare un percorso critico.
 
 ## Bug/incoerenze note (da correggere)
 

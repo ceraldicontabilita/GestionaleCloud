@@ -11,6 +11,31 @@ import re
 
 logger = logging.getLogger(__name__)
 
+# Codici TipoDocumento noti dello standard FatturaPA (tabella Agenzia Entrate).
+# Modulo-level (non solo dentro parse_fattura_xml) così può essere riusato per
+# rilevare un tipo_documento non riconosciuto senza duplicare l'elenco altrove
+# (es. app/routers/invoices/fatture_upload.py per l'alert FAT_TIPO_AMBIGUO).
+TIPO_DOC_MAP = {
+    "TD01": "Fattura",
+    "TD02": "Acconto/Anticipo su fattura",
+    "TD03": "Acconto/Anticipo su parcella",
+    "TD04": "Nota di Credito",
+    "TD05": "Nota di Debito",
+    "TD06": "Parcella",
+    "TD16": "Integrazione fattura reverse charge interno",
+    "TD17": "Integrazione/autofattura per acquisto servizi dall'estero",
+    "TD18": "Integrazione per acquisto di beni intracomunitari",
+    "TD19": "Integrazione/autofattura per acquisto di beni ex art.17 c.2 DPR 633/72",
+    "TD20": "Autofattura per regolarizzazione e integrazione delle fatture",
+    "TD21": "Autofattura per splafonamento",
+    "TD22": "Estrazione beni da Deposito IVA",
+    "TD23": "Estrazione beni da Deposito IVA con versamento dell'IVA",
+    "TD24": "Fattura differita di cui all'art.21, comma 4, lett. a)",
+    "TD25": "Fattura differita di cui all'art.21, comma 4, terzo periodo lett. b)",
+    "TD26": "Cessione di beni ammortizzabili e per passaggi interni",
+    "TD27": "Fattura per autoconsumo o per cessioni gratuite senza rivalsa",
+}
+
 
 def clean_xml_namespaces(xml_content: str) -> str:
     """
@@ -332,33 +357,11 @@ def parse_fattura_xml(xml_content: str) -> Dict[str, Any]:
                     "size_kb": round(len(attachment_data) * 3 / 4 / 1024, 2)  # Stima dimensione
                 })
         
-        # Mappa tipo documento
-        tipo_doc_map = {
-            "TD01": "Fattura",
-            "TD02": "Acconto/Anticipo su fattura",
-            "TD03": "Acconto/Anticipo su parcella",
-            "TD04": "Nota di Credito",
-            "TD05": "Nota di Debito",
-            "TD06": "Parcella",
-            "TD16": "Integrazione fattura reverse charge interno",
-            "TD17": "Integrazione/autofattura per acquisto servizi dall'estero",
-            "TD18": "Integrazione per acquisto di beni intracomunitari",
-            "TD19": "Integrazione/autofattura per acquisto di beni ex art.17 c.2 DPR 633/72",
-            "TD20": "Autofattura per regolarizzazione e integrazione delle fatture",
-            "TD21": "Autofattura per splafonamento",
-            "TD22": "Estrazione beni da Deposito IVA",
-            "TD23": "Estrazione beni da Deposito IVA con versamento dell'IVA",
-            "TD24": "Fattura differita di cui all'art.21, comma 4, lett. a)",
-            "TD25": "Fattura differita di cui all'art.21, comma 4, terzo periodo lett. b)",
-            "TD26": "Cessione di beni ammortizzabili e per passaggi interni",
-            "TD27": "Fattura per autoconsumo o per cessioni gratuite senza rivalsa",
-        }
-        
         result = {
             "invoice_number": numero_fattura,
             "invoice_date": data_fattura,
             "tipo_documento": tipo_documento,
-            "tipo_documento_desc": tipo_doc_map.get(tipo_documento, tipo_documento),
+            "tipo_documento_desc": TIPO_DOC_MAP.get(tipo_documento, tipo_documento),
             "divisa": divisa,
             "total_amount": total_amount,
             "imponibile": imponibile_totale,

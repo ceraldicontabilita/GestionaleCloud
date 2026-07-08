@@ -23,7 +23,7 @@ import re
 from pymongo.errors import DuplicateKeyError
 
 from app.database import Database, Collections
-from app.parsers.fattura_elettronica_parser import parse_fattura_xml
+from app.parsers.fattura_elettronica_parser import parse_fattura_xml, TIPO_DOC_MAP
 from app.services.xml_invoice_processor import extract_xml_from_p7m, is_p7m_content
 from app.utils.error_handler import handle_errors
 
@@ -491,6 +491,25 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
                 )
             except Exception:
                 logger.exception(f"Errore generazione alert FAT_FORN_NON_TROVATO per {invoice_key}")
+
+        # FAT_TIPO_AMBIGUO era definito ma mai generato: nessuna validazione
+        # esisteva sul campo TipoDocumento estratto dall'XML — un codice TDxx
+        # non nella tabella standard FatturaPA (TIPO_DOC_MAP in
+        # fattura_elettronica_parser.py) passava silenziosamente, con
+        # tipo_documento_desc uguale al codice grezzo invece di una
+        # descrizione leggibile. Additivo, non blocca il salvataggio.
+        tipo_doc = parsed.get("tipo_documento") or ""
+        if tipo_doc and tipo_doc not in TIPO_DOC_MAP:
+            try:
+                from app.services.alert_engine import genera_alert
+                await genera_alert(
+                    "FAT_TIPO_AMBIGUO", invoice_key, Collections.INVOICES,
+                    f"Fattura {parsed.get('invoice_number', '?')}: TipoDocumento '{tipo_doc}' "
+                    f"non riconosciuto tra i codici standard FatturaPA",
+                    db,
+                )
+            except Exception:
+                logger.exception(f"Errore generazione alert FAT_TIPO_AMBIGUO per {invoice_key}")
 
         # Calcola data scadenza
         data_fattura_str = parsed.get("invoice_date", "")
