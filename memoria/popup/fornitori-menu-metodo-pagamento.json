@@ -1,0 +1,30 @@
+{
+  "nome_popup": "Menu a tendina (popover) 'Metodo Pagamento' sul badge della card fornitore",
+  "file_sorgente": "frontend/src/pages/Fornitori.jsx (componente SupplierCard: stato e handler righe 940-1004; rendering del menu righe 1452-1531, in un React Portal)",
+  "pagine_da_cui_si_apre": ["Fornitori (Fornitori.jsx)"],
+  "come_si_apre": "Click sul badge del metodo di pagamento mostrato su ogni SupplierCard (es. 'Cassa'/'Banca'/'Misto'/'⚠️ Da impostare'). Il click invoca openMenu(): calcola la posizione con getBoundingClientRect() del bottone badge (buttonRef), stimando un'altezza menu di 280px; se lo spazio sotto il badge (window.innerHeight - rect.bottom) è insufficiente, posiziona il menu SOPRA il badge (top = rect.top - menuHeight - 4), altrimenti SOTTO (top = rect.bottom + 4); left = rect.right - 170. Poi setShowMetodoMenu(true). È un vero popup galleggiante (position:fixed via Portal), non un vero 'modale' a tutto schermo: non ha overlay scuro visibile, solo un overlay trasparente invisibile usato per intercettare i click fuori.",
+  "scopo": "Permettere di cambiare rapidamente il metodo di pagamento abituale di un fornitore direttamente dalla card, senza dover aprire il modale completo di modifica (SupplierModal). È la scorciatoia più veloce per correggere il metodo dopo aver importato molte fatture da fornitori nuovi.",
+  "dati_mostrati": "Le 3 opzioni fisse cassa/banca/misto (da METODI_PAGAMENTO, con colore e pallino identificativo) più un check ✓ sull'opzione attualmente selezionata (metodoKey, derivato da metodoCanonico(supplier) che traduce anche i valori legacy contanti/assegno/bonifico/rid/carta). Nessuna nuova fetch: i dati sono statici/derivati dalla prop supplier già in memoria.",
+  "campi_e_bottoni": [
+    {
+      "elemento": "Overlay trasparente a tutto schermo (position:fixed, background:transparent, zIndex:99998)",
+      "cosa_fa": "onClick={() => setShowMetodoMenu(false)}: chiude il menu se si clicca in un punto qualsiasi della pagina fuori dal menu stesso (il menu vero e proprio ha zIndex maggiore, 99999, quindi i click al suo interno non raggiungono questo overlay).",
+      "endpoint_chiamato": "nessuno",
+      "validazioni": "n/d"
+    },
+    {
+      "elemento": "Voce 'Cassa' / 'Banca' / 'Misto' (bottoni nel menu)",
+      "cosa_fa": "onClick={() => handleMetodoChange(key)}: se il valore selezionato è uguale a quello già attivo (metodoKey), chiude semplicemente il menu senza chiamare l'API. Altrimenti imposta updating=true, chiude il menu (setShowMetodoMenu(false)) e chiama onChangeMetodo(supplier.id, newMetodo) — passato dal genitore come handleChangeMetodo.",
+      "endpoint_chiamato": "PUT /api/suppliers/{supplierId} con body {metodo_pagamento: newMetodo} — STESSO endpoint generico update_supplier usato dal SupplierModal completo (non l'endpoint dedicato PUT /api/suppliers/{id}/metodo-pagamento, che esiste nel backend ma non è mai chiamato da questa pagina)",
+      "validazioni": "Il backend valida metodo_pagamento contro il dizionario PAYMENT_METHODS (400 se non valido — non applicabile in pratica dato che il menu propone solo 3 valori sempre validi)"
+    }
+  ],
+  "cosa_succede_alla_conferma": "handleChangeMetodo (nel componente genitore Fornitori.jsx) chiama PUT /api/suppliers/{supplierId} {metodo_pagamento: newMetodo}. Il backend (update_supplier) aggiorna il campo metodo_pagamento, imposta metodo_pagamento_dal alla data odierna, fa un $push append-only su storico_metodi_pagamento ({metodo, dal, registrato_il}), risolve automaticamente eventuali alert 'fornitore_senza_metodo_pagamento' collegati alla stessa P.IVA del fornitore, e pubblica un evento 'fornitore.aggiornato' sul bus (best-effort, per la Learning Machine — nessun impatto contabile). IMPORTANTE: nessuna fattura esistente del fornitore viene ri-classificata o ri-registrata in Prima Nota per effetto di questo cambio — il 'pagamento certo' automatico è stato rimosso dal sistema, quindi questo resta solo un suggerimento informativo per le fatture future. Dopo la risposta, il frontend applica un aggiornamento OTTIMISTICO: setSuppliers(prev => prev.map(...)) aggiorna subito lo stato locale della card senza attendere un reloadData() completo.",
+  "come_si_chiude": [
+    "Selezione di una voce (Cassa/Banca/Misto) — il menu si chiude PRIMA che la chiamata PUT sia completata (setShowMetodoMenu(false) viene eseguito subito dopo il click, non nel .then/finally)",
+    "Click sull'overlay trasparente fuori dal menu",
+    "Nessuna gestione esplicita del tasto ESC nel codice",
+    "Nessun bottone 'Annulla' esplicito dentro il menu stesso: chiudere senza scegliere richiede il click fuori"
+  ],
+  "effetto_su_pagina_sottostante": "Se la PUT fallisce, il codice mostra alert('Errore aggiornamento metodo: ' + dettaglio) ma NON esegue alcun rollback esplicito dell'update ottimistico già applicato in caso di successo precedente — comportamento verificato nel codice: dato che l'update ottimistico avviene solo dentro il .then implicito (dopo l'await riuscito), in caso di errore lo stato locale semplicemente non viene toccato, quindi la card resta con il valore precedente finché non si ricarica manualmente la pagina o si preme 'Aggiorna'. Nessun reloadData() completo viene comunque richiamato in nessuno dei due casi (successo o errore)."
+}
