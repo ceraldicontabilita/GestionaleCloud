@@ -4,8 +4,9 @@ import api from '../api';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
-import { formatEuro, formatDateIT, STYLES, COLORS, button, badge, useIsMobile } from '../lib/utils';
+import { formatEuro, formatDateIT, COLORS, SHADOWS, BORDER_RADIUS, useIsMobile } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
+import { Button, Badge, Card, Input, Select, StatCard, Table, TableWrap, Th, Td } from '../components/ds';
 
 // Funzione per formattare valuta come stringa pura (per PDF)
 const formatEuroStr = val => {
@@ -885,8 +886,8 @@ export default function Commercialista() {
       subtitle="Genera e invia documenti PDF al commercialista"
     >
       <div style={{ maxWidth: 1400, margin: '0 auto' }}>
-        <h1 style={{ marginBottom: 5, color: '#1e3a5f' }}>👩‍💼 Area Commercialista</h1>
-        <p style={{ color: '#666', marginBottom: 25 }}>
+        <h1 style={{ marginBottom: 5, color: COLORS.primaryLight }}>👩‍💼 Area Commercialista</h1>
+        <p style={{ color: COLORS.textMuted, marginBottom: 25 }}>
           Genera e invia documenti PDF al commercialista via email
         </p>
 
@@ -894,15 +895,15 @@ export default function Commercialista() {
         {alertStatus?.show_alert && (
           <div
             style={{
-              background: '#b45309',
+              background: COLORS.warning,
               color: 'white',
               padding: 20,
-              borderRadius: 12,
+              borderRadius: BORDER_RADIUS.lg,
               marginBottom: 25,
               display: 'flex',
               alignItems: 'center',
               gap: 15,
-              boxShadow: '0 4px 15px rgba(255, 152, 0, 0.3)',
+              boxShadow: SHADOWS.md,
             }}
           >
             <span style={{ fontSize: 32 }}>⚠️</span>
@@ -912,39 +913,29 @@ export default function Commercialista() {
                 Scadenza: {formatDate(alertStatus.deadline)}
               </p>
             </div>
-            <button
+            <Button
+              variant="secondary"
               onClick={() => {
                 setAnno(alertStatus.anno_pendente);
                 setSelectedMonth(alertStatus.mese_pendente - 1);
               }}
-              style={{
-                padding: '10px 20px',
-                background: 'white',
-                color: '#f57c00',
-                border: 'none',
-                borderRadius: 8,
-                fontWeight: 'bold',
-                cursor: 'pointer',
-              }}
+              style={{ background: COLORS.card, color: COLORS.warning }}
             >
               Vai al mese
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="ghost"
               onClick={handleSegnaComeInviata}
               disabled={segnandoInviata}
               style={{
-                padding: '10px 20px',
                 background: 'rgba(255,255,255,0.2)',
                 color: 'white',
                 border: '2px solid rgba(255,255,255,0.5)',
-                borderRadius: 8,
-                fontWeight: 'bold',
-                cursor: segnandoInviata ? 'wait' : 'pointer',
                 fontSize: 13,
               }}
             >
               {segnandoInviata ? '...' : 'Segna come inviata'}
-            </button>
+            </Button>
           </div>
         )}
 
@@ -953,11 +944,11 @@ export default function Commercialista() {
           <div
             style={{
               padding: 15,
-              borderRadius: 8,
+              borderRadius: BORDER_RADIUS.md,
               marginBottom: 20,
-              background: message.type === 'error' ? '#ffebee' : '#e8f5e9',
-              color: message.type === 'error' ? '#c62828' : '#2e7d32',
-              border: `1px solid ${message.type === 'error' ? '#ffcdd2' : '#c8e6c9'}`,
+              background: message.type === 'error' ? COLORS.dangerLight : COLORS.successLight,
+              color: message.type === 'error' ? COLORS.danger : COLORS.success,
+              border: `1px solid ${message.type === 'error' ? COLORS.danger : COLORS.success}`,
             }}
           >
             {message.text}
@@ -965,154 +956,80 @@ export default function Commercialista() {
         )}
 
         {/* Config Card */}
-        <div
-          style={{
-            background: 'white',
-            borderRadius: 12,
-            padding: 20,
-            marginBottom: 25,
-            boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-          }}
-        >
-          <h3 style={{ margin: '0 0 15px 0', color: '#1e3a5f' }}>📧 Configurazione Email</h3>
+        <Card title="📧 Configurazione Email" style={{ marginBottom: 25 }}>
           <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'center' }}>
             <div>
-              <label style={{ display: 'block', fontSize: 12, color: '#666', marginBottom: 4 }}>
+              <label style={{ display: 'block', fontSize: 12, color: COLORS.textMuted, marginBottom: 4 }}>
                 Email Commercialista
               </label>
-              <input
+              <Input
                 type="email"
                 value={config.email}
                 onChange={e => setConfig({ ...config, email: e.target.value })}
-                style={{
-                  padding: '10px 15px',
-                  borderRadius: 8,
-                  border: '1px solid #ddd',
-                  width: 280,
-                  fontSize: 14,
-                }}
+                style={{ width: 280 }}
               />
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: 12, color: '#666', marginBottom: 4 }}>
+              <label style={{ display: 'block', fontSize: 12, color: COLORS.textMuted, marginBottom: 4 }}>
                 Nome Commercialista
               </label>
-              <input
+              <Input
                 type="text"
                 value={config.nome}
                 onChange={e => setConfig({ ...config, nome: e.target.value })}
-                style={{
-                  padding: '10px 15px',
-                  borderRadius: 8,
-                  border: '1px solid #ddd',
-                  width: 200,
-                  fontSize: 14,
-                }}
+                style={{ width: 200 }}
               />
             </div>
-            <div
-              style={{
-                padding: '8px 15px',
-                borderRadius: 8,
-                background: config.smtp_configured ? '#e8f5e9' : '#ffebee',
-                color: config.smtp_configured ? '#2e7d32' : '#c62828',
-                fontSize: 13,
-              }}
-            >
+            <Badge variant={config.smtp_configured ? 'success' : 'danger'} style={{ padding: '8px 15px', fontSize: 13, textTransform: 'none' }}>
               {config.smtp_configured ? '✅ SMTP Configurato' : '❌ SMTP Non Configurato'}
-            </div>
-            <button
+            </Badge>
+            <Button
+              variant="primary"
               onClick={handleSaveConfig}
               disabled={savingConfig}
               data-testid="save-commercialista-config"
-              style={{
-                padding: '10px 20px',
-                borderRadius: 8,
-                border: 'none',
-                background: savingConfig ? '#9ca3af' : '#1e3a5f',
-                color: 'white',
-                fontWeight: 600,
-                fontSize: 14,
-                cursor: savingConfig ? 'not-allowed' : 'pointer',
-                alignSelf: 'flex-end',
-              }}
+              style={{ alignSelf: 'flex-end' }}
             >
               {savingConfig ? 'Salvataggio...' : '💾 Salva'}
-            </button>
+            </Button>
           </div>
-        </div>
+        </Card>
 
         {/* Period Selector */}
-        <div
-          style={{
-            background: 'white',
-            borderRadius: 12,
-            padding: 20,
-            marginBottom: 25,
-            boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-          }}
-        >
-          <h3 style={{ margin: '0 0 15px 0', color: '#1e3a5f' }}>📅 Seleziona Periodo</h3>
+        <Card title="📅 Seleziona Periodo" style={{ marginBottom: 25 }}>
           <div style={{ display: 'flex', gap: 15, flexWrap: 'wrap', alignItems: 'center' }}>
-            <select
+            <Select
               value={selectedMonth}
               onChange={e => setSelectedMonth(parseInt(e.target.value))}
-              style={{
-                padding: '10px 15px',
-                borderRadius: 8,
-                border: '1px solid #ddd',
-                fontSize: 14,
-                minWidth: 150,
-              }}
+              style={{ minWidth: 150 }}
             >
               {MESI.slice(1).map((m, idx) => (
                 <option key={idx} value={idx}>
                   {m}
                 </option>
               ))}
-            </select>
-            <span
-              style={{
-                padding: '10px 15px',
-                borderRadius: 8,
-                background: '#e3f2fd',
-                fontSize: 14,
-                fontWeight: 'bold',
-                color: '#1565c0',
-              }}
-            >
+            </Select>
+            <Badge variant="info" style={{ padding: '10px 15px', fontSize: 14, textTransform: 'none' }}>
               {selectedYear}
-            </span>
+            </Badge>
 
             {/* Export Excel Button */}
-            <button
+            <Button
+              variant="success"
               onClick={() => {
                 const url = `/api/commercialista/export-excel/${selectedYear}/${selectedMonth + 1}`;
                 window.open(url, '_blank');
               }}
               data-testid="export-excel-btn"
-              style={{
-                marginLeft: 'auto',
-                padding: '10px 20px',
-                background: '#15803d',
-                color: 'white',
-                border: 'none',
-                borderRadius: 8,
-                cursor: 'pointer',
-                fontWeight: 'bold',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                fontSize: 14,
-              }}
+              style={{ marginLeft: 'auto' }}
             >
               📊 Export Excel Commercialista
-            </button>
+            </Button>
           </div>
-        </div>
+        </Card>
 
         {loading ? (
-          <div style={{ textAlign: 'center', padding: 40 }}>Caricamento...</div>
+          <div style={{ textAlign: 'center', padding: 40, color: COLORS.textMuted }}>Caricamento...</div>
         ) : (
           <div
             style={{
@@ -1124,15 +1041,15 @@ export default function Commercialista() {
             {/* Prima Nota Cassa Card */}
             <div
               style={{
-                background: 'white',
-                borderRadius: 12,
+                background: COLORS.card,
+                borderRadius: BORDER_RADIUS.md,
                 overflow: 'hidden',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                boxShadow: SHADOWS.sm,
               }}
             >
               <div
                 style={{
-                  background: '#0f2744',
+                  background: COLORS.primary,
                   color: 'white',
                   padding: 20,
                 }}
@@ -1151,98 +1068,44 @@ export default function Commercialista() {
                     marginBottom: 20,
                   }}
                 >
-                  <div
-                    style={{
-                      background: '#e8f5e9',
-                      padding: 15,
-                      borderRadius: 8,
-                      textAlign: 'center',
-                    }}
-                  >
-                    <div style={{ fontSize: 12, color: '#666' }}>Entrate</div>
-                    <div style={{ fontSize: 18, fontWeight: 'bold', color: '#4caf50' }}>
-                      {formatEuro(primaNotaData?.totale_entrate)}
-                    </div>
-                  </div>
-                  <div
-                    style={{
-                      background: '#ffebee',
-                      padding: 15,
-                      borderRadius: 8,
-                      textAlign: 'center',
-                    }}
-                  >
-                    <div style={{ fontSize: 12, color: '#666' }}>Uscite</div>
-                    <div style={{ fontSize: 18, fontWeight: 'bold', color: '#f44336' }}>
-                      {formatEuro(primaNotaData?.totale_uscite)}
-                    </div>
-                  </div>
+                  <StatCard
+                    label="Entrate"
+                    value={formatEuro(primaNotaData?.totale_entrate)}
+                    accent="success"
+                    style={{ textAlign: 'center' }}
+                  />
+                  <StatCard
+                    label="Uscite"
+                    value={formatEuro(primaNotaData?.totale_uscite)}
+                    accent="danger"
+                    style={{ textAlign: 'center' }}
+                  />
                 </div>
-                <div
-                  style={{
-                    background: '#f5f5f5',
-                    padding: 15,
-                    borderRadius: 8,
-                    textAlign: 'center',
-                    marginBottom: 20,
-                  }}
-                >
-                  <div style={{ fontSize: 12, color: '#666' }}>Saldo</div>
-                  <div
-                    style={{
-                      fontSize: 24,
-                      fontWeight: 'bold',
-                      color: (primaNotaData?.saldo || 0) >= 0 ? '#4caf50' : '#f44336',
-                    }}
-                  >
-                    {formatEuro(primaNotaData?.saldo)}
-                  </div>
-                  <div style={{ fontSize: 12, color: '#999', marginTop: 5 }}>
-                    {primaNotaData?.totale_movimenti || 0} movimenti
-                  </div>
-                </div>
+                <StatCard
+                  label="Saldo"
+                  value={formatEuro(primaNotaData?.saldo)}
+                  subtext={`${primaNotaData?.totale_movimenti || 0} movimenti`}
+                  accent={(primaNotaData?.saldo || 0) >= 0 ? 'success' : 'danger'}
+                  style={{ textAlign: 'center', marginBottom: 20 }}
+                />
                 <div style={{ display: 'flex', gap: 10 }}>
-                  <button
+                  <Button
+                    variant="secondary"
                     onClick={() => downloadPDF('prima_nota')}
                     data-testid="download-prima-nota-pdf"
-                    style={{
-                      flex: 1,
-                      padding: '12px',
-                      background: '#f5f5f5',
-                      color: '#333',
-                      border: 'none',
-                      borderRadius: 8,
-                      cursor: 'pointer',
-                      fontWeight: 'bold',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 8,
-                    }}
+                    style={{ flex: 1, padding: '12px' }}
                   >
                     📥 Scarica PDF
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="info"
                     onClick={() => sendEmail('prima_nota')}
                     disabled={sending === 'prima_nota' || !config.smtp_configured}
                     data-testid="send-prima-nota-email"
-                    style={{
-                      flex: 1,
-                      padding: '12px',
-                      background: sending === 'prima_nota' ? '#ccc' : '#2563eb',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: 8,
-                      cursor: sending === 'prima_nota' ? 'wait' : 'pointer',
-                      fontWeight: 'bold',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 8,
-                    }}
+                    style={{ flex: 1, padding: '12px' }}
                   >
                     {sending === 'prima_nota' ? '⏳ Invio...' : '📧 Invia Email'}
-                  </button>
+                  </Button>
                 </div>
               </div>
             </div>
@@ -1250,15 +1113,15 @@ export default function Commercialista() {
             {/* Fatture Cassa Card */}
             <div
               style={{
-                background: 'white',
-                borderRadius: 12,
+                background: COLORS.card,
+                borderRadius: BORDER_RADIUS.md,
                 overflow: 'hidden',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                boxShadow: SHADOWS.sm,
               }}
             >
               <div
                 style={{
-                  background: '#b45309',
+                  background: COLORS.warning,
                   color: 'white',
                   padding: 20,
                 }}
@@ -1269,65 +1132,31 @@ export default function Commercialista() {
                 </p>
               </div>
               <div style={{ padding: 20 }}>
-                <div
-                  style={{
-                    background: '#fff3e0',
-                    padding: 20,
-                    borderRadius: 8,
-                    textAlign: 'center',
-                    marginBottom: 20,
-                  }}
-                >
-                  <div style={{ fontSize: 12, color: '#666' }}>Totale Fatture</div>
-                  <div style={{ fontSize: 28, fontWeight: 'bold', color: '#f57c00' }}>
-                    {formatEuro(fattureCassaData?.totale_importo)}
-                  </div>
-                  <div style={{ fontSize: 12, color: '#999', marginTop: 5 }}>
-                    {fattureCassaData?.totale_fatture || 0} fatture
-                  </div>
-                </div>
+                <StatCard
+                  label="Totale Fatture"
+                  value={formatEuro(fattureCassaData?.totale_importo)}
+                  subtext={`${fattureCassaData?.totale_fatture || 0} fatture`}
+                  accent="warning"
+                  style={{ textAlign: 'center', marginBottom: 20, padding: '20px 18px' }}
+                />
                 <div style={{ display: 'flex', gap: 10 }}>
-                  <button
+                  <Button
+                    variant="secondary"
                     onClick={() => downloadPDF('fatture_cassa')}
                     data-testid="download-fatture-cassa-pdf"
-                    style={{
-                      flex: 1,
-                      padding: '12px',
-                      background: '#f5f5f5',
-                      color: '#333',
-                      border: 'none',
-                      borderRadius: 8,
-                      cursor: 'pointer',
-                      fontWeight: 'bold',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 8,
-                    }}
+                    style={{ flex: 1, padding: '12px' }}
                   >
                     📥 Scarica PDF
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="warning"
                     onClick={() => sendEmail('fatture_cassa')}
                     disabled={sending === 'fatture_cassa' || !config.smtp_configured}
                     data-testid="send-fatture-cassa-email"
-                    style={{
-                      flex: 1,
-                      padding: '12px',
-                      background: sending === 'fatture_cassa' ? '#ccc' : '#f57c00',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: 8,
-                      cursor: sending === 'fatture_cassa' ? 'wait' : 'pointer',
-                      fontWeight: 'bold',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 8,
-                    }}
+                    style={{ flex: 1, padding: '12px' }}
                   >
                     {sending === 'fatture_cassa' ? '⏳ Invio...' : '📧 Invia Email'}
-                  </button>
+                  </Button>
                 </div>
               </div>
             </div>
@@ -1335,16 +1164,16 @@ export default function Commercialista() {
             {/* Carnet Assegni Card */}
             <div
               style={{
-                background: 'white',
-                borderRadius: 12,
+                background: COLORS.card,
+                borderRadius: BORDER_RADIUS.md,
                 overflow: 'hidden',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                boxShadow: SHADOWS.sm,
                 gridColumn: 'span 1',
               }}
             >
               <div
                 style={{
-                  background: '#15803d',
+                  background: COLORS.success,
                   color: 'white',
                   padding: 20,
                 }}
@@ -1356,23 +1185,16 @@ export default function Commercialista() {
               </div>
               <div style={{ padding: 20 }}>
                 {/* Barra di Ricerca */}
-                <input
+                <Input
                   type="text"
                   placeholder="🔍 Cerca carnet, beneficiario, importo..."
                   value={carnetSearch}
                   onChange={e => setCarnetSearch(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '12px',
-                    borderRadius: 8,
-                    border: '1px solid #ddd',
-                    marginBottom: 15,
-                    fontSize: 14,
-                  }}
+                  style={{ marginBottom: 15 }}
                 />
 
                 {carnets.length === 0 ? (
-                  <div style={{ textAlign: 'center', color: '#666', padding: 20 }}>
+                  <div style={{ textAlign: 'center', color: COLORS.textMuted, padding: 20 }}>
                     Nessun carnet disponibile
                   </div>
                 ) : (
@@ -1382,8 +1204,8 @@ export default function Commercialista() {
                       style={{
                         maxHeight: 250,
                         overflowY: 'auto',
-                        border: '1px solid #e5e7eb',
-                        borderRadius: 8,
+                        border: `1px solid ${COLORS.border}`,
+                        borderRadius: BORDER_RADIUS.md,
                         marginBottom: 15,
                       }}
                     >
@@ -1435,9 +1257,9 @@ export default function Commercialista() {
                               display: 'flex',
                               flexDirection: 'column',
                               padding: '12px 15px',
-                              borderBottom: '1px solid #f3f4f6',
+                              borderBottom: `1px solid ${COLORS.gray[100]}`,
                               cursor: 'pointer',
-                              background: selectedCarnets.includes(c.id) ? '#e8f5e9' : 'white',
+                              background: selectedCarnets.includes(c.id) ? COLORS.successLight : COLORS.card,
                               transition: 'background 0.2s',
                             }}
                           >
@@ -1457,10 +1279,10 @@ export default function Commercialista() {
                                 style={{ marginRight: 12, width: 18, height: 18 }}
                               />
                               <div style={{ flex: 1 }}>
-                                <div style={{ fontWeight: 'bold', color: '#1e293b' }}>
+                                <div style={{ fontWeight: 'bold', color: COLORS.gray[800] }}>
                                   Carnet {c.id}
                                 </div>
-                                <div style={{ fontSize: 12, color: '#64748b' }}>
+                                <div style={{ fontSize: 12, color: COLORS.textMuted }}>
                                   {c?.assegni?.length} assegni • {formatEuro(c.totale)}
                                   {assegniMatch.length > 0 &&
                                     ` • ${assegniMatch.length} match`}
@@ -1474,9 +1296,9 @@ export default function Commercialista() {
                                   marginTop: 8,
                                   marginLeft: 30,
                                   fontSize: 12,
-                                  background: '#fffbeb',
-                                  border: '1px solid #fde68a',
-                                  borderRadius: 6,
+                                  background: COLORS.warningLight,
+                                  border: `1px solid ${COLORS.warning}`,
+                                  borderRadius: BORDER_RADIUS.sm,
                                   padding: 8,
                                 }}
                               >
@@ -1487,51 +1309,41 @@ export default function Commercialista() {
                                       padding: '4px 0',
                                       borderBottom:
                                         i < assegniMatch.length - 1
-                                          ? '1px dashed #f3d97d'
+                                          ? `1px dashed ${COLORS.warning}`
                                           : 'none',
                                     }}
                                   >
                                     <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>
                                       N° {a.numero || '-'}
                                     </span>{' '}
-                                    <span style={{ color: '#b45309' }}>
+                                    <span style={{ color: COLORS.warning }}>
                                       {formatEuro(a.importo)}
                                     </span>
                                     {a.beneficiario && (
-                                      <span style={{ color: '#374151' }}>
+                                      <span style={{ color: COLORS.gray[700] }}>
                                         {' '}
                                         · {a.beneficiario}
                                       </span>
                                     )}
                                     {a.numero_fattura && (
-                                      <span style={{ color: '#6b7280' }}>
+                                      <span style={{ color: COLORS.textMuted }}>
                                         {' '}
                                         · fatt. {a.numero_fattura}
                                       </span>
                                     )}
                                     {a.stato && (
-                                      <span
-                                        style={{
-                                          marginLeft: 6,
-                                          padding: '1px 6px',
-                                          borderRadius: 4,
-                                          fontSize: 10,
-                                          background:
-                                            a.stato === 'incassato'
-                                              ? '#d1fae5'
-                                              : a.stato === 'emesso'
-                                                ? '#dbeafe'
-                                                : '#fee2e2',
-                                          color:
-                                            a.stato === 'incassato'
-                                              ? '#065f46'
-                                              : a.stato === 'emesso'
-                                                ? '#1e40af'
-                                                : '#991b1b',
-                                        }}
+                                      <Badge
+                                        variant={
+                                          a.stato === 'incassato'
+                                            ? 'success'
+                                            : a.stato === 'emesso'
+                                              ? 'info'
+                                              : 'danger'
+                                        }
+                                        style={{ marginLeft: 6, padding: '1px 6px', fontSize: 10 }}
                                       >
                                         {a.stato}
-                                      </span>
+                                      </Badge>
                                     )}
                                   </div>
                                 ))}
@@ -1546,9 +1358,9 @@ export default function Commercialista() {
                     {selectedCarnets.length > 0 && (
                       <div
                         style={{
-                          background: '#e8f5e9',
+                          background: COLORS.successLight,
                           padding: 15,
-                          borderRadius: 8,
+                          borderRadius: BORDER_RADIUS.md,
                           marginBottom: 15,
                         }}
                       >
@@ -1578,7 +1390,7 @@ export default function Commercialista() {
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                           <span>Importo Totale:</span>
-                          <strong style={{ color: '#2e7d32' }}>
+                          <strong style={{ color: COLORS.success }}>
                             {formatEuro(
                               carnets
                                 .filter(c => selectedCarnets.includes(c.id))
@@ -1591,7 +1403,8 @@ export default function Commercialista() {
 
                     {/* Pulsanti */}
                     <div style={{ display: 'flex', gap: 10 }}>
-                      <button
+                      <Button
+                        variant="secondary"
                         onClick={() => {
                           // Se c'è una ricerca attiva, filtra solo gli assegni che matchano
                           const searchLower = (carnetSearch || '').toLowerCase();
@@ -1629,21 +1442,13 @@ export default function Commercialista() {
                         }}
                         disabled={selectedCarnets.length === 0}
                         data-testid="download-carnet-pdf"
-                        style={{
-                          flex: 1,
-                          padding: '12px',
-                          background: selectedCarnets.length === 0 ? '#e5e7eb' : '#f5f5f5',
-                          color: selectedCarnets.length === 0 ? '#9ca3af' : '#333',
-                          border: 'none',
-                          borderRadius: 8,
-                          cursor: selectedCarnets.length === 0 ? 'not-allowed' : 'pointer',
-                          fontWeight: 'bold',
-                        }}
+                        style={{ flex: 1, padding: '12px' }}
                       >
                         📥 Scarica PDF ({selectedCarnets.length})
                         {carnetSearch && ' · filtro attivo'}
-                      </button>
-                      <button
+                      </Button>
+                      <Button
+                        variant="success"
                         onClick={() => {
                           const searchLower = (carnetSearch || '').toLowerCase();
                           const selectedCarnetData = carnets
@@ -1684,27 +1489,12 @@ export default function Commercialista() {
                           !config.smtp_configured
                         }
                         data-testid="send-carnet-email"
-                        style={{
-                          flex: 1,
-                          padding: '12px',
-                          background:
-                            selectedCarnets.length === 0 || sending === 'carnet'
-                              ? '#ccc'
-                              : '#2e7d32',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: 8,
-                          cursor:
-                            selectedCarnets.length === 0 || sending === 'carnet'
-                              ? 'not-allowed'
-                              : 'pointer',
-                          fontWeight: 'bold',
-                        }}
+                        style={{ flex: 1, padding: '12px' }}
                       >
                         {sending === 'carnet'
                           ? '⏳ Invio...'
                           : `📧 Invia Email (${selectedCarnets.length})`}
-                      </button>
+                      </Button>
                     </div>
                   </>
                 )}
@@ -1715,60 +1505,42 @@ export default function Commercialista() {
 
         {/* Log Section */}
         {log.length > 0 && (
-          <div
-            style={{
-              background: 'white',
-              borderRadius: 12,
-              padding: 20,
-              marginTop: 25,
-              boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-            }}
-          >
-            <h3 style={{ margin: '0 0 15px 0', color: '#1e3a5f' }}>📋 Storico Invii</h3>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <Card title="📋 Storico Invii" style={{ marginTop: 25 }}>
+            <TableWrap style={{ border: 'none' }}>
+              <Table>
                 <thead>
-                  <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e5e7eb' }}>
-                    <th style={{ padding: 12, textAlign: 'left' }}>Data Invio</th>
-                    <th style={{ padding: 12, textAlign: 'left' }}>Tipo</th>
-                    <th style={{ padding: 12, textAlign: 'left' }}>Periodo/ID</th>
-                    <th style={{ padding: 12, textAlign: 'left' }}>Email</th>
-                    <th style={{ padding: 12, textAlign: 'center' }}>Stato</th>
+                  <tr>
+                    <Th>Data Invio</Th>
+                    <Th>Tipo</Th>
+                    <Th>Periodo/ID</Th>
+                    <Th>Email</Th>
+                    <Th align="center">Stato</Th>
                   </tr>
                 </thead>
                 <tbody>
                   {log.map((entry, idx) => (
-                    <tr key={idx} style={{ borderBottom: '1px solid #eee' }}>
-                      <td style={{ padding: 12 }}>{formatDate(entry.data_invio)}</td>
-                      <td style={{ padding: 12 }}>
+                    <tr key={idx}>
+                      <Td>{formatDate(entry.data_invio)}</Td>
+                      <Td>
                         {entry.tipo === 'prima_nota_cassa' && '📒 Prima Nota'}
                         {entry.tipo === 'fatture_cassa' && '💵 Fatture Cassa'}
                         {entry.tipo === 'carnet_assegni' && '📝 Carnet'}
-                      </td>
-                      <td style={{ padding: 12 }}>
+                      </Td>
+                      <Td>
                         {entry.carnet_id || `${MESI[entry.mese]} ${entry.anno}`}
-                      </td>
-                      <td style={{ padding: 12 }}>{entry.email}</td>
-                      <td style={{ padding: 12, textAlign: 'center' }}>
-                        <span
-                          style={{
-                            padding: '4px 12px',
-                            borderRadius: 12,
-                            fontSize: 12,
-                            fontWeight: 'bold',
-                            background: entry.success ? '#e8f5e9' : '#ffebee',
-                            color: entry.success ? '#2e7d32' : '#c62828',
-                          }}
-                        >
+                      </Td>
+                      <Td>{entry.email}</Td>
+                      <Td align="center">
+                        <Badge variant={entry.success ? 'success' : 'danger'}>
                           {entry.success ? '✓ Inviato' : '✕ Errore'}
-                        </span>
-                      </td>
+                        </Badge>
+                      </Td>
                     </tr>
                   ))}
                 </tbody>
-              </table>
-            </div>
-          </div>
+              </Table>
+            </TableWrap>
+          </Card>
         )}
       </div>
     </PageLayout>
