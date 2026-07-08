@@ -10,12 +10,19 @@ logger = logging.getLogger(__name__)
 SUPPLIERS_CACHE_KEY = "suppliers_list"
 SUPPLIERS_CACHE_TTL = 300  # 5 minuti per performance migliori
 
-# Metodi di pagamento disponibili — SOLO questi 6
+# Metodi di pagamento validi in scrittura sui fornitori. Il dropdown di
+# Fornitori.jsx propone solo cassa/banca/misto/certo (quest'ultimo mai
+# scritto letteralmente: il frontend lo traduce in banca+pagamento_certo
+# prima di inviarlo) — i valori legacy restano qui SOLO per non rompere la
+# validazione su dati/flussi già esistenti che li scrivono ancora
+# (import Excel, bulk, integrazioni) senza richiedere una migrazione dati.
 PAYMENT_METHODS = {
+    "cassa": {"label": "Cassa", "prima_nota": "cassa"},
+    "banca": {"label": "Banca", "prima_nota": "banca"},
+    "misto": {"label": "Misto", "prima_nota": "provvisorio"},
     "contanti": {"label": "Contanti", "prima_nota": "cassa"},
     "assegno": {"label": "Assegno", "prima_nota": "banca"},
     "bonifico": {"label": "Bonifico", "prima_nota": "banca"},
-    "misto": {"label": "Misto", "prima_nota": "provvisorio"},
     "rid": {"label": "R.I.D.", "prima_nota": "banca"},
     "carta": {"label": "Carta", "prima_nota": "banca"},
 }
@@ -32,7 +39,7 @@ PAYMENT_TERMS = [
 ]
 
 # Metodi bancari che richiedono IBAN
-METODI_BANCARI = ["bonifico", "assegno", "rid", "carta"]
+METODI_BANCARI = ["banca", "bonifico", "assegno", "rid", "carta"]
 
 
 def clean_mongo_doc(doc: Dict[str, Any]) -> Dict[str, Any]:
