@@ -43,6 +43,12 @@ export default function NoleggioAuto() {
     contratto: '',
   });
   const [fattureNonAssociate, setFattureNonAssociate] = useState(0);
+  const [modalFattureNonAssociate, setModalFattureNonAssociate] = useState({
+    open: false,
+    loading: false,
+    fatture: [],
+    errore: '',
+  });
   // Stato per lookup OpenAPI
   const [lookupLoading, setLookupLoading] = useState(false);
   const [lookupResult, setLookupResult] = useState(null);
@@ -288,23 +294,23 @@ export default function NoleggioAuto() {
             ⚠️ {fattureNonAssociate} fatture non associate
             <button
               onClick={async () => {
+                setModalFattureNonAssociate({ open: true, loading: true, fatture: [], errore: '' });
                 try {
-                  const res = await api.get('/api/noleggio/fatture-non-associate');
-                  const fatture = res.data.fatture || [];
-                  if (fatture.length === 0) {
-                    alert('Nessuna fattura non associata');
-                    return;
-                  }
-                  // Mostra modal con lista fatture
-                  const dettagli = fatture
-                    .map(
-                      f =>
-                        `• ${f.fornitore || 'N/D'} - Fatt. ${f.numero || 'N/D'} del ${f.data || 'N/D'}\n  ${formatEuro(Number(f.importo || 0))} - ${f.descrizione || ''}`
-                    )
-                    .join('\n\n');
-                  alert(`📋 FATTURE NON ASSOCIATE (${fatture.length}):\n\n${dettagli}`);
+                  const annoParam = annoFiltro ? `?anno=${annoFiltro}` : '';
+                  const res = await api.get(`/api/noleggio/fatture-non-associate${annoParam}`);
+                  setModalFattureNonAssociate({
+                    open: true,
+                    loading: false,
+                    fatture: res.data.fatture || [],
+                    errore: '',
+                  });
                 } catch (e) {
-                  alert('Errore: ' + e.message);
+                  setModalFattureNonAssociate({
+                    open: true,
+                    loading: false,
+                    fatture: [],
+                    errore: e.response?.data?.detail || e.message,
+                  });
                 }
               }}
               style={{
@@ -1979,6 +1985,126 @@ export default function NoleggioAuto() {
                 ➕ Aggiungi
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Fatture Non Associate — sostituisce il vecchio alert() nativo
+          (illeggibile, senza scroll utile, testo non selezionabile) */}
+      {modalFattureNonAssociate.open && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+          }}
+          onClick={() => setModalFattureNonAssociate(m => ({ ...m, open: false }))}
+        >
+          <div
+            style={{
+              background: COLORS.card,
+              borderRadius: BORDER_RADIUS.lg,
+              padding: 24,
+              width: '100%',
+              maxWidth: 640,
+              maxHeight: '80vh',
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: 8,
+              }}
+            >
+              <h2 style={{ margin: 0, fontSize: 18, color: COLORS.primary }}>
+                📋 Fatture Non Associate ({modalFattureNonAssociate.fatture.length})
+              </h2>
+              <button
+                onClick={() => setModalFattureNonAssociate(m => ({ ...m, open: false }))}
+                style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer' }}
+              >
+                ✕
+              </button>
+            </div>
+            <p style={{ fontSize: 13, color: COLORS.textMuted, marginBottom: 16 }}>
+              Il sistema non è riuscito a estrarre la targa da queste fatture: vanno associate
+              manualmente a un veicolo (bottone "➕ Aggiungi Veicolo").
+            </p>
+
+            {modalFattureNonAssociate.loading && (
+              <div style={{ padding: 24, textAlign: 'center', color: COLORS.textMuted }}>
+                Caricamento...
+              </div>
+            )}
+
+            {modalFattureNonAssociate.errore && (
+              <div
+                style={{
+                  padding: 16,
+                  background: COLORS.dangerLight,
+                  color: COLORS.danger,
+                  borderRadius: BORDER_RADIUS.sm,
+                }}
+              >
+                Errore: {modalFattureNonAssociate.errore}
+              </div>
+            )}
+
+            {!modalFattureNonAssociate.loading &&
+              !modalFattureNonAssociate.errore &&
+              modalFattureNonAssociate.fatture.length === 0 && (
+                <div style={{ padding: 24, textAlign: 'center', color: COLORS.textMuted }}>
+                  ✅ Nessuna fattura non associata
+                </div>
+              )}
+
+            {!modalFattureNonAssociate.loading && modalFattureNonAssociate.fatture.length > 0 && (
+              <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {modalFattureNonAssociate.fatture.map((f, i) => (
+                  <div
+                    key={f.id || i}
+                    style={{
+                      border: `1px solid ${COLORS.border}`,
+                      borderRadius: BORDER_RADIUS.sm,
+                      padding: 12,
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'flex-start',
+                      gap: 12,
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 13, color: COLORS.text }}>
+                        {f.fornitore || 'N/D'} — Fatt. {f.numero || 'N/D'} del {f.data || 'N/D'}
+                      </div>
+                      <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 2 }}>
+                        {formatEuro(Number(f.importo || 0))}
+                        {f.descrizione ? ` · ${f.descrizione}` : ''}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setNuovoVeicolo(v => ({ ...v, fornitore_piva: f.piva || '' }));
+                        setModalFattureNonAssociate(m => ({ ...m, open: false }));
+                        setShowAddVeicolo(true);
+                      }}
+                      style={{ ...button('outline'), fontSize: 12, padding: '6px 10px', flexShrink: 0 }}
+                    >
+                      ➕ Associa
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

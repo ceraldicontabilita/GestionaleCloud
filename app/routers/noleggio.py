@@ -338,13 +338,19 @@ async def get_veicoli(
             veicolo_target["totale_verbali"] = veicolo_target.get("totale_verbali", 0) + importo
             veicolo_target["totale_generale"] = veicolo_target.get("totale_generale", 0) + importo
 
-    # Conta fatture davvero non associate
-    fornitori_con_veicoli = set(v.get("fornitore_piva") for v in veicoli_salvati.values())
-    fatture_davvero_non_associate = [
-        f for f in fatture_senza_targa 
-        if f.get("supplier_vat") not in fornitori_con_veicoli
-    ]
-    
+    # Conta fatture non associate. Nota: quando il fornitore ha un solo
+    # veicolo salvato, la fattura senza targa viene comunque assegnata a
+    # quel veicolo per "indovino" qualche riga più sopra (o al più vecchio
+    # con contratto scaduto, o al primo disponibile se il fornitore ne ha
+    # più di uno) — è una stima automatica, non una vera associazione
+    # confermata. In precedenza queste fatture venivano escluse dal
+    # conteggio (perché il fornitore "aveva già un veicolo"), facendo
+    # sparire dal badge la maggior parte delle fatture realmente da
+    # rivedere: il badge mostrava "2" mentre l'elenco di dettaglio (stessa
+    # fonte fatture_senza_targa, nessun filtro) ne mostrava 28. Il
+    # conteggio ora coincide con l'elenco effettivo.
+    fatture_davvero_non_associate = fatture_senza_targa
+
     # Statistiche (DOPO arricchimento con verbali DB)
     statistiche = {
         "totale_canoni": round(sum(v.get("totale_canoni", 0) for v in risultato), 2),
@@ -528,18 +534,8 @@ async def get_fatture_non_associate(
     Restituisce le fatture di fornitori noleggio che non hanno targa.
     Utile per LeasePlan che richiede associazione manuale.
     """
-    db = Database.get_db()
     _, fatture_senza_targa = await scan_fatture_noleggio(anno)
-    
-    # Carica veicoli salvati per filtrare
-    veicoli_salvati = {}
-    cursor = db[COLLECTION].find()
-    async for v in cursor:
-        veicoli_salvati[v["targa"]] = v
-    
-    # Filtra solo fatture di fornitori SENZA veicoli salvati o non ancora associate
-    fornitori_con_veicoli = set(v.get("fornitore_piva") for v in veicoli_salvati.values())
-    
+
     # Formatta correttamente le fatture per il frontend
     fatture_formattate = []
     for f in fatture_senza_targa:
