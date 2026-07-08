@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import api from '../api';
 import { formatDateIT, formatEuro, COLORS, BORDER_RADIUS } from '../lib/utils';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
+import { useConfirm } from '../components/ui/ConfirmDialog';
 import {
   PageLayout,
   PageSection,
@@ -13,6 +14,7 @@ import {
   PageEmpty,
   PageError,
 } from '../components/PageLayout';
+import { Button, StatCard, TableWrap, Table, Th, Td, RowActions, RowActionButton } from '../components/ds';
 import {
   Receipt,
   Banknote,
@@ -35,6 +37,7 @@ export default function Corrispettivi() {
   const [corrispettivi, setCorrispettivi] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
+  const confirm = useConfirm();
 
   // Deep link: item selezionato sincronizzato con hash (#selected=2026-04-08)
   const [hs, setHs] = useHashState({ selected: '' });
@@ -62,8 +65,14 @@ export default function Corrispettivi() {
   }
 
   async function handleDelete(id) {
-    if (!window.confirm("Eliminare questo corrispettivo? L'operazione non può essere annullata."))
-      return;
+    const confirmed = await confirm({
+      title: 'Elimina corrispettivo',
+      message: "Eliminare questo corrispettivo? L'operazione non può essere annullata.",
+      confirmText: 'Elimina',
+      cancelText: 'Annulla',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
     try {
       await api.delete(`/api/corrispettivi/${id}`);
       loadCorrispettivi();
@@ -78,24 +87,6 @@ export default function Corrispettivi() {
   const totaleIVA = corrispettivi.reduce((sum, c) => sum + (c.totale_iva || 0), 0);
   const totaleImponibile = corrispettivi.reduce((sum, c) => sum + (c.totale_imponibile || 0), 0);
 
-  const KPICard = ({ icon: Icon, label, value, subtext, color, bgColor }) => (
-    <div
-      style={{
-        background: bgColor || COLORS.card,
-        borderRadius: BORDER_RADIUS.md,
-        padding: 20,
-        border: `1px solid ${COLORS.border}`,
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-        <Icon size={18} color={color || '#64748b'} />
-        <span style={{ fontSize: 13, color: '#64748b' }}>{label}</span>
-      </div>
-      <div style={{ fontSize: 26, fontWeight: 700, color: color || '#1e293b' }}>{value}</div>
-      {subtext && <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6 }}>{subtext}</div>}
-    </div>
-  );
-
   return (
     <PageLayout
       title="Corrispettivi Elettronici"
@@ -107,10 +98,10 @@ export default function Corrispettivi() {
             to="/import-documenti"
             style={{
               padding: '10px 16px',
-              background: '#16a34a',
+              background: COLORS.success,
               color: 'white',
               fontWeight: 600,
-              borderRadius: 8,
+              borderRadius: BORDER_RADIUS.sm,
               textDecoration: 'none',
               display: 'inline-flex',
               alignItems: 'center',
@@ -120,26 +111,15 @@ export default function Corrispettivi() {
           >
             <Upload size={16} /> Importa
           </Link>
-          <button
+          <Button
+            variant="secondary"
             onClick={loadCorrispettivi}
             disabled={loading}
-            style={{
-              padding: '10px 16px',
-              background: '#f1f5f9',
-              color: '#475569',
-              border: 'none',
-              borderRadius: 8,
-              cursor: 'pointer',
-              fontWeight: 600,
-              fontSize: 13,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-            }}
+            iconLeft={<RefreshCw size={16} />}
             data-testid="corrispettivi-refresh-btn"
           >
-            <RefreshCw size={16} /> Aggiorna
-          </button>
+            Aggiorna
+          </Button>
         </div>
       }
     >
@@ -160,33 +140,30 @@ export default function Corrispettivi() {
           {/* KPI Cards */}
           {corrispettivi.length > 0 && (
             <PageGrid cols={4} gap={16}>
-              <KPICard
-                icon={Receipt}
+              <StatCard
+                icon={<Receipt size={18} />}
                 label="Totale Corrispettivi"
                 value={formatEuro(totaleGiornaliero)}
-                color="#1e3a5f"
+                accent="primary"
               />
-              <KPICard
-                icon={Banknote}
+              <StatCard
+                icon={<Banknote size={18} />}
                 label="Pagato Cassa"
                 value={formatEuro(totaleCassa)}
-                color="#16a34a"
-                bgColor="#f0fdf4"
+                accent="success"
               />
-              <KPICard
-                icon={CreditCard}
+              <StatCard
+                icon={<CreditCard size={18} />}
                 label="Pagato POS"
                 value={formatEuro(totaleElettronico)}
-                color="#7c3aed"
-                bgColor="#f5f3ff"
+                accent="info"
               />
-              <KPICard
-                icon={Percent}
+              <StatCard
+                icon={<Percent size={18} />}
                 label="IVA 10%"
                 value={formatEuro(totaleIVA)}
                 subtext={`Imponibile: ${formatEuro(totaleImponibile)}`}
-                color="#ea580c"
-                bgColor="#fff7ed"
+                accent="warning"
               />
             </PageGrid>
           )}
@@ -198,20 +175,13 @@ export default function Corrispettivi() {
               icon="📋"
               style={{ marginTop: 20 }}
             >
-              <button
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() => setHs('selected', '')}
-                style={{
-                  position: 'absolute',
-                  top: 16,
-                  right: 16,
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  padding: 4,
-                }}
-              >
-                <X size={20} color="#64748b" />
-              </button>
+                iconLeft={<X size={20} color={COLORS.textMuted} />}
+                style={{ position: 'absolute', top: 16, right: 16, padding: 4 }}
+              />
 
               <PageGrid cols={3} gap={20}>
                 <div>
@@ -219,7 +189,7 @@ export default function Corrispettivi() {
                     style={{
                       margin: '0 0 12px 0',
                       fontSize: 13,
-                      color: '#64748b',
+                      color: COLORS.textMuted,
                       fontWeight: 600,
                     }}
                   >
@@ -239,17 +209,17 @@ export default function Corrispettivi() {
                     style={{
                       margin: '0 0 12px 0',
                       fontSize: 13,
-                      color: '#64748b',
+                      color: COLORS.textMuted,
                       fontWeight: 600,
                     }}
                   >
                     Pagamenti
                   </h4>
                   <div style={{ fontSize: 13, lineHeight: 2 }}>
-                    <div style={{ color: '#16a34a' }}>
+                    <div style={{ color: COLORS.success }}>
                       💵 Cassa: {formatEuro(selectedItem.pagato_contanti)}
                     </div>
-                    <div style={{ color: '#7c3aed' }}>
+                    <div style={{ color: COLORS.info }}>
                       💳 Elettronico: {formatEuro(selectedItem.pagato_elettronico)}
                     </div>
                     <div style={{ fontWeight: 700, marginTop: 8, fontSize: 15 }}>
@@ -262,7 +232,7 @@ export default function Corrispettivi() {
                     style={{
                       margin: '0 0 12px 0',
                       fontSize: 13,
-                      color: '#64748b',
+                      color: COLORS.textMuted,
                       fontWeight: 600,
                     }}
                   >
@@ -281,42 +251,36 @@ export default function Corrispettivi() {
                     style={{
                       margin: '0 0 12px 0',
                       fontSize: 13,
-                      color: '#64748b',
+                      color: COLORS.textMuted,
                       fontWeight: 600,
                     }}
                   >
                     Riepilogo per Aliquota IVA
                   </h4>
-                  <div style={{ overflowX: 'auto' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <TableWrap>
+                    <Table>
                       <thead>
-                        <tr style={{ borderBottom: '2px solid #e2e8f0' }}>
-                          <th style={{ padding: 10, textAlign: 'left' }}>Aliquota</th>
-                          <th style={{ padding: 10, textAlign: 'right' }}>Imponibile</th>
-                          <th style={{ padding: 10, textAlign: 'right' }}>Imposta</th>
-                          <th style={{ padding: 10, textAlign: 'right' }}>Totale</th>
+                        <tr>
+                          <Th>Aliquota</Th>
+                          <Th align="right">Imponibile</Th>
+                          <Th align="right">Imposta</Th>
+                          <Th align="right">Totale</Th>
                         </tr>
                       </thead>
                       <tbody>
                         {selectedItem.riepilogo_iva.map((r, i) => (
-                          <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                            <td style={{ padding: 10 }}>
+                          <tr key={i}>
+                            <Td>
                               {r.aliquota_iva}% {r.natura && `(${r.natura})`}
-                            </td>
-                            <td style={{ padding: 10, textAlign: 'right' }}>
-                              {formatEuro(r.ammontare)}
-                            </td>
-                            <td style={{ padding: 10, textAlign: 'right' }}>
-                              {formatEuro(r.imposta)}
-                            </td>
-                            <td style={{ padding: 10, textAlign: 'right' }}>
-                              {formatEuro(r.importo_parziale)}
-                            </td>
+                            </Td>
+                            <Td align="right" mono>{formatEuro(r.ammontare)}</Td>
+                            <Td align="right" mono>{formatEuro(r.imposta)}</Td>
+                            <Td align="right" mono>{formatEuro(r.importo_parziale)}</Td>
                           </tr>
                         ))}
                       </tbody>
-                    </table>
-                  </div>
+                    </Table>
+                  </TableWrap>
                 </div>
               )}
             </PageSection>
@@ -333,183 +297,75 @@ export default function Corrispettivi() {
               <div style={{ padding: 40 }}>
                 <PageEmpty icon="🧾" message="Nessun corrispettivo registrato per questo anno" />
                 <div style={{ textAlign: 'center', marginTop: 16 }}>
-                  <Link to="/import-documenti" style={{ color: '#2563eb', fontSize: 14 }}>
+                  <Link to="/import-documenti" style={{ color: COLORS.info, fontSize: 14 }}>
                     Vai a Import Documenti per caricare i corrispettivi
                   </Link>
                 </div>
               </div>
             ) : (
-              <div style={{ overflowX: 'auto' }}>
-                <table
-                  style={{ width: '100%', borderCollapse: 'collapse' }}
-                  data-testid="corrispettivi-table"
-                >
+              <div data-testid="corrispettivi-table">
+              <TableWrap style={{ border: 'none', borderRadius: 0 }}>
+                <Table style={{ background: 'transparent' }}>
                   <thead>
-                    <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
-                      <th
-                        style={{
-                          padding: '14px 16px',
-                          textAlign: 'left',
-                          fontWeight: 600,
-                          fontSize: 12,
-                          color: '#64748b',
-                        }}
-                      >
-                        DATA
-                      </th>
-                      <th
-                        style={{
-                          padding: '14px 16px',
-                          textAlign: 'left',
-                          fontWeight: 600,
-                          fontSize: 12,
-                          color: '#64748b',
-                        }}
-                      >
-                        MATRICOLA RT
-                      </th>
-                      <th
-                        style={{
-                          padding: '14px 16px',
-                          textAlign: 'right',
-                          fontWeight: 600,
-                          fontSize: 12,
-                          color: '#64748b',
-                        }}
-                      >
-                        💵 CASSA
-                      </th>
-                      <th
-                        style={{
-                          padding: '14px 16px',
-                          textAlign: 'right',
-                          fontWeight: 600,
-                          fontSize: 12,
-                          color: '#64748b',
-                        }}
-                      >
-                        💳 POS
-                      </th>
-                      <th
-                        style={{
-                          padding: '14px 16px',
-                          textAlign: 'right',
-                          fontWeight: 600,
-                          fontSize: 12,
-                          color: '#64748b',
-                        }}
-                      >
-                        TOTALE
-                      </th>
-                      <th
-                        style={{
-                          padding: '14px 16px',
-                          textAlign: 'right',
-                          fontWeight: 600,
-                          fontSize: 12,
-                          color: '#64748b',
-                        }}
-                      >
-                        IVA
-                      </th>
-                      <th
-                        style={{
-                          padding: '14px 16px',
-                          textAlign: 'center',
-                          fontWeight: 600,
-                          fontSize: 12,
-                          color: '#64748b',
-                        }}
-                      >
-                        AZIONI
-                      </th>
+                    <tr>
+                      <Th>Data</Th>
+                      <Th>Matricola RT</Th>
+                      <Th align="right">💵 Cassa</Th>
+                      <Th align="right">💳 POS</Th>
+                      <Th align="right">Totale</Th>
+                      <Th align="right">IVA</Th>
+                      <Th align="center">Azioni</Th>
                     </tr>
                   </thead>
                   <tbody>
                     {corrispettivi.map((c, i) => (
                       <tr
                         key={c.id || i}
-                        style={{
-                          borderBottom: '1px solid #f1f5f9',
-                          transition: 'background 0.15s',
-                        }}
-                        onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
+                        style={{ transition: 'background 0.15s' }}
+                        onMouseEnter={e => (e.currentTarget.style.background = COLORS.bgAlt)}
                         onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                       >
-                        <td style={{ padding: '14px 16px', fontWeight: 600, fontSize: 14 }}>
+                        <Td style={{ fontWeight: 600, fontSize: 14 }}>
                           {formatDateIT(c.data) || '-'}
-                        </td>
-                        <td style={{ padding: '14px 16px', fontSize: 13, color: '#64748b' }}>
+                        </Td>
+                        <Td style={{ fontSize: 13, color: COLORS.textMuted }}>
                           {c.matricola_rt || '-'}
-                        </td>
-                        <td
-                          style={{
-                            padding: '14px 16px',
-                            textAlign: 'right',
-                            color: '#16a34a',
-                            fontWeight: 500,
-                          }}
-                        >
+                        </Td>
+                        <Td align="right" mono style={{ color: COLORS.success, fontWeight: 500 }}>
                           {formatEuro(c.pagato_contanti)}
-                        </td>
-                        <td
-                          style={{
-                            padding: '14px 16px',
-                            textAlign: 'right',
-                            color: '#7c3aed',
-                            fontWeight: 500,
-                          }}
-                        >
+                        </Td>
+                        <Td align="right" mono style={{ color: COLORS.info, fontWeight: 500 }}>
                           {formatEuro(c.pagato_elettronico)}
-                        </td>
-                        <td style={{ padding: '14px 16px', textAlign: 'right', fontWeight: 700 }}>
+                        </Td>
+                        <Td align="right" mono style={{ fontWeight: 700 }}>
                           {formatEuro(c.totale)}
-                        </td>
-                        <td
-                          style={{
-                            padding: '14px 16px',
-                            textAlign: 'right',
-                            color: '#ea580c',
-                            fontWeight: 500,
-                          }}
-                        >
+                        </Td>
+                        <Td align="right" mono style={{ color: COLORS.warning, fontWeight: 500 }}>
                           {formatEuro(c.totale_iva)}
-                        </td>
-                        <td style={{ padding: '14px 16px', textAlign: 'center' }}>
-                          <button
-                            onClick={() => setHs('selected', c.data || '')}
-                            style={{
-                              padding: '6px 10px',
-                              background: '#eff6ff',
-                              color: '#2563eb',
-                              border: 'none',
-                              borderRadius: 6,
-                              cursor: 'pointer',
-                              marginRight: 6,
-                            }}
-                            title="Vedi dettaglio"
-                          >
-                            <Eye size={14} />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(c.id)}
-                            style={{
-                              padding: '6px 10px',
-                              background: '#fef2f2',
-                              color: '#dc2626',
-                              border: 'none',
-                              borderRadius: 6,
-                              cursor: 'pointer',
-                            }}
-                            title="Elimina"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </td>
+                        </Td>
+                        <Td align="center">
+                          <RowActions style={{ justifyContent: 'center' }}>
+                            <RowActionButton
+                              variant="info"
+                              onClick={() => setHs('selected', c.data || '')}
+                              title="Vedi dettaglio"
+                            >
+                              <Eye size={14} />
+                            </RowActionButton>
+                            <RowActionButton
+                              variant="danger"
+                              onClick={() => handleDelete(c.id)}
+                              title="Elimina"
+                            >
+                              <Trash2 size={14} />
+                            </RowActionButton>
+                          </RowActions>
+                        </Td>
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </Table>
+              </TableWrap>
               </div>
             )}
           </PageSection>
