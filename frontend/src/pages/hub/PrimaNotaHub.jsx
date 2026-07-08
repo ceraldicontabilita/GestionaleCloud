@@ -60,7 +60,7 @@ export default function PrimaNotaHub() {
       >
         {[
           { id: 'prima-nota', label: 'Prima nota', Icon: BookOpenText, to: '/prima-nota' },
-          { id: 'provvisori', label: 'Provvisori', Icon: ClipboardList, to: '/dati-provvisori' },
+          { id: 'provvisori', label: 'Provvisori', Icon: ClipboardList, to: '/prima-nota#sezione=provvisori' },
           { id: 'pulizia', label: 'Pulizia', Icon: BrushCleaning, to: '/prima-nota/pulizia' },
         ].map(({ id, label, Icon, to }) => {
           const isActive = activeTab === id;

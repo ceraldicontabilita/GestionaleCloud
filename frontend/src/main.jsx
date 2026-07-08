@@ -95,7 +95,7 @@ const router = createBrowserRouter([
       { path: "prima-nota/pulizia", element: <LazyPage><PrimaNotaHub /></LazyPage> },
       { path: "prima-nota/:tipo", element: <LazyPage><PrimaNotaHub /></LazyPage> },
       { path: "prima-nota/:tipo/:anno/:mese", element: <LazyPage><PrimaNotaHub /></LazyPage> },
-      { path: "dati-provvisori", element: <LazyPage><DatiProvvisoriPage /></LazyPage> },
+      { path: "dati-provvisori", element: <Navigate to="/prima-nota#sezione=provvisori" replace /> },
       
       // === VEICOLI/NOLEGGIO ===
       { path: "noleggio", element: <LazyPage><VeicoliHub /></LazyPage> },
