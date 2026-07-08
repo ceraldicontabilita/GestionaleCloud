@@ -1,0 +1,47 @@
+{
+  "popup": "Modal Registra Pagamento (Cassa/Banca)",
+  "pagina_di_provenienza": "Scadenze e Notifiche (/scadenze), bottone '💰 Paga' su ogni riga con tipo FATTURA / source='fattura' / importo>0, non ancora pagata",
+  "file_sorgente": "frontend/src/pages/Scadenze.jsx (modal inline, righe ~1266-1421 del componente Scadenze, nessun file separato)",
+  "come_si_apre": "Click sul bottone '💰 Paga' sulla riga di una scadenza collegata a una fattura fornitore: setPagaModal(s) valorizza lo stato con l'intera scadenza cliccata. È un vero overlay: div con position:'fixed', inset:0, sfondo rgba(0,0,0,0.5), zIndex:1000, pannello bianco centrato max-width 420px con ombra pronunciata (onClick del pannello interno con stopPropagation).",
+  "contenuto_e_campi": "Header con titolo '💰 Registra Pagamento' e bottone ✕. Riga con fornitore/descrizione della scadenza (pagaModal.fornitore || pagaModal.descrizione) ed eventuale link '📄 Vedi' che apre in nuova scheda il PDF/HTML AssoInvoice della fattura (solo se tipo FATTURA/source fattura e fattura_id/id presenti). Importo in grande al centro, formattato in euro con due decimali (o '—' se importo non positivo). Due grandi bottoni azione affiancati: 🏪 Paga in CASSA e 🏦 Paga in BANCA. Footer con bottone Annulla a tutta larghezza.",
+  "bottoni_azioni": [
+    {
+      "etichetta": "✕ (header) / Annulla (footer)",
+      "cosa_fa_al_click": "setPagaModal(null): chiude il modal senza registrare alcun pagamento.",
+      "endpoint_chiamato": "nessuno",
+      "logica_backend": "n/d",
+      "formula_matematica": "n/d",
+      "validazioni": "n/d",
+      "casi_errore": "n/d"
+    },
+    {
+      "etichetta": "📄 Vedi (link PDF fattura, opzionale)",
+      "cosa_fa_al_click": "Apre in una nuova scheda del browser (target=_blank) il documento AssoInvoice della fattura.",
+      "endpoint_chiamato": "GET /api/fatture-ricevute/fattura/{fattura_id}/view-assoinvoice",
+      "logica_backend": "Fuori scope di questo file (router fatture_module/crud.py): rende l'HTML/PDF della fattura elettronica, con eventuale trasformazione XSLT dell'XML sorgente.",
+      "formula_matematica": "n/d",
+      "validazioni": "n/d",
+      "casi_errore": "n/d"
+    },
+    {
+      "etichetta": "🏪 Paga in CASSA",
+      "cosa_fa_al_click": "handlePagaScadenza(pagaModal, 'cassa'): imposta processing=true (bottoni disabilitati, cursore 'wait', opacità ridotta per evitare doppio click), poi invia la POST.",
+      "endpoint_chiamato": "POST /api/fatture-ricevute/paga-manuale  { fattura_id: scadenza.fattura_id||scadenza.id, scadenza_id: scadenza.id, importo: Math.abs(scadenza.importo), metodo: 'cassa', data_pagamento: oggi (YYYY-MM-DD), fornitore, numero_fattura }",
+      "logica_backend": "paga_fattura_manuale (app/routers/fatture_module/pagamento.py): valida fattura_id presente e importo>0 (400 altrimenti), metodo deve essere 'cassa' o 'banca' (400 altrimenti). Imposta esplicitamente auto_riconciliato=False (commento nel codice: 'La riconciliazione è un processo separato basato sull'estratto conto bancario — il pagamento manuale via banca NON deve auto-riconciliare la fattura'). Sceglie la collection prima_nota_cassa. DEDUPLICA: se esiste già un movimento con quel fattura_id in prima_nota_cassa (find_one), riusa quell'id senza inserirne uno nuovo; altrimenti inserisce un movimento con id uuid4, data=data_pagamento, descrizione='Pagamento Fatt. {numero} - {fornitore}', causale='Pagamento fattura fornitore', importo, tipo='uscita', categoria='fornitori', stato='confermato', fattura_id/fattura_collegata/fattura_numero/fornitore, metodo_pagamento='cassa', provvisorio=False, riconciliato=False, source='pagamento_manuale'. Se è stato passato scadenza_id, aggiorna anche il documento in scadenziario_fornitori impostando stato='pagato', pagato=True (campo booleano fondamentale: senza di esso lo scadenzario continuerebbe a considerare la scadenza 'aperta', come segnalato da un commento esplicito nel codice), data_pagamento, metodo_effettivo='cassa', movimento_id. Aggiorna infine la fattura in ENTRAMBE le collezioni indice_documenti e invoices (retrocompatibilità) con status='paid', pagato=True, stato_pagamento='pagata', riconciliato=False, data_pagamento, metodo_pagamento_effettivo='cassa', metodo_pagamento='cassa', prima_nota_cassa_id=movimento_id, prima_nota_banca_id=null. Emette infine un evento EventTypes.FATTURA_PAGATA sull'event bus interno (best-effort, in try/except che non blocca la risposta se fallisce), per notificare altri moduli (riconciliazione, scadenzario, learning machine).",
+      "formula_matematica": "importo_movimento = |scadenza.importo| (valore assoluto, sempre positivo — quindi anche se in tabella l'importo fosse mostrato con segno negativo, il movimento registrato in prima nota è sempre un'uscita positiva).",
+      "validazioni": "Server: fattura_id obbligatorio e importo>0 (400 altrimenti); metodo deve essere esattamente 'cassa' o 'banca' (400 altrimenti). Nessuna validazione client-side aggiuntiva oltre alla presenza del pagaModal stesso.",
+      "casi_errore": "catch → alert('Errore pagamento: ' + (e.response?.data?.detail || e.message)); processing torna a false nel finally, il modal resta aperto per permettere un nuovo tentativo."
+    },
+    {
+      "etichetta": "🏦 Paga in BANCA",
+      "cosa_fa_al_click": "handlePagaScadenza(pagaModal, 'banca'): identico al bottone Cassa ma con metodo='banca'.",
+      "endpoint_chiamato": "POST /api/fatture-ricevute/paga-manuale (stesso endpoint, metodo:'banca')",
+      "logica_backend": "Identica a 'Paga in CASSA' sopra, ma la collection target è prima_nota_banca (invece di prima_nota_cassa) e metodo_effettivo/metodo_pagamento_effettivo='banca', con prima_nota_banca_id valorizzato e prima_nota_cassa_id azzerato a null. Anche qui riconciliato resta esplicitamente False: pagare 'in banca' con questo pulsante NON equivale a riconciliazione bancaria, che è un processo separato basato sul matching con l'estratto conto.",
+      "formula_matematica": "importo_movimento = |scadenza.importo| (identico al caso Cassa).",
+      "validazioni": "Identiche al bottone Cassa.",
+      "casi_errore": "Identici al bottone Cassa."
+    }
+  ],
+  "come_si_chiude": "Bottone ✕ nell'header, bottone Annulla nel footer, click sull'overlay scuro fuori dal pannello (onClick={() => setPagaModal(null)} sul div esterno; il pannello interno ha stopPropagation), oppure chiusura automatica dopo un pagamento riuscito (setPagaModal(null) dentro handlePagaScadenza). Nessuna gestione esplicita del tasto ESC.",
+  "effetti_su_pagina_sottostante": "Dopo un pagamento riuscito: l'id della scadenza viene aggiunto OTTIMISTICAMENTE a paidIds (setPaidIds), quindi la riga mostra immediatamente il badge verde '✓ Pagato' e nasconde il bottone '💰 Paga' senza aspettare il refresh dal server; subito dopo viene comunque richiamata loadData() per risincronizzare l'intera pagina (tabella scadenze, alert widget, box IVA) con i dati reali dal backend. Se l'utente annulla senza pagare, nessun cambiamento."
+}
