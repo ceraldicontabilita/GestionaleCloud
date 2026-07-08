@@ -1,0 +1,190 @@
+{
+  "pagina": "Fornitori",
+  "url": "https://impresasemplice.online/fornitori",
+  "file_sorgente_frontend": [
+    "frontend/src/pages/hub/FornitoriHub.jsx (wrapper React.lazy + Suspense, nessuna logica propria)",
+    "frontend/src/pages/Fornitori.jsx (3758 righe: componente monolitico con SupplierModal, StatCard, SupplierCard, e la vista principale con 3 modali aggiuntivi — Fatturato, Estratto Fatture, Schede Tecniche)"
+  ],
+  "file_sorgente_backend": [
+    "app/routers/suppliers_module/base.py (montato su /api/suppliers — CRUD principale, search-piva, fatturato, fatture, metodo-pagamento dedicato)",
+    "app/routers/suppliers_module/common.py (PAYMENT_METHODS, PAYMENT_TERMS, METODI_BANCARI, cache key)",
+    "app/routers/suppliers_module/bulk.py (azioni bulk — non raggiunte da alcun bottone in questa pagina)",
+    "app/routers/suppliers_module/iban.py (ricerca/validazione IBAN da fatture — non raggiunta da alcun bottone in questa pagina)",
+    "app/routers/suppliers_module/import_export.py (import/export Excel/CSV — non raggiunto da alcun bottone in questa pagina)",
+    "app/routers/suppliers_module/validation.py",
+    "app/routers/suppliers_module/__init__.py (assembla le route, montate con prefix=/api/suppliers in app/router_registry.py riga 241)",
+    "app/services/cascade_operations.py (contiene delete_fornitore_cascade, verificato essere CODICE MORTO non collegato a nessuna route reale)",
+    "app/routers/invoices/fatture_upload.py (righe 379-394, auto_registra_prima_nota — riferimento incrociato per il tema 'pagamento certo')",
+    "app/routers/prima_nota_module/sync.py (righe 39-46, 678-699, 1000-1121 — classificazione/auto-conferma provvisori, riferimento incrociato)"
+  ],
+  "scopo_generale": "Questa pagina è l'anagrafica completa dei fornitori dell'azienda: qui si crea, modifica ed elimina un fornitore, si configura il suo metodo di pagamento abituale, si consulta il fatturato annuo e l'estratto fatture, si verifica/completa l'anagrafica tramite ricerca P.IVA su VIES, e si gestiscono le schede tecniche dei prodotti collegati. È il punto centrale da cui dipende come le fatture di un fornitore vengono suggerite/instradate in Prima Nota (anche se, dopo la rimozione del 'pagamento certo', questo è ORA solo un suggerimento informativo e mai una scrittura contabile automatica).",
+  "sezioni_tab": [
+    {
+      "nome": "Lista Fornitori (vista unica, con filtri)",
+      "descrizione": "Griglia di card fornitore (SupplierCard), ciascuna con ragione sociale, P.IVA, badge metodo pagamento cliccabile, badge magazzino, e bottoni di azione rapida (Modifica, Elimina, Fatturato anno corrente/precedente, Cerca P.IVA, Schede Tecniche, Fatture). In testa: statistiche aggregate (StatCard) e barra filtri (ricerca testuale, filtro metodo pagamento client-side, checkbox 'solo incompleti', checkbox 'fatture senza metodo', segmentato Anzianità Tutti/Nuovi/Storici, filtro prodotto)."
+    }
+  ],
+  "bottoni_azioni": [
+    {
+      "etichetta": "Aggiorna",
+      "dove_si_trova": "Header della pagina",
+      "cosa_fa_al_click": "Richiama reloadData() (useCallback).",
+      "endpoint_chiamato": "GET /api/suppliers/filtered?search=&limit=1000&stato_anagrafica=&giorni_nuovo=&prodotto=",
+      "logica_backend": "base.py::list_suppliers_filtered delega a list_suppliers con use_cache=False. Costruisce una query su collection 'fornitori': filtri attivo, esclude_magazzino, $or regex-escaped su denominazione/ragione_sociale/partita_iva per il testo di ricerca, metodo_pagamento. Se prodotto è impostato, prefiltra le P.IVA idonee interrogando warehouse_inventory per fornitore_piva. Arricchisce OGNI fornitore con statistiche fatture calcolate via aggregation su 'invoices' (coalescendo supplier_vat/cedente_piva/fornitore_partita_iva): fatture_count, fatture_totale, fatture_non_pagate, prima_fattura_data, ultima_fattura_data. Applica poi un filtro post-aggregazione stato_anagrafica (nuovo/storico, soglia configurabile giorni_nuovo). Ordina per ragione_sociale.",
+      "formula_matematica": "N/A (solo aggregazioni di conteggio/somma su invoices, nessuna formula contabile).",
+      "aggiornamento_ui": "setSuppliers(res.data.items), setTotaliFiltrati(res.data.totali) — {totale_fornitori, popolano_magazzino, esclusi_magazzino, attivi}.",
+      "casi_errore": "catch generico → console.error, nessun messaggio visibile all'utente (silenzioso)."
+    },
+    {
+      "etichetta": "Nuovo Fornitore",
+      "dove_si_trova": "Header della pagina",
+      "cosa_fa_al_click": "Apre SupplierModal con currentSupplier=null (isNew=true). Al submit, handleSubmit valida solo che ragione_sociale sia compilata (alert bloccante client-side se vuota), poi chiama handleSave.",
+      "endpoint_chiamato": "POST /api/suppliers",
+      "logica_backend": "base.py::create_supplier. Valida ragione_sociale obbligatoria (400 se assente). Se è presente partita_iva, controlla duplicati con $or su partita_iva/piva/vat_number → 409 Conflict se già esiste. Valida metodo_pagamento contro il dizionario PAYMENT_METHODS di common.py (400 se valore non valido — il dizionario backend ha 8 valori: cassa, banca, misto, contanti, assegno, bonifico, rid, carta; il dropdown del frontend ne propone solo 3: cassa/banca/misto). Genera id=uuid4(), imposta metodo_pagamento_dal=data odierna se il metodo è presente, attivo=true, source='manuale'. Insert su 'fornitori'. Invalida la cache 'suppliers_list'.",
+      "formula_matematica": "N/A",
+      "aggiornamento_ui": "Se response.data.prodotti_rimossi_magazzino>0 mostra un alert; chiude il modale; richiama reloadData().",
+      "casi_errore": "catch → alert('Errore salvataggio: ' + detail/message)."
+    },
+    {
+      "etichetta": "Modifica (icona matita, sulla card)",
+      "dove_si_trova": "Card fornitore",
+      "cosa_fa_al_click": "Apre SupplierModal con currentSupplier=supplier (isNew=false). Al submit richiama handleSave con l'id esistente.",
+      "endpoint_chiamato": "PUT /api/suppliers/{id}",
+      "logica_backend": "base.py::update_supplier. Rimuove dal payload i campi non modificabili via update (id, partita_iva, created_at). Se metodo_pagamento è presente: valida contro PAYMENT_METHODS (400 se non valido); se non vuoto imposta metodo_pagamento_dal (se non già passato esplicitamente). Se termini_pagamento presente, lo mappa a giorni_pagamento via PAYMENT_TERMS. Aggiorna updated_at. Esegue update_one con match $or:[{id},{partita_iva}]. Se il metodo è stato configurato/cambiato, fa un secondo find_one e un $push su storico_metodi_pagamento (array append-only con {metodo, dal, registrato_il}). Se il fornitore ha partita_iva, risolve automaticamente eventuali alert aperti di tipo 'fornitore_senza_metodo_pagamento' sulla collection 'alerts' (update_many, risolto=True). Se esclude_magazzino=true nel payload, elimina fisicamente (delete_many) i record collegati al fornitore da warehouse_stocks e warehouse_inventory e conta prodotti_rimossi. Pubblica infine un evento 'fornitore.aggiornato' sul bus (app.core.event_bus, per la Learning Machine), in try/except silenzioso. IMPORTANTE: update_supplier NON tocca MAI la collection invoices/fatture quando cambia metodo_pagamento — nessuna fattura viene ri-classificata, nessun campo pagato/provvisorio viene alterato (vedi operazione di registrazione dedicata più sotto).",
+      "formula_matematica": "N/A",
+      "aggiornamento_ui": "Come create: alert se prodotti_rimossi_magazzino>0, chiusura modale, reloadData(). Nel modale sono presenti anche 2 sotto-azioni: 'Auto' (GET /api/openapi-imprese/info/{piva}, popola ragione_sociale/codice_fiscale/indirizzo/cap/comune/provincia/pec/codice_sdi nel form locale, non salva finché non si preme Salva) e 'Cerca in fatture'/'Popola da XML' (POST /api/schede-tecniche/popola-fornitore/{id}, visibile solo se mancano email o telefono, popola i campi di contatto dal form locale).",
+      "casi_errore": "catch → alert('Errore salvataggio: ...')."
+    },
+    {
+      "etichetta": "Elimina (icona cestino, sulla card)",
+      "dove_si_trova": "Card fornitore",
+      "cosa_fa_al_click": "handleDelete(id, forceDelete=false). Se non forzato, mostra prima window.confirm() di conferma testuale.",
+      "endpoint_chiamato": "DELETE /api/suppliers/{id} (senza force la prima volta; se il backend risponde 400 per fatture collegate, il frontend mostra un secondo window.confirm e, se accettato, ripete la chiamata con ?force=true)",
+      "logica_backend": "base.py::delete_supplier. 1) Trova il fornitore ($or:[id, partita_iva]), 404 se assente. 2) Se ha partita_iva e force=False: conta db['invoices'].count_documents({'cedente_piva': piva}); se >0 blocca con HTTP 400 'Fornitore ha N fatture collegate. Usa force=true per eliminare comunque.' 3) Se si procede: delete_one FISICO (hard delete, non soft-delete) su 'fornitori' per _id; invalida la cache 'suppliers_list'. 4) Pulizia relazionale best-effort (try/except che non fa fallire la richiesta): partite_aperte con controparte_id=id fornitore e stato in [aperta,parziale] → update a stato='annullata'; alerts con entita_id=id fornitore e stato='aperto' → update a stato='risolto', resolved_by='cascade_delete_fornitore'. 5) Ritorna {message:'Fornitore eliminato'}.",
+      "formula_matematica": "N/A",
+      "aggiornamento_ui": "reloadData() dopo successo.",
+      "casi_errore": "Se il messaggio d'errore contiene 'fatture collegate', il frontend propone un secondo confirm per eliminazione forzata (force=true). ATTENZIONE — discrepanza rilevata nel codice: esiste in cascade_operations.py una funzione molto più completa CascadeOperations.delete_fornitore_cascade (elimina prodotti da warehouse_inventory/magazzino_doppia_verita/warehouse_stocks e marca le fatture con fornitore_eliminato=True), MA NON è collegata a nessuna route del modulo fornitori — è codice morto/orfano. Il DELETE realmente eseguito (base.py::delete_supplier, sopra) è più leggero: non tocca il magazzino e non marca le fatture in alcun modo, che restano quindi intatte puntando a un fornitore ormai inesistente."
+    },
+    {
+      "etichetta": "Badge Metodo Pagamento (dropdown rapido cliccabile sulla card)",
+      "dove_si_trova": "Card fornitore",
+      "cosa_fa_al_click": "Apre un piccolo menu (Portal) con le opzioni Cassa/Banca/Misto. Alla selezione richiama handleChangeMetodo(supplier.id, newMetodo).",
+      "endpoint_chiamato": "PUT /api/suppliers/{id} con body {metodo_pagamento: newMetodo} — STESSO endpoint generico update_supplier descritto sopra (non usa l'endpoint dedicato PUT /api/suppliers/{id}/metodo-pagamento, che pure esiste nel backend ma non è mai chiamato da questa pagina).",
+      "logica_backend": "Identica a update_supplier (validazione contro PAYMENT_METHODS, push su storico_metodi_pagamento, risoluzione alert fornitore_senza_metodo_pagamento, evento bus fornitore.aggiornato). Il dizionario backend PAYMENT_METHODS accetterebbe anche i valori legacy (contanti/assegno/bonifico/rid/carta) anche se il frontend qui propone solo cassa/banca/misto.",
+      "formula_matematica": "N/A",
+      "aggiornamento_ui": "Ottimistico: aggiorna subito setSuppliers in locale, senza attendere un reloadData() completo.",
+      "casi_errore": "Se la PUT fallisce, l'update ottimistico può restare disallineato dal server finché non si ricarica manualmente (comportamento osservato nel codice, nessun rollback esplicito visibile)."
+    },
+    {
+      "etichetta": "Badge '📦 In magazzino' / '🚫 Escluso magazzino' (toggle rapido)",
+      "dove_si_trova": "Card fornitore",
+      "cosa_fa_al_click": "handleToggleEsclude(supplier.id, !supplier.esclude_magazzino).",
+      "endpoint_chiamato": "PUT /api/suppliers/{id} con body {esclude_magazzino: nuovoValore} — stesso update_supplier.",
+      "logica_backend": "Se esclude_magazzino diventa true, il backend elimina fisicamente da warehouse_stocks e warehouse_inventory tutti i record collegati al fornitore (match su supplier_id/fornitore_piva/supplier_piva) e ritorna prodotti_rimossi_magazzino.",
+      "formula_matematica": "N/A",
+      "aggiornamento_ui": "Update ottimistico locale su setSuppliers. A differenza del salvataggio da modale, qui il conteggio prodotti_rimossi_magazzino restituito dal backend viene IGNORATO (nessun alert mostrato) — incoerenza minore rispetto a handleSave.",
+      "casi_errore": "Non gestito esplicitamente oltre l'update ottimistico."
+    },
+    {
+      "etichetta": "Fatturato [anno corrente] / Fatturato [anno-1]",
+      "dove_si_trova": "Card fornitore",
+      "cosa_fa_al_click": "handleShowFatturato(supplier, anno). Se il fornitore non ha partita_iva, mostra un alert bloccante e non procede.",
+      "endpoint_chiamato": "GET /api/suppliers/{id}/fatturato?anno={anno}",
+      "logica_backend": "base.py::get_supplier_fatturato. Trova il fornitore (match id/partita_iva/piva). Costruisce una query su 'invoices': $and di ($or su fornitore_partita_iva/supplier_vat/cedente_piva) e ($or su data_documento/invoice_date con regex ^anno). Itera i risultati calcolando totale_fatturato, fatture_pagate/non_pagate, importo_pagato/non_pagato (basato su pagato bool o stato_pagamento in (pagata,paid)), e un dettaglio_mensile raggruppato per mese (estratto dai primi caratteri della data).",
+      "formula_matematica": "totale_fatturato = somma degli importi delle fatture nell'anno; importo_pagato = somma delle sole fatture con pagato=True o stato_pagamento in (pagata,paid); importo_non_pagato = totale_fatturato - importo_pagato.",
+      "aggiornamento_ui": "Apre un modale con totale, pagate/da pagare con importi, dettaglio mensile scrollabile.",
+      "casi_errore": "alert + chiusura modale in caso di errore di rete."
+    },
+    {
+      "etichetta": "Cerca P.IVA",
+      "dove_si_trova": "Card fornitore",
+      "cosa_fa_al_click": "handleSearchPiva(supplier).",
+      "endpoint_chiamato": "GET /api/suppliers/search-piva/{piva}",
+      "logica_backend": "base.py::search_by_piva. Pulisce la P.IVA (solo cifre) e valida che sia lunga 11 caratteri (400 altrimenti — nessun controllo del carattere di controllo/checksum ufficiale della P.IVA italiana, solo lunghezza). Cerca in ordine: 1) servizio ufficiale UE VIES (POST a ec.europa.eu/taxation_customs/vies/rest-api/check-vat-number, countryCode=IT, timeout 15s) — se valido estrae nome/indirizzo e prova a separare CAP/comune/provincia con una regex sull'indirizzo restituito; 2) se ancora manca la ragione sociale, cerca in 'invoices' per supplier_vat/cedente_piva; 3) infine cerca in 'fornitori' stesso (self-lookup).",
+      "formula_matematica": "N/A",
+      "aggiornamento_ui": "Se data.found, il frontend costruisce un oggetto updates SOLO con i campi attualmente vuoti sul fornitore (non sovrascrive dati già presenti) e, se non vuoto, chiama automaticamente PUT /api/suppliers/{id} per salvarli, poi reloadData(). Se non ci sono campi nuovi da aggiungere, mostra un alert informativo.",
+      "casi_errore": "Se !data.found, alert 'P.IVA non trovata nel database VIES'."
+    },
+    {
+      "etichetta": "📋 Schede (Schede Tecniche)",
+      "dove_si_trova": "Card fornitore",
+      "cosa_fa_al_click": "handleViewSchedeTecniche(supplier) apre un modale con l'elenco schede; il bottone 'Cerca automaticamente'/'Aggiorna ricerca' interno avvia una ricerca asincrona con polling.",
+      "endpoint_chiamato": "GET /api/schede-tecniche/fornitore/{id} (apertura), POST /api/schede-tecniche/cerca {fornitore_id} (avvio ricerca, ritorna job_id), GET /api/schede-tecniche/job/{jobId} (polling ogni 3 secondi finché stato è completato/completato_vuoto/errore), GET /api/schede-tecniche/download/{scheda.id} (download PDF)",
+      "logica_backend": "Router esterno al modulo suppliers_module (schede_tecniche), non approfondito in dettaglio in questo audit — documentato solo a livello di interazione UI perché il bottone vive in questa pagina.",
+      "formula_matematica": "N/A",
+      "aggiornamento_ui": "Lista schede trovate/da cercare aggiornata al termine del polling; link diretto al PDF o all'url_fonte esterno se solo l'URL è stato trovato.",
+      "casi_errore": "Gestito dal modale con stato 'errore' del job."
+    },
+    {
+      "etichetta": "Fatture (Estratto Fatture del fornitore)",
+      "dove_si_trova": "Card fornitore",
+      "cosa_fa_al_click": "handleViewInvoicesModal(supplier) apre un modale con la tabella delle fatture del fornitore per l'anno globale selezionato; il bottone interno '🔍 Filtra' richiama reloadEstratto con i filtri impostati (data_da, data_a, importo_min, importo_max, tipo: tutti/fattura/nota_credito).",
+      "endpoint_chiamato": "GET /api/suppliers/{id|piva}/fatture?anno=&data_da=&data_a=&importo_min=&importo_max=&tipo=",
+      "logica_backend": "base.py::get_fatture_fornitore. Trova il fornitore (match id/partita_iva/piva). Costruisce supplier_filter=$or[fornitore_partita_iva, supplier_vat, cedente_piva] in AND con i filtri extra (anno via regex ^anno su data_documento/invoice_date; range date; range importo; tipo documento — nota di credito = TD04/TD05/NC per il filtro). Ordina per data_documento decrescente con skip/limit (default 100). Per ogni fattura calcola imponibile, iva, is_nota_credito (qui il flag include ANCHE TD08, incoerente col filtro 'tipo' che usa solo TD04/TD05/NC — piccola incoerenza segnalata), stato pagato/riconciliato/stato_pagamento, e metodo_pagamento a catena di fallback (campo fattura → metodo_pagamento_effettivo → metodo del fornitore in anagrafica → '-').",
+      "formula_matematica": "imponibile/iva stimati al 22% se mancanti, stessa formula usata altrove nel modulo fatture: imponibile = importo_totale/1.22.",
+      "aggiornamento_ui": "Tabella fatture nel modale, con pulsante 🖨️ Stampa (apre una nuova finestra e stampa l'HTML della tabella, nessuna chiamata API) e con due azioni per riga non pagata/non nota di credito: '💵 Cassa' e '🏦 Banca'.",
+      "casi_errore": "Non specificamente gestito oltre lo stato di caricamento del modale."
+    },
+    {
+      "etichetta": "💵 Cassa / 🏦 Banca (segna pagata, dentro il modale Estratto Fatture)",
+      "dove_si_trova": "Riga fattura non pagata, dentro il modale 'Fatture' del fornitore",
+      "cosa_fa_al_click": "window.confirm() di conferma, poi chiamata diretta di pagamento con il metodo scelto.",
+      "endpoint_chiamato": "POST /api/fatture-ricevute/paga-manuale {fattura_id, metodo: 'cassa'|'banca', importo, fornitore, numero_fattura, data_pagamento: oggi} (endpoint esterno al modulo suppliers_module, appartenente al modulo fatture — app/routers/fatture_module/pagamento.py)",
+      "logica_backend": "Vedi documentazione completa in memoria/pagine/fatture.json, operazione 'Pagamento manuale di una fattura': crea un movimento in prima_nota_cassa/banca con stato='confermato', provvisorio=False, marca la fattura pagato=True/status='paid'.",
+      "formula_matematica": "N/A",
+      "aggiornamento_ui": "reloadEstratto() dopo successo.",
+      "casi_errore": "Alert/gestione standard axios se la chiamata fallisce (validazione lato backend: importo>0 e metodo in {cassa,banca})."
+    },
+    {
+      "etichetta": "Ricerca testuale, Filtro Metodo, Solo incompleti, Fatture senza metodo, Anzianità, Filtro Prodotto, Reset filtri avanzati",
+      "dove_si_trova": "Barra filtri in cima alla pagina",
+      "cosa_fa_al_click": "Ricerca testuale: sincronizzata con l'hash URL (useHashState), debounce 500ms, triggera GET /api/suppliers/filtered?search=. Filtro Metodo e checkbox 'Solo incompleti'/'Fatture senza metodo': FILTRI CLIENT-SIDE PURI (righe 1652-1667), non toccano il backend — applicati sull'array già caricato in memoria. Segmentato Anzianità e input Prodotto: passati al backend come stato_anagrafica/giorni_nuovo/prodotto in /filtered (rifetch reale).",
+      "endpoint_chiamato": "GET /api/suppliers/filtered (solo per ricerca testuale, anzianità, prodotto)",
+      "logica_backend": "Vedi bottone 'Aggiorna' sopra per la logica di /filtered.",
+      "formula_matematica": "N/A",
+      "aggiornamento_ui": "Rifetch o filtro istantaneo dell'array locale a seconda del filtro.",
+      "casi_errore": "N/A — nota: il checkbox 'Solo incompleti' ha una condizione logica sospetta rilevata nel codice ((s.partita_iva||s.piva) && s.email nasconde il fornitore se ha SIA P.IVA CHE email, comportamento potenzialmente invertito rispetto a quanto ci si aspetterebbe da 'solo incompleti' se manca solo la P.IVA) — segnalato come possibile bug logico, non corretto in questo audit perché fuori scope."
+    }
+  ],
+  "operazioni_di_registrazione": [
+    {
+      "nome": "Cambio del metodo di pagamento di un fornitore — cosa succede REALMENTE oggi (dopo la rimozione del 'pagamento certo')",
+      "sequenza_esatta": "Sia dal modale Modifica sia dal badge cliccabile rapido, il cambio metodo passa sempre da PUT /api/suppliers/{id} → base.py::update_supplier. Questa funzione scrive ESCLUSIVAMENTE sul documento fornitore: aggiorna il campo metodo_pagamento, imposta metodo_pagamento_dal, fa il push append-only su storico_metodi_pagamento, risolve eventuali alert 'fornitore_senza_metodo_pagamento' collegati alla P.IVA, e pubblica un evento 'fornitore.aggiornato' sul bus (per la Learning Machine, nessun impatto contabile). NON ESISTE ALCUN collegamento diretto tra questo update e la collection invoices: nessuna fattura viene ri-stata, nessun movimento di prima_nota_cassa/prima_nota_banca viene creato o modificato come conseguenza diretta del cambio metodo. Prova incrociata nel codice del modulo Fatture: auto_registra_prima_nota() (app/routers/invoices/fatture_upload.py) ritorna sempre None indipendentemente dal metodo fornitore, sia all'import di nuove fatture sia (tramite il job schedulato ogni 30 minuti in app/routers/prima_nota_module/sync.py::auto_conferma_provvisori_per_metodo) per le fatture già esistenti — quel job oggi si limita a classificare/contare (mai a scrivere) e ritorna il messaggio esplicito \"Il 'pagamento certo' è stato rimosso: nessuna fattura viene più spostata automaticamente, restano tutte in Provvisoria per la conferma manuale\". Ogni fattura di quel fornitore resta quindi sempre in stato 'provvisorio'/non pagata finché l'utente non la conferma manualmente dalla pagina Prima Nota (tab Provvisori) o non la paga esplicitamente da Scadenze/Dashboard/Fornitori (paga-manuale).",
+      "collezioni_coinvolte": ["fornitori"],
+      "campi_scritti": {"fornitori": "metodo_pagamento, metodo_pagamento_dal, storico_metodi_pagamento (append {metodo, dal, registrato_il}), updated_at"},
+      "effetti_collaterali": "Un commento residuo in Fornitori.jsx (righe ~2383-2384: 'L'auto-conferma delle fatture per metodo fornitore è AUTOMATICA: avviene all'import di ogni fattura e col job ogni 30 minuti') è ORMAI OBSOLETO e contraddice il comportamento reale — segnalato come incoerenza di commento/documentazione interna da correggere, ma il comportamento effettivo del codice (nessuna auto-conferma) è quello sopra descritto e verificato."
+    },
+    {
+      "nome": "Eliminazione di un fornitore",
+      "sequenza_esatta": "DELETE /api/suppliers/{id}?force=. Vedi dettaglio completo nella voce bottoni_azioni 'Elimina'. In sintesi: hard delete diretto del documento fornitore (nessun soft-delete), preceduto da un blocco automatico se esistono fatture collegate (a meno di force=true), seguito da una pulizia relazionale best-effort (partite_aperte e alerts). Le fatture del fornitore eliminato NON vengono toccate in alcun modo: restano nel database con il riferimento a una P.IVA ormai orfana. I prodotti collegati in warehouse_inventory/magazzino_doppia_verita/warehouse_stocks NON vengono rimossi (a differenza di quanto farebbe la funzione CascadeOperations.delete_fornitore_cascade, che esiste nel codice ma è verificato essere disconnessa da qualunque route — codice morto).",
+      "collezioni_coinvolte": ["fornitori", "partite_aperte", "alerts"],
+      "campi_scritti": {
+        "fornitori": "delete_one fisico (hard delete)",
+        "partite_aperte": "{stato:'annullata', annullata_at, motivo_annullamento} per quelle in stato aperta/parziale con controparte_id = id fornitore",
+        "alerts": "{stato:'risolto', risolto:True, resolved_by:'cascade_delete_fornitore'} per quelle aperte con entita_id = id fornitore"
+      },
+      "effetti_collaterali": "Fatture e prodotti di magazzino del fornitore restano orfani nel database senza alcun flag di segnalazione (nessun campo tipo fornitore_eliminato viene scritto sulle fatture in questo flusso reale, a differenza di quanto suggerirebbe la funzione di cascade delete 'completa' ma inutilizzata in cascade_operations.py)."
+    },
+    {
+      "nome": "Creazione automatica di un fornitore durante l'import di una fattura XML (cross-reference con il modulo Fatture)",
+      "sequenza_esatta": "Quando arriva una fattura XML per una P.IVA non ancora presente in anagrafica, la funzione ensure_supplier_exists() (app/routers/invoices/fatture_upload.py) crea un nuovo documento in 'fornitori' con metodo_pagamento=None, giorni_pagamento=30, source='auto_from_invoice', dati_incompleti=False, e genera contestualmente un alert 'fornitore_senza_metodo_pagamento' con link diretto a /fornitori?piva=... — è così che compaiono in questa pagina fornitori mai inseriti manualmente dall'utente.",
+      "collezioni_coinvolte": ["fornitori", "alerts"],
+      "campi_scritti": {"fornitori": "id, nome, ragione_sociale, partita_iva, piva, codice_fiscale, metodo_pagamento=None, giorni_pagamento=30, source='auto_from_invoice'", "alerts": "tipo='fornitore_senza_metodo_pagamento', fornitore_id, fornitore_piva, priorita='alta', link=/fornitori?piva=..."},
+      "effetti_collaterali": "Invalida immediatamente la cache 'suppliers_list' in modo che il nuovo fornitore compaia subito in questa pagina senza attendere il TTL della cache (300 secondi)."
+    }
+  ],
+  "collegamenti_con_altre_pagine": [
+    "Fatture (Archivio Fatture Ricevute) — il campo fornitore_metodo_pagamento mostrato lì come badge informativo viene letto dall'anagrafica gestita in questa pagina.",
+    "Scadenze / Dashboard — il pagamento manuale di una fattura (POST /api/fatture-ricevute/paga-manuale), richiamabile anche dal modale Estratto Fatture di questa pagina.",
+    "Prima Nota (tab Provvisori) — le fatture dei fornitori senza pagamento confermato attendono lì la conferma manuale dell'utente.",
+    "Schede Tecniche (router esterno /api/schede-tecniche) — collegato tramite i bottoni 'Popola da XML' e '📋 Schede' sulla card fornitore.",
+    "OpenAPI Imprese (/api/openapi-imprese/info/{piva}) — servizio esterno usato dal bottone 'Auto' nel modale di modifica per precompilare l'anagrafica."
+  ],
+  "popup_e_modali_presenti": [
+    "SupplierModal — form di creazione/modifica fornitore, con sotto-azioni 'Auto' (carica da OpenAPI Imprese) e 'Cerca in fatture'/'Popola da XML'.",
+    "Modale Fatturato — mostra il fatturato annuale (anno corrente o precedente) con dettaglio mensile.",
+    "Modale Estratto Fatture — tabella fatture del fornitore con filtri data/importo/tipo, stampa, e azioni rapide 'Segna pagata' (Cassa/Banca).",
+    "Modale Schede Tecniche — elenco schede tecniche dei prodotti del fornitore, ricerca automatica con polling, download PDF.",
+    "window.confirm() nativo del browser per la conferma di eliminazione fornitore (doppio confirm se ci sono fatture collegate, per forzare l'eliminazione)."
+  ]
+}
