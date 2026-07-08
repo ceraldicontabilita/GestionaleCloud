@@ -38,24 +38,6 @@ const styles = {
     padding: '12px',
     paddingBottom: '80px',
   },
-  header: {
-    background: '#0f2744',
-    borderRadius: '12px',
-    padding: '16px',
-    marginBottom: '16px',
-    color: 'white',
-  },
-  headerTitle: {
-    fontSize: '18px',
-    fontWeight: '600',
-    margin: 0,
-    color: 'white',
-  },
-  headerSub: {
-    fontSize: '13px',
-    opacity: 0.9,
-    marginTop: '4px',
-  },
   grid: {
     display: 'grid',
     gridTemplateColumns: '1fr',
@@ -216,6 +198,7 @@ const styles = {
 // Menu principale
 const MENU_ITEMS = [
   { id: 'corrispettivi', label: 'Corrispettivi', icon: Banknote, color: '#22c55e', bg: '#dcfce7' },
+  { id: 'pos', label: 'POS Serale', icon: CreditCard, color: '#0891b2', bg: '#cffafe' },
   { id: 'versamenti', label: 'Versamenti Banca', icon: Building2, color: '#2563eb', bg: '#dbeafe' },
   { id: 'apporto', label: 'Apporto Soci', icon: Users, color: '#8b5cf6', bg: '#ede9fe' },
   { id: 'fatture', label: 'Fatture Ricevute', icon: FileText, color: '#f59e0b', bg: '#fef3c7' },
@@ -329,6 +312,26 @@ export default function InserimentoRapido() {
         tipo: 'CONTANTI',
       });
       showMessage('Corrispettivo salvato!');
+      resetForm();
+    } catch (err) {
+      showMessage(err.response?.data?.detail || 'Errore salvataggio', 'error');
+    }
+    setLoading(false);
+  };
+
+  const handleSavePos = async () => {
+    if (formData.importo === undefined || formData.importo === '' || formData.importo < 0) {
+      showMessage('Inserisci un importo valido (anche 0 se non hai incassato POS)', 'error');
+      return;
+    }
+    setLoading(true);
+    try {
+      await api.put('/api/pos-corrispettivi/chiusura-giornaliera', {
+        data: formData.data || defaultDate,
+        importo: parseFloat(formData.importo),
+        note: formData.note || '',
+      });
+      showMessage('Incasso POS serale salvato!');
       resetForm();
     } catch (err) {
       showMessage(err.response?.data?.detail || 'Errore salvataggio', 'error');
@@ -493,6 +496,61 @@ export default function InserimentoRapido() {
       >
         <Save size={18} />
         {loading ? 'Salvataggio...' : 'Salva Corrispettivo'}
+      </button>
+    </div>
+  );
+
+  const renderPosForm = () => (
+    <div style={styles.form}>
+      <h3 style={styles.formTitle}>
+        <CreditCard size={20} color="#0891b2" />
+        Incasso POS Serale
+      </h3>
+      <p style={{ fontSize: '13px', color: '#64748b', marginTop: '-8px', marginBottom: '16px' }}>
+        Inserisci qui l'incasso POS reale in chiusura cassa, per confrontarlo con gli accrediti
+        in banca (vedi Coerenza POS Corrispettivi).
+      </p>
+
+      <div style={styles.inputGroup}>
+        <label style={styles.label}>Data</label>
+        <input
+          type="date"
+          style={styles.input}
+          value={formData.data || defaultDate}
+          onChange={e => setFormData({ ...formData, data: e.target.value })}
+        />
+      </div>
+
+      <div style={styles.inputGroup}>
+        <label style={styles.label}>Incasso POS (€)</label>
+        <input
+          type="number"
+          inputMode="decimal"
+          placeholder="0.00"
+          style={styles.input}
+          value={formData.importo ?? ''}
+          onChange={e => setFormData({ ...formData, importo: e.target.value })}
+        />
+      </div>
+
+      <div style={styles.inputGroup}>
+        <label style={styles.label}>Note (opzionale)</label>
+        <input
+          type="text"
+          placeholder="Es: scontrino POS n. 123"
+          style={styles.input}
+          value={formData.note || ''}
+          onChange={e => setFormData({ ...formData, note: e.target.value })}
+        />
+      </div>
+
+      <button
+        style={{ ...styles.btn, background: '#0891b2', color: 'white', width: '100%' }}
+        onClick={handleSavePos}
+        disabled={loading}
+      >
+        <Save size={18} />
+        {loading ? 'Salvataggio...' : 'Salva Incasso POS'}
       </button>
     </div>
   );
@@ -840,6 +898,8 @@ export default function InserimentoRapido() {
     switch (activeSection) {
       case 'corrispettivi':
         return renderCorrispettiviForm();
+      case 'pos':
+        return renderPosForm();
       case 'versamenti':
         return renderVersamentiForm();
       case 'apporto':
@@ -858,12 +918,6 @@ export default function InserimentoRapido() {
   return (
     <PageLayout title="Inserimento Rapido" subtitle="Gestione veloce da mobile">
       <div style={{ ...styles.container, padding: 0 }}>
-        {/* Header */}
-        <div style={styles.header}>
-          <h1 style={styles.headerTitle}>Inserimento Rapido</h1>
-          <p style={styles.headerSub}>Gestione veloce da mobile</p>
-        </div>
-
         {/* Messaggio */}
         {message && (
           <div

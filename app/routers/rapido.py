@@ -14,23 +14,29 @@ router = APIRouter()
 
 
 @router.get("/dipendenti-attivi")
-async def dipendenti_attivi() -> list:
+async def dipendenti_attivi() -> Dict[str, Any]:
+    """Bug corretto: ritornava una list nuda ma il frontend
+    (InserimentoRapido.jsx) legge `res.data?.dipendenti` — il dropdown
+    dipendente restava sempre vuoto (nessun errore visibile, solo lista
+    sempre a []), anche con dipendenti attivi realmente in anagrafica."""
     db = Database.get_db()
     dips = await db["dipendenti"].find(
         {"$or": [{"attivo": True}, {"attivo": {"$exists": False}}], "merged_into": {"$exists": False}},
         {"_id": 0, "id": 1, "nome_completo": 1, "nome": 1, "cognome": 1}
     ).sort("nome_completo", 1).to_list(200)
-    return dips
+    return {"dipendenti": dips}
 
 
 @router.get("/ultimi-inserimenti")
-async def ultimi_inserimenti(limit: int = 5) -> list:
+async def ultimi_inserimenti(limit: int = 5) -> Dict[str, Any]:
+    """Stesso bug di dipendenti_attivi: list nuda vs `res.data?.inserimenti`
+    atteso dal frontend — la sezione "Ultimi Inserimenti" non compariva mai."""
     db = Database.get_db()
     recenti = await db["prima_nota_cassa"].find(
         {"source": {"$regex": "rapido"}},
         {"_id": 0}
     ).sort("created_at", -1).limit(limit).to_list(limit)
-    return recenti
+    return {"inserimenti": recenti}
 
 
 @router.post("/corrispettivo")
