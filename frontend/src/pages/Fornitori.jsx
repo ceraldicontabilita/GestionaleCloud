@@ -54,17 +54,46 @@ function useDebounce(value, delay) {
   return debouncedValue;
 }
 
-// Dizionario Metodi di Pagamento — SOLO 6 metodi
+// Dizionario Metodi di Pagamento — SOLO 4: cassa, banca, misto, certo.
+// Coerente con la mappa già usata dal backend per instradare le fatture in
+// Prima Nota (app/routers/suppliers_module/common.py::PAYMENT_METHODS):
+// contanti->cassa, {assegno,bonifico,rid,carta}->banca, misto->provvisorio.
+// "certo" non è un canale di pagamento a sé: è il fornitore "banca" con il
+// flag pagamento_certo=true (es. Amazon: sempre e solo banca, nessuna
+// eccezione) — vedi handleMetodoChange più sotto.
 const METODI_PAGAMENTO = {
-  contanti: { label: 'Contanti', bg: '#dcfce7', color: '#16a34a' },
-  assegno: { label: 'Assegno', bg: '#fef3c7', color: '#d97706' },
-  bonifico: { label: 'Bonifico', bg: '#dbeafe', color: '#3b82f6' },
+  cassa: { label: 'Cassa', bg: '#dcfce7', color: '#16a34a' },
+  banca: { label: 'Banca', bg: '#dbeafe', color: '#3b82f6' },
   misto: { label: 'Misto', bg: '#e2e8f0', color: '#0f2744' },
-  rid: { label: 'R.I.D.', bg: '#e0f2fe', color: '#3b82f6' },
-  carta: { label: 'Carta', bg: '#f1f5f9', color: '#64748b' },
+  certo: { label: 'Certo', bg: '#fdf6e3', color: '#b8860b' },
 };
 
-const getMetodo = key => METODI_PAGAMENTO[key] || METODI_PAGAMENTO.bonifico;
+// Valori legacy ancora presenti sui fornitori già salvati prima della
+// semplificazione a 4 metodi — tradotti in sola lettura per continuare a
+// mostrare/filtrare correttamente i dati esistenti senza una migrazione.
+const METODO_LEGACY_A_CANONICO = {
+  contanti: 'cassa',
+  assegno: 'banca',
+  bonifico: 'banca',
+  rid: 'banca',
+  carta: 'banca',
+};
+
+// Canale (cassa/banca/misto) da un valore grezzo, anche legacy — ignora
+// pagamento_certo, che è un flag ortogonale al canale.
+const canaleCanonico = raw => {
+  const key = (raw || '').toLowerCase().trim();
+  return METODO_LEGACY_A_CANONICO[key] || key;
+};
+
+// Metodo canonico (cassa/banca/misto/certo) di un fornitore, a partire dal
+// valore grezzo salvato (anche legacy) + dal flag pagamento_certo.
+const metodoCanonico = supplier => {
+  if (supplier?.pagamento_certo) return 'certo';
+  return canaleCanonico(supplier?.metodo_pagamento);
+};
+
+const getMetodo = key => METODI_PAGAMENTO[key] || METODI_PAGAMENTO.banca;
 
 const emptySupplier = {
   ragione_sociale: '',
@@ -80,7 +109,7 @@ const emptySupplier = {
   pec: '',
   iban: '',
   iban_lista: [], // Lista di IBAN aggiuntivi estratti dalle fatture
-  metodo_pagamento: 'bonifico',
+  metodo_pagamento: 'banca',
   pagamento_certo: false,
   giorni_pagamento: 30,
   esclude_magazzino: true,
@@ -665,7 +694,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                     Metodo Pagamento
                   </label>
                   <select
-                    value={form.metodo_pagamento || 'bonifico'}
+                    value={canaleCanonico(form.metodo_pagamento) || 'banca'}
                     onChange={e => handleChange('metodo_pagamento', e.target.value)}
                     style={{
                       width: '100%',
@@ -677,8 +706,10 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                       boxSizing: 'border-box',
                     }}
                   >
+                    {/* "Certo" non è un canale: si imposta con il checkbox
+                        "Pagamento certo" qui sotto, non da questo select */}
                     {Object.entries(METODI_PAGAMENTO)
-                      .filter(([k]) => k !== 'banca')
+                      .filter(([k]) => k !== 'certo')
                       .map(([key, val]) => (
                         <option key={key} value={key}>
                           {val.label}
@@ -945,7 +976,7 @@ function SupplierCard({
   const hasPiva = !!piva;
   // NIENTE default fittizio: se il metodo non è impostato, la card lo deve
   // DIRE (prima mostrava "Bonifico" e il filtro "senza metodo" sembrava rotto)
-  const metodoKey = supplier.metodo_pagamento || '';
+  const metodoKey = supplier.metodo_pagamento ? metodoCanonico(supplier) : '';
   const metodo = metodoKey
     ? getMetodo(metodoKey)
     : { label: '⚠️ Da impostare', color: '#d97706' };
@@ -1181,29 +1212,16 @@ function SupplierCard({
                 transition: 'all 0.2s',
                 opacity: updating ? 0.6 : 1,
               }}
-              title="Clicca per cambiare metodo pagamento"
+              title={
+                metodoKey === 'certo'
+                  ? 'Pagamento certo: le fatture di questo fornitore vengono registrate subito in Prima Nota, senza passare dai Provvisori. Clicca per cambiare.'
+                  : 'Clicca per cambiare metodo pagamento'
+              }
             >
               <CreditCard size={12} />
               {updating ? '...' : metodo.label}
               <span style={{ marginLeft: '2px', fontSize: '10px' }}>▼</span>
             </button>
-            {supplier.pagamento_certo && (
-              <span
-                title="Pagamento certo: le fatture di questo fornitore vengono registrate subito in Prima Nota, senza passare dai Provvisori"
-                style={{
-                  display: 'inline-block',
-                  marginTop: '4px',
-                  padding: '2px 8px',
-                  borderRadius: '6px',
-                  fontSize: '10px',
-                  fontWeight: 700,
-                  backgroundColor: '#dcfce7',
-                  color: '#16a34a',
-                }}
-              >
-                ✓ CERTO
-              </span>
-            )}
           </div>
         </div>
 
@@ -1671,13 +1689,13 @@ export default function Fornitori() {
 
   const filteredSuppliers = suppliers.filter(s => {
     if (filterMetodo !== 'tutti') {
-      // niente default fittizio: senza metodo NON è "bonifico"
-      const metodo = s.metodo_pagamento || '';
-      if (metodo !== filterMetodo) return false;
+      // niente default fittizio: senza metodo NON è "banca"
+      if (!s.metodo_pagamento) return false;
+      if (metodoCanonico(s) !== filterMetodo) return false;
     }
     if (filterIncomplete && (s.partita_iva || s.piva) && s.email) return false;
     if (filterSenzaMetodo) {
-      // 'misto' è un metodo scelto esplicitamente (uno dei 6 di METODI_PAGAMENTO),
+      // 'misto' è un metodo scelto esplicitamente (uno dei 4 di METODI_PAGAMENTO),
       // non equivale a "nessun metodo impostato".
       const m = (s.metodo_pagamento || '').toLowerCase().trim();
       const senzaMetodo = !m || m === 'da_configurare' || m === 'altro';
@@ -1721,14 +1739,18 @@ export default function Fornitori() {
 
   // Cambio rapido metodo pagamento - salva SUBITO nel database
   const handleChangeMetodo = async (supplierId, newMetodo) => {
+    // "certo" non è un canale reale: è "banca" + pagamento_certo=true (vedi
+    // METODI_PAGAMENTO). Le altre scelte azzerano pagamento_certo — cambiare
+    // esplicitamente canale significa che non è più "certo per definizione".
+    const payload =
+      newMetodo === 'certo'
+        ? { metodo_pagamento: 'banca', pagamento_certo: true }
+        : { metodo_pagamento: newMetodo, pagamento_certo: false };
     try {
-      // UPDATE metodo_pagamento nel database
-      await api.put(`/api/suppliers/${supplierId}`, { metodo_pagamento: newMetodo });
+      await api.put(`/api/suppliers/${supplierId}`, payload);
 
       // Aggiorna lo stato locale immediatamente
-      setSuppliers(prev =>
-        prev.map(s => (s.id === supplierId ? { ...s, metodo_pagamento: newMetodo } : s))
-      );
+      setSuppliers(prev => prev.map(s => (s.id === supplierId ? { ...s, ...payload } : s)));
     } catch (error) {
       alert('Errore aggiornamento metodo: ' + (error.response?.data?.detail || error.message));
     }
@@ -1998,7 +2020,7 @@ export default function Fornitori() {
     total: suppliers.length,
     withInvoices: suppliers.filter(s => (s.fatture_count || 0) > 0).length,
     incomplete: suppliers.filter(s => !s.partita_iva || !s.comune).length,
-    cash: suppliers.filter(s => s.metodo_pagamento === 'contanti').length,
+    cash: suppliers.filter(s => canaleCanonico(s.metodo_pagamento) === 'cassa').length,
   };
 
   return (
@@ -2098,7 +2120,7 @@ export default function Fornitori() {
           />
           <StatCard
             icon={CreditCard}
-            label="Pagamento Contanti"
+            label="Pagamento Cassa"
             value={stats.cash}
             color="#0f2744"
             bgColor="#e2e8f0"
@@ -2207,7 +2229,6 @@ export default function Fornitori() {
             >
               <option value="tutti">Tutti i metodi</option>
               {Object.entries(METODI_PAGAMENTO)
-                .filter(([k]) => k !== 'banca')
                 .map(([key, val]) => (
                   <option key={key} value={key}>
                     {val.label}
