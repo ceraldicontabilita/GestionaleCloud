@@ -2098,16 +2098,36 @@ export default function NoleggioAuto() {
                         </div>
                       )}
                     </div>
-                    <button
-                      onClick={() => {
-                        setNuovoVeicolo(v => ({ ...v, fornitore_piva: f.piva || '' }));
-                        setModalFattureNonAssociate(m => ({ ...m, open: false }));
-                        setShowAddVeicolo(true);
-                      }}
-                      style={{ ...button('outline'), fontSize: 12, padding: '6px 10px', flexShrink: 0 }}
-                    >
-                      ➕ Associa
-                    </button>
+                    <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                      {f.id && (
+                        <a
+                          href={`/api/fatture-ricevute/fattura/${f.id}/view-assoinvoice`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            ...button('outline'),
+                            fontSize: 12,
+                            padding: '6px 10px',
+                            textDecoration: 'none',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                          }}
+                          onClick={e => e.stopPropagation()}
+                        >
+                          📄 Vedi
+                        </a>
+                      )}
+                      <button
+                        onClick={() => {
+                          setNuovoVeicolo(v => ({ ...v, fornitore_piva: f.piva || '' }));
+                          setModalFattureNonAssociate(m => ({ ...m, open: false }));
+                          setShowAddVeicolo(true);
+                        }}
+                        style={{ ...button('outline'), fontSize: 12, padding: '6px 10px' }}
+                      >
+                        ➕ Associa
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>

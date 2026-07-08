@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
 import api from '../api';
 import { formatEuro, STYLES, COLORS, button, badge, useIsMobile, RG, pagePad } from '../lib/utils';
 import { FileText } from 'lucide-react';
@@ -245,27 +244,21 @@ export default function ContabilitaAvanzata() {
   const [aliquoteIrap, setAliquoteIrap] = useState({});
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
-  // URL Tab Support
-  const navigate = useNavigate();
-  const location = useLocation();
-
-  const getTabFromPath = () => {
-    const path = location.pathname;
-    const match = path.match(/\/contabilita\/?([\w-]*)/);
-    return match && match[1] ? match[1] : 'imposte';
-  };
-
-  const [activeTab, setActiveTab] = useState(getTabFromPath());
+  // Questo componente è montato SOLO come contenuto nested del tab "avanzata"
+  // di ContabilitaHub.jsx (nessuna route standalone) — l'URL /contabilita/avanzata
+  // è già interamente di competenza dell'Hub. I 3 sotto-tab qui sotto
+  // (imposte/statistiche/bilancio) sono stato puramente interno: prima
+  // provavano a leggere l'ultimo segmento della stessa URL usata dall'Hub,
+  // che vale sempre "avanzata" e non combacia con nessuno dei 3 → la pagina
+  // risultava vuota. E un click su un sotto-tab chiamava navigate() verso
+  // /contabilita/imposte, un path che l'Hub non riconosce, facendolo
+  // ripiegare sul tab "Piano dei Conti" e facendo uscire l'utente da qui.
+  const [activeTab, setActiveTab] = useState('imposte');
 
   const handleTabChange = tabId => {
     setActiveTab(tabId);
-    navigate(`/contabilita/${tabId}`);
   };
 
-  useEffect(() => {
-    const tab = getTabFromPath();
-    if (tab !== activeTab) setActiveTab(tab);
-  }, [location.pathname]);
   const [message, setMessage] = useState(null);
   const [disponibilita, setDisponibilita] = useState(null);
 

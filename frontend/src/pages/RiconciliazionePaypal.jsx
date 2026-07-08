@@ -3,7 +3,7 @@
  * Gestione completa estratti conto PayPal: import PDF, transazioni, report, riconciliazione banca.
  */
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { useIsMobile } from '../hooks/useData';
@@ -64,12 +64,22 @@ export default function RiconciliazionePaypal() {
   const isMobile = useIsMobile();
   const { anno } = useAnnoGlobale();
   const navigate = useNavigate();
+  const location = useLocation();
   const [loading, setLoading] = useState(true);
   const [dashboard, setDashboard] = useState(null);
   const [transactions, setTransactions] = useState([]);
   const [report, setReport] = useState(null);
   const [statements, setStatements] = useState([]);
-  const [activeTab, setActiveTab] = useState('dashboard');
+  // Deep link ?tab=mapping (usato dal bottone "Mappa fornitore" del modale
+  // dettaglio transazione, PaypalTransactionDetailModal.jsx) — prima veniva
+  // ignorato e la pagina apriva sempre su "dashboard".
+  const [activeTab, setActiveTab] = useState(
+    () => new URLSearchParams(location.search).get('tab') || 'dashboard'
+  );
+  useEffect(() => {
+    const tab = new URLSearchParams(location.search).get('tab');
+    if (tab) setActiveTab(tab);
+  }, [location.search]);
   // Anno unico e globale (barra di navigazione in alto) — nessun selettore
   // locale duplicato: una pagina con un filtro anno proprio, indipendente
   // da quello globale, dava l'impressione che cambiare l'anno in alto non
