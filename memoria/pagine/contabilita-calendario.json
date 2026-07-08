@@ -1,0 +1,116 @@
+{
+  "pagina": "Calendario Fiscale",
+  "url": "https://impresasemplice.online/contabilita/calendario",
+  "file_sorgente_frontend": [
+    "/home/user/GestionaleCloud/frontend/src/pages/CalendarioFiscale.jsx"
+  ],
+  "file_sorgente_backend": [
+    "/home/user/GestionaleCloud/app/routers/fiscalita_italiana.py"
+  ],
+  "scopo_generale": "Pagina che genera e mostra il calendario di tutte le scadenze fiscali, previdenziali e societarie di una SRL italiana per l'anno selezionato (IVA mensile/trimestrale, F24, IRES, IRAP, ritenute, INPS, IMU, INTRASTAT, 770, CU, bilancio, CCIAA, vidimazione libri sociali, ecc.), permette di filtrare per mese e stato, evidenzia le scadenze scadute o imminenti (entro 7 giorni) e consente all'utente di marcare manualmente una scadenza come 'completata' o di creare una notifica (in dashboard o email) per una scadenza urgente. Le scadenze sono generate automaticamente una sola volta per ciascun anno tramite una funzione di calcolo deterministica delle date (genera_scadenze_anno) e poi salvate in MongoDB, dove lo stato 'completato' viene aggiornato dall'utente o automaticamente in seguito alla registrazione di un F24.",
+  "bottoni_azioni": [
+    {
+      "etichetta": "Aggiorna (header, icona RefreshCw)",
+      "cosa_fa_al_click": "Richiama loadCalendario(), che ricarica sia il calendario dell'anno che le notifiche/scadenze imminenti",
+      "endpoint_chiamato": "GET /api/fiscalita/calendario/{anno} + GET /api/fiscalita/notifiche-scadenze?anno={anno}&giorni=30 (eseguite in parallelo con Promise.all)",
+      "logica_backend": "calendario_fiscale(anno): cerca in collection 'calendario_fiscale' i documenti con campo anno=anno; se non esistono (existing vuoto) genera le scadenze con genera_scadenze_anno(anno) e le inserisce una per una con completato=False e created_at, poi le ricarica; raggruppa i risultati per mese (chiave 'MM' estratta da data[5:7]) e calcola prossime_5 (le prime 5 scadenze future non completate ordinate per data). get_notifiche_scadenze_imminenti(giorni, anno): query su 'calendario_fiscale' con anno, completato != True, data tra oggi e oggi+giorni giorni; classifica in urgenti (<=3 giorni), prossime (<=7 giorni), pianificabili (resto) e produce un riepilogo con conteggi 'critiche'/'alta_priorita'/'normali'.",
+      "formula_matematica": "n/a (query e raggruppamento, nessun calcolo numerico oltre a differenze di date in giorni: diff = (data_scadenza - oggi).days)",
+      "aggiornamento_ui": "Aggiorna i box KPI (Scadenze Totali, Completate, Da Completare, Prossime 7 gg), la sezione Scadenze Imminenti e la tabella filtrata",
+      "casi_errore": "Se calRes.data.success è false imposta error='Impossibile caricare il calendario' e mostra PageError con pulsante di retry; eventuali eccezioni axios vengono catturate e mostrate come err.message o 'Errore di connessione'"
+    },
+    {
+      "etichetta": "Completa (riga scadenza imminente o riga tabella lista scadenze)",
+      "cosa_fa_al_click": "Chiama completaScadenza(scad.id): imposta lo stato locale completando=scadenzaId (disabilita il bottone mostrando 'Salvo...' o '...'), esegue la chiamata POST, mostra un toast di successo/errore e ricarica l'intero calendario con loadCalendario()",
+      "endpoint_chiamato": "POST /api/fiscalita/calendario/completa/{scadenzaId}",
+      "logica_backend": "completa_scadenza(scadenza_id, note=None): esegue db['calendario_fiscale'].update_one({'id': scadenza_id}, {'$set': {'completato': True, 'data_completamento': <timestamp UTC ISO>, 'note_completamento': note}}). Se result.modified_count==0 (id non trovato) solleva HTTPException 404 'Scadenza non trovata'.",
+      "formula_matematica": "n/a",
+      "aggiornamento_ui": "Toast 'Scadenza completata' (sonner), poi ricaricamento completo dei dati: la riga passa a sfondo verde chiaro (#f0fdf4) con icona CheckCircle e testo 'Completata'; se era nella sezione 'Scadenze Imminenti' scompare da lì poiché quella lista mostra solo scadenze non completate",
+      "casi_errore": "In caso di errore axios: toast.error('Errore nel completamento'); se l'id non esiste il backend risponde 404 (gestito nel catch generico del frontend)"
+    },
+    {
+      "etichetta": "Notifica (Bell icon, box rosso 'Scadenze Critiche', mostrata solo per la prima scadenza urgente)",
+      "cosa_fa_al_click": "Chiama inviaNotifica(s.id, 'dashboard'): imposta inviandoNotifica=scadenzaId, esegue la POST, mostra toast di conferma",
+      "endpoint_chiamato": "POST /api/fiscalita/notifiche-scadenze/invia?scadenza_id={id}&tipo_notifica=dashboard",
+      "logica_backend": "invia_notifica_scadenza(scadenza_id, tipo_notifica): recupera la scadenza da 'calendario_fiscale' (404 se non trovata); per tipo_notifica='dashboard' costruisce un documento notifica {id, tipo:'scadenza_fiscale', titolo, messaggio, data, scadenza_id, letta:False, created_at} e lo inserisce nella collection 'notifications'",
+      "formula_matematica": "n/a",
+      "aggiornamento_ui": "toast.success('Notifica creata in dashboard'); nessun refresh della tabella scadenze",
+      "casi_errore": "toast.error('Errore invio notifica') in caso di eccezione axios; 404 se la scadenza non esiste più"
+    },
+    {
+      "etichetta": "Filtro Mese (select a discesa)",
+      "cosa_fa_al_click": "Aggiorna filtroMese nello stato locale; getScadenzeFiltrate() filtra client-side le scadenze già caricate confrontando i caratteri [5:7] del campo data con il mese selezionato",
+      "endpoint_chiamato": "nessuna chiamata backend aggiuntiva (filtro client-side sui dati già in memoria in calendario.scadenze)",
+      "logica_backend": "n/a",
+      "formula_matematica": "n/a",
+      "aggiornamento_ui": "Ricalcola e ri-renderizza solo la tabella Lista Scadenze filtrata, aggiorna il contatore '{n} scadenze visualizzate'",
+      "casi_errore": "n/a"
+    },
+    {
+      "etichetta": "Filtro Stato (select: Tutte le scadenze / Da completare / Completate)",
+      "cosa_fa_al_click": "Aggiorna filtroStato nello stato locale; getScadenzeFiltrate() applica il filtro su scad.completato",
+      "endpoint_chiamato": "nessuna chiamata backend aggiuntiva (filtro client-side)",
+      "logica_backend": "n/a",
+      "formula_matematica": "n/a",
+      "aggiornamento_ui": "Ricalcola la tabella Lista Scadenze",
+      "casi_errore": "n/a"
+    }
+  ],
+  "operazioni_di_registrazione": [
+    {
+      "nome": "Completamento scadenza fiscale",
+      "sequenza_esatta": "1) Utente clicca 'Completa' su una scadenza non completata → 2) Frontend chiama POST /api/fiscalita/calendario/completa/{scadenzaId} → 3) Backend esegue update_one su collection 'calendario_fiscale' filtrando per campo 'id' (non _id Mongo) → 4) Se non trova il documento (modified_count=0) ritorna 404 → 5) Se trovato, imposta completato=True, data_completamento=timestamp ISO UTC corrente, note_completamento=None (il frontend non passa mai il parametro query 'note') → 6) Frontend mostra toast e ricarica GET /api/fiscalita/calendario/{anno} per rispecchiare lo stato aggiornato",
+      "collezioni_coinvolte": ["calendario_fiscale"],
+      "campi_scritti": {
+        "completato": "boolean, impostato a true",
+        "data_completamento": "string ISO 8601 UTC, timestamp del completamento",
+        "note_completamento": "string o null; nel flusso standard dell'interfaccia rimane sempre null perché il frontend non espone un campo note nel bottone Completa"
+      },
+      "effetti_collaterali": "Nessun'altra collection viene toccata da questa azione manuale. Da notare che esiste un secondo meccanismo di completamento AUTOMATICO indipendente dalla UI: quando si registra un F24 tramite POST /api/fiscalita/f24/registra, il backend esegue update_many su 'calendario_fiscale' filtrando per {codice_tributo: <codice del tributo versato>, completato: False} e imposta completato=True e f24_id=<id F24>; questo endpoint F24 non è però esposto/chiamato da questa pagina del calendario (non risulta nel file CalendarioFiscale.jsx), è quindi un flusso separato documentato per completezza del backend."
+    },
+    {
+      "nome": "Generazione iniziale scadenze anno (lazy, alla prima richiesta dell'anno)",
+      "sequenza_esatta": "1) GET /api/fiscalita/calendario/{anno} → 2) Il backend interroga 'calendario_fiscale' per anno=anno; se il risultato è vuoto (prima richiesta per quell'anno) → 3) chiama genera_scadenze_anno(anno), funzione puramente deterministica che produce ~90+ scadenze fisse (vedi dettaglio_scadenze sotto) → 4) per ciascuna scadenza aggiunge anno, completato=False, created_at e la inserisce con insert_one in 'calendario_fiscale' → 5) ricarica tutte le scadenze appena inserite e le ritorna raggruppate per mese",
+      "collezioni_coinvolte": ["calendario_fiscale"],
+      "campi_scritti": {
+        "id": "string, id univoco della scadenza (es. 'iva_liq_2026_01', 'ires_saldo_2025')",
+        "tipo": "string, es. IVA, F24 non presente come tipo standalone (i codici tributo appaiono su IVA/IRES/IRAP/RITENUTE), LIPE, IRES, IRAP, REDDITI, 770, CU, IMU, INPS, BILANCIO, INTRASTAT, INVENTARI, CONSERVAZIONE, CCIAA, LIBRI_SOCIALI",
+        "descrizione": "string, testo descrittivo della scadenza",
+        "data": "string YYYY-MM-DD, data di scadenza calcolata",
+        "periodicita": "string opzionale, es. 'mensile', 'trimestrale'",
+        "codice_tributo": "string opzionale, codice tributo F24 associato (es. 6001, 2003, 3800, 1040, DM10)",
+        "note": "string opzionale",
+        "categoria": "string, una tra 'versamento', 'dichiarazione', 'comunicazione', 'adempimento', 'assemblea'",
+        "anno": "int, anno di riferimento del calendario",
+        "completato": "boolean, inizializzato a False",
+        "created_at": "string ISO 8601 UTC"
+      },
+      "effetti_collaterali": "La generazione avviene una sola volta per anno (idempotente: se i documenti esistono già non vengono rigenerati né duplicati)"
+    }
+  ],
+  "collegamenti_con_altre_pagine": [
+    "Fiscalità Italiana / Agevolazioni (stesso router fiscalita_italiana.py, endpoint /agevolazioni per crediti d'imposta e deduzioni)",
+    "Gestione F24 (endpoint POST /api/fiscalita/f24/registra e GET /api/fiscalita/f24/storico, non esposti in questa pagina ma che aggiornano automaticamente lo stato 'completato' delle scadenze con lo stesso codice_tributo)",
+    "Chiusura/Apertura Esercizio (endpoint POST /api/fiscalita/chiusura-esercizio e /apertura-esercizio, stesso router, generano scritture contabili collegate al bilancio)",
+    "Dashboard Notifiche (le notifiche create con 'Notifica' finiscono nella collection 'notifications', consultabile probabilmente da un centro notifiche generale dell'app)"
+  ],
+  "popup_e_modali_presenti": [
+    "Nessun modale: la pagina non presenta popup o dialog, solo box informativi in linea (alert rosso 'Scadenze Critiche' in cima alla pagina, quando notifiche.riepilogo.critiche > 0)"
+  ],
+  "dettaglio_scadenze_generate": {
+    "iva_mensile": "12 scadenze, giorno 16 del mese successivo a ciascun mese (per dicembre scadenza a gennaio anno successivo), codice_tributo 6001 (gennaio) o 60{mese:02d}",
+    "iva_trimestrale": "4 scadenze fisse: 16 maggio (1° trim, cod. 6031), 20 agosto (2° trim, cod. 6032), 16 novembre (3° trim, cod. 6033), 16 febbraio anno successivo (4° trim, cod. 6034)",
+    "iva_acconto": "27 dicembre, codice tributo 6013, importo teorico 88% dell'IVA versata nell'ultimo mese/trimestre dell'anno precedente (non calcolato automaticamente, solo promemoria testuale)",
+    "dichiarazione_iva_annuale": "30 aprile dell'anno successivo",
+    "lipe": "4 comunicazioni trimestrali: 31 maggio, 30 settembre, 30 novembre, 28 febbraio anno successivo",
+    "ires_irap": "Saldo anno precedente + 1° acconto: 30 giugno (cod. 2003 IRES, cod. 3800 IRAP); 2° acconto: 30 novembre (cod. 2002 IRES, cod. 3813 IRAP)",
+    "dichiarazione_redditi_sc": "31 ottobre",
+    "ritenute_mensili": "12 scadenze, giorno 16 di ogni mese, codice tributo 1040 (lavoro dipendente)",
+    "mod_770_e_cu": "770: 31 ottobre; CU: 16 marzo (sia invio telematico che consegna ai percipienti)",
+    "imu": "Acconto 16 giugno (cod. 3918), saldo 16 dicembre (cod. 3918)",
+    "inps": "12 scadenze mensili, giorno 16",
+    "bilancio": "Approvazione entro 30 aprile (120gg dalla chiusura esercizio), deposito al Registro Imprese entro 30 maggio",
+    "intrastat": "12 scadenze mensili, giorno 25",
+    "altri_adempimenti": "libro inventari e conservazione digitale documenti: 31 dicembre; diritto annuale CCIAA: 30 giugno; vidimazione libri sociali: 16 marzo (tassa 309,87 o 516,46 euro, codice tributo 7085)",
+    "nota_implementativa": "Le date sono generate con formule fisse basate su normativa italiana standard (nessuna gestione degli slittamenti per festivi/weekend all'interno di genera_scadenze_anno, a differenza della logica di sfasamento POS presente in ControlloMensile.jsx)"
+  }
+}

@@ -1,0 +1,96 @@
+{
+  "pagina": "Pulizia Prima Nota",
+  "url": "https://impresasemplice.online/prima-nota/pulizia",
+  "file_sorgente_frontend": [
+    "frontend/src/pages/PuliziaPrimaNota.jsx"
+  ],
+  "file_sorgente_backend": [
+    "app/routers/prima_nota_module/manutenzione.py (dedup_fatture_prima_nota, diagnostica_corrispettivi_vs_cassa)",
+    "app/routers/prima_nota_module/sync.py (_sync_corrispettivi_impl richiamata da sync_corrispettivi_anno, auto_conferma_provvisori_per_metodo, classifica_metodo_fornitore)",
+    "app/routers/prima_nota_module/__init__.py (mapping rotte)"
+  ],
+  "scopo_generale": "Pagina di manutenzione tecnica per l'amministrazione: serve a diagnosticare e correggere due problemi ricorrenti in Prima Nota — corrispettivi giornalieri mancanti in Cassa (per errori di sync) e fatture duplicate (stesso pagamento registrato due volte, es. una volta manualmente e una volta dal job automatico). Tutte le operazioni distruttive fanno SOLO soft-delete (i dati restano recuperabili nel database), mai cancellazione fisica. Pensata per essere usata in un ordine preciso e guidato (step 1→5), non per un uso quotidiano.",
+  "sezioni_tab": [
+    {"nome": "Step 1 - Diagnosi corrispettivi", "descrizione": "Sola lettura: confronta i corrispettivi presenti nella collection sorgente 'corrispettivi' (XML del registratore telematico) con quelli già presenti in Prima Nota Cassa, e segnala quanti mancano o sono duplicati."},
+    {"nome": "Step 2 - Anteprima duplicati fatture", "descrizione": "Sola lettura (dry-run): mostra quanti movimenti duplicati di fatture esistono in Cassa e Banca, senza modificare nulla."},
+    {"nome": "Step 3 - Esegui pulizia duplicati", "descrizione": "Operazione scrivente: applica realmente l'eliminazione (soft-delete) dei duplicati individuati allo step 2. Richiede che l'anteprima sia stata eseguita prima (bottone disabilitato altrimenti)."},
+    {"nome": "Step 4 - Risincronizza corrispettivi mancanti", "descrizione": "Operazione scrivente: inserisce in Prima Nota Cassa i corrispettivi che lo step 1 ha rilevato come mancanti."},
+    {"nome": "Step 5 - Smista fatture provvisorie per metodo fornitore", "descrizione": "Bottone presente ma la funzione backend collegata è stata svuotata: non sposta più nulla, produce solo un report di classificazione informativo (vedi dettaglio sotto)."}
+  ],
+  "bottoni_azioni": [
+    {
+      "etichetta": "Esegui diagnosi",
+      "dove_si_trova": "Step 1",
+      "cosa_fa_al_click": "lanciaDiagnosi(): setLoading('diagnosi'), poi GET.",
+      "endpoint_chiamato": "GET /api/prima-nota/diagnostica-corrispettivi?anno={anno}",
+      "logica_backend": "diagnostica_corrispettivi_vs_cassa (manutenzione.py): carica tutti i documenti di 'corrispettivi' con anno={anno} (sorgente = XML registratore telematico); carica tutti i movimenti di prima_nota_cassa con source='corrispettivi_sync' e corrispettivo_id valorizzato (status non deleted/archived), indicizzati per corrispettivo_id. Per ogni corrispettivo sorgente calcola totale = totale || totale_complessivo || importo || totale_giornaliero || 0 (in quest'ordine di priorità) e contanti/pos separatamente: se totale<=0 E contanti+pos<=0 → il corrispettivo è 'non sincronizzabile' (importo zero su tutti i campi noti, va corretto a mano). Altrimenti, se non esiste nessun movimento in cassa per quel corrispettivo_id → 'mancante'; se ne esiste più di uno → 'duplicato'.",
+      "formula_matematica": "totale_calcolato = totale_corrispettivo.totale OR totale_complessivo OR importo OR totale_giornaliero OR 0 (fallback in cascata, primo valore non-zero vince). Un corrispettivo è escluso dal conteggio 'mancanti' solo se ENTRAMBI totale<=0 e (contanti+pos)<=0.",
+      "aggiornamento_ui": "Mostra 5 statistiche (Corrispettivi sorgente, Già in Prima Nota, Mancanti in Cassa, Non sincronizzabili importo 0, Duplicati in Cassa) con box di avviso condizionali se mancanti>0 o non_sincronizzabili>0.",
+      "casi_errore": "setErrore(dettaglio) mostrato in un box rosso in cima alla pagina."
+    },
+    {
+      "etichetta": "Mostra anteprima",
+      "dove_si_trova": "Step 2",
+      "cosa_fa_al_click": "lanciaAnteprima(): POST con applica=false (dry-run esplicito).",
+      "endpoint_chiamato": "POST /api/prima-nota/dedup-fatture?applica=false&anno={anno}",
+      "logica_backend": "dedup_fatture_prima_nota (manutenzione.py) in modalità dry-run: per ciascuna delle due collection (prima_nota_cassa, prima_nota_banca) carica tutti i movimenti non deleted/archived dell'anno; raggruppa per una CHIAVE di deduplicazione con priorità: 1) 'fid:{fattura_id}' se il movimento ha fattura_id; 2) altrimenti 'rif:{riferimento}' se il riferimento inizia con 'FATT-'; 3) altrimenti 'num:{numero_fattura}|imp:{importo}|d:{data}' come fallback (protegge da omonimie). I movimenti senza nessuno di questi identificatori vengono ignorati (non sono considerati 'fatture', es. corrispettivi/versamenti). Per ogni gruppo con più di 1 movimento, ordina per created_at crescente: il PIÙ VECCHIO viene tenuto, tutti gli altri sono marcati come 'da eliminare'. In modalità applica=false nessuna scrittura avviene, solo conteggio.",
+      "formula_matematica": "Nessun calcolo monetario: è puro grouping/dedup su chiavi testuali.",
+      "aggiornamento_ui": "Mostra per Cassa e per Banca: numero di gruppi duplicati e numero di movimenti da rimuovere, più una nota testuale del backend che ricorda che è un dry-run.",
+      "casi_errore": "setErrore(dettaglio)."
+    },
+    {
+      "etichetta": "Elimina duplicati",
+      "dove_si_trova": "Step 3 (disabilitato se non è stata eseguita prima l'anteprima, o se il totale da eliminare è 0)",
+      "cosa_fa_al_click": "lanciaPulizia(): calcola il totale da eliminare (cassa+banca) dall'anteprima già in memoria, mostra un window.confirm esplicito che spiega che sarà un SOFT-DELETE reversibile; solo se confermato, esegue la POST con applica=true.",
+      "endpoint_chiamato": "POST /api/prima-nota/dedup-fatture?applica=true&anno={anno}",
+      "logica_backend": "Stessa funzione dedup_fatture_prima_nota, ma con applica=true: dopo aver ricostruito gli stessi gruppi/duplicati (la query viene RIESEGUITA da zero al momento della chiamata, non riusa i risultati dell'anteprima già mostrata — quindi teoricamente potrebbe differire se nel frattempo sono cambiati dati), esegue update_many su ciascuna collection impostando sui documenti da eliminare: status='deleted', deleted_at=ora, deleted_reason='dedup_fatture_prima_nota'. Nessuna cancellazione fisica.",
+      "formula_matematica": "n/d",
+      "aggiornamento_ui": "Mostra box verde di successo con conteggio eliminati_effettivi per Cassa e Banca; azzera lo stato 'anteprima' locale per evitare che l'utente prema di nuovo 'Elimina duplicati' per errore sugli stessi dati già puliti.",
+      "casi_errore": "setErrore(dettaglio); se l'utente annulla il window.confirm, nessuna chiamata viene fatta."
+    },
+    {
+      "etichetta": "Risincronizza",
+      "dove_si_trova": "Step 4",
+      "cosa_fa_al_click": "lanciaRisincronizzazione(): POST diretta, nessuna conferma richiesta.",
+      "endpoint_chiamato": "POST /api/prima-nota/cassa/sync-corrispettivi?anno={anno}",
+      "logica_backend": "sync_corrispettivi_anno → _sync_corrispettivi_impl(anno) (sync.py): carica tutti i documenti di 'corrispettivi' con anno={anno}. Per ognuno, verifica dedup cercando in prima_nota_cassa un movimento con lo stesso corrispettivo_id (a prescindere dal source — quindi anche un vecchio movimento manuale con lo stesso corrispettivo_id bloccherebbe l'inserimento). Se non esiste, calcola contanti=pagato_contanti, elettronico=pagato_pos (o pagato_elettronico per retrocompatibilità), totale=totale||totale_complessivo||importo||totale_giornaliero||(contanti+elettronico)||0. Se totale<=0, salta il corrispettivo e lo registra nella lista 'saltati_dettaglio' con diagnostica sui campi. Altrimenti crea un movimento ENTRATA in prima_nota_cassa con categoria='Corrispettivi', source='corrispettivi_sync', importo=totale, più i campi pagato_contanti/pagato_elettronico/totale_giornata per riferimento. Se elettronico>0, crea ANCHE un secondo movimento USCITA con categoria='POS Verso Banca', importo=elettronico, source='corrispettivi_pos_sync' (rappresenta l'incasso elettronico che esce dalla cassa fisica per andare in banca) — a meno che non esista già un movimento con lo stesso corrispettivo_id e quel source.",
+      "formula_matematica": "REGOLA CONTABILE ESPLICITA nel codice: ENTRATA cassa = totale corrispettivo (contanti + elettronico); USCITA cassa = quota elettronico (verso banca); SALDO cassa risultante per quel giorno = entrata - uscita = solo la parte CONTANTI rimasta fisicamente in cassa. totale = c.totale OR c.totale_complessivo OR c.importo OR c.totale_giornaliero OR (contanti+elettronico) OR 0.",
+      "aggiornamento_ui": "Box verde con conteggio 'Inseriti' nuovi corrispettivi; se duplicati>0 mostra quanti erano già presenti; se saltati>0 mostra avviso rosso che vanno corretti a mano nella sezione Corrispettivi.",
+      "casi_errore": "setErrore(dettaglio)."
+    },
+    {
+      "etichetta": "Smista provvisorie",
+      "dove_si_trova": "Step 5",
+      "cosa_fa_al_click": "lanciaAutoConferma(): window.confirm con la descrizione del comportamento ATTESO (spostare le fatture in Cassa/Banca in base al metodo fornitore) — MA questo comportamento descritto nel testo del confirm NON CORRISPONDE più a quello che il backend fa realmente (vedi sotto). Solo se confermato, POST.",
+      "endpoint_chiamato": "POST /api/prima-nota/provvisori/auto-conferma-per-metodo?anno={anno}",
+      "logica_backend": "auto_conferma_provvisori_per_metodo (sync.py). ATTENZIONE — scoperta rilevante leggendo il codice: la funzione ha un docstring esplicito che dice che il concetto di 'pagamento certo' è stato RIMOSSO e che questa funzione NON SPOSTA PIÙ NULLA automaticamente. Comportamento reale: carica le fatture provvisorie dell'anno (senza prima_nota_id, stato_pagamento diverso da 'sospesa'). Per ognuna: se esiste già un movimento in prima_nota_cassa o prima_nota_banca collegato (dedup su riferimento FATT- o fattura_id), NON lo tocca ma aggiorna solo invoices con prima_nota_id/tipo per allinearla, e la conta in skipped_gia_in_prima_nota. Per le altre fatture, calcola destinazione_calcolata = classifica_metodo_fornitore(metodo del fornitore in anagrafica) SOLO PER CLASSIFICARLE nel report (restate_in_provvisoria_paypal_o_carta se metodo presente ma non cassa/banca, restate_in_provvisoria_fornitore_senza_metodo se assente, restate_in_provvisoria_richiede_conferma_manuale se il metodo indicherebbe cassa o banca) — ma NON CREA ALCUN MOVIMENTO e NON aggiorna la fattura in nessuno di questi tre casi. I contatori 'mosse_cassa' e 'mosse_banca' esposti nella risposta restano quindi SEMPRE a 0.",
+      "formula_matematica": "n/d (nessuna scrittura contabile, solo conteggi di classificazione).",
+      "aggiornamento_ui": "Box verde 'Smistamento completato' con: fatture analizzate, spostate in Cassa (sempre 0), spostate in Banca (sempre 0), restate in Provvisoria (banca non pagate + paypal/carta + fornitore senza metodo), saltate perché già registrate, eventuali errori. Il testo mostrato dà l'impressione che ci sia stato uno smistamento reale, ma i numeri 'mosse_cassa'/'mosse_banca' saranno sempre 0: l'unico effetto pratico osservabile è l'allineamento di invoices.prima_nota_id per le fatture già registrate altrove (skipped_gia_in_prima_nota).",
+      "casi_errore": "setErrore(dettaglio); errori per singola fattura vengono accumulati in skipped_errori (troncati) e non bloccano l'elaborazione delle altre."
+    }
+  ],
+  "operazioni_di_registrazione": [
+    {
+      "nome": "Risincronizzazione corrispettivi mancanti (Step 4)",
+      "sequenza_esatta": "1) Legge tutti i documenti 'corrispettivi' dell'anno. 2) Per ognuno verifica se esiste già un movimento in prima_nota_cassa con lo stesso corrispettivo_id (qualsiasi source). 3) Se manca, calcola totale/contanti/elettronico con le regole di fallback descritte sopra. 4) Se totale>0 inserisce un movimento ENTRATA (source=corrispettivi_sync) e, se c'è quota elettronica, anche un movimento USCITA 'POS Verso Banca' collegato allo stesso corrispettivo_id.",
+      "collezioni_coinvolte": ["corrispettivi (lettura)", "prima_nota_cassa (scrittura)"],
+      "campi_scritti": {"entrata.tipo": "entrata", "entrata.categoria": "Corrispettivi", "entrata.importo": "= totale corrispettivo", "entrata.corrispettivo_id": "id del corrispettivo sorgente", "entrata.source": "corrispettivi_sync", "uscita.tipo": "uscita", "uscita.categoria": "POS Verso Banca", "uscita.importo": "= quota elettronica", "uscita.source": "corrispettivi_pos_sync"},
+      "effetti_collaterali": "Aumenta il totale entrate e uscite di Cassa per l'anno; il saldo cassa netto aumenta solo della quota CONTANTI (entrata-uscita = contanti)."
+    },
+    {
+      "nome": "Pulizia duplicati fatture (Step 3, dopo Step 2)",
+      "sequenza_esatta": "1) Raggruppa i movimenti di prima_nota_cassa e prima_nota_banca dell'anno per chiave dedup (fattura_id > riferimento FATT- > numero+importo+data). 2) In ogni gruppo con >1 elemento, conserva il più vecchio (created_at minimo) e marca gli altri come da eliminare. 3) Con applica=true, esegue update_many impostando status='deleted' sui duplicati.",
+      "collezioni_coinvolte": ["prima_nota_cassa", "prima_nota_banca"],
+      "campi_scritti": {"status": "deleted", "deleted_at": "ISO datetime", "deleted_reason": "dedup_fatture_prima_nota"},
+      "effetti_collaterali": "I duplicati eliminati escono dai saldi/aggregazioni (le query filtrano status NIN [deleted,archived]) ma restano fisicamente nel database e recuperabili da un tecnico. NON tocca la fattura collegata (a differenza della DELETE singola di un movimento, questa funzione non fa rollback su invoices)."
+    }
+  ],
+  "collegamenti_con_altre_pagine": [
+    "Prima Nota (/prima-nota): raggiungibile tramite il bottone header di quella pagina ('🧹 Pulisci duplicati'); questa pagina agisce sulle stesse collection prima_nota_cassa e prima_nota_banca lette/scritte da Prima Nota.",
+    "Corrispettivi: i corrispettivi 'non sincronizzabili' (importo 0 su tutti i campi) segnalati dalla diagnosi vanno corretti manualmente in quella sezione, non da qui."
+  ],
+  "popup_e_modali_presenti": [
+    "window.confirm prima di 'Elimina duplicati': riepiloga quanti movimenti verranno marcati eliminati (cassa+banca) e ribadisce che è reversibile (soft-delete).",
+    "window.confirm prima di 'Smista provvisorie': descrive il comportamento atteso (spostamento per metodo fornitore) — di fatto disallineato dal comportamento reale del backend, che è ormai solo di reportistica (vedi bottone 'Smista provvisorie')."
+  ]
+}
