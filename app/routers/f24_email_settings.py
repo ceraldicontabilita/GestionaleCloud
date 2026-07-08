@@ -203,9 +203,16 @@ async def get_log_scansioni(limit: int = 20) -> Dict[str, Any]:
 async def esegui_scan_manuale() -> Dict[str, Any]:
     """Esegue una scansione manuale immediata."""
     from app.routers.f24.email_f24 import scarica_e_processa
-    
+
     try:
-        result = await scarica_e_processa(giorni=7)
+        # Prima ignorava sempre l'impostazione "Giorni indietro" salvata
+        # dall'utente e scansionava sempre gli ultimi 7 giorni fissi.
+        db = Database.get_db()
+        settings = await db[COLL_EMAIL_SETTINGS].find_one(
+            {"tipo": "f24_settings"}, {"_id": 0, "giorni_indietro": 1}
+        )
+        giorni = (settings or {}).get("giorni_indietro") or 7
+        result = await scarica_e_processa(giorni=giorni)
         
         # Log della scansione
         db = Database.get_db()

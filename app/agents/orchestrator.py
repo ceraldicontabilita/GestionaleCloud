@@ -9,7 +9,11 @@ SCHEDULE = {
 }
 
 
-async def run_agenti(db):
+async def run_agenti(db, agente_specifico: str = None):
+    """Esegue gli agenti schedulati. Se 'agente_specifico' e' valorizzato
+    (bottone 'Esegui ora' su una singola card), esegue SOLO quell'agente e
+    ignora l'intervallo di schedulazione (e' una richiesta manuale esplicita
+    dell'utente, non il giro automatico)."""
     from dateutil.parser import parse as parse_date
     from app.agents.fiscale_sentinella import FiscaleSentinella
     from app.agents.learning_brain import LearningCervello
@@ -20,12 +24,17 @@ async def run_agenti(db):
         "LearningCervello": LearningCervello,
     }
 
+    if agente_specifico and agente_specifico not in mappa:
+        raise ValueError(f"Agente sconosciuto: {agente_specifico}")
+
     for nome, intervallo in SCHEDULE.items():
+        if agente_specifico and nome != agente_specifico:
+            continue
         try:
             stato = await db["agenti_stato"].find_one({"agente": nome})
             ultima = stato.get("ultima_esecuzione") if stato else None
             deve_girare = True
-            if ultima:
+            if ultima and not agente_specifico:
                 diff = (ora - parse_date(ultima)).total_seconds()
                 deve_girare = diff >= intervallo
             if deve_girare:

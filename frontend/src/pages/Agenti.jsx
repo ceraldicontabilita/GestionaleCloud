@@ -238,12 +238,13 @@ export default function AgentiPage() {
     if (activeTab === 'pattern') loadPattern();
   }, [activeTab, loadPattern]);
 
-  const eseguiOra = async () => {
+  const eseguiOra = async agenteNome => {
     setRunning(true);
     setMsg('');
     try {
-      await api.post('/api/agenti/run');
-      setMsg('Agenti eseguiti con successo!');
+      const params = agenteNome ? `?agente=${encodeURIComponent(agenteNome)}` : '';
+      await api.post(`/api/agenti/run${params}`);
+      setMsg(agenteNome ? `Agente ${agenteNome} eseguito con successo!` : 'Agenti eseguiti con successo!');
       await loadAll();
     } catch {
       setMsg('Errore durante esecuzione agenti');
@@ -285,7 +286,7 @@ export default function AgentiPage() {
         </div>
         <button
           data-testid="btn-run-all-agenti"
-          onClick={eseguiOra}
+          onClick={() => eseguiOra()}
           disabled={running}
           style={button('primary', running)}
         >

@@ -86,13 +86,19 @@ async def get_stato_agenti():
 
 
 @router.post("/run")
-async def run_agenti_manuale():
-    """Esegue manualmente tutti gli agenti AI."""
+async def run_agenti_manuale(agente: Optional[str] = Query(None)):
+    """Esegue manualmente gli agenti AI. Se 'agente' e' passato (bottone
+    'Esegui ora' sulla singola card), esegue solo quell'agente — prima il
+    parametro non esisteva e ogni card, qualunque fosse, lanciava sempre
+    l'intero giro di TUTTI gli agenti."""
     db = Database.get_db()
     try:
         from app.agents.orchestrator import run_agenti
-        await run_agenti(db)
-        return {"status": "ok", "message": "Agenti eseguiti con successo"}
+        await run_agenti(db, agente_specifico=agente)
+        msg = f"Agente {agente} eseguito con successo" if agente else "Agenti eseguiti con successo"
+        return {"status": "ok", "message": msg}
+    except ValueError as e:
+        return {"status": "errore", "error": str(e)}
     except Exception as e:
         return {"status": "errore", "error": str(e)}
 

@@ -63,22 +63,36 @@ async def rapido_corrispettivo(payload: Dict[str, Any] = Body(...)) -> Dict[str,
 
 @router.post("/versamento-banca")
 async def rapido_versamento(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    """Un versamento in banca sposta contanti dalla Cassa al Conto: va
+    registrato su ENTRAMBI i registri (prima creava solo l'uscita in cassa,
+    senza mai far comparire il corrispondente accredito in banca)."""
     db = Database.get_db()
     importo = float(payload.get("importo", 0))
     if importo <= 0:
         raise HTTPException(status_code=400, detail="Importo deve essere > 0")
 
+    data = payload.get("data", datetime.now().strftime("%Y-%m-%d"))
+    descrizione = payload.get("descrizione", "Versamento in banca")
     mov_id = str(uuid.uuid4())
-    # Uscita cassa
     await db["prima_nota_cassa"].insert_one({
         "id": mov_id,
-        "data": payload.get("data", datetime.now().strftime("%Y-%m-%d")),
+        "data": data,
         "tipo": "uscita", "importo": importo,
-        "descrizione": payload.get("descrizione", "Versamento in banca"),
+        "descrizione": descrizione,
         "categoria": "Versamento", "source": "rapido_versamento",
         "created_at": datetime.now(timezone.utc).isoformat()
     })
-    return {"success": True, "id": mov_id, "message": "Versamento registrato"}
+    mov_banca_id = str(uuid.uuid4())
+    await db["prima_nota_banca"].insert_one({
+        "id": mov_banca_id,
+        "data": data,
+        "tipo": "entrata", "importo": importo,
+        "descrizione": descrizione,
+        "categoria": "Versamento", "source": "rapido_versamento",
+        "movimento_cassa_id": mov_id,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    return {"success": True, "id": mov_id, "id_banca": mov_banca_id, "message": "Versamento registrato"}
 
 
 @router.post("/apporto-soci")
@@ -88,8 +102,13 @@ async def rapido_apporto(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     if importo <= 0:
         raise HTTPException(status_code=400, detail="Importo deve essere > 0")
 
+    # Il frontend invia conto_dare='BANCA'/'CASSA' in base al toggle
+    # "Destinazione": prima veniva ignorato e l'apporto finiva sempre in cassa
+    # anche scegliendo "Banca".
+    collection = "prima_nota_banca" if payload.get("conto_dare") == "BANCA" else "prima_nota_cassa"
+
     mov_id = str(uuid.uuid4())
-    await db["prima_nota_cassa"].insert_one({
+    await db[collection].insert_one({
         "id": mov_id,
         "data": payload.get("data", datetime.now().strftime("%Y-%m-%d")),
         "tipo": "entrata", "importo": importo,
@@ -154,12 +173,25 @@ async def rapido_acconto(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     if importo <= 0 or not dip_id:
         raise HTTPException(status_code=400, detail="dipendente_id e importo richiesti")
 
+    # Il frontend non invia mai un campo 'nome' (solo dipendente_id/importo/
+    # data/note): la descrizione riportava sempre "Acconto a dipendente "
+    # senza nome. Recupera il nome dall'anagrafica.
+    dipendente = await db["dipendenti"].find_one(
+        {"id": dip_id}, {"_id": 0, "nome_completo": 1, "nome": 1, "cognome": 1}
+    )
+    nome_dipendente = ""
+    if dipendente:
+        nome_dipendente = dipendente.get("nome_completo") or " ".join(
+            p for p in (dipendente.get("nome"), dipendente.get("cognome")) if p
+        )
+
     mov_id = str(uuid.uuid4())
     await db["prima_nota_cassa"].insert_one({
         "id": mov_id, "data": payload.get("data", datetime.now().strftime("%Y-%m-%d")),
         "tipo": "uscita", "importo": importo,
-        "descrizione": f"Acconto a dipendente {payload.get('nome', '')}",
+        "descrizione": f"Acconto a dipendente {nome_dipendente}".strip(),
         "categoria": "Acconti dipendenti", "dipendente_id": dip_id,
+        "note": payload.get("note", ""),
         "source": "rapido_acconto",
         "created_at": datetime.now(timezone.utc).isoformat()
     })
