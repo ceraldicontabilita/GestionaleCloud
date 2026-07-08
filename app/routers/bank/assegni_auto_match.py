@@ -373,6 +373,12 @@ async def _apply_match(
                 "data_collegamento": now,
                 "match_auto": True,
                 "match_livello": livello,
+                # Dati denormalizzati SOLO per il report restituito al frontend
+                # (vedi GestioneAssegni.jsx, riepilogo match L2/L3): prima il
+                # dettaglio delle fatture sommate non era visibile da nessuna
+                # parte, solo il conteggio totale.
+                "numero_fattura": f.get("invoice_number"),
+                "fornitore": f.get("supplier_name") or f.get("cedente_denominazione"),
             })
             quote_assegnate_totale = round(quote_assegnate_totale + quota, 2)
 
@@ -451,7 +457,11 @@ async def _apply_match(
                     "updated_at": now,
                 }}
             )
-            assegni_collegati_result.append({"assegno_id": ass["id"], "quota": quota})
+            assegni_collegati_result.append({
+                "assegno_id": ass["id"],
+                "assegno_numero": ass.get("numero"),
+                "quota": quota,
+            })
             movimenti_banca += await _crea_mov_banca(db, ass, quota, fattura.get("id"))
 
         # Aggiorna fattura cumulando tutte le quote
@@ -460,6 +470,8 @@ async def _apply_match(
         return {
             "fattura_id": fattura.get("id"),
             "fattura_numero": fattura.get("invoice_number"),
+            "fattura_importo": round(_f(fattura.get("total_amount") or fattura.get("importo_totale")), 2),
+            "fornitore": fattura.get("supplier_name") or fattura.get("cedente_denominazione"),
             "assegni": assegni_collegati_result,
             "movimenti_banca": movimenti_banca,
             "livello": livello,

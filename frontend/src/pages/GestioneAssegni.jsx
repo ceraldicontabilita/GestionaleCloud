@@ -1419,6 +1419,26 @@ export default function GestioneAssegni() {
                         <span style={{ fontFamily: 'monospace', color: '#111827' }}>
                           € {(c.importo_residuo ?? c.importo_totale ?? 0).toFixed(2)}
                         </span>
+                        {c.fattura_id && (
+                          <button
+                            onClick={e => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setFatturaView({ id: c.fattura_id, numero: c.numero });
+                            }}
+                            style={{
+                              padding: '2px 7px',
+                              background: '#16a34a',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: 4,
+                              fontSize: 10,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            📄 Vedi
+                          </button>
+                        )}
                         {c.payment_status === 'partial' && (
                           <span
                             style={{
@@ -1915,6 +1935,121 @@ export default function GestioneAssegni() {
                   ✗ Non trovati: <strong>{autoAssocResult.totali?.non_trovati ?? 0}</strong>
                 </span>
               </div>
+              {/* Dettaglio L2/L3: quali fatture sono state sommate/raggruppate per
+                  arrivare al match — prima si vedeva solo il conteggio totale,
+                  senza modo di risalire a QUALI fatture componevano la somma. */}
+              {autoAssocResult.match_l2?.length > 0 && (
+                <details style={{ marginTop: 10, fontSize: 12 }}>
+                  <summary style={{ cursor: 'pointer', color: '#0369a1', fontWeight: 600 }}>
+                    Vedi dettaglio {autoAssocResult.match_l2.length} match L2 (più assegni
+                    uguali → 1 fattura)
+                  </summary>
+                  <div style={{ margin: '8px 0', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {autoAssocResult.match_l2.map((m, i) => (
+                      <div
+                        key={i}
+                        style={{
+                          padding: 8,
+                          background: 'white',
+                          borderRadius: 6,
+                          border: '1px solid #e2e8f0',
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                          <span>
+                            Fatt. <strong>{m.fattura_numero || m.fattura_id}</strong>
+                            {m.fornitore ? ` — ${m.fornitore}` : ''}
+                          </span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <strong>{formatEuro(m.fattura_importo || 0)}</strong>
+                            {m.fattura_id && (
+                              <button
+                                onClick={() =>
+                                  setFatturaView({ id: m.fattura_id, numero: m.fattura_numero })
+                                }
+                                style={{
+                                  padding: '4px 8px',
+                                  background: '#16a34a',
+                                  color: 'white',
+                                  border: 'none',
+                                  borderRadius: 4,
+                                  fontSize: 11,
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                📄 Vedi
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        <div style={{ marginTop: 4, paddingLeft: 12, color: '#64748b' }}>
+                          {(m.assegni || []).map((a, j) => (
+                            <div key={j}>
+                              ↳ Assegno {a.assegno_numero || a.assegno_id}: {formatEuro(a.quota || 0)}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )}
+              {autoAssocResult.match_l3?.length > 0 && (
+                <details style={{ marginTop: 10, fontSize: 12 }}>
+                  <summary style={{ cursor: 'pointer', color: '#7c3aed', fontWeight: 600 }}>
+                    Vedi dettaglio {autoAssocResult.match_l3.length} match L3 (più assegni
+                    diversi → 1 fattura)
+                  </summary>
+                  <div style={{ margin: '8px 0', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {autoAssocResult.match_l3.map((m, i) => (
+                      <div
+                        key={i}
+                        style={{
+                          padding: 8,
+                          background: 'white',
+                          borderRadius: 6,
+                          border: '1px solid #e2e8f0',
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                          <span>
+                            Fatt. <strong>{m.fattura_numero || m.fattura_id}</strong>
+                            {m.fornitore ? ` — ${m.fornitore}` : ''}
+                          </span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <strong>{formatEuro(m.fattura_importo || 0)}</strong>
+                            {m.fattura_id && (
+                              <button
+                                onClick={() =>
+                                  setFatturaView({ id: m.fattura_id, numero: m.fattura_numero })
+                                }
+                                style={{
+                                  padding: '4px 8px',
+                                  background: '#16a34a',
+                                  color: 'white',
+                                  border: 'none',
+                                  borderRadius: 4,
+                                  fontSize: 11,
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                📄 Vedi
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        <div style={{ marginTop: 4, paddingLeft: 12, color: '#64748b' }}>
+                          {(m.assegni || []).map((a, j) => (
+                            <div key={j}>
+                              ↳ Assegno {a.assegno_numero || a.assegno_id}: {formatEuro(a.quota || 0)}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )}
               {autoAssocResult.ambigui?.length > 0 && (
                 <details style={{ marginTop: 10, fontSize: 12 }}>
                   <summary style={{ cursor: 'pointer', color: '#dc2626', fontWeight: 600 }}>
@@ -2062,14 +2197,49 @@ export default function GestioneAssegni() {
                               </span>
                             )}
                           </div>
+                          {/* Struttura per lo stesso fornitore: quali assegni compongono
+                              la somma, con il rispettivo importo — prima si vedeva solo
+                              la lista dei numeri assegno senza risalire a quanto valeva
+                              ciascuno, impossibile verificare la somma a colpo d'occhio. */}
+                          {d.assegni?.length > 0 && (
+                            <div style={{ fontSize: 11, color: '#475569', marginTop: 4, paddingLeft: 10 }}>
+                              {d.assegni.map((numAss, j) => (
+                                <div key={j}>
+                                  ↳ Assegno {numAss}
+                                  {d.importi_assegni?.[j] != null
+                                    ? `: ${formatEuro(d.importi_assegni[j])}`
+                                    : ''}
+                                </div>
+                              ))}
+                            </div>
+                          )}
                           <div style={{ fontSize: 11, color: '#666', marginTop: 2 }}>
-                            Assegni: {d.assegni?.join(', ')} • Somma: {formatEuro(d.somma_assegni)}{' '}
-                            = Fattura: {formatEuro(d.fattura_importo)}
+                            Somma: {formatEuro(d.somma_assegni)} = Fattura:{' '}
+                            {formatEuro(d.fattura_importo)}
                             {d.differenza !== 0 && (
                               <span style={{ color: '#f59e0b' }}>
                                 {' '}
                                 (diff: {formatEuro(d.differenza)})
                               </span>
+                            )}
+                            {d.fattura_id && (
+                              <button
+                                onClick={() =>
+                                  setFatturaView({ id: d.fattura_id, numero: d.fattura_numero })
+                                }
+                                style={{
+                                  marginLeft: 8,
+                                  padding: '3px 8px',
+                                  background: '#16a34a',
+                                  color: 'white',
+                                  border: 'none',
+                                  borderRadius: 4,
+                                  fontSize: 11,
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                📄 Vedi
+                              </button>
                             )}
                           </div>
                         </li>
@@ -3497,15 +3667,38 @@ export default function GestioneAssegni() {
                                 {fornitore} • {formatDateIT(f.invoice_date || f.data_fattura)}
                               </div>
                             </div>
-                            <div
-                              style={{
-                                fontWeight: 'bold',
-                                color: isNotaCredito ? '#dc2626' : '#1e3a5f',
-                                fontSize: 15,
-                              }}
-                            >
-                              {isNotaCredito ? '- ' : ''}
-                              {formatEuro(Math.abs(importo))}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <div
+                                style={{
+                                  fontWeight: 'bold',
+                                  color: isNotaCredito ? '#dc2626' : '#1e3a5f',
+                                  fontSize: 15,
+                                }}
+                              >
+                                {isNotaCredito ? '- ' : ''}
+                                {formatEuro(Math.abs(importo))}
+                              </div>
+                              <button
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  setFatturaView({
+                                    id: f.id,
+                                    numero: f.invoice_number || f.numero_fattura,
+                                  });
+                                }}
+                                style={{
+                                  padding: '3px 7px',
+                                  background: '#16a34a',
+                                  color: 'white',
+                                  border: 'none',
+                                  borderRadius: 4,
+                                  fontSize: 10,
+                                  cursor: 'pointer',
+                                  flexShrink: 0,
+                                }}
+                              >
+                                📄 Vedi
+                              </button>
                             </div>
                           </div>
                         </React.Fragment>

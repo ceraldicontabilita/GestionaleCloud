@@ -2464,6 +2464,7 @@ async def cerca_combinazioni_assegni(
                     "assegni": [a.get("numero") for a in assegni_combo],
                     "importi_assegni": [round(float(a.get("importo", 0)), 2) for a in assegni_combo],
                     "somma_assegni": somma_round,
+                    "fattura_id": fattura_match.get("id"),
                     "fattura_numero": numero_fatt,
                     "fattura_importo": importo_fatt,
                     "fornitore": fornitore,
