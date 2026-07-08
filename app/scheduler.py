@@ -5,7 +5,7 @@ Scheduler per task automatici.
 import logging
 import uuid
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 import random
@@ -162,10 +162,88 @@ async def check_scadenze_partite_task():
                 stats["errori"] += 1
                 logger.error(f"[SCHEDULER-SCADENZE] errore alert {codice_alert} per {documento_id}: {e}")
 
+        # Partite scadute di tipo senza alert dedicato (nota_credito, trasferimento,
+        # altro) — prima venivano solo contate in "senza_mapping" e non generavano
+        # mai nessun alert, anche se scadute da mesi. RIC_PARTITA_VECCHIA fa da
+        # rete di sicurezza generica (vedi memoria/moduli/RICONCILIAZIONE.md gap #6).
+        stats["partita_vecchia_scaduta"] = 0
+        cursor_scadute_senza_mapping = db["partite_aperte"].find(
+            {
+                "stato": {"$in": ["aperta", "parziale"]},
+                "data_scadenza": {"$lt": oggi, "$ne": None},
+                "tipo": {"$nin": list(mapping_alert.keys())},
+            },
+            {"_id": 0, "id": 1, "tipo": 1, "documento_id": 1,
+             "documento_collection": 1, "controparte_nome": 1,
+             "residuo": 1, "data_scadenza": 1}
+        )
+        async for partita in cursor_scadute_senza_mapping:
+            documento_id = partita.get("documento_id") or partita.get("id")
+            documento_coll = partita.get("documento_collection", "partite_aperte")
+            controparte = partita.get("controparte_nome", "")
+            residuo = partita.get("residuo", 0)
+            data_scad = partita.get("data_scadenza", "")
+            try:
+                created = await genera_alert(
+                    "RIC_PARTITA_VECCHIA",
+                    documento_id,
+                    documento_coll,
+                    f"Partita '{partita.get('tipo')}' scaduta il {data_scad} — residuo €{residuo:.2f}"
+                    + (f" — {controparte}" if controparte else ""),
+                    db,
+                    extra={"partita_id": partita.get("id"), "residuo": residuo, "data_scadenza": data_scad},
+                )
+                if created:
+                    stats["partita_vecchia_scaduta"] += 1
+            except Exception as e:
+                stats["errori"] += 1
+                logger.error(f"[SCHEDULER-SCADENZE] errore alert RIC_PARTITA_VECCHIA per {documento_id}: {e}")
+
+        # Partite aperte SENZA data_scadenza esplicita ma vecchie (nessuna scadenza
+        # nota per accorgersi che sono in sospeso) — soglia 90 giorni dalla
+        # creazione, stesso gap #6: prima nessuna visibilità su queste partite
+        # "orfane" perché la query sopra richiede sempre una data_scadenza.
+        soglia_stale = (datetime.now() - timedelta(days=90)).isoformat()
+        stats["partita_vecchia_senza_scadenza"] = 0
+        cursor_senza_scadenza = db["partite_aperte"].find(
+            {
+                "stato": {"$in": ["aperta", "parziale"]},
+                "$or": [{"data_scadenza": None}, {"data_scadenza": ""}],
+                "created_at": {"$lt": soglia_stale},
+            },
+            {"_id": 0, "id": 1, "tipo": 1, "documento_id": 1,
+             "documento_collection": 1, "controparte_nome": 1,
+             "residuo": 1, "created_at": 1}
+        )
+        async for partita in cursor_senza_scadenza:
+            documento_id = partita.get("documento_id") or partita.get("id")
+            documento_coll = partita.get("documento_collection", "partite_aperte")
+            controparte = partita.get("controparte_nome", "")
+            residuo = partita.get("residuo", 0)
+            creata_il = partita.get("created_at", "")[:10]
+            try:
+                created = await genera_alert(
+                    "RIC_PARTITA_VECCHIA",
+                    documento_id,
+                    documento_coll,
+                    f"Partita '{partita.get('tipo')}' senza scadenza, aperta dal {creata_il} "
+                    f"(oltre 90 giorni) — residuo €{residuo:.2f}"
+                    + (f" — {controparte}" if controparte else ""),
+                    db,
+                    extra={"partita_id": partita.get("id"), "residuo": residuo, "created_at": partita.get("created_at")},
+                )
+                if created:
+                    stats["partita_vecchia_senza_scadenza"] += 1
+            except Exception as e:
+                stats["errori"] += 1
+                logger.error(f"[SCHEDULER-SCADENZE] errore alert RIC_PARTITA_VECCHIA (no scadenza) per {documento_id}: {e}")
+
         logger.info(
             f"📅 [SCHEDULER] Scadenze partite: {stats['totale_analizzate']} analizzate, "
             f"fatture={stats['fattura_fornitore']}, f24={stats['f24']}, "
             f"stipendi={stats['stipendio']}, pos={stats['pos_atteso']}, "
+            f"partita_vecchia_scaduta={stats['partita_vecchia_scaduta']}, "
+            f"partita_vecchia_senza_scadenza={stats['partita_vecchia_senza_scadenza']}, "
             f"senza_mapping={stats['senza_mapping']}, errori={stats['errori']}"
         )
 

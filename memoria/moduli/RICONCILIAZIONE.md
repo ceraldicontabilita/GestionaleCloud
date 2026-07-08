@@ -71,7 +71,7 @@ quella "approssimata" — sono la stessa logica di scoring con soglie diverse, n
 5. **Movimento reale senza vera macchina a stati**: solo booleano `riconciliato`, non gli
    8 stati richiesti dalla spec — nessuna distinzione tracciabile tra "non esaminato",
    "in verifica", "dubbio", "escluso manualmente", ecc.
-6. ~ PARZIALE (lug 2026) — 4 alert su 6 ora effettivamente generati:
+6. ✔ RISOLTO (lug 2026) — tutti e 6 gli alert `RIC_*` ora effettivamente generati:
    `RIC_MATCH_AMBIGUO`, `RIC_NON_RICONCILIATO` e `RIC_DIFFERENZA_IMPORTO` in
    `riconciliazione_bancaria.py`, `RIC_POS_NON_QUADRATO` in
    `pos_corrispettivi_check.py::alert_oggi()` (sui casi `stato_accredito`
@@ -82,8 +82,30 @@ quella "approssimata" — sono la stessa logica di scoring con soglie diverse, n
    di riconciliare in silenzio. Tutte chiamate additive best-effort (try/except, non
    toccano la logica di calcolo/matching, solo la rendono visibile), verificate con
    mongomock: nessun alert su match esatto (zero falsi positivi), alert corretto su
-   match con differenza, idempotenza su run ripetuti. Restano da wire
-   `RIC_PARTITA_VECCHIA` (va in `partite_aperte_engine.py`), `RIC_PAGAMENTO_MULTIPLO`.
+   match con differenza, idempotenza su run ripetuti.
+
+   `RIC_PARTITA_VECCHIA` wired in `app/scheduler.py::check_scadenze_partite_task()`
+   (job giornaliero ore 7:00), con DUE query aggiuntive rispetto al mapping
+   esistente (fattura_fornitore/f24/stipendio/pos_atteso): (a) partite scadute di
+   tipo senza alert dedicato (`nota_credito`, `trasferimento`, `altro`) — prima
+   finivano silenziosamente nel contatore `senza_mapping` senza generare mai nulla,
+   anche se scadute da mesi; (b) partite aperte SENZA `data_scadenza` esplicita ma
+   ferme da oltre 90 giorni dalla creazione — prima invisibili perché la query
+   scadenze richiede sempre una `data_scadenza` valorizzata. Verificato con
+   mongomock: alert generato sui due casi, non generato su una partita recente
+   (5gg) senza scadenza, idempotenza su run ripetuti.
+
+   `RIC_PAGAMENTO_MULTIPLO` wired in
+   `riconciliazione_bancaria.py::_alert_pagamento_multiplo()`, chiamato quando un
+   movimento in uscita esce dal motore senza match singolo (stesso punto di
+   `RIC_NON_RICONCILIATO`): cerca fino a 40 fatture fornitore ancora aperte e
+   verifica se la somma di una combinazione di 2 o 3 di esse combacia (±0.05€)
+   con l'importo del movimento — il caso "bonifico cumulativo" mai gestito dal
+   motore (vedi anche gap puntuale più sotto in questo documento). Solo
+   rilevamento/segnalazione: non marca nulla come pagato né riconcilia
+   automaticamente, la combinazione va sempre confermata da un operatore.
+   Verificato con mongomock: alert corretto su combinazione 500+700=1200,
+   nessun falso positivo su importo senza combinazione plausibile.
 
    **Bug collaterale trovato e corretto mentre si wired RIC_POS_NON_QUADRATO**:
    `alert_oggi()` chiamava `controllo_incassi_due_fasi(data_da=..., data_a=...,
@@ -119,5 +141,5 @@ da consolidare.
 - Il motore prende il primo match entro tolleranza in più punti (stesso pattern del bug
   F24 documentato in `F24.md`) invece di segnalare esplicitamente l'ambiguità quando ci sono
   più candidati equivalenti.
-- I 6 alert `RIC_*` completamente inerti sono la lacuna più a basso sforzo da colmare
-  (funzioni di generazione alert già esistenti altrove nel codice come pattern da replicare).
+- ~~I 6 alert `RIC_*` completamente inerti~~ — RISOLTO (lug 2026), vedi punto 6 sopra:
+  tutti e 6 ora effettivamente generati.

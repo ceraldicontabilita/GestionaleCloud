@@ -35,6 +35,7 @@ from datetime import datetime, timezone, timedelta
 import uuid
 import logging
 import re
+import itertools
 
 from app.database import Database, Collections
 
@@ -198,6 +199,72 @@ async def _alert_non_riconciliato(db, mov_id: Optional[str], importo: float, des
         )
     except Exception:
         logger.exception(f"Errore generazione alert RIC_NON_RICONCILIATO per {mov_id}")
+
+
+async def _alert_pagamento_multiplo(db, mov_id: Optional[str], importo: float) -> None:
+    """Genera l'alert RIC_PAGAMENTO_MULTIPLO quando un movimento in uscita
+    resta senza match singolo ma la somma di 2-3 fatture fornitore ancora
+    aperte combacia (±0.05€) col suo importo — il caso "bonifico cumulativo"
+    mai gestito dal motore (gap #7 memoria/moduli/RICONCILIAZIONE.md). Solo
+    rilevamento/segnalazione: NON marca nulla come pagato né riconcilia
+    automaticamente, la combinazione va sempre confermata da un operatore.
+    Best-effort, non blocca la riconciliazione principale."""
+    if not mov_id or importo <= 0:
+        return
+    try:
+        candidates = await db[Collections.INVOICES].find(
+            {
+                "pagato": {"$ne": True},
+                "stato_pagamento": {"$nin": ["pagata", "paid"]},
+            },
+            {"_id": 1, "numero_fattura": 1, "invoice_number": 1,
+             "importo_totale": 1, "total_amount": 1,
+             "cedente_denominazione": 1, "supplier_name": 1}
+        ).limit(40).to_list(40)
+
+        righe = []
+        for f in candidates:
+            imp = f.get("importo_totale") or f.get("total_amount") or 0
+            if imp and 0 < imp < importo:
+                righe.append((f, round(float(imp), 2)))
+
+        if len(righe) < 2:
+            return
+
+        combo_trovata = None
+        for r in (2, 3):
+            for combo in itertools.combinations(righe, r):
+                if abs(sum(c[1] for c in combo) - importo) <= 0.05:
+                    combo_trovata = combo
+                    break
+            if combo_trovata:
+                break
+
+        if not combo_trovata:
+            return
+
+        from app.services.alert_engine import genera_alert
+        dettaglio_fatture = ", ".join(
+            f"{(c[0].get('numero_fattura') or c[0].get('invoice_number') or '?')} €{c[1]:.2f}"
+            for c in combo_trovata
+        )
+        await genera_alert(
+            "RIC_PAGAMENTO_MULTIPLO", mov_id, COLLECTION_ESTRATTO_CONTO,
+            f"Movimento di €{importo:.2f} senza match singolo — possibile pagamento cumulativo "
+            f"di {len(combo_trovata)} fatture (somma combacia): {dettaglio_fatture}",
+            db,
+            extra={
+                "importo_movimento": importo,
+                "fatture_candidate": [
+                    {"id": str(c[0].get("_id")),
+                     "numero": c[0].get("numero_fattura") or c[0].get("invoice_number"),
+                     "importo": c[1]}
+                    for c in combo_trovata
+                ],
+            },
+        )
+    except Exception:
+        logger.exception(f"Errore generazione alert RIC_PAGAMENTO_MULTIPLO per {mov_id}")
 
 
 async def _applica_pagamento_banca(db, fattura: Dict[str, Any], metodo_label: str,
@@ -932,6 +999,8 @@ async def riconcilia_movimenti_banca() -> Dict[str, Any]:
             else:
                 results["non_trovati"] += 1
                 await _alert_non_riconciliato(db, mov_id, importo, descrizione)
+                if tipo == "uscita":
+                    await _alert_pagamento_multiplo(db, mov_id, importo)
 
         except Exception as e:
             results["errors"].append({"id": mov.get("id"), "error": str(e)})
