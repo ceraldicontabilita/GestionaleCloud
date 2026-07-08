@@ -871,6 +871,30 @@ function PrimaNotaDesktop() {
                     </span>
                   </div>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {/* Vedi fattura — prima assente qui, presente solo nella
+                        tabella movimenti principale: impossibile controllare
+                        il documento prima di confermare cassa/banca/sospesa. */}
+                    {p.fattura_id && (
+                      <a
+                        href={`/api/fatture-ricevute/fattura/${p.fattura_id}/view-assoinvoice`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          padding: '6px 10px',
+                          minHeight: 32,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          background: '#e0f2fe',
+                          color: '#0369a1',
+                          borderRadius: 6,
+                          fontSize: 12,
+                          fontWeight: 700,
+                          textDecoration: 'none',
+                        }}
+                      >
+                        📄 Vedi
+                      </a>
+                    )}
                     {!isSospesa && (
                       <button
                         onClick={async () => {
