@@ -15,6 +15,7 @@ import {
 } from '../lib/utils';
 import { useHashState } from '../hooks/useHashState';
 import { CopyLinkButton } from '../components/CopyLinkButton';
+import { useConfirm } from '../components/ui/ConfirmDialog';
 
 /**
  * Prima Nota - Due sezioni separate: Cassa e Banca
@@ -36,6 +37,7 @@ export default function PrimaNota() {
 function PrimaNotaDesktop() {
   const isMobile = useIsMobile();
   const navigate = useNavigate();
+  const confirm = useConfirm();
   const { anno: selectedYear } = useAnnoGlobale();
   const currentYear = new Date().getFullYear();
 
@@ -81,6 +83,8 @@ function PrimaNotaDesktop() {
   const [parzialeModal, setParzialeModal] = useState(null); // provvisorio | null
   const [parzialeImportoCassa, setParzialeImportoCassa] = useState('');
   const [parzialeSaving, setParzialeSaving] = useState(false);
+  const [resolveModal, setResolveModal] = useState(null);
+  const [feedbackModal, setFeedbackModal] = useState(null);
 
   // Quick entry forms - CASSA
   const [corrispettivo, setCorrispettivo] = useState({ data: today, importo: '' });
@@ -262,6 +266,59 @@ function PrimaNotaDesktop() {
     }
   };
 
+  const getErrorMessage = error =>
+    error?.response?.data?.detail || error?.response?.data?.message || error?.message || 'Errore imprevisto';
+
+  const showFeedback = (title, message, tone = 'info') => {
+    setFeedbackModal({ title, message, tone });
+  };
+
+  const confirmYearMismatch = async data => {
+    if (!data || data.startsWith(selectedYear.toString())) return true;
+    return confirm({
+      title: 'Data fuori anno',
+      message: `La data ${formatDateIT(data)} non appartiene all'anno ${selectedYear} selezionato in alto.\n\nVuoi procedere comunque?`,
+      confirmText: 'Procedi',
+      cancelText: 'Correggi data',
+      variant: 'warning',
+    });
+  };
+
+  const handleResolveProvvisorio = async (provvisorio, metodo) => {
+    if (!provvisorio?.fattura_id) return;
+    if (metodo === 'misto') {
+      setParzialeImportoCassa('');
+      setParzialeModal(provvisorio);
+      return;
+    }
+
+    try {
+      const res = await api.post('/api/prima-nota/provvisori/conferma', {
+        fattura_id: provvisorio.fattura_id,
+        metodo,
+      });
+
+      if (metodo === 'sospesa') {
+        if (res.data?.success) {
+          setProvvisori(v =>
+            v.map(x => (x.fattura_id === provvisorio.fattura_id ? { ...x, suggerimento: 'sospesa' } : x))
+          );
+        } else {
+          showFeedback(
+            'Operazione non completata',
+            `Il backend ha risposto senza conferma valida.\n\n${JSON.stringify(res.data)}`,
+            'warning'
+          );
+        }
+        return;
+      }
+
+      setProvvisori(v => v.filter(x => x.fattura_id !== provvisorio.fattura_id));
+    } catch (error) {
+      showFeedback('Errore conferma provvisorio', getErrorMessage(error), 'danger');
+    }
+  };
+
   // La sincronizzazione fatture/corrispettivi/riconciliazione gira in
   // AUTOMATICO sul server ogni 30 minuti (job "Automazioni Prima Nota"):
   // nessun pulsante manuale da ricordare.
@@ -281,10 +338,10 @@ function PrimaNotaDesktop() {
       formData.append('file', file);
       const res = await api.post('/api/estratto-conto-movimenti/import', formData);
       const msg = `${res.data.message}\nInseriti: ${res.data.movimenti_importati || res.data.inseriti || 0}\nDuplicati saltati: ${res.data.duplicati_saltati || 0}`;
-      alert(msg);
+      showFeedback('Import completato', msg);
       loadAllData();
     } catch (error) {
-      alert('Errore import: ' + (error.response?.data?.detail || error.message));
+      showFeedback('Errore import', getErrorMessage(error), 'danger');
     } finally {
       setImportingCSV(false);
       if (bancaCSVRef.current) bancaCSVRef.current.value = '';
@@ -299,11 +356,15 @@ function PrimaNotaDesktop() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (
-      !window.confirm(
-        '⚠️ ATTENZIONE: Questa operazione cancellerà tutti i movimenti degli anni presenti nel CSV e li reinserirà completamente (incluse commissioni duplicate).\n\nContinuare?'
-      )
-    ) {
+    const confirmed = await confirm({
+      title: 'Forza reimport estratto conto',
+      message:
+        'Questa operazione cancellerà tutti i movimenti degli anni presenti nel CSV e li reinserirà completamente, incluse eventuali commissioni duplicate.\n\nVuoi continuare?',
+      confirmText: 'Reimporta',
+      cancelText: 'Annulla',
+      variant: 'warning',
+    });
+    if (!confirmed) {
       if (bancaForceReimportRef.current) bancaForceReimportRef.current.value = '';
       return;
     }
@@ -314,12 +375,13 @@ function PrimaNotaDesktop() {
       formData.append('file', file);
       const res = await api.post('/api/estratto-conto-movimenti/force-reimport', formData);
       const d = res.data;
-      alert(
+      showFeedback(
+        'Reimport completato',
         `✅ ${d.message}\n\nAnni aggiornati: ${d.anni_aggiornati?.join(', ')}\nRecord cancellati: ${d.record_cancellati}\nMovimenti importati: ${d.movimenti_importati}\n\nEntrate: € ${d.totale_entrate?.toLocaleString('it-IT')}\nUscite: € ${d.totale_uscite?.toLocaleString('it-IT')}\nSaldo: € ${d.saldo?.toLocaleString('it-IT')}`
       );
       loadAllData();
     } catch (error) {
-      alert('Errore reimport: ' + (error.response?.data?.detail || error.message));
+      showFeedback('Errore reimport', getErrorMessage(error), 'danger');
     } finally {
       setForceReimporting(false);
       if (bancaForceReimportRef.current) bancaForceReimportRef.current.value = '';
@@ -336,7 +398,7 @@ function PrimaNotaDesktop() {
       a.download = `template_prima_nota_${tipo}.csv`;
       a.click();
     } catch (error) {
-      alert('Errore download: ' + (error.response?.data?.detail || error.message));
+      showFeedback('Errore download template', getErrorMessage(error), 'danger');
     }
   };
 
@@ -346,11 +408,11 @@ function PrimaNotaDesktop() {
   // NOTA: Questo è un dato PROVVISORIO per vedere il saldo cassa.
   // Quando arriva l'XML dei corrispettivi, questo verrà SOVRASCRITTO.
   const handleSaveCorrispettivo = async () => {
-    if (!corrispettivo.importo) return alert('Inserisci importo');
-    if (corrispettivo.data && !corrispettivo.data.startsWith(selectedYear.toString())) {
-      if (!confirm(`⚠️ La data ${formatDateIT(corrispettivo.data)} non è dell'anno ${selectedYear}. Continuare?`))
-        return;
+    if (!corrispettivo.importo) {
+      showFeedback('Dato mancante', "Inserisci l'importo del corrispettivo.", 'warning');
+      return;
     }
+    if (!(await confirmYearMismatch(corrispettivo.data))) return;
     setSavingCorrisp(true);
     try {
       await api.post('/api/prima-nota/cassa', {
@@ -365,7 +427,7 @@ function PrimaNotaDesktop() {
       setCorrispettivo({ data: today, importo: '' });
       loadAllData();
     } catch (error) {
-      alert('Errore: ' + (error.response?.data?.detail || error.message));
+      showFeedback('Errore salvataggio corrispettivo', getErrorMessage(error), 'danger');
     } finally {
       setSavingCorrisp(false);
     }
@@ -376,10 +438,11 @@ function PrimaNotaDesktop() {
   // Quando arriva l'XML dei corrispettivi, questo verrà SOVRASCRITTO.
   const handleSavePos = async () => {
     const totale = parseFloat(pos.pos1) || 0;
-    if (totale === 0) return alert('Inserisci importo POS');
-    if (pos.data && !pos.data.startsWith(selectedYear.toString())) {
-      if (!confirm(`⚠️ La data ${formatDateIT(pos.data)} non è dell'anno ${selectedYear}. Continuare?`)) return;
+    if (totale === 0) {
+      showFeedback('Dato mancante', "Inserisci l'importo POS.", 'warning');
+      return;
     }
+    if (!(await confirmYearMismatch(pos.data))) return;
     setSavingPos(true);
     try {
       await api.post('/api/prima-nota/cassa', {
@@ -394,7 +457,7 @@ function PrimaNotaDesktop() {
       setPos({ data: today, pos1: '', pos2: '', pos3: '' });
       loadAllData();
     } catch (error) {
-      alert('Errore: ' + (error.response?.data?.detail || error.message));
+      showFeedback('Errore salvataggio POS', getErrorMessage(error), 'danger');
     } finally {
       setSavingPos(false);
     }
@@ -402,11 +465,11 @@ function PrimaNotaDesktop() {
 
   // Versamento (AVERE/Uscita da cassa)
   const handleSaveVersamento = async () => {
-    if (!versamento.importo) return alert('Inserisci importo');
-    if (versamento.data && !versamento.data.startsWith(selectedYear.toString())) {
-      if (!confirm(`⚠️ La data ${formatDateIT(versamento.data)} non è dell'anno ${selectedYear}. Continuare?`))
-        return;
+    if (!versamento.importo) {
+      showFeedback('Dato mancante', "Inserisci l'importo del versamento.", 'warning');
+      return;
     }
+    if (!(await confirmYearMismatch(versamento.data))) return;
     setSavingVers(true);
     try {
       await api.post('/api/prima-nota/cassa', {
@@ -419,9 +482,9 @@ function PrimaNotaDesktop() {
       });
       setVersamento({ data: today, importo: '' });
       loadAllData();
-      alert('✅ Versamento salvato!');
+      showFeedback('Versamento salvato', 'Il movimento è stato registrato correttamente.');
     } catch (error) {
-      alert('Errore: ' + (error.response?.data?.detail || error.message));
+      showFeedback('Errore salvataggio versamento', getErrorMessage(error), 'danger');
     } finally {
       setSavingVers(false);
     }
@@ -429,11 +492,11 @@ function PrimaNotaDesktop() {
 
   // Movimento generico
   const handleSaveMovimento = async () => {
-    if (!movimento.importo || !movimento.descrizione) return alert('Compila tutti i campi');
-    if (movimento.data && !movimento.data.startsWith(selectedYear.toString())) {
-      if (!confirm(`⚠️ La data ${formatDateIT(movimento.data)} non è dell'anno ${selectedYear}. Continuare?`))
-        return;
+    if (!movimento.importo || !movimento.descrizione) {
+      showFeedback('Campi mancanti', 'Compila importo e descrizione del movimento.', 'warning');
+      return;
     }
+    if (!(await confirmYearMismatch(movimento.data))) return;
     setSavingMov(true);
     try {
       await api.post('/api/prima-nota/cassa', {
@@ -446,9 +509,9 @@ function PrimaNotaDesktop() {
       });
       setMovimento({ data: today, tipo: 'uscita', importo: '', descrizione: '' });
       loadAllData();
-      alert('✅ Movimento salvato!');
+      showFeedback('Movimento salvato', 'Il movimento è stato registrato correttamente.');
     } catch (error) {
-      alert('Errore: ' + (error.response?.data?.detail || error.message));
+      showFeedback('Errore salvataggio movimento', getErrorMessage(error), 'danger');
     } finally {
       setSavingMov(false);
     }
@@ -459,13 +522,20 @@ function PrimaNotaDesktop() {
       const res = await api.delete(`/api/prima-nota/${tipo}/${id}`);
       if (res.data?.require_force) {
         const avvisi = (res.data.warnings || []).join('\n');
-        if (confirm(`Attenzione:\n${avvisi}\n\nEliminare comunque?`)) {
+        const confirmed = await confirm({
+          title: 'Eliminazione con impatti collegati',
+          message: `${avvisi}\n\nVuoi eliminare comunque questo movimento?`,
+          confirmText: 'Elimina comunque',
+          cancelText: 'Annulla',
+          variant: 'danger',
+        });
+        if (confirmed) {
           await api.delete(`/api/prima-nota/${tipo}/${id}?force=true`);
         }
       }
       loadAllData();
     } catch (error) {
-      alert('Errore: ' + (error.response?.data?.detail || error.message));
+      showFeedback('Errore eliminazione movimento', getErrorMessage(error), 'danger');
     }
   };
 
@@ -488,7 +558,7 @@ function PrimaNotaDesktop() {
         
       }
     } catch (error) {
-      alert('Errore spostamento: ' + (error.response?.data?.detail || error.message));
+      showFeedback('Errore spostamento movimento', getErrorMessage(error), 'danger');
     }
   };
 
@@ -742,6 +812,14 @@ function PrimaNotaDesktop() {
                 const confermabili = provvisori.filter(
                   p => p.suggerimento === 'cassa' || p.suggerimento === 'banca'
                 );
+                const confermaMassiva = await confirm({
+                  title: 'Conferma provvisori con metodo certo',
+                  message: `Verranno confermate ${confermabili.length} fatture con metodo già suggerito.\nLe altre ${provvisori.length - confermabili.length} resteranno in sospeso finché non le risolvi manualmente.\n\nVuoi procedere?`,
+                  confirmText: 'Conferma tutte',
+                  cancelText: 'Annulla',
+                  variant: 'warning',
+                });
+                if (!confermaMassiva) return;
                 const sospeseCount = provvisori.length - confermabili.length;
                 let ok = 0;
                 let errori = 0;
@@ -760,9 +838,9 @@ function PrimaNotaDesktop() {
                 const msgErrori = errori > 0 ? `, ${errori} errori` : '';
                 const msgSospese =
                   sospeseCount > 0
-                    ? `\n${sospeseCount} restano in sospeso: nessun metodo certo, vanno confermate una per una (Cassa/Banca) con i bottoni sulla singola riga.`
+                    ? `\n${sospeseCount} restano in sospeso: nessun metodo certo, vanno risolte una per una dal pulsante "Risolvi".`
                     : '';
-                alert(`✓ ${ok} fatture confermate${msgErrori}.${msgSospese}`);
+                showFeedback('Conferma completata', `✓ ${ok} fatture confermate${msgErrori}.${msgSospese}`);
               }}
               style={{
                 padding: '8px 16px',
@@ -901,139 +979,20 @@ function PrimaNotaDesktop() {
                         📄 Vedi
                       </a>
                     )}
-                    {!isSospesa && (
-                      <button
-                        onClick={async () => {
-                          try {
-                            await api.post('/api/prima-nota/provvisori/conferma', {
-                              fattura_id: p.fattura_id,
-                              metodo: p.suggerimento,
-                            });
-                            setProvvisori(v => v.filter(x => x.fattura_id !== p.fattura_id));
-                          } catch (e) {
-                            alert(e.message);
-                          }
-                        }}
-                        style={{
-                          padding: '6px 16px',
-                          background: '#16a34a',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: 6,
-                          fontWeight: 700,
-                          fontSize: 13,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        ✓ Conferma
-                      </button>
-                    )}
                     <button
-                      onClick={async () => {
-                        try {
-                          await api.post('/api/prima-nota/provvisori/conferma', {
-                            fattura_id: p.fattura_id,
-                            metodo: 'cassa',
-                          });
-                          setProvvisori(v => v.filter(x => x.fattura_id !== p.fattura_id));
-                        } catch (e) {
-                          alert(e.message);
-                        }
-                      }}
+                      onClick={() => setResolveModal(p)}
                       style={{
-                        padding: '6px 12px',
-                        background: isCassa ? '#16a34a' : '#f1f5f9',
-                        color: isCassa ? 'white' : '#475569',
-                        border: isCassa ? 'none' : '1px solid #d1d5db',
+                        padding: '6px 14px',
+                        background: '#0f2744',
+                        color: 'white',
+                        border: 'none',
                         borderRadius: 6,
+                        fontWeight: 700,
                         fontSize: 12,
                         cursor: 'pointer',
-                        fontWeight: isCassa ? 700 : 400,
                       }}
                     >
-                      🏪 Cassa
-                    </button>
-                    <button
-                      onClick={async () => {
-                        try {
-                          await api.post('/api/prima-nota/provvisori/conferma', {
-                            fattura_id: p.fattura_id,
-                            metodo: 'banca',
-                          });
-                          setProvvisori(v => v.filter(x => x.fattura_id !== p.fattura_id));
-                        } catch (e) {
-                          alert(e.message);
-                        }
-                      }}
-                      style={{
-                        padding: '6px 12px',
-                        background: !isCassa && !isSospesa ? '#16a34a' : '#f1f5f9',
-                        color: !isCassa && !isSospesa ? 'white' : '#475569',
-                        border: !isCassa && !isSospesa ? 'none' : '1px solid #d1d5db',
-                        borderRadius: 6,
-                        fontSize: 12,
-                        cursor: 'pointer',
-                        fontWeight: !isCassa && !isSospesa ? 700 : 400,
-                      }}
-                    >
-                      🏦 Banca
-                    </button>
-                    <button
-                      onClick={async () => {
-                        try {
-                          const res = await api.post('/api/prima-nota/provvisori/conferma', {
-                            fattura_id: p.fattura_id,
-                            metodo: 'sospesa',
-                          });
-                          if (res.data?.success) {
-                            setProvvisori(v =>
-                              v.map(x =>
-                                x.fattura_id === p.fattura_id
-                                  ? { ...x, suggerimento: 'sospesa' }
-                                  : x
-                              )
-                            );
-                          } else {
-                            alert('Errore: ' + JSON.stringify(res.data));
-                          }
-                        } catch (e) {
-                          console.error('Sospesa error:', e);
-                          alert(
-                            'Errore: ' +
-                              (e.response?.data?.detail || e.response?.data?.message || e.message)
-                          );
-                        }
-                      }}
-                      style={{
-                        padding: '6px 12px',
-                        background: isSospesa ? '#dc2626' : '#fef2f2',
-                        color: isSospesa ? 'white' : '#dc2626',
-                        border: isSospesa ? 'none' : '1px solid #fca5a5',
-                        borderRadius: 6,
-                        fontSize: 12,
-                        cursor: 'pointer',
-                        fontWeight: isSospesa ? 700 : 400,
-                      }}
-                    >
-                      ⏳ Sospesa
-                    </button>
-                    <button
-                      onClick={() => {
-                        setParzialeImportoCassa('');
-                        setParzialeModal(p);
-                      }}
-                      style={{
-                        padding: '6px 10px',
-                        background: '#fef3c7',
-                        color: '#92400e',
-                        border: '1px solid #d97706',
-                        borderRadius: 6,
-                        fontSize: 11,
-                        cursor: 'pointer',
-                        fontWeight: 600,
-                      }}
-                    >
-                      Misto
+                      Risolvi
                     </button>
                   </div>
                 </div>
@@ -1719,9 +1678,10 @@ function PrimaNotaDesktop() {
                           );
                           setParzialeModal(null);
                         } catch (e) {
-                          alert(
-                            'Errore: ' +
-                              (e.response?.data?.detail || e.response?.data?.message || e.message)
+                          showFeedback(
+                            'Errore pagamento parziale',
+                            e.response?.data?.detail || e.response?.data?.message || e.message,
+                            'danger'
                           );
                         } finally {
                           setParzialeSaving(false);
@@ -1749,11 +1709,157 @@ function PrimaNotaDesktop() {
           </div>
         </div>
       )}
+      {resolveModal && (
+        <ResolveProvvisorioModal
+          provvisorio={resolveModal}
+          onClose={() => setResolveModal(null)}
+          onResolve={async metodo => {
+            const current = resolveModal;
+            setResolveModal(null);
+            await handleResolveProvvisorio(current, metodo);
+          }}
+        />
+      )}
+      {feedbackModal && (
+        <FeedbackModal
+          title={feedbackModal.title}
+          message={feedbackModal.message}
+          tone={feedbackModal.tone}
+          onClose={() => setFeedbackModal(null)}
+        />
+      )}
     </div>
   );
 }
 
 // Sub-components
+
+function FeedbackModal({ title, message, tone = 'info', onClose }) {
+  const tones = {
+    info: { accent: '#0f2744', bg: '#eff6ff' },
+    warning: { accent: '#b45309', bg: '#fff7ed' },
+    danger: { accent: '#b91c1c', bg: '#fef2f2' },
+  };
+  const palette = tones[tone] || tones.info;
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(15, 23, 42, 0.45)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 2100,
+        padding: 16,
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          width: '100%',
+          maxWidth: 460,
+          background: 'white',
+          borderRadius: 10,
+          boxShadow: '0 24px 48px rgba(15,39,68,0.24)',
+          overflow: 'hidden',
+        }}
+      >
+        <div style={{ padding: '14px 16px', background: palette.bg, borderBottom: `1px solid ${palette.accent}22` }}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: palette.accent }}>{title}</div>
+        </div>
+        <div style={{ padding: 16, fontSize: 14, color: '#334155', whiteSpace: 'pre-line', lineHeight: 1.5 }}>
+          {message}
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', padding: 16, borderTop: '1px solid #e2e8f0' }}>
+          <button onClick={onClose} style={{ ...button('primary'), minWidth: 110 }}>
+            Chiudi
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ResolveProvvisorioModal({ provvisorio, onClose, onResolve }) {
+  const suggerimento = provvisorio?.suggerimento || 'sospesa';
+  const opzioni = [
+    { key: 'cassa', label: 'Registra in Cassa', hint: 'Pagamento immediato in contanti.' },
+    { key: 'banca', label: 'Registra in Banca', hint: 'Pagamento tracciato da bonifico o addebito.' },
+    { key: 'sospesa', label: 'Lascia Sospesa', hint: 'La fattura resta nei provvisori in attesa di decisione.' },
+    { key: 'misto', label: 'Pagamento Parziale', hint: 'Divide il pagamento tra cassa e banca.' },
+  ];
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(15, 23, 42, 0.45)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 2050,
+        padding: 16,
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          width: '100%',
+          maxWidth: 520,
+          background: 'white',
+          borderRadius: 10,
+          boxShadow: '0 24px 48px rgba(15,39,68,0.24)',
+          overflow: 'hidden',
+        }}
+      >
+        <div style={{ padding: 16, borderBottom: '1px solid #e2e8f0' }}>
+          <div style={{ fontSize: 17, fontWeight: 700, color: '#0f2744' }}>Risolvi provvisorio</div>
+          <div style={{ fontSize: 13, color: '#64748b', marginTop: 4 }}>
+            {(provvisorio?.fornitore || '').substring(0, 50)} · Fatt. #{provvisorio?.fattura_numero} · €{' '}
+            {(provvisorio?.importo || 0).toFixed(2)}
+          </div>
+        </div>
+        <div style={{ padding: 16, display: 'grid', gap: 10 }}>
+          {opzioni.map(opzione => {
+            const isSuggested = suggerimento === opzione.key;
+            return (
+              <button
+                key={opzione.key}
+                onClick={() => onResolve(opzione.key)}
+                style={{
+                  textAlign: 'left',
+                  padding: 14,
+                  borderRadius: 8,
+                  border: isSuggested ? '2px solid #b8860b' : '1px solid #dbe2ea',
+                  background: isSuggested ? '#fffbeb' : 'white',
+                  cursor: 'pointer',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: '#0f2744' }}>{opzione.label}</span>
+                  {isSuggested && (
+                    <span style={{ fontSize: 11, fontWeight: 700, color: '#92400e' }}>Suggerito</span>
+                  )}
+                </div>
+                <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>{opzione.hint}</div>
+              </button>
+            );
+          })}
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', padding: 16, borderTop: '1px solid #e2e8f0' }}>
+          <button onClick={onClose} style={{ ...button('secondary'), minWidth: 110 }}>
+            Chiudi
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function MiniCard({ title, value, color, highlight: _highlight }) {
   return (
@@ -2846,6 +2952,7 @@ function MovementsTable({
 // Componente Modal per Modifica Movimento
 function EditMovimentoModal({ movimento, tipo, onClose, onSave }) {
   const isMobile = useIsMobile();
+  const [errorMsg, setErrorMsg] = useState('');
   const [form, setForm] = useState({
     data: movimento.data || '',
     tipo: movimento.tipo || 'uscita',
@@ -2865,10 +2972,11 @@ function EditMovimentoModal({ movimento, tipo, onClose, onSave }) {
   const handleSubmit = async e => {
     e.preventDefault();
     if (!form.importo || !form.descrizione) {
-      alert('Compila importo e descrizione');
+      setErrorMsg('Compila importo e descrizione.');
       return;
     }
 
+    setErrorMsg('');
     setSaving(true);
     try {
       const endpoint =
@@ -2889,7 +2997,7 @@ function EditMovimentoModal({ movimento, tipo, onClose, onSave }) {
       onSave({ ...movimento, ...form, importo: parseFloat(form.importo) });
     } catch (error) {
       console.error('Errore salvataggio:', error);
-      alert('Errore nel salvataggio: ' + (error.response?.data?.message || error.message));
+      setErrorMsg(error.response?.data?.message || error.message || 'Errore nel salvataggio.');
     } finally {
       setSaving(false);
     }
@@ -2980,6 +3088,20 @@ function EditMovimentoModal({ movimento, tipo, onClose, onSave }) {
         {/* Form */}
         <form onSubmit={handleSubmit} style={{ padding: 24 }}>
           <div style={{ display: 'grid', gap: 16 }}>
+            {errorMsg && (
+              <div
+                style={{
+                  background: '#fef2f2',
+                  border: '1px solid #fecaca',
+                  color: '#b91c1c',
+                  borderRadius: 8,
+                  padding: '10px 12px',
+                  fontSize: 13,
+                }}
+              >
+                {errorMsg}
+              </div>
+            )}
             {/* Data e Tipo */}
             <div
               style={{
