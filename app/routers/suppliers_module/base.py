@@ -750,96 +750,96 @@ async def get_supplier_fatturato(
     supplier_id: str,
     anno: int = Query(..., ge=2015, le=2030)
 ) -> Dict[str, Any]:
-    """Calcola il fatturato totale di un fornitore per un anno."""
+    """Calcola il fatturato totale di un fornitore per un anno.
+
+    Prima cercava le fatture sui campi "data_fattura"/"data" e "cedente_piva"/
+    "supplier_vat": nessuno di questi è il nome reale usato dalla collection
+    invoices (vedi get_fatture_fornitore sopra, l'endpoint dell'Estratto
+    Fatture, che funziona correttamente) — il risultato era sempre 0€/0
+    fatture anche quando l'Estratto Fatture per lo stesso fornitore/anno
+    mostrava dati. Riallineato agli stessi campi/fallback.
+    """
     db = Database.get_db()
-    
+
     supplier = await db[Collections.SUPPLIERS].find_one(
-        {"$or": [{"id": supplier_id}, {"partita_iva": supplier_id}]},
+        {"$or": [{"id": supplier_id}, {"partita_iva": supplier_id}, {"piva": supplier_id}]},
         {"_id": 0}
     )
-    
+
     if not supplier:
         raise HTTPException(status_code=404, detail="Fornitore non trovato")
-    
-    piva = supplier.get("partita_iva")
+
+    piva = supplier.get("partita_iva") or supplier.get("piva")
+    nome_fornitore = supplier.get("ragione_sociale") or supplier.get("nome") or supplier.get("denominazione", "")
     if not piva:
         return {
-            "fornitore": supplier.get("denominazione") or supplier.get("ragione_sociale", ""),
+            "fornitore": nome_fornitore,
             "anno": anno,
             "totale_fatturato": 0,
             "numero_fatture": 0
         }
-    
-    data_inizio = f"{anno}-01-01"
-    data_fine = f"{anno}-12-31"
-    
-    pipeline = [
-        {
-            "$match": {
-                "$and": [
-                    {"$or": [{"cedente_piva": piva}, {"supplier_vat": piva}]},
-                    {"$or": [
-                        {"data_fattura": {"$gte": data_inizio, "$lte": data_fine}},
-                        {"data": {"$gte": data_inizio, "$lte": data_fine}}
-                    ]}
-                ]
-            }
-        },
-        {
-            "$addFields": {
-                "mese": {
-                    "$month": {
-                        "$dateFromString": {
-                            "dateString": {"$ifNull": ["$data_fattura", "$data"]},
-                            "onError": None
-                        }
-                    }
-                }
-            }
-        },
-        {
-            "$group": {
-                "_id": "$mese",
-                "totale": {"$sum": "$importo_totale"},
-                "count": {"$sum": 1},
-                "pagate": {"$sum": {"$cond": [{"$eq": ["$pagato", True]}, 1, 0]}}
-            }
-        },
-        {"$sort": {"_id": 1}}
-    ]
-    
-    try:
-        result = await db[Collections.INVOICES].aggregate(pipeline).to_list(12)
-    except Exception as e:
-        logger.warning(f"Errore aggregation fatturato: {e}")
-        result = []
-    
-    mesi_nomi = ["", "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", 
+
+    query = {
+        "$and": [
+            {"$or": [
+                {"fornitore_partita_iva": piva},
+                {"supplier_vat": piva},
+                {"cedente_piva": piva},
+            ]},
+            {"$or": [
+                {"data_documento": {"$regex": f"^{anno}"}},
+                {"invoice_date": {"$regex": f"^{anno}"}},
+            ]},
+        ]
+    }
+
+    fatture = await db[Collections.INVOICES].find(query, {"_id": 0}).to_list(5000)
+
+    mesi_nomi = ["", "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
                  "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
-    
-    dettaglio_mensile = []
-    totale_fatturato = 0
-    totale_fatture = 0
-    
-    for item in result:
-        mese_num = item.get("_id")
+
+    per_mese = {}
+    totale_fatturato = 0.0
+    fatture_pagate = 0
+    fatture_non_pagate = 0
+    importo_pagato = 0.0
+    importo_non_pagato = 0.0
+
+    for f in fatture:
+        importo = float(f.get("importo_totale") or f.get("total_amount") or 0)
+        data = f.get("data_documento") or f.get("invoice_date") or ""
+        mese_num = int(data[5:7]) if len(data) >= 7 and data[5:7].isdigit() else None
+        pagata = bool(f.get("pagato")) or (f.get("stato_pagamento") or "").lower() in ("pagata", "paid")
+
+        totale_fatturato += importo
+        if pagata:
+            fatture_pagate += 1
+            importo_pagato += importo
+        else:
+            fatture_non_pagate += 1
+            importo_non_pagato += importo
+
         if mese_num and 1 <= mese_num <= 12:
-            dettaglio_mensile.append({
-                "mese": mese_num,
-                "mese_nome": mesi_nomi[mese_num],
-                "totale": round(item.get("totale", 0), 2),
-                "numero_fatture": item.get("count", 0)
-            })
-            totale_fatturato += item.get("totale", 0)
-            totale_fatture += item.get("count", 0)
-    
+            bucket = per_mese.setdefault(mese_num, {"totale": 0.0, "numero_fatture": 0})
+            bucket["totale"] += importo
+            bucket["numero_fatture"] += 1
+
+    dettaglio_mensile = [
+        {"mese": m, "mese_nome": mesi_nomi[m], "totale": round(v["totale"], 2), "numero_fatture": v["numero_fatture"]}
+        for m, v in sorted(per_mese.items())
+    ]
+
     return {
-        "fornitore": supplier.get("denominazione") or supplier.get("ragione_sociale", ""),
+        "fornitore": nome_fornitore,
         "partita_iva": piva,
         "anno": anno,
         "totale_fatturato": round(totale_fatturato, 2),
-        "numero_fatture": totale_fatture,
-        "dettaglio_mensile": dettaglio_mensile
+        "numero_fatture": len(fatture),
+        "fatture_pagate": fatture_pagate,
+        "fatture_non_pagate": fatture_non_pagate,
+        "importo_pagato": round(importo_pagato, 2),
+        "importo_non_pagato": round(importo_non_pagato, 2),
+        "dettaglio_mensile": dettaglio_mensile,
     }
 
 
