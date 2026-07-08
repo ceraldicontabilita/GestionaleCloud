@@ -1,7 +1,7 @@
 """
 CLI di emergenza per gestione utenti admin.
 
-Utilizzo sul server (shell del container Emergent):
+Utilizzo sul server (shell del container di deploy):
     python -m app.cli.auth_setup
 
 Funzioni:

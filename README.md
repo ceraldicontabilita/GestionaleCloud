@@ -32,7 +32,7 @@ Fonti di verita':
 
 Le API frontend restano compatibili su `/api/suppliers`, ma leggono/scrivono la collection `fornitori` tramite costanti backend.
 
-## Avvio rapido (ambiente Emergent)
+## Avvio rapido
 
 I servizi sono gestiti da Supervisor e si avviano da soli:
 

@@ -149,7 +149,7 @@ class Settings(BaseSettings):
     ) -> Tuple[PydanticBaseSettingsSource, ...]:
         # Priorità: valori espliciti > .env file > variabili OS (pod Kubernetes)
         # Garantisce che MONGO_URL e DB_NAME nel .env non vengano
-        # sovrascritti dalle variabili iniettate dalla piattaforma Emergent.
+        # sovrascritti da variabili d'ambiente iniettate dalla piattaforma di deploy.
         return (init_settings, dotenv_settings, env_settings, file_secret_settings)
     
     def __init__(self, **kwargs):

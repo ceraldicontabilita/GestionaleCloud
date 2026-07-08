@@ -24,7 +24,7 @@ ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
 async def _ask_gemini_with_pdf(pdf_bytes: bytes, prompt: str, filename: str = "doc.pdf") -> Optional[str]:
     """Invia un PDF a Gemini e ottieni risposta strutturata."""
-    from app.services.emergent_stub import LlmChat, UserMessage, FileContentWithMimeType
+    from app.services.anthropic_llm_client import LlmChat, UserMessage, FileContentWithMimeType
     
     if not ANTHROPIC_API_KEY:
         logger.error("[LLM-PARSER] ANTHROPIC_API_KEY non configurata")

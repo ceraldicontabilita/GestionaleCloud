@@ -77,7 +77,7 @@ async def categorizza_articoli_con_ai(
         Lista di categorizzazioni con categoria_haccp, conto, confidenza
     """
     try:
-        from app.services.emergent_stub import LlmChat, UserMessage
+        from app.services.anthropic_llm_client import LlmChat, UserMessage
     except ImportError:
         logger.error("LLM stub non disponibile")
         return []

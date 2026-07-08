@@ -1,6 +1,6 @@
 """
-Stub locale che emula emergentintegrations.llm.chat usando anthropic diretto.
-Permette di girare su Render senza il pacchetto proprietario di Emergent.
+Client LLM basato direttamente sull'SDK anthropic ufficiale (nessuna
+dipendenza da servizi terzi non disponibili su PyPI).
 """
 import os
 import base64

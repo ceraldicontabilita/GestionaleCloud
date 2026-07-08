@@ -457,7 +457,7 @@ async def extract_structured_data(
     Returns:
         Dati strutturati in formato dict
     """
-    from app.services.emergent_stub import LlmChat, UserMessage
+    from app.services.anthropic_llm_client import LlmChat, UserMessage
     
     if not ANTHROPIC_API_KEY:
         raise ValueError("ANTHROPIC_API_KEY non configurata")

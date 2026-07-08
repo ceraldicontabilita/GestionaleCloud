@@ -278,7 +278,7 @@ async def parse_document_with_ai(
     Returns:
         Dict con i dati estratti strutturati
     """
-    from app.services.emergent_stub import LlmChat, UserMessage, ImageContent
+    from app.services.anthropic_llm_client import LlmChat, UserMessage, ImageContent
     
     # Usa ANTHROPIC_API_KEY
     api_key = os.environ.get("ANTHROPIC_API_KEY")
@@ -330,7 +330,7 @@ Rispondi con UNA SOLA PAROLA senza punteggiatura."""
             prompt = PROMPT_FATTURA  # Default
         
         # Inizializza chat Claude con vision
-        # (L'Emergent LLM Key ha accesso solo a modelli Claude)
+        # (il client Anthropic ha accesso solo a modelli Claude)
         chat = LlmChat(
             api_key=api_key,
             session_id=f"doc_parser_{datetime.now().timestamp()}",
@@ -384,7 +384,7 @@ Rispondi con UNA SOLA PAROLA senza punteggiatura."""
             parsed_data = json.loads(json_str.strip())
             parsed_data["success"] = True
             parsed_data["parsed_at"] = datetime.now(timezone.utc).isoformat()
-            parsed_data["parser"] = "ai_emergent_claude"
+            parsed_data["parser"] = "ai_claude"
             parsed_data["pages_analyzed"] = len(images_b64)
             
             return parsed_data
@@ -494,7 +494,7 @@ def convert_ai_fattura_to_db_format(ai_data: Dict[str, Any]) -> Dict[str, Any]:
         "modalita_pagamento": ai_data.get("pagamento", {}).get("modalita"),
         "iban": ai_data.get("pagamento", {}).get("iban"),
         "note": ai_data.get("note"),
-        "parsed_by": "ai_emergent_claude",
+        "parsed_by": "ai_claude",
         "parsed_at": ai_data.get("parsed_at")
     }
 
@@ -541,7 +541,7 @@ def convert_ai_busta_paga_to_dipendente_update(ai_data: Dict[str, Any]) -> Dict[
             "contingenza": ai_data.get("retribuzione", {}).get("contingenza", 0),
             "superminimo": ai_data.get("retribuzione", {}).get("superminimo", 0)
         },
-        "parsed_by": "ai_emergent_claude",
+        "parsed_by": "ai_claude",
         "parsed_at": ai_data.get("parsed_at"),
         "anno_riferimento": periodo.get("anno"),
         "mese_riferimento": periodo.get("mese")
