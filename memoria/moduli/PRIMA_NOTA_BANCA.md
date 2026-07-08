@@ -43,12 +43,21 @@ fatture→bonifici: la fonte reale è Google Drive/PEC-SDI generico, vedi
    di match, non uno stato distinto tracciato.
 3. **EC solo CSV**: nessun supporto per altri formati bancari citati genericamente dalla spec
    (es. OFX, MT940) — solo CSV testato/gestito in `estratto_conto.py`.
-4. **6 alert su 7 registrati ma morti**: `alert_engine.py` definisce 7 costanti `BNK_*`
-   (numero corretto secondo spec), ma solo `BNK_POS_NON_RICONCILIATO` viene effettivamente
-   creato (`scheduler.py:108`); `BNK_TRASFERIMENTO_INCOMPLETO` viene solo *risolto*, mai
-   creato; `BNK_NON_CLASSIFICATO`, `BNK_DUPLICATO`, `BNK_FAT_SENZA_RISCONTRO`,
-   `BNK_F24_NON_RICONCILIATO`, `BNK_DIFFERENZA_IMPORTO` non hanno alcun punto di creazione
-   nel codice — definiti ma mai generati.
+4. ~ PARZIALE (lug 2026) — `alert_engine.py` definisce 7 costanti `BNK_*`. Stato aggiornato:
+   `BNK_POS_NON_RICONCILIATO` era già vivo (`scheduler.py:108`); `BNK_TRASFERIMENTO_INCOMPLETO`
+   viene solo *risolto*, mai creato (non toccato in questo passaggio). ✔ RISOLTI ora
+   `BNK_DUPLICATO` e `BNK_NON_CLASSIFICATO`, generati in
+   `app/routers/bank/bank_statement_import.py::import_bank_statement()`: il primo nel punto
+   in cui il controllo anti-duplicato (già esistente) scarta un movimento già presente, il
+   secondo subito dopo l'insert se il movimento resta senza `categoria`. Entrambi additivi:
+   non cambiano il comportamento esistente (scarto/insert avvengono comunque), solo lo
+   rendono visibile. `BNK_DIFFERENZA_IMPORTO` NON wired di proposito: la stessa condizione è
+   già coperta da `RIC_DIFFERENZA_IMPORTO` (vedi `RICONCILIAZIONE.md`) — wirarlo avrebbe
+   generato un doppio alert per lo stesso evento. `BNK_F24_NON_RICONCILIATO` risulta in
+   realtà già generato altrove (`app/routers/bank/riconciliazione_f24_banca.py:241`),
+   nonostante non fosse emerso nel primo giro di analisi di questo item — verificato ora.
+   Resta morto solo `BNK_FAT_SENZA_RISCONTRO`: richiede una nuova query non ancora
+   implementata (fatture con pagamento sospeso da N giorni oltre scadenza).
 5. **Nessuna spiegazione delle differenze di importo**: quando un importo non coincide
    esattamente, il sistema classifica solo come match/non-match/dubbio — non calcola/mostra
    la causa (commissione, pagamento parziale, arrotondamento) — vedi anche `RICONCILIAZIONE.md`.

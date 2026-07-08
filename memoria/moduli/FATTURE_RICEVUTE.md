@@ -63,10 +63,23 @@ in `app/routers/invoices/fatture_upload.py` — non ci sono più percorsi di imp
    trovata oggi come **sostanzialmente non funzionante** (0/25 endpoint ricevono traffico
    reale funzionante) — vedi `memoria/endpoints/RICONCILIAZIONE_AUDIT.md`. Non esiste oggi
    un percorso alternativo funzionante per pagamenti parziali su fatture.
-5. **Sistema di alert dedicato** (7 tipi richiesti dalla specifica: senza fornitore,
-   anagrafica incompleta, duplicata, tipo ambiguo, righe merce non risolte, metodo
-   mancante, dati incompleti): esistono alert isolati (es. `"fornitore_senza_metodo_pagamento"`
-   creato da `ensure_supplier_exists`) ma non un sistema sistematico che copra tutti i 7 casi.
+5. ~ PARZIALE (lug 2026) — dei 7 tipi alert richiesti dalla spec, `"fornitore_senza_metodo_
+   pagamento"` era già sistematico. ✔ RISOLTI ora 2 dei rimanenti, entrambi additivi (non
+   cambiano nessuna decisione di import già presa, solo la rendono visibile):
+   - `FAT_FORN_NON_TROVATO`: generato in `fatture_upload.py::process_fattura_to_db()` quando
+     `ensure_supplier_exists()` ritorna `supplier_id=None` (P.IVA fornitore mancante o non
+     estratta dall'XML) — la fattura viene comunque salvata, ma prima restava orfana di
+     fornitore senza alcuna segnalazione.
+   - `FAT_RIGHE_MERCE_NON_RISOLTE`: generato in `magazzino_handlers.py::
+     on_fattura_righe_magazzino()` quando la fattura ha righe merce dubbie o che hanno
+     generato un nuovo prodotto — prima esistevano solo alert granulari per singolo prodotto
+     (`MAG_MATCH_DUBBIO`), la fattura stessa non risultava mai segnalata come "ha righe da
+     verificare".
+   Restano morti `FAT_DUPLICATA` (esiste già `deduplica.py::cerca_duplicato_fattura()`, ma il
+   modulo non è importato da nessuna parte — va agganciato con attenzione al flusso 409 di
+   import esistente, non affrontato stanotte per rischio di impattare un percorso critico) e
+   `FAT_TIPO_AMBIGUO` (nessuna validazione esiste ancora su `tipo_documento`, servirebbe un
+   nuovo controllo contro l'enum noto in fase di parsing).
 
 ## Bug/incoerenze note (da correggere)
 

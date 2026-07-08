@@ -177,6 +177,22 @@ async def ensure_supplier_exists(db, parsed_invoice: Dict[str, Any], session=Non
         result["supplier_id"] = supplier_id
         result["metodo_pagamento"] = existing.get("metodo_pagamento")
 
+        # FORN_INATTIVO_USATO era definito in alert_engine.py ma mai generato:
+        # un fornitore marcato "attivo": False (disattivato manualmente) può
+        # comunque ricevere nuove fatture senza che nessuno se ne accorga.
+        # Additivo: non blocca l'import, solo lo segnala.
+        if existing.get("attivo") is False:
+            try:
+                from app.services.alert_engine import genera_alert
+                await genera_alert(
+                    "FORN_INATTIVO_USATO", supplier_id, Collections.SUPPLIERS,
+                    f"Nuova fattura per {supplier_name} (P.IVA {supplier_vat}), "
+                    f"fornitore marcato come non attivo",
+                    db,
+                )
+            except Exception:
+                logger.exception(f"Errore generazione alert FORN_INATTIVO_USATO per {supplier_id}")
+
         # Aggiorna SEMPRE i campi anagrafici mancanti (non sovrascrive quelli già compilati)
         update_data = {}
         field_map = {
@@ -458,6 +474,23 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
         supplier_id = supplier_result.get("supplier_id")
         # REGOLA: metodo pagamento SOLO dal fornitore. Se non definito → sospesa (provvisorio)
         metodo_pagamento = supplier_result.get("metodo_pagamento") or "sospesa"
+
+        # FAT_FORN_NON_TROVATO era definito ma mai generato: ensure_supplier_exists
+        # ritorna subito supplier_id=None quando manca supplier_vat nell'XML (fattura
+        # senza P.IVA fornitore leggibile) — la fattura viene comunque salvata ma
+        # resta orfana di fornitore senza nessuna segnalazione. Additivo, non
+        # blocca il salvataggio.
+        if not supplier_id:
+            try:
+                from app.services.alert_engine import genera_alert
+                await genera_alert(
+                    "FAT_FORN_NON_TROVATO", invoice_key, Collections.INVOICES,
+                    f"Fattura {parsed.get('invoice_number', '?')} salvata senza fornitore "
+                    f"collegato (P.IVA mancante o non estratta dall'XML)",
+                    db,
+                )
+            except Exception:
+                logger.exception(f"Errore generazione alert FAT_FORN_NON_TROVATO per {invoice_key}")
 
         # Calcola data scadenza
         data_fattura_str = parsed.get("invoice_date", "")

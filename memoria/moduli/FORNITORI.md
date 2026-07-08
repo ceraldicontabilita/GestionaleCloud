@@ -52,11 +52,14 @@ sulla stessa pipeline `process_xml_bytes` → `ensure_supplier_exists()`.
      default locale `metodo = "bonifico"` usato come euristica di matching — non scrive sul
      fornitore ma può influenzare l'esito della riconciliazione se il fornitore non ha un
      metodo configurato).
-4. **Nessun sistema sistematico dei 6 alert richiesti dalla spec** (fornitore duplicato,
-   P.IVA non valida, dati anagrafici incompleti, metodo pagamento mancante, IBAN mancante
-   per bonifico/RID, fornitore inattivo con fatture recenti): solo l'alert
-   `"fornitore_senza_metodo_pagamento"` è implementato in modo sistematico; gli altri 5 non
-   risultano generati da nessun punto del codice controllato.
+4. ~ PARZIALE (lug 2026) — dei 6 alert richiesti dalla spec, `"fornitore_senza_metodo_pagamento"`
+   era già sistematico. ✔ RISOLTO ora anche `FORN_INATTIVO_USATO`: generato in
+   `fatture_upload.py::ensure_supplier_exists()` quando arriva una nuova fattura per un
+   fornitore con `attivo: False` — additivo, non blocca l'import, solo lo segnala. Restano
+   morti `FORN_DUPLICATO` (la funzione di dedup esiste già, `fornitori_dedupe.py::
+   trova_duplicati()`, ma non è mai schedulata/chiamata automaticamente — servirebbe un job
+   periodico analogo a `check_scorta_magazzino_task`), `FORN_DATI_INCOERENTI` (nessun
+   controllo di validità P.IVA/CF esiste ancora) — non affrontati in questo passaggio.
 5. **Merge Magazzino↔Fornitori non verificato**: la spec Magazzino presuppone dizionario
    prodotti collegato al fornitore per riordino automatico — vedi `MAGAZZINO.md` per il
    dettaglio (gap separato, ma dipendente da come i fornitori sono strutturati qui).

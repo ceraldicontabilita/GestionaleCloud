@@ -90,6 +90,25 @@ async def on_fattura_righe_magazzino(event: Dict[str, Any], db) -> Optional[Dict
         dettaglio=f"{len(righe)} righe: {risultati['risolte']} risolte, {risultati['create']} nuove, {risultati['dubbie']} dubbie, {risultati['servizi']} servizi"
     )
 
+    # FAT_RIGHE_MERCE_NON_RISOLTE era definito ma mai generato: le righe
+    # dubbie/nuove generano già alert granulari per singolo prodotto
+    # (MAG_MATCH_DUBBIO), ma la fattura stessa non risultava mai segnalata
+    # come "ha righe merce da verificare" — utile per un badge in Fatture
+    # senza dover incrociare gli alert di magazzino. Additivo, non cambia
+    # nessuna delle decisioni di matching già prese sopra.
+    non_risolte = risultati["dubbie"] + risultati["create"]
+    if non_risolte > 0 and fattura_id:
+        try:
+            from app.services.alert_engine import genera_alert
+            await genera_alert(
+                "FAT_RIGHE_MERCE_NON_RISOLTE", fattura_id, "invoices",
+                f"{non_risolte} righe merce da verificare su {len(righe)} "
+                f"({risultati['dubbie']} match dubbi, {risultati['create']} nuovi prodotti creati)",
+                db, extra=risultati,
+            )
+        except Exception:
+            logger.exception(f"Errore generazione alert FAT_RIGHE_MERCE_NON_RISOLTE per {fattura_id}")
+
     return {"action": "magazzino_processato", "risultati": risultati}
 
 

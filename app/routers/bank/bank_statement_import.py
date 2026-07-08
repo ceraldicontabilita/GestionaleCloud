@@ -808,7 +808,7 @@ async def import_bank_statement(
                 {"data_contabile": data_it},
             ],
         }
-        existing = await db[COLLECTION_ESTRATTO_CONTO].find_one(dup_query, {"_id": 1})
+        existing = await db[COLLECTION_ESTRATTO_CONTO].find_one(dup_query, {"_id": 1, "id": 1})
         if existing:
             results["not_found_details"].append({
                 "data": movement["data"],
@@ -817,6 +817,22 @@ async def import_bank_statement(
                 "tipo": movement["tipo"],
                 "skipped": "duplicato"
             })
+            # BNK_DUPLICATO era definito in alert_engine.py ma mai generato: il
+            # controllo anti-duplicato scartava già in silenzio, senza mai
+            # rendere visibile che un import ha trovato righe già presenti
+            # (utile per capire se si sta ri-caricando lo stesso estratto conto
+            # per errore). Additivo: non cambia il comportamento (lo scarto
+            # avviene comunque), solo lo segnala.
+            try:
+                from app.services.alert_engine import genera_alert
+                await genera_alert(
+                    "BNK_DUPLICATO", movement["id"], COLLECTION_ESTRATTO_CONTO,
+                    f"Movimento del {movement['data']} (€{movement['importo']}, {movement['descrizione'][:60]}) "
+                    f"già presente (id {existing.get('id')}) — scartato in import",
+                    db, extra={"movimento_esistente_id": existing.get("id")},
+                )
+            except Exception:
+                logger.exception(f"Errore generazione alert BNK_DUPLICATO per {movement.get('id')}")
             continue
 
         estratto_doc = {
@@ -832,6 +848,21 @@ async def import_bank_statement(
             "created_at": now
         }
         await db[COLLECTION_ESTRATTO_CONTO].insert_one(estratto_doc.copy())
+
+        # BNK_NON_CLASSIFICATO era definito ma mai generato: un movimento
+        # senza categoria resta silenziosamente "non classificato" per sempre,
+        # senza nessuna traccia visibile che serva una classificazione manuale.
+        if not estratto_doc.get("categoria"):
+            try:
+                from app.services.alert_engine import genera_alert
+                await genera_alert(
+                    "BNK_NON_CLASSIFICATO", movement["id"], COLLECTION_ESTRATTO_CONTO,
+                    f"Movimento del {movement['data']} (€{movement['importo']}, "
+                    f"{movement['descrizione'][:60]}) importato senza categoria",
+                    db,
+                )
+            except Exception:
+                logger.exception(f"Errore generazione alert BNK_NON_CLASSIFICATO per {movement.get('id')}")
 
         # --- EVENT BUS: movimento banca importato (Chat 9b) ---
         try:
