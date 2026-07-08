@@ -1,7 +1,9 @@
 import React, { useState, useCallback, useRef } from 'react';
-import { formatEuro, COLORS } from '../lib/utils';
+import { toast } from 'sonner';
+import { COLORS, SHADOWS, BORDER_RADIUS } from '../lib/utils';
 import api from '../api';
 import { PageLayout } from '../components/PageLayout';
+import { Button, Badge, Card, RowActionButton } from '../components/ds';
 import {
   Upload,
   FileText,
@@ -194,20 +196,20 @@ export default function ImportDocumenti() {
   const duplicateCount = results.filter(r => r.status === 'duplicate').length;
   const errorCount = results.filter(r => r.status === 'error').length;
 
-  // Colori per tipo rilevato
-  const getTipoColor = tipo => {
-    const colors = {
-      f24: '#ef4444',
-      cedolino: '#8b5cf6',
-      fattura: '#ec4899',
-      estratto_conto: '#059669',
-      estratto_conto_pdf: '#4caf50',
-      bonifici: '#06b6d4',
-      quietanza_f24: '#ff9800',
-      corrispettivi: '#84cc16',
-      pos: '#a855f7',
+  // Variante Badge per tipo rilevato (mappata sui token del design system)
+  const getTipoVariant = tipo => {
+    const variants = {
+      f24: 'danger',
+      cedolino: 'accent',
+      fattura: 'danger',
+      estratto_conto: 'success',
+      estratto_conto_pdf: 'success',
+      bonifici: 'info',
+      quietanza_f24: 'warning',
+      corrispettivi: 'success',
+      pos: 'accent',
     };
-    return colors[tipo] || '#6b7280';
+    return variants[tipo] || 'neutral';
   };
 
   const getTipoLabel = tipo => {
@@ -226,6 +228,17 @@ export default function ImportDocumenti() {
     return labels[tipo] || tipo;
   };
 
+  const tipiSupportati = [
+    { label: 'F24', variant: 'danger' },
+    { label: 'Libro Unico (LUL)', variant: 'accent' },
+    { label: 'Fatture XML', variant: 'danger' },
+    { label: 'Estratti Conto', variant: 'success' },
+    { label: 'Quietanze F24', variant: 'warning' },
+    { label: 'Bonifici', variant: 'info' },
+    { label: 'Corrispettivi', variant: 'success' },
+    { label: 'POS', variant: 'accent' },
+  ];
+
   return (
     <PageLayout
       title="Import Documenti"
@@ -238,16 +251,16 @@ export default function ImportDocumenti() {
           style={{
             marginBottom: 20,
             padding: 16,
-            background: '#dbeafe',
-            borderRadius: 12,
-            border: '1px solid #93c5fd',
+            background: COLORS.infoLight,
+            borderRadius: BORDER_RADIUS.lg,
+            border: `1px solid ${COLORS.info}`,
             display: 'flex',
             alignItems: 'flex-start',
             gap: 12,
           }}
         >
-          <Sparkles size={20} color="#3b82f6" style={{ flexShrink: 0, marginTop: 2 }} />
-          <div style={{ fontSize: 13, color: '#1e40af' }}>
+          <Sparkles size={20} color={COLORS.info} style={{ flexShrink: 0, marginTop: 2 }} />
+          <div style={{ fontSize: 13, color: COLORS.info }}>
             <strong>Riconoscimento Automatico</strong>
             <br />
             Carica qualsiasi documento: F24, Libro Unico, Fatture XML, Estratti Conto, Bonifici,
@@ -258,6 +271,7 @@ export default function ImportDocumenti() {
         </div>
 
         {/* Area Drop */}
+        {/* Nota: div nativo (non Card) perché deve portare data-testid="drop-zone" sul nodo esatto */}
         <div
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
@@ -265,9 +279,9 @@ export default function ImportDocumenti() {
           onClick={() => fileInputRef.current?.click()}
           data-testid="drop-zone"
           style={{
-            background: dragOver ? '#dbeafe' : 'white',
-            border: dragOver ? '3px dashed #3b82f6' : '3px dashed #d1d5db',
-            borderRadius: 16,
+            background: dragOver ? COLORS.infoLight : COLORS.card,
+            border: dragOver ? `3px dashed ${COLORS.info}` : `3px dashed ${COLORS.borderDark}`,
+            borderRadius: BORDER_RADIUS.xl,
             padding: 50,
             textAlign: 'center',
             marginBottom: 20,
@@ -286,12 +300,12 @@ export default function ImportDocumenti() {
           />
           <FolderUp
             size={56}
-            style={{ marginBottom: 12, opacity: 0.5, color: dragOver ? '#3b82f6' : '#6b7280' }}
+            style={{ marginBottom: 12, opacity: 0.5, color: dragOver ? COLORS.info : COLORS.textMuted }}
           />
-          <div style={{ fontSize: 17, fontWeight: 600, color: '#374151', marginBottom: 6 }}>
+          <div style={{ fontSize: 17, fontWeight: 600, color: COLORS.gray[700], marginBottom: 6 }}>
             {dragOver ? 'Rilascia qui i file' : 'Trascina i file o clicca per selezionare'}
           </div>
-          <div style={{ fontSize: 13, color: '#6b7280' }}>
+          <div style={{ fontSize: 13, color: COLORS.textMuted }}>
             PDF, Excel, XML, CSV, ZIP • Singoli o multipli
           </div>
         </div>
@@ -316,30 +330,22 @@ export default function ImportDocumenti() {
             style={{ display: 'none' }}
             data-testid="zip-file-input"
           />
-          <button
+          <Button
+            variant="warning"
             onClick={() => zipInputRef.current?.click()}
             disabled={uploading}
-            style={{
-              padding: '10px 20px',
-              background: '#f59e0b',
-              color: 'white',
-              border: 'none',
-              borderRadius: 8,
-              fontWeight: 600,
-              cursor: uploading ? 'wait' : 'pointer',
-              fontSize: 13,
-            }}
             data-testid="upload-zip-btn"
           >
             Carica ZIP
-          </button>
-          <span style={{ fontSize: 12, color: '#6b7280' }}>
+          </Button>
+          <span style={{ fontSize: 12, color: COLORS.textMuted }}>
             Supporta ZIP annidati con estrazione automatica
           </span>
 
           {/* Auto-classify documenti Gmail/PEC */}
-          <button
+          <Button
             type="button"
+            variant="info"
             onClick={async () => {
               try {
                 const res = await api.post(
@@ -347,168 +353,101 @@ export default function ImportDocumenti() {
                 );
                 const r = res.data || {};
                 const cats = Object.entries(r.classificati || {})
-                  .map(([k, v]) => `  ${k}: ${v}`)
-                  .join('\n');
-                alert(
-                  `✓ Auto-classificazione completata\n\n` +
-                    `Documenti totali: ${r.totali}\n` +
-                    `Non classificabili: ${r.nessuna_categoria}\n` +
-                    `Cedolini/CU associati a dipendente: ${r.cedolini_associati}\n` +
-                    `F24 creati in f24_tributi: ${r.f24_creati}\n\n` +
-                    `Categorie rilevate:\n${cats}`
-                );
+                  .map(([k, v]) => `${k}: ${v}`)
+                  .join(' • ');
+                toast.success('Auto-classificazione completata', {
+                  description:
+                    `Documenti totali: ${r.totali} • Non classificabili: ${r.nessuna_categoria} • ` +
+                    `Cedolini/CU associati a dipendente: ${r.cedolini_associati} • F24 creati in f24_tributi: ${r.f24_creati}` +
+                    (cats ? ` • ${cats}` : ''),
+                });
               } catch (e) {
-                alert('Errore: ' + (e.response?.data?.detail || e.message));
+                toast.error('Errore', { description: e.response?.data?.detail || e.message });
               }
             }}
             data-testid="auto-classify-btn"
             title="Scansiona documents_inbox (Gmail/PEC) e classifica automaticamente F24, cedolini, CU, verbali, PEC…"
-            style={{
-              padding: '10px 16px',
-              background: '#1d4ed8',
-              color: 'white',
-              border: 'none',
-              borderRadius: 8,
-              fontWeight: 600,
-              cursor: 'pointer',
-              fontSize: 13,
-            }}
           >
             🧠 Auto-classifica Gmail/PEC
-          </button>
+          </Button>
 
-          <button
+          <Button
             type="button"
+            variant="warning"
             onClick={async () => {
               try {
                 const res = await api.post('/api/documenti-inbox/import-f24-from-inbox');
                 const r = res.data || {};
-                alert(
-                  `✓ Import F24 completato\n\nF24 analizzati: ${r.f24_analizzati}\nTributi creati in f24_tributi: ${r.tributi_creati}`
-                );
+                toast.success('Import F24 completato', {
+                  description: `F24 analizzati: ${r.f24_analizzati} • Tributi creati in f24_tributi: ${r.tributi_creati}`,
+                });
               } catch (e) {
-                alert('Errore: ' + (e.response?.data?.detail || e.message));
+                toast.error('Errore', { description: e.response?.data?.detail || e.message });
               }
             }}
             data-testid="import-f24-btn"
-            style={{
-              padding: '10px 16px',
-              background: '#b45309',
-              color: 'white',
-              border: 'none',
-              borderRadius: 8,
-              fontWeight: 600,
-              cursor: 'pointer',
-              fontSize: 13,
-            }}
           >
             📧 Importa F24 da inbox
-          </button>
+          </Button>
 
-          <button
+          <Button
             type="button"
+            variant="success"
             onClick={async () => {
               try {
                 const res = await api.post('/api/documenti-inbox/import-dipendenti-from-cu');
                 const r = res.data || {};
-                alert(
-                  `✓ Import dipendenti da CU completato\n\n` +
-                    `CU analizzate: ${r.cu_analizzate}\n` +
-                    `Dipendenti creati: ${r.dipendenti_creati}\n` +
-                    `Già presenti: ${r.gia_presenti}\n` +
-                    `Filename non riconosciuti: ${r.non_riconosciuti}`
-                );
+                toast.success('Import dipendenti da CU completato', {
+                  description:
+                    `CU analizzate: ${r.cu_analizzate} • Dipendenti creati: ${r.dipendenti_creati} • ` +
+                    `Già presenti: ${r.gia_presenti} • Filename non riconosciuti: ${r.non_riconosciuti}`,
+                });
               } catch (e) {
-                alert('Errore: ' + (e.response?.data?.detail || e.message));
+                toast.error('Errore', { description: e.response?.data?.detail || e.message });
               }
             }}
             data-testid="import-dipendenti-cu-btn"
-            style={{
-              padding: '10px 16px',
-              background: '#15803d',
-              color: 'white',
-              border: 'none',
-              borderRadius: 8,
-              fontWeight: 600,
-              cursor: 'pointer',
-              fontSize: 13,
-            }}
           >
             👤 Importa dipendenti da CU
-          </button>
+          </Button>
         </div>
 
         {/* Lista File in coda */}
         {files.length > 0 && (
-          <div
-            style={{
-              background: 'white',
-              borderRadius: 12,
-              overflow: 'hidden',
-              marginBottom: 20,
-              boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
-              border: '1px solid #e5e7eb',
-            }}
-          >
+          <Card style={{ marginBottom: 20 }} bodyStyle={{ padding: 0 }}>
             <div
               style={{
                 padding: 14,
-                borderBottom: '1px solid #e5e7eb',
-                background: '#f9fafb',
+                borderBottom: `1px solid ${COLORS.border}`,
+                background: COLORS.bgAlt,
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
               }}
             >
-              <div style={{ fontWeight: 600, fontSize: 14, color: '#374151' }}>
+              <div style={{ fontWeight: 600, fontSize: 14, color: COLORS.gray[700] }}>
                 {files.length} file in coda
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
-                <button
-                  onClick={handleReset}
-                  data-testid="reset-btn"
-                  style={{
-                    padding: '8px 14px',
-                    background: '#fee2e2',
-                    color: '#dc2626',
-                    border: 'none',
-                    borderRadius: 6,
-                    cursor: 'pointer',
-                    fontWeight: 600,
-                    fontSize: 12,
-                  }}
-                >
+                <Button variant="danger" size="sm" onClick={handleReset} data-testid="reset-btn">
                   Svuota
-                </button>
-                <button
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
                   onClick={handleUpload}
                   disabled={uploading}
                   data-testid="upload-btn"
-                  style={{
-                    padding: '8px 20px',
-                    background: uploading ? '#9ca3af' : '#3b82f6',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: 6,
-                    cursor: uploading ? 'wait' : 'pointer',
-                    fontWeight: 600,
-                    fontSize: 12,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6,
-                  }}
+                  iconLeft={
+                    uploading ? (
+                      <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
+                    ) : (
+                      <Upload size={14} />
+                    )
+                  }
                 >
-                  {uploading ? (
-                    <>
-                      <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />{' '}
-                      Elaborazione...
-                    </>
-                  ) : (
-                    <>
-                      <Upload size={14} /> Carica Tutti
-                    </>
-                  )}
-                </button>
+                  {uploading ? 'Elaborazione...' : 'Carica Tutti'}
+                </Button>
               </div>
             </div>
 
@@ -517,8 +456,8 @@ export default function ImportDocumenti() {
               <div
                 style={{
                   padding: '10px 14px',
-                  borderBottom: '1px solid #e5e7eb',
-                  background: '#eff6ff',
+                  borderBottom: `1px solid ${COLORS.border}`,
+                  background: COLORS.infoLight,
                 }}
               >
                 <div
@@ -529,22 +468,27 @@ export default function ImportDocumenti() {
                     marginBottom: 6,
                   }}
                 >
-                  <span style={{ fontSize: 12, fontWeight: 600, color: '#1d4ed8' }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: COLORS.info }}>
                     {uploadProgress.filename}
                   </span>
-                  <span style={{ fontSize: 11, color: '#6b7280' }}>
+                  <span style={{ fontSize: 11, color: COLORS.textMuted }}>
                     {uploadProgress.current}/{uploadProgress.total}
                   </span>
                 </div>
                 <div
-                  style={{ height: 6, background: '#dbeafe', borderRadius: 3, overflow: 'hidden' }}
+                  style={{
+                    height: 6,
+                    background: COLORS.infoLight,
+                    borderRadius: BORDER_RADIUS.full,
+                    overflow: 'hidden',
+                  }}
                 >
                   <div
                     style={{
                       height: '100%',
                       width: `${(uploadProgress.current / uploadProgress.total) * 100}%`,
-                      background: '#1d4ed8',
-                      borderRadius: 3,
+                      background: COLORS.info,
+                      borderRadius: BORDER_RADIUS.full,
                       transition: 'width 0.3s ease',
                     }}
                   />
@@ -560,33 +504,33 @@ export default function ImportDocumenti() {
                   data-testid={`file-item-${idx}`}
                   style={{
                     padding: 12,
-                    borderBottom: '1px solid #f3f4f6',
+                    borderBottom: `1px solid ${COLORS.gray[100]}`,
                     display: 'flex',
                     alignItems: 'center',
                     gap: 10,
                     background:
                       f.status === 'success'
-                        ? '#f0fdf4'
+                        ? COLORS.successLight
                         : f.status === 'duplicate'
-                          ? '#fefce8'
+                          ? COLORS.warningLight
                           : f.status === 'error'
-                            ? '#fef2f2'
-                            : 'white',
+                            ? COLORS.dangerLight
+                            : COLORS.card,
                   }}
                 >
                   <div
                     style={{
                       width: 32,
                       height: 32,
-                      borderRadius: 6,
+                      borderRadius: BORDER_RADIUS.sm,
                       background:
                         f.status === 'success'
-                          ? '#dcfce7'
+                          ? COLORS.successLight
                           : f.status === 'duplicate'
-                            ? '#fef9c3'
+                            ? COLORS.warningLight
                             : f.status === 'error'
-                              ? '#fee2e2'
-                              : '#f1f5f9',
+                              ? COLORS.dangerLight
+                              : COLORS.bg,
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -597,16 +541,16 @@ export default function ImportDocumenti() {
                       <Loader2
                         size={16}
                         style={{ animation: 'spin 1s linear infinite' }}
-                        color="#3b82f6"
+                        color={COLORS.info}
                       />
                     ) : f.status === 'success' ? (
-                      <CheckCircle size={16} color="#16a34a" />
+                      <CheckCircle size={16} color={COLORS.success} />
                     ) : f.status === 'duplicate' ? (
-                      <AlertCircle size={16} color="#ca8a04" />
+                      <AlertCircle size={16} color={COLORS.warning} />
                     ) : f.status === 'error' ? (
-                      <AlertCircle size={16} color="#dc2626" />
+                      <AlertCircle size={16} color={COLORS.danger} />
                     ) : (
-                      <FileText size={16} color="#6b7280" />
+                      <FileText size={16} color={COLORS.textMuted} />
                     )}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -614,7 +558,7 @@ export default function ImportDocumenti() {
                       style={{
                         fontWeight: 600,
                         fontSize: 13,
-                        color: '#374151',
+                        color: COLORS.gray[700],
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
                         whiteSpace: 'nowrap',
@@ -622,60 +566,35 @@ export default function ImportDocumenti() {
                     >
                       {f.name}
                     </div>
-                    <div style={{ fontSize: 11, color: '#6b7280' }}>
+                    <div style={{ fontSize: 11, color: COLORS.textMuted }}>
                       {(f.size / 1024).toFixed(1)} KB
-                      {f.error && <span style={{ color: '#dc2626' }}> • {f.error}</span>}
+                      {f.error && <span style={{ color: COLORS.danger }}> • {f.error}</span>}
                     </div>
                   </div>
                   {/* Badge tipo rilevato (solo dopo upload) */}
-                  {f.tipo && (
-                    <span
-                      style={{
-                        padding: '4px 10px',
-                        background: `${getTipoColor(f.tipo)}15`,
-                        color: getTipoColor(f.tipo),
-                        borderRadius: 6,
-                        fontSize: 11,
-                        fontWeight: 600,
-                        border: `1px solid ${getTipoColor(f.tipo)}30`,
-                      }}
-                    >
-                      {getTipoLabel(f.tipo)}
-                    </span>
-                  )}
+                  {f.tipo && <Badge variant={getTipoVariant(f.tipo)}>{getTipoLabel(f.tipo)}</Badge>}
                   {f.status === 'pending' && (
-                    <button
-                      onClick={() => removeFile(idx)}
-                      style={{
-                        width: 28,
-                        height: 28,
-                        border: 'none',
-                        background: '#fee2e2',
-                        borderRadius: 6,
-                        cursor: 'pointer',
-                        color: '#dc2626',
-                        fontSize: 14,
-                        flexShrink: 0,
-                      }}
-                    >
+                    <RowActionButton variant="danger" onClick={() => removeFile(idx)} title="Rimuovi">
                       ×
-                    </button>
+                    </RowActionButton>
                   )}
                 </div>
               ))}
             </div>
-          </div>
+          </Card>
         )}
 
         {/* Risultati */}
+        {/* Nota: div nativo (non Card) perché l'header cambia colore (verde/rosso/ambra)
+            in base all'esito complessivo, funzionalità non supportata dall'header di <Card>. */}
         {results.length > 0 && (
           <div
             style={{
-              background: 'white',
-              borderRadius: 12,
+              background: COLORS.card,
+              borderRadius: BORDER_RADIUS.lg,
               overflow: 'hidden',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
-              border: '1px solid #e5e7eb',
+              boxShadow: SHADOWS.sm,
+              border: `1px solid ${COLORS.border}`,
             }}
           >
             <div
@@ -683,17 +602,17 @@ export default function ImportDocumenti() {
                 padding: 14,
                 background:
                   successCount === results.length
-                    ? '#dcfce7'
+                    ? COLORS.successLight
                     : errorCount === results.length
-                      ? '#fee2e2'
-                      : '#fef3c7',
-                borderBottom: '1px solid #e5e7eb',
+                      ? COLORS.dangerLight
+                      : COLORS.warningLight,
+                borderBottom: `1px solid ${COLORS.border}`,
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
               }}
             >
-              <div style={{ fontWeight: 700, fontSize: 15, color: '#374151' }}>
+              <div style={{ fontWeight: 700, fontSize: 15, color: COLORS.gray[700] }}>
                 {errorCount === 0
                   ? 'Import completato!'
                   : successCount === 0
@@ -701,9 +620,9 @@ export default function ImportDocumenti() {
                     : 'Import parziale'}
               </div>
               <div style={{ display: 'flex', gap: 12, fontSize: 13 }}>
-                <span style={{ color: '#16a34a' }}>✓ {successCount}</span>
-                <span style={{ color: '#ca8a04' }}>⚠ {duplicateCount}</span>
-                <span style={{ color: '#dc2626' }}>✕ {errorCount}</span>
+                <span style={{ color: COLORS.success }}>✓ {successCount}</span>
+                <span style={{ color: COLORS.warning }}>⚠ {duplicateCount}</span>
+                <span style={{ color: COLORS.danger }}>✕ {errorCount}</span>
               </div>
             </div>
             <div style={{ padding: 14, maxHeight: 250, overflow: 'auto' }}>
@@ -714,11 +633,11 @@ export default function ImportDocumenti() {
                     padding: 10,
                     background:
                       r.status === 'success'
-                        ? '#f0fdf4'
+                        ? COLORS.successLight
                         : r.status === 'duplicate'
-                          ? '#fefce8'
-                          : '#fef2f2',
-                    borderRadius: 8,
+                          ? COLORS.warningLight
+                          : COLORS.dangerLight,
+                    borderRadius: BORDER_RADIUS.md,
                     marginBottom: 6,
                     display: 'flex',
                     alignItems: 'center',
@@ -726,11 +645,11 @@ export default function ImportDocumenti() {
                   }}
                 >
                   {r.status === 'success' ? (
-                    <CheckCircle size={18} color="#16a34a" />
+                    <CheckCircle size={18} color={COLORS.success} />
                   ) : r.status === 'duplicate' ? (
-                    <AlertCircle size={18} color="#ca8a04" />
+                    <AlertCircle size={18} color={COLORS.warning} />
                   ) : (
-                    <AlertCircle size={18} color="#dc2626" />
+                    <AlertCircle size={18} color={COLORS.danger} />
                   )}
                   <div style={{ flex: 1 }}>
                     <div
@@ -744,43 +663,19 @@ export default function ImportDocumenti() {
                     >
                       {r.file}
                       {r.tipo && r.tipo !== 'errore' && (
-                        <span
-                          style={{
-                            padding: '2px 8px',
-                            background: `${getTipoColor(r.tipo)}15`,
-                            color: getTipoColor(r.tipo),
-                            borderRadius: 4,
-                            fontSize: 10,
-                            fontWeight: 700,
-                          }}
-                        >
-                          {getTipoLabel(r.tipo)}
-                        </span>
+                        <Badge variant={getTipoVariant(r.tipo)}>{getTipoLabel(r.tipo)}</Badge>
                       )}
-                      {r.workflow && (
-                        <span
-                          style={{
-                            padding: '2px 8px',
-                            background: '#dbeafe',
-                            color: '#1d4ed8',
-                            borderRadius: 4,
-                            fontSize: 10,
-                            fontWeight: 700,
-                          }}
-                        >
-                          {r.workflow}
-                        </span>
-                      )}
+                      {r.workflow && <Badge variant="info">{r.workflow}</Badge>}
                     </div>
                     <div
                       style={{
                         fontSize: 11,
                         color:
                           r.status === 'success'
-                            ? '#166534'
+                            ? COLORS.success
                             : r.status === 'duplicate'
-                              ? '#92400e'
-                              : '#dc2626',
+                              ? COLORS.warning
+                              : COLORS.danger,
                       }}
                     >
                       {r.message}
@@ -792,70 +687,27 @@ export default function ImportDocumenti() {
             <div
               style={{
                 padding: '10px 14px',
-                borderTop: '1px solid #e5e7eb',
-                background: '#f9fafb',
+                borderTop: `1px solid ${COLORS.border}`,
+                background: COLORS.bgAlt,
               }}
             >
-              <button
-                onClick={() => setResults([])}
-                style={{
-                  padding: '6px 14px',
-                  background: '#e5e7eb',
-                  border: 'none',
-                  borderRadius: 6,
-                  cursor: 'pointer',
-                  fontSize: 12,
-                  fontWeight: 500,
-                }}
-              >
+              <Button variant="secondary" size="sm" onClick={() => setResults([])}>
                 Chiudi
-              </button>
+              </Button>
             </div>
           </div>
         )}
 
         {/* Tips */}
-        <div
-          style={{
-            marginTop: 24,
-            padding: 16,
-            background: '#f9fafb',
-            borderRadius: 10,
-            border: '1px solid #e5e7eb',
-            fontSize: 12,
-            color: '#6b7280',
-          }}
-        >
-          <div style={{ fontWeight: 600, color: '#374151', marginBottom: 8 }}>
-            Tipi di documento supportati:
-          </div>
+        <Card title="Tipi di documento supportati" style={{ marginTop: 24 }}>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-            {[
-              { label: 'F24', color: '#ef4444' },
-              { label: 'Libro Unico (LUL)', color: '#8b5cf6' },
-              { label: 'Fatture XML', color: '#ec4899' },
-              { label: 'Estratti Conto', color: '#059669' },
-              { label: 'Quietanze F24', color: '#ff9800' },
-              { label: 'Bonifici', color: '#06b6d4' },
-              { label: 'Corrispettivi', color: '#84cc16' },
-              { label: 'POS', color: '#a855f7' },
-            ].map(t => (
-              <span
-                key={t.label}
-                style={{
-                  padding: '3px 8px',
-                  background: `${t.color}10`,
-                  color: t.color,
-                  borderRadius: 4,
-                  fontSize: 11,
-                  fontWeight: 600,
-                }}
-              >
+            {tipiSupportati.map(t => (
+              <Badge key={t.label} variant={t.variant}>
                 {t.label}
-              </span>
+              </Badge>
             ))}
           </div>
-        </div>
+        </Card>
       </div>
     </PageLayout>
   );
