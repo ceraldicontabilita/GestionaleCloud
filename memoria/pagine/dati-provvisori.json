@@ -1,0 +1,85 @@
+{
+  "pagina": "Dati Provvisori",
+  "url": "https://impresasemplice.online/prima-nota/provvisori (montata dallo stesso PrimaNotaHub della pagina Prima Nota, su path che contiene 'provvisori' o 'dati-provvisori')",
+  "file_sorgente_frontend": [
+    "frontend/src/pages/DatiProvvisoriPage.jsx",
+    "frontend/src/pages/hub/PrimaNotaHub.jsx (wrapper che monta questa pagina in lazy-load mantenendola in vita quando si torna su Prima Nota)"
+  ],
+  "file_sorgente_backend": [
+    "app/routers/dati_provvisori.py (endpoint /api/genera-proposte, /api/proposte, /api/conferma/{id}, /api/conferma-tutte, /api/rifiuta/{id}, montato con prefisso /api in app/router_registry.py riga 265)",
+    "app/services/dati_provvisori_service.py (logica di matching e conferma: genera_proposte_pagamento, conferma_proposta, conferma_tutte, rifiuta_proposta)"
+  ],
+  "scopo_generale": "ATTENZIONE — nome ingannevole: questa pagina NON è lo stesso concetto del tab 'Provvisori' dentro la pagina Prima Nota principale (quello lavora su invoices/prima_nota_cassa/banca in base al metodo pagamento del fornitore in anagrafica). Questa pagina è invece un motore di ABBINAMENTO AUTOMATICO tra fatture pagate con bonifico/SEPA/RID non ancora marcate come pagate e i movimenti di uscita già presenti nell'estratto conto bancario: propone dei match (con un punteggio di affidabilità) e li mette in staging nella collection 'dati_provvisori' con stato 'da_confermare', in attesa che l'utente confermi o rifiuti ogni proposta prima che diventi un movimento reale in Prima Nota Banca. Serve a evitare di dover cercare a mano, fattura per fattura, quale bonifico dell'estratto conto corrisponde a quale fattura da pagare. Nota tecnica: il file dati_provvisori.py contiene ANCHE endpoint per un flusso diverso e più vecchio (upload XML fatture da email, sposta-cassa/sposta-banca manuale, riconciliazione estratto conto) che NON sono usati da questa pagina React — quella UI usa solo /genera-proposte, /proposte, /conferma, /conferma-tutte, /rifiuta.",
+  "sezioni_tab": [
+    {"nome": "Header con azioni", "descrizione": "Bottone 'Cerca Abbinamenti' per lanciare l'analisi, e bottone 'Conferma Tutte (N)' visibile solo se ci sono proposte in lista."},
+    {"nome": "Barra statistiche post-generazione", "descrizione": "Compare solo dopo aver premuto 'Cerca Abbinamenti': mostra quante fatture sono state analizzate, quante proposte create, quante già esistenti, quante senza match."},
+    {"nome": "Riepilogo (3 card)", "descrizione": "Da Confermare (conteggio proposte correnti), Importo Totale (somma fattura_importo di tutte le proposte in lista), Destinazione (statica: 'Banca', perché questo meccanismo lavora solo su pagamenti bancari)."},
+    {"nome": "Tabella proposte", "descrizione": "Una riga per ogni proposta 'da_confermare': percentuale di affidabilità (confidence), dati fattura, dati movimento bancario abbinato, azioni Conferma/Rifiuta."}
+  ],
+  "bottoni_azioni": [
+    {
+      "etichetta": "🔍 Cerca Abbinamenti",
+      "dove_si_trova": "Header",
+      "cosa_fa_al_click": "handleGenera(): setGenerating(true), POST, poi ricarica la lista proposte.",
+      "endpoint_chiamato": "POST /api/genera-proposte?anno={anno}",
+      "logica_backend": "genera_proposte_pagamento(db, anno) in dati_provvisori_service.py. 1) Cerca in 'invoices' le fatture con payment_method in [bonifico, sepa, rid, domiciliazione, ''] E (stato_pagamento diverso da 'pagata' OPPURE stato_pagamento assente) E total_amount>0 E invoice_date che inizia con l'anno. 2) Carica i fattura_id già presenti in dati_provvisori con tipo='pagamento_fattura' per non riproporre le stesse (dedup). 3) Carica tutti i movimenti di 'estratto_conto_movimenti' con tipo='uscita' e data_contabile che termina con '/{anno}' (SOLO formato DD/MM/YYYY: le righe con data in altro formato non vengono considerate candidate). 4) Indicizza i movimenti per importo esatto (float) per una ricerca rapida. 5) Per ogni fattura non già proposta, cerca tra i movimenti con lo stesso importo esatto quello con punteggio più alto: +30 per ciascuna delle prime 2 parole (lunghe >3 caratteri) del nome fornitore trovata nella descrizione del movimento; +50 se la P.IVA del fornitore compare nella descrizione; +10 se la descrizione contiene 'VS.DISP' o 'BONIFICO'; bonus/malus sulla vicinanza data (+20 se ≤7gg, +10 se ≤30gg, -20 se >90gg dalla data fattura, calcolando la differenza assoluta in giorni). Un movimento già assegnato a un'altra fattura in questa stessa esecuzione (movimenti_usati) non viene riconsiderato. Se il punteggio migliore è ≥10, crea una proposta in dati_provvisori; altrimenti la fattura conta come 'no_match'.",
+      "formula_matematica": "score = 30×(numero parole nome fornitore trovate in descrizione, max primi 2 termini >3 caratteri) + 50×(1 se P.IVA in descrizione) + 10×(1 se 'VS.DISP' o 'BONIFICO' in descrizione) + bonus_data(dove bonus_data = +20 se diff≤7gg, +10 se diff≤30gg, -20 se diff>90gg, 0 altrimenti). confidence salvata = min(score, 100). Soglia di creazione proposta: score ≥ 10.",
+      "aggiornamento_ui": "Mostra la barra statistiche (fatture_analizzate, proposte_create, gia_proposte, no_match) e ricarica la tabella proposte con loadProposte().",
+      "casi_errore": "alert('Errore: ' + dettaglio)."
+    },
+    {
+      "etichetta": "✓ Conferma (riga)",
+      "dove_si_trova": "Tabella proposte, colonna Azioni",
+      "cosa_fa_al_click": "handleConferma(id): POST, poi rimuove la riga dalla lista locale (senza fare un reload completo dal server).",
+      "endpoint_chiamato": "POST /api/conferma/{proposta_id}",
+      "logica_backend": "conferma_proposta(db, proposta_id) in dati_provvisori_service.py: carica la proposta da 'dati_provvisori'; se non trovata → {success:false}; se già stato='confermata' → {success:true, message:'Già confermata'} (idempotente, non duplica). Altrimenti: converte movimento_data da DD/MM/YYYY a YYYY-MM-DD se necessario; crea un movimento in 'prima_nota_banca' con tipo='uscita', categoria='Fatture', descrizione='Fatt. {numero} - {fornitore troncato a 30}', importo=fattura_importo della proposta, riferimento='FATT-{fattura_id}', fattura_id, movimento_banca_id=id del movimento estratto conto abbinato, source='conferma_provvisori'. Aggiorna 'invoices': stato_pagamento='pagata', prima_nota_id=id nuovo movimento, prima_nota_tipo='banca', data_pagamento=data convertita. Aggiorna la proposta stessa in dati_provvisori: stato='confermata', confermata_at, prima_nota_id.",
+      "formula_matematica": "movimento.importo = proposta.fattura_importo (l'intero importo della fattura, non quello del movimento bancario abbinato — i due dovrebbero coincidere perché il match è stato fatto per importo esatto, ma tecnicamente viene copiato il valore della fattura).",
+      "aggiornamento_ui": "setProposte rimuove la riga confermata dall'elenco visualizzato, senza richiamare l'API di lista.",
+      "casi_errore": "alert('Errore: ' + dettaglio)."
+    },
+    {
+      "etichetta": "✗ (Rifiuta, riga)",
+      "dove_si_trova": "Tabella proposte, colonna Azioni",
+      "cosa_fa_al_click": "handleRifiuta(id): POST, poi rimuove la riga dalla lista locale.",
+      "endpoint_chiamato": "POST /api/rifiuta/{proposta_id}",
+      "logica_backend": "rifiuta_proposta(db, proposta_id): update_one su dati_provvisori impostando stato='rifiutata', rifiutata_at=ora. NON crea/tocca nessun movimento contabile, NON tocca la fattura.",
+      "formula_matematica": "n/d",
+      "aggiornamento_ui": "setProposte rimuove la riga dall'elenco visualizzato.",
+      "casi_errore": "alert('Errore: ' + dettaglio)."
+    },
+    {
+      "etichetta": "✓ Conferma Tutte (N)",
+      "dove_si_trova": "Header, visibile solo se proposte.length>0",
+      "cosa_fa_al_click": "handleConfermaTutte(): window.confirm('Confermare tutte le N proposte?'); se confermato, POST e poi ricarica la lista completa dal server.",
+      "endpoint_chiamato": "POST /api/conferma-tutte",
+      "logica_backend": "conferma_tutte(db): carica TUTTE le proposte con tipo='pagamento_fattura' e stato='da_confermare' (fino a 500), e chiama conferma_proposta(db, id) in sequenza per ciascuna, contando successi/errori. NOTA: non è filtrato per anno — conferma tutte le proposte pendenti nel sistema, non solo quelle dell'anno attualmente selezionato nel context globale.",
+      "formula_matematica": "Per ogni proposta: stesso movimento e stessa formula di 'movimento.importo = fattura_importo' descritti nel bottone Conferma singolo.",
+      "aggiornamento_ui": "alert('{N} pagamenti confermati') e loadProposte() per ricaricare l'elenco aggiornato dal server (a differenza della conferma singola, qui avviene un reload completo).",
+      "casi_errore": "alert('Errore: ' + dettaglio); se l'utente annulla il window.confirm, nessuna chiamata parte. Gli errori delle singole conferme all'interno del batch sono solo conteggiati (result.errori) e non impediscono di proseguire con le altre, ma questo dettaglio non è mostrato nell'alert al frontend (che mostra solo res.data?.confermati)."
+    }
+  ],
+  "operazioni_di_registrazione": [
+    {
+      "nome": "Generazione proposte di abbinamento fattura↔movimento bancario",
+      "sequenza_esatta": "1) Estrae fatture bonifico/SEPA/RID non pagate dell'anno da invoices. 2) Estrae movimenti di uscita dell'estratto conto dell'anno (solo formato data DD/MM/YYYY). 3) Per ogni fattura non già proposta, calcola lo score di ogni movimento con lo stesso importo esatto e sceglie il migliore. 4) Se score≥10, inserisce un documento 'proposta' in dati_provvisori con stato='da_confermare' e tutti i dati di fattura e movimento copiati (denormalizzati, non solo riferimenti agli id).",
+      "collezioni_coinvolte": ["invoices (lettura)", "estratto_conto_movimenti (lettura)", "dati_provvisori (scrittura, collection unica usata sia per le proposte 'pagamento_fattura' sia per il vecchio flusso email/XML)"],
+      "campi_scritti": {"id": "uuid4", "tipo": "pagamento_fattura", "stato": "da_confermare", "confidence": "min(score,100)", "fattura_id": "...", "fattura_numero": "...", "fattura_importo": "= invoices.total_amount", "movimento_id": "id del movimento estratto conto abbinato", "movimento_importo": "= importo del movimento EC", "destinazione": "prima_nota_banca", "created_at": "ISO datetime"},
+      "effetti_collaterali": "Nessun movimento contabile viene creato in questa fase: è pura proposta in staging, la fattura resta NON pagata finché non viene confermata."
+    },
+    {
+      "nome": "Conferma di una proposta → registrazione pagamento reale in Prima Nota Banca",
+      "sequenza_esatta": "1) Legge la proposta da dati_provvisori. 2) Se già confermata, non fa nulla (idempotente). 3) Converte la data del movimento bancario da DD/MM/YYYY a YYYY-MM-DD. 4) Inserisce un nuovo documento in prima_nota_banca con importo pari all'importo della FATTURA (non del movimento bancario, anche se nella pratica combaciano essendo stato il criterio di match). 5) Aggiorna la fattura in invoices: stato_pagamento='pagata', prima_nota_id, prima_nota_tipo='banca', data_pagamento. 6) Aggiorna la proposta stessa a stato='confermata' e la collega al nuovo movimento con prima_nota_id.",
+      "collezioni_coinvolte": ["dati_provvisori", "prima_nota_banca", "invoices"],
+      "campi_scritti": {"prima_nota_banca.importo": "= dati_provvisori.fattura_importo", "prima_nota_banca.riferimento": "FATT-{fattura_id}", "prima_nota_banca.movimento_banca_id": "= dati_provvisori.movimento_id (id del movimento in estratto_conto_movimenti, NON aggiornato/riconciliato in quella collection da questa funzione)", "invoices.stato_pagamento": "pagata", "invoices.data_pagamento": "= data movimento convertita", "dati_provvisori.stato": "confermata"},
+      "effetti_collaterali": "ATTENZIONE — il movimento originale in estratto_conto_movimenti (riferito da movimento_id) NON viene marcato come riconciliato/collegato da questa funzione: a differenza di altri flussi del modulo Prima Nota (es. sposta_movimento, importa_movimento_ec_in_prima_nota) che aggiornano esplicitamente il flag 'riconciliato' sull'estratto conto, qui la relazione resta solo unidirezionale (dal nuovo movimento prima_nota_banca verso l'EC tramite movimento_banca_id), quindi in teoria lo stesso movimento EC potrebbe essere riproposto o riutilizzato in un abbinamento futuro se non gestito altrove."
+    }
+  ],
+  "collegamenti_con_altre_pagine": [
+    "Prima Nota (/prima-nota): la conferma di una proposta scrive direttamente in prima_nota_banca, quindi il movimento compare nella tabella Banca di quella pagina al successivo caricamento.",
+    "Fatture Ricevute: le fatture toccate da questa pagina sono le stesse gestite in Fatture Ricevute (collection invoices); una conferma qui le marca 'pagata' esattamente come farebbe un pagamento registrato da quella pagina.",
+    "Estratto Conto: la sorgente dei movimenti bancari candidati per il matching è la collection estratto_conto_movimenti, alimentata dagli import CSV di quel modulo."
+  ],
+  "popup_e_modali_presenti": [
+    "window.confirm prima di 'Conferma Tutte': chiede conferma esplicita indicando il numero di proposte che verranno confermate in blocco."
+  ]
+}
