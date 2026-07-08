@@ -17,15 +17,14 @@ import api from '../api';
 import {
   formatEuro,
   formatDateIT,
-  STYLES,
   COLORS,
-  button,
-  badge,
+  SHADOWS,
+  BORDER_RADIUS,
   useIsMobile,
-  RG,
-  pagePad,
 } from '../lib/utils';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
+import { useConfirm } from '../components/ui/ConfirmDialog';
+import { Button, Badge, StatCard, Tabs, Input, Select } from '../components/ds';
 import {
   Brain,
   RefreshCw,
@@ -55,26 +54,6 @@ const LearningUniversaleLazy = lazy(() => import('./LearningMachineUniversale.js
 // COMPONENTI RIUTILIZZABILI
 // ============================================================
 
-function StatCard({ icon: Icon, label, value, subValue, color, bgGradient }) {
-  return (
-    <div
-      style={{
-        background: bgGradient || '#f8fafc',
-        borderRadius: 12,
-        padding: 20,
-        border: `1px solid ${color}20`,
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-        {Icon && <Icon size={18} color={color} />}
-        <span style={{ fontSize: 12, color: '#6b7280' }}>{label}</span>
-      </div>
-      <div style={{ fontSize: 28, fontWeight: 'bold', color: color || '#1f2937' }}>{value}</div>
-      {subValue && <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>{subValue}</div>}
-    </div>
-  );
-}
-
 function MessageBanner({ message, onClose }) {
   if (!message) return null;
 
@@ -82,9 +61,9 @@ function MessageBanner({ message, onClose }) {
   return (
     <div
       style={{
-        background: isSuccess ? '#dcfce7' : '#fee2e2',
-        border: `1px solid ${isSuccess ? '#86efac' : '#fecaca'}`,
-        borderRadius: 12,
+        background: isSuccess ? COLORS.successLight : COLORS.dangerLight,
+        border: `1px solid ${isSuccess ? COLORS.success : COLORS.danger}`,
+        borderRadius: BORDER_RADIUS.md,
         padding: 12,
         marginBottom: 16,
         display: 'flex',
@@ -93,32 +72,28 @@ function MessageBanner({ message, onClose }) {
       }}
     >
       {isSuccess ? (
-        <CheckCircle size={18} color="#16a34a" />
+        <CheckCircle size={18} color={COLORS.success} />
       ) : (
-        <AlertCircle size={18} color="#dc2626" />
+        <AlertCircle size={18} color={COLORS.danger} />
       )}
-      <span style={{ color: isSuccess ? '#166534' : '#991b1b', fontWeight: 500 }}>
+      <span style={{ color: isSuccess ? COLORS.success : COLORS.danger, fontWeight: 500 }}>
         {message.text}
       </span>
-      <button
+      <Button
+        variant="ghost"
+        size="sm"
         onClick={onClose}
-        style={{
-          marginLeft: 'auto',
-          background: 'none',
-          border: 'none',
-          cursor: 'pointer',
-          fontSize: 18,
-        }}
+        style={{ marginLeft: 'auto', padding: '2px 8px', fontSize: 18 }}
       >
         ×
-      </button>
+      </Button>
     </div>
   );
 }
 
 function LoadingSpinner({ text = 'Caricamento...' }) {
   return (
-    <div style={{ textAlign: 'center', padding: 60, color: '#6b7280' }}>
+    <div style={{ textAlign: 'center', padding: 60, color: COLORS.textMuted }}>
       <RefreshCw size={32} className="animate-spin" style={{ margin: '0 auto 12px' }} />
       <p>{text}</p>
     </div>
@@ -131,6 +106,7 @@ function LoadingSpinner({ text = 'Caricamento...' }) {
 
 export default function LearningMachine() {
   const isMobile = useIsMobile();
+  const confirm = useConfirm();
   // === URL TAB NAVIGATION ===
   const navigate = useNavigate();
   const location = useLocation();
@@ -296,7 +272,12 @@ export default function LearningMachine() {
   };
 
   const eliminaFornitoreKeywords = async fornitoreId => {
-    if (!window.confirm('Eliminare questa configurazione?')) return;
+    const confirmed = await confirm({
+      title: 'Elimina configurazione',
+      message: 'Eliminare questa configurazione?',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
 
     try {
       await api.delete(`/api/fornitori-learning/${fornitoreId}`);
@@ -403,8 +384,8 @@ export default function LearningMachine() {
       {/* Header */}
       <div
         style={{
-          background: '#0f2744',
-          borderRadius: 12,
+          background: COLORS.primary,
+          borderRadius: BORDER_RADIUS.md,
           padding: 24,
           marginBottom: 20,
           color: 'white',
@@ -458,47 +439,24 @@ export default function LearningMachine() {
       {/* Tabs */}
       <div
         style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: 4,
           marginBottom: 20,
-          background: '#f1f5f9',
+          background: COLORS.bgAlt,
           padding: 4,
-          borderRadius: 10,
+          borderRadius: BORDER_RADIUS.lg,
         }}
       >
-        {TABS.map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => {
-              setActiveTab(tab.id);
-              navigate(
-                tab.id === 'fornitori' ? '/learning-machine' : `/learning-machine/${tab.id}`
-              );
-            }}
-            style={{
-              flex: '1 1 auto',
-              padding: '12px 16px',
-              border: 'none',
-              borderRadius: 8,
-              cursor: 'pointer',
-              fontWeight: 600,
-              fontSize: 13,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 8,
-              whiteSpace: 'nowrap',
-              background: activeTab === tab.id ? 'white' : 'transparent',
-              color: activeTab === tab.id ? '#1e3a5f' : '#64748b',
-              boxShadow: activeTab === tab.id ? '0 2px 4px rgba(0,0,0,0.1)' : 'none',
-              transition: 'all 0.2s',
-            }}
-          >
-            <tab.icon size={16} />
-            {tab.label}
-          </button>
-        ))}
+        <Tabs
+          items={TABS.map(tab => ({
+            key: tab.id,
+            label: tab.label,
+            icon: <tab.icon size={16} />,
+          }))}
+          value={activeTab}
+          onChange={tabId => {
+            setActiveTab(tabId);
+            navigate(tabId === 'fornitori' ? '/learning-machine' : `/learning-machine/${tabId}`);
+          }}
+        />
       </div>
 
       {/* ============================================================ */}
@@ -520,50 +478,51 @@ export default function LearningMachine() {
                 }}
               >
                 <StatCard
-                  icon={Tag}
+                  icon={<Tag size={18} />}
                   label="Fornitori Configurati"
                   value={dashboardStats?.fornitori_con_keywords || 0}
-                  subValue={`${dashboardStats?.copertura_fornitori || 0}% copertura`}
-                  color="#16a34a"
-                  bgGradient="#dcfce7"
+                  subtext={`${dashboardStats?.copertura_fornitori || 0}% copertura`}
+                  accent="success"
                 />
                 <StatCard
-                  icon={FileText}
+                  icon={<FileText size={18} />}
                   label="Fatture Classificate"
                   value={`${dashboardStats?.percentuale_fatture || 0}%`}
-                  subValue={`${dashboardStats?.fatture_classificate || 0}/${dashboardStats?.totale_fatture || 0}`}
-                  color="#2563eb"
-                  bgGradient="#dbeafe"
+                  subtext={`${dashboardStats?.fatture_classificate || 0}/${dashboardStats?.totale_fatture || 0}`}
+                  accent="info"
                 />
                 <StatCard
-                  icon={CreditCard}
+                  icon={<CreditCard size={18} />}
                   label="Pattern Assegni"
                   value={assegniStats?.pattern_totali || 0}
-                  subValue={`${assegniStats?.accuracy || 0}% accuracy`}
-                  color="#9333ea"
-                  bgGradient="#dbeafe"
+                  subtext={`${assegniStats?.accuracy || 0}% accuracy`}
+                  accent="accent"
                 />
                 <StatCard
-                  icon={TrendingUp}
+                  icon={<TrendingUp size={18} />}
                   label="F24 Classificati"
                   value={`${dashboardStats?.percentuale_f24 || 0}%`}
-                  subValue={`${dashboardStats?.f24_classificati || 0}/${dashboardStats?.totale_f24 || 0}`}
-                  color="#f59e0b"
-                  bgGradient="#fef3c7"
+                  subtext={`${dashboardStats?.f24_classificati || 0}/${dashboardStats?.totale_f24 || 0}`}
+                  accent="warning"
                 />
               </div>
 
               {/* Quick Actions */}
               <div
                 style={{
-                  background: 'white',
-                  borderRadius: 12,
+                  background: COLORS.card,
+                  borderRadius: BORDER_RADIUS.md,
                   padding: 20,
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                  boxShadow: SHADOWS.md,
                 }}
               >
                 <h3
-                  style={{ margin: '0 0 16px 0', fontSize: 16, fontWeight: 600, color: '#1e3a5f' }}
+                  style={{
+                    margin: '0 0 16px 0',
+                    fontSize: 16,
+                    fontWeight: 600,
+                    color: COLORS.primaryLight,
+                  }}
                 >
                   Azioni Rapide
                 </h3>
@@ -574,66 +533,36 @@ export default function LearningMachine() {
                     gap: 12,
                   }}
                 >
-                  <button
+                  <Button
+                    variant="primary"
+                    size="lg"
                     onClick={() => {
                       setActiveTab('fornitori');
                       riclassificaFatture();
                     }}
-                    style={{
-                      padding: 16,
-                      background: '#0f2744',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: 10,
-                      cursor: 'pointer',
-                      fontWeight: 600,
-                      fontSize: 13,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 8,
-                    }}
+                    style={{ justifyContent: 'flex-start' }}
                   >
                     <Play size={18} /> Riclassifica Tutte le Fatture
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="danger"
+                    size="lg"
                     onClick={() => {
                       setActiveTab('assegni');
                       handleLearnAssegni();
                     }}
-                    style={{
-                      padding: 16,
-                      background: '#b91c1c',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: 10,
-                      cursor: 'pointer',
-                      fontWeight: 600,
-                      fontSize: 13,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 8,
-                    }}
+                    style={{ justifyContent: 'flex-start' }}
                   >
                     <Brain size={18} /> Apprendi Pattern Assegni
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="lg"
                     onClick={loadDashboardStats}
-                    style={{
-                      padding: 16,
-                      background: '#f1f5f9',
-                      color: '#374151',
-                      border: '1px solid #e5e7eb',
-                      borderRadius: 10,
-                      cursor: 'pointer',
-                      fontWeight: 600,
-                      fontSize: 13,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 8,
-                    }}
+                    style={{ justifyContent: 'flex-start' }}
                   >
                     <RefreshCw size={18} /> Aggiorna Statistiche
-                  </button>
+                  </Button>
                 </div>
               </div>
             </>
@@ -649,11 +578,11 @@ export default function LearningMachine() {
           {/* Header con azioni */}
           <div
             style={{
-              background: 'white',
-              borderRadius: 12,
+              background: COLORS.card,
+              borderRadius: BORDER_RADIUS.md,
               padding: 20,
               marginBottom: 16,
-              boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+              boxShadow: SHADOWS.md,
             }}
           >
             <div
@@ -666,35 +595,27 @@ export default function LearningMachine() {
               }}
             >
               <div>
-                <h2 style={{ margin: 0, fontSize: 18, fontWeight: 'bold', color: '#1e3a5f' }}>
+                <h2 style={{ margin: 0, fontSize: 18, fontWeight: 'bold', color: COLORS.primaryLight }}>
                   Classificazione Fornitori
                 </h2>
-                <p style={{ color: '#6b7280', fontSize: 13, margin: '4px 0 0 0' }}>
+                <p style={{ color: COLORS.textMuted, fontSize: 13, margin: '4px 0 0 0' }}>
                   Configura keywords per classificare automaticamente i fornitori nei centri di
                   costo
                 </p>
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
-                <button
-                  onClick={loadFornitoriData}
-                  disabled={fornitoriLoading}
-                  style={{ ...button('secondary'), opacity: fornitoriLoading ? 0.6 : 1 }}
-                >
+                <Button variant="secondary" onClick={loadFornitoriData} disabled={fornitoriLoading}>
                   <RefreshCw size={16} className={fornitoriLoading ? 'animate-spin' : ''} />
                   Aggiorna
-                </button>
-                <button
+                </Button>
+                <Button
+                  variant="primary"
                   onClick={riclassificaFatture}
                   disabled={fornitoriLoading || fornitoriConfigurati.length === 0}
-                  style={{
-                    ...button('primary'),
-                    background: '#0f2744',
-                    opacity: fornitoriConfigurati.length === 0 ? 0.5 : 1,
-                  }}
                 >
                   <CheckCircle size={16} />
                   Riclassifica Fatture
-                </button>
+                </Button>
               </div>
             </div>
           </div>
@@ -709,25 +630,22 @@ export default function LearningMachine() {
             }}
           >
             <StatCard
-              icon={AlertCircle}
+              icon={<AlertCircle size={18} />}
               label="Da Classificare"
               value={fornitoriNonClassificati.length}
-              color="#f59e0b"
-              bgGradient="#fef3c7"
+              accent="warning"
             />
             <StatCard
-              icon={CheckCircle}
+              icon={<CheckCircle size={18} />}
               label="Configurati"
               value={fornitoriConfigurati.length}
-              color="#16a34a"
-              bgGradient="#dcfce7"
+              accent="success"
             />
             <StatCard
-              icon={Tag}
+              icon={<Tag size={18} />}
               label="Centri di Costo"
               value={centriCosto.length}
-              color="#2563eb"
-              bgGradient="#dbeafe"
+              accent="info"
             />
           </div>
 
@@ -744,10 +662,10 @@ export default function LearningMachine() {
               {/* Lista fornitori non classificati */}
               <div
                 style={{
-                  background: 'white',
-                  borderRadius: 12,
+                  background: COLORS.card,
+                  borderRadius: BORDER_RADIUS.md,
                   padding: 20,
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                  boxShadow: SHADOWS.md,
                 }}
               >
                 <h3
@@ -755,20 +673,20 @@ export default function LearningMachine() {
                     margin: '0 0 16px 0',
                     fontSize: 16,
                     fontWeight: 600,
-                    color: '#1e3a5f',
+                    color: COLORS.primaryLight,
                     display: 'flex',
                     alignItems: 'center',
                     gap: 8,
                   }}
                 >
-                  <AlertCircle size={18} color="#f59e0b" /> Da Classificare (
+                  <AlertCircle size={18} color={COLORS.warning} /> Da Classificare (
                   {fornitoriNonClassificati.length})
                 </h3>
 
                 <div style={{ maxHeight: 500, overflowY: 'auto' }}>
                   {fornitoriNonClassificati.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: 40, color: '#6b7280' }}>
-                      <CheckCircle size={48} color="#16a34a" style={{ marginBottom: 12 }} />
+                    <div style={{ textAlign: 'center', padding: 40, color: COLORS.textMuted }}>
+                      <CheckCircle size={48} color={COLORS.success} style={{ marginBottom: 12 }} />
                       <p>Tutti i fornitori sono classificati!</p>
                     </div>
                   ) : (
@@ -778,17 +696,17 @@ export default function LearningMachine() {
                         onClick={() => selezionaFornitore(f)}
                         style={{
                           padding: 12,
-                          borderRadius: 8,
+                          borderRadius: BORDER_RADIUS.md,
                           marginBottom: 8,
                           cursor: 'pointer',
                           background:
                             selectedFornitore?.fornitore_nome === f.fornitore_nome
-                              ? '#e0e7ff'
-                              : '#f9fafb',
+                              ? COLORS.primarySoft
+                              : COLORS.bgAlt,
                           border:
                             selectedFornitore?.fornitore_nome === f.fornitore_nome
-                              ? '2px solid #4f46e5'
-                              : '1px solid #e5e7eb',
+                              ? `2px solid ${COLORS.primary}`
+                              : `1px solid ${COLORS.border}`,
                           transition: 'all 0.2s',
                         }}
                       >
@@ -801,15 +719,15 @@ export default function LearningMachine() {
                         >
                           <div>
                             <p
-                              style={{ fontWeight: 600, color: '#1f2937', margin: 0, fontSize: 14 }}
+                              style={{ fontWeight: 600, color: COLORS.text, margin: 0, fontSize: 14 }}
                             >
                               {f.fornitore_nome}
                             </p>
-                            <p style={{ color: '#6b7280', fontSize: 12, margin: '4px 0 0 0' }}>
+                            <p style={{ color: COLORS.textMuted, fontSize: 12, margin: '4px 0 0 0' }}>
                               {f.fatture_count} fatture • {formatEuro(f.totale_fatture || 0)}
                             </p>
                           </div>
-                          <ChevronRight size={16} color="#9ca3af" />
+                          <ChevronRight size={16} color={COLORS.textSubtle} />
                         </div>
                       </div>
                     ))
@@ -820,10 +738,10 @@ export default function LearningMachine() {
               {/* Form configurazione */}
               <div
                 style={{
-                  background: 'white',
-                  borderRadius: 12,
+                  background: COLORS.card,
+                  borderRadius: BORDER_RADIUS.md,
                   padding: 20,
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                  boxShadow: SHADOWS.md,
                 }}
               >
                 <h3
@@ -831,29 +749,29 @@ export default function LearningMachine() {
                     margin: '0 0 16px 0',
                     fontSize: 16,
                     fontWeight: 600,
-                    color: '#1e3a5f',
+                    color: COLORS.primaryLight,
                     display: 'flex',
                     alignItems: 'center',
                     gap: 8,
                   }}
                 >
-                  <Tag size={18} color="#1e3a5f" /> Configura Keywords
+                  <Tag size={18} color={COLORS.primaryLight} /> Configura Keywords
                 </h3>
 
                 {selectedFornitore ? (
                   <div>
                     <div
                       style={{
-                        background: '#f0f9ff',
-                        borderRadius: 8,
+                        background: COLORS.infoLight,
+                        borderRadius: BORDER_RADIUS.md,
                         padding: 12,
                         marginBottom: 16,
                       }}
                     >
-                      <p style={{ margin: 0, fontWeight: 600, color: '#0369a1' }}>
+                      <p style={{ margin: 0, fontWeight: 600, color: COLORS.info }}>
                         {selectedFornitore.fornitore_nome}
                       </p>
-                      <p style={{ margin: '4px 0 0 0', fontSize: 12, color: '#0284c7' }}>
+                      <p style={{ margin: '4px 0 0 0', fontSize: 12, color: COLORS.info }}>
                         {selectedFornitore.fatture_count} fatture •{' '}
                         {formatEuro(selectedFornitore.totale_fatture || 0)}
                       </p>
@@ -866,7 +784,7 @@ export default function LearningMachine() {
                           style={{
                             fontSize: 12,
                             fontWeight: 600,
-                            color: '#374151',
+                            color: COLORS.gray[700],
                             display: 'block',
                             marginBottom: 8,
                           }}
@@ -875,22 +793,15 @@ export default function LearningMachine() {
                         </label>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                           {keywordsSuggerite.map((kw, idx) => (
-                            <button
+                            <Button
                               key={idx}
+                              variant="outline"
+                              size="sm"
                               onClick={() => aggiungiKeywordSuggerita(kw)}
-                              style={{
-                                padding: '4px 10px',
-                                background: '#e0e7ff',
-                                color: '#4338ca',
-                                border: 'none',
-                                borderRadius: 6,
-                                cursor: 'pointer',
-                                fontSize: 12,
-                                fontWeight: 500,
-                              }}
+                              style={{ padding: '4px 10px', fontSize: 12 }}
                             >
                               + {kw}
-                            </button>
+                            </Button>
                           ))}
                         </div>
                       </div>
@@ -902,25 +813,19 @@ export default function LearningMachine() {
                         style={{
                           fontSize: 12,
                           fontWeight: 600,
-                          color: '#374151',
+                          color: COLORS.gray[700],
                           display: 'block',
                           marginBottom: 6,
                         }}
                       >
                         Keywords (separate da virgola)
                       </label>
-                      <input
+                      <Input
                         type="text"
                         value={keywords}
                         onChange={e => setKeywords(e.target.value)}
                         placeholder="es: bar, caffè, tabacchi"
-                        style={{
-                          width: '100%',
-                          padding: '10px 12px',
-                          border: '2px solid #e5e7eb',
-                          borderRadius: 8,
-                          fontSize: 14,
-                        }}
+                        style={{ fontSize: 14 }}
                       />
                     </div>
 
@@ -930,24 +835,17 @@ export default function LearningMachine() {
                         style={{
                           fontSize: 12,
                           fontWeight: 600,
-                          color: '#374151',
+                          color: COLORS.gray[700],
                           display: 'block',
                           marginBottom: 6,
                         }}
                       >
                         Centro di Costo Suggerito
                       </label>
-                      <select
+                      <Select
                         value={centroCostoSuggerito}
                         onChange={e => setCentroCostoSuggerito(e.target.value)}
-                        style={{
-                          width: '100%',
-                          padding: '10px 12px',
-                          border: '2px solid #e5e7eb',
-                          borderRadius: 8,
-                          fontSize: 14,
-                          background: 'white',
-                        }}
+                        style={{ width: '100%', fontSize: 14 }}
                       >
                         <option value="">-- Seleziona --</option>
                         {centriCosto.map(cdc => (
@@ -955,34 +853,27 @@ export default function LearningMachine() {
                             {cdc.nome || cdc.descrizione}
                           </option>
                         ))}
-                      </select>
+                      </Select>
                     </div>
 
                     {/* Bottoni */}
                     <div style={{ display: 'flex', gap: 8 }}>
-                      <button
+                      <Button
+                        variant="primary"
                         onClick={salvaFornitore}
                         disabled={saving || !keywords.trim()}
-                        style={{
-                          ...button('primary'),
-                          flex: 1,
-                          justifyContent: 'center',
-                          opacity: saving || !keywords.trim() ? 0.6 : 1,
-                        }}
+                        style={{ flex: 1, justifyContent: 'center' }}
                       >
                         {saving ? 'Salvataggio...' : 'Salva Keywords'}
-                      </button>
-                      <button
-                        onClick={() => setSelectedFornitore(null)}
-                        style={{ ...button('secondary') }}
-                      >
+                      </Button>
+                      <Button variant="secondary" onClick={() => setSelectedFornitore(null)}>
                         Annulla
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 ) : (
-                  <div style={{ textAlign: 'center', padding: 40, color: '#6b7280' }}>
-                    <Lightbulb size={48} color="#e5e7eb" style={{ marginBottom: 12 }} />
+                  <div style={{ textAlign: 'center', padding: 40, color: COLORS.textMuted }}>
+                    <Lightbulb size={48} color={COLORS.border} style={{ marginBottom: 12 }} />
                     <p>Seleziona un fornitore dalla lista per configurare le keywords</p>
                   </div>
                 )}
@@ -994,11 +885,11 @@ export default function LearningMachine() {
           {fornitoriConfigurati.length > 0 && (
             <div
               style={{
-                background: 'white',
-                borderRadius: 12,
+                background: COLORS.card,
+                borderRadius: BORDER_RADIUS.md,
                 padding: 20,
                 marginTop: 20,
-                boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                boxShadow: SHADOWS.md,
               }}
             >
               <h3
@@ -1006,13 +897,13 @@ export default function LearningMachine() {
                   margin: '0 0 16px 0',
                   fontSize: 16,
                   fontWeight: 600,
-                  color: '#1e3a5f',
+                  color: COLORS.primaryLight,
                   display: 'flex',
                   alignItems: 'center',
                   gap: 8,
                 }}
               >
-                <CheckCircle size={18} color="#16a34a" /> Fornitori Configurati (
+                <CheckCircle size={18} color={COLORS.success} /> Fornitori Configurati (
                 {fornitoriConfigurati.length})
               </h3>
 
@@ -1028,9 +919,9 @@ export default function LearningMachine() {
                     key={idx}
                     style={{
                       padding: 12,
-                      background: '#f9fafb',
-                      borderRadius: 8,
-                      border: '1px solid #e5e7eb',
+                      background: COLORS.bgAlt,
+                      borderRadius: BORDER_RADIUS.md,
+                      border: `1px solid ${COLORS.border}`,
                     }}
                   >
                     <div
@@ -1041,38 +932,25 @@ export default function LearningMachine() {
                       }}
                     >
                       <div>
-                        <p style={{ fontWeight: 600, color: '#1f2937', margin: 0, fontSize: 14 }}>
+                        <p style={{ fontWeight: 600, color: COLORS.text, margin: 0, fontSize: 14 }}>
                           {f.fornitore_nome}
                         </p>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
                           {(f.keywords || []).map((kw, i) => (
-                            <span
-                              key={i}
-                              style={{
-                                padding: '2px 8px',
-                                background: '#dbeafe',
-                                color: '#1d4ed8',
-                                borderRadius: 4,
-                                fontSize: 11,
-                              }}
-                            >
+                            <Badge key={i} variant="info" style={{ textTransform: 'none' }}>
                               {kw}
-                            </span>
+                            </Badge>
                           ))}
                         </div>
                       </div>
-                      <button
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={() => eliminaFornitoreKeywords(f.id)}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          cursor: 'pointer',
-                          color: '#ef4444',
-                          padding: 4,
-                        }}
+                        style={{ padding: 4, color: COLORS.danger }}
                       >
                         <Trash2 size={16} />
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 ))}
@@ -1090,11 +968,11 @@ export default function LearningMachine() {
           {/* Header */}
           <div
             style={{
-              background: 'white',
-              borderRadius: 12,
+              background: COLORS.card,
+              borderRadius: BORDER_RADIUS.md,
               padding: 20,
               marginBottom: 16,
-              boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+              boxShadow: SHADOWS.md,
             }}
           >
             <div
@@ -1107,22 +985,18 @@ export default function LearningMachine() {
               }}
             >
               <div>
-                <h2 style={{ margin: 0, fontSize: 18, fontWeight: 'bold', color: '#1e3a5f' }}>
+                <h2 style={{ margin: 0, fontSize: 18, fontWeight: 'bold', color: COLORS.primaryLight }}>
                   Pattern Assegni
                 </h2>
-                <p style={{ color: '#6b7280', fontSize: 13, margin: '4px 0 0 0' }}>
+                <p style={{ color: COLORS.textMuted, fontSize: 13, margin: '4px 0 0 0' }}>
                   Apprende dalle associazioni esistenti per suggerire automaticamente beneficiari
                 </p>
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
-                <button
-                  onClick={loadAssegniStats}
-                  disabled={assegniLoading}
-                  style={{ ...button('secondary'), opacity: assegniLoading ? 0.6 : 1 }}
-                >
+                <Button variant="secondary" onClick={loadAssegniStats} disabled={assegniLoading}>
                   <RefreshCw size={16} className={assegniLoading ? 'animate-spin' : ''} />
                   Aggiorna
-                </button>
+                </Button>
               </div>
             </div>
           </div>
@@ -1138,28 +1012,28 @@ export default function LearningMachine() {
               }}
             >
               <StatCard
-                icon={Brain}
+                icon={<Brain size={18} />}
                 label="Pattern Appresi"
                 value={assegniStats.pattern_totali || 0}
-                color="#9333ea"
+                accent="accent"
               />
               <StatCard
-                icon={CheckCircle}
+                icon={<CheckCircle size={18} />}
                 label="Accuracy"
                 value={`${assegniStats.accuracy || 0}%`}
-                color="#16a34a"
+                accent="success"
               />
               <StatCard
-                icon={CreditCard}
+                icon={<CreditCard size={18} />}
                 label="Assegni Totali"
                 value={assegniStats.totale_assegni || 0}
-                color="#2563eb"
+                accent="info"
               />
               <StatCard
-                icon={AlertCircle}
+                icon={<AlertCircle size={18} />}
                 label="Non Associati"
                 value={assegniStats.non_associati || 0}
-                color="#f59e0b"
+                accent="warning"
               />
             </div>
           )}
@@ -1175,10 +1049,10 @@ export default function LearningMachine() {
             {/* Card: Apprendi */}
             <div
               style={{
-                background: 'white',
-                borderRadius: 12,
+                background: COLORS.card,
+                borderRadius: BORDER_RADIUS.md,
                 padding: 20,
-                boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                boxShadow: SHADOWS.md,
               }}
             >
               <h3
@@ -1186,34 +1060,37 @@ export default function LearningMachine() {
                   margin: '0 0 12px 0',
                   fontSize: 16,
                   fontWeight: 600,
-                  color: '#1e3a5f',
+                  color: COLORS.primaryLight,
                   display: 'flex',
                   alignItems: 'center',
                   gap: 8,
                 }}
               >
-                <Brain size={18} color="#9333ea" /> Apprendi Pattern
+                <Brain size={18} color={COLORS.accent} /> Apprendi Pattern
               </h3>
-              <p style={{ color: '#6b7280', fontSize: 13, marginBottom: 16 }}>
+              <p style={{ color: COLORS.textMuted, fontSize: 13, marginBottom: 16 }}>
                 Analizza le associazioni esistenti tra assegni e fatture per apprendere nuovi
                 pattern.
               </p>
-              <button
+              <Button
+                variant="info"
                 onClick={handleLearnAssegni}
                 disabled={assegniLoading}
-                style={{
-                  ...button('primary'),
-                  width: '100%',
-                  justifyContent: 'center',
-                  background: '#1d4ed8',
-                }}
+                style={{ width: '100%', justifyContent: 'center' }}
               >
                 <Brain size={16} /> {assegniLoading ? 'Apprendimento...' : 'Avvia Learning'}
-              </button>
+              </Button>
 
               {learningResult && (
-                <div style={{ marginTop: 12, padding: 12, background: '#f3e8ff', borderRadius: 8 }}>
-                  <p style={{ margin: 0, fontSize: 13, color: '#7c3aed' }}>
+                <div
+                  style={{
+                    marginTop: 12,
+                    padding: 12,
+                    background: COLORS.accentSoft,
+                    borderRadius: BORDER_RADIUS.md,
+                  }}
+                >
+                  <p style={{ margin: 0, fontSize: 13, color: COLORS.accent }}>
                     ✅ Appresi <strong>{learningResult.pattern_appresi}</strong> pattern da{' '}
                     {learningResult.assegni_analizzati} assegni
                   </p>
@@ -1224,10 +1101,10 @@ export default function LearningMachine() {
             {/* Card: Associa Intelligente */}
             <div
               style={{
-                background: 'white',
-                borderRadius: 12,
+                background: COLORS.card,
+                borderRadius: BORDER_RADIUS.md,
                 padding: 20,
-                boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                boxShadow: SHADOWS.md,
               }}
             >
               <h3
@@ -1235,38 +1112,34 @@ export default function LearningMachine() {
                   margin: '0 0 12px 0',
                   fontSize: 16,
                   fontWeight: 600,
-                  color: '#1e3a5f',
+                  color: COLORS.primaryLight,
                   display: 'flex',
                   alignItems: 'center',
                   gap: 8,
                 }}
               >
-                <Zap size={18} color="#f59e0b" /> Associazione Intelligente
+                <Zap size={18} color={COLORS.warning} /> Associazione Intelligente
               </h3>
-              <p style={{ color: '#6b7280', fontSize: 13, marginBottom: 16 }}>
+              <p style={{ color: COLORS.textMuted, fontSize: 13, marginBottom: 16 }}>
                 Usa i pattern appresi per associare automaticamente gli assegni alle fatture.
               </p>
-              <button
+              <Button
+                variant="warning"
                 onClick={handleAssociaIntelligente}
                 disabled={assegniLoading}
-                style={{
-                  ...button('primary'),
-                  width: '100%',
-                  justifyContent: 'center',
-                  background: '#b45309',
-                }}
+                style={{ width: '100%', justifyContent: 'center' }}
               >
                 <Zap size={16} /> {assegniLoading ? 'Associazione...' : 'Associa Automaticamente'}
-              </button>
+              </Button>
             </div>
 
             {/* Card: Pulizia Duplicati */}
             <div
               style={{
-                background: 'white',
-                borderRadius: 12,
+                background: COLORS.card,
+                borderRadius: BORDER_RADIUS.md,
                 padding: 20,
-                boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                boxShadow: SHADOWS.md,
               }}
             >
               <h3
@@ -1274,37 +1147,46 @@ export default function LearningMachine() {
                   margin: '0 0 12px 0',
                   fontSize: 16,
                   fontWeight: 600,
-                  color: '#1e3a5f',
+                  color: COLORS.primaryLight,
                   display: 'flex',
                   alignItems: 'center',
                   gap: 8,
                 }}
               >
-                <Trash2 size={18} color="#ef4444" /> Pulizia Duplicati
+                <Trash2 size={18} color={COLORS.danger} /> Pulizia Duplicati
               </h3>
-              <p style={{ color: '#6b7280', fontSize: 13, marginBottom: 16 }}>
+              <p style={{ color: COLORS.textMuted, fontSize: 13, marginBottom: 16 }}>
                 Trova e rimuove assegni duplicati dal database.
               </p>
               <div style={{ display: 'flex', gap: 8 }}>
-                <button
+                <Button
+                  variant="secondary"
                   onClick={() => handlePuliziaDuplicati(true)}
                   disabled={assegniLoading}
-                  style={{ ...button('secondary'), flex: 1, justifyContent: 'center' }}
+                  style={{ flex: 1, justifyContent: 'center' }}
                 >
                   Anteprima
-                </button>
-                <button
+                </Button>
+                <Button
+                  variant="danger"
                   onClick={() => handlePuliziaDuplicati(false)}
                   disabled={assegniLoading || !puliziaResult}
-                  style={{ ...button('danger'), flex: 1, justifyContent: 'center' }}
+                  style={{ flex: 1, justifyContent: 'center' }}
                 >
                   Elimina
-                </button>
+                </Button>
               </div>
 
               {puliziaResult && (
-                <div style={{ marginTop: 12, padding: 12, background: '#fee2e2', borderRadius: 8 }}>
-                  <p style={{ margin: 0, fontSize: 13, color: '#991b1b' }}>
+                <div
+                  style={{
+                    marginTop: 12,
+                    padding: 12,
+                    background: COLORS.dangerLight,
+                    borderRadius: BORDER_RADIUS.md,
+                  }}
+                >
+                  <p style={{ margin: 0, fontSize: 13, color: COLORS.danger }}>
                     Trovati <strong>{puliziaResult.duplicati_trovati || 0}</strong> duplicati
                     {puliziaResult.record_eliminati > 0 &&
                       ` - Eliminati: ${puliziaResult.record_eliminati}`}
@@ -1324,11 +1206,11 @@ export default function LearningMachine() {
           {/* Header */}
           <div
             style={{
-              background: 'white',
-              borderRadius: 12,
+              background: COLORS.card,
+              borderRadius: BORDER_RADIUS.md,
               padding: 20,
               marginBottom: 16,
-              boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+              boxShadow: SHADOWS.md,
             }}
           >
             <div
@@ -1341,25 +1223,34 @@ export default function LearningMachine() {
               }}
             >
               <div>
-                <h2 style={{ margin: 0, fontSize: 18, fontWeight: 'bold', color: '#1e3a5f' }}>
+                <h2 style={{ margin: 0, fontSize: 18, fontWeight: 'bold', color: COLORS.primaryLight }}>
                   Classificazione Documenti
                 </h2>
-                <p style={{ color: '#6b7280', fontSize: 13, margin: '4px 0 0 0' }}>
+                <p style={{ color: COLORS.textMuted, fontSize: 13, margin: '4px 0 0 0' }}>
                   Sistema di classificazione automatica documenti con apprendimento iterativo
                 </p>
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
-                <button
-                  onClick={loadDocumentiStats}
-                  disabled={documentiLoading}
-                  style={{ ...button('secondary'), opacity: documentiLoading ? 0.6 : 1 }}
-                >
+                <Button variant="secondary" onClick={loadDocumentiStats} disabled={documentiLoading}>
                   <RefreshCw size={16} className={documentiLoading ? 'animate-spin' : ''} />
                   Aggiorna
-                </button>
+                </Button>
                 <Link
                   to="/classificazione-email"
-                  style={{ ...button('primary'), textDecoration: 'none' }}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 7,
+                    padding: '8px 16px',
+                    borderRadius: BORDER_RADIUS.sm,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    background: COLORS.primary,
+                    color: '#fff',
+                    border: `1px solid ${COLORS.primary}`,
+                    textDecoration: 'none',
+                  }}
                 >
                   <FileText size={16} /> Vai a Classificazione Email
                 </Link>
@@ -1382,28 +1273,28 @@ export default function LearningMachine() {
                   }}
                 >
                   <StatCard
-                    icon={FileText}
+                    icon={<FileText size={18} />}
                     label="Documenti Classificati"
                     value={documentiStats.totale_classificati || 0}
-                    color="#2563eb"
+                    accent="info"
                   />
                   <StatCard
-                    icon={Brain}
+                    icon={<Brain size={18} />}
                     label="Regole Apprese"
                     value={regoleApprese.length}
-                    color="#9333ea"
+                    accent="accent"
                   />
                   <StatCard
-                    icon={CheckCircle}
+                    icon={<CheckCircle size={18} />}
                     label="Accuracy Media"
                     value={`${documentiStats.accuracy || 0}%`}
-                    color="#16a34a"
+                    accent="success"
                   />
                   <StatCard
-                    icon={TrendingUp}
+                    icon={<TrendingUp size={18} />}
                     label="Feedback Ricevuti"
                     value={documentiStats.feedback_count || 0}
-                    color="#f59e0b"
+                    accent="warning"
                   />
                 </div>
               )}
@@ -1411,14 +1302,19 @@ export default function LearningMachine() {
               {/* Info */}
               <div
                 style={{
-                  background: 'white',
-                  borderRadius: 12,
+                  background: COLORS.card,
+                  borderRadius: BORDER_RADIUS.md,
                   padding: 20,
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                  boxShadow: SHADOWS.md,
                 }}
               >
                 <h3
-                  style={{ margin: '0 0 16px 0', fontSize: 16, fontWeight: 600, color: '#1e3a5f' }}
+                  style={{
+                    margin: '0 0 16px 0',
+                    fontSize: 16,
+                    fontWeight: 600,
+                    color: COLORS.primaryLight,
+                  }}
                 >
                   Come Funziona
                 </h3>
@@ -1429,28 +1325,46 @@ export default function LearningMachine() {
                     gap: 16,
                   }}
                 >
-                  <div style={{ padding: 16, background: '#f0f9ff', borderRadius: 8 }}>
-                    <h4 style={{ margin: '0 0 8px 0', color: '#0369a1', fontSize: 14 }}>
+                  <div
+                    style={{
+                      padding: 16,
+                      background: COLORS.infoLight,
+                      borderRadius: BORDER_RADIUS.md,
+                    }}
+                  >
+                    <h4 style={{ margin: '0 0 8px 0', color: COLORS.info, fontSize: 14 }}>
                       1. Scansione Email
                     </h4>
-                    <p style={{ margin: 0, fontSize: 13, color: '#6b7280' }}>
+                    <p style={{ margin: 0, fontSize: 13, color: COLORS.textMuted }}>
                       Il sistema scansiona le email e identifica automaticamente il tipo di
                       documento (F24, fattura, cedolino, etc.)
                     </p>
                   </div>
-                  <div style={{ padding: 16, background: '#f0fdf4', borderRadius: 8 }}>
-                    <h4 style={{ margin: '0 0 8px 0', color: '#166534', fontSize: 14 }}>
+                  <div
+                    style={{
+                      padding: 16,
+                      background: COLORS.successLight,
+                      borderRadius: BORDER_RADIUS.md,
+                    }}
+                  >
+                    <h4 style={{ margin: '0 0 8px 0', color: COLORS.success, fontSize: 14 }}>
                       2. Classificazione
                     </h4>
-                    <p style={{ margin: 0, fontSize: 13, color: '#6b7280' }}>
+                    <p style={{ margin: 0, fontSize: 13, color: COLORS.textMuted }}>
                       Ogni documento viene classificato usando regole predefinite e pattern appresi
                     </p>
                   </div>
-                  <div style={{ padding: 16, background: '#fef3c7', borderRadius: 8 }}>
-                    <h4 style={{ margin: '0 0 8px 0', color: '#92400e', fontSize: 14 }}>
+                  <div
+                    style={{
+                      padding: 16,
+                      background: COLORS.warningLight,
+                      borderRadius: BORDER_RADIUS.md,
+                    }}
+                  >
+                    <h4 style={{ margin: '0 0 8px 0', color: COLORS.warning, fontSize: 14 }}>
                       3. Feedback Loop
                     </h4>
-                    <p style={{ margin: 0, fontSize: 13, color: '#6b7280' }}>
+                    <p style={{ margin: 0, fontSize: 13, color: COLORS.textMuted }}>
                       Quando correggi una classificazione, il sistema apprende e migliora
                     </p>
                   </div>
@@ -1465,7 +1379,7 @@ export default function LearningMachine() {
       {activeTab === 'universale' && (
         <Suspense
           fallback={
-            <div style={{ textAlign: 'center', padding: 60, color: '#6b7280' }}>
+            <div style={{ textAlign: 'center', padding: 60, color: COLORS.textMuted }}>
               <RefreshCw
                 size={32}
                 style={{ margin: '0 auto 12px', animation: 'spin 1s linear infinite' }}
@@ -1482,7 +1396,7 @@ export default function LearningMachine() {
       {activeTab === 'regole' && (
         <Suspense
           fallback={
-            <div style={{ textAlign: 'center', padding: 60, color: '#6b7280' }}>
+            <div style={{ textAlign: 'center', padding: 60, color: COLORS.textMuted }}>
               <RefreshCw
                 size={32}
                 style={{ margin: '0 auto 12px', animation: 'spin 1s linear infinite' }}
