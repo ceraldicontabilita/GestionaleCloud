@@ -34,7 +34,11 @@ export default function GestioneAssegni() {
   const [filterNumeroFattura, setFilterNumeroFattura] = useState('');
   const [filterSoloDaAssociare, setFilterSoloDaAssociare] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
-  const [filterAnno, setFilterAnno] = useState(anno); // Filtro anno - inizia da anno globale
+  // Niente più stato locale per l'anno: prima "filterAnno" si inizializzava
+  // dall'anno globale ma restava locale — cambiando l'anno in alto la
+  // pagina ricaricava (era in dependency array) ma continuava a
+  // interrogare il vecchio filterAnno, mai riallineato. Si usa sempre e
+  // solo "anno" (globale), come tutte le altre pagine dell'app.
 
   // Responsive (telefono/tablet)
   const isMobile = useIsMobile();
@@ -85,7 +89,7 @@ export default function GestioneAssegni() {
   useEffect(() => {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterStato, search, filterAnno, anno]);
+  }, [filterStato, search, anno]);
 
   /**
    * LOGICA INTELLIGENTE: Ricostruisce automaticamente i dati mancanti.
@@ -116,11 +120,11 @@ export default function GestioneAssegni() {
       const params = new URLSearchParams();
       if (filterStato) params.append('stato', filterStato);
       if (search) params.append('search', search);
-      if (filterAnno) params.append('anno', filterAnno);
+      params.append('anno', anno);
 
       const [assegniRes, statsRes] = await Promise.all([
         api.get(`/api/assegni?${params}`),
-        api.get(`/api/assegni/stats?anno=${filterAnno || anno}`),
+        api.get(`/api/assegni/stats?anno=${anno}`),
       ]);
 
       // Ordina per numero assegno decrescente (dal più recente al più vecchio)
@@ -1242,34 +1246,12 @@ export default function GestioneAssegni() {
           )}
         </div>
 
-        {/* Selettore Anno */}
+        {/* Anno: segue sempre il selettore globale in alto (barra di
+            navigazione) — prima questa pagina aveva un secondo selettore
+            locale ridondante e disallineato, limitato agli "ultimi 5 anni"
+            calcolati da new Date() invece degli anni realmente disponibili. */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Anno:</span>
-          <select
-            value={filterAnno}
-            onChange={e => setFilterAnno(parseInt(e.target.value))}
-            data-testid="select-anno"
-            style={{
-              padding: '8px 12px',
-              minHeight: 40,
-              border: '2px solid #1e3a5f',
-              borderRadius: 8,
-              fontSize: 14,
-              fontWeight: 'bold',
-              color: '#1e3a5f',
-              background: 'white',
-              cursor: 'pointer',
-            }}
-          >
-            {[...Array(5)].map((_, i) => {
-              const y = new Date().getFullYear() - i;
-              return (
-                <option key={y} value={y}>
-                  {y}
-                </option>
-              );
-            })}
-          </select>
+          <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Anno: {anno}</span>
         </div>
       </div>
 

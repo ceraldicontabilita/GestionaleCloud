@@ -1812,8 +1812,13 @@ function MovementsTable({
 
   // Calculate running balance using reduce - ordina FORWARD (cronologico ASC) per calcolo corretto
   const saldoIniziale = saldoPrecedente || 0;
-  // Crea copia ordinata cronologicamente (ASC) per il calcolo del saldo progressivo
-  const movimentiForward = [...movimentiFiltrati].sort((a, b) =>
+  // Il saldo progressivo va calcolato SEMPRE su tutti i movimenti del
+  // periodo (mai su "movimentiFiltrati"): filtrando per es. "F24" o una
+  // fattura, il saldo progressivo diventava il saldo della sola selezione
+  // filtrata, non il saldo reale del conto — fuorviante e potenzialmente
+  // letto come "quanto ho davvero in cassa/banca". Si calcola una volta
+  // sola sull'elenco completo e si applica ai movimenti filtrati per id.
+  const movimentiForward = [...movimenti].sort((a, b) =>
     (a.data || '').localeCompare(b.data || '')
   );
   const balanceMap = {};
@@ -1822,11 +1827,19 @@ function MovementsTable({
     balanceMap[m.id || m.data + m.importo] = newBal;
     return newBal;
   }, saldoIniziale);
-  // Applica il saldo progressivo ai movimenti nell'ordine originale (DESC per display)
+  // Applica il saldo progressivo REALE (dal conto completo) ai movimenti
+  // filtrati mostrati in tabella.
   const movimentiWithBalance = movimentiFiltrati.map(m => ({
     ...m,
     saldoProgressivo: balanceMap[m.id || m.data + m.importo] ?? saldoIniziale,
   }));
+
+  // Totale della sola selezione filtrata (entrate - uscite), mostrato a
+  // parte dal saldo reale per non essere confuso con esso.
+  const totaleSelezioneFiltrata = movimentiFiltrati.reduce(
+    (sum, m) => sum + (m.tipo === 'entrata' ? (m.importo || 0) : -(m.importo || 0)),
+    0
+  );
 
   const currentWithBalance = movimentiWithBalance.slice(start, start + itemsPerPage);
 
@@ -2071,6 +2084,27 @@ function MovementsTable({
           <span style={{ fontSize: 12, color: '#6b7280', marginLeft: 8 }}>
             {movimentiFiltrati.length} / {movimenti.length} movimenti
           </span>
+
+          {/* Totale della selezione filtrata — separato dal saldo reale del
+              conto (colonna Saldo in tabella) per non essere confuso con
+              esso: filtrando per es. "F24" questo NON è "quanto c'è in
+              cassa/banca", è solo entrate-uscite dei soli movimenti filtrati. */}
+          {hasActiveFilters && (
+            <span
+              style={{
+                fontSize: 12,
+                fontWeight: 700,
+                color: totaleSelezioneFiltrata >= 0 ? '#16a34a' : '#dc2626',
+                marginLeft: 8,
+                padding: '2px 8px',
+                background: '#f1f5f9',
+                borderRadius: 4,
+              }}
+              title="Somma entrate-uscite dei soli movimenti filtrati (non è il saldo reale del conto)"
+            >
+              Totale selezione: {formatEuro(totaleSelezioneFiltrata)}
+            </span>
+          )}
 
           {/* Reset Filtri */}
           {hasActiveFilters && (

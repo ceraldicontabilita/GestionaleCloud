@@ -102,7 +102,10 @@ export default function ArchivioBonifici() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Ricarica quando cambiano i filtri
+  // Ricarica quando cambiano i filtri (incluso l'anno globale: prima la
+  // tabella movimenti ignorava l'anno globale quando yearFilter era vuoto —
+  // mostrava TUTTI gli anni mentre riepilogo/count restavano sull'anno
+  // globale, con tabella e riepilogo che potevano riferirsi ad anni diversi)
   useEffect(() => {
     if (!initialized.current) return;
     const timer = setTimeout(() => {
@@ -110,14 +113,17 @@ export default function ArchivioBonifici() {
     }, 300);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, yearFilter, ordinanteFilter, beneficiarioFilter]);
+  }, [search, yearFilter, ordinanteFilter, beneficiarioFilter, anno]);
 
   const loadTransfers = async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
       if (search) params.append('search', search);
-      if (yearFilter) params.append('year', yearFilter);
+      // yearFilter è un override manuale opzionale; di default segue
+      // l'anno globale come tutto il resto della pagina (summary/count).
+      const annoEffettivo = yearFilter || anno;
+      if (annoEffettivo) params.append('year', annoEffettivo);
       if (ordinanteFilter) params.append('ordinante', ordinanteFilter);
       if (beneficiarioFilter) params.append('beneficiario', beneficiarioFilter);
 
@@ -754,7 +760,8 @@ export default function ArchivioBonifici() {
         />
         <input
           type="text"
-          placeholder="Anno (es. 2024)"
+          placeholder={`Anno (default: ${anno})`}
+          title="Lascia vuoto per usare l'anno selezionato in alto"
           value={yearFilter}
           onChange={e => setYearFilter(e.target.value)}
           style={{

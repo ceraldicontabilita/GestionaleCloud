@@ -1180,7 +1180,7 @@ export default function PianoDeiConti() {
                       <div
                         style={{ fontWeight: 600, fontSize: 13, color: '#444', marginBottom: 8 }}
                       >
-                        Movimenti ({new Date().getFullYear()})
+                        Movimenti ({annoGlobale})
                       </div>
                       <div
                         style={{
