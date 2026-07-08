@@ -6,3 +6,4 @@ export { Select } from './Select';
 export { Tabs } from './Tabs';
 export { Card } from './Card';
 export { PageHeader } from './PageHeader';
+export { Table, TableWrap, Th, Td, RowActions, RowActionButton } from './Table';

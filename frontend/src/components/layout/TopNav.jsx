@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import api from '../../api';
 import { AnnoSelector } from '../../contexts/AnnoContext';
-import { COLORS, useIsMobile } from '../../lib/utils';
+import { COLORS, SHADOWS, useIsMobile } from '../../lib/utils';
 import InstallAppButton from '../InstallAppButton';
 
 /* ������ Costanti navigazione (definite fuori dal componente �  nessuna ricreazione) ������ */
@@ -131,24 +131,24 @@ const S = {
     position: 'fixed',
     top: 54,
     right: 'auto',
-    background: '#fff',
+    background: COLORS.card,
     borderRadius: 10,
-    boxShadow: '0 12px 32px rgba(15,39,68,0.18)',
+    boxShadow: SHADOWS.xl,
     minWidth: 200,
     padding: '6px 0',
     zIndex: 2000,
     animation: 'navDropIn 0.15s ease',
-    border: '1px solid #e2e8f0',
+    border: `1px solid ${COLORS.border}`,
   },
   dropItem: isActive => ({
     display: 'flex',
     alignItems: 'center',
     gap: 8,
     padding: '9px 16px',
-    color: isActive ? COLORS.primary : '#374151',
+    color: isActive ? COLORS.primary : COLORS.gray[700],
     fontWeight: isActive ? 700 : 500,
     fontSize: 13,
-    background: isActive ? '#f0f4ff' : 'transparent',
+    background: isActive ? COLORS.primarySoft : 'transparent',
     textDecoration: 'none',
     transition: 'background 0.12s',
     cursor: 'pointer',
@@ -172,7 +172,7 @@ const S = {
   annoLabel: {
     fontSize: 11,
     fontWeight: 700,
-    color: '#64748b',
+    color: COLORS.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
@@ -285,7 +285,7 @@ const TopNav = memo(function TopNav() {
           color: #fff !important;
         }
         .topnav-drop-item:hover {
-          background: #f0f4ff !important;
+          background: ${COLORS.primarySoft} !important;
         }
         /* scrollbar nascosta nella barra nav */
         .topnav-items-scroll::-webkit-scrollbar { display: none; }
@@ -343,7 +343,7 @@ const TopNav = memo(function TopNav() {
                 background: 'transparent',
                 border: 'none',
                 borderRadius: 6,
-                color: '#1e3a5f',
+                color: COLORS.primaryLight,
                 fontWeight: 700,
                 fontSize: 16,
                 cursor: 'pointer',
@@ -426,7 +426,7 @@ const NotificationBellMinimal = memo(function NotificationBellMinimal() {
   const hasAlerts = totale > 0;
 
   // Colore del pallino badge: rosso se ci sono critical, arancione se solo warning, blu se solo info
-  const badgeColor = critical > 0 ? '#ef4444' : warning > 0 ? '#f59e0b' : '#3b82f6';
+  const badgeColor = critical > 0 ? COLORS.danger : warning > 0 ? COLORS.warning : COLORS.info;
 
   return (
     <div ref={wrapRef} style={{ position: 'relative' }}>
@@ -464,7 +464,7 @@ const NotificationBellMinimal = memo(function NotificationBellMinimal() {
               fontSize: 10,
               fontWeight: 700,
               borderRadius: 8,
-              border: '1px solid #1e3a5f',
+              border: `1px solid ${COLORS.primaryLight}`,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -483,10 +483,10 @@ const NotificationBellMinimal = memo(function NotificationBellMinimal() {
             top: 'calc(100% + 8px)',
             right: 0,
             width: 340,
-            background: '#fff',
+            background: COLORS.card,
             borderRadius: 10,
-            boxShadow: '0 12px 32px rgba(15,39,68,0.18)',
-            border: '1px solid #e2e8f0',
+            boxShadow: SHADOWS.xl,
+            border: `1px solid ${COLORS.border}`,
             zIndex: 2000,
             overflow: 'hidden',
             animation: 'navDropIn 0.15s ease',
@@ -496,7 +496,7 @@ const NotificationBellMinimal = memo(function NotificationBellMinimal() {
           <div
             style={{
               padding: '12px 16px',
-              borderBottom: '1px solid #f3f4f6',
+              borderBottom: `1px solid ${COLORS.gray[100]}`,
               fontWeight: 700,
               fontSize: 13,
               color: COLORS.primary,
@@ -507,15 +507,15 @@ const NotificationBellMinimal = memo(function NotificationBellMinimal() {
           >
             <span>Alert di sistema</span>
             {hasAlerts && (
-              <span style={{ fontSize: 11, fontWeight: 600, color: '#64748b' }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: COLORS.textMuted }}>
                 {critical > 0 && (
-                  <span style={{ color: '#ef4444', marginRight: 6 }}>CRIT {critical}</span>
+                  <span style={{ color: COLORS.danger, marginRight: 6 }}>CRIT {critical}</span>
                 )}
                 {warning > 0 && (
-                  <span style={{ color: '#f59e0b', marginRight: 6 }}>WARN {warning}</span>
+                  <span style={{ color: COLORS.warning, marginRight: 6 }}>WARN {warning}</span>
                 )}
                 {(summary.per_severita?.info || 0) > 0 && (
-                  <span style={{ color: '#3b82f6' }}>INFO {summary.per_severita.info}</span>
+                  <span style={{ color: COLORS.info }}>INFO {summary.per_severita.info}</span>
                 )}
               </span>
             )}
@@ -523,7 +523,7 @@ const NotificationBellMinimal = memo(function NotificationBellMinimal() {
 
           <div style={{ maxHeight: 320, overflowY: 'auto' }}>
             {!hasAlerts ? (
-              <div style={{ padding: 20, textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>
+              <div style={{ padding: 20, textAlign: 'center', color: COLORS.textSubtle, fontSize: 13 }}>
                 Nessun alert aperto
               </div>
             ) : summary.critical_recenti && summary.critical_recenti.length > 0 ? (
@@ -531,10 +531,10 @@ const NotificationBellMinimal = memo(function NotificationBellMinimal() {
                 <div
                   style={{
                     padding: '8px 16px',
-                    background: '#fef2f2',
+                    background: COLORS.dangerLight,
                     fontSize: 10,
                     fontWeight: 700,
-                    color: '#b91c1c',
+                    color: COLORS.danger,
                     textTransform: 'uppercase',
                     letterSpacing: 0.5,
                   }}
@@ -546,27 +546,27 @@ const NotificationBellMinimal = memo(function NotificationBellMinimal() {
                     key={a.id || i}
                     style={{
                       padding: '10px 16px',
-                      borderBottom: '1px solid #f9fafb',
+                      borderBottom: `1px solid ${COLORS.gray[50]}`,
                       fontSize: 12,
-                      color: '#374151',
+                      color: COLORS.gray[700],
                     }}
                   >
                     <div style={{ fontWeight: 600, marginBottom: 2 }}>
                       {a.titolo || a.codice || 'Alert'}
                     </div>
                     {a.dettaglio && (
-                      <div style={{ fontSize: 11, color: '#6b7280' }}>
+                      <div style={{ fontSize: 11, color: COLORS.textMuted }}>
                         {a.dettaglio.slice(0, 120)}
                       </div>
                     )}
                     {a.modulo && (
-                      <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 2 }}>{a.modulo}</div>
+                      <div style={{ fontSize: 10, color: COLORS.textSubtle, marginTop: 2 }}>{a.modulo}</div>
                     )}
                   </div>
                 ))}
               </>
             ) : (
-              <div style={{ padding: 16, fontSize: 12, color: '#6b7280' }}>
+              <div style={{ padding: 16, fontSize: 12, color: COLORS.textMuted }}>
                 {Object.entries(summary.per_modulo || {})
                   .slice(0, 8)
                   .map(([modulo, count]) => (
@@ -576,7 +576,7 @@ const NotificationBellMinimal = memo(function NotificationBellMinimal() {
                         display: 'flex',
                         justifyContent: 'space-between',
                         padding: '6px 0',
-                        borderBottom: '1px solid #f9fafb',
+                        borderBottom: `1px solid ${COLORS.gray[50]}`,
                       }}
                     >
                       <span style={{ textTransform: 'capitalize' }}>{modulo}</span>
@@ -602,7 +602,7 @@ const NotificationBellMinimal = memo(function NotificationBellMinimal() {
               fontWeight: 600,
               textAlign: 'center',
               textDecoration: 'none',
-              borderTop: '1px solid #f3f4f6',
+              borderTop: `1px solid ${COLORS.gray[100]}`,
             }}
           >
             Apri Dashboard Relazionale

@@ -1,4 +1,5 @@
 import React from 'react';
+import { COLORS, SHADOWS, BORDER_RADIUS, FONT } from '../../lib/utils';
 
 /**
  * PageHeader — intestazione pagina con bordo-accento navy a sinistra,
@@ -14,24 +15,24 @@ export function PageHeader({ title, subtitle = null, icon = null, actions = null
         gap: 12,
         flexWrap: 'wrap',
         padding: '16px 20px',
-        background: 'var(--c-card)',
-        border: '1px solid var(--c-border)',
-        borderLeft: '4px solid var(--c-primary)',
-        borderRadius: 'var(--radius-md)',
-        boxShadow: 'var(--shadow-sm)',
+        background: COLORS.card,
+        border: `1px solid ${COLORS.border}`,
+        borderLeft: `4px solid ${COLORS.primary}`,
+        borderRadius: BORDER_RADIUS.md,
+        boxShadow: SHADOWS.sm,
         ...style,
       }}
     >
       <div>
         <h1 style={{
-          margin: 0, fontSize: 20, fontWeight: 700, color: 'var(--c-primary)',
+          margin: 0, fontSize: 20, fontWeight: 700, color: COLORS.primary,
           letterSpacing: '-0.3px', display: 'flex', alignItems: 'center', gap: 10,
-          fontFamily: 'var(--font-ui)',
+          fontFamily: FONT.family,
         }}>
           {icon}{title}
         </h1>
         {subtitle && (
-          <p style={{ margin: '2px 0 0 0', fontSize: 13, color: 'var(--c-text-muted)', fontWeight: 500 }}>
+          <p style={{ margin: '2px 0 0 0', fontSize: 13, color: COLORS.textMuted, fontWeight: 500 }}>
             {subtitle}
           </p>
         )}

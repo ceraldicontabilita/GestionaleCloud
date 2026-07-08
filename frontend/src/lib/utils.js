@@ -80,6 +80,9 @@ export const SHADOWS = {
   lg: '0 6px 16px rgba(15,39,68,0.10)',
   xl: '0 12px 32px rgba(15,39,68,0.14)',
   nav: '0 2px 8px rgba(15,39,68,0.18)',
+  // Ombra forte per modali/dialog in overlay — stessa tinta navy della scala
+  // sopra, non nera: prima ogni pagina la scriveva a mano come rgba(0,0,0,...).
+  modal: '0 20px 50px rgba(15,39,68,0.28)',
 };
 
 /* ---------- RADIUS (contenuto: ≤8px dati, ≤14px contenitori) ---------- */

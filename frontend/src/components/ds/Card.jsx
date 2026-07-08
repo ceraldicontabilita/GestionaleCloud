@@ -1,4 +1,5 @@
 import React from 'react';
+import { COLORS, SHADOWS, BORDER_RADIUS } from '../../lib/utils';
 
 /**
  * Card — contenitore base bianco con bordo e ombra leggera.
@@ -8,10 +9,10 @@ export function Card({ title, icon = null, actions = null, children, style = {},
   return (
     <div
       style={{
-        background: 'var(--c-card)',
-        border: '1px solid var(--c-border)',
-        borderRadius: 'var(--radius-md)',
-        boxShadow: 'var(--shadow-sm)',
+        background: COLORS.card,
+        border: `1px solid ${COLORS.border}`,
+        borderRadius: BORDER_RADIUS.md,
+        boxShadow: SHADOWS.sm,
         overflow: 'hidden',
         ...style,
       }}
@@ -19,11 +20,11 @@ export function Card({ title, icon = null, actions = null, children, style = {},
       {title && (
         <div style={{
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          gap: 12, padding: '12px 16px', borderBottom: '1px solid var(--c-border)',
+          gap: 12, padding: '12px 16px', borderBottom: `1px solid ${COLORS.border}`,
         }}>
           <div style={{
             display: 'flex', alignItems: 'center', gap: 8,
-            fontSize: 14, fontWeight: 700, color: 'var(--c-primary)',
+            fontSize: 14, fontWeight: 700, color: COLORS.primary,
           }}>
             {icon}{title}
           </div>

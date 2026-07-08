@@ -1,11 +1,11 @@
 /**
  * PageLayout - Wrapper di pagina con header opzionale (title/icon/subtitle/actions),
- * renderizzato tramite il design system (ds/PageHeader) quando è passato un titolo.
- * Il padding usa i token responsive (--page-pad-x-mobile sotto i 768px).
+ * renderizzato tramite il design system (ds/PageHeader).
  */
 
 import React from 'react';
 import { PageHeader } from './ds/PageHeader';
+import { COLORS, SPACING, BORDER_RADIUS, FONT } from '../lib/utils';
 
 export function PageLayout({
   children,
@@ -21,12 +21,12 @@ export function PageLayout({
       className={`ds-page-layout ${className}`}
       style={{
         minHeight: '100vh',
-        background: '#f8fafc',
+        background: COLORS.bgAlt,
         ...(noPadding ? { padding: 0 } : {}),
       }}
     >
       {title && (
-        <div style={{ marginBottom: 'var(--sp-lg)' }}>
+        <div style={{ marginBottom: SPACING.lg }}>
           <PageHeader title={title} icon={icon} subtitle={subtitle} actions={actions} />
         </div>
       )}
@@ -41,11 +41,11 @@ export function PageSection({ title, icon, children, className = '', style = {} 
     <div
       style={{
         position: 'relative',
-        background: '#fff',
-        borderRadius: 12,
-        border: '1px solid #e2e8f0',
-        padding: 20,
-        marginBottom: 16,
+        background: COLORS.card,
+        borderRadius: BORDER_RADIUS.lg,
+        border: `1px solid ${COLORS.border}`,
+        padding: SPACING.xl,
+        marginBottom: SPACING.lg,
         ...style,
       }}
       className={className}
@@ -53,13 +53,14 @@ export function PageSection({ title, icon, children, className = '', style = {} 
       {title && (
         <h3
           style={{
-            margin: '0 0 16px 0',
+            margin: `0 0 ${SPACING.lg}px 0`,
             fontSize: 16,
             fontWeight: 600,
-            color: '#1e3a5f',
+            color: COLORS.primaryLight,
             display: 'flex',
             alignItems: 'center',
-            gap: 8,
+            gap: SPACING.sm,
+            fontFamily: FONT.family,
           }}
         >
           {icon && <span>{icon}</span>}
@@ -91,16 +92,17 @@ export function PageGrid({ cols = 2, gap = 20, minWidth, children }) {
   );
 }
 
-export function PageEmpty({ icon = '\u25A1', message = 'Nessun dato disponibile' }) {
+export function PageEmpty({ icon = '□', message = 'Nessun dato disponibile' }) {
   return (
     <div
       style={{
         textAlign: 'center',
         padding: '60px 20px',
-        color: '#64748b',
+        color: COLORS.textMuted,
+        fontFamily: FONT.family,
       }}
     >
-      <div style={{ fontSize: 48, marginBottom: 16 }}>{icon}</div>
+      <div style={{ fontSize: 48, marginBottom: SPACING.lg }}>{icon}</div>
       <p style={{ margin: 0, fontSize: 15 }}>{message}</p>
     </div>
   );
@@ -112,15 +114,16 @@ export function PageLoading({ message = 'Caricamento...' }) {
       style={{
         textAlign: 'center',
         padding: '60px 20px',
-        color: '#64748b',
+        color: COLORS.textMuted,
+        fontFamily: FONT.family,
       }}
     >
       <div
         style={{
           width: 32,
           height: 32,
-          border: '3px solid #e2e8f0',
-          borderTop: '3px solid #2563eb',
+          border: `3px solid ${COLORS.border}`,
+          borderTop: `3px solid ${COLORS.primary}`,
           borderRadius: '50%',
           animation: 'spin 1s linear infinite',
           margin: '0 auto 16px',
@@ -131,32 +134,34 @@ export function PageLoading({ message = 'Caricamento...' }) {
   );
 }
 
-export function PageError({ message = 'Si e verificato un errore', onRetry }) {
+export function PageError({ message = 'Si è verificato un errore', onRetry }) {
   return (
     <div
       style={{
         textAlign: 'center',
         padding: '40px 20px',
-        background: '#fef2f2',
-        borderRadius: 12,
-        border: '1px solid #fca5a5',
-        color: '#dc2626',
+        background: COLORS.dangerLight,
+        borderRadius: BORDER_RADIUS.lg,
+        border: `1px solid ${COLORS.danger}`,
+        color: COLORS.danger,
+        fontFamily: FONT.family,
       }}
     >
-      <div style={{ fontSize: 32, marginBottom: 12 }}>!</div>
-      <p style={{ margin: '0 0 16px 0', fontSize: 14 }}>{message}</p>
+      <div style={{ fontSize: 32, marginBottom: SPACING.md }}>!</div>
+      <p style={{ margin: `0 0 ${SPACING.lg}px 0`, fontSize: 14 }}>{message}</p>
       {onRetry && (
         <button
           onClick={onRetry}
           style={{
             padding: '8px 16px',
-            background: '#dc2626',
+            background: COLORS.danger,
             color: '#fff',
             border: 'none',
-            borderRadius: 6,
+            borderRadius: BORDER_RADIUS.sm,
             cursor: 'pointer',
             fontSize: 13,
-            fontWeight: 500,
+            fontWeight: 600,
+            fontFamily: FONT.family,
           }}
         >
           Riprova

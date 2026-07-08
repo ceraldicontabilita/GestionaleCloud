@@ -1,17 +1,18 @@
 import React from 'react';
+import { COLORS, BORDER_RADIUS, FONT } from '../../lib/utils';
 
 /**
  * Badge — pill di stato uppercase. Usato per stati record nelle tabelle.
  */
 export function Badge({ variant = 'neutral', children, style = {}, ...props }) {
   const variants = {
-    success: { background: 'var(--c-success-light)', color: 'var(--c-success)' },
-    warning: { background: 'var(--c-warning-light)', color: 'var(--c-warning)' },
-    danger:  { background: 'var(--c-danger-light)', color: 'var(--c-danger)' },
-    info:    { background: 'var(--c-info-light)', color: 'var(--c-info)' },
-    primary: { background: 'var(--c-primary-soft)', color: 'var(--c-primary)' },
-    accent:  { background: 'var(--c-accent-soft)', color: 'var(--c-accent)' },
-    neutral: { background: 'var(--gray-100)', color: 'var(--gray-700)' },
+    success: { background: COLORS.successLight, color: COLORS.success },
+    warning: { background: COLORS.warningLight, color: COLORS.warning },
+    danger: { background: COLORS.dangerLight, color: COLORS.danger },
+    info: { background: COLORS.infoLight, color: COLORS.info },
+    primary: { background: COLORS.primarySoft, color: COLORS.primary },
+    accent: { background: COLORS.accentSoft, color: COLORS.accent },
+    neutral: { background: COLORS.gray[100], color: COLORS.gray[700] },
   };
 
   return (
@@ -19,13 +20,13 @@ export function Badge({ variant = 'neutral', children, style = {}, ...props }) {
       style={{
         display: 'inline-block',
         padding: '3px 9px',
-        borderRadius: 'var(--radius-full)',
+        borderRadius: BORDER_RADIUS.full,
         fontSize: 11,
         fontWeight: 700,
         letterSpacing: '0.2px',
         textTransform: 'uppercase',
         lineHeight: 1.4,
-        fontFamily: 'var(--font-ui)',
+        fontFamily: FONT.family,
         ...(variants[variant] || variants.neutral),
         ...style,
       }}

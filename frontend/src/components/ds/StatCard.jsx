@@ -1,4 +1,5 @@
 import React from 'react';
+import { COLORS, SHADOWS, BORDER_RADIUS, FONT } from '../../lib/utils';
 
 /**
  * StatCard / KPICard — riquadro statistica con icona, label e valore.
@@ -14,13 +15,13 @@ export function StatCard({
   style = {},
 }) {
   const accents = {
-    primary: 'var(--c-primary)',
-    success: 'var(--c-success)',
-    warning: 'var(--c-warning)',
-    danger:  'var(--c-danger)',
-    info:    'var(--c-info)',
-    accent:  'var(--c-accent)',
-    none:    'transparent',
+    primary: COLORS.primary,
+    success: COLORS.success,
+    warning: COLORS.warning,
+    danger: COLORS.danger,
+    info: COLORS.info,
+    accent: COLORS.accent,
+    none: 'transparent',
   };
   const accentColor = accents[accent] || accents.primary;
 
@@ -28,30 +29,30 @@ export function StatCard({
     <div
       onClick={onClick || undefined}
       style={{
-        background: 'var(--c-card)',
-        border: '1px solid var(--c-border)',
-        borderLeft: accent === 'none' ? '1px solid var(--c-border)' : `3px solid ${accentColor}`,
-        borderRadius: 'var(--radius-md)',
+        background: COLORS.card,
+        border: `1px solid ${COLORS.border}`,
+        borderLeft: accent === 'none' ? `1px solid ${COLORS.border}` : `3px solid ${accentColor}`,
+        borderRadius: BORDER_RADIUS.md,
         padding: '16px 18px',
-        boxShadow: 'var(--shadow-sm)',
+        boxShadow: SHADOWS.sm,
         cursor: onClick ? 'pointer' : 'default',
-        transition: 'box-shadow var(--t-normal), transform var(--t-normal)',
+        transition: 'box-shadow 160ms ease, transform 160ms ease',
         minWidth: 0,
         ...style,
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-        {icon && <span style={{ color: accentColor === 'transparent' ? 'var(--c-text-muted)' : accentColor, display: 'inline-flex' }}>{icon}</span>}
+        {icon && <span style={{ color: accentColor === 'transparent' ? COLORS.textMuted : accentColor, display: 'inline-flex' }}>{icon}</span>}
         <span style={{
-          fontSize: 11, color: 'var(--c-text-muted)', fontWeight: 600,
+          fontSize: 11, color: COLORS.textMuted, fontWeight: 600,
           textTransform: 'uppercase', letterSpacing: '0.4px',
         }}>{label}</span>
       </div>
-      <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--c-primary)', lineHeight: 1.2, fontFamily: 'var(--font-ui)' }}>
+      <div style={{ fontSize: 24, fontWeight: 700, color: COLORS.primary, lineHeight: 1.2, fontFamily: FONT.family }}>
         {value}
       </div>
       {subtext && (
-        <div style={{ fontSize: 11, color: 'var(--c-text-subtle)', marginTop: 6 }}>{subtext}</div>
+        <div style={{ fontSize: 11, color: COLORS.textSubtle, marginTop: 6 }}>{subtext}</div>
       )}
     </div>
   );
