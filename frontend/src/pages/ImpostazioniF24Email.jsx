@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { PageLayout } from '../components/PageLayout';
-import { STYLES, COLORS, button, useIsMobile, RG, pagePad } from '../lib/utils';
+import { COLORS, SHADOWS, BORDER_RADIUS, FONT, useIsMobile } from '../lib/utils';
+import { Button, Badge, StatCard, Card, PageHeader, Input, Select, TableWrap, Table, Th, Td, RowActions, RowActionButton } from '../components/ds';
+import { toast } from 'sonner';
+import { useConfirm } from '../components/ui/ConfirmDialog';
 import {
   Settings,
   Mail,
@@ -37,8 +40,8 @@ function Toggle({ checked, onChange, testId }) {
       style={{
         width: 44,
         height: 24,
-        borderRadius: 12,
-        background: checked ? COLORS.success : COLORS.grayLight,
+        borderRadius: BORDER_RADIUS.full,
+        background: checked ? COLORS.success : COLORS.border,
         position: 'relative',
         cursor: 'pointer',
         transition: 'background 0.2s',
@@ -50,12 +53,12 @@ function Toggle({ checked, onChange, testId }) {
           width: 18,
           height: 18,
           borderRadius: '50%',
-          background: '#fff',
+          background: COLORS.white,
           position: 'absolute',
           top: 3,
           left: checked ? 23 : 3,
           transition: 'left 0.2s',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+          boxShadow: SHADOWS.sm,
         }}
       />
     </div>
@@ -63,33 +66,16 @@ function Toggle({ checked, onChange, testId }) {
 }
 
 /* ---- Stili locali riutilizzabili ---- */
-const cardStyle = {
-  background: '#fff',
-  borderRadius: 12,
-  border: '1px solid #e8ecf1',
-  boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
-  marginBottom: 20,
-};
-const cardHeaderStyle = {
-  borderBottom: '1px solid #f1f5f9',
-  padding: '12px 20px',
-  background: '#f8fafc',
-  borderRadius: '12px 12px 0 0',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-};
-const cardBodyStyle = { padding: 20 };
 const statBoxStyle = {
   padding: '12px 16px',
-  background: '#f8fafc',
-  borderRadius: 8,
-  border: '1px solid #e8ecf1',
+  background: COLORS.bgAlt,
+  borderRadius: BORDER_RADIUS.md,
+  border: `1px solid ${COLORS.border}`,
 };
 const labelStyle = {
   fontSize: 12,
   fontWeight: 600,
-  color: '#374151',
+  color: COLORS.gray[700],
   display: 'block',
   marginBottom: 4,
 };
@@ -156,155 +142,131 @@ function GmailSettingsSection() {
 
   return (
     <div style={{ marginTop: 4 }}>
-      <div style={cardStyle}>
-        <div style={cardHeaderStyle}>
-          <h3
+      <Card title="Credenziali Gmail IMAP" icon={<Mail size={16} color={COLORS.info} />}>
+        <p style={{ fontSize: 13, color: COLORS.textMuted, marginBottom: 16, lineHeight: 1.6 }}>
+          Inserisci la Gmail App Password per permettere al sistema di scaricare automaticamente
+          le email con le fatture. Vai su{' '}
+          <strong>Account Google → Sicurezza → Verifica in 2 passaggi → App Password</strong>. La
+          password viene salvata nel database (non nel codice).
+        </p>
+
+        {cfg && (
+          <div
             style={{
-              margin: 0,
-              fontSize: 14,
-              fontWeight: 600,
-              color: '#1e293b',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
+              marginBottom: 16,
+              padding: '8px 12px',
+              borderRadius: BORDER_RADIUS.md,
+              background: cfg.has_password ? COLORS.successLight : COLORS.warningLight,
+              border: `1px solid ${cfg.has_password ? COLORS.success : COLORS.warning}`,
             }}
           >
-            <Mail size={16} color="#2563eb" /> Credenziali Gmail IMAP
-          </h3>
-        </div>
-        <div style={cardBodyStyle}>
-          <p style={{ fontSize: 13, color: '#64748b', marginBottom: 16, lineHeight: 1.6 }}>
-            Inserisci la Gmail App Password per permettere al sistema di scaricare automaticamente
-            le email con le fatture. Vai su{' '}
-            <strong>Account Google → Sicurezza → Verifica in 2 passaggi → App Password</strong>. La
-            password viene salvata nel database (non nel codice).
-          </p>
-
-          {cfg && (
-            <div
+            <span
               style={{
-                marginBottom: 16,
-                padding: '8px 12px',
-                borderRadius: 8,
-                background: cfg.has_password ? '#f0fdf4' : '#fff7ed',
-                border: `1px solid ${cfg.has_password ? '#bbf7d0' : '#fed7aa'}`,
+                fontSize: 12,
+                fontWeight: 600,
+                color: cfg.has_password ? COLORS.success : COLORS.warning,
               }}
             >
-              <span
-                style={{
-                  fontSize: 12,
-                  fontWeight: 600,
-                  color: cfg.has_password ? '#16a34a' : '#d97706',
-                }}
+              {cfg.has_password
+                ? `Credenziali presenti — Sorgente: ${cfg.sorgente} — Utente: ${cfg.imap_user}`
+                : 'Nessuna credenziale configurata — il download email è disattivato'}
+            </span>
+          </div>
+        )}
+
+        <div style={{ display: 'grid', gap: 12 }}>
+          <div>
+            <label style={labelStyle}>Email Gmail</label>
+            <Input
+              value={form.imap_user}
+              onChange={e => setForm(f => ({ ...f, imap_user: e.target.value }))}
+              placeholder="ceraldigroupsrl@gmail.com"
+              type="email"
+            />
+          </div>
+          <div>
+            <label style={labelStyle}>App Password Gmail (16 caratteri)</label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Input
+                value={form.gmail_app_password}
+                onChange={e =>
+                  setForm(f => ({ ...f, gmail_app_password: e.target.value.replace(/\s/g, '') }))
+                }
+                placeholder="abcdabcdabcdabcd"
+                type={showPass ? 'text' : 'password'}
+                style={{ flex: 1, fontFamily: FONT.mono }}
+              />
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setShowPass(s => !s)}
+                style={{ flexShrink: 0 }}
               >
-                {cfg.has_password
-                  ? `Credenziali presenti — Sorgente: ${cfg.sorgente} — Utente: ${cfg.imap_user}`
-                  : 'Nessuna credenziale configurata — il download email è disattivato'}
-              </span>
+                {showPass ? 'Nascondi' : 'Mostra'}
+              </Button>
             </div>
-          )}
-
-          <div style={{ display: 'grid', gap: 12 }}>
-            <div>
-              <label style={labelStyle}>Email Gmail</label>
-              <input
-                value={form.imap_user}
-                onChange={e => setForm(f => ({ ...f, imap_user: e.target.value }))}
-                placeholder="ceraldigroupsrl@gmail.com"
-                type="email"
-                style={STYLES.input}
-              />
-            </div>
-            <div>
-              <label style={labelStyle}>App Password Gmail (16 caratteri)</label>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <input
-                  value={form.gmail_app_password}
-                  onChange={e =>
-                    setForm(f => ({ ...f, gmail_app_password: e.target.value.replace(/\s/g, '') }))
-                  }
-                  placeholder="abcdabcdabcdabcd"
-                  type={showPass ? 'text' : 'password'}
-                  style={{ ...STYLES.input, flex: 1, fontFamily: 'monospace' }}
-                />
-                <button
-                  onClick={() => setShowPass(s => !s)}
-                  style={{
-                    ...button('secondary'),
-                    padding: '8px 14px',
-                    fontSize: 12,
-                    flexShrink: 0,
-                  }}
-                >
-                  {showPass ? 'Nascondi' : 'Mostra'}
-                </button>
-              </div>
-              <p style={{ fontSize: 11, color: '#94a3b8', margin: '4px 0 0' }}>
-                Incolla la App Password senza spazi. Es: <code>abcdabcdabcdabcd</code>
-              </p>
-            </div>
-            <div>
-              <label style={labelStyle}>Server IMAP</label>
-              <input
-                value={form.imap_host}
-                onChange={e => setForm(f => ({ ...f, imap_host: e.target.value }))}
-                placeholder="imap.gmail.com"
-                style={STYLES.input}
-              />
-            </div>
+            <p style={{ fontSize: 11, color: COLORS.textSubtle, margin: '4px 0 0' }}>
+              Incolla la App Password senza spazi. Es: <code>abcdabcdabcdabcd</code>
+            </p>
           </div>
-
-          {msg && (
-            <div
-              style={{
-                marginTop: 12,
-                padding: '8px 12px',
-                borderRadius: 8,
-                background: msg.ok ? '#f0fdf4' : '#fef2f2',
-                border: `1px solid ${msg.ok ? '#bbf7d0' : '#fecaca'}`,
-                fontSize: 13,
-                color: msg.ok ? '#16a34a' : '#dc2626',
-              }}
-            >
-              {msg.ok ? '✓ ' : '✗ '}
-              {msg.testo}
-            </div>
-          )}
-
-          <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-            <button
-              onClick={salva}
-              disabled={saving || !form.imap_user || !form.gmail_app_password}
-              style={button('primary', saving || !form.imap_user || !form.gmail_app_password)}
-            >
-              {saving ? (
-                <Loader2
-                  size={14}
-                  style={{ marginRight: 6, animation: 'spin 1s linear infinite' }}
-                />
-              ) : (
-                <Save size={14} style={{ marginRight: 6 }} />
-              )}
-              Salva credenziali
-            </button>
-            <button
-              onClick={testConnessione}
-              disabled={testing || saving}
-              style={button('secondary', testing || saving)}
-            >
-              {testing ? (
-                <Loader2
-                  size={14}
-                  style={{ marginRight: 6, animation: 'spin 1s linear infinite' }}
-                />
-              ) : (
-                <RefreshCw size={14} style={{ marginRight: 6 }} />
-              )}
-              Testa connessione
-            </button>
+          <div>
+            <label style={labelStyle}>Server IMAP</label>
+            <Input
+              value={form.imap_host}
+              onChange={e => setForm(f => ({ ...f, imap_host: e.target.value }))}
+              placeholder="imap.gmail.com"
+            />
           </div>
         </div>
-      </div>
+
+        {msg && (
+          <div
+            style={{
+              marginTop: 12,
+              padding: '8px 12px',
+              borderRadius: BORDER_RADIUS.md,
+              background: msg.ok ? COLORS.successLight : COLORS.dangerLight,
+              border: `1px solid ${msg.ok ? COLORS.success : COLORS.danger}`,
+              fontSize: 13,
+              color: msg.ok ? COLORS.success : COLORS.danger,
+            }}
+          >
+            {msg.ok ? '✓ ' : '✗ '}
+            {msg.testo}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+          <Button
+            variant="primary"
+            onClick={salva}
+            disabled={saving || !form.imap_user || !form.gmail_app_password}
+            iconLeft={
+              saving ? (
+                <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
+              ) : (
+                <Save size={14} />
+              )
+            }
+          >
+            Salva credenziali
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={testConnessione}
+            disabled={testing || saving}
+            iconLeft={
+              testing ? (
+                <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
+              ) : (
+                <RefreshCw size={14} />
+              )
+            }
+          >
+            Testa connessione
+          </Button>
+        </div>
+      </Card>
     </div>
   );
 }
@@ -312,6 +274,7 @@ function GmailSettingsSection() {
 /* ===== PAGINA PRINCIPALE ===== */
 export default function ImpostazioniF24Email() {
   const isMobile = useIsMobile();
+  const confirm = useConfirm();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [scanning, setScanning] = useState(false);
@@ -375,10 +338,10 @@ export default function ImpostazioniF24Email() {
         giorni_indietro: settings.giorni_indietro,
         auto_scan_attivo: settings.auto_scan_attivo,
       });
-      alert('Impostazioni salvate!');
+      toast.success('Impostazioni salvate!');
       fetchData();
     } catch (err) {
-      alert('Errore salvataggio: ' + (err.response?.data?.detail || err.message));
+      toast.error('Errore salvataggio: ' + (err.response?.data?.detail || err.message));
     } finally {
       setSaving(false);
     }
@@ -399,12 +362,12 @@ export default function ImpostazioniF24Email() {
     try {
       const res = await api.post('/api/f24-email-settings/scan-manuale');
       const d = res.data;
-      alert(
+      toast.success(
         `Scansione completata!\n\nEmail trovate: ${d.download?.email_trovate || 0}\nAllegati scaricati: ${d.download?.allegati_scaricati || 0}\nF24 inseriti: ${d.processamento?.f24_inseriti || 0}`
       );
       fetchData();
     } catch (err) {
-      alert('Errore scansione: ' + (err.response?.data?.detail || err.message));
+      toast.error('Errore scansione: ' + (err.response?.data?.detail || err.message));
     } finally {
       setScanning(false);
     }
@@ -412,7 +375,7 @@ export default function ImpostazioniF24Email() {
 
   const addMittente = async () => {
     if (!newMittente.email || !newMittente.nome) {
-      alert('Inserisci email e nome');
+      toast.warning('Inserisci email e nome');
       return;
     }
     try {
@@ -428,17 +391,22 @@ export default function ImpostazioniF24Email() {
       });
       fetchData();
     } catch (err) {
-      alert('Errore: ' + (err.response?.data?.detail || err.message));
+      toast.error('Errore: ' + (err.response?.data?.detail || err.message));
     }
   };
 
   const removeMittente = async email => {
-    if (!window.confirm(`Rimuovere ${email}?`)) return;
+    const ok = await confirm({
+      title: 'Rimuovi mittente',
+      message: `Rimuovere ${email}?`,
+      confirmText: 'Rimuovi',
+    });
+    if (!ok) return;
     try {
       await api.delete(`/api/f24-email-settings/rimuovi-mittente/${encodeURIComponent(email)}`);
       fetchData();
     } catch (err) {
-      alert('Errore: ' + (err.response?.data?.detail || err.message));
+      toast.error('Errore: ' + (err.response?.data?.detail || err.message));
     }
   };
 
@@ -475,7 +443,7 @@ export default function ImpostazioniF24Email() {
   if (loading) {
     return (
       <PageLayout>
-        <div style={{ display: 'flex', justifyContent: 'center', padding: 60, color: '#94a3b8' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', padding: 60, color: COLORS.textSubtle }}>
           <Loader2 size={32} style={{ animation: 'spin 1s linear infinite' }} />
         </div>
       </PageLayout>
@@ -486,348 +454,293 @@ export default function ImpostazioniF24Email() {
     <PageLayout>
       <div style={{ maxWidth: 1100 }} data-testid="f24-email-settings">
         {/* HEADER */}
-        <div style={STYLES.header}>
-          <div>
-            <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: '#fff' }}>
-              Impostazioni Email
-            </h1>
-            <p style={{ margin: '4px 0 0', fontSize: 13, color: 'rgba(255,255,255,0.75)' }}>
-              Configura download automatico F24 da email
-            </p>
-          </div>
-        </div>
+        <PageHeader
+          title="Impostazioni Email"
+          subtitle="Configura download automatico F24 da email"
+          style={{ marginBottom: 20 }}
+        />
 
         {/* === STATO SISTEMA === */}
-        <div style={cardStyle}>
-          <div style={cardHeaderStyle}>
-            <h3
-              style={{
-                margin: 0,
-                fontSize: 14,
-                fontWeight: 600,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                color: '#1e293b',
-              }}
-            >
-              <Settings size={16} color={COLORS.primary} /> Stato Sistema
-            </h3>
+        <Card
+          title="Stato Sistema"
+          icon={<Settings size={16} color={COLORS.primary} />}
+          style={{ marginBottom: 20 }}
+          actions={
             <div style={{ display: 'flex', gap: 8 }}>
-              <button
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={fetchData}
-                style={{ ...button('secondary'), fontSize: 12, padding: '6px 12px' }}
+                iconLeft={<RefreshCw size={13} />}
               >
-                <RefreshCw size={13} style={{ marginRight: 5 }} /> Aggiorna
-              </button>
-              <button
+                Aggiorna
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
                 onClick={runManualScan}
                 disabled={scanning}
                 data-testid="scan-manuale-btn"
-                style={{ ...button('primary', scanning), fontSize: 12, padding: '6px 12px' }}
+                iconLeft={
+                  scanning ? (
+                    <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} />
+                  ) : (
+                    <Play size={13} />
+                  )
+                }
               >
-                {scanning ? (
-                  <Loader2
-                    size={13}
-                    style={{ marginRight: 5, animation: 'spin 1s linear infinite' }}
-                  />
-                ) : (
-                  <Play size={13} style={{ marginRight: 5 }} />
-                )}
                 Scansiona Ora
-              </button>
+              </Button>
             </div>
-          </div>
-          <div style={cardBodyStyle}>
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)',
-                gap: 12,
-                marginBottom: 16,
-              }}
-            >
-              <div style={statBoxStyle}>
-                <div style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>
-                  Scansione Auto
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <Toggle
-                    checked={settings?.auto_scan_attivo || false}
-                    onChange={toggleAutoScan}
-                    testId="auto-scan-toggle"
-                  />
-                  <span
-                    style={{
-                      fontSize: 13,
-                      fontWeight: 600,
-                      color: settings?.auto_scan_attivo ? '#16a34a' : '#94a3b8',
-                    }}
-                  >
-                    {settings?.auto_scan_attivo ? 'Attiva' : 'Disattiva'}
-                  </span>
-                </div>
+          }
+        >
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)',
+              gap: 12,
+              marginBottom: 16,
+            }}
+          >
+            <div style={statBoxStyle}>
+              <div style={{ fontSize: 11, color: COLORS.textMuted, marginBottom: 4 }}>
+                Scansione Auto
               </div>
-              <div style={statBoxStyle}>
-                <div
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Toggle
+                  checked={settings?.auto_scan_attivo || false}
+                  onChange={toggleAutoScan}
+                  testId="auto-scan-toggle"
+                />
+                <span
                   style={{
-                    fontSize: 11,
-                    color: '#64748b',
-                    marginBottom: 4,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 4,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: settings?.auto_scan_attivo ? COLORS.success : COLORS.textSubtle,
                   }}
                 >
-                  <Clock size={11} /> Intervallo
-                </div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>
-                  {settings?.scan_interval_minuti || 10} min
-                </div>
-              </div>
-              <div style={statBoxStyle}>
-                <div style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>
-                  Mittenti Configurati
-                </div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>
-                  {(settings?.mittenti || []).length}
-                </div>
-              </div>
-              <div style={statBoxStyle}>
-                <div style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>F24 da Pagare</div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: '#dc2626' }}>
-                  {stato?.statistiche?.f24_da_pagare || 0}
-                </div>
+                  {settings?.auto_scan_attivo ? 'Attiva' : 'Disattiva'}
+                </span>
               </div>
             </div>
-            {stato?.ultima_scansione && (
-              <div
-                style={{
-                  padding: '8px 12px',
-                  background: '#eff6ff',
-                  borderRadius: 8,
-                  fontSize: 12,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  color: '#3b82f6',
-                }}
-              >
-                {stato.ultima_scansione.success ? (
-                  <CheckCircle size={14} color="#16a34a" />
-                ) : (
-                  <AlertCircle size={14} color="#dc2626" />
-                )}
-                Ultima scansione:{' '}
-                {new Date(stato.ultima_scansione.timestamp).toLocaleString('it-IT').replaceAll('/', '-')} —{' '}
-                {stato.ultima_scansione.tipo}
-              </div>
-            )}
+            <StatCard
+              icon={<Clock size={11} />}
+              label="Intervallo"
+              value={`${settings?.scan_interval_minuti || 10} min`}
+              accent="none"
+              style={{ padding: '12px 16px' }}
+            />
+            <StatCard
+              label="Mittenti Configurati"
+              value={(settings?.mittenti || []).length}
+              accent="none"
+              style={{ padding: '12px 16px' }}
+            />
+            <StatCard
+              label="F24 da Pagare"
+              value={stato?.statistiche?.f24_da_pagare || 0}
+              accent="danger"
+              style={{ padding: '12px 16px' }}
+            />
           </div>
-        </div>
+          {stato?.ultima_scansione && (
+            <div
+              style={{
+                padding: '8px 12px',
+                background: COLORS.infoLight,
+                borderRadius: BORDER_RADIUS.md,
+                fontSize: 12,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                color: COLORS.info,
+              }}
+            >
+              {stato.ultima_scansione.success ? (
+                <CheckCircle size={14} color={COLORS.success} />
+              ) : (
+                <AlertCircle size={14} color={COLORS.danger} />
+              )}
+              Ultima scansione:{' '}
+              {new Date(stato.ultima_scansione.timestamp).toLocaleString('it-IT').replaceAll('/', '-')} —{' '}
+              {stato.ultima_scansione.tipo}
+            </div>
+          )}
+        </Card>
 
         {/* === CONFIGURAZIONE === */}
-        <div style={cardStyle}>
-          <div style={cardHeaderStyle}>
-            <h3
-              style={{
-                margin: 0,
-                fontSize: 14,
-                fontWeight: 600,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                color: '#1e293b',
-              }}
-            >
-              <Clock size={16} color={COLORS.primary} /> Configurazione Scansione
-            </h3>
-          </div>
-          <div style={cardBodyStyle}>
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr',
-                gap: 16,
-              }}
-            >
-              <div>
-                <label style={labelStyle}>Intervallo scansione (minuti)</label>
-                <input
-                  type="number"
-                  min="5"
-                  max="120"
-                  value={settings?.scan_interval_minuti || 10}
-                  onChange={e =>
-                    setSettings(prev => ({
-                      ...prev,
-                      scan_interval_minuti: parseInt(e.target.value) || 10,
-                    }))
-                  }
-                  data-testid="scan-interval-input"
-                  style={STYLES.input}
-                />
-              </div>
-              <div>
-                <label style={labelStyle}>Giorni indietro da cercare</label>
-                <input
-                  type="number"
-                  min="1"
-                  max="365"
-                  value={settings?.giorni_indietro || 7}
-                  onChange={e =>
-                    setSettings(prev => ({
-                      ...prev,
-                      giorni_indietro: parseInt(e.target.value) || 7,
-                    }))
-                  }
-                  data-testid="giorni-indietro-input"
-                  style={STYLES.input}
-                />
-              </div>
-              <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-                <button
-                  onClick={saveSettings}
-                  disabled={saving}
-                  data-testid="save-settings-btn"
-                  style={{ ...button('primary', saving), width: '100%', justifyContent: 'center' }}
-                >
-                  {saving ? (
-                    <Loader2
-                      size={14}
-                      style={{ marginRight: 6, animation: 'spin 1s linear infinite' }}
-                    />
+        <Card
+          title="Configurazione Scansione"
+          icon={<Clock size={16} color={COLORS.primary} />}
+          style={{ marginBottom: 20 }}
+        >
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr',
+              gap: 16,
+            }}
+          >
+            <div>
+              <label style={labelStyle}>Intervallo scansione (minuti)</label>
+              <Input
+                type="number"
+                min="5"
+                max="120"
+                value={settings?.scan_interval_minuti || 10}
+                onChange={e =>
+                  setSettings(prev => ({
+                    ...prev,
+                    scan_interval_minuti: parseInt(e.target.value) || 10,
+                  }))
+                }
+                data-testid="scan-interval-input"
+              />
+            </div>
+            <div>
+              <label style={labelStyle}>Giorni indietro da cercare</label>
+              <Input
+                type="number"
+                min="1"
+                max="365"
+                value={settings?.giorni_indietro || 7}
+                onChange={e =>
+                  setSettings(prev => ({
+                    ...prev,
+                    giorni_indietro: parseInt(e.target.value) || 7,
+                  }))
+                }
+                data-testid="giorni-indietro-input"
+              />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+              <Button
+                variant="primary"
+                onClick={saveSettings}
+                disabled={saving}
+                data-testid="save-settings-btn"
+                style={{ width: '100%', justifyContent: 'center' }}
+                iconLeft={
+                  saving ? (
+                    <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
                   ) : (
-                    <Save size={14} style={{ marginRight: 6 }} />
-                  )}
-                  Salva Impostazioni
-                </button>
-              </div>
+                    <Save size={14} />
+                  )
+                }
+              >
+                Salva Impostazioni
+              </Button>
             </div>
           </div>
-        </div>
+        </Card>
 
         {/* === MITTENTI === */}
-        <div style={cardStyle}>
-          <div style={cardHeaderStyle}>
-            <h3
-              style={{
-                margin: 0,
-                fontSize: 14,
-                fontWeight: 600,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                color: '#1e293b',
-              }}
-            >
-              <Mail size={16} color={COLORS.primary} /> Mittenti Configurati (
-              {(settings?.mittenti || []).length})
-            </h3>
-            <button
+        <Card
+          title={`Mittenti Configurati (${(settings?.mittenti || []).length})`}
+          icon={<Mail size={16} color={COLORS.primary} />}
+          style={{ marginBottom: 20 }}
+          actions={
+            <Button
+              variant="primary"
+              size="sm"
               onClick={() => setShowAddMittente(true)}
               data-testid="add-mittente-btn"
-              style={{ ...button('primary'), fontSize: 12, padding: '6px 12px' }}
+              iconLeft={<Plus size={13} />}
             >
-              <Plus size={13} style={{ marginRight: 5 }} /> Aggiungi Mittente
-            </button>
-          </div>
-          <div style={cardBodyStyle}>
-            {/* Form nuovo mittente */}
-            {showAddMittente && (
+              Aggiungi Mittente
+            </Button>
+          }
+        >
+          {/* Form nuovo mittente */}
+          {showAddMittente && (
+            <div
+              style={{
+                marginBottom: 20,
+                padding: 16,
+                borderRadius: BORDER_RADIUS.lg,
+                background: COLORS.infoLight,
+                border: `1px solid ${COLORS.info}`,
+              }}
+            >
+              <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 12, color: COLORS.info }}>
+                Nuovo Mittente
+              </div>
               <div
                 style={{
-                  marginBottom: 20,
-                  padding: 16,
-                  borderRadius: 10,
-                  background: '#eff6ff',
-                  border: '1px solid #bfdbfe',
+                  display: 'grid',
+                  gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+                  gap: 10,
                 }}
               >
-                <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 12, color: '#1e40af' }}>
-                  Nuovo Mittente
-                </div>
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
-                    gap: 10,
-                  }}
+                <Input
+                  placeholder="Email mittente"
+                  value={newMittente.email}
+                  onChange={e => setNewMittente(prev => ({ ...prev, email: e.target.value }))}
+                  data-testid="new-mittente-email"
+                />
+                <Input
+                  placeholder="Nome (opzionale)"
+                  value={newMittente.nome}
+                  onChange={e => setNewMittente(prev => ({ ...prev, nome: e.target.value }))}
+                  data-testid="new-mittente-nome"
+                />
+                <Select
+                  value={newMittente.tipo}
+                  onChange={e => setNewMittente(prev => ({ ...prev, tipo: e.target.value }))}
+                  style={{ width: '100%' }}
                 >
-                  <input
-                    placeholder="Email mittente"
-                    value={newMittente.email}
-                    onChange={e => setNewMittente(prev => ({ ...prev, email: e.target.value }))}
-                    data-testid="new-mittente-email"
-                    style={STYLES.input}
-                  />
-                  <input
-                    placeholder="Nome (opzionale)"
-                    value={newMittente.nome}
-                    onChange={e => setNewMittente(prev => ({ ...prev, nome: e.target.value }))}
-                    data-testid="new-mittente-nome"
-                    style={STYLES.input}
-                  />
-                  <select
-                    value={newMittente.tipo}
-                    onChange={e => setNewMittente(prev => ({ ...prev, tipo: e.target.value }))}
-                    style={{ ...STYLES.select, width: '100%' }}
-                  >
-                    {TIPI_MITTENTE.map(t => (
-                      <option key={t.value} value={t.value}>
-                        {t.label}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    value={newMittente.categoria_f24}
-                    onChange={e =>
-                      setNewMittente(prev => ({ ...prev, categoria_f24: e.target.value }))
-                    }
-                    style={{ ...STYLES.select, width: '100%' }}
-                  >
-                    {CATEGORIE_F24.map(c => (
-                      <option key={c.value} value={c.value}>
-                        {c.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                  <button
-                    onClick={addMittente}
-                    data-testid="confirm-add-mittente-btn"
-                    style={{ ...button('primary'), fontSize: 12, padding: '6px 12px' }}
-                  >
-                    <Plus size={13} style={{ marginRight: 4 }} /> Aggiungi
-                  </button>
-                  <button
-                    onClick={() => setShowAddMittente(false)}
-                    style={{ ...button('secondary'), fontSize: 12, padding: '6px 12px' }}
-                  >
-                    Annulla
-                  </button>
-                </div>
+                  {TIPI_MITTENTE.map(t => (
+                    <option key={t.value} value={t.value}>
+                      {t.label}
+                    </option>
+                  ))}
+                </Select>
+                <Select
+                  value={newMittente.categoria_f24}
+                  onChange={e =>
+                    setNewMittente(prev => ({ ...prev, categoria_f24: e.target.value }))
+                  }
+                  style={{ width: '100%' }}
+                >
+                  {CATEGORIE_F24.map(c => (
+                    <option key={c.value} value={c.value}>
+                      {c.label}
+                    </option>
+                  ))}
+                </Select>
               </div>
-            )}
+              <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={addMittente}
+                  data-testid="confirm-add-mittente-btn"
+                  iconLeft={<Plus size={13} />}
+                >
+                  Aggiungi
+                </Button>
+                <Button variant="secondary" size="sm" onClick={() => setShowAddMittente(false)}>
+                  Annulla
+                </Button>
+              </div>
+            </div>
+          )}
 
-            {/* Lista mittenti */}
-            {(settings?.mittenti || []).length === 0 ? (
-              <div
-                style={{ textAlign: 'center', padding: '32px 0', color: '#94a3b8', fontSize: 13 }}
-              >
-                Nessun mittente configurato. Aggiungine uno.
-              </div>
-            ) : (
-              <div style={{ overflowX: 'auto' }}>
-              <table style={STYLES.table}>
+          {/* Lista mittenti */}
+          {(settings?.mittenti || []).length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '32px 0', color: COLORS.textSubtle, fontSize: 13 }}>
+              Nessun mittente configurato. Aggiungine uno.
+            </div>
+          ) : (
+            <TableWrap>
+              <Table>
                 <thead>
                   <tr>
-                    <th style={STYLES.th}>EMAIL</th>
-                    <th style={STYLES.th}>TIPO</th>
-                    <th style={STYLES.th}>PAROLE CHIAVE</th>
-                    <th style={{ ...STYLES.th, textAlign: 'center' }}>ATTIVO</th>
-                    <th style={STYLES.th}></th>
+                    <Th>EMAIL</Th>
+                    <Th>TIPO</Th>
+                    <Th>PAROLE CHIAVE</Th>
+                    <Th align="center">ATTIVO</Th>
+                    <Th></Th>
                   </tr>
                 </thead>
                 <tbody>
@@ -837,31 +750,22 @@ export default function ImpostazioniF24Email() {
                       style={{ opacity: mittente.attivo ? 1 : 0.5 }}
                       data-testid={`mittente-card-${index}`}
                     >
-                      <td style={STYLES.td}>
-                        <div style={{ fontSize: 13, fontWeight: 500, color: '#1e293b' }}>
+                      <Td>
+                        <div style={{ fontSize: 13, fontWeight: 500, color: COLORS.text }}>
                           {mittente.email}
                         </div>
                         {mittente.nome && mittente.nome !== mittente.email && (
-                          <div style={{ fontSize: 11, color: '#94a3b8' }}>{mittente.nome}</div>
+                          <div style={{ fontSize: 11, color: COLORS.textSubtle }}>{mittente.nome}</div>
                         )}
-                      </td>
-                      <td style={STYLES.td}>
-                        <span
-                          style={{
-                            fontSize: 11,
-                            padding: '2px 8px',
-                            borderRadius: 10,
-                            background: mittente.tipo === 'commercialista' ? '#dbeafe' : '#f1f5f9',
-                            color: mittente.tipo === 'commercialista' ? '#1d4ed8' : '#64748b',
-                            fontWeight: 500,
-                          }}
-                        >
+                      </Td>
+                      <Td>
+                        <Badge variant={mittente.tipo === 'commercialista' ? 'info' : 'neutral'}>
                           {TIPI_MITTENTE.find(t => t.value === mittente.tipo)?.label ||
                             mittente.tipo ||
                             'Altro'}
-                        </span>
-                      </td>
-                      <td style={STYLES.td}>
+                        </Badge>
+                      </Td>
+                      <Td>
                         <div
                           style={{
                             display: 'flex',
@@ -871,18 +775,10 @@ export default function ImpostazioniF24Email() {
                           }}
                         >
                           {(mittente.parole_chiave || []).map(kw => (
-                            <span
+                            <Badge
                               key={kw}
-                              style={{
-                                fontSize: 11,
-                                padding: '2px 8px',
-                                borderRadius: 10,
-                                background: '#f1f5f9',
-                                border: '1px solid #e2e8f0',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 4,
-                              }}
+                              variant="neutral"
+                              style={{ display: 'flex', alignItems: 'center', gap: 4 }}
                             >
                               {kw}
                               <button
@@ -891,14 +787,14 @@ export default function ImpostazioniF24Email() {
                                   background: 'none',
                                   border: 'none',
                                   cursor: 'pointer',
-                                  color: '#ef4444',
+                                  color: COLORS.danger,
                                   padding: 0,
                                   fontSize: 12,
                                 }}
                               >
                                 ×
                               </button>
-                            </span>
+                            </Badge>
                           ))}
                           <div style={{ display: 'flex', gap: 4 }}>
                             <input
@@ -908,8 +804,9 @@ export default function ImpostazioniF24Email() {
                                 height: 26,
                                 fontSize: 11,
                                 padding: '0 8px',
-                                borderRadius: 6,
-                                border: '1px solid #e2e8f0',
+                                borderRadius: BORDER_RADIUS.sm,
+                                border: `1px solid ${COLORS.border}`,
+                                fontFamily: FONT.family,
                               }}
                               value={newKeyword[index] || ''}
                               onChange={e =>
@@ -917,126 +814,85 @@ export default function ImpostazioniF24Email() {
                               }
                               onKeyDown={e => e.key === 'Enter' && addKeywordToMittente(index)}
                             />
-                            <button
+                            <RowActionButton
+                              variant="neutral"
                               onClick={() => addKeywordToMittente(index)}
-                              style={{
-                                background: '#e8ecf1',
-                                border: 'none',
-                                borderRadius: 6,
-                                cursor: 'pointer',
-                                width: 26,
-                                height: 26,
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                              }}
+                              style={{ width: 26, height: 26 }}
                             >
                               <Plus size={12} />
-                            </button>
+                            </RowActionButton>
                           </div>
                         </div>
-                      </td>
-                      <td style={{ ...STYLES.td, textAlign: 'center' }}>
+                      </Td>
+                      <Td align="center">
                         <Toggle
                           checked={mittente.attivo}
                           onChange={v => updateMittente(index, 'attivo', v)}
                         />
-                      </td>
-                      <td style={{ ...STYLES.td, textAlign: 'center' }}>
-                        <button
-                          onClick={() => removeMittente(mittente.email)}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            cursor: 'pointer',
-                            color: '#ef4444',
-                            padding: 4,
-                          }}
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      </td>
+                      </Td>
+                      <Td align="center">
+                        <RowActions style={{ justifyContent: 'center' }}>
+                          <RowActionButton variant="danger" onClick={() => removeMittente(mittente.email)}>
+                            <Trash2 size={15} />
+                          </RowActionButton>
+                        </RowActions>
+                      </Td>
                     </tr>
                   ))}
                 </tbody>
-              </table>
-              </div>
-            )}
-          </div>
-        </div>
+              </Table>
+            </TableWrap>
+          )}
+        </Card>
 
         {/* === LOG SCANSIONI === */}
-        <div style={cardStyle}>
-          <div style={cardHeaderStyle}>
-            <h3
-              style={{
-                margin: 0,
-                fontSize: 14,
-                fontWeight: 600,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                color: '#1e293b',
-              }}
-            >
-              <RefreshCw size={16} color={COLORS.primary} /> Log Scansioni Recenti
-            </h3>
-          </div>
-          <div style={cardBodyStyle}>
-            {logs.length === 0 ? (
-              <div
-                style={{ textAlign: 'center', padding: '24px 0', color: '#94a3b8', fontSize: 13 }}
-              >
-                Nessuna scansione effettuata
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {logs.map((log, index) => (
-                  <div
-                    key={index}
-                    style={{
-                      padding: '10px 14px',
-                      borderRadius: 8,
-                      background: log.success ? '#f0fdf4' : '#fef2f2',
-                      border: `1px solid ${log.success ? '#bbf7d0' : '#fecaca'}`,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      fontSize: 12,
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      {log.success ? (
-                        <CheckCircle size={14} color="#16a34a" />
-                      ) : (
-                        <AlertCircle size={14} color="#dc2626" />
-                      )}
-                      <span style={{ color: '#374151' }}>
-                        {new Date(log.timestamp).toLocaleString('it-IT').replaceAll('/', '-')}
-                      </span>
-                      <span
-                        style={{
-                          padding: '2px 8px',
-                          borderRadius: 10,
-                          background: '#f1f5f9',
-                          fontSize: 11,
-                        }}
-                      >
-                        {log.tipo}
-                      </span>
-                    </div>
-                    <div style={{ display: 'flex', gap: 12, color: '#64748b' }}>
-                      {log.risultato?.processamento && (
-                        <span>F24: {log.risultato.processamento.f24_inseriti || 0}</span>
-                      )}
-                      {log.errore && <span style={{ color: '#dc2626' }}>{log.errore}</span>}
-                    </div>
+        <Card
+          title="Log Scansioni Recenti"
+          icon={<RefreshCw size={16} color={COLORS.primary} />}
+          style={{ marginBottom: 20 }}
+        >
+          {logs.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '24px 0', color: COLORS.textSubtle, fontSize: 13 }}>
+              Nessuna scansione effettuata
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {logs.map((log, index) => (
+                <div
+                  key={index}
+                  style={{
+                    padding: '10px 14px',
+                    borderRadius: BORDER_RADIUS.md,
+                    background: log.success ? COLORS.successLight : COLORS.dangerLight,
+                    border: `1px solid ${log.success ? COLORS.success : COLORS.danger}`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    fontSize: 12,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {log.success ? (
+                      <CheckCircle size={14} color={COLORS.success} />
+                    ) : (
+                      <AlertCircle size={14} color={COLORS.danger} />
+                    )}
+                    <span style={{ color: COLORS.gray[700] }}>
+                      {new Date(log.timestamp).toLocaleString('it-IT').replaceAll('/', '-')}
+                    </span>
+                    <Badge variant="neutral">{log.tipo}</Badge>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+                  <div style={{ display: 'flex', gap: 12, color: COLORS.textMuted }}>
+                    {log.risultato?.processamento && (
+                      <span>F24: {log.risultato.processamento.f24_inseriti || 0}</span>
+                    )}
+                    {log.errore && <span style={{ color: COLORS.danger }}>{log.errore}</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
 
         {/* === GMAIL SETTINGS === */}
         <GmailSettingsSection />
