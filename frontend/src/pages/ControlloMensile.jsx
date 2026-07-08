@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api';
-import { formatEuro, STYLES, COLORS, button, badge, formatDateIT } from '../lib/utils';
+import { formatEuro, COLORS, FONT, SHADOWS, BORDER_RADIUS, formatDateIT } from '../lib/utils';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { PageLayout } from '../components/PageLayout';
+import { Button, StatCard, TableWrap, Table, Th, Td } from '../components/ds';
 
-const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace';
+const MONO = FONT.mono;
 
 /**
  * =====================================================================
@@ -595,7 +596,7 @@ export default function ControlloMensile() {
           left: 0,
           right: 0,
           bottom: 0,
-          background: 'rgba(0,0,0,0.5)',
+          background: 'rgba(15,39,68,0.5)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -605,13 +606,14 @@ export default function ControlloMensile() {
       >
         <div
           style={{
-            background: 'white',
-            borderRadius: 8,
+            background: COLORS.card,
+            borderRadius: BORDER_RADIUS.md,
             padding: 20,
             maxWidth: 600,
             width: '90%',
             maxHeight: '80vh',
             overflowY: 'auto',
+            boxShadow: SHADOWS.modal,
           }}
           onClick={e => e.stopPropagation()}
         >
@@ -623,82 +625,66 @@ export default function ControlloMensile() {
               marginBottom: 15,
             }}
           >
-            <h2 style={{ margin: 0 }}>
+            <h2 style={{ margin: 0, color: COLORS.primary }}>
               Dettaglio Versamenti - {monthNames[meseSelezionato - 1]} {anno}
             </h2>
-            <button
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => setShowVersamentiModal(false)}
-              style={{ fontSize: 20, background: 'none', border: 'none', cursor: 'pointer' }}
+              style={{ fontSize: 16, padding: '4px 10px' }}
             >
               ✕
-            </button>
+            </Button>
           </div>
 
           {versamentiDettaglio.length === 0 ? (
-            <p style={{ color: '#64748b' }}>Nessun versamento registrato per questo mese.</p>
+            <p style={{ color: COLORS.textMuted }}>Nessun versamento registrato per questo mese.</p>
           ) : (
-            <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr
-                  style={{
-                    background: '#f8fafc',
-                    fontSize: 11,
-                    textTransform: 'uppercase',
-                    color: '#64748b',
-                  }}
-                >
-                  <th style={{ padding: 10, textAlign: 'left', borderBottom: '2px solid #e2e8f0' }}>
-                    Data
-                  </th>
-                  <th style={{ padding: 10, textAlign: 'left', borderBottom: '2px solid #e2e8f0' }}>
-                    Descrizione
-                  </th>
-                  <th
-                    style={{ padding: 10, textAlign: 'right', borderBottom: '2px solid #e2e8f0' }}
-                  >
-                    Importo
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {versamentiDettaglio.map((v, i) => (
-                  <tr key={i} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                    <td style={{ padding: 10 }}>{formatDateIT(v.data)}</td>
-                    <td style={{ padding: 10 }}>{v.descrizione || v.categoria}</td>
+            <TableWrap>
+              <Table>
+                <thead>
+                  <tr>
+                    <Th>Data</Th>
+                    <Th>Descrizione</Th>
+                    <Th align="right">Importo</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {versamentiDettaglio.map((v, i) => (
+                    <tr key={i}>
+                      <Td>{formatDateIT(v.data)}</Td>
+                      <Td>{v.descrizione || v.categoria}</Td>
+                      <Td align="right" mono style={{ fontWeight: 'bold', color: COLORS.success }}>
+                        {formatEuro(Math.abs(v.importo))}
+                      </Td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr style={{ background: COLORS.primary, color: '#fff' }}>
+                    <td colSpan={2} style={{ padding: 10, fontWeight: 'bold' }}>
+                      TOTALE
+                    </td>
                     <td
                       style={{
                         padding: 10,
                         textAlign: 'right',
                         fontWeight: 'bold',
-                        fontFamily: MONO,
-                        color: '#16a34a',
+                        fontFamily: FONT.mono,
                       }}
                     >
-                      {formatEuro(Math.abs(v.importo))}
+                      {formatEuro(
+                        versamentiDettaglio.reduce(
+                          (sum, v) => sum + Math.abs(parseFloat(v.importo) || 0),
+                          0
+                        )
+                      )}
                     </td>
                   </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr style={{ background: '#0f2744', color: 'white' }}>
-                  <td colSpan={2} style={{ padding: 10, fontWeight: 'bold' }}>
-                    TOTALE
-                  </td>
-                  <td
-                    style={{ padding: 10, textAlign: 'right', fontWeight: 'bold', fontFamily: MONO }}
-                  >
-                    {formatEuro(
-                      versamentiDettaglio.reduce(
-                        (sum, v) => sum + Math.abs(parseFloat(v.importo) || 0),
-                        0
-                      )
-                    )}
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
-            </div>
+                </tfoot>
+              </Table>
+            </TableWrap>
           )}
         </div>
       </div>
@@ -726,12 +712,12 @@ export default function ControlloMensile() {
           <div
             style={{
               padding: '10px 16px',
-              borderRadius: 6,
-              border: '1px solid #e2e8f0',
+              borderRadius: BORDER_RADIUS.sm,
+              border: `1px solid ${COLORS.border}`,
               fontSize: 16,
               minWidth: 100,
-              background: '#f1f5f9',
-              color: '#64748b',
+              background: COLORS.bgAlt,
+              color: COLORS.textMuted,
               fontWeight: 600,
             }}
             data-testid="year-display"
@@ -744,36 +730,28 @@ export default function ControlloMensile() {
           <>
             {/* Navigazione Mesi */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <button
+              <Button
+                variant="primary"
+                size="md"
                 onClick={() => {
                   if (meseSelezionato > 1) {
                     setMeseSelezionato(meseSelezionato - 1);
                   }
                 }}
                 disabled={meseSelezionato <= 1}
-                style={{
-                  padding: '8px 14px',
-                  minHeight: 40,
-                  background: meseSelezionato > 1 ? '#0f2744' : '#94a3b8',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: 6,
-                  cursor: meseSelezionato > 1 ? 'pointer' : 'not-allowed',
-                  fontWeight: 'bold',
-                  fontSize: 14,
-                }}
+                style={{ minHeight: 40 }}
                 data-testid="prev-month-btn"
               >
                 ◀ {meseSelezionato > 1 ? monthNames[meseSelezionato - 2] : 'Gen'}
-              </button>
+              </Button>
 
               <span
                 style={{
                   fontWeight: 'bold',
                   fontSize: 16,
                   padding: '8px 16px',
-                  background: '#f1f5f9',
-                  borderRadius: 6,
+                  background: COLORS.bgAlt,
+                  borderRadius: BORDER_RADIUS.sm,
                   minWidth: 140,
                   textAlign: 'center',
                 }}
@@ -781,7 +759,9 @@ export default function ControlloMensile() {
                 {monthNames[meseSelezionato - 1]} {anno}
               </span>
 
-              <button
+              <Button
+                variant="primary"
+                size="md"
                 onClick={() => {
                   if (meseSelezionato < 12) {
                     setMeseSelezionato(meseSelezionato + 1);
@@ -789,58 +769,32 @@ export default function ControlloMensile() {
                   // Non cambia anno - è globale
                 }}
                 disabled={meseSelezionato >= 12}
-                style={{
-                  padding: '8px 14px',
-                  minHeight: 40,
-                  background: meseSelezionato < 12 ? '#0f2744' : '#94a3b8',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: 6,
-                  cursor: meseSelezionato < 12 ? 'pointer' : 'not-allowed',
-                  fontWeight: 'bold',
-                  fontSize: 14,
-                }}
+                style={{ minHeight: 40 }}
                 data-testid="next-month-btn"
               >
                 {meseSelezionato < 12 ? monthNames[meseSelezionato] : 'Dic'} ▶
-              </button>
+              </Button>
             </div>
 
-            <button
+            <Button
+              variant="secondary"
+              size="md"
               onClick={handleBackToYear}
-              style={{
-                padding: '8px 16px',
-                minHeight: 40,
-                background: 'white',
-                color: '#1e293b',
-                border: '1px solid #e2e8f0',
-                borderRadius: 6,
-                cursor: 'pointer',
-                fontSize: 13,
-                fontWeight: 'bold',
-              }}
+              style={{ minHeight: 40 }}
               data-testid="back-to-year-btn"
             >
               ← Riepilogo Annuale
-            </button>
+            </Button>
 
-            <button
+            <Button
+              variant="primary"
+              size="md"
               onClick={() => setShowVersamentiModal(true)}
-              style={{
-                padding: '8px 16px',
-                minHeight: 40,
-                background: '#0f2744',
-                color: 'white',
-                border: 'none',
-                borderRadius: 6,
-                cursor: 'pointer',
-                fontSize: 13,
-                fontWeight: 'bold',
-              }}
+              style={{ minHeight: 40 }}
               data-testid="show-versamenti-btn"
             >
               Versamenti
-            </button>
+            </Button>
           </>
         )}
 
@@ -859,89 +813,87 @@ export default function ControlloMensile() {
         }}
       >
         {[
-          { label: 'POS RT (XML)', value: formatEuro(yearTotals.posAuto) },
-          { label: 'POS Reale (Tuo)', value: formatEuro(yearTotals.posManual) },
+          { icon: null, label: 'POS RT (XML)', value: formatEuro(yearTotals.posAuto), accent: 'primary' },
           {
-            label: '🏦 POS Banca (PDV)',
+            icon: null,
+            label: 'POS Reale (Tuo)',
+            value: formatEuro(yearTotals.posManual),
+            accent: 'primary',
+          },
+          {
+            icon: '🏦',
+            label: 'POS Banca (PDV)',
             value: formatEuro(yearTotals.posBanca || 0),
-            sub:
+            subtext:
               yearTotals.posBancaCommissioni > 0
                 ? `Comm.: -${formatEuro(yearTotals.posBancaCommissioni)}`
                 : null,
+            accent: 'primary',
           },
-          { label: 'Corrisp. Auto (XML)', value: formatEuro(yearTotals.corrispettiviAuto) },
-          { label: 'Corrisp. Manuali', value: formatEuro(yearTotals.corrispettiviManual) },
-          { label: 'Versamenti', value: formatEuro(yearTotals.versamenti) },
           {
+            icon: null,
+            label: 'Corrisp. Auto (XML)',
+            value: formatEuro(yearTotals.corrispettiviAuto),
+            accent: 'primary',
+          },
+          {
+            icon: null,
+            label: 'Corrisp. Manuali',
+            value: formatEuro(yearTotals.corrispettiviManual),
+            accent: 'primary',
+          },
+          { icon: null, label: 'Versamenti', value: formatEuro(yearTotals.versamenti), accent: 'primary' },
+          {
+            icon: null,
             label: 'Saldo Cassa',
             value: formatEuro(yearTotals.saldoCassa),
-            color: yearTotals.saldoCassa >= 0 ? '#16a34a' : '#dc2626',
+            accent: yearTotals.saldoCassa >= 0 ? 'success' : 'danger',
           },
           {
-            label: '📄 Doc. Commerciali',
+            icon: '📄',
+            label: 'Doc. Commerciali',
             value: (yearTotals.documentiCommerciali || 0).toLocaleString('it-IT'),
+            accent: 'primary',
           },
           {
-            label: '🚫 Annulli',
+            icon: '🚫',
+            label: 'Annulli',
             value: (yearTotals.annulli || 0).toLocaleString('it-IT'),
-            color: yearTotals.annulli > 0 ? '#dc2626' : undefined,
-            sub: yearTotals.annulli === 0 || !yearTotals.annulli ? 'N/D negli XML' : null,
+            subtext: yearTotals.annulli === 0 || !yearTotals.annulli ? 'N/D negli XML' : null,
+            accent: yearTotals.annulli > 0 ? 'danger' : 'primary',
           },
           {
+            icon: null,
             label: 'Pagato Non Riscosso',
             value: formatEuro(yearTotals.pagatoNonRiscosso || 0),
-            color: (yearTotals.pagatoNonRiscosso || 0) > 0 ? '#d97706' : undefined,
-            sub: `${yearTotals.pagatoNonRiscossoCount || 0} occorrenze`,
+            subtext: `${yearTotals.pagatoNonRiscossoCount || 0} occorrenze`,
+            accent: (yearTotals.pagatoNonRiscosso || 0) > 0 ? 'warning' : 'primary',
           },
           {
-            label: '🗑️ Ammontare Annulli',
+            icon: '🗑️',
+            label: 'Ammontare Annulli',
             value: formatEuro(yearTotals.ammontareAnnulli || 0),
-            color: (yearTotals.ammontareAnnulli || 0) > 0 ? '#dc2626' : undefined,
-            sub: `${yearTotals.ammontareAnnulliCount || 0} occorrenze`,
+            subtext: `${yearTotals.ammontareAnnulliCount || 0} occorrenze`,
+            accent: (yearTotals.ammontareAnnulli || 0) > 0 ? 'danger' : 'primary',
           },
-        ].map(({ label, value, sub, color }) => (
-          <div
-            key={label}
-            style={{
-              background: 'white',
-              border: '1px solid #e2e8f0',
-              borderLeft: '4px solid #0f2744',
-              borderRadius: 8,
-              padding: 14,
-            }}
-          >
-            <div
-              style={{
-                fontSize: 11,
-                color: '#64748b',
-                textTransform: 'uppercase',
-                letterSpacing: 0.5,
-              }}
-            >
-              {label}
-            </div>
-            <div
-              style={{
-                fontSize: 20,
-                fontWeight: 700,
-                fontFamily: MONO,
-                color: color || '#0f2744',
-                marginTop: 4,
-              }}
-            >
-              {value}
-            </div>
-            {sub && <div style={{ fontSize: 10, color: '#64748b', marginTop: 2 }}>{sub}</div>}
-          </div>
+        ].map(card => (
+          <StatCard
+            key={card.label}
+            icon={card.icon}
+            label={card.label}
+            value={card.value}
+            subtext={card.subtext}
+            accent={card.accent}
+          />
         ))}
       </div>
 
       {/* Info Box */}
       <div
         style={{
-          background: '#eff6ff',
-          border: '1px solid #bfdbfe',
-          borderRadius: 8,
+          background: COLORS.infoLight,
+          border: `1px solid ${COLORS.info}`,
+          borderRadius: BORDER_RADIUS.md,
           padding: 15,
           marginBottom: 20,
           display: 'flex',
@@ -972,9 +924,9 @@ export default function ControlloMensile() {
         (viewMode === 'mese' && dailyComparison.some(d => d.hasDiscrepancy))) && (
         <div
           style={{
-            background: '#fffbeb',
-            border: '1px solid #fde68a',
-            borderRadius: 8,
+            background: COLORS.warningLight,
+            border: `1px solid ${COLORS.warning}`,
+            borderRadius: BORDER_RADIUS.md,
             padding: 15,
             marginBottom: 20,
             display: 'flex',
@@ -992,103 +944,38 @@ export default function ControlloMensile() {
 
       {/* Year View - Monthly Table */}
       {viewMode === 'anno' && (
-        <div style={{ overflowX: 'auto' }}>
+        <TableWrap>
           <table
-            style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}
+            style={{
+              width: '100%',
+              borderCollapse: 'collapse',
+              fontSize: 13,
+              background: COLORS.card,
+              fontFamily: FONT.family,
+            }}
             data-testid="yearly-table"
           >
             <thead>
-              <tr
-                  style={{
-                    background: '#f8fafc',
-                    fontSize: 11,
-                    textTransform: 'uppercase',
-                    color: '#64748b',
-                  }}
-                >
-                <th style={{ padding: 10, textAlign: 'left', borderBottom: '2px solid #e2e8f0' }}>
-                  Mese
-                </th>
-                <th
-                  style={{
-                    padding: 10,
-                    textAlign: 'right',
-                    borderBottom: '2px solid #e2e8f0',
-                  }}
-                >
-                  POS RT (XML)
-                </th>
-                <th
-                  style={{
-                    padding: 10,
-                    textAlign: 'right',
-                    borderBottom: '2px solid #e2e8f0',
-                  }}
-                >
-                  POS Reale (Tuo)
-                </th>
-                <th
-                  style={{
-                    padding: 10,
-                    textAlign: 'right',
-                    borderBottom: '2px solid #e2e8f0',
-                  }}
-                >
-                  🏦 POS Banca
-                </th>
-                <th style={{ padding: 10, textAlign: 'right', borderBottom: '2px solid #e2e8f0' }}>
-                  Diff.
-                </th>
-                <th
-                  style={{
-                    padding: 10,
-                    textAlign: 'right',
-                    borderBottom: '2px solid #e2e8f0',
-                  }}
-                >
-                  Corr. Auto
-                </th>
-                <th
-                  style={{
-                    padding: 10,
-                    textAlign: 'right',
-                    borderBottom: '2px solid #e2e8f0',
-                  }}
-                >
-                  Corr. Man.
-                </th>
-                <th style={{ padding: 10, textAlign: 'right', borderBottom: '2px solid #e2e8f0' }}>
-                  Diff.
-                </th>
-                <th
-                  style={{
-                    padding: 10,
-                    textAlign: 'right',
-                    borderBottom: '2px solid #e2e8f0',
-                  }}
-                >
-                  Versam.
-                </th>
-                <th
-                  style={{
-                    padding: 10,
-                    textAlign: 'right',
-                    borderBottom: '2px solid #e2e8f0',
-                  }}
-                >
-                  Saldo
-                </th>
-                <th
-                  style={{ padding: 10, textAlign: 'center', borderBottom: '2px solid #e2e8f0' }}
-                ></th>
+              <tr>
+                <Th>Mese</Th>
+                <Th align="right">POS RT (XML)</Th>
+                <Th align="right">POS Reale (Tuo)</Th>
+                <Th align="right">🏦 POS Banca</Th>
+                <Th align="right">Diff.</Th>
+                <Th align="right">Corr. Auto</Th>
+                <Th align="right">Corr. Man.</Th>
+                <Th align="right">Diff.</Th>
+                <Th align="right">Versam.</Th>
+                <Th align="right">Saldo</Th>
+                <Th align="center"></Th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan="11" style={{ textAlign: 'center', padding: 40 }}>
+                  <Td colSpan="11" align="center" style={{ padding: 40 }}>
                     ⏳ Caricamento dati...
-                  </td>
+                  </Td>
                 </tr>
               ) : (
                 monthlyData.map(row => (
@@ -1096,60 +983,35 @@ export default function ControlloMensile() {
                     key={row.month}
                     style={{
                       background: row.hasDiscrepancy
-                        ? '#fef3c7'
+                        ? COLORS.warningLight
                         : row.hasData
-                          ? 'white'
-                          : '#f9fafb',
+                          ? COLORS.card
+                          : COLORS.bgAlt,
                       opacity: row.hasData ? 1 : 0.5,
                     }}
                     data-testid={`row-month-${row.month}`}
                   >
-                    <td style={{ padding: 10, borderBottom: '1px solid #e2e8f0', fontWeight: 600 }}>
-                      {row.monthName}
-                    </td>
-                    <td
-                      style={{
-                        padding: 10,
-                        borderBottom: '1px solid #e2e8f0',
-                        textAlign: 'right',
-                        fontFamily: MONO,
-                      }}
-                    >
+                    <Td style={{ fontWeight: 600 }}>{row.monthName}</Td>
+                    <Td align="right" mono>
                       {row.posAuto > 0 ? formatEuro(row.posAuto) : '-'}
-                    </td>
-                    <td
-                      style={{
-                        padding: 10,
-                        borderBottom: '1px solid #e2e8f0',
-                        textAlign: 'right',
-                        fontFamily: MONO,
-                      }}
-                    >
+                    </Td>
+                    <Td align="right" mono>
                       {row.posManual > 0 ? formatEuro(row.posManual) : '-'}
-                    </td>
-                    <td
-                      style={{
-                        padding: 10,
-                        borderBottom: '1px solid #e2e8f0',
-                        textAlign: 'right',
-                        fontFamily: MONO,
-                      }}
-                    >
+                    </Td>
+                    <Td align="right" mono>
                       {row.posBanca > 0 ? formatEuro(row.posBanca) : '-'}
-                    </td>
-                    <td
+                    </Td>
+                    <Td
+                      align="right"
+                      mono
                       style={{
-                        padding: 10,
-                        borderBottom: '1px solid #e2e8f0',
-                        textAlign: 'right',
-                        fontFamily: MONO,
                         fontWeight: Math.abs(row.posDiff) > 1 ? 'bold' : 'normal',
                         color:
                           Math.abs(row.posDiff) > 1
                             ? row.posDiff > 0
-                              ? '#16a34a'
-                              : '#dc2626'
-                            : '#64748b',
+                              ? COLORS.success
+                              : COLORS.danger
+                            : COLORS.textMuted,
                         fontSize: 12,
                       }}
                     >
@@ -1161,40 +1023,24 @@ export default function ControlloMensile() {
                       ) : (
                         '-'
                       )}
-                    </td>
-                    <td
-                      style={{
-                        padding: 10,
-                        borderBottom: '1px solid #e2e8f0',
-                        textAlign: 'right',
-                        fontFamily: MONO,
-                      }}
-                    >
+                    </Td>
+                    <Td align="right" mono>
                       {row.corrispAuto > 0 ? formatEuro(row.corrispAuto) : '-'}
-                    </td>
-                    <td
-                      style={{
-                        padding: 10,
-                        borderBottom: '1px solid #e2e8f0',
-                        textAlign: 'right',
-                        fontFamily: MONO,
-                      }}
-                    >
+                    </Td>
+                    <Td align="right" mono>
                       {row.corrispManual > 0 ? formatEuro(row.corrispManual) : '-'}
-                    </td>
-                    <td
+                    </Td>
+                    <Td
+                      align="right"
+                      mono
                       style={{
-                        padding: 10,
-                        borderBottom: '1px solid #e2e8f0',
-                        textAlign: 'right',
-                        fontFamily: MONO,
                         fontWeight: Math.abs(row.corrispDiff) > 1 ? 'bold' : 'normal',
                         color:
                           Math.abs(row.corrispDiff) > 1
                             ? row.corrispDiff > 0
-                              ? '#16a34a'
-                              : '#dc2626'
-                            : '#64748b',
+                              ? COLORS.success
+                              : COLORS.danger
+                            : COLORS.textMuted,
                         fontSize: 12,
                       }}
                     >
@@ -1206,62 +1052,41 @@ export default function ControlloMensile() {
                       ) : (
                         '-'
                       )}
-                    </td>
-                    <td
-                      style={{
-                        padding: 12,
-                        borderBottom: '1px solid #e2e8f0',
-                        textAlign: 'right',
-                        fontFamily: MONO,
-                      }}
-                    >
+                    </Td>
+                    <Td align="right" mono style={{ padding: 12 }}>
                       {row.versamenti > 0 ? formatEuro(row.versamenti) : '-'}
-                    </td>
-                    <td
+                    </Td>
+                    <Td
+                      align="right"
+                      mono
                       style={{
                         padding: 12,
-                        borderBottom: '1px solid #e2e8f0',
-                        textAlign: 'right',
-                        fontFamily: MONO,
                         fontWeight: 'bold',
-                        color: row.saldoCassa >= 0 ? '#16a34a' : '#dc2626',
+                        color: row.saldoCassa >= 0 ? COLORS.success : COLORS.danger,
                       }}
                     >
                       {formatEuro(row.saldoCassa)}
-                    </td>
-                    <td
-                      style={{
-                        padding: 10,
-                        borderBottom: '1px solid #e2e8f0',
-                        textAlign: 'center',
-                      }}
-                    >
+                    </Td>
+                    <Td align="center">
                       {row.hasData && (
-                        <button
+                        <Button
+                          variant="primary"
+                          size="sm"
                           onClick={() => handleMonthClick(row.month)}
-                          style={{
-                            padding: '4px 8px',
-                            background: '#0f2744',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: 6,
-                            cursor: 'pointer',
-                            fontSize: 11,
-                            fontWeight: 'bold',
-                          }}
+                          style={{ padding: '4px 8px', fontSize: 11 }}
                           data-testid={`view-month-${row.month}`}
                         >
                           👁️
-                        </button>
+                        </Button>
                       )}
-                    </td>
+                    </Td>
                   </tr>
                 ))
               )}
             </tbody>
             <tfoot>
               <tr
-                style={{ background: '#0f2744', color: 'white', fontWeight: 'bold', fontSize: 12 }}
+                style={{ background: COLORS.primary, color: '#fff', fontWeight: 'bold', fontSize: 12 }}
               >
                 <td style={{ padding: 10 }}>TOTALE {anno}</td>
                 <td style={{ padding: 10, textAlign: 'right', fontFamily: MONO }}>
@@ -1280,8 +1105,8 @@ export default function ControlloMensile() {
                     fontFamily: MONO,
                     color:
                       Math.abs(yearTotals.posAuto - yearTotals.posManual) > 1
-                        ? '#fbbf24'
-                        : '#16a34a',
+                        ? COLORS.accentLight
+                        : COLORS.success,
                   }}
                 >
                   {formatEuro(yearTotals.posAuto - yearTotals.posManual)}
@@ -1299,8 +1124,8 @@ export default function ControlloMensile() {
                     fontFamily: MONO,
                     color:
                       Math.abs(yearTotals.corrispettiviAuto - yearTotals.corrispettiviManual) > 1
-                        ? '#fbbf24'
-                        : '#16a34a',
+                        ? COLORS.accentLight
+                        : COLORS.success,
                   }}
                 >
                   {formatEuro(yearTotals.corrispettiviAuto - yearTotals.corrispettiviManual)}
@@ -1315,96 +1140,57 @@ export default function ControlloMensile() {
               </tr>
             </tfoot>
           </table>
-        </div>
+        </TableWrap>
       )}
 
       {/* Month View - Daily Table */}
       {viewMode === 'mese' && (
-        <div style={{ overflowX: 'auto' }}>
+        <TableWrap>
           <table
-            style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}
+            style={{
+              width: '100%',
+              borderCollapse: 'collapse',
+              fontSize: 14,
+              background: COLORS.card,
+              fontFamily: FONT.family,
+            }}
             data-testid="monthly-table"
           >
             <thead>
-              <tr
-                  style={{
-                    background: '#f8fafc',
-                    fontSize: 11,
-                    textTransform: 'uppercase',
-                    color: '#64748b',
-                  }}
-                >
-                <th style={{ padding: 12, textAlign: 'left', borderBottom: '2px solid #e2e8f0' }}>
-                  Data
-                </th>
-                <th
-                  style={{
-                    padding: 12,
-                    textAlign: 'right',
-                    borderBottom: '2px solid #e2e8f0',
-                  }}
-                >
+              <tr>
+                <Th style={{ padding: 12 }}>Data</Th>
+                <Th align="right" style={{ padding: 12 }}>
                   POS RT (XML)
-                </th>
-                <th
-                  style={{
-                    padding: 12,
-                    textAlign: 'right',
-                    borderBottom: '2px solid #e2e8f0',
-                  }}
-                >
+                </Th>
+                <Th align="right" style={{ padding: 12 }}>
                   POS Reale (Tuo)
-                </th>
-                <th style={{ padding: 12, textAlign: 'right', borderBottom: '2px solid #e2e8f0' }}>
+                </Th>
+                <Th align="right" style={{ padding: 12 }}>
                   Diff. POS
-                </th>
-                <th
-                  style={{
-                    padding: 12,
-                    textAlign: 'right',
-                    borderBottom: '2px solid #e2e8f0',
-                  }}
-                >
+                </Th>
+                <Th align="right" style={{ padding: 12 }}>
                   Corrisp. Auto
-                </th>
-                <th
-                  style={{
-                    padding: 12,
-                    textAlign: 'right',
-                    borderBottom: '2px solid #e2e8f0',
-                  }}
-                >
+                </Th>
+                <Th align="right" style={{ padding: 12 }}>
                   Corrisp. Man.
-                </th>
-                <th style={{ padding: 12, textAlign: 'right', borderBottom: '2px solid #e2e8f0' }}>
+                </Th>
+                <Th align="right" style={{ padding: 12 }}>
                   Diff. Corr.
-                </th>
-                <th
-                  style={{
-                    padding: 12,
-                    textAlign: 'right',
-                    borderBottom: '2px solid #e2e8f0',
-                  }}
-                >
+                </Th>
+                <Th align="right" style={{ padding: 12 }}>
                   Versamento
-                </th>
-                <th
-                  style={{
-                    padding: 12,
-                    textAlign: 'right',
-                    borderBottom: '2px solid #e2e8f0',
-                  }}
-                >
+                </Th>
+                <Th align="right" style={{ padding: 12 }}>
                   Saldo Cassa
-                </th>
+                </Th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan="9" style={{ textAlign: 'center', padding: 40 }}>
+                  <Td colSpan="9" align="center" style={{ padding: 40 }}>
                     ⏳ Caricamento dati...
-                  </td>
+                  </Td>
                 </tr>
               ) : (
                 dailyComparison.map(row => (
@@ -1412,50 +1198,32 @@ export default function ControlloMensile() {
                     key={row.date}
                     style={{
                       background: row.hasDiscrepancy
-                        ? '#fef3c7'
+                        ? COLORS.warningLight
                         : row.hasData
-                          ? 'white'
-                          : '#f9fafb',
+                          ? COLORS.card
+                          : COLORS.bgAlt,
                       opacity: row.hasData ? 1 : 0.5,
                     }}
                     data-testid={`row-${row.date}`}
                   >
-                    <td style={{ padding: 10, borderBottom: '1px solid #e2e8f0', fontWeight: 500 }}>
-                      {formatDate(row.date)}
-                    </td>
-                    <td
-                      style={{
-                        padding: 10,
-                        borderBottom: '1px solid #e2e8f0',
-                        textAlign: 'right',
-                        fontFamily: MONO,
-                      }}
-                    >
+                    <Td style={{ fontWeight: 500 }}>{formatDate(row.date)}</Td>
+                    <Td align="right" mono>
                       {row.posAuto > 0 ? formatEuro(row.posAuto) : '-'}
-                    </td>
-                    <td
-                      style={{
-                        padding: 10,
-                        borderBottom: '1px solid #e2e8f0',
-                        textAlign: 'right',
-                        fontFamily: MONO,
-                      }}
-                    >
+                    </Td>
+                    <Td align="right" mono>
                       {row.posManual > 0 ? formatEuro(row.posManual) : '-'}
-                    </td>
-                    <td
+                    </Td>
+                    <Td
+                      align="right"
+                      mono
                       style={{
-                        padding: 10,
-                        borderBottom: '1px solid #e2e8f0',
-                        textAlign: 'right',
-                        fontFamily: MONO,
                         fontWeight: Math.abs(row.posDiff) > 1 ? 'bold' : 'normal',
                         color:
                           Math.abs(row.posDiff) > 1
                             ? row.posDiff > 0
-                              ? '#16a34a'
-                              : '#dc2626'
-                            : '#64748b',
+                              ? COLORS.success
+                              : COLORS.danger
+                            : COLORS.textMuted,
                       }}
                     >
                       {Math.abs(row.posDiff) > 0.01 ? (
@@ -1466,40 +1234,24 @@ export default function ControlloMensile() {
                       ) : (
                         '-'
                       )}
-                    </td>
-                    <td
-                      style={{
-                        padding: 10,
-                        borderBottom: '1px solid #e2e8f0',
-                        textAlign: 'right',
-                        fontFamily: MONO,
-                      }}
-                    >
+                    </Td>
+                    <Td align="right" mono>
                       {row.corrispettivoAuto > 0 ? formatEuro(row.corrispettivoAuto) : '-'}
-                    </td>
-                    <td
-                      style={{
-                        padding: 10,
-                        borderBottom: '1px solid #e2e8f0',
-                        textAlign: 'right',
-                        fontFamily: MONO,
-                      }}
-                    >
+                    </Td>
+                    <Td align="right" mono>
                       {row.corrispettivoManual > 0 ? formatEuro(row.corrispettivoManual) : '-'}
-                    </td>
-                    <td
+                    </Td>
+                    <Td
+                      align="right"
+                      mono
                       style={{
-                        padding: 10,
-                        borderBottom: '1px solid #e2e8f0',
-                        textAlign: 'right',
-                        fontFamily: MONO,
                         fontWeight: Math.abs(row.corrispettivoDiff) > 1 ? 'bold' : 'normal',
                         color:
                           Math.abs(row.corrispettivoDiff) > 1
                             ? row.corrispettivoDiff > 0
-                              ? '#16a34a'
-                              : '#dc2626'
-                            : '#64748b',
+                              ? COLORS.success
+                              : COLORS.danger
+                            : COLORS.textMuted,
                       }}
                     >
                       {Math.abs(row.corrispettivoDiff) > 0.01 ? (
@@ -1510,35 +1262,26 @@ export default function ControlloMensile() {
                       ) : (
                         '-'
                       )}
-                    </td>
-                    <td
-                      style={{
-                        padding: 10,
-                        borderBottom: '1px solid #e2e8f0',
-                        textAlign: 'right',
-                        fontFamily: MONO,
-                      }}
-                    >
+                    </Td>
+                    <Td align="right" mono>
                       {row.versamento > 0 ? formatEuro(row.versamento) : '-'}
-                    </td>
-                    <td
+                    </Td>
+                    <Td
+                      align="right"
+                      mono
                       style={{
-                        padding: 10,
-                        borderBottom: '1px solid #e2e8f0',
-                        textAlign: 'right',
-                        fontFamily: MONO,
                         fontWeight: 'bold',
-                        color: row.saldoCassa >= 0 ? '#16a34a' : '#dc2626',
+                        color: row.saldoCassa >= 0 ? COLORS.success : COLORS.danger,
                       }}
                     >
                       {formatEuro(row.saldoCassa)}
-                    </td>
+                    </Td>
                   </tr>
                 ))
               )}
             </tbody>
             <tfoot>
-              <tr style={{ background: '#0f2744', color: 'white', fontWeight: 'bold' }}>
+              <tr style={{ background: COLORS.primary, color: '#fff', fontWeight: 'bold' }}>
                 <td style={{ padding: 12 }}>
                   TOTALE {monthNames[meseSelezionato - 1].toUpperCase()}
                 </td>
@@ -1569,7 +1312,7 @@ export default function ControlloMensile() {
               </tr>
             </tfoot>
           </table>
-        </div>
+        </TableWrap>
       )}
 
       {/* Legend */}
@@ -1577,8 +1320,8 @@ export default function ControlloMensile() {
         style={{
           marginTop: 20,
           padding: 15,
-          background: '#f8fafc',
-          borderRadius: 8,
+          background: COLORS.bgAlt,
+          borderRadius: BORDER_RADIUS.md,
           fontSize: 13,
         }}
       >
@@ -1592,31 +1335,31 @@ export default function ControlloMensile() {
           }}
         >
           <div>
-            <strong style={{ color: '#0f2744' }}>POS RT (chiusura)</strong> = Σ
+            <strong style={{ color: COLORS.primary }}>POS RT (chiusura)</strong> = Σ
             corrispettivi.pagato_elettronico (da XML)
           </div>
           <div>
-            <strong style={{ color: '#0f2744' }}>POS Reale (Tuo)</strong> = Σ prima_nota_cassa WHERE
-            categoria="POS"
+            <strong style={{ color: COLORS.primary }}>POS Reale (Tuo)</strong> = Σ prima_nota_cassa
+            WHERE categoria="POS"
           </div>
           <div>
-            <strong style={{ color: '#d97706' }}>Corrisp. Auto</strong> = Σ corrispettivi.totale (da
-            XML)
+            <strong style={{ color: COLORS.warning }}>Corrisp. Auto</strong> = Σ corrispettivi.totale
+            (da XML)
           </div>
           <div>
-            <strong style={{ color: '#16a34a' }}>Corrisp. Man.</strong> = Σ prima_nota_cassa WHERE
-            categoria="Corrispettivi" AND tipo="entrata"
+            <strong style={{ color: COLORS.success }}>Corrisp. Man.</strong> = Σ prima_nota_cassa
+            WHERE categoria="Corrispettivi" AND tipo="entrata"
           </div>
           <div>
-            <strong style={{ color: '#16a34a' }}>Versamenti</strong> = Σ prima_nota_cassa WHERE
+            <strong style={{ color: COLORS.success }}>Versamenti</strong> = Σ prima_nota_cassa WHERE
             categoria="Versamento" AND tipo="uscita"
           </div>
           <div>
-            <strong style={{ color: '#3b82f6' }}>Saldo Cassa</strong> = Σ entrate - Σ uscite (Prima
+            <strong style={{ color: COLORS.info }}>Saldo Cassa</strong> = Σ entrate - Σ uscite (Prima
             Nota Cassa)
           </div>
         </div>
-        <div style={{ marginTop: 10, color: '#64748b' }}>
+        <div style={{ marginTop: 10, color: COLORS.textMuted }}>
           ⚠️ Righe gialle = Discrepanza &gt; €1 tra dati Auto e Manuali
         </div>
       </div>
