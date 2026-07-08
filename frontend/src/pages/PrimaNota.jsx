@@ -75,6 +75,12 @@ function PrimaNotaDesktop() {
   // Provvisori
   const [provvisori, setProvvisori] = useState([]);
   const [provLoading, setProvLoading] = useState(false);
+  // Modale "Pagamento parziale" (Misto) — sostituisce il vecchio prompt()
+  // del browser, che non mostrava un riepilogo e non permetteva di
+  // correggere l'importo prima di confermare.
+  const [parzialeModal, setParzialeModal] = useState(null); // provvisorio | null
+  const [parzialeImportoCassa, setParzialeImportoCassa] = useState('');
+  const [parzialeSaving, setParzialeSaving] = useState(false);
 
   // Quick entry forms - CASSA
   const [corrispettivo, setCorrispettivo] = useState({ data: today, importo: '' });
@@ -1013,33 +1019,8 @@ function PrimaNotaDesktop() {
                     </button>
                     <button
                       onClick={() => {
-                        const imp = prompt(
-                          `Importo CASSA per ${p.fornitore} (totale €${(p.importo || 0).toFixed(2)}):`
-                        );
-                        if (imp && parseFloat(imp) > 0) {
-                          const ci = parseFloat(imp);
-                          const bi = Math.round((p.importo - ci) * 100) / 100;
-                          api
-                            .post('/api/pagamenti/registra', {
-                              fattura_id: p.fattura_id,
-                              importo: ci,
-                              metodo: 'contanti',
-                              data: p.fattura_data,
-                              note: `€${ci} di €${p.importo}`,
-                            })
-                            .then(() => {
-                              if (bi > 0)
-                                api.post('/api/pagamenti/registra', {
-                                  fattura_id: p.fattura_id,
-                                  importo: bi,
-                                  metodo: 'bonifico',
-                                  data: p.fattura_data,
-                                  note: `Residuo banca €${bi}`,
-                                });
-                              setProvvisori(v => v.filter(x => x.fattura_id !== p.fattura_id));
-                            })
-                            .catch(e => alert(e.message));
-                        }
+                        setParzialeImportoCassa('');
+                        setParzialeModal(p);
                       }}
                       style={{
                         padding: '6px 10px',
@@ -1599,6 +1580,174 @@ function PrimaNotaDesktop() {
             saldoPrecedente={bancaData.saldo_precedente || 0}
           />
         </section>
+      )}
+
+      {/* Modale "Pagamento parziale" (Misto) — sostituisce il vecchio
+          prompt() del browser: mostra fornitore, totale, importo cassa da
+          scegliere e residuo banca calcolato, con riepilogo prima di
+          confermare invece di un singolo campo testo senza contesto. */}
+      {parzialeModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 2000,
+          }}
+          onClick={() => !parzialeSaving && setParzialeModal(null)}
+        >
+          <div
+            style={{
+              background: 'white',
+              borderRadius: 12,
+              padding: 24,
+              width: '92%',
+              maxWidth: 420,
+              boxShadow: '0 20px 40px rgba(15,39,68,0.25)',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <h3 style={{ margin: '0 0 4px', fontSize: 17, color: '#0f2744' }}>
+              Pagamento parziale (Misto)
+            </h3>
+            <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 16 }}>
+              {(parzialeModal.fornitore || '').substring(0, 40)} — Fatt. #
+              {parzialeModal.fattura_numero}
+            </div>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                padding: '10px 12px',
+                background: '#f8fafc',
+                borderRadius: 8,
+                marginBottom: 16,
+                fontSize: 14,
+              }}
+            >
+              <span>Totale fattura</span>
+              <strong>€ {(parzialeModal.importo || 0).toFixed(2)}</strong>
+            </div>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 4 }}>
+              Importo pagato in CASSA
+            </label>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              max={parzialeModal.importo || 0}
+              autoFocus
+              value={parzialeImportoCassa}
+              onChange={e => setParzialeImportoCassa(e.target.value)}
+              placeholder="0.00"
+              style={{
+                width: '100%',
+                padding: '10px 12px',
+                border: '1px solid #d1d5db',
+                borderRadius: 8,
+                fontSize: 15,
+                boxSizing: 'border-box',
+              }}
+            />
+            {(() => {
+              const ci = parseFloat(parzialeImportoCassa);
+              const valido = !isNaN(ci) && ci > 0 && ci <= (parzialeModal.importo || 0);
+              const residuoBanca = valido
+                ? Math.round(((parzialeModal.importo || 0) - ci) * 100) / 100
+                : null;
+              return (
+                <>
+                  {valido && (
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        padding: '10px 12px',
+                        background: '#eff6ff',
+                        borderRadius: 8,
+                        marginTop: 10,
+                        fontSize: 14,
+                      }}
+                    >
+                      <span>Residuo in BANCA</span>
+                      <strong>€ {residuoBanca.toFixed(2)}</strong>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+                    <button
+                      onClick={() => setParzialeModal(null)}
+                      disabled={parzialeSaving}
+                      style={{
+                        flex: 1,
+                        padding: '10px 16px',
+                        background: '#f1f5f9',
+                        color: '#374151',
+                        border: 'none',
+                        borderRadius: 8,
+                        fontSize: 14,
+                        fontWeight: 600,
+                        cursor: parzialeSaving ? 'wait' : 'pointer',
+                      }}
+                    >
+                      Annulla
+                    </button>
+                    <button
+                      onClick={async () => {
+                        setParzialeSaving(true);
+                        try {
+                          await api.post('/api/pagamenti/registra', {
+                            fattura_id: parzialeModal.fattura_id,
+                            importo: ci,
+                            metodo: 'contanti',
+                            data: parzialeModal.fattura_data,
+                            note: `€${ci} di €${parzialeModal.importo}`,
+                          });
+                          if (residuoBanca > 0) {
+                            await api.post('/api/pagamenti/registra', {
+                              fattura_id: parzialeModal.fattura_id,
+                              importo: residuoBanca,
+                              metodo: 'bonifico',
+                              data: parzialeModal.fattura_data,
+                              note: `Residuo banca €${residuoBanca}`,
+                            });
+                          }
+                          setProvvisori(v =>
+                            v.filter(x => x.fattura_id !== parzialeModal.fattura_id)
+                          );
+                          setParzialeModal(null);
+                        } catch (e) {
+                          alert(
+                            'Errore: ' +
+                              (e.response?.data?.detail || e.response?.data?.message || e.message)
+                          );
+                        } finally {
+                          setParzialeSaving(false);
+                        }
+                      }}
+                      disabled={!valido || parzialeSaving}
+                      style={{
+                        flex: 1,
+                        padding: '10px 16px',
+                        background: valido ? '#0f2744' : '#94a3b8',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: 8,
+                        fontSize: 14,
+                        fontWeight: 700,
+                        cursor: valido && !parzialeSaving ? 'pointer' : 'not-allowed',
+                      }}
+                    >
+                      {parzialeSaving ? 'Salvataggio...' : 'Conferma'}
+                    </button>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        </div>
       )}
     </div>
   );
