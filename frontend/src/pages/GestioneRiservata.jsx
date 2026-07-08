@@ -1,8 +1,22 @@
 import React, { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
-import { STYLES, COLORS, button, badge, formatEuro, formatDateIT } from '../lib/utils';
+import { COLORS, SHADOWS, BORDER_RADIUS, FONT, formatEuro, formatDateIT } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
+import {
+  Button,
+  Badge,
+  StatCard,
+  Input,
+  Select,
+  TableWrap,
+  Table,
+  Th,
+  Td,
+  RowActions,
+  RowActionButton,
+} from '../components/ds';
 import {
   Lock,
   Plus,
@@ -47,7 +61,7 @@ function LoginGestioneRiservata({ onLogin }) {
     <div
       style={{
         minHeight: '100vh',
-        background: '#0f2744',
+        background: COLORS.primary,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -57,11 +71,11 @@ function LoginGestioneRiservata({ onLogin }) {
       <div
         style={{
           background: 'rgba(255,255,255,0.95)',
-          borderRadius: 16,
+          borderRadius: BORDER_RADIUS.xl,
           padding: 40,
           width: '100%',
           maxWidth: 400,
-          boxShadow: '0 25px 50px rgba(0,0,0,0.4)',
+          boxShadow: SHADOWS.xl,
         }}
       >
         <div style={{ textAlign: 'center', marginBottom: 30 }}>
@@ -69,8 +83,8 @@ function LoginGestioneRiservata({ onLogin }) {
             style={{
               width: 80,
               height: 80,
-              borderRadius: '50%',
-              background: '#b91c1c',
+              borderRadius: BORDER_RADIUS.full,
+              background: COLORS.danger,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -79,30 +93,28 @@ function LoginGestioneRiservata({ onLogin }) {
           >
             <Lock size={40} color="white" />
           </div>
-          <h1 style={{ margin: 0, fontSize: 24, color: '#1a1a2e' }}>Gestione Riservata</h1>
-          <p style={{ color: '#718096', marginTop: 8 }}>Area ad accesso limitato</p>
+          <h1 style={{ margin: 0, fontSize: 24, color: COLORS.text }}>Gestione Riservata</h1>
+          <p style={{ color: COLORS.textMuted, marginTop: 8 }}>Area ad accesso limitato</p>
         </div>
 
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: 20 }}>
-            <label style={{ display: 'block', marginBottom: 8, color: '#4a5568', fontWeight: 500 }}>
+            <label style={{ display: 'block', marginBottom: 8, color: COLORS.textMuted, fontWeight: 500 }}>
               Codice di Accesso
             </label>
-            <input
+            <Input
               type="password"
               value={code}
               onChange={e => setCode(e.target.value)}
               placeholder="••••••"
               data-testid="riservata-code-input"
               style={{
-                width: '100%',
                 padding: '14px 16px',
                 fontSize: 20,
-                border: '2px solid #e2e8f0',
-                borderRadius: 8,
+                borderRadius: BORDER_RADIUS.md,
                 textAlign: 'center',
                 letterSpacing: 6,
-                fontFamily: 'monospace',
+                fontFamily: FONT.mono,
               }}
               autoFocus
             />
@@ -111,10 +123,10 @@ function LoginGestioneRiservata({ onLogin }) {
           {error && (
             <div
               style={{
-                background: '#fed7d7',
-                color: '#c53030',
+                background: COLORS.dangerLight,
+                color: COLORS.danger,
                 padding: 12,
-                borderRadius: 8,
+                borderRadius: BORDER_RADIUS.md,
                 marginBottom: 20,
                 display: 'flex',
                 alignItems: 'center',
@@ -126,25 +138,15 @@ function LoginGestioneRiservata({ onLogin }) {
             </div>
           )}
 
-          <button
+          <Button
             type="submit"
+            variant="danger"
             disabled={loading || !code}
             data-testid="riservata-login-btn"
-            style={{
-              width: '100%',
-              padding: 14,
-              background:
-                loading || !code ? '#cbd5e0' : '#b91c1c',
-              color: 'white',
-              border: 'none',
-              borderRadius: 8,
-              fontSize: 16,
-              fontWeight: 600,
-              cursor: loading || !code ? 'not-allowed' : 'pointer',
-            }}
+            style={{ width: '100%', padding: 14, fontSize: 16 }}
           >
             {loading ? 'Verifica...' : 'Accedi'}
-          </button>
+          </Button>
         </form>
       </div>
     </div>
@@ -213,7 +215,7 @@ function DashboardGestioneRiservata({ onLogout }) {
       });
       loadData();
     } catch (e) {
-      alert('Errore: ' + (e.response?.data?.detail || e.message));
+      toast.error('Errore: ' + (e.response?.data?.detail || e.message));
     }
   }
 
@@ -222,7 +224,7 @@ function DashboardGestioneRiservata({ onLogout }) {
       await api.delete(`/api/gestione-riservata/movimenti/${id}`);
       loadData();
     } catch (e) {
-      alert('Errore: ' + (e.response?.data?.detail || e.message));
+      toast.error('Errore: ' + (e.response?.data?.detail || e.message));
     }
   }
 
@@ -262,7 +264,7 @@ function DashboardGestioneRiservata({ onLogout }) {
 
   return (
     <PageLayout title="Gestione Riservata" subtitle="Incassi e spese non fatturati">
-      <div style={{ minHeight: '100vh', background: '#f7fafc' }}>
+      <div style={{ minHeight: '100vh', background: COLORS.bg }}>
         {/* Header */}
         <div
           style={{
@@ -276,7 +278,7 @@ function DashboardGestioneRiservata({ onLogout }) {
             <h1
               style={{
                 margin: 0,
-                color: '#1a1a2e',
+                color: COLORS.text,
                 display: 'flex',
                 alignItems: 'center',
                 gap: 12,
@@ -284,23 +286,11 @@ function DashboardGestioneRiservata({ onLogout }) {
             >
               <Lock size={28} /> Gestione Riservata
             </h1>
-            <p style={{ color: '#718096', marginTop: 4 }}>Incassi e spese non fatturati</p>
+            <p style={{ color: COLORS.textMuted, marginTop: 4 }}>Incassi e spese non fatturati</p>
           </div>
-          <button
-            onClick={handleLogout}
-            style={{
-              padding: '10px 20px',
-              background: '#e2e8f0',
-              border: 'none',
-              borderRadius: 8,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-            }}
-          >
-            <EyeOff size={16} /> Esci
-          </button>
+          <Button variant="secondary" onClick={handleLogout} iconLeft={<EyeOff size={16} />}>
+            Esci
+          </Button>
         </div>
 
         {/* Filtri */}
@@ -316,20 +306,19 @@ function DashboardGestioneRiservata({ onLogout }) {
           <div
             style={{
               padding: '10px 16px',
-              borderRadius: 8,
-              border: '1px solid #e2e8f0',
-              background: '#f1f5f9',
-              color: '#64748b',
+              borderRadius: BORDER_RADIUS.md,
+              border: `1px solid ${COLORS.border}`,
+              background: COLORS.bgAlt,
+              color: COLORS.textMuted,
               fontWeight: 600,
             }}
             data-testid="anno-display"
           >
             {anno} <span style={{ fontSize: 10, opacity: 0.7 }}>(globale)</span>
           </div>
-          <select
+          <Select
             value={mese || ''}
             onChange={e => setMese(e.target.value ? parseInt(e.target.value) : null)}
-            style={{ padding: '10px 16px', borderRadius: 8, border: '1px solid #e2e8f0' }}
           >
             <option value="">Tutti i mesi</option>
             {mesiNomi.slice(1).map((m, i) => (
@@ -337,28 +326,18 @@ function DashboardGestioneRiservata({ onLogout }) {
                 {m}
               </option>
             ))}
-          </select>
-          <button
+          </Select>
+          <Button
+            variant="danger"
             onClick={() => {
               setShowForm(true);
               setEditingId(null);
             }}
-            style={{
-              padding: '10px 20px',
-              background: '#b91c1c',
-              color: 'white',
-              border: 'none',
-              borderRadius: 8,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              fontWeight: 600,
-            }}
+            iconLeft={<Plus size={18} />}
             data-testid="add-movimento-btn"
           >
-            <Plus size={18} /> Nuovo Movimento
-          </button>
+            Nuovo Movimento
+          </Button>
         </div>
 
         {/* Riepilogo Cards */}
@@ -371,63 +350,27 @@ function DashboardGestioneRiservata({ onLogout }) {
               marginBottom: 30,
             }}
           >
-            <div
-              style={{
-                background: '#15803d',
-                borderRadius: 12,
-                padding: 24,
-                color: 'white',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                <TrendingUp size={24} />
-                <span style={{ opacity: 0.9 }}>Incassi Non Fatturati</span>
-              </div>
-              <div style={{ fontSize: 32, fontWeight: 700 }}>
-                {formatEuro(riepilogo.incassi?.totale || 0)}
-              </div>
-              <div style={{ opacity: 0.8, marginTop: 4 }}>
-                {riepilogo.incassi?.count || 0} movimenti
-              </div>
-            </div>
-
-            <div
-              style={{
-                background: '#b91c1c',
-                borderRadius: 12,
-                padding: 24,
-                color: 'white',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                <TrendingDown size={24} />
-                <span style={{ opacity: 0.9 }}>Spese Non Fatturate</span>
-              </div>
-              <div style={{ fontSize: 32, fontWeight: 700 }}>
-                {formatEuro(riepilogo.spese?.totale || 0)}
-              </div>
-              <div style={{ opacity: 0.8, marginTop: 4 }}>
-                {riepilogo.spese?.count || 0} movimenti
-              </div>
-            </div>
-
-            <div
-              style={{
-                background: '#0f2744',
-                borderRadius: 12,
-                padding: 24,
-                color: 'white',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                <DollarSign size={24} />
-                <span style={{ opacity: 0.9 }}>Saldo Netto Extra</span>
-              </div>
-              <div style={{ fontSize: 32, fontWeight: 700 }}>
-                {formatEuro(riepilogo.saldo_netto || 0)}
-              </div>
-              <div style={{ opacity: 0.8, marginTop: 4 }}>Da aggiungere al fatturato</div>
-            </div>
+            <StatCard
+              icon={<TrendingUp size={20} />}
+              label="Incassi Non Fatturati"
+              value={formatEuro(riepilogo.incassi?.totale || 0)}
+              subtext={`${riepilogo.incassi?.count || 0} movimenti`}
+              accent="success"
+            />
+            <StatCard
+              icon={<TrendingDown size={20} />}
+              label="Spese Non Fatturate"
+              value={formatEuro(riepilogo.spese?.totale || 0)}
+              subtext={`${riepilogo.spese?.count || 0} movimenti`}
+              accent="danger"
+            />
+            <StatCard
+              icon={<DollarSign size={20} />}
+              label="Saldo Netto Extra"
+              value={formatEuro(riepilogo.saldo_netto || 0)}
+              subtext="Da aggiungere al fatturato"
+              accent="primary"
+            />
           </div>
         )}
 
@@ -435,11 +378,12 @@ function DashboardGestioneRiservata({ onLogout }) {
         {showForm && (
           <div
             style={{
-              background: 'white',
-              borderRadius: 12,
+              background: COLORS.card,
+              borderRadius: BORDER_RADIUS.md,
               padding: 24,
               marginBottom: 25,
-              boxShadow: '0 4px 15px rgba(0,0,0,0.1)',
+              boxShadow: SHADOWS.md,
+              border: `1px solid ${COLORS.border}`,
             }}
           >
             <div
@@ -450,15 +394,17 @@ function DashboardGestioneRiservata({ onLogout }) {
                 marginBottom: 20,
               }}
             >
-              <h3 style={{ margin: 0 }}>{editingId ? 'Modifica Movimento' : 'Nuovo Movimento'}</h3>
+              <h3 style={{ margin: 0, color: COLORS.text }}>
+                {editingId ? 'Modifica Movimento' : 'Nuovo Movimento'}
+              </h3>
               <button
                 onClick={() => {
                   setShowForm(false);
                   setEditingId(null);
                 }}
-                style={{ background: 'none', border: 'none', cursor: 'pointer' }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex' }}
               >
-                <X size={24} color="#718096" />
+                <X size={24} color={COLORS.textMuted} />
               </button>
             </div>
 
@@ -471,66 +417,51 @@ function DashboardGestioneRiservata({ onLogout }) {
               }}
             >
               <div>
-                <label style={{ display: 'block', marginBottom: 6, fontWeight: 500 }}>Data</label>
-                <input
+                <label style={{ display: 'block', marginBottom: 6, fontWeight: 500, color: COLORS.text }}>
+                  Data
+                </label>
+                <Input
                   type="date"
                   value={formData.data}
                   onChange={e => setFormData({ ...formData, data: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: 10,
-                    border: '1px solid #e2e8f0',
-                    borderRadius: 6,
-                  }}
                 />
               </div>
               <div>
-                <label style={{ display: 'block', marginBottom: 6, fontWeight: 500 }}>Tipo</label>
-                <select
+                <label style={{ display: 'block', marginBottom: 6, fontWeight: 500, color: COLORS.text }}>
+                  Tipo
+                </label>
+                <Select
                   value={formData.tipo}
                   onChange={e => setFormData({ ...formData, tipo: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: 10,
-                    border: '1px solid #e2e8f0',
-                    borderRadius: 6,
-                  }}
                 >
                   <option value="incasso">Incasso</option>
                   <option value="spesa">💸 Spesa</option>
-                </select>
+                </Select>
               </div>
               <div>
-                <label style={{ display: 'block', marginBottom: 6, fontWeight: 500 }}>
+                <label style={{ display: 'block', marginBottom: 6, fontWeight: 500, color: COLORS.text }}>
                   Importo (€)
                 </label>
-                <input
+                <Input
                   type="number"
                   step="0.01"
                   value={formData.importo}
                   onChange={e => setFormData({ ...formData, importo: e.target.value })}
                   placeholder="0.00"
-                  style={{
-                    width: '100%',
-                    padding: 10,
-                    border: '1px solid #e2e8f0',
-                    borderRadius: 6,
-                  }}
                   data-testid="importo-input"
                 />
               </div>
             </div>
 
             <div style={{ marginBottom: 16 }}>
-              <label style={{ display: 'block', marginBottom: 6, fontWeight: 500 }}>
+              <label style={{ display: 'block', marginBottom: 6, fontWeight: 500, color: COLORS.text }}>
                 Descrizione
               </label>
-              <input
+              <Input
                 type="text"
                 value={formData.descrizione}
                 onChange={e => setFormData({ ...formData, descrizione: e.target.value })}
                 placeholder="es. Mance giornaliere, Vendita extra..."
-                style={{ width: '100%', padding: 10, border: '1px solid #e2e8f0', borderRadius: 6 }}
                 data-testid="descrizione-input"
               />
             </div>
@@ -539,202 +470,115 @@ function DashboardGestioneRiservata({ onLogout }) {
               style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 16, marginBottom: 20 }}
             >
               <div>
-                <label style={{ display: 'block', marginBottom: 6, fontWeight: 500 }}>
+                <label style={{ display: 'block', marginBottom: 6, fontWeight: 500, color: COLORS.text }}>
                   Categoria
                 </label>
-                <select
+                <Select
                   value={formData.categoria}
                   onChange={e => setFormData({ ...formData, categoria: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: 10,
-                    border: '1px solid #e2e8f0',
-                    borderRadius: 6,
-                  }}
                 >
                   <option value="mance">Mance</option>
                   <option value="vendita_extra">Vendita Extra</option>
                   <option value="catering">Catering</option>
                   <option value="acquisti">Acquisti</option>
                   <option value="altro">Altro</option>
-                </select>
+                </Select>
               </div>
               <div>
-                <label style={{ display: 'block', marginBottom: 6, fontWeight: 500 }}>Note</label>
-                <input
+                <label style={{ display: 'block', marginBottom: 6, fontWeight: 500, color: COLORS.text }}>
+                  Note
+                </label>
+                <Input
                   type="text"
                   value={formData.note}
                   onChange={e => setFormData({ ...formData, note: e.target.value })}
                   placeholder="Note aggiuntive..."
-                  style={{
-                    width: '100%',
-                    padding: 10,
-                    border: '1px solid #e2e8f0',
-                    borderRadius: 6,
-                  }}
                 />
               </div>
             </div>
 
-            <button
+            <Button
+              variant="danger"
               onClick={handleSave}
-              style={{
-                padding: '12px 24px',
-                background: '#b91c1c',
-                color: 'white',
-                border: 'none',
-                borderRadius: 8,
-                cursor: 'pointer',
-                fontWeight: 600,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-              }}
+              iconLeft={<Save size={18} />}
               data-testid="save-movimento-btn"
             >
-              <Save size={18} /> {editingId ? 'Aggiorna' : 'Salva'}
-            </button>
+              {editingId ? 'Aggiorna' : 'Salva'}
+            </Button>
           </div>
         )}
 
         {/* Lista Movimenti */}
         <div
-          style={{ background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}
+          style={{
+            background: COLORS.card,
+            borderRadius: BORDER_RADIUS.md,
+            boxShadow: SHADOWS.sm,
+            border: `1px solid ${COLORS.border}`,
+          }}
         >
-          <div style={{ padding: '20px 24px', borderBottom: '1px solid #e2e8f0' }}>
-            <h3 style={{ margin: 0 }}>📋 Movimenti ({movimenti.length})</h3>
+          <div style={{ padding: '20px 24px', borderBottom: `1px solid ${COLORS.border}` }}>
+            <h3 style={{ margin: 0, color: COLORS.text }}>📋 Movimenti ({movimenti.length})</h3>
           </div>
 
           {loading ? (
-            <div style={{ padding: 40, textAlign: 'center', color: '#718096' }}>Caricamento...</div>
+            <div style={{ padding: 40, textAlign: 'center', color: COLORS.textMuted }}>
+              Caricamento...
+            </div>
           ) : movimenti.length === 0 ? (
-            <div style={{ padding: 40, textAlign: 'center', color: '#718096' }}>
+            <div style={{ padding: 40, textAlign: 'center', color: COLORS.textMuted }}>
               Nessun movimento registrato per questo periodo
             </div>
           ) : (
-            <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ background: '#f7fafc' }}>
-                  <th
-                    style={{
-                      padding: '12px 16px',
-                      textAlign: 'left',
-                      borderBottom: '1px solid #e2e8f0',
-                    }}
-                  >
-                    Data
-                  </th>
-                  <th
-                    style={{
-                      padding: '12px 16px',
-                      textAlign: 'left',
-                      borderBottom: '1px solid #e2e8f0',
-                    }}
-                  >
-                    Tipo
-                  </th>
-                  <th
-                    style={{
-                      padding: '12px 16px',
-                      textAlign: 'left',
-                      borderBottom: '1px solid #e2e8f0',
-                    }}
-                  >
-                    Descrizione
-                  </th>
-                  <th
-                    style={{
-                      padding: '12px 16px',
-                      textAlign: 'left',
-                      borderBottom: '1px solid #e2e8f0',
-                    }}
-                  >
-                    Categoria
-                  </th>
-                  <th
-                    style={{
-                      padding: '12px 16px',
-                      textAlign: 'right',
-                      borderBottom: '1px solid #e2e8f0',
-                    }}
-                  >
-                    Importo
-                  </th>
-                  <th
-                    style={{
-                      padding: '12px 16px',
-                      textAlign: 'center',
-                      borderBottom: '1px solid #e2e8f0',
-                    }}
-                  >
-                    Azioni
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {movimenti.map(mov => (
-                  <tr key={mov.id} style={{ borderBottom: '1px solid #f0f0f0' }}>
-                    <td style={{ padding: '12px 16px' }}>{formatDateIT(mov.data)}</td>
-                    <td style={{ padding: '12px 16px' }}>
-                      <span
-                        style={{
-                          padding: '4px 10px',
-                          borderRadius: 12,
-                          fontSize: 12,
-                          fontWeight: 600,
-                          background: mov.tipo === 'incasso' ? '#d1fae5' : '#fee2e2',
-                          color: mov.tipo === 'incasso' ? '#065f46' : '#991b1b',
-                        }}
-                      >
-                        {mov.tipo === 'incasso' ? 'Incasso' : 'Spesa'}
-                      </span>
-                    </td>
-                    <td style={{ padding: '12px 16px' }}>{mov.descrizione}</td>
-                    <td style={{ padding: '12px 16px', color: '#718096' }}>{mov.categoria}</td>
-                    <td
-                      style={{
-                        padding: '12px 16px',
-                        textAlign: 'right',
-                        fontWeight: 600,
-                        color: mov.tipo === 'incasso' ? '#059669' : '#dc2626',
-                      }}
-                    >
-                      {mov.tipo === 'incasso' ? '+' : '-'}
-                      {formatEuro(mov.importo)}
-                    </td>
-                    <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-                      <button
-                        onClick={() => handleEdit(mov)}
-                        style={{
-                          padding: 6,
-                          background: '#f0f9ff',
-                          border: 'none',
-                          borderRadius: 4,
-                          cursor: 'pointer',
-                          marginRight: 6,
-                        }}
-                      >
-                        <Edit2 size={14} color="#0369a1" />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(mov.id)}
-                        style={{
-                          padding: 6,
-                          background: '#fef2f2',
-                          border: 'none',
-                          borderRadius: 4,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        <Trash2 size={14} color="#dc2626" />
-                      </button>
-                    </td>
+            <TableWrap style={{ border: 'none', borderRadius: 0 }}>
+              <Table>
+                <thead>
+                  <tr>
+                    <Th>Data</Th>
+                    <Th>Tipo</Th>
+                    <Th>Descrizione</Th>
+                    <Th>Categoria</Th>
+                    <Th align="right">Importo</Th>
+                    <Th align="center">Azioni</Th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-            </div>
+                </thead>
+                <tbody>
+                  {movimenti.map(mov => (
+                    <tr key={mov.id}>
+                      <Td>{formatDateIT(mov.data)}</Td>
+                      <Td>
+                        <Badge variant={mov.tipo === 'incasso' ? 'success' : 'danger'}>
+                          {mov.tipo === 'incasso' ? 'Incasso' : 'Spesa'}
+                        </Badge>
+                      </Td>
+                      <Td>{mov.descrizione}</Td>
+                      <Td style={{ color: COLORS.textMuted }}>{mov.categoria}</Td>
+                      <Td
+                        align="right"
+                        mono
+                        style={{
+                          fontWeight: 600,
+                          color: mov.tipo === 'incasso' ? COLORS.success : COLORS.danger,
+                        }}
+                      >
+                        {mov.tipo === 'incasso' ? '+' : '-'}
+                        {formatEuro(mov.importo)}
+                      </Td>
+                      <Td align="center">
+                        <RowActions style={{ justifyContent: 'center' }}>
+                          <RowActionButton variant="info" onClick={() => handleEdit(mov)}>
+                            <Edit2 size={14} />
+                          </RowActionButton>
+                          <RowActionButton variant="danger" onClick={() => handleDelete(mov.id)}>
+                            <Trash2 size={14} />
+                          </RowActionButton>
+                        </RowActions>
+                      </Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            </TableWrap>
           )}
         </div>
       </div>
