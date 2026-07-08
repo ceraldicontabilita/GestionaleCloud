@@ -1,0 +1,98 @@
+{
+  "pagina": "Dettaglio Verbale",
+  "url": "https://impresasemplice.online/verbali-noleggio/{numeroVerbale}  (route con parametro singolo; esiste anche una variante /verbali-noleggio/{prefisso}/{numero} per numeri verbale che contengono uno slash, es. 'S/2259')",
+  "file_sorgente_frontend": [
+    "frontend/src/pages/DettaglioVerbale.jsx"
+  ],
+  "file_sorgente_backend": [
+    "app/routers/verbali_noleggio_api.py (GET /dettaglio/{numero_verbale}, POST /{verbale_id}/cerca-pagamento, GET /{verbale_id}/ricevuta-pdf, POST /scarica-posta)",
+    "app/routers/verbali_noleggio.py (GET /pdf/{numero_verbale}, registrato PRIMA di verbali_noleggio_api.py sotto lo stesso prefix: per i numeri verbale senza '/' questa versione vince sempre sull'omonima in verbali_noleggio_api.py, che infatti è stata rimossa dal codice — vedi commento nel file)",
+    "app/services/verbali_pagamento_finder.py (trova_pagamento_verbale/applica_pagamento_a_verbale, usati da cerca-pagamento; ricerca in cascata PayPal -> Gmail -> estratto conto, file non incluso in questo audit)"
+  ],
+  "scopo_generale": "Pagina di drill-down/dettaglio per un singolo verbale (multa stradale) legato a un veicolo a noleggio aziendale. Mostra tutte le informazioni raccolte per quel verbale: dati del verbale stesso (numero, data, importo, fornitore, descrizione), fattura del noleggiatore che lo cita (se già associata), PDF disponibili (verbale originale + eventuale quietanza di pagamento), stato del pagamento (pagato / sospeso / da verificare) con dettaglio fonte/PSP/IUV se pagato, e informazioni sul veicolo/driver assegnato. È raggiunta principalmente dal bottone '📄 Dettaglio' della pagina Riconciliazione Verbali Noleggio (VerbaliRiconciliazione.jsx, si apre in una nuova scheda del browser) oppure navigando direttamente all'URL con il numero verbale.",
+  "bottoni_azioni": [
+    {
+      "etichetta": "📄 (icona per ogni PDF in 'Documenti PDF', mostrato solo se pdf_disponibili non è vuoto)",
+      "cosa_fa_al_click": "Scarica il PDF specifico (indice 0 = verbale originale, indice 1 = quietanza) via chiamata API, poi lo converte da base64 a Blob e lo apre in una nuova scheda con window.open(URL.createObjectURL(blob)).",
+      "endpoint_chiamato": "GET /api/verbali-noleggio/pdf/{numero_verbale}?indice={pdf.indice}",
+      "logica_backend": "get_pdf_verbale() in verbali_noleggio.py (questa versione vince sempre su quella — rimossa — di verbali_noleggio_api.py per numeri senza slash): cerca il verbale per numero_verbale o numero_verbale_old; supporta due formati storici — 'vecchio formato' con array pdf_allegati[indice] già contenente content_base64, oppure 'nuovo formato' con i campi diretti pdf_data (indice 0, verbale) e quietanza_pdf (indice 1, quietanza). Ritorna {numero_verbale, filename, content_base64, size}.",
+      "formula_matematica": "-",
+      "aggiornamento_ui": "Apre il PDF in una nuova scheda del browser tramite Blob URL locale (non un link diretto al server).",
+      "casi_errore": "404 'Verbale non trovato' se il numero non esiste; se né pdf_allegati né pdf_data/quietanza_pdf contengono nulla per l'indice richiesto, la funzione backend non ritorna esplicitamente nulla (risposta vuota/None) — il frontend, nel catch, mostra alert('Errore durante il download del PDF') e logga in console."
+    },
+    {
+      "etichetta": "📧 Scarica da Posta (visibile solo quando pdf_disponibili è vuoto)",
+      "cosa_fa_al_click": "Tenta di recuperare automaticamente il PDF del verbale dalla casella email aziendale.",
+      "endpoint_chiamato": "POST /api/verbali-noleggio/scarica-posta",
+      "logica_backend": "scarica_posta_verbali(): funzione PLACEHOLDER, NON implementata — ritorna sempre e comunque {message: 'Funzionalità in sviluppo', status: 'pending'} senza eseguire alcuna ricerca reale nella posta.",
+      "formula_matematica": "-",
+      "aggiornamento_ui": "alert(`Scaricati ${res.data.nuovi_verbali} nuovi verbali`) — ma il campo nuovi_verbali NON esiste nella risposta reale del backend, quindi l'alert mostra letteralmente 'Scaricati undefined nuovi verbali'. Dopo l'alert richiama comunque fetchVerbale() per ricaricare la pagina (che di fatto non troverà nulla di nuovo). FUNZIONALITÀ NON OPERATIVA allo stato attuale del codice.",
+      "casi_errore": "alert('Errore: ' + dettaglio) se la chiamata fallisce (nella pratica non fallisce mai, dato che il backend risponde sempre 200 col placeholder)."
+    },
+    {
+      "etichetta": "📥 Scarica ricevuta (visibile solo se il verbale è pagato E ha pdf_ricevuta_path)",
+      "cosa_fa_al_click": "Link <a> diretto (non una fetch JS) che apre/scarica la ricevuta PDF del pagamento in una nuova scheda.",
+      "endpoint_chiamato": "GET /api/verbali-noleggio/{id-o-numero_verbale}/ricevuta-pdf",
+      "logica_backend": "scarica_ricevuta_verbale(): cerca il verbale per id o numero_verbale, legge pdf_ricevuta_path, calcola os.path.realpath() del percorso e verifica che risulti effettivamente sotto la cartella /tmp/uploads/ (protezione contro path traversal) e che il file esista fisicamente; se tutto ok risponde con FileResponse (media_type application/pdf, filename 'ricevuta_verbale_{numero}.pdf').",
+      "formula_matematica": "-",
+      "aggiornamento_ui": "Il browser scarica/apre il PDF nativamente (nessuna gestione JS lato frontend, essendo un <a href> semplice).",
+      "casi_errore": "404 'PDF non disponibile' se: il verbale non esiste, pdf_ricevuta_path è vuoto, il percorso risolto non è sotto /tmp/uploads/, oppure il file non esiste più su disco."
+    },
+    {
+      "etichetta": "🔍 Cerca pagamento (visibile solo se lo stato NON è 'pagato', cioè 'sospeso' o 'da verificare')",
+      "cosa_fa_al_click": "Avvia una ricerca automatica del pagamento del verbale attraverso più fonti in cascata.",
+      "endpoint_chiamato": "POST /api/verbali-noleggio/{id-o-numero_verbale}/cerca-pagamento",
+      "logica_backend": "cerca_pagamento_verbale(): recupera il verbale (404 se assente), chiama trova_pagamento_verbale(db, verbale) del servizio app.services.verbali_pagamento_finder, che cerca in cascata PayPal -> Gmail -> estratto conto/E.C. un movimento compatibile (fuori dal perimetro di questo file, non ispezionato in dettaglio). Se trova un match, chiama applica_pagamento_a_verbale(db, id, match) che scrive sul verbale i dati del pagamento trovato (fonte, psp, importo, data_pagamento, metodo_pagamento, eventualmente pdf_ricevuta_path/iuv) e aggiorna presumibilmente lo stato a 'pagato'.",
+      "formula_matematica": "-",
+      "aggiornamento_ui": "Se trovato: alert con fonte/PSP/importo/data (`✅ Pagamento trovato!\\nFonte: ...\\nPSP: ...\\nImporto: ...\\nData: ...`), poi window.location.reload() dopo un timeout di 500ms per ricaricare l'intera pagina con il nuovo stato 'PAGATO'. Se non trovato: alert('Nessun pagamento trovato per questo verbale.') senza alcun refresh.",
+      "casi_errore": "alert('Errore: ' + (e.response?.data?.detail || e.message)) se la chiamata fallisce (es. 404 se il verbale è stato eliminato nel frattempo)."
+    },
+    {
+      "etichetta": "← Torna indietro (footer pagina, e anche nella schermata di errore)",
+      "cosa_fa_al_click": "navigate(-1): torna alla pagina precedente nella history del browser (tipicamente la scheda/tab da cui si era aperto il dettaglio, se non è stato aperto in una nuova scheda con target='_blank' — in tal caso torna a una history vuota/pagina bianca del browser).",
+      "endpoint_chiamato": "Nessuna chiamata di rete.",
+      "logica_backend": "-",
+      "formula_matematica": "-",
+      "aggiornamento_ui": "Navigazione client-side, nessun refresh dati.",
+      "casi_errore": "-"
+    },
+    {
+      "etichetta": "📄 Visualizza Fattura (box 'Fattura Associata', visibile solo se verbale.fattura_id è presente)",
+      "cosa_fa_al_click": "Link <a target=\"_blank\"> diretto che apre la fattura collegata nel visualizzatore AssoInvoice.",
+      "endpoint_chiamato": "GET /api/fatture-ricevute/fattura/{fattura_id}/view-assoinvoice",
+      "logica_backend": "Endpoint del modulo fatture (non incluso in questo file), fuori dal perimetro dei router verbali.",
+      "formula_matematica": "-",
+      "aggiornamento_ui": "Apre la vista fattura in una nuova scheda.",
+      "casi_errore": "-"
+    }
+  ],
+  "operazioni_di_registrazione": [
+    {
+      "nome": "Caricamento dettaglio verbale (al mount e ad ogni cambio del parametro URL)",
+      "sequenza_esatta": "fetchVerbale() (useCallback, dipende da verbaleId costruito come `${prefisso}/${numero}` se la route ha entrambi i parametri, altrimenti da numeroVerbale) -> GET /api/verbali-noleggio/dettaglio/{verbaleId}. Il backend (get_verbale_dettaglio in verbali_noleggio_api.py, route con {numero_verbale:path} che gestisce anche gli slash) cerca il verbale in verbali_noleggio per numero_verbale/numero_verbale_old (case sensitive e insensitive) o id, con fallback sulla collezione verbali_noleggio_completi se non trovato; arricchisce la risposta con driver_dettaglio (da employees, se driver_id presente), veicolo_dettaglio (da veicoli_noleggio, se targa presente), ricostruisce pdf_disponibili da pdf_data/quietanza_pdf se il campo non è già presente; se manca fattura_id ma c'è la targa, cerca una fattura in invoices la cui descrizione (o xml_raw, con una query condizionale un po' fragile) contenga la targa; rimuove pdf_data/quietanza_pdf dalla risposta finale (troppo pesanti da restituire).",
+      "collezioni_coinvolte": ["verbali_noleggio (lettura, con fallback verbali_noleggio_completi)", "employees (lettura, dettaglio driver)", "veicoli_noleggio (lettura, dettaglio veicolo)", "invoices (lettura, ricerca fattura per targa se non già associata)"],
+      "campi_scritti": {},
+      "effetti_collaterali": "Nessuna scrittura: operazione di sola lettura. In caso di 404 la pagina mostra un banner di errore rosso con messaggio 'Verbale \"{id}\" non trovato nel database. Potrebbe essere stato eliminato o il numero potrebbe non essere corretto.' e un bottone Torna indietro."
+    },
+    {
+      "nome": "Registrazione pagamento tramite ricerca automatica (bottone Cerca pagamento)",
+      "sequenza_esatta": "Vedi bottone '🔍 Cerca pagamento' sopra: se trova un match tramite trova_pagamento_verbale(), applica_pagamento_a_verbale() scrive i campi di pagamento sul verbale (probabilmente fonte_riconciliazione, psp, importo, data_pagamento, metodo_pagamento, iuv, pdf_ricevuta_path e lo stato che porta la UI a mostrare il box verde 'PAGATO' — la logica esatta di applica_pagamento_a_verbale non è nel perimetro di questo file, dedurre dai campi letti nella UI: verbale.psp, verbale.metodo_pagamento, verbale.fonte_riconciliazione, verbale.iuv, verbale.pdf_ricevuta_path).",
+      "collezioni_coinvolte": ["verbali_noleggio (scrittura, tramite applica_pagamento_a_verbale)"],
+      "campi_scritti": {
+        "verbali_noleggio": "fonte_riconciliazione, psp, importo, data_pagamento, metodo_pagamento, iuv, pdf_ricevuta_path, stato/stato_pagamento (presumibilmente aggiornati a 'pagato')"
+      },
+      "effetti_collaterali": "Dopo il reload della pagina (window.location.reload() a 500ms dal successo) l'utente vede immediatamente il box 'Stato Pagamento' passare da 'DA VERIFICARE'/'SOSPESO' (arancione, con bottone Cerca pagamento) a 'PAGATO' (verde, con eventuale bottone Scarica ricevuta se è stato trovato anche il PDF)."
+    }
+  ],
+  "collegamenti_con_altre_pagine": [
+    "Riconciliazione Verbali Noleggio (/noleggio -> tab Verbali, componente VerbaliRiconciliazione.jsx, documentata in memoria/pagine/noleggio-verbali.json) — pagina 'madre' da cui si arriva qui tramite il bottone 📄 Dettaglio (apertura in nuova scheda con window.open), che passa nell'URL il numero_verbale così com'è in elenco.",
+    "Visualizzatore Fattura AssoInvoice (/api/fatture-ricevute/fattura/{id}/view-assoinvoice) — link diretto dal box 'Fattura Associata' quando il verbale ha già una fattura collegata.",
+    "Tab Flotta Auto (parte dello stesso hub Noleggio) — condivide la collezione veicoli_noleggio per il box Info Veicolo (targa, driver, fornitore, contratto, periodo)."
+  ],
+  "popup_e_modali_presenti": [],
+  "note_tecniche_aggiuntive": [
+    "Questo componente (DettaglioVerbale.jsx) e il suo backend erano già stati censiti come 'pagina figlia' all'interno di memoria/pagine/noleggio-verbali.json (che descrive in dettaglio anche l'endpoint /dettaglio, /pdf, /cerca-pagamento, /ricevuta-pdf e /scarica-posta): questo file di documentazione approfondisce e centra l'attenzione specificamente su DettaglioVerbale.jsx come pagina a sé stante, con maggior dettaglio sul comportamento dei singoli bottoni PDF/download e sulle route con e senza slash nel numero verbale.",
+    "Bug noto: la funzionalità '📧 Scarica da Posta' è un semplice placeholder lato backend (status:'pending', nessuna logica reale) — il messaggio mostrato all'utente ('Scaricati undefined nuovi verbali') tradisce questa incompletezza.",
+    "La route con parametri prefisso+numero (per numeri verbale con slash, es. 'S/2259') e quella con un unico parametro numeroVerbale puntano allo stesso identico componente React; la differenza è solo in come React Router estrae il parametro dall'URL, ricostruito poi in verbaleId."
+  ]
+}
