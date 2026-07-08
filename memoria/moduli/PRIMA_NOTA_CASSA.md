@@ -24,11 +24,22 @@ Verificato leggendo il codice attuale (post-consolidamento router del 2026-07-07
    `app/services/__init__.py` ma **mai istanziata da nessuna parte** (`CorrispettiviService()`
    ha zero chiamanti reali). Tre implementazioni indipendenti dello stesso calcolo, di cui
    solo una è sia corretta sia viva.
-3. **Solo 5 alert `CAS_*` definiti su 6 richiesti dalla spec**, e di questi **solo uno**
-   (`CAS_DIFFERENZA_SALDO`) è referenziato fuori da `alert_engine.py` — e comunque solo per
-   essere *risolto* (`trasferimento_handlers.py:76`), mai creato. `CAS_DUPLICATO`,
-   `CAS_SENZA_CAUSALE`, `CAS_FAT_CONTANTI_NON_REGOLATA`, `CAS_CORRISPETTIVI_INCOERENTI`
-   non hanno alcun punto di creazione — nessun alert cassa scatta mai realmente nella pratica.
+3. ~ PARZIALE (lug 2026) — Solo 5 alert `CAS_*` definiti su 6 richiesti dalla spec.
+   `CAS_DIFFERENZA_SALDO` è referenziato fuori da `alert_engine.py` solo per essere
+   *risolto* (`trasferimento_handlers.py:76`), mai creato — non toccato in questo passaggio.
+   ✔ RISOLTO ora `CAS_DUPLICATO`: generato in `prima_nota_module/sync.py::
+   create_movimento_generico()` (endpoint di inserimento manuale movimento cassa/banca)
+   quando esiste già un movimento cassa con stessa data+tipo+descrizione+importo. Additivo:
+   non blocca l'inserimento (l'utente potrebbe intenzionalmente registrare due movimenti
+   identici), solo lo segnala — verificato con mongomock: alert corretto sul duplicato
+   esatto, nessun falso positivo su movimento banca (fuori scope di questo alert), il
+   secondo movimento viene comunque salvato. Restano morti `CAS_SENZA_CAUSALE`,
+   `CAS_FAT_CONTANTI_NON_REGOLATA`, `CAS_CORRISPETTIVI_INCOERENTI` — richiedono
+   rispettivamente: una definizione più precisa di "causale mancante" (il modello oggi ha
+   solo `descrizione` obbligatoria e `categoria` con default "Altro", nessun vero campo
+   causale distinto), un confronto fatture-a-pagamento-contanti vs cassa non ancora
+   costruito, e un tracciamento della quota contanti dei corrispettivi che non risulta
+   ancora esistere in questo repo.
 4. **`CAS_FAT_CONTANTI_NON_REGOLATA` mai generato**: quindi anche se una fattura fosse
    configurata a pagamento contanti ma non risultasse mai regolata in cassa, non esiste
    oggi alcuna segnalazione automatica di questa condizione.

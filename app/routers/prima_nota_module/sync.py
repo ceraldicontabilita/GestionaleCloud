@@ -1003,8 +1003,35 @@ async def create_movimento_generico(data: Dict = Body(...)) -> Dict:
     }
     
     collection = COLLECTION_PRIMA_NOTA_BANCA if tipo_nota == "banca" else COLLECTION_PRIMA_NOTA_CASSA
+
+    # CAS_DUPLICATO era definito in alert_engine.py ma mai generato: nessun
+    # controllo esisteva sui movimenti cassa inseriti manualmente (a
+    # differenza dell'import massivo estratto conto, che ha già un
+    # anti-duplicato — vedi BNK_DUPLICATO). Additivo: segnala soltanto, non
+    # blocca l'inserimento (l'utente potrebbe intenzionalmente registrare due
+    # movimenti identici, es. due versamenti uguali in giorni diversi con
+    # stessa descrizione generica).
+    if tipo_nota != "banca":
+        try:
+            duplicato = await db[collection].find_one({
+                "data": movimento["data"],
+                "tipo": movimento["tipo"],
+                "descrizione": movimento["descrizione"],
+                "importo": {"$gte": movimento["importo"] - 0.005, "$lte": movimento["importo"] + 0.005},
+            }, {"_id": 0, "id": 1})
+            if duplicato:
+                from app.services.alert_engine import genera_alert
+                await genera_alert(
+                    "CAS_DUPLICATO", movimento["id"], collection,
+                    f"Movimento cassa del {movimento['data']} (€{movimento['importo']}, "
+                    f"{movimento['descrizione'][:60]}) uguale a uno già esistente (id {duplicato.get('id')})",
+                    db, extra={"movimento_esistente_id": duplicato.get("id")},
+                )
+        except Exception:
+            logger.exception(f"Errore generazione alert CAS_DUPLICATO per {movimento['id']}")
+
     await db[collection].insert_one(movimento.copy())
-    
+
     return {"message": f"Movimento {tipo_nota} creato", "id": movimento["id"]}
 
 
