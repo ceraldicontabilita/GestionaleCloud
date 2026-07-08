@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../api';
-import { formatEuro, formatDateIT } from '../lib/utils';
+import { formatEuro, formatDateIT, COLORS, SHADOWS, BORDER_RADIUS } from '../lib/utils';
 import { X, Mail, FileText, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
+import { Button } from './ds';
 
 /**
  * Componente che sincronizza automaticamente gli F24 dalle email
@@ -57,9 +58,9 @@ export default function F24EmailSync({ onClose }) {
         right: 20,
         zIndex: 9999,
         maxWidth: 420,
-        background: 'white',
-        borderRadius: 12,
-        boxShadow: '0 10px 40px rgba(0,0,0,0.2)',
+        background: COLORS.card,
+        borderRadius: BORDER_RADIUS.lg,
+        boxShadow: SHADOWS.modal,
         overflow: 'hidden',
         animation: 'slideIn 0.3s ease-out',
       }}
@@ -77,12 +78,12 @@ export default function F24EmailSync({ onClose }) {
           padding: '16px 20px',
           background:
             status === 'loading'
-              ? '#3b82f6'
+              ? COLORS.info
               : status === 'success'
-                ? '#16a34a'
+                ? COLORS.success
                 : status === 'empty'
-                  ? '#64748b'
-                  : '#dc2626',
+                  ? COLORS.textMuted
+                  : COLORS.danger,
           color: 'white',
           display: 'flex',
           alignItems: 'center',
@@ -110,32 +111,27 @@ export default function F24EmailSync({ onClose }) {
           </span>
         </div>
         {status !== 'loading' && (
-          <button
+          <Button
+            variant="ghost"
             onClick={handleClose}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: 'white',
-              cursor: 'pointer',
-              padding: 4,
-            }}
+            style={{ color: 'white', padding: 4 }}
           >
             <X size={18} />
-          </button>
+          </Button>
         )}
       </div>
 
       {/* Content */}
       <div style={{ padding: 20 }}>
         {status === 'loading' && (
-          <div style={{ textAlign: 'center', padding: 20, color: '#64748b' }}>
+          <div style={{ textAlign: 'center', padding: 20, color: COLORS.textMuted }}>
             <div style={{ marginBottom: 12 }}>Scaricamento allegati F24 dalle email...</div>
             <div style={{ fontSize: 12 }}>Questo può richiedere qualche secondo</div>
           </div>
         )}
 
         {status === 'empty' && (
-          <div style={{ textAlign: 'center', color: '#64748b' }}>
+          <div style={{ textAlign: 'center', color: COLORS.textMuted }}>
             <Mail size={32} style={{ margin: '0 auto 12px', opacity: 0.5 }} />
             <div>Nessun nuovo F24 trovato nelle email degli ultimi 30 giorni</div>
           </div>
@@ -155,29 +151,29 @@ export default function F24EmailSync({ onClose }) {
               <div
                 style={{
                   padding: 12,
-                  background: '#dcfce7',
-                  borderRadius: 8,
+                  background: COLORS.successLight,
+                  borderRadius: BORDER_RADIUS.md,
                   textAlign: 'center',
                 }}
               >
-                <div style={{ fontSize: 24, fontWeight: 'bold', color: '#166534' }}>
+                <div style={{ fontSize: 24, fontWeight: 'bold', color: COLORS.success }}>
                   {result.f24_caricati}
                 </div>
-                <div style={{ fontSize: 12, color: '#166534' }}>F24 Caricati</div>
+                <div style={{ fontSize: 12, color: COLORS.success }}>F24 Caricati</div>
               </div>
               {result.quietanze_trovate > 0 && (
                 <div
                   style={{
                     padding: 12,
-                    background: '#dbeafe',
-                    borderRadius: 8,
+                    background: COLORS.infoLight,
+                    borderRadius: BORDER_RADIUS.md,
                     textAlign: 'center',
                   }}
                 >
-                  <div style={{ fontSize: 24, fontWeight: 'bold', color: '#1e40af' }}>
+                  <div style={{ fontSize: 24, fontWeight: 'bold', color: COLORS.info }}>
                     {result.quietanze_trovate}
                   </div>
-                  <div style={{ fontSize: 12, color: '#1e40af' }}>Quietanze</div>
+                  <div style={{ fontSize: 12, color: COLORS.info }}>Quietanze</div>
                 </div>
               )}
             </div>
@@ -186,7 +182,7 @@ export default function F24EmailSync({ onClose }) {
             {result.dettagli && result.dettagli.length > 0 && (
               <div>
                 <div
-                  style={{ fontSize: 13, fontWeight: 'bold', marginBottom: 8, color: '#1e293b' }}
+                  style={{ fontSize: 13, fontWeight: 'bold', marginBottom: 8, color: COLORS.gray[800] }}
                 >
                   📋 F24 Importati:
                 </div>
@@ -196,8 +192,8 @@ export default function F24EmailSync({ onClose }) {
                       key={idx}
                       style={{
                         padding: 10,
-                        background: '#f8fafc',
-                        borderRadius: 6,
+                        background: COLORS.bgAlt,
+                        borderRadius: BORDER_RADIUS.sm,
                         marginBottom: 8,
                         fontSize: 13,
                       }}
@@ -209,23 +205,23 @@ export default function F24EmailSync({ onClose }) {
                           alignItems: 'center',
                         }}
                       >
-                        <div style={{ fontWeight: 'bold', color: '#1e293b' }}>
+                        <div style={{ fontWeight: 'bold', color: COLORS.gray[800] }}>
                           <FileText size={14} style={{ display: 'inline', marginRight: 6 }} />
                           {f24.file.length > 30 ? f24.file.substring(0, 30) + '...' : f24.file}
                         </div>
                         <div
                           style={{
                             fontWeight: 'bold',
-                            color: '#dc2626',
-                            background: '#fef2f2',
+                            color: COLORS.danger,
+                            background: COLORS.dangerLight,
                             padding: '2px 8px',
-                            borderRadius: 4,
+                            borderRadius: BORDER_RADIUS.sm,
                           }}
                         >
                           {formatEuro(f24.importo)}
                         </div>
                       </div>
-                      <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
+                      <div style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 4 }}>
                         Scadenza: {formatDateIT(f24.data_scadenza) || 'N/D'} • {f24.tributi} tributi
                       </div>
                     </div>
@@ -237,7 +233,7 @@ export default function F24EmailSync({ onClose }) {
             {/* Errori */}
             {result.errori && result.errori.length > 0 && (
               <div style={{ marginTop: 12 }}>
-                <div style={{ fontSize: 12, color: '#dc2626', marginBottom: 4 }}>
+                <div style={{ fontSize: 12, color: COLORS.danger, marginBottom: 4 }}>
                   ⚠️ {result.errori.length} file non processati
                 </div>
               </div>
@@ -250,10 +246,10 @@ export default function F24EmailSync({ onClose }) {
                 display: 'block',
                 marginTop: 16,
                 padding: 12,
-                background: '#1e40af',
+                background: COLORS.info,
                 color: 'white',
                 textAlign: 'center',
-                borderRadius: 8,
+                borderRadius: BORDER_RADIUS.md,
                 textDecoration: 'none',
                 fontWeight: 'bold',
               }}
@@ -264,7 +260,7 @@ export default function F24EmailSync({ onClose }) {
         )}
 
         {status === 'error' && result && (
-          <div style={{ color: '#dc2626' }}>
+          <div style={{ color: COLORS.danger }}>
             <AlertCircle size={32} style={{ margin: '0 auto 12px', display: 'block' }} />
             <div style={{ textAlign: 'center' }}>
               {result.error || result.messaggio || 'Errore durante la sincronizzazione'}

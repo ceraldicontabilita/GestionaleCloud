@@ -4,6 +4,8 @@
  */
 import React, { useState } from 'react';
 import { useUpload } from '../contexts/UploadContext';
+import { Button } from './ds';
+import { COLORS, SHADOWS, BORDER_RADIUS } from '../lib/utils';
 
 export function UploadStatusBar() {
   const {
@@ -31,7 +33,8 @@ export function UploadStatusBar() {
             .upload-status-fixed { bottom: 84px !important; }
           }
         `}</style>
-        <button
+        <Button
+          variant={hasActiveUploads ? 'info' : completedUploads.length > 0 ? 'success' : 'danger'}
           onClick={() => setMinimized(false)}
           className="upload-status-fixed"
           style={{
@@ -40,19 +43,9 @@ export function UploadStatusBar() {
             right: 20,
             width: 56,
             height: 56,
-            borderRadius: '50%',
-            background: hasActiveUploads
-              ? '#3b82f6'
-              : completedUploads.length > 0
-                ? '#10b981'
-                : '#ef4444',
-            border: 'none',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: 'white',
+            padding: 0,
+            borderRadius: BORDER_RADIUS.full,
+            boxShadow: SHADOWS.lg,
             fontSize: 20,
             zIndex: 9999,
             animation: hasActiveUploads ? 'pulse 2s infinite' : 'none',
@@ -64,9 +57,9 @@ export function UploadStatusBar() {
               position: 'absolute',
               top: -4,
               right: -4,
-              background: '#ef4444',
+              background: COLORS.danger,
               color: 'white',
-              borderRadius: '50%',
+              borderRadius: BORDER_RADIUS.full,
               width: 20,
               height: 20,
               fontSize: 11,
@@ -77,7 +70,7 @@ export function UploadStatusBar() {
           >
             {uploads.length}
           </span>
-        </button>
+        </Button>
       </>
     );
   }
@@ -90,9 +83,9 @@ export function UploadStatusBar() {
         bottom: 20,
         right: 20,
         width: expanded ? 380 : 320,
-        background: 'white',
-        borderRadius: 12,
-        boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+        background: COLORS.card,
+        borderRadius: BORDER_RADIUS.lg,
+        boxShadow: SHADOWS.xl,
         zIndex: 9999,
         overflow: 'hidden',
         transition: 'width 0.2s',
@@ -117,7 +110,7 @@ export function UploadStatusBar() {
       <div
         style={{
           padding: '12px 16px',
-          background: hasActiveUploads ? '#3b82f6' : '#1e293b',
+          background: hasActiveUploads ? COLORS.info : COLORS.gray[800],
           color: 'white',
           display: 'flex',
           justifyContent: 'space-between',
@@ -133,34 +126,32 @@ export function UploadStatusBar() {
           </span>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button
+          <Button
+            variant="ghost"
             onClick={() => setExpanded(!expanded)}
             style={{
               background: 'rgba(255,255,255,0.2)',
-              border: 'none',
-              borderRadius: 4,
+              borderRadius: BORDER_RADIUS.sm,
               padding: '4px 8px',
               color: 'white',
-              cursor: 'pointer',
               fontSize: 12,
             }}
           >
             {expanded ? '▼' : '▲'}
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="ghost"
             onClick={() => setMinimized(true)}
             style={{
               background: 'rgba(255,255,255,0.2)',
-              border: 'none',
-              borderRadius: 4,
+              borderRadius: BORDER_RADIUS.sm,
               padding: '4px 8px',
               color: 'white',
-              cursor: 'pointer',
               fontSize: 12,
             }}
           >
             −
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -177,8 +168,8 @@ export function UploadStatusBar() {
             key={upload.id}
             style={{
               padding: '12px 16px',
-              borderBottom: '1px solid #f1f5f9',
-              background: upload.status === 'error' ? '#fef2f2' : 'white',
+              borderBottom: `1px solid ${COLORS.bg}`,
+              background: upload.status === 'error' ? COLORS.dangerLight : COLORS.card,
             }}
           >
             {/* File info */}
@@ -195,7 +186,7 @@ export function UploadStatusBar() {
                   style={{
                     fontWeight: 600,
                     fontSize: 13,
-                    color: '#1e293b',
+                    color: COLORS.gray[800],
                     whiteSpace: 'nowrap',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
@@ -203,7 +194,7 @@ export function UploadStatusBar() {
                 >
                   {upload.fileName}
                 </div>
-                <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+                <div style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 2 }}>
                   {upload.fileType} • {getStatusText(upload.status)}
                 </div>
               </div>
@@ -212,19 +203,17 @@ export function UploadStatusBar() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 8 }}>
                 <span style={{ fontSize: 16 }}>{getStatusIcon(upload.status)}</span>
                 {(upload.status === 'completed' || upload.status === 'error') && (
-                  <button
+                  <Button
+                    variant="ghost"
                     onClick={() => removeUpload(upload.id)}
                     style={{
-                      background: 'none',
-                      border: 'none',
-                      cursor: 'pointer',
                       fontSize: 14,
-                      color: '#94a3b8',
+                      color: COLORS.textSubtle,
                       padding: 4,
                     }}
                   >
                     ✕
-                  </button>
+                  </Button>
                 )}
               </div>
             </div>
@@ -234,7 +223,7 @@ export function UploadStatusBar() {
               <div
                 style={{
                   height: 6,
-                  background: '#e5e7eb',
+                  background: COLORS.border,
                   borderRadius: 3,
                   overflow: 'hidden',
                 }}
@@ -244,7 +233,7 @@ export function UploadStatusBar() {
                     height: '100%',
                     width: `${upload.progress}%`,
                     background:
-                      '#1d4ed8',
+                      COLORS.info,
                     backgroundSize: '40px 40px',
                     animation: 'progress-stripe 1s linear infinite',
                     transition: 'width 0.3s',
@@ -258,11 +247,11 @@ export function UploadStatusBar() {
               <div
                 style={{
                   fontSize: 11,
-                  color: '#dc2626',
+                  color: COLORS.danger,
                   marginTop: 4,
                   padding: '4px 8px',
-                  background: '#fee2e2',
-                  borderRadius: 4,
+                  background: COLORS.dangerLight,
+                  borderRadius: BORDER_RADIUS.sm,
                 }}
               >
                 {upload.error}
@@ -274,11 +263,11 @@ export function UploadStatusBar() {
               <div
                 style={{
                   fontSize: 11,
-                  color: '#059669',
+                  color: COLORS.success,
                   marginTop: 4,
                   padding: '4px 8px',
-                  background: '#d1fae5',
-                  borderRadius: 4,
+                  background: COLORS.successLight,
+                  borderRadius: BORDER_RADIUS.sm,
                 }}
               >
                 {getResultSummary(upload.result)}
@@ -293,29 +282,27 @@ export function UploadStatusBar() {
         <div
           style={{
             padding: '8px 16px',
-            background: '#f8fafc',
-            borderTop: '1px solid #e5e7eb',
+            background: COLORS.bgAlt,
+            borderTop: `1px solid ${COLORS.border}`,
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
           }}
         >
-          <span style={{ fontSize: 11, color: '#64748b' }}>
+          <span style={{ fontSize: 11, color: COLORS.textMuted }}>
             {completedUploads.length} completati, {errorUploads.length} errori
           </span>
-          <button
+          <Button
+            variant="ghost"
             onClick={clearCompleted}
             style={{
-              background: 'none',
-              border: 'none',
-              color: '#3b82f6',
+              color: COLORS.info,
               fontSize: 12,
-              cursor: 'pointer',
               fontWeight: 600,
             }}
           >
             Pulisci completati
-          </button>
+          </Button>
         </div>
       )}
     </div>

@@ -1,4 +1,6 @@
 import React from 'react';
+import { COLORS, BORDER_RADIUS, FONT } from '../lib/utils';
+import { Button } from './ds/Button';
 
 /**
  * ErrorBoundary - Cattura errori nei componenti figli e mostra fallback UI.
@@ -38,25 +40,26 @@ class ErrorBoundary extends React.Component {
       return (
         <div
           style={{
-            padding: '40px',
+            padding: 40,
             textAlign: 'center',
-            minHeight: '300px',
+            minHeight: 300,
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: '16px',
-            backgroundColor: '#fef2f2',
-            borderRadius: '12px',
-            margin: '20px',
-            border: '1px solid #fecaca',
+            gap: 16,
+            backgroundColor: COLORS.dangerLight,
+            borderRadius: BORDER_RADIUS.lg,
+            margin: 20,
+            border: `1px solid ${COLORS.danger}`,
+            fontFamily: FONT.family,
           }}
         >
-          <div style={{ fontSize: '48px' }}>⚠️</div>
-          <h2 style={{ color: '#991b1b', margin: 0, fontSize: '20px' }}>
+          <div style={{ fontSize: 48 }}>⚠️</div>
+          <h2 style={{ color: COLORS.danger, margin: 0, fontSize: 20 }}>
             Si è verificato un errore
           </h2>
-          <p style={{ color: '#7f1d1d', maxWidth: '500px', margin: 0 }}>
+          <p style={{ color: COLORS.text, maxWidth: 500, margin: 0 }}>
             {this.props.message ||
               'Qualcosa è andato storto in questa sezione. Puoi provare a ricaricare.'}
           </p>
@@ -66,55 +69,33 @@ class ErrorBoundary extends React.Component {
             <details
               style={{
                 textAlign: 'left',
-                maxWidth: '600px',
+                maxWidth: 600,
                 width: '100%',
-                padding: '12px',
-                backgroundColor: '#fff',
-                borderRadius: '8px',
-                border: '1px solid #e5e7eb',
-                fontSize: '12px',
-                color: '#6b7280',
+                padding: 12,
+                backgroundColor: COLORS.card,
+                borderRadius: BORDER_RADIUS.md,
+                border: `1px solid ${COLORS.border}`,
+                fontSize: 12,
+                color: COLORS.textMuted,
               }}
             >
-              <summary style={{ cursor: 'pointer', fontWeight: 'bold', color: '#374151' }}>
+              <summary style={{ cursor: 'pointer', fontWeight: 'bold', color: COLORS.gray[700] }}>
                 Dettagli errore (dev)
               </summary>
-              <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', marginTop: '8px' }}>
+              <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', marginTop: 8 }}>
                 {this.state.error.toString()}
                 {this.state.errorInfo?.componentStack}
               </pre>
             </details>
           )}
 
-          <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
-            <button
-              onClick={this.handleReset}
-              style={{
-                padding: '8px 20px',
-                borderRadius: '8px',
-                border: '1px solid #d1d5db',
-                backgroundColor: '#fff',
-                cursor: 'pointer',
-                fontSize: '14px',
-                color: '#374151',
-              }}
-            >
+          <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
+            <Button variant="secondary" onClick={this.handleReset}>
               Riprova
-            </button>
-            <button
-              onClick={this.handleReload}
-              style={{
-                padding: '8px 20px',
-                borderRadius: '8px',
-                border: 'none',
-                backgroundColor: '#dc2626',
-                color: '#fff',
-                cursor: 'pointer',
-                fontSize: '14px',
-              }}
-            >
+            </Button>
+            <Button variant="danger" onClick={this.handleReload}>
               Ricarica pagina
-            </button>
+            </Button>
           </div>
         </div>
       );

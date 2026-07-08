@@ -4,6 +4,8 @@
  */
 import React, { useState, useRef, useEffect } from 'react';
 import api from '../api';
+import { Button, Input } from './ds';
+import { COLORS, SHADOWS, BORDER_RADIUS } from '../lib/utils';
 
 export default function ChatIntelligente() {
   const [isOpen, setIsOpen] = useState(false);
@@ -154,7 +156,8 @@ export default function ChatIntelligente() {
             [data-testid="chat-toggle"] { bottom: 84px !important; }
           }
         `}</style>
-        <button
+        <Button
+          variant="info"
           onClick={() => setIsOpen(true)}
           data-testid="chat-toggle"
           style={{
@@ -163,30 +166,24 @@ export default function ChatIntelligente() {
             right: 24,
             width: 60,
             height: 60,
-            borderRadius: '50%',
-            background: '#1d4ed8',
-            border: 'none',
-            color: 'white',
+            padding: 0,
+            borderRadius: BORDER_RADIUS.full,
             fontSize: 28,
-            cursor: 'pointer',
-            boxShadow: '0 4px 20px rgba(99, 102, 241, 0.4)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
+            boxShadow: '0 4px 20px rgba(29,78,216,0.4)',
             transition: 'transform 0.2s, box-shadow 0.2s',
             zIndex: 1000,
           }}
           onMouseEnter={e => {
             e.target.style.transform = 'scale(1.1)';
-            e.target.style.boxShadow = '0 6px 24px rgba(99, 102, 241, 0.5)';
+            e.target.style.boxShadow = '0 6px 24px rgba(29,78,216,0.5)';
           }}
           onMouseLeave={e => {
             e.target.style.transform = 'scale(1)';
-            e.target.style.boxShadow = '0 4px 20px rgba(99, 102, 241, 0.4)';
+            e.target.style.boxShadow = '0 4px 20px rgba(29,78,216,0.4)';
           }}
         >
           🤖
-        </button>
+        </Button>
       </>
     );
   }
@@ -216,9 +213,9 @@ export default function ChatIntelligente() {
         right: 24,
         width: 400,
         height: 550,
-        background: 'white',
-        borderRadius: 16,
-        boxShadow: '0 8px 40px rgba(0,0,0,0.15)',
+        background: COLORS.card,
+        borderRadius: BORDER_RADIUS.xl,
+        boxShadow: SHADOWS.xl,
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
@@ -228,7 +225,7 @@ export default function ChatIntelligente() {
       {/* Header */}
       <div
         style={{
-          background: '#1d4ed8',
+          background: COLORS.info,
           padding: '16px 20px',
           color: 'white',
           display: 'flex',
@@ -258,24 +255,21 @@ export default function ChatIntelligente() {
             />
             AI
           </label>
-          <button
+          <Button
+            variant="ghost"
             onClick={() => setIsOpen(false)}
             style={{
               background: 'rgba(255,255,255,0.2)',
-              border: 'none',
               color: 'white',
               width: 32,
               height: 32,
-              borderRadius: '50%',
-              cursor: 'pointer',
+              padding: 0,
+              borderRadius: BORDER_RADIUS.full,
               fontSize: 18,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
             }}
           >
             ✕
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -285,7 +279,7 @@ export default function ChatIntelligente() {
           flex: 1,
           overflow: 'auto',
           padding: 16,
-          background: '#f8fafc',
+          background: COLORS.bgAlt,
         }}
       >
         {messages.map((msg, idx) => (
@@ -304,12 +298,12 @@ export default function ChatIntelligente() {
                 borderRadius: msg.type === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
                 background:
                   msg.type === 'user'
-                    ? '#1d4ed8'
+                    ? COLORS.info
                     : msg.isError
-                      ? '#fee2e2'
-                      : 'white',
-                color: msg.type === 'user' ? 'white' : msg.isError ? '#dc2626' : '#1e293b',
-                boxShadow: msg.type === 'user' ? 'none' : '0 1px 3px rgba(0,0,0,0.1)',
+                      ? COLORS.dangerLight
+                      : COLORS.card,
+                color: msg.type === 'user' ? 'white' : msg.isError ? COLORS.danger : COLORS.gray[800],
+                boxShadow: msg.type === 'user' ? 'none' : SHADOWS.sm,
                 fontSize: 14,
                 lineHeight: 1.5,
                 whiteSpace: 'pre-wrap',
@@ -321,9 +315,9 @@ export default function ChatIntelligente() {
                   style={{
                     marginTop: 8,
                     paddingTop: 8,
-                    borderTop: '1px solid rgba(0,0,0,0.1)',
+                    borderTop: `1px solid ${COLORS.border}`,
                     fontSize: 11,
-                    color: '#64748b',
+                    color: COLORS.textMuted,
                   }}
                 >
                   Query: {msg.queryType}
@@ -339,8 +333,8 @@ export default function ChatIntelligente() {
               style={{
                 padding: '12px 16px',
                 borderRadius: '16px 16px 16px 4px',
-                background: 'white',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                background: COLORS.card,
+                boxShadow: SHADOWS.sm,
                 fontSize: 14,
               }}
             >
@@ -369,28 +363,26 @@ export default function ChatIntelligente() {
         <div
           style={{
             padding: '8px 16px',
-            borderTop: '1px solid #e5e7eb',
-            background: '#f1f5f9',
+            borderTop: `1px solid ${COLORS.border}`,
+            background: COLORS.bg,
           }}
         >
-          <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8 }}>💡 Suggerimenti:</div>
+          <div style={{ fontSize: 11, color: COLORS.textMuted, marginBottom: 8 }}>💡 Suggerimenti:</div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {suggestedQuestions.slice(0, 3).map((q, i) => (
-              <button
+              <Button
                 key={i}
+                variant="secondary"
                 onClick={() => handleSuggestion(q)}
                 style={{
                   padding: '6px 10px',
                   fontSize: 11,
-                  background: 'white',
-                  border: '1px solid #e5e7eb',
-                  borderRadius: 16,
-                  cursor: 'pointer',
-                  color: '#475569',
+                  borderRadius: BORDER_RADIUS.full,
+                  color: COLORS.gray[600],
                 }}
               >
                 {q}
-              </button>
+              </Button>
             ))}
           </div>
         </div>
@@ -400,69 +392,59 @@ export default function ChatIntelligente() {
       <div
         style={{
           padding: 16,
-          borderTop: '1px solid #e5e7eb',
+          borderTop: `1px solid ${COLORS.border}`,
           display: 'flex',
           gap: 8,
         }}
       >
-        <input
+        <Input
           type="text"
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyPress={handleKeyPress}
           placeholder={isListening ? 'Ti ascolto...' : 'Scrivi una domanda...'}
           disabled={isLoading}
+          error={isListening}
           data-testid="chat-input"
           style={{
             flex: 1,
             padding: '12px 16px',
-            border: isListening ? '1px solid #dc2626' : '1px solid #e5e7eb',
             borderRadius: 24,
             fontSize: 14,
-            outline: 'none',
-            transition: 'border-color 0.2s',
           }}
-          onFocus={e => (e.target.style.borderColor = '#6366f1')}
-          onBlur={e => (e.target.style.borderColor = isListening ? '#dc2626' : '#e5e7eb')}
         />
         {SpeechRecognitionCtor && (
-          <button
+          <Button
+            variant={isListening ? 'danger' : 'secondary'}
             onClick={toggleListening}
             disabled={isLoading}
             data-testid="chat-mic"
             title={isListening ? 'Ferma registrazione' : 'Parla invece di scrivere'}
             style={{
               padding: '12px 16px',
-              background: isListening ? '#dc2626' : '#f1f5f9',
-              border: 'none',
               borderRadius: 24,
-              color: isListening ? 'white' : '#475569',
-              cursor: isLoading ? 'not-allowed' : 'pointer',
+              background: isListening ? COLORS.danger : COLORS.bg,
+              color: isListening ? 'white' : COLORS.gray[600],
               fontSize: 16,
               animation: isListening ? 'pulse 1.2s infinite' : 'none',
             }}
           >
             🎤
-          </button>
+          </Button>
         )}
-        <button
+        <Button
+          variant="info"
           onClick={handleSend}
           disabled={isLoading || !input.trim()}
           data-testid="chat-send"
           style={{
             padding: '12px 20px',
-            background:
-              isLoading || !input.trim() ? '#94a3b8' : '#1d4ed8',
-            border: 'none',
             borderRadius: 24,
-            color: 'white',
-            fontWeight: 600,
-            cursor: isLoading || !input.trim() ? 'not-allowed' : 'pointer',
             fontSize: 14,
           }}
         >
           {isLoading ? '⏳' : '➤'}
-        </button>
+        </Button>
       </div>
       </div>
     </>

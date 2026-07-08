@@ -1,8 +1,9 @@
-import { formatDateIT } from '../lib/utils';
+import { COLORS, SHADOWS, BORDER_RADIUS, formatDateIT } from '../lib/utils';
 import React, { useState, useEffect, useRef } from 'react';
 import { Bell, X, CheckCircle, AlertTriangle, Info, ExternalLink } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
+import { Button, Badge } from './ds';
 
 export default function NotificationBell() {
   const [alerts, setAlerts] = useState([]);
@@ -64,22 +65,22 @@ export default function NotificationBell() {
   const getAlertIcon = tipo => {
     switch (tipo) {
       case 'fornitore_senza_metodo_pagamento':
-        return <AlertTriangle size={16} style={{ color: '#f59e0b' }} />;
+        return <AlertTriangle size={16} style={{ color: COLORS.warning }} />;
       case 'scadenza':
-        return <Bell size={16} style={{ color: '#ef4444' }} />;
+        return <Bell size={16} style={{ color: COLORS.danger }} />;
       default:
-        return <Info size={16} style={{ color: '#3b82f6' }} />;
+        return <Info size={16} style={{ color: COLORS.info }} />;
     }
   };
 
   const getPriorityBorder = priorita => {
     switch (priorita) {
       case 'alta':
-        return '#ef4444';
+        return COLORS.danger;
       case 'media':
-        return '#f59e0b';
+        return COLORS.warning;
       default:
-        return '#3b82f6';
+        return COLORS.info;
     }
   };
 
@@ -95,21 +96,15 @@ export default function NotificationBell() {
 
   return (
     <div style={{ position: 'relative' }} ref={dropdownRef}>
-      <button
+      <Button
         onClick={() => setIsOpen(!isOpen)}
+        variant="ghost"
+        size="sm"
+        data-testid="notification-bell"
         style={{
           position: 'relative',
-          padding: '8px',
-          borderRadius: '8px',
           background: isOpen ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.1)',
-          border: 'none',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          transition: 'background 0.2s',
         }}
-        data-testid="notification-bell"
       >
         <Bell size={18} style={{ color: 'white' }} />
         {unreadCount > 0 && (
@@ -118,24 +113,24 @@ export default function NotificationBell() {
               position: 'absolute',
               top: '-4px',
               right: '-4px',
-              background: '#ef4444',
+              background: COLORS.danger,
               color: 'white',
               fontSize: '10px',
               fontWeight: 'bold',
-              borderRadius: '50%',
+              borderRadius: BORDER_RADIUS.full,
               minWidth: '18px',
               height: '18px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               padding: '0 4px',
-              boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+              boxShadow: SHADOWS.sm,
             }}
           >
             {unreadCount > 99 ? '99+' : unreadCount}
           </span>
         )}
-      </button>
+      </Button>
 
       {isOpen && (
         <div
@@ -144,10 +139,10 @@ export default function NotificationBell() {
             right: 0,
             marginTop: '8px',
             width: '340px',
-            backgroundColor: 'white',
-            borderRadius: '12px',
-            boxShadow: '0 10px 40px rgba(0,0,0,0.25)',
-            border: '1px solid #e5e7eb',
+            backgroundColor: COLORS.card,
+            borderRadius: BORDER_RADIUS.xl,
+            boxShadow: SHADOWS.modal,
+            border: `1px solid ${COLORS.border}`,
             zIndex: 99999,
             maxHeight: '70vh',
             overflow: 'hidden',
@@ -159,11 +154,11 @@ export default function NotificationBell() {
           <div
             style={{
               padding: '14px 16px',
-              borderBottom: '1px solid #e5e7eb',
+              borderBottom: `1px solid ${COLORS.border}`,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              background: '#f8fafc',
+              background: COLORS.bgAlt,
             }}
           >
             <h3
@@ -171,7 +166,7 @@ export default function NotificationBell() {
                 margin: 0,
                 fontWeight: 600,
                 fontSize: '14px',
-                color: '#1f2937',
+                color: COLORS.text,
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px',
@@ -179,44 +174,26 @@ export default function NotificationBell() {
             >
               <Bell size={16} />
               Notifiche
-              {unreadCount > 0 && (
-                <span
-                  style={{
-                    background: '#fee2e2',
-                    color: '#dc2626',
-                    fontSize: '11px',
-                    padding: '2px 8px',
-                    borderRadius: '10px',
-                    fontWeight: 600,
-                  }}
-                >
-                  {unreadCount} nuove
-                </span>
-              )}
+              {unreadCount > 0 && <Badge variant="danger">{unreadCount} nuove</Badge>}
             </h3>
-            <button
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => setIsOpen(false)}
-              style={{
-                padding: '4px',
-                background: 'transparent',
-                border: 'none',
-                cursor: 'pointer',
-                borderRadius: '6px',
-                display: 'flex',
-              }}
+              style={{ padding: '4px' }}
             >
-              <X size={18} style={{ color: '#6b7280' }} />
-            </button>
+              <X size={18} style={{ color: COLORS.textMuted }} />
+            </Button>
           </div>
 
           {/* Alerts List */}
           <div style={{ overflowY: 'auto', flex: 1 }}>
             {loading ? (
-              <div style={{ padding: '24px', textAlign: 'center', color: '#6b7280' }}>
+              <div style={{ padding: '24px', textAlign: 'center', color: COLORS.textMuted }}>
                 Caricamento...
               </div>
             ) : alerts.length === 0 ? (
-              <div style={{ padding: '40px 24px', textAlign: 'center', color: '#9ca3af' }}>
+              <div style={{ padding: '40px 24px', textAlign: 'center', color: COLORS.textSubtle }}>
                 <Bell size={32} style={{ opacity: 0.3, marginBottom: '8px' }} />
                 <p style={{ margin: 0 }}>Nessuna notifica</p>
               </div>
@@ -228,15 +205,17 @@ export default function NotificationBell() {
                     onClick={() => handleAlertClick(alert)}
                     style={{
                       padding: '12px 16px',
-                      borderBottom: '1px solid #f1f5f9',
+                      borderBottom: `1px solid ${COLORS.gray[100]}`,
                       cursor: 'pointer',
                       borderLeft: `4px solid ${getPriorityBorder(alert.priorita)}`,
-                      background: !alert.letto ? '#eff6ff' : 'white',
+                      background: !alert.letto ? COLORS.infoLight : COLORS.card,
                       transition: 'background 0.15s',
                     }}
-                    onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
+                    onMouseEnter={e => (e.currentTarget.style.background = COLORS.bgAlt)}
                     onMouseLeave={e =>
-                      (e.currentTarget.style.background = !alert.letto ? '#eff6ff' : 'white')
+                      (e.currentTarget.style.background = !alert.letto
+                        ? COLORS.infoLight
+                        : COLORS.card)
                     }
                   >
                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
@@ -247,7 +226,7 @@ export default function NotificationBell() {
                             margin: 0,
                             fontSize: '13px',
                             fontWeight: !alert.letto ? 600 : 400,
-                            color: '#1f2937',
+                            color: COLORS.text,
                             whiteSpace: 'nowrap',
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
@@ -259,7 +238,7 @@ export default function NotificationBell() {
                           style={{
                             margin: '4px 0 0',
                             fontSize: '12px',
-                            color: '#6b7280',
+                            color: COLORS.textMuted,
                             display: '-webkit-box',
                             WebkitLineClamp: 2,
                             WebkitBoxOrient: 'vertical',
@@ -276,15 +255,17 @@ export default function NotificationBell() {
                             marginTop: '6px',
                           }}
                         >
-                          <span style={{ fontSize: '11px', color: '#9ca3af' }}>
+                          <span style={{ fontSize: '11px', color: COLORS.textSubtle }}>
                             {formatDateIT(alert.created_at)}
                           </span>
-                          {alert.link && <ExternalLink size={12} style={{ color: '#9ca3af' }} />}
+                          {alert.link && (
+                            <ExternalLink size={12} style={{ color: COLORS.textSubtle }} />
+                          )}
                           {alert.risolto && (
                             <span
                               style={{
                                 fontSize: '11px',
-                                color: '#16a34a',
+                                color: COLORS.success,
                                 display: 'flex',
                                 alignItems: 'center',
                                 gap: '4px',
@@ -296,20 +277,15 @@ export default function NotificationBell() {
                         </div>
                       </div>
                       {!alert.risolto && (
-                        <button
+                        <Button
+                          variant="ghost"
+                          size="sm"
                           onClick={e => resolveAlert(alert.id, e)}
-                          style={{
-                            padding: '6px',
-                            background: 'transparent',
-                            border: 'none',
-                            cursor: 'pointer',
-                            borderRadius: '6px',
-                            color: '#16a34a',
-                          }}
                           title="Segna come risolto"
+                          style={{ padding: '6px', color: COLORS.success }}
                         >
                           <CheckCircle size={16} />
-                        </button>
+                        </Button>
                       )}
                     </div>
                   </div>
@@ -323,27 +299,21 @@ export default function NotificationBell() {
             <div
               style={{
                 padding: '10px 16px',
-                borderTop: '1px solid #e5e7eb',
-                background: '#f8fafc',
+                borderTop: `1px solid ${COLORS.border}`,
+                background: COLORS.bgAlt,
               }}
             >
-              <button
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() => {
                   navigate('/admin?tab=alerts');
                   setIsOpen(false);
                 }}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: '#2563eb',
-                  fontSize: '13px',
-                  fontWeight: 500,
-                  cursor: 'pointer',
-                  padding: 0,
-                }}
+                style={{ color: COLORS.info, padding: 0 }}
               >
                 Vedi tutte le notifiche →
-              </button>
+              </Button>
             </div>
           )}
         </div>

@@ -13,11 +13,12 @@ import { ConfirmProvider } from "./components/ui/ConfirmDialog.jsx";
 import { Toaster } from "./components/ui/sonner.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import Login from "./pages/Login.jsx";
+import { COLORS } from "./lib/utils.js";
 
 const PageLoader = () => (
   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh', flexDirection: 'column', gap: 16 }}>
-    <div style={{ width: 48, height: 48, border: '4px solid #e2e8f0', borderTop: '4px solid #2563eb', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-    <span style={{ color: '#64748b', fontSize: 14 }}>Caricamento...</span>
+    <div style={{ width: 48, height: 48, border: `4px solid ${COLORS.border}`, borderTop: `4px solid ${COLORS.primary}`, borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+    <span style={{ color: COLORS.textMuted, fontSize: 14 }}>Caricamento...</span>
     <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
   </div>
 );

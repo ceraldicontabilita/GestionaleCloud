@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
+import { StatCard } from './ds';
+import { COLORS, SHADOWS, BORDER_RADIUS } from '../lib/utils';
 
 const TIPI = [
-  { key: 'urgente', label: 'Urgenti', color: '#ef4444', bg: '#fef2f2' },
-  { key: 'avviso', label: 'Avvisi', color: '#f59e0b', bg: '#fffbeb' },
-  { key: 'info', label: 'Info', color: '#3b82f6', bg: '#eff6ff' },
-  { key: 'suggerimento', label: 'Suggerimenti', color: '#22c55e', bg: '#f0fdf4' },
+  { key: 'urgente', label: 'Urgenti', accent: 'danger' },
+  { key: 'avviso', label: 'Avvisi', accent: 'warning' },
+  { key: 'info', label: 'Info', accent: 'info' },
+  { key: 'suggerimento', label: 'Suggerimenti', accent: 'success' },
 ];
 
 function minutiFa(iso) {
@@ -55,11 +57,11 @@ export default function WidgetAgenti() {
     <div
       data-testid="widget-agenti"
       style={{
-        background: '#fff',
-        border: '1px solid #e2e8f0',
-        borderRadius: 12,
+        background: COLORS.card,
+        border: `1px solid ${COLORS.border}`,
+        borderRadius: BORDER_RADIUS.md,
         padding: '14px 18px',
-        boxShadow: '0 1px 4px rgba(0,0,0,0.05)',
+        boxShadow: SHADOWS.sm,
         marginBottom: 16,
       }}
     >
@@ -77,8 +79,8 @@ export default function WidgetAgenti() {
             style={{
               width: 28,
               height: 28,
-              borderRadius: 7,
-              background: '#1e3a5f',
+              borderRadius: BORDER_RADIUS.sm,
+              background: COLORS.primaryLight,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -96,9 +98,9 @@ export default function WidgetAgenti() {
               <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83" />
             </svg>
           </div>
-          <span style={{ fontWeight: 700, fontSize: 13, color: '#0f172a' }}>Agenti AI</span>
+          <span style={{ fontWeight: 700, fontSize: 13, color: COLORS.text }}>Agenti AI</span>
         </div>
-        <span style={{ fontSize: 11, color: '#94a3b8' }}>
+        <span style={{ fontSize: 11, color: COLORS.textSubtle }}>
           {lastUpdate ? `Aggiornato ${minutiFa(lastUpdate)}` : ''}
         </span>
       </div>
@@ -106,44 +108,19 @@ export default function WidgetAgenti() {
       {/* Contatori */}
       <div style={{ display: 'flex', gap: 8 }}>
         {TIPI.map(t => (
-          <button
+          <div
             key={t.key}
             data-testid={`widget-agenti-${t.key}`}
             onClick={() => navigate(`/agenti`)}
-            style={{
-              flex: 1,
-              background: summary[t.key] > 0 ? t.bg : '#f8fafc',
-              border: `1px solid ${summary[t.key] > 0 ? t.color + '40' : '#e2e8f0'}`,
-              borderRadius: 8,
-              padding: '8px 4px',
-              cursor: 'pointer',
-              transition: 'transform 0.1s',
-              textAlign: 'center',
-            }}
-            onMouseEnter={e => (e.currentTarget.style.transform = 'scale(1.03)')}
-            onMouseLeave={e => (e.currentTarget.style.transform = 'scale(1)')}
+            style={{ flex: 1, cursor: 'pointer' }}
           >
-            <div
-              style={{
-                fontSize: 20,
-                fontWeight: 800,
-                color: summary[t.key] > 0 ? t.color : '#cbd5e1',
-                lineHeight: 1,
-                marginBottom: 3,
-              }}
-            >
-              {summary[t.key]}
-            </div>
-            <div
-              style={{
-                fontSize: 10,
-                color: summary[t.key] > 0 ? t.color : '#94a3b8',
-                fontWeight: 600,
-              }}
-            >
-              {t.label}
-            </div>
-          </button>
+            <StatCard
+              label={t.label}
+              value={summary[t.key]}
+              accent={summary[t.key] > 0 ? t.accent : 'none'}
+              style={{ padding: '8px 4px', textAlign: 'center' }}
+            />
+          </div>
         ))}
       </div>
     </div>

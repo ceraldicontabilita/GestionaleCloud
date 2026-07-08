@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../api';
-import { formatEuro } from '../lib/utils';
+import { formatEuro, COLORS, BORDER_RADIUS } from '../lib/utils';
+import { Badge, Button } from './ds';
 import {
   AlertTriangle,
   CheckCircle,
@@ -46,13 +47,13 @@ export default function WidgetVerificaCoerenza({ anno, mostraDettaglio = false }
       <div
         style={{
           padding: 10,
-          background: '#f1f5f9',
-          borderRadius: 8,
+          background: COLORS.bg,
+          borderRadius: BORDER_RADIUS.md,
           display: 'flex',
           alignItems: 'center',
           gap: 8,
           fontSize: 13,
-          color: '#64748b',
+          color: COLORS.textMuted,
         }}
       >
         <RefreshCw size={16} className="animate-spin" />
@@ -68,36 +69,28 @@ export default function WidgetVerificaCoerenza({ anno, mostraDettaglio = false }
   // Se non ci sono discrepanze, mostra solo un badge verde (opzionale)
   if (!verifica.has_discrepanze && !mostraDettaglio) {
     return (
-      <div
-        style={{
-          padding: '8px 12px',
-          background: '#dcfce7',
-          borderRadius: 8,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          fontSize: 13,
-          color: '#166534',
-          border: '1px solid #bbf7d0',
-        }}
+      <Badge
+        variant="success"
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px' }}
       >
         <CheckCircle size={16} />
         Dati coerenti
-      </div>
+      </Badge>
     );
   }
 
   // Se ci sono discrepanze, mostra alert
   if (verifica.has_discrepanze) {
-    const severityColor = verifica.critical_count > 0 ? '#dc2626' : '#f59e0b';
-    const severityBg = verifica.critical_count > 0 ? '#fef2f2' : '#fffbeb';
-    const severityBorder = verifica.critical_count > 0 ? '#fecaca' : '#fde68a';
+    const critico = verifica.critical_count > 0;
+    const severityColor = critico ? COLORS.danger : COLORS.warning;
+    const severityBg = critico ? COLORS.dangerLight : COLORS.warningLight;
+    const severityBorder = severityBg;
 
     return (
       <div
         style={{
           background: severityBg,
-          borderRadius: 8,
+          borderRadius: BORDER_RADIUS.md,
           border: `1px solid ${severityBorder}`,
           marginBottom: 16,
         }}
@@ -114,42 +107,39 @@ export default function WidgetVerificaCoerenza({ anno, mostraDettaglio = false }
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            {verifica.critical_count > 0 ? (
-              <XCircle size={20} color="#dc2626" />
+            {critico ? (
+              <XCircle size={20} color={COLORS.danger} />
             ) : (
-              <AlertTriangle size={20} color="#f59e0b" />
+              <AlertTriangle size={20} color={COLORS.warning} />
             )}
             <div>
               <div style={{ fontWeight: 'bold', color: severityColor, fontSize: 14 }}>
                 ⚠️ {verifica.totale_discrepanze} Discrepanze Rilevate - {verifica.mese_nome}{' '}
                 {verifica.anno}
               </div>
-              <div style={{ fontSize: 12, color: '#64748b' }}>
+              <div style={{ fontSize: 12, color: COLORS.textMuted }}>
                 {verifica.critical_count > 0 && `${verifica.critical_count} critiche • `}
                 Clicca per dettagli
               </div>
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <button
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={e => {
                 e.stopPropagation();
                 loadVerifica();
               }}
-              style={{
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                padding: 4,
-              }}
               title="Ricarica"
+              style={{ padding: 4 }}
             >
-              <RefreshCw size={16} color="#64748b" />
-            </button>
+              <RefreshCw size={16} color={COLORS.textMuted} />
+            </Button>
             {expanded ? (
-              <ChevronUp size={20} color="#64748b" />
+              <ChevronUp size={20} color={COLORS.textMuted} />
             ) : (
-              <ChevronDown size={20} color="#64748b" />
+              <ChevronDown size={20} color={COLORS.textMuted} />
             )}
           </div>
         </div>
@@ -168,9 +158,9 @@ export default function WidgetVerificaCoerenza({ anno, mostraDettaglio = false }
                 style={{
                   padding: 12,
                   marginTop: 12,
-                  background: 'white',
-                  borderRadius: 6,
-                  border: `1px solid ${d.severita === 'critical' ? '#fecaca' : '#fde68a'}`,
+                  background: COLORS.card,
+                  borderRadius: BORDER_RADIUS.sm,
+                  border: `1px solid ${d.severita === 'critical' ? COLORS.dangerLight : COLORS.warningLight}`,
                 }}
               >
                 <div
@@ -184,44 +174,39 @@ export default function WidgetVerificaCoerenza({ anno, mostraDettaglio = false }
                     <div
                       style={{
                         fontWeight: 'bold',
-                        color: d.severita === 'critical' ? '#dc2626' : '#d97706',
+                        color: d.severita === 'critical' ? COLORS.danger : COLORS.warning,
                         fontSize: 13,
                       }}
                     >
                       {d.categoria} - {d.sottocategoria}
                     </div>
-                    <div style={{ fontSize: 13, color: '#475569', marginTop: 4 }}>
+                    <div style={{ fontSize: 13, color: COLORS.gray[600], marginTop: 4 }}>
                       {d.descrizione}
                     </div>
                     {d.periodo && (
-                      <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
+                      <div style={{ fontSize: 12, color: COLORS.textSubtle, marginTop: 2 }}>
                         Periodo: {d.periodo}
                       </div>
                     )}
                   </div>
                   <div style={{ textAlign: 'right', minWidth: 120 }}>
-                    <div style={{ fontSize: 12, color: '#64748b' }}>Atteso</div>
-                    <div style={{ fontWeight: 'bold', color: '#059669' }}>
+                    <div style={{ fontSize: 12, color: COLORS.textMuted }}>Atteso</div>
+                    <div style={{ fontWeight: 'bold', color: COLORS.success }}>
                       {formatEuro(d.valore_atteso)}
                     </div>
-                    <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>Trovato</div>
-                    <div style={{ fontWeight: 'bold', color: '#dc2626' }}>
+                    <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 4 }}>
+                      Trovato
+                    </div>
+                    <div style={{ fontWeight: 'bold', color: COLORS.danger }}>
                       {formatEuro(d.valore_trovato)}
                     </div>
-                    <div
-                      style={{
-                        fontSize: 13,
-                        fontWeight: 'bold',
-                        color: d.differenza > 0 ? '#dc2626' : '#2563eb',
-                        marginTop: 4,
-                        padding: '2px 8px',
-                        background: d.differenza > 0 ? '#fef2f2' : '#eff6ff',
-                        borderRadius: 4,
-                      }}
+                    <Badge
+                      variant={d.differenza > 0 ? 'danger' : 'info'}
+                      style={{ marginTop: 4, fontSize: 13 }}
                     >
                       Diff: {d.differenza > 0 ? '+' : ''}
                       {formatEuro(d.differenza)}
-                    </div>
+                    </Badge>
                   </div>
                 </div>
                 {d.suggerimento && (
@@ -229,10 +214,10 @@ export default function WidgetVerificaCoerenza({ anno, mostraDettaglio = false }
                     style={{
                       marginTop: 8,
                       padding: 8,
-                      background: '#f8fafc',
-                      borderRadius: 4,
+                      background: COLORS.bgAlt,
+                      borderRadius: BORDER_RADIUS.sm,
                       fontSize: 12,
-                      color: '#64748b',
+                      color: COLORS.textMuted,
                     }}
                   >
                     💡 {d.suggerimento}
@@ -247,16 +232,16 @@ export default function WidgetVerificaCoerenza({ anno, mostraDettaglio = false }
                   textAlign: 'center',
                   marginTop: 12,
                   padding: 8,
-                  background: '#f1f5f9',
-                  borderRadius: 4,
+                  background: COLORS.bg,
+                  borderRadius: BORDER_RADIUS.sm,
                   fontSize: 13,
-                  color: '#64748b',
+                  color: COLORS.textMuted,
                 }}
               >
                 E altre {verifica.totale_discrepanze - 5} discrepanze...
                 <Link
                   to="/verifica-coerenza"
-                  style={{ marginLeft: 8, color: '#2563eb', textDecoration: 'none' }}
+                  style={{ marginLeft: 8, color: COLORS.info, textDecoration: 'none' }}
                 >
                   Vedi tutte →
                 </Link>
@@ -295,22 +280,13 @@ export function BadgeVerificaCoerenza({ anno }) {
   if (count === 0) return null;
 
   return (
-    <span
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 4,
-        padding: '2px 8px',
-        borderRadius: 12,
-        fontSize: 11,
-        fontWeight: 'bold',
-        background: critical > 0 ? '#dc2626' : '#f59e0b',
-        color: 'white',
-      }}
+    <Badge
+      variant={critical > 0 ? 'danger' : 'warning'}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
       title={`${count} discrepanze nei dati${critical > 0 ? ` (${critical} critiche)` : ''}`}
     >
       <AlertTriangle size={12} />
       {count}
-    </span>
+    </Badge>
   );
 }

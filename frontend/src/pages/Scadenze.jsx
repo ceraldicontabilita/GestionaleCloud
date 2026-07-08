@@ -1,26 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
-import {
-  formatEuro,
-  formatDateIT,
-  STYLES,
-  COLORS,
-  BORDER_RADIUS,
-  button,
-  badge,
-  useIsMobile,
-  RG,
-  pagePad,
-} from '../lib/utils';
+import { formatEuro, formatDateIT, COLORS, SHADOWS, BORDER_RADIUS, useIsMobile } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
 import ModalFattura from '../components/ModalFattura';
+import { useConfirm } from '../components/ui/ConfirmDialog';
+import { Button, Badge, StatCard, Input, Select, Table, Th, Td, RowActions, RowActionButton } from '../components/ds';
 
 export default function Scadenze() {
   const isMobile = useIsMobile();
   const { anno } = useAnnoGlobale();
   const navigate = useNavigate();
+  const confirm = useConfirm();
   const [scadenze, setScadenze] = useState([]);
   const [scadenzeIva, setScadenzeIva] = useState(null);
   const [scadenzeIvaMensili, setScadenzeIvaMensili] = useState(null);
@@ -94,7 +87,7 @@ export default function Scadenze() {
       setPaidIds(prev => new Set([...prev, scadenza.id]));
       loadData();
     } catch (e) {
-      alert('Errore pagamento: ' + (e.response?.data?.detail || e.message));
+      toast.error('Errore pagamento: ' + (e.response?.data?.detail || e.message));
     } finally {
       setProcessing(false);
     }
@@ -102,7 +95,7 @@ export default function Scadenze() {
 
   const handleCreaScadenza = async () => {
     if (!nuovaScadenza.data_scadenza || !nuovaScadenza.descrizione) {
-      alert('Compila data e descrizione');
+      toast.error('Compila data e descrizione');
       return;
     }
 
@@ -122,7 +115,7 @@ export default function Scadenze() {
       });
       loadData();
     } catch (error) {
-      alert('Errore: ' + (error.response?.data?.detail || error.message));
+      toast.error('Errore: ' + (error.response?.data?.detail || error.message));
     }
   };
 
@@ -131,33 +124,38 @@ export default function Scadenze() {
       await api.put(`/api/scadenze/completa/${id}`);
       loadData();
     } catch (error) {
-      alert('Errore: ' + (error.response?.data?.detail || error.message));
+      toast.error('Errore: ' + (error.response?.data?.detail || error.message));
     }
   };
 
   const handleElimina = async id => {
-    if (!window.confirm('Eliminare questa scadenza?')) return;
+    const confirmed = await confirm({
+      title: 'Elimina scadenza',
+      message: 'Eliminare questa scadenza?',
+      confirmText: 'Elimina',
+      cancelText: 'Annulla',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
     try {
       await api.delete(`/api/scadenze/${id}`);
       loadData();
     } catch (error) {
-      alert('Errore: ' + (error.response?.data?.detail || error.message));
+      toast.error('Errore: ' + (error.response?.data?.detail || error.message));
     }
   };
 
   const formatDate = dateStr => (dateStr ? formatDateIT(dateStr) : '-');
 
   const getPriorityStyle = (priorita, urgente) => {
-    if (urgente) return { bg: '#fef2f2', border: '#dc2626', text: '#dc2626' };
+    if (urgente || priorita === 'critica')
+      return { variant: 'danger', bg: COLORS.dangerLight, border: COLORS.danger, text: COLORS.danger };
     switch (priorita) {
-      case 'critica':
-        return { bg: '#fef2f2', border: '#dc2626', text: '#dc2626' };
       case 'alta':
-        return { bg: '#fff7ed', border: '#ea580c', text: '#ea580c' };
       case 'media':
-        return { bg: '#fefce8', border: '#ca8a04', text: '#ca8a04' };
+        return { variant: 'warning', bg: COLORS.warningLight, border: COLORS.warning, text: COLORS.warning };
       default:
-        return { bg: '#f0fdf4', border: '#16a34a', text: '#16a34a' };
+        return { variant: 'success', bg: COLORS.successLight, border: COLORS.success, text: COLORS.success };
     }
   };
 
@@ -184,20 +182,9 @@ export default function Scadenze() {
       icon="📅"
       subtitle="Gestione scadenze fiscali, pagamenti e promemoria"
       actions={
-        <button
-          onClick={() => setShowModal(true)}
-          style={{
-            padding: '10px 20px',
-            background: '#1d4ed8',
-            color: 'white',
-            border: 'none',
-            borderRadius: 8,
-            cursor: 'pointer',
-            fontWeight: 'bold',
-          }}
-        >
-          ➕ Nuova Scadenza
-        </button>
+        <Button variant="info" size="lg" iconLeft="➕" onClick={() => setShowModal(true)}>
+          Nuova Scadenza
+        </Button>
       }
     >
       <div style={{ position: 'relative' }}>
@@ -207,7 +194,7 @@ export default function Scadenze() {
           <div
             style={{
               background: COLORS.danger,
-              borderRadius: BORDER_RADIUS.md,
+              borderRadius: BORDER_RADIUS.xl,
               padding: 20,
               marginBottom: 20,
               color: 'white',
@@ -225,37 +212,21 @@ export default function Scadenze() {
               }}
             >
               {alertWidget.f24?.da_pagare_30gg > 0 && (
-                <div
+                <StatCard
+                  icon="📋"
+                  label="F24 da Pagare"
+                  value={alertWidget?.f24?.da_pagare_30gg}
+                  accent="danger"
                   onClick={() => navigate('/contabilita/calendario')}
-                  style={{
-                    background: 'rgba(255,255,255,0.15)',
-                    padding: 12,
-                    borderRadius: 8,
-                    cursor: 'pointer',
-                    transition: 'all 0.2s',
-                  }}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.25)')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.15)')}
-                >
-                  <div style={{ fontSize: 28, fontWeight: 700 }}>
-                    {alertWidget?.f24?.da_pagare_30gg}
-                  </div>
-                  <div style={{ fontSize: 12, opacity: 0.9 }}>📋 F24 da Pagare</div>
-                </div>
+                />
               )}
               {alertWidget.fiscali?.prossime > 0 && (
-                <div
-                  style={{
-                    background: 'rgba(255,255,255,0.15)',
-                    padding: 12,
-                    borderRadius: 8,
-                  }}
-                >
-                  <div style={{ fontSize: 28, fontWeight: 700 }}>
-                    {alertWidget?.fiscali?.prossime}
-                  </div>
-                  <div style={{ fontSize: 12, opacity: 0.9 }}>📅 Scadenze Fiscali</div>
-                </div>
+                <StatCard
+                  icon="📅"
+                  label="Scadenze Fiscali"
+                  value={alertWidget?.fiscali?.prossime}
+                  accent="warning"
+                />
               )}
             </div>
           </div>
@@ -269,8 +240,8 @@ export default function Scadenze() {
               0) && (
             <div
               style={{
-                background: '#1d4ed8',
-                borderRadius: 12,
+                background: COLORS.info,
+                borderRadius: BORDER_RADIUS.xl,
                 padding: 20,
                 marginBottom: 20,
                 color: 'white',
@@ -295,10 +266,10 @@ export default function Scadenze() {
                     style={{
                       background: 'rgba(255,255,255,0.15)',
                       padding: 15,
-                      borderRadius: 10,
+                      borderRadius: BORDER_RADIUS.md,
                       cursor: 'pointer',
                       transition: 'all 0.2s',
-                      borderLeft: '4px solid #fbbf24',
+                      borderLeft: `4px solid ${COLORS.warning}`,
                     }}
                     onMouseEnter={e =>
                       (e.currentTarget.style.background = 'rgba(255,255,255,0.25)')
@@ -329,10 +300,10 @@ export default function Scadenze() {
                     style={{
                       background: 'rgba(255,255,255,0.15)',
                       padding: 15,
-                      borderRadius: 10,
+                      borderRadius: BORDER_RADIUS.md,
                       cursor: 'pointer',
                       transition: 'all 0.2s',
-                      borderLeft: '4px solid #34d399',
+                      borderLeft: `4px solid ${COLORS.success}`,
                     }}
                     onMouseEnter={e =>
                       (e.currentTarget.style.background = 'rgba(255,255,255,0.25)')
@@ -357,42 +328,23 @@ export default function Scadenze() {
 
                 {/* Esattoriali da processare */}
                 {documentiRiconciliare.esattoriali > 0 && (
-                  <div
-                    style={{
-                      background: 'rgba(255,255,255,0.15)',
-                      padding: 15,
-                      borderRadius: 10,
-                      borderLeft: '4px solid #f87171',
-                    }}
-                  >
-                    <div style={{ fontSize: 32, fontWeight: 700 }}>
-                      {documentiRiconciliare.esattoriali}
-                    </div>
-                    <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>
-                      Cartelle Esattoriali
-                    </div>
-                    <div style={{ fontSize: 11, opacity: 0.8 }}>Da verificare e processare</div>
-                  </div>
+                  <StatCard
+                    label="Cartelle Esattoriali"
+                    value={documentiRiconciliare.esattoriali}
+                    subtext="Da verificare e processare"
+                    accent="danger"
+                  />
                 )}
 
                 {/* F24/Tributi */}
                 {documentiRiconciliare.f24_tributi > 0 && (
-                  <div
-                    style={{
-                      background: 'rgba(255,255,255,0.15)',
-                      padding: 15,
-                      borderRadius: 10,
-                      borderLeft: '4px solid #60a5fa',
-                    }}
-                  >
-                    <div style={{ fontSize: 32, fontWeight: 700 }}>
-                      {documentiRiconciliare.f24_tributi}
-                    </div>
-                    <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>
-                      📋 F24/Tributi
-                    </div>
-                    <div style={{ fontSize: 11, opacity: 0.8 }}>Documenti da posta</div>
-                  </div>
+                  <StatCard
+                    icon="📋"
+                    label="F24/Tributi"
+                    value={documentiRiconciliare.f24_tributi}
+                    subtext="Documenti da posta"
+                    accent="info"
+                  />
                 )}
               </div>
 
@@ -411,30 +363,26 @@ export default function Scadenze() {
                   Totale documenti scaricati dalla posta:{' '}
                   <strong>{documentiRiconciliare.totale_documenti_email}</strong>
                 </div>
-                <button
+                <Button
+                  variant="secondary"
                   onClick={async () => {
                     try {
                       await api.post('/api/email-scanner/associa');
                       loadData();
-                      alert('Associazione completata!');
+                      toast.success('Associazione completata!');
                     } catch (err) {
-                      alert('Errore: ' + (err.response?.data?.detail || err.message));
+                      toast.error('Errore: ' + (err.response?.data?.detail || err.message));
                     }
                   }}
                   style={{
-                    padding: '8px 16px',
                     background: 'rgba(255,255,255,0.2)',
-                    color: 'white',
-                    border: '1px solid rgba(255,255,255,0.3)',
-                    borderRadius: 8,
-                    cursor: 'pointer',
-                    fontSize: 13,
-                    fontWeight: 600,
+                    color: '#fff',
+                    borderColor: 'rgba(255,255,255,0.3)',
                   }}
                   data-testid="btn-riconci-automatica"
                 >
                   🔄 Riconcilia Automaticamente
-                </button>
+                </Button>
               </div>
             </div>
           )}
@@ -443,8 +391,8 @@ export default function Scadenze() {
         {(scadenzeIva || scadenzeIvaMensili) && (
           <div
             style={{
-              background: '#1d4ed8',
-              borderRadius: 12,
+              background: COLORS.info,
+              borderRadius: BORDER_RADIUS.xl,
               padding: 20,
               marginBottom: 20,
               color: 'white',
@@ -461,36 +409,30 @@ export default function Scadenze() {
             >
               <h3 style={{ margin: 0 }}>🧾 Scadenze IVA {anno}</h3>
               <div style={{ display: 'flex', gap: 8 }}>
-                <button
+                <Button
+                  variant={vistaIva === 'trimestrale' ? 'warning' : 'secondary'}
                   onClick={() => setVistaIva('trimestrale')}
-                  style={{
-                    padding: '8px 16px',
-                    borderRadius: 8,
-                    border: 'none',
-                    cursor: 'pointer',
-                    fontWeight: 'bold',
-                    background: vistaIva === 'trimestrale' ? '#fbbf24' : 'rgba(255,255,255,0.2)',
-                    color: vistaIva === 'trimestrale' ? '#000' : '#fff',
-                  }}
+                  style={
+                    vistaIva === 'trimestrale'
+                      ? {}
+                      : { background: 'rgba(255,255,255,0.2)', color: '#fff', borderColor: 'rgba(255,255,255,0.3)' }
+                  }
                   data-testid="btn-vista-trimestrale"
                 >
                   📊 Trimestrale
-                </button>
-                <button
+                </Button>
+                <Button
+                  variant={vistaIva === 'mensile' ? 'success' : 'secondary'}
                   onClick={() => setVistaIva('mensile')}
-                  style={{
-                    padding: '8px 16px',
-                    borderRadius: 8,
-                    border: 'none',
-                    cursor: 'pointer',
-                    fontWeight: 'bold',
-                    background: vistaIva === 'mensile' ? '#34d399' : 'rgba(255,255,255,0.2)',
-                    color: vistaIva === 'mensile' ? '#000' : '#fff',
-                  }}
+                  style={
+                    vistaIva === 'mensile'
+                      ? {}
+                      : { background: 'rgba(255,255,255,0.2)', color: '#fff', borderColor: 'rgba(255,255,255,0.3)' }
+                  }
                   data-testid="btn-vista-mensile"
                 >
                   📅 Mensile
-                </button>
+                </Button>
               </div>
             </div>
 
@@ -510,8 +452,8 @@ export default function Scadenze() {
                       style={{
                         background: 'rgba(255,255,255,0.1)',
                         padding: 15,
-                        borderRadius: 8,
-                        borderLeft: `4px solid ${s.da_versare ? '#fbbf24' : '#34d399'}`,
+                        borderRadius: BORDER_RADIUS.md,
+                        borderLeft: `4px solid ${s.da_versare ? COLORS.warning : COLORS.success}`,
                       }}
                     >
                       <div style={{ fontWeight: 'bold', marginBottom: 8 }}>{s.periodo}</div>
@@ -523,9 +465,9 @@ export default function Scadenze() {
                         style={{
                           marginTop: 10,
                           padding: '6px 10px',
-                          background: s.da_versare ? '#fbbf24' : '#34d399',
-                          borderRadius: 6,
-                          color: '#000',
+                          background: s.da_versare ? COLORS.warningLight : COLORS.successLight,
+                          borderRadius: BORDER_RADIUS.sm,
+                          color: s.da_versare ? COLORS.warning : COLORS.success,
                           fontWeight: 'bold',
                           fontSize: 14,
                           textAlign: 'center',
@@ -570,8 +512,8 @@ export default function Scadenze() {
                       style={{
                         background: 'rgba(255,255,255,0.1)',
                         padding: 12,
-                        borderRadius: 8,
-                        borderLeft: `3px solid ${s.da_versare ? '#fbbf24' : '#34d399'}`,
+                        borderRadius: BORDER_RADIUS.md,
+                        borderLeft: `3px solid ${s.da_versare ? COLORS.warning : COLORS.success}`,
                       }}
                     >
                       <div style={{ fontWeight: 'bold', marginBottom: 6, fontSize: 13 }}>
@@ -585,9 +527,9 @@ export default function Scadenze() {
                         style={{
                           marginTop: 8,
                           padding: '4px 8px',
-                          background: s.da_versare ? '#fbbf24' : '#34d399',
-                          borderRadius: 4,
-                          color: '#000',
+                          background: s.da_versare ? COLORS.warningLight : COLORS.successLight,
+                          borderRadius: BORDER_RADIUS.sm,
+                          color: s.da_versare ? COLORS.warning : COLORS.success,
                           fontWeight: 'bold',
                           fontSize: 12,
                           textAlign: 'center',
@@ -610,13 +552,13 @@ export default function Scadenze() {
                 >
                   <div>
                     Totale a credito:{' '}
-                    <strong style={{ color: '#34d399' }}>
+                    <strong style={{ color: COLORS.successLight }}>
                       {formatEuro(scadenzeIvaMensili.totale_a_credito)}
                     </strong>
                   </div>
                   <div>
                     Totale da versare:{' '}
-                    <strong style={{ color: '#fbbf24' }}>
+                    <strong style={{ color: COLORS.warningLight }}>
                       {formatEuro(scadenzeIvaMensili.totale_da_versare)}
                     </strong>
                   </div>
@@ -624,7 +566,10 @@ export default function Scadenze() {
                     Saldo annuale:{' '}
                     <strong
                       style={{
-                        color: scadenzeIvaMensili.saldo_annuale > 0 ? '#fbbf24' : '#34d399',
+                        color:
+                          scadenzeIvaMensili.saldo_annuale > 0
+                            ? COLORS.warningLight
+                            : COLORS.successLight,
                       }}
                     >
                       {scadenzeIvaMensili.saldo_annuale > 0
@@ -646,23 +591,19 @@ export default function Scadenze() {
             marginBottom: 20,
             flexWrap: 'wrap',
             alignItems: 'center',
-            background: '#f8fafc',
+            background: COLORS.bgAlt,
             padding: 15,
-            borderRadius: 10,
+            borderRadius: BORDER_RADIUS.lg,
           }}
         >
-          <select
-            value={filtroTipo}
-            onChange={e => setFiltroTipo(e.target.value)}
-            style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #e2e8f0' }}
-          >
+          <Select value={filtroTipo} onChange={e => setFiltroTipo(e.target.value)} style={{ width: 'auto' }}>
             <option value="">Tutti i tipi</option>
             <option value="IVA">IVA</option>
             <option value="F24">F24</option>
             <option value="FATTURA">Fatture</option>
             <option value="INPS">INPS</option>
             <option value="CUSTOM">Personalizzate</option>
-          </select>
+          </Select>
 
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
             <input
@@ -673,34 +614,25 @@ export default function Scadenze() {
             <span>Mostra scadenze passate</span>
           </label>
 
-          <button
-            onClick={loadData}
-            style={{
-              padding: '8px 16px',
-              background: '#e5e7eb',
-              border: 'none',
-              borderRadius: 6,
-              cursor: 'pointer',
-            }}
-          >
+          <Button variant="secondary" onClick={loadData}>
             🔄 Aggiorna
-          </button>
+          </Button>
         </div>
 
         {/* Lista Scadenze */}
         <div
           style={{
-            background: 'white',
-            borderRadius: 12,
+            background: COLORS.card,
+            borderRadius: BORDER_RADIUS.md,
             overflow: 'hidden',
-            border: '1px solid #e5e7eb',
+            border: `1px solid ${COLORS.border}`,
           }}
         >
           <div
             style={{
               padding: '16px 20px',
-              background: '#f8fafc',
-              borderBottom: '1px solid #e5e7eb',
+              background: COLORS.bgAlt,
+              borderBottom: `1px solid ${COLORS.border}`,
               fontWeight: 'bold',
             }}
           >
@@ -708,96 +640,35 @@ export default function Scadenze() {
           </div>
 
           {loading ? (
-            <div style={{ padding: 40, textAlign: 'center', color: '#6b7280' }}>
+            <div style={{ padding: 40, textAlign: 'center', color: COLORS.textMuted }}>
               ⏳ Caricamento...
             </div>
           ) : scadenze.length === 0 ? (
-            <div style={{ padding: 40, textAlign: 'center', color: '#6b7280' }}>
+            <div style={{ padding: 40, textAlign: 'center', color: COLORS.textMuted }}>
               Nessuna scadenza trovata per i filtri selezionati.
             </div>
           ) : (
             <div style={{ maxHeight: '60vh', overflow: 'auto' }}>
               {/* Tabella scadenze */}
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <Table style={{ fontSize: 12 }}>
                 <thead>
-                  <tr style={{ borderBottom: '2px solid #e2e8f0', background: '#f8fafc' }}>
-                    <th
-                      style={{
-                        padding: '8px 12px',
-                        textAlign: 'center',
-                        fontWeight: 700,
-                        fontSize: 11,
-                        color: '#64748b',
-                        textTransform: 'uppercase',
-                        width: 70,
-                      }}
-                    >
+                  <tr style={{ borderBottom: `2px solid ${COLORS.border}`, background: COLORS.bgAlt }}>
+                    <Th align="center" style={{ width: 70 }}>
                       Tipo
-                    </th>
-                    <th
-                      style={{
-                        padding: '8px 12px',
-                        textAlign: 'right',
-                        fontWeight: 700,
-                        fontSize: 11,
-                        color: '#64748b',
-                        textTransform: 'uppercase',
-                        width: 90,
-                      }}
-                    >
+                    </Th>
+                    <Th align="right" style={{ width: 90 }}>
                       Importo
-                    </th>
-                    <th
-                      style={{
-                        padding: '8px 12px',
-                        textAlign: 'center',
-                        fontWeight: 700,
-                        fontSize: 11,
-                        color: '#64748b',
-                        textTransform: 'uppercase',
-                        width: 70,
-                      }}
-                    >
+                    </Th>
+                    <Th align="center" style={{ width: 70 }}>
                       Data
-                    </th>
-                    <th
-                      style={{
-                        padding: '8px 12px',
-                        textAlign: 'center',
-                        fontWeight: 700,
-                        fontSize: 11,
-                        color: '#64748b',
-                        textTransform: 'uppercase',
-                        width: 60,
-                      }}
-                    >
+                    </Th>
+                    <Th align="center" style={{ width: 60 }}>
                       Giorni
-                    </th>
-                    <th
-                      style={{
-                        padding: '8px 12px',
-                        textAlign: 'left',
-                        fontWeight: 700,
-                        fontSize: 11,
-                        color: '#64748b',
-                        textTransform: 'uppercase',
-                      }}
-                    >
-                      Descrizione
-                    </th>
-                    <th
-                      style={{
-                        padding: '8px 12px',
-                        textAlign: 'center',
-                        fontWeight: 700,
-                        fontSize: 11,
-                        color: '#64748b',
-                        textTransform: 'uppercase',
-                        width: 100,
-                      }}
-                    >
+                    </Th>
+                    <Th align="left">Descrizione</Th>
+                    <Th align="center" style={{ width: 100 }}>
                       Azioni
-                    </th>
+                    </Th>
                   </tr>
                 </thead>
                 <tbody>
@@ -809,45 +680,26 @@ export default function Scadenze() {
                       <tr
                         key={s.id || `scad-${idx}`}
                         style={{
-                          background: isPassata ? '#f9fafb' : style.bg,
+                          background: isPassata ? COLORS.gray[50] : style.bg,
                           opacity: isPassata ? 0.6 : 1,
                           borderLeft: `4px solid ${style.border}`,
-                          borderBottom: '1px solid #f1f5f9',
+                          borderBottom: `1px solid ${COLORS.gray[100]}`,
                         }}
                       >
-                        <td style={{ padding: '8px 12px', textAlign: 'center' }}>
-                          <span
-                            style={{
-                              padding: '3px 8px',
-                              background: style.border + '20',
-                              borderRadius: 6,
-                              color: style.text,
-                              fontWeight: '600',
-                              fontSize: 11,
-                            }}
-                          >
-                            {s.tipo}
-                          </span>
-                        </td>
-                        <td
-                          style={{
-                            padding: '8px 12px',
-                            textAlign: 'right',
-                            fontWeight: 'bold',
-                            color: style.text,
-                          }}
-                        >
+                        <Td align="center">
+                          <Badge variant={style.variant}>{s.tipo}</Badge>
+                        </Td>
+                        <Td align="right" mono style={{ fontWeight: 'bold', color: style.text }}>
                           {s.importo > 0 ? formatEuro(s.importo) : '-'}
-                        </td>
-                        <td style={{ padding: '8px 12px', textAlign: 'center', color: '#6b7280' }}>
+                        </Td>
+                        <Td align="center" style={{ color: COLORS.textMuted }}>
                           {formatDate(s.data)}
-                        </td>
-                        <td
+                        </Td>
+                        <Td
+                          align="center"
                           style={{
-                            padding: '8px 12px',
-                            textAlign: 'center',
                             fontWeight: 'bold',
-                            color: isPassata ? '#dc2626' : s.urgente ? '#dc2626' : '#6b7280',
+                            color: isPassata || s.urgente ? COLORS.danger : COLORS.textMuted,
                           }}
                         >
                           {s.giorni_mancanti === undefined
@@ -859,11 +711,9 @@ export default function Scadenze() {
                                 : s.giorni_mancanti < 0
                                   ? `-${Math.abs(s.giorni_mancanti)}g`
                                   : `${s.giorni_mancanti}g`}
-                        </td>
-                        <td
+                        </Td>
+                        <Td
                           style={{
-                            padding: '8px 12px',
-                            color: '#374151',
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
                             whiteSpace: 'nowrap',
@@ -872,81 +722,67 @@ export default function Scadenze() {
                         >
                           {s.descrizione}
                           {s.fornitore && (
-                            <span style={{ color: '#9ca3af', marginLeft: 8 }}>• {s.fornitore}</span>
+                            <span style={{ color: COLORS.textSubtle, marginLeft: 8 }}>
+                              • {s.fornitore}
+                            </span>
                           )}
-                        </td>
-                        <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                        </Td>
+                        <Td align="center">
                           {s.source === 'custom' && (
-                            <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
-                              <button
+                            <RowActions style={{ justifyContent: 'center' }}>
+                              <RowActionButton
+                                variant="success"
                                 onClick={() => handleCompleta(s.id)}
-                                style={{
-                                  padding: '4px 10px',
-                                  background: '#10b981',
-                                  color: 'white',
-                                  border: 'none',
-                                  borderRadius: 4,
-                                  cursor: 'pointer',
-                                  fontSize: 11,
-                                }}
                                 title="Segna come completata"
                               >
                                 ✓
-                              </button>
-                              <button
+                              </RowActionButton>
+                              <RowActionButton
+                                variant="danger"
                                 onClick={() => handleElimina(s.id)}
-                                style={{
-                                  padding: '6px 12px',
-                                  background: '#ef4444',
-                                  color: 'white',
-                                  border: 'none',
-                                  borderRadius: 6,
-                                  cursor: 'pointer',
-                                  fontSize: 12,
-                                }}
                                 title="Elimina"
                               >
                                 🗑️
-                              </button>
-                            </div>
+                              </RowActionButton>
+                            </RowActions>
                           )}
 
                           {/* Pulsanti Visualizza Fattura per scadenze tipo FATTURA */}
                           {(s.tipo === 'FATTURA' || s.source === 'fattura') &&
                             (s.fattura_id || s.id) && (
-                              <div style={{ display: 'flex', gap: '6px' }}>
-                                <button
+                              <RowActions
+                                style={{
+                                  justifyContent: 'center',
+                                  marginTop: s.source === 'custom' ? 6 : 0,
+                                }}
+                              >
+                                <RowActionButton
+                                  variant="info"
                                   onClick={() => {
                                     setViewingInvoice({
                                       id: s.fattura_id || s.id,
                                       numero: s.numero_fattura || s.numero || s.descrizione,
                                     });
                                   }}
-                                  style={{
-                                    padding: '4px 8px',
-                                    background: '#3b82f6',
-                                    color: 'white',
-                                    border: 'none',
-                                    borderRadius: 4,
-                                    cursor: 'pointer',
-                                    fontSize: 10,
-                                  }}
                                   title="Visualizza Dettagli Fattura"
                                   data-testid={`view-invoice-${s.fattura_id || s.id}`}
                                 >
                                   👁️
-                                </button>
+                                </RowActionButton>
                                 <a
                                   href={`/api/fatture-ricevute/fattura/${s.fattura_id || s.id}/view-assoinvoice`}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   style={{
-                                    padding: '4px 8px',
-                                    background: '#10b981',
-                                    color: 'white',
-                                    border: 'none',
-                                    borderRadius: 4,
-                                    fontSize: 10,
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    width: 28,
+                                    height: 28,
+                                    borderRadius: BORDER_RADIUS.sm,
+                                    background: COLORS.successLight,
+                                    color: COLORS.success,
+                                    fontSize: 12,
                                     textDecoration: 'none',
                                   }}
                                   title="Visualizza PDF Fattura"
@@ -954,50 +790,29 @@ export default function Scadenze() {
                                 >
                                   📄
                                 </a>
-                              </div>
+                              </RowActions>
                             )}
 
                           {/* Bottone Paga Cassa/Banca */}
                           {!paidIds.has(s.id) &&
                             (s.tipo === 'FATTURA' || s.source === 'fattura' || s.importo > 0) && (
-                              <button
+                              <Button
+                                variant="warning"
+                                size="sm"
                                 onClick={() => setPagaModal(s)}
-                                style={{
-                                  padding: '4px 8px',
-                                  background: '#f59e0b',
-                                  color: 'white',
-                                  border: 'none',
-                                  borderRadius: 4,
-                                  cursor: 'pointer',
-                                  fontSize: 10,
-                                  fontWeight: 600,
-                                  marginTop: 4,
-                                }}
                                 title="Registra Pagamento"
+                                style={{ marginTop: 4, fontSize: 11, padding: '4px 10px' }}
                               >
                                 💰 Paga
-                              </button>
+                              </Button>
                             )}
-                          {paidIds.has(s.id) && (
-                            <span
-                              style={{
-                                padding: '3px 8px',
-                                background: '#dcfce7',
-                                color: '#16a34a',
-                                borderRadius: 4,
-                                fontSize: 10,
-                                fontWeight: 700,
-                              }}
-                            >
-                              ✓ Pagato
-                            </span>
-                          )}
-                        </td>
+                          {paidIds.has(s.id) && <Badge variant="success">✓ Pagato</Badge>}
+                        </Td>
                       </tr>
                     );
                   })}
                 </tbody>
-              </table>
+              </Table>
             </div>
           )}
         </div>
@@ -1021,11 +836,12 @@ export default function Scadenze() {
           >
             <div
               style={{
-                background: 'white',
-                borderRadius: 12,
+                background: COLORS.card,
+                borderRadius: BORDER_RADIUS.xl,
                 padding: 24,
                 width: '90%',
                 maxWidth: 500,
+                boxShadow: SHADOWS.modal,
               }}
               onClick={e => e.stopPropagation()}
             >
@@ -1038,27 +854,21 @@ export default function Scadenze() {
                 }}
               >
                 <h3 style={{ margin: 0 }}>➕ Nuova Scadenza</h3>
-                <button
+                <Button
+                  variant="ghost"
                   onClick={() => setShowModal(false)}
                   aria-label="Chiudi"
                   style={{
                     width: 32,
                     height: 32,
-                    flexShrink: 0,
-                    background: '#f1f5f9',
-                    border: 'none',
-                    borderRadius: 8,
-                    color: '#475569',
+                    padding: 0,
+                    background: COLORS.bgAlt,
+                    color: COLORS.textMuted,
                     fontSize: 16,
-                    lineHeight: 1,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
                   }}
                 >
                   ✕
-                </button>
+                </Button>
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 15 }}>
@@ -1068,18 +878,12 @@ export default function Scadenze() {
                   >
                     Data Scadenza *
                   </label>
-                  <input
+                  <Input
                     type="date"
                     value={nuovaScadenza.data_scadenza}
                     onChange={e =>
                       setNuovaScadenza({ ...nuovaScadenza, data_scadenza: e.target.value })
                     }
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      borderRadius: 6,
-                      border: '1px solid #e2e8f0',
-                    }}
                   />
                 </div>
 
@@ -1089,19 +893,13 @@ export default function Scadenze() {
                   >
                     Descrizione *
                   </label>
-                  <input
+                  <Input
                     type="text"
                     value={nuovaScadenza.descrizione}
                     onChange={e =>
                       setNuovaScadenza({ ...nuovaScadenza, descrizione: e.target.value })
                     }
                     placeholder="Es: Pagamento fornitore XYZ"
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      borderRadius: 6,
-                      border: '1px solid #e2e8f0',
-                    }}
                   />
                 </div>
 
@@ -1118,22 +916,17 @@ export default function Scadenze() {
                     >
                       Tipo
                     </label>
-                    <select
+                    <Select
                       value={nuovaScadenza.tipo}
                       onChange={e => setNuovaScadenza({ ...nuovaScadenza, tipo: e.target.value })}
-                      style={{
-                        width: '100%',
-                        padding: '10px 12px',
-                        borderRadius: 6,
-                        border: '1px solid #e2e8f0',
-                      }}
+                      style={{ width: '100%' }}
                     >
                       <option value="CUSTOM">Personalizzata</option>
                       <option value="FATTURA">Fattura</option>
                       <option value="F24">F24</option>
                       <option value="IVA">IVA</option>
                       <option value="INPS">INPS</option>
-                    </select>
+                    </Select>
                   </div>
 
                   <div>
@@ -1142,23 +935,18 @@ export default function Scadenze() {
                     >
                       Priorità
                     </label>
-                    <select
+                    <Select
                       value={nuovaScadenza.priorita}
                       onChange={e =>
                         setNuovaScadenza({ ...nuovaScadenza, priorita: e.target.value })
                       }
-                      style={{
-                        width: '100%',
-                        padding: '10px 12px',
-                        borderRadius: 6,
-                        border: '1px solid #e2e8f0',
-                      }}
+                      style={{ width: '100%' }}
                     >
                       <option value="bassa">Bassa</option>
                       <option value="media">Media</option>
                       <option value="alta">Alta</option>
                       <option value="critica">Critica</option>
-                    </select>
+                    </Select>
                   </div>
                 </div>
 
@@ -1168,18 +956,12 @@ export default function Scadenze() {
                   >
                     Importo (opzionale)
                   </label>
-                  <input
+                  <Input
                     type="number"
                     step="0.01"
                     value={nuovaScadenza.importo}
                     onChange={e => setNuovaScadenza({ ...nuovaScadenza, importo: e.target.value })}
                     placeholder="0.00"
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      borderRadius: 6,
-                      border: '1px solid #e2e8f0',
-                    }}
                   />
                 </div>
 
@@ -1196,41 +978,22 @@ export default function Scadenze() {
                     style={{
                       width: '100%',
                       padding: '10px 12px',
-                      borderRadius: 6,
-                      border: '1px solid #e2e8f0',
+                      borderRadius: BORDER_RADIUS.sm,
+                      border: `1px solid ${COLORS.border}`,
                       resize: 'vertical',
+                      boxSizing: 'border-box',
                     }}
                   />
                 </div>
               </div>
 
               <div style={{ display: 'flex', gap: 10, marginTop: 20, justifyContent: 'flex-end' }}>
-                <button
-                  onClick={() => setShowModal(false)}
-                  style={{
-                    padding: '10px 20px',
-                    background: '#e5e7eb',
-                    border: 'none',
-                    borderRadius: 6,
-                    cursor: 'pointer',
-                  }}
-                >
+                <Button variant="secondary" onClick={() => setShowModal(false)}>
                   Annulla
-                </button>
-                <button
-                  onClick={handleCreaScadenza}
-                  style={{
-                    padding: '10px 20px',
-                    background: '#3b82f6',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: 6,
-                    cursor: 'pointer',
-                    fontWeight: 'bold',
-                  }}
-                >
+                </Button>
+                <Button variant="info" onClick={handleCreaScadenza}>
                   Salva Scadenza
-                </button>
+                </Button>
               </div>
             </div>
           </div>
@@ -1263,12 +1026,12 @@ export default function Scadenze() {
           >
             <div
               style={{
-                background: 'white',
-                borderRadius: 16,
+                background: COLORS.card,
+                borderRadius: BORDER_RADIUS.xl,
                 padding: 24,
                 maxWidth: 420,
                 width: '90%',
-                boxShadow: '0 25px 50px rgba(0,0,0,0.25)',
+                boxShadow: SHADOWS.modal,
               }}
               onClick={e => e.stopPropagation()}
             >
@@ -1280,35 +1043,29 @@ export default function Scadenze() {
                   gap: 12,
                 }}
               >
-                <h3 style={{ margin: '0 0 8px', fontSize: 18, color: '#1e3a5f' }}>
+                <h3 style={{ margin: '0 0 8px', fontSize: 18, color: COLORS.primaryLight }}>
                   💰 Registra Pagamento
                 </h3>
-                <button
+                <Button
+                  variant="ghost"
                   onClick={() => setPagaModal(null)}
                   aria-label="Chiudi"
                   style={{
                     width: 32,
                     height: 32,
-                    flexShrink: 0,
-                    background: '#f1f5f9',
-                    border: 'none',
-                    borderRadius: 8,
-                    color: '#475569',
+                    padding: 0,
+                    background: COLORS.bgAlt,
+                    color: COLORS.textMuted,
                     fontSize: 16,
-                    lineHeight: 1,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
                   }}
                 >
                   ✕
-                </button>
+                </Button>
               </div>
               <div
                 style={{
                   fontSize: 13,
-                  color: '#6b7280',
+                  color: COLORS.textMuted,
                   marginBottom: 16,
                   display: 'flex',
                   alignItems: 'center',
@@ -1324,10 +1081,9 @@ export default function Scadenze() {
                       rel="noopener noreferrer"
                       style={{
                         padding: '2px 8px',
-                        background: '#10b981',
+                        background: COLORS.success,
                         color: 'white',
-                        border: 'none',
-                        borderRadius: 4,
+                        borderRadius: BORDER_RADIUS.sm,
                         fontSize: 10,
                         textDecoration: 'none',
                       }}
@@ -1341,7 +1097,7 @@ export default function Scadenze() {
                 style={{
                   fontSize: 24,
                   fontWeight: 700,
-                  color: '#1e3a5f',
+                  color: COLORS.primaryLight,
                   marginBottom: 20,
                   textAlign: 'center',
                 }}
@@ -1349,58 +1105,32 @@ export default function Scadenze() {
                 {pagaModal.importo > 0 ? `€ ${pagaModal.importo.toFixed(2)}` : '—'}
               </div>
               <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
-                <button
+                <Button
+                  variant="warning"
+                  size="lg"
                   disabled={processing}
                   onClick={() => handlePagaScadenza(pagaModal, 'cassa')}
-                  style={{
-                    flex: 1,
-                    padding: '14px 20px',
-                    borderRadius: 10,
-                    border: 'none',
-                    background: '#f59e0b',
-                    color: 'white',
-                    fontWeight: 700,
-                    fontSize: 15,
-                    cursor: processing ? 'wait' : 'pointer',
-                    opacity: processing ? 0.6 : 1,
-                  }}
+                  style={{ flex: 1 }}
                 >
                   🏪 Paga in CASSA
-                </button>
-                <button
+                </Button>
+                <Button
+                  variant="info"
+                  size="lg"
                   disabled={processing}
                   onClick={() => handlePagaScadenza(pagaModal, 'banca')}
-                  style={{
-                    flex: 1,
-                    padding: '14px 20px',
-                    borderRadius: 10,
-                    border: 'none',
-                    background: '#3b82f6',
-                    color: 'white',
-                    fontWeight: 700,
-                    fontSize: 15,
-                    cursor: processing ? 'wait' : 'pointer',
-                    opacity: processing ? 0.6 : 1,
-                  }}
+                  style={{ flex: 1 }}
                 >
                   🏦 Paga in BANCA
-                </button>
+                </Button>
               </div>
-              <button
+              <Button
+                variant="secondary"
                 onClick={() => setPagaModal(null)}
-                style={{
-                  width: '100%',
-                  padding: '10px',
-                  background: '#f3f4f6',
-                  color: '#6b7280',
-                  border: 'none',
-                  borderRadius: 8,
-                  cursor: 'pointer',
-                  fontSize: 13,
-                }}
+                style={{ width: '100%' }}
               >
                 Annulla
-              </button>
+              </Button>
             </div>
           </div>
         )}

@@ -2,9 +2,10 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
-import { STYLES, COLORS, button, badge, formatEuro, useIsMobile, RG, pagePad } from '../lib/utils';
+import { COLORS, SHADOWS, BORDER_RADIUS, useIsMobile } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
 import { useHashState } from '../hooks/useHashState';
+import { Button, Badge, StatCard, Card, Tabs, Input, Select } from '../components/ds';
 import { Trash2, AlertTriangle, X, Loader2, CheckCircle2 } from 'lucide-react';
 
 export default function Admin() {
@@ -404,68 +405,13 @@ export default function Admin() {
 
   const fmt = n => n?.toLocaleString('it-IT') || '0';
 
-  // Styles
-  const tabStyle = isActive => ({
-    padding: '10px 16px',
-    borderRadius: 8,
-    border: 'none',
-    background: isActive ? '#4f46e5' : 'transparent',
-    color: isActive ? 'white' : '#374151',
-    cursor: 'pointer',
-    fontWeight: isActive ? 'bold' : 'normal',
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-  });
-
-  const cardStyle = {
-    background: 'white',
-    borderRadius: 12,
-    boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-    overflow: 'hidden',
-  };
-
-  const cardHeaderStyle = {
-    padding: '12px 16px',
-    borderBottom: '1px solid #e5e7eb',
-  };
-
-  const cardContentStyle = {
-    padding: 16,
-  };
-
-  const inputStyle = {
-    width: '100%',
-    padding: '8px 12px',
-    border: '1px solid #e2e8f0',
-    borderRadius: 6,
-    fontSize: 14,
-  };
-
-  const buttonStyle = (bg, color = 'white') => ({
-    padding: '8px 16px',
-    background: bg,
-    color: color,
-    border: 'none',
-    borderRadius: 6,
-    cursor: 'pointer',
-    fontWeight: '600',
-    fontSize: 13,
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: 6,
-  });
-
-  const smallButtonStyle = (bg, color = 'white') => ({
-    padding: '6px 12px',
-    background: bg,
-    color: color,
-    border: 'none',
-    borderRadius: 6,
-    cursor: 'pointer',
-    fontWeight: '500',
-    fontSize: 12,
-  });
+  const tabItems = [
+    { key: 'email', label: 'Email', icon: '📧' },
+    { key: 'keywords', label: 'Parole Chiave', icon: '🔑' },
+    { key: 'fatture', label: 'Fatture', icon: '📄' },
+    { key: 'system', label: 'Sistema', icon: '🗄️' },
+    { key: 'rollback', label: 'Rollback Dati', icon: '🗑️' },
+  ];
 
   return (
     <PageLayout
@@ -474,604 +420,453 @@ export default function Admin() {
       subtitle="Configurazione sistema, email e parametri"
     >
       {/* Tabs */}
-      <div
-        style={{
-          marginBottom: 16,
-          background: '#f1f5f9',
-          padding: 4,
-          borderRadius: 12,
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: 4,
-        }}
-      >
-        <button onClick={() => handleTabChange('email')} style={tabStyle(activeTab === 'email')}>
-          📧 Email
-        </button>
-        <button
-          onClick={() => handleTabChange('keywords')}
-          style={tabStyle(activeTab === 'keywords')}
-        >
-          🔑 Parole Chiave
-        </button>
-        <button
-          onClick={() => handleTabChange('fatture')}
-          style={tabStyle(activeTab === 'fatture')}
-        >
-          📄 Fatture
-        </button>
-        <button onClick={() => handleTabChange('system')} style={tabStyle(activeTab === 'system')}>
-          🗄️ Sistema
-        </button>
-        <button onClick={() => handleTabChange('rollback')} style={tabStyle(activeTab === 'rollback')}>
-          🗑️ Rollback Dati
-        </button>
-      </div>
+      <Tabs items={tabItems} value={activeTab} onChange={handleTabChange} style={{ marginBottom: 16 }} />
 
       {/* TAB EMAIL */}
       {activeTab === 'email' && (
         <div style={{ display: 'grid', gap: 16 }}>
-          <div style={cardStyle}>
-            <div
-              style={{
-                ...cardHeaderStyle,
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-              }}
-            >
-              <h3 style={{ margin: 0, fontSize: 16 }}>Account Email Configurati</h3>
-              <button onClick={() => setShowNewForm(true)} style={buttonStyle('#4f46e5')}>
-                ➕ Aggiungi Email
-              </button>
-            </div>
-            <div style={cardContentStyle}>
-              {loadingEmails ? (
-                <div style={{ textAlign: 'center', padding: 20, color: '#6b7280' }}>
-                  Caricamento...
-                </div>
-              ) : emailAccounts.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: 20, color: '#6b7280' }}>
-                  Nessun account email configurato
-                </div>
-              ) : (
-                <div style={{ display: 'grid', gap: 12 }}>
-                  {emailAccounts.map(acc => (
+          <Card
+            title="Account Email Configurati"
+            actions={
+              <Button variant="primary" size="sm" onClick={() => setShowNewForm(true)} iconLeft="➕">
+                Aggiungi Email
+              </Button>
+            }
+          >
+            {loadingEmails ? (
+              <div style={{ textAlign: 'center', padding: 20, color: COLORS.textMuted }}>
+                Caricamento...
+              </div>
+            ) : emailAccounts.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 20, color: COLORS.textMuted }}>
+                Nessun account email configurato
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gap: 12 }}>
+                {emailAccounts.map(acc => (
+                  <div
+                    key={acc.id}
+                    style={{
+                      border: `1px solid ${COLORS.border}`,
+                      borderRadius: BORDER_RADIUS.md,
+                      padding: 16,
+                      background: acc.is_env_default ? COLORS.infoLight : COLORS.bgAlt,
+                    }}
+                  >
                     <div
-                      key={acc.id}
                       style={{
-                        border: '1px solid #e2e8f0',
-                        borderRadius: 8,
-                        padding: 16,
-                        background: acc.is_env_default ? '#f0f9ff' : '#f8fafc',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'flex-start',
+                        marginBottom: 12,
                       }}
                     >
-                      <div
-                        style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'flex-start',
-                          marginBottom: 12,
-                        }}
-                      >
-                        <div>
-                          <div
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 8,
-                              fontWeight: 600,
-                              fontSize: 14,
-                            }}
-                          >
-                            📧 {acc.nome}
-                            {acc.is_env_default && (
-                              <span
-                                style={{
-                                  fontSize: 10,
-                                  background: '#dbeafe',
-                                  color: '#1d4ed8',
-                                  padding: '2px 8px',
-                                  borderRadius: 4,
-                                }}
-                              >
-                                Principale (da .env)
-                              </span>
-                            )}
-                            {acc.attivo ? (
-                              <span
-                                style={{
-                                  fontSize: 10,
-                                  background: '#dcfce7',
-                                  color: '#166534',
-                                  padding: '2px 8px',
-                                  borderRadius: 4,
-                                }}
-                              >
-                                Attivo
-                              </span>
-                            ) : (
-                              <span
-                                style={{
-                                  fontSize: 10,
-                                  background: '#fee2e2',
-                                  color: '#991b1b',
-                                  padding: '2px 8px',
-                                  borderRadius: 4,
-                                }}
-                              >
-                                Disattivo
-                              </span>
-                            )}
-                          </div>
-                          <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>
-                            {acc.email}
-                          </div>
-                        </div>
-                        <div style={{ display: 'flex', gap: 4 }}>
-                          <button
-                            onClick={() => testEmailConnection(acc.id)}
-                            disabled={testingConnection === acc.id}
-                            style={smallButtonStyle('#e5e7eb', '#374151')}
-                          >
-                            {testingConnection === acc.id ? '⏳' : 'Test'}
-                          </button>
-                          <button
-                            onClick={() => {
-                              setEditingAccount({ ...acc });
-                              setEditKeywordInput('');
-                            }}
-                            style={smallButtonStyle('#e5e7eb', '#374151')}
-                          >
-                            Modifica
-                          </button>
-                          {!acc.is_env_default && (
-                            <button
-                              onClick={() => deleteEmailAccount(acc.id)}
-                              style={smallButtonStyle('#fee2e2', '#dc2626')}
-                            >
-                              🗑️
-                            </button>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Password */}
-                      <div
-                        style={{
-                          fontSize: 12,
-                          color: '#6b7280',
-                          marginBottom: 8,
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 8,
-                        }}
-                      >
-                        <span>App Password:</span>
-                        <span style={{ fontFamily: 'monospace' }}>
-                          {showPassword[acc.id] ? acc.app_password : acc.app_password_masked}
-                        </span>
-                        <button
-                          onClick={() =>
-                            setShowPassword({ ...showPassword, [acc.id]: !showPassword[acc.id] })
-                          }
+                      <div>
+                        <div
                           style={{
-                            background: 'none',
-                            border: 'none',
-                            cursor: 'pointer',
-                            color: '#1e3a5f',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            fontWeight: 600,
+                            fontSize: 14,
                           }}
                         >
-                          {showPassword[acc.id] ? '🙈' : '👁️'}
-                        </button>
-                      </div>
-
-                      {/* Parole chiave come tag separati */}
-                      <div style={{ fontSize: 12 }}>
-                        <span style={{ fontWeight: 500 }}>Parole Chiave:</span>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
-                          {(acc.parole_chiave || []).map((kw, i) => (
-                            <span
-                              key={i}
-                              style={{
-                                background: '#e0e7ff',
-                                color: '#3730a3',
-                                padding: '4px 10px',
-                                borderRadius: 20,
-                                fontSize: 11,
-                                fontWeight: 500,
-                              }}
-                            >
-                              {kw}
-                            </span>
-                          ))}
-                          {(!acc.parole_chiave || acc.parole_chiave.length === 0) && (
-                            <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>
-                              Nessuna (accetta tutte le email)
-                            </span>
+                          📧 {acc.nome}
+                          {acc.is_env_default && <Badge variant="info">Principale (da .env)</Badge>}
+                          {acc.attivo ? (
+                            <Badge variant="success">Attivo</Badge>
+                          ) : (
+                            <Badge variant="danger">Disattivo</Badge>
                           )}
                         </div>
+                        <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 4 }}>
+                          {acc.email}
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Form Nuovo Account */}
-              {showNewForm && (
-                <div style={{ marginTop: 20, borderTop: '1px solid #e2e8f0', paddingTop: 20 }}>
-                  <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>
-                    ➕ Nuovo Account Email
-                  </h4>
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)',
-                      gap: 12,
-                    }}
-                  >
-                    <div>
-                      <label
-                        style={{ fontSize: 11, fontWeight: 500, display: 'block', marginBottom: 4 }}
-                      >
-                        Nome Account
-                      </label>
-                      <input
-                        value={newAccount.nome}
-                        onChange={e => setNewAccount({ ...newAccount, nome: e.target.value })}
-                        placeholder="es. Commercialista"
-                        style={inputStyle}
-                      />
-                    </div>
-                    <div>
-                      <label
-                        style={{ fontSize: 11, fontWeight: 500, display: 'block', marginBottom: 4 }}
-                      >
-                        Email
-                      </label>
-                      <input
-                        type="email"
-                        value={newAccount.email}
-                        onChange={e => setNewAccount({ ...newAccount, email: e.target.value })}
-                        placeholder="email@esempio.com"
-                        style={inputStyle}
-                      />
-                    </div>
-                    <div>
-                      <label
-                        style={{ fontSize: 11, fontWeight: 500, display: 'block', marginBottom: 4 }}
-                      >
-                        App Password
-                      </label>
-                      <input
-                        type="password"
-                        value={newAccount.app_password}
-                        onChange={e =>
-                          setNewAccount({ ...newAccount, app_password: e.target.value })
-                        }
-                        placeholder="Password app Google"
-                        style={inputStyle}
-                      />
-                    </div>
-                    <div>
-                      <label
-                        style={{ fontSize: 11, fontWeight: 500, display: 'block', marginBottom: 4 }}
-                      >
-                        Server IMAP
-                      </label>
-                      <input
-                        value={newAccount.imap_server}
-                        onChange={e =>
-                          setNewAccount({ ...newAccount, imap_server: e.target.value })
-                        }
-                        style={inputStyle}
-                      />
-                    </div>
-
-                    {/* Parole Chiave - Campi separati */}
-                    <div style={{ gridColumn: 'span 2' }}>
-                      <label
-                        style={{ fontSize: 11, fontWeight: 500, display: 'block', marginBottom: 4 }}
-                      >
-                        Parole Chiave
-                      </label>
-                      <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                        <input
-                          value={newKeywordInput}
-                          onChange={e => setNewKeywordInput(e.target.value)}
-                          placeholder="Aggiungi parola chiave..."
-                          onKeyDown={e =>
-                            e.key === 'Enter' && (e.preventDefault(), addKeywordToAccount(false))
-                          }
-                          style={inputStyle}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => addKeywordToAccount(false)}
-                          style={smallButtonStyle('#4f46e5')}
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => testEmailConnection(acc.id)}
+                          disabled={testingConnection === acc.id}
                         >
-                          ➕
-                        </button>
-                      </div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                        {(newAccount.parole_chiave || []).map((kw, i) => (
-                          <span
-                            key={i}
-                            style={{
-                              background: '#e0e7ff',
-                              color: '#3730a3',
-                              padding: '4px 10px',
-                              borderRadius: 20,
-                              fontSize: 11,
-                              fontWeight: 500,
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 6,
-                            }}
-                          >
-                            {kw}
-                            <button
-                              onClick={() => removeKeywordFromAccount(kw, false)}
-                              style={{
-                                background: 'none',
-                                border: 'none',
-                                cursor: 'pointer',
-                                padding: 0,
-                                color: '#ef4444',
-                              }}
-                            >
-                              ✕
-                            </button>
-                          </span>
-                        ))}
+                          {testingConnection === acc.id ? '⏳' : 'Test'}
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => {
+                            setEditingAccount({ ...acc });
+                            setEditKeywordInput('');
+                          }}
+                        >
+                          Modifica
+                        </Button>
+                        {!acc.is_env_default && (
+                          <Button variant="danger" size="sm" onClick={() => deleteEmailAccount(acc.id)}>
+                            🗑️
+                          </Button>
+                        )}
                       </div>
                     </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-                    <button
-                      onClick={() => saveEmailAccount(newAccount)}
-                      style={buttonStyle('#16a34a')}
-                    >
-                      ✔️ Salva
-                    </button>
-                    <button
-                      onClick={() => {
-                        setShowNewForm(false);
-                        setNewKeywordInput('');
+
+                    {/* Password */}
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: COLORS.textMuted,
+                        marginBottom: 8,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
                       }}
-                      style={buttonStyle('#e5e7eb', '#374151')}
                     >
-                      ✕ Annulla
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Form Modifica Account */}
-              {editingAccount && (
-                <div style={{ marginTop: 20, borderTop: '1px solid #e2e8f0', paddingTop: 20 }}>
-                  <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>
-                    ✏️ Modifica Account: {editingAccount.nome}
-                    {editingAccount.is_env_default && (
-                      <span style={{ fontSize: 10, color: '#6b7280', marginLeft: 8 }}>
-                        (Email Principale da .env)
+                      <span>App Password:</span>
+                      <span style={{ fontFamily: 'monospace' }}>
+                        {showPassword[acc.id] ? acc.app_password : acc.app_password_masked}
                       </span>
-                    )}
-                  </h4>{' '}
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)',
-                      gap: 12,
-                    }}
-                  >
-                    <div>
-                      <label
-                        style={{ fontSize: 11, fontWeight: 500, display: 'block', marginBottom: 4 }}
-                      >
-                        Nome Account
-                      </label>
-                      <input
-                        value={editingAccount.nome}
-                        onChange={e =>
-                          setEditingAccount({ ...editingAccount, nome: e.target.value })
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() =>
+                          setShowPassword({ ...showPassword, [acc.id]: !showPassword[acc.id] })
                         }
-                        style={inputStyle}
-                      />
-                    </div>
-                    <div>
-                      <label
-                        style={{ fontSize: 11, fontWeight: 500, display: 'block', marginBottom: 4 }}
+                        style={{ color: COLORS.primaryLight, padding: '2px 6px' }}
                       >
-                        Email
-                      </label>
-                      <input
-                        type="email"
-                        value={editingAccount.email}
-                        onChange={e =>
-                          setEditingAccount({ ...editingAccount, email: e.target.value })
-                        }
-                        disabled={editingAccount.is_env_default}
-                        style={inputStyle}
-                      />
-                    </div>
-                    <div>
-                      <label
-                        style={{ fontSize: 11, fontWeight: 500, display: 'block', marginBottom: 4 }}
-                      >
-                        App Password
-                      </label>
-                      <input
-                        type="password"
-                        value={editingAccount.app_password || ''}
-                        onChange={e =>
-                          setEditingAccount({ ...editingAccount, app_password: e.target.value })
-                        }
-                        placeholder="Lascia vuoto per non modificare"
-                        style={inputStyle}
-                      />
-                    </div>
-                    <div>
-                      <label
-                        style={{ fontSize: 11, fontWeight: 500, display: 'block', marginBottom: 4 }}
-                      >
-                        Attivo
-                      </label>
-                      <select
-                        value={editingAccount.attivo ? 'true' : 'false'}
-                        onChange={e =>
-                          setEditingAccount({
-                            ...editingAccount,
-                            attivo: e.target.value === 'true',
-                          })
-                        }
-                        style={inputStyle}
-                      >
-                        <option value="true">Si</option>
-                        <option value="false">No</option>
-                      </select>
+                        {showPassword[acc.id] ? '🙈' : '👁️'}
+                      </Button>
                     </div>
 
-                    {/* Parole Chiave - Campi separati */}
-                    <div style={{ gridColumn: 'span 2' }}>
-                      <label
-                        style={{ fontSize: 11, fontWeight: 500, display: 'block', marginBottom: 4 }}
-                      >
-                        Parole Chiave
-                      </label>
-                      <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                        <input
-                          value={editKeywordInput}
-                          onChange={e => setEditKeywordInput(e.target.value)}
-                          placeholder="Aggiungi parola chiave..."
-                          onKeyDown={e =>
-                            e.key === 'Enter' && (e.preventDefault(), addKeywordToAccount(true))
-                          }
-                          style={inputStyle}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => addKeywordToAccount(true)}
-                          style={smallButtonStyle('#4f46e5')}
-                        >
-                          ➕
-                        </button>
-                      </div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                        {(editingAccount.parole_chiave || []).map((kw, i) => (
-                          <span
-                            key={i}
-                            style={{
-                              background: '#e0e7ff',
-                              color: '#3730a3',
-                              padding: '4px 10px',
-                              borderRadius: 20,
-                              fontSize: 11,
-                              fontWeight: 500,
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 6,
-                            }}
-                          >
+                    {/* Parole chiave come tag separati */}
+                    <div style={{ fontSize: 12 }}>
+                      <span style={{ fontWeight: 500 }}>Parole Chiave:</span>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+                        {(acc.parole_chiave || []).map((kw, i) => (
+                          <Badge key={i} variant="primary">
                             {kw}
-                            <button
-                              onClick={() => removeKeywordFromAccount(kw, true)}
-                              style={{
-                                background: 'none',
-                                border: 'none',
-                                cursor: 'pointer',
-                                padding: 0,
-                                color: '#ef4444',
-                              }}
-                            >
-                              ✕
-                            </button>
-                          </span>
+                          </Badge>
                         ))}
-                        {(!editingAccount.parole_chiave ||
-                          editingAccount.parole_chiave.length === 0) && (
-                          <span style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: 12 }}>
-                            Nessuna parola chiave (accetta tutte le email)
+                        {(!acc.parole_chiave || acc.parole_chiave.length === 0) && (
+                          <span style={{ color: COLORS.textSubtle, fontStyle: 'italic' }}>
+                            Nessuna (accetta tutte le email)
                           </span>
                         )}
                       </div>
                     </div>
                   </div>
-                  <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-                    <button
-                      onClick={() => saveEmailAccount(editingAccount)}
-                      style={buttonStyle('#16a34a')}
+                ))}
+              </div>
+            )}
+
+            {/* Form Nuovo Account */}
+            {showNewForm && (
+              <div
+                style={{ marginTop: 20, borderTop: `1px solid ${COLORS.border}`, paddingTop: 20 }}
+              >
+                <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>
+                  ➕ Nuovo Account Email
+                </h4>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)',
+                    gap: 12,
+                  }}
+                >
+                  <div>
+                    <label
+                      style={{ fontSize: 11, fontWeight: 500, display: 'block', marginBottom: 4 }}
                     >
-                      ✔️ Salva Modifiche
-                    </button>
-                    <button
-                      onClick={() => {
-                        setEditingAccount(null);
-                        setEditKeywordInput('');
-                      }}
-                      style={buttonStyle('#e5e7eb', '#374151')}
+                      Nome Account
+                    </label>
+                    <Input
+                      value={newAccount.nome}
+                      onChange={e => setNewAccount({ ...newAccount, nome: e.target.value })}
+                      placeholder="es. Commercialista"
+                    />
+                  </div>
+                  <div>
+                    <label
+                      style={{ fontSize: 11, fontWeight: 500, display: 'block', marginBottom: 4 }}
                     >
-                      ✕ Annulla
-                    </button>
+                      Email
+                    </label>
+                    <Input
+                      type="email"
+                      value={newAccount.email}
+                      onChange={e => setNewAccount({ ...newAccount, email: e.target.value })}
+                      placeholder="email@esempio.com"
+                    />
+                  </div>
+                  <div>
+                    <label
+                      style={{ fontSize: 11, fontWeight: 500, display: 'block', marginBottom: 4 }}
+                    >
+                      App Password
+                    </label>
+                    <Input
+                      type="password"
+                      value={newAccount.app_password}
+                      onChange={e =>
+                        setNewAccount({ ...newAccount, app_password: e.target.value })
+                      }
+                      placeholder="Password app Google"
+                    />
+                  </div>
+                  <div>
+                    <label
+                      style={{ fontSize: 11, fontWeight: 500, display: 'block', marginBottom: 4 }}
+                    >
+                      Server IMAP
+                    </label>
+                    <Input
+                      value={newAccount.imap_server}
+                      onChange={e =>
+                        setNewAccount({ ...newAccount, imap_server: e.target.value })
+                      }
+                    />
+                  </div>
+
+                  {/* Parole Chiave - Campi separati */}
+                  <div style={{ gridColumn: 'span 2' }}>
+                    <label
+                      style={{ fontSize: 11, fontWeight: 500, display: 'block', marginBottom: 4 }}
+                    >
+                      Parole Chiave
+                    </label>
+                    <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                      <Input
+                        value={newKeywordInput}
+                        onChange={e => setNewKeywordInput(e.target.value)}
+                        placeholder="Aggiungi parola chiave..."
+                        onKeyDown={e =>
+                          e.key === 'Enter' && (e.preventDefault(), addKeywordToAccount(false))
+                        }
+                      />
+                      <Button type="button" variant="primary" size="sm" onClick={() => addKeywordToAccount(false)}>
+                        ➕
+                      </Button>
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {(newAccount.parole_chiave || []).map((kw, i) => (
+                        <Badge
+                          key={i}
+                          variant="primary"
+                          style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+                        >
+                          {kw}
+                          <button
+                            onClick={() => removeKeywordFromAccount(kw, false)}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              cursor: 'pointer',
+                              padding: 0,
+                              color: COLORS.danger,
+                            }}
+                          >
+                            ✕
+                          </button>
+                        </Badge>
+                      ))}
+                    </div>
                   </div>
                 </div>
-              )}
-            </div>
-          </div>
+                <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+                  <Button variant="success" onClick={() => saveEmailAccount(newAccount)}>
+                    ✔️ Salva
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      setShowNewForm(false);
+                      setNewKeywordInput('');
+                    }}
+                  >
+                    ✕ Annulla
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Form Modifica Account */}
+            {editingAccount && (
+              <div
+                style={{ marginTop: 20, borderTop: `1px solid ${COLORS.border}`, paddingTop: 20 }}
+              >
+                <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>
+                  ✏️ Modifica Account: {editingAccount.nome}
+                  {editingAccount.is_env_default && (
+                    <span style={{ fontSize: 10, color: COLORS.textMuted, marginLeft: 8 }}>
+                      (Email Principale da .env)
+                    </span>
+                  )}
+                </h4>{' '}
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)',
+                    gap: 12,
+                  }}
+                >
+                  <div>
+                    <label
+                      style={{ fontSize: 11, fontWeight: 500, display: 'block', marginBottom: 4 }}
+                    >
+                      Nome Account
+                    </label>
+                    <Input
+                      value={editingAccount.nome}
+                      onChange={e =>
+                        setEditingAccount({ ...editingAccount, nome: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label
+                      style={{ fontSize: 11, fontWeight: 500, display: 'block', marginBottom: 4 }}
+                    >
+                      Email
+                    </label>
+                    <Input
+                      type="email"
+                      value={editingAccount.email}
+                      onChange={e =>
+                        setEditingAccount({ ...editingAccount, email: e.target.value })
+                      }
+                      disabled={editingAccount.is_env_default}
+                    />
+                  </div>
+                  <div>
+                    <label
+                      style={{ fontSize: 11, fontWeight: 500, display: 'block', marginBottom: 4 }}
+                    >
+                      App Password
+                    </label>
+                    <Input
+                      type="password"
+                      value={editingAccount.app_password || ''}
+                      onChange={e =>
+                        setEditingAccount({ ...editingAccount, app_password: e.target.value })
+                      }
+                      placeholder="Lascia vuoto per non modificare"
+                    />
+                  </div>
+                  <div>
+                    <label
+                      style={{ fontSize: 11, fontWeight: 500, display: 'block', marginBottom: 4 }}
+                    >
+                      Attivo
+                    </label>
+                    <Select
+                      value={editingAccount.attivo ? 'true' : 'false'}
+                      onChange={e =>
+                        setEditingAccount({
+                          ...editingAccount,
+                          attivo: e.target.value === 'true',
+                        })
+                      }
+                    >
+                      <option value="true">Si</option>
+                      <option value="false">No</option>
+                    </Select>
+                  </div>
+
+                  {/* Parole Chiave - Campi separati */}
+                  <div style={{ gridColumn: 'span 2' }}>
+                    <label
+                      style={{ fontSize: 11, fontWeight: 500, display: 'block', marginBottom: 4 }}
+                    >
+                      Parole Chiave
+                    </label>
+                    <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                      <Input
+                        value={editKeywordInput}
+                        onChange={e => setEditKeywordInput(e.target.value)}
+                        placeholder="Aggiungi parola chiave..."
+                        onKeyDown={e =>
+                          e.key === 'Enter' && (e.preventDefault(), addKeywordToAccount(true))
+                        }
+                      />
+                      <Button type="button" variant="primary" size="sm" onClick={() => addKeywordToAccount(true)}>
+                        ➕
+                      </Button>
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {(editingAccount.parole_chiave || []).map((kw, i) => (
+                        <Badge
+                          key={i}
+                          variant="primary"
+                          style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+                        >
+                          {kw}
+                          <button
+                            onClick={() => removeKeywordFromAccount(kw, true)}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              cursor: 'pointer',
+                              padding: 0,
+                              color: COLORS.danger,
+                            }}
+                          >
+                            ✕
+                          </button>
+                        </Badge>
+                      ))}
+                      {(!editingAccount.parole_chiave ||
+                        editingAccount.parole_chiave.length === 0) && (
+                        <span style={{ color: COLORS.textSubtle, fontStyle: 'italic', fontSize: 12 }}>
+                          Nessuna parola chiave (accetta tutte le email)
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+                  <Button variant="success" onClick={() => saveEmailAccount(editingAccount)}>
+                    ✔️ Salva Modifiche
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      setEditingAccount(null);
+                      setEditKeywordInput('');
+                    }}
+                  >
+                    ✕ Annulla
+                  </Button>
+                </div>
+              </div>
+            )}
+          </Card>
 
           {/* CARD GOOGLE DRIVE — import fatture */}
-          <div style={cardStyle} data-testid="drive-fatture-card">
-            <div
-              style={{
-                ...cardHeaderStyle,
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-              }}
+          <div data-testid="drive-fatture-card">
+            <Card
+              title={
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  📂 Google Drive — Import Fatture XML
+                  {driveStatus?.configured ? (
+                    <Badge variant="success">Configurato</Badge>
+                  ) : (
+                    <Badge variant="warning">Non configurato</Badge>
+                  )}
+                </span>
+              }
+              actions={
+                <Button
+                  variant="primary"
+                  size="sm"
+                  data-testid="drive-sync-btn"
+                  onClick={syncDriveNow}
+                  disabled={syncingDrive || !driveStatus?.configured}
+                >
+                  {syncingDrive ? '⏳ Sincronizzazione...' : '🔄 Sincronizza ora'}
+                </Button>
+              }
             >
-              <h3
-                style={{ margin: 0, fontSize: 16, display: 'flex', alignItems: 'center', gap: 8 }}
-              >
-                📂 Google Drive — Import Fatture XML
-                {driveStatus?.configured ? (
-                  <span
-                    style={{
-                      fontSize: 10,
-                      background: 'var(--c-success-light)',
-                      color: 'var(--c-success)',
-                      padding: '2px 8px',
-                      borderRadius: 4,
-                    }}
-                  >
-                    Configurato
-                  </span>
-                ) : (
-                  <span
-                    style={{
-                      fontSize: 10,
-                      background: 'var(--c-warning-light)',
-                      color: 'var(--c-warning)',
-                      padding: '2px 8px',
-                      borderRadius: 4,
-                    }}
-                  >
-                    Non configurato
-                  </span>
-                )}
-              </h3>
-              <button
-                data-testid="drive-sync-btn"
-                onClick={syncDriveNow}
-                disabled={syncingDrive || !driveStatus?.configured}
-                style={buttonStyle(
-                  syncingDrive || !driveStatus?.configured ? '#9ca3af' : '#1e3a5f'
-                )}
-              >
-                {syncingDrive ? '⏳ Sincronizzazione...' : '🔄 Sincronizza ora'}
-              </button>
-            </div>
-            <div style={cardContentStyle}>
-              <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 16 }}>
+              <p style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 16 }}>
                 Importa automaticamente le fatture XML e P7M (firmate) dalla cartella Google Drive configurata
                 (anche ogni 15 minuti in automatico). Le credenziali (cartella + service account)
                 vanno impostate come variabili d'ambiente sul backend.
@@ -1085,60 +880,31 @@ export default function Admin() {
                   marginBottom: 16,
                 }}
               >
-                <div
-                  style={{
-                    background: '#f8fafc',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: 6,
-                    padding: '8px 12px',
-                  }}
-                >
-                  <div style={{ fontSize: 10, color: '#6b7280', marginBottom: 2, fontWeight: 500 }}>
-                    Cartella (ID)
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 600,
-                      color: '#1e293b',
-                      wordBreak: 'break-all',
-                    }}
-                  >
-                    {driveStatus?.folder_id || 'non impostata'}
-                  </div>
-                </div>
-                <div
-                  style={{
-                    background: '#f8fafc',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: 6,
-                    padding: '8px 12px',
-                  }}
-                >
-                  <div style={{ fontSize: 10, color: '#6b7280', marginBottom: 2, fontWeight: 500 }}>
-                    Ultimo sync
-                  </div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#1e293b' }}>
-                    {driveStatus?.last_sync
-                      ? new Date(driveStatus.last_sync).toLocaleString('it-IT').replaceAll('/', '-')
-                      : 'mai eseguito'}
-                  </div>
-                </div>
-                <div
-                  style={{
-                    background: '#f8fafc',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: 6,
-                    padding: '8px 12px',
-                  }}
-                >
-                  <div style={{ fontSize: 10, color: '#6b7280', marginBottom: 2, fontWeight: 500 }}>
-                    Fatture importate (totale)
-                  </div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#1e293b' }}>
-                    {driveStatus?.total_imported ?? 0}
-                  </div>
-                </div>
+                <StatCard
+                  accent="none"
+                  label="Cartella (ID)"
+                  value={
+                    <span style={{ fontSize: 13, wordBreak: 'break-all' }}>
+                      {driveStatus?.folder_id || 'non impostata'}
+                    </span>
+                  }
+                />
+                <StatCard
+                  accent="none"
+                  label="Ultimo sync"
+                  value={
+                    <span style={{ fontSize: 14 }}>
+                      {driveStatus?.last_sync
+                        ? new Date(driveStatus.last_sync).toLocaleString('it-IT').replaceAll('/', '-')
+                        : 'mai eseguito'}
+                    </span>
+                  }
+                />
+                <StatCard
+                  accent="none"
+                  label="Fatture importate (totale)"
+                  value={<span style={{ fontSize: 14 }}>{driveStatus?.total_imported ?? 0}</span>}
+                />
               </div>
 
               {driveStatus?.credenziali_errore && (
@@ -1146,11 +912,11 @@ export default function Admin() {
                   style={{
                     marginBottom: 12,
                     padding: '8px 12px',
-                    borderRadius: 8,
-                    background: '#fef2f2',
-                    border: '1px solid #fecaca',
+                    borderRadius: BORDER_RADIUS.md,
+                    background: COLORS.dangerLight,
+                    border: `1px solid ${COLORS.dangerLight}`,
                     fontSize: 13,
-                    color: '#dc2626',
+                    color: COLORS.danger,
                   }}
                 >
                   ✗ Problema credenziali: {driveStatus.credenziali_errore}
@@ -1158,13 +924,13 @@ export default function Admin() {
               )}
 
               {driveStatus?.last_result && (
-                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 12 }}>
+                <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 12 }}>
                   Ultimo giro: {driveStatus.last_result.total ?? 0} file trovati,{' '}
                   {driveStatus.last_result.imported ?? 0} importati,{' '}
                   {driveStatus.last_result.duplicates ?? 0} già presenti,{' '}
                   {driveStatus.last_result.errors ?? 0} errori.
                   {(driveStatus.last_result.details || []).length > 0 && (
-                    <ul style={{ margin: '6px 0 0', paddingLeft: 18, color: '#b91c1c' }}>
+                    <ul style={{ margin: '6px 0 0', paddingLeft: 18, color: COLORS.danger }}>
                       {driveStatus.last_result.details.map((d, i) => (
                         <li key={i} style={{ wordBreak: 'break-all' }}>
                           <code style={{ fontSize: 11 }}>{d.file}</code>: {d.error}
@@ -1179,11 +945,11 @@ export default function Admin() {
                 <div
                   style={{
                     padding: '8px 12px',
-                    borderRadius: 8,
-                    background: driveMsg.ok ? '#f0fdf4' : '#fef2f2',
-                    border: `1px solid ${driveMsg.ok ? '#bbf7d0' : '#fecaca'}`,
+                    borderRadius: BORDER_RADIUS.md,
+                    background: driveMsg.ok ? COLORS.successLight : COLORS.dangerLight,
+                    border: `1px solid ${driveMsg.ok ? COLORS.successLight : COLORS.dangerLight}`,
                     fontSize: 13,
-                    color: driveMsg.ok ? '#16a34a' : '#dc2626',
+                    color: driveMsg.ok ? COLORS.success : COLORS.danger,
                   }}
                 >
                   {driveMsg.ok ? '✓ ' : '✗ '}
@@ -1196,10 +962,10 @@ export default function Admin() {
                   style={{
                     marginTop: 12,
                     padding: 12,
-                    background: 'var(--c-primary-soft)',
-                    borderRadius: 8,
+                    background: COLORS.primarySoft,
+                    borderRadius: BORDER_RADIUS.md,
                     fontSize: 12,
-                    color: 'var(--c-primary)',
+                    color: COLORS.primary,
                   }}
                 >
                   Imposta <code>GOOGLE_DRIVE_FATTURE_FOLDER_ID</code> e{' '}
@@ -1207,111 +973,99 @@ export default function Admin() {
                   riavvia il servizio.
                 </div>
               )}
-            </div>
+            </Card>
           </div>
         </div>
       )}
 
       {/* TAB PAROLE CHIAVE GLOBALI */}
       {activeTab === 'keywords' && (
-        <div style={cardStyle}>
-          <div style={cardHeaderStyle}>
-            <h3 style={{ margin: 0, fontSize: 16 }}>Parole Chiave per Filtro Email (Globali)</h3>
-          </div>
-          <div style={cardContentStyle}>
-            <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 16 }}>
-              Queste parole chiave vengono usate per categorizzare automaticamente i documenti
-              scaricati dalle email.
-            </p>
+        <Card title="Parole Chiave per Filtro Email (Globali)">
+          <p style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 16 }}>
+            Queste parole chiave vengono usate per categorizzare automaticamente i documenti
+            scaricati dalle email.
+          </p>
 
-            {/* Aggiungi nuova */}
-            <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-              <select
-                value={newKeyword.categoria}
-                onChange={e => setNewKeyword({ ...newKeyword, categoria: e.target.value })}
-                style={{ ...inputStyle, minWidth: 120, width: 'auto' }}
-              >
-                <option value="generale">Generale</option>
-                <option value="fatture">Fatture</option>
-                <option value="f24">F24</option>
-                <option value="buste_paga">Buste Paga</option>
-              </select>
-              <input
-                value={newKeyword.parola}
-                onChange={e => setNewKeyword({ ...newKeyword, parola: e.target.value })}
-                placeholder="Nuova parola chiave..."
-                style={{ ...inputStyle, flex: 1 }}
-                onKeyDown={e => e.key === 'Enter' && addParolaChiave()}
-              />
-              <button onClick={addParolaChiave} style={buttonStyle('#4f46e5')}>
-                ➕ Aggiungi
-              </button>
-            </div>
-
-            {/* Lista per categoria */}
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)',
-                gap: 16,
-              }}
+          {/* Aggiungi nuova */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+            <Select
+              value={newKeyword.categoria}
+              onChange={e => setNewKeyword({ ...newKeyword, categoria: e.target.value })}
+              style={{ minWidth: 120, width: 'auto' }}
             >
-              {['generale', 'fatture', 'f24', 'buste_paga'].map(cat => (
-                <div
-                  key={cat}
-                  style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: 12 }}
-                >
-                  <h5
-                    style={{
-                      fontSize: 13,
-                      fontWeight: 600,
-                      marginBottom: 8,
-                      textTransform: 'capitalize',
-                    }}
-                  >
-                    {cat.replace('_', ' ')}
-                  </h5>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                    {(paroleChiave[cat] || []).map(kw => (
-                      <span
-                        key={`${cat}-${kw}`}
-                        style={{
-                          background: '#f1f5f9',
-                          padding: '4px 10px',
-                          borderRadius: 20,
-                          fontSize: 11,
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 6,
-                        }}
-                      >
-                        {kw}
-                        <button
-                          onClick={() => removeParolaChiave(cat, kw)}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            cursor: 'pointer',
-                            padding: 0,
-                            color: '#ef4444',
-                          }}
-                          data-testid={`remove-keyword-${cat}-${kw}`}
-                        >
-                          ✕
-                        </button>
-                      </span>
-                    ))}
-                    {(!paroleChiave[cat] || paroleChiave[cat].length === 0) && (
-                      <span style={{ color: '#94a3b8', fontSize: 11, fontStyle: 'italic' }}>
-                        Nessuna parola chiave
-                      </span>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
+              <option value="generale">Generale</option>
+              <option value="fatture">Fatture</option>
+              <option value="f24">F24</option>
+              <option value="buste_paga">Buste Paga</option>
+            </Select>
+            <Input
+              value={newKeyword.parola}
+              onChange={e => setNewKeyword({ ...newKeyword, parola: e.target.value })}
+              placeholder="Nuova parola chiave..."
+              style={{ flex: 1 }}
+              onKeyDown={e => e.key === 'Enter' && addParolaChiave()}
+            />
+            <Button variant="primary" onClick={addParolaChiave}>
+              ➕ Aggiungi
+            </Button>
           </div>
-        </div>
+
+          {/* Lista per categoria */}
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)',
+              gap: 16,
+            }}
+          >
+            {['generale', 'fatture', 'f24', 'buste_paga'].map(cat => (
+              <div
+                key={cat}
+                style={{ border: `1px solid ${COLORS.border}`, borderRadius: BORDER_RADIUS.md, padding: 12 }}
+              >
+                <h5
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 600,
+                    marginBottom: 8,
+                    textTransform: 'capitalize',
+                  }}
+                >
+                  {cat.replace('_', ' ')}
+                </h5>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {(paroleChiave[cat] || []).map(kw => (
+                    <Badge
+                      key={`${cat}-${kw}`}
+                      variant="neutral"
+                      style={{ display: 'flex', alignItems: 'center', gap: 6, textTransform: 'none' }}
+                    >
+                      {kw}
+                      <button
+                        onClick={() => removeParolaChiave(cat, kw)}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          padding: 0,
+                          color: COLORS.danger,
+                        }}
+                        data-testid={`remove-keyword-${cat}-${kw}`}
+                      >
+                        ✕
+                      </button>
+                    </Badge>
+                  ))}
+                  {(!paroleChiave[cat] || paroleChiave[cat].length === 0) && (
+                    <span style={{ color: COLORS.textSubtle, fontSize: 11, fontStyle: 'italic' }}>
+                      Nessuna parola chiave
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
       )}
 
       {/* TAB FATTURE */}
@@ -1327,95 +1081,71 @@ export default function Admin() {
           }}
         >
           {/* Stato Sistema */}
-          <div style={cardStyle}>
-            <div style={cardHeaderStyle}>
-              <h3
-                style={{ margin: 0, fontSize: 14, display: 'flex', alignItems: 'center', gap: 8 }}
-              >
-                🖥️ Stato Sistema
-              </h3>
-            </div>
-            <div style={cardContentStyle}>
-              {dbStatus && (
-                <div style={{ display: 'grid', gap: 8, fontSize: 13 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>Stato:</span>
-                    <span
-                      style={{
-                        fontWeight: 600,
-                        color: dbStatus.status === 'healthy' ? '#16a34a' : '#dc2626',
-                      }}
-                    >
-                      {dbStatus.status === 'healthy' ? '✅ Online' : '❌ Offline'}
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>Database:</span>
-                    <span
-                      style={{ color: dbStatus.database === 'connected' ? '#16a34a' : '#dc2626' }}
-                    >
-                      {dbStatus.database}
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>Versione:</span>
-                    <span>{dbStatus.version}</span>
-                  </div>
-                  {dbStatus.timestamp && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span>Timestamp:</span>
-                      <span style={{ fontSize: 11 }}>
-                        {new Date(dbStatus.timestamp).toLocaleString('it-IT')}
-                      </span>
-                    </div>
-                  )}
+          <Card title="🖥️ Stato Sistema">
+            {dbStatus && (
+              <div style={{ display: 'grid', gap: 8, fontSize: 13 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Stato:</span>
+                  <span
+                    style={{
+                      fontWeight: 600,
+                      color: dbStatus.status === 'healthy' ? COLORS.success : COLORS.danger,
+                    }}
+                  >
+                    {dbStatus.status === 'healthy' ? '✅ Online' : '❌ Offline'}
+                  </span>
                 </div>
-              )}
-            </div>
-          </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Database:</span>
+                  <span
+                    style={{ color: dbStatus.database === 'connected' ? COLORS.success : COLORS.danger }}
+                  >
+                    {dbStatus.database}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Versione:</span>
+                  <span>{dbStatus.version}</span>
+                </div>
+                {dbStatus.timestamp && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Timestamp:</span>
+                    <span style={{ fontSize: 11 }}>
+                      {new Date(dbStatus.timestamp).toLocaleString('it-IT')}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+          </Card>
 
           {/* Statistiche Collections */}
-          <div style={{ ...cardStyle, gridColumn: 'span 2' }}>
-            <div style={cardHeaderStyle}>
-              <h3 style={{ margin: 0, fontSize: 14 }}>📊 Statistiche Database</h3>
-            </div>
-            <div style={cardContentStyle}>
-              {loading ? (
-                <div style={{ textAlign: 'center', padding: 20, color: '#6b7280' }}>
-                  Caricamento...
-                </div>
-              ) : stats ? (
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(80px, 1fr))',
-                    gap: 8,
-                  }}
-                >
-                  {Object.entries(stats).map(([key, value]) => (
-                    <div
-                      key={key}
-                      style={{
-                        background: '#f8fafc',
-                        padding: '8px 10px',
-                        borderRadius: 6,
-                        textAlign: 'center',
-                      }}
-                    >
-                      <div style={{ fontSize: 16, fontWeight: 700, color: '#1e3a5f' }}>
-                        {fmt(value)}
-                      </div>
-                      <div style={{ fontSize: 9, color: '#6b7280', textTransform: 'capitalize' }}>
-                        {key.replace(/_/g, ' ')}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div style={{ color: '#6b7280' }}>Nessuna statistica disponibile</div>
-              )}
-            </div>
-          </div>
+          <Card title="📊 Statistiche Database" style={{ gridColumn: 'span 2' }}>
+            {loading ? (
+              <div style={{ textAlign: 'center', padding: 20, color: COLORS.textMuted }}>
+                Caricamento...
+              </div>
+            ) : stats ? (
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+                  gap: 8,
+                }}
+              >
+                {Object.entries(stats).map(([key, value]) => (
+                  <StatCard
+                    key={key}
+                    accent="primary"
+                    label={key.replace(/_/g, ' ')}
+                    value={fmt(value)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div style={{ color: COLORS.textMuted }}>Nessuna statistica disponibile</div>
+            )}
+          </Card>
         </div>
       )}
 
@@ -1494,7 +1224,7 @@ function RollbackDatiTab() {
   };
 
   if (loading) {
-    return <div style={{ padding: 24, color: '#64748b' }}>Caricamento sezioni...</div>;
+    return <div style={{ padding: 24, color: COLORS.textMuted }}>Caricamento sezioni...</div>;
   }
 
   return (
@@ -1504,13 +1234,13 @@ function RollbackDatiTab() {
           display: 'flex',
           alignItems: 'flex-start',
           gap: 10,
-          background: '#fef3c7',
-          border: '1px solid #fde68a',
-          borderRadius: 8,
+          background: COLORS.warningLight,
+          border: `1px solid ${COLORS.warningLight}`,
+          borderRadius: BORDER_RADIUS.md,
           padding: '12px 14px',
           marginBottom: 16,
           fontSize: 13,
-          color: '#92400e',
+          color: COLORS.warning,
         }}
       >
         <AlertTriangle size={18} style={{ flexShrink: 0, marginTop: 1 }} />
@@ -1529,12 +1259,12 @@ function RollbackDatiTab() {
             alignItems: 'center',
             gap: 8,
             padding: '10px 14px',
-            borderRadius: 8,
+            borderRadius: BORDER_RADIUS.md,
             marginBottom: 16,
             fontSize: 13,
             fontWeight: 600,
-            background: esito.tipo === 'ok' ? '#dcfce7' : '#fee2e2',
-            color: esito.tipo === 'ok' ? '#166534' : '#991b1b',
+            background: esito.tipo === 'ok' ? COLORS.successLight : COLORS.dangerLight,
+            color: esito.tipo === 'ok' ? COLORS.success : COLORS.danger,
           }}
         >
           {esito.tipo === 'ok' ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
@@ -1547,13 +1277,13 @@ function RollbackDatiTab() {
           <div
             key={sez.chiave}
             style={{
-              background: '#fff',
-              border: '1px solid #e2e8f0',
-              borderRadius: 10,
+              background: COLORS.card,
+              border: `1px solid ${COLORS.border}`,
+              borderRadius: BORDER_RADIUS.lg,
               padding: 14,
             }}
           >
-            <div style={{ fontWeight: 700, fontSize: 14, color: '#0f2744', marginBottom: 10 }}>
+            <div style={{ fontWeight: 700, fontSize: 14, color: COLORS.primary, marginBottom: 10 }}>
               {sez.label}
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -1561,29 +1291,16 @@ function RollbackDatiTab() {
                 const key = `${sez.chiave}:${p.chiave}`;
                 const isLoading = contando === key;
                 return (
-                  <button
+                  <Button
                     key={p.chiave}
+                    variant="danger"
+                    size="sm"
                     onClick={() => chiediConferma(sez.chiave, sez.label, p.chiave, p.label)}
                     disabled={isLoading}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 6,
-                      padding: '8px 12px',
-                      minHeight: 40,
-                      fontSize: 12,
-                      fontWeight: 600,
-                      background: '#fff',
-                      color: '#b91c1c',
-                      border: '1px solid #fecaca',
-                      borderRadius: 6,
-                      cursor: isLoading ? 'default' : 'pointer',
-                      opacity: isLoading ? 0.6 : 1,
-                    }}
+                    iconLeft={isLoading ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
                   >
-                    {isLoading ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
                     {p.label}
-                  </button>
+                  </Button>
                 );
               })}
             </div>
@@ -1606,39 +1323,40 @@ function RollbackDatiTab() {
           <div
             onClick={e => e.stopPropagation()}
             style={{
-              background: '#fff', borderRadius: 10, maxWidth: 440, width: '100%',
-              padding: 20, position: 'relative', boxShadow: '0 20px 50px rgba(0,0,0,0.25)',
+              background: COLORS.card, borderRadius: BORDER_RADIUS.lg, maxWidth: 440, width: '100%',
+              padding: 20, position: 'relative', boxShadow: SHADOWS.modal,
             }}
           >
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="sm"
               onClick={() => !eliminando && setConferma(null)}
               aria-label="Chiudi"
               style={{
-                position: 'absolute', top: 8, right: 8, width: 40, height: 40,
-                border: 'none', background: 'transparent', cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b',
+                position: 'absolute', top: 8, right: 8, width: 40, height: 40, padding: 0,
+                color: COLORS.textMuted,
               }}
             >
               <X size={18} />
-            </button>
+            </Button>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, color: '#b91c1c' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, color: COLORS.danger }}>
               <AlertTriangle size={20} />
               <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>Confermi l'eliminazione?</h3>
             </div>
 
-            <p style={{ fontSize: 13, color: '#334155', margin: '0 0 12px' }}>
+            <p style={{ fontSize: 13, color: COLORS.text, margin: '0 0 12px' }}>
               Stai per eliminare in modo permanente <strong>{conferma.totale}</strong> record
               da <strong>{conferma.sezioneLabel}</strong> — periodo <strong>{conferma.periodoLabel}</strong>
               {' '}(dal {conferma.dataDa} al {conferma.dataA}).
             </p>
 
             {conferma.dettaglio && conferma.dettaglio.length > 0 && (
-              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 12px', marginBottom: 16, fontSize: 12 }}>
+              <div style={{ background: COLORS.bgAlt, border: `1px solid ${COLORS.border}`, borderRadius: BORDER_RADIUS.md, padding: '8px 12px', marginBottom: 16, fontSize: 12 }}>
                 {conferma.dettaglio.map(d => (
                   <div key={d.collezione} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0' }}>
-                    <span style={{ color: '#64748b' }}>{d.collezione}</span>
+                    <span style={{ color: COLORS.textMuted }}>{d.collezione}</span>
                     <span style={{ fontWeight: 700 }}>{d.count}</span>
                   </div>
                 ))}
@@ -1646,34 +1364,22 @@ function RollbackDatiTab() {
             )}
 
             {conferma.totale === 0 ? (
-              <div style={{ fontSize: 12, color: '#64748b', fontStyle: 'italic' }}>
+              <div style={{ fontSize: 12, color: COLORS.textMuted, fontStyle: 'italic' }}>
                 Nessun record da eliminare in questo periodo.
               </div>
             ) : (
               <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                <button
-                  onClick={() => setConferma(null)}
-                  disabled={eliminando}
-                  style={{
-                    padding: '10px 16px', fontSize: 13, fontWeight: 600,
-                    background: '#f1f5f9', color: '#475569', border: 'none', borderRadius: 6, cursor: 'pointer',
-                  }}
-                >
+                <Button variant="secondary" onClick={() => setConferma(null)} disabled={eliminando}>
                   Annulla
-                </button>
-                <button
+                </Button>
+                <Button
+                  variant="danger"
                   onClick={confermaEliminazione}
                   disabled={eliminando}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 6,
-                    padding: '10px 16px', fontSize: 13, fontWeight: 700,
-                    background: '#b91c1c', color: '#fff', border: 'none', borderRadius: 6,
-                    cursor: eliminando ? 'default' : 'pointer', opacity: eliminando ? 0.7 : 1,
-                  }}
+                  iconLeft={eliminando ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
                 >
-                  {eliminando ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
                   Elimina definitivamente
-                </button>
+                </Button>
               </div>
             )}
           </div>
@@ -1689,49 +1395,6 @@ function FattureAdminTab() {
   const [loading, setLoading] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [confirmAction, setConfirmAction] = useState(null);
-
-  const cardStyle = {
-    background: 'white',
-    borderRadius: 12,
-    boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-    overflow: 'hidden',
-  };
-
-  const cardHeaderStyle = {
-    padding: '12px 16px',
-    borderBottom: '1px solid #e5e7eb',
-  };
-
-  const cardContentStyle = {
-    padding: 16,
-  };
-
-  const buttonStyle = (bg, color = 'white') => ({
-    padding: '8px 16px',
-    background: bg,
-    color: color,
-    border: 'none',
-    borderRadius: 6,
-    cursor: 'pointer',
-    fontWeight: '600',
-    fontSize: 13,
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: 6,
-    width: '100%',
-    justifyContent: 'center',
-  });
-
-  const smallButtonStyle = (bg, color = 'white') => ({
-    padding: '6px 12px',
-    background: bg,
-    color: color,
-    border: 'none',
-    borderRadius: 6,
-    cursor: 'pointer',
-    fontWeight: '500',
-    fontSize: 12,
-  });
 
   const loadFattureStats = useCallback(async () => {
     setLoading(true);
@@ -1777,139 +1440,120 @@ function FattureAdminTab() {
       }}
     >
       {/* Stats Metodi Pagamento */}
-      <div style={cardStyle}>
-        <div style={cardHeaderStyle}>
-          <h3 style={{ margin: 0, fontSize: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
-            📄 Metodi di Pagamento Fatture
-          </h3>
-        </div>
-        <div style={cardContentStyle}>
-          {loading ? (
-            <div style={{ textAlign: 'center', padding: 20, color: '#6b7280' }}>Caricamento...</div>
-          ) : fattureStats ? (
-            <div style={{ display: 'grid', gap: 8, fontSize: 13 }}>
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  padding: '8px 0',
-                  borderBottom: '1px solid #f1f5f9',
-                }}
-              >
-                <span style={{ fontWeight: 600 }}>Totale Fatture:</span>
-                <span style={{ fontWeight: 700, color: '#1e40af' }}>{fattureStats.totale}</span>
-              </div>
-
-              {fattureStats.metodi_pagamento?.map((m, i) => (
-                <div
-                  key={i}
-                  style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}
-                >
-                  <span>{m._id || '(Nessuno)'}</span>
-                  <span style={{ fontWeight: 500 }}>{m.count}</span>
-                </div>
-              ))}
-
-              <div
-                style={{
-                  marginTop: 12,
-                  padding: 12,
-                  background: fattureStats.senza_metodo > 0 ? '#fef3c7' : '#dcfce7',
-                  borderRadius: 8,
-                  border: `1px solid ${fattureStats.senza_metodo > 0 ? '#fcd34d' : '#86efac'}`,
-                }}
-              >
-                <div
-                  style={{
-                    fontWeight: 600,
-                    color: fattureStats.senza_metodo > 0 ? '#92400e' : '#166534',
-                  }}
-                >
-                  {fattureStats.senza_metodo > 0 ? '⚠️' : '✅'} Fatture SENZA metodo:{' '}
-                  {fattureStats.senza_metodo}
-                </div>
-              </div>
+      <Card title="📄 Metodi di Pagamento Fatture">
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: 20, color: COLORS.textMuted }}>Caricamento...</div>
+        ) : fattureStats ? (
+          <div style={{ display: 'grid', gap: 8, fontSize: 13 }}>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                padding: '8px 0',
+                borderBottom: `1px solid ${COLORS.gray[100]}`,
+              }}
+            >
+              <span style={{ fontWeight: 600 }}>Totale Fatture:</span>
+              <span style={{ fontWeight: 700, color: COLORS.info }}>{fattureStats.totale}</span>
             </div>
-          ) : (
-            <div style={{ color: '#dc2626' }}>Errore caricamento dati</div>
-          )}
-        </div>
-      </div>
 
-      {/* Azioni Massive */}
-      <div style={cardStyle}>
-        <div style={cardHeaderStyle}>
-          <h3 style={{ margin: 0, fontSize: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
-            ⚙️ Azioni Massive
-          </h3>
-        </div>
-        <div style={cardContentStyle}>
-          <div style={{ display: 'grid', gap: 12 }}>
-            <div style={{ padding: 12, background: '#f8fafc', borderRadius: 8 }}>
-              <p style={{ fontSize: 12, color: '#475569', marginBottom: 8 }}>
-                Imposta metodo di pagamento <strong>&quot;Bonifico&quot;</strong> per tutte le
-                fatture che non hanno un metodo specificato.
-              </p>
-
-              {confirmAction?.type === 'set_metodo' ? (
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button
-                    onClick={() => handleSetMetodoPagamento(confirmAction.metodo)}
-                    disabled={updating}
-                    style={{ ...buttonStyle('#16a34a'), flex: 1 }}
-                  >
-                    {updating ? '⏳ Aggiornando...' : '✓ Conferma'}
-                  </button>
-                  <button
-                    onClick={() => setConfirmAction(null)}
-                    disabled={updating}
-                    style={smallButtonStyle('#e5e7eb', '#374151')}
-                  >
-                    ✕ Annulla
-                  </button>
-                </div>
-              ) : (
-                <button
-                  onClick={() => handleSetMetodoPagamento('Bonifico')}
-                  disabled={loading || fattureStats?.senza_metodo === 0}
-                  style={buttonStyle(
-                    loading || fattureStats?.senza_metodo === 0 ? '#ccc' : '#4f46e5'
-                  )}
-                >
-                  🏦 Imposta &quot;Bonifico&quot; ({fattureStats?.senza_metodo || 0} fatture)
-                </button>
-              )}
-            </div>
+            {fattureStats.metodi_pagamento?.map((m, i) => (
+              <div
+                key={i}
+                style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}
+              >
+                <span>{m._id || '(Nessuno)'}</span>
+                <span style={{ fontWeight: 500 }}>{m.count}</span>
+              </div>
+            ))}
 
             <div
               style={{
+                marginTop: 12,
                 padding: 12,
-                background: '#fef2f2',
-                borderRadius: 8,
-                border: '1px solid #fecaca',
+                background: fattureStats.senza_metodo > 0 ? COLORS.warningLight : COLORS.successLight,
+                borderRadius: BORDER_RADIUS.md,
+                border: `1px solid ${fattureStats.senza_metodo > 0 ? COLORS.warningLight : COLORS.successLight}`,
               }}
             >
-              <p style={{ fontSize: 12, color: '#991b1b', marginBottom: 0 }}>
-                <strong>⚠️ Attenzione:</strong> Le azioni massive modificano molti record. Usa con
-                cautela.
-              </p>
+              <div
+                style={{
+                  fontWeight: 600,
+                  color: fattureStats.senza_metodo > 0 ? COLORS.warning : COLORS.success,
+                }}
+              >
+                {fattureStats.senza_metodo > 0 ? '⚠️' : '✅'} Fatture SENZA metodo:{' '}
+                {fattureStats.senza_metodo}
+              </div>
             </div>
           </div>
+        ) : (
+          <div style={{ color: COLORS.danger }}>Errore caricamento dati</div>
+        )}
+      </Card>
+
+      {/* Azioni Massive */}
+      <Card title="⚙️ Azioni Massive">
+        <div style={{ display: 'grid', gap: 12 }}>
+          <div style={{ padding: 12, background: COLORS.bgAlt, borderRadius: BORDER_RADIUS.md }}>
+            <p style={{ fontSize: 12, color: COLORS.gray[600], marginBottom: 8 }}>
+              Imposta metodo di pagamento <strong>&quot;Bonifico&quot;</strong> per tutte le
+              fatture che non hanno un metodo specificato.
+            </p>
+
+            {confirmAction?.type === 'set_metodo' ? (
+              <div style={{ display: 'flex', gap: 8 }}>
+                <Button
+                  variant="success"
+                  onClick={() => handleSetMetodoPagamento(confirmAction.metodo)}
+                  disabled={updating}
+                  style={{ flex: 1 }}
+                >
+                  {updating ? '⏳ Aggiornando...' : '✓ Conferma'}
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setConfirmAction(null)}
+                  disabled={updating}
+                >
+                  ✕ Annulla
+                </Button>
+              </div>
+            ) : (
+              <Button
+                variant="primary"
+                onClick={() => handleSetMetodoPagamento('Bonifico')}
+                disabled={loading || fattureStats?.senza_metodo === 0}
+                style={{ width: '100%' }}
+              >
+                🏦 Imposta &quot;Bonifico&quot; ({fattureStats?.senza_metodo || 0} fatture)
+              </Button>
+            )}
+          </div>
+
+          <div
+            style={{
+              padding: 12,
+              background: COLORS.dangerLight,
+              borderRadius: BORDER_RADIUS.md,
+              border: `1px solid ${COLORS.dangerLight}`,
+            }}
+          >
+            <p style={{ fontSize: 12, color: COLORS.danger, marginBottom: 0 }}>
+              <strong>⚠️ Attenzione:</strong> Le azioni massive modificano molti record. Usa con
+              cautela.
+            </p>
+          </div>
         </div>
-      </div>
+      </Card>
 
       {/* Refresh */}
-      <div style={{ ...cardStyle, gridColumn: 'span 2' }}>
-        <div style={{ ...cardContentStyle, display: 'flex', justifyContent: 'flex-end' }}>
-          <button
-            onClick={loadFattureStats}
-            disabled={loading}
-            style={smallButtonStyle('#e5e7eb', '#374151')}
-          >
-            🔄 Aggiorna Stats
-          </button>
-        </div>
-      </div>
+      <Card style={{ gridColumn: 'span 2' }} bodyStyle={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <Button variant="secondary" size="sm" onClick={loadFattureStats} disabled={loading}>
+          🔄 Aggiorna Stats
+        </Button>
+      </Card>
     </div>
   );
 }

@@ -1,23 +1,48 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../api';
+import { Button, Badge } from './ds';
+import { COLORS, SHADOWS, BORDER_RADIUS } from '../lib/utils';
 
 const TIPO_CONFIG = {
-  urgente: { bg: '#fef2f2', border: '#ef4444', text: '#dc2626', dot: '#ef4444', label: 'URGENTE' },
-  anomalia: {
-    bg: '#fef2f2',
-    border: '#ef4444',
-    text: '#dc2626',
-    dot: '#ef4444',
-    label: 'ANOMALIA',
+  urgente: {
+    bg: COLORS.dangerLight,
+    border: COLORS.danger,
+    text: COLORS.danger,
+    dot: COLORS.danger,
+    label: 'URGENTE',
+    badgeVariant: 'danger',
   },
-  avviso: { bg: '#fffbeb', border: '#f59e0b', text: '#d97706', dot: '#f59e0b', label: 'AVVISO' },
-  info: { bg: '#eff6ff', border: '#3b82f6', text: '#2563eb', dot: '#3b82f6', label: 'INFO' },
+  anomalia: {
+    bg: COLORS.dangerLight,
+    border: COLORS.danger,
+    text: COLORS.danger,
+    dot: COLORS.danger,
+    label: 'ANOMALIA',
+    badgeVariant: 'danger',
+  },
+  avviso: {
+    bg: COLORS.warningLight,
+    border: COLORS.warning,
+    text: COLORS.warning,
+    dot: COLORS.warning,
+    label: 'AVVISO',
+    badgeVariant: 'warning',
+  },
+  info: {
+    bg: COLORS.infoLight,
+    border: COLORS.info,
+    text: COLORS.info,
+    dot: COLORS.info,
+    label: 'INFO',
+    badgeVariant: 'info',
+  },
   suggerimento: {
-    bg: '#f0fdf4',
-    border: '#22c55e',
-    text: '#16a34a',
-    dot: '#22c55e',
+    bg: COLORS.successLight,
+    border: COLORS.success,
+    text: COLORS.success,
+    dot: COLORS.success,
     label: 'SUGGERIM.',
+    badgeVariant: 'success',
   },
 };
 
@@ -83,48 +108,35 @@ export function AgentiPanel() {
   return (
     <>
       {/* Badge pulsante */}
-      <button
-        data-testid="agenti-panel-toggle"
-        onClick={() => setOpen(true)}
-        style={{
-          position: 'relative',
-          background: 'transparent',
-          border: 'none',
-          cursor: 'pointer',
-          padding: '6px 8px',
-          borderRadius: 8,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 4,
-          color: '#64748b',
-          fontSize: 13,
-          fontWeight: 500,
-          transition: 'background 0.15s',
-        }}
-        onMouseEnter={e => (e.currentTarget.style.background = '#f1f5f9')}
-        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-        title="Segnalazioni Agenti AI"
-      >
-        <svg
-          width="18"
-          height="18"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
+      <div style={{ position: 'relative', display: 'inline-flex' }}>
+        <Button
+          data-testid="agenti-panel-toggle"
+          onClick={() => setOpen(true)}
+          variant="ghost"
+          size="sm"
+          title="Segnalazioni Agenti AI"
         >
-          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-          <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-        </svg>
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+            <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+          </svg>
+        </Button>
         {count > 0 && (
           <span
             style={{
               position: 'absolute',
               top: 2,
               right: 2,
-              background: '#ef4444',
-              color: 'white',
-              borderRadius: '50%',
+              background: COLORS.danger,
+              color: '#fff',
+              borderRadius: BORDER_RADIUS.full,
               width: 16,
               height: 16,
               fontSize: 10,
@@ -133,12 +145,13 @@ export function AgentiPanel() {
               alignItems: 'center',
               justifyContent: 'center',
               lineHeight: 1,
+              pointerEvents: 'none',
             }}
           >
             {count > 9 ? '9+' : count}
           </span>
         )}
-      </button>
+      </div>
 
       {/* Sidebar destra */}
       {open && (
@@ -164,8 +177,8 @@ export function AgentiPanel() {
               bottom: 0,
               width: 420,
               maxWidth: '100vw',
-              background: '#fff',
-              boxShadow: '-4px 0 24px rgba(0,0,0,0.12)',
+              background: COLORS.card,
+              boxShadow: SHADOWS.modal,
               zIndex: 9001,
               display: 'flex',
               flexDirection: 'column',
@@ -175,11 +188,11 @@ export function AgentiPanel() {
             <div
               style={{
                 padding: '16px 20px',
-                borderBottom: '1px solid #e2e8f0',
+                borderBottom: `1px solid ${COLORS.border}`,
                 display: 'flex',
                 alignItems: 'center',
                 gap: 10,
-                background: '#1e3a5f',
+                background: COLORS.primaryLight,
                 color: '#fff',
               }}
             >
@@ -197,50 +210,36 @@ export function AgentiPanel() {
               <span style={{ fontWeight: 700, fontSize: 15, flex: 1 }}>
                 Agenti AI — Segnalazioni
               </span>
-              {count > 0 && (
-                <span
-                  style={{
-                    background: '#ef4444',
-                    color: '#fff',
-                    borderRadius: 12,
-                    padding: '2px 8px',
-                    fontSize: 12,
-                    fontWeight: 700,
-                  }}
-                >
-                  {count} non lette
-                </span>
-              )}
-              <button
+              {count > 0 && <Badge variant="danger">{count} non lette</Badge>}
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() => setOpen(false)}
                 style={{
                   background: 'rgba(255,255,255,0.15)',
-                  border: 'none',
                   color: '#fff',
-                  cursor: 'pointer',
                   padding: '4px 8px',
-                  borderRadius: 6,
                   fontSize: 16,
                 }}
               >
                 ✕
-              </button>
+              </Button>
             </div>
 
             {/* Lista segnalazioni */}
             <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
               {loading ? (
-                <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>
+                <div style={{ textAlign: 'center', padding: 40, color: COLORS.textSubtle }}>
                   Caricamento...
                 </div>
               ) : segnalazioni.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>
+                <div style={{ textAlign: 'center', padding: 40, color: COLORS.textSubtle }}>
                   <svg
                     width="40"
                     height="40"
                     viewBox="0 0 24 24"
                     fill="none"
-                    stroke="#cbd5e1"
+                    stroke={COLORS.borderDark}
                     strokeWidth="1.5"
                     style={{ margin: '0 auto 12px', display: 'block' }}
                   >
@@ -258,9 +257,9 @@ export function AgentiPanel() {
                       data-testid={`segnalazione-${s.id}`}
                       style={{
                         marginBottom: 12,
-                        background: s.letta ? '#f8fafc' : c.bg,
-                        border: `1px solid ${s.letta ? '#e2e8f0' : c.border}`,
-                        borderRadius: 10,
+                        background: s.letta ? COLORS.bgAlt : c.bg,
+                        border: `1px solid ${s.letta ? COLORS.border : c.border}`,
+                        borderRadius: BORDER_RADIUS.lg,
                         padding: 14,
                         opacity: s.risolta ? 0.5 : 1,
                       }}
@@ -279,7 +278,7 @@ export function AgentiPanel() {
                             background: c.dot,
                             width: 8,
                             height: 8,
-                            borderRadius: '50%',
+                            borderRadius: BORDER_RADIUS.full,
                             marginTop: 5,
                             flexShrink: 0,
                           }}
@@ -293,27 +292,17 @@ export function AgentiPanel() {
                               marginBottom: 2,
                             }}
                           >
-                            <span
-                              style={{
-                                background: c.dot,
-                                color: '#fff',
-                                fontSize: 9,
-                                fontWeight: 700,
-                                padding: '1px 5px',
-                                borderRadius: 4,
-                                letterSpacing: '0.05em',
-                              }}
-                            >
-                              {c.label}
+                            <Badge variant={c.badgeVariant}>{c.label}</Badge>
+                            <span style={{ fontSize: 11, color: COLORS.textSubtle }}>
+                              {s.agente}
                             </span>
-                            <span style={{ fontSize: 11, color: '#94a3b8' }}>{s.agente}</span>
                             {!s.letta && (
                               <span
                                 style={{
                                   width: 6,
                                   height: 6,
-                                  borderRadius: '50%',
-                                  background: '#3b82f6',
+                                  borderRadius: BORDER_RADIUS.full,
+                                  background: COLORS.info,
                                   display: 'inline-block',
                                   marginLeft: 2,
                                 }}
@@ -325,7 +314,7 @@ export function AgentiPanel() {
                               margin: 0,
                               fontWeight: 600,
                               fontSize: 13,
-                              color: '#1e293b',
+                              color: COLORS.gray[800],
                               lineHeight: 1.4,
                             }}
                           >
@@ -339,7 +328,7 @@ export function AgentiPanel() {
                         style={{
                           margin: '0 0 8px 16px',
                           fontSize: 12,
-                          color: '#475569',
+                          color: COLORS.gray[600],
                           lineHeight: 1.6,
                         }}
                       >
@@ -356,7 +345,7 @@ export function AgentiPanel() {
                             fontWeight: 600,
                             background: `${c.dot}15`,
                             padding: '4px 8px',
-                            borderRadius: 4,
+                            borderRadius: BORDER_RADIUS.sm,
                           }}
                         >
                           Azione: {s.azione_suggerita}
@@ -366,37 +355,13 @@ export function AgentiPanel() {
                       {/* Azioni */}
                       <div style={{ display: 'flex', gap: 6, marginLeft: 16 }}>
                         {!s.letta && (
-                          <button
-                            onClick={() => segnaLetta(s.id)}
-                            style={{
-                              background: '#f1f5f9',
-                              border: 'none',
-                              borderRadius: 6,
-                              padding: '4px 10px',
-                              fontSize: 11,
-                              cursor: 'pointer',
-                              color: '#475569',
-                              fontWeight: 500,
-                            }}
-                          >
+                          <Button variant="secondary" size="sm" onClick={() => segnaLetta(s.id)}>
                             Segna letta
-                          </button>
+                          </Button>
                         )}
-                        <button
-                          onClick={() => segnaRisolta(s.id)}
-                          style={{
-                            background: '#dcfce7',
-                            border: 'none',
-                            borderRadius: 6,
-                            padding: '4px 10px',
-                            fontSize: 11,
-                            cursor: 'pointer',
-                            color: '#16a34a',
-                            fontWeight: 600,
-                          }}
-                        >
+                        <Button variant="success" size="sm" onClick={() => segnaRisolta(s.id)}>
                           Risolto
-                        </button>
+                        </Button>
                       </div>
                     </div>
                   );
@@ -408,26 +373,18 @@ export function AgentiPanel() {
             <div
               style={{
                 padding: '10px 16px',
-                borderTop: '1px solid #e2e8f0',
-                background: '#f8fafc',
+                borderTop: `1px solid ${COLORS.border}`,
+                background: COLORS.bgAlt,
               }}
             >
-              <button
+              <Button
+                variant="primary"
+                size="md"
                 onClick={loadSegnalazioni}
-                style={{
-                  width: '100%',
-                  background: '#1e3a5f',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: 8,
-                  padding: '8px 0',
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
+                style={{ width: '100%' }}
               >
                 Aggiorna segnalazioni
-              </button>
+              </Button>
             </div>
           </div>
         </>
