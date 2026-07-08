@@ -1,1974 +1,1014 @@
-/**
- * MappaGestionale.jsx
- * Spiega il flusso dati reale del gestionale Ceraldi ERP:
- *  - DA DOVE arrivano i dati
- *  - COSA FA la pagina
- *  - COSA ALIMENTA / POPOLA a sua volta
- *  - COSA ASPETTA per riconciliarsi / verificarsi
- */
+import React, { useMemo, useState } from 'react';
+import { NavLink } from 'react-router-dom';
+import {
+  AlertTriangle,
+  Archive,
+  Banknote,
+  BookOpen,
+  Building2,
+  CalendarDays,
+  Car,
+  CheckCircle2,
+  ClipboardList,
+  CreditCard,
+  FileInput,
+  FileText,
+  GitBranch,
+  LayoutDashboard,
+  MessageSquareText,
+  ReceiptText,
+  Settings,
+  ShieldCheck,
+  Users,
+  WalletCards,
+} from 'lucide-react';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Struttura dati flussi ERP
-// ─────────────────────────────────────────────────────────────────────────────
-const FLUSSI = {
-  PRIMA_NOTA_CASSA: {
-    titolo: 'Prima Nota Cassa',
-    icona: '💵',
-    colore: '#16a34a',
-    sottotitolo: 'Il registro di ogni euro fisico che entra ed esce dalla cassa aziendale',
-    entraDA: [
-      {
-        label: 'File XML Corrispettivi (Registratore di Cassa)',
-        fonte: 'Import Documenti (caricamento manuale)',
-        dettaglio:
-          "File XML obbligatorio per legge, emesso dal registratore di cassa e trasmesso automaticamente all'Agenzia delle Entrate. Viene importato dalla pagina Import Documenti — il sistema lo legge e carica automaticamente gli incassi giornalieri suddivisi per tipologia: contanti, carta/POS, ticket.",
-      },
-      {
-        label: 'Inserimenti Manuali Piccola Cassa',
-        fonte: 'Inserimento diretto operatore in Prima Nota',
-        dettaglio:
-          "Spese piccole pagate in contanti (consumo ufficio, piccole forniture, mance ecc.) che non transitano su fattura o POS. L'operatore le registra manualmente con causale e importo.",
-      },
-    ],
-    fa: [
-      'Registra ogni movimento di denaro fisico: entrate (incassi del bar/ristorante) e uscite (fornitori pagati cash, spese varie).',
-      'Ogni riga ha: data, causale, importo e segno contabile (DARE = entrata in cassa, AVERE = uscita dalla cassa).',
-      "DARE = Ricavi Lordi totali (PagatoContanti + PagatoElettronico) — IVA inclusa. È l'intero incasso della giornata.",
-      'AVERE = Pagato Elettronico (POS/carta) — denaro che fisicamente uscirà dalla cassa verso la banca tramite accredito.',
-      'SALDO CASSA = DARE - AVERE = rimane solo il contante fisico effettivamente presente in cassa.',
-    ],
-    alimenta: [
-      {
-        label: 'Bilancio',
-        percorso: '→ Sezione Ricavi (voce Corrispettivi)',
-        dettaglio:
-          "I totali mensili degli incassi alimentano la sezione Ricavi del Bilancio e il Conto Economico alla voce ricavi operativi. La somma annua è la base del Volume d'Affari.",
-      },
-      {
-        label: 'Conto Economico',
-        percorso: '→ Ricavi Operativi',
-        dettaglio:
-          "La somma annua dei corrispettivi è la principale voce di ricavo del Conto Economico e determina il Volume d'Affari mostrato in Dashboard e ContabilitaHub.",
-      },
-      {
-        label: 'Coerenza POS / Corrispettivi',
-        percorso: '→ Isolamento pagamenti carta per verifica banca',
-        dettaglio:
-          "Il sistema isola i pagamenti con carta/POS dall'importo totale per confrontarli con gli accrediti che arrivano sul conto bancario il giorno lavorativo successivo. Serve per rilevare discrepanze prima della chiusura del periodo.",
-      },
-    ],
-    aspetta: [
-      {
-        label: 'Chiusura Fisarmonica del POS (inserita manualmente la sera)',
-        tipo: 'Verifica Fiscale Anti-Sanzione',
-        urgenza: 'critica',
-        motivo:
-          "L'operatore inserisce a fine giornata il totale dalla chiusura fisica del POS. Il sistema confronta con il POS nell'XML corrispettivi. Se c'è differenza → qualcuno ha premuto il tasto sbagliato o c'è un errore da recuperare il giorno dopo. Obiettivo: evitare sanzioni per corrispettivi non dichiarati e garantire che POS fisico = XML = accredito banca.",
-      },
-      {
-        label: 'Estratto Conto Bancario (via Riconciliazione)',
-        tipo: 'Riconciliazione POS → Accredito Banca',
-        urgenza: 'alta',
-        motivo:
-          "L'importo dei pagamenti elettronici (POS carta) registrati in Prima Nota Cassa deve corrispondere all'accredito che arriva sul conto bancario solitamente il giorno lavorativo successivo. Se non coincide, la Riconciliazione segnala l'anomalia e indica se c'è un importo da recuperare il giorno seguente.",
-      },
-    ],
+const STAGES = [
+  {
+    id: 'fonti',
+    title: 'Fonti dati',
+    subtitle: 'Drive, Gmail, banca, PayPal, manuale',
+    color: '#1d4ed8',
+    items: ['Drive fatture', 'Drive corrispettivi', 'Gmail attendibili', 'Banco BPM', 'PayPal API'],
   },
-
-  PRIMA_NOTA_BANCA: {
-    titolo: 'Prima Nota Banca',
-    icona: '🏦',
-    colore: '#1d4ed8',
-    sottotitolo: 'Il libro mastro di tutto ciò che transita sul conto corrente aziendale',
-    entraDA: [
-      {
-        label: 'Estratto Conto Bancario (PDF/CSV Banco BPM)',
-        fonte: 'Import Documenti (caricamento manuale) oppure download automatico da Gmail',
-        dettaglio:
-          "Il file PDF o CSV dell'estratto conto viene importato dalla pagina Import Documenti — il sistema lo legge riga per riga e riconosce ogni movimento: accrediti, addebiti, bonifici, commissioni, F24, stipendi.",
-      },
-      {
-        label: 'Riconciliazione Automatica',
-        fonte: 'Modulo Riconciliazione (dopo import estratto conto)',
-        dettaglio:
-          'La riconciliazione abbina i movimenti bancari alle fatture già registrate nel Ciclo Passivo. Ogni riga abbinata viene classificata automaticamente con la causale contabile corretta.',
-      },
-      {
-        label: 'Inserimento Manuale',
-        fonte: 'Operatore in Prima Nota Banca',
-        dettaglio:
-          "Per operazioni non abbinabili automaticamente: commissioni bancarie fisse, interessi attivi/passivi, operazioni atipiche. L'operatore inserisce data, causale, importo e classificazione contabile.",
-      },
-    ],
-    fa: [
-      'Tiene il libro mastro di tutti i movimenti sul conto corrente bancario: incassi da clienti, pagamenti a fornitori, bonifici stipendi, rate mutui, F24, commissioni banca.',
-      'Ogni riga è classificata con causale contabile (costo, ricavo, partita di giro, tributo).',
-      "Calcola il saldo progressivo giornaliero — in ogni momento sai esattamente quanto c'è sul conto.",
-      'Le commissioni bancarie ripetute (es. €1 fisso per operazione) sono movimenti validi e vengono incluse — non scartate.',
-    ],
-    alimenta: [
-      {
-        label: 'Bilancio',
-        percorso: '→ Attivo: Saldo Cassa in Banca (Disponibilità Liquide)',
-        dettaglio:
-          'Il saldo finale del conto corrente alimenta la sezione Attivo Circolante dello Stato Patrimoniale alla voce Disponibilità Liquide.',
-      },
-      {
-        label: 'Riconciliazione Fornitori',
-        percorso: '→ Chiusura fatture: Da pagare → Pagata',
-        dettaglio:
-          "Quando entra un pagamento a fornitore, la Riconciliazione aggiorna lo stato della fattura corrispondente da 'Da pagare' a 'Pagata' e rimuove la scadenza dallo Scadenzario.",
-      },
-      {
-        label: 'ContabilitaHub (KPI Saldo Banca)',
-        percorso: '→ Saldo banca in tempo reale',
-        dettaglio:
-          "Il saldo del conto corrente è uno dei KPI principali mostrati nel ContabilitaHub e nella Dashboard generale — aggiornato ad ogni import dell'estratto conto.",
-      },
-      {
-        label: 'Verifica Coerenza POS',
-        percorso: '→ Conferma o smentisce Prima Nota Cassa',
-        dettaglio:
-          "Gli accrediti POS sul conto confermano o smentiscono quanto registrato in Prima Nota Cassa. Una differenza segnala un'anomalia da correggere prima della chiusura del periodo.",
-      },
-    ],
-    aspetta: [
-      {
-        label: 'Fatture Ricevute (Ciclo Passivo)',
-        tipo: 'Riconciliazione Pagamento Fornitori',
-        urgenza: 'alta',
-        motivo:
-          "Per ogni uscita bancaria, il sistema cerca la fattura fornitore corrispondente e la 'chiude' registrando il pagamento. Se non trova corrispondenza, il movimento rimane 'non riconciliato' in attesa di abbinamento manuale da parte dell'operatore.",
-      },
-      {
-        label: 'Prima Nota Cassa (accrediti POS)',
-        tipo: 'Verifica Quadratura POS → Banca',
-        urgenza: 'alta',
-        motivo:
-          "Il sistema aspetta che l'accredito POS in banca (solitamente +1 giorno lavorativo) coincida con il totale pagamenti carta registrato in Prima Nota Cassa. Differenze indicano: pagamenti non processati, anomalie POS o giorni festivi che spostano l'accredito.",
-      },
-      {
-        label: 'F24 Pagati (Modulo Fisco)',
-        tipo: 'Classificazione Uscite Fiscali',
-        urgenza: 'media',
-        motivo:
-          "Ogni uscita fiscale sull'estratto conto deve trovare un modello F24 registrato nel Modulo Fisco. Se non c'è corrispondenza, il movimento rimane 'uscita non classificata' e potrebbe falsare il Bilancio — va investigato e abbinato manualmente.",
-      },
-    ],
+  {
+    id: 'parser',
+    title: 'Parser',
+    subtitle: 'Lettura, deduplica, classificazione',
+    color: '#7c3aed',
+    items: ['XML/P7M', 'PDF F24', 'Quietanze', 'Cedolini', 'Verbali', 'Email body'],
   },
-
-  PRIMA_NOTA_SALARI: {
-    titolo: 'Prima Nota Salari',
-    icona: '💼',
-    colore: '#b45309',
-    sottotitolo: 'Il registro dei costi del personale e dei bonifici stipendio',
-    entraDA: [
-      {
-        label: 'Cedolini Dipendenti (PDF)',
-        fonte: 'Import Documenti (caricamento manuale PDF) o inserimento diretto in Paghe',
-        dettaglio:
-          'I cedolini mensili elaborati dal consulente del lavoro o dal sistema paghe. Contengono: retribuzione lorda, netta da pagare al dipendente, contributi INPS a carico azienda, IRPEF trattenuta, TFR maturato.',
-      },
-    ],
-    fa: [
-      "Registra il COSTO TOTALE DEL PERSONALE come uscita contabile mensile (non solo lo stipendio netto, ma anche i contributi a carico dell'azienda).",
-      'Separa: (1) il netto da pagare al dipendente tramite bonifico, (2) i contributi INPS/INAIL da versare con F24, (3) la quota TFR da accantonare.',
-      'Genera automaticamente le scritture di Prima Nota per ogni dipendente del mese.',
-      'Calcola il costo totale mensile del personale da portare in Bilancio.',
-    ],
-    alimenta: [
-      {
-        label: 'Bilancio',
-        percorso: '→ Costi del Personale',
-        dettaglio:
-          "Il costo totale lordo del personale (stipendi + contributi azienda + TFR) alimenta la sezione Costi del Bilancio, voce 'Costo del Lavoro'.",
-      },
-      {
-        label: 'F24 Contributi',
-        percorso: '→ Versamenti INPS/INAIL da fare',
-        dettaglio:
-          'I contributi calcolati sui cedolini generano automaticamente la lista dei versamenti da inserire nel modello F24 del mese. Il sistema sa già quali codice tributo usare per ogni tipo di contributo.',
-      },
-      {
-        label: 'Prima Nota Banca',
-        percorso: '→ Bonifici stipendi attesi in uscita',
-        dettaglio:
-          "L'importo netto di ogni cedolino diventa un'uscita attesa sull'estratto conto (un bonifico per ogni dipendente). Quando arriva il CSV banca, questi bonifici vengono abbinati automaticamente.",
-      },
-    ],
-    aspetta: [
-      {
-        label: 'Estratto Conto Bancario',
-        tipo: 'Verifica Bonifici Pagati',
-        urgenza: 'alta',
-        motivo:
-          "Conferma che ogni bonifico stipendio sia effettivamente uscito dalla banca e che l'importo corrisponda esattamente al netto del cedolino. Se un dipendente non risulta pagato, il sistema lo segnala come 'in sospeso'.",
-      },
-      {
-        label: 'Ricevute F24 Contributi',
-        tipo: 'Verifica Versamento Contributi',
-        urgenza: 'alta',
-        motivo:
-          "I contributi calcolati devono essere versati entro il 16 del mese successivo. Il sistema aspetta che il F24 corrispondente venga riconciliato sull'estratto conto per segnare i contributi come 'versati'.",
-      },
-    ],
+  {
+    id: 'record',
+    title: 'Record gestionali',
+    subtitle: 'Entita e posizioni aperte',
+    color: '#0f766e',
+    items: ['Fatture', 'Fornitori', 'F24', 'Cedolini', 'POS', 'Verbali', 'Noleggio'],
   },
-
-  CORRISPETTIVI: {
-    titolo: 'Corrispettivi RT',
-    icona: '🧾',
-    colore: '#dc2626',
-    sottotitolo: 'Gli incassi giornalieri dal Registratore Telematico',
-    entraDA: [
-      {
-        label: 'File XML Registratore Telematico',
-        fonte:
-          'Import Documenti (caricamento manuale) — generato automaticamente dal RT ogni giorno',
-        dettaglio:
-          "Il Registratore Telematico invia automaticamente i dati all'Agenzia delle Entrate. Il file XML locale viene scaricato dal RT o dal portale AdE e caricato nel gestionale.",
-      },
-    ],
-    fa: [
-      'Legge ogni giornata lavorativa con gli importi suddivisi per aliquota IVA.',
-      'Estrae PagatoContanti (incasso fisico in cassa) e PagatoElettronico (POS, carta di credito/debito).',
-      'Mostra il dettaglio giornaliero e mensile degli incassi con confronto annuale.',
-      "Calcola il totale IVA a debito da versare all'Erario ogni trimestre.",
-    ],
-    alimenta: [
-      {
-        label: 'Prima Nota Cassa',
-        percorso: '→ DARE Ricavi + AVERE POS',
-        dettaglio:
-          "Ogni riga del corrispettivo diventa due righe in Prima Nota Cassa: un DARE per l'incasso totale e un AVERE per il POS (che va in banca).",
-      },
-      {
-        label: 'Fisco / IVA',
-        percorso: '→ IVA a Debito trimestrale',
-        dettaglio:
-          "L'IVA calcolata sui corrispettivi va sommata all'IVA delle fatture emesse per calcolare la liquidazione trimestrale.",
-      },
-      {
-        label: 'Bilancio',
-        percorso: "→ Volume d'Affari (Ricavi)",
-        dettaglio:
-          "I corrispettivi sono la principale fonte dei ricavi aziendali. Il totale annuo alimenta il Volume d'Affari nella Dashboard e nel Bilancio.",
-      },
-    ],
-    aspetta: [
-      {
-        label: 'Chiusura Manuale POS Sera',
-        tipo: 'Verifica Quadratura POS',
-        urgenza: 'critica',
-        motivo:
-          "L'importo POS nel file XML deve corrispondere all'importo reale letto sulla macchina POS a fine giornata. Discrepanze indicate dalla chiusura manuale possono segnalare anomalie da correggere prima della trasmissione.",
-      },
-      {
-        label: 'Accredito POS su Estratto Conto',
-        tipo: 'Verifica Accredito Bancario',
-        urgenza: 'media',
-        motivo:
-          "L'accredito POS arriva sulla banca in genere 1-2 giorni lavorativi dopo la giornata di incasso. Il sistema aspetta di trovare sull'estratto conto un importo uguale al POS XML (data, importo).",
-      },
-    ],
+  {
+    id: 'movimenti',
+    title: 'Movimenti',
+    subtitle: 'Cassa, banca e attesi',
+    color: '#b45309',
+    items: ['Prima nota cassa', 'Prima nota banca', 'Stipendi', 'POS attesi', 'Bonifici'],
   },
-
-  FATTURE_RICEVUTE: {
-    titolo: 'Fatture Ricevute (Ciclo Passivo)',
-    icona: '📥',
-    colore: '#7c3aed',
-    sottotitolo: 'Le fatture di acquisto dai fornitori',
-    entraDA: [
-      {
-        label: 'File XML Fattura Elettronica SDI',
-        fonte: 'Import Documenti (caricamento manuale) oppure download automatico da email',
-        dettaglio:
-          "Le fatture arrivano via SDI (Sistema di Interscambio) dell'Agenzia delle Entrate in formato XML. Possono essere scaricate manualmente o, con l'integrazione email attiva, arrivare automaticamente dalla casella di posta.",
-      },
-    ],
-    fa: [
-      "Legge l'XML SDI ed estrae: fornitore (partita IVA + ragione sociale), data, importo imponibile, IVA, totale, scadenza di pagamento.",
-      'Abbina automaticamente la fattura al fornitore già presente in anagrafica (o ne crea uno nuovo).',
-      'Categorizza la spesa (materie prime, utenze, servizi, beni strumentali) in base allo storico del fornitore.',
-      "Identifica i beni strumentali (cespiti) e li segnala per l'iscrizione in Contabilità.",
-    ],
-    alimenta: [
-      {
-        label: 'Fornitori',
-        percorso: '→ Storico fatture per fornitore',
-        dettaglio:
-          'Ogni fattura aggiorna automaticamente lo storico del fornitore: importi totali, scadenze aperte, frequenza degli acquisti.',
-      },
-      {
-        label: 'Scadenze',
-        percorso: '→ Nuova scadenza di pagamento',
-        dettaglio:
-          'La data di scadenza della fattura viene inserita nello Scadenzario per ricordare quando pagare.',
-      },
-      {
-        label: 'Prima Nota Banca',
-        percorso: '→ Uscita attesa (se SEPA/Bonifico)',
-        dettaglio:
-          "Se il metodo di pagamento del fornitore è SEPA o Bonifico, il sistema crea automaticamente un'uscita attesa in Prima Nota Banca che aspetta di essere riconciliata con il pagamento reale.",
-      },
-      {
-        label: 'Cespiti',
-        percorso: '→ Registrazione bene strumentale',
-        dettaglio:
-          'Se la fattura contiene un bene ammortizzabile (macchinario, attrezzatura), viene segnalata per essere iscritta nel registro Cespiti con inizio ammortamento.',
-      },
-      {
-        label: 'Fisco / IVA',
-        percorso: '→ IVA a Credito',
-        dettaglio:
-          "L'IVA sulle fatture di acquisto è detraibile. Va in compensazione con l'IVA a debito dei corrispettivi per il calcolo della liquidazione trimestrale.",
-      },
-    ],
-    aspetta: [
-      {
-        label: 'Pagamento Effettivo (Bonifico/SEPA)',
-        tipo: 'Riconciliazione Pagamento',
-        urgenza: 'alta',
-        motivo:
-          "La fattura rimane in stato 'da pagare' finché l'uscita bancaria corrispondente non viene riconciliata con questa fattura. Solo allora viene segnata come 'saldata' e rimossa dallo Scadenzario.",
-      },
-      {
-        label: 'Ricevuta SDI (per fatture emesse)',
-        tipo: 'Conferma Ricezione',
-        urgenza: 'bassa',
-        motivo:
-          'Per le fatture che passano per il canale SDI, il sistema può verificare che la fattura sia stata correttamente ricevuta e non sia in stato di scarto.',
-      },
-    ],
+  {
+    id: 'controlli',
+    title: 'Controlli',
+    subtitle: 'Calendari, regole e conferme',
+    color: '#be123c',
+    items: ['Calendario POS', 'Scadenze agente', 'Trattenute', 'Contratti cessati'],
   },
-
-  FORNITORI: {
-    titolo: 'Fornitori',
-    icona: '🏭',
-    colore: '#7c3aed',
-    sottotitolo: "L'anagrafica e lo storico di ogni partner commerciale",
-    entraDA: [
-      {
-        label: 'Dati estratti dalle Fatture XML',
-        fonte: 'Ciclo Passivo (automatico al caricamento fattura)',
-        dettaglio:
-          "Ogni volta che arriva una nuova fattura da un fornitore sconosciuto, il sistema crea automaticamente la scheda fornitore estraendo P.IVA, ragione sociale e metodo di pagamento dall'XML.",
-      },
-      {
-        label: 'Inserimento manuale operatore',
-        fonte: 'Pagina Fornitori',
-        dettaglio:
-          "L'operatore può aggiungere o modificare manualmente i dati del fornitore: metodo di pagamento preferito (SEPA, Bonifico, Carta, Contanti), note, categoria merceologica.",
-      },
-    ],
-    fa: [
-      'Raccoglie tutto lo storico acquisti di ogni fornitore in una scheda unica.',
-      'Mostra il totale fatturato per fornitore per anno, le fatture ancora aperte e quelle pagate.',
-      'Il metodo di pagamento salvato determina se le nuove fatture vanno automaticamente in Prima Nota Banca (SEPA/Bonifico) o restano in cassa.',
-      'Confronta i prezzi storici per identificare aumenti di costo non giustificati.',
-    ],
-    alimenta: [
-      {
-        label: 'Ciclo Passivo',
-        percorso: '→ Suggerimento categoria e metodo pagamento',
-        dettaglio:
-          'Quando arriva una nuova fattura da questo fornitore, il sistema precompila automaticamente categoria merceologica e metodo di pagamento basandosi sullo storico.',
-      },
-      {
-        label: 'Prima Nota Banca',
-        percorso: '→ Automatismo pagamento SEPA',
-        dettaglio:
-          "Se il fornitore ha metodo di pagamento SEPA/Bonifico, ogni sua fattura genera automaticamente un'uscita attesa in Prima Nota Banca.",
-      },
-    ],
-    aspetta: [
-      {
-        label: 'Pagamento Fatture Scadute',
-        tipo: 'Sollecito Manuale',
-        urgenza: 'media',
-        motivo:
-          "Le fatture con scadenza passata rimangono evidenziate in rosso nello storico fornitore. Serve un'azione manuale per registrare il pagamento o richiedere una proroga.",
-      },
-    ],
+  {
+    id: 'chiusura',
+    title: 'Chiusura',
+    subtitle: 'Riconciliazione, output, chat',
+    color: '#15803d',
+    items: ['Riconciliazione', 'Commercialista', 'Consulente', 'Admin', 'Chat'],
   },
+];
 
-  RICONCILIAZIONE: {
-    titolo: 'Riconciliazione',
-    icona: '🔗',
-    colore: '#1d4ed8',
-    sottotitolo: 'Il collegamento tra i movimenti bancari e i documenti contabili',
-    entraDA: [
-      {
-        label: 'Movimenti Prima Nota Banca',
-        fonte: 'Automatico dopo import CSV estratto conto',
-        dettaglio:
-          "Tutti i movimenti dell'estratto conto entrano in coda di riconciliazione in stato 'da abbinare'.",
-      },
-      {
-        label: 'Documenti da abbinare',
-        fonte: 'Ciclo Passivo, Prima Nota Cassa (POS), F24, Salari',
-        dettaglio:
-          "Fatture da pagare, POS attesi, F24 da versare, stipendi da pagare: tutti questi 'documenti' aspettano di trovare un movimento bancario corrispondente.",
-      },
-    ],
-    fa: [
-      'Confronta ogni movimento bancario con i documenti aperti cercando corrispondenze per importo, data e causale.',
-      'Quando trova un abbinamento certo, lo conferma automaticamente.',
-      "Quando ci sono più possibilità, propone le opzioni all'operatore per la scelta manuale.",
-      'Gestisce anche gli assegni (emessi e ricevuti) con il loro ciclo specifico (emissione → presentazione → addebito).',
-      "Traccia i bonifici SEPA ai fornitori dall'emissione all'effettivo addebito bancario.",
-    ],
-    alimenta: [
-      {
-        label: 'Fatture Fornitori',
-        percorso: "→ Stato 'Pagata'",
-        dettaglio:
-          "Quando un'uscita bancaria viene abbinata a una fattura fornitore, questa viene marcata come pagata e rimossa dallo Scadenzario.",
-      },
-      {
-        label: 'Prima Nota Cassa',
-        percorso: '→ Conferma POS',
-        dettaglio:
-          "Quando l'accredito POS bancario viene trovato e abbinato, la voce AVERE della Prima Nota Cassa viene confermata come ricevuta dalla banca.",
-      },
-      {
-        label: 'F24',
-        percorso: "→ Stato 'Versato'",
-        dettaglio:
-          "Il versamento F24 trovato sull'estratto conto viene abbinato al modello F24 e segnato come 'versato'.",
-      },
-    ],
-    aspetta: [
-      {
-        label: 'Tutti i documenti abbinabili',
-        tipo: 'Chiusura Periodo Contabile',
-        urgenza: 'alta',
-        motivo:
-          "Il mese si considera 'chiuso contabilmente' solo quando tutti i movimenti bancari sono stati riconciliati. Movimenti non abbinati indicano documenti mancanti o errori di importo da investigare prima di procedere al bilancio mensile.",
-      },
-    ],
+const AREAS = [
+  {
+    id: 'dashboard',
+    title: 'Dashboard',
+    route: '/',
+    Icon: LayoutDashboard,
+    color: '#1d4ed8',
+    group: 'Controllo',
+    purpose: 'Mostra KPI, alert critici, scadenze operative, POS da verificare e documenti aperti.',
+    pages: ['KPI', 'Alert', 'Scadenze operative', 'POS', 'Trattenute da confermare'],
+    inputs: ['Documenti', 'Prima nota', 'Riconciliazione', 'F24', 'Cedolini', 'Verbali'],
+    outputs: ['Priorita operative', 'Link a pagine filtrate', 'Decisioni utente'],
+    links: ['controllo', 'documenti', 'riconciliazione', 'admin'],
   },
-
-  FISCO: {
-    titolo: 'Fisco & IVA',
-    icona: '🏛️',
-    colore: '#be185d',
-    sottotitolo: 'Il calcolo e il versamento di tutti i tributi',
-    entraDA: [
-      {
-        label: 'IVA a Debito dai Corrispettivi',
-        fonte: 'Corrispettivi RT (automatico)',
-        dettaglio: "L'IVA sugli incassi giornalieri viene sommata automaticamente mese per mese.",
-      },
-      {
-        label: 'IVA a Credito dalle Fatture',
-        fonte: 'Ciclo Passivo — Fatture Ricevute (automatico)',
-        dettaglio:
-          "L'IVA pagata ai fornitori è detraibile. Viene sommata mese per mese per la compensazione.",
-      },
-      {
-        label: 'Contributi IRPEF/INPS da Cedolini',
-        fonte: 'Prima Nota Salari (automatico)',
-        dettaglio:
-          "Le ritenute d'acconto IRPEF e i contributi INPS calcolati sui cedolini diventano debiti tributari da versare.",
-      },
-    ],
-    fa: [
-      'Calcola ogni trimestre la liquidazione IVA: IVA a Debito - IVA a Credito = importo da versare (o credito IVA da riportare).',
-      'Genera i modelli F24 con i codici tributo corretti per ogni versamento: IVA, IRPEF dipendenti, INPS, INAIL.',
-      'Tiene il calendario delle scadenze fiscali aggiornato: 16 del mese per ritenute, trimestrali per IVA.',
-      'Raccoglie i dati necessari per la dichiarazione annuale IVA e il 770.',
-    ],
-    alimenta: [
-      {
-        label: 'Scadenze',
-        percorso: '→ Nuove scadenze fiscali',
-        dettaglio:
-          'Ogni adempimento tributario genera una scadenza nello Scadenzario con data limite e importo.',
-      },
-      {
-        label: 'Prima Nota Banca',
-        percorso: '→ Uscita F24 attesa',
-        dettaglio:
-          "Una volta creato il modello F24, il sistema sa che ci sarà un'uscita bancaria di quell'importo entro la scadenza. La aspetta sull'estratto conto per la riconciliazione.",
-      },
-    ],
-    aspetta: [
-      {
-        label: 'Pagamento F24 su Estratto Conto',
-        tipo: 'Conferma Versamento',
-        urgenza: 'critica',
-        motivo:
-          "Il versamento deve risultare sull'estratto conto entro la data di scadenza. In caso contrario il sistema segnala il tributo come 'potenzialmente non versato' e il commercialista deve essere avvisato immediatamente per evitare sanzioni e interessi.",
-      },
-    ],
+  {
+    id: 'controllo',
+    title: 'Controllo Gestionale',
+    route: '/dashboard-relazionale',
+    Icon: GitBranch,
+    color: '#0f766e',
+    group: 'Controllo',
+    purpose: 'Sala controllo per capire cosa non torna tra documenti, cassa, banca, POS, F24, cedolini e verbali.',
+    pages: ['Dashboard relazionale', 'Verifica coerenza', 'Alert aperti', 'Controllo mensile'],
+    inputs: ['Residui', 'Movimenti non riconciliati', 'Parser falliti', 'Differenze POS', 'Trattenute aperte'],
+    outputs: ['Liste da lavorare', 'Stati aperti/chiusi', 'Alert risolti'],
+    links: ['dashboard', 'riconciliazione', 'corrispettivi', 'prima-nota'],
   },
-
-  BILANCIO: {
-    titolo: 'Bilancio & Analisi',
-    icona: '⚖️',
-    colore: '#0f766e',
-    sottotitolo: "La fotografia economica e patrimoniale dell'azienda",
-    entraDA: [
-      {
-        label: 'Prima Nota Cassa',
-        fonte: 'Ricavi giornalieri → totali mensili',
-        dettaglio:
-          'Gli incassi totali (contanti + POS) alimentano la voce Ricavi del Conto Economico.',
-      },
-      {
-        label: 'Prima Nota Banca',
-        fonte: 'Saldo finale conto corrente',
-        dettaglio:
-          'Il saldo del conto corrente alimenta la voce Disponibilità Liquide nello Stato Patrimoniale.',
-      },
-      {
-        label: 'Fatture Fornitori',
-        fonte: 'Costi di acquisto per categoria',
-        dettaglio:
-          "Tutti i costi sostenuti per forniture, utenze, servizi entrano nel Conto Economico come costi d'esercizio.",
-      },
-      {
-        label: 'Prima Nota Salari',
-        fonte: 'Costo totale del personale mensile',
-        dettaglio:
-          "Stipendi lordi, contributi a carico azienda e accantonamento TFR vanno nella voce 'Costo del Lavoro'.",
-      },
-      {
-        label: 'Cespiti',
-        fonte: 'Quote di ammortamento annue',
-        dettaglio:
-          "Ogni anno una quota del costo dei beni strumentali viene 'spesata' come ammortamento nel Conto Economico.",
-      },
+  {
+    id: 'documenti',
+    title: 'Documenti / Import',
+    route: '/documenti/import',
+    Icon: FileInput,
+    color: '#7c3aed',
+    group: 'Ingresso',
+    purpose: 'Porta unica per acquisire, classificare, deduplicare, vedere e riprocessare ogni documento.',
+    pages: ['Import', 'Archivio', 'Da classificare', 'Non associati', 'Reprocessing'],
+    inputs: [
+      'Fatture XML/P7M da Drive',
+      'Corrispettivi XML da Drive',
+      'F24 da email',
+      'Quietanze da Drive',
+      'Cedolini da email',
+      'Verbali da email',
+      'Estratti conto',
+      'Scontrini',
     ],
-    fa: [
-      "Calcola il Conto Economico: Ricavi - Costi = Risultato Operativo → Utile/Perdita d'Esercizio.",
-      "Costruisce lo Stato Patrimoniale: cosa possiede l'azienda (Attivo) vs cosa deve (Passivo + Patrimonio Netto).",
-      'Mostra il Budget Previsionale confrontato con i dati reali per capire gli scostamenti.',
-      'Analizza i trend mensili e annuali per identificare stagionalità e anomalie.',
-    ],
-    alimenta: [
-      {
-        label: 'Commercialista',
-        percorso: '→ Dati per dichiarazione dei redditi',
-        dettaglio:
-          'Il Bilancio, una volta approvato, è il documento base che il commercialista usa per la dichiarazione fiscale annuale (IRES, IRAP).',
-      },
-      {
-        label: 'Chiusura Esercizio',
-        percorso: '→ Riapertura conti anno successivo',
-        dettaglio:
-          "A fine anno i saldi patrimoniali vengono portati avanti come saldi di apertura dell'anno successivo.",
-      },
-    ],
-    aspetta: [
-      {
-        label: 'Chiusura di tutti i mesi contabili',
-        tipo: 'Completezza Dati',
-        urgenza: 'alta',
-        motivo:
-          'Il Bilancio è attendibile solo se tutti i mesi sono stati riconciliati (Prima Nota Banca, Cassa, Salari). Mesi con movimenti non abbinati producono un Bilancio provvisorio e potenzialmente errato.',
-      },
-      {
-        label: 'Approvazione Commercialista',
-        tipo: 'Validazione Finale',
-        urgenza: 'bassa',
-        motivo:
-          'Prima di presentare il Bilancio alle autorità, deve essere revisionato e approvato dal commercialista che può richiedere rettifiche o scritture di assestamento.',
-      },
-    ],
+    outputs: ['Fatture', 'F24', 'Quietanze', 'Cedolini', 'Corrispettivi', 'Banca', 'Noleggio', 'Admin'],
+    links: ['fatture', 'fiscale', 'cedolini', 'corrispettivi', 'prima-nota', 'noleggio', 'admin'],
   },
-
-  CESPITI: {
-    titolo: 'Cespiti & Ammortamenti',
-    icona: '🏗️',
-    colore: '#475569',
-    sottotitolo: 'I beni strumentali acquistati e il loro valore residuo nel tempo',
-    entraDA: [
-      {
-        label: 'Fatture Acquisto Beni Strumentali',
-        fonte: 'Ciclo Passivo — Fatture Ricevute (con pulsante Scansiona Cespiti)',
-        dettaglio:
-          'Il sistema scansiona le fatture importate alla ricerca di beni ammortizzabili (macchinari, attrezzature, arredi, veicoli). Quando li trova, li propone per la registrazione come Cespite.',
-      },
-    ],
-    fa: [
-      'Registra ogni bene con: descrizione, costo di acquisto, data acquisto, categoria ATECO, aliquota di ammortamento.',
-      'Calcola automaticamente la quota di ammortamento annua (solitamente 20-25% per attrezzature, 11% per veicoli, ecc.).',
-      'Mostra il valore residuo contabile netto per ogni anno.',
-      "Al completamento dell'ammortamento, il bene rimane iscritto a valore zero fino alla dismissione.",
-    ],
-    alimenta: [
-      {
-        label: 'Bilancio',
-        percorso: '→ Immobilizzazioni (Attivo) + Quote Ammortamento (Costi)',
-        dettaglio:
-          "Il valore netto dei cespiti va nell'Attivo Immobilizzato dello Stato Patrimoniale. Le quote di ammortamento annue vanno nel Conto Economico come costi non monetari.",
-      },
-    ],
-    aspetta: [
-      {
-        label: 'Fine Anno Contabile',
-        tipo: 'Calcolo Quote Annuali',
-        urgenza: 'bassa',
-        motivo:
-          "Le quote di ammortamento vengono calcolate una volta all'anno al momento della chiusura dell'esercizio. Il sistema le calcola automaticamente per tutti i cespiti attivi.",
-      },
-    ],
+  {
+    id: 'fatture',
+    title: 'Fatture',
+    route: '/fatture',
+    Icon: FileText,
+    color: '#6d28d9',
+    group: 'Ciclo passivo',
+    purpose: 'Legge fatture da Drive, crea fornitori, righe e movimenti secondo metodo pagamento manuale.',
+    pages: ['Fatture ricevute', 'Righe XML', 'Note credito', 'AssoInvoice', 'Scadenza informativa'],
+    inputs: ['XML/P7M da Drive', 'Righe DettaglioLinee', 'Dati fornitore', 'Metodo pagamento'],
+    outputs: ['Fornitori', 'Prima nota', 'Magazzino', 'Noleggio', 'Riconciliazione'],
+    links: ['fornitori', 'prima-nota', 'riconciliazione', 'magazzino', 'noleggio'],
   },
-
-  DIPENDENTI: {
-    titolo: 'Dipendenti & HR',
-    icona: '👥',
-    colore: '#0369a1',
-    sottotitolo: 'La gestione del personale, delle presenze e delle ferie',
-    entraDA: [
-      {
-        label: 'Anagrafica dipendente',
-        fonte: 'Inserimento manuale operatore (HR)',
-        dettaglio:
-          "Nome, contratto, data assunzione, qualifica, retribuzione contrattuale. Il flag 'In Carico' indica se il dipendente è attualmente attivo in azienda.",
-      },
-      {
-        label: 'Timbrature / Presenze',
-        fonte: 'Inserimento manuale o import da badge',
-        dettaglio:
-          'Le ore di presenza giornaliere di ogni dipendente vengono registrate nella sezione Presenze. Sono la base per il calcolo del cedolino.',
-      },
-    ],
-    fa: [
-      'Tiene traccia dello stato di ogni dipendente: in carico, in ferie, in malattia, dimesso.',
-      'Gestisce le richieste di ferie e permessi con approvazione/rifiuto.',
-      'Mantiene il saldo ferie residuo aggiornato per ogni dipendente.',
-      'Registra le presenze mensili come base per il calcolo della busta paga.',
-    ],
-    alimenta: [
-      {
-        label: 'Cedolini / Paghe',
-        percorso: '→ Dati presenze per calcolo busta paga',
-        dettaglio:
-          'Le ore lavorate, le ferie godute e le assenze vengono passate al modulo Paghe per calcolare la retribuzione del mese.',
-      },
-      {
-        label: 'Prima Nota Salari',
-        percorso: '→ Lista dipendenti attivi del mese',
-        dettaglio:
-          "Solo i dipendenti 'in carico' nel periodo vengono inclusi nella Prima Nota Salari del mese.",
-      },
-    ],
-    aspetta: [
-      {
-        label: 'Inserimento presenze mensili',
-        tipo: 'Completamento Dati',
-        urgenza: 'alta',
-        motivo:
-          'Le presenze devono essere inserite/confermate prima della chiusura del cedolino. Presenze mancanti impediscono il calcolo corretto della busta paga e devono essere completate entro i primi giorni del mese successivo.',
-      },
-    ],
+  {
+    id: 'fornitori',
+    title: 'Fornitori',
+    route: '/fornitori',
+    Icon: Building2,
+    color: '#9333ea',
+    group: 'Ciclo passivo',
+    purpose: 'Anagrafica centrale: il metodo pagamento e manuale e decide cassa, banca o provvisoria.',
+    pages: ['Anagrafica', 'Metodo pagamento', 'Fatture collegate', 'Prodotti', 'Note'],
+    inputs: ['Dati XML fattura', 'Scelta manuale metodo', 'Storico pagamenti'],
+    outputs: ['Instradamento fatture', 'Alert metodo mancante', 'Partitario fornitore'],
+    links: ['fatture', 'prima-nota', 'riconciliazione', 'magazzino'],
   },
-
-  CEDOLINI: {
-    titolo: 'Cedolini & Paghe',
-    icona: '💰',
-    colore: '#b45309',
-    sottotitolo: 'Le buste paga mensili di tutti i dipendenti',
-    entraDA: [
-      {
-        label: 'PDF Cedolini (consulente del lavoro)',
-        fonte: 'Import Documenti (caricamento manuale PDF)',
-        dettaglio:
-          'I cedolini elaborati mensilmente dal consulente del lavoro vengono caricati in PDF. Il sistema li associa al dipendente per nome e competenza (mese/anno).',
-      },
-      {
-        label: 'Dati presenze da HR',
-        fonte: 'Modulo Dipendenti (automatico)',
-        dettaglio:
-          'Le presenze registrate nel modulo HR alimentano il calcolo se il cedolino viene calcolato internamente.',
-      },
-    ],
-    fa: [
-      'Archivia il cedolino di ogni dipendente per mese/anno, anche per ex-dipendenti non più in servizio.',
-      'Mostra il dettaglio: retribuzione lorda, detrazioni IRPEF, contributi lavoratore, netto da pagare, TFR maturato.',
-      'Permette di ricercare per nome dipendente, anno, mese.',
-      'Calcola il TFR (Trattamento Fine Rapporto) accantonato nel corso degli anni.',
-    ],
-    alimenta: [
-      {
-        label: 'Prima Nota Salari',
-        percorso: '→ Costo totale personale del mese',
-        dettaglio:
-          'Il totale mensile di tutti i cedolini (lordi + contributi azienda) alimenta la Prima Nota Salari come uscita contabile.',
-      },
-      {
-        label: 'F24 Contributi',
-        percorso: '→ IRPEF e contributi da versare',
-        dettaglio:
-          'Le trattenute IRPEF e i contributi INPS/INAIL risultanti dai cedolini alimentano i codici tributo del modello F24 mensile.',
-      },
-    ],
-    aspetta: [
-      {
-        label: 'Caricamento cedolino dal consulente',
-        tipo: 'Ricezione Documento',
-        urgenza: 'alta',
-        motivo:
-          'Il ciclo di pagamento stipendi dipende dalla ricezione dei cedolini dal consulente del lavoro. Senza di essi non è possibile calcolare né i bonifici né i versamenti F24.',
-      },
-    ],
+  {
+    id: 'scadenze',
+    title: 'Scadenze',
+    route: '/scadenze',
+    Icon: CalendarDays,
+    color: '#ea580c',
+    group: 'Controllo',
+    purpose: 'Mostra solo scadenze operative. La scadenza fattura non vale salvo pagamento a mezzo agente.',
+    pages: ['Scadenze operative', 'F24', 'Pagamento agente', 'Da verificare'],
+    inputs: ['F24', 'Pagamento a mezzo agente', 'Cartelle', 'Avvisi', 'Regole manuali'],
+    outputs: ['Paga cassa', 'Paga banca', 'Movimento atteso', 'Alert urgenza'],
+    links: ['fatture', 'fiscale', 'prima-nota', 'riconciliazione'],
   },
-
-  DASHBOARD: {
-    titolo: 'Dashboard — Cruscotto Aziendale',
-    icona: '📊',
-    colore: '#1a40b5',
-    sottotitolo: "La vista d'insieme sull'andamento dell'azienda",
-    entraDA: [
-      {
-        label: 'Tutti i moduli del gestionale',
-        fonte: 'Aggregazione automatica in tempo reale',
-        dettaglio:
-          'La Dashboard non inserisce dati, li aggrega. Prende i totali da: Corrispettivi (ricavi), Fatture (costi), Dipendenti (n. personale), Prima Nota Banca (liquidità).',
-      },
-    ],
-    fa: [
-      "Mostra il Volume d'Affari dell'anno corrente (basato sui Corrispettivi).",
-      'Confronta ricavi e costi mese per mese con grafici.',
-      'Segnala eventuali anomalie o scostamenti rispetto al Budget Previsionale.',
-      'Visualizza quanti dipendenti sono attivamente in carico.',
-    ],
-    alimenta: [
-      {
-        label: 'Nessun modulo a valle',
-        percorso: '→ È un aggregatore, non genera dati',
-        dettaglio:
-          'La Dashboard è in sola lettura: mostra ciò che gli altri moduli producono, non crea nuovi dati.',
-      },
-    ],
-    aspetta: [
-      {
-        label: 'Aggiornamento dati dagli altri moduli',
-        tipo: 'Refresh On-Demand',
-        urgenza: 'bassa',
-        motivo:
-          "I KPI sono aggiornati all'ultimo import/caricamento. Se non sono stati caricati i corrispettivi del mese corrente, il Volume d'Affari risulterà incompleto.",
-      },
-    ],
+  {
+    id: 'corrispettivi',
+    title: 'Corrispettivi / POS',
+    route: '/coerenza-pos',
+    Icon: CreditCard,
+    color: '#dc2626',
+    group: 'Incassi',
+    purpose: 'Confronta XML, corrispettivo manuale, POS serale e accrediti banca usando il calendario.',
+    pages: ['Giornaliera', 'POS serale', 'Calendario accrediti', 'Riconciliazione cumulativa'],
+    inputs: ['XML RT', 'Totale manuale', 'POS serale', 'Accrediti banca', 'Giorni lavorativi/festivi'],
+    outputs: ['Entrata cassa totale', 'Uscita POS', 'POS atteso banca', 'Slittamenti fisiologici', 'Alert reali'],
+    links: ['prima-nota', 'riconciliazione', 'admin', 'controllo'],
   },
-
-  SCADENZE: {
-    titolo: 'Scadenzario',
-    icona: '📅',
-    colore: '#dc2626',
-    sottotitolo: 'Il calendario di tutti gli impegni finanziari e fiscali',
-    entraDA: [
-      {
-        label: 'Fatture Fornitori non pagate',
-        fonte: 'Ciclo Passivo (automatico)',
-        dettaglio: 'La data di scadenza di ogni fattura fornitore viene inserita automaticamente.',
-      },
-      {
-        label: 'Modelli F24',
-        fonte: 'Fisco (automatico)',
-        dettaglio:
-          'Le scadenze tributarie trimestrali e mensili vengono aggiunte automaticamente al calendario.',
-      },
-      {
-        label: 'Scadenze contrattuali',
-        fonte: 'Inserimento manuale',
-        dettaglio: 'Rinnovi contratti, scadenze assicurative, permessi, licenze.',
-      },
-    ],
-    fa: [
-      'Mostra tutte le scadenze imminenti in ordine cronologico con importo e tipo.',
-      'Evidenzia in rosso le scadenze scadute o prossime (entro 7 giorni).',
-      'Permette di filtrare per tipo (fiscale, fornitore, contrattuale) e mese.',
-    ],
-    alimenta: [
-      {
-        label: 'Operatore / Titolare',
-        percorso: '→ Azione manuale richiesta',
-        dettaglio:
-          "Lo Scadenzario è un pannello di azione: ogni scadenza richiede che qualcuno la 'soddisfi' (paghi, rinnovi, verifichi).",
-      },
-    ],
-    aspetta: [
-      {
-        label: 'Riconciliazione pagamento',
-        tipo: 'Chiusura Scadenza',
-        urgenza: 'alta',
-        motivo:
-          "Una scadenza viene rimossa dallo Scadenzario solo quando il pagamento corrispondente è stato riconciliato sull'estratto conto. Questo garantisce che 'chiuso' significhi davvero 'pagato'.",
-      },
-    ],
+  {
+    id: 'prima-nota',
+    title: 'Prima Nota',
+    route: '/prima-nota',
+    Icon: BookOpen,
+    color: '#b45309',
+    group: 'Movimenti',
+    purpose: 'Cassa e banca con saldi progressivi; la cassa registra il corrispettivo totale e l uscita POS.',
+    pages: ['Cassa', 'Banca', 'Provvisoria', 'Pulizia'],
+    inputs: ['Corrispettivi', 'Estratti conto', 'Fatture', 'F24', 'Cedolini', 'Movimenti manuali'],
+    outputs: ['Saldo cassa', 'Saldo banca', 'Movimenti da riconciliare', 'Trasferimenti'],
+    links: ['corrispettivi', 'riconciliazione', 'fiscale', 'contabilita'],
   },
-
-  IMPORT_DOCUMENTI: {
-    titolo: 'Import Documenti',
-    icona: '📤',
-    colore: '#0891b2',
-    sottotitolo: 'Il punto di ingresso di tutti i dati nel gestionale',
-    entraDA: [
-      {
-        label: 'File XML (fatture, corrispettivi)',
-        fonte: 'Utente — upload manuale',
-        dettaglio:
-          "Trascina o seleziona i file XML dall'SDI (fatture) o dal Registratore Telematico (corrispettivi).",
-      },
-      {
-        label: 'CSV Estratto Conto',
-        fonte: 'Utente — download da home banking',
-        dettaglio:
-          "File CSV scaricato dall'home banking Banco BPM contenente tutti i movimenti del periodo.",
-      },
-      {
-        label: 'PDF Cedolini',
-        fonte: 'Consulente del lavoro',
-        dettaglio: 'Le buste paga mensili in formato PDF ricevute dal consulente.',
-      },
-    ],
-    fa: [
-      'Riceve i file e li smista al modulo corretto in base al tipo riconosciuto.',
-      'Il parser AI legge i PDF e tenta di estrarne i dati strutturati.',
-      "Mostra l'anteprima dei dati estratti prima della conferma di import.",
-      'Permette la correzione manuale dei dati prima di importare definitivamente.',
-    ],
-    alimenta: [
-      {
-        label: 'Tutti i moduli del gestionale',
-        percorso: '→ È il gateway di ingresso dati',
-        dettaglio:
-          'XML fatture → Ciclo Passivo. XML corrispettivi → Prima Nota Cassa. CSV banca → Prima Nota Banca. PDF cedolini → Paghe.',
-      },
-    ],
-    aspetta: [
-      {
-        label: 'Conferma operatore',
-        tipo: 'Validazione Umana',
-        urgenza: 'media',
-        motivo:
-          "L'import viene finalizzato solo dopo che l'operatore ha verificato l'anteprima e confermato. Questo evita importazioni errate che andrebbero poi corrette nei moduli a valle.",
-      },
-    ],
+  {
+    id: 'riconciliazione',
+    title: 'Riconciliazione',
+    route: '/riconciliazione',
+    Icon: CheckCircle2,
+    color: '#15803d',
+    group: 'Chiusura',
+    purpose: 'Collega movimenti reali a fatture, F24, quietanze, cedolini, POS, PayPal, PagoPA e verbali.',
+    pages: ['Banca', 'Fatture', 'F24/quietanze', 'Cedolini', 'POS', 'PayPal', 'Verbali'],
+    inputs: ['Movimenti banca', 'Partite aperte', 'F24', 'Quietanze', 'Cedolini netti', 'POS attesi', 'Verbali'],
+    outputs: ['Documenti pagati', 'Residui', 'Alert chiusi', 'Trattenute proposte', 'Partitario aggiornato'],
+    links: ['prima-nota', 'fatture', 'fiscale', 'cedolini', 'corrispettivi', 'verbali'],
   },
-
-  STRUMENTI: {
-    titolo: 'Strumenti & Commercialista',
-    icona: '🔧',
-    colore: '#374151',
-    sottotitolo: 'Utility di supporto e preparazione dati per il consulente',
-    entraDA: [
-      {
-        label: 'Dati da tutti i moduli',
-        fonte: 'Aggregazione su richiesta',
-        dettaglio:
-          "Il 'Pacchetto Commercialista' raccoglie i dati da Prima Nota, Fatture, Salari, IVA del periodo selezionato.",
-      },
-    ],
-    fa: [
-      "Genera il 'Pacchetto Commercialista': un file Excel/ZIP con tutti i dati del periodo da consegnare al consulente.",
-      'Verifica Coerenza: controlla che i dati tra i moduli siano allineati (es. IVA Prima Nota vs IVA Fatture).',
-      "Pianificazione: aiuta a prevedere le spese future e l'impatto fiscale.",
-      'Visure camerali: accesso a informazioni su aziende terze.',
-    ],
-    alimenta: [
-      {
-        label: 'Commercialista',
-        percorso: '→ Pacchetto dati per dichiarazione',
-        dettaglio:
-          'Il file prodotto dagli Strumenti è la base su cui il commercialista lavora per la dichiarazione fiscale annuale.',
-      },
-    ],
-    aspetta: [
-      {
-        label: 'Completamento chiusure mensili',
-        tipo: 'Dati Completi',
-        urgenza: 'alta',
-        motivo:
-          'Il pacchetto commercialista è significativo solo se tutti i mesi del periodo sono stati riconciliati. Genera un avviso se ci sono mesi ancora aperti.',
-      },
-    ],
+  {
+    id: 'fiscale',
+    title: 'Fiscale',
+    route: '/contabilita/calendario',
+    Icon: ReceiptText,
+    color: '#be123c',
+    group: 'Fisco',
+    purpose: 'F24 genera posizione da pagare; quietanza chiude ufficialmente il pagamento come prova.',
+    pages: ['F24', 'Quietanze', 'Cartelle', 'Avvisi bonari', 'TARI/ADER'],
+    inputs: ['F24 email', 'Quietanze Drive', 'PagoPA', 'Banca', 'Documenti Agenzia'],
+    outputs: ['Scadenze fiscali', 'Movimenti attesi banca', 'Pagamento ufficiale confermato'],
+    links: ['documenti', 'riconciliazione', 'contabilita', 'commercialista'],
   },
-};
+  {
+    id: 'dipendenti',
+    title: 'Dipendenti',
+    route: null,
+    external: 'https://appdipendenti.onrender.com',
+    Icon: Users,
+    color: '#2563eb',
+    group: 'HR',
+    purpose: 'Fascicolo HR con anagrafica, contratto, IBAN, cedolini, presenze, verbali e trattenute.',
+    pages: ['Anagrafica', 'Contratti', 'Cedolini', 'Verbali', 'Movimenti', 'Giustificativi'],
+    inputs: ['Cedolini', 'Presenze', 'Bonifici stipendio', 'Verbali driver'],
+    outputs: ['Fascicolo dipendente', 'Alert HR', 'Note consulente', 'Storico paghe'],
+    links: ['cedolini', 'verbali', 'riconciliazione'],
+  },
+  {
+    id: 'cedolini',
+    title: 'Cedolini',
+    route: null,
+    external: 'https://appdipendenti.onrender.com',
+    Icon: WalletCards,
+    color: '#0ea5e9',
+    group: 'HR',
+    purpose: 'Estrae netto, lordo, fiscale, previdenziale, ratei, TFR, presenze ed eventi particolari.',
+    pages: ['Cedolini', 'Parser Zucchetti', 'Sezione fiscale', 'Ratei', 'TFR', 'Stato pagamento'],
+    inputs: ['PDF cedolino/LUL', 'Codice fiscale', 'Matricola', 'Mese/anno', 'Voci corpo cedolino'],
+    outputs: ['Movimento stipendio atteso', 'Dati fiscali interrogabili', 'TFR', 'Riconciliazione stipendi'],
+    links: ['dipendenti', 'riconciliazione', 'prima-nota', 'commercialista'],
+  },
+  {
+    id: 'verbali',
+    title: 'Verbali / Multe',
+    route: '/noleggio',
+    Icon: AlertTriangle,
+    color: '#ef4444',
+    group: 'Veicoli',
+    purpose: 'Legge email e PDF, estrae targa, associa driver, cerca pagamento societa e propone trattenuta.',
+    pages: ['Verbali', 'Parser email', 'Driver', 'Pagamento societa', 'Trattenute'],
+    inputs: ['Email noleggio/Comune/PagoPA', 'PDF verbale', 'Targa', 'Banca', 'PayPal', 'Quietanza'],
+    outputs: ['Driver associato', 'Verbale riconciliato', 'Proposta trattenuta', 'Nota consulente'],
+    links: ['noleggio', 'dipendenti', 'riconciliazione', 'commercialista'],
+  },
+  {
+    id: 'noleggio',
+    title: 'Noleggio Auto',
+    route: '/noleggio',
+    Icon: Car,
+    color: '#0369a1',
+    group: 'Veicoli',
+    purpose: 'Gestisce flotta, costi, contratti e cessazioni leggendo ultima fattura e assenza fatture oltre 35 giorni.',
+    pages: ['Flotta', 'Costi', 'Contratti', 'Verbali', 'Driver'],
+    inputs: ['Fatture XML DettaglioLinee', 'Verbali', 'Polizze', 'Movimenti banca'],
+    outputs: ['Costo veicolo', 'Contratto attivo/cessato', 'Alert solo se necessario', 'Report auto'],
+    links: ['fatture', 'verbali', 'dipendenti', 'commercialista'],
+  },
+  {
+    id: 'paypal',
+    title: 'PayPal',
+    route: '/integrazioni',
+    Icon: CreditCard,
+    color: '#0f766e',
+    group: 'Integrazioni',
+    purpose: 'Fonte primaria API con PAYPAL_CLIENT_ID e PAYPAL_CLIENT_SECRET; email solo fallback documentale.',
+    pages: ['API PayPal', 'Movimenti', 'Riconciliazione', 'Log sync'],
+    inputs: ['PAYPAL_CLIENT_ID', 'PAYPAL_CLIENT_SECRET', 'Transazioni API', 'Email fallback'],
+    outputs: ['paypal_movements', 'Match banca', 'Match PagoPA', 'Match verbali'],
+    links: ['riconciliazione', 'verbali', 'fiscale', 'prima-nota'],
+  },
+  {
+    id: 'magazzino',
+    title: 'Magazzino',
+    route: '/contabilita/previsioni-acquisti',
+    Icon: Archive,
+    color: '#4f46e5',
+    group: 'Acquisti',
+    purpose: 'Usa righe fattura per prodotti, dizionario articoli, storico acquisti e previsioni.',
+    pages: ['Prodotti', 'Dizionario articoli', 'Previsioni', 'Storico'],
+    inputs: ['Righe fattura', 'Fornitore', 'Quantita', 'Prezzo'],
+    outputs: ['Prodotti', 'Sotto scorta', 'Statistiche acquisti'],
+    links: ['fatture', 'fornitori', 'contabilita'],
+  },
+  {
+    id: 'contabilita',
+    title: 'Contabilita',
+    route: '/contabilita',
+    Icon: ClipboardList,
+    color: '#475569',
+    group: 'Contabilita',
+    purpose: 'Aggrega dati validati in piano conti, bilancio, IVA, budget, cespiti e chiusura.',
+    pages: ['Piano conti', 'Bilancio', 'IVA', 'Budget', 'Cespiti', 'Chiusura'],
+    inputs: ['Fatture', 'Corrispettivi', 'Prima nota', 'F24', 'Stipendi', 'Cespiti'],
+    outputs: ['Bilancio', 'Verifiche', 'Liquidazioni', 'Report'],
+    links: ['fatture', 'prima-nota', 'fiscale', 'commercialista'],
+  },
+  {
+    id: 'commercialista',
+    title: 'Commercialista / Consulente',
+    route: '/strumenti/commercialista',
+    Icon: ShieldCheck,
+    color: '#64748b',
+    group: 'Output',
+    purpose: 'Prepara pacchetti per commercialista e note per consulente lavoro, incluse trattenute verbali.',
+    pages: ['Prima nota', 'F24/quietanze', 'Cedolini', 'Scontrini', 'Trattenute', 'Report auto'],
+    inputs: ['Dati validati', 'Scontrini admin', 'Trattenute proposte', 'Documenti fiscali'],
+    outputs: ['PDF mensili', 'Excel consulente', 'Report consegna', 'Note busta paga'],
+    links: ['admin', 'contabilita', 'fiscale', 'verbali', 'cedolini'],
+  },
+  {
+    id: 'admin',
+    title: 'Admin',
+    route: '/admin',
+    Icon: Settings,
+    color: '#0f172a',
+    group: 'Sistema',
+    purpose: 'Configura mittenti, parser, regole, scontrini, differenze corrispettivi, log e reprocessing.',
+    pages: ['Mittenti attendibili', 'Parser', 'Registro scontrini', 'Log', 'Learning'],
+    inputs: ['Differenze corrispettivi', 'Scontrini', 'Regole utente', 'Log sistema'],
+    outputs: ['Configurazioni', 'PDF scontrini', 'Audit', 'Regole apprese'],
+    links: ['documenti', 'corrispettivi', 'commercialista', 'controllo'],
+  },
+  {
+    id: 'chat',
+    title: 'Chat intelligente',
+    route: null,
+    Icon: MessageSquareText,
+    color: '#0891b2',
+    group: 'Controllo',
+    purpose: 'Interroga documenti, record, audit log, saldi, POS, cedolini, F24, verbali e riconciliazioni.',
+    pages: ['Domande documentali', 'Memoria', 'Ricerche', 'Risposte con fonte'],
+    inputs: ['Tutti i documenti', 'Record gestionali', 'Audit log', 'Riconciliazioni', 'Calendario POS'],
+    outputs: ['Risposte operative', 'Link documento', 'Azioni consigliate'],
+    links: ['documenti', 'riconciliazione', 'cedolini', 'fiscale', 'verbali'],
+  },
+];
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Tech Stack Ceraldi ERP
-// ─────────────────────────────────────────────────────────────────────────────
-const TECH_STACK = {
-  backend: [
-    { nome: 'FastAPI', desc: 'Web framework Python asincrono', colore: '#059669' },
-    { nome: 'Pydantic', desc: 'Validazione dati e modelli', colore: '#0891b2' },
-    { nome: 'Motor', desc: 'Driver MongoDB asincrono', colore: '#16a34a' },
-    { nome: 'MongoDB Atlas', desc: 'Database NoSQL cloud', colore: '#15803d' },
-    { nome: 'Python IMAP', desc: 'Integrazione email Gmail per fatture', colore: '#dc2626' },
-    { nome: 'xml.etree', desc: 'Parser fatture XML SDI e RT', colore: '#7c3aed' },
-    { nome: 'Uvicorn', desc: 'ASGI server produzione', colore: '#374151' },
-  ],
-  frontend: [
-    { nome: 'React 19', desc: 'UI library', colore: '#0ea5e9' },
-    { nome: 'React Router v7', desc: 'Routing SPA', colore: '#e11d48' },
-    { nome: 'Vite', desc: 'Build tool ultra-veloce', colore: '#a855f7' },
-    { nome: 'Shadcn/UI', desc: 'Componenti UI', colore: '#1e293b' },
-    { nome: 'Tailwind CSS', desc: 'Styling utility-first', colore: '#0891b2' },
-    { nome: 'Recharts', desc: 'Grafici e KPI', colore: '#f97316' },
-    { nome: 'Mermaid.js', desc: 'Diagrammi di flusso interattivi', colore: '#16a34a' },
-    { nome: 'Axios', desc: 'HTTP client', colore: '#5b21b6' },
-    { nome: 'Lucide React', desc: 'Icone', colore: '#475569' },
-  ],
-  database: [
-    {
-      nome: 'estratto_conto_movimenti',
-      desc: 'Movimenti CSV Banco BPM (7.800+ record)',
-      colore: '#1d4ed8',
-    },
-    { nome: 'prima_nota_cassa', desc: 'Registro cassa da XML corrispettivi', colore: '#16a34a' },
-    { nome: 'corrispettivi', desc: 'Incassi giornalieri RT (1.051 record)', colore: '#dc2626' },
-    { nome: 'invoices', desc: 'Fatture fornitori ricevute (74 record)', colore: '#7c3aed' },
-    { nome: 'dipendenti', desc: 'Anagrafica personale (34 dipendenti)', colore: '#0369a1' },
-    { nome: 'cedolini', desc: 'Buste paga archivio (841 record)', colore: '#b45309' },
-    { nome: 'cespiti', desc: 'Beni strumentali con ammortamento (21 cespiti)', colore: '#475569' },
-    { nome: 'mittenti', desc: 'Lista mittenti email autorizzati', colore: '#374151' },
-  ],
-};
+const RELATIONS = [
+  ['Drive fatture', 'Fatture', 'XML/P7M/PDF solo da Drive, mai da Gmail'],
+  ['Fatture', 'Scadenze', 'Solo scadenza operativa se pagamento a mezzo agente'],
+  ['Fatture', 'Fornitori', 'Crea/aggiorna anagrafica e metodo pagamento manuale'],
+  ['Fornitori', 'Prima Nota', 'Cassa/Banca/Misto instrada fattura in cassa, banca o provvisoria'],
+  ['Drive corrispettivi', 'Corrispettivi / POS', 'XML RT con contanti, POS, IVA e totale giornaliero'],
+  ['Corrispettivi / POS', 'Prima Nota Cassa', 'Entrata totale corrispettivo e uscita POS'],
+  ['Corrispettivi / POS', 'Riconciliazione', 'POS atteso con calendario, weekend e festivi'],
+  ['Gmail attendibili', 'Cedolini', 'PDF LUL da Ferrantini/Grazia, collegamento per codice fiscale'],
+  ['Cedolini', 'Riconciliazione', 'Netto stipendio da abbinare a banca o cassa'],
+  ['Cedolini', 'Chat intelligente', 'Fiscale, previdenziale, ratei, TFR ed eventi interrogabili'],
+  ['Email F24', 'Fiscale', 'F24 genera posizione fiscale e movimento atteso banca'],
+  ['Quietanze', 'Fiscale', 'Quietanza associa protocollo e conferma pagamento ufficiale'],
+  ['Estratto conto', 'Prima Nota Banca', 'Movimenti reali con saldo progressivo'],
+  ['PayPal API', 'Riconciliazione', 'API primaria con client id/secret; email come fallback'],
+  ['Email verbale', 'Verbali / Multe', 'Legge corpo email e PDF, estrae targa e numero verbale'],
+  ['Verbali / Multe', 'Dipendenti', 'Targa -> veicolo -> driver valido alla data infrazione'],
+  ['Verbali / Multe', 'Commercialista / Consulente', 'Se pagato dalla societa, proposta trattenuta in busta'],
+  ['Noleggio Auto', 'Fatture', 'Legge ultima fattura e diciture cessazione contratto'],
+  ['Admin', 'Commercialista / Consulente', 'Registro scontrini e differenze interne non contabili'],
+];
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Diagramma Mermaid del flusso dati
-// ─────────────────────────────────────────────────────────────────────────────
-const DIAGRAMMA_DEFAULT = `flowchart TD
-    subgraph INPUT["📤 IMPORT DOCUMENTI — Punto di Ingresso"]
-        XML_C[XML Corrispettivi RT]
-        XML_F[XML Fatture Fornitori]
-        CSV_B[CSV Estratto Conto]
-        PDF_P[PDF Cedolini]
-    end
+const RULES = [
+  {
+    title: 'Fatture e scadenze',
+    Icon: FileText,
+    text: 'La data scadenza fattura resta informativa. Diventa operativa solo con pagamento a mezzo agente o regola confermata.',
+  },
+  {
+    title: 'POS e calendario',
+    Icon: CalendarDays,
+    text: 'La differenza POS mensile va compensata con weekend, festivi e accrediti slittati al mese successivo.',
+  },
+  {
+    title: 'F24 e quietanze',
+    Icon: ReceiptText,
+    text: 'F24 estrae tributi e debito; quietanza e documento ufficiale che chiude il pagamento.',
+  },
+  {
+    title: 'Cedolini completi',
+    Icon: WalletCards,
+    text: 'Il parser deve leggere netto, fiscale, previdenziale, ratei, TFR, presenze e voci particolari.',
+  },
+  {
+    title: 'Verbali societa',
+    Icon: AlertTriangle,
+    text: 'Se la societa paga un verbale associato a un driver, il sistema propone recupero in busta paga.',
+  },
+  {
+    title: 'Noleggio cessato',
+    Icon: Car,
+    text: 'Prima di generare alert per fatture mancanti, leggere ultima fattura e contratti cessati, incluso GG782PN.',
+  },
+];
 
-    subgraph CASSA["💵 PRIMA NOTA CASSA"]
-        PC[DARE: Ricavi Lordi\\nAVERE: POS → Banca\\nSALDO: Contante Fisico]
-    end
+const GROUPS = [
+  'Ingresso',
+  'Ciclo passivo',
+  'Incassi',
+  'Movimenti',
+  'Chiusura',
+  'Fisco',
+  'HR',
+  'Veicoli',
+  'Integrazioni',
+  'Acquisti',
+  'Contabilita',
+  'Output',
+  'Sistema',
+  'Controllo',
+];
 
-    subgraph BANCA["🏦 PRIMA NOTA BANCA"]
-        PB[Tutti i movimenti\\ndel conto corrente\\nSaldo Progressivo]
-    end
-
-    subgraph RICONC["🔗 RICONCILIAZIONE"]
-        RC[Movimenti Banca\\n↔ Documenti]
-    end
-
-    XML_C -->|Legge incassi giornalieri| CASSA
-    CASSA -->|POS atteso in banca| BANCA
-    CSV_B -->|Import estratto conto| BANCA
-    BANCA --> RICONC
-
-    XML_F -->|Legge fattura XML| CP[📥 CICLO PASSIVO\\nFatture Ricevute]
-    CP -->|Storico acquisti| FO[🏭 FORNITORI]
-    CP -->|Scadenza di pagamento| SC[📅 SCADENZE]
-    CP -->|Se SEPA/Bonifico| BANCA
-    CP -->|Se bene strumentale| CE[🏗️ CESPITI]
-    CP -->|IVA a credito| FI[🏛️ FISCO & IVA]
-
-    PDF_P -->|Buste paga| SAL[💼 PRIMA NOTA SALARI]
-    SAL -->|Bonifici stipendi| BANCA
-    SAL -->|Contributi da versare| F24[📋 F24]
-    F24 --> BANCA
-    F24 --> SC
-
-    CASSA -->|Ricavi mensili| BI[⚖️ BILANCIO]
-    BANCA -->|Liquidità| BI
-    CP -->|Costi acquisti| BI
-    SAL -->|Costo personale| BI
-    CE -->|Quote ammortamento| BI
-
-    XML_C -->|IVA a debito| FI
-    FI -->|Versamento trimestrale| F24
-
-    BI -->|Dati consolidati| STR[🔧 STRUMENTI\\nPacchetto Commercialista]
-
-    style INPUT fill:#0891b2,color:#fff
-    style CASSA fill:#16a34a,color:#fff
-    style BANCA fill:#1d4ed8,color:#fff
-    style RICONC fill:#1d4ed8,color:#fff
-    style CP fill:#7c3aed,color:#fff
-    style FO fill:#7c3aed,color:#fff
-    style SAL fill:#b45309,color:#fff
-    style F24 fill:#be185d,color:#fff
-    style FI fill:#be185d,color:#fff
-    style BI fill:#0f766e,color:#fff
-    style CE fill:#475569,color:#fff
-    style SC fill:#dc2626,color:#fff
-    style STR fill:#374151,color:#fff`;
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Parsing nodi diagramma
-// ─────────────────────────────────────────────────────────────────────────────
-const KEYWORD_MAP = {
-  CASSA: 'PRIMA_NOTA_CASSA',
-  'PRIMA NOTA CASSA': 'PRIMA_NOTA_CASSA',
-  PRIMA_NOTA_CASSA: 'PRIMA_NOTA_CASSA',
-  BANCA: 'PRIMA_NOTA_BANCA',
-  'PRIMA NOTA BANCA': 'PRIMA_NOTA_BANCA',
-  SALARI: 'PRIMA_NOTA_SALARI',
-  'PRIMA NOTA SALARI': 'PRIMA_NOTA_SALARI',
-  SAL: 'PRIMA_NOTA_SALARI',
-  CORRISPETTIVI: 'CORRISPETTIVI',
-  CORR: 'CORRISPETTIVI',
-  XML_C: 'CORRISPETTIVI',
-  'CICLO PASSIVO': 'FATTURE_RICEVUTE',
-  FATTURE: 'FATTURE_RICEVUTE',
-  CP: 'FATTURE_RICEVUTE',
-  FORNITORI: 'FORNITORI',
-  FO: 'FORNITORI',
-  RICONCILIAZIONE: 'RICONCILIAZIONE',
-  RICONC: 'RICONCILIAZIONE',
-  FISCO: 'FISCO',
-  IVA: 'FISCO',
-  FI: 'FISCO',
-  BILANCIO: 'BILANCIO',
-  BI: 'BILANCIO',
-  CESPITI: 'CESPITI',
-  CE: 'CESPITI',
-  DIPENDENTI: 'DIPENDENTI',
-  HR: 'DIPENDENTI',
-  CEDOLINI: 'CEDOLINI',
-  PAGHE: 'CEDOLINI',
-  PDF_P: 'CEDOLINI',
-  SCADENZE: 'SCADENZE',
-  SC: 'SCADENZE',
-  IMPORT: 'IMPORT_DOCUMENTI',
-  DASHBOARD: 'DASHBOARD',
-  STRUMENTI: 'STRUMENTI',
-  STR: 'STRUMENTI',
-};
-
-function parseNodiDiagramma(mermaidText) {
-  const lines = mermaidText.split('\n');
-  const sezioni = new Set();
-  lines.forEach(line => {
-    const upper = line.toUpperCase();
-    Object.entries(KEYWORD_MAP).forEach(([keyword, key]) => {
-      if (upper.includes(keyword) && FLUSSI[key]) {
-        sezioni.add(key);
-      }
-    });
-  });
-  return Array.from(sezioni);
+function Chip({ children, color = '#64748b' }) {
+  return <span style={{ ...styles.chip, background: `${color}12`, color }}>{children}</span>;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Componente Card Flusso
-// ─────────────────────────────────────────────────────────────────────────────
-function FlowCard({ sezioneKey, isActive, onClick }) {
-  const s = FLUSSI[sezioneKey];
-  if (!s) return null;
-
-  const urgenzaColore = u => {
-    if (u === 'critica') return '#dc2626';
-    if (u === 'alta') return '#f97316';
-    if (u === 'media') return '#eab308';
-    return '#64748b';
-  };
-  const urgenzaLabel = u => {
-    if (u === 'critica') return 'CRITICO';
-    if (u === 'alta') return 'PRIORITÀ ALTA';
-    if (u === 'media') return 'MEDIA';
-    return 'BASSA';
-  };
-
+function LinkButton({ area }) {
+  if (area.external) {
+    return (
+      <a href={area.external} target="_blank" rel="noopener noreferrer" style={styles.openLink}>
+        Apri area
+      </a>
+    );
+  }
+  if (!area.route) return null;
   return (
-    <div
+    <NavLink to={area.route} style={styles.openLink}>
+      Apri pagina
+    </NavLink>
+  );
+}
+
+function AreaCard({ area, active, onClick }) {
+  const Icon = area.Icon;
+  return (
+    <button
+      type="button"
       onClick={onClick}
-      data-testid={`flusso-card-${sezioneKey}`}
       style={{
-        background: 'white',
-        borderRadius: 16,
-        border: `2px solid ${isActive ? s.colore : '#e2e8f0'}`,
-        boxShadow: isActive ? `0 8px 32px ${s.colore}25` : '0 2px 8px rgba(0,0,0,0.06)',
-        overflow: 'hidden',
-        transition: 'all 0.25s',
-        cursor: 'pointer',
-        marginBottom: 20,
+        ...styles.areaCard,
+        borderColor: active ? area.color : '#e2e8f0',
+        boxShadow: active ? `0 10px 24px ${area.color}22` : '0 2px 8px rgba(15, 39, 68, 0.06)',
       }}
     >
-      {/* Header sezione */}
-      <div
-        style={{
-          background: s.colore,
-          padding: '14px 20px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 12,
-        }}
-      >
-        <span style={{ fontSize: 26 }}>{s.icona}</span>
+      <div style={styles.areaCardHeader}>
+        <span style={{ ...styles.iconBox, background: `${area.color}12`, color: area.color }}>
+          <Icon size={18} />
+        </span>
+        <div style={{ minWidth: 0 }}>
+          <div style={styles.areaTitle}>{area.title}</div>
+          <div style={styles.areaGroup}>{area.group}</div>
+        </div>
+      </div>
+      <p style={styles.areaPurpose}>{area.purpose}</p>
+      <div style={styles.areaFooter}>
+        <Chip color={area.color}>{area.pages.length} viste</Chip>
+        <Chip color="#64748b">{area.links.length} link</Chip>
+      </div>
+    </button>
+  );
+}
+
+function InfoBlock({ title, items, color }) {
+  return (
+    <div style={styles.infoBlock}>
+      <h3 style={styles.infoTitle}>{title}</h3>
+      <div style={styles.bulletList}>
+        {items.map(item => (
+          <div key={item} style={styles.bulletItem}>
+            <span style={{ ...styles.dot, background: color }} />
+            <span>{item}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DetailPanel({ area, relatedAreas, onSelectArea }) {
+  const Icon = area.Icon;
+  return (
+    <div style={styles.detailPanel}>
+      <div style={styles.detailHeader}>
+        <span style={{ ...styles.detailIcon, background: area.color }}>
+          <Icon size={22} />
+        </span>
         <div>
-          <div style={{ color: 'white', fontWeight: 800, fontSize: 16, lineHeight: 1.2 }}>
-            {s.titolo}
-          </div>
-          <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: 12, marginTop: 2 }}>
-            {s.sottotitolo}
-          </div>
+          <h2 style={styles.detailTitle}>{area.title}</h2>
+          <p style={styles.detailSubtitle}>{area.purpose}</p>
+        </div>
+        <div style={{ marginLeft: 'auto' }}>
+          <LinkButton area={area} />
         </div>
       </div>
 
-      {/* Blocchi flusso */}
-      <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-        {/* DA DOVE ARRIVA */}
-        <div>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              marginBottom: 8,
-              fontSize: 11,
-              fontWeight: 700,
-              color: '#0369a1',
-              textTransform: 'uppercase',
-              letterSpacing: 0.8,
-            }}
-          >
-            <span
-              style={{
-                background: '#dbeafe',
-                borderRadius: 4,
-                padding: '2px 6px',
-                fontSize: 10,
-              }}
-            >
-              📥 ENTRA DA
-            </span>
-          </div>
-          {s.entraDA.map((item, i) => (
-            <div
-              key={i}
-              style={{
-                background: '#f0f9ff',
-                borderLeft: '3px solid #0369a1',
-                borderRadius: '0 8px 8px 0',
-                padding: '8px 12px',
-                marginBottom: 6,
-              }}
-            >
-              <div style={{ fontWeight: 700, fontSize: 13, color: '#0c4a6e' }}>{item.label}</div>
-              <div style={{ fontSize: 11, color: '#0369a1', marginTop: 2 }}>
-                Fonte: {item.fonte}
-              </div>
-              {isActive && (
-                <div style={{ fontSize: 12, color: '#475569', marginTop: 4, lineHeight: 1.5 }}>
-                  {item.dettaglio}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-
-        {/* COSA FA */}
-        <div>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              marginBottom: 8,
-              fontSize: 11,
-              fontWeight: 700,
-              color: '#374151',
-              textTransform: 'uppercase',
-              letterSpacing: 0.8,
-            }}
-          >
-            <span
-              style={{
-                background: '#f1f5f9',
-                borderRadius: 4,
-                padding: '2px 6px',
-                fontSize: 10,
-              }}
-            >
-              ⚙️ COSA FA
-            </span>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {s.fa.map((punto, i) => (
-              <div
-                key={i}
-                style={{
-                  display: 'flex',
-                  gap: 8,
-                  alignItems: 'flex-start',
-                  padding: '6px 10px',
-                  background: '#f8fafc',
-                  borderRadius: 6,
-                }}
+      <div style={styles.detailGrid}>
+        <InfoBlock title="Viste interne" items={area.pages} color={area.color} />
+        <InfoBlock title="Riceve da" items={area.inputs} color="#1d4ed8" />
+        <InfoBlock title="Alimenta" items={area.outputs} color="#15803d" />
+        <div style={styles.infoBlock}>
+          <h3 style={styles.infoTitle}>Collegata a</h3>
+          <div style={styles.linkList}>
+            {relatedAreas.map(linked => (
+              <button
+                key={linked.id}
+                type="button"
+                onClick={() => onSelectArea(linked.id)}
+                style={{ ...styles.relatedLink, borderColor: `${linked.color}35`, color: linked.color }}
               >
-                <span style={{ color: s.colore, fontWeight: 800, flexShrink: 0, fontSize: 14 }}>
-                  →
-                </span>
-                <span style={{ fontSize: 13, color: '#334155', lineHeight: 1.5 }}>{punto}</span>
-              </div>
+                {linked.title}
+              </button>
             ))}
           </div>
         </div>
-
-        {/* ALIMENTA */}
-        <div>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              marginBottom: 8,
-              fontSize: 11,
-              fontWeight: 700,
-              color: '#16a34a',
-              textTransform: 'uppercase',
-              letterSpacing: 0.8,
-            }}
-          >
-            <span
-              style={{
-                background: '#dcfce7',
-                borderRadius: 4,
-                padding: '2px 6px',
-                fontSize: 10,
-              }}
-            >
-              📤 ALIMENTA / POPOLA
-            </span>
-          </div>
-          {s.alimenta.map((item, i) => (
-            <div
-              key={i}
-              style={{
-                display: 'flex',
-                alignItems: 'flex-start',
-                gap: 10,
-                background: '#f0fdf4',
-                borderLeft: '3px solid #16a34a',
-                borderRadius: '0 8px 8px 0',
-                padding: '8px 12px',
-                marginBottom: 6,
-              }}
-            >
-              <div style={{ flex: 1 }}>
-                <span style={{ fontWeight: 700, fontSize: 13, color: '#14532d' }}>
-                  {item.label}
-                </span>
-                <span style={{ fontSize: 12, color: '#16a34a', marginLeft: 6 }}>
-                  {item.percorso}
-                </span>
-                {isActive && (
-                  <div style={{ fontSize: 12, color: '#475569', marginTop: 4, lineHeight: 1.5 }}>
-                    {item.dettaglio}
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* ASPETTA / RICONCILIA */}
-        <div>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              marginBottom: 8,
-              fontSize: 11,
-              fontWeight: 700,
-              color: '#b45309',
-              textTransform: 'uppercase',
-              letterSpacing: 0.8,
-            }}
-          >
-            <span
-              style={{
-                background: '#fef3c7',
-                borderRadius: 4,
-                padding: '2px 6px',
-                fontSize: 10,
-              }}
-            >
-              ⏳ ASPETTA / RICONCILIA CON
-            </span>
-          </div>
-          {s.aspetta.map((item, i) => (
-            <div
-              key={i}
-              style={{
-                background: '#fffbeb',
-                borderLeft: `3px solid ${urgenzaColore(item.urgenza)}`,
-                borderRadius: '0 8px 8px 0',
-                padding: '8px 12px',
-                marginBottom: 6,
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                <span style={{ fontWeight: 700, fontSize: 13, color: '#92400e' }}>
-                  {item.label}
-                </span>
-                <span
-                  style={{
-                    fontSize: 9,
-                    fontWeight: 800,
-                    padding: '2px 6px',
-                    background: urgenzaColore(item.urgenza),
-                    color: 'white',
-                    borderRadius: 4,
-                    letterSpacing: 0.5,
-                  }}
-                >
-                  {urgenzaLabel(item.urgenza)}
-                </span>
-              </div>
-              <div style={{ fontSize: 11, color: '#b45309', fontStyle: 'italic', marginBottom: 4 }}>
-                Tipo: {item.tipo}
-              </div>
-              {isActive && (
-                <div style={{ fontSize: 12, color: '#475569', lineHeight: 1.5 }}>{item.motivo}</div>
-              )}
-            </div>
-          ))}
-        </div>
       </div>
     </div>
   );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Componente principale
-// ─────────────────────────────────────────────────────────────────────────────
-let mermaidInitialized = false;
-let mermaidImportPromise = null;
-
-async function getMermaidInstance() {
-  if (!mermaidImportPromise) {
-    mermaidImportPromise = import('mermaid').then(m => m.default);
-  }
-  return mermaidImportPromise;
 }
 
 export default function MappaGestionale() {
-  const [codice, setCodice] = useState(DIAGRAMMA_DEFAULT);
-  const [codiceInput, setCodiceInput] = useState(DIAGRAMMA_DEFAULT);
-  const [errore, setErrore] = useState(null);
-  const [sezioniAttive, setSezioniAttive] = useState([]);
-  const [activeSezione, setActiveSezione] = useState('PRIMA_NOTA_CASSA');
-  const [showEditor, setShowEditor] = useState(false);
-  const diagramRef = useRef(null);
-  const timeoutRef = useRef(null);
-  const mermaidRef = useRef(null);
+  const [activeId, setActiveId] = useState('documenti');
+  const [group, setGroup] = useState('Tutte');
 
-  const [svgContent, setSvgContent] = React.useState('');
-
-  const renderDiagram = useCallback(async (code, mermaidInstance = mermaidRef.current) => {
-    try {
-      setErrore(null);
-      setSezioniAttive(parseNodiDiagramma(code));
-      if (!mermaidInstance) return;
-      const id = `mermaid-${Date.now()}`;
-      const { svg } = await mermaidInstance.render(id, code);
-      // Applica stili inline al SVG prima di salvarlo
-      const styledSvg = svg.replace('<svg ', '<svg style="max-width:100%;height:auto;" ');
-      setSvgContent(styledSvg);
-    } catch (e) {
-      setErrore('Errore nel diagramma: ' + (e.message?.substring(0, 120) || 'sintassi non valida'));
-    }
-  }, []);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    const setupMermaid = async () => {
-      const mermaid = await getMermaidInstance();
-      if (!mermaidInitialized) {
-        mermaid.initialize({
-          startOnLoad: false,
-          theme: 'base',
-          themeVariables: {
-            primaryColor: '#1a40b5',
-            primaryTextColor: '#fff',
-            primaryBorderColor: '#1a40b5',
-            lineColor: '#64748b',
-            secondaryColor: '#f1f5f9',
-            tertiaryColor: '#f8fafc',
-            background: '#ffffff',
-            mainBkg: '#1a40b5',
-            fontSize: '13px',
-          },
-          flowchart: { htmlLabels: true, curve: 'basis', padding: 15 },
-          securityLevel: 'loose',
-        });
-        mermaidInitialized = true;
-      }
-
-      if (!isMounted) return;
-      mermaidRef.current = mermaid;
-      renderDiagram(codice, mermaid);
-    };
-
-    setupMermaid();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [renderDiagram]);
-
-  useEffect(() => {
-    renderDiagram(codice);
-  }, [codice]);
-
-  // Inizializza sezioni attive dal diagramma default
-  useEffect(() => {
-    setSezioniAttive(parseNodiDiagramma(DIAGRAMMA_DEFAULT));
-  }, []);
-
-  const handleCodiceChange = val => {
-    setCodiceInput(val);
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    timeoutRef.current = setTimeout(() => setCodice(val), 900);
-  };
-
-  const handleApplica = () => {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    setCodice(codiceInput);
-  };
-
-  const handleReset = () => {
-    setCodiceInput(DIAGRAMMA_DEFAULT);
-    setCodice(DIAGRAMMA_DEFAULT);
-    setActiveSezione('PRIMA_NOTA_CASSA');
-  };
-
-  // Ordine di visualizzazione delle sezioni
-  const ORDINE_SEZIONI = [
-    'PRIMA_NOTA_CASSA',
-    'PRIMA_NOTA_BANCA',
-    'PRIMA_NOTA_SALARI',
-    'CORRISPETTIVI',
-    'FATTURE_RICEVUTE',
-    'FORNITORI',
-    'RICONCILIAZIONE',
-    'FISCO',
-    'BILANCIO',
-    'CESPITI',
-    'DIPENDENTI',
-    'CEDOLINI',
-    'SCADENZE',
-    'IMPORT_DOCUMENTI',
-    'STRUMENTI',
-    'DASHBOARD',
-  ];
-
-  const sezioniOrdiante = ORDINE_SEZIONI.filter(k => sezioniAttive.includes(k) || FLUSSI[k]);
+  const activeArea = AREAS.find(area => area.id === activeId) || AREAS[0];
+  const filteredAreas = group === 'Tutte' ? AREAS : AREAS.filter(area => area.group === group);
+  const relatedAreas = useMemo(
+    () => activeArea.links.map(id => AREAS.find(area => area.id === id)).filter(Boolean),
+    [activeArea]
+  );
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f1f5f9', fontFamily: "'Inter', sans-serif" }}>
-      {/* Header */}
-      <div
-        style={{
-          background: '#1d4ed8',
-          padding: '20px 28px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: 12,
-        }}
-      >
+    <div style={styles.page}>
+      <header style={styles.header}>
         <div>
-          <h1
-            style={{
-              margin: 0,
-              fontSize: 22,
-              fontWeight: 800,
-              color: 'white',
-              letterSpacing: '-0.3px',
-            }}
-          >
-            Come funziona il Gestionale Ceraldi ERP
-          </h1>
-          <p style={{ margin: '4px 0 0', color: 'rgba(255,255,255,0.75)', fontSize: 13 }}>
-            Per ogni modulo: da dove arrivano i dati • cosa fa • cosa alimenta • cosa aspetta per
-            riconciliarsi
+          <div style={styles.eyebrow}>Guida visiva applicazione</div>
+          <h1 style={styles.h1}>Mappa gestionale Ceraldi ERP</h1>
+          <p style={styles.lead}>
+            Flusso unico per capire da dove arrivano i dati, quali pagine li lavorano, quali
+            controlli servono e come si chiudono documenti, cassa, banca, POS, F24, quietanze,
+            cedolini, verbali e PayPal.
           </p>
         </div>
-        <button
-          onClick={() => setShowEditor(e => !e)}
-          data-testid="toggle-editor-btn"
-          style={{
-            padding: '8px 16px',
-            background: showEditor ? '#dc2626' : 'rgba(255,255,255,0.15)',
-            color: 'white',
-            border: '1px solid rgba(255,255,255,0.3)',
-            borderRadius: 8,
-            cursor: 'pointer',
-            fontSize: 13,
-            fontWeight: 600,
-            transition: 'all 0.2s',
-          }}
-        >
-          {showEditor ? '✕ Chiudi Editor' : '✏️ Modifica Diagramma'}
-        </button>
-        <a
-          href="/api/download/ceraldi_erp_flussi_completo.md"
-          download="ceraldi_erp_flussi_completo.md"
-          style={{
-            padding: '8px 16px',
-            background: 'rgba(255,255,255,0.15)',
-            color: 'white',
-            border: '1px solid rgba(255,255,255,0.3)',
-            borderRadius: 8,
-            cursor: 'pointer',
-            fontSize: 13,
-            fontWeight: 600,
-            textDecoration: 'none',
-            transition: 'all 0.2s',
-          }}
-          data-testid="download-doc-btn"
-        >
-          ⬇ Scarica Documento
-        </a>
-      </div>
+      </header>
 
-      <div style={{ display: 'flex', gap: 0 }}>
-        {/* Editor Mermaid (collassabile) */}
-        {showEditor && (
-          <div
-            style={{
-              width: 320,
-              flexShrink: 0,
-              background: '#1e293b',
-              padding: 16,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 10,
-              minHeight: 'calc(100vh - 80px)',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span
-                style={{
-                  color: '#94a3b8',
-                  fontSize: 11,
-                  fontWeight: 600,
-                  textTransform: 'uppercase',
-                  letterSpacing: 1,
-                }}
-              >
-                Editor Mermaid
-              </span>
-              <div style={{ display: 'flex', gap: 6 }}>
-                <button
-                  onClick={handleApplica}
-                  style={{
-                    padding: '4px 10px',
-                    background: '#22c55e',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: 6,
-                    cursor: 'pointer',
-                    fontSize: 11,
-                    fontWeight: 600,
-                  }}
-                >
-                  ▶ Applica
-                </button>
-                <button
-                  onClick={handleReset}
-                  style={{
-                    padding: '4px 8px',
-                    background: '#475569',
-                    color: '#94a3b8',
-                    border: 'none',
-                    borderRadius: 6,
-                    cursor: 'pointer',
-                    fontSize: 11,
-                  }}
-                >
-                  Reset
-                </button>
-              </div>
-            </div>
-            <textarea
-              value={codiceInput}
-              onChange={e => handleCodiceChange(e.target.value)}
-              style={{
-                flex: 1,
-                minHeight: 500,
-                background: '#0f172a',
-                color: '#e2e8f0',
-                border: '1px solid #334155',
-                borderRadius: 8,
-                padding: 12,
-                fontFamily: "'Fira Code', monospace",
-                fontSize: 11,
-                lineHeight: 1.6,
-                resize: 'vertical',
-                outline: 'none',
-              }}
-              spellCheck={false}
-              data-testid="mermaid-editor"
-            />
-            {errore && (
-              <div
-                style={{
-                  background: '#450a0a',
-                  border: '1px solid #dc2626',
-                  borderRadius: 6,
-                  padding: '8px 12px',
-                  color: '#fca5a5',
-                  fontSize: 11,
-                }}
-              >
-                ⚠️ {errore}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Contenuto principale */}
-        <div style={{ flex: 1, overflow: 'hidden' }}>
-          {/* Diagramma di flusso */}
-          <div
-            style={{
-              background: 'white',
-              padding: 20,
-              borderBottom: '1px solid #e2e8f0',
-            }}
-          >
-            <h2
-              style={{
-                margin: '0 0 14px',
-                fontSize: 14,
-                fontWeight: 700,
-                color: '#1e293b',
-                textTransform: 'uppercase',
-                letterSpacing: 0.5,
-              }}
-            >
-              Diagramma del Flusso Dati
-            </h2>
-            <div
-              ref={diagramRef}
-              data-testid="mermaid-diagram"
-              style={{
-                display: 'flex',
-                justifyContent: 'center',
-                alignItems: 'flex-start',
-                minHeight: 180,
-                overflowX: 'auto',
-              }}
-              dangerouslySetInnerHTML={{ __html: svgContent }}
-            />
-          </div>
-
-          {/* Tabs navigazione sezioni */}
-          <div
-            style={{
-              background: 'white',
-              borderBottom: '1px solid #e2e8f0',
-              padding: '12px 20px',
-              display: 'flex',
-              gap: 6,
-              flexWrap: 'wrap',
-            }}
-          >
-            {sezioniOrdiante.map(k => {
-              const s = FLUSSI[k];
-              if (!s) return null;
-              return (
-                <button
-                  key={k}
-                  onClick={() => setActiveSezione(k)}
-                  data-testid={`tab-sezione-${k}`}
-                  style={{
-                    padding: '6px 12px',
-                    fontSize: 12,
-                    fontWeight: 600,
-                    background: activeSezione === k ? s.colore : '#f1f5f9',
-                    color: activeSezione === k ? 'white' : '#475569',
-                    border: `1px solid ${activeSezione === k ? s.colore : '#e2e8f0'}`,
-                    borderRadius: 20,
-                    cursor: 'pointer',
-                    transition: 'all 0.15s',
-                    boxShadow: activeSezione === k ? `0 3px 10px ${s.colore}40` : 'none',
-                  }}
-                >
-                  {s.icona} {s.titolo.split(' ')[0]} {s.titolo.split(' ')[1] || ''}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Sezione attiva + riepilogo */}
-          <div style={{ padding: 24 }}>
-            {/* Card sezione selezionata — espansa */}
-            {activeSezione && FLUSSI[activeSezione] && (
-              <div style={{ marginBottom: 24 }}>
-                <h2 style={{ margin: '0 0 14px', fontSize: 15, fontWeight: 700, color: '#1e293b' }}>
-                  Dettaglio: {FLUSSI[activeSezione].titolo}
-                </h2>
-                <FlowCard sezioneKey={activeSezione} isActive={true} onClick={null} />
-              </div>
-            )}
-
-            {/* Griglia tutte le sezioni — compatta */}
-            <div>
-              <h2 style={{ margin: '0 0 14px', fontSize: 15, fontWeight: 700, color: '#1e293b' }}>
-                Tutti i Moduli — Vista Rapida
-              </h2>
-              <p style={{ margin: '0 0 16px', fontSize: 13, color: '#64748b' }}>
-                Clicca su un modulo per vedere il dettaglio completo del flusso dati.
-              </p>
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-                  gap: 16,
-                }}
-              >
-                {sezioniOrdiante
-                  .filter(k => k !== activeSezione)
-                  .map(k => (
-                    <FlowCard
-                      key={k}
-                      sezioneKey={k}
-                      isActive={false}
-                      onClick={() => setActiveSezione(k)}
-                    />
-                  ))}
-              </div>
-            </div>
-
-            {/* ── TECH STACK ── */}
-            <div style={{ marginTop: 40 }}>
-              <div
-                style={{
-                  background: '#1e293b',
-                  borderRadius: 16,
-                  padding: '24px 28px',
-                  marginBottom: 20,
-                }}
-              >
-                <h2 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 800, color: 'white' }}>
-                  Stack Tecnologico
-                </h2>
-                <p style={{ margin: 0, fontSize: 13, color: '#94a3b8' }}>
-                  Tecnologie e librerie utilizzate nel Gestionale Ceraldi ERP
-                </p>
-              </div>
-
-              {/* Backend */}
-              <div style={{ marginBottom: 24 }}>
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 10,
-                    marginBottom: 12,
-                  }}
-                >
-                  <div
-                    style={{
-                      background: '#059669',
-                      color: 'white',
-                      borderRadius: 8,
-                      padding: '4px 12px',
-                      fontSize: 12,
-                      fontWeight: 700,
-                      letterSpacing: 0.5,
-                    }}
-                  >
-                    Backend
-                  </div>
-                  <span style={{ fontSize: 12, color: '#94a3b8' }}>FastAPI · Python · MongoDB</span>
-                </div>
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-                    gap: 10,
-                  }}
-                >
-                  {TECH_STACK.backend.map((t, i) => (
-                    <div
-                      key={i}
-                      style={{
-                        background: 'white',
-                        borderRadius: 10,
-                        padding: '12px 16px',
-                        border: `1px solid ${t.colore}30`,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 12,
-                        boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: 8,
-                          height: 8,
-                          borderRadius: '50%',
-                          background: t.colore,
-                          flexShrink: 0,
-                        }}
-                      />
-                      <div>
-                        <div style={{ fontWeight: 700, fontSize: 13, color: '#1e293b' }}>
-                          {t.nome}
-                        </div>
-                        <div style={{ fontSize: 11, color: '#64748b', marginTop: 1 }}>{t.desc}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Frontend */}
-              <div style={{ marginBottom: 24 }}>
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 10,
-                    marginBottom: 12,
-                  }}
-                >
-                  <div
-                    style={{
-                      background: '#0ea5e9',
-                      color: 'white',
-                      borderRadius: 8,
-                      padding: '4px 12px',
-                      fontSize: 12,
-                      fontWeight: 700,
-                      letterSpacing: 0.5,
-                    }}
-                  >
-                    Frontend
-                  </div>
-                  <span style={{ fontSize: 12, color: '#94a3b8' }}>React · Vite · Shadcn/UI</span>
-                </div>
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-                    gap: 10,
-                  }}
-                >
-                  {TECH_STACK.frontend.map((t, i) => (
-                    <div
-                      key={i}
-                      style={{
-                        background: 'white',
-                        borderRadius: 10,
-                        padding: '12px 16px',
-                        border: `1px solid ${t.colore}30`,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 12,
-                        boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: 8,
-                          height: 8,
-                          borderRadius: '50%',
-                          background: t.colore,
-                          flexShrink: 0,
-                        }}
-                      />
-                      <div>
-                        <div style={{ fontWeight: 700, fontSize: 13, color: '#1e293b' }}>
-                          {t.nome}
-                        </div>
-                        <div style={{ fontSize: 11, color: '#64748b', marginTop: 1 }}>{t.desc}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Database / Collezioni */}
-              <div>
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 10,
-                    marginBottom: 12,
-                  }}
-                >
-                  <div
-                    style={{
-                      background: '#15803d',
-                      color: 'white',
-                      borderRadius: 8,
-                      padding: '4px 12px',
-                      fontSize: 12,
-                      fontWeight: 700,
-                      letterSpacing: 0.5,
-                    }}
-                  >
-                    Database
-                  </div>
-                  <span style={{ fontSize: 12, color: '#94a3b8' }}>
-                    MongoDB Atlas · Collezioni principali
-                  </span>
-                </div>
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-                    gap: 10,
-                  }}
-                >
-                  {TECH_STACK.database.map((t, i) => (
-                    <div
-                      key={i}
-                      style={{
-                        background: 'white',
-                        borderRadius: 10,
-                        padding: '12px 16px',
-                        border: `1px solid ${t.colore}20`,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 12,
-                        boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: 8,
-                          height: 8,
-                          borderRadius: '50%',
-                          background: t.colore,
-                          flexShrink: 0,
-                        }}
-                      />
-                      <div>
-                        <div
-                          style={{
-                            fontFamily: "'Fira Code', monospace",
-                            fontWeight: 700,
-                            fontSize: 12,
-                            color: t.colore,
-                          }}
-                        >
-                          {t.nome}
-                        </div>
-                        <div style={{ fontSize: 11, color: '#64748b', marginTop: 1 }}>{t.desc}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
+      <section style={styles.flowCard}>
+        <div style={styles.sectionHeader}>
+          <div>
+            <h2 style={styles.sectionTitle}>Flusso operativo principale</h2>
+            <p style={styles.sectionSubtitle}>
+              La costruzione dell app deve seguire questa catena: fonti, parser, record, movimenti,
+              controlli e chiusura.
+            </p>
           </div>
         </div>
+        <div style={styles.stageRow}>
+          {STAGES.map((stage, index) => (
+            <React.Fragment key={stage.id}>
+              <div style={styles.stage}>
+                <div style={{ ...styles.stageTop, borderColor: stage.color }}>
+                  <span style={{ ...styles.stageNumber, background: stage.color }}>{index + 1}</span>
+                  <div>
+                    <div style={styles.stageTitle}>{stage.title}</div>
+                    <div style={styles.stageSubtitle}>{stage.subtitle}</div>
+                  </div>
+                </div>
+                <div style={styles.stageItems}>
+                  {stage.items.map(item => (
+                    <span key={item}>{item}</span>
+                  ))}
+                </div>
+              </div>
+              {index < STAGES.length - 1 && <div style={styles.arrow}>-&gt;</div>}
+            </React.Fragment>
+          ))}
+        </div>
+      </section>
+
+      <section style={styles.rulesGrid}>
+        {RULES.map(rule => {
+          const Icon = rule.Icon;
+          return (
+            <div key={rule.title} style={styles.rule}>
+              <Icon size={18} />
+              <div>
+                <strong>{rule.title}</strong>
+                <span>{rule.text}</span>
+              </div>
+            </div>
+          );
+        })}
+      </section>
+
+      <section style={styles.controls}>
+        <div style={styles.groupButtons}>
+          {['Tutte', ...GROUPS].map(g => (
+            <button
+              key={g}
+              type="button"
+              onClick={() => setGroup(g)}
+              style={{
+                ...styles.groupButton,
+                background: group === g ? '#0f2744' : '#fff',
+                color: group === g ? '#fff' : '#475569',
+                borderColor: group === g ? '#0f2744' : '#e2e8f0',
+              }}
+            >
+              {g}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <div style={styles.mainGrid}>
+        <section>
+          <div style={styles.cardGrid}>
+            {filteredAreas.map(area => (
+              <AreaCard
+                key={area.id}
+                area={area}
+                active={area.id === activeId}
+                onClick={() => setActiveId(area.id)}
+              />
+            ))}
+          </div>
+        </section>
+
+        <aside style={styles.stickyPanel}>
+          <DetailPanel area={activeArea} relatedAreas={relatedAreas} onSelectArea={setActiveId} />
+        </aside>
       </div>
+
+      <section style={styles.relationSection}>
+        <div style={styles.sectionHeader}>
+          <div>
+            <h2 style={styles.sectionTitle}>Collegamenti chiave tra pagine</h2>
+            <p style={styles.sectionSubtitle}>
+              Tabella guida per routing, stati, parser, azioni utente e riconciliazioni.
+            </p>
+          </div>
+        </div>
+        <div style={styles.tableWrap}>
+          <table style={styles.table}>
+            <thead>
+              <tr>
+                <th>Da</th>
+                <th>A</th>
+                <th>Collegamento operativo</th>
+              </tr>
+            </thead>
+            <tbody>
+              {RELATIONS.map(([from, to, relation]) => (
+                <tr key={`${from}-${to}-${relation}`}>
+                  <td>{from}</td>
+                  <td>{to}</td>
+                  <td>{relation}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
     </div>
   );
 }
+
+const styles = {
+  page: {
+    minHeight: '100vh',
+    background: '#f1f5f9',
+    padding: 20,
+    color: '#0f172a',
+  },
+  header: {
+    background: '#0f2744',
+    color: '#fff',
+    borderRadius: 8,
+    padding: '22px 24px',
+    marginBottom: 16,
+    boxShadow: '0 6px 18px rgba(15, 39, 68, 0.16)',
+  },
+  eyebrow: {
+    fontSize: 11,
+    fontWeight: 800,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    color: '#bfdbfe',
+    marginBottom: 6,
+  },
+  h1: {
+    margin: 0,
+    fontSize: 26,
+    lineHeight: 1.15,
+    letterSpacing: 0,
+  },
+  lead: {
+    margin: '8px 0 0',
+    maxWidth: 1040,
+    color: 'rgba(255,255,255,0.78)',
+    fontSize: 14,
+    lineHeight: 1.5,
+  },
+  flowCard: {
+    background: '#fff',
+    border: '1px solid #e2e8f0',
+    borderRadius: 8,
+    padding: 18,
+    marginBottom: 16,
+    boxShadow: '0 2px 8px rgba(15, 39, 68, 0.06)',
+  },
+  sectionHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: 16,
+    alignItems: 'flex-start',
+    marginBottom: 14,
+  },
+  sectionTitle: {
+    margin: 0,
+    fontSize: 17,
+    color: '#0f2744',
+  },
+  sectionSubtitle: {
+    margin: '4px 0 0',
+    fontSize: 13,
+    lineHeight: 1.45,
+    color: '#64748b',
+  },
+  stageRow: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(11, auto)',
+    gap: 8,
+    overflowX: 'auto',
+    alignItems: 'stretch',
+    paddingBottom: 4,
+  },
+  stage: {
+    width: 190,
+    minHeight: 156,
+    border: '1px solid #e2e8f0',
+    borderRadius: 8,
+    padding: 12,
+    background: '#f8fafc',
+  },
+  stageTop: {
+    display: 'flex',
+    gap: 10,
+    alignItems: 'center',
+    paddingBottom: 10,
+    borderBottom: '2px solid',
+  },
+  stageNumber: {
+    width: 24,
+    height: 24,
+    borderRadius: 999,
+    color: '#fff',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 12,
+    fontWeight: 800,
+    flexShrink: 0,
+  },
+  stageTitle: {
+    fontSize: 13,
+    fontWeight: 800,
+    color: '#0f172a',
+  },
+  stageSubtitle: {
+    fontSize: 11,
+    color: '#64748b',
+    lineHeight: 1.25,
+    marginTop: 2,
+  },
+  stageItems: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 5,
+    marginTop: 10,
+  },
+  arrow: {
+    alignSelf: 'center',
+    color: '#94a3b8',
+    fontSize: 16,
+    fontWeight: 800,
+  },
+  controls: {
+    background: '#fff',
+    border: '1px solid #e2e8f0',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+  },
+  groupButtons: {
+    display: 'flex',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  groupButton: {
+    border: '1px solid',
+    borderRadius: 999,
+    padding: '6px 11px',
+    fontSize: 12,
+    fontWeight: 700,
+    cursor: 'pointer',
+  },
+  mainGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr) 410px',
+    gap: 16,
+    alignItems: 'start',
+  },
+  cardGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(270px, 1fr))',
+    gap: 12,
+  },
+  areaCard: {
+    textAlign: 'left',
+    background: '#fff',
+    border: '1px solid',
+    borderRadius: 8,
+    padding: 14,
+    cursor: 'pointer',
+    minHeight: 174,
+  },
+  areaCardHeader: {
+    display: 'flex',
+    gap: 10,
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  iconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  areaTitle: {
+    fontSize: 14,
+    fontWeight: 800,
+    color: '#0f172a',
+  },
+  areaGroup: {
+    fontSize: 11,
+    color: '#64748b',
+    marginTop: 2,
+  },
+  areaPurpose: {
+    margin: 0,
+    color: '#475569',
+    fontSize: 12,
+    lineHeight: 1.45,
+  },
+  areaFooter: {
+    display: 'flex',
+    gap: 6,
+    flexWrap: 'wrap',
+    marginTop: 12,
+  },
+  stickyPanel: {
+    position: 'sticky',
+    top: 74,
+  },
+  detailPanel: {
+    background: '#fff',
+    border: '1px solid #e2e8f0',
+    borderRadius: 8,
+    boxShadow: '0 3px 12px rgba(15, 39, 68, 0.08)',
+    overflow: 'hidden',
+  },
+  detailHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    padding: 16,
+    borderBottom: '1px solid #e2e8f0',
+    background: '#f8fafc',
+  },
+  detailIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 8,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    color: '#fff',
+  },
+  detailTitle: {
+    margin: 0,
+    fontSize: 17,
+    color: '#0f2744',
+  },
+  detailSubtitle: {
+    margin: '3px 0 0',
+    fontSize: 12,
+    color: '#64748b',
+    lineHeight: 1.35,
+  },
+  openLink: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '7px 10px',
+    background: '#0f2744',
+    color: '#fff',
+    borderRadius: 6,
+    fontSize: 12,
+    fontWeight: 700,
+    textDecoration: 'none',
+    whiteSpace: 'nowrap',
+  },
+  detailGrid: {
+    display: 'grid',
+    gap: 12,
+    padding: 14,
+  },
+  infoBlock: {
+    border: '1px solid #e2e8f0',
+    borderRadius: 8,
+    padding: 12,
+    background: '#fff',
+  },
+  infoTitle: {
+    margin: '0 0 9px',
+    fontSize: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    color: '#64748b',
+  },
+  bulletList: {
+    display: 'grid',
+    gap: 7,
+  },
+  bulletItem: {
+    display: 'flex',
+    gap: 8,
+    alignItems: 'flex-start',
+    fontSize: 12,
+    lineHeight: 1.35,
+    color: '#334155',
+  },
+  dot: {
+    width: 7,
+    height: 7,
+    borderRadius: 999,
+    marginTop: 5,
+    flexShrink: 0,
+  },
+  linkList: {
+    display: 'flex',
+    gap: 7,
+    flexWrap: 'wrap',
+  },
+  relatedLink: {
+    border: '1px solid',
+    background: '#fff',
+    borderRadius: 999,
+    padding: '5px 9px',
+    fontSize: 11,
+    fontWeight: 800,
+    cursor: 'default',
+  },
+  relationSection: {
+    background: '#fff',
+    border: '1px solid #e2e8f0',
+    borderRadius: 8,
+    padding: 18,
+    marginTop: 16,
+    boxShadow: '0 2px 8px rgba(15, 39, 68, 0.06)',
+  },
+  tableWrap: {
+    overflowX: 'auto',
+    border: '1px solid #e2e8f0',
+    borderRadius: 8,
+  },
+  table: {
+    width: '100%',
+    borderCollapse: 'collapse',
+    fontSize: 13,
+  },
+  rulesGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+    gap: 12,
+    marginBottom: 16,
+  },
+  rule: {
+    display: 'flex',
+    gap: 10,
+    alignItems: 'flex-start',
+    background: '#fff',
+    border: '1px solid #e2e8f0',
+    borderRadius: 8,
+    padding: 14,
+    color: '#0f2744',
+  },
+  chip: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '4px 8px',
+    borderRadius: 999,
+    fontSize: 11,
+    fontWeight: 700,
+    lineHeight: 1.2,
+  },
+};
