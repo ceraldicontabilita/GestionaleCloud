@@ -15,7 +15,7 @@ import {
   pagePad,
 } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
-import InvoiceXMLViewer from '../components/InvoiceXMLViewer';
+import ModalFattura from '../components/ModalFattura';
 
 export default function Scadenze() {
   const isMobile = useIsMobile();
@@ -31,8 +31,6 @@ export default function Scadenze() {
   const [includePassate, setIncludePassate] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [viewingInvoice, setViewingInvoice] = useState(null);
-  const [invoiceData, setInvoiceData] = useState(null);
-  const [loadingInvoice, setLoadingInvoice] = useState(false);
   const [documentiRiconciliare, setDocumentiRiconciliare] = useState(null);
   const [pagaModal, setPagaModal] = useState(null);
   const [processing, setProcessing] = useState(false);
@@ -918,38 +916,25 @@ export default function Scadenze() {
                             (s.fattura_id || s.id) && (
                               <div style={{ display: 'flex', gap: '6px' }}>
                                 <button
-                                  onClick={async () => {
-                                    setLoadingInvoice(true);
-                                    try {
-                                      const fattura_id = s.fattura_id || s.id;
-                                      const res = await api.get(`/api/fatture/${fattura_id}`);
-                                      if (res.data) {
-                                        setInvoiceData(res.data);
-                                        setViewingInvoice(fattura_id);
-                                      } else {
-                                        alert('Fattura non trovata');
-                                      }
-                                    } catch (err) {
-                                      console.error('Errore caricamento fattura:', err);
-                                      alert('Errore nel caricamento della fattura');
-                                    } finally {
-                                      setLoadingInvoice(false);
-                                    }
+                                  onClick={() => {
+                                    setViewingInvoice({
+                                      id: s.fattura_id || s.id,
+                                      numero: s.numero_fattura || s.numero || s.descrizione,
+                                    });
                                   }}
-                                  disabled={loadingInvoice}
                                   style={{
                                     padding: '4px 8px',
-                                    background: loadingInvoice ? '#9ca3af' : '#3b82f6',
+                                    background: '#3b82f6',
                                     color: 'white',
                                     border: 'none',
                                     borderRadius: 4,
-                                    cursor: loadingInvoice ? 'wait' : 'pointer',
+                                    cursor: 'pointer',
                                     fontSize: 10,
                                   }}
                                   title="Visualizza Dettagli Fattura"
                                   data-testid={`view-invoice-${s.fattura_id || s.id}`}
                                 >
-                                  {loadingInvoice ? '⏳' : '👁️'}
+                                  👁️
                                 </button>
                                 <a
                                   href={`/api/fatture-ricevute/fattura/${s.fattura_id || s.id}/view-assoinvoice`}
@@ -1252,12 +1237,12 @@ export default function Scadenze() {
         )}
 
         {/* Modal Visualizzazione Fattura AssoInvoice */}
-        {viewingInvoice && invoiceData && (
-          <InvoiceXMLViewer
-            invoice={invoiceData}
+        {viewingInvoice && (
+          <ModalFattura
+            fatturaId={viewingInvoice.id}
+            numero={viewingInvoice.numero}
             onClose={() => {
               setViewingInvoice(null);
-              setInvoiceData(null);
             }}
           />
         )}
