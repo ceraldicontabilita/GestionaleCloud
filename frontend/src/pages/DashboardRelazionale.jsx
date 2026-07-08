@@ -4,17 +4,25 @@ import {
   COLORS,
   STYLES,
   SPACING,
-  SHADOWS,
   BORDER_RADIUS,
-  FONT,
-  button,
-  badge,
   formatEuro,
   formatDateIT,
   formatDateShort,
   useIsMobile,
   RG,
 } from '../lib/utils';
+import {
+  Button,
+  Badge,
+  Card,
+  StatCard,
+  PageHeader,
+  Tabs,
+  TableWrap,
+  Table,
+  Th,
+  Td,
+} from '../components/ds';
 
 // Il client `api` usa già baseURL='' (dominio corrente) + JWT interceptor.
 // Non usiamo VITE_BACKEND_URL qui perché al build time può puntare a un
@@ -24,7 +32,7 @@ import {
 /* ================================================================
    DASHBOARD RELAZIONALE — Ceraldi ERP
    Vista unificata: alert, partite aperte, riconciliazione, stato moduli.
-   Usa SOLO il design system da utils.js (no Tailwind, no Shadcn).
+   Usa SOLO il design system condiviso (COLORS/STYLES + componenti ds).
    ================================================================ */
 
 export default function DashboardRelazionale() {
@@ -76,58 +84,55 @@ export default function DashboardRelazionale() {
   const warning = alerts.filter(a => a.severita === 'warning').length;
   const info = alerts.filter(a => a.severita === 'info').length;
 
+  const alertCount = alertStats.non_risolti || alerts.length;
+
   const tabs = [
-    { id: 'panoramica', label: '📊 Panoramica', count: null },
-    { id: 'alert', label: '🔔 Alert', count: alertStats.non_risolti || alerts.length },
-    { id: 'partite', label: '📋 Partite Aperte', count: null },
-    { id: 'riconciliazione', label: '🔗 Riconciliazione', count: null },
+    { key: 'panoramica', icon: '📊', label: 'Panoramica' },
+    {
+      key: 'alert',
+      icon: '🔔',
+      label: (
+        <>
+          Alert
+          {alertCount > 0 && (
+            <Badge
+              variant="danger"
+              style={{
+                marginLeft: 6,
+                fontSize: 10,
+                padding: '2px 6px',
+                minWidth: 18,
+                textAlign: 'center',
+              }}
+            >
+              {alertCount}
+            </Badge>
+          )}
+        </>
+      ),
+    },
+    { key: 'partite', icon: '📋', label: 'Partite Aperte' },
+    { key: 'riconciliazione', icon: '🔗', label: 'Riconciliazione' },
   ];
 
   return (
     <div style={STYLES.page}>
       {/* HEADER */}
-      <div style={STYLES.pageHeader}>
-        <div>
-          <h1 style={STYLES.pageTitle}>📊 Dashboard Relazionale</h1>
-          <p style={STYLES.pageSubtitle}>
-            Stato completo del gestionale — alert, partite, riconciliazione
-          </p>
-        </div>
-        <button style={button('secondary')} onClick={caricaDati} disabled={loading}>
-          {loading ? '⏳ Caricamento...' : '🔄 Aggiorna'}
-        </button>
-      </div>
+      <PageHeader
+        title="Dashboard Relazionale"
+        icon="📊"
+        subtitle="Stato completo del gestionale — alert, partite, riconciliazione"
+        style={{ marginBottom: SPACING.lg }}
+        actions={
+          <Button variant="secondary" onClick={caricaDati} disabled={loading}>
+            {loading ? '⏳ Caricamento...' : '🔄 Aggiorna'}
+          </Button>
+        }
+      />
 
       {/* TAB BAR */}
       <div style={STYLES.tabBar}>
-        {tabs.map(t => (
-          <button
-            key={t.id}
-            onClick={() => setTabAttiva(t.id)}
-            style={{
-              ...button(tabAttiva === t.id ? 'primary' : 'ghost'),
-              fontSize: 13,
-              padding: '7px 14px',
-              position: 'relative',
-            }}
-          >
-            {t.label}
-            {t.count > 0 && (
-              <span
-                style={{
-                  ...badge('danger'),
-                  marginLeft: 6,
-                  fontSize: 10,
-                  padding: '2px 6px',
-                  minWidth: 18,
-                  textAlign: 'center',
-                }}
-              >
-                {t.count}
-              </span>
-            )}
-          </button>
-        ))}
+        <Tabs items={tabs} value={tabAttiva} onChange={setTabAttiva} />
       </div>
 
       {/* CONTENUTO */}
@@ -180,10 +185,10 @@ function TabPanoramica({
   isMobile,
 }) {
   const kpis = [
-    { label: 'Alert Critici', value: critici, color: COLORS.danger, icon: '🚨' },
-    { label: 'Alert Warning', value: warning, color: COLORS.warning, icon: '⚠️' },
-    { label: 'Alert Info', value: info, color: COLORS.info, icon: 'ℹ️' },
-    { label: 'Alert Totali', value: alerts.length, color: COLORS.primary, icon: '🔔' },
+    { label: 'Alert Critici', value: critici, accent: 'danger', icon: '🚨' },
+    { label: 'Alert Warning', value: warning, accent: 'warning', icon: '⚠️' },
+    { label: 'Alert Info', value: info, accent: 'info', icon: 'ℹ️' },
+    { label: 'Alert Totali', value: alerts.length, accent: 'primary', icon: '🔔' },
   ];
 
   // Partite aperte totali
@@ -198,43 +203,14 @@ function TabPanoramica({
       {/* KPI ROW */}
       <div style={STYLES.kpiGrid}>
         {kpis.map((k, i) => (
-          <div
-            key={i}
-            style={{
-              ...STYLES.statBox,
-              borderLeftColor: k.color,
-            }}
-          >
-            <div
-              style={{
-                fontSize: 11,
-                color: COLORS.textMuted,
-                textTransform: 'uppercase',
-                fontWeight: 700,
-                letterSpacing: '0.4px',
-                marginBottom: 4,
-              }}
-            >
-              {k.icon} {k.label}
-            </div>
-            <div
-              style={{
-                fontSize: 28,
-                fontWeight: 800,
-                color: k.value > 0 ? k.color : COLORS.textSubtle,
-              }}
-            >
-              {k.value}
-            </div>
-          </div>
+          <StatCard key={i} icon={k.icon} label={k.label} value={k.value} accent={k.accent} />
         ))}
       </div>
 
       {/* RIGA 2: Partite + Riconciliazione */}
       <div style={RG.col2(isMobile)}>
         {/* Partite Aperte */}
-        <div style={STYLES.card}>
-          <div style={STYLES.sectionTitle}>📋 Partite Aperte</div>
+        <Card title="Partite Aperte" icon="📋">
           {totPartite === 0 ? (
             <div style={{ color: COLORS.textMuted, fontSize: 13 }}>Nessuna partita aperta</div>
           ) : (
@@ -257,7 +233,7 @@ function TabPanoramica({
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={badge(_badgeTipoPartita(tipo))}>{_labelTipoPartita(tipo)}</span>
+                    <Badge variant={_badgeTipoPartita(tipo)}>{_labelTipoPartita(tipo)}</Badge>
                     <span style={{ fontSize: 12, color: COLORS.textMuted }}>×{v.count}</span>
                   </div>
                   <span style={{ fontSize: 13, fontWeight: 600 }}>
@@ -267,11 +243,10 @@ function TabPanoramica({
               ))}
             </div>
           )}
-        </div>
+        </Card>
 
         {/* Riconciliazione */}
-        <div style={STYLES.card}>
-          <div style={STYLES.sectionTitle}>🔗 Riconciliazione</div>
+        <Card title="Riconciliazione" icon="🔗">
           {Object.keys(matchStats).length === 0 ? (
             <div style={{ color: COLORS.textMuted, fontSize: 13 }}>Nessun dato riconciliazione</div>
           ) : (
@@ -288,7 +263,7 @@ function TabPanoramica({
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={badge(_badgeStatoMatch(stato))}>{stato}</span>
+                    <Badge variant={_badgeStatoMatch(stato)}>{stato}</Badge>
                     <span style={{ fontSize: 12, color: COLORS.textMuted }}>×{v.count}</span>
                   </div>
                   <span style={{ fontSize: 13, fontWeight: 600 }}>{formatEuro(v.totale)}</span>
@@ -296,31 +271,27 @@ function TabPanoramica({
               ))}
             </div>
           )}
-        </div>
+        </Card>
       </div>
 
       {/* ALERT CRITICI RECENTI */}
       {critici > 0 && (
-        <div
-          style={{
-            ...STYLES.card,
-            marginTop: SPACING.lg,
-            borderLeft: `4px solid ${COLORS.danger}`,
-          }}
+        <Card
+          title="Alert Critici"
+          icon="🚨"
+          style={{ marginTop: SPACING.lg, borderLeft: `4px solid ${COLORS.danger}` }}
         >
-          <div style={STYLES.sectionTitle}>🚨 Alert Critici</div>
           {alerts
             .filter(a => a.severita === 'critical')
             .slice(0, 5)
             .map(a => (
               <AlertRow key={a.id} alert={a} />
             ))}
-        </div>
+        </Card>
       )}
 
       {/* STATO MODULI */}
-      <div style={{ ...STYLES.card, marginTop: SPACING.lg }}>
-        <div style={STYLES.sectionTitle}>📦 Alert per Modulo</div>
+      <Card title="Alert per Modulo" icon="📦" style={{ marginTop: SPACING.lg }}>
         <div
           style={{
             display: 'grid',
@@ -376,7 +347,7 @@ function TabPanoramica({
               );
             })}
         </div>
-      </div>
+      </Card>
     </div>
   );
 }
@@ -393,32 +364,29 @@ function TabAlert({ alerts, alertPerModulo, filter, setFilter, onRefresh, isMobi
       {/* Filtri */}
       <div style={{ ...STYLES.flexRow, marginBottom: SPACING.lg, flexWrap: 'wrap', gap: 6 }}>
         {moduli.map(m => (
-          <button
+          <Button
             key={m}
+            variant={filter === m ? 'primary' : 'secondary'}
+            size="sm"
             onClick={() => setFilter(m)}
-            style={{
-              ...button(filter === m ? 'primary' : 'secondary'),
-              fontSize: 12,
-              padding: '5px 12px',
-            }}
           >
             {m === 'tutti' ? '📋 Tutti' : `${_iconModulo(m)} ${m}`}
             {m !== 'tutti' && ` (${alertPerModulo[m]?.length || 0})`}
-          </button>
+          </Button>
         ))}
       </div>
 
       {/* Lista alert */}
       {filtrati.length === 0 ? (
-        <div style={{ ...STYLES.card, textAlign: 'center', padding: 40, color: COLORS.textMuted }}>
+        <Card bodyStyle={{ textAlign: 'center', padding: 40, color: COLORS.textMuted }}>
           ✅ Nessun alert aperto {filter !== 'tutti' ? `per ${filter}` : ''}
-        </div>
+        </Card>
       ) : (
-        <div style={STYLES.card}>
+        <Card>
           {filtrati.map(a => (
             <AlertRow key={a.id} alert={a} showModulo={filter === 'tutti'} />
           ))}
-        </div>
+        </Card>
       )}
     </div>
   );
@@ -457,48 +425,28 @@ function TabPartite({ stats, isMobile }) {
       {/* KPI */}
       <div style={STYLES.kpiGrid}>
         {Object.entries(stats).map(([tipo, v]) => (
-          <div
+          <StatCard
             key={tipo}
-            style={{
-              ...STYLES.statBox,
-              borderLeftColor: _colorTipoPartita(tipo),
-              cursor: 'pointer',
-            }}
+            label={_labelTipoPartita(tipo)}
+            value={v.count}
+            subtext={formatEuro(v.totale_residuo)}
+            style={{ borderLeftColor: _colorTipoPartita(tipo), cursor: 'pointer' }}
             onClick={() => setTipoFiltro(tipo)}
-          >
-            <div
-              style={{
-                fontSize: 11,
-                color: COLORS.textMuted,
-                textTransform: 'uppercase',
-                fontWeight: 700,
-                marginBottom: 4,
-              }}
-            >
-              {_labelTipoPartita(tipo)}
-            </div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: COLORS.primary }}>{v.count}</div>
-            <div style={{ fontSize: 13, color: COLORS.danger, fontWeight: 600 }}>
-              {formatEuro(v.totale_residuo)}
-            </div>
-          </div>
+          />
         ))}
       </div>
 
       {/* Filtri */}
       <div style={{ ...STYLES.flexRow, marginBottom: SPACING.md, gap: 6 }}>
         {tipi.map(t => (
-          <button
+          <Button
             key={t || 'all'}
+            variant={tipoFiltro === t ? 'primary' : 'secondary'}
+            size="sm"
             onClick={() => setTipoFiltro(t)}
-            style={{
-              ...button(tipoFiltro === t ? 'primary' : 'secondary'),
-              fontSize: 12,
-              padding: '5px 12px',
-            }}
           >
             {t ? _labelTipoPartita(t) : '📋 Tutte'}
-          </button>
+          </Button>
         ))}
       </div>
 
@@ -508,66 +456,60 @@ function TabPartite({ stats, isMobile }) {
           ⏳ Caricamento...
         </div>
       ) : (
-        <div style={STYLES.tableWrap}>
-          <table style={STYLES.table}>
+        <TableWrap>
+          <Table>
             <thead>
               <tr>
-                <th style={STYLES.th}>Tipo</th>
-                <th style={STYLES.th}>Controparte</th>
-                <th style={STYLES.th}>Importo</th>
-                <th style={STYLES.th}>Residuo</th>
-                <th style={STYLES.th}>Scadenza</th>
-                <th style={STYLES.th}>Stato</th>
+                <Th>Tipo</Th>
+                <Th>Controparte</Th>
+                <Th>Importo</Th>
+                <Th>Residuo</Th>
+                <Th>Scadenza</Th>
+                <Th>Stato</Th>
               </tr>
             </thead>
             <tbody>
               {(Array.isArray(partite) ? partite : []).map(p => (
                 <tr key={p.id}>
-                  <td style={STYLES.td}>
-                    <span style={badge(_badgeTipoPartita(p.tipo))}>
-                      {_labelTipoPartita(p.tipo)}
-                    </span>
-                  </td>
-                  <td style={STYLES.td}>{p.controparte_nome || '-'}</td>
-                  <td style={STYLES.td}>{formatEuro(p.importo_originale)}</td>
-                  <td
+                  <Td>
+                    <Badge variant={_badgeTipoPartita(p.tipo)}>{_labelTipoPartita(p.tipo)}</Badge>
+                  </Td>
+                  <Td>{p.controparte_nome || '-'}</Td>
+                  <Td>{formatEuro(p.importo_originale)}</Td>
+                  <Td
                     style={{
-                      ...STYLES.td,
                       fontWeight: 700,
                       color: p.residuo > 0 ? COLORS.danger : COLORS.success,
                     }}
                   >
                     {formatEuro(p.residuo)}
-                  </td>
-                  <td style={STYLES.td}>{p.data_scadenza ? formatDateIT(p.data_scadenza) : '-'}</td>
-                  <td style={STYLES.td}>
-                    <span
-                      style={badge(
+                  </Td>
+                  <Td>{p.data_scadenza ? formatDateIT(p.data_scadenza) : '-'}</Td>
+                  <Td>
+                    <Badge
+                      variant={
                         p.stato === 'chiusa'
                           ? 'success'
                           : p.stato === 'parziale'
                             ? 'warning'
                             : 'neutral'
-                      )}
+                      }
                     >
                       {p.stato}
-                    </span>
-                  </td>
+                    </Badge>
+                  </Td>
                 </tr>
               ))}
               {(!partite || partite.length === 0) && (
                 <tr>
-                  <td
-                    colSpan={6}
-                    style={{ ...STYLES.td, textAlign: 'center', color: COLORS.textMuted }}
-                  >
+                  <Td colSpan={6} style={{ textAlign: 'center', color: COLORS.textMuted }}>
                     Nessuna partita
-                  </td>
+                  </Td>
                 </tr>
               )}
             </tbody>
-          </table>
-        </div>
+          </Table>
+        </TableWrap>
       )}
     </div>
   );
@@ -581,31 +523,21 @@ function TabRiconciliazione({ stats, isMobile }) {
     <div>
       <div style={STYLES.kpiGrid}>
         {Object.entries(stats).map(([stato, v]) => (
-          <div key={stato} style={{ ...STYLES.statBox, borderLeftColor: _colorStatoMatch(stato) }}>
-            <div
-              style={{
-                fontSize: 11,
-                color: COLORS.textMuted,
-                textTransform: 'uppercase',
-                fontWeight: 700,
-                marginBottom: 4,
-              }}
-            >
-              {stato}
-            </div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: COLORS.primary }}>{v.count}</div>
-            <div style={{ fontSize: 13, color: COLORS.textMuted, fontWeight: 600 }}>
-              {formatEuro(v.totale)}
-            </div>
-          </div>
+          <StatCard
+            key={stato}
+            label={stato}
+            value={v.count}
+            subtext={formatEuro(v.totale)}
+            style={{ borderLeftColor: _colorStatoMatch(stato) }}
+          />
         ))}
       </div>
 
       {Object.keys(stats).length === 0 && (
-        <div style={{ ...STYLES.card, textAlign: 'center', padding: 40, color: COLORS.textMuted }}>
+        <Card bodyStyle={{ textAlign: 'center', padding: 40, color: COLORS.textMuted }}>
           Nessun dato di riconciliazione disponibile.
           <br />I match appariranno qui dopo l'import dell'estratto conto.
-        </div>
+        </Card>
       )}
     </div>
   );
@@ -615,12 +547,8 @@ function TabRiconciliazione({ stats, isMobile }) {
    COMPONENTI HELPER
    ================================================================ */
 function AlertRow({ alert: a, showModulo = true }) {
-  const sevColors = {
-    critical: { bg: COLORS.dangerLight, border: COLORS.danger, icon: '🚨' },
-    warning: { bg: COLORS.warningLight, border: COLORS.warning, icon: '⚠️' },
-    info: { bg: COLORS.infoLight, border: COLORS.info, icon: 'ℹ️' },
-  };
-  const sev = sevColors[a.severita] || sevColors.info;
+  const sevIcons = { critical: '🚨', warning: '⚠️', info: 'ℹ️' };
+  const icon = sevIcons[a.severita] || sevIcons.info;
 
   return (
     <div
@@ -632,10 +560,10 @@ function AlertRow({ alert: a, showModulo = true }) {
         borderBottom: `1px solid ${COLORS.gray[100]}`,
       }}
     >
-      <span style={{ fontSize: 16 }}>{sev.icon}</span>
+      <span style={{ fontSize: 16 }}>{icon}</span>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          {showModulo && <span style={badge('primary')}>{a.modulo}</span>}
+          {showModulo && <Badge variant="primary">{a.modulo}</Badge>}
           <span style={{ fontSize: 13, fontWeight: 600, color: COLORS.text }}>{a.titolo}</span>
         </div>
         <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 2 }}>{a.dettaglio}</div>
@@ -643,13 +571,11 @@ function AlertRow({ alert: a, showModulo = true }) {
           {a.codice} · {a.created_at ? formatDateShort(a.created_at) : ''}
         </div>
       </div>
-      <span
-        style={badge(
-          a.severita === 'critical' ? 'danger' : a.severita === 'warning' ? 'warning' : 'info'
-        )}
+      <Badge
+        variant={a.severita === 'critical' ? 'danger' : a.severita === 'warning' ? 'warning' : 'info'}
       >
         {a.severita}
-      </span>
+      </Badge>
     </div>
   );
 }
