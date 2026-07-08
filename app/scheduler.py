@@ -332,6 +332,56 @@ async def check_scorta_magazzino_task():
         logger.error(f"📦 [SCHEDULER] Errore controllo scorta magazzino: {e}")
 
 
+async def check_fornitori_duplicati_task():
+    """
+    Task eseguito ogni giorno alle 6:00.
+    Genera l'alert FORN_DUPLICATO per i gruppi di fornitori con la STESSA
+    P.IVA (certezza "alta") trovati da fornitori_dedupe.py::trova_duplicati().
+    La funzione di rilevamento esisteva già (usata dall'endpoint manuale di
+    merge) ma non era mai schedulata — l'alert era definito in
+    alert_engine.py ma mai generato, vedi memoria/moduli/FORNITORI.md.
+
+    Solo i gruppi "alta" (stessa P.IVA, zero ambiguità) per evitare falsi
+    positivi da un job automatico notturno — i gruppi "media" (nome simile,
+    fuzzy) restano disponibili solo nel controllo manuale in Fornitori.
+    """
+    logger.info("👥 [SCHEDULER] Controllo fornitori duplicati...")
+    try:
+        from app.database import Database
+        from app.services.alert_engine import genera_alert
+        from app.services.fornitori_dedupe import trova_duplicati
+        from app.database import Collections
+
+        db = Database.get_db()
+        risultato = await trova_duplicati()
+        gruppi_alta = [g for g in risultato.get("gruppi", []) if g.get("certezza") == "alta"]
+
+        nuovi = 0
+        for gruppo in gruppi_alta:
+            fornitori = gruppo.get("fornitori", [])
+            if len(fornitori) < 2:
+                continue
+            nomi = ", ".join(f.get("nome", f.get("id", "?")) for f in fornitori[:5])
+            primo_id = fornitori[0].get("id")
+            try:
+                created = await genera_alert(
+                    "FORN_DUPLICATO", primo_id, Collections.SUPPLIERS,
+                    f"{len(fornitori)} fornitori con stessa P.IVA {gruppo.get('chiave')}: {nomi}",
+                    db, extra={"fornitori_ids": [f.get("id") for f in fornitori]},
+                )
+                if created:
+                    nuovi += 1
+            except Exception:
+                logger.exception(f"Errore generazione alert FORN_DUPLICATO per gruppo P.IVA {gruppo.get('chiave')}")
+
+        if gruppi_alta:
+            logger.info(f"👥 [SCHEDULER] Fornitori duplicati: {len(gruppi_alta)} gruppi (P.IVA identica), {nuovi} nuovi alert")
+        else:
+            logger.info("👥 [SCHEDULER] Nessun fornitore duplicato (P.IVA identica) trovato")
+    except Exception as e:
+        logger.error(f"👥 [SCHEDULER] Errore controllo fornitori duplicati: {e}")
+
+
 async def paypal_recupera_fatture_email_task():
     """
     Task eseguito ogni giorno alle 5:30.
@@ -550,6 +600,15 @@ def start_scheduler():
         CronTrigger(hour=6, minute=30),
         id="scorta_magazzino_check",
         name="Controllo Scorta Minima Magazzino (ogni giorno ore 6:30)",
+        replace_existing=True
+    )
+
+    # Task Fornitori Duplicati - ogni giorno alle 6:00
+    scheduler.add_job(
+        check_fornitori_duplicati_task,
+        CronTrigger(hour=6, minute=0),
+        id="fornitori_duplicati_check",
+        name="Controllo Fornitori Duplicati (ogni giorno ore 6:00)",
         replace_existing=True
     )
 

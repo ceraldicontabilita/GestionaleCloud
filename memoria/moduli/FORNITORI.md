@@ -53,13 +53,19 @@ sulla stessa pipeline `process_xml_bytes` → `ensure_supplier_exists()`.
      fornitore ma può influenzare l'esito della riconciliazione se il fornitore non ha un
      metodo configurato).
 4. ~ PARZIALE (lug 2026) — dei 6 alert richiesti dalla spec, `"fornitore_senza_metodo_pagamento"`
-   era già sistematico. ✔ RISOLTO ora anche `FORN_INATTIVO_USATO`: generato in
-   `fatture_upload.py::ensure_supplier_exists()` quando arriva una nuova fattura per un
-   fornitore con `attivo: False` — additivo, non blocca l'import, solo lo segnala. Restano
-   morti `FORN_DUPLICATO` (la funzione di dedup esiste già, `fornitori_dedupe.py::
-   trova_duplicati()`, ma non è mai schedulata/chiamata automaticamente — servirebbe un job
-   periodico analogo a `check_scorta_magazzino_task`), `FORN_DATI_INCOERENTI` (nessun
-   controllo di validità P.IVA/CF esiste ancora) — non affrontati in questo passaggio.
+   era già sistematico. ✔ RISOLTI ora anche:
+   - `FORN_INATTIVO_USATO`: generato in `fatture_upload.py::ensure_supplier_exists()` quando
+     arriva una nuova fattura per un fornitore con `attivo: False` — additivo, non blocca
+     l'import, solo lo segnala.
+   - `FORN_DUPLICATO`: la funzione di dedup esisteva già (`fornitori_dedupe.py::
+     trova_duplicati()`, usata dall'endpoint manuale di merge) ma non era mai schedulata.
+     Aggiunto `app/scheduler.py::check_fornitori_duplicati_task()` (ogni giorno ore 6:00),
+     che genera l'alert solo per i gruppi con certezza "alta" (stessa P.IVA identica) — i
+     gruppi "media" (nome simile, fuzzy) restano solo nel controllo manuale, per evitare
+     falsi positivi da un job automatico notturno. Verificato con mongomock: alert corretto
+     su P.IVA duplicata, idempotenza su run ripetuti.
+   Resta morto `FORN_DATI_INCOERENTI`: nessun controllo di validità P.IVA/CF esiste ancora —
+   non affrontato in questo passaggio.
 5. **Merge Magazzino↔Fornitori non verificato**: la spec Magazzino presuppone dizionario
    prodotti collegato al fornitore per riordino automatico — vedi `MAGAZZINO.md` per il
    dettaglio (gap separato, ma dipendente da come i fornitori sono strutturati qui).
