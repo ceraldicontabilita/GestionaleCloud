@@ -54,22 +54,20 @@ function useDebounce(value, delay) {
   return debouncedValue;
 }
 
-// Dizionario Metodi di Pagamento — SOLO 4: cassa, banca, misto, certo.
+// Dizionario Metodi di Pagamento — SOLO 3: cassa, banca, misto.
 // Coerente con la mappa già usata dal backend per instradare le fatture in
 // Prima Nota (app/routers/suppliers_module/common.py::PAYMENT_METHODS):
 // contanti->cassa, {assegno,bonifico,rid,carta}->banca, misto->provvisorio.
-// "certo" non è un canale di pagamento a sé: è il fornitore "banca" con il
-// flag pagamento_certo=true (es. Amazon: sempre e solo banca, nessuna
-// eccezione) — vedi handleMetodoChange più sotto.
+// "certo" è stato rimosso: il sistema non saprebbe dove imputare
+// automaticamente il pagamento in quel caso, quindi non è un canale valido.
 const METODI_PAGAMENTO = {
   cassa: { label: 'Cassa', bg: '#dcfce7', color: '#16a34a' },
   banca: { label: 'Banca', bg: '#dbeafe', color: '#3b82f6' },
   misto: { label: 'Misto', bg: '#e2e8f0', color: '#0f2744' },
-  certo: { label: 'Certo', bg: '#fdf6e3', color: '#b8860b' },
 };
 
 // Valori legacy ancora presenti sui fornitori già salvati prima della
-// semplificazione a 4 metodi — tradotti in sola lettura per continuare a
+// semplificazione a 3 metodi — tradotti in sola lettura per continuare a
 // mostrare/filtrare correttamente i dati esistenti senza una migrazione.
 const METODO_LEGACY_A_CANONICO = {
   contanti: 'cassa',
@@ -79,19 +77,15 @@ const METODO_LEGACY_A_CANONICO = {
   carta: 'banca',
 };
 
-// Canale (cassa/banca/misto) da un valore grezzo, anche legacy — ignora
-// pagamento_certo, che è un flag ortogonale al canale.
+// Canale (cassa/banca/misto) da un valore grezzo, anche legacy.
 const canaleCanonico = raw => {
   const key = (raw || '').toLowerCase().trim();
   return METODO_LEGACY_A_CANONICO[key] || key;
 };
 
-// Metodo canonico (cassa/banca/misto/certo) di un fornitore, a partire dal
-// valore grezzo salvato (anche legacy) + dal flag pagamento_certo.
-const metodoCanonico = supplier => {
-  if (supplier?.pagamento_certo) return 'certo';
-  return canaleCanonico(supplier?.metodo_pagamento);
-};
+// Metodo canonico (cassa/banca/misto) di un fornitore, a partire dal valore
+// grezzo salvato (anche legacy).
+const metodoCanonico = supplier => canaleCanonico(supplier?.metodo_pagamento);
 
 const getMetodo = key => METODI_PAGAMENTO[key] || METODI_PAGAMENTO.banca;
 
@@ -110,9 +104,8 @@ const emptySupplier = {
   iban: '',
   iban_lista: [], // Lista di IBAN aggiuntivi estratti dalle fatture
   metodo_pagamento: 'banca',
-  pagamento_certo: false,
   giorni_pagamento: 30,
-  esclude_magazzino: true,
+  esclude_magazzino: false,
   note: '',
 };
 
@@ -706,39 +699,12 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                       boxSizing: 'border-box',
                     }}
                   >
-                    {/* "Certo" non è un canale: si imposta con il checkbox
-                        "Pagamento certo" qui sotto, non da questo select */}
-                    {Object.entries(METODI_PAGAMENTO)
-                      .filter(([k]) => k !== 'certo')
-                      .map(([key, val]) => (
-                        <option key={key} value={key}>
-                          {val.label}
-                        </option>
-                      ))}
+                    {Object.entries(METODI_PAGAMENTO).map(([key, val]) => (
+                      <option key={key} value={key}>
+                        {val.label}
+                      </option>
+                    ))}
                   </select>
-                  <label
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      marginTop: '8px',
-                      fontSize: '13px',
-                      color: '#374151',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={!!form.pagamento_certo}
-                      onChange={e => handleChange('pagamento_certo', e.target.checked)}
-                    />
-                    Pagamento certo (nessuna eccezione, es. Amazon: sempre e solo banca)
-                  </label>
-                  <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '4px' }}>
-                    Se NON spuntato (consigliato): le fatture di questo fornitore restano in Prima
-                    Nota Provvisoria in attesa di conferma manuale, anche se il metodo è impostato —
-                    per sicurezza, in caso venga pagata diversamente dal previsto.
-                  </div>
                 </div>
                 <div>
                   <label
@@ -1212,11 +1178,7 @@ function SupplierCard({
                 transition: 'all 0.2s',
                 opacity: updating ? 0.6 : 1,
               }}
-              title={
-                metodoKey === 'certo'
-                  ? 'Pagamento certo: le fatture di questo fornitore vengono registrate subito in Prima Nota, senza passare dai Provvisori. Clicca per cambiare.'
-                  : 'Clicca per cambiare metodo pagamento'
-              }
+              title="Clicca per cambiare metodo pagamento"
             >
               <CreditCard size={12} />
               {updating ? '...' : metodo.label}
@@ -1739,13 +1701,7 @@ export default function Fornitori() {
 
   // Cambio rapido metodo pagamento - salva SUBITO nel database
   const handleChangeMetodo = async (supplierId, newMetodo) => {
-    // "certo" non è un canale reale: è "banca" + pagamento_certo=true (vedi
-    // METODI_PAGAMENTO). Le altre scelte azzerano pagamento_certo — cambiare
-    // esplicitamente canale significa che non è più "certo per definizione".
-    const payload =
-      newMetodo === 'certo'
-        ? { metodo_pagamento: 'banca', pagamento_certo: true }
-        : { metodo_pagamento: newMetodo, pagamento_certo: false };
+    const payload = { metodo_pagamento: newMetodo };
     try {
       await api.put(`/api/suppliers/${supplierId}`, payload);
 

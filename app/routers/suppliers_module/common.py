@@ -11,10 +11,10 @@ SUPPLIERS_CACHE_KEY = "suppliers_list"
 SUPPLIERS_CACHE_TTL = 300  # 5 minuti per performance migliori
 
 # Metodi di pagamento validi in scrittura sui fornitori. Il dropdown di
-# Fornitori.jsx propone solo cassa/banca/misto/certo (quest'ultimo mai
-# scritto letteralmente: il frontend lo traduce in banca+pagamento_certo
-# prima di inviarlo) — i valori legacy restano qui SOLO per non rompere la
-# validazione su dati/flussi già esistenti che li scrivono ancora
+# Fornitori.jsx propone solo cassa/banca/misto ("certo" è stato rimosso: il
+# sistema non può sapere con certezza dove imputare il pagamento solo dal
+# metodo impostato in anagrafica) — i valori legacy restano qui SOLO per non
+# rompere la validazione su dati/flussi già esistenti che li scrivono ancora
 # (import Excel, bulk, integrazioni) senza richiedere una migrazione dati.
 PAYMENT_METHODS = {
     "cassa": {"label": "Cassa", "prima_nota": "cassa"},

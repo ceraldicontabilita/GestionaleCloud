@@ -27,8 +27,12 @@ TIPI_NOTA_CREDITO = ["TD04", "TD08"]
 # auto-confermato aprendo la pagina ma restava bloccato in provvisori nel job
 # automatico (o viceversa) — incoerenza silenziosa tra i due percorsi.
 METODI_CASSA = {"cassa", "contanti", "cash", "contante"}
-METODI_BANCA = {"bonifico", "banca", "riba", "sepa", "rid", "sdd", "assegno"}
-# paypal/carta/compensazione/misto/sospesa/altro/senza-metodo: restano in
+# "carta" incluso per coerenza con METODI_BANCARI in suppliers_module/common.py
+# e con la classificazione canaleCanonico/metodoCanonico di Fornitori.jsx —
+# prima era assente qui e un fornitore con "carta" risultava "Banca" sulla
+# scheda fornitore ma "sospesa" in Prima Nota Provvisori.
+METODI_BANCA = {"bonifico", "banca", "riba", "sepa", "rid", "sdd", "assegno", "carta"}
+# paypal/compensazione/misto/sospesa/altro/senza-metodo: restano in
 # provvisoria in attesa di un match con l'estratto conto o di una decisione manuale.
 
 
@@ -587,17 +591,14 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
     # solo in "partita_iva" — vanno letti tutti, altrimenti il metodo
     # impostato in scheda fornitore NON viene rispettato.
     metodo_per_piva = {}
-    certo_per_piva = {}
     async for s in db["fornitori"].find(
         {"metodo_pagamento": {"$exists": True, "$ne": ""}},
-        {"_id": 0, "partita_iva": 1, "piva": 1, "vat_number": 1, "metodo_pagamento": 1, "pagamento_certo": 1}
+        {"_id": 0, "partita_iva": 1, "piva": 1, "vat_number": 1, "metodo_pagamento": 1}
     ):
         metodo = s.get("metodo_pagamento", "")
-        certo = bool(s.get("pagamento_certo", False))
         for k in (s.get("partita_iva"), s.get("piva"), s.get("vat_number")):
             if k and metodo:
                 metodo_per_piva[str(k).strip()] = metodo
-                certo_per_piva[str(k).strip()] = certo
 
     provvisori = []
     for f in fatture:
@@ -666,7 +667,6 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
             "importo": importo,
             "metodo_xml": metodo_xml,
             "suggerimento": suggerimento,
-            "pagamento_certo": certo_per_piva.get(piva, False),
             "stato_match": stato_match,
             "movimento_banca": {
                 "data": (movimento_match.get("data") or movimento_match.get("data_contabile", "")) if movimento_match else None,
@@ -675,95 +675,15 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
             } if movimento_match else None,
         })
     
-    # Auto-conferma SOLO per fornitori marcati "pagamento certo" (es. Amazon:
-    # paga sempre e solo banca, nessuna eccezione possibile) — vedi
-    # memoria/moduli/FATTURE_RICEVUTE.md. Per maggiore sicurezza, anche con
-    # metodo cassa/banca impostato in anagrafica, TUTTI gli altri fornitori
-    # restano in provvisorio: il metodo è solo un suggerimento, la fattura
-    # potrebbe essere pagata diversamente da come previsto — conferma sempre
-    # manuale dell'utente.
+    # Nessuna auto-conferma automatica: il "pagamento certo" è stato rimosso
+    # perché il sistema non può sapere con certezza dove imputare il
+    # pagamento di una fattura solo dal metodo impostato in anagrafica — vedi
+    # memoria/moduli/FATTURE_RICEVUTE.md. Il metodo fornitore resta solo un
+    # SUGGERIMENTO (cassa/banca/sospesa): ogni fattura resta in provvisorio
+    # fino a conferma manuale dell'utente.
     auto_confermati = 0
-    provvisori_finali = []
+    provvisori_finali = provvisori
 
-    for p in provvisori:
-        suggerimento = p["suggerimento"]
-        stato = p["stato_match"]
-        fatt_id = p["fattura_id"]
-        ref = f"FATT-{fatt_id}"
-
-        auto_confirm = False
-
-        if p.get("pagamento_certo"):
-            # CONTANTI: sempre auto-conferma in CASSA
-            if suggerimento == "cassa" and stato == "confermato":
-                auto_confirm = True
-            # BANCA: il fornitore ha metodo bancario in anagrafica → auto-conferma
-            # (il movimento EC, se trovato, viene collegato; altrimenti la
-            # riconciliazione lo aggancia in seguito)
-            elif suggerimento == "banca":
-                auto_confirm = True
-
-        # Fornitore non "certo" (default), SOSPESA, MISTO, IN_ATTESA → provvisorio
-        
-        if auto_confirm:
-            collection = COLLECTION_PRIMA_NOTA_CASSA if suggerimento == "cassa" else COLLECTION_PRIMA_NOTA_BANCA
-            existing = await db[collection].find_one({"riferimento": ref})
-            
-            if not existing:
-                data_mov = p.get("fattura_data", "")
-                if p.get("movimento_banca") and p["movimento_banca"].get("data"):
-                    data_mov = p["movimento_banca"]["data"]
-                if "/" in str(data_mov):
-                    parts = str(data_mov).split("/")
-                    if len(parts) == 3:
-                        data_mov = f"{parts[2]}-{parts[1]}-{parts[0]}"
-                
-                pn_id = str(uuid.uuid4())
-                metodo_label = "contanti" if suggerimento == "cassa" else p.get("metodo_xml") or "bonifico"
-                mov_ec_id = (p.get("movimento_banca") or {}).get("id")
-                await db[collection].insert_one({
-                    "id": pn_id,
-                    "data": data_mov,
-                    "tipo": "uscita",
-                    "categoria": "Fatture",
-                    "descrizione": f"Fatt. {p['fattura_numero']} - {p['fornitore'][:30]}",
-                    "importo": p["importo"],
-                    "riferimento": ref,
-                    "fattura_id": fatt_id,
-                    "metodo_pagamento": metodo_label,
-                    "estratto_conto_id": mov_ec_id,
-                    "source": "auto_conferma",
-                    "created_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
-                })
-                await db["invoices"].update_one(
-                    {"id": fatt_id},
-                    {"$set": {
-                        "stato_pagamento": "pagata",
-                        "pagato": True,
-                        "paid": True,
-                        "prima_nota_id": pn_id,
-                        "prima_nota_tipo": suggerimento,
-                    }}
-                )
-                # Consuma il movimento EC: non deve poter confermare altre fatture
-                if mov_ec_id:
-                    await db["estratto_conto_movimenti"].update_one(
-                        {"id": mov_ec_id},
-                        {"$set": {
-                            "riconciliato": True,
-                            "tipo_riconciliazione": "auto_conferma_provvisori",
-                            "dettagli_riconciliazione": {"fattura_id": fatt_id, "prima_nota_id": pn_id},
-                        }}
-                    )
-                auto_confermati += 1
-            else:
-                await db["invoices"].update_one(
-                    {"id": fatt_id},
-                    {"$set": {"stato_pagamento": "pagata", "prima_nota_tipo": suggerimento}}
-                )
-        else:
-            provvisori_finali.append(p)
-    
     tot_cassa = sum(p["importo"] for p in provvisori_finali if p["suggerimento"] == "cassa")
     tot_banca = sum(p["importo"] for p in provvisori_finali if p["suggerimento"] == "banca")
     
@@ -1080,27 +1000,15 @@ async def collega_fatture_movimenti() -> Dict:
 async def auto_conferma_provvisori_per_metodo(
     anno: int = Query(..., description="Anno da processare"),
 ) -> Dict[str, Any]:
-    """Auto-confermazione bulk delle fatture provvisorie — SOLO per i fornitori
-    marcati "pagamento certo" (`pagamento_certo: True`, es. Amazon: paga sempre
-    e solo banca, nessuna eccezione possibile per la natura del rapporto
-    commerciale). Per tutti gli altri fornitori, anche con metodo cassa/banca
-    impostato in anagrafica, la fattura resta in Provvisoria: il metodo è solo
-    un suggerimento, non più una garanzia — conferma sempre manuale
-    dell'utente. Vedi memoria/moduli/FATTURE_RICEVUTE.md.
-
-    Per i fornitori "certo" si applica classifica_metodo_fornitore (stessa
-    regola condivisa con la pagina Provvisori):
-      - cassa/contanti → sempre in Prima Nota CASSA (pagata o no)
-      - bonifico/banca/riba/sepa/rid/sdd/assegno → sempre in Prima Nota BANCA
-        (la riconciliazione con l'estratto conto aggancia il movimento in seguito)
-      - paypal/carta/compensazione/misto/altro/senza metodo → restano in
-        Provvisoria (aspettano un match con l'estratto conto o una decisione manuale)
-
-    Ogni movimento creato viene marcato con source='auto_confirm_provvisoria' in
-    modo da essere identificabile per rollback.
-
-    Idempotente: se una fattura è già in Prima Nota (prima_nota_id valorizzato
-    oppure esiste un movimento con riferimento FATT-{id}), viene saltata.
+    """Ex auto-confermazione bulk delle fatture provvisorie per i fornitori
+    marcati "pagamento certo". Il concetto di "pagamento certo" è stato
+    rimosso: il sistema non può sapere con certezza dove imputare il
+    pagamento di una fattura solo dal metodo impostato in anagrafica (vedi
+    memoria/moduli/FATTURE_RICEVUTE.md) — quindi questa funzione non sposta
+    più nulla automaticamente. Resta solo per compatibilità con l'endpoint
+    già esposto al frontend (PuliziaPrimaNota.jsx) e per produrre il report
+    di classificazione: ogni fattura provvisoria resta sempre in Provvisoria,
+    in attesa di conferma manuale dell'utente.
     """
     db = Database.get_db()
     now = datetime.now(timezone.utc).isoformat()
@@ -1108,17 +1016,14 @@ async def auto_conferma_provvisori_per_metodo(
     # Carica il dizionario metodo-per-piva dall'anagrafica fornitori
     # (P.IVA in partita_iva, piva o vat_number: record storici inclusi)
     metodo_per_piva: Dict[str, str] = {}
-    certo_per_piva: Dict[str, bool] = {}
     async for s in db["fornitori"].find(
         {"metodo_pagamento": {"$exists": True, "$ne": ""}},
-        {"_id": 0, "partita_iva": 1, "piva": 1, "vat_number": 1, "metodo_pagamento": 1, "pagamento_certo": 1}
+        {"_id": 0, "partita_iva": 1, "piva": 1, "vat_number": 1, "metodo_pagamento": 1}
     ):
         metodo = (s.get("metodo_pagamento") or "").strip().lower()
-        certo = bool(s.get("pagamento_certo", False))
         for k in (s.get("partita_iva"), s.get("piva"), s.get("vat_number")):
             if k and metodo:
                 metodo_per_piva[str(k).strip()] = metodo
-                certo_per_piva[str(k).strip()] = certo
 
     # Fatture provvisorie dell'anno
     fatture = await db["invoices"].find(
@@ -1143,7 +1048,7 @@ async def auto_conferma_provvisori_per_metodo(
         "restate_in_provvisoria_banca_non_pagata": 0,
         "restate_in_provvisoria_paypal_o_carta": 0,
         "restate_in_provvisoria_fornitore_senza_metodo": 0,
-        "restate_in_provvisoria_fornitore_non_certo": 0,
+        "restate_in_provvisoria_richiede_conferma_manuale": 0,
         "skipped_gia_in_prima_nota": 0,
         "skipped_errori": [],
         "dettaglio_mosse": [],  # prime 100 per log
@@ -1188,8 +1093,10 @@ async def auto_conferma_provvisori_per_metodo(
 
             metodo = metodo_per_piva.get(piva, "")
 
-            # --- APPLICA REGOLE (stessa classificazione della pagina Provvisori,
-            # vedi classifica_metodo_fornitore: prima erano due liste diverse) ---
+            # --- CLASSIFICAZIONE SOLO INFORMATIVA (stessa regola condivisa
+            # con la pagina Provvisori) — non sposta più nulla: il "pagamento
+            # certo" che permetteva l'auto-conferma bulk è stato rimosso, ogni
+            # fattura resta sempre in Provvisoria in attesa di conferma manuale.
             destinazione_calcolata = classifica_metodo_fornitore(metodo)
 
             if destinazione_calcolata == "sospesa":
@@ -1197,78 +1104,8 @@ async def auto_conferma_provvisori_per_metodo(
                     report["restate_in_provvisoria_paypal_o_carta"] += 1
                 else:
                     report["restate_in_provvisoria_fornitore_senza_metodo"] += 1
-                continue
-
-            # Per maggiore sicurezza: anche con metodo cassa/banca impostato,
-            # auto-conferma bulk SOLO per i fornitori marcati "pagamento certo"
-            # (es. Amazon: paga sempre e solo banca, nessuna eccezione) — vedi
-            # memoria/moduli/FATTURE_RICEVUTE.md. Tutti gli altri restano in
-            # provvisoria, l'utente conferma manualmente da Prima Nota → Provvisori.
-            if not certo_per_piva.get(piva, False):
-                report["restate_in_provvisoria_fornitore_non_certo"] += 1
-                continue
-
-            destinazione = destinazione_calcolata
-
-            # --- CREA MOVIMENTO ---
-            collection = COLLECTION_PRIMA_NOTA_CASSA if destinazione == "cassa" else COLLECTION_PRIMA_NOTA_BANCA
-            importo = float(f.get("total_amount") or f.get("importo_totale") or 0)
-            numero = f.get("invoice_number") or f.get("numero_fattura") or "N/A"
-            fornitore = f.get("supplier_name") or f.get("cedente_denominazione") or "Fornitore"
-            data_fatt = f.get("invoice_date") or f.get("data_fattura") or now[:10]
-
-            tipo_mov, cat, desc_prefix = determina_tipo_movimento_fattura(f)
-
-            pn_id = str(uuid.uuid4())
-            movimento = {
-                "id": pn_id,
-                "data": data_fatt,
-                "tipo": tipo_mov,
-                "categoria": cat,
-                "descrizione": f"{desc_prefix} {numero} - {fornitore[:40]}",
-                "importo": round(importo, 2),
-                "riferimento": rif,
-                "numero_fattura": numero,
-                "fornitore_piva": piva,
-                "fattura_id": fid,
-                "source": "auto_confirm_provvisoria",  # marker per rollback
-                "auto_confirm_meta": {
-                    "metodo_fornitore": metodo,
-                    "stato_pagamento_al_momento": stato_pagamento,
-                    "operazione_id": now,  # stessa per tutti i mov della stessa run
-                },
-                "created_at": now,
-            }
-            await db[collection].insert_one(movimento.copy())
-
-            # Aggiorna la fattura
-            update_data = {
-                "prima_nota_id": pn_id,
-                "prima_nota_tipo": destinazione,
-                "metodo_pagamento_effettivo": metodo,
-            }
-            if destinazione == "cassa" or pagata:
-                update_data["stato_pagamento"] = "pagata"
-                if not f.get("data_pagamento"):
-                    update_data["data_pagamento"] = now[:10]
-
-            await db["invoices"].update_one({"id": fid}, {"$set": update_data})
-
-            if destinazione == "cassa":
-                report["mosse_cassa"] += 1
             else:
-                report["mosse_banca"] += 1
-
-            if len(report["dettaglio_mosse"]) < 100:
-                report["dettaglio_mosse"].append({
-                    "fattura_id": fid,
-                    "numero": numero,
-                    "fornitore": fornitore[:60],
-                    "metodo_fornitore": metodo,
-                    "destinazione": destinazione,
-                    "importo": round(importo, 2),
-                    "pn_id": pn_id,
-                })
+                report["restate_in_provvisoria_richiede_conferma_manuale"] += 1
 
         except Exception as e:
             logger.exception(f"Errore auto-conferma fattura {f.get('id')}: {e}")
@@ -1279,7 +1116,7 @@ async def auto_conferma_provvisori_per_metodo(
 
     return {
         "success": True,
-        "rollback_endpoint": "POST /api/prima-nota/annulla-auto-conferma (con parametro operazione_id se vuoi annullare solo questa run)",
+        "message": "Il 'pagamento certo' è stato rimosso: nessuna fattura viene più spostata automaticamente, restano tutte in Provvisoria per la conferma manuale.",
         **report,
     }
 

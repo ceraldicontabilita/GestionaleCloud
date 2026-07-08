@@ -169,7 +169,6 @@ async def ensure_supplier_exists(db, parsed_invoice: Dict[str, Any], session=Non
         "alert_created": False,
         "supplier_id": None,
         "metodo_pagamento": None,
-        "pagamento_certo": False,
     }
 
     if not supplier_vat:
@@ -208,7 +207,6 @@ async def ensure_supplier_exists(db, parsed_invoice: Dict[str, Any], session=Non
         supplier_id = existing.get("id") or str(uuid.uuid4())
         result["supplier_id"] = supplier_id
         result["metodo_pagamento"] = existing.get("metodo_pagamento")
-        result["pagamento_certo"] = bool(existing.get("pagamento_certo", False))
 
         # FORN_INATTIVO_USATO era definito in alert_engine.py ma mai generato:
         # un fornitore marcato "attivo": False (disattivato manualmente) può
@@ -379,107 +377,21 @@ async def find_ec_match_for_invoice(db, importo: float, supplier_name: str = "",
 
 
 async def auto_registra_prima_nota(db, invoice: Dict[str, Any], metodo_pagamento: str,
-                                   session=None, pagamento_certo: bool = False) -> Optional[Dict[str, Any]]:
+                                   session=None) -> Optional[Dict[str, Any]]:
     """Applica la REGOLA prima nota all'import.
 
     Per maggiore sicurezza (vedi memoria/moduli/FATTURE_RICEVUTE.md): il metodo
-    impostato sul fornitore è solo un SUGGERIMENTO, non più una registrazione
-    automatica — anche con metodo impostato, una fattura può finire pagata
-    diversamente da come previsto. L'unica eccezione è il fornitore marcato
-    esplicitamente "pagamento certo" (es. Amazon: paga sempre e solo banca,
-    nessuna eccezione possibile per la natura del rapporto commerciale) — solo
-    per questi la registrazione resta automatica e immediata:
+    impostato sul fornitore è solo un SUGGERIMENTO, mai una registrazione
+    automatica — una fattura può finire pagata diversamente da come previsto,
+    quindi resta sempre provvisoria in attesa di conferma manuale dell'utente
+    da Prima Nota → Provvisori. Il "pagamento certo" che permetteva di saltare
+    questa conferma per singoli fornitori è stato rimosso: il sistema non può
+    sapere con certezza dove imputare il pagamento solo dal metodo impostato
+    in anagrafica.
 
-      - pagamento_certo=True  + contanti/cassa → registra subito in prima_nota_cassa (pagata)
-      - pagamento_certo=True  + metodo bancario → registra subito in prima_nota_banca (pagata);
-                                se il pagamento è già in estratto conto viene anche
-                                collegato al movimento (riconciliazione)
-      - pagamento_certo=False (default per TUTTI gli altri fornitori,
-        indipendentemente dal metodo) → provvisoria: l'utente conferma
-        manualmente da Prima Nota → Provvisori
-
-    Ritorna il dict di update applicato alla fattura, o None se resta provvisoria.
+    Ritorna sempre None: la fattura resta provvisoria.
     """
-    # Le note di credito (TD04/TD08) NON sono un pagamento in uscita: riducono
-    # quanto dovuto su una fattura collegata (vedi _collega_nota_credito) e
-    # non vanno mai registrate come uscita cassa/banca — altrimenti risultano
-    # come un pagamento fantasma. Vedi memoria/moduli/FATTURE_RICEVUTE.md, gap #1.
-    if (invoice.get("tipo_documento") or "").upper() in NOTE_CREDITO_TIPI_DOCUMENTO:
-        return None
-
-    if not pagamento_certo:
-        return None
-
-    metodo = (metodo_pagamento or "").lower()
-    if not metodo or metodo in ("misto", "sospesa"):
-        return None
-    is_cassa = metodo in ("contanti", "cassa", "cash", "contante")
-
-    ec_match = None
-    if not is_cassa:
-        # Best-effort: collega il movimento EC se esiste, ma la registrazione
-        # in banca avviene COMUNQUE (regola: il metodo fornitore comanda).
-        ec_match = await find_ec_match_for_invoice(
-            db,
-            float(invoice.get("total_amount") or 0),
-            invoice.get("supplier_name", ""),
-            invoice.get("invoice_date", ""),
-            session=session,
-        )
-
-    now = datetime.now(timezone.utc).isoformat()
-    pn_id = str(uuid.uuid4())
-    pn_collection = "prima_nota_cassa" if is_cassa else "prima_nota_banca"
-    data_mov = (ec_match or {}).get("data") or invoice.get("invoice_date", "")
-
-    await db[pn_collection].insert_one({
-        "id": pn_id,
-        "data": data_mov,
-        "tipo": "uscita",
-        "categoria": "Fatture",
-        "descrizione": f"Fatt. {invoice.get('invoice_number', '')} - {(invoice.get('supplier_name', '') or '')[:30]}",
-        "importo": invoice.get("total_amount", 0),
-        "fattura_id": invoice["id"],
-        "numero_fattura": invoice.get("invoice_number", ""),
-        "fornitore_piva": invoice.get("supplier_vat", ""),
-        "riferimento": f"FATT-{invoice['id']}",
-        "estratto_conto_id": (ec_match or {}).get("id"),
-        "source": "auto_import",
-        "created_at": now,
-    }, session=session)
-
-    if ec_match is not None:
-        # Il movimento EC è consumato: non deve poter "pagare" altre fatture.
-        await db["estratto_conto_movimenti"].update_one(
-            {"id": ec_match.get("id")},
-            {"$set": {
-                "riconciliato": True,
-                "tipo_riconciliazione": "fattura_auto_import",
-                "dettagli_riconciliazione": {"fattura_id": invoice["id"], "prima_nota_id": pn_id},
-                "updated_at": now,
-            }},
-            session=session,
-        )
-        logger.info(f"  → Pagamento trovato in EC: {(ec_match.get('descrizione') or '')[:40]}")
-
-    prima_nota_update = {
-        "prima_nota_id": pn_id,
-        "prima_nota_tipo": "cassa" if is_cassa else "banca",
-        "prima_nota_cassa_id": pn_id if is_cassa else None,
-        "prima_nota_banca_id": pn_id if not is_cassa else None,
-        # Coerenza schema: alcune query usano stato_pagamento, altre pagato/paid.
-        "stato_pagamento": "pagata",
-        "pagato": True,
-        "paid": True,
-        "data_pagamento": data_mov,
-    }
-    await db[Collections.INVOICES].update_one(
-        {"id": invoice["id"]},
-        {"$set": prima_nota_update},
-        session=session,
-    )
-    logger.info(f"  → Auto-registrata in {'CASSA' if is_cassa else 'BANCA'} (metodo: {metodo})")
-    return prima_nota_update
+    return None
 
 
 async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upload.xml") -> Dict[str, Any]:
@@ -618,11 +530,10 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
 
         logger.info(f"Fattura importata: {invoice.get('invoice_number')} - {invoice.get('supplier_name')}")
 
-        # AUTO-REGISTRA in Prima Nota (helper condiviso con l'import Drive/bulk):
-        # contanti → cassa; bancario → banca SOLO se trovato in EC; altrimenti provvisorio.
+        # AUTO-REGISTRA in Prima Nota: sempre provvisoria, conferma manuale
+        # dell'utente da Prima Nota → Provvisori (vedi auto_registra_prima_nota).
         prima_nota_update = await auto_registra_prima_nota(
             db, invoice, metodo_pagamento, session=session,
-            pagamento_certo=supplier_result.get("pagamento_certo", False),
         )
         if prima_nota_update:
             # Rispecchia l'update anche sul dict in memoria: altrimenti il
@@ -1130,13 +1041,10 @@ async def process_xml_bytes(db, content: bytes, filename: str, source: str = "xm
     # commento diceva erroneamente che l'import fatture non tocca mai
     # warehouse_inventory; in realtà l'handler dell'event bus lo aggiorna.
 
-    # 6. Prima Nota: stessa regola dell'upload manuale (contanti → cassa;
-    #    bancario → banca solo se il pagamento è in estratto conto).
+    # 6. Prima Nota: sempre provvisoria, conferma manuale dell'utente da
+    #    Prima Nota → Provvisori (vedi auto_registra_prima_nota).
     try:
-        await auto_registra_prima_nota(
-            db, invoice, metodo_pagamento,
-            pagamento_certo=supplier_result.get("pagamento_certo", False),
-        )
+        await auto_registra_prima_nota(db, invoice, metodo_pagamento)
     except Exception:
         logger.exception(f"Errore auto-registrazione prima nota per {filename}")
 

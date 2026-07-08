@@ -313,13 +313,13 @@ async def sincronizza_corrispettivi_prima_nota() -> Dict[str, Any]:
             if not data_corr:
                 risultato["skipped"] += 1
                 continue
-            
+
             # Cerca il movimento in prima_nota_cassa
             movimento = await db["prima_nota_cassa"].find_one({
                 "data": data_corr,
                 "categoria": "Corrispettivi"
             })
-            
+
             dettaglio = {
                 "matricola_rt": corr.get("matricola_rt", ""),
                 "contanti": float(corr.get("pagato_contanti", 0) or 0),
@@ -327,10 +327,11 @@ async def sincronizza_corrispettivi_prima_nota() -> Dict[str, Any]:
                 "totale_iva": float(corr.get("totale_iva", 0) or 0),
                 "numero_documenti": int(corr.get("numero_documenti", 0) or 0)
             }
-            
+
             # In cassa va SOLO la quota contanti del corrispettivo, mai l'elettronico/POS
             # (che confluisce in prima_nota_banca): vedi memoria/moduli/PRIMA_NOTA_CASSA.md
             importo_cassa = dettaglio["contanti"]
+            importo_elettronico = dettaglio["elettronico"]
 
             if movimento:
                 # Aggiorna dettaglio
@@ -359,7 +360,41 @@ async def sincronizza_corrispettivi_prima_nota() -> Dict[str, Any]:
                 }
                 await db["prima_nota_cassa"].insert_one(nuovo_movimento.copy())
                 risultato["creati"] += 1
-                
+
+            # La quota elettronica/POS del corrispettivo va SEMPRE anche in
+            # prima_nota_banca (in attesa di riconciliazione con l'accredito
+            # reale) — vedi _create_prima_nota_movements in
+            # corrispettivi_helpers.py, la stessa logica usata dall'import.
+            # Prima di questo fix la sincronizzazione scriveva solo in cassa,
+            # perdendo silenziosamente l'incasso POS.
+            if importo_elettronico > 0:
+                movimento_banca = await db["prima_nota_banca"].find_one({
+                    "data": data_corr,
+                    "categoria": "Corrispettivi POS",
+                    "corrispettivo_id": corr.get("id"),
+                })
+                if movimento_banca:
+                    await db["prima_nota_banca"].update_one(
+                        {"_id": movimento_banca["_id"]},
+                        {"$set": {
+                            "importo": importo_elettronico,
+                            "updated_at": datetime.now(timezone.utc).isoformat()
+                        }}
+                    )
+                else:
+                    await db["prima_nota_banca"].insert_one({
+                        "id": f"corr_pos_{corr.get('id', str(uuid.uuid4()))}",
+                        "data": data_corr,
+                        "tipo": "entrata",
+                        "importo": importo_elettronico,
+                        "descrizione": f"POS corrispettivo {data_corr}",
+                        "categoria": "Corrispettivi POS",
+                        "corrispettivo_id": corr.get("id"),
+                        "source": "corrispettivi_sync",
+                        "riconciliato": False,
+                        "created_at": datetime.now(timezone.utc).isoformat()
+                    })
+
         except Exception as e:
             risultato["errors"].append(str(e))
     
