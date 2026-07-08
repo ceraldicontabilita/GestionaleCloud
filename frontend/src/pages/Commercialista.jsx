@@ -39,6 +39,7 @@ export default function Commercialista() {
   });
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(null);
+  const [savingConfig, setSavingConfig] = useState(false);
   const [message, setMessage] = useState(null);
   const [alertStatus, setAlertStatus] = useState(null);
   const [log, setLog] = useState([]);
@@ -152,6 +153,27 @@ export default function Commercialista() {
   const showMessage = (text, type = 'success') => {
     setMessage({ text, type });
     setTimeout(() => setMessage(null), 5000);
+  };
+
+  const handleSaveConfig = async () => {
+    setSavingConfig(true);
+    try {
+      await api.put('/api/commercialista/config', {
+        email: config.email,
+        nome: config.nome,
+        alert_giorni: config.alert_giorni,
+        invio_automatico: config.invio_automatico,
+      });
+      showMessage('Configurazione salvata.');
+    } catch (error) {
+      showMessage(
+        'Errore nel salvataggio della configurazione: ' +
+          (error.response?.data?.detail || error.message),
+        'error'
+      );
+    } finally {
+      setSavingConfig(false);
+    }
   };
 
   // Generate Prima Nota Cassa PDF
@@ -999,6 +1021,24 @@ export default function Commercialista() {
             >
               {config.smtp_configured ? '✅ SMTP Configurato' : '❌ SMTP Non Configurato'}
             </div>
+            <button
+              onClick={handleSaveConfig}
+              disabled={savingConfig}
+              data-testid="save-commercialista-config"
+              style={{
+                padding: '10px 20px',
+                borderRadius: 8,
+                border: 'none',
+                background: savingConfig ? '#9ca3af' : '#1e3a5f',
+                color: 'white',
+                fontWeight: 600,
+                fontSize: 14,
+                cursor: savingConfig ? 'not-allowed' : 'pointer',
+                alignSelf: 'flex-end',
+              }}
+            >
+              {savingConfig ? 'Salvataggio...' : '💾 Salva'}
+            </button>
           </div>
         </div>
 
