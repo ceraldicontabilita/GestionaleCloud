@@ -1,0 +1,29 @@
+{
+  "nome_popup": "confirm() nativo — conferma con avvisi per eliminazione movimento Cassa/Banca",
+  "file_sorgente": "frontend/src/pages/PrimaNota.jsx (funzione handleDeleteMovimento, righe 457-470)",
+  "pagine_da_cui_si_apre": ["Prima Nota (PrimaNota.jsx) — tabella movimenti, sia tab CASSA che tab BANCA"],
+  "come_si_apre": "Click sull'icona 🗑️ nella colonna Azioni di una riga della tabella movimenti, che chiama handleDeleteMovimento(tipo, id). A differenza degli altri confirm nativi auditati (Corrispettivi, Fornitori), qui il popup NON compare prima della prima chiamata di rete: il frontend esegue SUBITO una DELETE /api/prima-nota/{tipo}/{id} (senza force); solo se la risposta contiene require_force:true (HTTP 200, non un errore) viene mostrato confirm() con l'elenco degli avvisi restituiti dal backend. Se il movimento non ha avvisi bloccanti, viene eliminato direttamente senza alcuna finestra di conferma.",
+  "scopo": "Avvisare esplicitamente l'utente delle CONSEGUENZE non ovvie dell'eliminazione (es. il movimento è collegato a una fattura che tornerà 'da pagare', oppure il movimento è già stato confermato/riconciliato) prima di procedere, invece di eliminare silenziosamente o bloccare del tutto — un compromesso a metà tra un'eliminazione libera e un blocco rigido.",
+  "dati_mostrati": "Il testo del confirm è costruito dinamicamente con `Attenzione:\\n${avvisi}\\n\\nEliminare comunque?`, dove avvisi è (res.data.warnings || []).join('\\n') — l'elenco esatto degli avvisi generati dal backend (BusinessRules.can_delete_movement), tipicamente riferiti allo stato 'confirmed' del movimento o alla presenza di invoice_id/corrispettivo_id collegati.",
+  "campi_e_bottoni": [
+    {
+      "elemento": "Bottone 'OK' della finestra nativa confirm()",
+      "cosa_fa": "Se cliccato, il frontend esegue una SECONDA chiamata DELETE con ?force=true.",
+      "endpoint_chiamato": "DELETE /api/prima-nota/{tipo}/{id}?force=true",
+      "validazioni": "nessuna nel confirm stesso"
+    },
+    {
+      "elemento": "Bottone 'Annulla'/'Cancel' della finestra nativa confirm()",
+      "cosa_fa": "Nessuna seconda chiamata: il movimento resta invariato (non eliminato). NOTA: anche se l'utente annulla, il codice richiama comunque loadAllData() subito dopo il blocco if, quindi la pagina si ricarica senza che nulla sia effettivamente cambiato sul movimento.",
+      "endpoint_chiamato": "nessuno",
+      "validazioni": "n/d"
+    }
+  ],
+  "cosa_succede_alla_conferma": "PRIMA chiamata (sempre eseguita al click su 🗑️, senza popup): DELETE /api/prima-nota/{tipo}/{id}. Il backend (delete_movimento_cassa/banca) applica BusinessRules.can_delete_movement: BLOCCA con errore HTTP 400 (non superabile, nessun popup mostrato, solo alert('Errore: ...')) se status='reconciled'; genera un AVVISO non bloccante (require_force:true, HTTP 200) se status='confirmed' oppure se il movimento ha invoice_id o corrispettivo_id collegato — in questo caso NULLA viene ancora cancellato. SECONDA chiamata (solo se l'utente conferma il popup): DELETE .../?force=true esegue il SOFT-DELETE effettivo: entity_status='deleted', status='deleted', deleted_at=ora (il documento resta nel database). Se il movimento aveva fattura_id, la FATTURA collegata (match anche su prima_nota_id=movimento_id) torna 'da pagare': stato_pagamento='', pagato=false, paid=false, e vengono rimossi (unset) prima_nota_id, prima_nota_tipo, prima_nota_cassa_id/banca_id, data_pagamento.",
+  "come_si_chiude": [
+    "Click su 'OK' (procede con la DELETE forzata)",
+    "Click su 'Annulla'/'Cancel' (nessuna ulteriore azione, ma loadAllData() viene comunque eseguita)",
+    "Tasto ESC (equivalente ad Annulla nella maggior parte dei browser)"
+  ],
+  "effetto_su_pagina_sottostante": "In ENTRAMBI i casi (conferma o annulla), il codice chiama loadAllData() subito dopo il blocco condizionale — quindi la tabella si ricarica sempre dal server: se l'eliminazione è avvenuta, la riga sparisce e, se era collegata a una fattura, quella fattura ricompare automaticamente nel tab PROVVISORI al prossimo caricamento (perché torna a soddisfare la query 'senza prima_nota_id valido'); se l'utente ha annullato, la riga resta identica a prima ma viene comunque ri-fetchata inutilmente."
+}
