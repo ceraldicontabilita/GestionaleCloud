@@ -70,7 +70,12 @@ const translateStato = (s) => (s && PAYPAL_STATO_LABELS[s.toUpperCase?.() || s])
  * Richiede l'endpoint GET /api/paypal-statements/transazione/{id}/dettaglio
  * che ritorna tutti i collegamenti già risolti.
  */
-export default function PaypalTransactionDetailModal({ open, onClose, transactionId }) {
+export default function PaypalTransactionDetailModal({
+  open,
+  onClose,
+  transactionId,
+  onOpenInvoice,
+}) {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState(null);
@@ -440,8 +445,15 @@ export default function PaypalTransactionDetailModal({ open, onClose, transactio
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                               {fmtEuro(importoFattura)}
                               <span
-                                onClick={(e) => {
+                                onClick={e => {
                                   e.stopPropagation();
+                                  if (onOpenInvoice) {
+                                    onOpenInvoice({
+                                      id: f.id,
+                                      numero: f.numero_fattura || f.numero || f.fornitore,
+                                    });
+                                    return;
+                                  }
                                   window.open(
                                     f.view_url || `/api/fatture-ricevute/fattura/${f.id}/view-assoinvoice`,
                                     '_blank'

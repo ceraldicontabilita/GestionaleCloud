@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+﻿import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
@@ -17,6 +17,7 @@ import {
 } from '../lib/utils';
 import { useHashState } from '../hooks/useHashState';
 import { CopyLinkButton } from '../components/CopyLinkButton';
+import ModalFattura from '../components/ModalFattura';
 
 const MESI = [
   { value: '', label: 'Tutti i mesi' },
@@ -34,7 +35,7 @@ const MESI = [
   { value: '12', label: 'Dicembre' },
 ];
 
-// Stili inline — allineati a STYLES.card/button() (design system unificato in lib/utils.js)
+// Stili inline ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â allineati a STYLES.card/button() (design system unificato in lib/utils.js)
 const cardStyle = STYLES.card;
 const btnPrimary = { ...button('primary'), fontSize: 14 };
 const btnSecondary = { ...button('secondary'), fontSize: 14 };
@@ -142,12 +143,13 @@ export default function ArchivioFatture() {
   const [loading, setLoading] = useState(true);
 
   // Deep-link a una specifica fattura (es. dal modale PayPal):
-  // /fatture?invoice_id=<id> → dopo il caricamento scrolla alla riga,
+  // /fatture?invoice_id=<id> ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ dopo il caricamento scrolla alla riga,
   // la evidenzia per 4 secondi, poi torna normale.
   const [searchParams, setSearchParams] = useSearchParams();
   const invoiceIdFromUrl = searchParams.get('invoice_id') || searchParams.get('id') || '';
   const [highlightedId, setHighlightedId] = useState('');
   const [invoiceNotFoundWarning, setInvoiceNotFoundWarning] = useState(null);
+  const [fatturaView, setFatturaView] = useState(null);
   const highlightedRowRef = useRef(null);
 
   useEffect(() => {
@@ -157,8 +159,8 @@ export default function ArchivioFatture() {
     const found = fatture.find(f => f.id === invoiceIdFromUrl);
 
     if (!found) {
-      // La fattura non è nella lista — probabilmente è di un anno diverso
-      // da quello attualmente filtrato. Chiedo al backend di che anno è.
+      // La fattura non ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¨ nella lista ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â probabilmente ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¨ di un anno diverso
+      // da quello attualmente filtrato. Chiedo al backend di che anno ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¨.
       (async () => {
         try {
           const r = await api.get(`/api/fatture-ricevute/fattura/${invoiceIdFromUrl}`);
@@ -171,7 +173,7 @@ export default function ArchivioFatture() {
             fornitore: f.supplier_name || f.fornitore_ragione_sociale,
           });
         } catch {
-          // Anche il lookup diretto fallisce — fattura inesistente o cancellata
+          // Anche il lookup diretto fallisce ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â fattura inesistente o cancellata
           setInvoiceNotFoundWarning({ id: invoiceIdFromUrl, notExist: true });
         }
       })();
@@ -204,7 +206,7 @@ export default function ArchivioFatture() {
       if (anno) params.append('anno', anno);
       if (mese) params.append('mese', mese);
       if (fornitore) params.append('fornitore_piva', fornitore);
-      // "senza_metodo" è un filtro client-side: fa fetch senza stato e poi filtra
+      // "senza_metodo" ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¨ un filtro client-side: fa fetch senza stato e poi filtra
       if (stato && stato !== 'senza_metodo') params.append('stato', stato);
       if (search) params.append('search', search);
       params.append('limit', '500');
@@ -258,7 +260,7 @@ export default function ArchivioFatture() {
 
   // ==================== HELPERS ====================
 
-  // Usa formatEuro da utils.js (già importato)
+  // Usa formatEuro da utils.js (giÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â  importato)
   const formatCurrency = formatEuro;
 
   // Usa formatDateIT da utils.js
@@ -267,7 +269,7 @@ export default function ArchivioFatture() {
   const getStatoBadge = fattura => {
     if (fattura.pagato) {
       let metodo = fattura.metodo_pagamento || '';
-      let icon = '✅';
+      let icon = 'ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦';
       let label = 'Pagata';
 
       if (
@@ -275,20 +277,20 @@ export default function ArchivioFatture() {
         metodo.toLowerCase().includes('cassa') ||
         metodo.toLowerCase().includes('contanti')
       ) {
-        icon = '💵';
+        icon = 'ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢Ãƒâ€šÃ‚Âµ';
         label = 'Cassa';
       } else if (
         fattura.prima_nota_banca_id ||
         metodo.toLowerCase().includes('banca') ||
         metodo.toLowerCase().includes('bonifico')
       ) {
-        icon = '🏦';
+        icon = 'ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸Ãƒâ€šÃ‚ÂÃƒâ€šÃ‚Â¦';
         label = 'Banca';
       } else if (metodo.toLowerCase().includes('assegno')) {
-        icon = '📝';
+        icon = 'ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒâ€šÃ‚Â';
         label = 'Assegno';
       } else if (metodo.toLowerCase().includes('rid') || metodo.toLowerCase().includes('sdd')) {
-        icon = '🔄';
+        icon = 'ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾';
         label = 'RID/SDD';
       }
 
@@ -349,18 +351,18 @@ export default function ArchivioFatture() {
       style={{ maxWidth: 1600, margin: '0 auto', position: 'relative', padding: '16px 0' }}
       data-testid="archivio-fatture-ricevute"
     >
-      {/* Warning deep-link: la fattura richiesta non è nella lista corrente */}
+      {/* Warning deep-link: la fattura richiesta non ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¨ nella lista corrente */}
       {invoiceNotFoundWarning && (
         <div style={{
           marginBottom: 16, padding: 14, borderRadius: 10,
           background: '#fffbeb', border: '1px solid #fcd34d',
           display: 'flex', alignItems: 'flex-start', gap: 12,
         }}>
-          <div style={{ fontSize: 20 }}>⚠️</div>
+          <div style={{ fontSize: 20 }}>ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã‚Â¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã‚Â¯Ãƒâ€šÃ‚Â¸Ãƒâ€šÃ‚Â</div>
           <div style={{ flex: 1, fontSize: 13, color: '#78350f', lineHeight: 1.5 }}>
             {invoiceNotFoundWarning.notExist ? (
               <>
-                La fattura che cercavi non esiste più o è stata eliminata
+                La fattura che cercavi non esiste piÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¹ o ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¨ stata eliminata
                 (id: <code>{invoiceNotFoundWarning.id}</code>).
               </>
             ) : (
@@ -369,24 +371,22 @@ export default function ArchivioFatture() {
                 <strong>{invoiceNotFoundWarning.fornitore}</strong>
                 {invoiceNotFoundWarning.anno ? (
                   <>
-                    {' '}è dell'anno <strong>{invoiceNotFoundWarning.anno}</strong>, ma stai
+                    {' '}ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¨ dell'anno <strong>{invoiceNotFoundWarning.anno}</strong>, ma stai
                     guardando l'anno <strong>{anno}</strong>.
                   </>
                 ) : (
-                  <> non è nell'anno selezionato (<strong>{anno}</strong>).</>
+                  <> non ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¨ nell'anno selezionato (<strong>{anno}</strong>).</>
                 )}
-                <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  <a
-                    href={`/api/fatture-ricevute/fattura/${invoiceNotFoundWarning.id}/view-assoinvoice`}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 10 }}>
+                  <button
+                    onClick={() => setFatturaView({ id: invoiceNotFoundWarning.id, numero: invoiceNotFoundWarning.numero_fattura || invoiceNotFoundWarning.fornitore })}
                     style={{
                       padding: '6px 12px', background: '#1e3a5f', color: 'white',
-                      borderRadius: 6, fontSize: 12, fontWeight: 600, textDecoration: 'none',
+                      border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer',
                     }}
                   >
-                    📄 Vedi la fattura adesso
-                  </a>
+                    Vedi la fattura adesso
+                  </button>
                   <span style={{ fontSize: 12, color: '#92400e', alignSelf: 'center' }}>
                     oppure cambia l'anno globale (in alto a destra)
                     {invoiceNotFoundWarning.anno ? (
@@ -411,7 +411,7 @@ export default function ArchivioFatture() {
               fontSize: 18, color: '#78350f', padding: 0,
             }}
           >
-            ✕
+            ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢
           </button>
         </div>
       )}
@@ -525,7 +525,7 @@ export default function ArchivioFatture() {
               <option value="importata">Importate</option>
               <option value="anomala">Anomale</option>
               <option value="pagata">Pagate</option>
-              <option value="senza_metodo">⚠️ Senza metodo pagamento</option>
+              <option value="senza_metodo">ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã‚Â¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã‚Â¯Ãƒâ€šÃ‚Â¸Ãƒâ€šÃ‚Â Senza metodo pagamento</option>
             </select>
           </div>
           <div style={{ flex: 1, minWidth: 180 }}>
@@ -554,11 +554,11 @@ export default function ArchivioFatture() {
       <div style={cardStyle}>
         {loading ? (
           <div style={{ padding: 40, textAlign: 'center', color: '#6b7280' }}>
-            ⏳ Caricamento...
+            ÃƒÆ’Ã‚Â¢Ãƒâ€šÃ‚ÂÃƒâ€šÃ‚Â³ Caricamento...
           </div>
         ) : fatture.length === 0 ? (
           <div style={{ padding: 40, textAlign: 'center', color: '#6b7280' }}>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>📭</div>
+            <div style={{ fontSize: 48, marginBottom: 16 }}>ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒâ€šÃ‚Â­</div>
             <p style={{ margin: 0 }}>Nessuna fattura trovata</p>
             <p style={{ margin: '8px 0 0 0', fontSize: 14 }}>
               Vai a Import Unificato per importare fatture
@@ -590,7 +590,7 @@ export default function ArchivioFatture() {
                 metodoSalvato.includes('sepa') ||
                 metodoSalvato.includes('rid');
 
-              // Priorità: ID prima nota > metodo salvato > null
+              // PrioritÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â : ID prima nota > metodo salvato > null
               const metodoPagEffettivo = hasCassaId
                 ? 'cassa'
                 : hasBancaId
@@ -603,7 +603,7 @@ export default function ArchivioFatture() {
 
               // Metodo configurato nel fornitore (per default quando non pagato)
               // NOTA: fallback NON deve usare metodo_pagamento della fattura XML,
-              // perché in XML il cedente dichiara il SUO modo di incasso, non
+              // perchÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â© in XML il cedente dichiara il SUO modo di incasso, non
               // come noi paghiamo. Usiamo SOLO il campo dell'anagrafica fornitore.
               const metodoFornitore = (
                 f.fornitore_metodo_pagamento || ''
@@ -637,13 +637,11 @@ export default function ArchivioFatture() {
                         fontWeight: 'bold',
                       }}
                     >
-                      ✓ RICONC.
+                      ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ RICONC.
                     </span>
                   )}
-                  <a
-                    href={`/api/fatture-ricevute/fattura/${f.id}/view-assoinvoice`}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <button
+                    onClick={() => setFatturaView({ id: f.id, numero: f.numero_fattura || f.numero || f.fornitore })}
                     style={{
                       padding: '7px 11px',
                       background: '#3b82f6',
@@ -653,16 +651,13 @@ export default function ArchivioFatture() {
                       cursor: 'pointer',
                       fontSize: 12,
                       fontWeight: '600',
-                      textDecoration: 'none',
                     }}
                   >
-                    📄 Vedi
-                  </a>
-                  {/* Metodo del fornitore in SOLA LETTURA: la registrazione in
-                      cassa/banca si fa dalla pagina Prima Nota. */}
+                    Vedi
+                  </button>
                   {!isPaid && (isFornitoreBanca || isFornitoreCassa) && (
                     <span
-                      title="Metodo del fornitore — la registrazione avviene in Prima Nota"
+                      title="Metodo del fornitore ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â la registrazione avviene in Prima Nota"
                       style={{
                         padding: '7px 11px',
                         background: isFornitoreCassa ? '#f0fdf4' : '#eff6ff',
@@ -673,10 +668,10 @@ export default function ArchivioFatture() {
                         fontWeight: '600',
                       }}
                     >
-                      {isFornitoreCassa ? '💵 Cassa' : '🏦 Banca'}
+                      {isFornitoreCassa ? 'ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢Ãƒâ€šÃ‚Âµ Cassa' : 'ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸Ãƒâ€šÃ‚ÂÃƒâ€šÃ‚Â¦ Banca'}
                     </span>
                   )}
-                  {/* Se la fattura è pagata: mostra SOLO il bottone col check del metodo effettivo */}
+                  {/* Se la fattura ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¨ pagata: mostra SOLO il bottone col check del metodo effettivo */}
                   {isPaid && metodoPagEffettivo === 'cassa' && (
                     <span
                       style={{
@@ -688,7 +683,7 @@ export default function ArchivioFatture() {
                         fontWeight: '600',
                       }}
                     >
-                      💵 ✓ Cassa
+                      ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢Ãƒâ€šÃ‚Âµ ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ Cassa
                     </span>
                   )}
                   {isPaid && metodoPagEffettivo === 'banca' && (
@@ -702,7 +697,7 @@ export default function ArchivioFatture() {
                         fontWeight: '600',
                       }}
                     >
-                      🏦 ✓ Banca
+                      ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸Ãƒâ€šÃ‚ÂÃƒâ€šÃ‚Â¦ ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ Banca
                     </span>
                   )}
                 </div>
@@ -744,7 +739,7 @@ export default function ArchivioFatture() {
                           overflowWrap: 'anywhere',
                         }}
                       >
-                        {f.supplier_name || f.fornitore_ragione_sociale || '—'}
+                        {f.supplier_name || f.fornitore_ragione_sociale || 'ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â'}
                       </div>
                       <div
                         style={{
@@ -782,7 +777,7 @@ export default function ArchivioFatture() {
                     }}
                   >
                     <span style={{ minWidth: 0, whiteSpace: 'nowrap' }}>
-                      📅 {formatDateIT(f.invoice_date || f.data_documento)}
+                      ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ {formatDateIT(f.invoice_date || f.data_documento)}
                     </span>
                     <span
                       style={{
@@ -793,7 +788,7 @@ export default function ArchivioFatture() {
                       }}
                       title={f.invoice_number || f.numero_documento || ''}
                     >
-                      #{f.invoice_number || f.numero_documento || '—'}
+                      #{f.invoice_number || f.numero_documento || 'ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â'}
                     </span>
                     <span style={{ whiteSpace: 'nowrap' }}>IVA {formatCurrency(f.iva)}</span>
                   </div>
@@ -1012,10 +1007,8 @@ export default function ArchivioFatture() {
                             flexWrap: 'wrap',
                           }}
                         >
-                          <a
-                            href={`/api/fatture-ricevute/fattura/${f.id}/view-assoinvoice`}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                          <button
+                            onClick={() => setFatturaView({ id: f.id, numero: f.numero_fattura || f.numero || f.fornitore })}
                             style={{
                               padding: '8px 12px',
                               background: '#3b82f6',
@@ -1025,13 +1018,10 @@ export default function ArchivioFatture() {
                               cursor: 'pointer',
                               fontSize: 12,
                               fontWeight: '600',
-                              textDecoration: 'none',
                             }}
                           >
-                            📄 Vedi
-                          </a>
-                          {/* SOLO stato in sola lettura: la registrazione in
-                              cassa/banca si fa dalla pagina Prima Nota. */}
+                            Vedi
+                          </button>
                           {isPaid ? (
                             <span
                               title={isRiconciliata ? 'Riconciliata con estratto conto' : 'Pagata'}
@@ -1044,12 +1034,14 @@ export default function ArchivioFatture() {
                                 fontWeight: '600',
                               }}
                             >
-                              {metodoPagEffettivo === 'cassa' ? '💵 ✓ Cassa' : '🏦 ✓ Banca'}
+                              {metodoPagEffettivo === 'cassa'
+                                ? 'Cassa'
+                                : 'Banca'}
                               {isRiconciliata ? ' · EC' : ''}
                             </span>
                           ) : fornBanca || fornCassa ? (
                             <span
-                              title="Metodo del fornitore — la registrazione avviene in Prima Nota"
+                              title="Metodo del fornitore ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â la registrazione avviene in Prima Nota"
                               style={{
                                 padding: '8px 14px',
                                 background: fornCassa ? '#f0fdf4' : '#eff6ff',
@@ -1060,14 +1052,14 @@ export default function ArchivioFatture() {
                                 fontWeight: '600',
                               }}
                             >
-                              {fornCassa ? '💵 Cassa' : '🏦 Banca'}
+                              {fornCassa ? 'ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢Ãƒâ€šÃ‚Âµ Cassa' : 'ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸Ãƒâ€šÃ‚ÂÃƒâ€šÃ‚Â¦ Banca'}
                             </span>
                           ) : (
                             <span
-                              title="Fornitore senza metodo di pagamento — impostalo in Fornitori; la registrazione si fa in Prima Nota"
+                              title="Fornitore senza metodo di pagamento ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â impostalo in Fornitori; la registrazione si fa in Prima Nota"
                               style={{ color: '#9ca3af', fontSize: 12 }}
                             >
-                              —
+                              ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â
                             </span>
                           )}
                         </div>
@@ -1080,6 +1072,13 @@ export default function ArchivioFatture() {
           </div>
         )}
       </div>
+      {fatturaView && (
+        <ModalFattura
+          fatturaId={fatturaView.id}
+          numero={fatturaView.numero}
+          onClose={() => setFatturaView(null)}
+        />
+      )}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+﻿import React, { useState, useEffect, useCallback } from 'react';
 import api from '../api';
 import {
   formatEuro,
@@ -15,11 +15,12 @@ import {
 } from '../lib/utils';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { PageLayout } from '../components/PageLayout';
+import ModalFattura from '../components/ModalFattura';
 import { toast } from 'sonner';
 
 export default function NoleggioAuto() {
   const isMobile = useIsMobile();
-  // Anno unico e globale (barra di navigazione in alto) — nessun selettore
+  // Anno unico e globale (barra di navigazione in alto) ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â nessun selettore
   // locale duplicato: una pagina con un filtro anno proprio, indipendente
   // da quello globale, dava l'impressione che cambiare l'anno in alto non
   // avesse alcun effetto sulla pagina.
@@ -30,6 +31,7 @@ export default function NoleggioAuto() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   const [selectedVeicolo, setSelectedVeicolo] = useState(null);
+  const [fatturaView, setFatturaView] = useState(null);
   const [drivers, setDrivers] = useState([]);
   const [editingVeicolo, setEditingVeicolo] = useState(null);
   const [expandedSection, setExpandedSection] = useState({});
@@ -55,19 +57,19 @@ export default function NoleggioAuto() {
   const [bulkUpdateLoading, setBulkUpdateLoading] = useState(false);
 
   const categorie = [
-    { key: 'canoni', label: 'Canoni', icon: '📋', color: '#4caf50' },
-    { key: 'pedaggio', label: 'Pedaggio', icon: '🛣️', color: '#2196f3' },
-    { key: 'verbali', label: 'Verbali', icon: '⚠️', color: '#f44336' },
-    { key: 'bollo', label: 'Bollo', icon: '📄', color: '#9c27b0' },
-    { key: 'costi_extra', label: 'Costi Extra', icon: '💳', color: '#ff9800' },
-    { key: 'riparazioni', label: 'Riparazioni', icon: '🔧', color: '#795548' },
+    { key: 'canoni', label: 'Canoni', icon: 'ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¹', color: '#4caf50' },
+    { key: 'pedaggio', label: 'Pedaggio', icon: 'ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂºÃƒâ€šÃ‚Â£ÃƒÆ’Ã‚Â¯Ãƒâ€šÃ‚Â¸Ãƒâ€šÃ‚Â', color: '#2196f3' },
+    { key: 'verbali', label: 'Verbali', icon: 'ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã‚Â¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã‚Â¯Ãƒâ€šÃ‚Â¸Ãƒâ€šÃ‚Â', color: '#f44336' },
+    { key: 'bollo', label: 'Bollo', icon: 'ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾', color: '#9c27b0' },
+    { key: 'costi_extra', label: 'Costi Extra', icon: 'ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢Ãƒâ€šÃ‚Â³', color: '#ff9800' },
+    { key: 'riparazioni', label: 'Riparazioni', icon: 'ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€šÃ‚Â§', color: '#795548' },
   ];
 
   const fetchVeicoli = useCallback(async () => {
     setLoading(true);
     setErr('');
     try {
-      // Se annoFiltro è null, carica TUTTI gli anni
+      // Se annoFiltro ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¨ null, carica TUTTI gli anni
       const annoParam = annoFiltro ? `anno=${annoFiltro}` : '';
       const [vRes, dRes, fRes] = await Promise.all([
         api.get(`/api/noleggio/veicoli?${annoParam}`),
@@ -186,7 +188,7 @@ export default function NoleggioAuto() {
 
     if (
       !window.confirm(
-        `Aggiornare dati da OpenAPI per ${targhe.length} veicoli?\nQuesta operazione può richiedere alcuni minuti.`
+        `Aggiornare dati da OpenAPI per ${targhe.length} veicoli?\nQuesta operazione puÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â² richiedere alcuni minuti.`
       )
     ) {
       return;
@@ -225,12 +227,12 @@ export default function NoleggioAuto() {
 
   return (
     <div style={{ maxWidth: 1400, margin: '0 auto' }}>
-      {/* Header — stile uniforme al resto delle pagine (STYLES.header) */}
+      {/* Header ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â stile uniforme al resto delle pagine (STYLES.header) */}
       <div style={STYLES.header}>
         <div>
-          <h1 style={STYLES.pageTitle}>🚗 Gestione Noleggio Auto</h1>
+          <h1 style={STYLES.pageTitle}>ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸Ãƒâ€¦Ã‚Â¡ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Gestione Noleggio Auto</h1>
           <p style={{ ...STYLES.pageSubtitle, marginTop: 4 }}>
-            Flotta aziendale • Dati estratti da fatture XML
+            Flotta aziendale ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢ Dati estratti da fatture XML
           </p>
         </div>
       </div>
@@ -250,14 +252,14 @@ export default function NoleggioAuto() {
           style={button('secondary')}
           data-testid="noleggio-refresh-btn"
         >
-          🔄 Aggiorna
+          ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾ Aggiorna
         </button>
         <button
           onClick={() => setShowAddVeicolo(true)}
           style={button('primary')}
           data-testid="noleggio-add-btn"
         >
-          ➕ Aggiungi Veicolo
+          ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã‚Â¾ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ Aggiungi Veicolo
         </button>
         <button
           onClick={handleBulkUpdateFromOpenAPI}
@@ -276,7 +278,7 @@ export default function NoleggioAuto() {
           data-testid="noleggio-bulk-update-btn"
           title="Azione di manutenzione occasionale: recupera marca, modello, alimentazione, potenza e cilindrata da OpenAPI Automotive per tutti i veicoli in elenco"
         >
-          {bulkUpdateLoading ? '⏳ Aggiornamento...' : '🚗 Aggiorna dati da targa (tutti)'}
+          {bulkUpdateLoading ? 'ÃƒÆ’Ã‚Â¢Ãƒâ€šÃ‚ÂÃƒâ€šÃ‚Â³ Aggiornamento...' : 'ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸Ãƒâ€¦Ã‚Â¡ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Aggiorna dati da targa (tutti)'}
         </button>
         {fattureNonAssociate > 0 && (
           <span
@@ -291,7 +293,7 @@ export default function NoleggioAuto() {
               gap: 8,
             }}
           >
-            ⚠️ {fattureNonAssociate} fatture non associate
+            ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã‚Â¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã‚Â¯Ãƒâ€šÃ‚Â¸Ãƒâ€šÃ‚Â {fattureNonAssociate} fatture non associate
             <button
               onClick={async () => {
                 setModalFattureNonAssociate({ open: true, loading: true, fatture: [], errore: '' });
@@ -324,7 +326,7 @@ export default function NoleggioAuto() {
                 fontWeight: 600,
               }}
             >
-              👁️ Visualizza
+              ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“Ãƒâ€šÃ‚ÂÃƒÆ’Ã‚Â¯Ãƒâ€šÃ‚Â¸Ãƒâ€šÃ‚Â Visualizza
             </button>
           </span>
         )}
@@ -342,7 +344,7 @@ export default function NoleggioAuto() {
           }}
           data-testid="noleggio-error"
         >
-          ❌ {err}
+          ÃƒÆ’Ã‚Â¢Ãƒâ€šÃ‚ÂÃƒâ€¦Ã¢â‚¬â„¢ {err}
         </div>
       )}
 
@@ -360,7 +362,7 @@ export default function NoleggioAuto() {
                 fontSize: 14,
               }}
             >
-              📊 Riepilogo: {selectedVeicolo.marca} {selectedVeicolo.modello || ''} -{' '}
+              ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒâ€¦Ã‚Â  Riepilogo: {selectedVeicolo.marca} {selectedVeicolo.modello || ''} -{' '}
               {selectedVeicolo.targa}
             </div>
           )}
@@ -375,7 +377,7 @@ export default function NoleggioAuto() {
             }}
           >
             {categorie.map(cat => {
-              // Se c'è un veicolo selezionato, mostra i suoi totali, altrimenti il totale generale
+              // Se c'ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¨ un veicolo selezionato, mostra i suoi totali, altrimenti il totale generale
               const valore = selectedVeicolo
                 ? selectedVeicolo[`totale_${cat.key}`] ||
                   (selectedVeicolo[cat.key] || []).reduce((a, s) => a + (s.totale || 0), 0)
@@ -410,7 +412,7 @@ export default function NoleggioAuto() {
                 color: 'white',
               }}
             >
-              <div style={{ fontSize: 11, opacity: 0.9, marginBottom: 4 }}>🚗 TOTALE</div>
+              <div style={{ fontSize: 11, opacity: 0.9, marginBottom: 4 }}>ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸Ãƒâ€¦Ã‚Â¡ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â TOTALE</div>
               <div style={{ fontSize: 16, fontWeight: 'bold' }}>
                 {formatEuro(
                   selectedVeicolo
@@ -440,7 +442,7 @@ export default function NoleggioAuto() {
             }}
           >
             <h2 style={{ margin: 0, fontSize: 18 }}>
-              🚗 {selectedVeicolo.marca} {selectedVeicolo.modello || 'Modello da definire'} -{' '}
+              ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸Ãƒâ€¦Ã‚Â¡ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â {selectedVeicolo.marca} {selectedVeicolo.modello || 'Modello da definire'} -{' '}
               <span style={{ color: '#2563eb', fontFamily: 'monospace' }}>
                 {selectedVeicolo.targa}
               </span>
@@ -460,7 +462,7 @@ export default function NoleggioAuto() {
                 title="Aggiorna dati veicolo da OpenAPI Automotive"
                 data-testid="veicolo-update-openapi-btn"
               >
-                {lookupLoading ? '⏳' : '🔄'} Aggiorna da Targa
+                {lookupLoading ? 'ÃƒÆ’Ã‚Â¢Ãƒâ€šÃ‚ÂÃƒâ€šÃ‚Â³' : 'ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾'} Aggiorna da Targa
               </button>
               <button
                 onClick={() => setEditingVeicolo({ ...selectedVeicolo })}
@@ -473,7 +475,7 @@ export default function NoleggioAuto() {
                   cursor: 'pointer',
                 }}
               >
-                ✏️ Modifica
+                ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“Ãƒâ€šÃ‚ÂÃƒÆ’Ã‚Â¯Ãƒâ€šÃ‚Â¸Ãƒâ€šÃ‚Â Modifica
               </button>
               <button
                 onClick={() => handleDelete(selectedVeicolo.targa)}
@@ -486,13 +488,13 @@ export default function NoleggioAuto() {
                   cursor: 'pointer',
                 }}
               >
-                🗑️ Elimina
+                ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬ÂÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¯Ãƒâ€šÃ‚Â¸Ãƒâ€šÃ‚Â Elimina
               </button>
               <button
                 onClick={() => setSelectedVeicolo(null)}
                 style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer' }}
               >
-                ✕
+                ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢
               </button>
             </div>
           </div>
@@ -521,9 +523,9 @@ export default function NoleggioAuto() {
                 </div>
                 <div>
                   {selectedVeicolo.alimentazione || '-'}
-                  {selectedVeicolo.potenza_kw ? ` • ${selectedVeicolo.potenza_kw} kW` : ''}
-                  {selectedVeicolo.potenza_cv ? ` • ${selectedVeicolo.potenza_cv} CV` : ''}
-                  {selectedVeicolo.cilindrata ? ` • ${selectedVeicolo.cilindrata} cc` : ''}
+                  {selectedVeicolo.potenza_kw ? ` ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢ ${selectedVeicolo.potenza_kw} kW` : ''}
+                  {selectedVeicolo.potenza_cv ? ` ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢ ${selectedVeicolo.potenza_cv} CV` : ''}
+                  {selectedVeicolo.cilindrata ? ` ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢ ${selectedVeicolo.cilindrata} cc` : ''}
                 </div>
                 {selectedVeicolo.telaio && (
                   <div style={{ fontSize: 12, color: '#9ca3af' }}>
@@ -536,7 +538,7 @@ export default function NoleggioAuto() {
               <h3 style={{ margin: '0 0 8px 0', fontSize: 14, color: '#6b7280' }}>Contratto</h3>
               <div style={{ fontSize: 13, lineHeight: 1.8 }}>
                 <div>
-                  N° Contratto: <strong>{selectedVeicolo.contratto || '-'}</strong>
+                  NÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â° Contratto: <strong>{selectedVeicolo.contratto || '-'}</strong>
                 </div>
                 <div>Cod. Cliente: {selectedVeicolo.codice_cliente || '-'}</div>
                 <div>Centro Fatt.: {selectedVeicolo.centro_fatturazione || '-'}</div>
@@ -578,11 +580,11 @@ export default function NoleggioAuto() {
 
           {/* Sezioni spese per categoria */}
           {categorie.map(cat => {
-            // Ordina le spese per data (dalla più recente alla più vecchia)
+            // Ordina le spese per data (dalla piÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¹ recente alla piÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¹ vecchia)
             const spese = [...(selectedVeicolo[cat.key] || [])].sort((a, b) => {
               const dateA = new Date(a.data || '1900-01-01');
               const dateB = new Date(b.data || '1900-01-01');
-              return dateB - dateA; // Ordine decrescente (più recenti prima)
+              return dateB - dateA; // Ordine decrescente (piÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¹ recenti prima)
             });
             if (spese.length === 0) return null;
             const isOpen = expandedSection[cat.key];
@@ -612,7 +614,7 @@ export default function NoleggioAuto() {
                     <span style={{ fontWeight: 'bold', fontSize: 16, color: cat.color }}>
                       {formatEuro(totaleSezione)}
                     </span>
-                    <span>{isOpen ? '▲' : '▼'}</span>
+                    <span>{isOpen ? 'ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“Ãƒâ€šÃ‚Â²' : 'ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“Ãƒâ€šÃ‚Â¼'}</span>
                   </div>
                 </div>
 
@@ -631,7 +633,7 @@ export default function NoleggioAuto() {
                             <th
                               style={{ padding: '8px 10px', textAlign: 'left', fontWeight: '600' }}
                             >
-                              N° Verbale
+                              NÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â° Verbale
                             </th>
                           )}
                           <th style={{ padding: '8px 10px', textAlign: 'left', fontWeight: '600' }}>
@@ -716,7 +718,7 @@ export default function NoleggioAuto() {
                                     <div style={{ fontSize: 10, color: '#9ca3af' }}>
                                       {v.noleggio_imponibile != null &&
                                         `Locazione: ${formatEuro(v.noleggio_imponibile)}`}
-                                      {v.noleggio_imponibile != null && v.servizio_imponibile != null && ' • '}
+                                      {v.noleggio_imponibile != null && v.servizio_imponibile != null && ' ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢ '}
                                       {v.servizio_imponibile != null &&
                                         `Servizi: ${formatEuro(v.servizio_imponibile)}`}
                                     </div>
@@ -771,14 +773,14 @@ export default function NoleggioAuto() {
                                     style={{ color: '#16a34a', fontWeight: 'bold', fontSize: 10 }}
                                     title="Collegato a un movimento reale in estratto conto"
                                   >
-                                    ✓ Pagato
+                                    ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ Pagato
                                   </span>
                                 ) : (
                                   <span
                                     style={{ color: '#b45309', fontWeight: 'bold', fontSize: 10 }}
-                                    title="Il fornitore ha un metodo di pagamento bancario configurato, ma nessun movimento corrispondente è stato trovato in estratto conto — il pagamento non è verificato"
+                                    title="Il fornitore ha un metodo di pagamento bancario configurato, ma nessun movimento corrispondente ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¨ stato trovato in estratto conto ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â il pagamento non ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¨ verificato"
                                   >
-                                    ✓ Pagato (presunto)
+                                    ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ Pagato (presunto)
                                   </span>
                                 )
                               ) : (
@@ -786,7 +788,7 @@ export default function NoleggioAuto() {
                               )}
                               {cat.key === 'verbali' && s.ha_ricevuta && (
                                 <div style={{ color: '#2563eb', fontSize: 9, marginTop: 2 }}>
-                                  📎 bollettino
+                                  ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒâ€¦Ã‚Â½ bollettino
                                 </div>
                               )}
                               {cat.key === 'verbali' && s.fonte === 'posta+fattura' && (
@@ -797,23 +799,27 @@ export default function NoleggioAuto() {
                             </td>
                             <td style={{ padding: '8px 10px', textAlign: 'center' }}>
                               {s.fattura_id ? (
-                                <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
-                                  <a
-                                    href={`/api/fatture-ricevute/fattura/${s.fattura_id}/view-assoinvoice`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
+                              <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
+                                  <button
+                                    onClick={e => {
+                                      e.stopPropagation();
+                                      setFatturaView({
+                                        id: s.fattura_id,
+                                        numero: s.numero_fattura || s.numero || s.descrizione,
+                                      });
+                                    }}
                                     style={{
                                       padding: '4px 8px',
                                       background: '#dbeafe',
                                       color: '#2563eb',
+                                      border: 'none',
                                       borderRadius: 4,
-                                      textDecoration: 'none',
+                                      cursor: 'pointer',
                                       fontSize: 11,
                                     }}
-                                    onClick={e => e.stopPropagation()}
                                   >
-                                    📄 Fattura
-                                  </a>
+                                    Vedi fattura
+                                  </button>
                                   {cat.key === 'verbali' && s.numero_verbale && (
                                     <button
                                       onClick={e => {
@@ -834,7 +840,7 @@ export default function NoleggioAuto() {
                                         fontSize: 11,
                                       }}
                                     >
-                                      ⚠️ PDF
+                                      ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã‚Â¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã‚Â¯Ãƒâ€šÃ‚Â¸Ãƒâ€šÃ‚Â PDF
                                     </button>
                                   )}
                                 </div>
@@ -916,16 +922,16 @@ export default function NoleggioAuto() {
         }}
       >
         <div style={{ padding: '16px 20px', borderBottom: '1px solid #e5e7eb' }}>
-          <h2 style={{ margin: 0, fontSize: 18 }}>🚗 Elenco Veicoli ({veicoli.length})</h2>
+          <h2 style={{ margin: 0, fontSize: 18 }}>ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸Ãƒâ€¦Ã‚Â¡ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Elenco Veicoli ({veicoli.length})</h2>
         </div>
 
         {loading ? (
           <div style={{ padding: 40, textAlign: 'center', color: '#6b7280' }}>
-            ⏳ Caricamento...
+            ÃƒÆ’Ã‚Â¢Ãƒâ€šÃ‚ÂÃƒâ€šÃ‚Â³ Caricamento...
           </div>
         ) : veicoli.length === 0 ? (
           <div style={{ padding: 40, textAlign: 'center' }}>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>🚗</div>
+            <div style={{ fontSize: 48, marginBottom: 16 }}>ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸Ãƒâ€¦Ã‚Â¡ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â</div>
             <div style={{ color: '#6b7280' }}>Nessun veicolo trovato per {annoFiltro}</div>
             <div style={{ color: '#9ca3af', fontSize: 14, marginTop: 8 }}>
               I veicoli vengono rilevati automaticamente dalle fatture dei fornitori di noleggio
@@ -997,7 +1003,7 @@ export default function NoleggioAuto() {
                       fontSize: 12,
                     }}
                   >
-                    📋 Canoni
+                    ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¹ Canoni
                   </th>
                   <th
                     style={{
@@ -1007,7 +1013,7 @@ export default function NoleggioAuto() {
                       fontSize: 12,
                     }}
                   >
-                    ⚠️ Verbali
+                    ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã‚Â¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã‚Â¯Ãƒâ€šÃ‚Â¸Ãƒâ€šÃ‚Â Verbali
                   </th>
                   <th
                     style={{
@@ -1017,7 +1023,7 @@ export default function NoleggioAuto() {
                       fontSize: 12,
                     }}
                   >
-                    📄 Bollo
+                    ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾ Bollo
                   </th>
                   <th
                     style={{
@@ -1027,7 +1033,7 @@ export default function NoleggioAuto() {
                       fontSize: 12,
                     }}
                   >
-                    🔧 Ripar.
+                    ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€šÃ‚Â§ Ripar.
                   </th>
                   <th
                     style={{
@@ -1170,7 +1176,7 @@ export default function NoleggioAuto() {
                         }}
                         title="Vedi dettaglio"
                       >
-                        👁️
+                        ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“Ãƒâ€šÃ‚ÂÃƒÆ’Ã‚Â¯Ãƒâ€šÃ‚Â¸Ãƒâ€šÃ‚Â
                       </button>
                       <button
                         onClick={e => {
@@ -1188,7 +1194,7 @@ export default function NoleggioAuto() {
                         }}
                         title="Modifica"
                       >
-                        ✏️
+                        ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“Ãƒâ€šÃ‚ÂÃƒÆ’Ã‚Â¯Ãƒâ€šÃ‚Â¸Ãƒâ€šÃ‚Â
                       </button>
                     </td>
                   </tr>
@@ -1233,12 +1239,12 @@ export default function NoleggioAuto() {
                 marginBottom: 20,
               }}
             >
-              <h2 style={{ margin: 0, fontSize: 18 }}>✏️ Modifica {editingVeicolo.targa}</h2>
+              <h2 style={{ margin: 0, fontSize: 18 }}>ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“Ãƒâ€šÃ‚ÂÃƒÆ’Ã‚Â¯Ãƒâ€šÃ‚Â¸Ãƒâ€šÃ‚Â Modifica {editingVeicolo.targa}</h2>
               <button
                 onClick={() => setEditingVeicolo(null)}
                 style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer' }}
               >
-                ✕
+                ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢
               </button>
             </div>
 
@@ -1261,7 +1267,7 @@ export default function NoleggioAuto() {
                   }}
                 >
                   <span style={{ fontWeight: '600', color: '#166534', fontSize: 13 }}>
-                    🚗 Dati da OpenAPI Automotive
+                    ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸Ãƒâ€¦Ã‚Â¡ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Dati da OpenAPI Automotive
                   </span>
                   <button
                     onClick={() => handleLookupVeicolo(editingVeicolo.targa)}
@@ -1277,7 +1283,7 @@ export default function NoleggioAuto() {
                       fontWeight: '600',
                     }}
                   >
-                    {lookupLoading ? '⏳ Cercando...' : '🔍 Cerca Dati'}
+                    {lookupLoading ? 'ÃƒÆ’Ã‚Â¢Ãƒâ€šÃ‚ÂÃƒâ€šÃ‚Â³ Cercando...' : 'ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒâ€šÃ‚Â Cerca Dati'}
                   </button>
                 </div>
 
@@ -1347,14 +1353,14 @@ export default function NoleggioAuto() {
                         width: '100%',
                       }}
                     >
-                      ✓ Applica questi dati
+                      ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ Applica questi dati
                     </button>
                   </div>
                 )}
 
                 {lookupResult?.error && (
                   <div style={{ fontSize: 12, color: '#dc2626', marginTop: 8 }}>
-                    ❌ {lookupResult.error}
+                    ÃƒÆ’Ã‚Â¢Ãƒâ€šÃ‚ÂÃƒâ€¦Ã¢â‚¬â„¢ {lookupResult.error}
                   </div>
                 )}
 
@@ -1473,7 +1479,7 @@ export default function NoleggioAuto() {
                   <label
                     style={{ display: 'block', fontSize: 12, fontWeight: '500', marginBottom: 4 }}
                   >
-                    N° Contratto
+                    NÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â° Contratto
                   </label>
                   <input
                     type="text"
@@ -1535,7 +1541,7 @@ export default function NoleggioAuto() {
                     onChange={e =>
                       setEditingVeicolo({ ...editingVeicolo, canone_mensile: e.target.value })
                     }
-                    placeholder="€"
+                    placeholder="ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬"
                     style={{
                       width: '100%',
                       padding: '8px 12px',
@@ -1747,7 +1753,7 @@ export default function NoleggioAuto() {
                   fontWeight: '600',
                 }}
               >
-                🗑️ Elimina
+                ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬ÂÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¯Ãƒâ€šÃ‚Â¸Ãƒâ€šÃ‚Â Elimina
               </button>
               <div style={{ display: 'flex', gap: 10 }}>
                 <button
@@ -1776,7 +1782,7 @@ export default function NoleggioAuto() {
                     fontWeight: '600',
                   }}
                 >
-                  💾 Salva
+                  ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢Ãƒâ€šÃ‚Â¾ Salva
                 </button>
               </div>
             </div>
@@ -1816,12 +1822,12 @@ export default function NoleggioAuto() {
                 marginBottom: 20,
               }}
             >
-              <h2 style={{ margin: 0, fontSize: 18 }}>➕ Aggiungi Veicolo</h2>
+              <h2 style={{ margin: 0, fontSize: 18 }}>ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã‚Â¾ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ Aggiungi Veicolo</h2>
               <button
                 onClick={() => setShowAddVeicolo(false)}
                 style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer' }}
               >
-                ✕
+                ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢
               </button>
             </div>
 
@@ -1878,7 +1884,7 @@ export default function NoleggioAuto() {
                   <option value="">-- Seleziona Fornitore --</option>
                   {fornitori.map(f => (
                     <option key={f.piva} value={f.piva}>
-                      {f.nome} {!f.targa_in_fattura ? '⚠️' : ''}
+                      {f.nome} {!f.targa_in_fattura ? 'ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã‚Â¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã‚Â¯Ãƒâ€šÃ‚Â¸Ãƒâ€šÃ‚Â' : ''}
                     </option>
                   ))}
                 </select>
@@ -1982,14 +1988,14 @@ export default function NoleggioAuto() {
                   fontWeight: '600',
                 }}
               >
-                ➕ Aggiungi
+                ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã‚Â¾ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ Aggiungi
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Modal Fatture Non Associate — sostituisce il vecchio alert() nativo
+      {/* Modal Fatture Non Associate ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â sostituisce il vecchio alert() nativo
           (illeggibile, senza scroll utile, testo non selezionabile) */}
       {modalFattureNonAssociate.open && (
         <div
@@ -2026,18 +2032,18 @@ export default function NoleggioAuto() {
               }}
             >
               <h2 style={{ margin: 0, fontSize: 18, color: COLORS.primary }}>
-                📋 Fatture Non Associate ({modalFattureNonAssociate.fatture.length})
+                ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¹ Fatture Non Associate ({modalFattureNonAssociate.fatture.length})
               </h2>
               <button
                 onClick={() => setModalFattureNonAssociate(m => ({ ...m, open: false }))}
                 style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer' }}
               >
-                ✕
+                ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢
               </button>
             </div>
             <p style={{ fontSize: 13, color: COLORS.textMuted, marginBottom: 16 }}>
-              Il sistema non è riuscito a estrarre la targa da queste fatture: vanno associate
-              manualmente a un veicolo (bottone "➕ Aggiungi Veicolo").
+              Il sistema non ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¨ riuscito a estrarre la targa da queste fatture: vanno associate
+              manualmente a un veicolo (bottone "ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã‚Â¾ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ Aggiungi Veicolo").
             </p>
 
             {modalFattureNonAssociate.loading && (
@@ -2063,7 +2069,7 @@ export default function NoleggioAuto() {
               !modalFattureNonAssociate.errore &&
               modalFattureNonAssociate.fatture.length === 0 && (
                 <div style={{ padding: 24, textAlign: 'center', color: COLORS.textMuted }}>
-                  ✅ Nessuna fattura non associata
+                  ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ Nessuna fattura non associata
                 </div>
               )}
 
@@ -2084,38 +2090,37 @@ export default function NoleggioAuto() {
                   >
                     <div>
                       <div style={{ fontWeight: 600, fontSize: 13, color: COLORS.text }}>
-                        {f.fornitore || 'N/D'} — Fatt. {f.numero || 'N/D'} del {f.data || 'N/D'}
+                        {f.fornitore || 'N/D'} ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Fatt. {f.numero || 'N/D'} del {f.data || 'N/D'}
                       </div>
                       <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 2 }}>
                         {formatEuro(Number(f.importo || 0))}
-                        {f.descrizione ? ` · ${f.descrizione}` : ''}
+                        {f.descrizione ? ` ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· ${f.descrizione}` : ''}
                       </div>
                       {(f.contratto || f.codice_cliente) && (
                         <div style={{ fontSize: 11, color: COLORS.textSubtle, marginTop: 2 }}>
                           {f.contratto ? `Contratto: ${f.contratto}` : ''}
-                          {f.contratto && f.codice_cliente ? ' · ' : ''}
+                          {f.contratto && f.codice_cliente ? ' ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· ' : ''}
                           {f.codice_cliente ? `Cod. cliente: ${f.codice_cliente}` : ''}
                         </div>
                       )}
                     </div>
                     <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
                       {f.id && (
-                        <a
-                          href={`/api/fatture-ricevute/fattura/${f.id}/view-assoinvoice`}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                        <button
+                          onClick={e => {
+                            e.stopPropagation();
+                            setFatturaView({ id: f.id, numero: f.numero_fattura || f.numero || f.fornitore });
+                          }}
                           style={{
                             ...button('outline'),
                             fontSize: 12,
                             padding: '6px 10px',
-                            textDecoration: 'none',
                             display: 'inline-flex',
                             alignItems: 'center',
                           }}
-                          onClick={e => e.stopPropagation()}
                         >
-                          📄 Vedi
-                        </a>
+                          Vedi
+                        </button>
                       )}
                       <button
                         onClick={() => {
@@ -2125,7 +2130,7 @@ export default function NoleggioAuto() {
                         }}
                         style={{ ...button('outline'), fontSize: 12, padding: '6px 10px' }}
                       >
-                        ➕ Associa
+                        ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã‚Â¾ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ Associa
                       </button>
                     </div>
                   </div>
@@ -2134,6 +2139,13 @@ export default function NoleggioAuto() {
             )}
           </div>
         </div>
+      )}
+      {fatturaView && (
+        <ModalFattura
+          fatturaId={fatturaView.id}
+          numero={fatturaView.numero}
+          onClose={() => setFatturaView(null)}
+        />
       )}
     </div>
   );

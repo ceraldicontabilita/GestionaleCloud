@@ -13,6 +13,7 @@ import {
   pagePad,
 } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
+import ModalFattura from '../components/ModalFattura';
 
 export default function DettaglioVerbale() {
   const isMobile = useIsMobile();
@@ -21,6 +22,7 @@ export default function DettaglioVerbale() {
   const [verbale, setVerbale] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [fatturaView, setFatturaView] = useState(null);
 
   // Costruisci il numero verbale completo
   const verbaleId = prefisso && numero ? `${prefisso}/${numero}` : numeroVerbale;
@@ -56,7 +58,7 @@ export default function DettaglioVerbale() {
   if (loading) {
     return (
       <div style={{ padding: 40, textAlign: 'center' }}>
-        <div style={{ fontSize: 48, marginBottom: 16 }}>⏳</div>
+        <div style={{ fontSize: 48, marginBottom: 16 }}>â³</div>
         <div>Caricamento verbale {verbaleId}...</div>
       </div>
     );
@@ -74,7 +76,7 @@ export default function DettaglioVerbale() {
             textAlign: 'center',
           }}
         >
-          <div style={{ fontSize: 48, marginBottom: 16 }}>❌</div>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>âŒ</div>
           <div style={{ fontWeight: 'bold', marginBottom: 8 }}>Errore</div>
           <div>{error}</div>
           <div style={{ fontSize: 13, color: '#64748b', marginTop: 8 }}>
@@ -93,7 +95,7 @@ export default function DettaglioVerbale() {
               cursor: 'pointer',
             }}
           >
-            ← Torna indietro
+            â† Torna indietro
           </button>
         </div>
       </div>
@@ -105,7 +107,7 @@ export default function DettaglioVerbale() {
   return (
     <PageLayout
       title="Dettaglio Verbale"
-      subtitle={`Verbale n° ${verbale?.numero_verbale || 'N/A'}`}
+      subtitle={`Verbale nÂ° ${verbale?.numero_verbale || 'N/A'}`}
     >
       <div style={{ maxWidth: 1200, margin: '0 auto' }}>
         {/* Header */}
@@ -123,7 +125,7 @@ export default function DettaglioVerbale() {
             style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}
           >
             <div>
-              <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>VERBALE N°</div>
+              <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>VERBALE NÂ°</div>
               <div style={{ fontSize: 28, fontWeight: 'bold', fontFamily: 'monospace' }}>
                 {verbale?.numero_verbale || 'N/A'}
               </div>
@@ -139,10 +141,10 @@ export default function DettaglioVerbale() {
               }}
             >
               {verbale?.stato_pagamento === 'pagato'
-                ? '✓ PAGATO'
+                ? 'âœ“ PAGATO'
                 : verbale?.stato_pagamento === 'sospeso'
-                  ? '⚠️ SOSPESO'
-                  : '❓ DA VERIFICARE'}
+                  ? 'âš ï¸ SOSPESO'
+                  : 'â“ DA VERIFICARE'}
             </div>
           </div>
 
@@ -198,7 +200,7 @@ export default function DettaglioVerbale() {
               }}
             >
               <h3 style={{ margin: '0 0 16px 0', fontSize: 16, color: '#1e3a5f' }}>
-                📋 Dettagli Verbale
+                ðŸ“‹ Dettagli Verbale
               </h3>
 
               <div style={{ fontSize: 13, lineHeight: 2 }}>
@@ -275,7 +277,7 @@ export default function DettaglioVerbale() {
               }}
             >
               <h3 style={{ margin: '0 0 16px 0', fontSize: 16, color: '#1e3a5f' }}>
-                📄 Fattura Associata
+                ðŸ“„ Fattura Associata
               </h3>
 
               <div style={{ fontSize: 13, lineHeight: 2 }}>
@@ -287,7 +289,7 @@ export default function DettaglioVerbale() {
                     paddingBottom: 8,
                   }}
                 >
-                  <span style={{ color: '#6b7280' }}>N° Fattura:</span>
+                  <span style={{ color: '#6b7280' }}>NÂ° Fattura:</span>
                   <strong style={{ fontFamily: 'monospace' }}>
                     {verbale?.numero_fattura || '-'}
                   </strong>
@@ -310,23 +312,27 @@ export default function DettaglioVerbale() {
               </div>
 
               {verbale?.fattura_id && (
-                <a
-                  href={`/api/fatture-ricevute/fattura/${verbale.fattura_id}/view-assoinvoice`}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <button
+                  onClick={() =>
+                    setFatturaView({
+                      id: verbale.fattura_id,
+                      numero: verbale.numero_fattura || verbale.fattura_numero || verbale.fornitore,
+                    })
+                  }
                   style={{
                     display: 'inline-block',
                     marginTop: 16,
                     padding: '10px 20px',
                     background: '#dbeafe',
                     color: '#2563eb',
+                    border: 'none',
                     borderRadius: 8,
-                    textDecoration: 'none',
+                    cursor: 'pointer',
                     fontWeight: '600',
                   }}
                 >
-                  📄 Visualizza Fattura
-                </a>
+                  ðŸ“„ Visualizza Fattura
+                </button>
               )}
             </div>
           </div>
@@ -344,7 +350,7 @@ export default function DettaglioVerbale() {
               }}
             >
               <h3 style={{ margin: '0 0 16px 0', fontSize: 16, color: '#1e3a5f' }}>
-                📎 Documenti PDF
+                ðŸ“Ž Documenti PDF
               </h3>
 
               {verbale?.pdf_disponibili && verbale.pdf_disponibili.length > 0 ? (
@@ -389,7 +395,7 @@ export default function DettaglioVerbale() {
                       }}
                       data-testid={`pdf-download-${idx}`}
                     >
-                      <span style={{ fontSize: 24 }}>📄</span>
+                      <span style={{ fontSize: 24 }}>ðŸ“„</span>
                       <div>
                         <div style={{ fontWeight: '600' }}>{pdf.filename}</div>
                         <div style={{ fontSize: 11, opacity: 0.8 }}>
@@ -409,7 +415,7 @@ export default function DettaglioVerbale() {
                     color: '#92400e',
                   }}
                 >
-                  <div style={{ fontSize: 36, marginBottom: 8 }}>📭</div>
+                  <div style={{ fontSize: 36, marginBottom: 8 }}>ðŸ“­</div>
                   <div style={{ fontWeight: 'bold', marginBottom: 4 }}>
                     PDF non ancora scaricato
                   </div>
@@ -437,7 +443,7 @@ export default function DettaglioVerbale() {
                       fontWeight: '600',
                     }}
                   >
-                    📧 Scarica da Posta
+                    ðŸ“§ Scarica da Posta
                   </button>
                 </div>
               )}
@@ -454,7 +460,7 @@ export default function DettaglioVerbale() {
               }}
             >
               <h3 style={{ margin: '0 0 16px 0', fontSize: 16, color: '#1e3a5f' }}>
-                💳 Stato Pagamento
+                ðŸ’³ Stato Pagamento
               </h3>
 
               {verbale?.stato === 'pagato' || verbale?.stato_pagamento === 'pagato' ? (
@@ -468,7 +474,7 @@ export default function DettaglioVerbale() {
                   data-testid="verbale-stato-pagato"
                 >
                   <div style={{ fontWeight: 'bold', color: '#166534', fontSize: 16 }}>
-                    ✅ PAGATO
+                    âœ… PAGATO
                   </div>
                   <div
                     style={{
@@ -538,7 +544,7 @@ export default function DettaglioVerbale() {
                         fontSize: 13,
                       }}
                     >
-                      📥 Scarica ricevuta
+                      ðŸ“¥ Scarica ricevuta
                     </a>
                   )}
                 </div>
@@ -553,7 +559,7 @@ export default function DettaglioVerbale() {
                   }}
                   data-testid="verbale-stato-da-verificare"
                 >
-                  <div style={{ fontSize: 36, marginBottom: 8 }}>⚠️</div>
+                  <div style={{ fontSize: 36, marginBottom: 8 }}>âš ï¸</div>
                   <div style={{ fontWeight: 'bold', color: '#92400e' }}>
                     {verbale?.stato === 'sospeso' || verbale?.stato_pagamento === 'sospeso'
                       ? 'SOSPESO'
@@ -573,7 +579,7 @@ export default function DettaglioVerbale() {
                         const d = res.data;
                         if (d.trovato) {
                           alert(
-                            `✅ Pagamento trovato!\nFonte: ${d.fonte}\nPSP: ${d.psp}\nImporto: ${formatEuro(d.importo)}\nData: ${d.data_pagamento || ''}`
+                            `âœ… Pagamento trovato!\nFonte: ${d.fonte}\nPSP: ${d.psp}\nImporto: ${formatEuro(d.importo)}\nData: ${d.data_pagamento || ''}`
                           );
                           setTimeout(() => window.location.reload(), 500);
                         } else {
@@ -594,7 +600,7 @@ export default function DettaglioVerbale() {
                       fontSize: 13,
                     }}
                   >
-                    🔍 Cerca pagamento
+                    ðŸ” Cerca pagamento
                   </button>
                 </div>
               )}
@@ -633,7 +639,7 @@ export default function DettaglioVerbale() {
                   boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
                 }}
               >
-                <h3 style={{ margin: '0 0 16px 0', fontSize: 16, color: '#1e3a5f' }}>🚗 Veicolo</h3>
+                <h3 style={{ margin: '0 0 16px 0', fontSize: 16, color: '#1e3a5f' }}>ðŸš— Veicolo</h3>
 
                 <div style={{ fontSize: 13, lineHeight: 2 }}>
                   <div
@@ -712,9 +718,16 @@ export default function DettaglioVerbale() {
               fontWeight: '600',
             }}
           >
-            ← Torna indietro
+            â† Torna indietro
           </button>
         </div>
+        {fatturaView && (
+          <ModalFattura
+            fatturaId={fatturaView.id}
+            numero={fatturaView.numero}
+            onClose={() => setFatturaView(null)}
+          />
+        )}
       </div>
     </PageLayout>
   );

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import { dashboardSummary, health } from '../api';
 import api from '../api';
 import { Link } from 'react-router-dom';
@@ -23,6 +23,7 @@ import {
 import { Eye, EyeOff, TrendingUp, Lock, AlertTriangle, Users } from 'lucide-react';
 import WidgetVerificaCoerenza from '../components/WidgetVerificaCoerenza';
 import WidgetAgenti from '../components/WidgetAgenti';
+import ModalFattura from '../components/ModalFattura';
 
 export default function Dashboard() {
   const isMobile = useIsMobile();
@@ -38,6 +39,7 @@ export default function Dashboard() {
   const [speseCategoria, setSpeseCategoria] = useState(null);
   const [confrontoAnnuale, setConfrontoAnnuale] = useState(null);
   const [statoRiconciliazione, setStatoRiconciliazione] = useState(null);
+  const [fatturaView, setFatturaView] = useState(null);
   // Stato per widget IRES/IRAP
   const [imposteData, setImposteData] = useState(null);
   // Volume Affari Reale
@@ -133,7 +135,7 @@ export default function Dashboard() {
         // Carica dati secondari DOPO i primari (non bloccanti)
         setLoading(false);
 
-        // Grafici avanzati caricati in background (senza alert-limiti che è lento)
+        // Grafici avanzati caricati in background (senza alert-limiti che ÃƒÂ¨ lento)
         Promise.all([
           api.get(`/api/dashboard/spese-per-categoria?anno=${anno}`).catch(() => ({ data: null })),
           api.get(`/api/dashboard/confronto-annuale?anno=${anno}`).catch(() => ({ data: null })),
@@ -248,16 +250,16 @@ export default function Dashboard() {
 
   if (loading) {
     return (
-      <PageLayout title="Dashboard" icon="📊" subtitle="Panoramica">
+      <PageLayout title="Dashboard" icon="Ã°Å¸â€œÅ " subtitle="Panoramica">
         <div style={STYLES.card}>
-          <p style={{ color: COLORS.gray }}>⏳ Caricamento in corso...</p>
+          <p style={{ color: COLORS.gray }}>Ã¢ÂÂ³ Caricamento in corso...</p>
         </div>
       </PageLayout>
     );
   }
 
   return (
-    <PageLayout title={`Dashboard ${anno}`} icon="📊" subtitle="Panoramica generale">
+    <PageLayout title={`Dashboard ${anno}`} icon="Ã°Å¸â€œÅ " subtitle="Panoramica generale">
       <div style={{ ...STYLES.card, marginBottom: 12 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -284,15 +286,15 @@ export default function Dashboard() {
                 boxShadow: '0 2px 4px rgba(102,126,234,0.3)',
               }}
             >
-              {autoRepairStatus === 'running' ? <>⏳ Riparazione...</> : <>🔧 Auto-Ripara Dati</>}
+              {autoRepairStatus === 'running' ? <>Ã¢ÂÂ³ Riparazione...</> : <>Ã°Å¸â€Â§ Auto-Ripara Dati</>}
             </button>
             {autoRepairStatus && autoRepairStatus !== 'running' && autoRepairStatus.totale > 0 && (
-              <span style={badge('success')}>✓ {autoRepairStatus.totale} correzioni</span>
+              <span style={badge('success')}>Ã¢Å“â€œ {autoRepairStatus.totale} correzioni</span>
             )}
             {err ? (
               <span style={{ color: COLORS.danger, fontSize: 14 }}>{err}</span>
             ) : (
-              <span style={badge('success')}>✓ Backend connesso</span>
+              <span style={badge('success')}>Ã¢Å“â€œ Backend connesso</span>
             )}
           </div>
         </div>
@@ -504,7 +506,7 @@ export default function Dashboard() {
               <TrendingUp size={18} /> Bilancio Istantaneo {anno}
             </h3>
             <span style={{ fontSize: 11, opacity: 0.7 }}>
-              {bilancioIstantaneo.documenti?.fatture_ricevute || 0} fatt. •{' '}
+              {bilancioIstantaneo.documenti?.fatture_ricevute || 0} fatt. Ã¢â‚¬Â¢{' '}
               {bilancioIstantaneo.documenti?.corrispettivi || 0} corr.
             </span>
           </div>
@@ -618,7 +620,7 @@ export default function Dashboard() {
                 gap: 6,
               }}
             >
-              🧮 Imposte {anno}{' '}
+              Ã°Å¸Â§Â® Imposte {anno}{' '}
               <span style={{ fontSize: 10, opacity: 0.7, fontWeight: 400 }}>
                 IRAP {imposteData.irap?.aliquota}%
               </span>
@@ -634,7 +636,7 @@ export default function Dashboard() {
                 fontSize: 11,
               }}
             >
-              Dettaglio →
+              Dettaglio Ã¢â€ â€™
             </Link>
           </div>
 
@@ -686,13 +688,13 @@ export default function Dashboard() {
               }}
             >
               <div>
-                <span style={{ opacity: 0.7 }}>↑ Variazioni aumento: </span>
+                <span style={{ opacity: 0.7 }}>Ã¢â€ â€˜ Variazioni aumento: </span>
                 <span style={{ color: '#fca5a5' }}>
                   {formatEuro(imposteData.ires?.totale_variazioni_aumento)}
                 </span>
               </div>
               <div>
-                <span style={{ opacity: 0.7 }}>↓ Variazioni diminuzione: </span>
+                <span style={{ opacity: 0.7 }}>Ã¢â€ â€œ Variazioni diminuzione: </span>
                 <span style={{ color: '#86efac' }}>
                   {formatEuro(imposteData.ires?.totale_variazioni_diminuzione)}
                 </span>
@@ -724,7 +726,7 @@ export default function Dashboard() {
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 16 }}>📋</span>
+              <span style={{ fontSize: 16 }}>Ã°Å¸â€œâ€¹</span>
               <span style={{ fontWeight: 600, fontSize: 14, color: '#1e3a5f' }}>Scadenze F24</span>
               <span
                 style={{
@@ -740,7 +742,7 @@ export default function Dashboard() {
               </span>
             </div>
             <Link to="/riconciliazione/f24" style={{ fontSize: 11, color: '#3b82f6', textDecoration: 'none' }}>
-              Vedi tutti →
+              Vedi tutti Ã¢â€ â€™
             </Link>
           </div>
 
@@ -762,7 +764,7 @@ export default function Dashboard() {
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
-                    <span style={{ fontSize: 14 }}>{f24.tipo === 'IVA' ? '🧾' : '📋'}</span>
+                    <span style={{ fontSize: 14 }}>{f24.tipo === 'IVA' ? 'Ã°Å¸Â§Â¾' : 'Ã°Å¸â€œâ€¹'}</span>
                     <div>
                       <div style={{ fontSize: 12, fontWeight: 600, color: '#1e293b' }}>
                         {f24.descrizione || f24.tipo || 'F24'}
@@ -837,7 +839,7 @@ export default function Dashboard() {
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontSize: 24 }}>🚗</span>
+              <span style={{ fontSize: 24 }}>Ã°Å¸Å¡â€”</span>
               <div>
                 <div style={{ fontWeight: 'bold', fontSize: 16, color: '#1e3a5f' }}>
                   Noleggio Auto
@@ -848,7 +850,7 @@ export default function Dashboard() {
               </div>
             </div>
             <Link to="/noleggio" style={{ fontSize: 13, color: '#3b82f6', textDecoration: 'none' }}>
-              Gestisci →
+              Gestisci Ã¢â€ â€™
             </Link>
           </div>
 
@@ -929,22 +931,22 @@ export default function Dashboard() {
           >
             <div>
               <h2 style={{ fontSize: 18, margin: 0, fontWeight: 'bold', color: '#1e3a5f' }}>
-                📈 Trend Mensile {anno}
+                Ã°Å¸â€œË† Trend Mensile {anno}
               </h2>
               <span style={{ fontSize: 13, color: '#6b7280' }}>Entrate vs Uscite</span>
             </div>
             <div style={{ display: 'flex', gap: 20, fontSize: 14 }}>
               <div>
-                <span style={{ color: '#10b981' }}>● Entrate:</span>{' '}
+                <span style={{ color: '#10b981' }}>Ã¢â€”Â Entrate:</span>{' '}
                 <strong>{formatEuro(trendData.totali?.entrate)}</strong>
               </div>
               <div>
-                <span style={{ color: '#ef4444' }}>● Uscite:</span>{' '}
+                <span style={{ color: '#ef4444' }}>Ã¢â€”Â Uscite:</span>{' '}
                 <strong>{formatEuro(trendData.totali?.uscite)}</strong>
               </div>
               <div>
                 <span style={{ color: trendData.totali?.saldo >= 0 ? '#10b981' : '#ef4444' }}>
-                  ● Saldo:
+                  Ã¢â€”Â Saldo:
                 </span>{' '}
                 <strong style={{ color: trendData.totali?.saldo >= 0 ? '#10b981' : '#ef4444' }}>
                   {formatEuro(trendData.totali?.saldo)}
@@ -961,7 +963,7 @@ export default function Dashboard() {
               >
                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                 <XAxis dataKey="mese_nome" tick={{ fontSize: 12 }} />
-                <YAxis tickFormatter={v => `€${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 11 }} />
+                <YAxis tickFormatter={v => `Ã¢â€šÂ¬${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 11 }} />
                 <Tooltip
                   formatter={value => formatEuro(value)}
                   labelStyle={{ fontWeight: 'bold' }}
@@ -1026,7 +1028,7 @@ export default function Dashboard() {
           }}
         >
           <h2 style={{ fontSize: 18, margin: '0 0 15px 0', fontWeight: 'bold', color: '#1e3a5f' }}>
-            📊 Trend IVA {anno}
+            Ã°Å¸â€œÅ  Trend IVA {anno}
           </h2>
           <div style={{ height: 200, width: '100%', minHeight: 200 }}>
             <ResponsiveContainer width="100%" height="100%">
@@ -1036,7 +1038,7 @@ export default function Dashboard() {
               >
                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                 <XAxis dataKey="mese_nome" tick={{ fontSize: 12 }} />
-                <YAxis tickFormatter={v => `€${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 11 }} />
+                <YAxis tickFormatter={v => `Ã¢â€šÂ¬${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 11 }} />
                 <Tooltip
                   formatter={value => formatEuro(value)}
                   contentStyle={{ borderRadius: 8 }}
@@ -1115,7 +1117,7 @@ export default function Dashboard() {
             <h2
               style={{ fontSize: 18, margin: '0 0 15px 0', fontWeight: 'bold', color: '#1e3a5f' }}
             >
-              🥧 Distribuzione Spese {anno}
+              Ã°Å¸Â¥Â§ Distribuzione Spese {anno}
             </h2>
             <div style={{ height: 280, display: 'flex', alignItems: 'center', minHeight: 280 }}>
               <ResponsiveContainer width="60%" height="100%">
@@ -1207,7 +1209,7 @@ export default function Dashboard() {
             <h2
               style={{ fontSize: 18, margin: '0 0 15px 0', fontWeight: 'bold', color: '#1e3a5f' }}
             >
-              ✅ Stato Riconciliazione {anno}
+              Ã¢Å“â€¦ Stato Riconciliazione {anno}
             </h2>
 
             {/* Barra progresso globale */}
@@ -1254,7 +1256,7 @@ export default function Dashboard() {
                   marginBottom: 8,
                 }}
               >
-                <span style={{ fontWeight: 600 }}>📄 Fatture Fornitori</span>
+                <span style={{ fontWeight: 600 }}>Ã°Å¸â€œâ€ž Fatture Fornitori</span>
                 <span
                   style={{
                     padding: '2px 8px',
@@ -1360,7 +1362,7 @@ export default function Dashboard() {
                 fontSize: 13,
               }}
             >
-              Vai a Riconciliazione →
+              Vai a Riconciliazione Ã¢â€ â€™
             </Link>
           </div>
         )}
@@ -1385,7 +1387,7 @@ export default function Dashboard() {
               }}
             >
               <h3 style={{ fontSize: 16, margin: 0, fontWeight: 'bold', color: '#166534' }}>
-                🧠 Learning Machine
+                Ã°Å¸Â§Â  Learning Machine
               </h3>
               <span
                 style={{
@@ -1463,7 +1465,7 @@ export default function Dashboard() {
                 fontSize: 12,
               }}
             >
-              Gestisci Learning Machine →
+              Gestisci Learning Machine Ã¢â€ â€™
             </Link>
           </div>
         )}
@@ -1481,7 +1483,7 @@ export default function Dashboard() {
           }}
         >
           <h2 style={{ fontSize: 18, margin: '0 0 15px 0', fontWeight: 'bold', color: '#1e3a5f' }}>
-            📊 Confronto {anno} vs {anno - 1}
+            Ã°Å¸â€œÅ  Confronto {anno} vs {anno - 1}
           </h2>
           <div
             style={{
@@ -1512,7 +1514,7 @@ export default function Dashboard() {
                     fontWeight: 'bold',
                   }}
                 >
-                  {confrontoAnnuale.variazioni_percentuali.entrate >= 0 ? '↑' : '↓'}
+                  {confrontoAnnuale.variazioni_percentuali.entrate >= 0 ? 'Ã¢â€ â€˜' : 'Ã¢â€ â€œ'}
                   {Math.abs(confrontoAnnuale.variazioni_percentuali.entrate)}%
                 </span>
                 <span style={{ color: '#6b7280' }}>vs {anno - 1}</span>
@@ -1541,7 +1543,7 @@ export default function Dashboard() {
                     fontWeight: 'bold',
                   }}
                 >
-                  {confrontoAnnuale.variazioni_percentuali.uscite >= 0 ? '↑' : '↓'}
+                  {confrontoAnnuale.variazioni_percentuali.uscite >= 0 ? 'Ã¢â€ â€˜' : 'Ã¢â€ â€œ'}
                   {Math.abs(confrontoAnnuale.variazioni_percentuali.uscite)}%
                 </span>
                 <span style={{ color: '#6b7280' }}>vs {anno - 1}</span>
@@ -1582,7 +1584,7 @@ export default function Dashboard() {
                     fontWeight: 'bold',
                   }}
                 >
-                  {confrontoAnnuale.variazioni_percentuali.saldo >= 0 ? '↑' : '↓'}
+                  {confrontoAnnuale.variazioni_percentuali.saldo >= 0 ? 'Ã¢â€ â€˜' : 'Ã¢â€ â€œ'}
                   {Math.abs(confrontoAnnuale.variazioni_percentuali.saldo)}%
                 </span>
                 <span style={{ color: '#6b7280' }}>vs {anno - 1}</span>
@@ -1610,7 +1612,7 @@ export default function Dashboard() {
                     fontWeight: 'bold',
                   }}
                 >
-                  {confrontoAnnuale.variazioni_percentuali.num_fatture >= 0 ? '↑' : '↓'}
+                  {confrontoAnnuale.variazioni_percentuali.num_fatture >= 0 ? 'Ã¢â€ â€˜' : 'Ã¢â€ â€œ'}
                   {Math.abs(confrontoAnnuale.variazioni_percentuali.num_fatture)}%
                 </span>
                 <span style={{ color: '#6b7280' }}>vs {anno - 1}</span>
@@ -1630,7 +1632,7 @@ export default function Dashboard() {
           marginTop: 20,
         }}
       >
-        <h2 style={{ fontSize: 18, fontWeight: 'bold', color: '#1e3a5f' }}>🚀 Azioni Rapide</h2>
+        <h2 style={{ fontSize: 18, fontWeight: 'bold', color: '#1e3a5f' }}>Ã°Å¸Å¡â‚¬ Azioni Rapide</h2>
         <div
           style={{
             display: 'grid',
@@ -1640,31 +1642,31 @@ export default function Dashboard() {
           }}
         >
           <Link to="/contabilita" style={quickActionStyle('#e0f2fe', '#0369a1')}>
-            <span style={{ fontSize: 20 }}>🧮</span>
+            <span style={{ fontSize: 20 }}>Ã°Å¸Â§Â®</span>
             <span>IRES/IRAP</span>
           </Link>
           <Link to="/regole-categorizzazione" style={quickActionStyle('#fef3c7', '#b45309')}>
-            <span style={{ fontSize: 20 }}>⚙️</span>
+            <span style={{ fontSize: 20 }}>Ã¢Å¡â„¢Ã¯Â¸Â</span>
             <span>Regole Categorie</span>
           </Link>
           <Link to="/import-export" style={quickActionStyle('#e3f2fd', '#1565c0')}>
-            <span style={{ fontSize: 20 }}>📤</span>
+            <span style={{ fontSize: 20 }}>Ã°Å¸â€œÂ¤</span>
             <span>Import/Export</span>
           </Link>
           <Link to="/bilancio" style={quickActionStyle('#f3e5f5', '#7b1fa2')}>
-            <span style={{ fontSize: 20 }}>📊</span>
+            <span style={{ fontSize: 20 }}>Ã°Å¸â€œÅ </span>
             <span>Bilancio</span>
           </Link>
           <Link to="/controllo-mensile" style={quickActionStyle('#e8f5e9', '#2e7d32')}>
-            <span style={{ fontSize: 20 }}>📈</span>
+            <span style={{ fontSize: 20 }}>Ã°Å¸â€œË†</span>
             <span>Controllo Mensile</span>
           </Link>
           <Link to="/riconciliazione/f24" style={quickActionStyle('#fff3e0', '#e65100')}>
-            <span style={{ fontSize: 20 }}>📋</span>
+            <span style={{ fontSize: 20 }}>Ã°Å¸â€œâ€¹</span>
             <span>F24 / Tributi</span>
           </Link>
           <Link to="/commercialista" style={quickActionStyle('#fce4ec', '#c2185b')}>
-            <span style={{ fontSize: 20 }}>📁</span>
+            <span style={{ fontSize: 20 }}>Ã°Å¸â€œÂ</span>
             <span>Commercialista</span>
           </Link>
         </div>
@@ -1672,7 +1674,7 @@ export default function Dashboard() {
         {/* Report PDF Section */}
         <div style={{ marginTop: 20, paddingTop: 20, borderTop: '1px solid #e2e8f0' }}>
           <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: '#475569' }}>
-            📄 Scarica Report PDF
+            Ã°Å¸â€œâ€ž Scarica Report PDF
           </div>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             <a
@@ -1689,7 +1691,7 @@ export default function Dashboard() {
                 fontWeight: 500,
               }}
             >
-              🧮 Dichiarazione IRES/IRAP
+              Ã°Å¸Â§Â® Dichiarazione IRES/IRAP
             </a>
             <a
               href={`/api/report-pdf/mensile?anno=${anno}&mese=${new Date().getMonth() + 1}`}
@@ -1705,7 +1707,7 @@ export default function Dashboard() {
                 fontWeight: 500,
               }}
             >
-              📊 Report Mensile
+              Ã°Å¸â€œÅ  Report Mensile
             </a>
             <a
               href="/api/report-pdf/scadenze?giorni=30"
@@ -1721,7 +1723,7 @@ export default function Dashboard() {
                 fontWeight: 500,
               }}
             >
-              ⏰ Report Scadenze
+              Ã¢ÂÂ° Report Scadenze
             </a>
             <a
               href="/api/report-pdf/magazzino"
@@ -1737,7 +1739,7 @@ export default function Dashboard() {
                 fontWeight: 500,
               }}
             >
-              📦 Report Magazzino
+              Ã°Å¸â€œÂ¦ Report Magazzino
             </a>
           </div>
         </div>
@@ -1796,7 +1798,7 @@ function POSCalendarWidget({ data }) {
 
   // Trova il primo giorno del mese
   const primoGiorno = new Date(data.giorni[0].data_pagamento);
-  const offsetInizio = (primoGiorno.getDay() + 6) % 7; // Lunedì = 0
+  const offsetInizio = (primoGiorno.getDay() + 6) % 7; // LunedÃƒÂ¬ = 0
 
   // Prepara griglia calendario
   const settimane = [];
@@ -1921,15 +1923,15 @@ function ScadenzeWidget({ scadenze }) {
   const getTipoIcon = tipo => {
     switch (tipo) {
       case 'IVA':
-        return '🧾';
+        return 'Ã°Å¸Â§Â¾';
       case 'F24':
-        return '📋';
+        return 'Ã°Å¸â€œâ€¹';
       case 'FATTURA':
-        return '📄';
+        return 'Ã°Å¸â€œâ€ž';
       case 'INPS':
-        return '🏛️';
+        return 'Ã°Å¸Ââ€ºÃ¯Â¸Â';
       default:
-        return '📌';
+        return 'Ã°Å¸â€œÅ’';
     }
   };
 
@@ -1952,7 +1954,7 @@ function ScadenzeWidget({ scadenze }) {
         numero_fattura: scadenza.numero_fattura || '',
       });
       setPagaModal(null);
-      // Rimuovi immediatamente dalla lista locale — nessun reload
+      // Rimuovi immediatamente dalla lista locale Ã¢â‚¬â€ nessun reload
       setPaidIds(prev => new Set([...prev, scadenza.id]));
     } catch (e) {
       alert('Errore pagamento: ' + (e.response?.data?.detail || e.message));
@@ -1983,14 +1985,14 @@ function ScadenzeWidget({ scadenze }) {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 24 }}>📅</span>
+          <span style={{ fontSize: 24 }}>Ã°Å¸â€œâ€¦</span>
           <div>
             <div style={{ fontWeight: 'bold', fontSize: 16 }}>Prossime Scadenze</div>
             <div style={{ fontSize: 12, color: '#6b7280' }}>
               {scadenze.totale} scadenze nei prossimi 30 giorni
               {urgenti.length > 0 && (
                 <span style={{ color: '#dc2626', fontWeight: 'bold', marginLeft: 8 }}>
-                  ⚠️ {urgenti.length} urgenti
+                  Ã¢Å¡Â Ã¯Â¸Â {urgenti.length} urgenti
                 </span>
               )}
             </div>
@@ -2183,22 +2185,26 @@ function ScadenzeWidget({ scadenze }) {
                   <td style={{ padding: '6px 8px', textAlign: 'center' }}>
                     <div style={{ display: 'flex', gap: 3, justifyContent: 'center' }}>
                       {(s.fattura_id || s.source === 'fattura') && (
-                        <a
-                          href={`/api/fatture-ricevute/fattura/${s.fattura_id || s.id}/view-assoinvoice`}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                        <button
+                          onClick={() =>
+                            setFatturaView({
+                              id: s.fattura_id || s.id,
+                              numero: s.numero_fattura || s.numero || s.fornitore || s.descrizione,
+                            })
+                          }
                           style={{
                             padding: '3px 6px',
                             background: '#3b82f6',
                             color: 'white',
+                            border: 'none',
                             borderRadius: 4,
                             fontSize: 10,
-                            textDecoration: 'none',
+                            cursor: 'pointer',
                           }}
-                          title="Vedi"
+                          title="Vedi fattura"
                         >
-                          📄
-                        </a>
+                          Vedi
+                        </button>
                       )}
                       <button
                         onClick={() => setPagaModal(s)}
@@ -2213,7 +2219,7 @@ function ScadenzeWidget({ scadenze }) {
                         }}
                         title="Paga"
                       >
-                        ✓
+                        Ã¢Å“â€œ
                       </button>
                     </div>
                   </td>
@@ -2234,7 +2240,7 @@ function ScadenzeWidget({ scadenze }) {
               textDecoration: 'none',
             }}
           >
-            Vedi tutte le {scadenze.totale} scadenze →
+            Vedi tutte le {scadenze.totale} scadenze Ã¢â€ â€™
           </Link>
         </div>
       )}
@@ -2287,7 +2293,7 @@ function ScadenzeWidget({ scadenze }) {
                   justifyContent: 'center',
                 }}
               >
-                ✕
+                Ã¢Å“â€¢
               </button>
             </div>
 
@@ -2334,7 +2340,7 @@ function ScadenzeWidget({ scadenze }) {
             </div>
 
             <p style={{ fontSize: 14, color: '#64748b', marginBottom: 16 }}>
-              Scegli il metodo di pagamento. Il movimento verrà registrato in Prima Nota.
+              Scegli il metodo di pagamento. Il movimento verrÃƒÂ  registrato in Prima Nota.
             </p>
 
             <div style={{ display: 'flex', gap: 12, marginBottom: 16, justifyContent: 'center' }}>
@@ -2358,7 +2364,7 @@ function ScadenzeWidget({ scadenze }) {
                   minWidth: 140,
                 }}
               >
-                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>💵 CASSA</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>Ã°Å¸â€™Âµ CASSA</span>
                 <span style={{ fontSize: 10, opacity: 0.9 }}>(pagato subito)</span>
               </button>
               <button
@@ -2381,15 +2387,15 @@ function ScadenzeWidget({ scadenze }) {
                   minWidth: 140,
                 }}
               >
-                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>🏦 BANCA</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>Ã°Å¸ÂÂ¦ BANCA</span>
                 <span style={{ fontSize: 10, opacity: 0.9 }}>(da riconciliare)</span>
               </button>
             </div>
 
             <p style={{ fontSize: 12, color: '#94a3b8', marginBottom: 12, textAlign: 'center' }}>
-              💡 Se paghi in <strong>CASSA</strong> la scadenza viene saldata immediatamente.
+              Ã°Å¸â€™Â¡ Se paghi in <strong>CASSA</strong> la scadenza viene saldata immediatamente.
               <br />
-              Se paghi in <strong>BANCA</strong> verrà riconciliata quando troveremo il movimento
+              Se paghi in <strong>BANCA</strong> verrÃƒÂ  riconciliata quando troveremo il movimento
               nell&apos;estratto conto.
             </p>
 
@@ -2440,7 +2446,7 @@ function AlertPagamentiWidget({ data }) {
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: '1 1 300px' }}>
-        <span style={{ fontSize: 22 }}>📋</span>
+        <span style={{ fontSize: 22 }}>Ã°Å¸â€œâ€¹</span>
         <div>
           <div style={{ fontWeight: 700, fontSize: 14, color: '#92400e' }}>
             Pagamenti in attesa di riconciliazione bancaria
@@ -2457,13 +2463,13 @@ function AlertPagamentiWidget({ data }) {
           >
             {buste.length > 0 && (
               <span>
-                <strong>{buste.length}</strong> {buste.length === 1 ? 'stipendio' : 'stipendi'} —{' '}
+                <strong>{buste.length}</strong> {buste.length === 1 ? 'stipendio' : 'stipendi'} Ã¢â‚¬â€{' '}
                 {formatEuro(totStip)}
               </span>
             )}
             {f24list.length > 0 && (
               <span>
-                <strong>{f24list.length}</strong> {f24list.length === 1 ? 'F24' : 'F24'} —{' '}
+                <strong>{f24list.length}</strong> {f24list.length === 1 ? 'F24' : 'F24'} Ã¢â‚¬â€{' '}
                 {formatEuro(totF24)}
               </span>
             )}
@@ -2492,8 +2498,15 @@ function AlertPagamentiWidget({ data }) {
           boxShadow: '0 2px 4px rgba(245,158,11,0.3)',
         }}
       >
-        Vai a Paghe →
+        Vai a Paghe Ã¢â€ â€™
       </Link>
+      {fatturaView && (
+        <ModalFattura
+          fatturaId={fatturaView.id}
+          numero={fatturaView.numero}
+          onClose={() => setFatturaView(null)}
+        />
+      )}
     </div>
   );
 }
