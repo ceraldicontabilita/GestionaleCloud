@@ -587,14 +587,17 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
     # solo in "partita_iva" — vanno letti tutti, altrimenti il metodo
     # impostato in scheda fornitore NON viene rispettato.
     metodo_per_piva = {}
+    certo_per_piva = {}
     async for s in db["fornitori"].find(
         {"metodo_pagamento": {"$exists": True, "$ne": ""}},
-        {"_id": 0, "partita_iva": 1, "piva": 1, "vat_number": 1, "metodo_pagamento": 1}
+        {"_id": 0, "partita_iva": 1, "piva": 1, "vat_number": 1, "metodo_pagamento": 1, "pagamento_certo": 1}
     ):
         metodo = s.get("metodo_pagamento", "")
+        certo = bool(s.get("pagamento_certo", False))
         for k in (s.get("partita_iva"), s.get("piva"), s.get("vat_number")):
             if k and metodo:
                 metodo_per_piva[str(k).strip()] = metodo
+                certo_per_piva[str(k).strip()] = certo
 
     provvisori = []
     for f in fatture:
@@ -663,6 +666,7 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
             "importo": importo,
             "metodo_xml": metodo_xml,
             "suggerimento": suggerimento,
+            "pagamento_certo": certo_per_piva.get(piva, False),
             "stato_match": stato_match,
             "movimento_banca": {
                 "data": (movimento_match.get("data") or movimento_match.get("data_contabile", "")) if movimento_match else None,
@@ -671,32 +675,35 @@ async def get_fatture_provvisorie(anno: int = Query(...)) -> Dict:
             } if movimento_match else None,
         })
     
-    # Auto-conferma in base al METODO FORNITORE (il metodo comanda):
-    # 1. CASSA: fornitore a contanti → auto in CASSA
-    # 2. BANCA: fornitore a bonifico/banca → auto in BANCA
-    # 3. SOSPESA/MISTO/senza metodo → provvisorio (decide l'utente)
+    # Auto-conferma SOLO per fornitori marcati "pagamento certo" (es. Amazon:
+    # paga sempre e solo banca, nessuna eccezione possibile) — vedi
+    # memoria/moduli/FATTURE_RICEVUTE.md. Per maggiore sicurezza, anche con
+    # metodo cassa/banca impostato in anagrafica, TUTTI gli altri fornitori
+    # restano in provvisorio: il metodo è solo un suggerimento, la fattura
+    # potrebbe essere pagata diversamente da come previsto — conferma sempre
+    # manuale dell'utente.
     auto_confermati = 0
     provvisori_finali = []
-    
+
     for p in provvisori:
         suggerimento = p["suggerimento"]
         stato = p["stato_match"]
         fatt_id = p["fattura_id"]
         ref = f"FATT-{fatt_id}"
-        
-        auto_confirm = False
-        
-        # CONTANTI: sempre auto-conferma in CASSA
-        if suggerimento == "cassa" and stato == "confermato":
-            auto_confirm = True
 
-        # BANCA: il fornitore ha metodo bancario in anagrafica → auto-conferma
-        # (il movimento EC, se trovato, viene collegato; altrimenti la
-        # riconciliazione lo aggancia in seguito)
-        elif suggerimento == "banca":
-            auto_confirm = True
-        
-        # SOSPESA, MISTO, IN_ATTESA → provvisorio (utente decide)
+        auto_confirm = False
+
+        if p.get("pagamento_certo"):
+            # CONTANTI: sempre auto-conferma in CASSA
+            if suggerimento == "cassa" and stato == "confermato":
+                auto_confirm = True
+            # BANCA: il fornitore ha metodo bancario in anagrafica → auto-conferma
+            # (il movimento EC, se trovato, viene collegato; altrimenti la
+            # riconciliazione lo aggancia in seguito)
+            elif suggerimento == "banca":
+                auto_confirm = True
+
+        # Fornitore non "certo" (default), SOSPESA, MISTO, IN_ATTESA → provvisorio
         
         if auto_confirm:
             collection = COLLECTION_PRIMA_NOTA_CASSA if suggerimento == "cassa" else COLLECTION_PRIMA_NOTA_BANCA
@@ -1073,9 +1080,16 @@ async def collega_fatture_movimenti() -> Dict:
 async def auto_conferma_provvisori_per_metodo(
     anno: int = Query(..., description="Anno da processare"),
 ) -> Dict[str, Any]:
-    """Auto-confermazione bulk delle fatture provvisorie basata sul metodo pagamento
-    dell'anagrafica fornitore (vedi classifica_metodo_fornitore per la regola unica,
-    condivisa con la pagina Provvisori):
+    """Auto-confermazione bulk delle fatture provvisorie — SOLO per i fornitori
+    marcati "pagamento certo" (`pagamento_certo: True`, es. Amazon: paga sempre
+    e solo banca, nessuna eccezione possibile per la natura del rapporto
+    commerciale). Per tutti gli altri fornitori, anche con metodo cassa/banca
+    impostato in anagrafica, la fattura resta in Provvisoria: il metodo è solo
+    un suggerimento, non più una garanzia — conferma sempre manuale
+    dell'utente. Vedi memoria/moduli/FATTURE_RICEVUTE.md.
+
+    Per i fornitori "certo" si applica classifica_metodo_fornitore (stessa
+    regola condivisa con la pagina Provvisori):
       - cassa/contanti → sempre in Prima Nota CASSA (pagata o no)
       - bonifico/banca/riba/sepa/rid/sdd/assegno → sempre in Prima Nota BANCA
         (la riconciliazione con l'estratto conto aggancia il movimento in seguito)
@@ -1094,14 +1108,17 @@ async def auto_conferma_provvisori_per_metodo(
     # Carica il dizionario metodo-per-piva dall'anagrafica fornitori
     # (P.IVA in partita_iva, piva o vat_number: record storici inclusi)
     metodo_per_piva: Dict[str, str] = {}
+    certo_per_piva: Dict[str, bool] = {}
     async for s in db["fornitori"].find(
         {"metodo_pagamento": {"$exists": True, "$ne": ""}},
-        {"_id": 0, "partita_iva": 1, "piva": 1, "vat_number": 1, "metodo_pagamento": 1}
+        {"_id": 0, "partita_iva": 1, "piva": 1, "vat_number": 1, "metodo_pagamento": 1, "pagamento_certo": 1}
     ):
         metodo = (s.get("metodo_pagamento") or "").strip().lower()
+        certo = bool(s.get("pagamento_certo", False))
         for k in (s.get("partita_iva"), s.get("piva"), s.get("vat_number")):
             if k and metodo:
                 metodo_per_piva[str(k).strip()] = metodo
+                certo_per_piva[str(k).strip()] = certo
 
     # Fatture provvisorie dell'anno
     fatture = await db["invoices"].find(
@@ -1126,6 +1143,7 @@ async def auto_conferma_provvisori_per_metodo(
         "restate_in_provvisoria_banca_non_pagata": 0,
         "restate_in_provvisoria_paypal_o_carta": 0,
         "restate_in_provvisoria_fornitore_senza_metodo": 0,
+        "restate_in_provvisoria_fornitore_non_certo": 0,
         "skipped_gia_in_prima_nota": 0,
         "skipped_errori": [],
         "dettaglio_mosse": [],  # prime 100 per log
@@ -1179,6 +1197,15 @@ async def auto_conferma_provvisori_per_metodo(
                     report["restate_in_provvisoria_paypal_o_carta"] += 1
                 else:
                     report["restate_in_provvisoria_fornitore_senza_metodo"] += 1
+                continue
+
+            # Per maggiore sicurezza: anche con metodo cassa/banca impostato,
+            # auto-conferma bulk SOLO per i fornitori marcati "pagamento certo"
+            # (es. Amazon: paga sempre e solo banca, nessuna eccezione) — vedi
+            # memoria/moduli/FATTURE_RICEVUTE.md. Tutti gli altri restano in
+            # provvisoria, l'utente conferma manualmente da Prima Nota → Provvisori.
+            if not certo_per_piva.get(piva, False):
+                report["restate_in_provvisoria_fornitore_non_certo"] += 1
                 continue
 
             destinazione = destinazione_calcolata

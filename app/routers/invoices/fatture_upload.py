@@ -137,7 +137,8 @@ async def ensure_supplier_exists(db, parsed_invoice: Dict[str, Any], session=Non
         "supplier_updated": False,
         "alert_created": False,
         "supplier_id": None,
-        "metodo_pagamento": None
+        "metodo_pagamento": None,
+        "pagamento_certo": False,
     }
 
     if not supplier_vat:
@@ -176,6 +177,7 @@ async def ensure_supplier_exists(db, parsed_invoice: Dict[str, Any], session=Non
         supplier_id = existing.get("id") or str(uuid.uuid4())
         result["supplier_id"] = supplier_id
         result["metodo_pagamento"] = existing.get("metodo_pagamento")
+        result["pagamento_certo"] = bool(existing.get("pagamento_certo", False))
 
         # FORN_INATTIVO_USATO era definito in alert_engine.py ma mai generato:
         # un fornitore marcato "attivo": False (disattivato manualmente) può
@@ -336,14 +338,24 @@ async def find_ec_match_for_invoice(db, importo: float, supplier_name: str = "",
 
 
 async def auto_registra_prima_nota(db, invoice: Dict[str, Any], metodo_pagamento: str,
-                                   session=None) -> Optional[Dict[str, Any]]:
-    """Applica la REGOLA prima nota all'import (metodo SEMPRE dal fornitore):
+                                   session=None, pagamento_certo: bool = False) -> Optional[Dict[str, Any]]:
+    """Applica la REGOLA prima nota all'import.
 
-      - contanti/cassa   → registra subito in prima_nota_cassa (pagata)
-      - metodo bancario  → registra subito in prima_nota_banca (pagata);
-                           se il pagamento è già in estratto conto viene anche
-                           collegato al movimento (riconciliazione)
-      - sospesa/misto/nessun metodo → provvisoria (nessun movimento)
+    Per maggiore sicurezza (vedi memoria/moduli/FATTURE_RICEVUTE.md): il metodo
+    impostato sul fornitore è solo un SUGGERIMENTO, non più una registrazione
+    automatica — anche con metodo impostato, una fattura può finire pagata
+    diversamente da come previsto. L'unica eccezione è il fornitore marcato
+    esplicitamente "pagamento certo" (es. Amazon: paga sempre e solo banca,
+    nessuna eccezione possibile per la natura del rapporto commerciale) — solo
+    per questi la registrazione resta automatica e immediata:
+
+      - pagamento_certo=True  + contanti/cassa → registra subito in prima_nota_cassa (pagata)
+      - pagamento_certo=True  + metodo bancario → registra subito in prima_nota_banca (pagata);
+                                se il pagamento è già in estratto conto viene anche
+                                collegato al movimento (riconciliazione)
+      - pagamento_certo=False (default per TUTTI gli altri fornitori,
+        indipendentemente dal metodo) → provvisoria: l'utente conferma
+        manualmente da Prima Nota → Provvisori
 
     Ritorna il dict di update applicato alla fattura, o None se resta provvisoria.
     """
@@ -352,6 +364,9 @@ async def auto_registra_prima_nota(db, invoice: Dict[str, Any], metodo_pagamento
     # non vanno mai registrate come uscita cassa/banca — altrimenti risultano
     # come un pagamento fantasma. Vedi memoria/moduli/FATTURE_RICEVUTE.md, gap #1.
     if (invoice.get("tipo_documento") or "").upper() in NOTE_CREDITO_TIPI_DOCUMENTO:
+        return None
+
+    if not pagamento_certo:
         return None
 
     metodo = (metodo_pagamento or "").lower()
@@ -564,7 +579,10 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
 
         # AUTO-REGISTRA in Prima Nota (helper condiviso con l'import Drive/bulk):
         # contanti → cassa; bancario → banca SOLO se trovato in EC; altrimenti provvisorio.
-        prima_nota_update = await auto_registra_prima_nota(db, invoice, metodo_pagamento, session=session)
+        prima_nota_update = await auto_registra_prima_nota(
+            db, invoice, metodo_pagamento, session=session,
+            pagamento_certo=supplier_result.get("pagamento_certo", False),
+        )
         if prima_nota_update:
             # Rispecchia l'update anche sul dict in memoria: altrimenti il
             # valore restituito dalla funzione resta disallineato dal DB
@@ -1074,7 +1092,10 @@ async def process_xml_bytes(db, content: bytes, filename: str, source: str = "xm
     # 6. Prima Nota: stessa regola dell'upload manuale (contanti → cassa;
     #    bancario → banca solo se il pagamento è in estratto conto).
     try:
-        await auto_registra_prima_nota(db, invoice, metodo_pagamento)
+        await auto_registra_prima_nota(
+            db, invoice, metodo_pagamento,
+            pagamento_certo=supplier_result.get("pagamento_certo", False),
+        )
     except Exception:
         logger.exception(f"Errore auto-registrazione prima nota per {filename}")
 

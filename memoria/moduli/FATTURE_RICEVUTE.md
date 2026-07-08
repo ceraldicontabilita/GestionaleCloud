@@ -31,10 +31,54 @@ in `app/routers/invoices/fatture_upload.py` — non ci sono più percorsi di imp
 |---|---|---|
 | Estrazione XML/P7M (fornitore, righe, IVA) | ✅ | `fatture_upload.py::process_xml_bytes`, `app/parsers/fattura_elettronica_parser.py` |
 | Creazione automatica fornitore se non esiste | ✅ | `ensure_supplier_exists()` in `fatture_upload.py` |
-| Metodo pagamento fornitore guida l'instradamento (cassa/banca/sospesa) | ✅ | `auto_registra_prima_nota()`: contanti→cassa, bancario→banca SOLO se confermato in EC, altrimenti provvisorio |
+| Metodo pagamento fornitore guida l'instradamento (cassa/banca/sospesa) | ⚠️ CAMBIATO (lug 2026) — vedi nota sotto | `auto_registra_prima_nota()` |
 | Deduplica per numero+P.IVA+data | ✅ | `generate_invoice_key()`, indice univoco `invoice_key` |
 | Riconciliazione fattura↔banca | ✅ (unico tipo di match davvero vivo nel motore automatico) | `app/services/riconciliazione_bancaria.py` |
 | Pagamento manuale (cassa/banca) | ✅ live | `POST /api/fatture-ricevute/paga-manuale` |
+
+## ⚠️ Cambio regola auto-registrazione prima nota (lug 2026, richiesta esplicita utente)
+
+Prima di questo cambio: fattura con metodo fornitore cassa/banca impostato → registrazione
+AUTOMATICA e IMMEDIATA in Prima Nota (pagata). Rischio segnalato dall'utente: anche con
+metodo impostato, una fattura può finire pagata diversamente da come previsto (es. eccezione
+puntuale) — l'auto-registrazione silenziosa non lasciava modo di accorgersene prima che fosse
+già "pagata" nel gestionale.
+
+**Nuova regola**: per maggiore sicurezza, l'auto-registrazione immediata resta attiva SOLO
+per i fornitori marcati esplicitamente `pagamento_certo: true` (nuovo campo booleano sul
+fornitore, default `false` per tutti — sia i fornitori esistenti sia quelli nuovi). Il caso
+d'uso è un fornitore per cui non esiste ambiguità possibile per la natura del rapporto
+commerciale (es. Amazon: paga sempre e solo con bonifico banca). Per TUTTI gli altri
+fornitori — comprese le fatture con metodo cassa o banca regolarmente impostato — la fattura
+resta sempre in **Prima Nota Provvisoria**, in attesa di conferma manuale dell'utente
+(`PrimaNota.jsx`, tab "Provvisori" → bottoni Conferma/Cassa/Banca/Sospesa, endpoint
+`POST /api/prima-nota/provvisori/conferma`, già esistente e non modificato).
+
+Modifiche implementate, tutte e tre necessarie per coerenza (un solo punto avrebbe lasciato
+il comportamento incoerente tra le diverse vie con cui una fattura può auto-confermarsi):
+1. `fatture_upload.py::auto_registra_prima_nota()` — nuovo parametro `pagamento_certo:
+   bool = False`; se `False` ritorna sempre `None` (provvisoria) indipendentemente dal
+   metodo. `ensure_supplier_exists()` espone `pagamento_certo` nel risultato, letto dal
+   fornitore (`existing.get("pagamento_certo", False)`).
+2. `prima_nota_module/sync.py::get_fatture_provvisorie()` — la GET aveva un side-effect di
+   auto-conferma silenziosa per i fornitori cassa/banca (righe 674-758, comportamento
+   preesistente anomalo: una GET che scrive). Ora auto-conferma solo se
+   `certo_per_piva.get(piva)` è vero.
+3. `prima_nota_module/sync.py::auto_conferma_provvisori_per_metodo()` — job schedulato ogni
+   30 min (`app/scheduler.py`), stessa correzione: salta (nuovo contatore
+   `restate_in_provvisoria_fornitore_non_certo`) se il fornitore non è marcato certo.
+
+Frontend: `Fornitori.jsx` — nuovo checkbox "Pagamento certo (nessuna eccezione, es. Amazon:
+sempre e solo banca)" nel form di modifica fornitore, più badge "✓ CERTO" sulla card quando
+attivo. Nessun nuovo valore aggiunto all'enum `metodo_pagamento` esistente (che resta
+cassa/banca/contanti/bonifico/assegno/rid/carta/misto invariato) — `pagamento_certo` è un
+campo booleano indipendente, scelta deliberata per non toccare le 6 liste di validazione
+del metodo pagamento già disallineate tra loro nel codice (vedi gap sotto).
+
+Verificato con mongomock, test end-to-end completo: fornitore normale con metodo bonifico
+(non certo) → fattura resta provvisoria, zero movimenti prima nota creati, visibile nella
+lista provvisori; fornitore certo (Amazon-style, banca) → registrazione diretta e immediata;
+il job bulk schedulato non tocca il fornitore non certo. 90/90 test esistenti ancora verdi.
 
 ## Gap confermati (in ordine di priorità)
 
@@ -84,6 +128,19 @@ in `app/routers/invoices/fatture_upload.py` — non ci sono più percorsi di imp
    Resta morto `FAT_DUPLICATA`: esiste già `deduplica.py::cerca_duplicato_fattura()`, ma il
    modulo non è importato da nessuna parte — va agganciato con attenzione al flusso 409 di
    import esistente, non affrontato per rischio di impattare un percorso critico.
+6. **6 liste/definizioni diverse e disallineate per i valori validi di `metodo_pagamento`**,
+   trovate investigando il cambio regola sopra (nessuna è una fonte di verità unica):
+   `suppliers_module/common.py::PAYMENT_METHODS` (6 valori, quella usata dalla UI Fornitori),
+   `services/suppliers/constants.py` (dead code, mai importato, valori diversi),
+   `suppliers_module/base.py` endpoint `/metodo-pagamento` (terzo set, include "riba"),
+   `prima_nota_module/sync.py::classifica_metodo_fornitore` (bucket cassa/banca/sospesa),
+   `fatture_upload.py::auto_registra_prima_nota` (logica ad-hoc interna, quinta variante),
+   `fatture_module/metodo_pagamento.py::normalizza_metodo_pagamento` (la più granulare,
+   include anche i codici MP0x SDI, usata solo da `fatture_module/pagamento.py`). Il
+   trattamento di "assegno" in particolare è incoerente: banca ovunque tranne che nel modulo
+   "moderno" F, dove resta volutamente separato e mai auto-routato. Non consolidate in
+   questo passaggio (fuori scope della richiesta specifica) — consolidamento in un'unica
+   fonte di verità resta un miglioramento futuro a basso rischio/alto valore.
 
 ## Bug/incoerenze note (da correggere)
 

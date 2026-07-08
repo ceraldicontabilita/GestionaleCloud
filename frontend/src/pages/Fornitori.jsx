@@ -81,6 +81,7 @@ const emptySupplier = {
   iban: '',
   iban_lista: [], // Lista di IBAN aggiuntivi estratti dalle fatture
   metodo_pagamento: 'bonifico',
+  pagamento_certo: false,
   giorni_pagamento: 30,
   esclude_magazzino: true,
   note: '',
@@ -684,6 +685,29 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                         </option>
                       ))}
                   </select>
+                  <label
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      marginTop: '8px',
+                      fontSize: '13px',
+                      color: '#374151',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={!!form.pagamento_certo}
+                      onChange={e => handleChange('pagamento_certo', e.target.checked)}
+                    />
+                    Pagamento certo (nessuna eccezione, es. Amazon: sempre e solo banca)
+                  </label>
+                  <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '4px' }}>
+                    Se NON spuntato (consigliato): le fatture di questo fornitore restano in Prima
+                    Nota Provvisoria in attesa di conferma manuale, anche se il metodo è impostato —
+                    per sicurezza, in caso venga pagata diversamente dal previsto.
+                  </div>
                 </div>
                 <div>
                   <label
@@ -1163,6 +1187,23 @@ function SupplierCard({
               {updating ? '...' : metodo.label}
               <span style={{ marginLeft: '2px', fontSize: '10px' }}>▼</span>
             </button>
+            {supplier.pagamento_certo && (
+              <span
+                title="Pagamento certo: le fatture di questo fornitore vengono registrate subito in Prima Nota, senza passare dai Provvisori"
+                style={{
+                  display: 'inline-block',
+                  marginTop: '4px',
+                  padding: '2px 8px',
+                  borderRadius: '6px',
+                  fontSize: '10px',
+                  fontWeight: 700,
+                  backgroundColor: '#dcfce7',
+                  color: '#16a34a',
+                }}
+              >
+                ✓ CERTO
+              </span>
+            )}
           </div>
         </div>
 
