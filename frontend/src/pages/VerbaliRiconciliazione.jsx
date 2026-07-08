@@ -1,24 +1,33 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../api';
-import { formatEuro, formatDateIT, STYLES, COLORS, button, badge } from '../lib/utils';
+import { formatEuro, formatDateIT, COLORS, SHADOWS, BORDER_RADIUS, FONT } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
-
-const cardStyle = STYLES.card;
+import {
+  Button,
+  Badge,
+  Card,
+  Input,
+  Select,
+  StatCard,
+  TableWrap,
+  Table,
+  Th,
+  Td,
+} from '../components/ds';
 
 const STATI_VERBALE = {
-  da_scaricare: { label: 'Da Scaricare', color: COLORS.warning, bg: '#fef3c7', icon: '📧' },
-  salvato: { label: 'Salvato', color: '#6366f1', bg: '#e0e7ff', icon: '💾' },
-  fattura_ricevuta: { label: 'Fattura Ricevuta', color: COLORS.info, bg: '#dbeafe', icon: '📄' },
-  pagato: { label: 'Pagato', color: '#10b981', bg: '#d1fae5', icon: '💳' },
+  da_scaricare: { label: 'Da Scaricare', variant: 'warning', icon: '📧' },
+  salvato: { label: 'Salvato', variant: 'primary', icon: '💾' },
+  fattura_ricevuta: { label: 'Fattura Ricevuta', variant: 'info', icon: '📄' },
+  pagato: { label: 'Pagato', variant: 'success', icon: '💳' },
   pagato_attesa_fattura: {
     label: 'Pagato (att. fattura)',
-    color: '#f59e0b',
-    bg: '#fef3c7',
+    variant: 'warning',
     icon: '⏳',
   },
-  riconciliato: { label: 'Riconciliato', color: COLORS.success, bg: '#a7f3d0', icon: '✅' },
-  sconosciuto: { label: 'Sconosciuto', color: COLORS.gray, bg: '#f3f4f6', icon: '❓' },
+  riconciliato: { label: 'Riconciliato', variant: 'success', icon: '✅' },
+  sconosciuto: { label: 'Sconosciuto', variant: 'neutral', icon: '❓' },
 };
 
 export default function VerbaliRiconciliazione() {
@@ -136,6 +145,7 @@ export default function VerbaliRiconciliazione() {
         setSuccessMsg('Nessun verbale duplicato trovato');
         return;
       }
+      // Azione distruttiva/irreversibile (unisce ed elimina righe duplicate): window.confirm mantenuto volutamente.
       if (
         !confirm(
           `Trovati ${nGruppi} verbali duplicati (${anteprima.data.documenti_eliminati} righe da unire). Procedere con la pulizia?`
@@ -228,86 +238,43 @@ export default function VerbaliRiconciliazione() {
             flexWrap: 'wrap',
           }}
         >
-          <button
+          <Button
+            variant="danger"
+            size="lg"
             onClick={handleScanFatture}
             disabled={scanning}
-            style={{
-              padding: '12px 24px',
-              background: '#dc2626',
-              color: 'white',
-              border: 'none',
-              borderRadius: 8,
-              cursor: scanning ? 'wait' : 'pointer',
-              fontWeight: 'bold',
-              fontSize: 14,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-            }}
             data-testid="btn-scan-fatture"
           >
             {scanning ? '⏳ Scanning...' : '🔍 Scan Fatture Noleggiatori'}
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="info"
+            size="lg"
             onClick={handleCollegaDriver}
             disabled={collegandoDriver}
-            style={{
-              padding: '12px 24px',
-              background: '#6366f1',
-              color: 'white',
-              border: 'none',
-              borderRadius: 8,
-              cursor: collegandoDriver ? 'wait' : 'pointer',
-              fontWeight: 'bold',
-              fontSize: 14,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-            }}
             data-testid="btn-collega-driver"
           >
             {collegandoDriver ? '⏳ Collegando...' : '👤 Associa Driver'}
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="success"
+            size="lg"
             onClick={() => setShowAssociaModal(true)}
-            style={{
-              padding: '12px 24px',
-              background: '#16a34a',
-              color: 'white',
-              border: 'none',
-              borderRadius: 8,
-              cursor: 'pointer',
-              fontWeight: 'bold',
-              fontSize: 14,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-            }}
             data-testid="btn-associa-manuale"
           >
             🔗 Associazione Manuale
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="secondary"
+            size="lg"
             onClick={handlePulisciDuplicati}
             disabled={pulendoDuplicati}
-            style={{
-              padding: '12px 24px',
-              background: '#78716c',
-              color: 'white',
-              border: 'none',
-              borderRadius: 8,
-              cursor: pulendoDuplicati ? 'wait' : 'pointer',
-              fontWeight: 'bold',
-              fontSize: 14,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-            }}
             data-testid="btn-pulisci-duplicati"
             title="Unisce i verbali duplicati (stesso numero verbale in più righe)"
+            style={{ background: COLORS.gray[500], color: '#fff', borderColor: COLORS.gray[500] }}
           >
             {pulendoDuplicati ? '⏳ Pulizia...' : '🧹 Pulisci Duplicati'}
-          </button>
+          </Button>
         </div>
 
         {/* Modal Associazione Manuale */}
@@ -329,12 +296,12 @@ export default function VerbaliRiconciliazione() {
           >
             <div
               style={{
-                background: 'white',
-                borderRadius: 16,
+                background: COLORS.card,
+                borderRadius: BORDER_RADIUS.xl,
                 padding: 24,
                 width: '90%',
                 maxWidth: 500,
-                boxShadow: '0 25px 50px rgba(0,0,0,0.25)',
+                boxShadow: SHADOWS.modal,
               }}
               onClick={e => e.stopPropagation()}
             >
@@ -346,7 +313,7 @@ export default function VerbaliRiconciliazione() {
                   marginBottom: 20,
                 }}
               >
-                <h2 style={{ margin: 0, fontSize: 20, fontWeight: 'bold', color: '#1e3a5f' }}>
+                <h2 style={{ margin: 0, fontSize: 20, fontWeight: 'bold', color: COLORS.primary }}>
                   🔗 Associa Targa a Driver
                 </h2>
                 <button
@@ -356,14 +323,14 @@ export default function VerbaliRiconciliazione() {
                     border: 'none',
                     fontSize: 24,
                     cursor: 'pointer',
-                    color: '#6b7280',
+                    color: COLORS.textMuted,
                   }}
                 >
                   ×
                 </button>
               </div>
 
-              <p style={{ fontSize: 14, color: '#6b7280', marginBottom: 20 }}>
+              <p style={{ fontSize: 14, color: COLORS.textMuted, marginBottom: 20 }}>
                 Seleziona una targa e un driver per creare l'associazione. Tutti i verbali con
                 questa targa verranno automaticamente collegati al driver.
               </p>
@@ -374,22 +341,16 @@ export default function VerbaliRiconciliazione() {
                     display: 'block',
                     fontSize: 14,
                     fontWeight: '600',
-                    color: '#374151',
+                    color: COLORS.gray[700],
                     marginBottom: 6,
                   }}
                 >
                   Targa Veicolo
                 </label>
-                <select
+                <Select
                   value={selectedTargaForAssoc}
                   onChange={e => setSelectedTargaForAssoc(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '12px 14px',
-                    borderRadius: 8,
-                    border: '2px solid #e5e7eb',
-                    fontSize: 14,
-                  }}
+                  style={{ width: '100%', padding: '12px 14px' }}
                   data-testid="select-targa-assoc"
                 >
                   <option value="">-- Seleziona Targa --</option>
@@ -398,7 +359,7 @@ export default function VerbaliRiconciliazione() {
                       {t}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
 
               <div style={{ marginBottom: 24 }}>
@@ -407,22 +368,16 @@ export default function VerbaliRiconciliazione() {
                     display: 'block',
                     fontSize: 14,
                     fontWeight: '600',
-                    color: '#374151',
+                    color: COLORS.gray[700],
                     marginBottom: 6,
                   }}
                 >
                   Driver (Dipendente)
                 </label>
-                <select
+                <Select
                   value={selectedDriverId}
                   onChange={e => setSelectedDriverId(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '12px 14px',
-                    borderRadius: 8,
-                    border: '2px solid #e5e7eb',
-                    fontSize: 14,
-                  }}
+                  style={{ width: '100%', padding: '12px 14px' }}
                   data-testid="select-driver-assoc"
                 >
                   <option value="">-- Seleziona Driver --</option>
@@ -431,42 +386,22 @@ export default function VerbaliRiconciliazione() {
                       {d.name || `${d.nome || ''} ${d.cognome || ''}`.trim()}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
 
               <div style={{ display: 'flex', gap: 12 }}>
-                <button
-                  onClick={() => setShowAssociaModal(false)}
-                  style={{
-                    flex: 1,
-                    padding: '12px',
-                    background: '#f3f4f6',
-                    color: '#374151',
-                    border: 'none',
-                    borderRadius: 8,
-                    cursor: 'pointer',
-                    fontWeight: '600',
-                  }}
-                >
+                <Button variant="secondary" onClick={() => setShowAssociaModal(false)} style={{ flex: 1 }}>
                   Annulla
-                </button>
-                <button
+                </Button>
+                <Button
+                  variant="success"
                   onClick={handleAssociaTargaDriver}
                   disabled={associating || !selectedTargaForAssoc || !selectedDriverId}
-                  style={{
-                    flex: 1,
-                    padding: '12px',
-                    background: !selectedTargaForAssoc || !selectedDriverId ? '#e5e7eb' : '#16a34a',
-                    color: !selectedTargaForAssoc || !selectedDriverId ? '#9ca3af' : 'white',
-                    border: 'none',
-                    borderRadius: 8,
-                    cursor: !selectedTargaForAssoc || !selectedDriverId ? 'default' : 'pointer',
-                    fontWeight: '600',
-                  }}
+                  style={{ flex: 1 }}
                   data-testid="btn-conferma-associazione"
                 >
                   {associating ? '⏳ Associando...' : '✅ Associa'}
-                </button>
+                </Button>
               </div>
             </div>
           </div>
@@ -477,10 +412,10 @@ export default function VerbaliRiconciliazione() {
           <div
             style={{
               padding: 16,
-              background: '#fee2e2',
-              border: '1px solid #fecaca',
-              borderRadius: 8,
-              color: '#dc2626',
+              background: COLORS.dangerLight,
+              border: `1px solid ${COLORS.dangerLight}`,
+              borderRadius: BORDER_RADIUS.md,
+              color: COLORS.danger,
               marginBottom: 16,
             }}
           >
@@ -497,10 +432,10 @@ export default function VerbaliRiconciliazione() {
           <div
             style={{
               padding: 16,
-              background: '#d1fae5',
-              border: '1px solid #a7f3d0',
-              borderRadius: 8,
-              color: '#059669',
+              background: COLORS.successLight,
+              border: `1px solid ${COLORS.successLight}`,
+              borderRadius: BORDER_RADIUS.md,
+              color: COLORS.success,
               marginBottom: 16,
             }}
           >
@@ -524,50 +459,28 @@ export default function VerbaliRiconciliazione() {
               marginBottom: 24,
             }}
           >
-            <div style={{ ...cardStyle, background: '#fef2f2', textAlign: 'center' }}>
-              <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 4 }}>Totale Verbali</div>
-              <div style={{ fontSize: 32, fontWeight: 'bold', color: '#dc2626' }}>
-                {dashboard.riepilogo?.totale_verbali || 0}
-              </div>
-            </div>
-            <div style={{ ...cardStyle, background: '#fff7ed', textAlign: 'center' }}>
-              <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 4 }}>Da Riconciliare</div>
-              <div style={{ fontSize: 32, fontWeight: 'bold', color: '#f59e0b' }}>
-                {dashboard.riepilogo?.da_riconciliare || 0}
-              </div>
-            </div>
-            <div style={{ ...cardStyle, background: '#f0fdf4', textAlign: 'center' }}>
-              <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 4 }}>Riconciliati</div>
-              <div style={{ fontSize: 32, fontWeight: 'bold', color: '#16a34a' }}>
-                {dashboard.riepilogo?.per_stato?.riconciliato?.count || 0}
-              </div>
-            </div>
-            <div style={{ ...cardStyle, background: '#eff6ff', textAlign: 'center' }}>
-              <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 4 }}>Totale Importo</div>
-              <div style={{ fontSize: 24, fontWeight: 'bold', color: '#2563eb' }}>
-                {formatEuro(dashboard.riepilogo?.totale_importo)}
-              </div>
-            </div>
+            <StatCard label="Totale Verbali" value={dashboard.riepilogo?.totale_verbali || 0} accent="danger" />
+            <StatCard label="Da Riconciliare" value={dashboard.riepilogo?.da_riconciliare || 0} accent="warning" />
+            <StatCard
+              label="Riconciliati"
+              value={dashboard.riepilogo?.per_stato?.riconciliato?.count || 0}
+              accent="success"
+            />
+            <StatCard label="Totale Importo" value={formatEuro(dashboard.riepilogo?.totale_importo)} accent="info" />
           </div>
         )}
 
         {/* Filtri */}
-        <div style={{ ...cardStyle, marginBottom: 20 }}>
+        <Card style={{ marginBottom: 20 }}>
           <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
             <div>
-              <label style={{ fontSize: 12, color: '#6b7280', display: 'block', marginBottom: 4 }}>
+              <label style={{ fontSize: 12, color: COLORS.textMuted, display: 'block', marginBottom: 4 }}>
                 Stato
               </label>
-              <select
+              <Select
                 value={filtroStato}
                 onChange={e => setFiltroStato(e.target.value)}
-                style={{
-                  padding: '10px 14px',
-                  borderRadius: 8,
-                  border: '2px solid #e5e7eb',
-                  fontSize: 14,
-                  minWidth: 180,
-                }}
+                style={{ minWidth: 180 }}
                 data-testid="filtro-stato"
               >
                 <option value="">Tutti gli stati</option>
@@ -576,25 +489,19 @@ export default function VerbaliRiconciliazione() {
                     {val.icon} {val.label}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
 
             <div>
-              <label style={{ fontSize: 12, color: '#6b7280', display: 'block', marginBottom: 4 }}>
+              <label style={{ fontSize: 12, color: COLORS.textMuted, display: 'block', marginBottom: 4 }}>
                 Targa
               </label>
-              <input
+              <Input
                 type="text"
                 placeholder="es: GE911SC"
                 value={filtroTarga}
                 onChange={e => setFiltroTarga(e.target.value.toUpperCase())}
-                style={{
-                  padding: '10px 14px',
-                  borderRadius: 8,
-                  border: '2px solid #e5e7eb',
-                  fontSize: 14,
-                  width: 140,
-                }}
+                style={{ width: 140 }}
                 data-testid="filtro-targa"
               />
             </div>
@@ -612,7 +519,7 @@ export default function VerbaliRiconciliazione() {
             </div>
 
             <div>
-              <label style={{ fontSize: 12, color: '#6b7280', display: 'block', marginBottom: 4 }}>
+              <label style={{ fontSize: 12, color: COLORS.textMuted, display: 'block', marginBottom: 4 }}>
                 Ordina per
               </label>
               <div style={{ display: 'flex', gap: 4 }}>
@@ -621,46 +528,24 @@ export default function VerbaliRiconciliazione() {
                   { key: 'data_verbale', label: 'Data Verbale' },
                   { key: 'created_at', label: 'Inserimento' },
                 ].map(opt => (
-                  <button
+                  <Button
                     key={opt.key}
+                    variant={ordinamento === opt.key ? 'primary' : 'secondary'}
+                    size="sm"
                     onClick={() => setOrdinamento(opt.key)}
                     data-testid={`sort-${opt.key}`}
-                    style={{
-                      padding: '8px 12px',
-                      borderRadius: 6,
-                      border: ordinamento === opt.key ? '2px solid #1e3a5f' : '2px solid #e5e7eb',
-                      background: ordinamento === opt.key ? '#1e3a5f' : 'white',
-                      color: ordinamento === opt.key ? 'white' : '#374151',
-                      fontSize: 13,
-                      fontWeight: ordinamento === opt.key ? '600' : '400',
-                      cursor: 'pointer',
-                      whiteSpace: 'nowrap',
-                    }}
                   >
                     {opt.label}
-                  </button>
+                  </Button>
                 ))}
               </div>
             </div>
 
-            <button
-              onClick={loadVerbali}
-              style={{
-                padding: '10px 20px',
-                background: '#1e3a5f',
-                color: 'white',
-                border: 'none',
-                borderRadius: 8,
-                cursor: 'pointer',
-                fontWeight: '600',
-                marginTop: 20,
-                marginLeft: 'auto',
-              }}
-            >
+            <Button variant="primary" onClick={loadVerbali} style={{ marginTop: 20, marginLeft: 'auto' }}>
               🔄 Aggiorna
-            </button>
+            </Button>
           </div>
-        </div>
+        </Card>
 
         {/* Content */}
         <div
@@ -671,113 +556,32 @@ export default function VerbaliRiconciliazione() {
           }}
         >
           {/* Lista Verbali */}
-          <div style={cardStyle}>
-            <h2
-              style={{ margin: '0 0 16px 0', fontSize: 18, fontWeight: 'bold', color: '#1e3a5f' }}
-            >
+          <Card>
+            <h2 style={{ margin: '0 0 16px 0', fontSize: 18, fontWeight: 'bold', color: COLORS.primary }}>
               📋 Verbali ({verbali.length})
             </h2>
 
             {loading ? (
-              <div style={{ textAlign: 'center', padding: 40, color: '#6b7280' }}>
+              <div style={{ textAlign: 'center', padding: 40, color: COLORS.textMuted }}>
                 ⏳ Caricamento...
               </div>
             ) : verbali.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: 40, color: '#6b7280' }}>
+              <div style={{ textAlign: 'center', padding: 40, color: COLORS.textMuted }}>
                 Nessun verbale trovato con i filtri selezionati
               </div>
             ) : (
-              <div style={{ overflowX: 'auto' }}>
-                <table
-                  style={{
-                    width: '100%',
-                    borderCollapse: 'separate',
-                    borderSpacing: '0 6px',
-                    fontSize: 13,
-                  }}
-                >
+              <TableWrap>
+                <Table>
                   <thead>
-                    <tr style={{ background: '#f8fafc' }}>
-                      <th
-                        style={{
-                          padding: '12px 14px',
-                          textAlign: 'left',
-                          fontWeight: '600',
-                          color: '#475569',
-                        }}
-                      >
-                        Verbale
-                      </th>
-                      <th
-                        style={{
-                          padding: '12px 14px',
-                          textAlign: 'left',
-                          fontWeight: '600',
-                          color: '#475569',
-                        }}
-                      >
-                        Data
-                      </th>
-                      <th
-                        style={{
-                          padding: '12px 14px',
-                          textAlign: 'left',
-                          fontWeight: '600',
-                          color: '#475569',
-                        }}
-                      >
-                        Targa
-                      </th>
-                      <th
-                        style={{
-                          padding: '12px 14px',
-                          textAlign: 'left',
-                          fontWeight: '600',
-                          color: '#475569',
-                        }}
-                      >
-                        Driver
-                      </th>
-                      <th
-                        style={{
-                          padding: '12px 14px',
-                          textAlign: 'left',
-                          fontWeight: '600',
-                          color: '#475569',
-                        }}
-                      >
-                        Fattura
-                      </th>
-                      <th
-                        style={{
-                          padding: '12px 14px',
-                          textAlign: 'right',
-                          fontWeight: '600',
-                          color: '#475569',
-                        }}
-                      >
-                        Importo
-                      </th>
-                      <th
-                        style={{
-                          padding: '12px 14px',
-                          textAlign: 'center',
-                          fontWeight: '600',
-                          color: '#475569',
-                        }}
-                      >
-                        Stato
-                      </th>
-                      <th
-                        style={{
-                          padding: '12px 14px',
-                          textAlign: 'center',
-                          fontWeight: '600',
-                          color: '#475569',
-                        }}
-                      >
-                        Azioni
-                      </th>
+                    <tr>
+                      <Th>Verbale</Th>
+                      <Th>Data</Th>
+                      <Th>Targa</Th>
+                      <Th>Driver</Th>
+                      <Th>Fattura</Th>
+                      <Th align="right">Importo</Th>
+                      <Th align="center">Stato</Th>
+                      <Th align="center">Azioni</Th>
                     </tr>
                   </thead>
                   <tbody>
@@ -789,41 +593,31 @@ export default function VerbaliRiconciliazione() {
                           style={{
                             background:
                               selectedVerbale?.numero_verbale === v.numero_verbale
-                                ? '#fef3c7'
-                                : 'white',
-                            boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                                ? COLORS.warningLight
+                                : COLORS.card,
+                            borderBottom: `1px solid ${COLORS.gray[100]}`,
                             cursor: 'pointer',
                           }}
                           onClick={() => setSelectedVerbale(v)}
                           data-testid={`verbale-row-${v.numero_verbale}`}
                         >
-                          <td style={{ padding: '14px', borderRadius: '8px 0 0 8px' }}>
-                            <div
-                              style={{
-                                fontWeight: 'bold',
-                                color: '#dc2626',
-                                fontFamily: 'monospace',
-                              }}
-                            >
-                              {v.numero_verbale}
-                            </div>
-                          </td>
-                          <td style={{ padding: '14px' }}>
-                            <span style={{ fontSize: 12, color: '#475569' }}>
+                          <Td style={{ fontWeight: 'bold', color: COLORS.danger, fontFamily: FONT.mono }}>
+                            {v.numero_verbale}
+                          </Td>
+                          <Td>
+                            <span style={{ fontSize: 12, color: COLORS.gray[600] }}>
                               {v.data_verbale ? formatDateIT(v.data_verbale) : '-'}
                             </span>
-                          </td>
-                          <td style={{ padding: '14px' }}>
-                            <span style={{ fontWeight: '600', color: '#1e3a5f' }}>
-                              {v.targa || '-'}
-                            </span>
-                          </td>
-                          <td style={{ padding: '14px' }}>
+                          </Td>
+                          <Td>
+                            <span style={{ fontWeight: '600', color: COLORS.primary }}>{v.targa || '-'}</span>
+                          </Td>
+                          <Td>
                             {v.driver_nome || v.driver ? (
                               <span
                                 style={{
                                   fontWeight: '500',
-                                  color: '#059669',
+                                  color: COLORS.success,
                                   display: 'flex',
                                   alignItems: 'center',
                                   gap: 4,
@@ -832,86 +626,55 @@ export default function VerbaliRiconciliazione() {
                                 👤 {v.driver_nome || v.driver}
                               </span>
                             ) : (
-                              <span style={{ color: '#f59e0b', fontStyle: 'italic', fontSize: 12 }}>
+                              <span style={{ color: COLORS.warning, fontStyle: 'italic', fontSize: 12 }}>
                                 Da associare
                               </span>
                             )}
-                          </td>
-                          <td style={{ padding: '14px' }}>
+                          </Td>
+                          <Td>
                             {v.fattura_numero ? (
                               <div>
                                 <div style={{ fontWeight: '500' }}>{v.fattura_numero}</div>
-                                <div style={{ fontSize: 11, color: '#9ca3af' }}>{v.fornitore}</div>
+                                <div style={{ fontSize: 11, color: COLORS.textSubtle }}>{v.fornitore}</div>
                               </div>
                             ) : (
-                              <span style={{ color: '#9ca3af' }}>-</span>
+                              <span style={{ color: COLORS.textSubtle }}>-</span>
                             )}
-                          </td>
-                          <td
-                            style={{
-                              padding: '14px',
-                              textAlign: 'right',
-                              fontFamily: 'monospace',
-                              fontWeight: '600',
-                            }}
-                          >
+                          </Td>
+                          <Td align="right" mono style={{ fontWeight: '600' }}>
                             {v.importo ? formatEuro(v.importo) : '-'}
-                          </td>
-                          <td style={{ padding: '14px', textAlign: 'center' }}>
-                            <span
-                              style={{
-                                padding: '6px 12px',
-                                background: statoInfo.bg,
-                                color: statoInfo.color,
-                                borderRadius: 20,
-                                fontSize: 11,
-                                fontWeight: '600',
-                                whiteSpace: 'nowrap',
-                              }}
-                            >
+                          </Td>
+                          <Td align="center">
+                            <Badge variant={statoInfo.variant}>
                               {statoInfo.icon} {statoInfo.label}
-                            </span>
-                          </td>
-                          <td
-                            style={{
-                              padding: '14px',
-                              textAlign: 'center',
-                              borderRadius: '0 8px 8px 0',
-                            }}
-                          >
-                            <button
+                            </Badge>
+                          </Td>
+                          <Td align="center">
+                            <Button
+                              variant={v.stato === 'riconciliato' ? 'secondary' : 'info'}
+                              size="sm"
                               onClick={e => {
                                 e.stopPropagation();
                                 handleRiconcilia(v.numero_verbale);
-                              }}
-                              style={{
-                                padding: '8px 14px',
-                                background: v.stato === 'riconciliato' ? '#e5e7eb' : '#3b82f6',
-                                color: v.stato === 'riconciliato' ? '#9ca3af' : 'white',
-                                border: 'none',
-                                borderRadius: 6,
-                                cursor: v.stato === 'riconciliato' ? 'default' : 'pointer',
-                                fontSize: 12,
-                                fontWeight: '600',
                               }}
                               disabled={v.stato === 'riconciliato'}
                               data-testid={`btn-riconcilia-${v.numero_verbale}`}
                             >
                               🔄 Riconcilia
-                            </button>
-                          </td>
+                            </Button>
+                          </Td>
                         </tr>
                       );
                     })}
                   </tbody>
-                </table>
-              </div>
+                </Table>
+              </TableWrap>
             )}
-          </div>
+          </Card>
 
           {/* Dettaglio Verbale */}
           {selectedVerbale && (
-            <div style={cardStyle}>
+            <Card>
               <div
                 style={{
                   display: 'flex',
@@ -920,7 +683,7 @@ export default function VerbaliRiconciliazione() {
                   marginBottom: 16,
                 }}
               >
-                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 'bold', color: '#1e3a5f' }}>
+                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 'bold', color: COLORS.primary }}>
                   📌 Dettaglio Verbale
                 </h2>
                 <button
@@ -930,7 +693,7 @@ export default function VerbaliRiconciliazione() {
                     border: 'none',
                     cursor: 'pointer',
                     fontSize: 18,
-                    color: '#6b7280',
+                    color: COLORS.textMuted,
                   }}
                 >
                   ✕
@@ -942,57 +705,43 @@ export default function VerbaliRiconciliazione() {
                   style={{
                     fontSize: 20,
                     fontWeight: 'bold',
-                    color: '#dc2626',
-                    fontFamily: 'monospace',
+                    color: COLORS.danger,
+                    fontFamily: FONT.mono,
                   }}
                 >
                   {selectedVerbale.numero_verbale}
                 </div>
-                <span
-                  style={{
-                    ...(() => {
-                      const s = getStatoInfo(selectedVerbale.stato);
-                      return { background: s.bg, color: s.color };
-                    })(),
-                    padding: '6px 12px',
-                    borderRadius: 20,
-                    fontSize: 12,
-                    fontWeight: '600',
-                    display: 'inline-block',
-                    marginTop: 8,
-                  }}
-                >
-                  {getStatoInfo(selectedVerbale.stato).icon}{' '}
-                  {getStatoInfo(selectedVerbale.stato).label}
-                </span>
+                <div style={{ marginTop: 8 }}>
+                  <Badge variant={getStatoInfo(selectedVerbale.stato).variant}>
+                    {getStatoInfo(selectedVerbale.stato).icon} {getStatoInfo(selectedVerbale.stato).label}
+                  </Badge>
+                </div>
               </div>
 
-              <div style={{ background: '#f8fafc', borderRadius: 8, padding: 16 }}>
+              <div style={{ background: COLORS.bgAlt, borderRadius: BORDER_RADIUS.md, padding: 16 }}>
                 <div style={{ display: 'grid', gap: 12 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#6b7280' }}>Targa:</span>
+                    <span style={{ color: COLORS.textMuted }}>Targa:</span>
                     <strong>{selectedVerbale.targa || '-'}</strong>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#6b7280' }}>Importo Verbale:</span>
-                    <strong style={{ color: '#dc2626' }}>
+                    <span style={{ color: COLORS.textMuted }}>Importo Verbale:</span>
+                    <strong style={{ color: COLORS.danger }}>
                       {selectedVerbale.importo ? formatEuro(selectedVerbale.importo) : '-'}
                     </strong>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#6b7280' }}>Importo Notifica:</span>
+                    <span style={{ color: COLORS.textMuted }}>Importo Notifica:</span>
                     <strong>
-                      {selectedVerbale.importo_notifica
-                        ? formatEuro(selectedVerbale.importo_notifica)
-                        : '-'}
+                      {selectedVerbale.importo_notifica ? formatEuro(selectedVerbale.importo_notifica) : '-'}
                     </strong>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#6b7280' }}>Data Verbale:</span>
+                    <span style={{ color: COLORS.textMuted }}>Data Verbale:</span>
                     <strong>{formatDateIT(selectedVerbale.data_verbale) || '-'}</strong>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#6b7280' }}>Data Pagamento:</span>
+                    <span style={{ color: COLORS.textMuted }}>Data Pagamento:</span>
                     <strong>{formatDateIT(selectedVerbale.data_pagamento) || '-'}</strong>
                   </div>
                 </div>
@@ -1006,16 +755,14 @@ export default function VerbaliRiconciliazione() {
                       margin: '0 0 8px 0',
                       fontSize: 14,
                       fontWeight: '600',
-                      color: '#1e3a5f',
+                      color: COLORS.primary,
                     }}
                   >
                     📄 Fattura Associata
                   </h4>
-                  <div style={{ background: '#dbeafe', borderRadius: 8, padding: 12 }}>
+                  <div style={{ background: COLORS.infoLight, borderRadius: BORDER_RADIUS.md, padding: 12 }}>
                     <div style={{ fontWeight: 'bold' }}>{selectedVerbale.fattura_numero}</div>
-                    <div style={{ fontSize: 12, color: '#3b82f6' }}>
-                      {selectedVerbale.fornitore}
-                    </div>
+                    <div style={{ fontSize: 12, color: COLORS.info }}>{selectedVerbale.fornitore}</div>
                   </div>
                 </div>
               )}
@@ -1028,55 +775,35 @@ export default function VerbaliRiconciliazione() {
                       margin: '0 0 8px 0',
                       fontSize: 14,
                       fontWeight: '600',
-                      color: '#1e3a5f',
+                      color: COLORS.primary,
                     }}
                   >
                     👤 Driver Associato
                   </h4>
-                  <div style={{ background: '#f0fdf4', borderRadius: 8, padding: 12 }}>
-                    <div style={{ fontWeight: 'bold', color: '#16a34a' }}>
-                      {selectedVerbale.driver_nome}
-                    </div>
+                  <div style={{ background: COLORS.successLight, borderRadius: BORDER_RADIUS.md, padding: 12 }}>
+                    <div style={{ fontWeight: 'bold', color: COLORS.success }}>{selectedVerbale.driver_nome}</div>
                   </div>
                 </div>
               )}
 
               {/* Azioni */}
               <div style={{ marginTop: 20, display: 'flex', gap: 10 }}>
-                <button
+                <Button
+                  variant={selectedVerbale.stato === 'riconciliato' ? 'secondary' : 'info'}
                   onClick={() => handleRiconcilia(selectedVerbale.numero_verbale)}
                   disabled={selectedVerbale.stato === 'riconciliato'}
-                  style={{
-                    flex: 1,
-                    padding: '12px',
-                    background: selectedVerbale.stato === 'riconciliato' ? '#e5e7eb' : '#3b82f6',
-                    color: selectedVerbale.stato === 'riconciliato' ? '#9ca3af' : 'white',
-                    border: 'none',
-                    borderRadius: 8,
-                    cursor: selectedVerbale.stato === 'riconciliato' ? 'default' : 'pointer',
-                    fontWeight: '600',
-                  }}
+                  style={{ flex: 1 }}
                 >
                   🔄 Riconcilia Automatico
-                </button>
-                <button
-                  onClick={() =>
-                    window.open(`/verbali-noleggio/${selectedVerbale.numero_verbale}`, '_blank')
-                  }
-                  style={{
-                    padding: '12px 16px',
-                    background: '#f3f4f6',
-                    color: '#374151',
-                    border: 'none',
-                    borderRadius: 8,
-                    cursor: 'pointer',
-                    fontWeight: '600',
-                  }}
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => window.open(`/verbali-noleggio/${selectedVerbale.numero_verbale}`, '_blank')}
                 >
                   📄 Dettaglio
-                </button>
+                </Button>
               </div>
-            </div>
+            </Card>
           )}
         </div>
 
@@ -1085,12 +812,12 @@ export default function VerbaliRiconciliazione() {
           style={{
             marginTop: 24,
             padding: 20,
-            background: '#fef3c7',
-            borderRadius: 12,
+            background: COLORS.warningLight,
+            borderRadius: BORDER_RADIUS.lg,
             fontSize: 14,
           }}
         >
-          <h3 style={{ margin: '0 0 12px 0', fontSize: 16, color: '#92400e' }}>
+          <h3 style={{ margin: '0 0 12px 0', fontSize: 16, color: COLORS.warning }}>
             ℹ️ Flusso Riconciliazione Verbali
           </h3>
           <div
@@ -1102,7 +829,7 @@ export default function VerbaliRiconciliazione() {
           >
             <div>
               <strong>📧 Scenario A - Pago Prima:</strong>
-              <ol style={{ margin: '8px 0 0 16px', padding: 0, color: '#78350f' }}>
+              <ol style={{ margin: '8px 0 0 16px', padding: 0, color: COLORS.warning }}>
                 <li>Driver trova verbale sul parabrezza</li>
                 <li>Pago subito (prima della fattura)</li>
                 <li>Scarico da posta → Salvo verbale</li>
@@ -1112,7 +839,7 @@ export default function VerbaliRiconciliazione() {
             </div>
             <div>
               <strong>📄 Scenario B - Fattura Prima:</strong>
-              <ol style={{ margin: '8px 0 0 16px', padding: 0, color: '#78350f' }}>
+              <ol style={{ margin: '8px 0 0 16px', padding: 0, color: COLORS.warning }}>
                 <li>Arriva fattura dal noleggiatore</li>
                 <li>Estraggo numero verbale dalla descrizione</li>
                 <li>Pago il verbale</li>
@@ -1120,9 +847,8 @@ export default function VerbaliRiconciliazione() {
               </ol>
             </div>
           </div>
-          <div style={{ marginTop: 12, fontSize: 13, color: '#92400e' }}>
-            <strong>Catena:</strong> Verbale → Fattura (spese notifica) → Veicolo (targa) → Driver
-            (dipendente)
+          <div style={{ marginTop: 12, fontSize: 13, color: COLORS.warning }}>
+            <strong>Catena:</strong> Verbale → Fattura (spese notifica) → Veicolo (targa) → Driver (dipendente)
           </div>
         </div>
       </div>
