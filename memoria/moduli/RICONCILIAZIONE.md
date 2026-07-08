@@ -71,14 +71,19 @@ quella "approssimata" — sono la stessa logica di scoring con soglie diverse, n
 5. **Movimento reale senza vera macchina a stati**: solo booleano `riconciliato`, non gli
    8 stati richiesti dalla spec — nessuna distinzione tracciabile tra "non esaminato",
    "in verifica", "dubbio", "escluso manualmente", ecc.
-6. ~ PARZIALE (lug 2026) — 3 alert su 6 ora effettivamente generati:
-   `RIC_MATCH_AMBIGUO` e `RIC_NON_RICONCILIATO` in `riconciliazione_bancaria.py`,
-   `RIC_POS_NON_QUADRATO` in `pos_corrispettivi_check.py::alert_oggi()` (sui casi
-   `stato_accredito` mancante/differenza). Tutte chiamate additive best-effort
-   (try/except, non toccano la logica di calcolo), verificate con mongomock: risultati
-   invariati, alert generato una sola volta anche su run ripetuti (idempotenza di
-   `genera_alert`). Restano da wire `RIC_DIFFERENZA_IMPORTO`, `RIC_PARTITA_VECCHIA` (va
-   in `partite_aperte_engine.py`), `RIC_PAGAMENTO_MULTIPLO`.
+6. ~ PARZIALE (lug 2026) — 4 alert su 6 ora effettivamente generati:
+   `RIC_MATCH_AMBIGUO`, `RIC_NON_RICONCILIATO` e `RIC_DIFFERENZA_IMPORTO` in
+   `riconciliazione_bancaria.py`, `RIC_POS_NON_QUADRATO` in
+   `pos_corrispettivi_check.py::alert_oggi()` (sui casi `stato_accredito`
+   mancante/differenza). `RIC_DIFFERENZA_IMPORTO` risponde anche al gap #1 di questo
+   stesso documento ("nessuna spiegazione delle differenze di importo"): quando il
+   motore accetta un match per tolleranza (±10%, es. rata/commissione/arrotondamento)
+   invece che a importo esatto, ora genera un alert con la differenza calcolata invece
+   di riconciliare in silenzio. Tutte chiamate additive best-effort (try/except, non
+   toccano la logica di calcolo/matching, solo la rendono visibile), verificate con
+   mongomock: nessun alert su match esatto (zero falsi positivi), alert corretto su
+   match con differenza, idempotenza su run ripetuti. Restano da wire
+   `RIC_PARTITA_VECCHIA` (va in `partite_aperte_engine.py`), `RIC_PAGAMENTO_MULTIPLO`.
 
    **Bug collaterale trovato e corretto mentre si wired RIC_POS_NON_QUADRATO**:
    `alert_oggi()` chiamava `controllo_incassi_due_fasi(data_da=..., data_a=...,

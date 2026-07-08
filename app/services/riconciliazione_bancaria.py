@@ -157,6 +157,30 @@ async def _alert_match_ambiguo(db, mov_id: Optional[str], motivo: str) -> None:
         logger.exception(f"Errore generazione alert RIC_MATCH_AMBIGUO per {mov_id}")
 
 
+async def _alert_differenza_importo(db, mov_id: Optional[str], importo_banca: float, importo_fattura: float, fattura_id: Optional[str]) -> None:
+    """Genera l'alert RIC_DIFFERENZA_IMPORTO quando una fattura viene
+    riconciliata con un movimento bancario di importo diverso (rata,
+    commissione trattenuta, arrotondamento) — il motore accetta il match
+    per tolleranza ma prima non spiegava mai la differenza, gap #1/#6
+    memoria/moduli/RICONCILIAZIONE.md. Additivo, non cambia l'esito del
+    match (già deciso), solo lo rende visibile."""
+    if not mov_id:
+        return
+    diff = round(importo_banca - importo_fattura, 2)
+    if abs(diff) <= 0.05:
+        return
+    try:
+        from app.services.alert_engine import genera_alert
+        await genera_alert(
+            "RIC_DIFFERENZA_IMPORTO", mov_id, COLLECTION_ESTRATTO_CONTO,
+            f"Movimento banca €{importo_banca:.2f} riconciliato con fattura €{importo_fattura:.2f} "
+            f"(differenza €{diff:.2f}) — verificare se è una rata, una commissione trattenuta o un arrotondamento.",
+            db, extra={"fattura_id": fattura_id} if fattura_id else None,
+        )
+    except Exception:
+        logger.exception(f"Errore generazione alert RIC_DIFFERENZA_IMPORTO per {mov_id}")
+
+
 async def _alert_non_riconciliato(db, mov_id: Optional[str], importo: float, descrizione: str) -> None:
     """Genera l'alert RIC_NON_RICONCILIATO quando un movimento EC esce dal
     motore senza alcun match (nessuna fattura/F24/POS/versamento candidato) —
@@ -616,6 +640,8 @@ async def riconcilia_movimenti_banca() -> Dict[str, Any]:
                         "match_type": "importo+fornitore+numero"
                     }
                     results["riconciliati_fatture"] += 1
+                    imp_fatt_match = fattura.get("importo_totale") or fattura.get("total_amount") or 0
+                    await _alert_differenza_importo(db, mov_id, importo, float(imp_fatt_match), match_details["fattura_id"])
 
                 # Se score >= 10 ma < 15 (solo importo + un altro criterio) → match con confidenza media
                 elif fatture_scored and fatture_scored[0][1] >= 10 and fatture_scored[0][1] < 15:
@@ -644,6 +670,8 @@ async def riconcilia_movimenti_banca() -> Dict[str, Any]:
                             "match_score": fatture_scored[0][1]
                         }
                         results["riconciliati_fatture"] += 1
+                        imp_fatt_match = fattura.get("importo_totale") or fattura.get("total_amount") or 0
+                        await _alert_differenza_importo(db, mov_id, importo, float(imp_fatt_match), match_details["fattura_id"])
                     else:
                         # Più fatture con score simile → operazione da confermare
                         fatture_ordinate = sorted(
