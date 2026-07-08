@@ -187,6 +187,21 @@ export default function PaypalTransactionDetailModal({ open, onClose, transactio
     onClose?.();
   };
 
+  const handleManualInvoiceSearch = () => {
+    const search = tx.nome_controparte || tx.payer_name || email_controparte || '';
+    const invoiceId = tx?.fattura_id || tx?.invoice_id || '';
+
+    if (invoiceId) {
+      navigate(`/fatture?invoice_id=${encodeURIComponent(invoiceId)}`);
+    } else if (search) {
+      navigate(`/fatture#search=${encodeURIComponent(search)}`);
+    } else {
+      navigate('/fatture');
+    }
+
+    onClose?.();
+  };
+
   return (
     <div
       onClick={(e) => { if (e.target === e.currentTarget) onClose?.(); }}
@@ -455,16 +470,7 @@ export default function PaypalTransactionDetailModal({ open, onClose, transactio
                     </div>
                     <div style={{ marginTop: 8 }}>
                       <Button
-                        onClick={() => {
-                          // apre la pagina fatture filtrando per la data della transazione e l'importo
-                          // così l'utente può trovarla e associarla a mano
-                          const q = new URLSearchParams();
-                          if (tx.nome_controparte || tx.payer_name) q.set('fornitore', tx.nome_controparte || tx.payer_name);
-                          const amt = Math.abs(Number(tx.lordo ?? tx.amount ?? 0));
-                          if (amt) q.set('importo', amt.toFixed(2));
-                          navigate(`/fatture?${q.toString()}`);
-                          onClose?.();
-                        }}
+                        onClick={handleManualInvoiceSearch}
                         icon={<ExternalLink size={13} />}
                         text="Cerca fattura manualmente"
                         variant="secondary"
