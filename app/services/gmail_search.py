@@ -23,12 +23,13 @@ logger = logging.getLogger(__name__)
 async def get_gmail_credentials(db) -> Tuple[Optional[str], Optional[str], str]:
     """Ritorna (email, app_password, imap_server)."""
     try:
+        from app.utils.crypto import decrypt_credential
         acc = await db["email_accounts"].find_one(
             {"app_password": {"$exists": True, "$nin": [None, ""]}},
             {"_id": 0, "email": 1, "app_password": 1, "imap_server": 1},
         )
         if acc and acc.get("email") and acc.get("app_password"):
-            return acc["email"], acc["app_password"], acc.get("imap_server") or "imap.gmail.com"
+            return acc["email"], decrypt_credential(acc["app_password"]), acc.get("imap_server") or "imap.gmail.com"
     except Exception:
         logger.exception("Errore lettura account email da config")
     user = os.environ.get("EMAIL_USER") or os.environ.get("EMAIL_ADDRESS")

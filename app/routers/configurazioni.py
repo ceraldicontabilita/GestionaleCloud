@@ -9,6 +9,7 @@ import uuid
 import os
 
 from app.database import Database
+from app.utils.crypto import encrypt_credential, decrypt_credential
 
 router = APIRouter()
 
@@ -73,7 +74,13 @@ async def get_email_accounts() -> List[Dict[str, Any]]:
     # Maschera le password - RIMUOVI password reale dalla response
     for acc in accounts:
         if acc.get("app_password"):
-            acc["app_password_masked"] = "****" + acc["app_password"][-4:] if len(acc["app_password"]) > 4 else "****"
+            # Decifra prima di mascherare: prima il campo salvato in Mongo
+            # era già in chiaro, quindi il "****xxxx" mostrato corrispondeva
+            # sempre alla password reale; ora il campo grezzo è cifrato e
+            # senza decifrare prima le ultime 4 lettere mostrate sarebbero
+            # quelle del token cifrato, non della password.
+            plain = decrypt_credential(acc["app_password"])
+            acc["app_password_masked"] = "****" + plain[-4:] if len(plain) > 4 else "****"
             del acc["app_password"]  # Mai restituire la password reale
     
     # Se non ci sono account, crea quello di default dalle variabili d'ambiente
@@ -86,7 +93,7 @@ async def get_email_accounts() -> List[Dict[str, Any]]:
                 "id": str(uuid.uuid4()),
                 "nome": "Email Principale (da .env)",
                 "email": env_email,
-                "app_password": env_password,
+                "app_password": encrypt_credential(env_password),
                 "app_password_masked": "****" + env_password[-4:] if len(env_password) > 4 else "****",
                 "imap_server": "imap.gmail.com",
                 "imap_port": 993,
@@ -119,6 +126,7 @@ async def create_email_account(account: EmailAccountInput) -> Dict[str, Any]:
     account_data["id"] = str(uuid.uuid4())
     account_data["created_at"] = datetime.now(timezone.utc).isoformat()
     account_data["is_env_default"] = False
+    account_data["app_password"] = encrypt_credential(account_data["app_password"])
     
     await db[COLLECTION_EMAIL_ACCOUNTS].insert_one(account_data.copy())
     
@@ -141,10 +149,13 @@ async def update_email_account(account_id: str, update: EmailAccountUpdate) -> D
     
     # Prepara i campi da aggiornare
     update_data = {k: v for k, v in update.model_dump(exclude_unset=True).items() if v is not None}
-    
+
     if not update_data:
         return {"success": True, "message": "Nessun campo da aggiornare"}
-    
+
+    if update_data.get("app_password"):
+        update_data["app_password"] = encrypt_credential(update_data["app_password"])
+
     update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
     
     # Se è l'account di default da .env, aggiorna anche le variabili d'ambiente nel file
@@ -292,7 +303,7 @@ async def test_email_connection(account_id: str) -> Dict[str, Any]:
     try:
         # Connessione IMAP
         mail = imaplib.IMAP4_SSL(account["imap_server"], account["imap_port"])
-        mail.login(account["email"], account["app_password"])
+        mail.login(account["email"], decrypt_credential(account["app_password"]))
         
         # Conta email nella inbox
         mail.select("INBOX")

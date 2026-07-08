@@ -4,6 +4,7 @@ from typing import Dict, Any
 from datetime import datetime, timezone
 
 from app.database import Database
+from app.utils.crypto import encrypt_credential, decrypt_credential
 
 router = APIRouter(tags=["Impostazioni"])
 
@@ -54,7 +55,9 @@ async def salva_gmail_settings(data: Dict[str, Any] = Body(...)) -> Dict[str, An
         {"$set": {
             "chiave": "gmail",
             "imap_user": imap_user,
-            "gmail_app_password": gmail_app_password,
+            # Prima salvata in chiaro: chiunque leggesse la collection Mongo
+            # aveva accesso diretto alla App Password Gmail.
+            "gmail_app_password": encrypt_credential(gmail_app_password),
             "imap_host": imap_host,
             "aggiornato_il": datetime.now(timezone.utc).isoformat()
         }},
@@ -79,7 +82,7 @@ async def test_gmail_connection() -> Dict[str, Any]:
 
     import os
     imap_user = doc.get("imap_user") if doc else os.environ.get("IMAP_USER", "")
-    password = doc.get("gmail_app_password") if doc else os.environ.get("IMAP_PASSWORD", "")
+    password = decrypt_credential(doc.get("gmail_app_password")) if doc else os.environ.get("IMAP_PASSWORD", "")
     imap_host = doc.get("imap_host") if doc else os.environ.get("IMAP_HOST", "imap.gmail.com")
 
     result = await _test_imap(imap_host, imap_user, password)

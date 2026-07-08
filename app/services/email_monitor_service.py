@@ -124,10 +124,11 @@ async def sync_email_documents(db, giorni: int = 30) -> Dict[str, Any]:
     imap_host = settings.IMAP_HOST or "imap.gmail.com"
 
     try:
+        from app.utils.crypto import decrypt_credential
         gmail_cfg = await db["settings"].find_one({"chiave": "gmail"}, {"_id": 0})
         if gmail_cfg and gmail_cfg.get("gmail_app_password") and gmail_cfg.get("imap_user"):
             email_user = gmail_cfg["imap_user"]
-            email_password = gmail_cfg["gmail_app_password"]
+            email_password = decrypt_credential(gmail_cfg["gmail_app_password"])
             imap_host = gmail_cfg.get("imap_host", imap_host)
     except Exception:
         pass
