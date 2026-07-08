@@ -2,8 +2,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
-import { formatEuro, STYLES, COLORS, button, badge } from '../lib/utils';
+import { formatEuro, COLORS, SHADOWS, BORDER_RADIUS, FONT } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
+import { Button, Badge, Card, Tabs, TableWrap, Table, Th, Td } from '../components/ds';
 
 export default function VerificaCoerenza() {
   const { anno } = useAnnoGlobale();
@@ -61,13 +62,13 @@ export default function VerificaCoerenza() {
   const getStatoColor = stato => {
     switch (stato) {
       case 'OK':
-        return { bg: '#dcfce7', text: '#166534', border: '#bbf7d0' };
+        return { bg: COLORS.successLight, text: COLORS.success, border: COLORS.success };
       case 'ATTENZIONE':
-        return { bg: '#fef3c7', text: '#92400e', border: '#fde68a' };
+        return { bg: COLORS.warningLight, text: COLORS.warning, border: COLORS.warning };
       case 'CRITICO':
-        return { bg: '#fef2f2', text: '#991b1b', border: '#fecaca' };
+        return { bg: COLORS.dangerLight, text: COLORS.danger, border: COLORS.danger };
       default:
-        return { bg: '#f1f5f9', text: '#475569', border: '#e2e8f0' };
+        return { bg: COLORS.bg, text: COLORS.gray[600], border: COLORS.border };
     }
   };
 
@@ -75,24 +76,24 @@ export default function VerificaCoerenza() {
   const statoColors = getStatoColor(stato);
 
   const cardStyle = {
-    background: 'white',
-    borderRadius: 12,
-    boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-    border: '1px solid #e2e8f0',
+    background: COLORS.card,
+    borderRadius: BORDER_RADIUS.md,
+    boxShadow: SHADOWS.sm,
+    border: `1px solid ${COLORS.border}`,
     overflow: 'hidden',
   };
 
   const cardHeaderStyle = {
     padding: '12px 16px',
-    borderBottom: '1px solid #e2e8f0',
-    background: '#f8fafc',
+    borderBottom: `1px solid ${COLORS.border}`,
+    background: COLORS.bgAlt,
   };
 
   const cardTitleStyle = {
     margin: 0,
     fontSize: 14,
     fontWeight: 600,
-    color: '#1e293b',
+    color: COLORS.gray[800],
     display: 'flex',
     alignItems: 'center',
     gap: 8,
@@ -102,55 +103,30 @@ export default function VerificaCoerenza() {
     padding: 16,
   };
 
-  const tabStyle = isActive => ({
-    padding: '10px 16px',
-    borderRadius: 8,
-    border: 'none',
-    background: isActive ? '#3b82f6' : 'transparent',
-    color: isActive ? 'white' : '#64748b',
-    fontWeight: 500,
-    cursor: 'pointer',
-    fontSize: 13,
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-  });
-
   return (
     <PageLayout
       title="Verifica Coerenza Dati"
       icon="🔍"
       subtitle={`Controllo automatico - Anno ${anno}`}
       actions={
-        <button
+        <Button
+          variant="secondary"
           onClick={loadAll}
           disabled={loading}
           data-testid="btn-ricarica-verifica"
-          style={{
-            padding: '8px 16px',
-            borderRadius: 8,
-            border: 'none',
-            background: '#3b82f6',
-            color: 'white',
-            fontWeight: 500,
-            cursor: loading ? 'not-allowed' : 'pointer',
-            opacity: loading ? 0.7 : 1,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-          }}
+          iconLeft="🔄"
         >
-          🔄 Ricarica
-        </button>
+          Ricarica
+        </Button>
       }
     >
       {error && (
         <div
           style={{
             padding: 12,
-            background: '#fef2f2',
-            borderRadius: 8,
-            color: '#991b1b',
+            background: COLORS.dangerLight,
+            borderRadius: BORDER_RADIUS.md,
+            color: COLORS.danger,
             marginBottom: 16,
             fontSize: 13,
           }}
@@ -164,7 +140,7 @@ export default function VerificaCoerenza() {
           style={{
             padding: 40,
             textAlign: 'center',
-            color: '#64748b',
+            color: COLORS.textMuted,
             fontSize: 14,
           }}
         >
@@ -172,9 +148,9 @@ export default function VerificaCoerenza() {
             style={{
               width: 32,
               height: 32,
-              border: '3px solid #e2e8f0',
-              borderTop: '3px solid #3b82f6',
-              borderRadius: '50%',
+              border: `3px solid ${COLORS.border}`,
+              borderTop: `3px solid ${COLORS.info}`,
+              borderRadius: BORDER_RADIUS.full,
               animation: 'spin 1s linear infinite',
               margin: '0 auto 12px',
             }}
@@ -212,29 +188,29 @@ export default function VerificaCoerenza() {
                   <div style={{ fontSize: 20, fontWeight: 'bold', color: statoColors.text }}>
                     Stato: {stato}
                   </div>
-                  <div style={{ color: '#64748b', fontSize: 12 }}>
+                  <div style={{ color: COLORS.textMuted, fontSize: 12 }}>
                     Ultima verifica: {new Date(verificaCompleta.timestamp).toLocaleString('it-IT').replaceAll('/', '-')}
                   </div>
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 20, textAlign: 'center' }}>
                 <div>
-                  <div style={{ fontSize: 24, fontWeight: 'bold', color: '#dc2626' }}>
+                  <div style={{ fontSize: 24, fontWeight: 'bold', color: COLORS.danger }}>
                     {verificaCompleta.riepilogo?.critical || 0}
                   </div>
-                  <div style={{ fontSize: 11, color: '#64748b' }}>Critiche</div>
+                  <div style={{ fontSize: 11, color: COLORS.textMuted }}>Critiche</div>
                 </div>
                 <div>
-                  <div style={{ fontSize: 24, fontWeight: 'bold', color: '#f59e0b' }}>
+                  <div style={{ fontSize: 24, fontWeight: 'bold', color: COLORS.warning }}>
                     {verificaCompleta.riepilogo?.warning || 0}
                   </div>
-                  <div style={{ fontSize: 11, color: '#64748b' }}>Avvisi</div>
+                  <div style={{ fontSize: 11, color: COLORS.textMuted }}>Avvisi</div>
                 </div>
                 <div>
-                  <div style={{ fontSize: 24, fontWeight: 'bold', color: '#2563eb' }}>
+                  <div style={{ fontSize: 24, fontWeight: 'bold', color: COLORS.info }}>
                     {verificaCompleta.riepilogo?.info || 0}
                   </div>
-                  <div style={{ fontSize: 11, color: '#64748b' }}>Info</div>
+                  <div style={{ fontSize: 11, color: COLORS.textMuted }}>Info</div>
                 </div>
               </div>
             </div>
@@ -244,32 +220,16 @@ export default function VerificaCoerenza() {
 
       {/* Tabs */}
       {!loading && (
-        <div
-          style={{
-            marginBottom: 16,
-            background: '#f1f5f9',
-            padding: 4,
-            borderRadius: 12,
-            display: 'flex',
-            gap: 4,
-          }}
-        >
-          <button
-            onClick={() => handleTabChange('riepilogo')}
-            style={tabStyle(activeTab === 'riepilogo')}
-          >
-            📋 Riepilogo
-          </button>
-          <button onClick={() => handleTabChange('iva')} style={tabStyle(activeTab === 'iva')}>
-            📈 IVA Mensile
-          </button>
-          <button
-            onClick={() => handleTabChange('discrepanze')}
-            style={tabStyle(activeTab === 'discrepanze')}
-          >
-            ⚠️ Discrepanze
-          </button>
-        </div>
+        <Tabs
+          value={activeTab}
+          onChange={handleTabChange}
+          items={[
+            { key: 'riepilogo', label: '📋 Riepilogo' },
+            { key: 'iva', label: '📈 IVA Mensile' },
+            { key: 'discrepanze', label: '⚠️ Discrepanze' },
+          ]}
+          style={{ marginBottom: 16 }}
+        />
       )}
 
       {/* TAB RIEPILOGO */}
@@ -282,124 +242,114 @@ export default function VerificaCoerenza() {
           }}
         >
           {/* IVA Annuale */}
-          <div style={cardStyle}>
-            <div style={cardHeaderStyle}>
-              <h3 style={cardTitleStyle}>🧾 IVA Annuale {anno}</h3>
-            </div>
-            <div style={cardContentStyle}>
-              {verificaCompleta?.verifiche?.iva_annuale && (
-                <div style={{ display: 'grid', gap: 10 }}>
-                  <div
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      padding: 10,
-                      background: '#fef2f2',
-                      borderRadius: 6,
-                    }}
-                  >
-                    <span style={{ color: '#991b1b', fontSize: 13 }}>IVA Debito</span>
-                    <strong style={{ color: '#dc2626' }}>
-                      {formatEuro(verificaCompleta.verifiche.iva_annuale.iva_debito_totale)}
-                    </strong>
-                  </div>
-                  <div
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      padding: 10,
-                      background: '#dcfce7',
-                      borderRadius: 6,
-                    }}
-                  >
-                    <span style={{ color: '#166534', fontSize: 13 }}>IVA Credito</span>
-                    <strong style={{ color: '#059669' }}>
-                      {formatEuro(verificaCompleta.verifiche.iva_annuale.iva_credito_totale)}
-                    </strong>
-                  </div>
-                  <div
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      padding: 10,
-                      background:
-                        verificaCompleta.verifiche.iva_annuale.saldo_iva > 0
-                          ? '#fef3c7'
-                          : '#dbeafe',
-                      borderRadius: 6,
-                      fontWeight: 'bold',
-                    }}
-                  >
-                    <span style={{ fontSize: 13 }}>Saldo IVA</span>
-                    <span
-                      style={{
-                        color:
-                          verificaCompleta.verifiche.iva_annuale.saldo_iva > 0
-                            ? '#92400e'
-                            : '#1e40af',
-                      }}
-                    >
-                      {verificaCompleta.verifiche.iva_annuale.saldo_iva > 0
-                        ? 'Da versare '
-                        : 'A credito '}
-                      {formatEuro(Math.abs(verificaCompleta.verifiche.iva_annuale.saldo_iva))}
-                    </span>
-                  </div>
+          <Card title={`IVA Annuale ${anno}`} icon="🧾">
+            {verificaCompleta?.verifiche?.iva_annuale && (
+              <div style={{ display: 'grid', gap: 10 }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    padding: 10,
+                    background: COLORS.dangerLight,
+                    borderRadius: BORDER_RADIUS.sm,
+                  }}
+                >
+                  <span style={{ color: COLORS.danger, fontSize: 13 }}>IVA Debito</span>
+                  <strong style={{ color: COLORS.danger }}>
+                    {formatEuro(verificaCompleta.verifiche.iva_annuale.iva_debito_totale)}
+                  </strong>
                 </div>
-              )}
-            </div>
-          </div>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    padding: 10,
+                    background: COLORS.successLight,
+                    borderRadius: BORDER_RADIUS.sm,
+                  }}
+                >
+                  <span style={{ color: COLORS.success, fontSize: 13 }}>IVA Credito</span>
+                  <strong style={{ color: COLORS.success }}>
+                    {formatEuro(verificaCompleta.verifiche.iva_annuale.iva_credito_totale)}
+                  </strong>
+                </div>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    padding: 10,
+                    background:
+                      verificaCompleta.verifiche.iva_annuale.saldo_iva > 0
+                        ? COLORS.warningLight
+                        : COLORS.infoLight,
+                    borderRadius: BORDER_RADIUS.sm,
+                    fontWeight: 'bold',
+                  }}
+                >
+                  <span style={{ fontSize: 13 }}>Saldo IVA</span>
+                  <span
+                    style={{
+                      color:
+                        verificaCompleta.verifiche.iva_annuale.saldo_iva > 0
+                          ? COLORS.warning
+                          : COLORS.info,
+                    }}
+                  >
+                    {verificaCompleta.verifiche.iva_annuale.saldo_iva > 0
+                      ? 'Da versare '
+                      : 'A credito '}
+                    {formatEuro(Math.abs(verificaCompleta.verifiche.iva_annuale.saldo_iva))}
+                  </span>
+                </div>
+              </div>
+            )}
+          </Card>
 
           {/* Versamenti */}
-          <div style={cardStyle}>
-            <div style={cardHeaderStyle}>
-              <h3 style={cardTitleStyle}>💳 Versamenti Cassa vs Banca</h3>
-            </div>
-            <div style={cardContentStyle}>
-              {verificaCompleta?.verifiche?.versamenti && (
-                <div style={{ display: 'grid', gap: 10 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-                    <span>Versamenti (Cassa)</span>
-                    <strong>
-                      {formatEuro(verificaCompleta.verifiche.versamenti.versamenti_manuali)}
-                    </strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-                    <span>Versamenti (Banca)</span>
-                    <strong>
-                      {formatEuro(verificaCompleta.verifiche.versamenti.versamenti_banca)}
-                    </strong>
-                  </div>
-                  <div
+          <Card title="Versamenti Cassa vs Banca" icon="💳">
+            {verificaCompleta?.verifiche?.versamenti && (
+              <div style={{ display: 'grid', gap: 10 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                  <span>Versamenti (Cassa)</span>
+                  <strong>
+                    {formatEuro(verificaCompleta.verifiche.versamenti.versamenti_manuali)}
+                  </strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                  <span>Versamenti (Banca)</span>
+                  <strong>
+                    {formatEuro(verificaCompleta.verifiche.versamenti.versamenti_banca)}
+                  </strong>
+                </div>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    padding: 10,
+                    background:
+                      Math.abs(verificaCompleta.verifiche.versamenti.differenza) < 1
+                        ? COLORS.successLight
+                        : COLORS.dangerLight,
+                    borderRadius: BORDER_RADIUS.sm,
+                  }}
+                >
+                  <span style={{ fontSize: 13 }}>Differenza</span>
+                  <strong
                     style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      padding: 10,
-                      background:
+                      color:
                         Math.abs(verificaCompleta.verifiche.versamenti.differenza) < 1
-                          ? '#dcfce7'
-                          : '#fef2f2',
-                      borderRadius: 6,
+                          ? COLORS.success
+                          : COLORS.danger,
                     }}
                   >
-                    <span style={{ fontSize: 13 }}>Differenza</span>
-                    <strong
-                      style={{
-                        color:
-                          Math.abs(verificaCompleta.verifiche.versamenti.differenza) < 1
-                            ? '#166534'
-                            : '#dc2626',
-                      }}
-                    >
-                      {Math.abs(verificaCompleta.verifiche.versamenti.differenza) < 1
-                        ? '✅ OK'
-                        : formatEuro(verificaCompleta.verifiche.versamenti.differenza)}
-                    </strong>
-                  </div>
+                    {Math.abs(verificaCompleta.verifiche.versamenti.differenza) < 1
+                      ? '✅ OK'
+                      : formatEuro(verificaCompleta.verifiche.versamenti.differenza)}
+                  </strong>
                 </div>
-              )}
-            </div>
-          </div>
+              </div>
+            )}
+          </Card>
 
           {/* NOTA: i box 'Prima Nota vs E/C' e 'Bonifici vs Banca' sono stati
               rimossi su richiesta dell'utente perché fuorvianti (sempre a zero
@@ -411,114 +361,89 @@ export default function VerificaCoerenza() {
 
       {/* TAB IVA MENSILE */}
       {!loading && activeTab === 'iva' && confrontoIva && (
-        <div style={cardStyle}>
-          <div style={cardHeaderStyle}>
-            <h3 style={cardTitleStyle}>Confronto IVA Mensile {anno}</h3>
-          </div>
-          <div style={cardContentStyle}>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                <thead>
-                  <tr style={{ background: '#f1f5f9' }}>
-                    <th style={{ padding: 10, textAlign: 'left' }}>Mese</th>
-                    <th style={{ padding: 10, textAlign: 'right' }}>IVA Debito</th>
-                    <th style={{ padding: 10, textAlign: 'center' }}>N.Corr</th>
-                    <th style={{ padding: 10, textAlign: 'right' }}>IVA Credito</th>
-                    <th style={{ padding: 10, textAlign: 'center' }}>N.Fatt</th>
-                    <th style={{ padding: 10, textAlign: 'right' }}>Saldo</th>
-                    <th style={{ padding: 10, textAlign: 'center' }}>Stato</th>
+        <Card title={`Confronto IVA Mensile ${anno}`}>
+          <TableWrap>
+            <Table>
+              <thead>
+                <tr>
+                  <Th>Mese</Th>
+                  <Th align="right">IVA Debito</Th>
+                  <Th align="center">N.Corr</Th>
+                  <Th align="right">IVA Credito</Th>
+                  <Th align="center">N.Fatt</Th>
+                  <Th align="right">Saldo</Th>
+                  <Th align="center">Stato</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {confrontoIva.mensile?.map((m, idx) => (
+                  <tr key={idx}>
+                    <Td style={{ fontWeight: 'bold' }}>{m.mese_nome}</Td>
+                    <Td align="right" mono style={{ color: COLORS.danger }}>
+                      {formatEuro(m.iva_debito_corrispettivi)}
+                    </Td>
+                    <Td align="center" style={{ color: COLORS.textMuted }}>
+                      {m.num_corrispettivi}
+                    </Td>
+                    <Td align="right" mono style={{ color: COLORS.success }}>
+                      {formatEuro(m.iva_credito_fatture)}
+                    </Td>
+                    <Td align="center" style={{ color: COLORS.textMuted }}>
+                      {m.num_fatture}
+                    </Td>
+                    <Td
+                      align="right"
+                      mono
+                      style={{
+                        fontWeight: 'bold',
+                        color: m.saldo > 0 ? COLORS.danger : COLORS.success,
+                      }}
+                    >
+                      {m.saldo > 0 ? '+' : ''}
+                      {formatEuro(m.saldo)}
+                    </Td>
+                    <Td align="center">
+                      {m.da_versare > 0 ? (
+                        <Badge variant="warning">Versare {formatEuro(m.da_versare)}</Badge>
+                      ) : (
+                        <Badge variant="info">Credito {formatEuro(m.a_credito)}</Badge>
+                      )}
+                    </Td>
                   </tr>
-                </thead>
-                <tbody>
-                  {confrontoIva.mensile?.map((m, idx) => (
-                    <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                      <td style={{ padding: 10, fontWeight: 'bold' }}>{m.mese_nome}</td>
-                      <td style={{ padding: 10, textAlign: 'right', color: '#dc2626' }}>
-                        {formatEuro(m.iva_debito_corrispettivi)}
-                      </td>
-                      <td style={{ padding: 10, textAlign: 'center', color: '#64748b' }}>
-                        {m.num_corrispettivi}
-                      </td>
-                      <td style={{ padding: 10, textAlign: 'right', color: '#059669' }}>
-                        {formatEuro(m.iva_credito_fatture)}
-                      </td>
-                      <td style={{ padding: 10, textAlign: 'center', color: '#64748b' }}>
-                        {m.num_fatture}
-                      </td>
-                      <td
-                        style={{
-                          padding: 10,
-                          textAlign: 'right',
-                          fontWeight: 'bold',
-                          color: m.saldo > 0 ? '#dc2626' : '#059669',
-                        }}
-                      >
-                        {m.saldo > 0 ? '+' : ''}
-                        {formatEuro(m.saldo)}
-                      </td>
-                      <td style={{ padding: 10, textAlign: 'center' }}>
-                        {m.da_versare > 0 ? (
-                          <span
-                            style={{
-                              padding: '2px 6px',
-                              borderRadius: 4,
-                              background: '#fef3c7',
-                              color: '#92400e',
-                              fontSize: 10,
-                            }}
-                          >
-                            Versare {formatEuro(m.da_versare)}
-                          </span>
-                        ) : (
-                          <span
-                            style={{
-                              padding: '2px 6px',
-                              borderRadius: 4,
-                              background: '#dbeafe',
-                              color: '#1e40af',
-                              fontSize: 10,
-                            }}
-                          >
-                            Credito {formatEuro(m.a_credito)}
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr style={{ background: '#1e293b', color: 'white', fontWeight: 'bold' }}>
-                    <td style={{ padding: 10 }}>TOTALE {anno}</td>
-                    <td style={{ padding: 10, textAlign: 'right' }}>
-                      {formatEuro(confrontoIva.totali?.iva_debito_totale)}
-                    </td>
-                    <td style={{ padding: 10 }}></td>
-                    <td style={{ padding: 10, textAlign: 'right' }}>
-                      {formatEuro(confrontoIva.totali?.iva_credito_totale)}
-                    </td>
-                    <td style={{ padding: 10 }}></td>
-                    <td style={{ padding: 10, textAlign: 'right' }}>
-                      {confrontoIva.totali?.saldo_annuale > 0 ? '+' : ''}
-                      {formatEuro(confrontoIva.totali?.saldo_annuale)}
-                    </td>
-                    <td style={{ padding: 10, textAlign: 'center', fontSize: 10 }}>
-                      {confrontoIva.totali?.saldo_annuale > 0 ? 'DA VERSARE' : 'A CREDITO'}
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          </div>
-        </div>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr style={{ background: COLORS.gray[800], color: COLORS.white, fontWeight: 'bold' }}>
+                  <td style={{ padding: '10px 14px' }}>TOTALE {anno}</td>
+                  <td style={{ padding: '10px 14px', textAlign: 'right', fontFamily: FONT.mono }}>
+                    {formatEuro(confrontoIva.totali?.iva_debito_totale)}
+                  </td>
+                  <td style={{ padding: '10px 14px' }}></td>
+                  <td style={{ padding: '10px 14px', textAlign: 'right', fontFamily: FONT.mono }}>
+                    {formatEuro(confrontoIva.totali?.iva_credito_totale)}
+                  </td>
+                  <td style={{ padding: '10px 14px' }}></td>
+                  <td style={{ padding: '10px 14px', textAlign: 'right', fontFamily: FONT.mono }}>
+                    {confrontoIva.totali?.saldo_annuale > 0 ? '+' : ''}
+                    {formatEuro(confrontoIva.totali?.saldo_annuale)}
+                  </td>
+                  <td style={{ padding: '10px 14px', textAlign: 'center', fontSize: 10 }}>
+                    {confrontoIva.totali?.saldo_annuale > 0 ? 'DA VERSARE' : 'A CREDITO'}
+                  </td>
+                </tr>
+              </tfoot>
+            </Table>
+          </TableWrap>
+        </Card>
       )}
 
       {/* TAB DISCREPANZE */}
       {!loading &&
         activeTab === 'discrepanze' &&
         (verificaCompleta?.discrepanze?.length > 0 ? (
-          <div style={{ ...cardStyle, border: '2px solid #fecaca' }}>
-            <div style={{ ...cardHeaderStyle, background: '#fef2f2' }}>
-              <h3 style={{ ...cardTitleStyle, color: '#991b1b' }}>
+          <div style={{ ...cardStyle, border: `2px solid ${COLORS.danger}` }}>
+            <div style={{ ...cardHeaderStyle, background: COLORS.dangerLight }}>
+              <h3 style={{ ...cardTitleStyle, color: COLORS.danger }}>
                 ⚠️ Discrepanze Rilevate ({verificaCompleta?.discrepanze?.length})
               </h3>
             </div>
@@ -529,9 +454,9 @@ export default function VerificaCoerenza() {
                     key={idx}
                     style={{
                       padding: 14,
-                      background: d.severita === 'critical' ? '#fef2f2' : '#fffbeb',
-                      borderRadius: 8,
-                      border: `1px solid ${d.severita === 'critical' ? '#fecaca' : '#fde68a'}`,
+                      background: d.severita === 'critical' ? COLORS.dangerLight : COLORS.warningLight,
+                      borderRadius: BORDER_RADIUS.md,
+                      border: `1px solid ${d.severita === 'critical' ? COLORS.danger : COLORS.warning}`,
                     }}
                   >
                     <div
@@ -547,48 +472,39 @@ export default function VerificaCoerenza() {
                         <div
                           style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}
                         >
-                          <span
-                            style={{
-                              padding: '2px 8px',
-                              borderRadius: 4,
-                              fontSize: 10,
-                              fontWeight: 'bold',
-                              background: d.severita === 'critical' ? '#dc2626' : '#f59e0b',
-                              color: 'white',
-                            }}
-                          >
+                          <Badge variant={d.severita === 'critical' ? 'danger' : 'warning'}>
                             {d.severita.toUpperCase()}
-                          </span>
-                          <strong style={{ color: '#1e293b', fontSize: 13 }}>{d.categoria}</strong>
-                          <span style={{ color: '#64748b', fontSize: 12 }}>
+                          </Badge>
+                          <strong style={{ color: COLORS.gray[800], fontSize: 13 }}>{d.categoria}</strong>
+                          <span style={{ color: COLORS.textMuted, fontSize: 12 }}>
                             • {d.sottocategoria}
                           </span>
                         </div>
-                        <p style={{ margin: '6px 0', color: '#475569', fontSize: 13 }}>
+                        <p style={{ margin: '6px 0', color: COLORS.gray[600], fontSize: 13 }}>
                           {d.descrizione}
                         </p>
                         {d.periodo && (
-                          <span style={{ fontSize: 11, color: '#94a3b8' }}>
+                          <span style={{ fontSize: 11, color: COLORS.textSubtle }}>
                             Periodo: {d.periodo}
                           </span>
                         )}
                       </div>
                       <div style={{ textAlign: 'right', minWidth: 100 }}>
-                        <div style={{ fontSize: 11, color: '#64748b' }}>Atteso</div>
-                        <div style={{ fontWeight: 'bold', color: '#059669', fontSize: 14 }}>
+                        <div style={{ fontSize: 11, color: COLORS.textMuted }}>Atteso</div>
+                        <div style={{ fontWeight: 'bold', color: COLORS.success, fontSize: 14 }}>
                           {formatEuro(d.valore_atteso)}
                         </div>
-                        <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>Trovato</div>
-                        <div style={{ fontWeight: 'bold', color: '#dc2626', fontSize: 14 }}>
+                        <div style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 4 }}>Trovato</div>
+                        <div style={{ fontWeight: 'bold', color: COLORS.danger, fontSize: 14 }}>
                           {formatEuro(d.valore_trovato)}
                         </div>
                         <div
                           style={{
                             marginTop: 6,
                             padding: '3px 8px',
-                            background: '#1e293b',
-                            color: 'white',
-                            borderRadius: 4,
+                            background: COLORS.gray[800],
+                            color: COLORS.white,
+                            borderRadius: BORDER_RADIUS.sm,
                             fontWeight: 'bold',
                             fontSize: 12,
                           }}
@@ -603,11 +519,11 @@ export default function VerificaCoerenza() {
                         style={{
                           marginTop: 10,
                           padding: 10,
-                          background: 'white',
-                          borderRadius: 6,
+                          background: COLORS.card,
+                          borderRadius: BORDER_RADIUS.sm,
                           fontSize: 12,
-                          color: '#64748b',
-                          borderLeft: '3px solid #3b82f6',
+                          color: COLORS.textMuted,
+                          borderLeft: `3px solid ${COLORS.info}`,
                         }}
                       >
                         💡 <strong>Suggerimento:</strong> {d.suggerimento}
@@ -619,13 +535,13 @@ export default function VerificaCoerenza() {
             </div>
           </div>
         ) : (
-          <div style={{ ...cardStyle, background: '#dcfce7', border: '2px solid #bbf7d0' }}>
+          <div style={{ ...cardStyle, background: COLORS.successLight, border: `2px solid ${COLORS.success}` }}>
             <div style={{ ...cardContentStyle, padding: 40, textAlign: 'center' }}>
               <div style={{ fontSize: 56, marginBottom: 12 }}>✅</div>
-              <h3 style={{ margin: 0, color: '#166534', fontSize: 20 }}>
+              <h3 style={{ margin: 0, color: COLORS.success, fontSize: 20 }}>
                 Tutti i Dati sono Coerenti!
               </h3>
-              <p style={{ margin: '8px 0 0', color: '#15803d', fontSize: 13 }}>
+              <p style={{ margin: '8px 0 0', color: COLORS.success, fontSize: 13 }}>
                 Non sono state rilevate discrepanze tra le varie sezioni del gestionale.
               </p>
             </div>
