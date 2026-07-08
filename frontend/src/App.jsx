@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import api from "./api";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -12,11 +12,11 @@ import "./styles/topnav.css";
 
 // Mobile navigation items
 const MOBILE_NAV = [
-  { to: "/", label: "Dashboard", icon: "🏠" },
-  { to: "/fatture", label: "Fatture", icon: "📄" },
-  { to: "/prima-nota", label: "Prima Nota", icon: "📒" },
-  { to: "/riconciliazione", label: "Riconciliazione", icon: "🏦" },
-  { to: "/more", label: "Menu", icon: "☰", isMenu: true },
+  { to: "/", label: "Dashboard", icon: "\u2302" },
+  { to: "/fatture", label: "Fatture", icon: "\u25A3" },
+  { to: "/prima-nota", label: "Prima Nota", icon: "\u25A4" },
+  { to: "/riconciliazione", label: "Riconciliazione", icon: "\u2194" },
+  { to: "/more", label: "Menu", icon: "\u22EF", isMenu: true },
 ];
 
 // URL dell'app esterna AppDipendenti (gestione HR spostata fuori dal gestionale).
@@ -24,27 +24,27 @@ const APP_DIPENDENTI_URL = "https://appdipendenti.onrender.com";
 
 // Full menu items for mobile overlay.
 // NOTA: elenco mantenuto a mano in parallelo a NAV_ITEMS/ALTRO_ITEMS di TopNav.jsx
-// (menu desktop) â€” se aggiungi una voce lÃ¬, aggiungila anche qui o sparisce su mobile.
+// (menu desktop) se aggiungi una voce l?, aggiungila anche qui o sparisce su mobile.
 const ALL_NAV_ITEMS = [
-  { to: "/", label: "Dashboard", icon: "📊" },
-  { to: "/fatture", label: "Fatture passive", icon: "🧾" },
-  { to: "/fatture/corrispettivi", label: "Corrispettivi", icon: "💶" },
-  { to: "/fornitori", label: "Fornitori", icon: "🏢" },
-  { to: "/prima-nota", label: "Prima Nota", icon: "📒" },
-  { to: "/riconciliazione", label: "Riconciliazione", icon: "🏦" },
-  { to: "/riconciliazione/assegni", label: "Assegni", icon: "🧷" },
-  { to: "/riconciliazione/paypal", label: "PayPal", icon: "💳" },
-  { to: "/riconciliazione/f24", label: "F24", icon: "🗂️" },
-  { to: "/contabilita", label: "Contabilità", icon: "📈" },
-  { to: "/riconciliazione/coerenza-pos", label: "Incassi POS", icon: "💳" },
-  { to: "/noleggio", label: "Noleggi", icon: "🚗" },
-  { to: "/scadenze", label: "Scadenze", icon: "🔔" },
-  { to: "/documenti", label: "Documenti", icon: "📨" },
-  { to: "/documenti/import", label: "Import documenti", icon: "📥" },
-  { to: "/strumenti", label: "Strumenti", icon: "🔧" },
-  { to: "/admin", label: "Admin", icon: "⚙️" },
-  { to: "/mappa-gestionale", label: "Mappa gestionale", icon: "🗺️" },
-  { to: null, href: APP_DIPENDENTI_URL, label: "HR", icon: "👥", external: true },
+  { to: "/", label: "Dashboard", icon: "\u2302" },
+  { to: "/fatture", label: "Fatture passive", icon: "\u25A3" },
+  { to: "/fatture/corrispettivi", label: "Corrispettivi", icon: "\u20AC" },
+  { to: "/fornitori", label: "Fornitori", icon: "\u25EB" },
+  { to: "/prima-nota", label: "Prima Nota", icon: "\u25A4" },
+  { to: "/riconciliazione", label: "Riconciliazione", icon: "\u2194" },
+  { to: "/riconciliazione/assegni", label: "Assegni", icon: "\u25A6" },
+  { to: "/riconciliazione/paypal", label: "PayPal", icon: "\u25C9" },
+  { to: "/riconciliazione/f24", label: "F24", icon: "\u25A0" },
+  { to: "/contabilita", label: "Contabilita", icon: "\u25A7" },
+  { to: "/riconciliazione/coerenza-pos", label: "Incassi POS", icon: "\u25A5" },
+  { to: "/noleggio", label: "Noleggi", icon: "\u25B6" },
+  { to: "/scadenze", label: "Scadenze", icon: "\u23F1" },
+  { to: "/documenti", label: "Documenti", icon: "\u25A1" },
+  { to: "/documenti/import", label: "Import documenti", icon: "\u2B06" },
+  { to: "/strumenti", label: "Strumenti", icon: "\u25B3" },
+  { to: "/admin", label: "Admin", icon: "\u2699" },
+  { to: "/mappa-gestionale", label: "Mappa gestionale", icon: "\u25A8" },
+  { to: null, href: APP_DIPENDENTI_URL, label: "HR", icon: "\u25C6", external: true },
 ];
 
 export default function App() {
@@ -54,7 +54,7 @@ export default function App() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Connessione WebSocket real-time â€” gestisce notifiche push dallo scheduler
+  // Connessione WebSocket real-time gestisce notifiche push dallo scheduler
   useWebSocketNotifications();
 
   // Load commercialista alert
@@ -63,7 +63,7 @@ export default function App() {
       try {
         const res = await api.get('/api/commercialista/alert-status');
         if (res.data.show_alert) {
-          // Controlla se l'utente ha giÃ  chiuso questo avviso (per mese/anno)
+          // Controlla se l'utente ha già chiuso questo avviso (per mese/anno)
           const dismissKey = `alert_dismissed_${res.data.mese_pendente}_${res.data.anno_pendente}`;
           if (!localStorage.getItem(dismissKey)) {
             setAlertCommercialista(res.data);
@@ -136,7 +136,7 @@ export default function App() {
                   className="mobile-menu-close"
                   onClick={() => setShowMobileMenu(false)}
                 >
-                  âœ•
+                  �S"
                 </button>
               </div>
               <div className="mobile-menu-items">
@@ -185,7 +185,7 @@ export default function App() {
               marginBottom: 20,
               borderRadius: 10,
             }}>
-              <span style={{ fontSize: 24 }}>âš ï¸</span>
+              <span style={{ fontSize: 24 }}>�a�️</span>
               <div style={{ flex: 1 }}>
                 <strong>{alertCommercialista.message}</strong>
               </div>
@@ -227,7 +227,7 @@ export default function App() {
                   padding: 5
                 }}
               >
-                âœ•
+                �S"
               </button>
             </div>
           )}

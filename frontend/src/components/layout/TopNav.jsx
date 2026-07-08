@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useCallback, memo, useEffect } from 'react';
+import React, { useState, useRef, useCallback, memo, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -25,7 +25,7 @@ import { AnnoSelector } from '../../contexts/AnnoContext';
 import { COLORS, useIsMobile } from '../../lib/utils';
 import InstallAppButton from '../InstallAppButton';
 
-/* â”€â”€â”€ Costanti navigazione (definite fuori dal componente â†’ nessuna ricreazione) â”€â”€â”€ */
+/* ������ Costanti navigazione (definite fuori dal componente �  nessuna ricreazione) ������ */
 
 // URL dell'app esterna AppDipendenti (gestione HR spostata fuori dal gestionale).
 const APP_DIPENDENTI_URL = 'https://appdipendenti.onrender.com';
@@ -43,7 +43,7 @@ const NAV_ITEMS = [
 const ALTRO_ITEMS = [
   { to: '/fatture/corrispettivi', label: 'Corrispettivi', Icon: Wallet },
   { to: '/riconciliazione/f24', label: 'F24', Icon: Receipt },
-  { to: '/contabilita', label: 'Contabilità', Icon: FileBarChart },
+  { to: '/contabilita', label: 'Contabilita', Icon: FileBarChart },
   { to: '/documenti', label: 'Documenti', Icon: BookMarked },
   { to: '/documenti/import', label: 'Import Documenti', Icon: BookMarked },
   { to: '/riconciliazione/coerenza-pos', label: 'Incassi POS', Icon: CreditCard },
@@ -54,7 +54,7 @@ const ALTRO_ITEMS = [
   { to: '/admin', label: 'Admin', Icon: Settings },
 ];
 
-/* â”€â”€â”€ Stili (definiti fuori â†’ creati una volta sola) â”€â”€â”€ */
+/* ������ Stili (definiti fuori �  creati una volta sola) ������ */
 const S = {
   nav: {
     position: 'fixed',
@@ -192,7 +192,7 @@ const S = {
   },
 };
 
-/* â”€â”€â”€ Dropdown "Altro" â€” memoizzato separatamente per evitare re-render del nav â”€â”€â”€ */
+/* ������ Dropdown "Altro" � memoizzato separatamente per evitare re-render del nav ������ */
 const AltroDropdown = memo(function AltroDropdown({ isAltroActive }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef(null);
@@ -215,7 +215,7 @@ const AltroDropdown = memo(function AltroDropdown({ isAltroActive }) {
         aria-expanded={open}
         onClick={() => setOpen(v => !v)}
       >
-        <span style={{ fontSize: 13 }}>Â·Â·Â·</span>
+        <span style={{ fontSize: 13 }}>�</span>
         <span>Altro</span>
         <ChevronDown
           size={11}
@@ -262,7 +262,7 @@ const AltroDropdown = memo(function AltroDropdown({ isAltroActive }) {
   );
 });
 
-/* â”€â”€â”€ TopNav principale â€” React.memo per evitare re-render da parent â”€â”€â”€ */
+/* ������ TopNav principale � React.memo per evitare re-render da parent ������ */
 const TopNav = memo(function TopNav() {
   const location = useLocation();
   const isMobile = useIsMobile(768);
@@ -274,7 +274,7 @@ const TopNav = memo(function TopNav() {
 
   return (
     <>
-      {/* Stile globale per animazione dropdown â€” iniettato UNA volta */}
+      {/* Stile globale per animazione dropdown � iniettato UNA volta */}
       <style>{`
         @keyframes navDropIn {
           from { opacity: 0; transform: translateY(-6px); }
@@ -302,7 +302,7 @@ const TopNav = memo(function TopNav() {
         <div style={S.items} className="topnav-items-scroll topnav-items">
           {NAV_ITEMS.map(({ to, href, label, Icon, external }) =>
             external ? (
-              /* Link esterno (es. HR â†’ AppDipendenti) */
+              /* Link esterno (es. HR �  AppDipendenti) */
               <a
                 key={label}
                 href={href}
@@ -329,13 +329,13 @@ const TopNav = memo(function TopNav() {
               </NavLink>
             )
           )}
-          {/* Dropdown "Altro" â€” ultimo item nella nav */}
+          {/* Dropdown "Altro" � ultimo item nella nav */}
           <AltroDropdown isAltroActive={isAltroActive} />
         </div>
 
         {/* Destra: Anno + Notifiche + Avatar */}
         <div style={S.right} className="topnav-right">
-          {/* Selettore Anno â€” label "ANNO" nascosta sotto 768px per fare spazio alle icone */}
+          {/* Selettore Anno � label "ANNO" nascosta sotto 768px per fare spazio alle icone */}
           <div style={S.annoWrap} data-testid="anno-selector">
             {!isMobile && <span style={S.annoLabel}>ANNO</span>}
             <AnnoSelector
@@ -354,7 +354,7 @@ const TopNav = memo(function TopNav() {
             />
           </div>
 
-          {/* Installa come app (PWA) â€” visibile solo se non giÃ  installata */}
+          {/* Installa come app (PWA) � visibile solo se non già installata */}
           <InstallAppButton />
 
           {/* Campana notifiche */}
@@ -375,7 +375,7 @@ const TopNav = memo(function TopNav() {
 
 export default TopNav;
 
-/* â”€â”€â”€ Campana notifiche â€” usa /api/alerts/summary (sistema relazionale) â”€â”€â”€ */
+/* ������ Campana notifiche � usa /api/alerts/summary (sistema relazionale) ������ */
 const NotificationBellMinimal = memo(function NotificationBellMinimal() {
   const [summary, setSummary] = useState({
     totale_aperti: 0,
@@ -509,13 +509,13 @@ const NotificationBellMinimal = memo(function NotificationBellMinimal() {
             {hasAlerts && (
               <span style={{ fontSize: 11, fontWeight: 600, color: '#64748b' }}>
                 {critical > 0 && (
-                  <span style={{ color: '#ef4444', marginRight: 6 }}>ðŸ”´ {critical}</span>
+                  <span style={{ color: '#ef4444', marginRight: 6 }}>CRIT {critical}</span>
                 )}
                 {warning > 0 && (
-                  <span style={{ color: '#f59e0b', marginRight: 6 }}>ðŸŸ¡ {warning}</span>
+                  <span style={{ color: '#f59e0b', marginRight: 6 }}>WARN {warning}</span>
                 )}
                 {(summary.per_severita?.info || 0) > 0 && (
-                  <span style={{ color: '#3b82f6' }}>ðŸ”µ {summary.per_severita.info}</span>
+                  <span style={{ color: '#3b82f6' }}>INFO {summary.per_severita.info}</span>
                 )}
               </span>
             )}
@@ -524,7 +524,7 @@ const NotificationBellMinimal = memo(function NotificationBellMinimal() {
           <div style={{ maxHeight: 320, overflowY: 'auto' }}>
             {!hasAlerts ? (
               <div style={{ padding: 20, textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>
-                âœ“ Nessun alert aperto
+                Nessun alert aperto
               </div>
             ) : summary.critical_recenti && summary.critical_recenti.length > 0 ? (
               <>
@@ -605,7 +605,7 @@ const NotificationBellMinimal = memo(function NotificationBellMinimal() {
               borderTop: '1px solid #f3f4f6',
             }}
           >
-            Apri Dashboard Relazionale â†’
+            Apri Dashboard Relazionale
           </a>
         </div>
       )}

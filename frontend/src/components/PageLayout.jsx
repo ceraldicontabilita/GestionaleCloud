@@ -91,7 +91,7 @@ export function PageGrid({ cols = 2, gap = 20, minWidth, children }) {
   );
 }
 
-export function PageEmpty({ icon = '📭', message = 'Nessun dato disponibile' }) {
+export function PageEmpty({ icon = '\u25A1', message = 'Nessun dato disponibile' }) {
   return (
     <div
       style={{
@@ -131,7 +131,7 @@ export function PageLoading({ message = 'Caricamento...' }) {
   );
 }
 
-export function PageError({ message = 'Si è verificato un errore', onRetry }) {
+export function PageError({ message = 'Si e verificato un errore', onRetry }) {
   return (
     <div
       style={{
@@ -143,7 +143,7 @@ export function PageError({ message = 'Si è verificato un errore', onRetry }) {
         color: '#dc2626',
       }}
     >
-      <div style={{ fontSize: 32, marginBottom: 12 }}>⚠️</div>
+      <div style={{ fontSize: 32, marginBottom: 12 }}>!</div>
       <p style={{ margin: '0 0 16px 0', fontSize: 14 }}>{message}</p>
       {onRetry && (
         <button

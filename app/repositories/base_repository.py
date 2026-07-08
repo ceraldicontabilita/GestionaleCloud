@@ -28,6 +28,21 @@ class BaseRepository(Generic[T]):
             collection: Motor AsyncIOMotorCollection instance
         """
         self.collection = collection
+
+    def _build_id_filter(self, doc_id: Any) -> Dict[str, Any]:
+        """
+        Build a Mongo filter that supports both ObjectId and legacy string ids.
+        """
+        if isinstance(doc_id, ObjectId):
+            return {"_id": doc_id}
+
+        if isinstance(doc_id, str):
+            try:
+                return {"_id": ObjectId(doc_id)}
+            except Exception:
+                return {"_id": doc_id}
+
+        return {"_id": doc_id}
     
     async def create(self, document: Dict[str, Any]) -> str:
         """
@@ -59,8 +74,7 @@ class BaseRepository(Generic[T]):
             Document data or None if not found
         """
         try:
-            object_id = ObjectId(doc_id) if isinstance(doc_id, str) else doc_id
-            document = await self.collection.find_one({"_id": object_id})
+            document = await self.collection.find_one(self._build_id_filter(doc_id))
             
             if document:
                 document['id'] = str(document.pop('_id'))
@@ -154,9 +168,8 @@ class BaseRepository(Generic[T]):
         update_data['updated_at'] = datetime.now(timezone.utc)
         
         try:
-            object_id = ObjectId(doc_id) if isinstance(doc_id, str) else doc_id
             result = await self.collection.update_one(
-                {"_id": object_id},
+                self._build_id_filter(doc_id),
                 {"$set": update_data},
                 upsert=upsert
             )
@@ -206,8 +219,7 @@ class BaseRepository(Generic[T]):
             True if deleted, False otherwise
         """
         try:
-            object_id = ObjectId(doc_id) if isinstance(doc_id, str) else doc_id
-            result = await self.collection.delete_one({"_id": object_id})
+            result = await self.collection.delete_one(self._build_id_filter(doc_id))
             
             if result.deleted_count > 0:
                 logger.info(f"Deleted document from {self.collection.name}: {doc_id}")

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * RiconciliazionePaypal.jsx
  * Gestione completa estratti conto PayPal: import PDF, transazioni, report, riconciliazione banca.
  */
@@ -72,7 +72,7 @@ export default function RiconciliazionePaypal() {
   const [report, setReport] = useState(null);
   const [statements, setStatements] = useState([]);
   // Deep link ?tab=mapping (usato dal bottone "Mappa fornitore" del modale
-  // dettaglio transazione, PaypalTransactionDetailModal.jsx) â€” prima veniva
+  // dettaglio transazione, PaypalTransactionDetailModal.jsx) ï¿½ prima veniva
   // ignorato e la pagina apriva sempre su "dashboard".
   const [activeTab, setActiveTab] = useState(
     () => new URLSearchParams(location.search).get('tab') || 'dashboard'
@@ -81,7 +81,7 @@ export default function RiconciliazionePaypal() {
     const tab = new URLSearchParams(location.search).get('tab');
     if (tab) setActiveTab(tab);
   }, [location.search]);
-  // Anno unico e globale (barra di navigazione in alto) â€” nessun selettore
+  // Anno unico e globale (barra di navigazione in alto) ï¿½ nessun selettore
   // locale duplicato: una pagina con un filtro anno proprio, indipendente
   // da quello globale, dava l'impressione che cambiare l'anno in alto non
   // avesse alcun effetto sulla pagina.
@@ -160,7 +160,7 @@ export default function RiconciliazionePaypal() {
       });
       const r = res.data || {};
       toast.success(
-        `âœ“ CSV importato â€” ${r.transazioni_inserite} transazioni (${r.transazioni_duplicate} giÃ  presenti), ` +
+        `ï¿½S CSV importato ï¿½ ${r.transazioni_inserite} transazioni (${r.transazioni_duplicate} giï¿½ presenti), ` +
           `${r.riconciliazione?.riconciliati || 0} riconciliate con la banca`
       );
       await loadAll();
@@ -181,7 +181,7 @@ export default function RiconciliazionePaypal() {
       const params = annoFiltro ? `?anno=${annoFiltro}` : '';
       const res = await api.get(`/api/paypal-api/account-ids-non-mappati${params}`);
       setMappingData(res.data);
-      // Pre-seleziona automaticamente i fornitori con match certo (nome_controparte â†” ragione_sociale)
+      // Pre-seleziona automaticamente i fornitori con match certo (nome_controparte ï¿½  ragione_sociale)
       const autoSelect = {};
       for (const item of res.data.items || []) {
         if (item.suggested_fornitore_id) {
@@ -218,7 +218,7 @@ export default function RiconciliazionePaypal() {
         // continua col prossimo
       }
     }
-    toast.success(`âœ“ Mappati ${ok}/${certi.length} fornitori`);
+    toast.success(`ï¿½S Mappati ${ok}/${certi.length} fornitori`);
     loadMapping();
   };
 
@@ -232,7 +232,7 @@ export default function RiconciliazionePaypal() {
         paypal_account_id: paypalAccountId,
         fornitore_id: fornitoreId,
       });
-      toast.success(`âœ“ Mappato: ${res.data.fornitore}`);
+      toast.success(`ï¿½S Mappato: ${res.data.fornitore}`);
       loadMapping();
     } catch (e) {
       toast.error('Errore: ' + (e.response?.data?.detail || e.message));
@@ -249,7 +249,7 @@ export default function RiconciliazionePaypal() {
       const trovati = r.stats?.new_documents ?? 0;
       if (trovati > 0) {
         toast.success(
-          `âœ“ Trovati ${trovati} documenti in posta per "${r.cercato_per}" â€” vai su Documenti per vederli`
+          `ï¿½S Trovati ${trovati} documenti in posta per "${r.cercato_per}" ï¿½ vai su Documenti per vederli`
         );
       } else {
         toast.info(
@@ -352,8 +352,8 @@ export default function RiconciliazionePaypal() {
               <CreditCard size={24} /> Gestione PayPal
             </h1>
             <p style={{ margin: '4px 0 0', fontSize: 13, opacity: 0.85 }}>
-              {dashboard?.total_statements || 0} estratti conto Â·{' '}
-              {dashboard?.total_transactions || 0} transazioni Â·{' '}
+              {dashboard?.total_statements || 0} estratti conto ï¿½{' '}
+              {dashboard?.total_transactions || 0} transazioni ï¿½{' '}
               {formatEuro(Math.abs(dashboard?.totale_speso || 0))} spesi
             </p>
           </div>
@@ -396,7 +396,7 @@ export default function RiconciliazionePaypal() {
               }}
               title="Importa estratto conto PayPal esportato in CSV"
             >
-              {importingCsv ? 'Importâ€¦' : '+ Importa CSV'}
+              {importingCsv ? 'Import&' : '+ Importa CSV'}
             </button>
             <select
               value={syncMesi}
@@ -430,7 +430,7 @@ export default function RiconciliazionePaypal() {
               onClick={async () => {
                 setSyncing(true);
                 try {
-                  toast.info('Sincronizzazione PayPal API in corsoâ€¦');
+                  toast.info('Sincronizzazione PayPal API in corso&');
                   const today = new Date();
                   const end = today.toISOString().slice(0, 10);
                   const startDate = new Date(today.getFullYear(), today.getMonth() - syncMesi, 1);
@@ -441,18 +441,18 @@ export default function RiconciliazionePaypal() {
                   });
                   const r = res.data || {};
                   toast.success(
-                    `âœ“ Sync OK â€” ${r.total || 0} transazioni (${r.enriched || 0} arricchite), riconciliazione in corsoâ€¦`
+                    `ï¿½S Sync OK ï¿½ ${r.total || 0} transazioni (${r.enriched || 0} arricchite), riconciliazione in corso&`
                   );
-                  // Dopo la sync, riconcilia subito con fatture/banca â€” senza
+                  // Dopo la sync, riconcilia subito con fatture/banca ï¿½ senza
                   // questo passaggio le transazioni restavano senza riferimento
-                  // a fattura/controparte finchÃ© qualcuno non lo lanciava a mano.
+                  // a fattura/controparte finchï¿½ qualcuno non lo lanciava a mano.
                   try {
                     const ric = await api.post('/api/paypal-api/riconcilia', {
                       start_date: start,
                       end_date: end,
                     });
                     const fatt = ric.data?.fatture?.riconciliati ?? 0;
-                    toast.success(`âœ“ Riconciliazione OK â€” ${fatt} transazioni associate a fatture`);
+                    toast.success(`ï¿½S Riconciliazione OK ï¿½ ${fatt} transazioni associate a fatture`);
                   } catch (ricErr) {
                     toast.error(
                       'Sync OK ma riconciliazione fallita: ' +
@@ -481,7 +481,7 @@ export default function RiconciliazionePaypal() {
               }}
               title="Sincronizza le transazioni PayPal via API (Transaction Search) e le riconcilia con fatture/banca"
             >
-              {syncing ? 'â³ Syncâ€¦' : 'ðŸ”„ Sync PayPal API'}
+              {syncing ? 'ï¿½ Sync&' : 'ï¿½x Sync PayPal API'}
             </button>
           </div>
         </div>
@@ -878,7 +878,7 @@ export default function RiconciliazionePaypal() {
                         {tx.riconciliato_banca ? (
                           <CheckCircle2 size={16} style={{ color: '#16a34a' }} />
                         ) : (
-                          <span style={{ color: '#cbd5e1' }}>â€”</span>
+                          <span style={{ color: '#cbd5e1' }}>ï¿½</span>
                         )}
                       </td>
                       <td
@@ -896,8 +896,8 @@ export default function RiconciliazionePaypal() {
                             }
                             title={
                               tx.fattura_associata.match === 'solo_importo'
-                                ? `âš ï¸ Match SOLO per importo (da verificare): Fatt. ${tx.fattura_associata.numero || ''} Â· ${tx.fattura_associata.fornitore || ''} â€” apri`
-                                : `Fatt. ${tx.fattura_associata.numero || ''} Â· ${tx.fattura_associata.fornitore || ''} â€” apri`
+                                ? `ï¿½aï¿½ Match SOLO per importo (da verificare): Fatt. ${tx.fattura_associata.numero || ''} ï¿½ ${tx.fattura_associata.fornitore || ''} ï¿½ apri`
+                                : `Fatt. ${tx.fattura_associata.numero || ''} ï¿½ ${tx.fattura_associata.fornitore || ''} ï¿½ apri`
                             }
                             style={{
                               fontSize: 12,
@@ -922,14 +922,14 @@ export default function RiconciliazionePaypal() {
                             href={tx.gmail_associata.gmail_link}
                             target="_blank"
                             rel="noopener noreferrer"
-                            title={`Email trovata su Gmail: ${tx.gmail_associata.subject || ''} â€” apri in Gmail`}
+                            title={`Email trovata su Gmail: ${tx.gmail_associata.subject || ''} ï¿½ apri in Gmail`}
                             style={{ textDecoration: 'none', fontSize: 15 }}
                           >
-                            âœ‰ï¸
+                            ï¿½S0
                           </a>
                         ) : (
                           <span style={{ color: '#cbd5e1' }} title="Ricerca automatica in corso (fatture + Gmail ogni 30 min)">
-                            â€”
+                            ï¿½
                           </span>
                         )}
                       </td>
@@ -1139,7 +1139,7 @@ export default function RiconciliazionePaypal() {
                       </span>
                     </td>
                     <td style={{ padding: '8px 12px', fontWeight: 500 }}>
-                      {formatDate(s.periodo_inizio)} â€” {formatDate(s.periodo_fine)}
+                      {formatDate(s.periodo_inizio)} ï¿½ {formatDate(s.periodo_fine)}
                     </td>
                     <td style={{ padding: '8px 12px', textAlign: 'center' }}>
                       {s.totale_transazioni}
@@ -1194,7 +1194,7 @@ export default function RiconciliazionePaypal() {
             >
               <div>
                 <div style={{ fontWeight: 700, fontSize: 14 }}>
-                  ðŸ”— Account PayPal da mappare ai Fornitori
+                  ï¿½x Account PayPal da mappare ai Fornitori
                   {mappingData?.totale_non_mappati !== undefined && (
                     <span
                       style={{
@@ -1231,7 +1231,7 @@ export default function RiconciliazionePaypal() {
                   fontWeight: 600,
                 }}
               >
-                {mappingLoading ? 'â³ Caricamento...' : 'ðŸ”„ Ricarica'}
+                {mappingLoading ? 'ï¿½ Caricamento...' : 'ï¿½x Ricarica'}
               </button>
             </div>
 
@@ -1250,7 +1250,7 @@ export default function RiconciliazionePaypal() {
                 }}
               >
                 <div style={{ fontSize: 13, color: '#166534' }}>
-                  ðŸŽ¯{' '}
+                  Match certi{' '}
                   <strong>
                     {mappingData.items.filter(i => i.suggested_fornitore_id).length} match certi
                   </strong>{' '}
@@ -1272,7 +1272,7 @@ export default function RiconciliazionePaypal() {
                     whiteSpace: 'nowrap',
                   }}
                 >
-                  ðŸš€ Mappa tutti i certi
+                  Mappa tutti i certi
                 </button>
               </div>
             )}
@@ -1292,7 +1292,7 @@ export default function RiconciliazionePaypal() {
 
             {mappingData && mappingData.items.length === 0 && (
               <div style={{ padding: 40, textAlign: 'center', color: '#16a34a', fontWeight: 600 }}>
-                âœ… Tutti gli account PayPal sono mappati!
+                ï¿½S& Tutti gli account PayPal sono mappati!
               </div>
             )}
 
@@ -1316,7 +1316,7 @@ export default function RiconciliazionePaypal() {
                       <div
                         style={{ fontSize: 13, fontWeight: 700, color: '#1e293b', marginBottom: 4 }}
                       >
-                        ðŸ¢ {item.nome_controparte}
+                        ï¿½xï¿½ï¿½ {item.nome_controparte}
                       </div>
                     )}
                     <div
@@ -1330,15 +1330,15 @@ export default function RiconciliazionePaypal() {
                       {item.paypal_account_id}
                     </div>
                     <div style={{ fontSize: 11, color: '#64748b', marginTop: 3 }}>
-                      {item.n_tx} tx Â· {formatEuro(item.importo_totale)}
+                      {item.n_tx} tx ï¿½ {formatEuro(item.importo_totale)}
                     </div>
                     <div style={{ fontSize: 10, color: '#9ca3af' }}>
-                      Media: {formatEuro(item.importo_medio)} Â· Ultima:{' '}
+                      Media: {formatEuro(item.importo_medio)} ï¿½ Ultima:{' '}
                       {formatDate(item.ultima_data)}
                     </div>
                     {item.email_controparte && (
                       <div style={{ fontSize: 10, color: '#64748b', marginTop: 3 }}>
-                        âœ‰ï¸ {item.email_controparte}
+                        ï¿½S0 {item.email_controparte}
                       </div>
                     )}
                     {item.invoice_ids?.length > 0 && (
@@ -1363,7 +1363,7 @@ export default function RiconciliazionePaypal() {
                           display: 'inline-block',
                         }}
                       >
-                        ðŸŽ¯ Match certo da nome PayPal
+                        Match certo da nome PayPal
                       </div>
                     )}
                     <select
@@ -1388,26 +1388,26 @@ export default function RiconciliazionePaypal() {
                         background: 'white',
                       }}
                     >
-                      <option value="">â€” Seleziona fornitore â€”</option>
+                      <option value="">ï¿½ Seleziona fornitore ï¿½</option>
                       {item.candidati?.filter(c => c.source?.startsWith('nome_paypal')).length >
                         0 && (
-                        <optgroup label="ðŸŽ¯ Match certo (nome PayPal)">
+                        <optgroup label="ï¿½x}ï¿½ Match certo (nome PayPal)">
                           {item.candidati
                             .filter(c => c.source?.startsWith('nome_paypal'))
                             .map(c => (
                               <option key={c.fornitore_id} value={c.fornitore_id}>
-                                {c.nome} Â· P.IVA {c.piva} Â· score {c.score}
+                                {c.nome} ï¿½ P.IVA {c.piva} ï¿½ score {c.score}
                               </option>
                             ))}
                         </optgroup>
                       )}
                       {item.candidati?.filter(c => c.source === 'importo_simile').length > 0 && (
-                        <optgroup label="ðŸ’¡ Candidati (importo simile)">
+                        <optgroup label="ï¿½xï¿½ Candidati (importo simile)">
                           {item.candidati
                             .filter(c => c.source === 'importo_simile')
                             .map(c => (
                               <option key={c.fornitore_id} value={c.fornitore_id}>
-                                {c.nome} Â· P.IVA {c.piva} Â· {c.n_fatture_simili} fatture
+                                {c.nome} ï¿½ P.IVA {c.piva} ï¿½ {c.n_fatture_simili} fatture
                               </option>
                             ))}
                         </optgroup>
@@ -1442,7 +1442,7 @@ export default function RiconciliazionePaypal() {
                         fontSize: 13,
                       }}
                     >
-                      ðŸ”— Collega
+                      ï¿½x Collega
                     </button>
                     <button
                       data-testid={`crea-forn-btn-${item.paypal_account_id}`}
@@ -1466,7 +1466,7 @@ export default function RiconciliazionePaypal() {
                       }}
                       title="Crea un nuovo fornitore in anagrafica e mappalo subito"
                     >
-                      âž• Crea nuovo
+                      ï¿½~" Crea nuovo
                     </button>
                     <button
                       data-testid={`cerca-email-btn-${item.paypal_account_id}`}
@@ -1487,8 +1487,8 @@ export default function RiconciliazionePaypal() {
                       title="Cerca la fattura nella posta (fornitori esteri: mai su Drive/PEC, esiste solo come PDF via email)"
                     >
                       {cercandoEmail === item.paypal_account_id
-                        ? 'â³ Cerco nella postaâ€¦'
-                        : 'ðŸ“§ Cerca fattura via email'}
+                        ? 'ï¿½ Cerco nella posta&'
+                        : 'ï¿½xï¿½ Cerca fattura via email'}
                     </button>
                   </div>
                 </div>
@@ -1504,7 +1504,7 @@ export default function RiconciliazionePaypal() {
                   color: '#075985',
                 }}
               >
-                ðŸ’¡ <strong>Suggerimento</strong>: una volta mappati i fornitori, esegui{' '}
+                ï¿½xï¿½ <strong>Suggerimento</strong>: una volta mappati i fornitori, esegui{' '}
                 <code style={{ padding: '1px 4px', background: '#dbeafe', borderRadius: 3 }}>
                   POST /api/paypal-api/riconcilia
                 </code>{' '}
@@ -1538,7 +1538,7 @@ export default function RiconciliazionePaypal() {
           onCreated={() => {
             setCreateModal(null);
             loadMapping();
-            toast.success('âœ“ Fornitore creato e mappato');
+            toast.success('ï¿½S Fornitore creato e mappato');
           }}
         />
       )}
@@ -1546,7 +1546,7 @@ export default function RiconciliazionePaypal() {
   );
 }
 
-// â”€â”€â”€ Modale: crea fornitore inline + mappa al paypal_account_id â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ Modale: crea fornitore inline + mappa al paypal_account_id ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 function CreaFornitorePaypalModal({ context, onClose, onCreated }) {
   const [form, setForm] = useState({
     ragione_sociale: context.nome_controparte || '',
@@ -1555,14 +1555,14 @@ function CreaFornitorePaypalModal({ context, onClose, onCreated }) {
     email: context.email_controparte || '',
     metodo_pagamento: 'paypal',
     esclude_magazzino: true,
-    note: `Creato da PayPal mapping (${context.n_tx} transazioni, totale â‚¬${Math.abs(context.importo_totale).toFixed(2)})`,
+    note: `Creato da PayPal mapping (${context.n_tx} transazioni, totale ï¿½ï¿½${Math.abs(context.importo_totale).toFixed(2)})`,
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
   const submit = async () => {
     if (!form.ragione_sociale.trim()) {
-      setError('La ragione sociale Ã¨ obbligatoria');
+      setError('La ragione sociale ï¿½ obbligatoria');
       return;
     }
     setLoading(true);
@@ -1613,14 +1613,14 @@ function CreaFornitorePaypalModal({ context, onClose, onCreated }) {
             lineHeight: 1,
           }}
         >
-          âœ•
+          ï¿½S"
         </button>
         <div style={{ marginBottom: 16 }}>
           <h2 style={{ margin: 0, fontSize: 18, color: '#0f2744' }}>
-            âž• Crea fornitore PayPal
+            ï¿½~" Crea fornitore PayPal
           </h2>
           <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>
-            Account ID: <code>{context.paypal_account_id}</code> Â· {context.n_tx} transazioni
+            Account ID: <code>{context.paypal_account_id}</code> ï¿½ {context.n_tx} transazioni
           </div>
         </div>
 
@@ -1651,15 +1651,15 @@ function CreaFornitorePaypalModal({ context, onClose, onCreated }) {
                 onChange={e => setForm(f => ({ ...f, nazione: e.target.value }))}
                 style={inputStyle}
               >
-                <option value="IT">ðŸ‡®ðŸ‡¹ Italia</option>
-                <option value="IE">ðŸ‡®ðŸ‡ª Irlanda</option>
-                <option value="NL">ðŸ‡³ðŸ‡± Paesi Bassi</option>
-                <option value="DE">ðŸ‡©ðŸ‡ª Germania</option>
-                <option value="FR">ðŸ‡«ðŸ‡· Francia</option>
-                <option value="ES">ðŸ‡ªðŸ‡¸ Spagna</option>
-                <option value="GB">ðŸ‡¬ðŸ‡§ Regno Unito</option>
-                <option value="US">ðŸ‡ºðŸ‡¸ USA</option>
-                <option value="LU">ðŸ‡±ðŸ‡º Lussemburgo</option>
+                <option value="IT">ï¿½x!ï¿½ï¿½x!ï¿½ Italia</option>
+                <option value="IE">ï¿½x!ï¿½ï¿½x!ï¿½ Irlanda</option>
+                <option value="NL">ï¿½x!ï¿½ï¿½x!ï¿½ Paesi Bassi</option>
+                <option value="DE">ï¿½x!ï¿½ï¿½x!ï¿½ Germania</option>
+                <option value="FR">ï¿½x!ï¿½ï¿½x!ï¿½ Francia</option>
+                <option value="ES">ï¿½x!ï¿½ï¿½x!ï¿½ Spagna</option>
+                <option value="GB">ï¿½x!ï¿½ï¿½x!ï¿½ Regno Unito</option>
+                <option value="US">ï¿½x!ï¿½ï¿½x!ï¿½ USA</option>
+                <option value="LU">ï¿½x!ï¿½ï¿½x!ï¿½ Lussemburgo</option>
                 <option value="OTHER">Altro</option>
               </select>
             </Field>
@@ -1708,7 +1708,7 @@ function CreaFornitorePaypalModal({ context, onClose, onCreated }) {
               border: '1px solid #fca5a5', borderRadius: 6, color: '#b91c1c', fontSize: 13,
             }}
           >
-            âš ï¸ {error}
+            ï¿½aï¿½ {error}
           </div>
         )}
 
@@ -1737,7 +1737,7 @@ function CreaFornitorePaypalModal({ context, onClose, onCreated }) {
               fontSize: 13, fontWeight: 600,
             }}
           >
-            {loading ? 'â³ Creazioneâ€¦' : 'âž• Crea e mappa'}
+            {loading ? 'ï¿½ Creazione&' : 'ï¿½~" Crea e mappa'}
           </button>
         </div>
       </div>

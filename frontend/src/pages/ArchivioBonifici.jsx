@@ -65,9 +65,9 @@ export default function ArchivioBonifici() {
   const activeTab = hs.tab;
 
   const handleTabChange = tabId => {
-    // Il tab ÃƒÆ’Ã‚Â¨ gestito interamente via hash (vedi useHashState sopra): questa
-    // pagina ÃƒÆ’Ã‚Â¨ montata solo su /riconciliazione/archivio-bonifici, non esiste
-    // una route "/archivio-bonifici/:tab" nel router ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â un navigate() verso
+    // Il tab Ò��¨ gestito interamente via hash (vedi useHashState sopra): questa
+    // pagina Ò��¨ montata solo su /riconciliazione/archivio-bonifici, non esiste
+    // una route "/archivio-bonifici/:tab" nel router Ò¢â�a¬â�� un navigate() verso
     // quel percorso finiva sul wildcard "*" e rimandava l'utente alla Dashboard.
     setHs('tab', tabId);
   };
@@ -108,7 +108,7 @@ export default function ArchivioBonifici() {
   }, []);
 
   // Ricarica quando cambiano i filtri (incluso l'anno globale: prima la
-  // tabella movimenti ignorava l'anno globale quando yearFilter era vuoto ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â
+  // tabella movimenti ignorava l'anno globale quando yearFilter era vuoto Ò¢â�a¬â��
   // mostrava TUTTI gli anni mentre riepilogo/count restavano sull'anno
   // globale, con tabella e riepilogo che potevano riferirsi ad anni diversi)
   useEffect(() => {
@@ -125,7 +125,7 @@ export default function ArchivioBonifici() {
     try {
       const params = new URLSearchParams();
       if (search) params.append('search', search);
-      // yearFilter ÃƒÆ’Ã‚Â¨ un override manuale opzionale; di default segue
+      // yearFilter Ò��¨ un override manuale opzionale; di default segue
       // l'anno globale come tutto il resto della pagina (summary/count).
       const annoEffettivo = yearFilter || anno;
       if (annoEffettivo) params.append('year', annoEffettivo);
@@ -186,11 +186,11 @@ export default function ArchivioBonifici() {
 
             if (statusRes.data.status === 'completed') {
               // Il task in background espone i campi direttamente sull'oggetto
-              // (non annidati in "result" ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â quello non esiste lato backend).
+              // (non annidati in "result" Ò¢â�a¬â�� quello non esiste lato backend).
               const riconciliati = statusRes.data.riconciliati || 0;
               const totale = statusRes.data.total || 0;
               toast.success('Riconciliazione completata', {
-                description: `Riconciliati: ${riconciliati} ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ Non trovati: ${Math.max(totale - riconciliati, 0)}`,
+                description: `Riconciliati: ${riconciliati} Ò¢â�a¬�¢ Non trovati: ${Math.max(totale - riconciliati, 0)}`,
               });
               await Promise.all([loadTransfers(), loadRiconciliazioneStats()]);
               setRiconciliando(false);
@@ -218,7 +218,7 @@ export default function ArchivioBonifici() {
       } else {
         // Fallback sincrono
         toast.success(res.data.message || 'Riconciliazione completata', {
-          description: `Riconciliati: ${res.data.riconciliati} ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ Non trovati: ${res.data.non_riconciliati}`,
+          description: `Riconciliati: ${res.data.riconciliati} Ò¢â�a¬�¢ Non trovati: ${res.data.non_riconciliati}`,
         });
         await Promise.all([loadTransfers(), loadRiconciliazioneStats()]);
         setRiconciliando(false);
@@ -295,7 +295,7 @@ export default function ArchivioBonifici() {
     try {
       const res = await api.post('/api/archivio-bonifici/sync-iban-anagrafica');
       toast.success('Sincronizzazione completata', {
-        description: `Dipendenti aggiornati: ${res.data.dipendenti_aggiornati} ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ Bonifici analizzati: ${res.data.totale_bonifici_analizzati}`,
+        description: `Dipendenti aggiornati: ${res.data.dipendenti_aggiornati} Ò¢â�a¬�¢ Bonifici analizzati: ${res.data.totale_bonifici_analizzati}`,
       });
     } catch (error) {
       toast.error('Sincronizzazione non riuscita', {
@@ -480,7 +480,7 @@ export default function ArchivioBonifici() {
             gap: 6,
           }}
         >
-          ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã‚Â¥ Importa
+          Ò°�&¸â����¥ Importa
         </Link>
         <button
           onClick={handleSyncIbanToAnagrafica}
@@ -497,7 +497,7 @@ export default function ArchivioBonifici() {
           }}
           title="Sincronizza gli IBAN dei bonifici nell'anagrafica dipendenti"
         >
-          ÃƒÂ°Ã…Â¸Ã‚ÂÃ‚Â¦ Sync IBAN
+          Ò°�&¸��¦ Sync IBAN
         </button>
         <button
           onClick={() => {
@@ -516,7 +516,7 @@ export default function ArchivioBonifici() {
             fontSize: 13,
           }}
         >
-          ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ¢â‚¬Å¾ Aggiorna
+          Ò°�&¸â��â��ž Aggiorna
         </button>
       </div>
 
@@ -609,7 +609,7 @@ export default function ArchivioBonifici() {
           }}
         >
           <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}>
-            ÃƒÂ¢Ã…â€œÃ¢â‚¬Å“ Riconciliati
+            Ò¢�&�Sâ��� Riconciliati
           </div>
           <div
             style={{
@@ -644,7 +644,7 @@ export default function ArchivioBonifici() {
       >
         <div>
           <div style={{ fontWeight: 'bold', fontSize: 16 }}>
-            ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ¢â‚¬â€ Riconciliazione con Estratto Conto
+            Ò°�&¸â��â��⬝ Riconciliazione con Estratto Conto
           </div>
           <div style={{ fontSize: 13, opacity: 0.9 }}>
             Confronta i bonifici con i movimenti bancari per verificare i pagamenti effettivi
@@ -666,7 +666,7 @@ export default function ArchivioBonifici() {
           }}
           data-testid="riconcilia-bonifici-btn"
         >
-          {riconciliando ? 'ÃƒÂ¢Ã‚ÂÃ‚Â³ Riconciliazione in corso...' : 'ÃƒÂ°Ã…Â¸Ã…Â¡Ã¢â€šÂ¬ Avvia Riconciliazione'}
+          {riconciliando ? 'Ò¢��³ Riconciliazione in corso...' : 'Ò°�&¸�&¡â�a¬ Avvia Riconciliazione'}
         </button>
       </div>
 
@@ -682,7 +682,7 @@ export default function ArchivioBonifici() {
           }}
         >
           <h3 style={{ fontSize: 14, fontWeight: 'bold', marginBottom: 12, color: '#0f2744' }}>
-            ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã…Â  Riepilogo per Anno (clicca per scaricare ZIP)
+            Ò°�&¸â����&  Riepilogo per Anno (clicca per scaricare ZIP)
           </h3>
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
             {Object.entries(summary)
@@ -713,17 +713,17 @@ export default function ArchivioBonifici() {
                     }}
                   >
                     {year}
-                    <span style={{ fontSize: 12, color: '#3b82f6' }}>ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã‚Â¥</span>
+                    <span style={{ fontSize: 12, color: '#3b82f6' }}>Ò°�&¸â����¥</span>
                   </div>
                   <div style={{ fontSize: 12, color: '#64748b' }}>
-                    {data.count} bonifici ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ {formatEuro(data.total)}
+                    {data.count} bonifici Ò¢â�a¬�¢ {formatEuro(data.total)}
                   </div>
                 </div>
               ))}
           </div>
           {downloadingZip && (
             <div style={{ marginTop: 8, fontSize: 12, color: '#3b82f6' }}>
-              ÃƒÂ¢Ã‚ÂÃ‚Â³ Preparazione ZIP in corso...
+              Ò¢��³ Preparazione ZIP in corso...
             </div>
           )}
         </div>
@@ -745,7 +745,7 @@ export default function ArchivioBonifici() {
       >
         <input
           type="text"
-          placeholder="ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ‚Â Cerca causale, CRO/TRN..."
+          placeholder="Ò°�&¸â��� Cerca causale, CRO/TRN..."
           value={search}
           onChange={e => setSearch(e.target.value)}
           onKeyDown={e => {
@@ -776,7 +776,7 @@ export default function ArchivioBonifici() {
           }}
           data-testid="bonifici-search-btn"
         >
-          ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ‚Â Cerca
+          Ò°�&¸â��� Cerca
         </button>
         <input
           type="text"
@@ -841,7 +841,7 @@ export default function ArchivioBonifici() {
               fontSize: 13,
             }}
           >
-            ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¢ Reset
+            Ò¢�&�Sâ��¢ Reset
           </button>
         )}
 
@@ -860,7 +860,7 @@ export default function ArchivioBonifici() {
               fontWeight: 600,
             }}
           >
-            ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã‚Â¥ Export XLSX
+            Ò°�&¸â����¥ Export XLSX
           </button>
           <button
             onClick={() => handleExport('csv')}
@@ -876,7 +876,7 @@ export default function ArchivioBonifici() {
               fontWeight: 600,
             }}
           >
-            ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã‚Â¥ Export CSV
+            Ò°�&¸â����¥ Export CSV
           </button>
         </div>
       </div>
@@ -934,7 +934,7 @@ export default function ArchivioBonifici() {
           }}
           data-testid="tab-associati"
         >
-          ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ Associati
+          Ò¢�&�Sâ��¦ Associati
           <span
             style={{
               background: activeTab === 'associati' ? 'rgba(255,255,255,0.2)' : '#e2e8f0',
@@ -962,12 +962,12 @@ export default function ArchivioBonifici() {
       >
         {loading ? (
           <div style={{ padding: 40, textAlign: 'center', color: '#64748b' }}>
-            ÃƒÂ¢Ã‚ÂÃ‚Â³ Caricamento...
+            Ò¢��³ Caricamento...
           </div>
         ) : transfersToShow.length === 0 ? (
           <div style={{ padding: 40, textAlign: 'center', color: '#64748b' }}>
             {activeTab === 'da_associare'
-              ? 'ÃƒÂ°Ã…Â¸Ã…Â½Ã¢â‚¬Â° Tutti i bonifici sono stati associati!'
+              ? 'Ò°�&¸�&½â��° Tutti i bonifici sono stati associati!'
               : 'Nessun bonifico associato. Seleziona il tab "Da Associare" per iniziare.'}
           </div>
         ) : (
@@ -982,7 +982,7 @@ export default function ArchivioBonifici() {
                     textTransform: 'uppercase',
                   }}
                 >
-                  <th style={{ padding: 8, textAlign: 'center', width: 40 }}>ÃƒÂ¢Ã…â€œÃ¢â‚¬Å“</th>
+                  <th style={{ padding: 8, textAlign: 'center', width: 40 }}>Ò¢�&�Sâ���</th>
                   <th style={{ padding: 8, textAlign: 'left' }}>Data</th>
                   <th style={{ padding: 8, textAlign: 'right' }}>Importo</th>
                   <th style={{ padding: 8, textAlign: 'left' }}>Beneficiario</th>
@@ -995,7 +995,7 @@ export default function ArchivioBonifici() {
                     {activeTab === 'associati' ? 'Fattura Associata' : 'Associa Fattura'}
                   </th>
                   <th style={{ padding: 8, textAlign: 'left', width: 100 }}>Note</th>
-                  <th style={{ padding: 8, textAlign: 'center', width: 50 }}>ÃƒÂ°Ã…Â¸Ã¢â‚¬â€Ã¢â‚¬ËœÃƒÂ¯Ã‚Â¸Ã‚Â</th>
+                  <th style={{ padding: 8, textAlign: 'center', width: 50 }}>Ò°�&¸â��⬝â���SÒ¯�¸�</th>
                 </tr>
               </thead>
               <tbody>
@@ -1013,10 +1013,10 @@ export default function ArchivioBonifici() {
                           style={{ color: '#16a34a', fontSize: 16 }}
                           title={`Riconciliato: ${t.movimento_descrizione || 'Trovato in estratto conto'}`}
                         >
-                          ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦
+                          Ò¢�&�Sâ��¦
                         </span>
                       ) : (
-                        <span style={{ color: '#d1d5db', fontSize: 14 }}>ÃƒÂ¢Ã¢â‚¬â€Ã¢â‚¬Â¹</span>
+                        <span style={{ color: '#d1d5db', fontSize: 14 }}>Ò¢â��⬝â��¹</span>
                       )}
                     </td>
                     <td style={{ padding: 8, whiteSpace: 'nowrap' }}>{formatDate(t.data)}</td>
@@ -1060,7 +1060,7 @@ export default function ArchivioBonifici() {
                               fontWeight: 500,
                             }}
                           >
-                            ÃƒÂ¢Ã…â€œÃ¢â‚¬Å“ {t.operazione_salario_desc?.substring(0, 20) || 'Associato'}
+                            Ò¢�&�Sâ��� {t.operazione_salario_desc?.substring(0, 20) || 'Associato'}
                           </span>
                           <button
                             onClick={() => handleDisassocia(t.id, t.operazione_salario_desc)}
@@ -1073,7 +1073,7 @@ export default function ArchivioBonifici() {
                             }}
                             title="Rimuovi associazione (doppia conferma)"
                           >
-                            ÃƒÂ¢Ã…â€œÃ¢â‚¬â€
+                            Ò¢�&�Sâ��⬝
                           </button>
                         </div>
                       ) : (
@@ -1092,7 +1092,7 @@ export default function ArchivioBonifici() {
                             }}
                             data-testid={`btn-associa-${t.id}`}
                           >
-                            {associaDropdown === t.id ? 'ÃƒÂ¢Ã¢â‚¬â€œÃ‚Â¼ Seleziona' : '+ Associa'}
+                            {associaDropdown === t.id ? 'Ò¢â���S�¼ Seleziona' : '+ Associa'}
                           </button>
                           {/* Dropdown operazioni */}
                           {associaDropdown === t.id && (
@@ -1122,7 +1122,7 @@ export default function ArchivioBonifici() {
                                   }}
                                 >
                                   <div style={{ fontWeight: 600, color: '#16a34a' }}>
-                                    ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ¢â‚¬â€ IBAN riconosciuto
+                                    Ò°�&¸â��â��⬝ IBAN riconosciuto
                                   </div>
                                   <div style={{ color: '#166534', marginTop: 2 }}>
                                     Dipendente: <strong>{dipendenteIbanMatch.nome_display}</strong>
@@ -1131,7 +1131,7 @@ export default function ArchivioBonifici() {
                               )}
                               {loadingOperazioni ? (
                                 <div style={{ padding: 16, textAlign: 'center', color: '#6b7280' }}>
-                                  ÃƒÂ¢Ã‚ÂÃ‚Â³ Caricamento...
+                                  Ò¢��³ Caricamento...
                                 </div>
                               ) : operazioniCompatibili.length === 0 ? (
                                 <div
@@ -1179,7 +1179,7 @@ export default function ArchivioBonifici() {
                                       <span style={{ fontWeight: 500, fontSize: 11 }}>
                                         {op.iban_match && (
                                           <span style={{ color: '#16a34a', marginRight: 4 }}>
-                                            ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ¢â‚¬â€
+                                            Ò°�&¸â��â��⬝
                                           </span>
                                         )}
                                         {op.dipendente || op.descrizione || 'Operazione'}
@@ -1198,7 +1198,7 @@ export default function ArchivioBonifici() {
                                               fontWeight: 600,
                                             }}
                                           >
-                                            IBAN ÃƒÂ¢Ã…â€œÃ¢â‚¬Å“
+                                            IBAN Ò¢�&�Sâ���
                                           </span>
                                         )}
                                         <span
@@ -1271,7 +1271,7 @@ export default function ArchivioBonifici() {
                               fontWeight: 500,
                             }}
                           >
-                            ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã¢â‚¬Å¾ {t.fattura_numero?.substring(0, 15) || 'Associata'}
+                            Ò°�&¸â���â��ž {t.fattura_numero?.substring(0, 15) || 'Associata'}
                           </span>
                           <button
                             onClick={() => handleDisassociaFattura(t.id, t.fattura_numero)}
@@ -1284,7 +1284,7 @@ export default function ArchivioBonifici() {
                             }}
                             title="Rimuovi associazione (doppia conferma)"
                           >
-                            ÃƒÂ¢Ã…â€œÃ¢â‚¬â€
+                            Ò¢�&�Sâ��⬝
                           </button>
                         </div>
                       ) : (
@@ -1303,7 +1303,7 @@ export default function ArchivioBonifici() {
                             }}
                             data-testid={`btn-associa-fattura-${t.id}`}
                           >
-                            {associaFatturaDropdown === t.id ? 'ÃƒÂ¢Ã¢â‚¬â€œÃ‚Â¼ Scegli' : 'ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã¢â‚¬Å¾ Fattura'}
+                            {associaFatturaDropdown === t.id ? 'Ò¢â���S�¼ Scegli' : 'Ò°�&¸â���â��ž Fattura'}
                           </button>
                           {/* Dropdown fatture */}
                           {associaFatturaDropdown === t.id && (
@@ -1324,7 +1324,7 @@ export default function ArchivioBonifici() {
                             >
                               {loadingFatture ? (
                                 <div style={{ padding: 16, textAlign: 'center', color: '#6b7280' }}>
-                                  ÃƒÂ¢Ã‚ÂÃ‚Â³ Caricamento...
+                                  Ò¢��³ Caricamento...
                                 </div>
                               ) : fattureCompatibili.length === 0 ? (
                                 <div
@@ -1399,7 +1399,7 @@ export default function ArchivioBonifici() {
                                       }}
                                     >
                                       <span>
-                                        {formatDate(f.data_fattura)} ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ {formatEuro(f.importo)}
+                                        {formatDate(f.data_fattura)} Ò¢â�a¬�¢ {formatEuro(f.importo)}
                                       </span>
                                       {f.id && (
                                         <button
@@ -1458,7 +1458,7 @@ export default function ArchivioBonifici() {
                               fontSize: 10,
                             }}
                           >
-                            ÃƒÂ¢Ã…â€œÃ¢â‚¬Å“
+                            Ò¢�&�Sâ���
                           </button>
                           <button
                             onClick={() => {
@@ -1475,7 +1475,7 @@ export default function ArchivioBonifici() {
                               fontSize: 10,
                             }}
                           >
-                            ÃƒÂ¢Ã…â€œÃ¢â‚¬â€
+                            Ò¢�&�Sâ��⬝
                           </button>
                         </div>
                       ) : (
@@ -1507,7 +1507,7 @@ export default function ArchivioBonifici() {
                         }}
                         title="Elimina"
                       >
-                        ÃƒÂ°Ã…Â¸Ã¢â‚¬â€Ã¢â‚¬ËœÃƒÂ¯Ã‚Â¸Ã‚Â
+                        Ò°�&¸â��⬝â���SÒ¯�¸�
                       </button>
                     </td>
                   </tr>
