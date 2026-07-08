@@ -7,6 +7,7 @@ import logging
 
 from app.database import Database
 from app.models.stati import STATI_PAGATI
+from app.routers.prima_nota_module.common import CATEGORIE_ESCLUSE
 from app.utils.error_handler import handle_errors
 
 logger = logging.getLogger(__name__)
@@ -30,10 +31,21 @@ async def get_financial_summary(
     end_date = f"{anno}-12-31"
     date_range = {"$gte": start_date, "$lte": end_date}
     
+    # Esclude movimenti storno-soft-delete (status deleted/archived) e i
+    # duplicati POS già identificati come tali (categoria POS_DUPLICATO) —
+    # stesso filtro usato da tutte le altre query di riepilogo prima nota
+    # (prima_nota_module/cassa.py, banca.py, sync.py, manutenzione.py).
+    # Senza questo filtro i movimenti "eliminati" dall'utente o dal job di
+    # dedup restavano comunque sommati qui, gonfiando i totali.
+    prima_nota_match = {
+        "status": {"$nin": ["deleted", "archived"]},
+        "categoria": {"$nin": CATEGORIE_ESCLUSE},
+    }
+
     try:
         # Get Prima Nota Cassa totals
         cassa_pipeline = [
-            {"$match": {"data": date_range}},
+            {"$match": {**prima_nota_match, "data": date_range}},
             {"$group": {
                 "_id": "$tipo",
                 "total": {"$sum": "$importo"}
@@ -42,10 +54,10 @@ async def get_financial_summary(
         cassa_result = await db["prima_nota_cassa"].aggregate(cassa_pipeline).to_list(100)
         cassa_entrate = sum(r["total"] for r in cassa_result if r["_id"] == "entrata")
         cassa_uscite = sum(r["total"] for r in cassa_result if r["_id"] == "uscita")
-        
+
         # Get Prima Nota Banca totals
         banca_pipeline = [
-            {"$match": {"data": date_range}},
+            {"$match": {**prima_nota_match, "data": date_range}},
             {"$group": {
                 "_id": "$tipo",
                 "total": {"$sum": "$importo"}
