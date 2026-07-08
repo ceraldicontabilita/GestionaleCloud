@@ -14,7 +14,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { PageLayout } from '../components/PageLayout';
 import api from '../api';
-import { STYLES, COLORS, formatEuro, formatDateIT, button, badge } from '../lib/utils';
+import { STYLES, COLORS, BORDER_RADIUS, FONT } from '../lib/utils';
+import { Button, Card, StatCard } from '../components/ds';
 import {
   RefreshCw,
   Play,
@@ -61,67 +62,23 @@ const styles = {
     marginTop: 4,
   },
 
-  card: {
-    ...STYLES.card,
-    overflow: 'hidden',
-  },
-
-  cardHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-    paddingBottom: 16,
-    borderBottom: `1px solid ${COLORS.grayLight}`,
-  },
-
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: 600,
-    color: COLORS.primary,
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-  },
-
   statsGrid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
     gap: 16,
   },
 
-  statCard: {
-    background: COLORS.grayBg,
-    borderRadius: 12,
-    padding: 20,
-    textAlign: 'center',
-    border: `1px solid ${COLORS.grayLight}`,
-    transition: 'all 0.2s ease',
-  },
-
-  statValue: {
-    fontSize: 32,
-    fontWeight: 700,
-    color: COLORS.primary,
-  },
-
-  statLabel: {
-    fontSize: 14,
-    color: COLORS.gray,
-    marginTop: 4,
-  },
-
   progressContainer: {
-    background: COLORS.grayBg,
-    borderRadius: 12,
+    background: COLORS.bgAlt,
+    borderRadius: BORDER_RADIUS.md,
     padding: 24,
     marginBottom: 24,
   },
 
   progressBar: {
     height: 12,
-    background: COLORS.grayLight,
-    borderRadius: 6,
+    background: COLORS.border,
+    borderRadius: BORDER_RADIUS.sm,
     overflow: 'hidden',
     marginTop: 12,
   },
@@ -129,17 +86,17 @@ const styles = {
   progressFill: {
     height: '100%',
     background: `${COLORS.primary}`,
-    borderRadius: 6,
+    borderRadius: BORDER_RADIUS.sm,
     transition: 'width 0.5s ease',
   },
 
   logContainer: {
-    background: '#1a1a2e',
-    borderRadius: 12,
+    background: COLORS.primaryDark,
+    borderRadius: BORDER_RADIUS.md,
     padding: 16,
     maxHeight: 300,
     overflowY: 'auto',
-    fontFamily: 'Monaco, Consolas, monospace',
+    fontFamily: FONT.mono,
     fontSize: 12,
   },
 
@@ -149,24 +106,24 @@ const styles = {
   },
 
   logTime: {
-    color: '#888',
+    color: COLORS.textSubtle,
     marginRight: 8,
   },
 
   logSuccess: {
-    color: '#4ade80',
+    color: COLORS.success,
   },
 
   logError: {
-    color: '#f87171',
+    color: COLORS.danger,
   },
 
   logInfo: {
-    color: '#60a5fa',
+    color: COLORS.info,
   },
 
   logWarning: {
-    color: '#fbbf24',
+    color: COLORS.warning,
   },
 
   taskList: {
@@ -180,15 +137,15 @@ const styles = {
     alignItems: 'center',
     gap: 12,
     padding: 16,
-    background: COLORS.grayBg,
-    borderRadius: 10,
-    border: `1px solid ${COLORS.grayLight}`,
+    background: COLORS.bgAlt,
+    borderRadius: BORDER_RADIUS.lg,
+    border: `1px solid ${COLORS.border}`,
   },
 
   taskIcon: {
     width: 40,
     height: 40,
-    borderRadius: 10,
+    borderRadius: BORDER_RADIUS.lg,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -205,7 +162,7 @@ const styles = {
 
   taskSubtitle: {
     fontSize: 13,
-    color: COLORS.gray,
+    color: COLORS.textMuted,
   },
 
   taskStatus: {
@@ -221,17 +178,19 @@ const styles = {
     alignItems: 'center',
     gap: 8,
     padding: '8px 16px',
-    background: 'rgba(255,255,255,0.2)',
-    borderRadius: 20,
+    background: COLORS.bgAlt,
+    border: `1px solid ${COLORS.border}`,
+    borderRadius: BORDER_RADIUS.full,
     fontSize: 13,
     fontWeight: 500,
+    color: COLORS.textMuted,
   },
 
   pulseDot: {
     width: 8,
     height: 8,
-    borderRadius: '50%',
-    background: '#4ade80',
+    borderRadius: BORDER_RADIUS.full,
+    background: COLORS.success,
     animation: 'pulse 2s infinite',
   },
 };
@@ -286,7 +245,7 @@ const AUTO_TASKS = [
     name: 'Categorizzazione',
     description: 'Classifica movimenti bancari (stipendi, fornitori, tributi)',
     icon: BarChart3,
-    color: '#9c27b0',
+    color: COLORS.purple,
     endpoint: '/api/estratto-conto-movimenti/ricategorizza-batch',
     method: 'POST',
     autoRun: true,
@@ -451,7 +410,7 @@ export default function BatchProcessor() {
 
     const result = taskResults[taskId];
     if (!result) {
-      return <Clock style={{ width: 20, height: 20, color: COLORS.gray }} />;
+      return <Clock style={{ width: 20, height: 20, color: COLORS.textMuted }} />;
     }
 
     if (result.success) {
@@ -483,34 +442,20 @@ export default function BatchProcessor() {
             </div>
 
             {/* Pulsante Avvia/Stop */}
-            <button
+            <Button
+              variant="primary"
               onClick={runAllTasks}
               disabled={isRunning}
-              style={{
-                ...button.primary,
-                opacity: isRunning ? 0.7 : 1,
-                cursor: isRunning ? 'not-allowed' : 'pointer',
-              }}
+              iconLeft={
+                isRunning ? (
+                  <Loader2 style={{ width: 18, height: 18, animation: 'spin 1s linear infinite' }} />
+                ) : (
+                  <Play style={{ width: 18, height: 18 }} />
+                )
+              }
             >
-              {isRunning ? (
-                <>
-                  <Loader2
-                    style={{
-                      width: 18,
-                      height: 18,
-                      marginRight: 8,
-                      animation: 'spin 1s linear infinite',
-                    }}
-                  />
-                  Elaborazione in corso...
-                </>
-              ) : (
-                <>
-                  <Play style={{ width: 18, height: 18, marginRight: 8 }} />
-                  Avvia Elaborazione
-                </>
-              )}
-            </button>
+              {isRunning ? 'Elaborazione in corso...' : 'Avvia Elaborazione'}
+            </Button>
           </div>
         </div>
 
@@ -531,39 +476,34 @@ export default function BatchProcessor() {
 
         {/* Statistiche */}
         <div style={styles.statsGrid}>
-          <div style={styles.statCard}>
-            <div style={{ ...styles.statValue, color: COLORS.primary }}>{stats.totalProcessed}</div>
-            <div style={styles.statLabel}>Documenti Processati</div>
-          </div>
-          <div style={styles.statCard}>
-            <div style={{ ...styles.statValue, color: COLORS.success }}>
-              {stats.documentsCreated}
-            </div>
-            <div style={styles.statLabel}>Documenti Creati</div>
-          </div>
-          <div style={styles.statCard}>
-            <div style={{ ...styles.statValue, color: COLORS.danger }}>{stats.errorsCount}</div>
-            <div style={styles.statLabel}>Errori</div>
-          </div>
-          <div style={styles.statCard}>
-            <div style={{ ...styles.statValue, color: COLORS.info, fontSize: 18 }}>
-              {stats.lastRunTime
+          <StatCard
+            label="Documenti Processati"
+            value={stats.totalProcessed}
+            accent="primary"
+          />
+          <StatCard
+            label="Documenti Creati"
+            value={stats.documentsCreated}
+            accent="success"
+          />
+          <StatCard
+            label="Errori"
+            value={stats.errorsCount}
+            accent="danger"
+          />
+          <StatCard
+            label="Ultimo Aggiornamento"
+            value={
+              stats.lastRunTime
                 ? new Date(stats.lastRunTime).toLocaleTimeString('it-IT')
-                : '--:--'}
-            </div>
-            <div style={styles.statLabel}>Ultimo Aggiornamento</div>
-          </div>
+                : '--:--'
+            }
+            accent="info"
+          />
         </div>
 
         {/* Lista Task */}
-        <div style={styles.card}>
-          <div style={styles.cardHeader}>
-            <div style={styles.cardTitle}>
-              <Settings style={{ width: 20, height: 20 }} />
-              Task Automatici
-            </div>
-          </div>
-
+        <Card title="Task Automatici" icon={<Settings style={{ width: 20, height: 20 }} />}>
           <div style={styles.taskList}>
             {AUTO_TASKS.map(task => {
               const Icon = task.icon;
@@ -581,7 +521,7 @@ export default function BatchProcessor() {
                           ? `${COLORS.success}08`
                           : result?.error
                             ? `${COLORS.danger}08`
-                            : COLORS.grayBg,
+                            : COLORS.bgAlt,
                   }}
                 >
                   <div style={{ ...styles.taskIcon, background: `${task.color}15` }}>
@@ -592,7 +532,7 @@ export default function BatchProcessor() {
                     <div style={styles.taskTitle}>{task.name}</div>
                     <div style={styles.taskSubtitle}>{task.description}</div>
                     {result?.data && (
-                      <div style={{ fontSize: 12, color: COLORS.gray, marginTop: 4 }}>
+                      <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 4 }}>
                         {result.data.processed && `Processati: ${result.data.processed}`}
                         {result?.data?.fatture_create && ` | Creati: ${result?.data?.fatture_create}`}
                         {result?.data?.riconciliati && ` | Riconciliati: ${result?.data?.riconciliati}`}
@@ -605,26 +545,21 @@ export default function BatchProcessor() {
               );
             })}
           </div>
-        </div>
+        </Card>
 
         {/* Log Console */}
-        <div style={styles.card}>
-          <div style={styles.cardHeader}>
-            <div style={styles.cardTitle}>
-              <FileText style={{ width: 20, height: 20 }} />
-              Log Elaborazione
-            </div>
-            <button
-              onClick={() => setLogs([])}
-              style={{ ...button.outline, padding: '6px 12px', fontSize: 13 }}
-            >
+        <Card
+          title="Log Elaborazione"
+          icon={<FileText style={{ width: 20, height: 20 }} />}
+          actions={
+            <Button variant="outline" size="sm" onClick={() => setLogs([])}>
               Pulisci Log
-            </button>
-          </div>
-
+            </Button>
+          }
+        >
           <div style={styles.logContainer} ref={logContainerRef}>
             {logs.length === 0 ? (
-              <div style={{ color: '#666', textAlign: 'center', padding: 24 }}>
+              <div style={{ color: COLORS.textMuted, textAlign: 'center', padding: 24 }}>
                 In attesa dell'avvio dell'elaborazione...
               </div>
             ) : (
@@ -648,7 +583,7 @@ export default function BatchProcessor() {
               ))
             )}
           </div>
-        </div>
+        </Card>
       </div>
 
       {/* CSS per animazioni */}
