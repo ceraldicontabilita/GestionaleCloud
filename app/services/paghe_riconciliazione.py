@@ -76,6 +76,31 @@ async def cerca_in_estratto_conto(
         return None
 
 
+async def _conta_candidati_banca(db, importo_uscita: float, data_ref_str: str, giorni_tolleranza: int = 10) -> int:
+    """Conta quanti movimenti bancari (estratto conto + prima nota banca)
+    rientrano nella stessa finestra importo/data usata da
+    cerca_in_estratto_conto, SENZA il filtro keyword che normalmente
+    disambigua. Usato solo per rilevare ambiguità (CED_MATCH_BANCA_AMBIGUO),
+    non cambia quale movimento viene accettato come match."""
+    try:
+        data_ref = datetime.strptime(data_ref_str, "%Y-%m-%d")
+        data_min = (data_ref - timedelta(days=giorni_tolleranza)).strftime("%Y-%m-%d")
+        data_max = (data_ref + timedelta(days=giorni_tolleranza // 2)).strftime("%Y-%m-%d")
+
+        n_ecm = await db.estratto_conto_movimenti.count_documents({
+            "importo": {"$gte": -(importo_uscita + 1.0), "$lte": -(importo_uscita - 1.0)},
+            "data": {"$gte": data_min, "$lte": data_max},
+        })
+        n_pnb = await db.prima_nota_banca.count_documents({
+            "tipo": "uscita",
+            "importo": {"$gte": importo_uscita - 1.0, "$lte": importo_uscita + 1.0},
+            "data": {"$gte": data_min, "$lte": data_max},
+        })
+        return n_ecm + n_pnb
+    except Exception:
+        return 0
+
+
 async def marca_movimento_riconciliato(
     db, mov_id: str, collection: str,
     campo: str, documento_id: str
@@ -328,6 +353,23 @@ async def riconcilia_tutti_cedolini(db, anno: int = None, mese: int = None) -> d
                 }, db, source_module="paghe_riconciliazione")
             except Exception:
                 logger.exception(f"Errore propagazione CEDOLINO_PAGATO per {cedolino_id}")
+
+            # CED_MATCH_BANCA_AMBIGUO era definito ma mai generato (vedi
+            # memoria/moduli/CEDOLINI.md): se più movimenti bancari rientrano
+            # nella stessa finestra importo/data, il match accettato è solo
+            # il primo trovato — segnala l'ambiguità senza cambiare l'esito.
+            try:
+                n_candidati = await _conta_candidati_banca(db, netto, data_scad, giorni_tolleranza=10)
+                if n_candidati > 1:
+                    from app.services.alert_engine import genera_alert
+                    await genera_alert(
+                        "CED_MATCH_BANCA_AMBIGUO", cedolino_id, "cedolini",
+                        f"Cedolino {mese_c}/{anno_c} (€{netto:.2f}) riconciliato con movimento {mov_id}, "
+                        f"ma trovati {n_candidati} movimenti bancari compatibili nella stessa finestra — verificare.",
+                        db, extra={"movimento_scelto": mov_id, "candidati": n_candidati},
+                    )
+            except Exception:
+                logger.exception(f"Errore controllo ambiguità match banca per cedolino {cedolino_id}")
 
             riconciliati += 1
         else:

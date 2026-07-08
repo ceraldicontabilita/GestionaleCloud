@@ -50,7 +50,7 @@ dipendente a 6 schede richiesto dalla spec non esiste come UI in questo repo.
 
 ## Bug/incoerenze note (da correggere)
 
-- Il commento "SOLO LETTURA" a riga 642 di `dipendenti.py` va corretto/contestualizzato: si
-  applica solo al singolo endpoint di import bulk, non all'intero modulo — rischio concreto
-  di fuorviare futuri sviluppatori sull'estensione reale del CRUD disponibile (stesso
-  pattern di commento obsoleto/fuorviante già trovato e corretto in `MAGAZZINO.md`).
+- ✔ RISOLTO (lug 2026) — Il commento "SOLO LETTURA" a riga 642 di `dipendenti.py` è stato
+  corretto/contestualizzato: ora chiarisce esplicitamente che si applica solo al singolo
+  endpoint di import bulk, non all'intero modulo (stesso pattern di commento obsoleto/
+  fuorviante già trovato e corretto in `MAGAZZINO.md`).

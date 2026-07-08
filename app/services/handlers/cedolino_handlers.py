@@ -20,6 +20,7 @@ async def on_cedolino_importato(event: Dict[str, Any], db) -> Optional[Dict]:
     cedolino_id = event.get("cedolino_id")
     dipendente_id = event.get("dipendente_id")
     dipendente_nome = event.get("dipendente_nome", "")
+    codice_fiscale = event.get("codice_fiscale", "")
     netto = event.get("netto", 0)
     lordo = event.get("lordo", 0)
     mese = event.get("mese")
@@ -40,6 +41,30 @@ async def on_cedolino_importato(event: Dict[str, Any], db) -> Optional[Dict]:
         )
         risultati.append("alert_dip_non_trovato")
         return {"action": "alert", "codici": risultati}
+
+    # Alert possibile cedolino duplicato: stesso dipendente (CF) + stesso
+    # mese/anno già presente — CED_DUPLICATO era definito in alert_engine.py
+    # ma mai generato (vedi memoria/moduli/CEDOLINI.md). Best-effort, non
+    # blocca l'import: segnala soltanto, l'utente decide se è un vero doppione.
+    if codice_fiscale and mese and anno:
+        try:
+            duplicato = await db["cedolini"].find_one({
+                "codice_fiscale": codice_fiscale,
+                "mese": mese,
+                "anno": anno,
+                "id": {"$ne": cedolino_id},
+            }, {"_id": 0, "id": 1})
+            if duplicato:
+                await genera_alert(
+                    "CED_DUPLICATO", cedolino_id, "cedolini",
+                    f"Possibile duplicato: {dipendente_nome or codice_fiscale} ha già un cedolino "
+                    f"{mese}/{anno} (id {duplicato.get('id')})",
+                    db,
+                    extra={"duplicato_id": duplicato.get("id")},
+                )
+                risultati.append("alert_duplicato")
+        except Exception:
+            logger.exception(f"Errore controllo duplicato cedolino {cedolino_id}")
 
     # Crea partita stipendio (solo se netto > 0 e non è solo trattenute)
     if netto and netto > 0 and tipo_cedolino not in ("solo_trattenute", "sospensione"):

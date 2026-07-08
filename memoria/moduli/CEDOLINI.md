@@ -38,10 +38,32 @@ attendibili reale fornita dall'utente). Pipeline: `app/services/post_download_pi
    già chiamato dopo ogni upload estratto conto. Anche l'evento `CEDOLINO_IMPORTATO` ora
    viene propagato dal canale email (prima solo dall'inserimento manuale) — un cedolino
    email genera correttamente la partita aperta stipendio.
-5. **9 alert richiesti dalla spec**: non riverificati in questo passaggio — audit dedicato
-   necessario per determinare quanti sono realmente definiti in `alert_engine.py` e quanti
-   effettivamente generati (pattern ricorrente in tutti gli altri moduli: spesso meno della
-   metà degli alert dichiarati risultano vivi).
+5. ~ PARZIALE (lug 2026) — inventario completo dei 9 alert `CED_*` definiti in
+   `alert_engine.py`, verificando ogni sito di generazione/risoluzione reale nel codice
+   (non solo la definizione):
+   - Già vivi prima di questo passaggio: `CED_DIP_NON_TROVATO`,
+     `CED_DATI_ECONOMICI_INCOMPLETI` (`cedolino_handlers.py::on_cedolino_importato`),
+     `CED_NON_PAGATO` (mapping in `app/scheduler.py::check_scadenze_partite_task`).
+   - ✔ RISOLTI in questo passaggio: `CED_DUPLICATO` — generato in
+     `on_cedolino_importato` quando esiste già un cedolino con stesso CF+mese+anno
+     (diverso id); `CED_MATCH_BANCA_AMBIGUO` — generato in
+     `paghe_riconciliazione.py::riconcilia_tutti_cedolini()` quando più movimenti
+     bancari rientrano nella stessa finestra importo/data del match accettato (prima
+     esisteva solo la chiamata di *risoluzione* in `cedolino_handlers.py`, mai una
+     generazione: l'alert non poteva mai comparire). Entrambi additivi/best-effort,
+     non cambiano quale movimento/cedolino viene accettato come match, solo lo
+     segnalano. Verificato con mongomock: alert corretto sui due casi, nessun falso
+     positivo su mese diverso, il cedolino resta comunque riconciliato.
+   - Restano NON generati (solo definiti): `CED_TIPO_NON_RICONOSCIUTO`,
+     `CED_PRIMA_NOTA_NON_GENERATA`, `CED_TFR_NON_AGGIORNATO`, `CED_INCOERENZA_PRESENZE`
+     — richiedono rispettivamente: un enum di validazione su `tipo_cedolino` in fase di
+     parsing (oggi il campo è libero), un confronto cedolino↔prima_nota_salari da
+     costruire (collegato al gap #1 sopra, non ancora riverificato), un confronto
+     cedolino↔TFR (collegato al gap #2), e dati presenze/turni che non risulta siano
+     mai stati verificati come realmente tracciati in questo repo (gap #3) — quindi
+     `CED_INCOERENZA_PRESENZE` potrebbe non avere nemmeno la fonte dati per essere
+     calcolato. Non affrontati in questo passaggio: dipendono da altri gap non ancora
+     chiusi, rischio di costruire alert su dati che non esistono ancora.
 
 ## Bug/incoerenze note (da correggere)
 
