@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 import api from '../api';
-import { formatEuro } from '../lib/utils';
+import { formatEuro, COLORS, BORDER_RADIUS, FONT } from '../lib/utils';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { PageLayout, PageSection, PageGrid, PageLoading } from '../components/PageLayout';
+import { Button, Badge, StatCard, Input } from '../components/ds';
 import { Target, TrendingUp, TrendingDown, Save, Calculator, BarChart3 } from 'lucide-react';
-
-const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace';
 
 export default function UtileObiettivo() {
   const { anno } = useAnnoGlobale();
@@ -56,7 +56,7 @@ export default function UtileObiettivo() {
       });
       loadStatus();
     } catch (err) {
-      alert('Errore salvataggio: ' + (err.response?.data?.detail || err.message));
+      toast.error('Errore salvataggio: ' + (err.response?.data?.detail || err.message));
     } finally {
       setSaving(false);
     }
@@ -65,35 +65,8 @@ export default function UtileObiettivo() {
   const percentualeRaggiungimento = status?.percentuale_raggiungimento || 0;
   const isOnTrack = percentualeRaggiungimento >= 80;
   const isAtRisk = percentualeRaggiungimento >= 50 && percentualeRaggiungimento < 80;
-  const progressColor = isOnTrack ? '#16a34a' : isAtRisk ? '#ca8a04' : '#dc2626';
-
-  const MetricCard = ({ label, value, icon: Icon, color, bgColor }) => (
-    <div
-      style={{
-        background: 'white',
-        padding: 16,
-        borderRadius: 8,
-        border: '1px solid #e2e8f0',
-        borderLeft: '4px solid #0f2744',
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-        <Icon size={18} color={color} />
-        <span
-          style={{
-            fontSize: 11,
-            color: '#64748b',
-            fontWeight: 600,
-            textTransform: 'uppercase',
-            letterSpacing: 0.5,
-          }}
-        >
-          {label}
-        </span>
-      </div>
-      <div style={{ fontSize: 22, fontWeight: 700, color, fontFamily: MONO }}>{value}</div>
-    </div>
-  );
+  const progressColor = isOnTrack ? COLORS.success : isAtRisk ? COLORS.warning : COLORS.danger;
+  const progressVariant = isOnTrack ? 'success' : isAtRisk ? 'warning' : 'danger';
 
   return (
     <PageLayout
@@ -114,26 +87,19 @@ export default function UtileObiettivo() {
                     display: 'block',
                     fontSize: 13,
                     fontWeight: 500,
-                    color: '#374151',
+                    color: COLORS.gray[700],
                     marginBottom: 6,
                   }}
                 >
                   Target Utile Annuale (€)
                 </label>
-                <input
+                <Input
                   type="number"
                   value={settings.target_utile}
                   onChange={e =>
                     setSettings(s => ({ ...s, target_utile: parseFloat(e.target.value) || 0 }))
                   }
-                  style={{
-                    width: '100%',
-                    padding: 12,
-                    border: '1px solid #e2e8f0',
-                    borderRadius: 6,
-                    fontSize: 16,
-                    fontWeight: 600,
-                  }}
+                  style={{ padding: 12, fontSize: 16, fontWeight: 600 }}
                   data-testid="input-target-utile"
                 />
               </div>
@@ -143,13 +109,13 @@ export default function UtileObiettivo() {
                     display: 'block',
                     fontSize: 13,
                     fontWeight: 500,
-                    color: '#374151',
+                    color: COLORS.gray[700],
                     marginBottom: 6,
                   }}
                 >
                   Margine Atteso (%)
                 </label>
-                <input
+                <Input
                   type="number"
                   value={(settings.margine_atteso * 100).toFixed(0)}
                   onChange={e =>
@@ -158,41 +124,22 @@ export default function UtileObiettivo() {
                       margine_atteso: (parseFloat(e.target.value) || 0) / 100,
                     }))
                   }
-                  style={{
-                    width: '100%',
-                    padding: 12,
-                    border: '1px solid #e2e8f0',
-                    borderRadius: 6,
-                    fontSize: 16,
-                    fontWeight: 600,
-                  }}
+                  style={{ padding: 12, fontSize: 16, fontWeight: 600 }}
                   data-testid="input-margine"
                 />
               </div>
               <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-                <button
+                <Button
+                  variant="primary"
+                  size="lg"
                   onClick={saveTarget}
                   disabled={saving}
                   data-testid="save-target-btn"
-                  style={{
-                    padding: '12px 24px',
-                    minHeight: 40,
-                    background: '#0f2744',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: 6,
-                    cursor: saving ? 'not-allowed' : 'pointer',
-                    fontSize: 13,
-                    fontWeight: 600,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    opacity: saving ? 0.7 : 1,
-                  }}
+                  iconLeft={<Save size={16} />}
+                  style={{ minHeight: 40 }}
                 >
-                  <Save size={16} />
                   {saving ? 'Salvataggio...' : 'Salva Target'}
-                </button>
+                </Button>
               </div>
             </PageGrid>
           </PageSection>
@@ -213,16 +160,16 @@ export default function UtileObiettivo() {
                   }}
                 >
                   <div>
-                    <div style={{ fontSize: 14, color: '#6b7280', marginBottom: 4 }}>
+                    <div style={{ fontSize: 14, color: COLORS.textMuted, marginBottom: 4 }}>
                       Percentuale
                     </div>
-                    <div style={{ fontSize: 48, fontWeight: 700, color: progressColor, fontFamily: MONO }}>
+                    <div style={{ fontSize: 48, fontWeight: 700, color: progressColor, fontFamily: FONT.mono }}>
                       {percentualeRaggiungimento.toFixed(1)}%
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: 14, color: '#6b7280', marginBottom: 4 }}>Target</div>
-                    <div style={{ fontSize: 32, fontWeight: 700, color: '#1e293b', fontFamily: MONO }}>
+                    <div style={{ fontSize: 14, color: COLORS.textMuted, marginBottom: 4 }}>Target</div>
+                    <div style={{ fontSize: 32, fontWeight: 700, color: COLORS.gray[800], fontFamily: FONT.mono }}>
                       {formatEuro(status.target_utile || 0)}
                     </div>
                   </div>
@@ -231,8 +178,8 @@ export default function UtileObiettivo() {
                 {/* Progress Bar */}
                 <div
                   style={{
-                    background: '#f1f5f9',
-                    borderRadius: 8,
+                    background: COLORS.bg,
+                    borderRadius: BORDER_RADIUS.md,
                     height: 24,
                     overflow: 'hidden',
                     marginBottom: 16,
@@ -242,8 +189,8 @@ export default function UtileObiettivo() {
                     style={{
                       width: `${Math.min(percentualeRaggiungimento, 100)}%`,
                       height: '100%',
-                      background: `${progressColor}`,
-                      borderRadius: 8,
+                      background: progressColor,
+                      borderRadius: BORDER_RADIUS.md,
                       transition: 'width 0.5s ease',
                     }}
                   />
@@ -251,14 +198,14 @@ export default function UtileObiettivo() {
 
                 {/* Status Badge */}
                 <div style={{ display: 'flex', justifyContent: 'center' }}>
-                  <span
+                  <Badge
+                    variant={progressVariant}
                     style={{
-                      background: isOnTrack ? '#dcfce7' : isAtRisk ? '#fef3c7' : '#fef2f2',
-                      color: progressColor,
                       padding: '8px 20px',
-                      borderRadius: 8,
+                      borderRadius: BORDER_RADIUS.md,
                       fontSize: 14,
-                      fontWeight: 600,
+                      textTransform: 'none',
+                      letterSpacing: 'normal',
                       display: 'flex',
                       alignItems: 'center',
                       gap: 8,
@@ -276,40 +223,36 @@ export default function UtileObiettivo() {
                       : isAtRisk
                         ? 'Attenzione richiesta'
                         : 'Sotto obiettivo'}
-                  </span>
+                  </Badge>
                 </div>
               </PageSection>
 
               {/* Metriche Dettagliate */}
               <div style={{ marginTop: 24 }}>
                 <PageGrid cols={4} gap={16}>
-                  <MetricCard
+                  <StatCard
                     label="Ricavi Totali"
                     value={formatEuro(status.ricavi_totali || 0)}
-                    icon={TrendingUp}
-                    color="#16a34a"
-                    bgColor="#f0fdf4"
+                    icon={<TrendingUp size={18} />}
+                    accent="success"
                   />
-                  <MetricCard
+                  <StatCard
                     label="Costi Totali"
                     value={formatEuro(status.costi_totali || 0)}
-                    icon={TrendingDown}
-                    color="#dc2626"
-                    bgColor="#fef2f2"
+                    icon={<TrendingDown size={18} />}
+                    accent="danger"
                   />
-                  <MetricCard
+                  <StatCard
                     label="Utile Attuale"
                     value={formatEuro(status.utile_attuale || 0)}
-                    icon={Target}
-                    color={(status.utile_attuale || 0) >= 0 ? '#16a34a' : '#dc2626'}
-                    bgColor={(status.utile_attuale || 0) >= 0 ? '#f0fdf4' : '#fef2f2'}
+                    icon={<Target size={18} />}
+                    accent={(status.utile_attuale || 0) >= 0 ? 'success' : 'danger'}
                   />
-                  <MetricCard
+                  <StatCard
                     label="Gap da Colmare"
                     value={formatEuro(status.gap_da_colmare || 0)}
-                    icon={BarChart3}
-                    color={(status.gap_da_colmare || 0) > 0 ? '#ca8a04' : '#16a34a'}
-                    bgColor={(status.gap_da_colmare || 0) > 0 ? '#fefce8' : '#f0fdf4'}
+                    icon={<BarChart3 size={18} />}
+                    accent={(status.gap_da_colmare || 0) > 0 ? 'warning' : 'success'}
                   />
                 </PageGrid>
               </div>
@@ -325,23 +268,13 @@ export default function UtileObiettivo() {
                     }}
                   >
                     {Object.entries(status.per_centro_costo).map(([cdc, data]) => (
-                      <div
+                      <StatCard
                         key={cdc}
-                        style={{
-                          background: '#f8fafc',
-                          padding: 16,
-                          borderRadius: 8,
-                          border: '1px solid #e2e8f0',
-                        }}
-                      >
-                        <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>{cdc}</div>
-                        <div style={{ fontSize: 18, fontWeight: 700, color: '#1e293b', fontFamily: MONO }}>
-                          {formatEuro(data.totale || 0)}
-                        </div>
-                        <div style={{ fontSize: 12, color: '#6b7280' }}>
-                          {data.count || 0} fatture
-                        </div>
-                      </div>
+                        label={cdc}
+                        value={formatEuro(data.totale || 0)}
+                        subtext={`${data.count || 0} fatture`}
+                        accent="none"
+                      />
                     ))}
                   </div>
                 </PageSection>
