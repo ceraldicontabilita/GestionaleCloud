@@ -673,6 +673,7 @@ const styles = {
     background: '#f1f5f9',
     padding: 20,
     color: '#0f172a',
+    colorScheme: 'light',
   },
   header: {
     background: '#0f2744',
@@ -722,6 +723,7 @@ const styles = {
     margin: 0,
     fontSize: 17,
     color: '#0f2744',
+    fontWeight: 800,
   },
   sectionSubtitle: {
     margin: '4px 0 0',
@@ -846,6 +848,7 @@ const styles = {
     fontSize: 14,
     fontWeight: 800,
     color: '#0f172a',
+    textShadow: 'none',
   },
   areaGroup: {
     fontSize: 11,
