@@ -8,6 +8,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 import io
 import csv
+import base64
+import zipfile
+import re as _re_zip
 
 from app.database import Database
 from .common import UPLOAD_DIR
@@ -265,3 +268,43 @@ async def export_transfers(
             media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             headers={'Content-Disposition': 'attachment; filename=bonifici_export.xlsx'}
         )
+
+
+async def download_zip_by_year(year: str) -> StreamingResponse:
+    """Scarica uno ZIP con tutti i PDF originali dei bonifici di un anno."""
+    db = Database.get_db()
+    transfers = await db.bonifici_transfers.find(
+        {'data': {'$regex': f'^{year}-'}},
+        {'_id': 0, 'id': 1, 'data': 1, 'source_file': 1, 'pdf_data': 1, 'cro_trn': 1}
+    ).to_list(10000)
+
+    con_pdf = [t for t in transfers if t.get('pdf_data')]
+    if not con_pdf:
+        raise HTTPException(status_code=404, detail=f"Nessun PDF di bonifico disponibile per l'anno {year}")
+
+    buf = io.BytesIO()
+    used_names = set()
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for t in con_pdf:
+            try:
+                pdf_bytes = base64.b64decode(t['pdf_data'])
+            except Exception:
+                continue
+            base_name = t.get('source_file') or f"bonifico_{t.get('cro_trn') or t.get('id')}.pdf"
+            base_name = _re_zip.sub(r'[^A-Za-z0-9._-]', '_', base_name)
+            if not base_name.lower().endswith('.pdf'):
+                base_name += '.pdf'
+            name = base_name
+            i = 1
+            while name in used_names:
+                name = f"{base_name.rsplit('.pdf', 1)[0]}_{i}.pdf"
+                i += 1
+            used_names.add(name)
+            zf.writestr(name, pdf_bytes)
+
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type='application/zip',
+        headers={'Content-Disposition': f'attachment; filename=bonifici_{year}.zip'}
+    )

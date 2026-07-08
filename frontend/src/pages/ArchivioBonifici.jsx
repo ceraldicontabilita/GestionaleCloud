@@ -222,6 +222,7 @@ export default function ArchivioBonifici() {
 
   // Elimina bonifico
   const handleDelete = async id => {
+    if (!window.confirm('⚠️ Eliminare definitivamente questo bonifico?\n\nL\'operazione non è reversibile: verrà cancellato anche il PDF originale allegato.')) return;
     try {
       await api.delete(`/api/archivio-bonifici/transfers/${id}`);
       loadTransfers();
@@ -381,9 +382,11 @@ export default function ArchivioBonifici() {
 
   const handleDisassociaFattura = async (bonifico_id, fattura_numero) => {
     const msg1 = `Rimuovere associazione con fattura "${fattura_numero || 'N/D'}"?`;
+    if (!window.confirm(msg1)) return;
 
     // Seconda conferma
     const msg2 = `⚠️ CONFERMA RIMOZIONE\n\nQuesta azione rimuoverà l'associazione tra il bonifico e la fattura.\n\nSei sicuro di voler procedere?`;
+    if (!window.confirm(msg2)) return;
 
     try {
       await api.delete(`/api/archivio-bonifici/disassocia-fattura/${bonifico_id}`);

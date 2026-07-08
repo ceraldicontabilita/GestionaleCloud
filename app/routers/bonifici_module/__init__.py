@@ -18,7 +18,8 @@ from .jobs import (
 )
 from .transfers import (
     list_transfers, count_transfers, transfers_summary,
-    delete_transfer, get_bonifico_pdf, bulk_delete, update_transfer, export_transfers
+    delete_transfer, get_bonifico_pdf, bulk_delete, update_transfer, export_transfers,
+    download_zip_by_year
 )
 from .riconciliazione import (
     riconcilia_bonifici_con_estratto, get_riconciliazione_task,
@@ -40,6 +41,7 @@ router.add_api_route("/transfers/bulk", bulk_delete, methods=["DELETE"])
 
 # Export
 router.add_api_route("/export", export_transfers, methods=["GET"])
+router.add_api_route("/download-zip/{year}", download_zip_by_year, methods=["GET"])
 
 # Riconciliazione
 router.add_api_route("/riconcilia", riconcilia_bonifici_con_estratto, methods=["POST"])

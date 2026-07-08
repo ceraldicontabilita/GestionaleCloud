@@ -175,9 +175,18 @@ async def disassocia_salario(bonifico_id: str) -> Dict[str, Any]:
     raise HTTPException(404, "Bonifico non trovato in nessuna collection")
 
 
+def _compatibilita_score(importo_riferimento: float, importo_confronto: float) -> int:
+    """Punteggio 0-100 in base allo scostamento percentuale dall'importo del bonifico,
+    coerente con la tolleranza del ±5% usata per filtrare i risultati."""
+    if not importo_riferimento:
+        return 0
+    diff_pct = abs(importo_riferimento - importo_confronto) / importo_riferimento
+    return max(0, round((1 - diff_pct / 0.05) * 100))
+
+
 @router.get("/fatture-compatibili/{bonifico_id}")
-async def get_fatture_compatibili(bonifico_id: str) -> List[Dict[str, Any]]:
-    """Trova fatture compatibili con un bonifico (per importo/fornitore simile)."""
+async def get_fatture_compatibili(bonifico_id: str) -> Dict[str, Any]:
+    """Trova fatture compatibili con un bonifico (per importo simile)."""
     db = Database.get_db()
 
     bonifico = await _trova_bonifico(db, bonifico_id)
@@ -185,7 +194,6 @@ async def get_fatture_compatibili(bonifico_id: str) -> List[Dict[str, Any]]:
         raise HTTPException(404, "Bonifico non trovato")
 
     importo = abs(bonifico.get("importo", 0))
-    beneficiario = bonifico.get("beneficiario", "")
 
     # Cerca fatture con importo simile (±5%)
     query = {}
@@ -196,16 +204,32 @@ async def get_fatture_compatibili(bonifico_id: str) -> List[Dict[str, Any]]:
             {"importo_totale": {"$gte": importo - tolerance, "$lte": importo + tolerance}},
         ]
 
-    fatture = await db[Collections.INVOICES].find(
+    fatture_raw = await db[Collections.INVOICES].find(
         query, {"_id": 0, "id": 1, "fornitore": 1, "totale": 1, "importo_totale": 1,
                 "invoice_number": 1, "invoice_date": 1, "fornitore_denominazione": 1}
     ).to_list(50)
 
-    return fatture
+    fatture = []
+    for f in fatture_raw:
+        importo_f = f.get("totale")
+        if importo_f is None:
+            importo_f = f.get("importo_totale", 0)
+        fatture.append({
+            "id": f.get("id"),
+            "numero_fattura": f.get("invoice_number"),
+            "fornitore": f.get("fornitore_denominazione") or f.get("fornitore"),
+            "data_fattura": f.get("invoice_date"),
+            "importo": importo_f,
+            "collection": "invoices",
+            "compatibilita_score": _compatibilita_score(importo, importo_f or 0),
+        })
+    fatture.sort(key=lambda x: x["compatibilita_score"], reverse=True)
+
+    return {"fatture_compatibili": fatture}
 
 
 @router.get("/operazioni-salari/{bonifico_id}")
-async def get_operazioni_salari(bonifico_id: str) -> List[Dict[str, Any]]:
+async def get_operazioni_salari(bonifico_id: str) -> Dict[str, Any]:
     """Trova operazioni salari compatibili con un bonifico."""
     db = Database.get_db()
 
@@ -214,41 +238,70 @@ async def get_operazioni_salari(bonifico_id: str) -> List[Dict[str, Any]]:
         raise HTTPException(404, "Bonifico non trovato")
 
     importo = abs(bonifico.get("importo", 0))
+    beneficiario = bonifico.get("beneficiario") or {}
+    beneficiario_iban = (beneficiario.get("iban") or "").strip()
 
-    # Cerca in prima_nota_salari
+    # Cerca in prima_nota_salari: l'importo può essere in importo_busta o importo_bonifico
+    # (il campo 'netto' non esiste in questa collection)
     query = {}
     if importo > 0:
         tolerance = importo * 0.05
-        query["netto"] = {"$gte": importo - tolerance, "$lte": importo + tolerance}
+        query["$or"] = [
+            {"importo_busta": {"$gte": importo - tolerance, "$lte": importo + tolerance}},
+            {"importo_bonifico": {"$gte": importo - tolerance, "$lte": importo + tolerance}},
+        ]
 
-    operazioni = await db["prima_nota_salari"].find(
+    operazioni_raw = await db["prima_nota_salari"].find(
         query, {"_id": 0}
     ).to_list(50)
 
-    return operazioni
+    dipendente_iban_match = None
+    matched_nome = None
+    if beneficiario_iban:
+        emp = await db[Collections.EMPLOYEES].find_one({"iban": beneficiario_iban})
+        if emp:
+            nome_display = emp.get("nome_completo") or emp.get("cognome") or ""
+            dipendente_iban_match = {"nome_display": nome_display}
+            matched_nome = nome_display.strip().upper()
+
+    operazioni = []
+    for op in operazioni_raw:
+        importo_op = op.get("importo_busta") or op.get("importo_bonifico") or 0
+        dipendente_nome = (op.get("dipendente") or "").strip().upper()
+        operazioni.append({
+            **op,
+            "importo_display": importo_op,
+            "compatibilita_score": _compatibilita_score(importo, importo_op),
+            "iban_match": bool(matched_nome) and matched_nome == dipendente_nome,
+        })
+    operazioni.sort(key=lambda o: o["compatibilita_score"], reverse=True)
+
+    return {"operazioni_compatibili": operazioni, "dipendente_iban_match": dipendente_iban_match}
 
 
 @router.post("/sync-iban-anagrafica")
 async def sync_iban_anagrafica() -> Dict[str, Any]:
     """Sincronizza IBAN dai bonifici all'anagrafica dipendenti/fornitori."""
     db = Database.get_db()
-    
-    # Prendi tutti i bonifici con IBAN
-    bonifici = await db["archivio_bonifici"].find(
-        {"iban_beneficiario": {"$exists": True, "$ne": None}},
-        {"beneficiario": 1, "iban_beneficiario": 1}
+
+    # Prendi tutti i bonifici con IBAN dalla collection attiva (bonifici_transfers);
+    # la legacy 'archivio_bonifici' non viene più alimentata dal flusso di import corrente.
+    bonifici = await db["bonifici_transfers"].find(
+        {"beneficiario.iban": {"$exists": True, "$ne": None, "$ne": ""}},
+        {"beneficiario": 1}
     ).to_list(5000)
-    
+
     updated_employees = 0
     updated_suppliers = 0
-    
+
     for b in bonifici:
-        iban = b.get("iban_beneficiario", "").strip()
-        beneficiario = b.get("beneficiario", "").strip().upper()
-        
+        beneficiario_obj = b.get("beneficiario") or {}
+        iban = (beneficiario_obj.get("iban") or "").strip()
+        beneficiario = (beneficiario_obj.get("nome") or "").strip().upper()
+
         if not iban:
             continue
-        
+
         # Prova a matchare con dipendenti
         emp = await db[Collections.EMPLOYEES].find_one({
             "$or": [
@@ -262,7 +315,7 @@ async def sync_iban_anagrafica() -> Dict[str, Any]:
                 {"$set": {"iban": iban}}
             )
             updated_employees += 1
-        
+
         # Prova con fornitori
         sup = await db[Collections.SUPPLIERS].find_one({
             "denominazione": {"$regex": beneficiario[:10] if len(beneficiario) > 10 else beneficiario, "$options": "i"}
@@ -273,10 +326,10 @@ async def sync_iban_anagrafica() -> Dict[str, Any]:
                 {"$set": {"iban": iban}}
             )
             updated_suppliers += 1
-    
+
     return {
         "success": True,
-        "bonifici_analizzati": len(bonifici),
+        "totale_bonifici_analizzati": len(bonifici),
         "dipendenti_aggiornati": updated_employees,
         "fornitori_aggiornati": updated_suppliers
     }
