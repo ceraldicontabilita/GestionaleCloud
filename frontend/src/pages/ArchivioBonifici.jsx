@@ -16,12 +16,15 @@ import {
 import { PageLayout } from '../components/PageLayout';
 import { useHashState } from '../hooks/useHashState';
 import { CopyLinkButton } from '../components/CopyLinkButton';
+import { useConfirm } from '../components/ui/ConfirmDialog';
+import { toast } from 'sonner';
 
 const formatDate = formatDateIT;
 
 export default function ArchivioBonifici() {
   const isMobile = useIsMobile();
   const { anno } = useAnnoGlobale();
+  const confirm = useConfirm();
   const [transfers, setTransfers] = useState([]);
   const [summary, setSummary] = useState({});
   const [count, setCount] = useState(0);
@@ -184,19 +187,23 @@ export default function ArchivioBonifici() {
               // (non annidati in "result" — quello non esiste lato backend).
               const riconciliati = statusRes.data.riconciliati || 0;
               const totale = statusRes.data.total || 0;
-              alert(
-                `✅ Riconciliazione completata!\n\nRiconciliati: ${riconciliati}\nNon trovati: ${Math.max(totale - riconciliati, 0)}`
-              );
+              toast.success('Riconciliazione completata', {
+                description: `Riconciliati: ${riconciliati} • Non trovati: ${Math.max(totale - riconciliati, 0)}`,
+              });
               await Promise.all([loadTransfers(), loadRiconciliazioneStats()]);
               setRiconciliando(false);
             } else if (statusRes.data.status === 'error') {
-              alert(`❌ Errore: ${statusRes.data.message || 'Errore sconosciuto'}`);
+              toast.error('Riconciliazione non riuscita', {
+                description: statusRes.data.message || 'Errore sconosciuto',
+              });
               setRiconciliando(false);
             } else if (attempts < maxAttempts) {
               attempts++;
               setTimeout(pollStatus, 2000);
             } else {
-              alert('⚠️ Timeout raggiunto. Verifica lo stato manualmente.');
+              toast.warning('Timeout raggiunto', {
+                description: 'Verifica lo stato della riconciliazione manualmente.',
+              });
               setRiconciliando(false);
             }
           } catch (e) {
@@ -208,26 +215,40 @@ export default function ArchivioBonifici() {
         setTimeout(pollStatus, 1000);
       } else {
         // Fallback sincrono
-        alert(
-          `✅ ${res.data.message}\n\nRiconciliati: ${res.data.riconciliati}\nNon trovati: ${res.data.non_riconciliati}`
-        );
+        toast.success(res.data.message || 'Riconciliazione completata', {
+          description: `Riconciliati: ${res.data.riconciliati} • Non trovati: ${res.data.non_riconciliati}`,
+        });
         await Promise.all([loadTransfers(), loadRiconciliazioneStats()]);
         setRiconciliando(false);
       }
     } catch (error) {
-      alert(`❌ Errore: ${error.response?.data?.detail || error.message}`);
+      toast.error('Riconciliazione non riuscita', {
+        description: error.response?.data?.detail || error.message,
+      });
       setRiconciliando(false);
     }
   };
 
   // Elimina bonifico
   const handleDelete = async id => {
+    const confirmed = await confirm({
+      title: 'Elimina bonifico',
+      message: 'Eliminare definitivamente questo bonifico?',
+      confirmText: 'Elimina',
+      cancelText: 'Annulla',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
+
     try {
       await api.delete(`/api/archivio-bonifici/transfers/${id}`);
+      toast.success('Bonifico eliminato');
       loadTransfers();
       loadCount();
     } catch (error) {
-      alert('Errore: ' + (error.response?.data?.detail || error.message));
+      toast.error('Eliminazione non riuscita', {
+        description: error.response?.data?.detail || error.message,
+      });
     }
   };
 
@@ -244,7 +265,9 @@ export default function ArchivioBonifici() {
       const baseUrl = window.location.origin;
       window.open(`${baseUrl}/api/archivio-bonifici/download-zip/${year}`, '_blank');
     } catch (error) {
-      alert('Errore download: ' + error.message);
+      toast.error('Download non riuscito', {
+        description: error.message,
+      });
     } finally {
       setTimeout(() => setDownloadingZip(false), 2000);
     }
@@ -256,9 +279,12 @@ export default function ArchivioBonifici() {
       await api.put(`/api/archivio-bonifici/transfers/${id}`, { note: noteText });
       setEditingNote(null);
       setNoteText('');
+      toast.success('Nota salvata');
       loadTransfers();
     } catch (error) {
-      alert('Errore: ' + (error.response?.data?.detail || error.message));
+      toast.error('Salvataggio non riuscito', {
+        description: error.response?.data?.detail || error.message,
+      });
     }
   };
 
@@ -266,11 +292,13 @@ export default function ArchivioBonifici() {
   const handleSyncIbanToAnagrafica = async () => {
     try {
       const res = await api.post('/api/archivio-bonifici/sync-iban-anagrafica');
-      alert(
-        `✅ Sincronizzazione completata!\n\nDipendenti aggiornati: ${res.data.dipendenti_aggiornati}\nBonifici analizzati: ${res.data.totale_bonifici_analizzati}`
-      );
+      toast.success('Sincronizzazione completata', {
+        description: `Dipendenti aggiornati: ${res.data.dipendenti_aggiornati} • Bonifici analizzati: ${res.data.totale_bonifici_analizzati}`,
+      });
     } catch (error) {
-      alert('Errore: ' + (error.response?.data?.detail || error.message));
+      toast.error('Sincronizzazione non riuscita', {
+        description: error.response?.data?.detail || error.message,
+      });
     }
   };
 
@@ -316,26 +344,34 @@ export default function ArchivioBonifici() {
       );
       setAssociaDropdown(null);
       setOperazioniCompatibili([]);
+      toast.success('Salario associato');
       loadTransfers();
     } catch (error) {
-      alert('Errore associazione: ' + (error.response?.data?.detail || error.message));
+      toast.error('Associazione non riuscita', {
+        description: error.response?.data?.detail || error.message,
+      });
     }
   };
 
   // Disassocia bonifico da salario (DOPPIA CONFERMA)
   const handleDisassocia = async (bonifico_id, dipendente_nome) => {
-    const msg1 = `Rimuovere associazione con "${dipendente_nome || 'salario'}"?`;
-    if (!window.confirm(msg1)) return;
-
-    // Seconda conferma
-    const msg2 = `⚠️ CONFERMA RIMOZIONE\n\nQuesta azione rimuoverà l'associazione tra il bonifico e il salario.\n\nSei sicuro di voler procedere?`;
-    if (!window.confirm(msg2)) return;
+    const confirmed = await confirm({
+      title: 'Disassocia salario',
+      message: `Rimuovere l'associazione con "${dipendente_nome || 'salario'}"?`,
+      confirmText: 'Disassocia',
+      cancelText: 'Annulla',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
 
     try {
       await api.delete(`/api/archivio-bonifici/disassocia-salario/${bonifico_id}`);
+      toast.success('Associazione rimossa');
       loadTransfers();
     } catch (error) {
-      alert('Errore: ' + error.message);
+      toast.error('Disassociazione non riuscita', {
+        description: error.message,
+      });
     }
   };
 
@@ -373,23 +409,33 @@ export default function ArchivioBonifici() {
       );
       setAssociaFatturaDropdown(null);
       setFattureCompatibili([]);
+      toast.success('Fattura associata');
       loadTransfers();
     } catch (error) {
-      alert('Errore associazione fattura: ' + (error.response?.data?.detail || error.message));
+      toast.error('Associazione fattura non riuscita', {
+        description: error.response?.data?.detail || error.message,
+      });
     }
   };
 
   const handleDisassociaFattura = async (bonifico_id, fattura_numero) => {
-    const msg1 = `Rimuovere associazione con fattura "${fattura_numero || 'N/D'}"?`;
-
-    // Seconda conferma
-    const msg2 = `⚠️ CONFERMA RIMOZIONE\n\nQuesta azione rimuoverà l'associazione tra il bonifico e la fattura.\n\nSei sicuro di voler procedere?`;
+    const confirmed = await confirm({
+      title: 'Disassocia fattura',
+      message: `Rimuovere l'associazione con la fattura "${fattura_numero || 'N/D'}"?`,
+      confirmText: 'Disassocia',
+      cancelText: 'Annulla',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
 
     try {
       await api.delete(`/api/archivio-bonifici/disassocia-fattura/${bonifico_id}`);
+      toast.success('Associazione fattura rimossa');
       loadTransfers();
     } catch (error) {
-      alert('Errore: ' + error.message);
+      toast.error('Disassociazione non riuscita', {
+        description: error.message,
+      });
     }
   };
 

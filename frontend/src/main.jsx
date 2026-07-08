@@ -10,6 +10,7 @@ import { AnnoProvider } from "./contexts/AnnoContext.jsx";
 import { AuthProvider, RequireAuth } from "./contexts/AuthContext.jsx";
 import { queryClient } from "./lib/queryClient.js";
 import { ConfirmProvider } from "./components/ui/ConfirmDialog.jsx";
+import { Toaster } from "./components/ui/sonner.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import Login from "./pages/Login.jsx";
 
@@ -248,6 +249,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
         <AnnoProvider>
           <ConfirmProvider>
             <RouterProvider router={router} />
+            <Toaster richColors position="top-right" />
           </ConfirmProvider>
         </AnnoProvider>
       </AuthProvider>

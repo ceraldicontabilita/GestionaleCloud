@@ -13,6 +13,8 @@ import {
   pagePad,
 } from '../lib/utils';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
+import { useConfirm } from '../components/ui/ConfirmDialog';
+import { toast } from 'sonner';
 import { ExportButton } from '../components/ExportButton';
 import { PageLayout } from '../components/PageLayout';
 
@@ -44,6 +46,7 @@ export default function RiconciliazioneUnificata() {
   const { anno } = useAnnoGlobale();
   const navigate = useNavigate();
   const location = useLocation();
+  const confirm = useConfirm();
 
   // Ottieni tab dall'URL (es. /riconciliazione-unificata/banca -> banca)
   const getTabFromPath = () => {
@@ -386,14 +389,15 @@ export default function RiconciliazioneUnificata() {
       }
 
       setAutoMatchStats({ matched, pending: stats.totale - matched });
-      const msgErrori =
-        errori.length > 0
-          ? `\n⚠️ ${errori.length} falliti: ${errori.slice(0, 3).join('; ')}${errori.length > 3 ? '…' : ''}`
-          : '';
-      alert(`✅ Auto-riconciliati ${matched} movimenti${msgErrori}`);
+      toast.success(`Auto-riconciliati ${matched} movimenti`, {
+        description:
+          errori.length > 0 ? `${errori.length} falliti: ${errori.slice(0, 3).join('; ')}` : undefined,
+      });
       loadAllData();
     } catch (e) {
-      alert('Errore: ' + e.message);
+      toast.error('Auto-riconciliazione non completata', {
+        description: e.message,
+      });
     } finally {
       setProcessing(null);
     }
@@ -409,9 +413,12 @@ export default function RiconciliazioneUnificata() {
         associazioni: associazioni || movimento.suggerimenti?.slice(0, 1) || [],
         categoria: movimento.categoria,
       });
+      toast.success('Movimento riconciliato');
       loadAllData();
     } catch (e) {
-      alert('Errore: ' + (e.response?.data?.detail || e.message));
+      toast.error('Riconciliazione non riuscita', {
+        description: e.response?.data?.detail || e.message,
+      });
     } finally {
       setProcessing(null);
     }
@@ -424,9 +431,13 @@ export default function RiconciliazioneUnificata() {
       await api.post('/api/operazioni-da-confermare/smart/ignora', {
         movimento_id: movimento.movimento_id,
       });
+      toast.success('Movimento ignorato');
       loadAllData();
     } catch (e) {
       console.error('Errore ignora:', e);
+      toast.error('Operazione non riuscita', {
+        description: e.response?.data?.detail || e.message,
+      });
     } finally {
       setProcessing(null);
     }
@@ -436,20 +447,30 @@ export default function RiconciliazioneUnificata() {
   const handleElimina = async movimento => {
     const movId = movimento.id || movimento.movimento_id;
     if (!movId) {
-      alert('ID movimento non trovato');
+      toast.error('ID movimento non trovato');
       return;
     }
 
-    if (!window.confirm('Eliminare definitivamente questo movimento?')) {
+    const confirmed = await confirm({
+      title: 'Elimina movimento',
+      message: 'Eliminare definitivamente questo movimento?',
+      confirmText: 'Elimina',
+      cancelText: 'Annulla',
+      variant: 'danger',
+    });
+    if (!confirmed) {
       return;
     }
 
     setProcessing(movId);
     try {
       await api.delete(`/api/estratto-conto-movimenti/${movId}`);
+      toast.success('Movimento eliminato');
       loadAllData();
     } catch (e) {
-      alert('Errore eliminazione: ' + (e.response?.data?.detail || e.message));
+      toast.error('Eliminazione non riuscita', {
+        description: e.response?.data?.detail || e.message,
+      });
     } finally {
       setProcessing(null);
     }
@@ -471,9 +492,12 @@ export default function RiconciliazioneUnificata() {
       //   categoria: 'assegno'
       // });
 
+      toast.success('Assegno incassato');
       loadAllData();
     } catch (e) {
-      alert('Errore: ' + (e.response?.data?.detail || e.message));
+      toast.error('Incasso assegno non riuscito', {
+        description: e.response?.data?.detail || e.message,
+      });
     } finally {
       setProcessing(null);
     }
@@ -1352,8 +1376,9 @@ function MovimentoCard({ movimento, onConferma, onIgnora, onElimina, processing,
 
 function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefresh }) {
   const [selezionati, setSelezionati] = useState(new Set());
-  const [metodoBatch, setMetodoBatch] = useState('banca');
+  const [metodoBatch] = useState('banca');
   const [salvandoBatch, setSalvandoBatch] = useState(false);
+  const confirm = useConfirm();
 
   // Filtra F24 con importo > 0
   const f24Validi = f24.filter(f => (f.importo_totale || f.importo || 0) > 0);
@@ -1415,7 +1440,7 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
 
   const confermaBatch = async () => {
     if (selezionati.size === 0) {
-      alert('Seleziona almeno un F24');
+      toast.error('Seleziona almeno un F24');
       return;
     }
 
@@ -1430,12 +1455,14 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
         }));
 
       await api.post('/api/operazioni-da-confermare/smart/conferma-f24', { operazioni });
-      alert(`✅ Confermati ${selezionati.size} F24`);
+      toast.success(`Confermati ${selezionati.size} F24`);
       setSelezionati(new Set());
       // Ricarica dati senza reload pagina
       onRefresh?.();
     } catch (e) {
-      alert('Errore: ' + (e.response?.data?.detail || e.message));
+      toast.error('Conferma F24 non riuscita', {
+        description: e.response?.data?.detail || e.message,
+      });
     } finally {
       setSalvandoBatch(false);
     }
@@ -1452,9 +1479,12 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
           },
         ],
       });
+      toast.success('F24 confermato');
       onRefresh?.();
     } catch (e) {
-      alert('Errore: ' + (e.response?.data?.detail || e.message));
+      toast.error('Conferma F24 non riuscita', {
+        description: e.response?.data?.detail || e.message,
+      });
     }
   };
 
@@ -1626,13 +1656,18 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
                       🏦 Paga con Banca
                     </button>
                     <button
-                      onClick={() => {
+                      onClick={async () => {
                         if (f.pdf_url) {
                           window.open(f.pdf_url, '_blank');
                         } else if (f.file_path) {
                           window.open(`/api/download/${encodeURIComponent(f.file_path)}`, '_blank');
                         } else {
-                          alert('PDF non disponibile. Carica il PDF F24 dalla sezione Import.');
+                          await confirm({
+                            title: 'PDF non disponibile',
+                            message: 'Carica il PDF F24 dalla sezione Import per poterlo visualizzare.',
+                            confirmText: 'Ho capito',
+                            cancelText: null,
+                          });
                         }
                       }}
                       style={{
@@ -1668,6 +1703,7 @@ function DocumentiTab({ documenti, stats, onRefresh, processing }) {
   const [associazioneForm, setAssociazioneForm] = useState({ collezione: '', campiJson: '' });
   const [message, setMessage] = useState(null);
   const [loadingCollezioni, setLoadingCollezioni] = useState(false);
+  const confirm = useConfirm();
 
   // Carica collezioni disponibili
   useEffect(() => {
@@ -1731,7 +1767,14 @@ function DocumentiTab({ documenti, stats, onRefresh, processing }) {
   };
 
   const handleDelete = async docId => {
-    if (!window.confirm('Eliminare questo documento?')) return;
+    const confirmed = await confirm({
+      title: 'Elimina documento',
+      message: 'Eliminare questo documento?',
+      confirmText: 'Elimina',
+      cancelText: 'Annulla',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
 
     try {
       await api.delete(`/api/documenti-non-associati/${docId}`);
