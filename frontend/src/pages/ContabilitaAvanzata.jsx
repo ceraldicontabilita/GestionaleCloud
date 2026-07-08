@@ -332,6 +332,8 @@ export default function ContabilitaAvanzata() {
           type: 'success',
           text: `Piano dei Conti aggiornato: ${data.conti_aggiunti} nuovi conti aggiunti.`,
         });
+      } else {
+        setMessage({ type: 'error', text: 'Aggiornamento Piano dei Conti non riuscito' });
       }
     } catch (err) {
       setMessage({ type: 'error', text: err.message });

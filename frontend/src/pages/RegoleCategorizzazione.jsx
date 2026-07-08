@@ -117,6 +117,8 @@ export default function RegoleCategorizzazione() {
         setShowAddForm(false);
         setNewRule({ pattern: '', categoria: '', note: '' });
         fetchRegole();
+      } else {
+        setMessage({ type: 'error', text: "❌ Aggiunta non riuscita: " + (res.data.message || 'errore sconosciuto') });
       }
     } catch (err) {
       setMessage({ type: 'error', text: "❌ Errore nell'aggiunta della regola" });
@@ -137,11 +139,18 @@ export default function RegoleCategorizzazione() {
     setRicategorizzando(true);
     try {
       const res = await api.post('/api/contabilita/ricategorizza-fatture');
+      const nErrori = (res.data.errori || []).length;
       if (res.data.success) {
         setMessage({
-          type: 'success',
-          text: `✅ Ricategorizzate ${res.data.fatture_processate} fatture!`,
+          type: nErrori > 0 ? 'error' : 'success',
+          text:
+            `✅ Ricategorizzate ${res.data.fatture_processate} fatture!` +
+            (nErrori > 0
+              ? ` ⚠️ ${nErrori} con errori: ${res.data.errori.slice(0, 3).join('; ')}${nErrori > 3 ? '…' : ''}`
+              : ''),
         });
+      } else {
+        setMessage({ type: 'error', text: '❌ Ricategorizzazione non riuscita' });
       }
     } catch (err) {
       setMessage({ type: 'error', text: '❌ Errore nella ricategorizzazione' });

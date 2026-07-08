@@ -94,6 +94,7 @@ export default function Scadenze() {
       });
       setPagaModal(null);
       setPaidIds(prev => new Set([...prev, scadenza.id]));
+      loadData();
     } catch (e) {
       alert('Errore pagamento: ' + (e.response?.data?.detail || e.message));
     } finally {

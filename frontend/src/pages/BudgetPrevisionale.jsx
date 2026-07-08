@@ -153,6 +153,7 @@ export default function BudgetPrevisionale() {
       );
       alert(res.data.messaggio);
       setShowDuplica(false);
+      loadAll();
     } catch (err) {
       alert('Errore: ' + err.message);
     } finally {

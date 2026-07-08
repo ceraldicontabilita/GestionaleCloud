@@ -344,6 +344,7 @@ export default function RiconciliazioneUnificata() {
   const handleAutoRiconcilia = async () => {
     setProcessing('auto');
     let matched = 0;
+    const errori = [];
 
     try {
       // 1. Auto-conferma POS e commissioni
@@ -359,6 +360,7 @@ export default function RiconciliazioneUnificata() {
           matched++;
         } catch (e) {
           console.error('Errore auto-riconcilia:', e);
+          errori.push(e.response?.data?.detail || e.message);
         }
       }
 
@@ -379,11 +381,16 @@ export default function RiconciliazioneUnificata() {
           matched++;
         } catch (e) {
           console.error('Errore auto-riconcilia assegno:', e);
+          errori.push(e.response?.data?.detail || e.message);
         }
       }
 
       setAutoMatchStats({ matched, pending: stats.totale - matched });
-      alert(`✅ Auto-riconciliati ${matched} movimenti`);
+      const msgErrori =
+        errori.length > 0
+          ? `\n⚠️ ${errori.length} falliti: ${errori.slice(0, 3).join('; ')}${errori.length > 3 ? '…' : ''}`
+          : '';
+      alert(`✅ Auto-riconciliati ${matched} movimenti${msgErrori}`);
       loadAllData();
     } catch (e) {
       alert('Errore: ' + e.message);
