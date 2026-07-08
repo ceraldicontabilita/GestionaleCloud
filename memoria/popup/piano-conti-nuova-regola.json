@@ -1,0 +1,26 @@
+{
+  "nome_popup": "Modal 'Nuova Regola Categorizzazione'",
+  "pagine_da_cui_si_apre": ["Contabilità > Piano dei Conti (tab 'Regole Categorizzazione', PianoDeiConti.jsx)"],
+  "come_si_apre": "Click sul pulsante '➕ Nuova Regola' visibile nel tab 'Regole Categorizzazione', che chiama setShowNewRegola(true). Stato controllato: showNewRegola (boolean).",
+  "scopo": "Creare una regola automatica che, in base al fornitore (o tipo documento / metodo pagamento), determina su quali conti DARE/AVERE registrare una fattura durante la registrazione automatica.",
+  "dati_mostrati": "Nessun dato precaricato: form con stato locale newRegola = {tipo:'fornitore', pattern:'', conto_dare:'', conto_avere:'', descrizione:''}.",
+  "campi_e_bottoni": [
+    {"elemento": "Select 'Tipo Regola'", "cosa_fa": "Imposta newRegola.tipo tra 'fornitore' (Per Fornitore - nome, default), 'tipo_documento' (Per Tipo Documento), 'pagamento' (Per Metodo Pagamento)", "endpoint_chiamato": "nessuno", "validazioni": "Nota operativa (non in UI ma nel backend): solo le regole con tipo='fornitore' sono effettivamente applicate da determina_conti_fattura(); le altre tipologie sono salvate ma non ancora usate nel matching automatico."},
+    {"elemento": "Input testo 'Pattern (Regex) *'", "cosa_fa": "Imposta newRegola.pattern (font monospace, placeholder 'ENEL|EDISON'); testo di aiuto sotto il campo: 'Usa | per alternative'", "endpoint_chiamato": "nessuno", "validazioni": "Obbligatorio, controllato al submit. Usato lato backend con re.search case-insensitive sul nome fornitore."},
+    {"elemento": "Input testo 'Conto DARE *'", "cosa_fa": "Imposta newRegola.conto_dare (font monospace, placeholder '05.02.02')", "endpoint_chiamato": "nessuno", "validazioni": "Obbligatorio, controllato al submit."},
+    {"elemento": "Input testo 'Conto AVERE'", "cosa_fa": "Imposta newRegola.conto_avere (font monospace, placeholder '02.01.01')", "endpoint_chiamato": "nessuno", "validazioni": "Facoltativo."},
+    {"elemento": "Input testo 'Descrizione'", "cosa_fa": "Imposta newRegola.descrizione (placeholder 'Utenze elettricità')", "endpoint_chiamato": "nessuno", "validazioni": "Facoltativo."},
+    {"elemento": "Pulsante 'Annulla'", "cosa_fa": "Chiude il modal senza salvare (setShowNewRegola(false))", "endpoint_chiamato": "nessuno", "validazioni": "n/a"},
+    {"elemento": "Pulsante '✕' (header)", "cosa_fa": "Chiude il modal senza salvare (setShowNewRegola(false))", "endpoint_chiamato": "nessuno", "validazioni": "n/a"},
+    {"elemento": "Click sull'overlay scuro di sfondo", "cosa_fa": "Chiude il modal senza salvare", "endpoint_chiamato": "nessuno", "validazioni": "n/a"},
+    {"elemento": "Pulsante '⚙️ Crea Regola'", "cosa_fa": "Esegue handleCreateRegola(): se pattern o conto_dare mancanti mostra alert() 'Pattern e conto DARE sono obbligatori' senza chiamare il backend; altrimenti invia il form", "endpoint_chiamato": "POST /api/piano-conti/regole", "validazioni": "Client: pattern e conto_dare obbligatori (alert bloccante). Server (create_regola): nessuna validazione esplicita descritta oltre alla costruzione del documento (tipo default 'fornitore', attiva=True)."}
+  ],
+  "cosa_succede_alla_conferma": "Il backend costruisce il documento regola con id UUID, tipo, pattern, conto_dare, conto_avere, descrizione, attiva=True, created_at ISO, e lo inserisce in regole_categorizzazione con insert_one. Il frontend chiude il modal, resetta newRegola ai valori di default e richiama loadData() che ricarica anche l'elenco regole (GET /api/piano-conti/regole). In caso di errore, alert('Errore: ' + dettaglio) e modal resta aperto.",
+  "come_si_chiude": [
+    "Pulsante 'Annulla'",
+    "Icona '✕' nell'header del modal",
+    "Click sull'overlay semi-trasparente di sfondo",
+    "Submit riuscito tramite '⚙️ Crea Regola'"
+  ],
+  "effetto_su_pagina_sottostante": "La tabella 'Regole Categorizzazione' del tab si aggiorna con la nuova riga (Tipo, Pattern, Conto DARE, Conto AVERE, Descrizione, pallino di stato attiva/inattiva verde/grigio). Nessun effetto immediato sui saldi esistenti finché non viene rielaborata una nuova fattura con quel fornitore."
+}

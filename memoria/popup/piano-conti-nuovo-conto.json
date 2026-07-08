@@ -1,0 +1,25 @@
+{
+  "nome_popup": "Modal 'Nuovo Conto'",
+  "pagine_da_cui_si_apre": ["Contabilità > Piano dei Conti (tab 'Piano dei Conti', PianoDeiConti.jsx)"],
+  "come_si_apre": "Click sul pulsante '➕ Nuovo Conto' nell'header della pagina, che chiama setShowNewConto(true). Stato controllato: showNewConto (boolean).",
+  "scopo": "Creare un nuovo conto nel Piano dei Conti aziendale (partita doppia), da collocare in una delle 5 categorie base (attivo/passivo/patrimonio_netto/ricavi/costi).",
+  "dati_mostrati": "Nessun dato precaricato dal server: il form parte sempre dai valori di default dello stato locale newConto = {codice:'', nome:'', categoria:'costi', natura:'economico'}. Il select Categoria è popolato iterando l'oggetto costante locale CATEGORIE (attivo/passivo/patrimonio_netto/ricavi/costi con icona).",
+  "campi_e_bottoni": [
+    {"elemento": "Input testo 'Codice (es. 05.02.03) *'", "cosa_fa": "Imposta newConto.codice (font monospace, placeholder '05.02.03')", "endpoint_chiamato": "nessuno", "validazioni": "Nessuna validazione di formato lato client; obbligatorio solo per la presenza (controllato al submit)."},
+    {"elemento": "Input testo 'Nome Conto *'", "cosa_fa": "Imposta newConto.nome (placeholder 'Spese telefoniche')", "endpoint_chiamato": "nessuno", "validazioni": "Obbligatorio, controllato al submit."},
+    {"elemento": "Select 'Categoria *'", "cosa_fa": "Imposta newConto.categoria tra attivo/passivo/patrimonio_netto/ricavi/costi (default 'costi')", "endpoint_chiamato": "nessuno", "validazioni": "Nessuna (sempre un valore valido perché è un select)."},
+    {"elemento": "Select 'Natura'", "cosa_fa": "Imposta newConto.natura tra 'economico' (default) e 'finanziario'", "endpoint_chiamato": "nessuno", "validazioni": "Nessuna."},
+    {"elemento": "Pulsante 'Annulla'", "cosa_fa": "Chiude il modal senza salvare (setShowNewConto(false)); non resetta i campi già digitati", "endpoint_chiamato": "nessuno", "validazioni": "n/a"},
+    {"elemento": "Pulsante '✕' (header)", "cosa_fa": "Chiude il modal senza salvare (setShowNewConto(false))", "endpoint_chiamato": "nessuno", "validazioni": "n/a"},
+    {"elemento": "Click sull'overlay scuro di sfondo", "cosa_fa": "Chiude il modal senza salvare (setShowNewConto(false)); il click sul contenuto del modal usa stopPropagation per non chiuderlo", "endpoint_chiamato": "nessuno", "validazioni": "n/a"},
+    {"elemento": "Pulsante '➕ Crea Conto'", "cosa_fa": "Esegue handleCreateConto(): se codice o nome mancanti mostra alert() 'Codice e nome sono obbligatori' e non chiama il backend; altrimenti invia il form", "endpoint_chiamato": "POST /api/piano-conti/", "validazioni": "Client: codice e nome obbligatori (alert bloccante). Server (create_conto): 400 se codice/nome/categoria mancanti; 409 se il codice esiste già in piano_conti (find_one)."}
+  ],
+  "cosa_succede_alla_conferma": "Il backend crea il documento conto con id UUID, gruppo_codice/gruppo_nome ricavati da STRUTTURA_BASE[categoria], natura di default 'economico' se non indicata, attivo=True, saldo=0.0, created_at/updated_at ISO, e lo inserisce in piano_conti con insert_one. In caso di successo il frontend chiude il modal (setShowNewConto(false)), resetta newConto ai valori di default e richiama loadData() che ricarica in parallelo conti (GET /api/piano-conti/?anno=...), regole (GET /api/piano-conti/regole) e bilancio (GET /api/piano-conti/bilancio?anno=...). In caso di errore mostra alert('Errore: ' + error.response?.data?.detail || error.message) e il modal resta aperto con i dati inseriti.",
+  "come_si_chiude": [
+    "Pulsante 'Annulla'",
+    "Icona '✕' nell'header del modal",
+    "Click sull'overlay semi-trasparente di sfondo",
+    "Submit riuscito tramite '➕ Crea Conto' (chiusura automatica dopo la POST)"
+  ],
+  "effetto_su_pagina_sottostante": "Se la creazione va a buon fine, la tabella del Piano dei Conti (raggruppata per categoria) e le card di riepilogo (Totale Attivo/Passivo/Ricavi/Costi/Utile) si aggiornano con il nuovo conto (saldo 0 finché non ci sono movimenti collegati). Se annullato, nessun cambiamento."
+}
