@@ -43,7 +43,11 @@ if not BASE_URL:
                 BASE_URL = line.split("=", 1)[1].strip().rstrip("/")
                 break
 
-assert BASE_URL, "REACT_APP_BACKEND_URL non configurato"
+if not BASE_URL:
+    pytest.skip(
+        "REACT_APP_BACKEND_URL non configurato: test integrazione pubblica disabilitato in locale",
+        allow_module_level=True,
+    )
 
 # Collezioni che vengono toccate
 TEST_MATRICOLA = "TESTRT0001"  # prefissi test
