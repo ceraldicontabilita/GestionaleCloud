@@ -71,22 +71,30 @@ class CascadeOperations:
             risultato["entita_eliminate"]["righe_fattura"] = r.deleted_count if hard_delete else r.modified_count
             
             # 2. Elimina/archivia Prima Nota Banca
+            # NB: "status": "deleted" (non solo "deleted": True) è il campo
+            # che TUTTE le query di riepilogo prima nota controllano davvero
+            # (cassa.py, banca.py, finanziaria.py, sync.py, bilancio.py — vedi
+            # "status": {"$nin": ["deleted","archived"]}); senza impostarlo
+            # anche qui, un movimento sganciato da una fattura cancellata
+            # restava "vivo" in Prima Nota, Finanziaria e Bilancio nonostante
+            # la fattura fosse sparita. "deleted": True resta per compatibilità
+            # con eventuale codice legacy, ma non è letto da nessuna query.
             if hard_delete:
                 r = await db["prima_nota_banca"].delete_many({"fattura_id": fattura_id})
             else:
                 r = await db["prima_nota_banca"].update_many(
                     {"fattura_id": fattura_id},
-                    {"$set": {"deleted": True, "deleted_at": now, "note": f"Eliminato per rimozione fattura {fattura_id}"}}
+                    {"$set": {"deleted": True, "status": "deleted", "deleted_at": now, "note": f"Eliminato per rimozione fattura {fattura_id}"}}
                 )
             risultato["entita_eliminate"]["prima_nota_banca"] = r.deleted_count if hard_delete else r.modified_count
-            
-            # 3. Elimina/archivia Prima Nota Cassa
+
+            # 3. Elimina/archivia Prima Nota Cassa (stesso motivo del punto 2)
             if hard_delete:
                 r = await db["prima_nota_cassa"].delete_many({"fattura_id": fattura_id})
             else:
                 r = await db["prima_nota_cassa"].update_many(
                     {"fattura_id": fattura_id},
-                    {"$set": {"deleted": True, "deleted_at": now, "note": f"Eliminato per rimozione fattura {fattura_id}"}}
+                    {"$set": {"deleted": True, "status": "deleted", "deleted_at": now, "note": f"Eliminato per rimozione fattura {fattura_id}"}}
                 )
             risultato["entita_eliminate"]["prima_nota_cassa"] = r.deleted_count if hard_delete else r.modified_count
             
