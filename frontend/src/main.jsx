@@ -63,7 +63,7 @@ const router = createBrowserRouter([
       // === DASHBOARD ===
       { index: true, element: <LazyPage><DashboardHub /></LazyPage> },
       { path: "dashboard", element: <LazyPage><DashboardHub /></LazyPage> },
-      { path: "dashboard-relazionale", element: <LazyPage><DashboardRelazionale /></LazyPage> },
+      { path: "dashboard-relazionale", element: <LazyPage><DashboardHub /></LazyPage> },
       { path: "dashboard/:anno", element: <LazyPage><DashboardHub /></LazyPage> },
       { path: "analytics", element: <LazyPage><DashboardHub /></LazyPage> },
       { path: "analytics/:periodo", element: <LazyPage><DashboardHub /></LazyPage> },
@@ -92,7 +92,7 @@ const router = createBrowserRouter([
       
       // === PRIMA NOTA ===
       { path: "prima-nota", element: <LazyPage><PrimaNotaHub /></LazyPage> },
-      { path: "prima-nota/pulizia", element: <LazyPage><PuliziaPrimaNota /></LazyPage> },
+      { path: "prima-nota/pulizia", element: <LazyPage><PrimaNotaHub /></LazyPage> },
       { path: "prima-nota/:tipo", element: <LazyPage><PrimaNotaHub /></LazyPage> },
       { path: "prima-nota/:tipo/:anno/:mese", element: <LazyPage><PrimaNotaHub /></LazyPage> },
       { path: "dati-provvisori", element: <LazyPage><DatiProvvisoriPage /></LazyPage> },
