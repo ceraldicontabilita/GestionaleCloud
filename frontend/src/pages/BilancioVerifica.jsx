@@ -1,30 +1,26 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
-import { formatEuro, formatDateIT } from '../lib/utils';
-import { PageLayout, PageSection, PageGrid, PageLoading } from '../components/PageLayout';
+import { formatEuro, formatDateIT, COLORS, BORDER_RADIUS, FONT } from '../lib/utils';
+import { PageLayout, PageLoading } from '../components/PageLayout';
+import { Button, Badge, StatCard, Input, Select, TableWrap, Table, Th, Td } from '../components/ds';
 import {
   FileText,
   Download,
   Search,
-  Filter,
   ChevronDown,
   ChevronRight,
   CheckCircle,
   AlertTriangle,
-  Eye,
-  EyeOff,
   RefreshCw,
   Printer,
 } from 'lucide-react';
 
-const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace';
-
 const TIPO_COLORS = {
-  attivo: { bg: '#ecfdf5', color: '#16a34a', label: 'Attivo' },
-  passivo: { bg: '#fef2f2', color: '#dc2626', label: 'Passivo' },
-  ricavo: { bg: '#eff6ff', color: '#2563eb', label: 'Ricavo' },
-  costo: { bg: '#fffbeb', color: '#d97706', label: 'Costo' },
+  attivo: { variant: 'success', label: 'Attivo' },
+  passivo: { variant: 'danger', label: 'Passivo' },
+  ricavo: { variant: 'info', label: 'Ricavo' },
+  costo: { variant: 'warning', label: 'Costo' },
 };
 
 const GRUPPI_CONTI = {
@@ -137,7 +133,7 @@ export default function BilancioVerifica() {
         data.totali.saldo_avere.toFixed(2),
       ].join(';')
     );
-    const blob = new Blob(['\uFEFF' + rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const blob = new Blob(['﻿' + rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -153,20 +149,6 @@ export default function BilancioVerifica() {
   const SummaryCards = () => {
     if (!data) return null;
     const { totali, quadratura, riepilogo } = data;
-    const cardStyle = {
-      background: 'white',
-      border: '1px solid #e2e8f0',
-      borderLeft: '4px solid #0f2744',
-      padding: 16,
-      borderRadius: 8,
-    };
-    const labelStyle = {
-      fontSize: 11,
-      color: '#64748b',
-      fontWeight: 600,
-      textTransform: 'uppercase',
-      letterSpacing: 0.5,
-    };
     return (
       <div
         style={{
@@ -175,64 +157,50 @@ export default function BilancioVerifica() {
           gap: 16,
         }}
       >
-        <div style={cardStyle}>
-          <div style={labelStyle}>TOTALE DARE</div>
-          <div
-            style={{ fontSize: 22, fontWeight: 700, color: '#0f2744', marginTop: 4, fontFamily: MONO }}
-          >
-            {formatEuro(totali.dare)}
-          </div>
-        </div>
-        <div style={cardStyle}>
-          <div style={labelStyle}>TOTALE AVERE</div>
-          <div
-            style={{ fontSize: 22, fontWeight: 700, color: '#0f2744', marginTop: 4, fontFamily: MONO }}
-          >
-            {formatEuro(totali.avere)}
-          </div>
-        </div>
-        <div style={cardStyle}>
-          <div style={labelStyle}>SALDO DARE</div>
-          <div
-            style={{ fontSize: 22, fontWeight: 700, color: '#0f2744', marginTop: 4, fontFamily: MONO }}
-          >
-            {formatEuro(totali.saldo_dare)}
-          </div>
-        </div>
-        <div style={cardStyle}>
-          <div style={labelStyle}>SALDO AVERE</div>
-          <div
-            style={{ fontSize: 22, fontWeight: 700, color: '#0f2744', marginTop: 4, fontFamily: MONO }}
-          >
-            {formatEuro(totali.saldo_avere)}
-          </div>
-        </div>
-        <div
-          style={{
-            ...cardStyle,
-            borderLeft: `4px solid ${quadratura ? '#16a34a' : '#dc2626'}`,
-          }}
-        >
-          <div style={labelStyle}>QUADRATURA</div>
-          <div
-            style={{
-              fontSize: 20,
-              fontWeight: 700,
-              color: quadratura ? '#16a34a' : '#dc2626',
-              marginTop: 4,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-            }}
-          >
-            {quadratura ? <CheckCircle size={20} /> : <AlertTriangle size={20} />}
-            {quadratura ? 'OK' : formatEuro(totali.sbilancio)}
-          </div>
-          <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
-            {riepilogo.n_conti} conti • {riepilogo.n_conti_attivo}A {riepilogo.n_conti_passivo}P{' '}
-            {riepilogo.n_conti_ricavo}R {riepilogo.n_conti_costo}C
-          </div>
-        </div>
+        <StatCard
+          accent="primary"
+          label="TOTALE DARE"
+          value={<span style={{ fontFamily: FONT.mono }}>{formatEuro(totali.dare)}</span>}
+        />
+        <StatCard
+          accent="primary"
+          label="TOTALE AVERE"
+          value={<span style={{ fontFamily: FONT.mono }}>{formatEuro(totali.avere)}</span>}
+        />
+        <StatCard
+          accent="primary"
+          label="SALDO DARE"
+          value={<span style={{ fontFamily: FONT.mono }}>{formatEuro(totali.saldo_dare)}</span>}
+        />
+        <StatCard
+          accent="primary"
+          label="SALDO AVERE"
+          value={<span style={{ fontFamily: FONT.mono }}>{formatEuro(totali.saldo_avere)}</span>}
+        />
+        <StatCard
+          accent={quadratura ? 'success' : 'danger'}
+          label="QUADRATURA"
+          value={
+            <span
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                fontSize: 20,
+                color: quadratura ? COLORS.success : COLORS.danger,
+              }}
+            >
+              {quadratura ? <CheckCircle size={20} /> : <AlertTriangle size={20} />}
+              {quadratura ? 'OK' : formatEuro(totali.sbilancio)}
+            </span>
+          }
+          subtext={
+            <>
+              {riepilogo.n_conti} conti • {riepilogo.n_conti_attivo}A {riepilogo.n_conti_passivo}P{' '}
+              {riepilogo.n_conti_ricavo}R {riepilogo.n_conti_costo}C
+            </>
+          }
+        />
       </div>
     );
   };
@@ -244,63 +212,25 @@ export default function BilancioVerifica() {
       subtitle={`Saldi dare/avere di tutti i conti – Anno ${anno}`}
       actions={
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <button
+          <Button
+            variant="secondary"
             onClick={loadData}
             disabled={loading}
-            style={{
-              padding: '8px 16px',
-              minHeight: 40,
-              borderRadius: 6,
-              border: '1px solid #e2e8f0',
-              background: 'white',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              fontSize: 13,
-              fontWeight: 500,
-            }}
+            iconLeft={<RefreshCw size={14} />}
           >
-            <RefreshCw size={14} /> Aggiorna
-          </button>
-          <button
+            Aggiorna
+          </Button>
+          <Button
+            variant="primary"
             onClick={handleExportCSV}
             disabled={!data}
-            style={{
-              padding: '8px 16px',
-              minHeight: 40,
-              borderRadius: 6,
-              border: 'none',
-              background: '#0f2744',
-              color: 'white',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              fontSize: 13,
-              fontWeight: 600,
-            }}
+            iconLeft={<Download size={14} />}
           >
-            <Download size={14} /> CSV
-          </button>
-          <button
-            onClick={handlePrint}
-            style={{
-              padding: '8px 16px',
-              minHeight: 40,
-              borderRadius: 6,
-              border: '1px solid #e2e8f0',
-              background: 'white',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              fontSize: 13,
-              fontWeight: 500,
-            }}
-          >
-            <Printer size={14} /> Stampa
-          </button>
+            CSV
+          </Button>
+          <Button variant="secondary" onClick={handlePrint} iconLeft={<Printer size={14} />}>
+            Stampa
+          </Button>
         </div>
       }
     >
@@ -320,44 +250,21 @@ export default function BilancioVerifica() {
               flexWrap: 'wrap',
             }}
           >
-            <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
-              <Search
-                size={16}
-                style={{ position: 'absolute', left: 12, top: 10, color: '#94a3b8' }}
-              />
-              <input
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <Input
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 placeholder="Cerca per codice o nome conto..."
-                style={{
-                  width: '100%',
-                  padding: '8px 12px 8px 36px',
-                  minHeight: 40,
-                  border: '1px solid #e2e8f0',
-                  borderRadius: 6,
-                  fontSize: 14,
-                }}
+                iconLeft={<Search size={16} />}
               />
             </div>
-            <select
-              value={filtroTipo}
-              onChange={e => setFiltroTipo(e.target.value)}
-              style={{
-                padding: '8px 16px',
-                minHeight: 40,
-                border: '1px solid #e2e8f0',
-                borderRadius: 6,
-                background: 'white',
-                fontSize: 13,
-                fontWeight: 500,
-              }}
-            >
+            <Select value={filtroTipo} onChange={e => setFiltroTipo(e.target.value)}>
               <option value="tutti">Tutti i tipi</option>
               <option value="attivo">Attivo</option>
               <option value="passivo">Passivo</option>
               <option value="ricavo">Ricavi</option>
               <option value="costo">Costi</option>
-            </select>
+            </Select>
             <label
               style={{
                 display: 'flex',
@@ -390,79 +297,43 @@ export default function BilancioVerifica() {
               />
               Colonne Saldo
             </label>
-            <button
-              onClick={expandAll}
-              style={{
-                padding: '6px 12px',
-                minHeight: 40,
-                border: '1px solid #e2e8f0',
-                borderRadius: 6,
-                background: 'white',
-                fontSize: 12,
-                cursor: 'pointer',
-              }}
-            >
+            <Button variant="secondary" size="sm" onClick={expandAll}>
               Espandi tutti
-            </button>
-            <button
-              onClick={collapseAll}
-              style={{
-                padding: '6px 12px',
-                minHeight: 40,
-                border: '1px solid #e2e8f0',
-                borderRadius: 6,
-                background: 'white',
-                fontSize: 12,
-                cursor: 'pointer',
-              }}
-            >
+            </Button>
+            <Button variant="secondary" size="sm" onClick={collapseAll}>
               Comprimi tutti
-            </button>
+            </Button>
           </div>
 
           {/* Tabella principale */}
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <TableWrap>
+            <Table>
               <thead>
-                <tr
-                  style={{
-                    background: '#f8fafc',
-                    color: '#64748b',
-                    fontSize: 11,
-                    textTransform: 'uppercase',
-                    borderBottom: '1px solid #e2e8f0',
-                  }}
-                >
-                  <th style={{ padding: '12px 8px', textAlign: 'left', width: 100 }}>Codice</th>
-                  <th style={{ padding: '12px 8px', textAlign: 'left' }}>Conto</th>
-                  <th style={{ padding: '12px 8px', textAlign: 'center', width: 80 }}>Tipo</th>
-                  <th style={{ padding: '12px 8px', textAlign: 'right', width: 130 }}>Dare</th>
-                  <th style={{ padding: '12px 8px', textAlign: 'right', width: 130 }}>Avere</th>
+                <tr>
+                  <Th style={{ width: 100 }}>Codice</Th>
+                  <Th>Conto</Th>
+                  <Th align="center" style={{ width: 80 }}>
+                    Tipo
+                  </Th>
+                  <Th align="right" style={{ width: 130 }}>
+                    Dare
+                  </Th>
+                  <Th align="right" style={{ width: 130 }}>
+                    Avere
+                  </Th>
                   {showSaldi && (
                     <>
-                      <th
-                        style={{
-                          padding: '12px 8px',
-                          textAlign: 'right',
-                          width: 130,
-                          background: '#f1f5f9',
-                        }}
-                      >
+                      <Th align="right" style={{ width: 130, background: COLORS.bg }}>
                         Saldo Dare
-                      </th>
-                      <th
-                        style={{
-                          padding: '12px 8px',
-                          textAlign: 'right',
-                          width: 130,
-                          background: '#f1f5f9',
-                        }}
-                      >
+                      </Th>
+                      <Th align="right" style={{ width: 130, background: COLORS.bg }}>
                         Saldo Avere
-                      </th>
+                      </Th>
                     </>
                   )}
-                  <th style={{ padding: '12px 8px', textAlign: 'center', width: 50 }}>Mov.</th>
+                  <Th align="center" style={{ width: 50 }}>
+                    Mov.
+                  </Th>
                 </tr>
               </thead>
               <tbody>
@@ -475,258 +346,176 @@ export default function BilancioVerifica() {
                       <tr
                         onClick={() => toggleExpand(gruppo.codice)}
                         style={{
-                          background: '#f1f5f9',
+                          background: COLORS.bg,
                           cursor: 'pointer',
-                          borderTop: '2px solid #cbd5e1',
+                          borderTop: `2px solid ${COLORS.borderDark}`,
                         }}
                       >
-                        <td style={{ padding: '10px 8px', fontWeight: 700, fontSize: 13 }}>
+                        <Td style={{ fontWeight: 700, fontSize: 13 }}>
                           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                             {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                             {gruppo.codice}
                           </span>
-                        </td>
-                        <td style={{ padding: '10px 8px', fontWeight: 700, fontSize: 13 }}>
+                        </Td>
+                        <Td style={{ fontWeight: 700, fontSize: 13 }}>
                           {gruppo.nome} ({gruppo.conti.length} conti)
-                        </td>
-                        <td style={{ padding: '10px 8px' }}></td>
-                        <td
-                          style={{
-                            padding: '10px 8px',
-                            textAlign: 'right',
-                            fontWeight: 600,
-                            fontFamily: MONO,
-                            color: '#16a34a',
-                          }}
-                        >
+                        </Td>
+                        <Td></Td>
+                        <Td align="right" mono style={{ fontWeight: 600, color: COLORS.success }}>
                           {formatEuro(gruppo.totale_dare)}
-                        </td>
-                        <td
-                          style={{
-                            padding: '10px 8px',
-                            textAlign: 'right',
-                            fontWeight: 600,
-                            fontFamily: MONO,
-                            color: '#dc2626',
-                          }}
-                        >
+                        </Td>
+                        <Td align="right" mono style={{ fontWeight: 600, color: COLORS.danger }}>
                           {formatEuro(gruppo.totale_avere)}
-                        </td>
+                        </Td>
                         {showSaldi && (
                           <>
-                            <td
-                              style={{
-                                padding: '10px 8px',
-                                textAlign: 'right',
-                                fontWeight: 600,
-                                fontFamily: MONO,
-                                color: '#16a34a',
-                                background: '#f8fafc',
-                              }}
+                            <Td
+                              align="right"
+                              mono
+                              style={{ fontWeight: 600, color: COLORS.success, background: COLORS.bgAlt }}
                             >
                               {saldoGruppo > 0 ? formatEuro(saldoGruppo) : '-'}
-                            </td>
-                            <td
-                              style={{
-                                padding: '10px 8px',
-                                textAlign: 'right',
-                                fontWeight: 600,
-                                fontFamily: MONO,
-                                color: '#dc2626',
-                                background: '#f8fafc',
-                              }}
+                            </Td>
+                            <Td
+                              align="right"
+                              mono
+                              style={{ fontWeight: 600, color: COLORS.danger, background: COLORS.bgAlt }}
                             >
                               {saldoGruppo < 0 ? formatEuro(Math.abs(saldoGruppo)) : '-'}
-                            </td>
+                            </Td>
                           </>
                         )}
-                        <td
-                          style={{
-                            padding: '10px 8px',
-                            textAlign: 'center',
-                            color: '#64748b',
-                            fontSize: 12,
-                          }}
-                        >
+                        <Td align="center" style={{ color: COLORS.textMuted, fontSize: 12 }}>
                           {gruppo.conti.reduce((s, c) => s + c.n_movimenti, 0)}
-                        </td>
+                        </Td>
                       </tr>
 
                       {/* Righe conti (se espanso) */}
                       {isExpanded &&
                         gruppo.conti.map((conto, idx) => {
                           const tc = TIPO_COLORS[conto.tipo] || {
-                            bg: '#f9fafb',
-                            color: '#6b7280',
+                            variant: 'neutral',
                             label: conto.tipo,
                           };
                           return (
                             <React.Fragment key={conto.codice}>
                               <tr
                                 style={{
-                                  background: idx % 2 === 0 ? 'white' : '#fafafa',
-                                  borderBottom: '1px solid #f1f5f9',
+                                  background: idx % 2 === 0 ? COLORS.card : COLORS.gray[50],
+                                  borderBottom: `1px solid ${COLORS.gray[100]}`,
                                 }}
                               >
-                                <td
+                                <Td
+                                  mono
                                   style={{
                                     padding: '8px 8px 8px 28px',
-                                    fontFamily: MONO,
                                     fontSize: 13,
-                                    color: '#475569',
+                                    color: COLORS.gray[600],
                                   }}
                                 >
                                   {conto.codice}
-                                </td>
-                                <td style={{ padding: '8px', color: '#1e293b' }}>{conto.nome}</td>
-                                <td style={{ padding: '8px', textAlign: 'center' }}>
-                                  <span
-                                    style={{
-                                      padding: '2px 8px',
-                                      borderRadius: 10,
-                                      fontSize: 11,
-                                      fontWeight: 600,
-                                      background: tc.bg,
-                                      color: tc.color,
-                                    }}
-                                  >
-                                    {tc.label}
-                                  </span>
-                                </td>
-                                <td
+                                </Td>
+                                <Td style={{ color: COLORS.text }}>{conto.nome}</Td>
+                                <Td align="center">
+                                  <Badge variant={tc.variant}>{tc.label}</Badge>
+                                </Td>
+                                <Td
+                                  align="right"
+                                  mono
                                   style={{
-                                    padding: '8px',
-                                    textAlign: 'right',
                                     fontWeight: 500,
-                                    fontFamily: MONO,
-                                    color: conto.dare > 0 ? '#16a34a' : '#cbd5e1',
+                                    color: conto.dare > 0 ? COLORS.success : COLORS.gray[300],
                                   }}
                                 >
                                   {formatEuro(conto.dare)}
-                                </td>
-                                <td
+                                </Td>
+                                <Td
+                                  align="right"
+                                  mono
                                   style={{
-                                    padding: '8px',
-                                    textAlign: 'right',
                                     fontWeight: 500,
-                                    fontFamily: MONO,
-                                    color: conto.avere > 0 ? '#dc2626' : '#cbd5e1',
+                                    color: conto.avere > 0 ? COLORS.danger : COLORS.gray[300],
                                   }}
                                 >
                                   {formatEuro(conto.avere)}
-                                </td>
+                                </Td>
                                 {showSaldi && (
                                   <>
-                                    <td
+                                    <Td
+                                      align="right"
+                                      mono
                                       style={{
-                                        padding: '8px',
-                                        textAlign: 'right',
                                         fontWeight: 600,
-                                        fontFamily: MONO,
-                                        color: '#16a34a',
-                                        background: '#f8fafc',
+                                        color: COLORS.success,
+                                        background: COLORS.bgAlt,
                                       }}
                                     >
                                       {conto.saldo_dare > 0 ? formatEuro(conto.saldo_dare) : '-'}
-                                    </td>
-                                    <td
+                                    </Td>
+                                    <Td
+                                      align="right"
+                                      mono
                                       style={{
-                                        padding: '8px',
-                                        textAlign: 'right',
                                         fontWeight: 600,
-                                        fontFamily: MONO,
-                                        color: '#dc2626',
-                                        background: '#f8fafc',
+                                        color: COLORS.danger,
+                                        background: COLORS.bgAlt,
                                       }}
                                     >
                                       {conto.saldo_avere > 0 ? formatEuro(conto.saldo_avere) : '-'}
-                                    </td>
+                                    </Td>
                                   </>
                                 )}
-                                <td
-                                  style={{
-                                    padding: '8px',
-                                    textAlign: 'center',
-                                    fontSize: 12,
-                                    color: '#64748b',
-                                  }}
-                                >
+                                <Td align="center" style={{ fontSize: 12, color: COLORS.textMuted }}>
                                   {conto.n_movimenti}
-                                </td>
+                                </Td>
                               </tr>
                               {/* Dettaglio movimenti */}
                               {dettaglio && conto.movimenti?.length > 0 && (
                                 <tr>
                                   <td
                                     colSpan={showSaldi ? 8 : 6}
-                                    style={{ padding: '0 0 0 48px', background: '#fafbfc' }}
+                                    style={{ padding: '0 0 0 48px', background: COLORS.bgAlt }}
                                   >
-                                    <table
-                                      style={{
-                                        width: '100%',
-                                        borderCollapse: 'collapse',
-                                        fontSize: 12,
-                                      }}
-                                    >
+                                    <Table style={{ fontSize: 12 }}>
                                       <thead>
-                                        <tr
-                                          style={{
-                                            color: '#64748b',
-                                            fontSize: 11,
-                                            textTransform: 'uppercase',
-                                            background: '#f8fafc',
-                                          }}
-                                        >
-                                          <th style={{ padding: '4px 8px', textAlign: 'left' }}>
-                                            Data
-                                          </th>
-                                          <th style={{ padding: '4px 8px', textAlign: 'left' }}>
-                                            Descrizione
-                                          </th>
-                                          <th style={{ padding: '4px 8px', textAlign: 'right' }}>
+                                        <tr>
+                                          <Th style={{ padding: '4px 8px' }}>Data</Th>
+                                          <Th style={{ padding: '4px 8px' }}>Descrizione</Th>
+                                          <Th align="right" style={{ padding: '4px 8px' }}>
                                             Dare
-                                          </th>
-                                          <th style={{ padding: '4px 8px', textAlign: 'right' }}>
+                                          </Th>
+                                          <Th align="right" style={{ padding: '4px 8px' }}>
                                             Avere
-                                          </th>
+                                          </Th>
                                         </tr>
                                       </thead>
                                       <tbody>
                                         {conto.movimenti.map((m, mi) => (
-                                          <tr
-                                            key={mi}
-                                            style={{ borderBottom: '1px solid #f1f5f9' }}
-                                          >
-                                            <td style={{ padding: '3px 8px', color: '#6b7280' }}>
+                                          <tr key={mi} style={{ borderBottom: `1px solid ${COLORS.gray[100]}` }}>
+                                            <Td style={{ padding: '3px 8px', color: COLORS.textMuted }}>
                                               {formatDateIT(m.data)}
-                                            </td>
-                                            <td style={{ padding: '3px 8px', color: '#374151' }}>
+                                            </Td>
+                                            <Td style={{ padding: '3px 8px', color: COLORS.gray[700] }}>
                                               {m.descrizione}
-                                            </td>
-                                            <td
-                                              style={{
-                                                padding: '3px 8px',
-                                                textAlign: 'right',
-                                                fontFamily: MONO,
-                                                color: '#16a34a',
-                                              }}
+                                            </Td>
+                                            <Td
+                                              align="right"
+                                              mono
+                                              style={{ padding: '3px 8px', color: COLORS.success }}
                                             >
                                               {m.dare > 0 ? formatEuro(m.dare) : ''}
-                                            </td>
-                                            <td
-                                              style={{
-                                                padding: '3px 8px',
-                                                textAlign: 'right',
-                                                fontFamily: MONO,
-                                                color: '#dc2626',
-                                              }}
+                                            </Td>
+                                            <Td
+                                              align="right"
+                                              mono
+                                              style={{ padding: '3px 8px', color: COLORS.danger }}
                                             >
                                               {m.avere > 0 ? formatEuro(m.avere) : ''}
-                                            </td>
+                                            </Td>
                                           </tr>
                                         ))}
                                       </tbody>
-                                    </table>
+                                    </Table>
                                   </td>
                                 </tr>
                               )}
@@ -740,16 +529,16 @@ export default function BilancioVerifica() {
               {/* Totali */}
               <tfoot>
                 <tr
-                  style={{ background: '#0f2744', color: 'white', fontWeight: 700, fontSize: 14 }}
+                  style={{ background: COLORS.primary, color: COLORS.card, fontWeight: 700, fontSize: 14 }}
                 >
                   <td colSpan={2} style={{ padding: '14px 8px' }}>
                     TOTALE GENERALE
                   </td>
                   <td></td>
-                  <td style={{ padding: '14px 8px', textAlign: 'right', fontFamily: MONO }}>
+                  <td style={{ padding: '14px 8px', textAlign: 'right', fontFamily: FONT.mono }}>
                     {formatEuro(data.totali.dare)}
                   </td>
-                  <td style={{ padding: '14px 8px', textAlign: 'right', fontFamily: MONO }}>
+                  <td style={{ padding: '14px 8px', textAlign: 'right', fontFamily: FONT.mono }}>
                     {formatEuro(data.totali.avere)}
                   </td>
                   {showSaldi && (
@@ -758,8 +547,8 @@ export default function BilancioVerifica() {
                         style={{
                           padding: '14px 8px',
                           textAlign: 'right',
-                          fontFamily: MONO,
-                          background: '#1e3a5f',
+                          fontFamily: FONT.mono,
+                          background: COLORS.primaryLight,
                         }}
                       >
                         {formatEuro(data.totali.saldo_dare)}
@@ -768,8 +557,8 @@ export default function BilancioVerifica() {
                         style={{
                           padding: '14px 8px',
                           textAlign: 'right',
-                          fontFamily: MONO,
-                          background: '#1e3a5f',
+                          fontFamily: FONT.mono,
+                          background: COLORS.primaryLight,
                         }}
                       >
                         {formatEuro(data.totali.saldo_avere)}
@@ -780,7 +569,7 @@ export default function BilancioVerifica() {
                     {data.conti.reduce((s, c) => s + c.n_movimenti, 0)}
                   </td>
                 </tr>
-                <tr style={{ background: data.quadratura ? '#dcfce7' : '#fee2e2' }}>
+                <tr style={{ background: data.quadratura ? COLORS.successLight : COLORS.dangerLight }}>
                   <td
                     colSpan={showSaldi ? 8 : 6}
                     style={{
@@ -788,7 +577,7 @@ export default function BilancioVerifica() {
                       textAlign: 'center',
                       fontWeight: 600,
                       fontSize: 14,
-                      color: data.quadratura ? '#166534' : '#991b1b',
+                      color: data.quadratura ? COLORS.success : COLORS.danger,
                     }}
                   >
                     {data.quadratura
@@ -797,20 +586,20 @@ export default function BilancioVerifica() {
                   </td>
                 </tr>
               </tfoot>
-            </table>
-          </div>
+            </Table>
+          </TableWrap>
 
           {/* Note */}
           <div
             style={{
               marginTop: 24,
               padding: 16,
-              background: '#f8fafc',
-              borderRadius: 8,
-              border: '1px solid #e2e8f0',
+              background: COLORS.bgAlt,
+              borderRadius: BORDER_RADIUS.md,
+              border: `1px solid ${COLORS.border}`,
             }}
           >
-            <p style={{ margin: 0, fontSize: 12, color: '#64748b' }}>
+            <p style={{ margin: 0, fontSize: 12, color: COLORS.textMuted }}>
               <strong>Fonti dati:</strong> Fatture ricevute, Corrispettivi, Prima Nota (Cassa +
               Banca + Salari), Cespiti/Ammortamenti. Generato il{' '}
               {data.data_generazione
@@ -821,7 +610,7 @@ export default function BilancioVerifica() {
           </div>
         </>
       ) : (
-        <div style={{ textAlign: 'center', padding: 60, color: '#64748b' }}>
+        <div style={{ textAlign: 'center', padding: 60, color: COLORS.textMuted }}>
           <FileText size={48} style={{ margin: '0 auto 16px', opacity: 0.3 }} />
           <p>Nessun dato disponibile per l'anno {anno}</p>
         </div>
