@@ -1332,8 +1332,39 @@ export default function ArchivioBonifici() {
                                         {f.compatibilita_score}%
                                       </span>
                                     </div>
-                                    <div style={{ fontSize: 10, color: '#6b7280', marginTop: 4 }}>
-                                      {formatDate(f.data_fattura)} • {formatEuro(f.importo)}
+                                    <div
+                                      style={{
+                                        fontSize: 10,
+                                        color: '#6b7280',
+                                        marginTop: 4,
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'center',
+                                        gap: 6,
+                                      }}
+                                    >
+                                      <span>
+                                        {formatDate(f.data_fattura)} • {formatEuro(f.importo)}
+                                      </span>
+                                      {f.id && (
+                                        <a
+                                          href={`/api/fatture-ricevute/fattura/${f.id}/view-assoinvoice`}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          onClick={e => e.stopPropagation()}
+                                          style={{
+                                            padding: '2px 6px',
+                                            background: '#10b981',
+                                            color: 'white',
+                                            borderRadius: 4,
+                                            fontSize: 9,
+                                            textDecoration: 'none',
+                                            flexShrink: 0,
+                                          }}
+                                        >
+                                          📄 Vedi
+                                        </a>
+                                      )}
                                     </div>
                                   </div>
                                 ))

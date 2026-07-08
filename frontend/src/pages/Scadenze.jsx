@@ -1320,8 +1320,37 @@ export default function Scadenze() {
                   ✕
                 </button>
               </div>
-              <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 16 }}>
-                {pagaModal.fornitore || pagaModal.descrizione}
+              <div
+                style={{
+                  fontSize: 13,
+                  color: '#6b7280',
+                  marginBottom: 16,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                }}
+              >
+                <span>{pagaModal.fornitore || pagaModal.descrizione}</span>
+                {(pagaModal.tipo === 'FATTURA' || pagaModal.source === 'fattura') &&
+                  (pagaModal.fattura_id || pagaModal.id) && (
+                    <a
+                      href={`/api/fatture-ricevute/fattura/${pagaModal.fattura_id || pagaModal.id}/view-assoinvoice`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        padding: '2px 8px',
+                        background: '#10b981',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: 4,
+                        fontSize: 10,
+                        textDecoration: 'none',
+                      }}
+                      title="Visualizza PDF Fattura"
+                    >
+                      📄 Vedi
+                    </a>
+                  )}
               </div>
               <div
                 style={{
