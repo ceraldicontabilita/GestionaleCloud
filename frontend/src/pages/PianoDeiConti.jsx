@@ -1,22 +1,26 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { toast } from 'sonner';
 import api from '../api';
-import { formatEuro, STYLES, COLORS, button, badge, useIsMobile } from '../lib/utils';
+import { formatEuro, COLORS, SHADOWS, BORDER_RADIUS, FONT, useIsMobile } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
+import { useConfirm } from '../components/ui/ConfirmDialog';
+import { Button, Badge, StatCard, Tabs, Input, Select, Table, TableWrap, Th, Td } from '../components/ds';
 
-const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace';
+const MONO = FONT.mono;
 
 const CATEGORIE = {
-  attivo: { nome: 'ATTIVO', color: '#3b82f6', icon: '📊' },
-  passivo: { nome: 'PASSIVO', color: '#dc2626', icon: '📉' },
-  patrimonio_netto: { nome: 'PATRIMONIO NETTO', color: '#0f2744', icon: '💎' },
-  ricavi: { nome: 'RICAVI', color: '#16a34a', icon: '📈' },
-  costi: { nome: 'COSTI', color: '#d97706', icon: '💸' },
+  attivo: { nome: 'ATTIVO', color: COLORS.info, icon: '📊' },
+  passivo: { nome: 'PASSIVO', color: COLORS.danger, icon: '📉' },
+  patrimonio_netto: { nome: 'PATRIMONIO NETTO', color: COLORS.primary, icon: '💎' },
+  ricavi: { nome: 'RICAVI', color: COLORS.success, icon: '📈' },
+  costi: { nome: 'COSTI', color: COLORS.warning, icon: '💸' },
 };
 
 export default function PianoDeiConti() {
   const isMobile = useIsMobile();
+  const confirm = useConfirm();
   const { anno: annoGlobale } = useAnnoGlobale();
   const [_conti, setConti] = useState([]);
   const [grouped, setGrouped] = useState({});
@@ -129,7 +133,7 @@ export default function PianoDeiConti() {
 
   const handleCreateConto = async () => {
     if (!newConto.codice || !newConto.nome) {
-      alert('Codice e nome sono obbligatori');
+      toast.error('Codice e nome sono obbligatori');
       return;
     }
     try {
@@ -138,18 +142,21 @@ export default function PianoDeiConti() {
       setNewConto({ codice: '', nome: '', categoria: 'costi', natura: 'economico' });
       loadData();
     } catch (error) {
-      alert('Errore: ' + (error.response?.data?.detail || error.message));
+      toast.error('Errore: ' + (error.response?.data?.detail || error.message));
     }
   };
 
   const handleRiclassificaAI = async () => {
-    const conferma = window.confirm(
-      'Ricategorizzazione con AI: analizzerà tutte le righe delle fatture XML e le assegnerà ai conti corretti del piano dei conti ' +
-      '(es. Coca-Cola → Bevande analcoliche, Caffè Lavazza → Caffè e affini).\n\n' +
-      'L\'operazione dura da 30 secondi a qualche minuto in base al numero di fatture. ' +
-      'Costa qualche centesimo in chiamate AI.\n\n' +
-      'Procedere?'
-    );
+    const conferma = await confirm({
+      title: 'Ricategorizzazione con AI',
+      message:
+        'Analizzerà tutte le righe delle fatture XML e le assegnerà ai conti corretti del piano dei conti ' +
+        '(es. Coca-Cola → Bevande analcoliche, Caffè Lavazza → Caffè e affini).\n\n' +
+        "L'operazione dura da 30 secondi a qualche minuto in base al numero di fatture. " +
+        'Costa qualche centesimo in chiamate AI.\n\n' +
+        'Procedere?',
+      confirmText: 'Procedi',
+    });
     if (!conferma) return;
 
     setRiclassificando(true);
@@ -171,7 +178,7 @@ export default function PianoDeiConti() {
 
   const handleCreateRegola = async () => {
     if (!newRegola.pattern || !newRegola.conto_dare) {
-      alert('Pattern e conto DARE sono obbligatori');
+      toast.error('Pattern e conto DARE sono obbligatori');
       return;
     }
     try {
@@ -186,23 +193,27 @@ export default function PianoDeiConti() {
       });
       loadData();
     } catch (error) {
-      alert('Errore: ' + (error.response?.data?.detail || error.message));
+      toast.error('Errore: ' + (error.response?.data?.detail || error.message));
     }
   };
 
   if (loading) {
-    return <div style={{ padding: 40, textAlign: 'center' }}>Caricamento Piano dei Conti...</div>;
+    return (
+      <div style={{ padding: 40, textAlign: 'center', color: COLORS.textMuted }}>
+        Caricamento Piano dei Conti...
+      </div>
+    );
   }
 
   return (
     <PageLayout title="Piano dei Conti" subtitle="Contabilità Generale - Sistema di Partita Doppia">
       <div style={{ maxWidth: 1400, margin: '0 auto' }}>
         {/* Header */}
-        <div style={{ marginBottom: 20, borderLeft: '4px solid #0f2744', paddingLeft: 14 }}>
-          <h1 style={{ margin: 0, fontSize: 'clamp(20px, 5vw, 28px)', color: '#0f2744' }}>
+        <div style={{ marginBottom: 20, borderLeft: `4px solid ${COLORS.primary}`, paddingLeft: 14 }}>
+          <h1 style={{ margin: 0, fontSize: 'clamp(20px, 5vw, 28px)', color: COLORS.primary }}>
             📒 Piano dei Conti
           </h1>
-          <p style={{ color: '#64748b', margin: '5px 0 0 0' }}>
+          <p style={{ color: COLORS.textMuted, margin: '5px 0 0 0' }}>
             Contabilità Generale - Sistema di Partita Doppia
           </p>
         </div>
@@ -221,125 +232,72 @@ export default function PianoDeiConti() {
               {
                 label: 'Totale Attivo',
                 val: bilancio.stato_patrimoniale.attivo.totale,
-                color: '#0f2744',
+                accent: 'primary',
               },
               {
                 label: 'Totale Passivo',
                 val: bilancio.stato_patrimoniale.passivo.totale,
-                color: '#0f2744',
+                accent: 'primary',
               },
-              { label: 'Totale Ricavi', val: bilancio.conto_economico.ricavi.totale, color: '#16a34a' },
-              { label: 'Totale Costi', val: bilancio.conto_economico.costi.totale, color: '#0f2744' },
+              { label: 'Totale Ricavi', val: bilancio.conto_economico.ricavi.totale, accent: 'success' },
+              { label: 'Totale Costi', val: bilancio.conto_economico.costi.totale, accent: 'primary' },
               {
                 label: bilancio.conto_economico.risultato >= 0 ? 'Utile' : 'Perdita',
                 val: Math.abs(bilancio.conto_economico.risultato),
-                color: bilancio.conto_economico.risultato >= 0 ? '#16a34a' : '#dc2626',
+                accent: bilancio.conto_economico.risultato >= 0 ? 'success' : 'danger',
               },
-            ].map(({ label, val, color }) => (
-              <div
+            ].map(({ label, val, accent }) => (
+              <StatCard
                 key={label}
-                style={{
-                  background: 'white',
-                  border: '1px solid #e2e8f0',
-                  borderLeft: '4px solid #0f2744',
-                  borderRadius: 8,
-                  padding: 14,
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: '#64748b',
-                    textTransform: 'uppercase',
-                    letterSpacing: 0.5,
-                    marginBottom: 6,
-                  }}
-                >
-                  {label}
-                </div>
-                <div style={{ fontSize: 22, fontWeight: 700, color, fontFamily: MONO }}>
-                  {formatEuro(val)}
-                </div>
-              </div>
+                label={label}
+                value={<span style={{ fontFamily: MONO }}>{formatEuro(val)}</span>}
+                accent={accent}
+              />
             ))}
           </div>
         )}
 
         {/* Tabs */}
-        <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
-          {['conti', 'regole'].map(tab => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              style={{
-                padding: '10px 20px',
-                minHeight: 40,
-                background: activeTab === tab ? '#0f2744' : 'white',
-                color: activeTab === tab ? 'white' : '#1e293b',
-                border: activeTab === tab ? '1px solid #0f2744' : '1px solid #e2e8f0',
-                borderRadius: 6,
-                fontSize: 13,
-                fontWeight: 'bold',
-                cursor: 'pointer',
-              }}
-            >
-              {tab === 'conti' ? '📊 Piano dei Conti' : '⚙️ Regole Categorizzazione'}
-            </button>
-          ))}
+        <div style={{ marginBottom: 20 }}>
+          <Tabs
+            items={[
+              { key: 'conti', label: '📊 Piano dei Conti' },
+              { key: 'regole', label: '⚙️ Regole Categorizzazione' },
+            ]}
+            value={activeTab}
+            onChange={tab => setActiveTab(tab)}
+          />
         </div>
 
         {/* Piano dei Conti */}
         {activeTab === 'conti' && (
           <>
             <div style={{ marginBottom: 15, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-              <button
+              <Button
+                variant="primary"
                 onClick={() => setShowNewConto(true)}
                 data-testid="new-conto-btn"
-                style={{
-                  padding: '10px 20px',
-                  minHeight: 40,
-                  background: '#0f2744',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: 6,
-                  cursor: 'pointer',
-                  fontSize: 13,
-                  fontWeight: 'bold',
-                }}
               >
                 ➕ Nuovo Conto
-              </button>
+              </Button>
 
-              <button
+              <Button
+                variant="warning"
                 onClick={handleRiclassificaAI}
                 disabled={riclassificando}
                 title="Analizza le righe delle fatture XML con AI e le assegna ai conti del piano corretti (es. Coca-Cola → Bevande analcoliche)"
-                style={{
-                  padding: '10px 20px',
-                  minHeight: 40,
-                  background: riclassificando ? '#64748b' : '#b8860b',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: 6,
-                  cursor: riclassificando ? 'not-allowed' : 'pointer',
-                  fontSize: 13,
-                  fontWeight: 'bold',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
-                }}
               >
                 {riclassificando ? '⏳ Classificazione in corso…' : '🤖 Ricategorizza con AI'}
-              </button>
+              </Button>
 
               {riclassificaResult && (
                 <div style={{
                   padding: '8px 12px',
                   fontSize: 13,
-                  borderRadius: 6,
-                  background: riclassificaResult.success ? '#dcfce7' : '#fef2f2',
-                  color: riclassificaResult.success ? '#166534' : '#991b1b',
-                  border: `1px solid ${riclassificaResult.success ? '#86efac' : '#fecaca'}`,
+                  borderRadius: BORDER_RADIUS.sm,
+                  background: riclassificaResult.success ? COLORS.successLight : COLORS.dangerLight,
+                  color: riclassificaResult.success ? COLORS.success : COLORS.danger,
+                  border: `1px solid ${riclassificaResult.success ? COLORS.success : COLORS.danger}`,
                 }}>
                   {riclassificaResult.success
                     ? `✅ Articoli elaborati: ${riclassificaResult.step1_genera_dizionario?.total || 0} · Riclassificati AI: ${riclassificaResult.step2_categorizzazione_ai?.categorizzati || 0}`
@@ -353,10 +311,10 @@ export default function PianoDeiConti() {
                 <div
                   key={key}
                   style={{
-                    background: 'white',
-                    borderRadius: 8,
+                    background: COLORS.card,
+                    borderRadius: BORDER_RADIUS.md,
                     overflow: 'hidden',
-                    border: '1px solid #e2e8f0',
+                    border: `1px solid ${COLORS.border}`,
                   }}
                 >
                   {/* Category Header */}
@@ -376,7 +334,7 @@ export default function PianoDeiConti() {
                       <span style={{ fontSize: 24 }}>{cat.icon}</span>
                       <div>
                         <div style={{ fontWeight: 'bold', color: cat.color }}>{cat.nome}</div>
-                        <div style={{ fontSize: 12, color: '#64748b' }}>
+                        <div style={{ fontSize: 12, color: COLORS.textMuted }}>
                           {grouped[key]?.length || 0} conti
                         </div>
                       </div>
@@ -390,108 +348,75 @@ export default function PianoDeiConti() {
                   {expandedCategories.includes(key) && (
                     <div style={{ padding: 15 }}>
                       {(grouped[key] || []).length === 0 ? (
-                        <div style={{ color: '#999', textAlign: 'center', padding: 20 }}>
+                        <div style={{ color: COLORS.textSubtle, textAlign: 'center', padding: 20 }}>
                           Nessun conto in questa categoria
                         </div>
                       ) : (
-                        <div style={{ overflowX: 'auto' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                          <thead>
-                            <tr
-                              style={{
-                                background: '#f8fafc',
-                                borderBottom: '1px solid #e2e8f0',
-                                fontSize: 11,
-                                textTransform: 'uppercase',
-                                color: '#64748b',
-                              }}
-                            >
-                              <th style={{ padding: 10, textAlign: 'left', fontWeight: 600 }}>
-                                Codice
-                              </th>
-                              <th style={{ padding: 10, textAlign: 'left', fontWeight: 600 }}>
-                                Nome Conto
-                              </th>
-                              <th style={{ padding: 10, textAlign: 'center', fontWeight: 600 }}>
-                                Natura
-                              </th>
-                              <th style={{ padding: 10, textAlign: 'right', fontWeight: 600 }}>
-                                Saldo
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {grouped[key].map((conto, idx) => (
-                              <tr
-                                key={conto.id}
-                                data-testid={`conto-row-${conto.codice}`}
-                                onClick={() => openContoDetail(conto)}
-                                style={{
-                                  borderBottom: '1px solid #f1f5f9',
-                                  background:
-                                    selectedConto?.codice === conto.codice
-                                      ? cat.color + '18'
-                                      : idx % 2 === 0
-                                        ? 'white'
-                                        : '#fafafa',
-                                  cursor: 'pointer',
-                                  transition: 'background 0.15s',
-                                }}
-                                onMouseEnter={e => {
-                                  e.currentTarget.style.background = cat.color + '22';
-                                }}
-                                onMouseLeave={e => {
-                                  e.currentTarget.style.background =
-                                    selectedConto?.codice === conto.codice
-                                      ? cat.color + '18'
-                                      : idx % 2 === 0
-                                        ? 'white'
-                                        : '#fafafa';
-                                }}
-                              >
-                                <td
+                        <TableWrap>
+                          <Table>
+                            <thead>
+                              <tr>
+                                <Th>Codice</Th>
+                                <Th>Nome Conto</Th>
+                                <Th align="center">Natura</Th>
+                                <Th align="right">Saldo</Th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {grouped[key].map((conto, idx) => (
+                                <tr
+                                  key={conto.id}
+                                  data-testid={`conto-row-${conto.codice}`}
+                                  onClick={() => openContoDetail(conto)}
                                   style={{
-                                    padding: 10,
-                                    fontFamily: MONO,
-                                    fontWeight: 'bold',
+                                    background:
+                                      selectedConto?.codice === conto.codice
+                                        ? cat.color + '18'
+                                        : idx % 2 === 0
+                                          ? COLORS.card
+                                          : COLORS.bgAlt,
+                                    cursor: 'pointer',
+                                    transition: 'background 0.15s',
+                                  }}
+                                  onMouseEnter={e => {
+                                    e.currentTarget.style.background = cat.color + '22';
+                                  }}
+                                  onMouseLeave={e => {
+                                    e.currentTarget.style.background =
+                                      selectedConto?.codice === conto.codice
+                                        ? cat.color + '18'
+                                        : idx % 2 === 0
+                                          ? COLORS.card
+                                          : COLORS.bgAlt;
                                   }}
                                 >
-                                  <span style={{ color: cat.color }}>{conto.codice}</span>
-                                  <span style={{ color: '#bbb', marginLeft: 6, fontSize: 11 }}>
-                                    ›
-                                  </span>
-                                </td>
-                                <td style={{ padding: 10 }}>{conto.nome}</td>
-                                <td style={{ padding: 10, textAlign: 'center' }}>
-                                  <span
+                                  <Td mono style={{ fontWeight: 'bold' }}>
+                                    <span style={{ color: cat.color }}>{conto.codice}</span>
+                                    <span style={{ color: COLORS.textSubtle, marginLeft: 6, fontSize: 11 }}>
+                                      ›
+                                    </span>
+                                  </Td>
+                                  <Td>{conto.nome}</Td>
+                                  <Td align="center">
+                                    <Badge variant={conto.natura === 'finanziario' ? 'info' : 'neutral'}>
+                                      {conto.natura}
+                                    </Badge>
+                                  </Td>
+                                  <Td
+                                    align="right"
+                                    mono
                                     style={{
-                                      padding: '2px 8px',
-                                      borderRadius: 4,
-                                      fontSize: 11,
-                                      background:
-                                        conto.natura === 'finanziario' ? '#eff6ff' : '#f1f5f9',
-                                      color: conto.natura === 'finanziario' ? '#2563eb' : '#475569',
+                                      fontWeight: 'bold',
+                                      color: conto.saldo >= 0 ? COLORS.success : COLORS.danger,
                                     }}
                                   >
-                                    {conto.natura}
-                                  </span>
-                                </td>
-                                <td
-                                  style={{
-                                    padding: 10,
-                                    textAlign: 'right',
-                                    fontWeight: 'bold',
-                                    fontFamily: MONO,
-                                    color: conto.saldo >= 0 ? '#16a34a' : '#dc2626',
-                                  }}
-                                >
-                                  {formatEuro(conto.saldo)}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                        </div>
+                                    {formatEuro(conto.saldo)}
+                                  </Td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </Table>
+                        </TableWrap>
                       )}
                     </div>
                   )}
@@ -505,34 +430,24 @@ export default function PianoDeiConti() {
         {activeTab === 'regole' && (
           <>
             <div style={{ marginBottom: 15 }}>
-              <button
+              <Button
+                variant="primary"
                 onClick={() => setShowNewRegola(true)}
                 data-testid="new-regola-btn"
-                style={{
-                  padding: '10px 20px',
-                  minHeight: 40,
-                  background: '#0f2744',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: 6,
-                  cursor: 'pointer',
-                  fontSize: 13,
-                  fontWeight: 'bold',
-                }}
               >
                 ➕ Nuova Regola
-              </button>
+              </Button>
             </div>
 
             <div
               style={{
-                background: '#fffbeb',
-                border: '1px solid #fde68a',
+                background: COLORS.warningLight,
+                border: `1px solid ${COLORS.warning}`,
                 padding: 15,
-                borderRadius: 8,
+                borderRadius: BORDER_RADIUS.md,
                 marginBottom: 20,
                 fontSize: 13,
-                color: '#1e293b',
+                color: COLORS.text,
               }}
             >
               <strong>Come funzionano le regole:</strong>
@@ -553,77 +468,48 @@ export default function PianoDeiConti() {
               </ul>
             </div>
 
-            <div
-              style={{
-                background: 'white',
-                borderRadius: 8,
-                border: '1px solid #e2e8f0',
-                overflowX: 'auto',
-              }}
-            >
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <TableWrap>
+              <Table>
                 <thead>
-                  <tr
-                    style={{
-                      background: '#f8fafc',
-                      borderBottom: '1px solid #e2e8f0',
-                      fontSize: 11,
-                      textTransform: 'uppercase',
-                      color: '#64748b',
-                    }}
-                  >
-                    <th style={{ padding: 12, textAlign: 'left' }}>Tipo</th>
-                    <th style={{ padding: 12, textAlign: 'left' }}>Pattern</th>
-                    <th style={{ padding: 12, textAlign: 'left' }}>Conto DARE</th>
-                    <th style={{ padding: 12, textAlign: 'left' }}>Conto AVERE</th>
-                    <th style={{ padding: 12, textAlign: 'left' }}>Descrizione</th>
-                    <th style={{ padding: 12, textAlign: 'center' }}>Stato</th>
+                  <tr>
+                    <Th>Tipo</Th>
+                    <Th>Pattern</Th>
+                    <Th>Conto DARE</Th>
+                    <Th>Conto AVERE</Th>
+                    <Th>Descrizione</Th>
+                    <Th align="center">Stato</Th>
                   </tr>
                 </thead>
                 <tbody>
-                  {regole.map((regola, idx) => (
-                    <tr
-                      key={regola.id}
-                      style={{
-                        borderBottom: '1px solid #f1f5f9',
-                        background: idx % 2 === 0 ? 'white' : '#fafafa',
-                      }}
-                    >
-                      <td style={{ padding: 12 }}>
-                        <span
-                          style={{
-                            padding: '2px 8px',
-                            borderRadius: 4,
-                            fontSize: 11,
-                            background: regola.tipo === 'fornitore' ? '#dcfce7' : '#eff6ff',
-                            color: regola.tipo === 'fornitore' ? '#16a34a' : '#2563eb',
-                          }}
-                        >
+                  {regole.map(regola => (
+                    <tr key={regola.id}>
+                      <Td>
+                        <Badge variant={regola.tipo === 'fornitore' ? 'success' : 'info'}>
                           {regola.tipo}
-                        </span>
-                      </td>
-                      <td style={{ padding: 12, fontFamily: MONO, fontWeight: 'bold' }}>
+                        </Badge>
+                      </Td>
+                      <Td mono style={{ fontWeight: 'bold' }}>
                         {regola.pattern}
-                      </td>
-                      <td style={{ padding: 12, fontFamily: MONO }}>{regola.conto_dare}</td>
-                      <td style={{ padding: 12, fontFamily: MONO }}>{regola.conto_avere}</td>
-                      <td style={{ padding: 12, fontSize: 13 }}>{regola.descrizione}</td>
-                      <td style={{ padding: 12, textAlign: 'center' }}>
+                      </Td>
+                      <Td mono>{regola.conto_dare}</Td>
+                      <Td mono>{regola.conto_avere}</Td>
+                      <Td>{regola.descrizione}</Td>
+                      <Td align="center">
                         <span
                           style={{
                             width: 10,
                             height: 10,
-                            borderRadius: '50%',
-                            background: regola.attiva ? '#16a34a' : '#94a3b8',
+                            borderRadius: BORDER_RADIUS.full,
+                            background: regola.attiva ? COLORS.success : COLORS.textSubtle,
                             display: 'inline-block',
                           }}
                         />
-                      </td>
+                      </Td>
                     </tr>
                   ))}
                 </tbody>
-              </table>
-            </div>
+              </Table>
+            </TableWrap>
           </>
         )}
 
@@ -643,11 +529,12 @@ export default function PianoDeiConti() {
           >
             <div
               style={{
-                background: 'white',
-                borderRadius: 8,
+                background: COLORS.card,
+                borderRadius: BORDER_RADIUS.md,
                 padding: 24,
                 maxWidth: 450,
                 width: '90%',
+                boxShadow: SHADOWS.modal,
               }}
               onClick={e => e.stopPropagation()}
             >
@@ -660,10 +547,10 @@ export default function PianoDeiConti() {
                     width: 32,
                     height: 32,
                     flexShrink: 0,
-                    background: '#f1f5f9',
+                    background: COLORS.gray[100],
                     border: 'none',
-                    borderRadius: 8,
-                    color: '#475569',
+                    borderRadius: BORDER_RADIUS.md,
+                    color: COLORS.gray[600],
                     fontSize: 16,
                     lineHeight: 1,
                     cursor: 'pointer',
@@ -683,18 +570,12 @@ export default function PianoDeiConti() {
                   >
                     Codice (es. 05.02.03) *
                   </label>
-                  <input
+                  <Input
                     type="text"
                     value={newConto.codice}
                     onChange={e => setNewConto({ ...newConto, codice: e.target.value })}
                     placeholder="05.02.03"
-                    style={{
-                      padding: 12,
-                      width: '100%',
-                      borderRadius: 6,
-                      border: '1px solid #e2e8f0',
-                      fontFamily: MONO,
-                    }}
+                    style={{ fontFamily: MONO }}
                   />
                 </div>
                 <div>
@@ -703,17 +584,11 @@ export default function PianoDeiConti() {
                   >
                     Nome Conto *
                   </label>
-                  <input
+                  <Input
                     type="text"
                     value={newConto.nome}
                     onChange={e => setNewConto({ ...newConto, nome: e.target.value })}
                     placeholder="Spese telefoniche"
-                    style={{
-                      padding: 12,
-                      width: '100%',
-                      borderRadius: 6,
-                      border: '1px solid #e2e8f0',
-                    }}
                   />
                 </div>
                 <div>
@@ -722,22 +597,16 @@ export default function PianoDeiConti() {
                   >
                     Categoria *
                   </label>
-                  <select
+                  <Select
                     value={newConto.categoria}
                     onChange={e => setNewConto({ ...newConto, categoria: e.target.value })}
-                    style={{
-                      padding: 12,
-                      width: '100%',
-                      borderRadius: 6,
-                      border: '1px solid #e2e8f0',
-                    }}
                   >
                     {Object.entries(CATEGORIE).map(([key, cat]) => (
                       <option key={key} value={key}>
                         {cat.icon} {cat.nome}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </div>
                 <div>
                   <label
@@ -745,54 +614,23 @@ export default function PianoDeiConti() {
                   >
                     Natura
                   </label>
-                  <select
+                  <Select
                     value={newConto.natura}
                     onChange={e => setNewConto({ ...newConto, natura: e.target.value })}
-                    style={{
-                      padding: 12,
-                      width: '100%',
-                      borderRadius: 6,
-                      border: '1px solid #e2e8f0',
-                    }}
                   >
                     <option value="economico">Economico</option>
                     <option value="finanziario">Finanziario</option>
-                  </select>
+                  </Select>
                 </div>
               </div>
 
               <div style={{ display: 'flex', gap: 10, marginTop: 20, justifyContent: 'flex-end' }}>
-                <button
-                  onClick={() => setShowNewConto(false)}
-                  style={{
-                    padding: '10px 20px',
-                    minHeight: 40,
-                    background: 'white',
-                    color: '#1e293b',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: 6,
-                    fontSize: 13,
-                    cursor: 'pointer',
-                  }}
-                >
+                <Button variant="secondary" onClick={() => setShowNewConto(false)}>
                   Annulla
-                </button>
-                <button
-                  onClick={handleCreateConto}
-                  style={{
-                    padding: '10px 20px',
-                    minHeight: 40,
-                    background: '#0f2744',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: 6,
-                    fontSize: 13,
-                    cursor: 'pointer',
-                    fontWeight: 'bold',
-                  }}
-                >
+                </Button>
+                <Button variant="primary" onClick={handleCreateConto}>
                   ➕ Crea Conto
-                </button>
+                </Button>
               </div>
             </div>
           </div>
@@ -814,11 +652,12 @@ export default function PianoDeiConti() {
           >
             <div
               style={{
-                background: 'white',
-                borderRadius: 8,
+                background: COLORS.card,
+                borderRadius: BORDER_RADIUS.md,
                 padding: 24,
                 maxWidth: 500,
                 width: '90%',
+                boxShadow: SHADOWS.modal,
               }}
               onClick={e => e.stopPropagation()}
             >
@@ -831,10 +670,10 @@ export default function PianoDeiConti() {
                     width: 32,
                     height: 32,
                     flexShrink: 0,
-                    background: '#f1f5f9',
+                    background: COLORS.gray[100],
                     border: 'none',
-                    borderRadius: 8,
-                    color: '#475569',
+                    borderRadius: BORDER_RADIUS.md,
+                    color: COLORS.gray[600],
                     fontSize: 16,
                     lineHeight: 1,
                     cursor: 'pointer',
@@ -854,20 +693,14 @@ export default function PianoDeiConti() {
                   >
                     Tipo Regola
                   </label>
-                  <select
+                  <Select
                     value={newRegola.tipo}
                     onChange={e => setNewRegola({ ...newRegola, tipo: e.target.value })}
-                    style={{
-                      padding: 12,
-                      width: '100%',
-                      borderRadius: 6,
-                      border: '1px solid #e2e8f0',
-                    }}
                   >
                     <option value="fornitore">Per Fornitore (nome)</option>
                     <option value="tipo_documento">Per Tipo Documento</option>
                     <option value="pagamento">Per Metodo Pagamento</option>
-                  </select>
+                  </Select>
                 </div>
                 <div>
                   <label
@@ -875,20 +708,14 @@ export default function PianoDeiConti() {
                   >
                     Pattern (Regex) *
                   </label>
-                  <input
+                  <Input
                     type="text"
                     value={newRegola.pattern}
                     onChange={e => setNewRegola({ ...newRegola, pattern: e.target.value })}
                     placeholder="ENEL|EDISON"
-                    style={{
-                      padding: 12,
-                      width: '100%',
-                      borderRadius: 6,
-                      border: '1px solid #e2e8f0',
-                      fontFamily: MONO,
-                    }}
+                    style={{ fontFamily: MONO }}
                   />
-                  <div style={{ fontSize: 11, color: '#64748b', marginTop: 3 }}>
+                  <div style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 3 }}>
                     Usa | per alternative (es. ENEL|EDISON per luce o gas)
                   </div>
                 </div>
@@ -910,18 +737,12 @@ export default function PianoDeiConti() {
                     >
                       Conto DARE *
                     </label>
-                    <input
+                    <Input
                       type="text"
                       value={newRegola.conto_dare}
                       onChange={e => setNewRegola({ ...newRegola, conto_dare: e.target.value })}
                       placeholder="05.02.02"
-                      style={{
-                        padding: 12,
-                        width: '100%',
-                        borderRadius: 6,
-                        border: '1px solid #e2e8f0',
-                        fontFamily: MONO,
-                      }}
+                      style={{ fontFamily: MONO }}
                     />
                   </div>
                   <div>
@@ -935,18 +756,12 @@ export default function PianoDeiConti() {
                     >
                       Conto AVERE
                     </label>
-                    <input
+                    <Input
                       type="text"
                       value={newRegola.conto_avere}
                       onChange={e => setNewRegola({ ...newRegola, conto_avere: e.target.value })}
                       placeholder="02.01.01"
-                      style={{
-                        padding: 12,
-                        width: '100%',
-                        borderRadius: 6,
-                        border: '1px solid #e2e8f0',
-                        fontFamily: MONO,
-                      }}
+                      style={{ fontFamily: MONO }}
                     />
                   </div>
                 </div>
@@ -956,53 +771,22 @@ export default function PianoDeiConti() {
                   >
                     Descrizione
                   </label>
-                  <input
+                  <Input
                     type="text"
                     value={newRegola.descrizione}
                     onChange={e => setNewRegola({ ...newRegola, descrizione: e.target.value })}
                     placeholder="Utenze elettricità"
-                    style={{
-                      padding: 12,
-                      width: '100%',
-                      borderRadius: 6,
-                      border: '1px solid #e2e8f0',
-                    }}
                   />
                 </div>
               </div>
 
               <div style={{ display: 'flex', gap: 10, marginTop: 20, justifyContent: 'flex-end' }}>
-                <button
-                  onClick={() => setShowNewRegola(false)}
-                  style={{
-                    padding: '10px 20px',
-                    minHeight: 40,
-                    background: 'white',
-                    color: '#1e293b',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: 6,
-                    fontSize: 13,
-                    cursor: 'pointer',
-                  }}
-                >
+                <Button variant="secondary" onClick={() => setShowNewRegola(false)}>
                   Annulla
-                </button>
-                <button
-                  onClick={handleCreateRegola}
-                  style={{
-                    padding: '10px 20px',
-                    minHeight: 40,
-                    background: '#0f2744',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: 6,
-                    fontSize: 13,
-                    cursor: 'pointer',
-                    fontWeight: 'bold',
-                  }}
-                >
+                </Button>
+                <Button variant="primary" onClick={handleCreateRegola}>
                   ⚙️ Crea Regola
-                </button>
+                </Button>
               </div>
             </div>
           </div>
@@ -1032,8 +816,8 @@ export default function PianoDeiConti() {
               right: 0,
               width: 'min(580px, 100%)',
               height: '100vh',
-              background: 'white',
-              boxShadow: '-4px 0 30px rgba(0,0,0,0.18)',
+              background: COLORS.card,
+              boxShadow: SHADOWS.xl,
               zIndex: 1001,
               display: 'flex',
               flexDirection: 'column',
@@ -1045,7 +829,7 @@ export default function PianoDeiConti() {
               const catKey = selectedConto.categoria?.toLowerCase().replace(' ', '_') || 'costi';
               const catInfo = CATEGORIE[catKey] || {
                 nome: selectedConto.categoria,
-                color: '#0f2744',
+                color: COLORS.primary,
                 icon: '📄',
               };
               return (
@@ -1085,7 +869,7 @@ export default function PianoDeiConti() {
                       style={{
                         background: 'rgba(255,255,255,0.2)',
                         border: 'none',
-                        borderRadius: 6,
+                        borderRadius: BORDER_RADIUS.sm,
                         cursor: 'pointer',
                         color: 'white',
                         fontSize: 20,
@@ -1102,24 +886,24 @@ export default function PianoDeiConti() {
                       display: 'grid',
                       gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr',
                       gap: 1,
-                      background: '#f0f0f0',
+                      background: COLORS.border,
                     }}
                   >
                     {[
                       {
                         label: 'Saldo',
                         val: formatEuro(selectedConto.saldo || 0),
-                        color: (selectedConto.saldo || 0) >= 0 ? '#16a34a' : '#dc2626',
+                        color: (selectedConto.saldo || 0) >= 0 ? COLORS.success : COLORS.danger,
                       },
-                      { label: 'Natura', val: selectedConto.natura || '—', color: '#64748b' },
+                      { label: 'Natura', val: selectedConto.natura || '—', color: COLORS.textMuted },
                       {
                         label: 'Stato',
                         val: selectedConto.attivo ? 'Attivo' : 'Inattivo',
-                        color: selectedConto.attivo ? '#16a34a' : '#94a3b8',
+                        color: selectedConto.attivo ? COLORS.success : COLORS.textSubtle,
                       },
                     ].map(({ label, val, color }) => (
-                      <div key={label} style={{ background: 'white', padding: '14px 18px' }}>
-                        <div style={{ fontSize: 11, color: '#999', marginBottom: 4 }}>{label}</div>
+                      <div key={label} style={{ background: COLORS.card, padding: '14px 18px' }}>
+                        <div style={{ fontSize: 11, color: COLORS.textSubtle, marginBottom: 4 }}>{label}</div>
                         <div style={{ fontWeight: 'bold', color, fontSize: 16 }}>{val}</div>
                       </div>
                     ))}
@@ -1131,7 +915,7 @@ export default function PianoDeiConti() {
             {/* Corpo drawer: movimenti */}
             <div style={{ flex: 1, padding: '18px 24px', overflowY: 'auto' }}>
               {loadingDetail ? (
-                <div style={{ textAlign: 'center', padding: 40, color: '#999' }}>
+                <div style={{ textAlign: 'center', padding: 40, color: COLORS.textSubtle }}>
                   Caricamento movimenti…
                 </div>
               ) : contoDetail ? (
@@ -1146,13 +930,13 @@ export default function PianoDeiConti() {
                         key={label}
                         style={{
                           flex: 1,
-                          background: '#f8fafc',
-                          borderRadius: 8,
+                          background: COLORS.bgAlt,
+                          borderRadius: BORDER_RADIUS.md,
                           padding: 12,
                           textAlign: 'center',
                         }}
                       >
-                        <div style={{ fontSize: 11, color: '#999' }}>{label}</div>
+                        <div style={{ fontSize: 11, color: COLORS.textSubtle }}>{label}</div>
                         <div style={{ fontWeight: 'bold', fontSize: 18, marginTop: 4 }}>{val}</div>
                       </div>
                     ))}
@@ -1163,9 +947,9 @@ export default function PianoDeiConti() {
                     <div
                       style={{
                         fontSize: 11,
-                        color: '#888',
-                        background: '#f0f4ff',
-                        borderRadius: 6,
+                        color: COLORS.textMuted,
+                        background: COLORS.infoLight,
+                        borderRadius: BORDER_RADIUS.sm,
                         padding: '6px 10px',
                         marginBottom: 12,
                       }}
@@ -1178,79 +962,26 @@ export default function PianoDeiConti() {
                   {contoDetail.movimenti?.length > 0 ? (
                     <>
                       <div
-                        style={{ fontWeight: 600, fontSize: 13, color: '#444', marginBottom: 8 }}
+                        style={{ fontWeight: 600, fontSize: 13, color: COLORS.text, marginBottom: 8 }}
                       >
                         Movimenti ({annoGlobale})
                       </div>
-                      <div
-                        style={{
-                          border: '1px solid #e5e7eb',
-                          borderRadius: 8,
-                          overflow: 'hidden',
-                          overflowX: 'auto',
-                        }}
-                      >
-                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                      <TableWrap>
+                        <Table>
                           <thead>
-                            <tr
-                              style={{
-                                background: '#f8fafc',
-                                fontSize: 11,
-                                textTransform: 'uppercase',
-                              }}
-                            >
-                              <th
-                                style={{
-                                  padding: '8px 12px',
-                                  textAlign: 'left',
-                                  color: '#64748b',
-                                  fontWeight: 600,
-                                }}
-                              >
-                                Data
-                              </th>
-                              <th
-                                style={{
-                                  padding: '8px 12px',
-                                  textAlign: 'left',
-                                  color: '#64748b',
-                                  fontWeight: 600,
-                                }}
-                              >
-                                Descrizione
-                              </th>
-                              <th
-                                style={{
-                                  padding: '8px 12px',
-                                  textAlign: 'right',
-                                  color: '#64748b',
-                                  fontWeight: 600,
-                                }}
-                              >
-                                Importo
-                              </th>
+                            <tr>
+                              <Th>Data</Th>
+                              <Th>Descrizione</Th>
+                              <Th align="right">Importo</Th>
                             </tr>
                           </thead>
                           <tbody>
                             {contoDetail.movimenti.map((mov, i) => (
-                              <tr
-                                key={i}
-                                style={{
-                                  borderTop: '1px solid #f0f0f0',
-                                  background: i % 2 === 0 ? 'white' : '#fafafa',
-                                }}
-                              >
-                                <td
-                                  style={{
-                                    padding: '8px 12px',
-                                    fontFamily: MONO,
-                                    fontSize: 12,
-                                    whiteSpace: 'nowrap',
-                                  }}
-                                >
+                              <tr key={i}>
+                                <Td mono style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
                                   {String(mov.data || '—').slice(0, 10)}
-                                </td>
-                                <td style={{ padding: '8px 12px', color: '#333', maxWidth: 260 }}>
+                                </Td>
+                                <Td style={{ maxWidth: 260 }}>
                                   <div
                                     style={{
                                       overflow: 'hidden',
@@ -1262,38 +993,37 @@ export default function PianoDeiConti() {
                                     {(mov.descrizione || '—').slice(0, 65)}
                                   </div>
                                   {mov.categoria && (
-                                    <div style={{ fontSize: 10, color: '#aaa', marginTop: 2 }}>
+                                    <div style={{ fontSize: 10, color: COLORS.textSubtle, marginTop: 2 }}>
                                       {mov.categoria}
                                     </div>
                                   )}
-                                </td>
-                                <td
+                                </Td>
+                                <Td
+                                  align="right"
+                                  mono
                                   style={{
-                                    padding: '8px 12px',
-                                    textAlign: 'right',
                                     fontWeight: 'bold',
-                                    fontFamily: MONO,
-                                    color: mov.tipo === 'entrata' ? '#16a34a' : '#dc2626',
+                                    color: mov.tipo === 'entrata' ? COLORS.success : COLORS.danger,
                                   }}
                                 >
                                   {mov.tipo === 'entrata' ? '+' : '-'}
                                   {formatEuro(mov.importo)}
-                                </td>
+                                </Td>
                               </tr>
                             ))}
                           </tbody>
-                        </table>
-                      </div>
+                        </Table>
+                      </TableWrap>
                     </>
                   ) : (
                     <div
                       style={{
                         textAlign: 'center',
                         padding: 28,
-                        color: '#bbb',
+                        color: COLORS.textSubtle,
                         fontSize: 13,
-                        background: '#f8fafc',
-                        borderRadius: 8,
+                        background: COLORS.bgAlt,
+                        borderRadius: BORDER_RADIUS.md,
                       }}
                     >
                       {contoDetail.nota || 'Nessun movimento disponibile per questo conto.'}
@@ -1301,7 +1031,7 @@ export default function PianoDeiConti() {
                   )}
                 </>
               ) : (
-                <div style={{ textAlign: 'center', padding: 40, color: '#bbb' }}>
+                <div style={{ textAlign: 'center', padding: 40, color: COLORS.textSubtle }}>
                   Nessun dettaglio disponibile
                 </div>
               )}
