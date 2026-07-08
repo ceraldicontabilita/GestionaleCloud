@@ -8,11 +8,13 @@ Integrazione con le API di OpenAPI.it per:
 Documentazione: https://console.openapi.com/it
 """
 import os
+import base64
 import httpx
 import logging
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import Response
 from pydantic import BaseModel
 
 from app.database import Database
@@ -273,6 +275,7 @@ async def get_xbrl_status() -> Dict[str, Any]:
     """
     return {
         "status": "available",
+        "api_key_configured": bool(OPENAPI_KEY),
         "environment": OPENAPI_ENV,
         "base_url": get_visure_url(),
         "description": "Servizio per recupero bilanci XBRL dalla Camera di Commercio",
@@ -371,7 +374,23 @@ async def get_bilancio_xbrl(request_id: str) -> Dict[str, Any]:
                 )
                 
                 if status == "completed":
-                    # Bilancio disponibile
+                    # Bilancio disponibile: il documento salvato in richieste_bilanci
+                    # deve esporre "download_url" (letto dalla tabella "Richieste
+                    # Recenti" del frontend per mostrare il pulsante Download) —
+                    # prima non veniva mai scritto, quindi il pulsante non compariva.
+                    ha_file = bool(
+                        result.get("pdf_base64") or result.get("xbrl_base64") or result.get("verbale_base64")
+                    )
+                    download_url = f"/api/openapi/xbrl/download/{request_id}" if ha_file else None
+                    await db.richieste_bilanci.update_one(
+                        {"id": request_id},
+                        {"$set": {
+                            "download_url": download_url,
+                            "denominazione": result.get("denominazione"),
+                            "data_deposito": result.get("data_deposito"),
+                        }}
+                    )
+
                     return {
                         "status": "completed",
                         "request_id": request_id,
@@ -386,6 +405,7 @@ async def get_bilancio_xbrl(request_id: str) -> Dict[str, Any]:
                                 "verbale": result.get("verbale_base64") is not None
                             }
                         },
+                        "download_url": download_url,
                         "download_links": {
                             "xbrl": f"/api/openapi/xbrl/download/{request_id}/xbrl" if result.get("xbrl_base64") else None,
                             "pdf": f"/api/openapi/xbrl/download/{request_id}/pdf" if result.get("pdf_base64") else None,
@@ -420,6 +440,76 @@ async def get_bilancio_xbrl(request_id: str) -> Dict[str, Any]:
     except httpx.HTTPError as e:
         logger.error(f"Errore HTTP recupero XBRL: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+_XBRL_FILE_FIELDS = {
+    "pdf": ("pdf_base64", "application/pdf", "pdf"),
+    "xbrl": ("xbrl_base64", "application/xml", "xbrl"),
+    "verbale": ("verbale_base64", "application/pdf", "pdf"),
+}
+
+
+async def _scarica_file_bilancio(request_id: str, tipo: str) -> Response:
+    """Il contenuto del bilancio (PDF/XBRL/verbale) non viene mai persistito
+    nel database di GestionaleCloud: viene richiesto di nuovo a OpenAPI.it
+    al momento del download e restituito direttamente al browser."""
+    campo, content_type, estensione = _XBRL_FILE_FIELDS[tipo]
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.get(
+                f"{get_visure_url()}/bilancio-ottico/{request_id}",
+                headers=get_headers()
+            )
+    except httpx.HTTPError as e:
+        logger.error(f"Errore HTTP download XBRL: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+    if response.status_code != 200:
+        raise HTTPException(status_code=response.status_code, detail="Errore recupero bilancio")
+
+    result = response.json()
+    if result.get("status") != "completed":
+        raise HTTPException(status_code=409, detail="Il bilancio non è ancora disponibile")
+
+    contenuto_b64 = result.get(campo)
+    if not contenuto_b64:
+        raise HTTPException(status_code=404, detail=f"File '{tipo}' non disponibile per questo bilancio")
+
+    try:
+        contenuto = base64.b64decode(contenuto_b64)
+    except Exception:
+        raise HTTPException(status_code=500, detail="File ricevuto da OpenAPI.it non decodificabile")
+
+    filename = f"bilancio_{request_id}_{tipo}.{estensione}"
+    return Response(
+        content=contenuto,
+        media_type=content_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+
+
+@router.get("/xbrl/download/{request_id}")
+async def download_bilancio_xbrl(request_id: str) -> Response:
+    """Download del bilancio (preferisce il PDF ufficiale, in mancanza usa l'XBRL)."""
+    db = Database.get_db()
+    richiesta = await db.richieste_bilanci.find_one({"id": request_id}, {"_id": 0})
+    if not richiesta:
+        raise HTTPException(status_code=404, detail="Richiesta non trovata")
+    for tipo in ("pdf", "xbrl", "verbale"):
+        try:
+            return await _scarica_file_bilancio(request_id, tipo)
+        except HTTPException as e:
+            if e.status_code != 404:
+                raise
+    raise HTTPException(status_code=404, detail="Nessun file disponibile per questo bilancio")
+
+
+@router.get("/xbrl/download/{request_id}/{tipo}")
+async def download_bilancio_xbrl_tipizzato(request_id: str, tipo: str) -> Response:
+    """Download del singolo file (xbrl|pdf|verbale) del bilancio richiesto."""
+    if tipo not in _XBRL_FILE_FIELDS:
+        raise HTTPException(status_code=400, detail="Tipo file non valido: usa xbrl, pdf o verbale")
+    return await _scarica_file_bilancio(request_id, tipo)
 
 
 @router.post("/xbrl/richiedi-riclassificato")

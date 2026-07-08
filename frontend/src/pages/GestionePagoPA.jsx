@@ -34,7 +34,6 @@ import api from '../api';
 export default function GestionePagoPA() {
   const isMobile = useIsMobile();
   const [ricevute, setRicevute] = useState([]);
-  const [movimentiBanca, setMovimentiBanca] = useState([]);
   const [loading, setLoading] = useState(false);
   const [autoAssociaLoading, setAutoAssociaLoading] = useState(false);
   const [stats, setStats] = useState(null);
@@ -63,20 +62,10 @@ export default function GestionePagoPA() {
     }
   }, []);
 
-  const fetchMovimentiBanca = useCallback(async () => {
-    try {
-      const response = await api.get('/api/bank-statement/movements?tipo=pagopa&limit=100');
-      setMovimentiBanca(response.data || []);
-    } catch (error) {
-      console.error('Errore fetch movimenti:', error);
-    }
-  }, []);
-
   useEffect(() => {
     fetchStats();
     fetchRicevute();
-    fetchMovimentiBanca();
-  }, [fetchStats, fetchRicevute, fetchMovimentiBanca]);
+  }, [fetchStats, fetchRicevute]);
 
   const handleAutoAssocia = async () => {
     setAutoAssociaLoading(true);
@@ -700,33 +689,38 @@ export default function GestionePagoPA() {
                         </td>
                         <td style={{ padding: '12px 16px', textAlign: 'center' }}>
                           <div style={{ display: 'flex', justifyContent: 'center', gap: 8 }}>
-                            <button
-                              style={{
-                                padding: '6px 10px',
-                                background: 'transparent',
-                                border: '1px solid #e5e7eb',
-                                borderRadius: 6,
-                                cursor: 'pointer',
-                              }}
-                              data-testid={`view-ricevuta-${idx}`}
-                            >
-                              👁️
-                            </button>
-                            {ricevuta.pdf_url && (
-                              <a
-                                href={ricevuta.pdf_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                style={{
-                                  padding: '6px 10px',
-                                  background: 'transparent',
-                                  border: '1px solid #e5e7eb',
-                                  borderRadius: 6,
-                                  textDecoration: 'none',
-                                }}
-                              >
-                                📥
-                              </a>
+                            {ricevuta.id && (
+                              <>
+                                <button
+                                  onClick={() =>
+                                    window.open(`/api/pagopa/ricevute/${ricevuta.id}/pdf`, '_blank')
+                                  }
+                                  style={{
+                                    padding: '6px 10px',
+                                    background: 'transparent',
+                                    border: '1px solid #e5e7eb',
+                                    borderRadius: 6,
+                                    cursor: 'pointer',
+                                  }}
+                                  data-testid={`view-ricevuta-${idx}`}
+                                >
+                                  👁️
+                                </button>
+                                <a
+                                  href={`/api/pagopa/ricevute/${ricevuta.id}/pdf?download=true`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style={{
+                                    padding: '6px 10px',
+                                    background: 'transparent',
+                                    border: '1px solid #e5e7eb',
+                                    borderRadius: 6,
+                                    textDecoration: 'none',
+                                  }}
+                                >
+                                  📥
+                                </a>
+                              </>
                             )}
                           </div>
                         </td>

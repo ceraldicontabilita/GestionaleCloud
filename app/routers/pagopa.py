@@ -6,9 +6,11 @@ Logica:
 2. I movimenti estratto conto contengono lo stesso codice nella descrizione (CBILL xxxxxxx)
 3. Associamo automaticamente ricevuta <-> movimento usando questo codice
 """
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, HTTPException, UploadFile, File, Query
+from fastapi.responses import Response
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
+import base64
 import uuid
 import logging
 import re
@@ -43,10 +45,35 @@ async def list_ricevute(
             query["movimento_id"] = {"$in": [None, ""]}
     
     ricevute = await db[COLLECTION_RICEVUTE].find(
-        query, {"_id": 0}
+        query, {"_id": 0, "pdf_data": 0}
     ).sort("data_pagamento", -1).limit(limit).to_list(limit)
     
     return ricevute
+
+
+@router.get("/ricevute/{ricevuta_id}/pdf")
+@handle_errors
+async def get_ricevuta_pdf(ricevuta_id: str, download: bool = Query(False)) -> Response:
+    """Restituisce il file della ricevuta PagoPA caricata (visualizzazione inline
+    o download, in base al parametro 'download')."""
+    db = Database.get_db()
+
+    ricevuta = await db[COLLECTION_RICEVUTE].find_one(
+        {"id": ricevuta_id}, {"_id": 0, "pdf_data": 1, "content_type": 1, "filename": 1}
+    )
+    if not ricevuta or not ricevuta.get("pdf_data"):
+        raise HTTPException(status_code=404, detail="File della ricevuta non disponibile")
+
+    contenuto = base64.b64decode(ricevuta["pdf_data"])
+    content_type = ricevuta.get("content_type") or "application/pdf"
+    filename = ricevuta.get("filename") or f"ricevuta_{ricevuta_id}.pdf"
+    disposizione = "attachment" if download else "inline"
+
+    return Response(
+        content=contenuto,
+        media_type=content_type,
+        headers={"Content-Disposition": f'{disposizione}; filename="{filename}"'}
+    )
 
 
 @router.post("/ricevute/upload")
@@ -79,6 +106,11 @@ async def upload_ricevuta(
         "filename": file.filename,
         "content_type": file.content_type,
         "size": len(content),
+        # Il file viene salvato in Mongo (base64), stesso pattern usato per
+        # i PDF dei bonifici (bonifici_transfers.pdf_data): prima veniva letto
+        # e mai persistito, quindi la ricevuta spariva subito dopo l'upload e
+        # i pulsanti Visualizza/Scarica non avevano nulla da mostrare.
+        "pdf_data": base64.b64encode(content).decode("utf-8"),
         "importo": importo,
         "data_pagamento": data_pagamento,
         "identificativo_bolletta": identificativo_bolletta,
