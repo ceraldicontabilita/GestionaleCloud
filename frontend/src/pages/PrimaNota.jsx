@@ -31,7 +31,7 @@ import ModalFattura from '../components/ModalFattura';
  */
 export default function PrimaNota() {
   const isMobile = useIsMobile();
-  // La pagina ï¿½ responsive e funziona sia su desktop che mobile
+  // La pagina è responsive e funziona sia su desktop che mobile
   return <PrimaNotaDesktop />;
 }
 
@@ -78,7 +78,7 @@ function PrimaNotaDesktop() {
   // Provvisori
   const [provvisori, setProvvisori] = useState([]);
   const [provLoading, setProvLoading] = useState(false);
-  // Modale "Pagamento parziale" (Misto) ï¿½ sostituisce il vecchio prompt()
+  // Modale "Pagamento parziale" (Misto) — sostituisce il vecchio prompt()
   // del browser, che non mostrava un riepilogo e non permetteva di
   // correggere l'importo prima di confermare.
   const [parzialeModal, setParzialeModal] = useState(null); // provvisorio | null
@@ -165,7 +165,7 @@ function PrimaNotaDesktop() {
       params.append('limit', '10000');
       params.append('anno', selectedYear.toString());
 
-      // Se ï¿½ selezionato un mese specifico, aggiungi filtro date
+      // Se è selezionato un mese specifico, aggiungi filtro date
       if (selectedMonth !== null) {
         const monthStr = String(selectedMonth + 1).padStart(2, '0');
         const daysInMonth = new Date(selectedYear, selectedMonth + 1, 0).getDate();
@@ -207,13 +207,13 @@ function PrimaNotaDesktop() {
       }));
 
       // Aggiunge i movimenti manuali di prima_nota_banca (pagamenti fatture, etc.)
-      // che non sono giï¿½ presenti nell'estratto conto (dedup per id)
+      // che non sono già presenti nell'estratto conto (dedup per id)
       const ecIds = new Set(movimentiEC.map(m => m.id));
       const movimentiManualiRaw = (bancaManRes.data?.movimenti || [])
         .filter(m => !ecIds.has(m.id))
         .map(m => ({ ...m, _source: 'prima_nota_banca' }));
 
-      // Dedup INTERNO ai manuali: mantieni il record CON fattura_id quando c'ï¿½ duplicato (stessa data+importo+tipo)
+      // Dedup INTERNO ai manuali: mantieni il record CON fattura_id quando c'è duplicato (stessa data+importo+tipo)
       const seenManualiKeys = new Map();
       for (const m of movimentiManualiRaw) {
         const key = `${m.data}|${Math.round((m.importo || 0) * 100)}|${m.tipo}`;
@@ -362,7 +362,7 @@ function PrimaNotaDesktop() {
     const confirmed = await confirm({
       title: 'Forza reimport estratto conto',
       message:
-        'Questa operazione cancellerï¿½ tutti i movimenti degli anni presenti nel CSV e li reinserirï¿½ completamente, incluse eventuali commissioni duplicate.\n\nVuoi continuare?',
+        'Questa operazione cancellerà tutti i movimenti degli anni presenti nel CSV e li reinserirà completamente, incluse eventuali commissioni duplicate.\n\nVuoi continuare?',
       confirmText: 'Reimporta',
       cancelText: 'Annulla',
       variant: 'warning',
@@ -380,7 +380,7 @@ function PrimaNotaDesktop() {
       const d = res.data;
       showFeedback(
         'Reimport completato',
-        `ï¿½S& ${d.message}\n\nAnni aggiornati: ${d.anni_aggiornati?.join(', ')}\nRecord cancellati: ${d.record_cancellati}\nMovimenti importati: ${d.movimenti_importati}\n\nEntrate: ï¿½ï¿½ ${d.totale_entrate?.toLocaleString('it-IT')}\nUscite: ï¿½ï¿½ ${d.totale_uscite?.toLocaleString('it-IT')}\nSaldo: ï¿½ï¿½ ${d.saldo?.toLocaleString('it-IT')}`
+        `✅ ${d.message}\n\nAnni aggiornati: ${d.anni_aggiornati?.join(', ')}\nRecord cancellati: ${d.record_cancellati}\nMovimenti importati: ${d.movimenti_importati}\n\nEntrate: € ${d.totale_entrate?.toLocaleString('it-IT')}\nUscite: € ${d.totale_uscite?.toLocaleString('it-IT')}\nSaldo: € ${d.saldo?.toLocaleString('it-IT')}`
       );
       loadAllData();
     } catch (error) {
@@ -408,8 +408,8 @@ function PrimaNotaDesktop() {
   // === SAVE HANDLERS CASSA ===
 
   // Corrispettivo (DARE/Entrata) - Importo al LORDO IVA
-  // NOTA: Questo ï¿½ un dato PROVVISORIO per vedere il saldo cassa.
-  // Quando arriva l'XML dei corrispettivi, questo verrï¿½ SOVRASCRITTO.
+  // NOTA: Questo è un dato PROVVISORIO per vedere il saldo cassa.
+  // Quando arriva l'XML dei corrispettivi, questo verrà SOVRASCRITTO.
   const handleSaveCorrispettivo = async () => {
     if (!corrispettivo.importo) {
       showFeedback('Dato mancante', "Inserisci l'importo del corrispettivo.", 'warning');
@@ -425,7 +425,7 @@ function PrimaNotaDesktop() {
         descrizione: `Corrispettivo giornaliero ${corrispettivo.data} (provvisorio)`,
         categoria: 'Corrispettivi',
         source: 'manual_entry',
-        provvisorio: true, // Sarï¿½ sovrascritto quando arriva XML
+        provvisorio: true, // Sarà sovrascritto quando arriva XML
       });
       setCorrispettivo({ data: today, importo: '' });
       loadAllData();
@@ -437,8 +437,8 @@ function PrimaNotaDesktop() {
   };
 
   // POS (AVERE/Uscita) - Escono dalla cassa - Campo unificato
-  // NOTA: Questo ï¿½ un dato PROVVISORIO per vedere il saldo cassa.
-  // Quando arriva l'XML dei corrispettivi, questo verrï¿½ SOVRASCRITTO.
+  // NOTA: Questo è un dato PROVVISORIO per vedere il saldo cassa.
+  // Quando arriva l'XML dei corrispettivi, questo verrà SOVRASCRITTO.
   const handleSavePos = async () => {
     const totale = parseFloat(pos.pos1) || 0;
     if (totale === 0) {
@@ -455,7 +455,7 @@ function PrimaNotaDesktop() {
         descrizione: `POS giornaliero ${pos.data} (provvisorio)`,
         categoria: 'POS',
         source: 'manual_pos',
-        provvisorio: true, // Sarï¿½ sovrascritto quando arriva XML
+        provvisorio: true, // Sarà sovrascritto quando arriva XML
       });
       setPos({ data: today, pos1: '', pos2: '', pos3: '' });
       loadAllData();
@@ -485,7 +485,7 @@ function PrimaNotaDesktop() {
       });
       setVersamento({ data: today, importo: '' });
       loadAllData();
-      showFeedback('Versamento salvato', 'Il movimento ï¿½ stato registrato correttamente.');
+      showFeedback('Versamento salvato', 'Il movimento è stato registrato correttamente.');
     } catch (error) {
       showFeedback('Errore salvataggio versamento', getErrorMessage(error), 'danger');
     } finally {
@@ -512,7 +512,7 @@ function PrimaNotaDesktop() {
       });
       setMovimento({ data: today, tipo: 'uscita', importo: '', descrizione: '' });
       loadAllData();
-      showFeedback('Movimento salvato', 'Il movimento ï¿½ stato registrato correttamente.');
+      showFeedback('Movimento salvato', 'Il movimento è stato registrato correttamente.');
     } catch (error) {
       showFeedback('Errore salvataggio movimento', getErrorMessage(error), 'danger');
     } finally {
@@ -646,7 +646,7 @@ function PrimaNotaDesktop() {
               color: COLORS.primary,
             }}
           >
-            ï¿½x& Anno: {selectedYear}
+            📅 Anno: {selectedYear}
           </span>
         </div>
 
@@ -665,7 +665,7 @@ function PrimaNotaDesktop() {
             }}
             title="Pulisci duplicati fatture e corrispettivi mancanti"
           >
-            ï¿½xï¿½ï¿½ Pulisci duplicati
+            🗑️ Pulisci duplicati
           </button>
 
           <button
@@ -680,7 +680,7 @@ function PrimaNotaDesktop() {
               fontWeight: '500',
             }}
           >
-            ï¿½x
+            🔄
           </button>
         </div>
       </div>
@@ -722,7 +722,7 @@ function PrimaNotaDesktop() {
             gap: 8,
           }}
         >
-          <span style={{ fontSize: 18 }}>ï¿½xï¿½</span>
+          <span style={{ fontSize: 18 }}>💵</span>
           CASSA {selectedYear}
         </button>
 
@@ -749,7 +749,7 @@ function PrimaNotaDesktop() {
             gap: 8,
           }}
         >
-          <span style={{ fontSize: 18 }}>ï¿½xï¿½ï¿½</span>
+          <span style={{ fontSize: 18 }}>🏦</span>
           BANCA {selectedYear}
         </button>
         <button
@@ -772,7 +772,7 @@ function PrimaNotaDesktop() {
             gap: 8,
           }}
         >
-          <span style={{ fontSize: 18 }}>ï¿½x9</span>
+          <span style={{ fontSize: 18 }}>⚠️</span>
           PROVVISORI{provvisori.length > 0 ? ` (${provvisori.length})` : ''}
         </button>
         <CopyLinkButton style={{ flexShrink: 0 }} />
@@ -802,11 +802,11 @@ function PrimaNotaDesktop() {
             }}
           >
             <span style={{ fontWeight: 800, color: '#92400e', fontSize: 16 }}>
-              ï¿½x9 {provvisori.length} Fatture da Confermare
+              ⚠️ {provvisori.length} Fatture da Confermare
             </span>
             <button
               onClick={async () => {
-                // "sospesa" non ï¿½ un metodo di registrazione: il backend la
+                // "sospesa" non è un metodo di registrazione: il backend la
                 // lascia intenzionalmente nei provvisori (nessuna
                 // destinazione certa, richiede scelta manuale cassa/banca).
                 // Includerla qui dava l'impressione di un bottone rotto:
@@ -817,7 +817,7 @@ function PrimaNotaDesktop() {
                 );
                 const confermaMassiva = await confirm({
                   title: 'Conferma provvisori con metodo certo',
-                  message: `Verranno confermate ${confermabili.length} fatture con metodo giï¿½ suggerito.\nLe altre ${provvisori.length - confermabili.length} resteranno in sospeso finchï¿½ non le risolvi manualmente.\n\nVuoi procedere?`,
+                  message: `Verranno confermate ${confermabili.length} fatture con metodo già suggerito.\nLe altre ${provvisori.length - confermabili.length} resteranno in sospeso finché non le risolvi manualmente.\n\nVuoi procedere?`,
                   confirmText: 'Conferma tutte',
                   cancelText: 'Annulla',
                   variant: 'warning',
@@ -843,7 +843,7 @@ function PrimaNotaDesktop() {
                   sospeseCount > 0
                     ? `\n${sospeseCount} restano in sospeso: nessun metodo certo, vanno risolte una per una dal pulsante "Risolvi".`
                     : '';
-                showFeedback('Conferma completata', `ï¿½S ${ok} fatture confermate${msgErrori}.${msgSospese}`);
+                showFeedback('Conferma completata', `✅ ${ok} fatture confermate${msgErrori}.${msgSospese}`);
               }}
               style={{
                 padding: '8px 16px',
@@ -856,13 +856,13 @@ function PrimaNotaDesktop() {
                 cursor: 'pointer',
               }}
             >
-              ï¿½S Conferma Tutte
+              ✅ Conferma Tutte
             </button>
           </div>
 
           {provvisori.length > 30 && (
             <div style={{ fontSize: 12, color: '#92400e', marginBottom: 8 }}>
-              Mostrate le prime 30 di {provvisori.length} ï¿½ "Conferma Tutte" agisce comunque su
+              Mostrate le prime 30 di {provvisori.length} — "Conferma Tutte" agisce comunque su
               tutte, non solo su quelle visibili.
             </div>
           )}
@@ -877,7 +877,7 @@ function PrimaNotaDesktop() {
               : isSospesa
                 ? '2px solid #dc2626'
                 : '2px solid #0f2744';
-            const badgeText = isCassa ? 'ï¿½xï¿½ï¿½ CASSA' : isSospesa ? 'ï¿½ SOSPESA' : 'ï¿½xï¿½ï¿½ BANCA';
+            const badgeText = isCassa ? '💵 CASSA' : isSospesa ? '⏳ SOSPESA' : '🏦 BANCA';
             return (
               <div
                 key={p.fattura_id}
@@ -909,7 +909,7 @@ function PrimaNotaDesktop() {
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={{ fontWeight: 800, fontSize: 18, color: '#16a34a', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>
-                      ï¿½ï¿½ {(p.importo || 0).toFixed(2)}
+                      € {(p.importo || 0).toFixed(2)}
                     </span>
                     <span
                       style={{
@@ -951,14 +951,14 @@ function PrimaNotaDesktop() {
                       }}
                     >
                       {p.stato_match === 'confermato'
-                        ? 'ï¿½S Verificato'
+                        ? '✅ Verificato'
                         : p.stato_match === 'probabile'
                           ? '~ Probabile'
-                          : 'ï¿½ Attesa'}
+                          : '⏳ Attesa'}
                     </span>
                   </div>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {/* Vedi fattura ï¿½ prima assente qui, presente solo nella
+                    {/* Vedi fattura — prima assente qui, presente solo nella
                         tabella movimenti principale: impossibile controllare
                         il documento prima di confermare cassa/banca/sospesa. */}
                     {p.fattura_id && (
@@ -1022,7 +1022,7 @@ function PrimaNotaDesktop() {
             padding: 40, textAlign: 'center', color: '#6b7280', marginBottom: 16,
           }}
         >
-          <div style={{ fontSize: 28, marginBottom: 8 }}>ï¿½S&</div>
+          <div style={{ fontSize: 28, marginBottom: 8 }}>✅</div>
           <div style={{ fontWeight: 600, marginBottom: 4 }}>Nessuna fattura provvisoria</div>
           <div style={{ fontSize: 13 }}>
             Le fatture con metodo fornitore impostato vengono registrate in automatico
@@ -1110,7 +1110,7 @@ function PrimaNotaDesktop() {
                   userSelect: 'none',
                 }}
               >
-                <span>ï¿½aï¿½</span> Chiusure Giornaliere
+                <span>📝</span> Chiusure Giornaliere
                 <span
                   style={{
                     marginLeft: 'auto',
@@ -1145,7 +1145,7 @@ function PrimaNotaDesktop() {
                   <div
                     style={{ fontSize: 11, fontWeight: 'bold', color: '#92400e', marginBottom: 6 }}
                   >
-                    ï¿½x` Corrispettivo
+                    🧾 Corrispettivo
                   </div>
                   <div style={{ display: 'flex', gap: 4 }}>
                     <input
@@ -1157,7 +1157,7 @@ function PrimaNotaDesktop() {
                     <input
                       type="number"
                       step="0.01"
-                      placeholder="ï¿½ï¿½"
+                      placeholder="€"
                       value={corrispettivo.importo}
                       onChange={e =>
                         setCorrispettivo({ ...corrispettivo, importo: e.target.value })
@@ -1173,7 +1173,7 @@ function PrimaNotaDesktop() {
                         minWidth: 32,
                       }}
                     >
-                      {savingCorrisp ? 'ï¿½' : 'ï¿½xï¿½'}
+                      {savingCorrisp ? '⏳' : '💾'}
                     </button>
                   </div>
                 </div>
@@ -1190,7 +1190,7 @@ function PrimaNotaDesktop() {
                   <div
                     style={{ fontSize: 11, fontWeight: 'bold', color: '#0f2744', marginBottom: 6 }}
                   >
-                    ï¿½xï¿½ POS
+                    💳 POS
                   </div>
                   <div style={{ display: 'flex', gap: 4 }}>
                     <input
@@ -1202,7 +1202,7 @@ function PrimaNotaDesktop() {
                     <input
                       type="number"
                       step="0.01"
-                      placeholder="ï¿½ï¿½"
+                      placeholder="€"
                       value={pos.pos1}
                       onChange={e => setPos({ ...pos, pos1: e.target.value, pos2: '', pos3: '' })}
                       style={{ ...inputStyleCompact, width: 70, padding: '4px 6px', fontSize: 11 }}
@@ -1216,7 +1216,7 @@ function PrimaNotaDesktop() {
                         minWidth: 32,
                       }}
                     >
-                      {savingPos ? 'ï¿½' : 'ï¿½xï¿½'}
+                      {savingPos ? '⏳' : '💾'}
                     </button>
                   </div>
                 </div>
@@ -1233,7 +1233,7 @@ function PrimaNotaDesktop() {
                   <div
                     style={{ fontSize: 11, fontWeight: 'bold', color: '#16a34a', marginBottom: 6 }}
                   >
-                    ï¿½xï¿½ï¿½ Versamento
+                    💰 Versamento
                   </div>
                   <div style={{ display: 'flex', gap: 4 }}>
                     <input
@@ -1245,7 +1245,7 @@ function PrimaNotaDesktop() {
                     <input
                       type="number"
                       step="0.01"
-                      placeholder="ï¿½ï¿½"
+                      placeholder="€"
                       value={versamento.importo}
                       onChange={e => setVersamento({ ...versamento, importo: e.target.value })}
                       style={{ ...inputStyleCompact, width: 70, padding: '4px 6px', fontSize: 11 }}
@@ -1259,7 +1259,7 @@ function PrimaNotaDesktop() {
                         minWidth: 32,
                       }}
                     >
-                      {savingVers ? 'ï¿½' : 'ï¿½xï¿½'}
+                      {savingVers ? '⏳' : '💾'}
                     </button>
                   </div>
                 </div>
@@ -1276,7 +1276,7 @@ function PrimaNotaDesktop() {
                   <div
                     style={{ fontSize: 11, fontWeight: 'bold', color: '#d97706', marginBottom: 6 }}
                   >
-                    ï¿½Sï¿½ Altro
+                    📝 Altro
                   </div>
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                     <input
@@ -1296,7 +1296,7 @@ function PrimaNotaDesktop() {
                     <input
                       type="number"
                       step="0.01"
-                      placeholder="ï¿½ï¿½"
+                      placeholder="€"
                       value={movimento.importo}
                       onChange={e => setMovimento({ ...movimento, importo: e.target.value })}
                       style={{ ...inputStyleCompact, width: 60, padding: '4px 6px', fontSize: 11 }}
@@ -1323,7 +1323,7 @@ function PrimaNotaDesktop() {
                         minWidth: 32,
                       }}
                     >
-                      {savingMov ? 'ï¿½' : 'ï¿½xï¿½'}
+                      {savingMov ? '⏳' : '💾'}
                     </button>
                   </div>
                 </div>
@@ -1341,7 +1341,7 @@ function PrimaNotaDesktop() {
               flexWrap: 'wrap',
             }}
           >
-            <span style={{ fontSize: 12, color: '#6b7280', marginRight: 4 }}>ï¿½x& Mese:</span>
+            <span style={{ fontSize: 12, color: '#6b7280', marginRight: 4 }}>📅 Mese:</span>
             <button
               onClick={() => setSelectedMonth(null)}
               style={{
@@ -1388,7 +1388,7 @@ function PrimaNotaDesktop() {
                   borderRadius: 4,
                 }}
               >
-                ï¿½xï¿½  Record: {formatDate(giornoRecord.data)} - {formatEuro(giornoRecord.importo)}
+                🏆  Record: {formatDate(giornoRecord.data)} - {formatEuro(giornoRecord.importo)}
               </span>
             )}
           </div>
@@ -1424,14 +1424,14 @@ function PrimaNotaDesktop() {
               title={`Accrediti ${selectedYear}`}
               value={formatEuro(bancaData.totale_entrate)}
               color="#16a34a"
-              icon="ï¿½xï¿½"
+              icon="📈"
               subtitle="Totale accrediti bancari (POS + bonifici + altro)"
             />
             <SummaryCard
               title={`Pagamenti ${selectedYear}`}
               value={formatEuro(bancaData.totale_uscite)}
               color="#dc2626"
-              icon="ï¿½x0"
+              icon="📉"
               subtitle="Totale addebiti (fornitori, tasse, stipendi)"
             />
             <SummaryCard
@@ -1444,7 +1444,7 @@ function PrimaNotaDesktop() {
                   ? '#16a34a'
                   : '#dc2626'
               }
-              icon="ï¿½x`"
+              icon="🏦"
               subtitle={`Accrediti - Pagamenti ${selectedYear}`}
             />
             {bancaData.saldo_precedente !== undefined && bancaData.saldo_precedente !== 0 && (
@@ -1452,7 +1452,7 @@ function PrimaNotaDesktop() {
                 title="Saldo Cumulativo"
                 value={formatEuro(bancaData.saldo)}
                 color="#0f2744"
-                icon="ï¿½xï¿½ï¿½"
+                icon="💰"
                 subtitle="Saldo totale complessivo"
                 highlight
               />
@@ -1462,7 +1462,7 @@ function PrimaNotaDesktop() {
                 title="Riporto Anni Prec."
                 value={formatEuro(bancaData.saldo_precedente)}
                 color="#6b7280"
-                icon="ï¿½x&"
+                icon="↩️"
                 subtitle="Saldo al 31/12 anno prec."
               />
             )}
@@ -1480,7 +1480,7 @@ function PrimaNotaDesktop() {
               color: '#854d0e',
             }}
           >
-            ï¿½aï¿½ <strong>Nota contabile:</strong> Gli "Accrediti" mostrano tutti i movimenti in
+            📝 <strong>Nota contabile:</strong> Gli "Accrediti" mostrano tutti i movimenti in
             entrata sul conto bancario (POS, bonifici, depositi, finanziamenti).{' '}
             <strong>I ricavi reali dell'azienda sono nei Corrispettivi</strong>, visibili nella
             sezione Cassa. Alcuni accrediti (es. bonifici interni, finanziamenti) non sono ricavi.
@@ -1496,7 +1496,7 @@ function PrimaNotaDesktop() {
               flexWrap: 'wrap',
             }}
           >
-            <span style={{ fontSize: 14, color: '#6b7280', marginRight: 8 }}>ï¿½x& Mese:</span>
+            <span style={{ fontSize: 14, color: '#6b7280', marginRight: 8 }}>📅 Mese:</span>
             <button
               onClick={() => setSelectedMonth(null)}
               style={{
@@ -1532,7 +1532,7 @@ function PrimaNotaDesktop() {
             ))}
           </div>
 
-          {/* Movements Table Banca - Estratto Conto con possibilitï¿½ di spostare */}
+          {/* Movements Table Banca - Estratto Conto con possibilità di spostare */}
           <MovementsTable
             movimenti={bancaData.movimenti || []}
             tipo="banca"
@@ -1548,7 +1548,7 @@ function PrimaNotaDesktop() {
         </section>
       )}
 
-      {/* Modale "Pagamento parziale" (Misto) ï¿½ sostituisce il vecchio
+      {/* Modale "Pagamento parziale" (Misto) — sostituisce il vecchio
           prompt() del browser: mostra fornitore, totale, importo cassa da
           scegliere e residuo banca calcolato, con riepilogo prima di
           confermare invece di un singolo campo testo senza contesto. */}
@@ -1580,7 +1580,7 @@ function PrimaNotaDesktop() {
               Pagamento parziale (Misto)
             </h3>
             <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 16 }}>
-              {(parzialeModal.fornitore || '').substring(0, 40)} ï¿½ Fatt. #
+              {(parzialeModal.fornitore || '').substring(0, 40)} — Fatt. #
               {parzialeModal.fattura_numero}
             </div>
             <div
@@ -1595,7 +1595,7 @@ function PrimaNotaDesktop() {
               }}
             >
               <span>Totale fattura</span>
-              <strong>ï¿½ï¿½ {(parzialeModal.importo || 0).toFixed(2)}</strong>
+              <strong>€ {(parzialeModal.importo || 0).toFixed(2)}</strong>
             </div>
             <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 4 }}>
               Importo pagato in CASSA
@@ -1639,7 +1639,7 @@ function PrimaNotaDesktop() {
                       }}
                     >
                       <span>Residuo in BANCA</span>
-                      <strong>ï¿½ï¿½ {residuoBanca.toFixed(2)}</strong>
+                      <strong>€ {residuoBanca.toFixed(2)}</strong>
                     </div>
                   )}
                   <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
@@ -1669,7 +1669,7 @@ function PrimaNotaDesktop() {
                             importo: ci,
                             metodo: 'contanti',
                             data: parzialeModal.fattura_data,
-                            note: `ï¿½ï¿½${ci} di ï¿½ï¿½${parzialeModal.importo}`,
+                            note: `€${ci} di €${parzialeModal.importo}`,
                           });
                           if (residuoBanca > 0) {
                             await api.post('/api/pagamenti/registra', {
@@ -1677,7 +1677,7 @@ function PrimaNotaDesktop() {
                               importo: residuoBanca,
                               metodo: 'bonifico',
                               data: parzialeModal.fattura_data,
-                              note: `Residuo banca ï¿½ï¿½${residuoBanca}`,
+                              note: `Residuo banca €${residuoBanca}`,
                             });
                           }
                           setProvvisori(v =>
@@ -1834,7 +1834,7 @@ function ResolveProvvisorioModal({ provvisorio, onClose, onResolve }) {
         <div style={{ padding: 16, borderBottom: '1px solid #e2e8f0' }}>
           <div style={{ fontSize: 17, fontWeight: 700, color: '#0f2744' }}>Risolvi provvisorio</div>
           <div style={{ fontSize: 13, color: '#64748b', marginTop: 4 }}>
-            {(provvisorio?.fornitore || '').substring(0, 50)} ï¿½ Fatt. #{provvisorio?.fattura_numero} ï¿½ ï¿½ï¿½{' '}
+            {(provvisorio?.fornitore || '').substring(0, 50)} — Fatt. #{provvisorio?.fattura_numero} — €{' '}
             {(provvisorio?.importo || 0).toFixed(2)}
           </div>
         </div>
@@ -2035,7 +2035,7 @@ function MovementsTable({
 
   if (loading) {
     return (
-      <div style={{ textAlign: 'center', padding: 40, color: '#6b7280' }}>ï¿½ Caricamento...</div>
+      <div style={{ textAlign: 'center', padding: 40, color: '#6b7280' }}>⏳ Caricamento...</div>
     );
   }
 
@@ -2108,7 +2108,7 @@ function MovementsTable({
   // Il saldo progressivo va calcolato SEMPRE su tutti i movimenti del
   // periodo (mai su "movimentiFiltrati"): filtrando per es. "F24" o una
   // fattura, il saldo progressivo diventava il saldo della sola selezione
-  // filtrata, non il saldo reale del conto ï¿½ fuorviante e potenzialmente
+  // filtrata, non il saldo reale del conto — fuorviante e potenzialmente
   // letto come "quanto ho davvero in cassa/banca". Si calcola una volta
   // sola sull'elenco completo e si applica ai movimenti filtrati per id.
   const movimentiForward = [...movimenti].sort((a, b) =>
@@ -2183,12 +2183,12 @@ function MovementsTable({
             const currentIndex = currentWithBalance.findIndex(m => m.id === editingMovimento.id);
             const nextIndex = currentIndex + 1;
             if (nextIndex < currentWithBalance.length) {
-              // C'ï¿½ un movimento successivo nella pagina corrente
+              // C'è un movimento successivo nella pagina corrente
               setEditingMovimento(currentWithBalance[nextIndex]);
             } else if (currentPage < totalPages) {
               // Vai alla pagina successiva e apri il primo movimento
               setCurrentPage(currentPage + 1);
-              // Il movimento verrï¿½ aperto dopo il cambio pagina
+              // Il movimento verrà aperto dopo il cambio pagina
               setTimeout(() => {
                 const firstOfNextPage = movimentiWithBalance[start + itemsPerPage];
                 if (firstOfNextPage) {
@@ -2222,7 +2222,7 @@ function MovementsTable({
             marginBottom: 8,
           }}
         >
-          <span style={{ fontWeight: 600, fontSize: 12, color: '#374151' }}>ï¿½xï¿½ Filtri:</span>
+          <span style={{ fontWeight: 600, fontSize: 12, color: '#374151' }}>🔍 Filtri:</span>
 
           {/* Filtro Descrizione */}
           <input
@@ -2291,7 +2291,7 @@ function MovementsTable({
 
         {/* Seconda riga filtri: Data e Importo */}
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-          <span style={{ fontWeight: 600, fontSize: 12, color: '#374151' }}>ï¿½x& Data:</span>
+          <span style={{ fontWeight: 600, fontSize: 12, color: '#374151' }}>📅 Data:</span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <label style={{ fontSize: 11, color: '#6b7280' }}>Da</label>
             <input
@@ -2330,10 +2330,10 @@ function MovementsTable({
           </div>
 
           <span style={{ fontWeight: 600, fontSize: 12, color: '#374151', marginLeft: 8 }}>
-            ï¿½xï¿½ Importo:
+            💰 Importo:
           </span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <label style={{ fontSize: 11, color: '#6b7280' }}>Min ï¿½ï¿½</label>
+            <label style={{ fontSize: 11, color: '#6b7280' }}>Min €</label>
             <input
               type="number"
               placeholder="0"
@@ -2353,10 +2353,10 @@ function MovementsTable({
             />
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <label style={{ fontSize: 11, color: '#6b7280' }}>Max ï¿½ï¿½</label>
+            <label style={{ fontSize: 11, color: '#6b7280' }}>Max €</label>
             <input
               type="number"
-              placeholder="ï¿½ï¿½~"
+              placeholder="∞"
               value={filtroImportoMax}
               onChange={e => {
                 setFiltroImportoMax(e.target.value);
@@ -2378,10 +2378,10 @@ function MovementsTable({
             {movimentiFiltrati.length} / {movimenti.length} movimenti
           </span>
 
-          {/* Totale della selezione filtrata ï¿½ separato dal saldo reale del
+          {/* Totale della selezione filtrata — separato dal saldo reale del
               conto (colonna Saldo in tabella) per non essere confuso con
-              esso: filtrando per es. "F24" questo NON ï¿½ "quanto c'ï¿½ in
-              cassa/banca", ï¿½ solo entrate-uscite dei soli movimenti filtrati. */}
+              esso: filtrando per es. "F24" questo NON è "quanto c'è in
+              cassa/banca", è solo entrate-uscite dei soli movimenti filtrati. */}
           {hasActiveFilters && (
             <span
               style={{
@@ -2393,7 +2393,7 @@ function MovementsTable({
                 background: '#f1f5f9',
                 borderRadius: 4,
               }}
-              title="Somma entrate-uscite dei soli movimenti filtrati (non ï¿½ il saldo reale del conto)"
+              title="Somma entrate-uscite dei soli movimenti filtrati (non è il saldo reale del conto)"
             >
               Totale selezione: {formatEuro(totaleSelezioneFiltrata)}
             </span>
@@ -2414,7 +2414,7 @@ function MovementsTable({
               }}
               data-testid="btn-reset-filtri"
             >
-              ï¿½S" Reset filtri
+              🔄 Reset filtri
             </button>
           )}
         </div>
@@ -2433,7 +2433,7 @@ function MovementsTable({
           }}
         >
           <span>
-            ï¿½x Pagina {currentPage} di {totalPages} ({movimenti.length} movimenti)
+            📄 Pagina {currentPage} di {totalPages} ({movimenti.length} movimenti)
           </span>
           <div style={{ display: 'flex', gap: 4 }}>
             <button
@@ -2447,7 +2447,7 @@ function MovementsTable({
                 opacity: currentPage === 1 ? 0.5 : 1,
               }}
             >
-              ï¿½
+              «
             </button>
             <button
               onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
@@ -2460,7 +2460,7 @@ function MovementsTable({
                 opacity: currentPage === 1 ? 0.5 : 1,
               }}
             >
-              ï¿½ï¿½
+              ‹
             </button>
             <button
               onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
@@ -2473,7 +2473,7 @@ function MovementsTable({
                 opacity: currentPage === totalPages ? 0.5 : 1,
               }}
             >
-              ï¿½ï¿½
+              ›
             </button>
             <button
               onClick={() => setCurrentPage(totalPages)}
@@ -2486,7 +2486,7 @@ function MovementsTable({
                 opacity: currentPage === totalPages ? 0.5 : 1,
               }}
             >
-              ï¿½
+              »
             </button>
           </div>
         </div>
@@ -2553,8 +2553,8 @@ function MovementsTable({
                 <select value={filtroDareAvere} onChange={e => { setFiltroDareAvere(e.target.value); setCurrentPage(1); }}
                   style={{ width: '100%', padding: '3px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 10, boxSizing: 'border-box' }}>
                   <option value="">"</option>
-                  <option value="dare">ï¿½ </option>
-                  <option value="avere">ï¿½ </option>
+                  <option value="dare">↑</option>
+                  <option value="avere">↓</option>
                 </select>
               </th>
               <th style={{ padding: '4px 6px' }}>
@@ -2576,11 +2576,11 @@ function MovementsTable({
               </th>
               <th style={{ padding: '4px 6px' }}>
                 <input value={filtroImportoMin} onChange={e => { setFiltroImportoMin(e.target.value); setCurrentPage(1); }}
-                  placeholder="Min ï¿½ï¿½" style={{ width: '100%', padding: '3px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 10, boxSizing: 'border-box' }} />
+                  placeholder="Min €" style={{ width: '100%', padding: '3px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 10, boxSizing: 'border-box' }} />
               </th>
               <th style={{ padding: '4px 6px' }}>
                 <input value={filtroImportoMax} onChange={e => { setFiltroImportoMax(e.target.value); setCurrentPage(1); }}
-                  placeholder="Max ï¿½ï¿½" style={{ width: '100%', padding: '3px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 10, boxSizing: 'border-box' }} />
+                  placeholder="Max €" style={{ width: '100%', padding: '3px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 10, boxSizing: 'border-box' }} />
               </th>
               <th />
               <th />
@@ -2611,7 +2611,7 @@ function MovementsTable({
                       color: mov.tipo === 'entrata' ? '#166534' : '#991b1b',
                     }}
                   >
-                    {mov.tipo === 'entrata' ? 'ï¿½ ' : 'ï¿½ '}
+                    {mov.tipo === 'entrata' ? '↑' : '↓'}
                   </span>
                 </td>
                 <td style={{ padding: '6px 8px' }}>
@@ -2745,7 +2745,7 @@ function MovementsTable({
                       title="Visualizza F24"
                       data-testid={`view-f24-${mov.id || idx}`}
                     >
-                      ï¿½xï¿½: F24
+                      📄 F24
                     </a>
                   ) : mov.corrispettivo_id || mov.xml_filename ? (
                     <a
@@ -2771,7 +2771,7 @@ function MovementsTable({
                       title="Visualizza Corrispettivo"
                       data-testid={`view-corrispettivo-${mov.id || idx}`}
                     >
-                      ï¿½xï¿½ï¿½ Corrisp.
+                      🧾 Corrisp.
                     </a>
                   ) : mov.categoria === 'F24' ||
                     (mov.descrizione && mov.descrizione.includes('F24')) ? (
@@ -2788,7 +2788,7 @@ function MovementsTable({
                       }}
                       title="F24 - Documento da allegare"
                     >
-                      ï¿½xï¿½: F24
+                      📄 F24
                     </span>
                   ) : (
                     <span style={{ color: '#9ca3af', fontSize: 11 }}>-</span>
@@ -2820,7 +2820,7 @@ function MovementsTable({
                       title={tipo === 'cassa' ? 'Sposta in Banca' : 'Sposta in Cassa'}
                       data-testid={`sposta-movimento-${mov.id}`}
                     >
-                      {spostando === mov.id ? 'ï¿½' : tipo === 'cassa' ? 'ï¿½xï¿½ï¿½' : 'ï¿½xï¿½'}
+                      {spostando === mov.id ? '⏳' : tipo === 'cassa' ? '🏦' : '💵'}
                     </button>
                     <button
                       onClick={() => setEditingMovimento(mov)}
@@ -2834,7 +2834,7 @@ function MovementsTable({
                       title="Modifica"
                       data-testid={`edit-movimento-${mov.id}`}
                     >
-                      ï¿½Sï¿½
+                      📝
                     </button>
                     <button
                       onClick={() => onDelete(mov.id)}
@@ -2846,7 +2846,7 @@ function MovementsTable({
                       }}
                       title="Elimina"
                     >
-                      ï¿½x
+                      🗑️
                     </button>
                   </td>
                 )}
@@ -2866,7 +2866,7 @@ function MovementsTable({
                 Nessun movimento in Cassa
               </div>
               <div style={{ fontSize: 13, color: '#6b7280', maxWidth: 400, margin: '0 auto' }}>
-                La cassa ï¿½ vuota. Aggiungi movimenti tramite le{' '}
+                La cassa è vuota. Aggiungi movimenti tramite le{' '}
                 <strong>Chiusure Giornaliere</strong> (Corrispettivo, POS, Versamento). Le fatture
                 pagate in contanti vengono importate <strong>automaticamente</strong> ogni 30 minuti.
               </div>
@@ -2896,7 +2896,7 @@ function MovementsTable({
             {totalPages > 1 && (
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <span>
-                  ï¿½x Pagina {currentPage} di {totalPages}
+                  📄 Pagina {currentPage} di {totalPages}
                 </span>
                 <div style={{ display: 'flex', gap: 4 }}>
                   <button
@@ -2911,7 +2911,7 @@ function MovementsTable({
                       background: '#e5e7eb',
                     }}
                   >
-                    ï¿½
+                    «
                   </button>
                   <button
                     onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
@@ -2925,7 +2925,7 @@ function MovementsTable({
                       background: '#e5e7eb',
                     }}
                   >
-                    ï¿½ï¿½
+                    ‹
                   </button>
                   <button
                     onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
@@ -2939,7 +2939,7 @@ function MovementsTable({
                       background: '#e5e7eb',
                     }}
                   >
-                    ï¿½ï¿½
+                    ›
                   </button>
                   <button
                     onClick={() => setCurrentPage(totalPages)}
@@ -2953,7 +2953,7 @@ function MovementsTable({
                       background: '#e5e7eb',
                     }}
                   >
-                    ï¿½
+                    »
                   </button>
                 </div>
               </div>
@@ -3079,7 +3079,7 @@ function EditMovimentoModal({ movimento, tipo, onClose, onSave }) {
           }}
         >
           <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>
-            ï¿½Sï¿½ Modifica Movimento {tipo === 'cassa' ? 'Cassa' : 'Banca'}
+            📝 Modifica Movimento {tipo === 'cassa' ? 'Cassa' : 'Banca'}
           </h3>
           <button
             onClick={onClose}
@@ -3097,7 +3097,7 @@ function EditMovimentoModal({ movimento, tipo, onClose, onSave }) {
             }}
             aria-label="Chiudi"
           >
-            ï¿½S"
+            ✕
           </button>
         </div>
 
@@ -3143,15 +3143,15 @@ function EditMovimentoModal({ movimento, tipo, onClose, onSave }) {
                   onChange={e => setForm({ ...form, tipo: e.target.value })}
                   style={inputStyle}
                 >
-                  <option value="entrata">ï¿½  DARE (Entrata)</option>
-                  <option value="uscita">ï¿½  AVERE (Uscita)</option>
+                  <option value="entrata">↑ DARE (Entrata)</option>
+                  <option value="uscita">↓ AVERE (Uscita)</option>
                 </select>
               </div>
             </div>
 
             {/* Importo */}
             <div>
-              <label style={labelStyle}>Importo (ï¿½ï¿½)</label>
+              <label style={labelStyle}>Importo (€)</label>
               <input
                 type="number"
                 step="0.01"
@@ -3258,7 +3258,7 @@ function EditMovimentoModal({ movimento, tipo, onClose, onSave }) {
                 opacity: saving ? 0.7 : 1,
               }}
             >
-              {saving ? 'Salvataggio...' : 'ï¿½xï¿½ Salva Modifiche'}
+              {saving ? 'Salvataggio...' : '💾 Salva Modifiche'}
             </button>
           </div>
         </form>
