@@ -121,20 +121,47 @@ quella "approssimata" — sono la stessa logica di scoring con soglie diverse, n
    ha quindi sempre restituito zero alert in produzione, indipendentemente da eventuali
    incongruenze reali — bug riproducibile in modo deterministico, ora corretto.
 
-## Sovrapposizione da verificare (trovata nel nuovo audit generale)
+## Sovrapposizione — verificata (lug 2026)
 
-Oltre al motore canonico, restano attivi e con chiamanti reali 3 servizi di riconciliazione
-distinti che non sono stati assorbiti nell'unificazione:
-- `app/services/riconciliazione_completa.py` → chiamato da `app/routers/email_download.py:729`
-- `app/services/riconciliazione_smart.py` → chiamato da `app/routers/operazioni_module/smart.py:61,73`
-- `app/services/riconciliazione_intelligente.py` → montato con prefix `/api/riconciliazione-intelligente`
+Oltre al motore canonico restavano 3 servizi di riconciliazione paralleli mai assorbiti
+nell'unificazione. Verifica puntuale completata:
 
-Nessuno dei tre è codice morto (hanno chiamanti reali raggiungibili), quindi non sono stati
-toccati in questo passaggio — ma la sovrapposizione concettuale con
-`riconciliazione_bancaria.py` va chiarita in una review dedicata: potrebbero essere sistemi
-con scopi genuinamente distinti (smart = match manuale singolo movimento, completa = batch
-periodico via email, intelligente = API dedicata) oppure ulteriore duplicazione di logica
-da consolidare.
+- `app/services/riconciliazione_intelligente.py` — ✔ RISOLTO, già rimosso in un audit
+  precedente (commit `932d268`, 2026-07-07): zero chiamanti frontend funzionanti
+  (l'unico, `conferma-multipla`, mandava payload F24 a un endpoint che si aspettava
+  fatture → sempre 400). Non esiste più nel codice.
+
+- `app/services/riconciliazione_smart.py` → `app/routers/operazioni_module/smart.py` —
+  **vivo e con chiamanti frontend reali** (`RiconciliazioneUnificata.jsx` via
+  `/api/operazioni-da-confermare/smart/*`). ✔ RISOLTI 2 bug reali trovati (lug 2026):
+  1. `smart.py::analizza_singolo_movimento()` importava una funzione
+     (`analizza_singolo_movimento` da `riconciliazione_smart.py`) mai esistita in quel
+     modulo — ogni chiamata all'endpoint `GET .../smart/movimento/{id}` dava sempre
+     ImportError/500. Corretto: carica il movimento e usa `analizza_movimento(movimento)`,
+     la funzione realmente esistente.
+  2. `riconcilia_manuale()` e `riconcilia_automatico()` marcavano la fattura pagata solo
+     con `set_fattura_pagata()` diretto, SENZA creare il movimento in Prima Nota Banca né
+     (nel caso automatico) propagare l'evento `FATTURA_PAGATA` — gap di coerenza rispetto
+     al motore canonico, che invece fa tutto questo via `_applica_pagamento_banca()` in
+     `riconciliazione_bancaria.py`. Risultato pratico: una fattura confermata da questo
+     motore risultava "pagata" ovunque tranne che in Prima Nota Banca. Corretto in
+     entrambe le funzioni: ora chiamano anche `registra_pagamento_fattura(fattura,
+     "banca")` (idempotente) e (per il path automatico) propagano `FATTURA_PAGATA`.
+     Verificato con mongomock: fattura riconciliata via `riconcilia_manuale` e via
+     `riconcilia_automatico` produce entrambe le volte un movimento reale in
+     `prima_nota_banca`, nessuna regressione sui 90 test esistenti.
+  Le tolleranze di matching restano diverse da `riconciliazione_bancaria.py` (±1% qui vs
+  scoring 10/15 là) — scelta consapevole di non toccare la logica di matching stessa in
+  questo passaggio, solo la coerenza di cosa succede DOPO un match confermato.
+
+- `app/services/riconciliazione_completa.py` → chiamato solo da un endpoint HTTP dedicato
+  in `app/routers/email_download.py` (righe 725-741, match PagoPA/Agenzia
+  Entrate/TARI + confronto POS/cassa/banca giornaliero). Verificato: nessun `<Link>`/
+  `navigate()`/chiamata `fetch` nel frontend punta a questo endpoint — è raggiungibile
+  solo per chiamata diretta all'API, non ha un bottone/trigger nella UI. Non rimosso in
+  questo passaggio (a differenza della route email-download morta, questo scrive dati
+  reali quando invocato — è una feature incompleta, non codice morto): decisione prodotto
+  aperta se agganciarlo a un trigger UI reale o rimuoverlo.
 
 ## Bug/incoerenze note (da correggere)
 

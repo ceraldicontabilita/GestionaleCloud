@@ -69,11 +69,22 @@ async def analizza_movimenti_smart(
 
 
 async def analizza_singolo_movimento(movimento_id: str) -> Dict[str, Any]:
-    """Analizza un singolo movimento."""
-    from app.services.riconciliazione_smart import analizza_singolo_movimento as analyze
-    
+    """Analizza un singolo movimento.
+
+    Bug: importava `analizza_singolo_movimento` da riconciliazione_smart.py,
+    funzione mai esistita in quel modulo (solo `analizza_movimento`,
+    `analizza_movimento_con_cache`, `analizza_estratto_conto_batch`) — ogni
+    chiamata a questo endpoint dava sempre ImportError/500. Corretto: carica
+    il movimento e usa `analizza_movimento`, che si aspetta il dict."""
+    from app.services.riconciliazione_smart import analizza_movimento
+
+    db = Database.get_db()
+    movimento = await db.estratto_conto_movimenti.find_one({"id": movimento_id}, {"_id": 0})
+    if not movimento:
+        raise HTTPException(status_code=404, detail="Movimento non trovato")
+
     try:
-        return await analyze(movimento_id)
+        return await analizza_movimento(movimento)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -120,10 +131,40 @@ async def riconcilia_automatico(
                         "data_riconciliazione": datetime.now(timezone.utc).isoformat()
                     }}
                 )
+                pagato_fields = set_fattura_pagata({"movimento_bancario_id": mov["id"]})
+
+                # Crea (idempotente) il movimento in Prima Nota Banca e propaga
+                # FATTURA_PAGATA — senza questo la fattura risulta pagata da
+                # questo motore "smart" ma non compare mai in Prima Nota Banca
+                # né chiude la partita aperta collegata (stesso gap già chiuso
+                # nel motore canonico da _applica_pagamento_banca() in
+                # riconciliazione_bancaria.py, vedi memoria/moduli/RICONCILIAZIONE.md).
+                try:
+                    from app.routers.prima_nota_module.sync import registra_pagamento_fattura
+                    pn = await registra_pagamento_fattura(fattura, "banca")
+                    if pn.get("banca"):
+                        pagato_fields["prima_nota_id"] = pn["banca"]
+                        pagato_fields["prima_nota_tipo"] = "banca"
+                        pagato_fields["prima_nota_banca_id"] = pn["banca"]
+                except Exception:
+                    logger.exception(f"Errore registrazione prima nota banca per fattura {fattura['id']}")
+
                 await db.invoices.update_one(
                     {"id": fattura["id"]},
-                    {"$set": set_fattura_pagata({"movimento_bancario_id": mov["id"]})}
+                    {"$set": pagato_fields}
                 )
+
+                try:
+                    from app.services.event_bus import propagate_event, EventTypes
+                    await propagate_event(EventTypes.FATTURA_PAGATA, {
+                        "fattura_id": fattura["id"],
+                        "importo": importo,
+                        "metodo_pagamento": "banca",
+                        "data_pagamento": pagato_fields["data_pagamento"],
+                    }, db, source_module="riconciliazione_smart_auto")
+                except Exception:
+                    logger.exception(f"Errore propagazione FATTURA_PAGATA per {fattura['id']}")
+
                 riconciliati += 1
                 match_found = True
             
@@ -184,9 +225,25 @@ async def riconcilia_manuale(request: RiconciliaManuale) -> Dict[str, Any]:
             raise HTTPException(status_code=404, detail="Fattura non trovata")
 
         update_fields["fattura_id"] = entita_id
+        pagato_fields = set_fattura_pagata({"movimento_bancario_id": request.movimento_id})
+
+        # Crea (idempotente) il movimento in Prima Nota Banca — senza questo
+        # la fattura risulta pagata ma non compare mai in Prima Nota Banca,
+        # stesso gap già chiuso nel motore canonico da _applica_pagamento_banca()
+        # in riconciliazione_bancaria.py.
+        try:
+            from app.routers.prima_nota_module.sync import registra_pagamento_fattura
+            pn = await registra_pagamento_fattura(fattura, "banca")
+            if pn.get("banca"):
+                pagato_fields["prima_nota_id"] = pn["banca"]
+                pagato_fields["prima_nota_tipo"] = "banca"
+                pagato_fields["prima_nota_banca_id"] = pn["banca"]
+        except Exception:
+            logger.exception(f"Errore registrazione prima nota banca per fattura {entita_id}")
+
         await db.invoices.update_one(
             {"id": entita_id},
-            {"$set": set_fattura_pagata({"movimento_bancario_id": request.movimento_id})}
+            {"$set": pagato_fields}
         )
 
         # Propaga il pagamento: senza questo evento la partita aperta
