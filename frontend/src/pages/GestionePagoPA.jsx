@@ -82,7 +82,7 @@ export default function GestionePagoPA() {
     setAutoAssociaLoading(true);
     try {
       const response = await api.post('/api/pagopa/auto-associa');
-      toast.success(`Associati ${response.data?.associazioni_effettuate || 0} ricevute`);
+      toast.success(`Associati ${response.data?.associazioni_trovate || 0} ricevute`);
       fetchStats();
       fetchRicevute();
     } catch (error) {
@@ -97,14 +97,14 @@ export default function GestionePagoPA() {
     if (filtro) {
       const search = filtro.toLowerCase();
       if (
-        !r.codice_cbill?.toLowerCase().includes(search) &&
+        !r.identificativo_bolletta?.toLowerCase().includes(search) &&
         !r.beneficiario?.toLowerCase().includes(search)
       ) {
         return false;
       }
     }
-    if (statoFiltro === 'associati' && !r.movimento_banca_id) return false;
-    if (statoFiltro === 'non_associati' && r.movimento_banca_id) return false;
+    if (statoFiltro === 'associati' && !r.movimento_id) return false;
+    if (statoFiltro === 'non_associati' && r.movimento_id) return false;
     return true;
   });
 
@@ -207,7 +207,7 @@ export default function GestionePagoPA() {
                   style={{ fontSize: 18, fontWeight: 'bold', color: '#3b82f6' }}
                   data-testid="stats-totali"
                 >
-                  {stats.totale_ricevute || 0}
+                  {stats.ricevute_caricate || 0}
                 </div>
               </div>
               <div
@@ -224,7 +224,7 @@ export default function GestionePagoPA() {
                   style={{ fontSize: 18, fontWeight: 'bold', color: '#22c55e' }}
                   data-testid="stats-associate"
                 >
-                  {stats.associate || 0}
+                  {stats.ricevute_associate || 0}
                 </div>
               </div>
               <div
@@ -243,7 +243,7 @@ export default function GestionePagoPA() {
                   style={{ fontSize: 18, fontWeight: 'bold', color: '#f97316' }}
                   data-testid="stats-da-associare"
                 >
-                  {stats.da_associare || 0}
+                  {(stats.ricevute_caricate || 0) - (stats.ricevute_associate || 0)}
                 </div>
               </div>
               <div
@@ -256,7 +256,7 @@ export default function GestionePagoPA() {
               >
                 <div style={{ fontSize: 11, opacity: 0.9, marginBottom: 4 }}>Importo Totale</div>
                 <div style={{ fontSize: 18, fontWeight: 'bold' }} data-testid="stats-importo">
-                  {formatEuro(stats.importo_totale || 0)}
+                  {formatEuro(stats.totale_pagato || 0)}
                 </div>
               </div>
             </div>
@@ -663,14 +663,14 @@ export default function GestionePagoPA() {
                           📅 {ricevuta.data_pagamento ? formatDateIT(ricevuta.data_pagamento) : '-'}
                         </td>
                         <td style={{ padding: '12px 16px', fontFamily: 'monospace', fontSize: 13 }}>
-                          {ricevuta.codice_cbill || '-'}
+                          {ricevuta.identificativo_bolletta || '-'}
                         </td>
                         <td style={{ padding: '12px 16px' }}>{ricevuta.beneficiario || '-'}</td>
                         <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 500 }}>
                           {formatEuro(ricevuta.importo || 0)}
                         </td>
                         <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-                          {ricevuta.movimento_banca_id ? (
+                          {ricevuta.movimento_id ? (
                             <span
                               style={{
                                 padding: '4px 8px',

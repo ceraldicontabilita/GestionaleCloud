@@ -409,10 +409,19 @@ async def apertura_nuovo_esercizio(anno_nuovo: int) -> Dict[str, Any]:
     
     saldo_banca = (banca_entrate[0]["totale"] if banca_entrate else 0) - (banca_uscite[0]["totale"] if banca_uscite else 0)
     
-    # 3. Fatture da pagare (debiti fornitori)
+    # 3. Fatture da pagare (debiti fornitori). Il campo reale sulle fatture
+    # è "total_amount" (vedi app/models/invoice.py e le altre aggregazioni
+    # in questo stesso file, es. righe 179/187) — "importo_totale" non
+    # esiste mai sulle fatture, quindi $sum sommava sempre 0: il riporto
+    # saldi di apertura esercizio mostrava debiti_fornitori sempre a zero
+    # indipendentemente dai debiti reali. Nessun filtro anno qui di
+    # proposito: rappresenta il debito TOTALE ancora aperto verso
+    # fornitori alla data di chiusura, non solo quello dell'esercizio
+    # appena chiuso (una fattura non pagata di anni precedenti è comunque
+    # un debito ancora da riportare).
     fatture_da_pagare = await db["invoices"].aggregate([
         {"$match": {"pagato": {"$ne": True}}},
-        {"$group": {"_id": None, "totale": {"$sum": "$importo_totale"}}}
+        {"$group": {"_id": None, "totale": {"$sum": "$total_amount"}}}
     ]).to_list(1)
     debiti_fornitori = fatture_da_pagare[0]["totale"] if fatture_da_pagare else 0
     
