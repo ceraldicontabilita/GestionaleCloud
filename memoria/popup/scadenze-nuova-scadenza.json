@@ -1,0 +1,39 @@
+{
+  "popup": "Modal Nuova Scadenza",
+  "pagina_di_provenienza": "Scadenze e Notifiche (/scadenze), header della pagina",
+  "file_sorgente": "frontend/src/pages/Scadenze.jsx (modal inline, righe ~1020-1252 del componente Scadenze, nessun file separato)",
+  "come_si_apre": "Click sul bottone '➕ Nuova Scadenza' nell'header della pagina (prop actions di PageLayout), che esegue setShowModal(true). È un vero overlay: div con position:'fixed', inset a tutta pagina, sfondo rgba(0,0,0,0.5) e zIndex:1000, con il pannello bianco centrato (onClick del pannello interno con stopPropagation per non chiudersi se si clicca dentro).",
+  "scopo": "Permette di creare a mano una notifica/scadenza personalizzata, cioè un promemoria che non deriva né da una fattura fornitore né da una scadenza fiscale fissa (F24/IVA), ma che l'utente vuole comunque vedere nel cruscotto Scadenze — ad esempio un pagamento concordato verbalmente con un fornitore, un adempimento non ancora tracciato altrove, o un semplice appunto con data e priorità.",
+  "contenuto_e_campi": "Data Scadenza* (input date, obbligatorio), Descrizione* (input testo, obbligatorio, placeholder 'Es: Pagamento fornitore XYZ'), Tipo (select: Personalizzata/CUSTOM, Fattura/FATTURA, F24, IVA, INPS — default CUSTOM), Priorità (select: Bassa/Media/Alta/Critica — default Media), Importo (input numerico opzionale, step 0.01, default vuoto), Note (textarea opzionale, 2 righe). Il form parte sempre da uno stato locale vuoto (nuovaScadenza), non precarica nulla dal server.",
+  "bottoni_azioni": [
+    {
+      "etichetta": "✕ (icona chiusura nell'header del modal)",
+      "cosa_fa_al_click": "setShowModal(false), nessun salvataggio, i valori digitati nel form NON vengono resettati (restano in stato React finché non si chiude e riapre in altro modo o si salva con successo).",
+      "endpoint_chiamato": "nessuno",
+      "logica_backend": "n/d",
+      "formula_matematica": "n/d",
+      "validazioni": "n/d",
+      "casi_errore": "n/d"
+    },
+    {
+      "etichetta": "Annulla (footer)",
+      "cosa_fa_al_click": "Identico al bottone ✕: setShowModal(false) senza salvare.",
+      "endpoint_chiamato": "nessuno",
+      "logica_backend": "n/d",
+      "formula_matematica": "n/d",
+      "validazioni": "n/d",
+      "casi_errore": "n/d"
+    },
+    {
+      "etichetta": "Salva Scadenza (footer)",
+      "cosa_fa_al_click": "handleCreaScadenza(): prima valida client-side che data_scadenza e descrizione siano compilati (alert('Compila data e descrizione') bloccante altrimenti, niente chiamata al backend), poi invia la POST con importo convertito in float (parseFloat(nuovaScadenza.importo) || 0, quindi un campo vuoto o non numerico diventa 0 silenziosamente).",
+      "endpoint_chiamato": "POST /api/scadenze/crea",
+      "logica_backend": "crea_notifica_scadenza (app/routers/scadenze.py): verifica lato server che data_scadenza e descrizione siano presenti (400 'Campo {field} obbligatorio' altrimenti, doppio controllo rispetto al client). Inserisce in notifiche_scadenze un documento con id=uuid4, data_scadenza, descrizione, tipo (default 'CUSTOM' se non passato), importo=float(data.get('importo',0) or 0), priorita (default 'media'), note, completata=False, created_at=ISO UTC now. Nessun controllo di duplicati: si possono creare più notifiche identiche.",
+      "formula_matematica": "N/A (nessun calcolo, scrittura diretta dei valori inseriti)",
+      "validazioni": "Client: data_scadenza e descrizione obbligatori (alert bloccante prima della chiamata). Server: stesso controllo, restituisce HTTP 400 con dettaglio del campo mancante se qualcuno bypassa il client (es. chiamata diretta all'API).",
+      "casi_errore": "In caso di errore di rete o di risposta 4xx/5xx: alert('Errore: ' + (error.response?.data?.detail || error.message)); il modal resta aperto con i dati digitati, nessun rollback necessario perché non è stato scritto nulla."
+    }
+  ],
+  "come_si_chiude": "Bottone ✕ nell'header, bottone Annulla nel footer, oppure click sull'overlay scuro fuori dal pannello bianco (onClick={() => setShowModal(false)} sul div esterno; il pannello interno ha stopPropagation). Si chiude automaticamente anche dopo un salvataggio riuscito tramite Salva Scadenza. Nessuna gestione esplicita del tasto ESC nel codice.",
+  "effetti_su_pagina_sottostante": "Dopo un salvataggio riuscito: il form locale nuovaScadenza viene resettato ai valori di default e viene richiamata loadData(), che ricarica tutte e 5 le chiamate della pagina (scadenze/tutte, iva, iva-mensile, dashboard-widget, email-scanner/statistiche) — la nuova notifica compare quindi nella tabella scadenze (ordinata per data) non appena rientra nel range/filtro attivo (anno, tipo, include_passate). Se l'utente annulla o chiude senza salvare, nessun cambiamento sulla pagina sottostante."
+}
