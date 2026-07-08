@@ -10,6 +10,9 @@ import {
   formatDateIT,
   STYLES,
   COLORS,
+  SHADOWS,
+  BORDER_RADIUS,
+  FONT,
   button,
   badge,
   useIsMobile,
@@ -18,6 +21,15 @@ import {
 } from '../lib/utils';
 import { useHashState } from '../hooks/useHashState';
 import { CopyLinkButton } from '../components/CopyLinkButton';
+import {
+  Button,
+  Badge,
+  StatCard,
+  TableWrap,
+  Table,
+  Th,
+  Td,
+} from '../components/ds';
 import {
   Search,
   Edit2,
@@ -61,9 +73,9 @@ function useDebounce(value, delay) {
 // "certo" è stato rimosso: il sistema non saprebbe dove imputare
 // automaticamente il pagamento in quel caso, quindi non è un canale valido.
 const METODI_PAGAMENTO = {
-  cassa: { label: 'Cassa', bg: '#dcfce7', color: '#16a34a' },
-  banca: { label: 'Banca', bg: '#dbeafe', color: '#3b82f6' },
-  misto: { label: 'Misto', bg: '#e2e8f0', color: '#0f2744' },
+  cassa: { label: 'Cassa', bg: COLORS.successLight, color: COLORS.success },
+  banca: { label: 'Banca', bg: COLORS.infoLight, color: COLORS.info },
+  misto: { label: 'Misto', bg: COLORS.gray[200], color: COLORS.primary },
 };
 
 // Valori legacy ancora presenti sui fornitori già salvati prima della
@@ -237,20 +249,20 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
       >
         <div
           style={{
-            backgroundColor: 'white',
-            borderRadius: '10px',
+            backgroundColor: COLORS.card,
+            borderRadius: BORDER_RADIUS.lg,
             width: '100%',
             maxWidth: '600px',
             maxHeight: '85vh',
             overflow: 'hidden',
-            boxShadow: '0 20px 50px rgba(0,0,0,0.3)',
+            boxShadow: SHADOWS.modal,
           }}
           onClick={e => e.stopPropagation()}
         >
           {/* Header */}
           <div
             style={{
-              background: '#0f2744',
+              background: COLORS.primary,
               padding: '20px 24px',
               color: 'white',
             }}
@@ -264,24 +276,20 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                   {isNew ? 'Inserisci i dati del fornitore' : form.ragione_sociale}
                 </p>
               </div>
-              <button
+              <Button
+                variant="ghost"
                 onClick={onClose}
                 aria-label="Chiudi"
                 style={{
                   background: 'rgba(255,255,255,0.2)',
-                  border: 'none',
-                  borderRadius: '8px',
                   minWidth: '40px',
                   minHeight: '40px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
+                  padding: 0,
                   color: 'white',
                 }}
               >
                 <X size={20} />
-              </button>
+              </Button>
             </div>
           </div>
 
@@ -293,9 +301,9 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                 <div
                   style={{
                     padding: '12px 16px',
-                    background: '#fffbeb',
-                    border: '1px solid #d97706',
-                    borderRadius: '10px',
+                    background: COLORS.warningLight,
+                    border: `1px solid ${COLORS.warning}`,
+                    borderRadius: BORDER_RADIUS.lg,
                     display: 'flex',
                     alignItems: 'flex-start',
                     justifyContent: 'space-between',
@@ -305,7 +313,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                   <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', flex: 1 }}>
                     <AlertCircle
                       size={18}
-                      color="#d97706"
+                      color={COLORS.warning}
                       style={{ flexShrink: 0, marginTop: 2 }}
                     />
                     <div>
@@ -313,7 +321,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                         style={{
                           fontSize: '13px',
                           fontWeight: 600,
-                          color: '#92400e',
+                          color: COLORS.warning,
                           marginBottom: '2px',
                         }}
                       >
@@ -322,31 +330,21 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                           .filter(Boolean)
                           .join(', ')}
                       </div>
-                      <div style={{ fontSize: '12px', color: '#d97706' }}>
+                      <div style={{ fontSize: '12px', color: COLORS.warning }}>
                         Compilare manualmente o usa "Cerca in fatture" per leggere dagli XML
                       </div>
                     </div>
                   </div>
-                  <button
+                  <Button
                     type="button"
+                    variant="warning"
+                    size="sm"
                     onClick={handlePopolaDaXml}
                     disabled={loadingXML}
-                    style={{
-                      padding: '6px 12px',
-                      background: '#d97706',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '6px',
-                      fontSize: '12px',
-                      fontWeight: 600,
-                      cursor: loadingXML ? 'wait' : 'pointer',
-                      whiteSpace: 'nowrap',
-                      flexShrink: 0,
-                      opacity: loadingXML ? 0.7 : 1,
-                    }}
+                    style={{ flexShrink: 0, whiteSpace: 'nowrap' }}
                   >
                     {loadingXML ? 'Ricerca...' : 'Cerca in fatture'}
-                  </button>
+                  </Button>
                 </div>
               )}
 
@@ -355,11 +353,11 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                 <div
                   style={{
                     padding: '10px 14px',
-                    background: '#f0fdf4',
-                    border: '1px solid #86efac',
-                    borderRadius: '8px',
+                    background: COLORS.successLight,
+                    border: `1px solid ${COLORS.success}`,
+                    borderRadius: BORDER_RADIUS.md,
                     fontSize: '12px',
-                    color: '#166534',
+                    color: COLORS.success,
                   }}
                 >
                   {xmlMsg}
@@ -371,7 +369,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                     display: 'block',
                     fontSize: '13px',
                     fontWeight: 500,
-                    color: '#374151',
+                    color: COLORS.gray[700],
                     marginBottom: '6px',
                   }}
                 >
@@ -384,7 +382,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                   style={{
                     width: '100%',
                     padding: '10px 14px',
-                    border: '1px solid #e5e7eb',
+                    border: `1px solid ${COLORS.border}`,
                     borderRadius: '8px',
                     fontSize: '14px',
                     boxSizing: 'border-box',
@@ -407,7 +405,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                       display: 'block',
                       fontSize: '13px',
                       fontWeight: 500,
-                      color: '#374151',
+                      color: COLORS.gray[700],
                       marginBottom: '6px',
                     }}
                   >
@@ -421,7 +419,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                       style={{
                         flex: 1,
                         padding: '10px 14px',
-                        border: '1px solid #e5e7eb',
+                        border: `1px solid ${COLORS.border}`,
                         borderRadius: '8px',
                         fontSize: '14px',
                         fontFamily: 'monospace',
@@ -429,35 +427,22 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                       }}
                       placeholder="01234567890"
                     />
-                    <button
+                    <Button
                       type="button"
+                      variant="primary"
+                      size="sm"
                       onClick={handleLoadFromOpenAPI}
                       disabled={loadingOpenAPI || !form.partita_iva}
                       title="Carica dati da Camera di Commercio"
-                      style={{
-                        padding: '10px 12px',
-                        border: 'none',
-                        borderRadius: '8px',
-                        background: loadingOpenAPI
-                          ? '#9ca3af'
-                          : '#0f2744',
-                        color: 'white',
-                        cursor: loadingOpenAPI || !form.partita_iva ? 'not-allowed' : 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                        fontSize: '12px',
-                        fontWeight: 600,
-                        whiteSpace: 'nowrap',
-                      }}
+                      style={{ whiteSpace: 'nowrap' }}
                       data-testid="btn-load-openapi"
                     >
                       <RefreshCw size={14} className={loadingOpenAPI ? 'animate-spin' : ''} />
                       {loadingOpenAPI ? '...' : 'Auto'}
-                    </button>
+                    </Button>
                   </div>
                   {openAPIError && (
-                    <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#dc2626' }}>
+                    <p style={{ margin: '4px 0 0', fontSize: '12px', color: COLORS.danger }}>
                       {openAPIError}
                     </p>
                   )}
@@ -468,7 +453,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                       display: 'block',
                       fontSize: '13px',
                       fontWeight: 500,
-                      color: '#374151',
+                      color: COLORS.gray[700],
                       marginBottom: '6px',
                     }}
                   >
@@ -481,7 +466,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                     style={{
                       width: '100%',
                       padding: '10px 14px',
-                      border: '1px solid #e5e7eb',
+                      border: `1px solid ${COLORS.border}`,
                       borderRadius: '8px',
                       fontSize: '14px',
                       fontFamily: 'monospace',
@@ -498,7 +483,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                     display: 'block',
                     fontSize: '13px',
                     fontWeight: 500,
-                    color: '#374151',
+                    color: COLORS.gray[700],
                     marginBottom: '6px',
                   }}
                 >
@@ -511,7 +496,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                   style={{
                     width: '100%',
                     padding: '10px 14px',
-                    border: '1px solid #e5e7eb',
+                    border: `1px solid ${COLORS.border}`,
                     borderRadius: '8px',
                     fontSize: '14px',
                     boxSizing: 'border-box',
@@ -528,7 +513,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                       display: 'block',
                       fontSize: '13px',
                       fontWeight: 500,
-                      color: '#374151',
+                      color: COLORS.gray[700],
                       marginBottom: '6px',
                     }}
                   >
@@ -541,7 +526,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                     style={{
                       width: '100%',
                       padding: '10px 14px',
-                      border: '1px solid #e5e7eb',
+                      border: `1px solid ${COLORS.border}`,
                       borderRadius: '8px',
                       fontSize: '14px',
                       boxSizing: 'border-box',
@@ -555,7 +540,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                       display: 'block',
                       fontSize: '13px',
                       fontWeight: 500,
-                      color: '#374151',
+                      color: COLORS.gray[700],
                       marginBottom: '6px',
                     }}
                   >
@@ -568,7 +553,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                     style={{
                       width: '100%',
                       padding: '10px 14px',
-                      border: '1px solid #e5e7eb',
+                      border: `1px solid ${COLORS.border}`,
                       borderRadius: '8px',
                       fontSize: '14px',
                       boxSizing: 'border-box',
@@ -581,7 +566,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                       display: 'block',
                       fontSize: '13px',
                       fontWeight: 500,
-                      color: '#374151',
+                      color: COLORS.gray[700],
                       marginBottom: '6px',
                     }}
                   >
@@ -594,7 +579,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                     style={{
                       width: '100%',
                       padding: '10px 14px',
-                      border: '1px solid #e5e7eb',
+                      border: `1px solid ${COLORS.border}`,
                       borderRadius: '8px',
                       fontSize: '14px',
                       boxSizing: 'border-box',
@@ -618,7 +603,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                       display: 'block',
                       fontSize: '13px',
                       fontWeight: 500,
-                      color: '#374151',
+                      color: COLORS.gray[700],
                       marginBottom: '6px',
                     }}
                   >
@@ -631,7 +616,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                     style={{
                       width: '100%',
                       padding: '10px 14px',
-                      border: '1px solid #e5e7eb',
+                      border: `1px solid ${COLORS.border}`,
                       borderRadius: '8px',
                       fontSize: '14px',
                       boxSizing: 'border-box',
@@ -644,7 +629,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                       display: 'block',
                       fontSize: '13px',
                       fontWeight: 500,
-                      color: '#374151',
+                      color: COLORS.gray[700],
                       marginBottom: '6px',
                     }}
                   >
@@ -657,7 +642,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                     style={{
                       width: '100%',
                       padding: '10px 14px',
-                      border: '1px solid #e5e7eb',
+                      border: `1px solid ${COLORS.border}`,
                       borderRadius: '8px',
                       fontSize: '14px',
                       boxSizing: 'border-box',
@@ -680,7 +665,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                       display: 'block',
                       fontSize: '13px',
                       fontWeight: 500,
-                      color: '#374151',
+                      color: COLORS.gray[700],
                       marginBottom: '6px',
                     }}
                   >
@@ -692,7 +677,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                     style={{
                       width: '100%',
                       padding: '10px 14px',
-                      border: '1px solid #e5e7eb',
+                      border: `1px solid ${COLORS.border}`,
                       borderRadius: '8px',
                       fontSize: '14px',
                       backgroundColor: 'white',
@@ -712,7 +697,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                       display: 'block',
                       fontSize: '13px',
                       fontWeight: 500,
-                      color: '#374151',
+                      color: COLORS.gray[700],
                       marginBottom: '6px',
                     }}
                   >
@@ -725,7 +710,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                     style={{
                       width: '100%',
                       padding: '10px 14px',
-                      border: '1px solid #e5e7eb',
+                      border: `1px solid ${COLORS.border}`,
                       borderRadius: '8px',
                       fontSize: '14px',
                       boxSizing: 'border-box',
@@ -742,7 +727,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                     display: 'block',
                     fontSize: '13px',
                     fontWeight: 500,
-                    color: '#374151',
+                    color: COLORS.gray[700],
                     marginBottom: '6px',
                   }}
                 >
@@ -757,7 +742,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                   style={{
                     width: '100%',
                     padding: '10px 14px',
-                    border: '1px solid #e5e7eb',
+                    border: `1px solid ${COLORS.border}`,
                     borderRadius: '8px',
                     fontSize: '14px',
                     fontFamily: 'monospace',
@@ -771,11 +756,11 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                     style={{
                       marginTop: '8px',
                       padding: '10px',
-                      background: '#f8fafc',
-                      borderRadius: '6px',
+                      background: COLORS.bgAlt,
+                      borderRadius: BORDER_RADIUS.sm,
                     }}
                   >
-                    <div style={{ fontSize: '12px', color: '#6b7280', marginBottom: '6px' }}>
+                    <div style={{ fontSize: '12px', color: COLORS.textMuted, marginBottom: '6px' }}>
                       IBAN aggiuntivi (da fatture):
                     </div>
                     {(form.iban_lista ?? []).map((iban, idx) => (
@@ -794,21 +779,15 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                         }}
                       >
                         <span>{iban}</span>
-                        <button
+                        <Button
                           type="button"
+                          variant="info"
+                          size="sm"
                           onClick={() => handleChange('iban', iban)}
-                          style={{
-                            background: '#e0f2fe',
-                            border: 'none',
-                            borderRadius: '4px',
-                            padding: '2px 8px',
-                            cursor: 'pointer',
-                            fontSize: '11px',
-                            color: '#0f2744',
-                          }}
+                          style={{ padding: '2px 8px', fontSize: '11px' }}
                         >
                           Usa come principale
-                        </button>
+                        </Button>
                       </div>
                     ))}
                   </div>
@@ -825,45 +804,17 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
           <div
             style={{
               padding: '16px 24px',
-              borderTop: '1px solid #e5e7eb',
+              borderTop: `1px solid ${COLORS.border}`,
               display: 'flex',
               justifyContent: 'flex-end',
               gap: '12px',
-              backgroundColor: '#f9fafb',
+              backgroundColor: COLORS.bgAlt,
             }}
           >
-            <button
-              onClick={onClose}
-              style={{
-                padding: '10px 20px',
-                border: '1px solid #e5e7eb',
-                borderRadius: '8px',
-                backgroundColor: 'white',
-                cursor: 'pointer',
-                fontSize: '14px',
-                fontWeight: 500,
-              }}
-            >
+            <Button variant="secondary" onClick={onClose}>
               Annulla
-            </button>
-            <button
-              onClick={handleSubmit}
-              disabled={saving}
-              style={{
-                padding: '10px 20px',
-                border: 'none',
-                borderRadius: '8px',
-                background: '#0f2744',
-                color: 'white',
-                cursor: saving ? 'not-allowed' : 'pointer',
-                fontSize: '14px',
-                fontWeight: 500,
-                opacity: saving ? 0.7 : 1,
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-              }}
-            >
+            </Button>
+            <Button variant="primary" onClick={handleSubmit} disabled={saving}>
               {saving ? (
                 'Salvataggio...'
               ) : (
@@ -871,50 +822,11 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                   <Check size={16} /> Salva
                 </>
               )}
-            </button>
+            </Button>
           </div>
         </div>
       </div>
     </Portal>
-  );
-}
-
-// Stat Card
-function StatCard({ icon: Icon, label, value, color, bgColor }) {
-  return (
-    <div
-      style={{
-        backgroundColor: 'white',
-        borderRadius: '8px',
-        padding: '12px 16px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '12px',
-        border: '1px solid #e2e8f0',
-        borderLeft: '4px solid #0f2744',
-      }}
-    >
-      <div
-        style={{
-          width: '36px',
-          height: '36px',
-          borderRadius: '8px',
-          backgroundColor: bgColor,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          flexShrink: 0,
-        }}
-      >
-        <Icon size={20} color={color} />
-      </div>
-      <div>
-        <div style={{ fontSize: '22px', fontWeight: 700, color: color, lineHeight: 1, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>
-          {value}
-        </div>
-        <div style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: '2px' }}>{label}</div>
-      </div>
-    </div>
   );
 }
 
@@ -1008,13 +920,13 @@ function SupplierCard({
       style={{
         backgroundColor: 'white',
         borderRadius: '12px',
-        border: '1px solid #e5e7eb',
+        border: `1px solid ${COLORS.border}`,
         overflow: 'hidden',
         transition: 'all 0.2s',
         position: 'relative',
       }}
       onMouseEnter={e => {
-        e.currentTarget.style.boxShadow = '0 8px 25px rgba(0,0,0,0.1)';
+        e.currentTarget.style.boxShadow = SHADOWS.lg;
         e.currentTarget.style.transform = 'translateY(-2px)';
       }}
       onMouseLeave={e => {
@@ -1027,8 +939,8 @@ function SupplierCard({
         style={{
           height: '4px',
           background: hasIncomplete
-            ? '#d97706'
-            : '#0f2744',
+            ? COLORS.warning
+            : COLORS.primary,
         }}
       />
 
@@ -1048,7 +960,7 @@ function SupplierCard({
                 width: '44px',
                 height: '44px',
                 borderRadius: '10px',
-                background: '#0f2744',
+                background: COLORS.primary,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -1064,7 +976,7 @@ function SupplierCard({
               <div
                 style={{
                   fontWeight: 600,
-                  color: '#1e293b',
+                  color: COLORS.gray[800],
                   fontSize: '15px',
                   whiteSpace: 'nowrap',
                   overflow: 'hidden',
@@ -1074,7 +986,7 @@ function SupplierCard({
                 {nome}
               </div>
               {piva && (
-                <div style={{ fontSize: '12px', color: '#6b7280', fontFamily: 'monospace' }}>
+                <div style={{ fontSize: '12px', color: COLORS.textMuted, fontFamily: 'monospace' }}>
                   P.IVA {piva}
                 </div>
               )}
@@ -1083,14 +995,14 @@ function SupplierCard({
           {hasIncomplete && (
             <div
               style={{
-                backgroundColor: '#fef3c7',
-                borderRadius: '50%',
+                backgroundColor: COLORS.warningLight,
+                borderRadius: BORDER_RADIUS.full,
                 padding: '6px',
                 flexShrink: 0,
               }}
               title="Dati incompleti"
             >
-              <AlertCircle size={14} color="#d97706" />
+              <AlertCircle size={14} color={COLORS.warning} />
             </div>
           )}
         </div>
@@ -1104,7 +1016,7 @@ function SupplierCard({
                 alignItems: 'center',
                 gap: '8px',
                 fontSize: '13px',
-                color: '#6b7280',
+                color: COLORS.textMuted,
               }}
             >
               <MapPin size={14} />
@@ -1121,7 +1033,7 @@ function SupplierCard({
                 alignItems: 'center',
                 gap: '8px',
                 fontSize: '13px',
-                color: '#6b7280',
+                color: COLORS.textMuted,
               }}
             >
               <Mail size={14} />
@@ -1139,25 +1051,28 @@ function SupplierCard({
             alignItems: 'center',
             justifyContent: 'space-between',
             paddingTop: '12px',
-            borderTop: '1px solid #f1f5f9',
+            borderTop: `1px solid ${COLORS.bg}`,
           }}
         >
           <div style={{ display: 'flex', gap: '20px' }}>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '18px', fontWeight: 700, color: '#1e293b' }}>
+              <div style={{ fontSize: '18px', fontWeight: 700, color: COLORS.gray[800] }}>
                 {supplier.fatture_count || 0}
               </div>
-              <div style={{ fontSize: '11px', color: '#9ca3af' }}>Fatture</div>
+              <div style={{ fontSize: '11px', color: COLORS.textSubtle }}>Fatture</div>
             </div>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '18px', fontWeight: 700, color: '#1e293b' }}>
+              <div style={{ fontSize: '18px', fontWeight: 700, color: COLORS.gray[800] }}>
                 {supplier.giorni_pagamento || 30}
               </div>
-              <div style={{ fontSize: '11px', color: '#9ca3af' }}>Giorni</div>
+              <div style={{ fontSize: '11px', color: COLORS.textSubtle }}>Giorni</div>
             </div>
           </div>
 
-          {/* Badge Metodo - Cliccabile per cambio rapido */}
+          {/* Badge Metodo - Cliccabile per cambio rapido.
+              Nota: resta un <button> nativo (non <Button>) perché serve un
+              ref DOM reale per calcolare la posizione del menu a comparsa
+              (Button non inoltra ref ai figli). */}
           <div style={{ position: 'relative' }}>
             <button
               ref={buttonRef}
@@ -1165,7 +1080,7 @@ function SupplierCard({
               disabled={updating}
               style={{
                 padding: '6px 12px',
-                borderRadius: '8px',
+                borderRadius: BORDER_RADIUS.sm,
                 fontSize: '12px',
                 fontWeight: 600,
                 backgroundColor: metodo.bg,
@@ -1177,6 +1092,7 @@ function SupplierCard({
                 gap: '4px',
                 transition: 'all 0.2s',
                 opacity: updating ? 0.6 : 1,
+                fontFamily: FONT.family,
               }}
               title="Clicca per cambiare metodo pagamento"
             >
@@ -1189,7 +1105,9 @@ function SupplierCard({
 
         {/* Flag badges — cliccabili per toggle rapido */}
         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '10px' }}>
-          <button
+          <Button
+            variant={supplier.esclude_magazzino ? 'warning' : 'success'}
+            size="sm"
             onClick={async e => {
               e.stopPropagation();
               if (onToggleEsclude) {
@@ -1202,23 +1120,10 @@ function SupplierCard({
                 ? 'Click: RIMETTI nel magazzino (le fatture popoleranno le giacenze)'
                 : 'Click: ESCLUDI dal magazzino (le fatture NON creano carichi)'
             }
-            style={{
-              padding: '4px 10px',
-              borderRadius: '6px',
-              fontSize: '11px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              transition: 'all 0.15s ease',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '5px',
-              background: supplier.esclude_magazzino ? '#fef3c7' : '#f0fdf4',
-              color: supplier.esclude_magazzino ? '#92400e' : '#166534',
-              border: supplier.esclude_magazzino ? '1px solid #d97706' : '1px solid #86efac',
-            }}
+            style={{ padding: '4px 10px', fontSize: '11px' }}
           >
             {supplier.esclude_magazzino ? '🚫 Escluso magazzino' : '📦 In magazzino'}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -1226,227 +1131,106 @@ function SupplierCard({
       <div
         style={{
           display: 'flex',
-          borderTop: '1px solid #f1f5f9',
-          backgroundColor: '#f9fafb',
+          borderTop: `1px solid ${COLORS.bg}`,
+          backgroundColor: COLORS.bgAlt,
           flexWrap: 'wrap',
         }}
       >
         {/* Pulsante Fatturato Anno */}
         {hasPiva && (
-          <button
+          <Button
+            variant="ghost"
             onClick={handleShowFatturato}
             disabled={loadingFatturato}
-            style={{
-              flex: 1,
-              padding: '12px',
-              border: 'none',
-              backgroundColor: loadingFatturato ? '#e0f2fe' : 'transparent',
-              cursor: loadingFatturato ? 'wait' : 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '6px',
-              fontSize: '13px',
-              color: '#3b82f6',
-              transition: 'all 0.2s',
-              minWidth: '70px',
-            }}
-            onMouseEnter={e => {
-              if (!loadingFatturato) {
-                e.currentTarget.style.backgroundColor = '#e0f2fe';
-              }
-            }}
-            onMouseLeave={e => {
-              if (!loadingFatturato) {
-                e.currentTarget.style.backgroundColor = 'transparent';
-              }
-            }}
+            style={{ flex: 1, borderRadius: 0, padding: '12px', color: COLORS.info, minWidth: '70px' }}
             title={`Visualizza fatturato ${selectedYear}`}
             data-testid={`btn-fatturato-${supplier.id}`}
           >
             <TrendingUp size={15} /> {loadingFatturato ? '...' : `${selectedYear}`}
-          </button>
+          </Button>
         )}
         {/* Pulsante Fatturato anno precedente - sempre visibile */}
         {selectedYear !== selectedYear - 1 && (
-          <button
+          <Button
+            variant="ghost"
             onClick={async () => {
               setLoadingFatturato(true);
               await onShowFatturato(supplier, selectedYear - 1);
               setLoadingFatturato(false);
             }}
             disabled={loadingFatturato}
-            style={{
-              flex: 1,
-              padding: '12px',
-              border: 'none',
-              backgroundColor: loadingFatturato ? '#e0f2fe' : 'transparent',
-              cursor: loadingFatturato ? 'wait' : 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '6px',
-              fontSize: '13px',
-              color: '#6b7280',
-              transition: 'all 0.2s',
-              minWidth: '70px',
-            }}
-            onMouseEnter={e => {
-              if (!loadingFatturato) {
-                e.currentTarget.style.backgroundColor = '#f1f5f9';
-              }
-            }}
-            onMouseLeave={e => {
-              if (!loadingFatturato) {
-                e.currentTarget.style.backgroundColor = 'transparent';
-              }
-            }}
+            style={{ flex: 1, borderRadius: 0, padding: '12px', color: COLORS.textMuted, minWidth: '70px' }}
             title={`Visualizza fatturato ${selectedYear - 1}`}
           >
             <TrendingUp size={15} /> {selectedYear - 1}
-          </button>
+          </Button>
         )}
         {/* Pulsante Cerca P.IVA - sempre visibile se ha P.IVA */}
         {hasPiva && (
-          <button
+          <Button
+            variant="ghost"
             onClick={handleSearchPiva}
             disabled={searching}
-            style={{
-              flex: 1,
-              padding: '12px',
-              border: 'none',
-              backgroundColor: searching ? '#fef3c7' : 'transparent',
-              cursor: searching ? 'wait' : 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '6px',
-              fontSize: '13px',
-              color: '#d97706',
-              transition: 'all 0.2s',
-            }}
-            onMouseEnter={e => {
-              if (!searching) {
-                e.currentTarget.style.backgroundColor = '#fef3c7';
-              }
-            }}
-            onMouseLeave={e => {
-              if (!searching) {
-                e.currentTarget.style.backgroundColor = 'transparent';
-              }
-            }}
+            style={{ flex: 1, borderRadius: 0, padding: '12px', color: COLORS.warning }}
             title="Cerca dati azienda tramite Partita IVA"
           >
             <Search size={15} /> {searching ? 'Ricerca...' : 'Cerca P.IVA'}
-          </button>
+          </Button>
         )}
         {/* Pulsante Schede Tecniche */}
-        <button
+        <Button
+          variant="ghost"
           onClick={() => onShowSchedeTecniche && onShowSchedeTecniche(supplier)}
           style={{
             flex: 1,
+            borderRadius: 0,
             padding: '12px',
-            border: 'none',
-            borderLeft: hasPiva ? '1px solid #e5e7eb' : 'none',
-            backgroundColor: 'transparent',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '6px',
-            fontSize: '13px',
-            color: '#0f2744',
-            transition: 'all 0.2s',
-          }}
-          onMouseEnter={e => {
-            e.currentTarget.style.backgroundColor = '#f1f5f9';
-          }}
-          onMouseLeave={e => {
-            e.currentTarget.style.backgroundColor = 'transparent';
+            borderLeft: hasPiva ? `1px solid ${COLORS.border}` : 'none',
+            color: COLORS.primary,
           }}
           title="Visualizza schede tecniche prodotti"
           data-testid={`btn-schede-tecniche-${supplier.id}`}
         >
           📋 Schede
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="ghost"
           onClick={() => onViewInvoices(supplier)}
           style={{
             flex: 1,
+            borderRadius: 0,
             padding: '12px',
-            border: 'none',
-            borderLeft: hasPiva ? '1px solid #e5e7eb' : 'none',
-            backgroundColor: 'transparent',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '6px',
-            fontSize: '13px',
-            color: '#6b7280',
-            transition: 'all 0.2s',
-          }}
-          onMouseEnter={e => {
-            e.currentTarget.style.backgroundColor = '#f1f5f9';
-            e.currentTarget.style.color = '#0f2744';
-          }}
-          onMouseLeave={e => {
-            e.currentTarget.style.backgroundColor = 'transparent';
-            e.currentTarget.style.color = '#6b7280';
+            borderLeft: hasPiva ? `1px solid ${COLORS.border}` : 'none',
+            color: COLORS.textMuted,
           }}
         >
           <FileText size={15} /> Fatture
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="ghost"
           onClick={() => onEdit(supplier)}
           style={{
             flex: 1,
+            borderRadius: 0,
             padding: '12px',
-            border: 'none',
-            borderLeft: '1px solid #e5e7eb',
-            backgroundColor: 'transparent',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '6px',
-            fontSize: '13px',
-            color: '#6b7280',
-            transition: 'all 0.2s',
-          }}
-          onMouseEnter={e => {
-            e.currentTarget.style.backgroundColor = '#f1f5f9';
-            e.currentTarget.style.color = '#0f2744';
-          }}
-          onMouseLeave={e => {
-            e.currentTarget.style.backgroundColor = 'transparent';
-            e.currentTarget.style.color = '#6b7280';
+            borderLeft: `1px solid ${COLORS.border}`,
+            color: COLORS.textMuted,
           }}
         >
           <Edit2 size={15} /> Modifica
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="ghost"
           onClick={() => onDelete(supplier.id)}
           style={{
+            borderRadius: 0,
             padding: '12px 16px',
-            border: 'none',
-            borderLeft: '1px solid #e5e7eb',
-            backgroundColor: 'transparent',
-            cursor: 'pointer',
-            color: '#9ca3af',
-            transition: 'all 0.2s',
-          }}
-          onMouseEnter={e => {
-            e.currentTarget.style.backgroundColor = '#fef2f2';
-            e.currentTarget.style.color = '#dc2626';
-          }}
-          onMouseLeave={e => {
-            e.currentTarget.style.backgroundColor = 'transparent';
-            e.currentTarget.style.color = '#9ca3af';
+            borderLeft: `1px solid ${COLORS.border}`,
+            color: COLORS.textSubtle,
           }}
         >
           <Trash2 size={15} />
-        </button>
+        </Button>
       </div>
 
       {/* Menu dropdown con Portal - fuori dalla card */}
@@ -1469,9 +1253,9 @@ function SupplierCard({
               top: menuPosition.top,
               left: menuPosition.left,
               backgroundColor: 'white',
-              borderRadius: '10px',
-              boxShadow: '0 10px 40px rgba(0,0,0,0.25)',
-              border: '1px solid #e5e7eb',
+              borderRadius: BORDER_RADIUS.lg,
+              boxShadow: SHADOWS.xl,
+              border: `1px solid ${COLORS.border}`,
               overflow: 'hidden',
               zIndex: 99999,
               minWidth: '160px',
@@ -1480,51 +1264,39 @@ function SupplierCard({
             <div
               style={{
                 padding: '8px 12px',
-                borderBottom: '1px solid #f1f5f9',
+                borderBottom: `1px solid ${COLORS.bg}`,
                 fontSize: '11px',
-                color: '#9ca3af',
+                color: COLORS.textSubtle,
                 fontWeight: 600,
               }}
             >
               METODO PAGAMENTO
             </div>
             {Object.entries(METODI_PAGAMENTO).map(([key, val]) => (
-              <button
+              <Button
                 key={key}
+                variant="ghost"
                 onClick={() => handleMetodoChange(key)}
                 style={{
                   width: '100%',
+                  borderRadius: 0,
                   padding: '7px 12px',
-                  border: 'none',
                   backgroundColor: metodoKey === key ? val.bg : 'white',
                   color: val.color,
-                  fontSize: '13px',
-                  fontWeight: 500,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  textAlign: 'left',
-                  transition: 'all 0.15s',
-                }}
-                onMouseEnter={e => {
-                  if (metodoKey !== key) e.currentTarget.style.backgroundColor = '#f9fafb';
-                }}
-                onMouseLeave={e => {
-                  if (metodoKey !== key) e.currentTarget.style.backgroundColor = 'white';
+                  justifyContent: 'flex-start',
                 }}
               >
                 <span
                   style={{
                     width: '10px',
                     height: '10px',
-                    borderRadius: '50%',
+                    borderRadius: BORDER_RADIUS.full,
                     backgroundColor: val.color,
                   }}
                 />
                 {val.label}
                 {metodoKey === key && <Check size={16} style={{ marginLeft: 'auto' }} />}
-              </button>
+              </Button>
             ))}
           </div>
         </Portal>
@@ -1983,7 +1755,7 @@ export default function Fornitori() {
     <div
       style={{
         minHeight: '100vh',
-        backgroundColor: '#f1f5f9',
+        backgroundColor: COLORS.bg,
         padding: isMobile ? '12px 10px' : '16px',
         position: 'relative',
       }}
@@ -2000,48 +1772,24 @@ export default function Fornitori() {
             flexWrap: 'wrap',
           }}
         >
-          <button
+          <Button
+            variant="secondary"
             onClick={reloadData}
             disabled={loading}
-            style={{
-              padding: '8px 14px',
-              minHeight: 40,
-              background: 'white',
-              color: '#0f2744',
-              border: '1px solid #e2e8f0',
-              borderRadius: 6,
-              cursor: loading ? 'wait' : 'pointer',
-              fontWeight: '600',
-              fontSize: '13px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 5,
-            }}
+            style={{ minHeight: 40 }}
           >
             🔄 {loading ? 'Caricamento...' : 'Aggiorna'}
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="primary"
             onClick={() => {
               setCurrentSupplier(null);
               setModalOpen(true);
             }}
-            style={{
-              padding: '10px 20px',
-              minHeight: 40,
-              background: '#0f2744',
-              color: 'white',
-              border: 'none',
-              borderRadius: 6,
-              cursor: 'pointer',
-              fontWeight: '600',
-              fontSize: 13,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-            }}
+            style={{ minHeight: 40 }}
           >
             <Plus size={18} /> Nuovo Fornitore
-          </button>
+          </Button>
         </div>
 
         {/* Stats */}
@@ -2054,32 +1802,28 @@ export default function Fornitori() {
           }}
         >
           <StatCard
-            icon={Users}
+            icon={<Users size={18} />}
             label="Totale Fornitori"
             value={stats.total}
-            color="#0f2744"
-            bgColor="#f1f5f9"
+            accent="primary"
           />
           <StatCard
-            icon={FileText}
+            icon={<FileText size={18} />}
             label="Con Fatture"
             value={stats.withInvoices}
-            color="#16a34a"
-            bgColor="#dcfce7"
+            accent="success"
           />
           <StatCard
-            icon={AlertCircle}
+            icon={<AlertCircle size={18} />}
             label="Dati Incompleti"
             value={stats.incomplete}
-            color="#d97706"
-            bgColor="#fef3c7"
+            accent="warning"
           />
           <StatCard
-            icon={CreditCard}
+            icon={<CreditCard size={18} />}
             label="Pagamento Cassa"
             value={stats.cash}
-            color="#0f2744"
-            bgColor="#e2e8f0"
+            accent="primary"
           />
         </div>
 
@@ -2093,14 +1837,14 @@ export default function Fornitori() {
           }}
           data-testid="filter-badges"
         >
-          <div
+          <Badge
+            variant="primary"
             style={{
               padding: '8px 14px',
-              borderRadius: '8px',
-              background: '#0f2744',
+              background: COLORS.primary,
               color: '#fff',
               fontSize: 13,
-              fontWeight: 600,
+              textTransform: 'none',
               display: 'flex',
               alignItems: 'center',
               gap: '8px',
@@ -2108,17 +1852,17 @@ export default function Fornitori() {
             data-testid="badge-totale"
           >
             <span style={{ opacity: 0.85 }}>Totale</span>
-            <span style={{ color: '#b8860b', fontSize: 16 }}>{totaliFiltrati.totale_fornitori}</span>
-          </div>
-          <div
+            <span style={{ color: COLORS.accent, fontSize: 16 }}>{totaliFiltrati.totale_fornitori}</span>
+          </Badge>
+          <Badge
+            variant="neutral"
             style={{
               padding: '8px 14px',
-              borderRadius: '8px',
-              background: '#f1f5f9',
-              color: '#0f2744',
+              background: COLORS.bg,
+              color: COLORS.primary,
               fontSize: 13,
-              fontWeight: 600,
-              border: '1px solid #e2e8f0',
+              textTransform: 'none',
+              border: `1px solid ${COLORS.border}`,
               display: 'flex',
               alignItems: 'center',
               gap: '8px',
@@ -2127,18 +1871,18 @@ export default function Fornitori() {
           >
             <span>✅ Attivi</span>
             <span style={{ fontSize: 16 }}>{totaliFiltrati.attivi}</span>
-          </div>
+          </Badge>
         </div>
 
         {/* Tabs */}
         {/* Search & Filters */}
         <div
           style={{
-            backgroundColor: 'white',
-            borderRadius: '12px',
+            backgroundColor: COLORS.card,
+            borderRadius: BORDER_RADIUS.lg,
             padding: '16px',
             marginBottom: '24px',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+            boxShadow: SHADOWS.sm,
           }}
         >
           <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
@@ -2162,7 +1906,7 @@ export default function Fornitori() {
                 style={{
                   width: '100%',
                   padding: '10px 12px 10px 40px',
-                  border: '1px solid #e5e7eb',
+                  border: `1px solid ${COLORS.border}`,
                   borderRadius: '8px',
                   fontSize: '14px',
                   boxSizing: 'border-box',
@@ -2176,7 +1920,7 @@ export default function Fornitori() {
               onChange={e => setFilterMetodo(e.target.value)}
               style={{
                 padding: '10px 14px',
-                border: '1px solid #e5e7eb',
+                border: `1px solid ${COLORS.border}`,
                 borderRadius: '8px',
                 fontSize: '14px',
                 backgroundColor: 'white',
@@ -2199,11 +1943,11 @@ export default function Fornitori() {
                 alignItems: 'center',
                 gap: '8px',
                 padding: '10px 14px',
-                border: '1px solid #e5e7eb',
+                border: `1px solid ${COLORS.border}`,
                 borderRadius: '8px',
                 cursor: 'pointer',
                 fontSize: '14px',
-                backgroundColor: filterIncomplete ? '#fef3c7' : 'white',
+                backgroundColor: filterIncomplete ? COLORS.warningLight : 'white',
               }}
             >
               <input
@@ -2223,13 +1967,13 @@ export default function Fornitori() {
                 alignItems: 'center',
                 gap: '8px',
                 padding: '10px 14px',
-                border: filterSenzaMetodo ? '1px solid #d97706' : '1px solid #e5e7eb',
+                border: filterSenzaMetodo ? `1px solid ${COLORS.warning}` : `1px solid ${COLORS.border}`,
                 borderRadius: '8px',
                 cursor: 'pointer',
                 fontSize: '14px',
                 fontWeight: filterSenzaMetodo ? 700 : 400,
-                backgroundColor: filterSenzaMetodo ? '#fef3c7' : 'white',
-                color: filterSenzaMetodo ? '#92400e' : '#374151',
+                backgroundColor: filterSenzaMetodo ? COLORS.warningLight : 'white',
+                color: filterSenzaMetodo ? COLORS.warning : COLORS.gray[700],
               }}
               data-testid="filter-senza-metodo-pagamento"
             >
@@ -2237,7 +1981,7 @@ export default function Fornitori() {
                 type="checkbox"
                 checked={filterSenzaMetodo}
                 onChange={e => setFilterSenzaMetodo(e.target.checked)}
-                style={{ width: '16px', height: '16px', accentColor: '#d97706' }}
+                style={{ width: '16px', height: '16px', accentColor: COLORS.warning }}
               />
               ⚠️ Fatture senza metodo
             </label>
@@ -2254,44 +1998,39 @@ export default function Fornitori() {
               alignItems: 'center',
               marginTop: '12px',
               paddingTop: '12px',
-              borderTop: '1px solid #e5e7eb',
+              borderTop: `1px solid ${COLORS.border}`,
             }}
             data-testid="filtri-avanzati-row"
           >
             {/* Segmented: Anzianità */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ fontSize: 13, color: '#0f2744', fontWeight: 600 }}>Anzianità:</span>
+              <span style={{ fontSize: 13, color: COLORS.primary, fontWeight: 600 }}>Anzianità:</span>
               {[
                 { k: 'tutti', l: 'Tutti' },
                 { k: 'nuovo', l: '🆕 Nuovi' },
                 { k: 'storico', l: '📜 Storici' },
               ].map(opt => (
-                <button
+                <Button
                   key={opt.k}
                   type="button"
+                  variant={filterAnzianita === opt.k ? 'primary' : 'secondary'}
+                  size="sm"
                   onClick={() => setFilterAnzianita(opt.k)}
                   data-testid={`filter-anzianita-${opt.k}`}
                   style={{
-                    padding: '6px 12px',
                     minHeight: 40,
-                    border: filterAnzianita === opt.k ? '1px solid #0f2744' : '1px solid #e5e7eb',
-                    background: filterAnzianita === opt.k ? '#0f2744' : 'white',
-                    color: filterAnzianita === opt.k ? '#b8860b' : '#374151',
-                    borderRadius: 6,
-                    fontSize: 13,
-                    fontWeight: filterAnzianita === opt.k ? 700 : 500,
-                    cursor: 'pointer',
+                    ...(filterAnzianita === opt.k ? { color: COLORS.accent } : {}),
                   }}
                 >
                   {opt.l}
-                </button>
+                </Button>
               ))}
             </div>
 
             {/* Soglia giorni — visibile solo se Nuovi o Storici selezionato */}
             {(filterAnzianita === 'nuovo' || filterAnzianita === 'storico') && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ fontSize: 13, color: '#0f2744', fontWeight: 600 }}>
+                <span style={{ fontSize: 13, color: COLORS.primary, fontWeight: 600 }}>
                   Soglia giorni:
                 </span>
                 <input
@@ -2306,7 +2045,7 @@ export default function Fornitori() {
                   data-testid="filter-giorni-nuovo"
                   style={{
                     padding: '6px 10px',
-                    border: '1px solid #e5e7eb',
+                    border: `1px solid ${COLORS.border}`,
                     borderRadius: 6,
                     fontSize: 13,
                     width: 80,
@@ -2317,7 +2056,7 @@ export default function Fornitori() {
 
             {/* Ricerca prodotto venduto */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: '1 1 220px' }}>
-              <span style={{ fontSize: 13, color: '#0f2744', fontWeight: 600 }}>Prodotto:</span>
+              <span style={{ fontSize: 13, color: COLORS.primary, fontWeight: 600 }}>Prodotto:</span>
               <input
                 type="text"
                 value={filtroProdotto}
@@ -2326,7 +2065,7 @@ export default function Fornitori() {
                 data-testid="filter-prodotto"
                 style={{
                   padding: '6px 10px',
-                  border: '1px solid #e5e7eb',
+                  border: `1px solid ${COLORS.border}`,
                   borderRadius: 6,
                   fontSize: 13,
                   flex: 1,
@@ -2334,22 +2073,17 @@ export default function Fornitori() {
                 }}
               />
               {filtroProdotto && (
-                <button
+                <Button
                   type="button"
+                  variant="secondary"
+                  size="sm"
                   onClick={() => setFiltroProdotto('')}
                   data-testid="filter-prodotto-clear"
-                  style={{
-                    padding: '4px 8px',
-                    background: '#f1f5f9',
-                    border: '1px solid #e5e7eb',
-                    borderRadius: 6,
-                    fontSize: 12,
-                    cursor: 'pointer',
-                  }}
+                  style={{ padding: '4px 8px', fontSize: 12 }}
                   title="Pulisci"
                 >
                   ✕
-                </button>
+                </Button>
               )}
             </div>
 
@@ -2357,27 +2091,20 @@ export default function Fornitori() {
             {(filterAnzianita !== 'tutti' ||
               giorniNuovo !== 90 ||
               filtroProdotto) && (
-              <button
+              <Button
                 type="button"
+                variant="outline"
+                size="sm"
                 onClick={() => {
                   setFilterAnzianita('tutti');
                   setGiorniNuovo(90);
                   setFiltroProdotto('');
                 }}
                 data-testid="filtri-avanzati-reset"
-                style={{
-                  padding: '6px 12px',
-                  background: '#fff',
-                  border: '1px solid #b8860b',
-                  color: '#b8860b',
-                  borderRadius: 6,
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
+                style={{ borderColor: COLORS.accent, color: COLORS.accent }}
               >
                 Reset filtri avanzati
-              </button>
+              </Button>
             )}
 
             {/* L'auto-conferma delle fatture per metodo fornitore è AUTOMATICA:
@@ -2386,7 +2113,7 @@ export default function Fornitori() {
         </div>
 
         {/* Results Count */}
-        <div style={{ marginBottom: '16px', fontSize: '14px', color: '#6b7280' }}>
+        <div style={{ marginBottom: '16px', fontSize: '14px', color: COLORS.textMuted }}>
           {filteredSuppliers.length === suppliers.length
             ? `${suppliers.length} fornitori`
             : `${filteredSuppliers.length} di ${suppliers.length} fornitori`}
@@ -2399,8 +2126,8 @@ export default function Fornitori() {
               style={{
                 width: '40px',
                 height: '40px',
-                border: '4px solid #e5e7eb',
-                borderTopColor: '#0f2744',
+                border: `4px solid ${COLORS.border}`,
+                borderTopColor: COLORS.primary,
                 borderRadius: '50%',
                 animation: 'spin 1s linear infinite',
                 margin: '0 auto',
@@ -2411,16 +2138,16 @@ export default function Fornitori() {
         ) : filteredSuppliers.length === 0 ? (
           <div
             style={{
-              backgroundColor: 'white',
-              borderRadius: '12px',
+              backgroundColor: COLORS.card,
+              borderRadius: BORDER_RADIUS.lg,
               padding: '60px',
               textAlign: 'center',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+              boxShadow: SHADOWS.sm,
             }}
           >
-            <Building2 size={48} color="#d1d5db" style={{ marginBottom: '16px' }} />
-            <h3 style={{ margin: '0 0 8px', color: '#374151' }}>Nessun fornitore trovato</h3>
-            <p style={{ color: '#6b7280', margin: 0 }}>
+            <Building2 size={48} color={COLORS.border} style={{ marginBottom: '16px' }} />
+            <h3 style={{ margin: '0 0 8px', color: COLORS.gray[700] }}>Nessun fornitore trovato</h3>
+            <p style={{ color: COLORS.textMuted, margin: 0 }}>
               {suppliers.length === 0
                 ? 'Aggiungi il primo fornitore'
                 : 'Modifica i filtri di ricerca'}
@@ -2500,7 +2227,7 @@ export default function Fornitori() {
               {/* Header */}
               <div
                 style={{
-                  background: '#0f2744',
+                  background: COLORS.primary,
                   padding: '20px 24px',
                   color: 'white',
                 }}
@@ -2554,7 +2281,7 @@ export default function Fornitori() {
                       style={{
                         width: '40px',
                         height: '40px',
-                        border: '4px solid #e5e7eb',
+                        border: `4px solid ${COLORS.border}`,
                         borderTopColor: '#3b82f6',
                         borderRadius: '50%',
                         animation: 'spin 1s linear infinite',
@@ -2575,13 +2302,13 @@ export default function Fornitori() {
                         textAlign: 'center',
                       }}
                     >
-                      <div style={{ fontSize: '14px', color: '#0f2744', marginBottom: '4px' }}>
+                      <div style={{ fontSize: '14px', color: COLORS.primary, marginBottom: '4px' }}>
                         TOTALE FATTURATO {(fatturatoModal.data?.anno ?? '')}
                       </div>
-                      <div style={{ fontSize: '32px', fontWeight: 700, color: '#0f2744', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>
+                      <div style={{ fontSize: '32px', fontWeight: 700, color: COLORS.primary, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>
                         {formatEuro(fatturatoModal.data.totale_fatturato || 0)}
                       </div>
-                      <div style={{ fontSize: '14px', color: '#0f2744', marginTop: '8px' }}>
+                      <div style={{ fontSize: '14px', color: COLORS.primary, marginTop: '8px' }}>
                         {(fatturatoModal.data?.numero_fatture ?? 0)} fatture
                       </div>
                     </div>
@@ -2637,7 +2364,7 @@ export default function Fornitori() {
                             style={{
                               fontSize: '13px',
                               fontWeight: 600,
-                              color: '#374151',
+                              color: COLORS.gray[700],
                               marginBottom: '8px',
                             }}
                           >
@@ -2720,8 +2447,8 @@ export default function Fornitori() {
               <div
                 style={{
                   padding: '20px 24px',
-                  borderBottom: '1px solid #e5e7eb',
-                  background: '#0f2744',
+                  borderBottom: `1px solid ${COLORS.border}`,
+                  background: COLORS.primary,
                   color: 'white',
                 }}
               >
@@ -2760,7 +2487,7 @@ export default function Fornitori() {
               <div
                 style={{
                   padding: '16px 24px',
-                  borderBottom: '1px solid #e5e7eb',
+                  borderBottom: `1px solid ${COLORS.border}`,
                   background: '#f8fafc',
                   display: 'flex',
                   flexWrap: 'wrap',
@@ -2930,7 +2657,7 @@ export default function Fornitori() {
                   disabled={estrattoModal.loading}
                   style={{
                     padding: '8px 16px',
-                    background: '#0f2744',
+                    background: COLORS.primary,
                     color: 'white',
                     border: 'none',
                     borderRadius: 6,
@@ -2972,8 +2699,8 @@ export default function Fornitori() {
                           textAlign: 'center',
                         }}
                       >
-                        <div style={{ fontSize: 11, color: '#0f2744' }}>Documenti</div>
-                        <div style={{ fontSize: 24, fontWeight: 700, color: '#0f2744' }}>
+                        <div style={{ fontSize: 11, color: COLORS.primary }}>Documenti</div>
+                        <div style={{ fontSize: 24, fontWeight: 700, color: COLORS.primary }}>
                           {estrattoModal.data.totali?.numero_documenti || 0}
                         </div>
                       </div>
@@ -3075,7 +2802,7 @@ export default function Fornitori() {
                             <tr
                               key={f.id || idx}
                               style={{
-                                borderBottom: '1px solid #e5e7eb',
+                                borderBottom: `1px solid ${COLORS.border}`,
                                 background: f.is_nota_credito
                                   ? '#fef2f2'
                                   : idx % 2 === 0
@@ -3102,7 +2829,7 @@ export default function Fornitori() {
                                   <span
                                     style={{
                                       background: '#dbeafe',
-                                      color: '#0f2744',
+                                      color: COLORS.primary,
                                       padding: '2px 8px',
                                       borderRadius: 4,
                                       fontSize: 11,
@@ -3143,7 +2870,7 @@ export default function Fornitori() {
                                       f.metodo_pagamento === 'cassa' ||
                                       f.metodo_pagamento === 'contanti'
                                         ? '#166534'
-                                        : '#0f2744',
+                                        : COLORS.primary,
                                   }}
                                 >
                                   {f.metodo_pagamento || '-'}
@@ -3268,7 +2995,7 @@ export default function Fornitori() {
                                         border: 'none',
                                         cursor: 'pointer',
                                         background: '#dbeafe',
-                                        color: '#0f2744',
+                                        color: COLORS.primary,
                                         fontSize: 10,
                                         fontWeight: 600,
                                       }}
@@ -3303,7 +3030,7 @@ export default function Fornitori() {
               <div
                 style={{
                   padding: '16px 24px',
-                  borderTop: '1px solid #e5e7eb',
+                  borderTop: `1px solid ${COLORS.border}`,
                   background: '#f8fafc',
                   display: 'flex',
                   justifyContent: 'space-between',
@@ -3317,7 +3044,9 @@ export default function Fornitori() {
                   </strong>
                 </div>
                 <div style={{ display: 'flex', gap: 12 }}>
-                  <button
+                  <Button
+                    variant="secondary"
+                    size="sm"
                     onClick={() => {
                       const modal = document.getElementById('estratto-fatture-content');
                       if (!modal) {
@@ -3329,38 +3058,21 @@ export default function Fornitori() {
                       body{font-family:Arial,sans-serif;padding:20px}
                       table{width:100%;border-collapse:collapse;font-size:12px}
                       th,td{border:1px solid #ddd;padding:8px;text-align:left}
-                      th{background:#0f2744;color:white}
+                      th{background:${COLORS.primary};color:white}
                     </style></head><body>${modal.innerHTML}</body></html>`);
                       printWin.document.close();
                       printWin.print();
                     }}
-                    style={{
-                      padding: '8px 16px',
-                      background: '#f1f5f9',
-                      color: '#374151',
-                      border: '1px solid #d1d5db',
-                      borderRadius: 6,
-                      cursor: 'pointer',
-                      fontSize: 13,
-                    }}
                   >
                     🖨️ Stampa
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="sm"
                     onClick={() => setEstrattoModal(prev => ({ ...prev, open: false }))}
-                    style={{
-                      padding: '8px 16px',
-                      background: '#0f2744',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: 6,
-                      cursor: 'pointer',
-                      fontSize: 13,
-                      fontWeight: 600,
-                    }}
                   >
                     Chiudi
-                  </button>
+                  </Button>
                 </div>
               </div>
             </div>
@@ -3406,8 +3118,8 @@ export default function Fornitori() {
               <div
                 style={{
                   padding: '20px 24px',
-                  borderBottom: '1px solid #e5e7eb',
-                  background: '#0f2744',
+                  borderBottom: `1px solid ${COLORS.border}`,
+                  background: COLORS.primary,
                   color: 'white',
                 }}
               >
@@ -3480,7 +3192,7 @@ export default function Fornitori() {
                         margin: '0 auto 20px',
                       }}
                     />
-                    <h3 style={{ color: '#0f2744', margin: '0 0 8px 0', fontSize: 16 }}>
+                    <h3 style={{ color: COLORS.primary, margin: '0 0 8px 0', fontSize: 16 }}>
                       Ricerca in corso...
                     </h3>
                     <p style={{ color: '#6b7280', fontSize: 13 }}>
@@ -3501,14 +3213,14 @@ export default function Fornitori() {
                             margin: '0 0 8px 0',
                             fontWeight: 600,
                             fontSize: 13,
-                            color: '#0f2744',
+                            color: COLORS.primary,
                           }}
                         >
                           Prodotti trovati nelle fatture (
                           {schedeTecnicheJob.prodotti_trovati.length}):
                         </p>
                         {schedeTecnicheJob.prodotti_trovati.slice(0, 8).map((p, i) => (
-                          <div key={i} style={{ fontSize: 12, color: '#374151', padding: '3px 0' }}>
+                          <div key={i} style={{ fontSize: 12, color: COLORS.gray[700], padding: '3px 0' }}>
                             • {p}
                           </div>
                         ))}
@@ -3523,7 +3235,7 @@ export default function Fornitori() {
                 ) : schedeTecnicheModal.schede.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: 40 }}>
                     <div style={{ fontSize: 52, marginBottom: 16 }}>📄</div>
-                    <h3 style={{ color: '#374151', margin: '0 0 8px 0' }}>
+                    <h3 style={{ color: COLORS.gray[700], margin: '0 0 8px 0' }}>
                       Nessuna scheda tecnica
                     </h3>
                     <p style={{ color: '#6b7280', margin: '0 0 4px 0' }}>
@@ -3550,7 +3262,7 @@ export default function Fornitori() {
                     <button
                       onClick={handleCercaSchedeTecniche}
                       style={{
-                        background: '#0f2744',
+                        background: COLORS.primary,
                         color: 'white',
                         border: 'none',
                         borderRadius: 8,
@@ -3589,7 +3301,7 @@ export default function Fornitori() {
                         onClick={handleCercaSchedeTecniche}
                         style={{
                           background: '#f0f9ff',
-                          color: '#0f2744',
+                          color: COLORS.primary,
                           border: '1px solid #bae6fd',
                           borderRadius: 6,
                           padding: '6px 14px',
@@ -3608,13 +3320,13 @@ export default function Fornitori() {
                           style={{
                             background:
                               scheda.stato === 'trovato'
-                                ? '#f0fdf4'
+                                ? COLORS.successLight
                                 : scheda.stato === 'url_trovato'
-                                  ? '#fffbeb'
-                                  : '#f9fafb',
-                            borderRadius: 10,
+                                  ? COLORS.warningLight
+                                  : COLORS.bgAlt,
+                            borderRadius: BORDER_RADIUS.lg,
                             padding: '14px 16px',
-                            border: `1px solid ${scheda.stato === 'trovato' ? '#86efac' : scheda.stato === 'url_trovato' ? '#fde68a' : '#e5e7eb'}`,
+                            border: `1px solid ${scheda.stato === 'trovato' ? COLORS.success : scheda.stato === 'url_trovato' ? COLORS.warning : COLORS.border}`,
                             display: 'flex',
                             alignItems: 'flex-start',
                             gap: 14,
@@ -3624,18 +3336,18 @@ export default function Fornitori() {
                             style={{
                               width: 40,
                               height: 40,
-                              borderRadius: 8,
+                              borderRadius: BORDER_RADIUS.md,
                               flexShrink: 0,
                               background:
                                 scheda.stato === 'trovato'
-                                  ? '#dcfce7'
+                                  ? COLORS.successLight
                                   : scheda.stato === 'url_trovato'
-                                    ? '#fef3c7'
+                                    ? COLORS.warningLight
                                     : scheda.stato === 'url_suggerito'
-                                      ? '#e2e8f0'
+                                      ? COLORS.gray[200]
                                       : scheda.stato === 'non_cercato'
-                                        ? '#f1f5f9'
-                                        : '#f1f5f9',
+                                        ? COLORS.bg
+                                        : COLORS.bg,
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
@@ -3657,7 +3369,7 @@ export default function Fornitori() {
                               style={{
                                 fontWeight: 600,
                                 fontSize: 14,
-                                color: '#0f2744',
+                                color: COLORS.primary,
                                 marginBottom: 3,
                               }}
                             >
@@ -3698,7 +3410,7 @@ export default function Fornitori() {
                               rel="noopener noreferrer"
                               style={{
                                 padding: '6px 14px',
-                                background: scheda.stato === 'trovato' ? '#3b82f6' : '#0f2744',
+                                background: scheda.stato === 'trovato' ? '#3b82f6' : COLORS.primary,
                                 color: 'white',
                                 borderRadius: 6,
                                 textDecoration: 'none',
@@ -3721,7 +3433,7 @@ export default function Fornitori() {
               <div
                 style={{
                   padding: '16px 24px',
-                  borderTop: '1px solid #e5e7eb',
+                  borderTop: `1px solid ${COLORS.border}`,
                   background: '#f8fafc',
                   display: 'flex',
                   justifyContent: 'flex-end',
@@ -3738,7 +3450,7 @@ export default function Fornitori() {
                   }
                   style={{
                     padding: '10px 20px',
-                    background: '#0f2744',
+                    background: COLORS.primary,
                     color: 'white',
                     border: 'none',
                     borderRadius: 8,

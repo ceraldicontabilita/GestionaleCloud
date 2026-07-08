@@ -3,7 +3,8 @@ import { dashboardSummary, health } from '../api';
 import api from '../api';
 import { Link } from 'react-router-dom';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
-import { formatEuro, STYLES, COLORS, button, badge, useIsMobile } from '../lib/utils';
+import { formatEuro, STYLES, COLORS, SHADOWS, BORDER_RADIUS, useIsMobile } from '../lib/utils';
+import { Button, Badge, StatCard, TableWrap, Table, Th, Td } from '../components/ds';
 import { PageLayout } from '../components/PageLayout';
 import {
   LineChart,
@@ -46,7 +47,6 @@ export default function Dashboard() {
   const [volumeRealeLoading, setVolumeRealeLoading] = useState(false);
   // Bilancio Istantaneo
   const [bilancioIstantaneo, setBilancioIstantaneo] = useState(null);
-              <span style={{ fontSize: 16 }}>F24</span>
   const [scadenzeF24, setScadenzeF24] = useState(null);
 
   // Alert Limiti Giustificativi
@@ -250,7 +250,7 @@ export default function Dashboard() {
     return (
       <PageLayout title="Dashboard" icon="\u25A1" subtitle="Panoramica">
         <div style={STYLES.card}>
-          <p style={{ color: COLORS.gray }}>Caricamento in corso...</p>
+          <p style={{ color: COLORS.textMuted }}>Caricamento in corso...</p>
         </div>
       </PageLayout>
     );
@@ -262,37 +262,22 @@ export default function Dashboard() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             {/* Pulsante Auto-Riparazione */}
-            <button
+            <Button
+              variant="primary"
+              size="sm"
               onClick={eseguiAutoRiparazione}
               disabled={autoRepairStatus === 'running'}
               data-testid="btn-auto-repair"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '6px 12px',
-                background:
-                  autoRepairStatus === 'running'
-                    ? '#9ca3af'
-                    : '#0f2744',
-                color: 'white',
-                border: 'none',
-                borderRadius: 6,
-                cursor: autoRepairStatus === 'running' ? 'wait' : 'pointer',
-                fontWeight: 500,
-                fontSize: 12,
-                boxShadow: '0 2px 4px rgba(102,126,234,0.3)',
-              }}
             >
               {autoRepairStatus === 'running' ? <>Riparazione...</> : <>Auto-ripara dati</>}
-            </button>
+            </Button>
             {autoRepairStatus && autoRepairStatus !== 'running' && autoRepairStatus.totale > 0 && (
-              <span style={badge('success')}>{autoRepairStatus.totale} correzioni</span>
+              <Badge variant="success">{autoRepairStatus.totale} correzioni</Badge>
             )}
             {err ? (
               <span style={{ color: COLORS.danger, fontSize: 14 }}>{err}</span>
             ) : (
-              <span style={badge('success')}>Backend connesso</span>
+              <Badge variant="success">Backend connesso</Badge>
             )}
           </div>
         </div>
@@ -316,12 +301,12 @@ export default function Dashboard() {
       <div
         style={{
           background: showVolumeReale
-            ? '#0f2744'
-            : '#f7fafc',
-          borderRadius: 6,
+            ? COLORS.primary
+            : COLORS.bgAlt,
+          borderRadius: BORDER_RADIUS.sm,
           padding: 8,
           marginBottom: 10,
-          border: showVolumeReale ? 'none' : '1px dashed #e2e8f0',
+          border: showVolumeReale ? 'none' : `1px dashed ${COLORS.border}`,
           transition: 'all 0.3s ease',
         }}
       >
@@ -334,37 +319,33 @@ export default function Dashboard() {
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Lock size={12} color={showVolumeReale ? 'white' : '#718096'} />
+            <Lock size={12} color={showVolumeReale ? 'white' : COLORS.textMuted} />
             <span
               style={{
                 fontWeight: 600,
-                color: showVolumeReale ? 'white' : '#4a5568',
+                color: showVolumeReale ? 'white' : COLORS.gray[700],
                 fontSize: 11,
               }}
             >
               Volume Affari
             </span>
           </div>
-          <button
+          <Button
+            variant="primary"
+            size="sm"
             onClick={handleToggleVolumeReale}
             data-testid="toggle-volume-reale"
+            iconLeft={showVolumeReale ? <EyeOff size={10} /> : <Eye size={10} />}
             style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 3,
               padding: '3px 8px',
-              background: showVolumeReale ? 'rgba(255,255,255,0.2)' : '#1e3a5f',
-              color: 'white',
-              border: 'none',
-              borderRadius: 4,
-              cursor: 'pointer',
-              fontWeight: 500,
               fontSize: 10,
+              gap: 3,
+              background: showVolumeReale ? 'rgba(255,255,255,0.2)' : COLORS.primaryLight,
+              borderColor: showVolumeReale ? 'rgba(255,255,255,0.2)' : COLORS.primaryLight,
             }}
           >
-            {showVolumeReale ? <EyeOff size={10} /> : <Eye size={10} />}
             {showVolumeReale ? 'Nascondi' : 'Mostra'}
-          </button>
+          </Button>
         </div>
 
         {showVolumeReale && (
@@ -381,7 +362,7 @@ export default function Dashboard() {
                   gap: 15,
                 }}
               >
-                <div style={{ background: 'rgba(255,255,255,0.1)', borderRadius: 8, padding: 16 }}>
+                <div style={{ background: 'rgba(255,255,255,0.1)', borderRadius: BORDER_RADIUS.md, padding: 16 }}>
                   <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, marginBottom: 4 }}>
                     Fatturato Ufficiale
                   </div>
@@ -389,7 +370,7 @@ export default function Dashboard() {
                     {formatEuro(volumeRealeData.fatturato_ufficiale)}
                   </div>
                 </div>
-                <div style={{ background: 'rgba(255,255,255,0.1)', borderRadius: 8, padding: 16 }}>
+                <div style={{ background: 'rgba(255,255,255,0.1)', borderRadius: BORDER_RADIUS.md, padding: 16 }}>
                   <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, marginBottom: 4 }}>
                     Corrispettivi
                   </div>
@@ -397,7 +378,7 @@ export default function Dashboard() {
                     {formatEuro(volumeRealeData.corrispettivi)}
                   </div>
                 </div>
-                <div style={{ background: 'rgba(16,185,129,0.3)', borderRadius: 8, padding: 16 }}>
+                <div style={{ background: 'rgba(16,185,129,0.3)', borderRadius: BORDER_RADIUS.md, padding: 16 }}>
                   <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, marginBottom: 4 }}>
                     + Incassi Extra
                   </div>
@@ -405,7 +386,7 @@ export default function Dashboard() {
                     +{formatEuro(volumeRealeData.incassi_non_fatturati)}
                   </div>
                 </div>
-                <div style={{ background: 'rgba(239,68,68,0.3)', borderRadius: 8, padding: 16 }}>
+                <div style={{ background: 'rgba(239,68,68,0.3)', borderRadius: BORDER_RADIUS.md, padding: 16 }}>
                   <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, marginBottom: 4 }}>
                     - Spese Extra
                   </div>
@@ -416,8 +397,8 @@ export default function Dashboard() {
                 <div
                   style={{
                     gridColumn: 'span 4',
-                    background: '#b91c1c',
-                    borderRadius: 8,
+                    background: COLORS.danger,
+                    borderRadius: BORDER_RADIUS.md,
                     padding: 20,
                     display: 'flex',
                     justifyContent: 'space-between',
@@ -475,8 +456,8 @@ export default function Dashboard() {
       {bilancioIstantaneo && (
         <div
           style={{
-            background: '#0f2744',
-            borderRadius: 10,
+            background: COLORS.primary,
+            borderRadius: BORDER_RADIUS.lg,
             padding: 14,
             marginTop: 12,
             color: 'white',
@@ -519,9 +500,9 @@ export default function Dashboard() {
             <div
               style={{
                 background: 'rgba(16,185,129,0.2)',
-                borderRadius: 6,
+                borderRadius: BORDER_RADIUS.sm,
                 padding: 10,
-                borderLeft: '3px solid #10b981',
+                borderLeft: `3px solid ${COLORS.success}`,
               }}
             >
               <div style={{ fontSize: 10, opacity: 0.8 }}>RICAVI</div>
@@ -532,9 +513,9 @@ export default function Dashboard() {
             <div
               style={{
                 background: 'rgba(239,68,68,0.2)',
-                borderRadius: 6,
+                borderRadius: BORDER_RADIUS.sm,
                 padding: 10,
-                borderLeft: '3px solid #ef4444',
+                borderLeft: `3px solid ${COLORS.danger}`,
               }}
             >
               <div style={{ fontSize: 10, opacity: 0.8 }}>COSTI</div>
@@ -545,9 +526,9 @@ export default function Dashboard() {
             <div
               style={{
                 background: 'rgba(59,130,246,0.2)',
-                borderRadius: 6,
+                borderRadius: BORDER_RADIUS.sm,
                 padding: 10,
-                borderLeft: '3px solid #3b82f6',
+                borderLeft: `3px solid ${COLORS.info}`,
               }}
             >
               <div style={{ fontSize: 10, opacity: 0.8 }}>SALDO IVA</div>
@@ -567,9 +548,9 @@ export default function Dashboard() {
                   (bilancioIstantaneo.bilancio?.utile_lordo || 0) >= 0
                     ? 'rgba(16,185,129,0.3)'
                     : 'rgba(239,68,68,0.3)',
-                borderRadius: 6,
+                borderRadius: BORDER_RADIUS.sm,
                 padding: 10,
-                borderLeft: `3px solid ${(bilancioIstantaneo.bilancio?.utile_lordo || 0) >= 0 ? '#10b981' : '#ef4444'}`,
+                borderLeft: `3px solid ${(bilancioIstantaneo.bilancio?.utile_lordo || 0) >= 0 ? COLORS.success : COLORS.danger}`,
               }}
             >
               <div style={{ fontSize: 10, opacity: 0.8 }}>UTILE LORDO</div>
@@ -592,11 +573,11 @@ export default function Dashboard() {
       {imposteData && (
         <div
           style={{
-            borderRadius: 10,
+            borderRadius: BORDER_RADIUS.lg,
             padding: 14,
-            boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+            boxShadow: SHADOWS.sm,
             marginTop: 12,
-            background: '#0f2744',
+            background: COLORS.primary,
             color: 'white',
           }}
           data-testid="widget-calcolo-imposte"
@@ -629,7 +610,7 @@ export default function Dashboard() {
                 padding: '4px 10px',
                 background: 'rgba(255,255,255,0.2)',
                 color: 'white',
-                borderRadius: 4,
+                borderRadius: BORDER_RADIUS.sm,
                 textDecoration: 'none',
                 fontSize: 11,
               }}
@@ -645,25 +626,25 @@ export default function Dashboard() {
               gap: 10,
             }}
           >
-            <div style={{ background: 'rgba(255,255,255,0.1)', borderRadius: 6, padding: 10 }}>
+            <div style={{ background: 'rgba(255,255,255,0.1)', borderRadius: BORDER_RADIUS.sm, padding: 10 }}>
               <div style={{ fontSize: 10, opacity: 0.8 }}>Utile</div>
               <div style={{ fontSize: 16, fontWeight: 'bold' }}>
                 {formatEuro(imposteData.utile_civilistico)}
               </div>
             </div>
-            <div style={{ background: 'rgba(255,255,255,0.1)', borderRadius: 6, padding: 10 }}>
+            <div style={{ background: 'rgba(255,255,255,0.1)', borderRadius: BORDER_RADIUS.sm, padding: 10 }}>
               <div style={{ fontSize: 10, opacity: 0.8 }}>IRES (24%)</div>
               <div style={{ fontSize: 16, fontWeight: 'bold', color: '#fbbf24' }}>
                 {formatEuro(imposteData.ires?.imposta_dovuta)}
               </div>
             </div>
-            <div style={{ background: 'rgba(255,255,255,0.1)', borderRadius: 6, padding: 10 }}>
+            <div style={{ background: 'rgba(255,255,255,0.1)', borderRadius: BORDER_RADIUS.sm, padding: 10 }}>
               <div style={{ fontSize: 10, opacity: 0.8 }}>IRAP</div>
               <div style={{ fontSize: 16, fontWeight: 'bold', color: '#a78bfa' }}>
                 {formatEuro(imposteData.irap?.imposta_dovuta)}
               </div>
             </div>
-            <div style={{ background: 'rgba(239,68,68,0.3)', borderRadius: 6, padding: 10 }}>
+            <div style={{ background: 'rgba(239,68,68,0.3)', borderRadius: BORDER_RADIUS.sm, padding: 10 }}>
               <div style={{ fontSize: 10, opacity: 0.8 }}>TOTALE</div>
               <div style={{ fontSize: 16, fontWeight: 'bold' }}>
                 {formatEuro(imposteData.totale_imposte)}
@@ -679,7 +660,7 @@ export default function Dashboard() {
                 marginTop: 15,
                 padding: 12,
                 background: 'rgba(255,255,255,0.05)',
-                borderRadius: 8,
+                borderRadius: BORDER_RADIUS.md,
                 display: 'flex',
                 gap: 20,
                 fontSize: 13,
@@ -702,16 +683,15 @@ export default function Dashboard() {
         </div>
       )}
 
-              <span style={{ fontSize: 16 }}>F24</span>
       {scadenzeF24 && scadenzeF24.scadenze && scadenzeF24.scadenze.length > 0 && (
         <div
           style={{
-            background: 'white',
-            borderRadius: 10,
+            background: COLORS.card,
+            borderRadius: BORDER_RADIUS.lg,
             padding: 14,
             marginTop: 12,
-            border: '1px solid #e5e7eb',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+            border: `1px solid ${COLORS.border}`,
+            boxShadow: SHADOWS.sm,
           }}
           data-testid="widget-scadenze-f24"
         >
@@ -726,20 +706,11 @@ export default function Dashboard() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: 16 }}>📋</span>
               <span style={{ fontSize: 16 }}>F24</span>
-              <span
-                style={{
-                  background: '#fee2e2',
-                  color: '#dc2626',
-                  fontSize: 10,
-                  padding: '2px 6px',
-                  borderRadius: 4,
-                  fontWeight: 600,
-                }}
-              >
+              <Badge variant="danger" style={{ fontSize: 10, padding: '2px 6px', borderRadius: BORDER_RADIUS.sm }}>
                 {scadenzeF24.totale || scadenzeF24.scadenze.length}
-              </span>
+              </Badge>
             </div>
-            <Link to="/riconciliazione/f24" style={{ fontSize: 11, color: '#3b82f6', textDecoration: 'none' }}>
+            <Link to="/riconciliazione/f24" style={{ fontSize: 11, color: COLORS.info, textDecoration: 'none' }}>
               Vedi tutti
             </Link>
           </div>
@@ -756,30 +727,30 @@ export default function Dashboard() {
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     padding: '8px 10px',
-                    background: isScaduto ? '#fef2f2' : isUrgente ? '#fef3c7' : '#f8fafc',
-                    borderRadius: 6,
-                    borderLeft: `3px solid ${isScaduto ? '#dc2626' : isUrgente ? '#f59e0b' : '#3b82f6'}`,
+                    background: isScaduto ? COLORS.dangerLight : isUrgente ? COLORS.warningLight : COLORS.bgAlt,
+                    borderRadius: BORDER_RADIUS.sm,
+                    borderLeft: `3px solid ${isScaduto ? COLORS.danger : isUrgente ? COLORS.warning : COLORS.info}`,
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
                     <span style={{ fontSize: 14 }}>{f24.tipo === 'IVA' ? '🧾' : '📋'}</span>
                     <div>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: '#1e293b' }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: COLORS.text }}>
                         {f24.descrizione || f24.tipo || 'F24'}
                       </div>
-                      <div style={{ fontSize: 10, color: '#64748b' }}>
+                      <div style={{ fontSize: 10, color: COLORS.textMuted }}>
                         {f24.tributo || f24.codice_tributo || ''}
                       </div>
                     </div>
                   </div>
                   <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: '#dc2626' }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.danger }}>
                       {formatEuro(f24.importo)}
                     </div>
                     <div
                       style={{
                         fontSize: 10,
-                        color: isScaduto ? '#dc2626' : isUrgente ? '#f59e0b' : '#64748b',
+                        color: isScaduto ? COLORS.danger : isUrgente ? COLORS.warning : COLORS.textMuted,
                       }}
                     >
                       {isScaduto
@@ -801,14 +772,14 @@ export default function Dashboard() {
               style={{
                 marginTop: 10,
                 paddingTop: 10,
-                borderTop: '1px solid #e5e7eb',
+                borderTop: `1px solid ${COLORS.border}`,
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
               }}
             >
-              <span style={{ fontSize: 11, color: '#64748b' }}>Totale da versare</span>
-              <span style={{ fontSize: 14, fontWeight: 700, color: '#dc2626' }}>
+              <span style={{ fontSize: 11, color: COLORS.textMuted }}>Totale da versare</span>
+              <span style={{ fontSize: 14, fontWeight: 700, color: COLORS.danger }}>
                 {formatEuro(scadenzeF24.totale_importo)}
               </span>
             </div>
@@ -820,12 +791,12 @@ export default function Dashboard() {
       {verbaliStats && (
         <div
           style={{
-            background: 'white',
-            borderRadius: 12,
+            background: COLORS.card,
+            borderRadius: BORDER_RADIUS.xl,
             padding: 20,
-            boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+            boxShadow: SHADOWS.md,
             marginTop: 20,
-            border: '1px solid #e5e7eb',
+            border: `1px solid ${COLORS.border}`,
           }}
         >
           <div
@@ -839,15 +810,15 @@ export default function Dashboard() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <span style={{ fontSize: 24 }}>🚗</span>
               <div>
-                <div style={{ fontWeight: 'bold', fontSize: 16, color: '#1e3a5f' }}>
+                <div style={{ fontWeight: 'bold', fontSize: 16, color: COLORS.primaryLight }}>
                   Noleggio Auto
                 </div>
-                <div style={{ fontSize: 12, color: '#6b7280' }}>
+                <div style={{ fontSize: 12, color: COLORS.textMuted }}>
                   {verbaliStats.veicoli} veicoli in flotta
                 </div>
               </div>
             </div>
-            <Link to="/noleggio" style={{ fontSize: 13, color: '#3b82f6', textDecoration: 'none' }}>
+            <Link to="/noleggio" style={{ fontSize: 13, color: COLORS.info, textDecoration: 'none' }}>
               Gestisci →
             </Link>
           </div>
@@ -859,63 +830,20 @@ export default function Dashboard() {
               gap: 10,
             }}
           >
-            <div style={{ background: '#eff6ff', borderRadius: 8, padding: '10px 14px' }}>
-              <div
-                style={{
-                  fontSize: 10,
-                  fontWeight: 700,
-                  color: '#3b82f6',
-                  textTransform: 'uppercase',
-                }}
-              >
-                Canoni
-              </div>
-              <div style={{ fontSize: 18, fontWeight: 700, color: '#1e40af' }}>
-                {formatEuro(verbaliStats.canoni)}
-              </div>
-            </div>
-            <div style={{ background: '#fef2f2', borderRadius: 8, padding: '10px 14px' }}>
-              <div
-                style={{
-                  fontSize: 10,
-                  fontWeight: 700,
-                  color: '#dc2626',
-                  textTransform: 'uppercase',
-                }}
-              >
-                Verbali/Multe
-              </div>
-              <div style={{ fontSize: 18, fontWeight: 700, color: '#dc2626' }}>
-                {formatEuro(verbaliStats.verbali_costo)}
-              </div>
-            </div>
-            <div style={{ background: '#f0fdf4', borderRadius: 8, padding: '10px 14px' }}>
-              <div
-                style={{
-                  fontSize: 10,
-                  fontWeight: 700,
-                  color: '#059669',
-                  textTransform: 'uppercase',
-                }}
-              >
-                Totale Noleggio
-              </div>
-              <div style={{ fontSize: 18, fontWeight: 700, color: '#059669' }}>
-                {formatEuro(verbaliStats.totale_noleggio)}
-              </div>
-            </div>
+            <StatCard label="Canoni" value={formatEuro(verbaliStats.canoni)} accent="info" />
+            <StatCard label="Verbali/Multe" value={formatEuro(verbaliStats.verbali_costo)} accent="danger" />
+            <StatCard label="Totale Noleggio" value={formatEuro(verbaliStats.totale_noleggio)} accent="success" />
           </div>
         </div>
       )}
 
-                Trend Mensile {anno}
       {trendData && (
         <div
           style={{
-            background: 'white',
-            borderRadius: 12,
+            background: COLORS.card,
+            borderRadius: BORDER_RADIUS.xl,
             padding: 20,
-            boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+            boxShadow: SHADOWS.md,
             marginTop: 20,
           }}
         >
@@ -928,25 +856,25 @@ export default function Dashboard() {
             }}
           >
             <div>
-              <h2 style={{ fontSize: 18, margin: 0, fontWeight: 'bold', color: '#1e3a5f' }}>
+              <h2 style={{ fontSize: 18, margin: 0, fontWeight: 'bold', color: COLORS.primaryLight }}>
                 Trend Mensile {anno}
               </h2>
-              <span style={{ fontSize: 13, color: '#6b7280' }}>Entrate vs Uscite</span>
+              <span style={{ fontSize: 13, color: COLORS.textMuted }}>Entrate vs Uscite</span>
             </div>
             <div style={{ display: 'flex', gap: 20, fontSize: 14 }}>
               <div>
-                <span style={{ color: '#10b981' }}>Entrate:</span>{' '}
+                <span style={{ color: COLORS.success }}>Entrate:</span>{' '}
                 <strong>{formatEuro(trendData.totali?.entrate)}</strong>
               </div>
               <div>
-                <span style={{ color: '#ef4444' }}>Uscite:</span>{' '}
+                <span style={{ color: COLORS.danger }}>Uscite:</span>{' '}
                 <strong>{formatEuro(trendData.totali?.uscite)}</strong>
               </div>
               <div>
-                <span style={{ color: trendData.totali?.saldo >= 0 ? '#10b981' : '#ef4444' }}>
+                <span style={{ color: trendData.totali?.saldo >= 0 ? COLORS.success : COLORS.danger }}>
                   Saldo:
                 </span>{' '}
-                <strong style={{ color: trendData.totali?.saldo >= 0 ? '#10b981' : '#ef4444' }}>
+                <strong style={{ color: trendData.totali?.saldo >= 0 ? COLORS.success : COLORS.danger }}>
                   {formatEuro(trendData.totali?.saldo)}
                 </strong>
               </div>
@@ -959,17 +887,17 @@ export default function Dashboard() {
                 data={trendData.trend_mensile}
                 margin={{ top: 5, right: 20, left: 10, bottom: 5 }}
               >
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <CartesianGrid strokeDasharray="3 3" stroke={COLORS.border} />
                 <XAxis dataKey="mese_nome" tick={{ fontSize: 12 }} />
                 <YAxis tickFormatter={v => `€${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 11 }} />
                 <Tooltip
                   formatter={value => formatEuro(value)}
                   labelStyle={{ fontWeight: 'bold' }}
-                  contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb' }}
+                  contentStyle={{ borderRadius: BORDER_RADIUS.md, border: `1px solid ${COLORS.border}` }}
                 />
                 <Legend />
-                <Bar dataKey="entrate" fill="#10b981" name="Entrate" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="uscite" fill="#ef4444" name="Uscite" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="entrate" fill={COLORS.success} name="Entrate" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="uscite" fill={COLORS.danger} name="Uscite" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -982,30 +910,30 @@ export default function Dashboard() {
               gap: 15,
               marginTop: 20,
               padding: 15,
-              background: '#f8fafc',
-              borderRadius: 8,
+              background: COLORS.bgAlt,
+              borderRadius: BORDER_RADIUS.md,
             }}
           >
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 12, color: '#6b7280' }}>Media Entrate</div>
-              <div style={{ fontSize: 18, fontWeight: 'bold', color: '#10b981' }}>
+              <div style={{ fontSize: 12, color: COLORS.textMuted }}>Media Entrate</div>
+              <div style={{ fontSize: 18, fontWeight: 'bold', color: COLORS.success }}>
                 {formatEuro(trendData.statistiche?.media_entrate_mensile)}
               </div>
             </div>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 12, color: '#6b7280' }}>Media Uscite</div>
-              <div style={{ fontSize: 18, fontWeight: 'bold', color: '#ef4444' }}>
+              <div style={{ fontSize: 12, color: COLORS.textMuted }}>Media Uscite</div>
+              <div style={{ fontSize: 18, fontWeight: 'bold', color: COLORS.danger }}>
                 {formatEuro(trendData.statistiche?.media_uscite_mensile)}
               </div>
             </div>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 12, color: '#6b7280' }}>Picco Entrate</div>
+              <div style={{ fontSize: 12, color: COLORS.textMuted }}>Picco Entrate</div>
               <div style={{ fontSize: 18, fontWeight: 'bold' }}>
                 {trendData.statistiche?.mese_picco_entrate}
               </div>
             </div>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 12, color: '#6b7280' }}>Picco Uscite</div>
+              <div style={{ fontSize: 12, color: COLORS.textMuted }}>Picco Uscite</div>
               <div style={{ fontSize: 18, fontWeight: 'bold' }}>
                 {trendData.statistiche?.mese_picco_uscite}
               </div>
@@ -1018,14 +946,14 @@ export default function Dashboard() {
       {trendData && (
         <div
           style={{
-            background: 'white',
-            borderRadius: 12,
+            background: COLORS.card,
+            borderRadius: BORDER_RADIUS.xl,
             padding: 20,
-            boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+            boxShadow: SHADOWS.md,
             marginTop: 20,
           }}
         >
-          <h2 style={{ fontSize: 18, margin: '0 0 15px 0', fontWeight: 'bold', color: '#1e3a5f' }}>
+          <h2 style={{ fontSize: 18, margin: '0 0 15px 0', fontWeight: 'bold', color: COLORS.primaryLight }}>
             Trend IVA {anno}
           </h2>
           <div style={{ height: 200, width: '100%', minHeight: 200 }}>
@@ -1034,18 +962,18 @@ export default function Dashboard() {
                 data={trendData.trend_mensile}
                 margin={{ top: 5, right: 20, left: 10, bottom: 5 }}
               >
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <CartesianGrid strokeDasharray="3 3" stroke={COLORS.border} />
                 <XAxis dataKey="mese_nome" tick={{ fontSize: 12 }} />
                 <YAxis tickFormatter={v => `€${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 11 }} />
                 <Tooltip
                   formatter={value => formatEuro(value)}
-                  contentStyle={{ borderRadius: 8 }}
+                  contentStyle={{ borderRadius: BORDER_RADIUS.md }}
                 />
                 <Legend />
                 <Line
                   type="monotone"
                   dataKey="iva_debito"
-                  stroke="#f59e0b"
+                  stroke={COLORS.warning}
                   strokeWidth={2}
                   name="IVA Debito"
                   dot={{ r: 3 }}
@@ -1053,7 +981,7 @@ export default function Dashboard() {
                 <Line
                   type="monotone"
                   dataKey="iva_credito"
-                  stroke="#3b82f6"
+                  stroke={COLORS.info}
                   strokeWidth={2}
                   name="IVA Credito"
                   dot={{ r: 3 }}
@@ -1072,19 +1000,19 @@ export default function Dashboard() {
           >
             <div>
               IVA Debito Totale:{' '}
-              <strong style={{ color: '#f59e0b' }}>
+              <strong style={{ color: COLORS.warning }}>
                 {formatEuro(trendData.totali?.iva_debito)}
               </strong>
             </div>
             <div>
               IVA Credito Totale:{' '}
-              <strong style={{ color: '#3b82f6' }}>
+              <strong style={{ color: COLORS.info }}>
                 {formatEuro(trendData.totali?.iva_credito)}
               </strong>
             </div>
             <div>
               Saldo IVA:{' '}
-              <strong style={{ color: trendData.totali?.saldo_iva >= 0 ? '#ef4444' : '#10b981' }}>
+              <strong style={{ color: trendData.totali?.saldo_iva >= 0 ? COLORS.danger : COLORS.success }}>
                 {formatEuro(Math.abs(trendData.totali?.saldo_iva))}{' '}
                 {trendData.totali?.saldo_iva >= 0 ? '(da versare)' : '(a credito)'}
               </strong>
@@ -1106,14 +1034,14 @@ export default function Dashboard() {
         {speseCategoria && speseCategoria.categorie && speseCategoria.categorie.length > 0 && (
           <div
             style={{
-              background: 'white',
-              borderRadius: 12,
+              background: COLORS.card,
+              borderRadius: BORDER_RADIUS.xl,
               padding: 20,
-              boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+              boxShadow: SHADOWS.md,
             }}
           >
             <h2
-              style={{ fontSize: 18, margin: '0 0 15px 0', fontWeight: 'bold', color: '#1e3a5f' }}
+              style={{ fontSize: 18, margin: '0 0 15px 0', fontWeight: 'bold', color: COLORS.primaryLight }}
             >
               Distribuzione Spese {anno}
             </h2>
@@ -1147,8 +1075,8 @@ export default function Dashboard() {
                       gap: 6,
                       marginBottom: 8,
                       padding: '4px 8px',
-                      background: '#f8fafc',
-                      borderRadius: 4,
+                      background: COLORS.bgAlt,
+                      borderRadius: BORDER_RADIUS.sm,
                     }}
                   >
                     <span
@@ -1171,7 +1099,7 @@ export default function Dashboard() {
                       >
                         {cat.nome}
                       </div>
-                      <div style={{ color: '#6b7280' }}>{formatEuro(cat.valore)}</div>
+                      <div style={{ color: COLORS.textMuted }}>{formatEuro(cat.valore)}</div>
                     </div>
                   </div>
                 ))}
@@ -1182,30 +1110,29 @@ export default function Dashboard() {
                 textAlign: 'center',
                 marginTop: 10,
                 padding: 10,
-                background: '#f0fdf4',
-                borderRadius: 8,
+                background: COLORS.successLight,
+                borderRadius: BORDER_RADIUS.md,
               }}
             >
-              <span style={{ color: '#6b7280' }}>Totale Spese: </span>
-              <strong style={{ color: '#dc2626' }}>
+              <span style={{ color: COLORS.textMuted }}>Totale Spese: </span>
+              <strong style={{ color: COLORS.danger }}>
                 {formatEuro(speseCategoria.totale_spese)}
               </strong>
             </div>
           </div>
         )}
 
-              Stato Riconciliazione {anno}
         {statoRiconciliazione && (
           <div
             style={{
-              background: 'white',
-              borderRadius: 12,
+              background: COLORS.card,
+              borderRadius: BORDER_RADIUS.xl,
               padding: 20,
-              boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+              boxShadow: SHADOWS.md,
             }}
           >
             <h2
-              style={{ fontSize: 18, margin: '0 0 15px 0', fontWeight: 'bold', color: '#1e3a5f' }}
+              style={{ fontSize: 18, margin: '0 0 15px 0', fontWeight: 'bold', color: COLORS.primaryLight }}
             >
               Stato Riconciliazione {anno}
             </h2>
@@ -1213,21 +1140,21 @@ export default function Dashboard() {
             {/* Barra progresso globale */}
             <div style={{ marginBottom: 20 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
-                <span style={{ fontSize: 13, color: '#6b7280' }}>Progresso Globale</span>
+                <span style={{ fontSize: 13, color: COLORS.textMuted }}>Progresso Globale</span>
                 <span
                   style={{
                     fontWeight: 'bold',
                     color:
                       (statoRiconciliazione?.riepilogo?.percentuale_globale ?? 0) >= 80
-                        ? '#16a34a'
-                        : '#f59e0b',
+                        ? COLORS.success
+                        : COLORS.warning,
                   }}
                 >
                   {(statoRiconciliazione?.riepilogo?.percentuale_globale ?? 0)}%
                 </span>
               </div>
               <div
-                style={{ height: 12, background: '#e5e7eb', borderRadius: 6, overflow: 'hidden' }}
+                style={{ height: 12, background: COLORS.border, borderRadius: BORDER_RADIUS.sm, overflow: 'hidden' }}
               >
                 <div
                   style={{
@@ -1235,17 +1162,16 @@ export default function Dashboard() {
                     width: `${(statoRiconciliazione?.riepilogo?.percentuale_globale ?? 0)}%`,
                     background:
                       (statoRiconciliazione?.riepilogo?.percentuale_globale ?? 0) >= 80
-                        ? '#15803d'
-                        : '#b45309',
-                    borderRadius: 6,
+                        ? COLORS.success
+                        : COLORS.warning,
+                    borderRadius: BORDER_RADIUS.sm,
                     transition: 'width 0.5s ease',
                   }}
                 ></div>
               </div>
             </div>
 
-              Dettaglio
-            <div style={{ background: '#f8fafc', borderRadius: 8, padding: 12, marginBottom: 12 }}>
+            <div style={{ background: COLORS.bgAlt, borderRadius: BORDER_RADIUS.md, padding: 12, marginBottom: 12 }}>
               <div
                 style={{
                   display: 'flex',
@@ -1255,19 +1181,9 @@ export default function Dashboard() {
                 }}
               >
                 Fatture Fornitori
-                <span
-                  style={{
-                    padding: '2px 8px',
-                    borderRadius: 10,
-                    fontSize: 12,
-                    background:
-                      (statoRiconciliazione?.fatture?.percentuale_pagate ?? 0) >= 80 ? '#dcfce7' : '#fef3c7',
-                    color:
-                      (statoRiconciliazione?.fatture?.percentuale_pagate ?? 0) >= 80 ? '#16a34a' : '#d97706',
-                  }}
-                >
+                <Badge variant={(statoRiconciliazione?.fatture?.percentuale_pagate ?? 0) >= 80 ? 'success' : 'warning'}>
                   {(statoRiconciliazione?.fatture?.percentuale_pagate ?? 0)}%
-                </span>
+                </Badge>
               </div>
               <div
                 style={{
@@ -1278,22 +1194,21 @@ export default function Dashboard() {
                 }}
               >
                 <div>
-                  <div style={{ color: '#6b7280' }}>Pagate</div>
-                  <div style={{ fontWeight: 'bold', color: '#16a34a' }}>
+                  <div style={{ color: COLORS.textMuted }}>Pagate</div>
+                  <div style={{ fontWeight: 'bold', color: COLORS.success }}>
                     {(statoRiconciliazione?.fatture?.pagate ?? 0)} / {(statoRiconciliazione?.fatture?.totali ?? 0)}
                   </div>
                 </div>
                 <div>
-                  <div style={{ color: '#6b7280' }}>Da pagare</div>
-                  <div style={{ fontWeight: 'bold', color: '#dc2626' }}>
+                  <div style={{ color: COLORS.textMuted }}>Da pagare</div>
+                  <div style={{ fontWeight: 'bold', color: COLORS.danger }}>
                     {formatEuro(statoRiconciliazione.fatture.importo_da_pagare)}
                   </div>
                 </div>
               </div>
             </div>
 
-              Dettaglio
-            <div style={{ background: '#f8fafc', borderRadius: 8, padding: 12 }}>
+            <div style={{ background: COLORS.bgAlt, borderRadius: BORDER_RADIUS.md, padding: 12 }}>
               <div
                 style={{
                   display: 'flex',
@@ -1303,23 +1218,9 @@ export default function Dashboard() {
                 }}
               >
                 <span style={{ fontWeight: 600 }}>Salari Dipendenti</span>
-                <span
-                  style={{
-                    padding: '2px 8px',
-                    borderRadius: 10,
-                    fontSize: 12,
-                    background:
-                      (statoRiconciliazione?.salari?.percentuale_riconciliati ?? 0) >= 80
-                        ? '#dcfce7'
-                        : '#fef3c7',
-                    color:
-                      (statoRiconciliazione?.salari?.percentuale_riconciliati ?? 0) >= 80
-                        ? '#16a34a'
-                        : '#d97706',
-                  }}
-                >
+                <Badge variant={(statoRiconciliazione?.salari?.percentuale_riconciliati ?? 0) >= 80 ? 'success' : 'warning'}>
                   {(statoRiconciliazione?.salari?.percentuale_riconciliati ?? 0)}%
-                </span>
+                </Badge>
               </div>
               <div
                 style={{
@@ -1330,15 +1231,15 @@ export default function Dashboard() {
                 }}
               >
                 <div>
-                  <div style={{ color: '#6b7280' }}>Riconciliati</div>
-                  <div style={{ fontWeight: 'bold', color: '#16a34a' }}>
+                  <div style={{ color: COLORS.textMuted }}>Riconciliati</div>
+                  <div style={{ fontWeight: 'bold', color: COLORS.success }}>
                     {(statoRiconciliazione?.salari?.riconciliati ?? 0)} /{' '}
                     {(statoRiconciliazione?.salari?.totali ?? 0)}
                   </div>
                 </div>
                 <div>
-                  <div style={{ color: '#6b7280' }}>Da verificare</div>
-                  <div style={{ fontWeight: 'bold', color: '#f59e0b' }}>
+                  <div style={{ color: COLORS.textMuted }}>Da verificare</div>
+                  <div style={{ fontWeight: 'bold', color: COLORS.warning }}>
                     {statoRiconciliazione.salari.da_riconciliare}
                   </div>
                 </div>
@@ -1351,9 +1252,9 @@ export default function Dashboard() {
                 display: 'block',
                 marginTop: 15,
                 padding: '10px 16px',
-                background: '#3b82f6',
+                background: COLORS.info,
                 color: 'white',
-                borderRadius: 8,
+                borderRadius: BORDER_RADIUS.md,
                 textAlign: 'center',
                 textDecoration: 'none',
                 fontWeight: 'bold',
@@ -1369,11 +1270,11 @@ export default function Dashboard() {
         {learningStats && (
           <div
             style={{
-              background: '#f8fafc',
-              borderRadius: 12,
+              background: COLORS.bgAlt,
+              borderRadius: BORDER_RADIUS.xl,
               padding: 20,
-              boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-              border: '1px solid #86efac',
+              boxShadow: SHADOWS.md,
+              border: `1px solid ${COLORS.successLight}`,
             }}
           >
             <div
@@ -1384,21 +1285,10 @@ export default function Dashboard() {
                 marginBottom: 15,
               }}
             >
-              <h3 style={{ fontSize: 16, margin: 0, fontWeight: 'bold', color: '#166534' }}>
+              <h3 style={{ fontSize: 16, margin: 0, fontWeight: 'bold', color: COLORS.success }}>
                 🧠 Learning Machine
               </h3>
-              <span
-                style={{
-                  background: '#16a34a',
-                  color: 'white',
-                  padding: '4px 10px',
-                  borderRadius: 20,
-                  fontSize: 11,
-                  fontWeight: 'bold',
-                }}
-              >
-                ATTIVA
-              </span>
+              <Badge variant="success">ATTIVA</Badge>
             </div>
 
             <div
@@ -1408,44 +1298,24 @@ export default function Dashboard() {
                 gap: 12,
               }}
             >
-              {/* Fornitori */}
-              <div
-                style={{ background: 'white', borderRadius: 10, padding: 12, textAlign: 'center' }}
-              >
-                <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>Fornitori</div>
-                <div style={{ fontSize: 22, fontWeight: 'bold', color: '#166534' }}>
-                  {learningStats.fornitori_con_keywords || 0}
-                </div>
-                <div style={{ fontSize: 10, color: '#16a34a' }}>
-                  {learningStats.copertura_fornitori || 0}% copertura
-                </div>
-              </div>
-
-              {/* Fatture */}
-              <div
-                style={{ background: 'white', borderRadius: 10, padding: 12, textAlign: 'center' }}
-              >
-                <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>Fatture</div>
-                <div style={{ fontSize: 22, fontWeight: 'bold', color: '#166534' }}>
-                  {learningStats.percentuale_fatture || 0}%
-                </div>
-                <div style={{ fontSize: 10, color: '#16a34a' }}>
-                  {learningStats.fatture_classificate || 0}/{learningStats.totale_fatture || 0}
-                </div>
-              </div>
-
-              {/* F24 */}
-              <div
-                style={{ background: 'white', borderRadius: 10, padding: 12, textAlign: 'center' }}
-              >
-                <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>F24</div>
-                <div style={{ fontSize: 22, fontWeight: 'bold', color: '#166534' }}>
-                  {learningStats.percentuale_f24 || 0}%
-                </div>
-                <div style={{ fontSize: 10, color: '#16a34a' }}>
-                  {learningStats.f24_classificati || 0}/{learningStats.totale_f24 || 0}
-                </div>
-              </div>
+              <StatCard
+                label="Fornitori"
+                value={learningStats.fornitori_con_keywords || 0}
+                subtext={`${learningStats.copertura_fornitori || 0}% copertura`}
+                accent="success"
+              />
+              <StatCard
+                label="Fatture"
+                value={`${learningStats.percentuale_fatture || 0}%`}
+                subtext={`${learningStats.fatture_classificate || 0}/${learningStats.totale_fatture || 0}`}
+                accent="success"
+              />
+              <StatCard
+                label="F24"
+                value={`${learningStats.percentuale_f24 || 0}%`}
+                subtext={`${learningStats.f24_classificati || 0}/${learningStats.totale_f24 || 0}`}
+                accent="success"
+              />
             </div>
 
             <Link
@@ -1454,9 +1324,9 @@ export default function Dashboard() {
                 display: 'block',
                 marginTop: 12,
                 padding: '8px 14px',
-                background: '#16a34a',
+                background: COLORS.success,
                 color: 'white',
-                borderRadius: 8,
+                borderRadius: BORDER_RADIUS.md,
                 textAlign: 'center',
                 textDecoration: 'none',
                 fontWeight: 'bold',
@@ -1473,14 +1343,14 @@ export default function Dashboard() {
       {confrontoAnnuale && (
         <div
           style={{
-            background: 'white',
-            borderRadius: 12,
+            background: COLORS.card,
+            borderRadius: BORDER_RADIUS.xl,
             padding: 20,
-            boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+            boxShadow: SHADOWS.md,
             marginTop: 20,
           }}
         >
-          <h2 style={{ fontSize: 18, margin: '0 0 15px 0', fontWeight: 'bold', color: '#1e3a5f' }}>
+          <h2 style={{ fontSize: 18, margin: '0 0 15px 0', fontWeight: 'bold', color: COLORS.primaryLight }}>
             Confronto {anno} vs {anno - 1}
           </h2>
           <div
@@ -1490,132 +1360,80 @@ export default function Dashboard() {
               gap: 15,
             }}
           >
-            {/* Entrate */}
-            <div style={{ background: '#f0fdf4', borderRadius: 12, padding: 15 }}>
-              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 5 }}>Entrate</div>
-              <div style={{ fontSize: 24, fontWeight: 'bold', color: '#16a34a' }}>
-                {formatEuro(confrontoAnnuale.anno_corrente.entrate)}
-              </div>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  marginTop: 5,
-                  fontSize: 13,
-                }}
-              >
-                <span
-                  style={{
-                    color:
-                      confrontoAnnuale.variazioni_percentuali.entrate >= 0 ? '#16a34a' : '#dc2626',
-                    fontWeight: 'bold',
-                  }}
-                >
-                  {confrontoAnnuale.variazioni_percentuali.entrate >= 0 ? '↑' : '↓'}
-                  {Math.abs(confrontoAnnuale.variazioni_percentuali.entrate)}%
-                </span>
-                <span style={{ color: '#6b7280' }}>vs {anno - 1}</span>
-              </div>
-            </div>
+            <StatCard
+              label="Entrate"
+              value={formatEuro(confrontoAnnuale.anno_corrente.entrate)}
+              accent="success"
+              subtext={
+                <>
+                  <span
+                    style={{
+                      color: confrontoAnnuale.variazioni_percentuali.entrate >= 0 ? COLORS.success : COLORS.danger,
+                      fontWeight: 'bold',
+                    }}
+                  >
+                    {confrontoAnnuale.variazioni_percentuali.entrate >= 0 ? '↑' : '↓'}
+                    {Math.abs(confrontoAnnuale.variazioni_percentuali.entrate)}%
+                  </span>{' '}
+                  vs {anno - 1}
+                </>
+              }
+            />
 
-            {/* Uscite */}
-            <div style={{ background: '#fef2f2', borderRadius: 12, padding: 15 }}>
-              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 5 }}>Uscite</div>
-              <div style={{ fontSize: 24, fontWeight: 'bold', color: '#dc2626' }}>
-                {formatEuro(confrontoAnnuale.anno_corrente.uscite)}
-              </div>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  marginTop: 5,
-                  fontSize: 13,
-                }}
-              >
-                <span
-                  style={{
-                    color:
-                      confrontoAnnuale.variazioni_percentuali.uscite <= 0 ? '#16a34a' : '#dc2626',
-                    fontWeight: 'bold',
-                  }}
-                >
-                  {confrontoAnnuale.variazioni_percentuali.uscite >= 0 ? '↑' : '↓'}
-                  {Math.abs(confrontoAnnuale.variazioni_percentuali.uscite)}%
-                </span>
-                <span style={{ color: '#6b7280' }}>vs {anno - 1}</span>
-              </div>
-            </div>
+            <StatCard
+              label="Uscite"
+              value={formatEuro(confrontoAnnuale.anno_corrente.uscite)}
+              accent="danger"
+              subtext={
+                <>
+                  <span
+                    style={{
+                      color: confrontoAnnuale.variazioni_percentuali.uscite <= 0 ? COLORS.success : COLORS.danger,
+                      fontWeight: 'bold',
+                    }}
+                  >
+                    {confrontoAnnuale.variazioni_percentuali.uscite >= 0 ? '↑' : '↓'}
+                    {Math.abs(confrontoAnnuale.variazioni_percentuali.uscite)}%
+                  </span>{' '}
+                  vs {anno - 1}
+                </>
+              }
+            />
 
-            {/* Saldo */}
-            <div
-              style={{
-                background: confrontoAnnuale.anno_corrente.saldo >= 0 ? '#f0fdf4' : '#fef2f2',
-                borderRadius: 12,
-                padding: 15,
-              }}
-            >
-              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 5 }}>Saldo</div>
-              <div
-                style={{
-                  fontSize: 24,
-                  fontWeight: 'bold',
-                  color: confrontoAnnuale.anno_corrente.saldo >= 0 ? '#16a34a' : '#dc2626',
-                }}
-              >
-                {formatEuro(confrontoAnnuale.anno_corrente.saldo)}
-              </div>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  marginTop: 5,
-                  fontSize: 13,
-                }}
-              >
-                <span
-                  style={{
-                    color:
-                      confrontoAnnuale.variazioni_percentuali.saldo >= 0 ? '#16a34a' : '#dc2626',
-                    fontWeight: 'bold',
-                  }}
-                >
-                  {confrontoAnnuale.variazioni_percentuali.saldo >= 0 ? '↑' : '↓'}
-                  {Math.abs(confrontoAnnuale.variazioni_percentuali.saldo)}%
-                </span>
-                <span style={{ color: '#6b7280' }}>vs {anno - 1}</span>
-              </div>
-            </div>
+            <StatCard
+              label="Saldo"
+              value={formatEuro(confrontoAnnuale.anno_corrente.saldo)}
+              accent={confrontoAnnuale.anno_corrente.saldo >= 0 ? 'success' : 'danger'}
+              subtext={
+                <>
+                  <span
+                    style={{
+                      color: confrontoAnnuale.variazioni_percentuali.saldo >= 0 ? COLORS.success : COLORS.danger,
+                      fontWeight: 'bold',
+                    }}
+                  >
+                    {confrontoAnnuale.variazioni_percentuali.saldo >= 0 ? '↑' : '↓'}
+                    {Math.abs(confrontoAnnuale.variazioni_percentuali.saldo)}%
+                  </span>{' '}
+                  vs {anno - 1}
+                </>
+              }
+            />
 
-            {/* Numero Fatture */}
-            <div style={{ background: '#f0f9ff', borderRadius: 12, padding: 15 }}>
-              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 5 }}>N. Fatture</div>
-              <div style={{ fontSize: 24, fontWeight: 'bold', color: '#0284c7' }}>
-                {confrontoAnnuale.anno_corrente.num_fatture}
-              </div>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  marginTop: 5,
-                  fontSize: 13,
-                }}
-              >
-                <span
-                  style={{
-                    color: '#6b7280',
-                    fontWeight: 'bold',
-                  }}
-                >
-                  {confrontoAnnuale.variazioni_percentuali.num_fatture >= 0 ? '↑' : '↓'}
-                  {Math.abs(confrontoAnnuale.variazioni_percentuali.num_fatture)}%
-                </span>
-                <span style={{ color: '#6b7280' }}>vs {anno - 1}</span>
-              </div>
-            </div>
+            <StatCard
+              label="N. Fatture"
+              value={confrontoAnnuale.anno_corrente.num_fatture}
+              accent="info"
+              subtext={
+                <>
+                  <span style={{ color: COLORS.textMuted, fontWeight: 'bold' }}>
+                    {confrontoAnnuale.variazioni_percentuali.num_fatture >= 0 ? '↑' : '↓'}
+                    {Math.abs(confrontoAnnuale.variazioni_percentuali.num_fatture)}%
+                  </span>{' '}
+                  vs {anno - 1}
+                </>
+              }
+            />
           </div>
         </div>
       )}
@@ -1623,14 +1441,16 @@ export default function Dashboard() {
       {/* Quick Actions */}
       <div
         style={{
-          background: 'white',
-          borderRadius: 12,
+          background: COLORS.card,
+          borderRadius: BORDER_RADIUS.xl,
           padding: 20,
-          boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+          boxShadow: SHADOWS.md,
           marginTop: 20,
         }}
       >
-        Azioni Rapide
+        <h2 style={{ fontSize: 18, margin: '0 0 4px 0', fontWeight: 'bold', color: COLORS.primaryLight }}>
+          Azioni Rapide
+        </h2>
         <div
           style={{
             display: 'grid',
@@ -1670,8 +1490,8 @@ export default function Dashboard() {
         </div>
 
         {/* Report PDF Section */}
-        <div style={{ marginTop: 20, paddingTop: 20, borderTop: '1px solid #e2e8f0' }}>
-          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: '#475569' }}>
+        <div style={{ marginTop: 20, paddingTop: 20, borderTop: `1px solid ${COLORS.border}` }}>
+          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: COLORS.gray[600] }}>
             📄 Scarica Report PDF
           </div>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
@@ -1681,9 +1501,9 @@ export default function Dashboard() {
               rel="noopener noreferrer"
               style={{
                 padding: '8px 14px',
-                background: '#dc2626',
+                background: COLORS.danger,
                 color: 'white',
-                borderRadius: 6,
+                borderRadius: BORDER_RADIUS.sm,
                 textDecoration: 'none',
                 fontSize: 13,
                 fontWeight: 500,
@@ -1697,9 +1517,9 @@ export default function Dashboard() {
               rel="noopener noreferrer"
               style={{
                 padding: '8px 14px',
-                background: '#3b82f6',
+                background: COLORS.info,
                 color: 'white',
-                borderRadius: 6,
+                borderRadius: BORDER_RADIUS.sm,
                 textDecoration: 'none',
                 fontSize: 13,
                 fontWeight: 500,
@@ -1713,9 +1533,9 @@ export default function Dashboard() {
               rel="noopener noreferrer"
               style={{
                 padding: '8px 14px',
-                background: '#ef4444',
+                background: COLORS.danger,
                 color: 'white',
-                borderRadius: 6,
+                borderRadius: BORDER_RADIUS.sm,
                 textDecoration: 'none',
                 fontSize: 13,
                 fontWeight: 500,
@@ -1729,9 +1549,9 @@ export default function Dashboard() {
               rel="noopener noreferrer"
               style={{
                 padding: '8px 14px',
-                background: '#10b981',
+                background: COLORS.success,
                 color: 'white',
-                borderRadius: 6,
+                borderRadius: BORDER_RADIUS.sm,
                 textDecoration: 'none',
                 fontSize: 13,
                 fontWeight: 500,
@@ -1750,7 +1570,7 @@ export default function Dashboard() {
 const quickActionStyle = (bg, color) => ({
   padding: 15,
   background: bg,
-  borderRadius: 8,
+  borderRadius: BORDER_RADIUS.md,
   textDecoration: 'none',
   color: color,
   display: 'flex',
@@ -1825,11 +1645,11 @@ function POSCalendarWidget({ data }) {
   }
 
   const getColor = (sfasamento, isFestivo) => {
-    if (isFestivo) return '#fecaca';
-    if (sfasamento === 1) return '#dcfce7';
-    if (sfasamento === 2) return '#fef3c7';
-    if (sfasamento >= 3) return '#fee2e2';
-    return '#f9fafb';
+    if (isFestivo) return COLORS.dangerLight;
+    if (sfasamento === 1) return COLORS.successLight;
+    if (sfasamento === 2) return COLORS.warningLight;
+    if (sfasamento >= 3) return COLORS.dangerLight;
+    return COLORS.bgAlt;
   };
 
   return (
@@ -1853,7 +1673,7 @@ function POSCalendarWidget({ data }) {
               textAlign: 'center',
               fontWeight: 'bold',
               padding: 6,
-              color: g === 'Sab' || g === 'Dom' ? '#ef4444' : '#374151',
+              color: g === 'Sab' || g === 'Dom' ? COLORS.danger : COLORS.gray[700],
             }}
           >
             {g}
@@ -1868,7 +1688,7 @@ function POSCalendarWidget({ data }) {
               textAlign: 'center',
               padding: '8px 4px',
               background: g ? getColor(g.sfasamento, g.isFestivo) : 'transparent',
-              borderRadius: 4,
+              borderRadius: BORDER_RADIUS.sm,
               cursor: g ? 'pointer' : 'default',
               position: 'relative',
             }}
@@ -1881,7 +1701,7 @@ function POSCalendarWidget({ data }) {
             {g && (
               <>
                 <div style={{ fontWeight: '500' }}>{g.giorno}</div>
-                <div style={{ fontSize: 9, color: '#6b7280' }}>+{g.sfasamento}g</div>
+                <div style={{ fontSize: 9, color: COLORS.textMuted }}>+{g.sfasamento}g</div>
               </>
             )}
           </div>
@@ -1905,16 +1725,16 @@ function ScadenzeWidget({ scadenze }) {
   const urgenti = visibleScadenze.filter(s => s.urgente);
 
   const getPriorityColor = (priorita, urgente) => {
-    if (urgente) return { bg: '#fef2f2', border: '#fecaca', text: '#dc2626' };
+    if (urgente) return { bg: COLORS.dangerLight, border: COLORS.danger, text: COLORS.danger };
     switch (priorita) {
       case 'critica':
-        return { bg: '#fef2f2', border: '#fecaca', text: '#dc2626' };
+        return { bg: COLORS.dangerLight, border: COLORS.danger, text: COLORS.danger };
       case 'alta':
-        return { bg: '#fff7ed', border: '#fed7aa', text: '#ea580c' };
+        return { bg: COLORS.accentSoft, border: COLORS.accent, text: COLORS.accent };
       case 'media':
-        return { bg: '#fefce8', border: '#fef08a', text: '#ca8a04' };
+        return { bg: COLORS.warningLight, border: COLORS.warning, text: COLORS.warning };
       default:
-        return { bg: '#f0fdf4', border: '#bbf7d0', text: '#16a34a' };
+        return { bg: COLORS.successLight, border: COLORS.success, text: COLORS.success };
     }
   };
 
@@ -1966,12 +1786,12 @@ function ScadenzeWidget({ scadenze }) {
   return (
     <div
       style={{
-        background: 'white',
-        borderRadius: 12,
+        background: COLORS.card,
+        borderRadius: BORDER_RADIUS.xl,
         padding: 20,
         marginBottom: 20,
-        border: urgenti.length > 0 ? '2px solid #fecaca' : '1px solid #e5e7eb',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+        border: urgenti.length > 0 ? `2px solid ${COLORS.danger}` : `1px solid ${COLORS.border}`,
+        boxShadow: SHADOWS.sm,
       }}
     >
       <div
@@ -1986,10 +1806,10 @@ function ScadenzeWidget({ scadenze }) {
           <span style={{ fontSize: 24 }}>📅</span>
           <div>
             <div style={{ fontWeight: 'bold', fontSize: 16 }}>Prossime Scadenze</div>
-            <div style={{ fontSize: 12, color: '#6b7280' }}>
+            <div style={{ fontSize: 12, color: COLORS.textMuted }}>
               {scadenze.totale} scadenze nei prossimi 30 giorni
               {urgenti.length > 0 && (
-                <span style={{ color: '#dc2626', fontWeight: 'bold', marginLeft: 8 }}>
+                <span style={{ color: COLORS.danger, fontWeight: 'bold', marginLeft: 8 }}>
                   ⚠️ {urgenti.length} urgenti
                 </span>
               )}
@@ -2005,10 +1825,10 @@ function ScadenzeWidget({ scadenze }) {
                 scadenze.prossima_scadenza.urgente
               ).bg,
               padding: '8px 12px',
-              borderRadius: 8,
+              borderRadius: BORDER_RADIUS.md,
             }}
           >
-            <div style={{ fontSize: 11, color: '#6b7280' }}>Prossima</div>
+            <div style={{ fontSize: 11, color: COLORS.textMuted }}>Prossima</div>
             <div
               style={{
                 fontWeight: 'bold',
@@ -2029,87 +1849,16 @@ function ScadenzeWidget({ scadenze }) {
       </div>
 
       {/* Tabella scadenze */}
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+      <TableWrap>
+        <Table style={{ fontSize: 11 }}>
           <thead>
-            <tr style={{ borderBottom: '2px solid #e2e8f0', background: '#f8fafc' }}>
-              <th
-                style={{
-                  padding: '6px 8px',
-                  textAlign: 'center',
-                  fontWeight: 600,
-                  fontSize: 10,
-                  color: '#64748b',
-                  textTransform: 'uppercase',
-                  width: 60,
-                }}
-              >
-                Tipo
-              </th>
-              <th
-                style={{
-                  padding: '6px 8px',
-                  textAlign: 'center',
-                  fontWeight: 600,
-                  fontSize: 10,
-                  color: '#64748b',
-                  textTransform: 'uppercase',
-                  width: 80,
-                }}
-              >
-                Importo
-              </th>
-              <th
-                style={{
-                  padding: '6px 8px',
-                  textAlign: 'center',
-                  fontWeight: 600,
-                  fontSize: 10,
-                  color: '#64748b',
-                  textTransform: 'uppercase',
-                  width: 60,
-                }}
-              >
-                Data
-              </th>
-              <th
-                style={{
-                  padding: '6px 8px',
-                  textAlign: 'center',
-                  fontWeight: 600,
-                  fontSize: 10,
-                  color: '#64748b',
-                  textTransform: 'uppercase',
-                  width: 50,
-                }}
-              >
-                Giorni
-              </th>
-              <th
-                style={{
-                  padding: '6px 8px',
-                  textAlign: 'center',
-                  fontWeight: 600,
-                  fontSize: 10,
-                  color: '#64748b',
-                  textTransform: 'uppercase',
-                }}
-              >
-                Descrizione
-              </th>
-              <th
-                style={{
-                  padding: '6px 8px',
-                  textAlign: 'center',
-                  fontWeight: 600,
-                  fontSize: 10,
-                  color: '#64748b',
-                  textTransform: 'uppercase',
-                  width: 50,
-                }}
-              >
-                Azioni
-              </th>
+            <tr style={{ borderBottom: `2px solid ${COLORS.border}`, background: COLORS.bgAlt }}>
+              <Th align="center" style={{ padding: '6px 8px', fontSize: 10, width: 60 }}>Tipo</Th>
+              <Th align="center" style={{ padding: '6px 8px', fontSize: 10, width: 80 }}>Importo</Th>
+              <Th align="center" style={{ padding: '6px 8px', fontSize: 10, width: 60 }}>Data</Th>
+              <Th align="center" style={{ padding: '6px 8px', fontSize: 10, width: 50 }}>Giorni</Th>
+              <Th align="center" style={{ padding: '6px 8px', fontSize: 10 }}>Descrizione</Th>
+              <Th align="center" style={{ padding: '6px 8px', fontSize: 10, width: 50 }}>Azioni</Th>
             </tr>
           </thead>
           <tbody>
@@ -2121,15 +1870,15 @@ function ScadenzeWidget({ scadenze }) {
                   style={{
                     background: colors.bg,
                     borderLeft: `3px solid ${colors.border}`,
-                    borderBottom: '1px solid #f1f5f9',
+                    borderBottom: `1px solid ${COLORS.gray[100]}`,
                   }}
                 >
-                  <td style={{ padding: '6px 8px', textAlign: 'center' }}>
+                  <Td align="center" style={{ padding: '6px 8px' }}>
                     <span
                       style={{
                         padding: '2px 6px',
                         background: colors.border + '30',
-                        borderRadius: 4,
+                        borderRadius: BORDER_RADIUS.sm,
                         color: colors.text,
                         fontWeight: '600',
                         fontSize: 10,
@@ -2137,26 +1886,23 @@ function ScadenzeWidget({ scadenze }) {
                     >
                       {s.tipo}
                     </span>
-                  </td>
-                  <td
-                    style={{
-                      padding: '6px 8px',
-                      textAlign: 'center',
-                      fontWeight: 'bold',
-                      color: colors.text,
-                    }}
+                  </Td>
+                  <Td
+                    align="center"
+                    mono
+                    style={{ padding: '6px 8px', fontWeight: 'bold', color: colors.text }}
                   >
                     {s.importo > 0 ? formatEuro(s.importo) : '-'}
-                  </td>
-                  <td style={{ padding: '6px 8px', textAlign: 'center', color: '#6b7280' }}>
+                  </Td>
+                  <Td align="center" style={{ padding: '6px 8px', color: COLORS.textMuted }}>
                     {formatDate(s.data)}
-                  </td>
-                  <td
+                  </Td>
+                  <Td
+                    align="center"
                     style={{
                       padding: '6px 8px',
-                      textAlign: 'center',
                       fontWeight: 'bold',
-                      color: s.giorni_mancanti <= 3 ? '#dc2626' : '#6b7280',
+                      color: s.giorni_mancanti <= 3 ? COLORS.danger : COLORS.textMuted,
                     }}
                   >
                     {s.giorni_mancanti === 0
@@ -2166,12 +1912,12 @@ function ScadenzeWidget({ scadenze }) {
                         : s.giorni_mancanti < 0
                           ? `${s.giorni_mancanti}g`
                           : `${s.giorni_mancanti}g`}
-                  </td>
-                  <td
+                  </Td>
+                  <Td
+                    align="center"
                     style={{
                       padding: '6px 8px',
-                      textAlign: 'center',
-                      color: '#64748b',
+                      color: COLORS.textMuted,
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
                       whiteSpace: 'nowrap',
@@ -2179,19 +1925,23 @@ function ScadenzeWidget({ scadenze }) {
                     }}
                   >
                     {s.fornitore || s.descrizione || s.numero_fattura || ''}
-                  </td>
-                  <td style={{ padding: '6px 8px', textAlign: 'center' }}>
-                    <div style={{ display: 'flex', gap: 3, justifyContent: 'center' }}>
+                  </Td>
+                  <Td align="center" style={{ padding: '6px 8px' }}>
+                    <RowActions style={{ justifyContent: 'center' }}>
                       {(s.fattura_id || s.source === 'fattura') && (
                         <a
                           href={`/api/fatture-ricevute/fattura/${s.fattura_id || s.id}/view-assoinvoice`}
                           target="_blank"
                           rel="noopener noreferrer"
                           style={{
-                            padding: '3px 6px',
-                            background: '#3b82f6',
-                            color: 'white',
-                            borderRadius: 4,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: 28,
+                            height: 28,
+                            background: COLORS.infoLight,
+                            color: COLORS.info,
+                            borderRadius: BORDER_RADIUS.sm,
                             fontSize: 10,
                             textDecoration: 'none',
                           }}
@@ -2200,29 +1950,21 @@ function ScadenzeWidget({ scadenze }) {
                           📄
                         </a>
                       )}
-                      <button
+                      <RowActionButton
+                        variant="success"
                         onClick={() => setPagaModal(s)}
-                        style={{
-                          padding: '3px 6px',
-                          background: '#10b981',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: 4,
-                          fontSize: 10,
-                          cursor: 'pointer',
-                        }}
                         title="Paga"
                       >
                         ✓
-                      </button>
-                    </div>
-                  </td>
+                      </RowActionButton>
+                    </RowActions>
+                  </Td>
                 </tr>
               );
             })}
           </tbody>
-        </table>
-      </div>
+        </Table>
+      </TableWrap>
 
       {scadenze.totale > 6 && (
         <div style={{ textAlign: 'center', marginTop: 12 }}>
@@ -2230,7 +1972,7 @@ function ScadenzeWidget({ scadenze }) {
             to="/scadenze"
             style={{
               fontSize: 13,
-              color: '#3b82f6',
+              color: COLORS.info,
               textDecoration: 'none',
             }}
           >
@@ -2256,58 +1998,54 @@ function ScadenzeWidget({ scadenze }) {
           <div
             onClick={e => e.stopPropagation()}
             style={{
-              background: 'white',
-              borderRadius: 16,
+              background: COLORS.card,
+              borderRadius: BORDER_RADIUS.xl,
               padding: 24,
               maxWidth: 400,
               width: '90%',
-              boxShadow: '0 25px 50px rgba(0,0,0,0.25)',
+              boxShadow: SHADOWS.modal,
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: '#1e293b' }}>
+              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: COLORS.text }}>
                 Registra Pagamento
               </h3>
-              <button
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() => setPagaModal(null)}
                 aria-label="Chiudi"
                 style={{
                   width: 32,
                   height: 32,
                   flexShrink: 0,
-                  background: '#f1f5f9',
-                  border: 'none',
-                  borderRadius: 8,
-                  color: '#475569',
+                  padding: 0,
+                  background: COLORS.bgAlt,
+                  color: COLORS.gray[600],
                   fontSize: 16,
-                  lineHeight: 1,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
                 }}
               >
                 ✕
-              </button>
+              </Button>
             </div>
 
             <div
               style={{
-                background: '#f8fafc',
-                borderRadius: 8,
+                background: COLORS.bgAlt,
+                borderRadius: BORDER_RADIUS.md,
                 padding: 16,
                 marginBottom: 20,
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                <span style={{ color: '#64748b', fontSize: 13 }}>Tipo:</span>
+                <span style={{ color: COLORS.textMuted, fontSize: 13 }}>Tipo:</span>
                 <span style={{ fontWeight: 600 }}>
                   {pagaModal.tipo} {pagaModal.numero_fattura || ''}
                 </span>
               </div>
               {pagaModal.fornitore && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                  <span style={{ color: '#64748b', fontSize: 13 }}>Fornitore:</span>
+                  <span style={{ color: COLORS.textMuted, fontSize: 13 }}>Fornitore:</span>
                   <span
                     style={{
                       fontWeight: 500,
@@ -2322,92 +2060,73 @@ function ScadenzeWidget({ scadenze }) {
                 </div>
               )}
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                <span style={{ color: '#64748b', fontSize: 13 }}>Scadenza:</span>
+                <span style={{ color: COLORS.textMuted, fontSize: 13 }}>Scadenza:</span>
                 <span style={{ fontWeight: 500 }}>{formatDate(pagaModal.data)}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: '#64748b', fontSize: 13 }}>Importo:</span>
-                <span style={{ fontWeight: 700, color: '#dc2626', fontSize: 16 }}>
+                <span style={{ color: COLORS.textMuted, fontSize: 13 }}>Importo:</span>
+                <span style={{ fontWeight: 700, color: COLORS.danger, fontSize: 16 }}>
                   {formatEuro(pagaModal.importo)}
                 </span>
               </div>
             </div>
 
-            <p style={{ fontSize: 14, color: '#64748b', marginBottom: 16 }}>
+            <p style={{ fontSize: 14, color: COLORS.textMuted, marginBottom: 16 }}>
               Scegli il metodo di pagamento. Il movimento verrà registrato in Prima Nota.
             </p>
 
             <div style={{ display: 'flex', gap: 12, marginBottom: 16, justifyContent: 'center' }}>
-              <button
+              <Button
+                variant="warning"
+                size="lg"
                 onClick={() => handlePaga(pagaModal, 'cassa')}
                 disabled={processing}
                 style={{
-                  padding: '14px 24px',
-                  background: processing ? '#94a3b8' : '#f59e0b',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: 10,
-                  fontSize: 14,
-                  fontWeight: 700,
-                  cursor: processing ? 'not-allowed' : 'pointer',
-                  display: 'flex',
                   flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
                   gap: 4,
                   minWidth: 140,
+                  padding: '14px 24px',
                 }}
               >
                 <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>💵 CASSA</span>
                 <span style={{ fontSize: 10, opacity: 0.9 }}>(pagato subito)</span>
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="info"
+                size="lg"
                 onClick={() => handlePaga(pagaModal, 'banca')}
                 disabled={processing}
                 style={{
-                  padding: '14px 24px',
-                  background: processing ? '#94a3b8' : '#3b82f6',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: 10,
-                  fontSize: 14,
-                  fontWeight: 700,
-                  cursor: processing ? 'not-allowed' : 'pointer',
-                  display: 'flex',
                   flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
                   gap: 4,
                   minWidth: 140,
+                  padding: '14px 24px',
                 }}
               >
                 <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>🏦 BANCA</span>
                 <span style={{ fontSize: 10, opacity: 0.9 }}>(da riconciliare)</span>
-              </button>
+              </Button>
             </div>
 
-            <p style={{ fontSize: 12, color: '#94a3b8', marginBottom: 12, textAlign: 'center' }}>
+            <p style={{ fontSize: 12, color: COLORS.textSubtle, marginBottom: 12, textAlign: 'center' }}>
               💡 Se paghi in <strong>CASSA</strong> la scadenza viene saldata immediatamente.
               <br />
               Se paghi in <strong>BANCA</strong> verrà riconciliata quando troveremo il movimento
               nell&apos;estratto conto.
             </p>
 
-            <button
+            <Button
+              variant="secondary"
               onClick={() => setPagaModal(null)}
               style={{
                 width: '100%',
-                padding: '10px',
-                background: '#f1f5f9',
-                color: '#64748b',
+                background: COLORS.bgAlt,
+                color: COLORS.textMuted,
                 border: 'none',
-                borderRadius: 8,
-                fontSize: 13,
-                cursor: 'pointer',
               }}
             >
               Annulla
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -2426,10 +2145,10 @@ function AlertPagamentiWidget({ data }) {
     <div
       data-testid="widget-alert-pagamenti"
       style={{
-        background: '#fee2e2',
-        border: '1px solid #fcd34d',
-        borderLeft: '4px solid #f59e0b',
-        borderRadius: 10,
+        background: COLORS.dangerLight,
+        border: `1px solid ${COLORS.warning}`,
+        borderLeft: `4px solid ${COLORS.warning}`,
+        borderRadius: BORDER_RADIUS.lg,
         padding: '14px 18px',
         marginBottom: 12,
         display: 'flex',
@@ -2442,13 +2161,13 @@ function AlertPagamentiWidget({ data }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: '1 1 300px' }}>
         <span style={{ fontSize: 22 }}>📋</span>
         <div>
-          <div style={{ fontWeight: 700, fontSize: 14, color: '#92400e' }}>
+          <div style={{ fontWeight: 700, fontSize: 14, color: COLORS.warning }}>
             Pagamenti in attesa di riconciliazione bancaria
           </div>
           <div
             style={{
               fontSize: 12,
-              color: '#78350f',
+              color: COLORS.warning,
               marginTop: 2,
               display: 'flex',
               gap: 16,
@@ -2467,9 +2186,9 @@ function AlertPagamentiWidget({ data }) {
                 {formatEuro(totF24)}
               </span>
             )}
-            <span style={{ color: '#92400e', fontWeight: 700 }}>Totale: {formatEuro(totale)}</span>
+            <span style={{ color: COLORS.warning, fontWeight: 700 }}>Totale: {formatEuro(totale)}</span>
           </div>
-          <div style={{ fontSize: 11, color: '#a16207', marginTop: 4 }}>
+          <div style={{ fontSize: 11, color: COLORS.warning, marginTop: 4 }}>
             Carica l'estratto conto in "Import Documenti" per riconciliare automaticamente
           </div>
         </div>
@@ -2482,14 +2201,14 @@ function AlertPagamentiWidget({ data }) {
           alignItems: 'center',
           gap: 6,
           padding: '8px 16px',
-          background: '#f59e0b',
+          background: COLORS.warning,
           color: 'white',
-          borderRadius: 8,
+          borderRadius: BORDER_RADIUS.md,
           textDecoration: 'none',
           fontSize: 13,
           fontWeight: 700,
           whiteSpace: 'nowrap',
-          boxShadow: '0 2px 4px rgba(245,158,11,0.3)',
+          boxShadow: SHADOWS.sm,
         }}
       >
             Vai a Paghe

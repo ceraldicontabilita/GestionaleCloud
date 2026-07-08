@@ -4,18 +4,19 @@ import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { formatEuro, formatDateIT, STYLES, COLORS, button, badge, useIsMobile } from '../lib/utils';
+import { formatEuro, formatDateIT, STYLES, COLORS, SHADOWS, BORDER_RADIUS, useIsMobile } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
 import ModalFattura from '../components/ModalFattura';
+import { Button, Badge, StatCard, Table, TableWrap, Th, Td, Input, RowActions, RowActionButton } from '../components/ds';
 
 const STATI_ASSEGNO = {
-  vuoto: { label: 'Valido', color: '#4caf50' },
-  compilato: { label: 'Compilato', color: '#2196f3' },
-  emesso: { label: 'Emesso', color: '#ff9800' },
-  parzialmente_assegnato: { label: 'Parz. assegnato', color: '#ff9800' },
-  assegnato: { label: 'Assegnato', color: '#2196f3' },
-  incassato: { label: 'Incassato', color: '#9c27b0' },
-  annullato: { label: 'Annullato', color: '#f44336' },
+  vuoto: { label: 'Valido', variant: 'success' },
+  compilato: { label: 'Compilato', variant: 'info' },
+  emesso: { label: 'Emesso', variant: 'warning' },
+  parzialmente_assegnato: { label: 'Parz. assegnato', variant: 'warning' },
+  assegnato: { label: 'Assegnato', variant: 'info' },
+  incassato: { label: 'Incassato', variant: 'accent' },
+  annullato: { label: 'Annullato', variant: 'danger' },
 };
 
 export default function GestioneAssegni() {
@@ -990,19 +991,15 @@ export default function GestioneAssegni() {
 
   // Stile voce del menu "⚙️ Altro" (pattern dropdown TopNav)
   const menuItemStyle = {
-    display: 'flex',
-    alignItems: 'center',
+    justifyContent: 'flex-start',
     gap: 8,
     width: '100%',
     padding: '11px 16px',
     minHeight: 44,
-    background: 'transparent',
-    border: 'none',
     textAlign: 'left',
     fontSize: 13,
     fontWeight: 500,
-    color: '#374151',
-    cursor: 'pointer',
+    color: COLORS.gray[700],
   };
 
   return (
@@ -1024,60 +1021,33 @@ export default function GestioneAssegni() {
           alignItems: 'center',
         }}
       >
-        <button
+        <Button
+          variant="success"
+          size="lg"
           onClick={() => setShowGenerate(true)}
           data-testid="genera-assegni-btn"
-          style={{
-            padding: '10px 16px',
-            minHeight: 40,
-            background: '#16a34a',
-            color: 'white',
-            border: 'none',
-            borderRadius: 8,
-            cursor: 'pointer',
-            fontWeight: 'bold',
-            fontSize: 13,
-          }}
         >
           + Genera Assegni
-        </button>
+        </Button>
 
         {/* Auto-Match rigoroso a 4 livelli (LOGICA_OPERATIVA) */}
-        <button
+        <Button
+          variant="success"
+          size="lg"
           onClick={() => handleAutoMatch(false)}
           disabled={autoAssociating}
           data-testid="auto-match-btn"
           title="Auto-match rigoroso: 4 livelli (L1 1→1, L2 N uguali→1, L3 N diversi→1, L4 1→N) con tolleranza ±0,005€"
-          style={{
-            padding: '10px 16px',
-            minHeight: 40,
-            background: autoAssociating ? '#ccc' : '#15803d',
-            color: 'white',
-            border: 'none',
-            borderRadius: 8,
-            cursor: autoAssociating ? 'not-allowed' : 'pointer',
-            fontWeight: 'bold',
-            fontSize: 13,
-            boxShadow: '0 2px 4px rgba(5,150,105,0.3)',
-          }}
+          style={{ boxShadow: SHADOWS.sm }}
         >
           {autoAssociating ? '🤖 …' : '🤖 Auto-collega'}
-        </button>
+        </Button>
 
-        <button
+        <Button
+          variant={showFilters ? 'primary' : 'secondary'}
+          size="lg"
           onClick={() => setShowFilters(!showFilters)}
           data-testid="toggle-filters-btn"
-          style={{
-            padding: '10px 16px',
-            minHeight: 40,
-            background: showFilters ? '#1e3a5f' : 'white',
-            color: showFilters ? 'white' : '#1e3a5f',
-            border: '1px solid #1e3a5f',
-            borderRadius: 8,
-            cursor: 'pointer',
-            fontWeight: 'bold',
-            fontSize: 13,
-          }}
         >
           🔍 Filtri{' '}
           {(filterFornitore ||
@@ -1086,28 +1056,19 @@ export default function GestioneAssegni() {
             filterNumeroAssegno ||
             filterNumeroFattura) &&
             '●'}
-        </button>
+        </Button>
 
         {/* Menu "⚙️ Altro": tutte le azioni secondarie consolidate qui */}
         <div ref={altroMenuRef} style={{ position: 'relative' }}>
-          <button
+          <Button
+            variant={showAltroMenu ? 'primary' : 'secondary'}
+            size="lg"
             onClick={() => setShowAltroMenu(v => !v)}
             aria-expanded={showAltroMenu}
             data-testid="altro-menu-btn"
-            style={{
-              padding: '10px 16px',
-              minHeight: 40,
-              background: showAltroMenu ? '#0f2744' : 'white',
-              color: showAltroMenu ? 'white' : '#0f2744',
-              border: '1px solid #0f2744',
-              borderRadius: 8,
-              cursor: 'pointer',
-              fontWeight: 'bold',
-              fontSize: 13,
-            }}
           >
             ⚙️ Altro {showAltroMenu ? '▴' : '▾'}
-          </button>
+          </Button>
           {showAltroMenu && (
             <div
               data-testid="altro-menu"
@@ -1115,10 +1076,10 @@ export default function GestioneAssegni() {
                 position: 'absolute',
                 top: 'calc(100% + 6px)',
                 left: 0,
-                background: '#fff',
-                borderRadius: 10,
-                boxShadow: '0 12px 32px rgba(15,39,68,0.18)',
-                border: '1px solid #e2e8f0',
+                background: COLORS.card,
+                borderRadius: BORDER_RADIUS.lg,
+                boxShadow: SHADOWS.xl,
+                border: `1px solid ${COLORS.border}`,
                 minWidth: 240,
                 padding: '6px 0',
                 zIndex: 1500,
@@ -1126,7 +1087,8 @@ export default function GestioneAssegni() {
                 overflowY: 'auto',
               }}
             >
-              <button
+              <Button
+                variant="ghost"
                 onClick={() => {
                   setShowAltroMenu(false);
                   handleAutoAssocia();
@@ -1136,8 +1098,9 @@ export default function GestioneAssegni() {
                 style={menuItemStyle}
               >
                 🔁 {autoAssociating ? 'Associando...' : 'Auto-Associa'}
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="ghost"
                 onClick={() => {
                   setShowAltroMenu(false);
                   handleAutoMatch(true);
@@ -1148,8 +1111,9 @@ export default function GestioneAssegni() {
                 style={menuItemStyle}
               >
                 👁️ Anteprima auto-match
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="ghost"
                 onClick={() => {
                   setShowAltroMenu(false);
                   toggleAmbiguiSection();
@@ -1158,8 +1122,9 @@ export default function GestioneAssegni() {
                 style={menuItemStyle}
               >
                 ⚠️ {ambiguiOpen ? 'Nascondi ambigui' : 'Risolvi ambigui'}
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="ghost"
                 onClick={() => {
                   setShowAltroMenu(false);
                   handleAssociaCombinazioni();
@@ -1169,8 +1134,9 @@ export default function GestioneAssegni() {
                 style={menuItemStyle}
               >
                 🔗 {combinazioneLoading ? 'Cercando...' : 'Combinazioni'}
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="ghost"
                 onClick={() => {
                   setShowAltroMenu(false);
                   generateSelectedPDF();
@@ -1179,15 +1145,15 @@ export default function GestioneAssegni() {
                 data-testid="stampa-selezionati-btn"
                 style={{
                   ...menuItemStyle,
-                  color: selectedAssegni.size === 0 ? '#9ca3af' : '#374151',
-                  cursor: selectedAssegni.size === 0 ? 'not-allowed' : 'pointer',
+                  color: selectedAssegni.size === 0 ? COLORS.textSubtle : COLORS.gray[700],
                 }}
               >
                 🖨️ Stampa Selezionati
                 {selectedAssegni.size > 0 ? ` (${selectedAssegni.size})` : ''}
-              </button>
-              <div style={{ height: 1, background: '#e2e8f0', margin: '6px 0' }} />
-              <button
+              </Button>
+              <div style={{ height: 1, background: COLORS.border, margin: '6px 0' }} />
+              <Button
+                variant="ghost"
                 onClick={() => {
                   setShowAltroMenu(false);
                   handleLearn();
@@ -1198,8 +1164,9 @@ export default function GestioneAssegni() {
                 style={menuItemStyle}
               >
                 🧠 {learningLoading ? 'Learning...' : 'Learn'}
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="ghost"
                 onClick={() => {
                   setShowAltroMenu(false);
                   handleAssociaIntelligente();
@@ -1210,8 +1177,9 @@ export default function GestioneAssegni() {
                 style={menuItemStyle}
               >
                 🤖 Smart
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="ghost"
                 onClick={() => {
                   setShowAltroMenu(false);
                   handlePuliziaDuplicati(true);
@@ -1222,26 +1190,27 @@ export default function GestioneAssegni() {
                 style={menuItemStyle}
               >
                 🧹 Pulizia
-              </button>
+              </Button>
               <Link
                 to="/learning-machine?tab=assegni"
                 onClick={() => setShowAltroMenu(false)}
                 title="Dashboard Learning Machine completa"
-                style={{ ...menuItemStyle, textDecoration: 'none' }}
+                style={{ ...menuItemStyle, display: 'flex', alignItems: 'center', textDecoration: 'none' }}
               >
                 📊 Dashboard Learning
               </Link>
-              <div style={{ height: 1, background: '#e2e8f0', margin: '6px 0' }} />
-              <button
+              <div style={{ height: 1, background: COLORS.border, margin: '6px 0' }} />
+              <Button
+                variant="ghost"
                 onClick={() => {
                   setShowAltroMenu(false);
                   handleClearEmpty();
                 }}
                 data-testid="svuota-btn"
-                style={{ ...menuItemStyle, color: '#dc2626' }}
+                style={{ ...menuItemStyle, color: COLORS.danger }}
               >
                 🗑️ Svuota (assegni vuoti)
-              </button>
+              </Button>
             </div>
           )}
         </div>
@@ -1251,7 +1220,7 @@ export default function GestioneAssegni() {
             locale ridondante e disallineato, limitato agli "ultimi 5 anni"
             calcolati da new Date() invece degli anni realmente disponibili. */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Anno: {anno}</span>
+          <span style={{ fontSize: 13, fontWeight: 600, color: COLORS.gray[700] }}>Anno: {anno}</span>
         </div>
       </div>
 
@@ -1262,9 +1231,9 @@ export default function GestioneAssegni() {
           style={{
             marginBottom: 20,
             padding: 16,
-            background: '#fffbeb',
-            border: '1px solid #fcd34d',
-            borderRadius: 10,
+            background: COLORS.warningLight,
+            border: `1px solid ${COLORS.warning}`,
+            borderRadius: BORDER_RADIUS.lg,
           }}
         >
           <div
@@ -1276,29 +1245,23 @@ export default function GestioneAssegni() {
             }}
           >
             <div>
-              <strong style={{ color: '#92400e', fontSize: 14 }}>
+              <strong style={{ color: COLORS.warning, fontSize: 14 }}>
                 ⚠ Assegni ambigui — serve la tua decisione
               </strong>
-              <p style={{ margin: '4px 0 0', fontSize: 12, color: '#78350f' }}>
+              <p style={{ margin: '4px 0 0', fontSize: 12, color: COLORS.warning }}>
                 Per questi assegni l'auto-matcher ha trovato più di una fattura candidata con lo
                 stesso importo. Seleziona quale collegare.
               </p>
             </div>
-            <button
+            <Button
+              variant="outline"
+              size="sm"
               onClick={loadAmbigui}
               disabled={ambiguiLoading}
-              style={{
-                padding: '6px 10px',
-                background: 'white',
-                border: '1px solid #d97706',
-                borderRadius: 6,
-                color: '#b45309',
-                cursor: 'pointer',
-                fontSize: 12,
-              }}
+              style={{ borderColor: COLORS.warning, color: COLORS.warning }}
             >
               {ambiguiLoading ? '⏳ Aggiorno…' : '↻ Ricarica'}
-            </button>
+            </Button>
           </div>
 
           {ambiguiLoading && (
@@ -1306,7 +1269,7 @@ export default function GestioneAssegni() {
           )}
 
           {!ambiguiLoading && ambiguiList.length === 0 && (
-            <div style={{ padding: 20, textAlign: 'center', color: '#059669', fontSize: 14 }}>
+            <div style={{ padding: 20, textAlign: 'center', color: COLORS.success, fontSize: 14 }}>
               ✅ Nessun assegno ambiguo da risolvere.
             </div>
           )}
@@ -1319,9 +1282,9 @@ export default function GestioneAssegni() {
                 style={{
                   marginTop: 12,
                   padding: 12,
-                  background: 'white',
-                  borderRadius: 8,
-                  border: '1px solid #fde68a',
+                  background: COLORS.card,
+                  borderRadius: BORDER_RADIUS.md,
+                  border: `1px solid ${COLORS.warningLight}`,
                 }}
               >
                 <div
@@ -1334,40 +1297,30 @@ export default function GestioneAssegni() {
                   }}
                 >
                   <div style={{ flex: '1 1 280px', minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: '#1f2937' }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: COLORS.text }}>
                       [{a.livello}] Assegno n. {a.assegno_numero}
                     </div>
-                    <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
+                    <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 2 }}>
                       {a.fornitore_ragione_sociale} — P.IVA {a.fornitore_piva}
                     </div>
-                    <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
+                    <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 2 }}>
                       Importo:{' '}
-                      <strong style={{ color: '#111827' }}>€ {a.importo.toFixed(2)}</strong>
+                      <strong style={{ color: COLORS.text }}>€ {a.importo.toFixed(2)}</strong>
                       {a.data_emissione && <> · Emissione: {formatDateIT(a.data_emissione)}</>}
                     </div>
                   </div>
-                  <button
+                  <Button
+                    variant="success"
+                    size="sm"
                     onClick={() => resolveAmbiguo(a.assegno_id)}
                     disabled={ambiguiResolving[a.assegno_id]}
                     data-testid={`risolvi-${a.assegno_id}`}
-                    style={{
-                      padding: '8px 14px',
-                      background: ambiguiResolving[a.assegno_id]
-                        ? '#9ca3af'
-                        : '#15803d',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: 6,
-                      cursor: 'pointer',
-                      fontWeight: 600,
-                      fontSize: 12,
-                    }}
                   >
                     {ambiguiResolving[a.assegno_id] ? '⏳ …' : '✓ Collega selezionati'}
-                  </button>
+                  </Button>
                 </div>
                 {/* Candidate fatture */}
-                <div style={{ marginTop: 10, borderTop: '1px dashed #fde68a', paddingTop: 10 }}>
+                <div style={{ marginTop: 10, borderTop: `1px dashed ${COLORS.warningLight}`, paddingTop: 10 }}>
                   {(a.candidates || []).map(c => {
                     const selected = (ambiguiSelections[a.assegno_id] || []).includes(c.fattura_id);
                     return (
@@ -1377,8 +1330,8 @@ export default function GestioneAssegni() {
                           display: 'flex',
                           alignItems: 'center',
                           padding: '6px 8px',
-                          background: selected ? '#ecfdf5' : 'transparent',
-                          borderRadius: 4,
+                          background: selected ? COLORS.successLight : 'transparent',
+                          borderRadius: BORDER_RADIUS.sm,
                           cursor: 'pointer',
                           gap: 8,
                           fontSize: 12,
@@ -1393,46 +1346,32 @@ export default function GestioneAssegni() {
                         />
                         <span style={{ flex: 1 }}>
                           <strong>{c.numero || c.fattura_id.slice(0, 8)}</strong>
-                          {c.data && <span style={{ color: '#6b7280' }}> · {formatDateIT(c.data)}</span>}
+                          {c.data && <span style={{ color: COLORS.textMuted }}> · {formatDateIT(c.data)}</span>}
                           {c.fornitore && (
-                            <span style={{ color: '#6b7280' }}> · {c.fornitore}</span>
+                            <span style={{ color: COLORS.textMuted }}> · {c.fornitore}</span>
                           )}
                         </span>
-                        <span style={{ fontFamily: 'monospace', color: '#111827' }}>
+                        <span style={{ fontFamily: 'monospace', color: COLORS.text }}>
                           € {(c.importo_residuo ?? c.importo_totale ?? 0).toFixed(2)}
                         </span>
                         {c.fattura_id && (
-                          <button
+                          <Button
+                            variant="success"
+                            size="sm"
                             onClick={e => {
                               e.preventDefault();
                               e.stopPropagation();
                               setFatturaView({ id: c.fattura_id, numero: c.numero });
                             }}
-                            style={{
-                              padding: '2px 7px',
-                              background: '#16a34a',
-                              color: 'white',
-                              border: 'none',
-                              borderRadius: 4,
-                              fontSize: 10,
-                              cursor: 'pointer',
-                            }}
+                            style={{ padding: '2px 7px', fontSize: 10 }}
                           >
                             📄 Vedi
-                          </button>
+                          </Button>
                         )}
                         {c.payment_status === 'partial' && (
-                          <span
-                            style={{
-                              fontSize: 10,
-                              background: '#dbeafe',
-                              color: '#1e40af',
-                              padding: '2px 6px',
-                              borderRadius: 3,
-                            }}
-                          >
+                          <Badge variant="info" style={{ padding: '2px 6px' }}>
                             parziale
-                          </span>
+                          </Badge>
                         )}
                       </label>
                     );
@@ -1443,115 +1382,70 @@ export default function GestioneAssegni() {
         </div>
       )}
 
-      {/* STATS AVANZATE BADGE */}
+      {/* STATS AVANZATE */}
       {statsAvanzate && (
         <div
           style={{
-            display: 'flex',
-            flexDirection: isMobile ? 'column' : 'row',
-            alignItems: isMobile ? 'stretch' : 'center',
-            gap: isMobile ? 10 : 16,
+            display: 'grid',
+            gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(auto-fit, minmax(150px, 1fr))',
+            gap: isMobile ? 10 : 12,
             marginBottom: 16,
-            padding: 12,
-            background: '#dbeafe',
-            borderRadius: 10,
-            border: '1px solid #bae6fd',
-            flexWrap: 'wrap',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontSize: 20 }}>📊</span>
-            <div>
-              <div style={{ fontSize: 11, color: '#64748b' }}>Health Score</div>
-              <div
-                style={{
-                  fontSize: 16,
-                  fontWeight: 700,
-                  color:
-                    statsAvanzate.health_score >= 90
-                      ? '#16a34a'
-                      : statsAvanzate.health_score >= 70
-                        ? '#ca8a04'
-                        : '#dc2626',
-                }}
-              >
-                {statsAvanzate.health_score}%
-              </div>
-            </div>
-          </div>
+          <StatCard
+            icon="📊"
+            label="Health Score"
+            value={`${statsAvanzate.health_score}%`}
+            accent={
+              statsAvanzate.health_score >= 90
+                ? 'success'
+                : statsAvanzate.health_score >= 70
+                  ? 'warning'
+                  : 'danger'
+            }
+          />
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontSize: 20 }}>✅</span>
-            <div>
-              <div style={{ fontSize: 11, color: '#64748b' }}>Con Beneficiario</div>
-              <div style={{ fontSize: 14, fontWeight: 600, color: '#1e293b' }}>
-                {statsAvanzate.con_beneficiario}/{statsAvanzate.totale_assegni}
-              </div>
-            </div>
-          </div>
+          <StatCard
+            icon="✅"
+            label="Con Beneficiario"
+            value={`${statsAvanzate.con_beneficiario}/${statsAvanzate.totale_assegni}`}
+            accent="info"
+          />
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontSize: 20 }}>📄</span>
-            <div>
-              <div style={{ fontSize: 11, color: '#64748b' }}>Con Fattura</div>
-              <div style={{ fontSize: 14, fontWeight: 600, color: '#1e293b' }}>
-                {statsAvanzate.con_fattura}/{statsAvanzate.totale_assegni}
-              </div>
-            </div>
-          </div>
+          <StatCard
+            icon="📄"
+            label="Con Fattura"
+            value={`${statsAvanzate.con_fattura}/${statsAvanzate.totale_assegni}`}
+            accent="info"
+          />
 
           {statsAvanzate.duplicati > 0 && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: 20 }}>⚠️</span>
-              <div>
-                <div style={{ fontSize: 11, color: '#dc2626' }}>Duplicati</div>
-                <div style={{ fontSize: 14, fontWeight: 600, color: '#dc2626' }}>
-                  {statsAvanzate.duplicati}
-                </div>
-              </div>
-            </div>
+            <StatCard icon="⚠️" label="Duplicati" value={statsAvanzate.duplicati} accent="danger" />
           )}
 
           {statsAvanzate.senza_beneficiario > 0 && (
-            <div
+            <StatCard
+              icon="❓"
+              label="Da Associare"
+              value={statsAvanzate.senza_beneficiario}
+              accent="warning"
               onClick={() => setFilterSoloDaAssociare(v => !v)}
-              title="Mostra solo gli assegni senza beneficiario reale"
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
                 cursor: 'pointer',
-                padding: '2px 8px',
-                borderRadius: 6,
-                background: filterSoloDaAssociare ? '#fef3c7' : 'transparent',
-                border: filterSoloDaAssociare ? '1px solid #ca8a04' : '1px solid transparent',
+                background: filterSoloDaAssociare ? COLORS.warningLight : COLORS.card,
               }}
-            >
-              <span style={{ fontSize: 20 }}>❓</span>
-              <div>
-                <div style={{ fontSize: 11, color: '#ca8a04' }}>Da Associare</div>
-                <div style={{ fontSize: 14, fontWeight: 600, color: '#ca8a04' }}>
-                  {statsAvanzate.senza_beneficiario}
-                </div>
-              </div>
-            </div>
+            />
           )}
           {filterSoloDaAssociare && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <button
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => setFilterSoloDaAssociare(false)}
-                style={{
-                  fontSize: 12,
-                  padding: '4px 10px',
-                  borderRadius: 6,
-                  border: '1px solid #ca8a04',
-                  background: '#fff',
-                  color: '#ca8a04',
-                  cursor: 'pointer',
-                }}
+                style={{ borderColor: COLORS.warning, color: COLORS.warning }}
               >
                 ✕ Mostra tutti
-              </button>
+              </Button>
             </div>
           )}
         </div>
@@ -1563,16 +1457,16 @@ export default function GestioneAssegni() {
           style={{
             marginBottom: 16,
             padding: 15,
-            background: '#dcfce7',
-            borderRadius: 8,
-            border: '1px solid #6ee7b7',
+            background: COLORS.successLight,
+            borderRadius: BORDER_RADIUS.md,
+            border: `1px solid ${COLORS.success}`,
           }}
         >
           <div
             style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}
           >
             <div>
-              <strong style={{ color: '#059669', fontSize: 14 }}>
+              <strong style={{ color: COLORS.success, fontSize: 14 }}>
                 🧠 Learning Completato: {learningResult.pattern_appresi} pattern appresi da{' '}
                 {learningResult.assegni_analizzati} assegni
               </strong>
@@ -1589,23 +1483,14 @@ export default function GestioneAssegni() {
                 </div>
               )}
             </div>
-            <button
+            <Button
+              variant="ghost"
               onClick={() => setLearningResult(null)}
               aria-label="Chiudi"
-              style={{
-                width: 40,
-                height: 40,
-                flexShrink: 0,
-                background: 'transparent',
-                border: 'none',
-                borderRadius: 8,
-                fontSize: 16,
-                color: '#64748b',
-                cursor: 'pointer',
-              }}
+              style={{ width: 40, height: 40, flexShrink: 0, padding: 0, fontSize: 16 }}
             >
               ✕
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -1616,9 +1501,9 @@ export default function GestioneAssegni() {
           style={{
             marginBottom: 16,
             padding: 15,
-            background: puliziaResult.dry_run ? '#fffbeb' : '#fef2f2',
-            borderRadius: 8,
-            border: `1px solid ${puliziaResult.dry_run ? '#fcd34d' : '#fca5a5'}`,
+            background: puliziaResult.dry_run ? COLORS.warningLight : COLORS.dangerLight,
+            borderRadius: BORDER_RADIUS.md,
+            border: `1px solid ${puliziaResult.dry_run ? COLORS.warning : COLORS.danger}`,
           }}
         >
           <div
@@ -1626,7 +1511,7 @@ export default function GestioneAssegni() {
           >
             <div>
               <strong
-                style={{ color: puliziaResult.dry_run ? '#b45309' : '#dc2626', fontSize: 14 }}
+                style={{ color: puliziaResult.dry_run ? COLORS.warning : COLORS.danger, fontSize: 14 }}
               >
                 🧹 {puliziaResult.dry_run ? 'PREVIEW Pulizia' : 'Pulizia Completata'}:{' '}
                 {puliziaResult.totale_da_eliminare} record da eliminare
@@ -1639,40 +1524,23 @@ export default function GestioneAssegni() {
                 )}
               </div>
               {puliziaResult.dry_run && puliziaResult.totale_da_eliminare > 0 && (
-                <button
+                <Button
+                  variant="danger"
                   onClick={() => handlePuliziaDuplicati(false)}
-                  style={{
-                    marginTop: 10,
-                    padding: '8px 16px',
-                    background: '#dc2626',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: 6,
-                    cursor: 'pointer',
-                    fontWeight: 600,
-                  }}
+                  style={{ marginTop: 10 }}
                 >
                   ⚠️ Conferma Eliminazione
-                </button>
+                </Button>
               )}
             </div>
-            <button
+            <Button
+              variant="ghost"
               onClick={() => setPuliziaResult(null)}
               aria-label="Chiudi"
-              style={{
-                width: 40,
-                height: 40,
-                flexShrink: 0,
-                background: 'transparent',
-                border: 'none',
-                borderRadius: 8,
-                fontSize: 16,
-                color: '#64748b',
-                cursor: 'pointer',
-              }}
+              style={{ width: 40, height: 40, flexShrink: 0, padding: 0, fontSize: 16 }}
             >
               ✕
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -1686,17 +1554,18 @@ export default function GestioneAssegni() {
             left: isMobile ? 12 : 200,
             right: isMobile ? 12 : 20,
             zIndex: 100,
-            background: '#f8fafc',
-            borderRadius: 12,
+            background: COLORS.bgAlt,
+            borderRadius: BORDER_RADIUS.lg,
             padding: '48px 16px 16px',
-            border: '1px solid #e2e8f0',
-            boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+            border: `1px solid ${COLORS.border}`,
+            boxShadow: SHADOWS.xl,
             maxHeight: '80vh',
             overflowY: 'auto',
           }}
         >
           {/* X di chiusura ben tappabile */}
-          <button
+          <Button
+            variant="ghost"
             onClick={() => setShowFilters(false)}
             aria-label="Chiudi filtri"
             data-testid="close-filters-btn"
@@ -1706,16 +1575,12 @@ export default function GestioneAssegni() {
               right: 6,
               width: 40,
               height: 40,
-              background: 'transparent',
-              border: 'none',
-              borderRadius: 8,
+              padding: 0,
               fontSize: 20,
-              color: '#64748b',
-              cursor: 'pointer',
             }}
           >
             ✕
-          </button>
+          </Button>
           <div
             style={{
               display: 'grid',
@@ -1724,122 +1589,74 @@ export default function GestioneAssegni() {
             }}
           >
             <div>
-              <label style={{ fontSize: 12, color: '#666', display: 'block', marginBottom: 4 }}>
+              <label style={{ fontSize: 12, color: COLORS.textMuted, display: 'block', marginBottom: 4 }}>
                 Fornitore/Beneficiario
               </label>
-              <input
+              <Input
                 type="text"
                 value={filterFornitore}
                 onChange={e => setFilterFornitore(e.target.value)}
                 placeholder="Cerca fornitore..."
                 data-testid="filter-fornitore"
-                style={{
-                  width: '100%',
-                  padding: '8px 12px',
-                  border: '1px solid #ddd',
-                  borderRadius: 6,
-                  fontSize: 14,
-                }}
               />
             </div>
 
             <div>
-              <label style={{ fontSize: 12, color: '#666', display: 'block', marginBottom: 4 }}>
+              <label style={{ fontSize: 12, color: COLORS.textMuted, display: 'block', marginBottom: 4 }}>
                 Importo Min (€)
               </label>
-              <input
+              <Input
                 type="number"
                 value={filterImportoMin}
                 onChange={e => setFilterImportoMin(e.target.value)}
                 placeholder="0.00"
                 data-testid="filter-importo-min"
-                style={{
-                  width: '100%',
-                  padding: '8px 12px',
-                  border: '1px solid #ddd',
-                  borderRadius: 6,
-                  fontSize: 14,
-                }}
               />
             </div>
 
             <div>
-              <label style={{ fontSize: 12, color: '#666', display: 'block', marginBottom: 4 }}>
+              <label style={{ fontSize: 12, color: COLORS.textMuted, display: 'block', marginBottom: 4 }}>
                 Importo Max (€)
               </label>
-              <input
+              <Input
                 type="number"
                 value={filterImportoMax}
                 onChange={e => setFilterImportoMax(e.target.value)}
                 placeholder="99999"
                 data-testid="filter-importo-max"
-                style={{
-                  width: '100%',
-                  padding: '8px 12px',
-                  border: '1px solid #ddd',
-                  borderRadius: 6,
-                  fontSize: 14,
-                }}
               />
             </div>
 
             <div>
-              <label style={{ fontSize: 12, color: '#666', display: 'block', marginBottom: 4 }}>
+              <label style={{ fontSize: 12, color: COLORS.textMuted, display: 'block', marginBottom: 4 }}>
                 N. Assegno
               </label>
-              <input
+              <Input
                 type="text"
                 value={filterNumeroAssegno}
                 onChange={e => setFilterNumeroAssegno(e.target.value)}
                 placeholder="Cerca assegno..."
                 data-testid="filter-numero-assegno"
-                style={{
-                  width: '100%',
-                  padding: '8px 12px',
-                  border: '1px solid #ddd',
-                  borderRadius: 6,
-                  fontSize: 14,
-                }}
               />
             </div>
 
             <div>
-              <label style={{ fontSize: 12, color: '#666', display: 'block', marginBottom: 4 }}>
+              <label style={{ fontSize: 12, color: COLORS.textMuted, display: 'block', marginBottom: 4 }}>
                 N. Fattura
               </label>
-              <input
+              <Input
                 type="text"
                 value={filterNumeroFattura}
                 onChange={e => setFilterNumeroFattura(e.target.value)}
                 placeholder="Cerca fattura..."
                 data-testid="filter-numero-fattura"
-                style={{
-                  width: '100%',
-                  padding: '8px 12px',
-                  border: '1px solid #ddd',
-                  borderRadius: 6,
-                  fontSize: 14,
-                }}
               />
             </div>
 
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
-              <button
-                onClick={resetFilters}
-                data-testid="reset-filters-btn"
-                style={{
-                  padding: '8px 16px',
-                  minHeight: 40,
-                  background: '#dc2626',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: 6,
-                  cursor: 'pointer',
-                  fontSize: 13,
-                }}
-              >
+              <Button variant="danger" onClick={resetFilters} data-testid="reset-filters-btn">
                 Reset
-              </button>
+              </Button>
             </div>
           </div>
 
@@ -1849,7 +1666,7 @@ export default function GestioneAssegni() {
             filterImportoMax ||
             filterNumeroAssegno ||
             filterNumeroFattura) && (
-            <div style={{ marginTop: 12, fontSize: 13, color: '#1e3a5f' }}>
+            <div style={{ marginTop: 12, fontSize: 13, color: COLORS.primaryLight }}>
               <strong>Risultati:</strong> {filteredAssegni.length} assegni trovati su{' '}
               {assegni.length} totali
             </div>
@@ -1863,9 +1680,9 @@ export default function GestioneAssegni() {
           style={{
             marginBottom: 20,
             padding: 15,
-            background: '#ecfdf5',
-            borderRadius: 8,
-            border: '1px solid #6ee7b7',
+            background: COLORS.successLight,
+            borderRadius: BORDER_RADIUS.md,
+            border: `1px solid ${COLORS.success}`,
           }}
         >
           <div
@@ -1877,7 +1694,7 @@ export default function GestioneAssegni() {
             }}
           >
             <div style={{ flex: 1 }}>
-              <strong style={{ color: '#047857', fontSize: 14 }}>
+              <strong style={{ color: COLORS.success, fontSize: 14 }}>
                 🤖 Auto-Match {autoAssocResult._dry_run ? '(ANTEPRIMA)' : 'completato'}
               </strong>
               <div
@@ -1898,22 +1715,22 @@ export default function GestioneAssegni() {
               <div
                 style={{ marginTop: 8, fontSize: 13, display: 'flex', flexWrap: 'wrap', gap: 12 }}
               >
-                <span style={{ color: '#059669' }}>
+                <span style={{ color: COLORS.success }}>
                   ✓ L1 (1=1): <strong>{autoAssocResult.totali?.L1 ?? 0}</strong>
                 </span>
-                <span style={{ color: '#0369a1' }}>
+                <span style={{ color: COLORS.info }}>
                   ✓ L2 (N uguali→1): <strong>{autoAssocResult.totali?.L2 ?? 0}</strong>
                 </span>
-                <span style={{ color: '#7c3aed' }}>
+                <span style={{ color: COLORS.accent }}>
                   ✓ L3 (N diversi→1): <strong>{autoAssocResult.totali?.L3 ?? 0}</strong>
                 </span>
-                <span style={{ color: '#ea580c' }}>
+                <span style={{ color: COLORS.warning }}>
                   ✓ L4 (1→N): <strong>{autoAssocResult.totali?.L4 ?? 0}</strong>
                 </span>
-                <span style={{ color: '#dc2626' }}>
+                <span style={{ color: COLORS.danger }}>
                   ⚠ Ambigui: <strong>{autoAssocResult.totali?.ambigui ?? 0}</strong>
                 </span>
-                <span style={{ color: '#6b7280' }}>
+                <span style={{ color: COLORS.textMuted }}>
                   ✗ Non trovati: <strong>{autoAssocResult.totali?.non_trovati ?? 0}</strong>
                 </span>
               </div>
@@ -1922,7 +1739,7 @@ export default function GestioneAssegni() {
                   senza modo di risalire a QUALI fatture componevano la somma. */}
               {autoAssocResult.match_l2?.length > 0 && (
                 <details style={{ marginTop: 10, fontSize: 12 }}>
-                  <summary style={{ cursor: 'pointer', color: '#0369a1', fontWeight: 600 }}>
+                  <summary style={{ cursor: 'pointer', color: COLORS.info, fontWeight: 600 }}>
                     Vedi dettaglio {autoAssocResult.match_l2.length} match L2 (più assegni
                     uguali → 1 fattura)
                   </summary>
@@ -1932,9 +1749,9 @@ export default function GestioneAssegni() {
                         key={i}
                         style={{
                           padding: 8,
-                          background: 'white',
-                          borderRadius: 6,
-                          border: '1px solid #e2e8f0',
+                          background: COLORS.card,
+                          borderRadius: BORDER_RADIUS.sm,
+                          border: `1px solid ${COLORS.border}`,
                         }}
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
@@ -1945,26 +1762,20 @@ export default function GestioneAssegni() {
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             <strong>{formatEuro(m.fattura_importo || 0)}</strong>
                             {m.fattura_id && (
-                              <button
+                              <Button
+                                variant="success"
+                                size="sm"
                                 onClick={() =>
                                   setFatturaView({ id: m.fattura_id, numero: m.fattura_numero })
                                 }
-                                style={{
-                                  padding: '4px 8px',
-                                  background: '#16a34a',
-                                  color: 'white',
-                                  border: 'none',
-                                  borderRadius: 4,
-                                  fontSize: 11,
-                                  cursor: 'pointer',
-                                }}
+                                style={{ padding: '4px 8px', fontSize: 11 }}
                               >
                                 📄 Vedi
-                              </button>
+                              </Button>
                             )}
                           </div>
                         </div>
-                        <div style={{ marginTop: 4, paddingLeft: 12, color: '#64748b' }}>
+                        <div style={{ marginTop: 4, paddingLeft: 12, color: COLORS.textMuted }}>
                           {(m.assegni || []).map((a, j) => (
                             <div key={j}>
                               ↳ Assegno {a.assegno_numero || a.assegno_id}: {formatEuro(a.quota || 0)}
@@ -1978,7 +1789,7 @@ export default function GestioneAssegni() {
               )}
               {autoAssocResult.match_l3?.length > 0 && (
                 <details style={{ marginTop: 10, fontSize: 12 }}>
-                  <summary style={{ cursor: 'pointer', color: '#7c3aed', fontWeight: 600 }}>
+                  <summary style={{ cursor: 'pointer', color: COLORS.accent, fontWeight: 600 }}>
                     Vedi dettaglio {autoAssocResult.match_l3.length} match L3 (più assegni
                     diversi → 1 fattura)
                   </summary>
@@ -1988,9 +1799,9 @@ export default function GestioneAssegni() {
                         key={i}
                         style={{
                           padding: 8,
-                          background: 'white',
-                          borderRadius: 6,
-                          border: '1px solid #e2e8f0',
+                          background: COLORS.card,
+                          borderRadius: BORDER_RADIUS.sm,
+                          border: `1px solid ${COLORS.border}`,
                         }}
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
@@ -2001,26 +1812,20 @@ export default function GestioneAssegni() {
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             <strong>{formatEuro(m.fattura_importo || 0)}</strong>
                             {m.fattura_id && (
-                              <button
+                              <Button
+                                variant="success"
+                                size="sm"
                                 onClick={() =>
                                   setFatturaView({ id: m.fattura_id, numero: m.fattura_numero })
                                 }
-                                style={{
-                                  padding: '4px 8px',
-                                  background: '#16a34a',
-                                  color: 'white',
-                                  border: 'none',
-                                  borderRadius: 4,
-                                  fontSize: 11,
-                                  cursor: 'pointer',
-                                }}
+                                style={{ padding: '4px 8px', fontSize: 11 }}
                               >
                                 📄 Vedi
-                              </button>
+                              </Button>
                             )}
                           </div>
                         </div>
-                        <div style={{ marginTop: 4, paddingLeft: 12, color: '#64748b' }}>
+                        <div style={{ marginTop: 4, paddingLeft: 12, color: COLORS.textMuted }}>
                           {(m.assegni || []).map((a, j) => (
                             <div key={j}>
                               ↳ Assegno {a.assegno_numero || a.assegno_id}: {formatEuro(a.quota || 0)}
@@ -2034,7 +1839,7 @@ export default function GestioneAssegni() {
               )}
               {autoAssocResult.ambigui?.length > 0 && (
                 <details style={{ marginTop: 10, fontSize: 12 }}>
-                  <summary style={{ cursor: 'pointer', color: '#dc2626', fontWeight: 600 }}>
+                  <summary style={{ cursor: 'pointer', color: COLORS.danger, fontWeight: 600 }}>
                     Vedi {autoAssocResult.ambigui.length} assegni ambigui (da confermare
                     manualmente)
                   </summary>
@@ -2049,23 +1854,14 @@ export default function GestioneAssegni() {
                 </details>
               )}
             </div>
-            <button
+            <Button
+              variant="ghost"
               onClick={() => setAutoAssocResult(null)}
               aria-label="Chiudi"
-              style={{
-                width: 40,
-                height: 40,
-                flexShrink: 0,
-                background: 'transparent',
-                border: 'none',
-                borderRadius: 8,
-                fontSize: 16,
-                color: '#64748b',
-                cursor: 'pointer',
-              }}
+              style={{ width: 40, height: 40, flexShrink: 0, padding: 0, fontSize: 16 }}
             >
               ✕
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -2076,15 +1872,15 @@ export default function GestioneAssegni() {
           style={{
             marginBottom: 20,
             padding: 15,
-            background: autoAssocResult.assegni_aggiornati > 0 ? '#e8f5e9' : '#fff3e0',
-            borderRadius: 8,
-            border: `1px solid ${autoAssocResult.assegni_aggiornati > 0 ? '#c8e6c9' : '#ffe0b2'}`,
+            background: autoAssocResult.assegni_aggiornati > 0 ? COLORS.successLight : COLORS.warningLight,
+            borderRadius: BORDER_RADIUS.md,
+            border: `1px solid ${autoAssocResult.assegni_aggiornati > 0 ? COLORS.success : COLORS.warning}`,
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <strong
-                style={{ color: autoAssocResult.assegni_aggiornati > 0 ? '#2e7d32' : '#e65100' }}
+                style={{ color: autoAssocResult.assegni_aggiornati > 0 ? COLORS.success : COLORS.warning }}
               >
                 {autoAssocResult.assegni_aggiornati > 0 ? '✓' : '!'} {autoAssocResult.message}
               </strong>
@@ -2097,7 +1893,7 @@ export default function GestioneAssegni() {
                         Assegno {d.assegno_numero} → Fattura {d.fattura_numero} (
                         {d.fornitore?.substring(0, 30)})
                         {d.tipo === 'multiplo' && (
-                          <span style={{ color: '#9c27b0' }}> [MULTIPLO]</span>
+                          <span style={{ color: COLORS.accent }}> [MULTIPLO]</span>
                         )}
                       </li>
                     ))}
@@ -2108,23 +1904,14 @@ export default function GestioneAssegni() {
                 </div>
               )}
             </div>
-            <button
+            <Button
+              variant="ghost"
               onClick={() => setAutoAssocResult(null)}
               aria-label="Chiudi"
-              style={{
-                width: 40,
-                height: 40,
-                flexShrink: 0,
-                background: 'transparent',
-                border: 'none',
-                borderRadius: 8,
-                fontSize: 16,
-                color: '#64748b',
-                cursor: 'pointer',
-              }}
+              style={{ width: 40, height: 40, flexShrink: 0, padding: 0, fontSize: 16 }}
             >
               ✕
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -2135,9 +1922,9 @@ export default function GestioneAssegni() {
           style={{
             marginBottom: 20,
             padding: 15,
-            background: combinazioneResult.match_trovati > 0 ? '#e3f2fd' : '#fff3e0',
-            borderRadius: 8,
-            border: `1px solid ${combinazioneResult.match_trovati > 0 ? '#90caf9' : '#ffe0b2'}`,
+            background: combinazioneResult.match_trovati > 0 ? COLORS.infoLight : COLORS.warningLight,
+            borderRadius: BORDER_RADIUS.md,
+            border: `1px solid ${combinazioneResult.match_trovati > 0 ? COLORS.info : COLORS.warning}`,
           }}
         >
           <div
@@ -2145,7 +1932,7 @@ export default function GestioneAssegni() {
           >
             <div style={{ flex: 1 }}>
               <strong
-                style={{ color: combinazioneResult.match_trovati > 0 ? '#1565c0' : '#e65100' }}
+                style={{ color: combinazioneResult.match_trovati > 0 ? COLORS.info : COLORS.warning }}
               >
                 🔗{' '}
                 {combinazioneResult.message ||
@@ -2153,7 +1940,7 @@ export default function GestioneAssegni() {
                     ? `Trovate ${combinazioneResult.match_trovati} combinazioni! (${combinazioneResult.assegni_associati} assegni associati)`
                     : 'Nessuna combinazione trovata')}
               </strong>
-              <div style={{ fontSize: 12, color: '#666', marginTop: 4 }}>
+              <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 4 }}>
                 Analizzati: {combinazioneResult.assegni_analizzati || 0} assegni • Combinazioni
                 testate: {combinazioneResult.combinazioni_testate || 0}
               </div>
@@ -2165,15 +1952,15 @@ export default function GestioneAssegni() {
                       {combinazioneResult.dettagli_match.map((d, i) => (
                         <li key={i} style={{ marginBottom: 8 }}>
                           <div>
-                            <span style={{ color: '#1565c0', fontWeight: 600 }}>
+                            <span style={{ color: COLORS.info, fontWeight: 600 }}>
                               {d.num_assegni} Assegni
                             </span>
                             {' → '}
-                            <span style={{ color: '#2e7d32', fontWeight: 600 }}>
+                            <span style={{ color: COLORS.success, fontWeight: 600 }}>
                               Fattura {d.fattura_numero}
                             </span>
                             {d.fornitore && (
-                              <span style={{ color: '#666' }}>
+                              <span style={{ color: COLORS.textMuted }}>
                                 {' '}
                                 ({d.fornitore.substring(0, 25)})
                               </span>
@@ -2184,7 +1971,7 @@ export default function GestioneAssegni() {
                               la lista dei numeri assegno senza risalire a quanto valeva
                               ciascuno, impossibile verificare la somma a colpo d'occhio. */}
                           {d.assegni?.length > 0 && (
-                            <div style={{ fontSize: 11, color: '#475569', marginTop: 4, paddingLeft: 10 }}>
+                            <div style={{ fontSize: 11, color: COLORS.gray[600], marginTop: 4, paddingLeft: 10 }}>
                               {d.assegni.map((numAss, j) => (
                                 <div key={j}>
                                   ↳ Assegno {numAss}
@@ -2195,33 +1982,26 @@ export default function GestioneAssegni() {
                               ))}
                             </div>
                           )}
-                          <div style={{ fontSize: 11, color: '#666', marginTop: 2 }}>
+                          <div style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 2 }}>
                             Somma: {formatEuro(d.somma_assegni)} = Fattura:{' '}
                             {formatEuro(d.fattura_importo)}
                             {d.differenza !== 0 && (
-                              <span style={{ color: '#f59e0b' }}>
+                              <span style={{ color: COLORS.warning }}>
                                 {' '}
                                 (diff: {formatEuro(d.differenza)})
                               </span>
                             )}
                             {d.fattura_id && (
-                              <button
+                              <Button
+                                variant="success"
+                                size="sm"
                                 onClick={() =>
                                   setFatturaView({ id: d.fattura_id, numero: d.fattura_numero })
                                 }
-                                style={{
-                                  marginLeft: 8,
-                                  padding: '3px 8px',
-                                  background: '#16a34a',
-                                  color: 'white',
-                                  border: 'none',
-                                  borderRadius: 4,
-                                  fontSize: 11,
-                                  cursor: 'pointer',
-                                }}
+                                style={{ marginLeft: 8, padding: '3px 8px', fontSize: 11 }}
                               >
                                 📄 Vedi
-                              </button>
+                              </Button>
                             )}
                           </div>
                         </li>
@@ -2232,13 +2012,13 @@ export default function GestioneAssegni() {
               {combinazioneResult.combinazioni_ambigue &&
                 combinazioneResult.combinazioni_ambigue.length > 0 && (
                   <div style={{ marginTop: 10, fontSize: 13 }}>
-                    <strong style={{ color: '#f59e0b' }}>
+                    <strong style={{ color: COLORS.warning }}>
                       ⚠️ {combinazioneResult.combinazioni_ambigue.length} combinazioni ambigue (non
                       associate automaticamente):
                     </strong>
                     <ul style={{ margin: '5px 0', paddingLeft: 20 }}>
                       {combinazioneResult.combinazioni_ambigue.map((amb, i) => (
-                        <li key={i} style={{ marginBottom: 8, fontSize: 12, color: '#666' }}>
+                        <li key={i} style={{ marginBottom: 8, fontSize: 12, color: COLORS.textMuted }}>
                           Assegni {amb.assegni?.join(', ')} (somma {formatEuro(amb.somma_assegni)})
                           corrispondono a più fatture:{' '}
                           {amb.fatture_candidate
@@ -2252,30 +2032,20 @@ export default function GestioneAssegni() {
                 )}
               {combinazioneResult.assegni_non_associabili &&
                 combinazioneResult.assegni_non_associabili.length > 0 && (
-                  <div style={{ marginTop: 8, fontSize: 12, color: '#f59e0b' }}>
+                  <div style={{ marginTop: 8, fontSize: 12, color: COLORS.warning }}>
                     ⚠️ {combinazioneResult.assegni_non_associabili.length} assegni rimasti senza
                     corrispondenza
                   </div>
                 )}
             </div>
-            <button
+            <Button
+              variant="ghost"
               onClick={() => setCombinazioneResult(null)}
               aria-label="Chiudi"
-              style={{
-                width: 40,
-                height: 40,
-                flexShrink: 0,
-                marginLeft: 10,
-                background: 'transparent',
-                border: 'none',
-                borderRadius: 8,
-                fontSize: 16,
-                color: '#64748b',
-                cursor: 'pointer',
-              }}
+              style={{ width: 40, height: 40, flexShrink: 0, marginLeft: 10, padding: 0, fontSize: 16 }}
             >
               ✕
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -2283,11 +2053,11 @@ export default function GestioneAssegni() {
       {/* SEZIONE ASSEGNI NON ASSOCIATI */}
       <div
         style={{
-          background: 'white',
-          borderRadius: 12,
+          background: COLORS.card,
+          borderRadius: BORDER_RADIUS.lg,
           padding: 16,
           marginBottom: 16,
-          boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+          boxShadow: SHADOWS.md,
         }}
       >
         <div
@@ -2308,7 +2078,7 @@ export default function GestioneAssegni() {
             style={{
               margin: 0,
               fontSize: 16,
-              color: '#1e293b',
+              color: COLORS.text,
               display: 'flex',
               alignItems: 'center',
               gap: 8,
@@ -2316,38 +2086,23 @@ export default function GestioneAssegni() {
           >
             ⚠️ Assegni Senza Beneficiario
             {assegniNonAssociati.totale !== undefined && (
-              <span
-                style={{
-                  background: assegniNonAssociati.totale > 0 ? '#fef3c7' : '#dcfce7',
-                  color: assegniNonAssociati.totale > 0 ? '#92400e' : '#166534',
-                  padding: '2px 8px',
-                  borderRadius: 12,
-                  fontSize: 12,
-                  fontWeight: 600,
-                }}
-              >
+              <Badge variant={assegniNonAssociati.totale > 0 ? 'warning' : 'success'}>
                 {assegniNonAssociati.totale}
-              </span>
+              </Badge>
             )}
           </h3>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <button
+            <Button
+              variant="secondary"
+              size="sm"
               onClick={e => {
                 e.stopPropagation();
                 loadAssegniNonAssociati();
               }}
               disabled={loadingNonAssociati}
-              style={{
-                padding: '6px 12px',
-                background: '#f1f5f9',
-                border: 'none',
-                borderRadius: 6,
-                cursor: 'pointer',
-                fontSize: 12,
-              }}
             >
               {loadingNonAssociati ? '⏳' : '🔄'} Aggiorna
-            </button>
+            </Button>
             <span style={{ fontSize: 18 }}>{showNonAssociati ? '▲' : '▼'}</span>
           </div>
         </div>
@@ -2355,7 +2110,7 @@ export default function GestioneAssegni() {
         {showNonAssociati && (
           <div style={{ marginTop: 16 }}>
             {loadingNonAssociati ? (
-              <div style={{ textAlign: 'center', padding: 20, color: '#64748b' }}>
+              <div style={{ textAlign: 'center', padding: 20, color: COLORS.textMuted }}>
                 ⏳ Caricamento...
               </div>
             ) : assegniNonAssociati.totale === 0 ? (
@@ -2363,39 +2118,39 @@ export default function GestioneAssegni() {
                 style={{
                   textAlign: 'center',
                   padding: 20,
-                  background: '#f0fdf4',
-                  borderRadius: 8,
-                  color: '#166534',
+                  background: COLORS.successLight,
+                  borderRadius: BORDER_RADIUS.md,
+                  color: COLORS.success,
                 }}
               >
                 ✅ Tutti gli assegni sono stati associati!
               </div>
             ) : (
               <div>
-                <p style={{ margin: '0 0 12px', fontSize: 13, color: '#64748b' }}>
+                <p style={{ margin: '0 0 12px', fontSize: 13, color: COLORS.textMuted }}>
                   Questi assegni hanno un importo ma nessun beneficiario. Clicca "Associa" per
                   collegare manualmente a una fattura.
                 </p>
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <TableWrap>
+                  <Table>
                     <thead>
-                      <tr style={{ background: '#fef3c7' }}>
-                        <th style={{ padding: 10, textAlign: 'left' }}>Importo</th>
-                        <th style={{ padding: 10, textAlign: 'left' }}>Numero Assegno</th>
-                        <th style={{ padding: 10, textAlign: 'center' }}>Azioni</th>
+                      <tr>
+                        <Th>Importo</Th>
+                        <Th>Numero Assegno</Th>
+                        <Th align="center">Azioni</Th>
                       </tr>
                     </thead>
                     <tbody>
                       {Object.entries(assegniNonAssociati.per_importo || {}).map(
                         ([importo, info]) =>
                           info.numeri.map((numero, idx) => (
-                            <tr key={numero} style={{ borderTop: '1px solid #e2e8f0' }}>
-                              <td style={{ padding: 10, fontWeight: 600, color: '#1e293b' }}>
-                                {importo}
-                              </td>
-                              <td style={{ padding: 10, fontFamily: 'monospace' }}>{numero}</td>
-                              <td style={{ padding: 10, textAlign: 'center' }}>
-                                <button
+                            <tr key={numero}>
+                              <Td style={{ fontWeight: 600 }}>{importo}</Td>
+                              <Td mono>{numero}</Td>
+                              <Td align="center">
+                                <Button
+                                  variant="info"
+                                  size="sm"
                                   onClick={() => {
                                     const assegnoData = assegni.find(a => a.numero === numero);
                                     if (assegnoData) {
@@ -2406,27 +2161,16 @@ export default function GestioneAssegni() {
                                       );
                                     }
                                   }}
-                                  style={{
-                                    padding: '10px 14px',
-                                    minHeight: 40,
-                                    background: '#3b82f6',
-                                    color: 'white',
-                                    border: 'none',
-                                    borderRadius: 6,
-                                    cursor: 'pointer',
-                                    fontSize: 12,
-                                    fontWeight: 500,
-                                  }}
                                 >
                                   🔗 Associa Fattura
-                                </button>
-                              </td>
+                                </Button>
+                              </Td>
                             </tr>
                           ))
                       )}
                     </tbody>
-                  </table>
-                </div>
+                  </Table>
+                </TableWrap>
               </div>
             )}
           </div>
@@ -2439,19 +2183,19 @@ export default function GestioneAssegni() {
       ) : filteredAssegni.length === 0 ? (
         <div
           style={{
-            background: 'white',
-            borderRadius: 12,
+            background: COLORS.card,
+            borderRadius: BORDER_RADIUS.lg,
             padding: 60,
             textAlign: 'center',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+            boxShadow: SHADOWS.md,
           }}
         >
-          <h3 style={{ color: '#666', marginBottom: 10 }}>
+          <h3 style={{ color: COLORS.textMuted, marginBottom: 10 }}>
             {assegni.length === 0
               ? 'Nessun assegno presente'
               : 'Nessun assegno corrisponde ai filtri'}
           </h3>
-          <p style={{ color: '#999' }}>
+          <p style={{ color: COLORS.textSubtle }}>
             {assegni.length === 0
               ? 'Genera i primi assegni per iniziare'
               : 'Prova a modificare i filtri di ricerca'}
@@ -2472,7 +2216,7 @@ export default function GestioneAssegni() {
               }
             `}</style>
             <div className="mobile-cards-assegni">
-              <div style={{ padding: '12px 0', borderBottom: '1px solid #eee', marginBottom: 12 }}>
+              <div style={{ padding: '12px 0', borderBottom: `1px solid ${COLORS.border}`, marginBottom: 12 }}>
                 <h3 style={{ margin: 0, fontSize: 16 }}>
                   Lista Assegni ({filteredAssegni.length})
                 </h3>
@@ -2482,9 +2226,9 @@ export default function GestioneAssegni() {
                   {/* Carnet Header Mobile */}
                   <div
                     style={{
-                      background: '#f0f9ff',
+                      background: COLORS.infoLight,
                       padding: '10px 12px',
-                      borderRadius: '8px 8px 0 0',
+                      borderRadius: `${BORDER_RADIUS.md}px ${BORDER_RADIUS.md}px 0 0`,
                       display: 'flex',
                       justifyContent: 'space-between',
                       alignItems: 'center',
@@ -2494,11 +2238,11 @@ export default function GestioneAssegni() {
                   >
                     <div>
                       <strong style={{ fontSize: 14 }}>Carnet {carnetIdx + 1}</strong>
-                      <span style={{ color: '#666', marginLeft: 8, fontSize: 12 }}>
+                      <span style={{ color: COLORS.textMuted, marginLeft: 8, fontSize: 12 }}>
                         ({carnetAssegni.length} assegni)
                       </span>
                     </div>
-                    <div style={{ fontWeight: 'bold', color: '#1e3a5f', fontSize: 14 }}>
+                    <div style={{ fontWeight: 'bold', color: COLORS.primaryLight, fontSize: 14 }}>
                       {formatEuro(
                         carnetAssegni.reduce((s, a) => s + (parseFloat(a.importo) || 0), 0)
                       )}
@@ -2511,16 +2255,16 @@ export default function GestioneAssegni() {
                       key={assegno.id}
                       style={{
                         background: selectedAssegni.has(assegno.id)
-                          ? '#e8f5e9'
+                          ? COLORS.successLight
                           : idx % 2 === 0
-                            ? 'white'
-                            : '#fafafa',
+                            ? COLORS.card
+                            : COLORS.bgAlt,
                         padding: 12,
-                        borderBottom: '1px solid #eee',
-                        borderLeft: '1px solid #eee',
-                        borderRight: '1px solid #eee',
+                        borderBottom: `1px solid ${COLORS.border}`,
+                        borderLeft: `1px solid ${COLORS.border}`,
+                        borderRight: `1px solid ${COLORS.border}`,
                         ...(idx === carnetAssegni.length - 1
-                          ? { borderRadius: '0 0 8px 8px' }
+                          ? { borderRadius: `0 0 ${BORDER_RADIUS.md}px ${BORDER_RADIUS.md}px` }
                           : {}),
                       }}
                     >
@@ -2544,26 +2288,17 @@ export default function GestioneAssegni() {
                             style={{
                               fontFamily: 'monospace',
                               fontWeight: 'bold',
-                              color: '#1e3a5f',
+                              color: COLORS.primaryLight,
                               fontSize: 13,
                             }}
                           >
                             {assegno.numero?.split('-')[1] || assegno.numero}
                           </span>
-                          <span
-                            style={{
-                              padding: '2px 8px',
-                              borderRadius: 10,
-                              fontSize: 10,
-                              fontWeight: 'bold',
-                              background: STATI_ASSEGNO[assegno.stato]?.color || '#9e9e9e',
-                              color: 'white',
-                            }}
-                          >
+                          <Badge variant={STATI_ASSEGNO[assegno.stato]?.variant || 'neutral'}>
                             {STATI_ASSEGNO[assegno.stato]?.label || assegno.stato}
-                          </span>
+                          </Badge>
                         </div>
-                        <span style={{ fontWeight: 'bold', fontSize: 15, color: '#1e3a5f' }}>
+                        <span style={{ fontWeight: 'bold', fontSize: 15, color: COLORS.primaryLight }}>
                           {formatEuro(assegno.importo)}
                         </span>
                       </div>
@@ -2571,7 +2306,7 @@ export default function GestioneAssegni() {
                       {/* Row 2: Beneficiario (o fornitore dedotto dalla fattura collegata) */}
                       {assegno.beneficiario ? (
                         <div style={{ fontSize: 13, marginBottom: 6 }}>
-                          <span style={{ color: '#666' }}>👤</span> {assegno.beneficiario}
+                          <span style={{ color: COLORS.textMuted }}>👤</span> {assegno.beneficiario}
                         </div>
                       ) : assegno.fornitore_fattura ? (
                         <div
@@ -2579,11 +2314,11 @@ export default function GestioneAssegni() {
                             fontSize: 13,
                             marginBottom: 6,
                             fontStyle: 'italic',
-                            color: '#64748b',
+                            color: COLORS.textMuted,
                           }}
                           title="Fornitore dedotto dalla fattura collegata"
                         >
-                          <span style={{ color: '#666' }}>👤</span> →{' '}
+                          <span style={{ color: COLORS.textMuted }}>👤</span> →{' '}
                           {assegno.fornitore_fattura}
                         </div>
                       ) : null}
@@ -2593,7 +2328,7 @@ export default function GestioneAssegni() {
                         <div
                           style={{
                             fontSize: 12,
-                            color: '#2196f3',
+                            color: COLORS.info,
                             marginBottom: 6,
                             display: 'flex',
                             alignItems: 'center',
@@ -2602,14 +2337,15 @@ export default function GestioneAssegni() {
                         >
                           <span>📄 Fatt. {assegno.numero_fattura}</span>
                           {assegno.data_fattura && (
-                            <span style={{ color: '#666' }}>
+                            <span style={{ color: COLORS.textMuted }}>
                               ({formatDateIT(assegno.data_fattura)})
                             </span>
                           )}
                           {/* Apre la fattura in un modale in-page (niente nuove schede) */}
                           {(assegno.fattura_collegata ||
                             assegno.fatture_collegate?.[0]?.fattura_id) && (
-                            <button
+                            <Button
+                              variant="success"
                               onClick={() =>
                                 setFatturaView({
                                   id:
@@ -2618,73 +2354,37 @@ export default function GestioneAssegni() {
                                   numero: assegno.numero_fattura,
                                 })
                               }
-                              style={{
-                                padding: '8px 14px',
-                                minHeight: 40,
-                                background: '#16a34a',
-                                color: 'white',
-                                border: 'none',
-                                borderRadius: 6,
-                                fontSize: 12,
-                                fontWeight: 'bold',
-                                cursor: 'pointer',
-                              }}
                             >
                               📄 Vedi
-                            </button>
+                            </Button>
                           )}
                         </div>
                       )}
 
                       {/* Row 4: Azioni */}
                       <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                        <button
+                        <Button
+                          variant="secondary"
                           onClick={() => startEdit(assegno)}
-                          style={{
-                            flex: 1,
-                            padding: '10px 8px',
-                            minHeight: 40,
-                            background: '#f5f5f5',
-                            border: 'none',
-                            borderRadius: 6,
-                            cursor: 'pointer',
-                            fontSize: 12,
-                          }}
+                          style={{ flex: 1 }}
                         >
                           ✏️ Modifica
-                        </button>
-                        <button
+                        </Button>
+                        <Button
+                          variant="info"
                           onClick={() => openFattureModal(assegno)}
-                          style={{
-                            flex: 1,
-                            padding: '10px 8px',
-                            minHeight: 40,
-                            background: '#e3f2fd',
-                            border: 'none',
-                            borderRadius: 6,
-                            cursor: 'pointer',
-                            fontSize: 12,
-                          }}
+                          style={{ flex: 1 }}
                         >
                           📄 Fatture
-                        </button>
-                        <button
+                        </Button>
+                        <Button
+                          variant="danger"
                           onClick={() => handleDelete(assegno)}
-                          style={{
-                            padding: '10px 14px',
-                            minWidth: 44,
-                            minHeight: 40,
-                            background: '#ffebee',
-                            border: 'none',
-                            borderRadius: 6,
-                            cursor: 'pointer',
-                            color: '#c62828',
-                            fontSize: 14,
-                          }}
+                          style={{ minWidth: 44 }}
                           title="Elimina"
                         >
                           🗑️
-                        </button>
+                        </Button>
                       </div>
                     </div>
                   ))}
@@ -2697,29 +2397,21 @@ export default function GestioneAssegni() {
           <div
             className="desktop-table-assegni"
             style={{
-              background: 'white',
-              borderRadius: 12,
+              background: COLORS.card,
+              borderRadius: BORDER_RADIUS.lg,
               overflow: 'hidden',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+              boxShadow: SHADOWS.md,
             }}
           >
-            <div style={{ padding: 16, borderBottom: '1px solid #eee' }}>
+            <div style={{ padding: 16, borderBottom: `1px solid ${COLORS.border}` }}>
               <h3 style={{ margin: 0 }}>Lista Assegni ({filteredAssegni.length})</h3>
             </div>
 
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <TableWrap style={{ border: 'none', borderRadius: 0 }}>
+              <Table>
                 <thead>
-                  <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e5e7eb' }}>
-                    <th
-                      style={{
-                        padding: '10px 8px',
-                        textAlign: 'center',
-                        fontWeight: 600,
-                        fontSize: 12,
-                        width: 40,
-                      }}
-                    >
+                  <tr>
+                    <Th align="center" style={{ width: 40 }}>
                       <input
                         type="checkbox"
                         checked={
@@ -2731,67 +2423,13 @@ export default function GestioneAssegni() {
                         style={{ width: 18, height: 18, cursor: 'pointer' }}
                         title="Seleziona tutti"
                       />
-                    </th>
-                    <th
-                      style={{
-                        padding: '10px 12px',
-                        textAlign: 'left',
-                        fontWeight: 600,
-                        fontSize: 12,
-                      }}
-                    >
-                      N. Assegno
-                    </th>
-                    <th
-                      style={{
-                        padding: '10px 6px',
-                        textAlign: 'center',
-                        fontWeight: 600,
-                        fontSize: 12,
-                      }}
-                    >
-                      Stato
-                    </th>
-                    <th
-                      style={{
-                        padding: '10px 12px',
-                        textAlign: 'left',
-                        fontWeight: 600,
-                        fontSize: 12,
-                      }}
-                    >
-                      Beneficiario / Note
-                    </th>
-                    <th
-                      style={{
-                        padding: '10px 12px',
-                        textAlign: 'right',
-                        fontWeight: 600,
-                        fontSize: 12,
-                      }}
-                    >
-                      Importo
-                    </th>
-                    <th
-                      style={{
-                        padding: '10px 12px',
-                        textAlign: 'left',
-                        fontWeight: 600,
-                        fontSize: 12,
-                      }}
-                    >
-                      Fattura / Data
-                    </th>
-                    <th
-                      style={{
-                        padding: '10px 6px',
-                        textAlign: 'center',
-                        fontWeight: 600,
-                        fontSize: 12,
-                      }}
-                    >
-                      Azioni
-                    </th>
+                    </Th>
+                    <Th>N. Assegno</Th>
+                    <Th align="center">Stato</Th>
+                    <Th>Beneficiario / Note</Th>
+                    <Th align="right">Importo</Th>
+                    <Th>Fattura / Data</Th>
+                    <Th align="center">Azioni</Th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2801,12 +2439,11 @@ export default function GestioneAssegni() {
                         <tr
                           key={assegno.id}
                           style={{
-                            borderBottom: '1px solid #eee',
-                            background: selectedAssegni.has(assegno.id) ? '#e8f5e9' : 'white',
+                            background: selectedAssegni.has(assegno.id) ? COLORS.successLight : COLORS.card,
                           }}
                         >
                           {/* Checkbox selezione */}
-                          <td style={{ padding: '8px', textAlign: 'center' }}>
+                          <Td align="center">
                             <input
                               type="checkbox"
                               checked={selectedAssegni.has(assegno.id)}
@@ -2814,56 +2451,40 @@ export default function GestioneAssegni() {
                               data-testid={`select-${assegno.id}`}
                               style={{ width: 18, height: 18, cursor: 'pointer' }}
                             />
-                          </td>
+                          </Td>
 
                           {/* Numero Assegno */}
-                          <td style={{ padding: '8px 12px' }}>
+                          <Td>
                             <span
                               style={{
                                 fontFamily: 'monospace',
                                 fontWeight: 'bold',
-                                color: '#1e3a5f',
+                                color: COLORS.primaryLight,
                                 fontSize: 13,
                               }}
                             >
                               {assegno.numero}
                             </span>
-                          </td>
+                          </Td>
 
                           {/* Stato */}
-                          <td style={{ padding: '8px 6px', textAlign: 'center' }}>
-                            <span
-                              style={{
-                                padding: '3px 8px',
-                                borderRadius: 10,
-                                fontSize: 10,
-                                fontWeight: 'bold',
-                                background: STATI_ASSEGNO[assegno.stato]?.color || '#9e9e9e',
-                                color: 'white',
-                                whiteSpace: 'nowrap',
-                              }}
-                            >
+                          <Td align="center">
+                            <Badge variant={STATI_ASSEGNO[assegno.stato]?.variant || 'neutral'}>
                               {STATI_ASSEGNO[assegno.stato]?.label || assegno.stato}
-                            </span>
-                          </td>
+                            </Badge>
+                          </Td>
 
                           {/* Beneficiario + Note in colonna unica */}
-                          <td style={{ padding: '8px 12px', maxWidth: 250 }}>
+                          <Td style={{ maxWidth: 250 }}>
                             {editingId === assegno.id ? (
-                              <input
+                              <Input
                                 type="text"
                                 value={editForm.beneficiario}
                                 onChange={e =>
                                   setEditForm({ ...editForm, beneficiario: e.target.value })
                                 }
                                 placeholder="Beneficiario"
-                                style={{
-                                  padding: 6,
-                                  borderRadius: 4,
-                                  border: '1px solid #ddd',
-                                  width: '100%',
-                                  fontSize: 12,
-                                }}
+                                style={{ padding: 6, fontSize: 12 }}
                               />
                             ) : (
                               <div>
@@ -2872,7 +2493,7 @@ export default function GestioneAssegni() {
                                     assegno.beneficiario
                                   ) : assegno.fornitore_fattura ? (
                                     <span
-                                      style={{ fontStyle: 'italic', color: '#64748b' }}
+                                      style={{ fontStyle: 'italic', color: COLORS.textMuted }}
                                       title="Fornitore dedotto dalla fattura collegata"
                                     >
                                       → {assegno.fornitore_fattura}
@@ -2882,18 +2503,18 @@ export default function GestioneAssegni() {
                                   )}
                                 </div>
                                 {assegno.note && (
-                                  <div style={{ fontSize: 11, color: '#666', marginTop: 2 }}>
+                                  <div style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 2 }}>
                                     {assegno.note}
                                   </div>
                                 )}
                               </div>
                             )}
-                          </td>
+                          </Td>
 
                           {/* Importo */}
-                          <td style={{ padding: '8px 12px', textAlign: 'right' }}>
+                          <Td align="right">
                             {editingId === assegno.id ? (
-                              <input
+                              <Input
                                 type="number"
                                 step="0.01"
                                 value={editForm.importo}
@@ -2904,54 +2525,35 @@ export default function GestioneAssegni() {
                                   })
                                 }
                                 placeholder="0.00"
-                                style={{
-                                  padding: 6,
-                                  borderRadius: 4,
-                                  border: '1px solid #ddd',
-                                  width: 80,
-                                  textAlign: 'right',
-                                  fontSize: 12,
-                                }}
+                                style={{ padding: 6, width: 80, textAlign: 'right', fontSize: 12 }}
                               />
                             ) : (
                               <span style={{ fontWeight: 'bold', fontSize: 13 }}>
                                 {formatEuro(assegno.importo)}
                               </span>
                             )}
-                          </td>
+                          </Td>
 
                           {/* Data + N.Fattura combinati */}
-                          <td style={{ padding: '8px 12px' }}>
+                          <Td>
                             {editingId === assegno.id ? (
                               <div style={{ display: 'flex', gap: 4 }}>
-                                <input
+                                <Input
                                   type="date"
                                   value={editForm.data_fattura}
                                   onChange={e =>
                                     setEditForm({ ...editForm, data_fattura: e.target.value })
                                   }
-                                  style={{
-                                    padding: 4,
-                                    borderRadius: 4,
-                                    border: '1px solid #ddd',
-                                    fontSize: 11,
-                                    width: 110,
-                                  }}
+                                  style={{ padding: 4, fontSize: 11, width: 110 }}
                                 />
-                                <input
+                                <Input
                                   type="text"
                                   value={editForm.numero_fattura}
                                   onChange={e =>
                                     setEditForm({ ...editForm, numero_fattura: e.target.value })
                                   }
                                   placeholder="N.Fatt"
-                                  style={{
-                                    padding: 4,
-                                    borderRadius: 4,
-                                    border: '1px solid #ddd',
-                                    fontSize: 11,
-                                    width: 80,
-                                  }}
+                                  style={{ padding: 4, fontSize: 11, width: 80 }}
                                 />
                               </div>
                             ) : (
@@ -2966,7 +2568,9 @@ export default function GestioneAssegni() {
                                 {/* Pulsante per visualizzare fattura in modale in-page */}
                                 {(assegno.fattura_collegata ||
                                   assegno.fatture_collegate?.[0]?.fattura_id) && (
-                                  <button
+                                  <Button
+                                    variant="success"
+                                    size="sm"
                                     onClick={e => {
                                       e.stopPropagation();
                                       setFatturaView({
@@ -2976,171 +2580,101 @@ export default function GestioneAssegni() {
                                         numero: assegno.numero_fattura,
                                       });
                                     }}
-                                    style={{
-                                      padding: '8px 10px',
-                                      minHeight: 40,
-                                      background: '#16a34a',
-                                      color: 'white',
-                                      border: 'none',
-                                      borderRadius: 6,
-                                      cursor: 'pointer',
-                                      fontSize: 11,
-                                      fontWeight: 'bold',
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      gap: 3,
-                                    }}
                                     title="Visualizza Fattura"
                                     data-testid={`view-fattura-${assegno.id}`}
                                   >
                                     📄 Vedi
-                                  </button>
+                                  </Button>
                                 )}
                                 {/* Info fattura */}
                                 <div>
                                   {assegno.numero_fattura && (
-                                    <div style={{ color: '#2196f3' }}>
+                                    <div style={{ color: COLORS.info }}>
                                       Fatt. {assegno.numero_fattura}
                                     </div>
                                   )}
                                   {assegno.data_fattura && (
-                                    <div style={{ color: '#666', fontSize: 11 }}>
+                                    <div style={{ color: COLORS.textMuted, fontSize: 11 }}>
                                       {formatDateIT(assegno.data_fattura)}
                                     </div>
                                   )}
                                 </div>
                               </div>
                             )}
-                          </td>
+                          </Td>
 
                           {/* Azioni - STAMPA ed ELIMINA nella stessa riga */}
-                          <td style={{ padding: '6px', textAlign: 'center' }}>
-                            <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+                          <Td align="center">
+                            <RowActions style={{ justifyContent: 'center' }}>
                               {editingId === assegno.id ? (
                                 <>
-                                  <button
+                                  <RowActionButton
+                                    variant="success"
                                     onClick={handleSaveEdit}
-                                    style={{
-                                      minWidth: 40,
-                                      minHeight: 40,
-                                      padding: 8,
-                                      cursor: 'pointer',
-                                      background: '#16a34a',
-                                      color: 'white',
-                                      border: 'none',
-                                      borderRadius: 6,
-                                      fontSize: 15,
-                                    }}
+                                    style={{ width: 28, height: 28 }}
                                     title="Salva"
                                   >
                                     ✓
-                                  </button>
-                                  <button
+                                  </RowActionButton>
+                                  <RowActionButton
+                                    variant="danger"
                                     onClick={cancelEdit}
-                                    style={{
-                                      minWidth: 40,
-                                      minHeight: 40,
-                                      padding: 8,
-                                      cursor: 'pointer',
-                                      background: '#dc2626',
-                                      color: 'white',
-                                      border: 'none',
-                                      borderRadius: 6,
-                                      fontSize: 15,
-                                    }}
+                                    style={{ width: 28, height: 28 }}
                                     title="Annulla"
                                   >
                                     ✕
-                                  </button>
+                                  </RowActionButton>
                                 </>
                               ) : (
                                 <>
-                                  <button
+                                  <RowActionButton
+                                    variant="neutral"
                                     onClick={() => startEdit(assegno)}
                                     data-testid={`edit-${assegno.id}`}
-                                    style={{
-                                      minWidth: 40,
-                                      minHeight: 40,
-                                      padding: 8,
-                                      cursor: 'pointer',
-                                      background: '#f5f5f5',
-                                      border: 'none',
-                                      borderRadius: 6,
-                                      fontSize: 15,
-                                    }}
                                     title="Modifica"
                                   >
                                     ✏️
-                                  </button>
-                                  <button
+                                  </RowActionButton>
+                                  <RowActionButton
+                                    variant="neutral"
                                     onClick={() => openFattureModal(assegno)}
                                     data-testid={`fatture-${assegno.id}`}
-                                    style={{
-                                      minWidth: 40,
-                                      minHeight: 40,
-                                      padding: 8,
-                                      cursor: 'pointer',
-                                      background: '#f5f5f5',
-                                      border: 'none',
-                                      borderRadius: 6,
-                                      fontSize: 15,
-                                    }}
                                     title="Collega Fatture"
                                   >
                                     📄
-                                  </button>
+                                  </RowActionButton>
                                   {/* STAMPA singolo assegno */}
-                                  <button
+                                  <RowActionButton
+                                    variant="info"
                                     onClick={() => {
                                       const doc = generateCarnetPDF(carnetId, [assegno]);
                                       doc.save(`Assegno_${assegno.numero}.pdf`);
                                     }}
                                     data-testid={`print-${assegno.id}`}
-                                    style={{
-                                      minWidth: 40,
-                                      minHeight: 40,
-                                      padding: 8,
-                                      cursor: 'pointer',
-                                      background: '#2196f3',
-                                      color: 'white',
-                                      border: 'none',
-                                      borderRadius: 6,
-                                      fontSize: 15,
-                                    }}
                                     title="Stampa"
                                   >
                                     🖨️
-                                  </button>
+                                  </RowActionButton>
                                   {/* ELIMINA */}
-                                  <button
+                                  <RowActionButton
+                                    variant="danger"
                                     onClick={() => handleDelete(assegno)}
                                     data-testid={`delete-${assegno.id}`}
-                                    style={{
-                                      minWidth: 40,
-                                      minHeight: 40,
-                                      padding: 8,
-                                      cursor: 'pointer',
-                                      background: '#ffebee',
-                                      border: 'none',
-                                      borderRadius: 6,
-                                      color: '#c62828',
-                                      fontSize: 15,
-                                    }}
                                     title="Elimina"
                                   >
                                     🗑️
-                                  </button>
+                                  </RowActionButton>
                                 </>
                               )}
-                            </div>
-                          </td>
+                            </RowActions>
+                          </Td>
                         </tr>
                       ))}
                     </React.Fragment>
                   ))}
                 </tbody>
-              </table>
-            </div>
+              </Table>
+            </TableWrap>
           </div>
         </>
       )}
@@ -3150,7 +2684,7 @@ export default function GestioneAssegni() {
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(0,0,0,0.5)',
+            background: 'rgba(15,39,68,0.5)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -3160,11 +2694,12 @@ export default function GestioneAssegni() {
         >
           <div
             style={{
-              background: 'white',
-              borderRadius: 12,
+              background: COLORS.card,
+              borderRadius: BORDER_RADIUS.lg,
               padding: 24,
               maxWidth: 400,
               width: '90%',
+              boxShadow: SHADOWS.modal,
             }}
             onClick={e => e.stopPropagation()}
           >
@@ -3177,26 +2712,17 @@ export default function GestioneAssegni() {
               }}
             >
               <h2 style={{ marginTop: 0 }}>Genera 10 Assegni Progressivi</h2>
-              <button
+              <Button
+                variant="ghost"
                 onClick={() => setShowGenerate(false)}
                 aria-label="Chiudi"
                 data-testid="close-generate-btn"
-                style={{
-                  width: 40,
-                  height: 40,
-                  flexShrink: 0,
-                  background: '#f1f5f9',
-                  border: 'none',
-                  borderRadius: 8,
-                  fontSize: 18,
-                  color: '#334155',
-                  cursor: 'pointer',
-                }}
+                style={{ width: 40, height: 40, flexShrink: 0, padding: 0, fontSize: 18, background: COLORS.bgAlt, color: COLORS.gray[700] }}
               >
                 ✕
-              </button>
+              </Button>
             </div>
-            <p style={{ color: '#666', fontSize: 14, marginBottom: 20 }}>
+            <p style={{ color: COLORS.textMuted, fontSize: 14, marginBottom: 20 }}>
               Inserisci il numero del primo assegno nel formato PREFISSO-NUMERO
             </p>
 
@@ -3204,52 +2730,28 @@ export default function GestioneAssegni() {
               <label style={{ display: 'block', marginBottom: 5, fontWeight: 'bold' }}>
                 Numero Primo Assegno
               </label>
-              <input
+              <Input
                 type="text"
                 value={generateForm.numero_primo}
                 onChange={e => setGenerateForm({ ...generateForm, numero_primo: e.target.value })}
                 placeholder="0208769182-11"
                 data-testid="numero-primo-input"
-                style={{
-                  padding: 12,
-                  width: '100%',
-                  borderRadius: 8,
-                  border: '1px solid #ddd',
-                  fontFamily: 'monospace',
-                }}
+                style={{ padding: 12, fontFamily: 'monospace' }}
               />
             </div>
 
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-              <button
-                onClick={() => setShowGenerate(false)}
-                style={{
-                  padding: '10px 20px',
-                  background: '#9e9e9e',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: 8,
-                  cursor: 'pointer',
-                }}
-              >
+              <Button variant="secondary" onClick={() => setShowGenerate(false)}>
                 Annulla
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="success"
                 onClick={handleGenerate}
                 disabled={generating}
                 data-testid="genera-salva-btn"
-                style={{
-                  padding: '10px 20px',
-                  background: '#4caf50',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: 8,
-                  cursor: 'pointer',
-                  fontWeight: 'bold',
-                }}
               >
                 {generating ? 'Generazione...' : 'Genera e Salva'}
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -3261,7 +2763,7 @@ export default function GestioneAssegni() {
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(0,0,0,0.3)',
+            background: 'rgba(15,39,68,0.35)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -3275,14 +2777,14 @@ export default function GestioneAssegni() {
               left: modalPosition.x || '50%',
               top: modalPosition.y || '50%',
               transform: modalPosition.x ? 'none' : 'translate(-50%, -50%)',
-              background: 'white',
-              borderRadius: 12,
+              background: COLORS.card,
+              borderRadius: BORDER_RADIUS.lg,
               padding: 0,
               maxWidth: 560,
               width: '95%',
               maxHeight: '85vh',
               overflow: 'hidden',
-              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+              boxShadow: SHADOWS.modal,
               cursor: isDragging ? 'grabbing' : 'default',
             }}
             onClick={e => e.stopPropagation()}
@@ -3291,7 +2793,7 @@ export default function GestioneAssegni() {
             <div
               style={{
                 padding: '10px 10px 10px 16px',
-                background: '#0f2744',
+                background: COLORS.primary,
                 color: 'white',
                 cursor: 'grab',
                 userSelect: 'none',
@@ -3321,7 +2823,8 @@ export default function GestioneAssegni() {
                   Trascina per spostare
                 </p>
               </div>
-              <button
+              <Button
+                variant="ghost"
                 onClick={() => {
                   setShowFattureModal(false);
                   setSelectedFatture([]);
@@ -3332,19 +2835,17 @@ export default function GestioneAssegni() {
                 onMouseDown={e => e.stopPropagation()}
                 style={{
                   background: 'rgba(255,255,255,0.2)',
-                  border: 'none',
                   color: 'white',
                   width: 40,
                   height: 40,
                   flexShrink: 0,
-                  borderRadius: 8,
-                  cursor: 'pointer',
+                  padding: 0,
                   fontSize: 20,
                   lineHeight: 1,
                 }}
               >
                 ✕
-              </button>
+              </Button>
             </div>
 
             {/* Content */}
@@ -3352,11 +2853,11 @@ export default function GestioneAssegni() {
               {/* Info Assegno con Importo */}
               <div
                 style={{
-                  background: '#f8fafc',
+                  background: COLORS.bgAlt,
                   padding: 12,
-                  borderRadius: 8,
+                  borderRadius: BORDER_RADIUS.md,
                   marginBottom: 12,
-                  border: '1px solid #e2e8f0',
+                  border: `1px solid ${COLORS.border}`,
                 }}
               >
                 <div
@@ -3369,14 +2870,14 @@ export default function GestioneAssegni() {
                   }}
                 >
                   <div>
-                    <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>
+                    <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 4 }}>
                       Assegno N.
                     </div>
                     <div
                       style={{
                         fontSize: 16,
                         fontWeight: 'bold',
-                        color: '#1e293b',
+                        color: COLORS.text,
                         fontFamily: 'monospace',
                       }}
                     >
@@ -3384,17 +2885,17 @@ export default function GestioneAssegni() {
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>
+                    <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 4 }}>
                       Importo Assegno
                     </div>
-                    <div style={{ fontSize: 18, fontWeight: 'bold', color: '#1e3a5f' }}>
+                    <div style={{ fontSize: 18, fontWeight: 'bold', color: COLORS.primaryLight }}>
                       {formatEuro(editingAssegnoForFatture?.importo || 0)}
                     </div>
                   </div>
                 </div>
                 <p
                   style={{
-                    color: '#3b82f6',
+                    color: COLORS.info,
                     fontSize: 12,
                     margin: '12px 0 0',
                     display: 'flex',
@@ -3410,14 +2911,14 @@ export default function GestioneAssegni() {
               {selectedFatture.length > 0 && (
                 <div
                   style={{
-                    background: '#ecfdf5',
+                    background: COLORS.successLight,
                     padding: 12,
-                    borderRadius: 8,
+                    borderRadius: BORDER_RADIUS.md,
                     marginBottom: 12,
-                    border: '1px solid #a7f3d0',
+                    border: `1px solid ${COLORS.success}`,
                   }}
                 >
-                  <strong style={{ color: '#065f46' }}>
+                  <strong style={{ color: COLORS.success }}>
                     ✓ Fatture Selezionate ({selectedFatture.length}/4):
                   </strong>
                   <div style={{ marginTop: 10 }}>
@@ -3429,37 +2930,24 @@ export default function GestioneAssegni() {
                           justifyContent: 'space-between',
                           alignItems: 'center',
                           padding: '8px 0',
-                          borderBottom: '1px solid #d1fae5',
+                          borderBottom: `1px solid ${COLORS.successLight}`,
                         }}
                       >
                         <span
                           style={{
-                            color: f.is_nota_credito ? '#dc2626' : '#065f46',
+                            color: f.is_nota_credito ? COLORS.danger : COLORS.success,
                             display: 'flex',
                             alignItems: 'center',
                             gap: 6,
                           }}
                         >
                           {f.numero} - {f.fornitore}
-                          {f.is_nota_credito && (
-                            <span
-                              style={{
-                                fontSize: 9,
-                                fontWeight: 700,
-                                padding: '1px 5px',
-                                borderRadius: 3,
-                                background: '#fee2e2',
-                                color: '#dc2626',
-                              }}
-                            >
-                              NC
-                            </span>
-                          )}
+                          {f.is_nota_credito && <Badge variant="danger" style={{ fontSize: 9, padding: '1px 5px' }}>NC</Badge>}
                         </span>
                         <span
                           style={{
                             fontWeight: 'bold',
-                            color: f.is_nota_credito ? '#dc2626' : '#047857',
+                            color: f.is_nota_credito ? COLORS.danger : COLORS.success,
                           }}
                         >
                           {f.is_nota_credito ? '- ' : ''}
@@ -3471,7 +2959,7 @@ export default function GestioneAssegni() {
                       style={{
                         marginTop: 12,
                         paddingTop: 12,
-                        borderTop: '2px solid #10b981',
+                        borderTop: `2px solid ${COLORS.success}`,
                         display: 'flex',
                         justifyContent: 'space-between',
                         fontWeight: 'bold',
@@ -3479,7 +2967,7 @@ export default function GestioneAssegni() {
                       }}
                     >
                       <span>TOTALE FATTURE:</span>
-                      <span style={{ color: '#047857' }}>
+                      <span style={{ color: COLORS.success }}>
                         {formatEuro(selectedFatture.reduce((sum, f) => sum + (f.quota ?? f.importo ?? 0), 0))}
                       </span>
                     </div>
@@ -3496,8 +2984,8 @@ export default function GestioneAssegni() {
                               (editingAssegnoForFatture?.importo || 0) -
                                 selectedFatture.reduce((sum, f) => sum + (f.quota ?? f.importo ?? 0), 0)
                             ) < 1
-                              ? '#10b981'
-                              : '#f59e0b',
+                              ? COLORS.success
+                              : COLORS.warning,
                         }}
                       >
                         <span>Differenza:</span>
@@ -3516,13 +3004,13 @@ export default function GestioneAssegni() {
               {/* Lista Fatture Disponibili */}
               <div style={{ marginBottom: 15 }}>
                 <label
-                  style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: '#374151' }}
+                  style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: COLORS.gray[700] }}
                 >
                   Fatture Disponibili (esclusi pagamenti in contanti)
                 </label>
 
                 {loadingFatture ? (
-                  <div style={{ padding: 30, textAlign: 'center', color: '#64748b' }}>
+                  <div style={{ padding: 30, textAlign: 'center', color: COLORS.textMuted }}>
                     ⏳ Caricamento...
                   </div>
                 ) : fatture.length === 0 ? (
@@ -3530,9 +3018,9 @@ export default function GestioneAssegni() {
                     style={{
                       padding: 30,
                       textAlign: 'center',
-                      color: '#64748b',
-                      background: '#f8fafc',
-                      borderRadius: 8,
+                      color: COLORS.textMuted,
+                      background: COLORS.bgAlt,
+                      borderRadius: BORDER_RADIUS.md,
                     }}
                   >
                     Nessuna fattura disponibile per assegno
@@ -3542,8 +3030,8 @@ export default function GestioneAssegni() {
                     style={{
                       maxHeight: 270,
                       overflow: 'auto',
-                      border: '1px solid #e2e8f0',
-                      borderRadius: 8,
+                      border: `1px solid ${COLORS.border}`,
+                      borderRadius: BORDER_RADIUS.md,
                     }}
                   >
                     {fatture.map((f, idx) => {
@@ -3571,11 +3059,11 @@ export default function GestioneAssegni() {
                             <div
                               style={{
                                 padding: '8px 14px',
-                                background: '#f1f5f9',
-                                borderBottom: '1px solid #e2e8f0',
+                                background: COLORS.bgAlt,
+                                borderBottom: `1px solid ${COLORS.border}`,
                                 fontSize: 11,
                                 fontWeight: 700,
-                                color: '#475569',
+                                color: COLORS.gray[600],
                                 textTransform: 'uppercase',
                                 letterSpacing: '0.03em',
                                 position: 'sticky',
@@ -3597,19 +3085,19 @@ export default function GestioneAssegni() {
                             }
                             style={{
                               padding: '10px 12px',
-                              borderBottom: '1px solid #f1f5f9',
+                              borderBottom: `1px solid ${COLORS.bgAlt}`,
                               cursor: 'pointer',
                               background: isSelected
-                                ? '#dbeafe'
+                                ? COLORS.infoLight
                                 : isNotaCredito
-                                  ? '#fef2f2'
-                                  : 'white',
+                                  ? COLORS.dangerLight
+                                  : COLORS.card,
                               display: 'flex',
                               justifyContent: 'space-between',
                               alignItems: 'center',
                               transition: 'background 0.15s',
                               borderLeft: isNotaCredito
-                                ? '3px solid #ef4444'
+                                ? `3px solid ${COLORS.danger}`
                                 : '3px solid transparent',
                             }}
                           >
@@ -3618,10 +3106,10 @@ export default function GestioneAssegni() {
                                 style={{
                                   fontWeight: 600,
                                   color: isSelected
-                                    ? '#1e40af'
+                                    ? COLORS.info
                                     : isNotaCredito
-                                      ? '#dc2626'
-                                      : '#1e293b',
+                                      ? COLORS.danger
+                                      : COLORS.text,
                                   display: 'flex',
                                   alignItems: 'center',
                                   gap: 6,
@@ -3630,22 +3118,12 @@ export default function GestioneAssegni() {
                                 {isSelected ? '✓ ' : '○ '}
                                 {f.invoice_number || f.numero_fattura || 'N/A'}
                                 {isNotaCredito && (
-                                  <span
-                                    style={{
-                                      fontSize: 9,
-                                      fontWeight: 700,
-                                      padding: '2px 6px',
-                                      borderRadius: 4,
-                                      background: '#fee2e2',
-                                      color: '#dc2626',
-                                      textTransform: 'uppercase',
-                                    }}
-                                  >
+                                  <Badge variant="danger" style={{ fontSize: 9, padding: '2px 6px' }}>
                                     Nota Credito
-                                  </span>
+                                  </Badge>
                                 )}
                               </div>
-                              <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
+                              <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 2 }}>
                                 {fornitore} • {formatDateIT(f.invoice_date || f.data_fattura)}
                               </div>
                             </div>
@@ -3653,14 +3131,16 @@ export default function GestioneAssegni() {
                               <div
                                 style={{
                                   fontWeight: 'bold',
-                                  color: isNotaCredito ? '#dc2626' : '#1e3a5f',
+                                  color: isNotaCredito ? COLORS.danger : COLORS.primaryLight,
                                   fontSize: 15,
                                 }}
                               >
                                 {isNotaCredito ? '- ' : ''}
                                 {formatEuro(Math.abs(importo))}
                               </div>
-                              <button
+                              <Button
+                                variant="success"
+                                size="sm"
                                 onClick={e => {
                                   e.stopPropagation();
                                   setFatturaView({
@@ -3668,19 +3148,10 @@ export default function GestioneAssegni() {
                                     numero: f.invoice_number || f.numero_fattura,
                                   });
                                 }}
-                                style={{
-                                  padding: '3px 7px',
-                                  background: '#16a34a',
-                                  color: 'white',
-                                  border: 'none',
-                                  borderRadius: 4,
-                                  fontSize: 10,
-                                  cursor: 'pointer',
-                                  flexShrink: 0,
-                                }}
+                                style={{ padding: '3px 7px', fontSize: 10, flexShrink: 0 }}
                               >
                                 📄 Vedi
-                              </button>
+                              </Button>
                             </div>
                           </div>
                         </React.Fragment>
@@ -3691,40 +3162,25 @@ export default function GestioneAssegni() {
               </div>
 
               <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', paddingTop: 8 }}>
-                <button
+                <Button
+                  variant="secondary"
                   onClick={() => {
                     setShowFattureModal(false);
                     setSelectedFatture([]);
                     setModalPosition({ x: 0, y: 0 });
                   }}
-                  style={{
-                    padding: '10px 20px',
-                    background: '#64748b',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: 8,
-                    cursor: 'pointer',
-                  }}
                 >
                   Annulla
-                </button>
-                <button
+                </Button>
+                <Button
+                  variant="success"
                   onClick={saveFattureCollegate}
                   disabled={selectedFatture.length === 0}
                   data-testid="salva-fatture-btn"
-                  style={{
-                    padding: '10px 24px',
-                    background: selectedFatture.length > 0 ? '#10b981' : '#9ca3af',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: 8,
-                    cursor: selectedFatture.length > 0 ? 'pointer' : 'not-allowed',
-                    fontWeight: 'bold',
-                  }}
                 >
                   ✓ Collega {selectedFatture.length} Fattur
                   {selectedFatture.length === 1 ? 'a' : 'e'}
-                </button>
+                </Button>
               </div>
             </div>
           </div>
