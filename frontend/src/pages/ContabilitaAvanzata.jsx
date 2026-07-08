@@ -1,130 +1,37 @@
 import { useState, useEffect } from 'react';
 import api from '../api';
-import { formatEuro, STYLES, COLORS, button, badge, useIsMobile, RG, pagePad } from '../lib/utils';
+import { formatEuro, COLORS, SHADOWS, BORDER_RADIUS, FONT, useIsMobile } from '../lib/utils';
 import { FileText } from 'lucide-react';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { PageLayout } from '../components/PageLayout';
-
-const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace';
+import { Button, Badge, StatCard, Card, Select, TableWrap, Table, Th, Td } from '../components/ds';
 
 const styles = {
-  page: { minHeight: '100vh', background: '#f1f5f9', padding: 24 },
-  loading: {
-    minHeight: '100vh',
-    background: '#f1f5f9',
-    padding: 24,
+  loading: { textAlign: 'center', padding: 40, color: COLORS.textMuted },
+  headerActions: {
     display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  loadingText: { color: '#1e293b', fontSize: 20 },
-  header: {
-    marginBottom: 24,
-    display: 'flex',
+    justifyContent: 'flex-end',
+    gap: 12,
+    marginBottom: 20,
     flexWrap: 'wrap',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: 16,
-  },
-  title: { fontSize: 28, fontWeight: 'bold', color: '#1e293b', marginBottom: 8 },
-  subtitle: { color: '#64748b', fontSize: 14 },
-  headerRight: { display: 'flex', alignItems: 'center', gap: 12 },
-  badge: {
-    background: 'white',
-    border: '1px solid #e2e8f0',
-    color: '#0f2744',
-    padding: '8px 12px',
-    borderRadius: 6,
-    fontSize: 13,
-    fontWeight: 600,
-    display: 'flex',
-    alignItems: 'center',
-  },
-  btnPrimary: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    padding: '8px 16px',
-    minHeight: 40,
-    background: '#0f2744',
-    color: 'white',
-    borderRadius: 6,
-    border: 'none',
-    cursor: 'pointer',
-    fontWeight: '500',
-    fontSize: 13,
-  },
-  btnBlue: {
-    padding: '8px 16px',
-    minHeight: 40,
-    background: '#0f2744',
-    color: 'white',
-    borderRadius: 6,
-    border: 'none',
-    cursor: 'pointer',
-    fontWeight: '500',
-    fontSize: 13,
-  },
-  btnPurple: {
-    padding: '8px 16px',
-    minHeight: 40,
-    background: 'white',
-    color: '#0f2744',
-    borderRadius: 6,
-    border: '1px solid #e2e8f0',
-    cursor: 'pointer',
-    fontWeight: '500',
-    fontSize: 13,
   },
   messageSuccess: {
     marginBottom: 16,
     padding: 16,
-    borderRadius: 8,
-    background: '#f0fdf4',
-    border: '1px solid #86efac',
-    color: '#166534',
+    borderRadius: BORDER_RADIUS.md,
+    background: COLORS.successLight,
+    border: `1px solid ${COLORS.success}`,
+    color: COLORS.success,
   },
   messageError: {
     marginBottom: 16,
     padding: 16,
-    borderRadius: 8,
-    background: '#fef2f2',
-    border: '1px solid #fca5a5',
-    color: '#dc2626',
+    borderRadius: BORDER_RADIUS.md,
+    background: COLORS.dangerLight,
+    border: `1px solid ${COLORS.danger}`,
+    color: COLORS.danger,
   },
-  tabs: { display: 'flex', gap: 8, marginBottom: 24, flexWrap: 'wrap' },
-  tab: active => ({
-    padding: '8px 16px',
-    minHeight: 40,
-    borderRadius: 6,
-    fontWeight: '600',
-    fontSize: 13,
-    border: active ? 'none' : '1px solid #e2e8f0',
-    cursor: 'pointer',
-    background: active ? '#0f2744' : 'white',
-    color: active ? 'white' : '#64748b',
-  }),
-  card: {
-    background: 'white',
-    border: '1px solid #e2e8f0',
-    borderRadius: 8,
-    padding: 20,
-    marginBottom: 16,
-  },
-  cardDark: {
-    background: '#f8fafc',
-    border: '1px solid #e2e8f0',
-    borderRadius: 8,
-    padding: 16,
-    marginBottom: 16,
-  },
-  cardGradient: (from, to) => ({
-    background: 'white',
-    border: '1px solid #e2e8f0',
-    borderLeft: '4px solid #0f2744',
-    borderRadius: 8,
-    padding: 20,
-  }),
+  tabsRow: { display: 'flex', gap: 8, marginBottom: 24, flexWrap: 'wrap' },
   row: { display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' },
   grid4: isMobile => ({
     display: 'grid',
@@ -141,97 +48,52 @@ const styles = {
     gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
     gap: 24,
   }),
-  label: { color: '#1e293b', fontWeight: '500', fontSize: 13 },
-  select: {
-    background: 'white',
-    color: '#1e293b',
-    padding: '8px 16px',
-    minHeight: 40,
-    borderRadius: 6,
-    border: '1px solid #e2e8f0',
-    fontSize: 13,
-  },
-  statLabel: color => ({
-    color: '#64748b',
-    fontSize: 11,
-    fontWeight: 600,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 4,
-  }),
-  statValue: { color: '#0f2744', fontSize: 22, fontWeight: 700, fontFamily: MONO },
-  statValueLg: { color: '#0f2744', fontSize: 24, fontWeight: 700, fontFamily: MONO },
+  label: { color: COLORS.text, fontWeight: 500, fontSize: 13 },
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#1e293b',
+    color: COLORS.text,
     marginBottom: 16,
     display: 'flex',
     alignItems: 'center',
     gap: 8,
   },
-  table: { width: '100%', fontSize: 13, borderCollapse: 'collapse' },
-  th: {
-    textAlign: 'left',
-    padding: '10px 8px',
-    color: '#64748b',
-    fontSize: 11,
-    fontWeight: 600,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    background: '#f8fafc',
-    borderBottom: '1px solid #e2e8f0',
-  },
-  thRight: {
-    textAlign: 'right',
-    padding: '10px 8px',
-    color: '#64748b',
-    fontSize: 11,
-    fontWeight: 600,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    background: '#f8fafc',
-    borderBottom: '1px solid #e2e8f0',
-  },
-  td: { padding: '8px', color: '#1e293b', borderBottom: '1px solid #f1f5f9' },
-  tdRight: {
-    padding: '8px',
-    textAlign: 'right',
-    color: '#1e293b',
-    fontWeight: '500',
-    fontFamily: MONO,
-    borderBottom: '1px solid #f1f5f9',
-  },
   sectionHeader: color => ({
-    color: color,
-    fontWeight: '600',
+    color,
+    fontWeight: 600,
     marginBottom: 12,
     paddingBottom: 8,
-    borderBottom: '1px solid #e2e8f0',
+    borderBottom: `1px solid ${COLORS.border}`,
   }),
-  resultBox: {
-    marginTop: 24,
-    padding: 16,
-    background: '#f8fafc',
-    border: '1px solid #e2e8f0',
-    borderLeft: '4px solid #0f2744',
-    borderRadius: 8,
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  icon: { width: 16, height: 16 },
   spaceY: { display: 'flex', flexDirection: 'column', gap: 8 },
   note: {
-    background: '#f8fafc',
-    border: '1px solid #e2e8f0',
-    borderRadius: 8,
+    background: COLORS.bgAlt,
+    border: `1px solid ${COLORS.border}`,
+    borderRadius: BORDER_RADIUS.md,
     padding: 16,
   },
-  noteTitle: { fontSize: 14, fontWeight: '500', color: '#1e293b', marginBottom: 8 },
-  noteList: { fontSize: 12, color: '#64748b' },
+  noteTitle: { fontSize: 14, fontWeight: 500, color: COLORS.text, marginBottom: 8 },
+  noteList: { fontSize: 12, color: COLORS.textMuted },
+  miniBox: { padding: 12, background: COLORS.bgAlt, borderRadius: BORDER_RADIUS.md },
+  // Stat-box "manuale" usata SOLO dove serve preservare un data-testid sul
+  // valore (StatCard non inoltra prop arbitrarie fino al nodo del valore).
+  statBox: {
+    background: COLORS.card,
+    border: `1px solid ${COLORS.border}`,
+    borderLeft: `3px solid ${COLORS.primary}`,
+    borderRadius: BORDER_RADIUS.md,
+    padding: '16px 18px',
+    boxShadow: SHADOWS.sm,
+  },
+  statBoxLabel: {
+    fontSize: 11,
+    color: COLORS.textMuted,
+    fontWeight: 600,
+    textTransform: 'uppercase',
+    letterSpacing: '0.4px',
+    marginBottom: 6,
+  },
+  statBoxValue: { fontSize: 22, fontWeight: 700, color: COLORS.primary, fontFamily: FONT.mono },
 };
 
 export default function ContabilitaAvanzata() {
@@ -364,9 +226,7 @@ export default function ContabilitaAvanzata() {
   if (loading) {
     return (
       <PageLayout title="Contabilità Avanzata" icon="📈" subtitle="Caricamento...">
-        <div style={{ textAlign: 'center', padding: 40, color: '#64748b' }}>
-          Caricamento dati contabili...
-        </div>
+        <div style={styles.loading}>Caricamento dati contabili...</div>
       </PageLayout>
     );
   }
@@ -379,23 +239,16 @@ export default function ContabilitaAvanzata() {
     >
       <div data-testid="contabilita-avanzata-page">
         {/* Header Actions */}
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'flex-end',
-            gap: 12,
-            marginBottom: 20,
-            flexWrap: 'wrap',
-          }}
-        >
-          <div style={styles.badge}>📅 Anno: {selectedYear}</div>
-          <button
+        <div style={styles.headerActions}>
+          <Badge variant="primary">📅 Anno: {selectedYear}</Badge>
+          <Button
+            variant="primary"
             onClick={handleDownloadPDF}
-            style={styles.btnPrimary}
+            iconLeft={<FileText size={16} />}
             data-testid="btn-download-pdf"
           >
-            <FileText style={styles.icon} /> Scarica PDF
-          </button>
+            Scarica PDF
+          </Button>
         </div>
 
         {/* Message */}
@@ -416,95 +269,66 @@ export default function ContabilitaAvanzata() {
               marginBottom: 24,
             }}
           >
-            <div
-              style={{
-                background: 'white',
-                borderRadius: 8,
-                border: '1px solid #e2e8f0',
-                borderLeft: '4px solid #0f2744',
-                padding: 16,
-                color: '#1e293b',
-              }}
-            >
-              <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
-                💶 Disponibilità Liquide (Cassa + Banca)
-              </div>
-              <div style={{ fontSize: 24, fontWeight: 700, color: '#16a34a', fontFamily: MONO }}>
-                {formatEuro(disponibilita.totale_disponibilita_liquide || 0)}
-              </div>
-              <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
-                al {disponibilita.data_riferimento}
-              </div>
-            </div>
-            <div
-              style={{
-                background: 'white',
-                borderRadius: 8,
-                border: '1px solid #e2e8f0',
-                borderLeft: '4px solid #0f2744',
-                padding: 16,
-                color: '#1e293b',
-              }}
-            >
-              <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>💵 Cassa</div>
-              <div style={{ fontSize: 22, fontWeight: 700, color: '#0f2744', fontFamily: MONO }}>
-                {formatEuro(disponibilita.cassa?.saldo || 0)}
-              </div>
-              <div style={{ fontSize: 11, color: '#64748b', marginTop: 4, fontFamily: MONO }}>
-                E: {formatEuro(disponibilita.cassa?.entrate || 0)} · U:{' '}
-                {formatEuro(disponibilita.cassa?.uscite || 0)}
-              </div>
-            </div>
-            <div
-              style={{
-                background: 'white',
-                borderRadius: 8,
-                border: '1px solid #e2e8f0',
-                borderLeft: '4px solid #0f2744',
-                padding: 16,
-                color: '#1e293b',
-              }}
-            >
-              <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>🏦 Banca</div>
-              <div style={{ fontSize: 22, fontWeight: 700, color: '#0f2744', fontFamily: MONO }}>
-                {formatEuro(disponibilita.banca?.saldo || 0)}
-              </div>
-              <div style={{ fontSize: 11, color: '#64748b', marginTop: 4, fontFamily: MONO }}>
-                E: {formatEuro(disponibilita.banca?.entrate || 0)} · U:{' '}
-                {formatEuro(disponibilita.banca?.uscite || 0)}
-              </div>
-            </div>
-            <div
-              style={{
-                background: 'white',
-                borderRadius: 8,
-                border: '1px solid #e2e8f0',
-                borderLeft: '4px solid #0f2744',
-                padding: 16,
-                color: '#1e293b',
-              }}
-            >
-              <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
-                ⇄ Versamenti (Cassa → Banca)
-              </div>
-              <div style={{ fontSize: 22, fontWeight: 700, color: '#0f2744', fontFamily: MONO }}>
-                {formatEuro(disponibilita.versamenti_cassa_to_banca?.totale || 0)}
-              </div>
-              <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
-                {disponibilita.versamenti_cassa_to_banca?.operazioni || 0} operazioni nel{' '}
-                {disponibilita.anno}
-              </div>
-            </div>
+            <StatCard
+              label="💶 Disponibilità Liquide (Cassa + Banca)"
+              value={
+                <span style={{ fontFamily: FONT.mono, color: COLORS.success }}>
+                  {formatEuro(disponibilita.totale_disponibilita_liquide || 0)}
+                </span>
+              }
+              subtext={`al ${disponibilita.data_riferimento}`}
+              accent="primary"
+            />
+            <StatCard
+              label="💵 Cassa"
+              value={
+                <span style={{ fontFamily: FONT.mono }}>
+                  {formatEuro(disponibilita.cassa?.saldo || 0)}
+                </span>
+              }
+              subtext={
+                <span style={{ fontFamily: FONT.mono }}>
+                  E: {formatEuro(disponibilita.cassa?.entrate || 0)} · U:{' '}
+                  {formatEuro(disponibilita.cassa?.uscite || 0)}
+                </span>
+              }
+              accent="primary"
+            />
+            <StatCard
+              label="🏦 Banca"
+              value={
+                <span style={{ fontFamily: FONT.mono }}>
+                  {formatEuro(disponibilita.banca?.saldo || 0)}
+                </span>
+              }
+              subtext={
+                <span style={{ fontFamily: FONT.mono }}>
+                  E: {formatEuro(disponibilita.banca?.entrate || 0)} · U:{' '}
+                  {formatEuro(disponibilita.banca?.uscite || 0)}
+                </span>
+              }
+              accent="primary"
+            />
+            <StatCard
+              label="⇄ Versamenti (Cassa → Banca)"
+              value={
+                <span style={{ fontFamily: FONT.mono }}>
+                  {formatEuro(disponibilita.versamenti_cassa_to_banca?.totale || 0)}
+                </span>
+              }
+              subtext={`${disponibilita.versamenti_cassa_to_banca?.operazioni || 0} operazioni nel ${disponibilita.anno}`}
+              accent="primary"
+            />
           </div>
         )}
 
         {/* Tabs */}
-        <div style={styles.tabs}>
+        <div style={styles.tabsRow}>
           {['imposte', 'statistiche', 'bilancio'].map(tab => (
-            <button
+            <Button
               key={tab}
+              variant={activeTab === tab ? 'primary' : 'secondary'}
               onClick={() => setActiveTab(tab)}
-              style={styles.tab(activeTab === tab)}
               data-testid={`tab-${tab}`}
             >
               {tab === 'imposte'
@@ -512,7 +336,7 @@ export default function ContabilitaAvanzata() {
                 : tab === 'statistiche'
                   ? 'Statistiche'
                   : 'Bilancio Dettagliato'}
-            </button>
+            </Button>
           ))}
         </div>
 
@@ -520,59 +344,61 @@ export default function ContabilitaAvanzata() {
         {activeTab === 'imposte' && imposte && (
           <div style={styles.spaceY}>
             {/* Selettore Regione */}
-            <div style={{ ...styles.card, ...styles.row }}>
-              <label style={styles.label}>Regione IRAP:</label>
-              <select
-                value={regione}
-                onChange={e => setRegione(e.target.value)}
-                style={styles.select}
-                data-testid="select-regione"
-              >
-                {Object.keys(aliquoteIrap)
-                  .sort()
-                  .map(reg => (
-                    <option key={reg} value={reg}>
-                      {reg.charAt(0).toUpperCase() + reg.slice(1).replace(/_/g, ' ')} (
-                      {aliquoteIrap[reg]}%)
-                    </option>
-                  ))}
-              </select>
-              <button
-                onClick={handleRicategorizza}
-                disabled={processing}
-                style={{ ...styles.btnPurple, marginLeft: 'auto', opacity: processing ? 0.5 : 1 }}
-                data-testid="btn-ricategorizza"
-              >
-                {processing ? '⏳ Elaborazione...' : '🔄 Ricategorizza Fatture'}
-              </button>
-            </div>
+            <Card style={{ marginBottom: 8 }}>
+              <div style={styles.row}>
+                <label style={styles.label}>Regione IRAP:</label>
+                <Select
+                  value={regione}
+                  onChange={e => setRegione(e.target.value)}
+                  data-testid="select-regione"
+                >
+                  {Object.keys(aliquoteIrap)
+                    .sort()
+                    .map(reg => (
+                      <option key={reg} value={reg}>
+                        {reg.charAt(0).toUpperCase() + reg.slice(1).replace(/_/g, ' ')} (
+                        {aliquoteIrap[reg]}%)
+                      </option>
+                    ))}
+                </Select>
+                <Button
+                  variant="secondary"
+                  onClick={handleRicategorizza}
+                  disabled={processing}
+                  style={{ marginLeft: 'auto' }}
+                  data-testid="btn-ricategorizza"
+                >
+                  {processing ? '⏳ Elaborazione...' : '🔄 Ricategorizza Fatture'}
+                </Button>
+              </div>
+            </Card>
 
             {/* Cards Riepilogo */}
             <div style={styles.grid4(isMobile)}>
-              <div style={styles.cardGradient()}>
-                <p style={styles.statLabel('#64748b')}>Utile Civilistico</p>
-                <p style={styles.statValue} data-testid="utile-civilistico">
+              <div style={styles.statBox}>
+                <p style={styles.statBoxLabel}>Utile Civilistico</p>
+                <p style={styles.statBoxValue} data-testid="utile-civilistico">
                   {formatEuro(imposte.utile_civilistico)}
                 </p>
               </div>
-              <div style={styles.cardGradient()}>
-                <p style={styles.statLabel('#64748b')}>IRES (24%)</p>
-                <p style={styles.statValue} data-testid="ires-dovuta">
+              <div style={styles.statBox}>
+                <p style={styles.statBoxLabel}>IRES (24%)</p>
+                <p style={styles.statBoxValue} data-testid="ires-dovuta">
                   {formatEuro(imposte.ires.imposta_dovuta)}
                 </p>
               </div>
-              <div style={styles.cardGradient()}>
-                <p style={styles.statLabel('#64748b')}>IRAP ({imposte.irap.aliquota}%)</p>
-                <p style={styles.statValue} data-testid="irap-dovuta">
+              <div style={styles.statBox}>
+                <p style={styles.statBoxLabel}>IRAP ({imposte.irap.aliquota}%)</p>
+                <p style={styles.statBoxValue} data-testid="irap-dovuta">
                   {formatEuro(imposte.irap.imposta_dovuta)}
                 </p>
               </div>
-              <div style={styles.cardGradient()}>
-                <p style={styles.statLabel('#64748b')}>Totale Imposte</p>
-                <p style={styles.statValue} data-testid="totale-imposte">
+              <div style={styles.statBox}>
+                <p style={styles.statBoxLabel}>Totale Imposte</p>
+                <p style={styles.statBoxValue} data-testid="totale-imposte">
                   {formatEuro(imposte.totale_imposte)}
                 </p>
-                <p style={{ color: '#64748b', fontSize: 12, marginTop: 4 }}>
+                <p style={{ color: COLORS.textMuted, fontSize: 12, marginTop: 4 }}>
                   Aliquota effettiva: {imposte.aliquota_effettiva}%
                 </p>
               </div>
@@ -580,124 +406,115 @@ export default function ContabilitaAvanzata() {
 
             {/* Dettaglio IRES/IRAP */}
             <div style={styles.grid2(isMobile)}>
-              <div style={styles.card}>
+              <Card>
                 <h3 style={styles.sectionTitle}>📊 Calcolo IRES</h3>
-                <div style={{ overflowX: 'auto' }}>
-                <table style={styles.table}>
-                  <tbody>
-                    <tr>
-                      <td style={styles.td}>Utile civilistico</td>
-                      <td style={styles.tdRight}>{formatEuro(imposte.utile_civilistico)}</td>
-                    </tr>
-                    {imposte.ires.variazioni_aumento.map((v, i) => (
-                      <tr key={i}>
-                        <td style={{ ...styles.td, color: '#d97706', paddingLeft: 16 }}>
-                          + {v.descrizione}
-                        </td>
-                        <td style={{ ...styles.tdRight, color: '#d97706' }}>
-                          +{formatEuro(v.importo)}
-                        </td>
+                <TableWrap>
+                  <Table>
+                    <tbody>
+                      <tr>
+                        <Td>Utile civilistico</Td>
+                        <Td align="right" mono>
+                          {formatEuro(imposte.utile_civilistico)}
+                        </Td>
                       </tr>
-                    ))}
-                    {imposte.ires.variazioni_diminuzione.map((v, i) => (
-                      <tr key={i}>
-                        <td style={{ ...styles.td, color: '#16a34a', paddingLeft: 16 }}>
-                          - {v.descrizione}
-                        </td>
-                        <td style={{ ...styles.tdRight, color: '#16a34a' }}>
-                          -{formatEuro(v.importo)}
-                        </td>
+                      {imposte.ires.variazioni_aumento.map((v, i) => (
+                        <tr key={i}>
+                          <Td style={{ color: COLORS.warning, paddingLeft: 16 }}>
+                            + {v.descrizione}
+                          </Td>
+                          <Td align="right" mono style={{ color: COLORS.warning }}>
+                            +{formatEuro(v.importo)}
+                          </Td>
+                        </tr>
+                      ))}
+                      {imposte.ires.variazioni_diminuzione.map((v, i) => (
+                        <tr key={i}>
+                          <Td style={{ color: COLORS.success, paddingLeft: 16 }}>
+                            - {v.descrizione}
+                          </Td>
+                          <Td align="right" mono style={{ color: COLORS.success }}>
+                            -{formatEuro(v.importo)}
+                          </Td>
+                        </tr>
+                      ))}
+                      <tr style={{ borderTop: `2px solid ${COLORS.border}` }}>
+                        <Td style={{ fontWeight: 500 }}>Reddito imponibile</Td>
+                        <Td align="right" mono style={{ fontWeight: 'bold' }}>
+                          {formatEuro(imposte.ires.reddito_imponibile)}
+                        </Td>
                       </tr>
-                    ))}
-                    <tr style={{ borderTop: '2px solid #e2e8f0' }}>
-                      <td style={{ ...styles.td, color: '#1e293b', fontWeight: '500' }}>
-                        Reddito imponibile
-                      </td>
-                      <td style={{ ...styles.tdRight, fontWeight: 'bold' }}>
-                        {formatEuro(imposte.ires.reddito_imponibile)}
-                      </td>
-                    </tr>
-                    <tr style={{ background: '#f8fafc' }}>
-                      <td style={{ ...styles.td, color: '#1e293b', fontWeight: 'bold', padding: 12 }}>
-                        IRES DOVUTA (24%)
-                      </td>
-                      <td
-                        style={{
-                          ...styles.tdRight,
-                          color: '#b8860b',
-                          fontWeight: 'bold',
-                          fontSize: 18,
-                          padding: 12,
-                        }}
-                      >
-                        {formatEuro(imposte.ires.imposta_dovuta)}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-                </div>
-              </div>
-              <div style={styles.card}>
+                      <tr style={{ background: COLORS.bgAlt }}>
+                        <Td style={{ fontWeight: 'bold', padding: 12 }}>IRES DOVUTA (24%)</Td>
+                        <Td
+                          align="right"
+                          mono
+                          style={{
+                            color: COLORS.accent,
+                            fontWeight: 'bold',
+                            fontSize: 18,
+                            padding: 12,
+                          }}
+                        >
+                          {formatEuro(imposte.ires.imposta_dovuta)}
+                        </Td>
+                      </tr>
+                    </tbody>
+                  </Table>
+                </TableWrap>
+              </Card>
+              <Card>
                 <h3 style={styles.sectionTitle}>
                   🏛️ Calcolo IRAP -{' '}
                   {regione.charAt(0).toUpperCase() + regione.slice(1).replace(/_/g, ' ')}
                 </h3>
-                <div style={{ overflowX: 'auto' }}>
-                <table style={styles.table}>
-                  <tbody>
-                    <tr>
-                      <td style={styles.td}>Valore della produzione</td>
-                      <td style={styles.tdRight}>{formatEuro(imposte.irap.valore_produzione)}</td>
-                    </tr>
-                    <tr>
-                      <td style={{ ...styles.td, color: '#16a34a', paddingLeft: 16 }}>
-                        - Deduzioni
-                      </td>
-                      <td style={{ ...styles.tdRight, color: '#16a34a' }}>
-                        -{formatEuro(imposte.irap.deduzioni)}
-                      </td>
-                    </tr>
-                    <tr style={{ borderTop: '2px solid #e2e8f0' }}>
-                      <td style={{ ...styles.td, color: '#1e293b', fontWeight: '500' }}>
-                        Base imponibile
-                      </td>
-                      <td style={{ ...styles.tdRight, fontWeight: 'bold' }}>
-                        {formatEuro(imposte.irap.base_imponibile)}
-                      </td>
-                    </tr>
-                    <tr style={{ background: '#f8fafc' }}>
-                      <td style={{ ...styles.td, color: '#1e293b', fontWeight: 'bold', padding: 12 }}>
-                        IRAP DOVUTA ({imposte.irap.aliquota}%)
-                      </td>
-                      <td
-                        style={{
-                          ...styles.tdRight,
-                          color: '#b8860b',
-                          fontWeight: 'bold',
-                          fontSize: 18,
-                          padding: 12,
-                        }}
-                      >
-                        {formatEuro(imposte.irap.imposta_dovuta)}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-                </div>
-                <div
-                  style={{
-                    marginTop: 16,
-                    padding: 12,
-                    background: '#f8fafc',
-                    borderRadius: 8,
-                  }}
-                >
-                  <p style={{ fontSize: 12, color: '#64748b' }}>
+                <TableWrap>
+                  <Table>
+                    <tbody>
+                      <tr>
+                        <Td>Valore della produzione</Td>
+                        <Td align="right" mono>
+                          {formatEuro(imposte.irap.valore_produzione)}
+                        </Td>
+                      </tr>
+                      <tr>
+                        <Td style={{ color: COLORS.success, paddingLeft: 16 }}>- Deduzioni</Td>
+                        <Td align="right" mono style={{ color: COLORS.success }}>
+                          -{formatEuro(imposte.irap.deduzioni)}
+                        </Td>
+                      </tr>
+                      <tr style={{ borderTop: `2px solid ${COLORS.border}` }}>
+                        <Td style={{ fontWeight: 500 }}>Base imponibile</Td>
+                        <Td align="right" mono style={{ fontWeight: 'bold' }}>
+                          {formatEuro(imposte.irap.base_imponibile)}
+                        </Td>
+                      </tr>
+                      <tr style={{ background: COLORS.bgAlt }}>
+                        <Td style={{ fontWeight: 'bold', padding: 12 }}>
+                          IRAP DOVUTA ({imposte.irap.aliquota}%)
+                        </Td>
+                        <Td
+                          align="right"
+                          mono
+                          style={{
+                            color: COLORS.accent,
+                            fontWeight: 'bold',
+                            fontSize: 18,
+                            padding: 12,
+                          }}
+                        >
+                          {formatEuro(imposte.irap.imposta_dovuta)}
+                        </Td>
+                      </tr>
+                    </tbody>
+                  </Table>
+                </TableWrap>
+                <div style={{ ...styles.miniBox, marginTop: 16 }}>
+                  <p style={{ fontSize: 12, color: COLORS.textMuted }}>
                     Aliquota IRAP regione {regione}:{' '}
-                    <strong style={{ color: '#1e293b' }}>{imposte.irap.aliquota}%</strong>
+                    <strong style={{ color: COLORS.text }}>{imposte.irap.aliquota}%</strong>
                   </p>
                 </div>
-              </div>
+              </Card>
             </div>
 
             {/* Note */}
@@ -721,36 +538,33 @@ export default function ContabilitaAvanzata() {
         {activeTab === 'statistiche' && statistiche && (
           <div style={styles.spaceY}>
             <div style={styles.grid3(isMobile)}>
-              <div style={styles.card}>
-                <p style={{ color: '#64748b', fontSize: 14 }}>Fatture Categorizzate</p>
-                <p style={{ fontSize: 24, fontWeight: 700, color: '#16a34a', fontFamily: MONO }}>
-                  {statistiche.totale_categorizzate}
-                </p>
-              </div>
-              <div style={styles.card}>
-                <p style={{ color: '#64748b', fontSize: 14 }}>Non Categorizzate</p>
-                <p style={{ fontSize: 24, fontWeight: 700, color: '#d97706', fontFamily: MONO }}>
-                  {statistiche.totale_non_categorizzate}
-                </p>
-              </div>
-              <div style={styles.card}>
-                <p style={{ color: '#64748b', fontSize: 14 }}>Copertura</p>
-                <p style={{ fontSize: 24, fontWeight: 700, color: '#3b82f6', fontFamily: MONO }}>
-                  {statistiche.percentuale_copertura}%
-                </p>
-              </div>
+              <StatCard
+                label="Fatture Categorizzate"
+                value={statistiche.totale_categorizzate}
+                accent="success"
+              />
+              <StatCard
+                label="Non Categorizzate"
+                value={statistiche.totale_non_categorizzate}
+                accent="warning"
+              />
+              <StatCard
+                label="Copertura"
+                value={`${statistiche.percentuale_copertura}%`}
+                accent="info"
+              />
             </div>
-            <div style={styles.card}>
+            <Card>
               <h3 style={styles.sectionTitle}>📊 Distribuzione per Categoria</h3>
-              <div style={{ overflowX: 'auto' }}>
-                <table style={styles.table}>
+              <TableWrap>
+                <Table>
                   <thead>
                     <tr>
-                      <th style={styles.th}>Categoria</th>
-                      <th style={styles.thRight}>Fatture</th>
-                      <th style={styles.thRight}>Importo Totale</th>
-                      <th style={styles.thRight}>Ded. IRES</th>
-                      <th style={styles.thRight}>Ded. IRAP</th>
+                      <Th>Categoria</Th>
+                      <Th align="right">Fatture</Th>
+                      <Th align="right">Importo Totale</Th>
+                      <Th align="right">Ded. IRES</Th>
+                      <Th align="right">Ded. IRAP</Th>
                     </tr>
                   </thead>
                   <tbody>
@@ -758,60 +572,47 @@ export default function ContabilitaAvanzata() {
                       <tr
                         key={i}
                         style={{
-                          background: i % 2 === 0 ? 'transparent' : '#f8fafc',
+                          background: i % 2 === 0 ? 'transparent' : COLORS.bgAlt,
                         }}
                       >
-                        <td
-                          style={{
-                            ...styles.td,
-                            color: '#1e293b',
-                            fontWeight: '500',
-                            textTransform: 'capitalize',
-                          }}
-                        >
+                        <Td style={{ fontWeight: 500, textTransform: 'capitalize' }}>
                           {cat.categoria.replace(/_/g, ' ')}
-                        </td>
-                        <td style={{ ...styles.td, textAlign: 'right' }}>{cat.numero_fatture}</td>
-                        <td style={styles.tdRight}>{formatEuro(cat.importo_totale)}</td>
-                        <td
+                        </Td>
+                        <Td align="right">{cat.numero_fatture}</Td>
+                        <Td align="right" mono>
+                          {formatEuro(cat.importo_totale)}
+                        </Td>
+                        <Td
+                          align="right"
                           style={{
-                            ...styles.td,
-                            textAlign: 'right',
-                            color: cat.deducibilita_media_ires < 100 ? '#d97706' : '#16a34a',
+                            color:
+                              cat.deducibilita_media_ires < 100 ? COLORS.warning : COLORS.success,
                           }}
                         >
                           {cat.deducibilita_media_ires}%
-                        </td>
-                        <td
+                        </Td>
+                        <Td
+                          align="right"
                           style={{
-                            ...styles.td,
-                            textAlign: 'right',
-                            color: cat.deducibilita_media_irap < 100 ? '#d97706' : '#16a34a',
+                            color:
+                              cat.deducibilita_media_irap < 100 ? COLORS.warning : COLORS.success,
                           }}
                         >
                           {cat.deducibilita_media_irap}%
-                        </td>
+                        </Td>
                       </tr>
                     ))}
                   </tbody>
-                </table>
-              </div>
-            </div>
+                </Table>
+              </TableWrap>
+            </Card>
             <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-              <button
-                onClick={handleInizializzaPiano}
-                disabled={processing}
-                style={{ ...styles.btnBlue, opacity: processing ? 0.5 : 1 }}
-              >
+              <Button variant="primary" onClick={handleInizializzaPiano} disabled={processing}>
                 📋 Aggiorna Piano dei Conti
-              </button>
-              <button
-                onClick={handleRicategorizza}
-                disabled={processing}
-                style={{ ...styles.btnPurple, opacity: processing ? 0.5 : 1 }}
-              >
+              </Button>
+              <Button variant="secondary" onClick={handleRicategorizza} disabled={processing}>
                 🔄 Ricategorizza Tutte le Fatture
-              </button>
+              </Button>
             </div>
           </div>
         )}
@@ -824,11 +625,11 @@ export default function ContabilitaAvanzata() {
         {/* Tab: Bilancio */}
         {activeTab === 'bilancio' && bilancio && (
           <div style={styles.spaceY}>
-            <div style={styles.card}>
+            <Card>
               <h3 style={styles.sectionTitle}>📈 Conto Economico</h3>
               <div style={styles.grid2(isMobile)}>
                 <div>
-                  <h4 style={styles.sectionHeader('#16a34a')}>RICAVI</h4>
+                  <h4 style={styles.sectionHeader(COLORS.success)}>RICAVI</h4>
                   <div style={styles.spaceY}>
                     {bilancio.conto_economico.ricavi.voci
                       .filter(v => v.saldo > 0)
@@ -837,10 +638,10 @@ export default function ContabilitaAvanzata() {
                           key={i}
                           style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}
                         >
-                          <span style={{ color: '#1e293b' }}>
+                          <span style={{ color: COLORS.text }}>
                             {voce.codice} - {voce.nome}
                           </span>
-                          <span style={{ color: '#16a34a', fontWeight: '500', fontFamily: MONO }}>
+                          <span style={{ color: COLORS.success, fontWeight: 500, fontFamily: FONT.mono }}>
                             {formatEuro(voce.saldo)}
                           </span>
                         </div>
@@ -850,18 +651,18 @@ export default function ContabilitaAvanzata() {
                         display: 'flex',
                         justifyContent: 'space-between',
                         paddingTop: 8,
-                        borderTop: '1px solid #e2e8f0',
+                        borderTop: `1px solid ${COLORS.border}`,
                       }}
                     >
-                      <span style={{ color: '#1e293b', fontWeight: 'bold' }}>TOTALE RICAVI</span>
-                      <span style={{ color: '#16a34a', fontWeight: 'bold', fontFamily: MONO }}>
+                      <span style={{ color: COLORS.text, fontWeight: 'bold' }}>TOTALE RICAVI</span>
+                      <span style={{ color: COLORS.success, fontWeight: 'bold', fontFamily: FONT.mono }}>
                         {formatEuro(bilancio.conto_economico.ricavi.totale)}
                       </span>
                     </div>
                   </div>
                 </div>
                 <div>
-                  <h4 style={styles.sectionHeader('#dc2626')}>COSTI</h4>
+                  <h4 style={styles.sectionHeader(COLORS.danger)}>COSTI</h4>
                   <div style={{ ...styles.spaceY, maxHeight: 400, overflowY: 'auto' }}>
                     {bilancio.conto_economico.costi.voci
                       .filter(v => v.saldo > 0)
@@ -871,21 +672,21 @@ export default function ContabilitaAvanzata() {
                           key={i}
                           style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}
                         >
-                          <span style={{ color: '#1e293b', flex: 1 }}>
+                          <span style={{ color: COLORS.text, flex: 1 }}>
                             {voce.codice} - {voce.nome}
                           </span>
                           <span
                             style={{
-                              color: '#dc2626',
-                              fontWeight: '500',
+                              color: COLORS.danger,
+                              fontWeight: 500,
                               marginLeft: 8,
-                              fontFamily: MONO,
+                              fontFamily: FONT.mono,
                             }}
                           >
                             {formatEuro(voce.saldo)}
                           </span>
                           {voce.deducibilita_ires < 100 && (
-                            <span style={{ color: '#d97706', fontSize: 12, marginLeft: 8 }}>
+                            <span style={{ color: COLORS.warning, fontSize: 12, marginLeft: 8 }}>
                               ({voce.deducibilita_ires}%)
                             </span>
                           )}
@@ -896,27 +697,44 @@ export default function ContabilitaAvanzata() {
                         display: 'flex',
                         justifyContent: 'space-between',
                         paddingTop: 8,
-                        borderTop: '1px solid #e2e8f0',
+                        borderTop: `1px solid ${COLORS.border}`,
                       }}
                     >
-                      <span style={{ color: '#1e293b', fontWeight: 'bold' }}>TOTALE COSTI</span>
-                      <span style={{ color: '#dc2626', fontWeight: 'bold', fontFamily: MONO }}>
+                      <span style={{ color: COLORS.text, fontWeight: 'bold' }}>TOTALE COSTI</span>
+                      <span style={{ color: COLORS.danger, fontWeight: 'bold', fontFamily: FONT.mono }}>
                         {formatEuro(bilancio.conto_economico.costi.totale)}
                       </span>
                     </div>
                   </div>
                 </div>
               </div>
-              <div style={styles.resultBox}>
-                <span style={{ fontSize: 20, fontWeight: 'bold', color: '#1e293b' }}>
+              <div
+                style={{
+                  marginTop: 24,
+                  padding: 16,
+                  background: COLORS.bgAlt,
+                  border: `1px solid ${COLORS.border}`,
+                  borderLeft: `4px solid ${COLORS.primary}`,
+                  borderRadius: BORDER_RADIUS.md,
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: 8,
+                }}
+              >
+                <span style={{ fontSize: 20, fontWeight: 'bold', color: COLORS.text }}>
                   UTILE/PERDITA DI ESERCIZIO
                 </span>
                 <span
                   style={{
                     fontSize: 24,
                     fontWeight: 'bold',
-                    fontFamily: MONO,
-                    color: bilancio.conto_economico.utile_ante_imposte >= 0 ? '#16a34a' : '#dc2626',
+                    fontFamily: FONT.mono,
+                    color:
+                      bilancio.conto_economico.utile_ante_imposte >= 0
+                        ? COLORS.success
+                        : COLORS.danger,
                   }}
                 >
                   {formatEuro(bilancio.conto_economico.utile_ante_imposte)}
@@ -930,25 +748,31 @@ export default function ContabilitaAvanzata() {
                   gap: 16,
                 }}
               >
-                <div style={{ padding: 12, background: '#f8fafc', borderRadius: 8 }}>
-                  <p style={{ color: '#64748b', fontSize: 12 }}>Costi deducibili IRES</p>
-                  <p style={{ color: '#0f2744', fontWeight: 'bold', fontFamily: MONO }}>
-                    {formatEuro(bilancio.conto_economico.costi.totale_deducibile_ires)}
-                  </p>
-                </div>
-                <div style={{ padding: 12, background: '#f8fafc', borderRadius: 8 }}>
-                  <p style={{ color: '#64748b', fontSize: 12 }}>Costi deducibili IRAP</p>
-                  <p style={{ color: '#0f2744', fontWeight: 'bold', fontFamily: MONO }}>
-                    {formatEuro(bilancio.conto_economico.costi.totale_deducibile_irap)}
-                  </p>
-                </div>
+                <StatCard
+                  label="Costi deducibili IRES"
+                  value={
+                    <span style={{ fontFamily: FONT.mono }}>
+                      {formatEuro(bilancio.conto_economico.costi.totale_deducibile_ires)}
+                    </span>
+                  }
+                  accent="none"
+                />
+                <StatCard
+                  label="Costi deducibili IRAP"
+                  value={
+                    <span style={{ fontFamily: FONT.mono }}>
+                      {formatEuro(bilancio.conto_economico.costi.totale_deducibile_irap)}
+                    </span>
+                  }
+                  accent="none"
+                />
               </div>
-            </div>
-            <div style={styles.card}>
+            </Card>
+            <Card>
               <h3 style={styles.sectionTitle}>🏦 Stato Patrimoniale</h3>
               <div style={styles.grid2(isMobile)}>
                 <div>
-                  <h4 style={styles.sectionHeader('#3b82f6')}>ATTIVO</h4>
+                  <h4 style={styles.sectionHeader(COLORS.info)}>ATTIVO</h4>
                   <div style={styles.spaceY}>
                     {bilancio.stato_patrimoniale.attivo.voci
                       .filter(v => v.saldo !== 0)
@@ -957,10 +781,10 @@ export default function ContabilitaAvanzata() {
                           key={i}
                           style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}
                         >
-                          <span style={{ color: '#1e293b' }}>
+                          <span style={{ color: COLORS.text }}>
                             {voce.codice} - {voce.nome}
                           </span>
-                          <span style={{ color: '#3b82f6', fontWeight: '500', fontFamily: MONO }}>
+                          <span style={{ color: COLORS.info, fontWeight: 500, fontFamily: FONT.mono }}>
                             {formatEuro(voce.saldo)}
                           </span>
                         </div>
@@ -970,18 +794,18 @@ export default function ContabilitaAvanzata() {
                         display: 'flex',
                         justifyContent: 'space-between',
                         paddingTop: 8,
-                        borderTop: '1px solid #e2e8f0',
+                        borderTop: `1px solid ${COLORS.border}`,
                       }}
                     >
-                      <span style={{ color: '#1e293b', fontWeight: 'bold' }}>TOTALE ATTIVO</span>
-                      <span style={{ color: '#3b82f6', fontWeight: 'bold', fontFamily: MONO }}>
+                      <span style={{ color: COLORS.text, fontWeight: 'bold' }}>TOTALE ATTIVO</span>
+                      <span style={{ color: COLORS.info, fontWeight: 'bold', fontFamily: FONT.mono }}>
                         {formatEuro(bilancio.stato_patrimoniale.attivo.totale)}
                       </span>
                     </div>
                   </div>
                 </div>
                 <div>
-                  <h4 style={styles.sectionHeader('#0f2744')}>PASSIVO + PN</h4>
+                  <h4 style={styles.sectionHeader(COLORS.primary)}>PASSIVO + PN</h4>
                   <div style={styles.spaceY}>
                     {bilancio.stato_patrimoniale.passivo.voci
                       .filter(v => v.saldo !== 0)
@@ -990,10 +814,10 @@ export default function ContabilitaAvanzata() {
                           key={i}
                           style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}
                         >
-                          <span style={{ color: '#1e293b' }}>
+                          <span style={{ color: COLORS.text }}>
                             {voce.codice} - {voce.nome}
                           </span>
-                          <span style={{ color: '#0f2744', fontWeight: '500', fontFamily: MONO }}>
+                          <span style={{ color: COLORS.primary, fontWeight: 500, fontFamily: FONT.mono }}>
                             {formatEuro(voce.saldo)}
                           </span>
                         </div>
@@ -1003,18 +827,18 @@ export default function ContabilitaAvanzata() {
                         display: 'flex',
                         justifyContent: 'space-between',
                         paddingTop: 8,
-                        borderTop: '1px solid #e2e8f0',
+                        borderTop: `1px solid ${COLORS.border}`,
                       }}
                     >
-                      <span style={{ color: '#1e293b', fontWeight: 'bold' }}>TOTALE PASSIVO</span>
-                      <span style={{ color: '#0f2744', fontWeight: 'bold', fontFamily: MONO }}>
+                      <span style={{ color: COLORS.text, fontWeight: 'bold' }}>TOTALE PASSIVO</span>
+                      <span style={{ color: COLORS.primary, fontWeight: 'bold', fontFamily: FONT.mono }}>
                         {formatEuro(bilancio.stato_patrimoniale.passivo.totale)}
                       </span>
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
+            </Card>
           </div>
         )}
         {activeTab === 'bilancio' && !bilancio && (
