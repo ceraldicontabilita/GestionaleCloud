@@ -1,0 +1,167 @@
+{
+  "pagina": "Noleggio Auto - Tab Flotta",
+  "url": "https://impresasemplice.online/noleggio",
+  "file_sorgente_frontend": [
+    "frontend/src/pages/hub/VeicoliHub.jsx",
+    "frontend/src/pages/NoleggioAuto.jsx"
+  ],
+  "file_sorgente_backend": [
+    "app/routers/noleggio.py",
+    "app/services/noleggio/processors.py",
+    "app/services/noleggio/parsers.py",
+    "app/services/noleggio/constants.py"
+  ],
+  "scopo_generale": "Vista principale della flotta veicoli a noleggio a lungo termine (ALD, ARVAL, Leasys, LeasePlan). Non esiste una tabella 'veicoli' scritta a mano dall'utente in modo primario: i veicoli vengono scoperti automaticamente leggendo le fatture XML importate (collezione 'invoices') dei 4 fornitori di noleggio, estraendo la targa dalla descrizione delle righe fattura con il pattern regex delle targhe italiane (XX000XX). La collezione 'veicoli_noleggio' contiene solo i dati 'anagrafici' che un utente può correggere a mano (driver assegnato, date contratto, canone mensile, dati tecnici) e viene fusa (merge) in tempo reale con i dati calcolati dalle fatture ad ogni GET. Non c'è quindi un pulsante 'importa fatture': l'aggancio veicolo-fattura-categoria di spesa avviene automaticamente ogni volta che si carica la pagina (o si preme Aggiorna), rileggendo tutte le fatture dei 4 fornitori.",
+  "bottoni_azioni": [
+    {
+      "etichetta": "🔄 Aggiorna",
+      "cosa_fa_al_click": "Richiama fetchVeicoli(): ricarica in parallelo /api/noleggio/veicoli, /api/noleggio/drivers, /api/noleggio/fornitori e ripopola veicoli, statistiche, fattureNonAssociate, drivers, fornitori.",
+      "endpoint_chiamato": "GET /api/noleggio/veicoli?anno={annoGlobale} (+ GET /api/noleggio/drivers, GET /api/noleggio/fornitori)",
+      "logica_backend": "get_veicoli() in noleggio.py: 1) scan_fatture_noleggio(anno) legge TUTTE le fatture in 'invoices' con supplier_vat in FORNITORI_NOLEGGIO (ALD 01924961004, ARVAL 04911190488, Leasys 06714021000, LeasePlan 02615080963), filtrate per anno se passato; 2) per ogni fattura estrae le targhe con regex \\b([A-Z]{2}\\d{3}[A-Z]{2})\\b dalla descrizione di ogni riga; 3) raggruppa gli importi per targa e categoria di spesa (canoni/pedaggio/verbali/bollo/costi_extra/riparazioni) tramite categorizza_spesa() che classifica in base a keyword nella descrizione (in ordine di priorità: verbali > riparazioni > bollo > pedaggio > costi_extra > canoni, default canoni); 4) fatture SENZA targa in nessuna riga finiscono in fatture_senza_targa - per queste, se sono fatture bollo (is_fattura_bollo) il sistema prova ad associarle al veicolo attivo alla data fattura (_trova_targa_per_fattura_bollo); altrimenti restano orfane; 5) la lista veicoli_salvati (collezione veicoli_noleggio) viene caricata e per ogni fattura_senza_targa rimasta si chiama scegli_veicolo_per_fattura() per assegnarla comunque a un veicolo del fornitore, se possibile; 6) infine per ogni veicolo viene fatto il merge tra i dati calcolati dalle fatture e i dati salvati manualmente (driver, date, canone_mensile, dati tecnici hanno priorità se presenti); 7) i verbali vengono arricchiti fondendo verbali_noleggio (arrivati da posta/PEC) e verbali_noleggio_completi (estratti dalle fatture), deduplicati per numero_verbale.",
+      "formula_matematica": "totale_generale (per veicolo) = totale_canoni + totale_pedaggio + totale_verbali + totale_bollo + totale_costi_extra + totale_riparazioni, dove ogni totale_categoria = somma di (imponibile + iva) di tutte le righe fattura classificate in quella categoria per quel veicolo, arrotondato a 2 decimali. Il canone_mensile, se non impostato a mano, viene STIMATO come l'imponibile del canone fatturato più recente (flag canone_mensile_stimato=true).",
+      "aggiornamento_ui": "Ricostruisce l'intera tabella 'Elenco Veicoli' e il riepilogo totali in alto (per categoria + totale generale), aggiorna il badge '⚠️ N fatture non associate'.",
+      "casi_errore": "In caso di eccezione axios, setErr mostra un banner rosso con il messaggio (e.response.data.detail o e.message)."
+    },
+    {
+      "etichetta": "➕ Aggiungi Veicolo",
+      "cosa_fa_al_click": "Apre il modal 'Aggiungi Veicolo' (showAddVeicolo=true). Serve principalmente per i fornitori che NON includono la targa nelle fatture (es. LeasePlan): senza questo passaggio manuale quelle fatture resterebbero per sempre 'non associate'.",
+      "endpoint_chiamato": "POST /api/noleggio/associa-fornitore (al submit del modal, tramite handleAddVeicolo)",
+      "logica_backend": "associa_fornitore() in noleggio.py: valida targa e fornitore_piva obbligatori (400 se mancanti, 400 se piva non tra i 4 fornitori noti); fa un upsert su veicoli_noleggio con targa, fornitore_piva, fornitore_noleggio (nome derivato dalla piva), marca, modello, contratto. Se il veicolo con quella targa esiste già viene sovrascritto (update_one con upsert=True), altrimenti creato con nuovo id.",
+      "formula_matematica": "-",
+      "aggiornamento_ui": "Chiude il modal, resetta il form nuovoVeicolo, richiama fetchVeicoli() per ricaricare la tabella (il nuovo veicolo comparirà, e le fatture di quel fornitore precedentemente orfane verranno ora agganciate a questa targa al prossimo scan).",
+      "casi_errore": "setErr mostra 'Targa e Fornitore sono obbligatori' se mancano i campi client-side; altrimenti il messaggio di errore del backend (es. fornitore non riconosciuto)."
+    },
+    {
+      "etichetta": "🚗 Aggiorna dati da targa (tutti)",
+      "cosa_fa_al_click": "handleBulkUpdateFromOpenAPI: raccoglie tutte le targhe della lista veicoli correnti, chiede conferma con window.confirm, poi lancia l'aggiornamento massivo da OpenAPI Automotive (servizio esterno di lookup dati veicolo tramite targa).",
+      "endpoint_chiamato": "POST /api/openapi-automotive/aggiorna-bulk  { targhe: [...] }",
+      "logica_backend": "Non fa parte del modulo noleggio (router separato openapi_automotive, non incluso nei file richiesti per questo audit): per ciascuna targa interroga l'API esterna OpenAPI Automotive e aggiorna/crea il record in veicoli_noleggio con marca, modello, anno_immatricolazione, alimentazione, potenza_kw, cilindrata.",
+      "formula_matematica": "-",
+      "aggiornamento_ui": "Toast di successo con conteggio 'aggiornati/creati/errori', poi fetchVeicoli() ricarica la tabella. Se ci sono errori vengono loggati in console (non mostrati singolarmente in UI).",
+      "casi_errore": "Toast di errore con il messaggio del backend. Bottone disabilitato se non ci sono veicoli in lista o durante il caricamento (bulkUpdateLoading)."
+    },
+    {
+      "etichetta": "👁️ Visualizza (badge 'N fatture non associate')",
+      "cosa_fa_al_click": "Apre un modal con l'elenco delle fatture che il sistema non è riuscito ad agganciare con certezza a nessun veicolo.",
+      "endpoint_chiamato": "GET /api/noleggio/fatture-non-associate?anno={anno}",
+      "logica_backend": "get_fatture_non_associate(): richiama scan_fatture_noleggio(anno) per ottenere fatture_senza_targa, poi per ciascuna verifica con scegli_veicolo_per_fattura() se l'associazione al fornitore sarebbe 'certa' (certo=True): se sì la fattura viene ESCLUSA dall'elenco (è già risolta automaticamente, anche se non ha targa esplicita). Restano solo le fatture di fornitori senza alcun veicolo salvato in DB, oppure quelle per cui il fornitore ha più veicoli e nessun numero contratto combacia (scelta ambigua).",
+      "formula_matematica": "-",
+      "aggiornamento_ui": "Il modal mostra fornitore, numero fattura, data, importo, descrizione, contratto/codice_cliente e un link '📄 Vedi' al PDF/XML della fattura (view-assoinvoice). Per ogni fattura c'è anche un bottone '➕ Associa' che precompila il fornitore nel modal 'Aggiungi Veicolo' e lo apre.",
+      "casi_errore": "Se la chiamata fallisce, il modal mostra 'Errore: {dettaglio}'."
+    },
+    {
+      "etichetta": "👁️ / riga veicolo (click sulla riga tabella)",
+      "cosa_fa_al_click": "setSelectedVeicolo(v): mostra il pannello di dettaglio del veicolo sopra la tabella, con anagrafica completa e le sezioni per categoria di spesa (espandibili).",
+      "endpoint_chiamato": "Nessuna chiamata di rete: usa i dati già caricati in memoria dalla GET /api/noleggio/veicoli",
+      "logica_backend": "-",
+      "formula_matematica": "-",
+      "aggiornamento_ui": "Il riepilogo totali in alto passa a mostrare i totali del solo veicolo selezionato invece del totale flotta. Ogni categoria di spesa (Canoni, Pedaggio, Verbali, Bollo, Costi Extra, Riparazioni) è una riga cliccabile che si espande in una tabella con tutte le fatture/righe che compongono quel totale, con link diretto '📄 Fattura' (view-assoinvoice) e, per i verbali, un bottone '⚠️ PDF' che apre il dettaglio verbale in una nuova scheda.",
+      "casi_errore": "-"
+    },
+    {
+      "etichetta": "✏️ Modifica",
+      "cosa_fa_al_click": "setEditingVeicolo({...v}): apre il modal di modifica con tutti i campi anagrafici precompilati.",
+      "endpoint_chiamato": "-",
+      "logica_backend": "-",
+      "formula_matematica": "-",
+      "aggiornamento_ui": "Apre il modal con: sezione lookup OpenAPI Automotive (bottone 'Cerca Dati' -> GET /api/openapi-automotive/info/{targa}, poi 'Applica questi dati' che copia i campi restituiti nel form senza salvare), Marca/Modello, Driver (select dai dipendenti caricati da /api/noleggio/drivers), N° Contratto, Codice Cliente, Canone mensile, Anno immatricolazione, Alimentazione, Potenza/Cilindrata, Centro Fatturazione, date Inizio/Fine Noleggio, Note.",
+      "casi_errore": "-"
+    },
+    {
+      "etichetta": "🔍 Cerca Dati (dentro il modal Modifica)",
+      "cosa_fa_al_click": "handleLookupVeicolo(targa): interroga il servizio esterno OpenAPI Automotive per marca/modello/anno/alimentazione/potenza/cilindrata SENZA salvare nulla, solo per mostrare un'anteprima.",
+      "endpoint_chiamato": "GET /api/openapi-automotive/info/{targa}",
+      "logica_backend": "Fuori scope di questo audit (router esterno openapi_automotive), interroga un provider terzo di dati veicolo tramite targa.",
+      "formula_matematica": "-",
+      "aggiornamento_ui": "Mostra i campi trovati (campi_mappati) in una griglia; il bottone '✓ Applica questi dati' copia i valori nello stato editingVeicolo locale (da salvare poi con 💾 Salva).",
+      "casi_errore": "toast.error con il messaggio del backend; lookupResult.error mostrato in rosso nel box."
+    },
+    {
+      "etichetta": "🔄 Aggiorna da Targa (nel pannello dettaglio veicolo, non nel modal)",
+      "cosa_fa_al_click": "handleUpdateFromOpenAPI(targa): a differenza di 'Cerca Dati', questo SALVA subito i dati trovati sul veicolo.",
+      "endpoint_chiamato": "POST /api/openapi-automotive/aggiorna-veicolo { targa }",
+      "logica_backend": "Fuori scope (router esterno): crea o aggiorna il veicolo in veicoli_noleggio con i dati OpenAPI Automotive per quella targa.",
+      "formula_matematica": "-",
+      "aggiornamento_ui": "toast.success ('Creato'/'Aggiornato veicolo {targa}'), fetchVeicoli() ricarica la lista; se il modal di modifica è aperto sullo stesso veicolo, i campi vengono aggiornati in place.",
+      "casi_errore": "toast.error con il dettaglio."
+    },
+    {
+      "etichetta": "💾 Salva (modal Modifica Veicolo)",
+      "cosa_fa_al_click": "handleSaveVeicolo(): invia l'intero oggetto editingVeicolo (inclusi eventuali campi applicati da OpenAPI o modificati a mano) al backend.",
+      "endpoint_chiamato": "PUT /api/noleggio/veicoli/{targa}",
+      "logica_backend": "update_veicolo(): se è passato driver_id, verifica che il dipendente esista in 'dipendenti' (400 se non trovato) e ricalcola il campo driver come 'nome cognome'. Poi fa un upsert su veicoli_noleggio filtrando su whitelist di campi aggiornabili: driver, driver_id, marca, modello, contratto, codice_cliente, centro_fatturazione, data_inizio, data_fine, note, fornitore_noleggio, fornitore_piva, canone_mensile, anno_immatricolazione, alimentazione, potenza_kw, cilindrata. Campi fuori whitelist vengono ignorati silenziosamente.",
+      "formula_matematica": "-",
+      "aggiornamento_ui": "Chiude il modal, richiama fetchVeicoli(): i dati salvati hanno priorità sui dati derivati dalle fatture nel merge (vedi campo 'note' nel router: 'preferisci il valore inserito/confermato a mano').",
+      "casi_errore": "setErr con il messaggio del backend (es. 'Dipendente con ID X non trovato')."
+    },
+    {
+      "etichetta": "🗑️ Elimina",
+      "cosa_fa_al_click": "handleDelete(targa): rimuove il veicolo dalla gestione manuale. Disponibile sia nel pannello dettaglio sia dentro il modal Modifica.",
+      "endpoint_chiamato": "DELETE /api/noleggio/veicoli/{targa}",
+      "logica_backend": "delete_veicolo(): db[veicoli_noleggio].delete_one({targa}). 404 se il veicolo non esiste. IMPORTANTE: non elimina le fatture né gli importi collegati — al prossimo scan (fetchVeicoli), se esistono ancora fatture con quella targa in 'invoices', il veicolo ricompare automaticamente (ricreato 'al volo' da scan_fatture_noleggio) ma perde tutti i dati anagrafici salvati a mano (driver, contratto, date, canone_mensile).",
+      "formula_matematica": "-",
+      "aggiornamento_ui": "setSelectedVeicolo(null), fetchVeicoli() ricarica la lista.",
+      "casi_errore": "setErr con il messaggio del backend."
+    }
+  ],
+  "operazioni_di_registrazione": [
+    {
+      "nome": "Scoperta automatica veicolo da fattura (processa_fattura_noleggio / scan_fatture_noleggio)",
+      "sequenza_esatta": "1) Import XML fattura -> supplier_vat verificata contro FORNITORI_NOLEGGIO. 2) Per ogni riga fattura, regex TARGA_PATTERN sulla descrizione -> set di targhe trovate. 3) Se il veicolo con quella targa non esiste in veicoli_noleggio, viene creato al volo con marca/modello estratti via MARCA_PATTERNS, fornitore, contratto=codice_cliente estratto (metodo diverso per ALD/ARVAL/Leasys), data_inizio=data fattura, note='Creato automaticamente da fattura {numero}'. 4) Ogni riga fattura viene categorizzata (categorizza_spesa) e sommata nel bucket della categoria per quella targa. 5) Se NESSUNA targa è presente in nessuna riga, la fattura finisce tra le 'fatture senza targa': se è una fattura bollo si tenta l'aggancio automatico al veicolo attivo alla data fattura tramite _trova_targa_per_fattura_bollo (cerca veicoli dello stesso fornitore senza data_fine o con data_fine futura, prende quello con data_inizio più vicina e <= data fattura).",
+      "collezioni_coinvolte": ["invoices (lettura)", "veicoli_noleggio (lettura + eventuale insert automatico)"],
+      "campi_scritti": {
+        "veicoli_noleggio (creazione automatica)": "id (uuid), targa, marca, modello, fornitore_noleggio, fornitore_piva, contratto, codice_cliente, driver=null, driver_id=null, data_inizio, data_fine=null, note, created_at"
+      },
+      "effetti_collaterali": "Questa creazione automatica avviene sia nella funzione legacy processa_fattura_noleggio() (chiamata durante l'import XML), sia implicitamente ogni volta che scan_fatture_noleggio() ricostruisce l'oggetto veicoli in memoria per la GET /veicoli (in quel caso però NON scrive su DB, costruisce solo la struttura in RAM per la risposta — la scrittura vera su veicoli_noleggio avviene solo tramite processa_fattura_noleggio in fase di import, o tramite le azioni manuali PUT/POST descritte sopra)."
+    },
+    {
+      "nome": "Associazione ambigua di una fattura senza targa a un veicolo (scegli_veicolo_per_fattura)",
+      "sequenza_esatta": "Data una fattura senza targa e la lista di veicoli SALVATI dello stesso fornitore (stessa piva): 1) se il fornitore ha UN SOLO veicolo salvato -> assegna a quello, certo=True (associazione affidabile, non richiede revisione). 2) altrimenti, se il numero contratto della fattura (estratto da dati_contratto o AltriDatiGestionali) combacia esattamente (case-insensitive) con il contratto salvato su un veicolo -> assegna a quello, certo=True. 3) altrimenti (euristiche di ripiego, certo=False): assegna al primo veicolo del fornitore NON ancora toccato da un'altra fattura in questo stesso scan (evita di sommare tutto su un solo veicolo); se tutti sono già toccati, assegna al primo con contratto scaduto (data_fine < oggi); se nessuno, assegna al primo veicolo della lista (scelta arbitraria).",
+      "collezioni_coinvolte": ["veicoli_noleggio (lettura)", "invoices (lettura, tramite fatture_senza_targa)"],
+      "campi_scritti": {},
+      "effetti_collaterali": "Le fatture con certo=True NON compaiono mai tra le 'fatture non associate' (né nel badge della UI né nell'endpoint /fatture-non-associate) perché considerate risolte con certezza. Quelle con certo=False vengono comunque sommate nei totali del veicolo scelto (per non perdere il costo dai totali economici), ma restano visibili tra le 'fatture non associate' perché la scelta è solo una stima che l'utente dovrebbe verificare manualmente (tipicamente aggiungendo il numero contratto mancante sul veicolo, o creando il veicolo giusto con ➕ Aggiungi Veicolo)."
+    },
+    {
+      "nome": "Modifica manuale veicolo (driver, contratto, date, canone, dati tecnici)",
+      "sequenza_esatta": "1) Utente apre modal Modifica (✏️) -> 2) eventualmente usa 'Cerca Dati'/'Applica questi dati' per precompilare da OpenAPI -> 3) modifica campi a mano -> 4) click 💾 Salva -> PUT /api/noleggio/veicoli/{targa} -> upsert su veicoli_noleggio con whitelist di campi -> 5) fetchVeicoli() rilegge tutto e il merge finale privilegia i campi salvati a mano su quelli derivati dalle fatture.",
+      "collezioni_coinvolte": ["veicoli_noleggio (scrittura upsert)", "dipendenti (lettura per validare driver_id)"],
+      "campi_scritti": {
+        "veicoli_noleggio": "targa, updated_at, e uno o più tra: driver, driver_id, marca, modello, contratto, codice_cliente, centro_fatturazione, data_inizio, data_fine, note, fornitore_noleggio, fornitore_piva, canone_mensile, anno_immatricolazione, alimentazione, potenza_kw, cilindrata"
+      },
+      "effetti_collaterali": "Se il veicolo non esisteva ancora in veicoli_noleggio (caso limite, es. modificato prima che una fattura lo creasse), viene creato con $setOnInsert (id nuovo, created_at)."
+    },
+    {
+      "nome": "Associazione manuale fornitore→targa per fornitori senza targa in fattura (es. LeasePlan)",
+      "sequenza_esatta": "1) Utente clicca ➕ Aggiungi Veicolo -> 2) inserisce targa + seleziona fornitore (obbligatori) + marca/modello/contratto opzionali -> 3) POST /api/noleggio/associa-fornitore -> upsert su veicoli_noleggio -> 4) al prossimo caricamento, le fatture di quel fornitore prive di targa passeranno per scegli_veicolo_per_fattura() e, se questo è l'unico veicolo di quel fornitore, verranno assegnate con certezza (certo=True).",
+      "collezioni_coinvolte": ["veicoli_noleggio (scrittura upsert)"],
+      "campi_scritti": {
+        "veicoli_noleggio": "targa, fornitore_piva, fornitore_noleggio, marca, modello, contratto, updated_at (+ id/created_at se nuovo)"
+      },
+      "effetti_collaterali": "Non riassocia retroattivamente le fatture già mostrate come 'senza targa': l'associazione avviene dinamicamente ad ogni GET /veicoli, quindi basta ricaricare la pagina per vedere l'effetto."
+    }
+  ],
+  "collegamenti_con_altre_pagine": [
+    "Tab 'Verbali Noleggio' (stesso hub, /noleggio/verbali) — riconciliazione dettagliata dei singoli verbali/multe, incrociata con la stessa collezione veicoli_noleggio (targa->driver).",
+    "Tab 'Riepilogo Costi' (stesso hub, /noleggio/costi) — stessa fonte dati (GET /api/noleggio/veicoli) aggregata per categoria ed export PDF.",
+    "Pagina Scadenze (/scadenze) — mostra un widget 'Documenti da Riconciliare' con conteggi su verbali/fatture in attesa che rimandano a questa pagina (navigate('/noleggio')).",
+    "Dettaglio Fattura (view-assoinvoice, /api/fatture-ricevute/fattura/{id}/view-assoinvoice) — link diretto da ogni riga di spesa e dalle fatture non associate.",
+    "Dettaglio Verbale (/verbali-noleggio/{numero_verbale}) — aperto dal bottone '⚠️ PDF' sulle righe della categoria Verbali."
+  ],
+  "popup_e_modali_presenti": [
+    {
+      "nome": "Modal Modifica Veicolo",
+      "trigger": "✏️ Modifica (riga tabella o pannello dettaglio)",
+      "contenuto": "Sezione lookup OpenAPI Automotive (Cerca Dati / Applica), Marca, Modello, Driver (select da dipendenti), N° Contratto, Codice Cliente, Canone mensile, Anno immatricolazione, Alimentazione, Potenza(kW)/Cilindrata(cc), Centro Fatturazione, Inizio/Fine Noleggio, Note. Footer con 🗑️ Elimina (sinistra), Annulla e 💾 Salva (destra)."
+    },
+    {
+      "nome": "Modal Aggiungi Veicolo",
+      "trigger": "➕ Aggiungi Veicolo (header) oppure ➕ Associa da una riga del modal Fatture Non Associate (precompila il fornitore)",
+      "contenuto": "Targa* (max 7 char, uppercase), Fornitore* (select con icona ⚠️ per quelli senza targa in fattura), Marca, Modello, Numero Contratto. Footer Annulla / ➕ Aggiungi."
+    },
+    {
+      "nome": "Modal Fatture Non Associate",
+      "trigger": "👁️ Visualizza sul badge '⚠️ N fatture non associate'",
+      "contenuto": "Elenco fatture (fornitore, numero, data, importo, descrizione, contratto/codice cliente) con link 📄 Vedi (PDF fattura) e bottone ➕ Associa che apre il modal Aggiungi Veicolo precompilato col fornitore."
+    }
+  ]
+}

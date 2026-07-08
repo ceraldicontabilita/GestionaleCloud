@@ -1,0 +1,126 @@
+{
+  "pagina": "Piano dei Conti",
+  "url": "https://impresasemplice.online/contabilita/piano-conti",
+  "file_sorgente_frontend": [
+    "/home/user/GestionaleCloud/frontend/src/pages/PianoDeiConti.jsx",
+    "/home/user/GestionaleCloud/frontend/src/pages/hub/ContabilitaHub.jsx"
+  ],
+  "file_sorgente_backend": [
+    "/home/user/GestionaleCloud/app/routers/accounting/piano_conti.py",
+    "/home/user/GestionaleCloud/app/routers/warehouse/dizionario_articoli.py"
+  ],
+  "scopo_generale": "È la pagina del sistema di partita doppia dell'ERP: mostra il Piano dei Conti aziendale (elenco codificato di tutti i conti — Attivo, Passivo, Patrimonio Netto, Ricavi, Costi — con codice tipo GG.SS.CC, es. 05.02.02 'Utenze') e per ciascun conto calcola AL VOLO (non da scritture salvate) il saldo aggregando i dati reali dalle collezioni operative del gestionale (fatture, corrispettivi, prima nota cassa/banca, cedolini, F24). Ha due tab interne: 'Piano dei Conti' (elenco conti raggruppati per categoria con saldo, e drawer di dettaglio movimenti al click su un conto) e 'Regole Categorizzazione' (regole automatiche che, in base al fornitore/tipo documento/metodo di pagamento, decidono su quale conto DARE/AVERE registrare una fattura). Include anche il pulsante 'Ricategorizza con AI' che usa un modello AI per assegnare le singole righe delle fatture XML alle sottocategorie di costo corrette (es. Coca-Cola → Bevande analcoliche), così i saldi dei conti di costo si spezzano in dettaglio invece di finire tutti genericamente su 'Acquisto merci'.",
+  "bottoni_azioni": [
+    {
+      "etichetta": "➕ Nuovo Conto",
+      "cosa_fa_al_click": "Apre il modal 'Nuovo Conto' con campi Codice (es. 05.02.03), Nome Conto, Categoria (select tra attivo/passivo/patrimonio_netto/ricavi/costi) e Natura (economico/finanziario). Al submit chiama handleCreateConto().",
+      "endpoint_chiamato": "POST /api/piano-conti/",
+      "logica_backend": "Funzione create_conto(): valida che codice, nome e categoria siano presenti (400 se mancano); verifica unicità del codice con find_one su piano_conti (409 se il codice esiste già); crea il documento conto con id UUID, gruppo_codice/gruppo_nome ricavati da STRUTTURA_BASE[categoria], natura di default 'economico', attivo=True, saldo=0.0, created_at/updated_at ISO; lo inserisce nella collection 'piano_conti' con insert_one.",
+      "formula_matematica": "n/a",
+      "aggiornamento_ui": "Chiude il modal, resetta il form newConto ai valori di default e richiama loadData() che ricarica conti, regole e bilancio.",
+      "casi_errore": "Se codice o nome mancanti: alert JS lato client 'Codice e nome sono obbligatori' (nessuna chiamata al backend). Se il backend risponde 409 (codice duplicato) o altro errore: alert 'Errore: ' + messaggio dal backend (error.response.data.detail) o error.message."
+    },
+    {
+      "etichetta": "🤖 Ricategorizza con AI",
+      "cosa_fa_al_click": "Mostra un window.confirm() con spiegazione (analizza le righe delle fatture XML e le assegna ai conti corretti, dura da 30s a qualche minuto, costa qualche centesimo in chiamate AI). Se l'utente conferma, imposta lo stato 'riclassificando' a true e chiama handleRiclassificaAI().",
+      "endpoint_chiamato": "POST /api/dizionario-articoli/riclassifica-completo?limite_ai=500",
+      "logica_backend": "Endpoint unificato riclassifica_articoli_completo() in due step. STEP 1 (genera_dizionario, non-AI): esegue una aggregation su 'invoices' che fa $unwind di 'linee', raggruppa per 'linee.descrizione' contando occorrenze, fornitori distinti e somma dei prezzi; per ogni descrizione articolo applica categorizza_articolo() (categorizzazione euristica basata su pattern/keyword) che assegna categoria_haccp e conto del piano dei conti con un livello di 'confidenza'; se l'articolo esiste già nel dizionario e ha mappatura_manuale=True, la mappatura manuale viene preservata; altrimenti crea/aggiorna il documento in 'dizionario_articoli' (upsert per descrizione). STEP 2 (categorizzazione AI): chiama aggiorna_dizionario_con_ai(db, limite=limite_ai) dal servizio app/services/ai_categorizzazione.py, che prende gli articoli con confidenza=0 (non categorizzati euristicamente) fino al limite indicato (default 500) e usa un modello AI (Claude Haiku, secondo il commento nel codice) per assegnare loro un conto del piano dei conti, aggiornando il dizionario_articoli. Dopo l'operazione i saldi del Piano dei Conti si ricalcolano automaticamente al prossimo GET perché _calcola_saldi_piano_conti fa un $lookup tra le righe fattura e dizionario_articoli per assegnare l'imponibile al conto giusto.",
+      "formula_matematica": "n/a (classificazione, non calcolo numerico)",
+      "aggiornamento_ui": "Al termine mostra un banner colorato con il risultato: se success, verde con conteggio 'Articoli elaborati: X · Riclassificati AI: Y' (da step1_genera_dizionario.total e step2_categorizzazione_ai.categorizzati); se fallisce, banner rosso con il messaggio di errore. Richiama loadData() per ricaricare i saldi aggiornati del piano dei conti. Il pulsante resta disabilitato (grigio, testo '⏳ Classificazione in corso…') finché riclassificando è true.",
+      "casi_errore": "Se l'utente annulla il confirm(), nessuna azione. Se la chiamata fallisce (es. servizio AI non disponibile o errore di rete), riclassificaResult viene impostato con success:false ed error preso da error.response.data.detail o error.message, mostrato nel banner rosso."
+    },
+    {
+      "etichetta": "➕ Nuova Regola (tab Regole Categorizzazione)",
+      "cosa_fa_al_click": "Apre il modal 'Nuova Regola Categorizzazione' con campi Tipo Regola (fornitore / tipo_documento / pagamento), Pattern (regex, es. 'ENEL|EDISON'), Conto DARE, Conto AVERE, Descrizione. Al submit chiama handleCreateRegola().",
+      "endpoint_chiamato": "POST /api/piano-conti/regole",
+      "logica_backend": "Funzione create_regola(): costruisce il documento regola con id UUID, tipo (default 'fornitore'), pattern, conto_dare, conto_avere, descrizione, attiva=True, created_at ISO, e lo inserisce nella collection 'regole_categorizzazione' con insert_one.",
+      "formula_matematica": "n/a",
+      "aggiornamento_ui": "Chiude il modal, resetta il form newRegola e richiama loadData() che ricarica anche l'elenco regole.",
+      "casi_errore": "Se pattern o conto_dare mancanti: alert client 'Pattern e conto DARE sono obbligatori', nessuna chiamata al backend. Se il backend fallisce: alert 'Errore: ' + dettaglio."
+    },
+    {
+      "etichetta": "Click su una riga conto (tabella Piano dei Conti)",
+      "cosa_fa_al_click": "Apre un drawer laterale destro con il dettaglio del conto selezionato (openContoDetail).",
+      "endpoint_chiamato": "GET /api/piano-conti/conto/{codice}/movimenti?limit=40&anno={annoGlobale}",
+      "logica_backend": "Funzione get_movimenti_per_conto(): applica una logica SEMANTICA per codice conto (non fuzzy matching) per decidere da quale collezione leggere i movimenti: 01.01.01 Cassa → prima_nota_cassa (cumulativo fino a fine anno); 01.01.02/01.01.03 Banca → prima_nota_banca, con fallback su estratto_conto_movimenti se prima_nota_banca è vuota; 01.02.* Crediti → invoices_emesse; 02.01.* Debiti fornitori → invoices non pagate (status non in STATI_PAGATI e pagato≠True); categoria 'costi' → invoices (fatture ricevute) filtrate per anno; categoria 'ricavi' → solo il conto 04.01.01 mostra i corrispettivi (gli altri sotto-conti ricavi non hanno movimenti propri perché i corrispettivi non sono disaggregati per settore); conti 03.xx (Patrimonio Netto) → per 03.03.01/03.03.02 (Utile/Perdita) calcola Ricavi-Costi del periodo tramite _calcola_saldi_piano_conti, per Capitale/Riserve nessun movimento (dati statutari non tracciati). Ritorna anche 'fonte' (nome collezione) e una 'nota' esplicativa se non ci sono movimenti diretti.",
+      "formula_matematica": "totale_importo = somma di tutti i movimenti restituiti (max 40, limit parametrico); per Utile/Perdita d'esercizio: risultato = Ricavi_periodo − Costi_periodo",
+      "aggiornamento_ui": "Il drawer mostra header colorato per categoria, box Saldo/Natura/Stato, riepilogo (numero movimenti, totale periodo), fonte dati, e tabella movimenti (data, descrizione, importo con segno +/- colorato). Se non ci sono movimenti mostra il testo esplicativo 'nota' del backend.",
+      "casi_errore": "Se la chiamata fallisce, il catch è silenzioso (commento 'mostra solo info base'): il drawer resta aperto con contoDetail=null e mostra 'Nessun dettaglio disponibile'."
+    },
+    {
+      "etichetta": "Header categoria (es. ATTIVO / PASSIVO / …)",
+      "cosa_fa_al_click": "Espande/comprime la sezione della categoria (toggleCategory), puramente lato client, nessuna chiamata API.",
+      "endpoint_chiamato": "n/a",
+      "logica_backend": "n/a",
+      "formula_matematica": "n/a",
+      "aggiornamento_ui": "Mostra/nasconde la tabella dei conti di quella categoria; icona freccia ▼/▶.",
+      "casi_errore": "n/a"
+    }
+  ],
+  "operazioni_di_registrazione": [
+    {
+      "nome": "Creazione conto (POST /api/piano-conti/)",
+      "sequenza_esatta": "1) Validazione campi obbligatori codice/nome/categoria. 2) Controllo unicità codice su collection piano_conti. 3) Costruzione documento con id UUID, gruppo_codice/gruppo_nome da STRUTTURA_BASE, saldo iniziale 0.0. 4) insert_one su piano_conti.",
+      "collezioni_coinvolte": ["piano_conti"],
+      "campi_scritti": {
+        "id": "UUID stringa, identificatore del conto",
+        "codice": "stringa, es. 05.02.03 (formato GG.SS.CC)",
+        "nome": "stringa, nome del conto",
+        "categoria": "una tra attivo/passivo/patrimonio_netto/ricavi/costi",
+        "gruppo_codice": "codice a 2 cifre del gruppo (es. 05)",
+        "gruppo_nome": "nome del gruppo (es. COSTI)",
+        "natura": "economico | finanziario (default economico)",
+        "attivo": "bool, sempre True alla creazione",
+        "saldo": "float, sempre 0.0 alla creazione (i saldi reali sono calcolati al volo, non salvati qui)",
+        "created_at / updated_at": "timestamp ISO UTC"
+      },
+      "effetti_collaterali": "Nessuno automatico sui saldi esistenti: il nuovo conto compare con saldo 0 finché non ci sono fatture/movimenti che vi si riferiscono tramite le regole di categorizzazione o il dizionario articoli."
+    },
+    {
+      "nome": "Creazione regola di categorizzazione (POST /api/piano-conti/regole)",
+      "sequenza_esatta": "1) Costruzione documento regola con id UUID, attiva=True. 2) insert_one su regole_categorizzazione.",
+      "collezioni_coinvolte": ["regole_categorizzazione"],
+      "campi_scritti": {
+        "id": "UUID stringa",
+        "tipo": "fornitore | tipo_documento | pagamento",
+        "pattern": "stringa regex (es. ENEL|EDISON), usata con re.search case-insensitive",
+        "conto_dare": "codice conto da usare come DARE quando il pattern matcha",
+        "conto_avere": "codice conto da usare come AVERE",
+        "descrizione": "testo libero descrittivo",
+        "attiva": "bool, True alla creazione",
+        "created_at": "timestamp ISO UTC"
+      },
+      "effetti_collaterali": "La regola viene usata da determina_conti_fattura() (chiamata da /registra-fattura e /registra-tutte-fatture) per scegliere il conto costo in base al nome fornitore: solo le regole con tipo='fornitore' sono effettivamente applicate in quella funzione (le regole tipo_documento/pagamento sono definite ma il codice di matching in determina_conti_fattura considera solo 'fornitore')."
+    },
+    {
+      "nome": "Riclassificazione AI (POST /api/dizionario-articoli/riclassifica-completo)",
+      "sequenza_esatta": "1) genera_dizionario(): aggregation su invoices (unwind linee, group by descrizione) → upsert su dizionario_articoli con categoria euristica. 2) aggiorna_dizionario_con_ai(): per gli articoli con confidenza=0, chiamata AI che aggiorna conto/categoria nel dizionario_articoli.",
+      "collezioni_coinvolte": ["invoices", "dizionario_articoli"],
+      "campi_scritti": {
+        "descrizione": "chiave univoca dell'articolo (testo riga fattura)",
+        "occorrenze": "numero di fatture in cui compare",
+        "n_fornitori / fornitori": "conteggio e lista (max 10) fornitori distinti",
+        "totale_importo": "somma dei prezzi totali riga",
+        "categoria_haccp / categoria_haccp_nome": "categoria merceologica assegnata",
+        "conto / conto_nome": "codice e nome del conto del piano dei conti assegnato",
+        "confidenza": "punteggio di affidabilità della categorizzazione (0 se non riconosciuto euristicamente)",
+        "mappatura_manuale": "bool, preservata se già impostata a True da un utente"
+      },
+      "effetti_collaterali": "Non scrive nulla nel piano_conti stesso: modifica solo dizionario_articoli. I saldi del Piano dei Conti cambiano indirettamente al successivo GET /api/piano-conti/, perché _calcola_saldi_piano_conti fa un $lookup tra le righe fattura e dizionario_articoli per assegnare l'imponibile al conto corretto invece che genericamente a 05.01.01."
+    }
+  ],
+  "collegamenti_con_altre_pagine": [
+    "Bilancio (tab 'bilancio' dello stesso ContabilitaHub): usa la stessa funzione backend _calcola_saldi_piano_conti tramite GET /api/piano-conti/bilancio, quindi i totali mostrati nelle card riepilogo del Piano dei Conti (Totale Attivo, Totale Passivo, Totale Ricavi, Totale Costi, Utile/Perdita) sono calcolati con la stessa logica del tab Bilancio.",
+    "Verifica Bilancio (tab 'verifica'): stessa area di Contabilità Gestionale, mostra il quadro dare/avere di tutti i conti del piano.",
+    "Fatture Ricevute (invoices) e Corrispettivi: fonti dati primarie da cui il Piano dei Conti calcola i saldi (costi, IVA, debiti/crediti, ricavi).",
+    "Dizionario Articoli (dizionario_articoli, modulo warehouse): alimenta la disaggregazione dei costi per sottocategoria tramite la funzione di riclassificazione AI.",
+    "Prima Nota Cassa/Banca, Cedolini, F24 Unificato, Estratto Conto Movimenti: fonti dati aggiuntive usate da _calcola_saldi_piano_conti per Cassa, Banca, Salari/TFR/Contributi e Debiti Tributari.",
+    "Altri tab dello stesso ContabilitaHub (Controllo Mensile, Calendario Fiscale, Cespiti, Finanziaria, Chiusura Esercizio, Budget, Mutui, Contabilità Avanzata, Utile Obiettivo, Previsioni Acquisti): raggiungibili dalla stessa barra di navigazione a tab, ma senza collegamento dati diretto documentato in questo file."
+  ],
+  "popup_e_modali_presenti": [
+    "Modal 'Nuovo Conto' (showNewConto): form con Codice, Nome Conto, Categoria (select), Natura (select economico/finanziario); pulsanti Annulla e '➕ Crea Conto'.",
+    "Modal 'Nuova Regola Categorizzazione' (showNewRegola): form con Tipo Regola (select fornitore/tipo_documento/pagamento), Pattern regex, Conto DARE, Conto AVERE, Descrizione; pulsanti Annulla e '⚙️ Crea Regola'.",
+    "Drawer laterale destro 'Dettaglio Conto' (selectedConto/contoDetail): non è un modal bloccante classico ma un pannello overlay con header colorato per categoria, box Saldo/Natura/Stato e tabella movimenti; si chiude cliccando la '✕' o l'overlay semi-trasparente di sfondo.",
+    "window.confirm() nativo del browser per la conferma prima di avviare la Ricategorizzazione AI (non è un componente React, ma un popup di sistema)."
+  ]
+}
