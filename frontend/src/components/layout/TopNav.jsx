@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, memo, useEffect } from 'react';
+﻿import React, { useState, useRef, useCallback, memo, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -14,15 +14,18 @@ import {
   FileBarChart,
   BookMarked,
   Car,
-  Download,
   CreditCard,
+  Landmark,
+  Receipt,
+  Wallet,
+  Map,
 } from 'lucide-react';
 import api from '../../api';
 import { AnnoSelector } from '../../contexts/AnnoContext';
 import { COLORS, useIsMobile } from '../../lib/utils';
 import InstallAppButton from '../InstallAppButton';
 
-/* ─── Costanti navigazione (definite fuori dal componente → nessuna ricreazione) ─── */
+/* â”€â”€â”€ Costanti navigazione (definite fuori dal componente â†’ nessuna ricreazione) â”€â”€â”€ */
 
 // URL dell'app esterna AppDipendenti (gestione HR spostata fuori dal gestionale).
 const APP_DIPENDENTI_URL = 'https://appdipendenti.onrender.com';
@@ -32,22 +35,26 @@ const NAV_ITEMS = [
   { to: '/fatture', label: 'Fatture', Icon: FileText },
   { to: '/prima-nota', label: 'Prima Nota', Icon: BookOpen },
   { to: '/fornitori', label: 'Fornitori', Icon: Building2 },
-  { to: null, href: APP_DIPENDENTI_URL, label: 'HR', Icon: Users, external: true },
-  { to: '/coerenza-pos', label: 'Coerenza POS', Icon: CreditCard },
+  { to: '/riconciliazione', label: 'Riconciliazione', Icon: Landmark },
   { to: '/riconciliazione/assegni', label: 'Assegni', Icon: FileBarChart },
+  { to: '/riconciliazione/paypal', label: 'PayPal', Icon: CreditCard },
 ];
 
 const ALTRO_ITEMS = [
+  { to: '/fatture/corrispettivi', label: 'Corrispettivi', Icon: Wallet },
+  { to: '/riconciliazione/f24', label: 'F24', Icon: Receipt },
   { to: '/contabilita', label: 'Contabilità', Icon: FileBarChart },
   { to: '/documenti', label: 'Documenti', Icon: BookMarked },
-  { to: '/noleggio', label: 'Noleggio Auto', Icon: Car },
-  { to: '/riconciliazione', label: 'Riconciliazione', Icon: FileBarChart },
-  { to: '/riconciliazione/paypal', label: 'PayPal', Icon: CreditCard },
+  { to: '/documenti/import', label: 'Import Documenti', Icon: BookMarked },
+  { to: '/coerenza-pos', label: 'Incassi POS', Icon: CreditCard },
+  { to: '/noleggio', label: 'Noleggi', Icon: Car },
   { to: '/strumenti', label: 'Strumenti', Icon: Wrench },
+  { to: '/mappa-gestionale', label: 'Mappa', Icon: Map },
+  { to: null, href: APP_DIPENDENTI_URL, label: 'HR', Icon: Users, external: true },
   { to: '/admin', label: 'Admin', Icon: Settings },
 ];
 
-/* ─── Stili (definiti fuori → creati una volta sola) ─── */
+/* â”€â”€â”€ Stili (definiti fuori â†’ creati una volta sola) â”€â”€â”€ */
 const S = {
   nav: {
     position: 'fixed',
@@ -185,7 +192,7 @@ const S = {
   },
 };
 
-/* ─── Dropdown "Altro" — memoizzato separatamente per evitare re-render del nav ─── */
+/* â”€â”€â”€ Dropdown "Altro" â€” memoizzato separatamente per evitare re-render del nav â”€â”€â”€ */
 const AltroDropdown = memo(function AltroDropdown({ isAltroActive }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef(null);
@@ -208,7 +215,7 @@ const AltroDropdown = memo(function AltroDropdown({ isAltroActive }) {
         aria-expanded={open}
         onClick={() => setOpen(v => !v)}
       >
-        <span style={{ fontSize: 13 }}>···</span>
+        <span style={{ fontSize: 13 }}>Â·Â·Â·</span>
         <span>Altro</span>
         <ChevronDown
           size={11}
@@ -222,25 +229,40 @@ const AltroDropdown = memo(function AltroDropdown({ isAltroActive }) {
       </button>
       {open && (
         <div style={S.dropdownMenu} data-testid="nav-altro-menu">
-          {ALTRO_ITEMS.map(({ to, label, Icon }) => (
-            <NavLink
-              key={to}
-              to={to}
-              style={({ isActive }) => S.dropItem(isActive)}
-              onClick={() => setOpen(false)}
-              data-testid={`nav-altro-${label.toLowerCase()}`}
-            >
-              <Icon size={14} />
-              {label}
-            </NavLink>
-          ))}
+          {ALTRO_ITEMS.map(({ to, href, label, Icon, external }) =>
+            external ? (
+              <a
+                key={label}
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={S.dropItem(false)}
+                onClick={() => setOpen(false)}
+                data-testid={`nav-altro-${label.toLowerCase().replace(/\s+/g, '-')}`}
+              >
+                <Icon size={14} />
+                {label}
+              </a>
+            ) : (
+              <NavLink
+                key={to}
+                to={to}
+                style={({ isActive }) => S.dropItem(isActive)}
+                onClick={() => setOpen(false)}
+                data-testid={`nav-altro-${label.toLowerCase().replace(/\s+/g, '-')}`}
+              >
+                <Icon size={14} />
+                {label}
+              </NavLink>
+            )
+          )}
         </div>
       )}
     </div>
   );
 });
 
-/* ─── TopNav principale — React.memo per evitare re-render da parent ─── */
+/* â”€â”€â”€ TopNav principale â€” React.memo per evitare re-render da parent â”€â”€â”€ */
 const TopNav = memo(function TopNav() {
   const location = useLocation();
   const isMobile = useIsMobile(768);
@@ -252,7 +274,7 @@ const TopNav = memo(function TopNav() {
 
   return (
     <>
-      {/* Stile globale per animazione dropdown — iniettato UNA volta */}
+      {/* Stile globale per animazione dropdown â€” iniettato UNA volta */}
       <style>{`
         @keyframes navDropIn {
           from { opacity: 0; transform: translateY(-6px); }
@@ -280,7 +302,7 @@ const TopNav = memo(function TopNav() {
         <div style={S.items} className="topnav-items-scroll topnav-items">
           {NAV_ITEMS.map(({ to, href, label, Icon, external }) =>
             external ? (
-              /* Link esterno (es. HR → AppDipendenti) */
+              /* Link esterno (es. HR â†’ AppDipendenti) */
               <a
                 key={label}
                 href={href}
@@ -307,13 +329,13 @@ const TopNav = memo(function TopNav() {
               </NavLink>
             )
           )}
-          {/* Dropdown "Altro" — ultimo item nella nav */}
+          {/* Dropdown "Altro" â€” ultimo item nella nav */}
           <AltroDropdown isAltroActive={isAltroActive} />
         </div>
 
         {/* Destra: Anno + Notifiche + Avatar */}
         <div style={S.right} className="topnav-right">
-          {/* Selettore Anno — label "ANNO" nascosta sotto 768px per fare spazio alle icone */}
+          {/* Selettore Anno â€” label "ANNO" nascosta sotto 768px per fare spazio alle icone */}
           <div style={S.annoWrap} data-testid="anno-selector">
             {!isMobile && <span style={S.annoLabel}>ANNO</span>}
             <AnnoSelector
@@ -332,7 +354,7 @@ const TopNav = memo(function TopNav() {
             />
           </div>
 
-          {/* Installa come app (PWA) — visibile solo se non già installata */}
+          {/* Installa come app (PWA) â€” visibile solo se non giÃ  installata */}
           <InstallAppButton />
 
           {/* Campana notifiche */}
@@ -353,7 +375,7 @@ const TopNav = memo(function TopNav() {
 
 export default TopNav;
 
-/* ─── Campana notifiche — usa /api/alerts/summary (sistema relazionale) ─── */
+/* â”€â”€â”€ Campana notifiche â€” usa /api/alerts/summary (sistema relazionale) â”€â”€â”€ */
 const NotificationBellMinimal = memo(function NotificationBellMinimal() {
   const [summary, setSummary] = useState({
     totale_aperti: 0,
@@ -487,13 +509,13 @@ const NotificationBellMinimal = memo(function NotificationBellMinimal() {
             {hasAlerts && (
               <span style={{ fontSize: 11, fontWeight: 600, color: '#64748b' }}>
                 {critical > 0 && (
-                  <span style={{ color: '#ef4444', marginRight: 6 }}>🔴 {critical}</span>
+                  <span style={{ color: '#ef4444', marginRight: 6 }}>ðŸ”´ {critical}</span>
                 )}
                 {warning > 0 && (
-                  <span style={{ color: '#f59e0b', marginRight: 6 }}>🟡 {warning}</span>
+                  <span style={{ color: '#f59e0b', marginRight: 6 }}>ðŸŸ¡ {warning}</span>
                 )}
                 {(summary.per_severita?.info || 0) > 0 && (
-                  <span style={{ color: '#3b82f6' }}>🔵 {summary.per_severita.info}</span>
+                  <span style={{ color: '#3b82f6' }}>ðŸ”µ {summary.per_severita.info}</span>
                 )}
               </span>
             )}
@@ -502,7 +524,7 @@ const NotificationBellMinimal = memo(function NotificationBellMinimal() {
           <div style={{ maxHeight: 320, overflowY: 'auto' }}>
             {!hasAlerts ? (
               <div style={{ padding: 20, textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>
-                ✓ Nessun alert aperto
+                âœ“ Nessun alert aperto
               </div>
             ) : summary.critical_recenti && summary.critical_recenti.length > 0 ? (
               <>
@@ -583,10 +605,11 @@ const NotificationBellMinimal = memo(function NotificationBellMinimal() {
               borderTop: '1px solid #f3f4f6',
             }}
           >
-            Apri Dashboard Relazionale →
+            Apri Dashboard Relazionale â†’
           </a>
         </div>
       )}
     </div>
   );
 });
+

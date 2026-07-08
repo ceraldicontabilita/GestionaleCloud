@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+﻿import React, { useState, useEffect } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import api from "./api";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -12,10 +12,10 @@ import "./styles/topnav.css";
 
 // Mobile navigation items
 const MOBILE_NAV = [
-  { to: "/", label: "Home", icon: "🏠" },
-  { to: "/fatture-ricevute", label: "Fatture", icon: "📄" },
-  { to: "/riconciliazione", label: "Banca", icon: "🏦" },
-  { to: "/scadenze", label: "Scadenze", icon: "🔔" },
+  { to: "/", label: "Dashboard", icon: "🏠" },
+  { to: "/fatture", label: "Fatture", icon: "📄" },
+  { to: "/prima-nota", label: "Prima Nota", icon: "📒" },
+  { to: "/riconciliazione", label: "Riconciliazione", icon: "🏦" },
   { to: "/more", label: "Menu", icon: "☰", isMenu: true },
 ];
 
@@ -24,29 +24,27 @@ const APP_DIPENDENTI_URL = "https://appdipendenti.onrender.com";
 
 // Full menu items for mobile overlay.
 // NOTA: elenco mantenuto a mano in parallelo a NAV_ITEMS/ALTRO_ITEMS di TopNav.jsx
-// (menu desktop) — se aggiungi una voce lì, aggiungila anche qui o sparisce su mobile.
+// (menu desktop) â€” se aggiungi una voce lÃ¬, aggiungila anche qui o sparisce su mobile.
 const ALL_NAV_ITEMS = [
   { to: "/", label: "Dashboard", icon: "📊" },
-  { to: "/rapido", label: "Inserimento Rapido", icon: "📱" },
-  { to: "/fatture-ricevute", label: "Ciclo Passivo", icon: "🧾" },
+  { to: "/fatture", label: "Fatture passive", icon: "🧾" },
+  { to: "/fatture/corrispettivi", label: "Corrispettivi", icon: "💶" },
   { to: "/fornitori", label: "Fornitori", icon: "🏢" },
   { to: "/prima-nota", label: "Prima Nota", icon: "📒" },
   { to: "/riconciliazione", label: "Riconciliazione", icon: "🏦" },
+  { to: "/riconciliazione/assegni", label: "Assegni", icon: "🧷" },
   { to: "/riconciliazione/paypal", label: "PayPal", icon: "💳" },
-  { to: "/riconciliazione/assegni", label: "Assegni", icon: "📑" },
-  { to: "/bilancio", label: "Bilancio", icon: "📊" },
-  { to: "/mutui", label: "Mutui", icon: "🏦" },
-  { to: "/contabilita-hub", label: "Contabilità", icon: "📈" },
-  { to: "/coerenza-pos", label: "Coerenza POS", icon: "💳" },
-  { to: "/noleggio", label: "Noleggio Auto", icon: "🚗" },
+  { to: "/riconciliazione/f24", label: "F24", icon: "🗂️" },
+  { to: "/contabilita", label: "Contabilità", icon: "📈" },
+  { to: "/coerenza-pos", label: "Incassi POS", icon: "💳" },
+  { to: "/noleggio", label: "Noleggi", icon: "🚗" },
   { to: "/scadenze", label: "Scadenze", icon: "🔔" },
-  { to: "/import-documenti", label: "Import", icon: "📥" },
   { to: "/documenti", label: "Documenti", icon: "📨" },
+  { to: "/documenti/import", label: "Import documenti", icon: "📥" },
   { to: "/strumenti", label: "Strumenti", icon: "🔧" },
-  { to: "/integrazioni", label: "Integrazioni", icon: "🔗" },
-  { to: "/agenti", label: "Agenti AI", icon: "🤖" },
-  { to: null, href: APP_DIPENDENTI_URL, label: "HR", icon: "👥", external: true },
   { to: "/admin", label: "Admin", icon: "⚙️" },
+  { to: "/mappa-gestionale", label: "Mappa gestionale", icon: "🗺️" },
+  { to: null, href: APP_DIPENDENTI_URL, label: "HR", icon: "👥", external: true },
 ];
 
 export default function App() {
@@ -56,7 +54,7 @@ export default function App() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Connessione WebSocket real-time — gestisce notifiche push dallo scheduler
+  // Connessione WebSocket real-time â€” gestisce notifiche push dallo scheduler
   useWebSocketNotifications();
 
   // Load commercialista alert
@@ -65,7 +63,7 @@ export default function App() {
       try {
         const res = await api.get('/api/commercialista/alert-status');
         if (res.data.show_alert) {
-          // Controlla se l'utente ha già chiuso questo avviso (per mese/anno)
+          // Controlla se l'utente ha giÃ  chiuso questo avviso (per mese/anno)
           const dismissKey = `alert_dismissed_${res.data.mese_pendente}_${res.data.anno_pendente}`;
           if (!localStorage.getItem(dismissKey)) {
             setAlertCommercialista(res.data);
@@ -138,7 +136,7 @@ export default function App() {
                   className="mobile-menu-close"
                   onClick={() => setShowMobileMenu(false)}
                 >
-                  ✕
+                  âœ•
                 </button>
               </div>
               <div className="mobile-menu-items">
@@ -187,7 +185,7 @@ export default function App() {
               marginBottom: 20,
               borderRadius: 10,
             }}>
-              <span style={{ fontSize: 24 }}>⚠️</span>
+              <span style={{ fontSize: 24 }}>âš ï¸</span>
               <div style={{ flex: 1 }}>
                 <strong>{alertCommercialista.message}</strong>
               </div>
@@ -229,7 +227,7 @@ export default function App() {
                   padding: 5
                 }}
               >
-                ✕
+                âœ•
               </button>
             </div>
           )}
@@ -334,4 +332,5 @@ export default function App() {
     </UploadProvider>
   );
 }
+
 
