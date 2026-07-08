@@ -3,7 +3,7 @@ import { useHashState } from '../hooks/useHashState';
 import { CopyLinkButton } from '../components/CopyLinkButton';
 import { Link } from 'react-router-dom';
 import api from '../api';
-import { formatDateIT, formatEuro } from '../lib/utils';
+import { formatDateIT, formatEuro, COLORS, BORDER_RADIUS } from '../lib/utils';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import {
   PageLayout,
@@ -81,10 +81,10 @@ export default function Corrispettivi() {
   const KPICard = ({ icon: Icon, label, value, subtext, color, bgColor }) => (
     <div
       style={{
-        background: bgColor || '#fff',
-        borderRadius: 12,
+        background: bgColor || COLORS.card,
+        borderRadius: BORDER_RADIUS.md,
         padding: 20,
-        border: '1px solid #e2e8f0',
+        border: `1px solid ${COLORS.border}`,
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>

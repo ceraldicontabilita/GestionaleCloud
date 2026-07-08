@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { formatEuro, formatDateIT, STYLES, COLORS, button, badge } from '../lib/utils';
+import { formatEuro, formatDateIT, STYLES, COLORS, SHADOWS, BORDER_RADIUS, button, badge } from '../lib/utils';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { PageLayout } from '../components/PageLayout';
@@ -435,9 +435,10 @@ export default function Documenti() {
 
   // Styles
   const cardStyle = {
-    background: 'white',
-    borderRadius: 12,
-    boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+    background: COLORS.card,
+    borderRadius: BORDER_RADIUS.md,
+    boxShadow: SHADOWS.sm,
+    border: `1px solid ${COLORS.border}`,
     overflow: 'hidden',
   };
 
@@ -503,7 +504,7 @@ export default function Documenti() {
             cursor: 'pointer',
             fontWeight: activeTab === 'categorie' ? 600 : 400,
             color: activeTab === 'categorie' ? '#059669' : '#6b7280',
-            boxShadow: activeTab === 'categorie' ? '0 2px 4px rgba(0,0,0,0.1)' : 'none',
+            boxShadow: activeTab === 'categorie' ? SHADOWS.sm : 'none',
             display: 'flex',
             alignItems: 'center',
             gap: 8,
@@ -521,7 +522,7 @@ export default function Documenti() {
             cursor: 'pointer',
             fontWeight: activeTab === 'email' ? 600 : 400,
             color: activeTab === 'email' ? '#1e40af' : '#6b7280',
-            boxShadow: activeTab === 'email' ? '0 2px 4px rgba(0,0,0,0.1)' : 'none',
+            boxShadow: activeTab === 'email' ? SHADOWS.sm : 'none',
             display: 'flex',
             alignItems: 'center',
             gap: 8,
@@ -542,7 +543,7 @@ export default function Documenti() {
             cursor: 'pointer',
             fontWeight: activeTab === 'ai' ? 600 : 400,
             color: activeTab === 'ai' ? '#7c3aed' : '#6b7280',
-            boxShadow: activeTab === 'ai' ? '0 2px 4px rgba(0,0,0,0.1)' : 'none',
+            boxShadow: activeTab === 'ai' ? SHADOWS.sm : 'none',
             display: 'flex',
             alignItems: 'center',
             gap: 8,
@@ -572,14 +573,10 @@ export default function Documenti() {
                   loadData();
                 }}
                 style={{
-                  background: 'white',
-                  borderRadius: 12,
-                  padding: '20px',
+                  ...STYLES.card,
                   cursor: 'pointer',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
-                  border: '1px solid #e5e7eb',
                   transition: 'all 0.2s',
-                  ':hover': { borderColor: '#3b82f6' },
+                  ':hover': { borderColor: COLORS.primary },
                 }}
               >
                 <div
@@ -749,7 +746,7 @@ export default function Documenti() {
                     marginTop: 20,
                     padding: 20,
                     background: 'rgba(255,255,255,0.95)',
-                    borderRadius: 12,
+                    borderRadius: BORDER_RADIUS.md,
                     color: '#1e293b',
                   }}
                 >
