@@ -339,7 +339,8 @@ function PrimaNotaDesktop() {
       const formData = new FormData();
       formData.append('file', file);
       const res = await api.post('/api/estratto-conto-movimenti/import', formData);
-      const msg = `${res.data.message}\nInseriti: ${res.data.movimenti_importati || res.data.inseriti || 0}\nDuplicati saltati: ${res.data.duplicati_saltati || 0}`;
+      const sync = res.data.sync_prima_nota || {};
+      const msg = `${res.data.message}\nInseriti: ${res.data.movimenti_importati || res.data.inseriti || 0}\nDuplicati saltati: ${res.data.duplicati_saltati || 0}\nRegistrati in Prima Nota Banca: ${sync.inseriti_banca || 0}\nRegistrati in Prima Nota Cassa (prelievi/versamenti): ${sync.inseriti_cassa || 0}`;
       showFeedback('Import completato', msg);
       loadAllData();
     } catch (error) {

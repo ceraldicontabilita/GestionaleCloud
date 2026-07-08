@@ -522,6 +522,95 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
         except Exception as e:
             logger.error(f"Errore sync assegni da estratto conto: {e}")
 
+    # ===== SYNC GENERICO IN PRIMA NOTA BANCA (+ CASSA per prelievi/versamenti) =====
+    # Le fasi sopra (fatture/F24/stipendi/assegni) registrano in Prima Nota
+    # solo i movimenti abbinati con certezza a un documento noto: tutti gli
+    # altri restavano visibili solo nell'Estratto Conto e non comparivano mai
+    # in Prima Nota Banca. Ora ogni movimento rimasto senza match viene
+    # comunque registrato in Prima Nota Banca (categoria generica,
+    # riclassificabile a mano in seguito), con provenienza tracciata
+    # (estratto_conto_id + source) così un reimport non lo duplica e
+    # un'eventuale associazione manuale successiva può aggiornare la riga
+    # invece di crearne una seconda.
+    # In più: prelievi bancomat e versamenti di contanti generano anche il
+    # movimento speculare in Prima Nota Cassa (un prelievo fa entrare
+    # contanti in cassa, un versamento li fa uscire dalla cassa verso banca).
+    sync_generico = {"inseriti_banca": 0, "inseriti_cassa": 0}
+    if records_to_insert:
+        try:
+            ec_ids = [m["id"] for m in records_to_insert]
+            stato_aggiornato: Dict[str, Any] = {}
+            async for m in db["estratto_conto_movimenti"].find(
+                {"id": {"$in": ec_ids}},
+                {"_id": 0, "id": 1, "riconciliato": 1, "riconciliato_paghe": 1}
+            ):
+                stato_aggiornato[m["id"]] = m
+
+            KEYWORDS_PRELIEVO = ["BANCOMAT", "CONTANT", "SPORTELLO", " ATM"]
+            KEYWORDS_VERSAMENTO_CONTANTI = ["CONTANT"]
+
+            banca_batch = []
+            cassa_batch = []
+            ec_da_marcare = []
+            for mov in records_to_insert:
+                mid = mov["id"]
+                stato = stato_aggiornato.get(mid, {})
+                if stato.get("riconciliato") or stato.get("riconciliato_paghe"):
+                    continue  # già registrato/gestito dalle fasi precedenti
+
+                desc_upper = (mov.get("descrizione_originale") or mov.get("descrizione") or "").upper()
+                now_iso = datetime.now(timezone.utc).isoformat()
+
+                banca_batch.append({
+                    "id": str(_uuid.uuid4()),
+                    "data": mov["data"],
+                    "tipo": mov["tipo"],
+                    "importo": mov["importo"],
+                    "descrizione": mov.get("descrizione") or mov.get("descrizione_originale") or "",
+                    "categoria": mov.get("categoria") or "Da categorizzare",
+                    "estratto_conto_id": mid,
+                    "source": "estratto_conto_auto",
+                    "created_at": now_iso,
+                })
+
+                is_prelievo = "PRELIEVO" in desc_upper and any(k in desc_upper for k in KEYWORDS_PRELIEVO)
+                is_versamento = "VERSAMENTO" in desc_upper and any(k in desc_upper for k in KEYWORDS_VERSAMENTO_CONTANTI)
+                if is_prelievo:
+                    cassa_batch.append({
+                        "id": str(_uuid.uuid4()), "data": mov["data"], "tipo": "entrata",
+                        "importo": mov["importo"],
+                        "descrizione": f"Prelievo da banca - {(mov.get('descrizione') or '')[:100]}",
+                        "categoria": "Prelievo",
+                        "estratto_conto_id": mid,
+                        "source": "estratto_conto_auto_prelievo",
+                        "created_at": now_iso,
+                    })
+                elif is_versamento:
+                    cassa_batch.append({
+                        "id": str(_uuid.uuid4()), "data": mov["data"], "tipo": "uscita",
+                        "importo": mov["importo"],
+                        "descrizione": f"Versamento in banca - {(mov.get('descrizione') or '')[:100]}",
+                        "categoria": "Versamento",
+                        "estratto_conto_id": mid,
+                        "source": "estratto_conto_auto_versamento",
+                        "created_at": now_iso,
+                    })
+
+                ec_da_marcare.append(mid)
+
+            if banca_batch:
+                await db["prima_nota_banca"].insert_many(banca_batch)
+            if cassa_batch:
+                await db["prima_nota_cassa"].insert_many(cassa_batch)
+            if ec_da_marcare:
+                await db["estratto_conto_movimenti"].update_many(
+                    {"id": {"$in": ec_da_marcare}},
+                    {"$set": {"riconciliato": True, "tipo_riconciliazione": "auto_generico"}}
+                )
+            sync_generico = {"inseriti_banca": len(banca_batch), "inseriti_cassa": len(cassa_batch)}
+        except Exception as e:
+            logger.error(f"Errore sync generico estratto conto -> prima nota: {e}")
+
     # ── EVENTO: pubblica sul Bus per matching automatico ──
     try:
         from app.core.event_bus import bus
@@ -559,6 +648,7 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
         "riconciliazione_paghe": riconciliazione_paghe,
         "provvisori_riconciliati": provvisori_riconciliati,
         "assegni_sync": assegni_sync,
+        "sync_prima_nota": sync_generico,
     }
 
 
