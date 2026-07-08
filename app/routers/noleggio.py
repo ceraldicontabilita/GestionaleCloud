@@ -20,7 +20,8 @@ from app.services.noleggio import (
     COLLECTION,
     scan_fatture_noleggio,
     categorizza_spesa,
-    estrai_causale_note
+    estrai_causale_note,
+    scegli_veicolo_per_fattura
 )
 
 from app.utils.error_handler import handle_errors
@@ -129,43 +130,32 @@ async def get_veicoli(
     async for v in cursor:
         veicoli_salvati[v["targa"]] = v
     
-    # Associa fatture senza targa ai veicoli salvati
+    # Associa fatture senza targa ai veicoli salvati. Traccia quali sono
+    # state associate con certezza (fornitore con un solo veicolo, o
+    # numero contratto combaciante) — quelle NON compaiono più tra le
+    # "fatture non associate" più sotto, perché la scelta non è una stima.
+    fatture_id_confidenti: set = set()
     for fattura in fatture_senza_targa:
         piva = fattura["supplier_vat"]
         tipo_doc = fattura.get("tipo_documento", "").lower()
         is_nota_credito = "nota" in tipo_doc or tipo_doc == "td04"
         fattura_id = fattura.get("invoice_id", "")
-        
+
         # Trova tutti i veicoli di questo fornitore
         veicoli_fornitore = [
             (targa, salvato) for targa, salvato in veicoli_salvati.items()
             if salvato.get("fornitore_piva") == piva
         ]
-        
+
         if not veicoli_fornitore:
             continue
-        
-        # Scegli il veicolo giusto
-        target_targa = None
-        oggi = datetime.now().strftime('%Y-%m-%d')
-        
-        # Prima cerca veicoli non presenti in veicoli_fatture
-        for targa, salvato in veicoli_fornitore:
-            if targa not in veicoli_fatture:
-                target_targa = targa
-                break
-        
-        # Se tutti i veicoli sono presenti, cerca quello con contratto scaduto
-        if not target_targa:
-            for targa, salvato in veicoli_fornitore:
-                data_fine = salvato.get("data_fine", "")
-                if data_fine and data_fine < oggi:
-                    target_targa = targa
-                    break
-        
-        if not target_targa:
-            target_targa = veicoli_fornitore[0][0]
-        
+
+        target_targa, certo = scegli_veicolo_per_fattura(
+            fattura, veicoli_fornitore, set(veicoli_fatture.keys())
+        )
+        if certo and fattura_id:
+            fatture_id_confidenti.add(fattura_id)
+
         salvato = veicoli_salvati[target_targa]
         
         # Aggiungi le spese a questo veicolo
@@ -338,18 +328,17 @@ async def get_veicoli(
             veicolo_target["totale_verbali"] = veicolo_target.get("totale_verbali", 0) + importo
             veicolo_target["totale_generale"] = veicolo_target.get("totale_generale", 0) + importo
 
-    # Conta fatture non associate. Nota: quando il fornitore ha un solo
-    # veicolo salvato, la fattura senza targa viene comunque assegnata a
-    # quel veicolo per "indovino" qualche riga più sopra (o al più vecchio
-    # con contratto scaduto, o al primo disponibile se il fornitore ne ha
-    # più di uno) — è una stima automatica, non una vera associazione
-    # confermata. In precedenza queste fatture venivano escluse dal
-    # conteggio (perché il fornitore "aveva già un veicolo"), facendo
-    # sparire dal badge la maggior parte delle fatture realmente da
-    # rivedere: il badge mostrava "2" mentre l'elenco di dettaglio (stessa
-    # fonte fatture_senza_targa, nessun filtro) ne mostrava 28. Il
-    # conteggio ora coincide con l'elenco effettivo.
-    fatture_davvero_non_associate = fatture_senza_targa
+    # Conta le fatture che richiedono DAVVERO una revisione manuale: quelle
+    # associate con certezza (scegli_veicolo_per_fattura -> certo=True,
+    # fornitore con un solo veicolo o numero contratto combaciante) NON
+    # compaiono qui, perché non sono una stima ma un'associazione affidabile.
+    # Restano invece le fatture di fornitori senza alcun veicolo salvato, e
+    # quelle assegnate "per ripiego" quando il fornitore ha più veicoli e
+    # nessun contratto combacia (scelta arbitraria, va verificata).
+    fatture_davvero_non_associate = [
+        f for f in fatture_senza_targa
+        if f.get("invoice_id") not in fatture_id_confidenti
+    ]
 
     # Statistiche (DOPO arricchimento con verbali DB)
     statistiche = {
@@ -531,14 +520,29 @@ async def get_fatture_non_associate(
     anno: Optional[int] = Query(None, description="Filtra per anno")
 ) -> Dict[str, Any]:
     """
-    Restituisce le fatture di fornitori noleggio che non hanno targa.
-    Utile per LeasePlan che richiede associazione manuale.
+    Restituisce le fatture di fornitori noleggio che non hanno targa E che
+    richiedono davvero una scelta manuale — stessa logica/stesso conteggio
+    di GET /veicoli::fatture_non_associate (scegli_veicolo_per_fattura):
+    le fatture associate con certezza (fornitore con un solo veicolo, o
+    numero contratto combaciante) non compaiono, perché già risolte.
     """
+    db = Database.get_db()
     _, fatture_senza_targa = await scan_fatture_noleggio(anno)
 
-    # Formatta correttamente le fatture per il frontend
+    veicoli_salvati: Dict[str, Any] = {}
+    cursor = db[COLLECTION].find({}, {"_id": 0})
+    async for v in cursor:
+        veicoli_salvati[v["targa"]] = v
+
     fatture_formattate = []
     for f in fatture_senza_targa:
+        veicoli_fornitore = [
+            (targa, salvato) for targa, salvato in veicoli_salvati.items()
+            if salvato.get("fornitore_piva") == f["supplier_vat"]
+        ]
+        _, certo = scegli_veicolo_per_fattura(f, veicoli_fornitore, set())
+        if certo:
+            continue
         fatture_formattate.append({
             "id": f.get("invoice_id"),
             "numero": f.get("invoice_number"),
@@ -548,9 +552,10 @@ async def get_fatture_non_associate(
             "importo": f.get("total", 0),
             "descrizione": ", ".join([l.get("descrizione", "")[:50] for l in f.get("linee", [])[:2]]),
             "tipo": f.get("tipo_documento"),
-            "codice_cliente": f.get("codice_cliente")
+            "codice_cliente": f.get("codice_cliente"),
+            "contratto": f.get("contratto")
         })
-    
+
     return {
         "fatture": fatture_formattate,
         "count": len(fatture_formattate),

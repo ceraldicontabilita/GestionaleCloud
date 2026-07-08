@@ -192,7 +192,7 @@ export default function RiconciliazioneUnificata() {
             return { data: { movimenti: [], stats: {} } };
           }),
         api
-          .get(`/api/operazioni-da-confermare/smart/banca-veloce?limit=50`)
+          .get(`/api/operazioni-da-confermare/smart/banca-veloce?limit=50&anno=${anno}`)
           .catch(e => {
             erroriCaricamento.push(e.response?.data?.detail || e.message);
             return { data: { movimenti: [], stats: {}, assegni: [] } };

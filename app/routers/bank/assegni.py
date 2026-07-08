@@ -120,7 +120,7 @@ async def genera_assegni(
 @router.get("")
 async def list_assegni(
     skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=1000),
+    limit: int = Query(1000, ge=1, le=1000),
     stato: Optional[str] = Query(None),
     fornitore_piva: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
@@ -149,8 +149,16 @@ async def list_assegni(
             {"beneficiario": {"$regex": search, "$options": "i"}}
         ]
     
+    # Ordina per data (più recenti prima) invece che per stato alfabetico:
+    # con l'ordinamento alfabetico su "stato" (annullato < assegnato <
+    # compilato < emesso < incassato < vuoto) gli assegni "emesso" restavano
+    # tagliati fuori dalla finestra di un limit fisso se c'erano molti
+    # assegni negli stati alfabeticamente precedenti (es. carnet generati in
+    # blocco, tutti "vuoto"/"compilato"/"assegnato"). Il frontend riordina
+    # comunque per numero all'arrivo (GestioneAssegni.jsx::loadData) — qui
+    # conta solo quali record sopravvivono al limit.
     assegni = await db[COLLECTION_ASSEGNI].find(query, {"_id": 0}).sort([
-        ("stato", 1),
+        ("data_emissione", -1),
         ("numero", 1)
     ]).skip(skip).limit(limit).to_list(limit)
 

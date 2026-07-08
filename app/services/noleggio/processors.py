@@ -25,6 +25,47 @@ from .parsers import (
 logger = logging.getLogger(__name__)
 
 
+def scegli_veicolo_per_fattura(
+    fattura: dict,
+    veicoli_fornitore: List[Tuple[str, dict]],
+    veicoli_gia_associati: set,
+) -> Tuple[Optional[str], bool]:
+    """
+    Sceglie a quale veicolo assegnare una fattura senza targa (già ristretta
+    ai veicoli dello stesso fornitore). Ritorna (targa, certo):
+    - certo=True quando la scelta non è ambigua: il fornitore ha un solo
+      veicolo salvato, oppure il numero contratto della fattura combacia
+      esattamente con quello di un veicolo — in questi casi l'associazione
+      è affidabile e la fattura NON deve comparire tra le "non associate".
+    - certo=False quando si ricorre alle euristiche di ripiego (veicolo
+      dello stesso fornitore non ancora toccato da un'altra fattura, poi
+      quello con contratto scaduto, infine il primo disponibile): è solo
+      una stima per non perdere il costo dai totali, ma l'utente deve
+      poterla verificare.
+    """
+    if not veicoli_fornitore:
+        return None, False
+
+    if len(veicoli_fornitore) == 1:
+        return veicoli_fornitore[0][0], True
+
+    contratto_fattura = (fattura.get("contratto") or "").strip().lower()
+    if contratto_fattura:
+        for targa, salvato in veicoli_fornitore:
+            if (salvato.get("contratto") or "").strip().lower() == contratto_fattura:
+                return targa, True
+
+    oggi = datetime.now().strftime("%Y-%m-%d")
+    for targa, salvato in veicoli_fornitore:
+        if targa not in veicoli_gia_associati:
+            return targa, False
+    for targa, salvato in veicoli_fornitore:
+        data_fine = salvato.get("data_fine", "")
+        if data_fine and data_fine < oggi:
+            return targa, False
+    return veicoli_fornitore[0][0], False
+
+
 async def processa_fattura_noleggio(fattura: dict) -> dict:
     """
     Processa una singola fattura per il modulo Noleggio Auto.

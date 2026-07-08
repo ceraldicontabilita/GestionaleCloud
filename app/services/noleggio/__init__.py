@@ -17,13 +17,14 @@ from .parsers import (
 )
 from .processors import (
     processa_fattura_noleggio,
-    scan_fatture_noleggio
+    scan_fatture_noleggio,
+    scegli_veicolo_per_fattura
 )
 
 __all__ = [
     # Constants
     "FORNITORI_NOLEGGIO",
-    "TARGA_PATTERN", 
+    "TARGA_PATTERN",
     "COLLECTION",
     # Parsers
     "estrai_codice_cliente",
@@ -37,5 +38,6 @@ __all__ = [
     "estrai_modello_marca",
     # Processors
     "processa_fattura_noleggio",
-    "scan_fatture_noleggio"
+    "scan_fatture_noleggio",
+    "scegli_veicolo_per_fattura"
 ]

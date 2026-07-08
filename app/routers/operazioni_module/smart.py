@@ -12,32 +12,42 @@ from .common import RiconciliaManuale, ConfermaBatchRequest, logger, QUERY_FATTU
 
 async def banca_veloce(
     limit: int = 50,
-    solo_non_riconciliati: bool = True
+    solo_non_riconciliati: bool = True,
+    anno: Optional[int] = None
 ) -> Dict[str, Any]:
     """Endpoint veloce per tab Banca - movimenti + assegni + fatture da pagare."""
     db = Database.get_db()
-    
+
     query = {}
     if solo_non_riconciliati:
         query["riconciliato"] = {"$ne": True}
-    
+    if anno:
+        query["data"] = {"$regex": f"^{anno}"}
+
     movimenti = await db.estratto_conto_movimenti.find(
         query,
         {"_id": 0}
     ).sort("data", -1).limit(limit).to_list(limit)
-    
+
+    assegni_query = {"stato": {"$nin": ["incassato", "annullato"]}, "confermato": {"$ne": True}}
+    if anno:
+        assegni_query["data_emissione"] = {"$regex": f"^{anno}"}
     assegni = await db.assegni.find(
-        {"stato": {"$nin": ["incassato", "annullato"]}, "confermato": {"$ne": True}},
+        assegni_query,
         {"_id": 0}
     ).sort("data_emissione", -1).limit(50).to_list(50)
-    
+
+    fatture_query = {**QUERY_FATTURA_NON_PAGATA, "metodo_pagamento": {"$nin": [None, "", "contanti"]}}
+    if anno:
+        fatture_query["invoice_date"] = {"$regex": f"^{anno}"}
     fatture_da_pagare = await db.invoices.find(
-        {**QUERY_FATTURA_NON_PAGATA, "metodo_pagamento": {"$nin": [None, "", "contanti"]}},
+        fatture_query,
         {"_id": 0, "id": 1, "invoice_number": 1, "invoice_date": 1, "supplier_name": 1, "total_amount": 1}
     ).sort("invoice_date", -1).limit(50).to_list(50)
-    
-    tot_non_ric = await db.estratto_conto_movimenti.count_documents({"riconciliato": {"$ne": True}})
-    tot_ric = await db.estratto_conto_movimenti.count_documents({"riconciliato": True})
+
+    conta_movimenti_query = {"data": {"$regex": f"^{anno}"}} if anno else {}
+    tot_non_ric = await db.estratto_conto_movimenti.count_documents({**conta_movimenti_query, "riconciliato": {"$ne": True}})
+    tot_ric = await db.estratto_conto_movimenti.count_documents({**conta_movimenti_query, "riconciliato": True})
     
     return {
         "movimenti": movimenti,

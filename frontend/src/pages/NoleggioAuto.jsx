@@ -2090,6 +2090,13 @@ export default function NoleggioAuto() {
                         {formatEuro(Number(f.importo || 0))}
                         {f.descrizione ? ` · ${f.descrizione}` : ''}
                       </div>
+                      {(f.contratto || f.codice_cliente) && (
+                        <div style={{ fontSize: 11, color: COLORS.textSubtle, marginTop: 2 }}>
+                          {f.contratto ? `Contratto: ${f.contratto}` : ''}
+                          {f.contratto && f.codice_cliente ? ' · ' : ''}
+                          {f.codice_cliente ? `Cod. cliente: ${f.codice_cliente}` : ''}
+                        </div>
+                      )}
                     </div>
                     <button
                       onClick={() => {
