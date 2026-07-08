@@ -213,8 +213,6 @@ const router = createBrowserRouter([
       { path: "commercialista/:anno/:mese", element: <LazyPage><StrumentiHub /></LazyPage> },
       { path: "pianificazione", element: <Navigate to="/strumenti/pianificazione" replace /> },
       { path: "pianificazione/:anno", element: <LazyPage><StrumentiHub /></LazyPage> },
-      { path: "email-download", element: <Navigate to="/strumenti/email" replace /> },
-      { path: "email-download/:casella", element: <LazyPage><StrumentiHub /></LazyPage> },
       { path: "visure", element: <Navigate to="/strumenti/visure" replace /> },
       { path: "impostazioni-f24-email", element: <LazyPage><ImpostazioniF24Email /></LazyPage> },
       
