@@ -5,9 +5,20 @@
  * Normativa 2026: obbligo abbinamento RT-POS
  */
 import React, { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 import api from '../api';
-import { formatEuro, formatDateIT, useIsMobile, RG, pagePad } from '../lib/utils';
+import {
+  formatEuro,
+  formatDateIT,
+  useIsMobile,
+  RG,
+  pagePad,
+  COLORS,
+  SHADOWS,
+  BORDER_RADIUS,
+} from '../lib/utils';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
+import { Button, Badge, StatCard, Tabs, Input, TableWrap, Table, Th, Td } from '../components/ds';
 import {
   CreditCard,
   AlertTriangle,
@@ -17,6 +28,7 @@ import {
   TrendingUp,
   Calendar,
   FileWarning,
+  X,
 } from 'lucide-react';
 
 export default function CoerenzaPOSCorrispettivi() {
@@ -59,65 +71,61 @@ export default function CoerenzaPOSCorrispettivi() {
   const handleRiconcilia = async data => {
     try {
       const res = await api.post(`/api/pos-corrispettivi/riconcilia-pos-giorno?data=${data}`);
-      alert(res.data.message);
+      toast.success(res.data.message);
       loadDati();
     } catch (e) {
-      alert('Errore: ' + (e.response?.data?.detail || e.message));
+      toast.error('Errore: ' + (e.response?.data?.detail || e.message));
     }
   };
 
   const getStatoIcon = stato => {
     switch (stato) {
       case 'ok':
-        return <CheckCircle size={16} color="#10b981" />;
+        return <CheckCircle size={16} color={COLORS.success} />;
       case 'mancante':
-        return <XCircle size={16} color="#ef4444" />;
+        return <XCircle size={16} color={COLORS.danger} />;
       case 'differenza':
-        return <AlertTriangle size={16} color="#f59e0b" />;
+        return <AlertTriangle size={16} color={COLORS.warning} />;
       case 'extra':
-        return <FileWarning size={16} color="#8b5cf6" />;
+        return <FileWarning size={16} color={COLORS.purple} />;
       default:
         return null;
     }
   };
 
-  const getStatoBadge = stato => {
-    const colors = {
-      ok: { bg: '#dcfce7', color: '#166534' },
-      mancante: { bg: '#fee2e2', color: '#991b1b' },
-      differenza: { bg: '#fef3c7', color: '#92400e' },
-      extra: { bg: '#f3e8ff', color: '#6b21a8' },
-      warning: { bg: '#fef3c7', color: '#92400e' },
-      error: { bg: '#fee2e2', color: '#991b1b' },
-    };
-    const c = colors[stato] || colors.ok;
-    return {
-      background: c.bg,
-      color: c.color,
-      padding: '4px 10px',
-      borderRadius: 12,
-      fontSize: 11,
-      fontWeight: 600,
-      textTransform: 'uppercase',
-    };
-  };
+  const statoBadgeVariant = stato =>
+    ({
+      ok: 'success',
+      mancante: 'danger',
+      differenza: 'warning',
+      extra: 'accent',
+      warning: 'warning',
+      error: 'danger',
+    })[stato] || 'neutral';
 
   if (loading) {
     return (
       <div style={{ padding: 40, textAlign: 'center' }}>
-        <RefreshCw size={32} style={{ animation: 'spin 1s linear infinite', color: '#3b82f6' }} />
-        <p style={{ marginTop: 12, color: '#64748b' }}>Analisi coerenza POS/Corrispettivi...</p>
+        <RefreshCw size={32} style={{ animation: 'spin 1s linear infinite', color: COLORS.info }} />
+        <p style={{ marginTop: 12, color: COLORS.textMuted }}>Analisi coerenza POS/Corrispettivi...</p>
       </div>
     );
   }
 
   if (err) {
     return (
-      <div style={{ padding: 20, background: '#fee2e2', borderRadius: 8, color: '#991b1b' }}>
+      <div
+        style={{
+          padding: 20,
+          background: COLORS.dangerLight,
+          borderRadius: BORDER_RADIUS.md,
+          color: COLORS.danger,
+        }}
+      >
         {err}
-        <button onClick={loadDati} style={{ marginLeft: 12, padding: '4px 12px' }}>
+        <Button variant="danger" size="sm" onClick={loadDati} style={{ marginLeft: 12 }}>
           Riprova
-        </button>
+        </Button>
       </div>
     );
   }
@@ -134,158 +142,70 @@ export default function CoerenzaPOSCorrispettivi() {
             marginBottom: 20,
           }}
         >
-          <div
-            style={{
-              background: '#f0fdf4',
-              padding: 16,
-              borderRadius: 10,
-              border: '1px solid #bbf7d0',
-            }}
-          >
-            <div style={{ fontSize: 11, color: '#166534', marginBottom: 4 }}>Coerenza</div>
-            <div style={{ fontSize: 24, fontWeight: 700, color: '#166534' }}>
-              {dati.riepilogo.percentuale_coerenza}%
-            </div>
-          </div>
-          <div
-            style={{
-              background: '#eff6ff',
-              padding: 16,
-              borderRadius: 10,
-              border: '1px solid #bfdbfe',
-            }}
-          >
-            <div style={{ fontSize: 11, color: '#1e40af', marginBottom: 4 }}>POS da XML</div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: '#1e40af' }}>
-              {formatEuro(dati.riepilogo.totale_elettronico_xml)}
-            </div>
-          </div>
-          <div
-            style={{
-              background: '#f5f3ff',
-              padding: 16,
-              borderRadius: 10,
-              border: '1px solid #ddd6fe',
-            }}
-          >
-            <div style={{ fontSize: 11, color: '#5b21b6', marginBottom: 4 }}>POS Accreditato</div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: '#5b21b6' }}>
-              {formatEuro(dati.riepilogo.totale_pos_accreditato)}
-            </div>
-          </div>
-          <div
-            style={{
-              background: Math.abs(dati.riepilogo.differenza_totale) > 100 ? '#fef2f2' : '#f0fdf4',
-              padding: 16,
-              borderRadius: 10,
-              border: `1px solid ${Math.abs(dati.riepilogo.differenza_totale) > 100 ? '#fecaca' : '#bbf7d0'}`,
-            }}
-          >
-            <div style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>Differenza</div>
-            <div
-              style={{
-                fontSize: 18,
-                fontWeight: 700,
-                color: Math.abs(dati.riepilogo.differenza_totale) > 100 ? '#dc2626' : '#16a34a',
-              }}
-            >
-              {formatEuro(dati.riepilogo.differenza_totale)}
-            </div>
-          </div>
+          <StatCard
+            icon={<CheckCircle size={18} />}
+            label="Coerenza"
+            value={`${dati.riepilogo.percentuale_coerenza}%`}
+            accent="success"
+          />
+          <StatCard
+            icon={<CreditCard size={18} />}
+            label="POS da XML"
+            value={formatEuro(dati.riepilogo.totale_elettronico_xml)}
+            accent="info"
+          />
+          <StatCard
+            icon={<TrendingUp size={18} />}
+            label="POS Accreditato"
+            value={formatEuro(dati.riepilogo.totale_pos_accreditato)}
+            accent="accent"
+          />
+          <StatCard
+            icon={<AlertTriangle size={18} />}
+            label="Differenza"
+            value={formatEuro(dati.riepilogo.differenza_totale)}
+            accent={Math.abs(dati.riepilogo.differenza_totale) > 100 ? 'danger' : 'success'}
+          />
         </div>
       )}
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-        <button
-          onClick={() => setTab('due_fasi')}
-          style={{
-            padding: '8px 16px',
-            background: tab === 'due_fasi' ? '#b8860b' : '#fef3c7',
-            color: tab === 'due_fasi' ? 'white' : '#78350f',
-            border: 'none',
-            borderRadius: 6,
-            fontWeight: 600,
-            fontSize: 13,
-            cursor: 'pointer',
-          }}
-          title="Controllo giornaliero a 2 fasi: RT vs POS e POS vs banca (logica 2026)"
-        >
-          ⚡ Controllo 2 Fasi
-          {alertOggi && (alertOggi.num_alert_compensazione + alertOggi.num_alert_banca) > 0 && (
-            <span style={{
-              marginLeft: 6, background: '#dc2626', color: 'white',
-              borderRadius: 10, padding: '1px 7px', fontSize: 11,
-            }}>
-              {alertOggi.num_alert_compensazione + alertOggi.num_alert_banca}
-            </span>
-          )}
-        </button>
-        <button
-          onClick={() => setTab('giornaliero')}
-          style={{
-            padding: '8px 16px',
-            background: tab === 'giornaliero' ? '#1e293b' : '#f1f5f9',
-            color: tab === 'giornaliero' ? 'white' : '#475569',
-            border: 'none',
-            borderRadius: 6,
-            fontWeight: 600,
-            fontSize: 13,
-            cursor: 'pointer',
-          }}
-        >
-          <Calendar size={14} style={{ marginRight: 6, verticalAlign: 'middle' }} />
-          Giornaliero
-        </button>
-        <button
-          onClick={() => setTab('mensile')}
-          style={{
-            padding: '8px 16px',
-            background: tab === 'mensile' ? '#1e293b' : '#f1f5f9',
-            color: tab === 'mensile' ? 'white' : '#475569',
-            border: 'none',
-            borderRadius: 6,
-            fontWeight: 600,
-            fontSize: 13,
-            cursor: 'pointer',
-          }}
-        >
-          <TrendingUp size={14} style={{ marginRight: 6, verticalAlign: 'middle' }} />
-          Mensile
-        </button>
-        <button
-          onClick={() => setTab('anomalie')}
-          style={{
-            padding: '8px 16px',
-            background: tab === 'anomalie' ? '#dc2626' : '#fee2e2',
-            color: tab === 'anomalie' ? 'white' : '#991b1b',
-            border: 'none',
-            borderRadius: 6,
-            fontWeight: 600,
-            fontSize: 13,
-            cursor: 'pointer',
-          }}
-        >
-          <AlertTriangle size={14} style={{ marginRight: 6, verticalAlign: 'middle' }} />
-          Anomalie ({dati?.anomalie_count || 0})
-        </button>
-        <button
+      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+        <Tabs
+          items={[
+            {
+              key: 'due_fasi',
+              label: (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  ⚡ Controllo 2 Fasi
+                  {alertOggi && (alertOggi.num_alert_compensazione + alertOggi.num_alert_banca) > 0 && (
+                    <Badge variant="danger" style={{ padding: '1px 7px' }}>
+                      {alertOggi.num_alert_compensazione + alertOggi.num_alert_banca}
+                    </Badge>
+                  )}
+                </span>
+              ),
+            },
+            { key: 'giornaliero', label: 'Giornaliero', icon: <Calendar size={14} /> },
+            { key: 'mensile', label: 'Mensile', icon: <TrendingUp size={14} /> },
+            {
+              key: 'anomalie',
+              label: `Anomalie (${dati?.anomalie_count || 0})`,
+              icon: <AlertTriangle size={14} />,
+            },
+          ]}
+          value={tab}
+          onChange={setTab}
+        />
+        <Button
+          variant="secondary"
+          size="sm"
           onClick={loadDati}
-          style={{
-            marginLeft: 'auto',
-            padding: '8px 16px',
-            background: '#f1f5f9',
-            color: '#475569',
-            border: 'none',
-            borderRadius: 6,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-          }}
+          iconLeft={<RefreshCw size={14} />}
+          style={{ marginLeft: 'auto' }}
         >
-          <RefreshCw size={14} /> Aggiorna
-        </button>
+          Aggiorna
+        </Button>
       </div>
 
       {/* Tab nuovo: Controllo 2 Fasi (logica 2026) */}
@@ -300,73 +220,15 @@ export default function CoerenzaPOSCorrispettivi() {
 
       {/* Tab Giornaliero */}
       {tab === 'giornaliero' && dati?.riepilogo_giornaliero && (
-        <div
-          style={{
-            background: 'white',
-            borderRadius: 10,
-            border: '1px solid #e2e8f0',
-            overflow: 'hidden',
-            overflowX: 'auto',
-          }}
-        >
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+        <TableWrap>
+          <Table>
             <thead>
-              <tr style={{ background: '#f8fafc' }}>
-                <th
-                  style={{
-                    padding: '10px 14px',
-                    textAlign: 'left',
-                    fontWeight: 600,
-                    color: '#64748b',
-                    fontSize: 11,
-                  }}
-                >
-                  DATA
-                </th>
-                <th
-                  style={{
-                    padding: '10px 14px',
-                    textAlign: 'right',
-                    fontWeight: 600,
-                    color: '#64748b',
-                    fontSize: 11,
-                  }}
-                >
-                  ELETTR. XML
-                </th>
-                <th
-                  style={{
-                    padding: '10px 14px',
-                    textAlign: 'right',
-                    fontWeight: 600,
-                    color: '#64748b',
-                    fontSize: 11,
-                  }}
-                >
-                  POS BANCA
-                </th>
-                <th
-                  style={{
-                    padding: '10px 14px',
-                    textAlign: 'right',
-                    fontWeight: 600,
-                    color: '#64748b',
-                    fontSize: 11,
-                  }}
-                >
-                  DIFF.
-                </th>
-                <th
-                  style={{
-                    padding: '10px 14px',
-                    textAlign: 'center',
-                    fontWeight: 600,
-                    color: '#64748b',
-                    fontSize: 11,
-                  }}
-                >
-                  STATO
-                </th>
+              <tr>
+                <Th>DATA</Th>
+                <Th align="right">ELETTR. XML</Th>
+                <Th align="right">POS BANCA</Th>
+                <Th align="right">DIFF.</Th>
+                <Th align="center">STATO</Th>
               </tr>
             </thead>
             <tbody>
@@ -374,201 +236,122 @@ export default function CoerenzaPOSCorrispettivi() {
                 .slice()
                 .reverse()
                 .map((g, i) => (
-                  <tr key={g.data} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                    <td style={{ padding: '10px 14px' }}>
+                  <tr key={g.data} style={{ borderBottom: `1px solid ${COLORS.gray[100]}` }}>
+                    <Td>
                       <span style={{ fontWeight: 600 }}>{formatDateIT(g.data)}</span>
-                      <span style={{ marginLeft: 8, fontSize: 11, color: '#94a3b8' }}>
+                      <span style={{ marginLeft: 8, fontSize: 11, color: COLORS.textSubtle }}>
                         {g.giorno_settimana}
                       </span>
-                    </td>
-                    <td style={{ padding: '10px 14px', textAlign: 'right', color: '#2563eb' }}>
+                    </Td>
+                    <Td align="right" style={{ color: COLORS.info }}>
                       {formatEuro(g.elettronico_xml)}
-                    </td>
-                    <td style={{ padding: '10px 14px', textAlign: 'right', color: '#7c3aed' }}>
+                    </Td>
+                    <Td align="right" style={{ color: COLORS.purple }}>
                       {formatEuro(g.pos_accreditato)}
-                    </td>
-                    <td
+                    </Td>
+                    <Td
+                      align="right"
                       style={{
-                        padding: '10px 14px',
-                        textAlign: 'right',
                         fontWeight: 600,
                         color:
                           g.differenza > 10
-                            ? '#dc2626'
+                            ? COLORS.danger
                             : g.differenza < -10
-                              ? '#2563eb'
-                              : '#16a34a',
+                              ? COLORS.info
+                              : COLORS.success,
                       }}
                     >
                       {g.differenza > 0 ? '+' : ''}
                       {formatEuro(g.differenza)}
-                    </td>
-                    <td style={{ padding: '10px 14px', textAlign: 'center' }}>
-                      <span style={getStatoBadge(g.stato)}>
+                    </Td>
+                    <Td align="center">
+                      <Badge
+                        variant={statoBadgeVariant(g.stato)}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                      >
                         {getStatoIcon(g.stato)} {g.stato}
-                      </span>
-                    </td>
+                      </Badge>
+                    </Td>
                   </tr>
                 ))}
             </tbody>
-          </table>
-        </div>
+          </Table>
+        </TableWrap>
       )}
 
       {/* Tab Mensile */}
       {tab === 'mensile' && riepilogoMensile?.mesi && (
-        <div
-          style={{
-            background: 'white',
-            borderRadius: 10,
-            border: '1px solid #e2e8f0',
-            overflow: 'hidden',
-            overflowX: 'auto',
-          }}
-        >
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+        <TableWrap>
+          <Table>
             <thead>
-              <tr style={{ background: '#f8fafc' }}>
-                <th
-                  style={{
-                    padding: '10px 14px',
-                    textAlign: 'left',
-                    fontWeight: 600,
-                    color: '#64748b',
-                    fontSize: 11,
-                  }}
-                >
-                  MESE
-                </th>
-                <th
-                  style={{
-                    padding: '10px 14px',
-                    textAlign: 'right',
-                    fontWeight: 600,
-                    color: '#64748b',
-                    fontSize: 11,
-                  }}
-                >
-                  CORRISPETTIVI
-                </th>
-                <th
-                  style={{
-                    padding: '10px 14px',
-                    textAlign: 'right',
-                    fontWeight: 600,
-                    color: '#64748b',
-                    fontSize: 11,
-                  }}
-                >
-                  CONTANTI
-                </th>
-                <th
-                  style={{
-                    padding: '10px 14px',
-                    textAlign: 'right',
-                    fontWeight: 600,
-                    color: '#64748b',
-                    fontSize: 11,
-                  }}
-                >
-                  ELETTR. XML
-                </th>
-                <th
-                  style={{
-                    padding: '10px 14px',
-                    textAlign: 'right',
-                    fontWeight: 600,
-                    color: '#64748b',
-                    fontSize: 11,
-                  }}
-                >
-                  POS BANCA
-                </th>
-                <th
-                  style={{
-                    padding: '10px 14px',
-                    textAlign: 'right',
-                    fontWeight: 600,
-                    color: '#64748b',
-                    fontSize: 11,
-                  }}
-                >
-                  DIFF.
-                </th>
-                <th
-                  style={{
-                    padding: '10px 14px',
-                    textAlign: 'center',
-                    fontWeight: 600,
-                    color: '#64748b',
-                    fontSize: 11,
-                  }}
-                >
-                  STATO
-                </th>
+              <tr>
+                <Th>MESE</Th>
+                <Th align="right">CORRISPETTIVI</Th>
+                <Th align="right">CONTANTI</Th>
+                <Th align="right">ELETTR. XML</Th>
+                <Th align="right">POS BANCA</Th>
+                <Th align="right">DIFF.</Th>
+                <Th align="center">STATO</Th>
               </tr>
             </thead>
             <tbody>
               {riepilogoMensile.mesi.map(m => (
-                <tr key={m.mese} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                  <td style={{ padding: '10px 14px', fontWeight: 600 }}>
+                <tr key={m.mese} style={{ borderBottom: `1px solid ${COLORS.gray[100]}` }}>
+                  <Td style={{ fontWeight: 600 }}>
                     {m.nome} {anno}
-                  </td>
-                  <td style={{ padding: '10px 14px', textAlign: 'right' }}>
-                    {formatEuro(m.totale_corrispettivi)}
-                  </td>
-                  <td style={{ padding: '10px 14px', textAlign: 'right', color: '#16a34a' }}>
+                  </Td>
+                  <Td align="right">{formatEuro(m.totale_corrispettivi)}</Td>
+                  <Td align="right" style={{ color: COLORS.success }}>
                     {formatEuro(m.contanti)}
-                  </td>
-                  <td style={{ padding: '10px 14px', textAlign: 'right', color: '#2563eb' }}>
+                  </Td>
+                  <Td align="right" style={{ color: COLORS.info }}>
                     {formatEuro(m.elettronico_xml)}
-                  </td>
-                  <td style={{ padding: '10px 14px', textAlign: 'right', color: '#7c3aed' }}>
+                  </Td>
+                  <Td align="right" style={{ color: COLORS.purple }}>
                     {formatEuro(m.pos_accreditato)}
-                  </td>
-                  <td
+                  </Td>
+                  <Td
+                    align="right"
                     style={{
-                      padding: '10px 14px',
-                      textAlign: 'right',
                       fontWeight: 600,
-                      color: Math.abs(m.differenza) > 50 ? '#dc2626' : '#16a34a',
+                      color: Math.abs(m.differenza) > 50 ? COLORS.danger : COLORS.success,
                     }}
                   >
                     {m.differenza > 0 ? '+' : ''}
                     {formatEuro(m.differenza)}
-                  </td>
-                  <td style={{ padding: '10px 14px', textAlign: 'center' }}>
-                    <span style={getStatoBadge(m.stato)}>{m.stato}</span>
-                  </td>
+                  </Td>
+                  <Td align="center">
+                    <Badge variant={statoBadgeVariant(m.stato)}>{m.stato}</Badge>
+                  </Td>
                 </tr>
               ))}
               {/* Totale */}
-              <tr style={{ background: '#f8fafc', fontWeight: 700 }}>
-                <td style={{ padding: '12px 14px' }}>TOTALE {anno}</td>
-                <td style={{ padding: '12px 14px', textAlign: 'right' }}>-</td>
-                <td style={{ padding: '12px 14px', textAlign: 'right' }}>-</td>
-                <td style={{ padding: '12px 14px', textAlign: 'right', color: '#2563eb' }}>
+              <tr style={{ background: COLORS.bgAlt, fontWeight: 700 }}>
+                <Td style={{ fontWeight: 700 }}>TOTALE {anno}</Td>
+                <Td align="right">-</Td>
+                <Td align="right">-</Td>
+                <Td align="right" style={{ color: COLORS.info, fontWeight: 700 }}>
                   {formatEuro(riepilogoMensile.totali.elettronico_xml)}
-                </td>
-                <td style={{ padding: '12px 14px', textAlign: 'right', color: '#7c3aed' }}>
+                </Td>
+                <Td align="right" style={{ color: COLORS.purple, fontWeight: 700 }}>
                   {formatEuro(riepilogoMensile.totali.pos_accreditato)}
-                </td>
-                <td
+                </Td>
+                <Td
+                  align="right"
                   style={{
-                    padding: '12px 14px',
-                    textAlign: 'right',
+                    fontWeight: 700,
                     color:
-                      Math.abs(riepilogoMensile.totali.differenza) > 100 ? '#dc2626' : '#16a34a',
+                      Math.abs(riepilogoMensile.totali.differenza) > 100 ? COLORS.danger : COLORS.success,
                   }}
                 >
                   {riepilogoMensile.totali.differenza > 0 ? '+' : ''}
                   {formatEuro(riepilogoMensile.totali.differenza)}
-                </td>
-                <td></td>
+                </Td>
+                <Td />
               </tr>
             </tbody>
-          </table>
-        </div>
+          </Table>
+        </TableWrap>
       )}
 
       {/* Tab Anomalie */}
@@ -576,13 +359,18 @@ export default function CoerenzaPOSCorrispettivi() {
         <div>
           {dati?.anomalie?.length === 0 ? (
             <div
-              style={{ padding: 40, textAlign: 'center', background: '#f0fdf4', borderRadius: 10 }}
+              style={{
+                padding: 40,
+                textAlign: 'center',
+                background: COLORS.successLight,
+                borderRadius: BORDER_RADIUS.lg,
+              }}
             >
-              <CheckCircle size={48} color="#16a34a" />
-              <p style={{ marginTop: 12, color: '#166534', fontWeight: 600 }}>
+              <CheckCircle size={48} color={COLORS.success} />
+              <p style={{ marginTop: 12, color: COLORS.success, fontWeight: 600 }}>
                 Nessuna anomalia rilevata
               </p>
-              <p style={{ fontSize: 13, color: '#64748b' }}>
+              <p style={{ fontSize: 13, color: COLORS.textMuted }}>
                 I dati POS e corrispettivi XML sono coerenti
               </p>
             </div>
@@ -592,9 +380,9 @@ export default function CoerenzaPOSCorrispettivi() {
                 <div
                   key={a.data}
                   style={{
-                    background: 'white',
-                    borderRadius: 10,
-                    border: '1px solid #fecaca',
+                    background: COLORS.card,
+                    borderRadius: BORDER_RADIUS.lg,
+                    border: `1px solid ${COLORS.dangerLight}`,
                     padding: 16,
                     display: 'flex',
                     alignItems: 'center',
@@ -605,8 +393,8 @@ export default function CoerenzaPOSCorrispettivi() {
                     style={{
                       width: 48,
                       height: 48,
-                      borderRadius: 10,
-                      background: '#fee2e2',
+                      borderRadius: BORDER_RADIUS.md,
+                      background: COLORS.dangerLight,
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -617,13 +405,13 @@ export default function CoerenzaPOSCorrispettivi() {
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 600, marginBottom: 4 }}>
                       {formatDateIT(a.data)}{' '}
-                      <span style={{ fontSize: 12, color: '#94a3b8' }}>({a.giorno_settimana})</span>
+                      <span style={{ fontSize: 12, color: COLORS.textSubtle }}>({a.giorno_settimana})</span>
                     </div>
-                    <div style={{ fontSize: 13, color: '#64748b' }}>{a.messaggio}</div>
+                    <div style={{ fontSize: 13, color: COLORS.textMuted }}>{a.messaggio}</div>
                     <div style={{ fontSize: 12, marginTop: 4 }}>
-                      <span style={{ color: '#2563eb' }}>XML: {formatEuro(a.elettronico_xml)}</span>
-                      <span style={{ margin: '0 8px', color: '#94a3b8' }}>|</span>
-                      <span style={{ color: '#7c3aed' }}>POS: {formatEuro(a.pos_accreditato)}</span>
+                      <span style={{ color: COLORS.info }}>XML: {formatEuro(a.elettronico_xml)}</span>
+                      <span style={{ margin: '0 8px', color: COLORS.textSubtle }}>|</span>
+                      <span style={{ color: COLORS.purple }}>POS: {formatEuro(a.pos_accreditato)}</span>
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
@@ -631,27 +419,15 @@ export default function CoerenzaPOSCorrispettivi() {
                       style={{
                         fontSize: 18,
                         fontWeight: 700,
-                        color: '#dc2626',
+                        color: COLORS.danger,
                         marginBottom: 4,
                       }}
                     >
                       {formatEuro(a.differenza)}
                     </div>
-                    <button
-                      onClick={() => handleRiconcilia(a.data)}
-                      style={{
-                        padding: '6px 12px',
-                        background: '#3b82f6',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: 6,
-                        fontSize: 12,
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                      }}
-                    >
+                    <Button variant="info" size="sm" onClick={() => handleRiconcilia(a.data)}>
                       Riconcilia
-                    </button>
+                    </Button>
                   </div>
                 </div>
               ))}
@@ -665,10 +441,10 @@ export default function CoerenzaPOSCorrispettivi() {
         style={{
           marginTop: 16,
           padding: 12,
-          background: '#fef3c7',
-          borderRadius: 8,
+          background: COLORS.warningLight,
+          borderRadius: BORDER_RADIUS.md,
           fontSize: 12,
-          color: '#92400e',
+          color: COLORS.warning,
           display: 'flex',
           alignItems: 'flex-start',
           gap: 10,
@@ -720,25 +496,14 @@ function ControlloDueFasi({ dati, alertOggi, isMobile, onReload }) {
     <div>
       {/* Toolbar con bottone inserimento manuale */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center' }}>
-        <button
+        <Button
+          variant="primary"
           onClick={() => setModalAperta(true)}
-          style={{
-            padding: '8px 16px',
-            background: '#b8860b',
-            color: '#fff',
-            border: 'none',
-            borderRadius: 8,
-            fontSize: 13,
-            fontWeight: 600,
-            cursor: 'pointer',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 6,
-          }}
+          style={{ background: COLORS.accent, borderColor: COLORS.accent }}
         >
           + Inserisci chiusura serale
-        </button>
-        <div style={{ fontSize: 12, color: '#64748b' }}>
+        </Button>
+        <div style={{ fontSize: 12, color: COLORS.textMuted }}>
           Corrispettivo manuale (provvisorio) + POS reale del giorno
         </div>
       </div>
@@ -756,28 +521,28 @@ function ControlloDueFasi({ dati, alertOggi, isMobile, onReload }) {
       {/* Sezione Alert Oggi */}
       {alertOggi && (alertOggi.num_alert_compensazione + alertOggi.num_alert_banca + (alertOggi.num_alert_xml_mancante || 0)) > 0 && (
         <div style={{
-          background: '#fffbeb',
-          border: '2px solid #f59e0b',
-          borderRadius: 10,
+          background: COLORS.warningLight,
+          border: `2px solid ${COLORS.warning}`,
+          borderRadius: BORDER_RADIUS.lg,
           padding: 16,
           marginBottom: 20,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-            <AlertTriangle size={20} color="#d97706" />
-            <strong style={{ fontSize: 15, color: '#78350f' }}>
+            <AlertTriangle size={20} color={COLORS.warning} />
+            <strong style={{ fontSize: 15, color: COLORS.warning }}>
               Cose da sistemare oggi
             </strong>
           </div>
 
           {alertOggi.alert_compensazione?.map((a, i) => (
             <div key={`comp-${i}`} style={{
-              background: '#fff',
+              background: COLORS.card,
               padding: 10,
               marginBottom: 6,
-              borderRadius: 6,
-              borderLeft: '4px solid #f59e0b',
+              borderRadius: BORDER_RADIUS.sm,
+              borderLeft: `4px solid ${COLORS.warning}`,
               fontSize: 13,
-              color: '#78350f',
+              color: COLORS.warning,
             }}>
               <strong>Registratore fiscale:</strong> {a.messaggio}
             </div>
@@ -785,13 +550,13 @@ function ControlloDueFasi({ dati, alertOggi, isMobile, onReload }) {
 
           {alertOggi.alert_banca?.map((a, i) => (
             <div key={`banca-${i}`} style={{
-              background: '#fff',
+              background: COLORS.card,
               padding: 10,
               marginBottom: 6,
-              borderRadius: 6,
-              borderLeft: '4px solid #dc2626',
+              borderRadius: BORDER_RADIUS.sm,
+              borderLeft: `4px solid ${COLORS.danger}`,
               fontSize: 13,
-              color: '#78350f',
+              color: COLORS.warning,
             }}>
               <strong>Accredito banca:</strong> {a.messaggio}
             </div>
@@ -799,13 +564,13 @@ function ControlloDueFasi({ dati, alertOggi, isMobile, onReload }) {
 
           {alertOggi.alert_xml_mancante?.map((a, i) => (
             <div key={`xml-${i}`} style={{
-              background: '#fff',
+              background: COLORS.card,
               padding: 10,
               marginBottom: 6,
-              borderRadius: 6,
-              borderLeft: '4px solid #8b5cf6',
+              borderRadius: BORDER_RADIUS.sm,
+              borderLeft: `4px solid ${COLORS.purple}`,
               fontSize: 13,
-              color: '#78350f',
+              color: COLORS.warning,
             }}>
               <strong>XML mancante:</strong> {a.messaggio}
             </div>
@@ -821,85 +586,75 @@ function ControlloDueFasi({ dati, alertOggi, isMobile, onReload }) {
         marginBottom: 20,
       }}>
         <StatCard
+          icon={<FileWarning size={16} />}
           label="XML mancanti (≥7gg)"
           value={stats.fase0_manca_xml || 0}
-          subtitle={`${stats.fase0_provvisori || 0} provvisori · ${stats.fase0_definitivi_xml || 0} definitivi`}
-          color="#8b5cf6"
+          subtext={`${stats.fase0_provvisori || 0} provvisori · ${stats.fase0_definitivi_xml || 0} definitivi`}
+          accent="accent"
         />
         <StatCard
+          icon={<AlertTriangle size={16} />}
           label="Giorni con errore battitura"
           value={stats.fase1_diff_piu + stats.fase1_diff_meno || 0}
-          subtitle={`${stats.fase1_ok || 0} giorni OK`}
-          color="#d97706"
+          subtext={`${stats.fase1_ok || 0} giorni OK`}
+          accent="warning"
         />
         <StatCard
+          icon={<TrendingUp size={16} />}
           label="Da compensare in PIÙ"
           value={formatEuro(stats.importo_tot_da_compensare_piu)}
-          subtitle="sul registratore"
-          color="#7c3aed"
+          subtext="sul registratore"
+          accent="accent"
         />
         <StatCard
+          icon={<TrendingUp size={16} />}
           label="Da compensare in MENO"
           value={formatEuro(stats.importo_tot_da_compensare_meno)}
-          subtitle="sul registratore"
-          color="#7c3aed"
+          subtext="sul registratore"
+          accent="accent"
         />
         <StatCard
+          icon={<XCircle size={16} />}
           label="Accrediti banca mancanti"
           value={formatEuro(stats.importo_tot_mancante_banca)}
-          subtitle={`${stats.fase2_mancante || 0} giorni`}
-          color="#dc2626"
+          subtext={`${stats.fase2_mancante || 0} giorni`}
+          accent="danger"
         />
       </div>
 
       {/* Vista + Filtro */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
         {[
           { k: 'giornaliero', l: 'Giornaliero' },
           { k: 'settimanale', l: 'Settimana per settimana' },
         ].map(o => (
-          <button
+          <Button
             key={o.k}
+            size="sm"
+            variant={vista === o.k ? 'primary' : 'secondary'}
             onClick={() => setVista(o.k)}
-            style={{
-              padding: '6px 12px',
-              fontSize: 12,
-              fontWeight: 700,
-              background: vista === o.k ? '#b8860b' : '#f1f5f9',
-              color: vista === o.k ? '#fff' : '#475569',
-              border: 'none',
-              borderRadius: 6,
-              cursor: 'pointer',
-            }}
+            style={vista === o.k ? { background: COLORS.accent, borderColor: COLORS.accent } : {}}
           >
             {o.l}
-          </button>
+          </Button>
         ))}
-        <div style={{ width: 1, background: '#e2e8f0', margin: '2px 4px' }} />
+        <div style={{ width: 1, alignSelf: 'stretch', background: COLORS.border, margin: '2px 4px' }} />
         {vista === 'giornaliero' && [
           { k: 'tutti', l: 'Tutti' },
           { k: 'problemi', l: 'Solo problemi' },
           { k: 'ok', l: 'Solo OK' },
         ].map(o => (
-          <button
+          <Button
             key={o.k}
+            size="sm"
+            variant={filtroStato === o.k ? 'primary' : 'secondary'}
             onClick={() => setFiltroStato(o.k)}
-            style={{
-              padding: '6px 12px',
-              fontSize: 12,
-              fontWeight: 600,
-              background: filtroStato === o.k ? '#0f2744' : '#f1f5f9',
-              color: filtroStato === o.k ? '#fff' : '#475569',
-              border: 'none',
-              borderRadius: 6,
-              cursor: 'pointer',
-            }}
           >
             {o.l}
-          </button>
+          </Button>
         ))}
         {vista === 'giornaliero' && (
-          <div style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b', alignSelf: 'center' }}>
+          <div style={{ marginLeft: 'auto', fontSize: 12, color: COLORS.textMuted, alignSelf: 'center' }}>
             {giorniFiltrati.length} / {giorni.length} giorni
           </div>
         )}
@@ -910,36 +665,31 @@ function ControlloDueFasi({ dati, alertOggi, isMobile, onReload }) {
       ) : (
       <>
       {/* Tabella giornaliera */}
-      <div style={{
-        background: 'white',
-        borderRadius: 10,
-        overflow: 'auto',
-        border: '1px solid #e2e8f0',
-      }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+      <TableWrap>
+        <Table>
           <thead>
-            <tr style={{ background: '#0f2744', color: '#fff' }}>
-              <th style={{ padding: '10px 8px', textAlign: 'left' }}>Data</th>
-              <th style={{ padding: '10px 8px', textAlign: 'center', borderLeft: '2px solid #fff' }}>
+            <tr style={{ background: COLORS.primary }}>
+              <Th style={{ color: '#fff', background: 'transparent' }}>Data</Th>
+              <Th align="center" style={{ color: '#fff', background: 'transparent', borderLeft: '2px solid #fff' }}>
                 Stato
-              </th>
-              <th colSpan={3} style={{ padding: '10px 8px', textAlign: 'center', borderLeft: '2px solid #fff', borderRight: '2px solid #fff' }}>
+              </Th>
+              <Th colSpan={3} align="center" style={{ color: '#fff', background: 'transparent', borderLeft: '2px solid #fff', borderRight: '2px solid #fff' }}>
                 FASE 1: RT vs POS reale
-              </th>
-              <th colSpan={3} style={{ padding: '10px 8px', textAlign: 'center' }}>
+              </Th>
+              <Th colSpan={3} align="center" style={{ color: '#fff', background: 'transparent' }}>
                 FASE 2: POS reale vs Banca
-              </th>
+              </Th>
             </tr>
-            <tr style={{ background: '#1e293b', color: '#fff', fontSize: 11 }}>
-              <th></th>
-              <th style={{ padding: '6px 8px', textAlign: 'center', borderLeft: '2px solid #fff' }}>Corrisp.</th>
-              <th style={{ padding: '6px 8px', textAlign: 'right' }}>XML elettr.</th>
-              <th style={{ padding: '6px 8px', textAlign: 'right' }}>POS reale</th>
-              <th style={{ padding: '6px 8px', textAlign: 'right', borderRight: '2px solid #fff' }}>Diff. serale</th>
-              <th style={{ padding: '6px 8px', textAlign: 'right' }}>POS reale</th>
-              <th style={{ padding: '6px 8px', textAlign: 'right' }}>Accredito banca</th>
-              <th style={{ padding: '6px 8px', textAlign: 'right' }}>Diff. accr.</th>
-              <th style={{ padding: '6px 8px', textAlign: 'right' }}>Saldo progr.</th>
+            <tr style={{ background: COLORS.gray[800] }}>
+              <Th style={{ color: '#fff', background: 'transparent' }} />
+              <Th align="center" style={{ color: '#fff', background: 'transparent', fontSize: 11, borderLeft: '2px solid #fff' }}>Corrisp.</Th>
+              <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>XML elettr.</Th>
+              <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>POS reale</Th>
+              <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11, borderRight: '2px solid #fff' }}>Diff. serale</Th>
+              <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>POS reale</Th>
+              <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>Accredito banca</Th>
+              <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>Diff. accr.</Th>
+              <Th align="right" style={{ color: '#fff', background: 'transparent', fontSize: 11 }}>Saldo progr.</Th>
             </tr>
           </thead>
           <tbody>
@@ -949,33 +699,32 @@ function ControlloDueFasi({ dati, alertOggi, isMobile, onReload }) {
           </tbody>
           {stats && (
             <tfoot>
-              <tr style={{ background: '#0f2744', color: '#fff', fontWeight: 700 }}>
-                <td colSpan={5} style={{ padding: '10px 8px', textAlign: 'right' }}>
+              <tr style={{ background: COLORS.primary, color: '#fff', fontWeight: 700 }}>
+                <Td colSpan={5} align="right" style={{ color: '#fff', background: 'transparent' }}>
                   TOTALI (accrediti maturati)
-                </td>
-                <td style={{ padding: '10px 8px', textAlign: 'right' }}>
+                </Td>
+                <Td align="right" style={{ color: '#fff', background: 'transparent' }}>
                   {formatEuro(stats.fase2_pos_totale || 0)}
-                </td>
-                <td style={{ padding: '10px 8px', textAlign: 'right' }}>
+                </Td>
+                <Td align="right" style={{ color: '#fff', background: 'transparent' }}>
                   {formatEuro(stats.fase2_accrediti_totale || 0)}
-                </td>
-                <td colSpan={2} style={{
-                  padding: '10px 8px',
-                  textAlign: 'right',
-                  color: (stats.fase2_saldo_finale || 0) >= 0 ? '#4ade80' : '#f87171',
+                </Td>
+                <Td colSpan={2} align="right" style={{
+                  background: 'transparent',
+                  color: (stats.fase2_saldo_finale || 0) >= 0 ? COLORS.successLight : COLORS.dangerLight,
                 }}>
                   SALDO {formatEuro(stats.fase2_saldo_finale || 0)}
-                </td>
+                </Td>
               </tr>
             </tfoot>
           )}
-        </table>
+        </Table>
         {giorniFiltrati.length === 0 && (
-          <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>
+          <div style={{ padding: 40, textAlign: 'center', color: COLORS.textSubtle }}>
             Nessun giorno da mostrare con questo filtro.
           </div>
         )}
-      </div>
+      </TableWrap>
       </>
       )}
     </div>
@@ -986,7 +735,10 @@ function ControlloDueFasi({ dati, alertOggi, isMobile, onReload }) {
 function TabellaSettimanale({ settimane }) {
   if (!settimane || settimane.length === 0) {
     return (
-      <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8', background: '#fff', borderRadius: 10, border: '1px solid #e2e8f0' }}>
+      <div style={{
+        padding: 40, textAlign: 'center', color: COLORS.textSubtle,
+        background: COLORS.card, borderRadius: BORDER_RADIUS.lg, border: `1px solid ${COLORS.border}`,
+      }}>
         Nessun dato settimanale disponibile per il periodo selezionato.
       </div>
     );
@@ -994,96 +746,66 @@ function TabellaSettimanale({ settimane }) {
   const statoLabel = {
     ok: 'OK', in_attesa: 'In attesa', mancante: 'Mancante', differenza: 'Differenza',
   };
-  const statoColor = {
-    ok: '#16a34a', in_attesa: '#3b82f6', mancante: '#dc2626', differenza: '#d97706',
+  const statoVariant = {
+    ok: 'success', in_attesa: 'info', mancante: 'danger', differenza: 'warning',
   };
   return (
-    <div style={{ background: 'white', borderRadius: 10, overflow: 'auto', border: '1px solid #e2e8f0' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+    <TableWrap>
+      <Table>
         <thead>
-          <tr style={{ background: '#0f2744', color: '#fff' }}>
-            <th style={{ padding: '10px 8px', textAlign: 'left' }}>Settimana</th>
-            <th style={{ padding: '10px 8px', textAlign: 'right' }}>Incassato (POS reale)</th>
-            <th style={{ padding: '10px 8px', textAlign: 'right' }}>Accreditato in banca</th>
-            <th style={{ padding: '10px 8px', textAlign: 'right' }}>Differenza</th>
-            <th style={{ padding: '10px 8px', textAlign: 'center' }}>Stato</th>
+          <tr style={{ background: COLORS.primary }}>
+            <Th style={{ color: '#fff', background: 'transparent' }}>Settimana</Th>
+            <Th align="right" style={{ color: '#fff', background: 'transparent' }}>Incassato (POS reale)</Th>
+            <Th align="right" style={{ color: '#fff', background: 'transparent' }}>Accreditato in banca</Th>
+            <Th align="right" style={{ color: '#fff', background: 'transparent' }}>Differenza</Th>
+            <Th align="center" style={{ color: '#fff', background: 'transparent' }}>Stato</Th>
           </tr>
         </thead>
         <tbody>
           {settimane.map((sw, i) => (
-            <tr key={sw.settimana} style={{ background: i % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #f1f5f9' }}>
-              <td style={{ padding: '8px', fontWeight: 600 }}>
+            <tr key={sw.settimana} style={{ background: i % 2 === 0 ? COLORS.card : COLORS.bgAlt, borderBottom: `1px solid ${COLORS.gray[100]}` }}>
+              <Td style={{ fontWeight: 600 }}>
                 {formatDateIT(sw.data_inizio)} – {formatDateIT(sw.data_fine)}
-                <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 400 }}>
+                <div style={{ fontSize: 10, color: COLORS.textSubtle, fontWeight: 400 }}>
                   {sw.settimana} · {sw.num_giorni_con_pos} giorni con incasso
                 </div>
-              </td>
-              <td style={{ padding: '8px', textAlign: 'right', fontWeight: 600 }}>
+              </Td>
+              <Td align="right" style={{ fontWeight: 600 }}>
                 {formatEuro(sw.pos_totale)}
-              </td>
-              <td style={{ padding: '8px', textAlign: 'right', fontWeight: 600 }}>
+              </Td>
+              <Td align="right" style={{ fontWeight: 600 }}>
                 {sw.accredito_totale > 0 ? formatEuro(sw.accredito_totale) : '—'}
-              </td>
-              <td style={{
-                padding: '8px', textAlign: 'right', fontWeight: 700,
-                color: sw.stato === 'in_attesa' ? '#3b82f6' : sw.diff_totale >= 0 ? '#16a34a' : '#dc2626',
+              </Td>
+              <Td align="right" style={{
+                fontWeight: 700,
+                color: sw.stato === 'in_attesa' ? COLORS.info : sw.diff_totale >= 0 ? COLORS.success : COLORS.danger,
               }}>
                 {sw.stato === 'in_attesa' ? '—' : formatEuro(sw.diff_totale)}
-              </td>
-              <td style={{ padding: '8px', textAlign: 'center' }}>
-                <span style={{
-                  display: 'inline-block', padding: '2px 10px', fontSize: 10, fontWeight: 700,
-                  borderRadius: 10, color: '#fff', background: statoColor[sw.stato] || '#64748b',
-                  textTransform: 'uppercase',
-                }}>
-                  {statoLabel[sw.stato] || sw.stato}
-                </span>
-              </td>
+              </Td>
+              <Td align="center">
+                <Badge variant={statoVariant[sw.stato] || 'neutral'}>{statoLabel[sw.stato] || sw.stato}</Badge>
+              </Td>
             </tr>
           ))}
         </tbody>
-      </table>
-    </div>
-  );
-}
-
-function StatCard({ label, value, subtitle, color }) {
-  return (
-    <div style={{
-      background: '#fff',
-      border: `1px solid ${color}33`,
-      borderLeft: `4px solid ${color}`,
-      borderRadius: 8,
-      padding: 12,
-    }}>
-      <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', fontWeight: 600, letterSpacing: 0.3 }}>
-        {label}
-      </div>
-      <div style={{ fontSize: 18, fontWeight: 700, color, marginTop: 4 }}>
-        {value}
-      </div>
-      {subtitle && (
-        <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
-          {subtitle}
-        </div>
-      )}
-    </div>
+      </Table>
+    </TableWrap>
   );
 }
 
 function RigaGiornaliera({ g, even }) {
   const [espansa, setEspansa] = useState(false);
-  const diffSerColor = g.stato_serale === 'ok' ? '#16a34a' :
-                       g.stato_serale === 'no_dati' ? '#94a3b8' :
-                       g.stato_serale === 'in_attesa_xml' ? '#8b5cf6' : '#dc2626';
+  const diffSerColor = g.stato_serale === 'ok' ? COLORS.success :
+                       g.stato_serale === 'no_dati' ? COLORS.textSubtle :
+                       g.stato_serale === 'in_attesa_xml' ? COLORS.purple : COLORS.danger;
   // Regola colori richiesta: differenza POSITIVA (banca ha accreditato di
   // più) → VERDE; NEGATIVA (accredito minore o mancante) → ROSSO.
-  const diffAccrColor = g.stato_accredito === 'ok' ? '#16a34a' :
-                        g.stato_accredito === 'in_attesa' ? '#3b82f6' :
-                        g.stato_accredito === 'no_pos_manuale' ? '#94a3b8' :
-                        g.stato_accredito === 'raggruppato' ? '#94a3b8' :
-                        g.stato_accredito === 'mancante' ? '#dc2626' :
-                        (g.diff_accredito || 0) >= 0 ? '#16a34a' : '#dc2626';
+  const diffAccrColor = g.stato_accredito === 'ok' ? COLORS.success :
+                        g.stato_accredito === 'in_attesa' ? COLORS.info :
+                        g.stato_accredito === 'no_pos_manuale' ? COLORS.textSubtle :
+                        g.stato_accredito === 'raggruppato' ? COLORS.textSubtle :
+                        g.stato_accredito === 'mancante' ? COLORS.danger :
+                        (g.diff_accredito || 0) >= 0 ? COLORS.success : COLORS.danger;
 
   const statoAccrLabel = {
     'ok': 'OK',
@@ -1098,77 +820,70 @@ function RigaGiornaliera({ g, even }) {
   // Badge stato corrispettivo (fase 0)
   const statoCorr = g.stato_corrispettivo;
   const statoCorrBadge = {
-    'definitivo_xml': { label: 'XML', bg: '#dcfce7', color: '#166534' },
-    'provvisorio': { label: 'Provv.', bg: '#fef3c7', color: '#92400e' },
-    'manca_xml': { label: '⚠ No XML', bg: '#ede9fe', color: '#6d28d9' },
-    'sconosciuto': { label: '—', bg: '#f1f5f9', color: '#64748b' },
-  }[statoCorr] || { label: '—', bg: '#f1f5f9', color: '#64748b' };
+    'definitivo_xml': { label: 'XML', variant: 'success' },
+    'provvisorio': { label: 'Provv.', variant: 'warning' },
+    'manca_xml': { label: '⚠ No XML', variant: 'accent' },
+    'sconosciuto': { label: '—', variant: 'neutral' },
+  }[statoCorr] || { label: '—', variant: 'neutral' };
 
   return (
     <>
-    <tr style={{ background: even ? '#fff' : '#f8fafc', borderBottom: g.dettaglio_gruppo && espansa ? 'none' : '1px solid #f1f5f9' }}>
-      <td style={{ padding: '8px', fontWeight: 600 }}>
+    <tr style={{ background: even ? COLORS.card : COLORS.bgAlt, borderBottom: g.dettaglio_gruppo && espansa ? 'none' : `1px solid ${COLORS.gray[100]}` }}>
+      <Td style={{ fontWeight: 600 }}>
         {formatDateIT(g.data)}
-      </td>
-      <td style={{ padding: '6px 8px', textAlign: 'center', borderLeft: '2px solid #e2e8f0' }}>
-        <span style={{
-          display: 'inline-block',
-          padding: '2px 8px',
-          fontSize: 10,
-          fontWeight: 700,
-          borderRadius: 10,
-          background: statoCorrBadge.bg,
-          color: statoCorrBadge.color,
-        }}>
-          {statoCorrBadge.label}
-        </span>
-      </td>
-      <td style={{ padding: '6px 8px', textAlign: 'right', borderLeft: '2px solid #e2e8f0' }}>
-        {g.xml_elettronico > 0 ? formatEuro(g.xml_elettronico) : (statoCorr !== 'definitivo_xml' ? <em style={{color:'#94a3b8',fontSize:11}}>attendo XML</em> : '—')}
-      </td>
-      <td style={{ padding: '6px 8px', textAlign: 'right' }}>
+      </Td>
+      <Td align="center" style={{ borderLeft: `2px solid ${COLORS.border}` }}>
+        <Badge variant={statoCorrBadge.variant}>{statoCorrBadge.label}</Badge>
+      </Td>
+      <Td align="right" style={{ borderLeft: `2px solid ${COLORS.border}` }}>
+        {g.xml_elettronico > 0 ? formatEuro(g.xml_elettronico) : (statoCorr !== 'definitivo_xml' ? <em style={{ color: COLORS.textSubtle, fontSize: 11 }}>attendo XML</em> : '—')}
+      </Td>
+      <Td align="right">
         {g.pos_manuale > 0 ? formatEuro(g.pos_manuale) : '—'}
-      </td>
-      <td style={{
-        padding: '6px 8px',
-        textAlign: 'right',
-        borderRight: '2px solid #e2e8f0',
-        color: diffSerColor,
-        fontWeight: 600,
-      }}>
+      </Td>
+      <Td
+        align="right"
+        style={{
+          borderRight: `2px solid ${COLORS.border}`,
+          color: diffSerColor,
+          fontWeight: 600,
+        }}
+      >
         {g.stato_serale === 'no_dati' ? '—'
-          : g.stato_serale === 'in_attesa_xml' ? <em style={{color:'#8b5cf6',fontSize:11}}>attendo XML</em>
+          : g.stato_serale === 'in_attesa_xml' ? <em style={{ color: COLORS.purple, fontSize: 11 }}>attendo XML</em>
           : formatEuro(g.diff_serale)}
-      </td>
-      <td style={{ padding: '6px 8px', textAlign: 'right' }}>
+      </Td>
+      <Td align="right">
         {g.pos_manuale > 0 ? formatEuro(g.pos_manuale) : '—'}
         {g.capogruppo && g.giorni_gruppo > 1 && (
-          <button
+          <Button
             type="button"
+            variant="ghost"
             onClick={() => setEspansa(v => !v)}
             style={{
               display: 'block', marginLeft: 'auto', marginTop: 2,
-              fontSize: 10, color: '#0f2744', fontWeight: 700,
-              background: 'transparent', border: 'none', cursor: 'pointer', padding: 0,
+              fontSize: 10, color: COLORS.primary, fontWeight: 700,
+              padding: 0, minHeight: 'auto',
               textDecoration: 'underline', textDecorationStyle: 'dotted',
             }}
             title="Mostra il dettaglio giorno per giorno di questo accredito"
           >
             gruppo {g.giorni_gruppo} gg: {formatEuro(g.pos_gruppo)} {espansa ? '▲' : '▼'}
-          </button>
+          </Button>
         )}
-      </td>
-      <td style={{ padding: '6px 8px', textAlign: 'right' }}>
+      </Td>
+      <Td align="right">
         {g.stato_accredito === 'raggruppato'
-          ? <em style={{ color: '#94a3b8', fontSize: 11 }}>↳ accr. {formatDateIT(g.data_accredito_attesa)}</em>
+          ? <em style={{ color: COLORS.textSubtle, fontSize: 11 }}>↳ accr. {formatDateIT(g.data_accredito_attesa)}</em>
           : g.accredito_banca > 0 ? formatEuro(g.accredito_banca) : '—'}
-      </td>
-      <td style={{
-        padding: '6px 8px',
-        textAlign: 'right',
-        color: diffAccrColor,
-        fontWeight: 600,
-      }}>
+      </Td>
+      <Td
+        align="right"
+        style={{
+          color: diffAccrColor,
+          fontWeight: 600,
+        }}
+      >
         <div style={{ fontSize: 11, textTransform: 'uppercase', fontWeight: 700 }}>
           {statoAccrLabel}
         </div>
@@ -1177,25 +892,26 @@ function RigaGiornaliera({ g, even }) {
           : g.stato_accredito === 'mancante'
             ? formatEuro(g.diff_accredito)
             : null}
-      </td>
-      <td style={{
-        padding: '6px 8px',
-        textAlign: 'right',
-        fontWeight: 700,
-        color: g.saldo_progressivo == null ? '#94a3b8'
-          : g.saldo_progressivo >= 0 ? '#16a34a' : '#dc2626',
-      }}>
+      </Td>
+      <Td
+        align="right"
+        style={{
+          fontWeight: 700,
+          color: g.saldo_progressivo == null ? COLORS.textSubtle
+            : g.saldo_progressivo >= 0 ? COLORS.success : COLORS.danger,
+        }}
+      >
         {g.saldo_progressivo == null ? '' : formatEuro(g.saldo_progressivo)}
-      </td>
+      </Td>
     </tr>
     {g.dettaglio_gruppo && espansa && (
-      <tr style={{ background: even ? '#fff' : '#f8fafc', borderBottom: '1px solid #f1f5f9' }}>
-        <td colSpan={8} style={{ padding: '0 8px 10px 24px' }}>
+      <tr style={{ background: even ? COLORS.card : COLORS.bgAlt, borderBottom: `1px solid ${COLORS.gray[100]}` }}>
+        <Td colSpan={8} style={{ padding: '0 8px 10px 24px' }}>
           <div style={{
-            background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8,
-            padding: '8px 12px', fontSize: 11, color: '#334155',
+            background: COLORS.bgAlt, border: `1px solid ${COLORS.border}`, borderRadius: BORDER_RADIUS.md,
+            padding: '8px 12px', fontSize: 11, color: COLORS.gray[700],
           }}>
-            <div style={{ fontWeight: 700, marginBottom: 4, color: '#0f2744' }}>
+            <div style={{ fontWeight: 700, marginBottom: 4, color: COLORS.primary }}>
               Accredito di {formatEuro(g.accredito_banca)} del {formatDateIT(g.data_accredito_attesa)} — da dove arriva:
             </div>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -1206,7 +922,7 @@ function RigaGiornaliera({ g, even }) {
                     <td style={{ padding: '2px 0', textAlign: 'right', fontWeight: 600 }}>{formatEuro(dg.pos_manuale)}</td>
                   </tr>
                 ))}
-                <tr style={{ borderTop: '1px solid #e2e8f0' }}>
+                <tr style={{ borderTop: `1px solid ${COLORS.border}` }}>
                   <td style={{ padding: '4px 8px 0 0', fontWeight: 700 }}>Totale incassato</td>
                   <td style={{ padding: '4px 0 0', textAlign: 'right', fontWeight: 700 }}>{formatEuro(g.pos_gruppo)}</td>
                 </tr>
@@ -1218,13 +934,13 @@ function RigaGiornaliera({ g, even }) {
                   <td style={{ padding: '2px 8px 0 0', fontWeight: 700 }}>Differenza</td>
                   <td style={{
                     padding: '2px 0 0', textAlign: 'right', fontWeight: 700,
-                    color: g.diff_accredito >= 0 ? '#16a34a' : '#dc2626',
+                    color: g.diff_accredito >= 0 ? COLORS.success : COLORS.danger,
                   }}>{formatEuro(g.diff_accredito)}</td>
                 </tr>
               </tbody>
             </table>
           </div>
-        </td>
+        </Td>
       </tr>
     )}
     </>
@@ -1293,115 +1009,105 @@ function ModalChiusuraSerale({ onClose, onSaved }) {
       <div
         onClick={e => e.stopPropagation()}
         style={{
-          background: '#fff', borderRadius: 12, padding: 20,
+          background: COLORS.card, borderRadius: BORDER_RADIUS.xl, padding: 20,
           width: '100%', maxWidth: 480,
-          boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+          boxShadow: SHADOWS.modal,
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-          <h3 style={{ margin: 0, fontSize: 17, color: '#0f2744' }}>
+          <h3 style={{ margin: 0, fontSize: 17, color: COLORS.primary }}>
             Chiusura serale
           </h3>
-          <button
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={onClose}
-            style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 18, color: '#64748b' }}
+            style={{ padding: 4 }}
           >
-            ✕
-          </button>
+            <X size={18} color={COLORS.textMuted} />
+          </Button>
         </div>
 
-        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 16, lineHeight: 1.5 }}>
+        <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 16, lineHeight: 1.5 }}>
           Inserisci il totale del corrispettivo giornaliero (provvisorio) e il POS reale
           letto dall'hardware. Quando arriverà l'XML dall'Agenzia Entrate, il totale sarà
           sostituito automaticamente col dato ufficiale.
         </div>
 
         <div style={{ marginBottom: 12 }}>
-          <label style={{ fontSize: 11, fontWeight: 600, color: '#475569', textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>
+          <label style={{ fontSize: 11, fontWeight: 600, color: COLORS.textMuted, textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>
             Data
           </label>
-          <input
+          <Input
             type="date"
             value={dataForm}
             max={oggi}
             onChange={e => setDataForm(e.target.value)}
-            style={{ width: '100%', padding: 8, fontSize: 14, borderRadius: 6, border: '1px solid #cbd5e1' }}
           />
         </div>
 
         <div style={{ marginBottom: 12 }}>
-          <label style={{ fontSize: 11, fontWeight: 600, color: '#475569', textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>
+          <label style={{ fontSize: 11, fontWeight: 600, color: COLORS.textMuted, textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>
             Totale corrispettivo (€) *
           </label>
-          <input
+          <Input
             type="text"
             inputMode="decimal"
             value={totale}
             onChange={e => setTotale(e.target.value)}
             placeholder="es. 1250,50"
-            style={{ width: '100%', padding: 8, fontSize: 14, borderRadius: 6, border: '1px solid #cbd5e1' }}
           />
         </div>
 
         <div style={{ marginBottom: 12 }}>
-          <label style={{ fontSize: 11, fontWeight: 600, color: '#475569', textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>
+          <label style={{ fontSize: 11, fontWeight: 600, color: COLORS.textMuted, textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>
             POS reale dalla chiusura serale (€)
           </label>
-          <input
+          <Input
             type="text"
             inputMode="decimal"
             value={posReale}
             onChange={e => setPosReale(e.target.value)}
             placeholder="es. 450,00 (opzionale)"
-            style={{ width: '100%', padding: 8, fontSize: 14, borderRadius: 6, border: '1px solid #cbd5e1' }}
           />
-          <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
+          <div style={{ fontSize: 11, color: COLORS.textSubtle, marginTop: 4 }}>
             Facoltativo ma consigliato: il totale battuto al POS fisico (per il controllo FASE 1).
           </div>
         </div>
 
         <div style={{ marginBottom: 16 }}>
-          <label style={{ fontSize: 11, fontWeight: 600, color: '#475569', textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>
+          <label style={{ fontSize: 11, fontWeight: 600, color: COLORS.textMuted, textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>
             Note
           </label>
-          <input
+          <Input
             type="text"
             value={note}
             onChange={e => setNote(e.target.value)}
             placeholder="Eventuale nota"
-            style={{ width: '100%', padding: 8, fontSize: 14, borderRadius: 6, border: '1px solid #cbd5e1' }}
           />
         </div>
 
         {errore && (
-          <div style={{ padding: 10, background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', borderRadius: 6, fontSize: 13, marginBottom: 12 }}>
+          <div style={{
+            padding: 10, background: COLORS.dangerLight, border: `1px solid ${COLORS.danger}`,
+            color: COLORS.danger, borderRadius: BORDER_RADIUS.sm, fontSize: 13, marginBottom: 12,
+          }}>
             {errore}
           </div>
         )}
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button
-            onClick={onClose}
-            disabled={salvando}
-            style={{
-              padding: '8px 16px', background: '#f1f5f9', color: '#475569',
-              border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 600,
-              cursor: 'pointer',
-            }}
-          >
+          <Button variant="secondary" onClick={onClose} disabled={salvando}>
             Annulla
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="primary"
             onClick={salva}
             disabled={salvando}
-            style={{
-              padding: '8px 16px', background: salvando ? '#94a3b8' : '#b8860b',
-              color: '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 600,
-              cursor: salvando ? 'not-allowed' : 'pointer',
-            }}
+            style={{ background: COLORS.accent, borderColor: COLORS.accent }}
           >
             {salvando ? 'Salvo...' : 'Salva chiusura'}
-          </button>
+          </Button>
         </div>
       </div>
     </div>
