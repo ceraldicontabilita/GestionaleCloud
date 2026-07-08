@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import api from '../api';
+import { COLORS, SHADOWS, BORDER_RADIUS } from '../lib/utils';
 import {
   Brain,
   CheckCircle,
@@ -67,8 +68,8 @@ export default function LearningMachineUniversale() {
           textAlign: 'center',
           marginBottom: 32,
           padding: '32px 24px',
-          background: '#1d4ed8',
-          borderRadius: 16,
+          background: COLORS.info,
+          borderRadius: BORDER_RADIUS.xl,
           color: 'white',
         }}
       >
@@ -87,14 +88,14 @@ export default function LearningMachineUniversale() {
             fontSize: 18,
             fontWeight: 700,
             background: training ? 'rgba(255,255,255,0.3)' : 'white',
-            color: training ? 'white' : '#6366f1',
+            color: training ? 'white' : COLORS.info,
             border: 'none',
-            borderRadius: 12,
+            borderRadius: BORDER_RADIUS.lg,
             cursor: training ? 'wait' : 'pointer',
             display: 'inline-flex',
             alignItems: 'center',
             gap: 12,
-            boxShadow: '0 4px 15px rgba(0,0,0,0.2)',
+            boxShadow: SHADOWS.lg,
             transition: 'transform 0.2s',
           }}
         >

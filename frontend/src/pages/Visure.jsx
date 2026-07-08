@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import api from '../api';
 import { toast } from 'sonner';
-import { useIsMobile } from '../lib/utils';
+import { useIsMobile, STYLES } from '../lib/utils';
 
 export default function Visure() {
   const isMobile = useIsMobile();
@@ -76,14 +76,7 @@ export default function Visure() {
   };
 
   const renderCompanyInfo = (data, mappedData) => (
-    <div
-      style={{
-        background: 'white',
-        borderRadius: 16,
-        padding: 24,
-        boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
-      }}
-    >
+    <div style={{ ...STYLES.card, padding: 24 }}>
       {/* Header azienda */}
       <div
         style={{
@@ -321,15 +314,7 @@ export default function Visure() {
       </div>
 
       {/* Search Box */}
-      <div
-        style={{
-          background: 'white',
-          borderRadius: 16,
-          padding: 24,
-          boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
-          marginBottom: 24,
-        }}
-      >
+      <div style={{ ...STYLES.card, padding: 24, marginBottom: 24 }}>
         <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
           <button
             onClick={() => setSearchType('piva')}
@@ -426,14 +411,7 @@ export default function Visure() {
 
       {/* Risultati ricerca per nome */}
       {result && result.type === 'search' && (
-        <div
-          style={{
-            background: 'white',
-            borderRadius: 16,
-            padding: 24,
-            boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
-          }}
-        >
+        <div style={{ ...STYLES.card, padding: 24 }}>
           <h3 style={{ margin: '0 0 16px 0' }}>
             Trovati {result.count} risultati per "{searchQuery}"
           </h3>

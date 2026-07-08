@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../api';
-import { COLORS, STYLES, useIsMobile, formatEuro, formatDateIT } from '../lib/utils';
+import { COLORS, STYLES, SHADOWS, button, useIsMobile, formatEuro, formatDateIT } from '../lib/utils';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 
 export default function DatiProvvisori() {
@@ -73,66 +73,23 @@ export default function DatiProvvisori() {
 
   return (
     <div style={{ ...STYLES.page, padding: isMobile ? 12 : 24 }}>
-      {/* Header */}
-      <div
-        style={{
-          background: '#1d4ed8',
-          borderRadius: 16,
-          padding: '24px 28px',
-          color: 'white',
-          marginBottom: 24,
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            flexWrap: 'wrap',
-            gap: 12,
-          }}
-        >
-          <div>
-            <h1 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 800 }}>📋 Dati Provvisori</h1>
-            <p style={{ margin: 0, opacity: 0.85, fontSize: 14 }}>
-              Conferma i pagamenti prima dell'inserimento definitivo in Prima Nota
-            </p>
-          </div>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <button
-              onClick={handleGenera}
-              disabled={generating}
-              style={{
-                padding: '10px 20px',
-                background: 'rgba(255,255,255,0.2)',
-                color: 'white',
-                border: '1px solid rgba(255,255,255,0.4)',
-                borderRadius: 8,
-                cursor: generating ? 'wait' : 'pointer',
-                fontWeight: 700,
-                fontSize: 13,
-              }}
-            >
-              {generating ? '⏳ Analisi...' : '🔍 Cerca Abbinamenti'}
+      {/* Header — stile uniforme al resto delle pagine (STYLES.header) */}
+      <div style={{ ...STYLES.header, marginBottom: 24 }}>
+        <div>
+          <h1 style={STYLES.pageTitle}>📋 Dati Provvisori</h1>
+          <p style={{ ...STYLES.pageSubtitle, marginTop: 4 }}>
+            Conferma i pagamenti prima dell'inserimento definitivo in Prima Nota
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={handleGenera} disabled={generating} style={button('outline', generating)}>
+            {generating ? '⏳ Analisi...' : '🔍 Cerca Abbinamenti'}
+          </button>
+          {proposte.length > 0 && (
+            <button onClick={handleConfermaTutte} style={button('success')}>
+              ✓ Conferma Tutte ({proposte.length})
             </button>
-            {proposte.length > 0 && (
-              <button
-                onClick={handleConfermaTutte}
-                style={{
-                  padding: '10px 20px',
-                  background: '#22c55e',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: 8,
-                  cursor: 'pointer',
-                  fontWeight: 700,
-                  fontSize: 13,
-                }}
-              >
-                ✓ Conferma Tutte ({proposte.length})
-              </button>
-            )}
-          </div>
+          )}
         </div>
       </div>
 
@@ -178,7 +135,7 @@ export default function DatiProvvisori() {
             background: 'white',
             borderRadius: 10,
             padding: '16px 20px',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+            boxShadow: SHADOWS.sm,
           }}
         >
           <div
@@ -195,7 +152,7 @@ export default function DatiProvvisori() {
             background: 'white',
             borderRadius: 10,
             padding: '16px 20px',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+            boxShadow: SHADOWS.sm,
           }}
         >
           <div
@@ -212,7 +169,7 @@ export default function DatiProvvisori() {
             background: 'white',
             borderRadius: 10,
             padding: '16px 20px',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+            boxShadow: SHADOWS.sm,
           }}
         >
           <div
@@ -238,7 +195,7 @@ export default function DatiProvvisori() {
             textAlign: 'center',
             background: 'white',
             borderRadius: 12,
-            boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+            boxShadow: SHADOWS.sm,
           }}
         >
           <div style={{ fontSize: 40, marginBottom: 12 }}>✅</div>
@@ -261,7 +218,7 @@ export default function DatiProvvisori() {
               background: 'white',
               borderRadius: 12,
               overflow: 'hidden',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+              boxShadow: SHADOWS.sm,
             }}
           >
             <thead>

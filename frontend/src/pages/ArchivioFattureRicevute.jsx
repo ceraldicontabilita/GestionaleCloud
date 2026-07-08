@@ -7,6 +7,8 @@ import {
   formatDateIT,
   STYLES,
   COLORS,
+  SHADOWS,
+  BORDER_RADIUS,
   button,
   badge,
   useIsMobile,
@@ -32,45 +34,21 @@ const MESI = [
   { value: '12', label: 'Dicembre' },
 ];
 
-// Stili inline (come da DESIGN_SYSTEM.md)
-const cardStyle = {
-  background: 'white',
-  borderRadius: 12,
-  padding: 20,
-  boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-  border: '1px solid #e5e7eb',
-};
-const btnPrimary = {
-  padding: '10px 20px',
-  background: '#4caf50',
-  color: 'white',
-  border: 'none',
-  borderRadius: 8,
-  cursor: 'pointer',
-  fontWeight: 'bold',
-  fontSize: 14,
-};
-const btnSecondary = {
-  padding: '10px 20px',
-  background: '#e5e7eb',
-  color: '#374151',
-  border: 'none',
-  borderRadius: 8,
-  cursor: 'pointer',
-  fontWeight: '600',
-  fontSize: 14,
-};
+// Stili inline — allineati a STYLES.card/button() (design system unificato in lib/utils.js)
+const cardStyle = STYLES.card;
+const btnPrimary = { ...button('primary'), fontSize: 14 };
+const btnSecondary = { ...button('secondary'), fontSize: 14 };
 const inputStyle = {
   padding: '10px 12px',
-  borderRadius: 8,
-  border: '2px solid #e5e7eb',
+  borderRadius: BORDER_RADIUS.sm,
+  border: `1px solid ${COLORS.border}`,
   fontSize: 14,
   boxSizing: 'border-box',
 };
 const selectStyle = {
   padding: '10px 12px',
-  borderRadius: 8,
-  border: '2px solid #e5e7eb',
+  borderRadius: BORDER_RADIUS.sm,
+  border: `1px solid ${COLORS.border}`,
   fontSize: 14,
   background: 'white',
 };

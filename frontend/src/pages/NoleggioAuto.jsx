@@ -5,6 +5,8 @@ import {
   formatDateIT,
   STYLES,
   COLORS,
+  SHADOWS,
+  BORDER_RADIUS,
   button,
   badge,
   useIsMobile,
@@ -217,24 +219,11 @@ export default function NoleggioAuto() {
 
   return (
     <div style={{ maxWidth: 1400, margin: '0 auto' }}>
-      {/* Header */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: 20,
-          padding: '15px 20px',
-          background: '#0f2744',
-          borderRadius: 12,
-          color: 'white',
-          flexWrap: 'wrap',
-          gap: 10,
-        }}
-      >
+      {/* Header — stile uniforme al resto delle pagine (STYLES.header) */}
+      <div style={STYLES.header}>
         <div>
-          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 'bold' }}>🚗 Gestione Noleggio Auto</h1>
-          <p style={{ margin: '4px 0 0 0', fontSize: 13, opacity: 0.9 }}>
+          <h1 style={STYLES.pageTitle}>🚗 Gestione Noleggio Auto</h1>
+          <p style={{ ...STYLES.pageSubtitle, marginTop: 4 }}>
             Flotta aziendale • Dati estratti da fatture XML
           </p>
         </div>
@@ -252,30 +241,14 @@ export default function NoleggioAuto() {
       >
         <button
           onClick={fetchVeicoli}
-          style={{
-            padding: '10px 20px',
-            background: '#e5e7eb',
-            color: '#374151',
-            border: 'none',
-            borderRadius: 8,
-            cursor: 'pointer',
-            fontWeight: '600',
-          }}
+          style={button('secondary')}
           data-testid="noleggio-refresh-btn"
         >
           🔄 Aggiorna
         </button>
         <button
           onClick={() => setShowAddVeicolo(true)}
-          style={{
-            padding: '10px 20px',
-            background: '#2563eb',
-            color: 'white',
-            border: 'none',
-            borderRadius: 8,
-            cursor: 'pointer',
-            fontWeight: '600',
-          }}
+          style={button('primary')}
           data-testid="noleggio-add-btn"
         >
           ➕ Aggiungi Veicolo
@@ -409,7 +382,7 @@ export default function NoleggioAuto() {
                     background: 'white',
                     borderRadius: 8,
                     padding: '10px 12px',
-                    boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+                    boxShadow: SHADOWS.sm,
                     borderLeft: `3px solid ${cat.color}`,
                   }}
                 >
@@ -427,7 +400,7 @@ export default function NoleggioAuto() {
                 background: '#1e3a5f',
                 borderRadius: 8,
                 padding: '10px 12px',
-                boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+                boxShadow: SHADOWS.sm,
                 color: 'white',
               }}
             >
@@ -448,10 +421,7 @@ export default function NoleggioAuto() {
       {selectedVeicolo && (
         <div
           style={{
-            background: 'white',
-            borderRadius: 12,
-            padding: 20,
-            boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+            ...STYLES.card,
             marginBottom: 20,
           }}
         >
@@ -932,9 +902,10 @@ export default function NoleggioAuto() {
       {/* Lista Veicoli */}
       <div
         style={{
-          background: 'white',
-          borderRadius: 12,
-          boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+          background: COLORS.card,
+          borderRadius: BORDER_RADIUS.md,
+          boxShadow: SHADOWS.sm,
+          border: `1px solid ${COLORS.border}`,
           overflow: 'hidden',
         }}
       >

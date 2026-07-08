@@ -7,6 +7,7 @@ import {
   formatDateIT,
   STYLES,
   COLORS,
+  BORDER_RADIUS,
   button,
   badge,
   useIsMobile,
@@ -206,8 +207,8 @@ export default function Scadenze() {
         {alertWidget && alertWidget.totale_alert > 0 && (
           <div
             style={{
-              background: '#b91c1c',
-              borderRadius: 12,
+              background: COLORS.danger,
+              borderRadius: BORDER_RADIUS.md,
               padding: 20,
               marginBottom: 20,
               color: 'white',
