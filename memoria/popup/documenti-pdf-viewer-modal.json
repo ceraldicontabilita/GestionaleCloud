@@ -1,0 +1,39 @@
+{
+  "popup": "PDF Viewer Modal (visualizzatore PDF inline)",
+  "pagina_di_provenienza": "Documenti → Archivio (frontend/src/pages/Documenti.jsx, montato dentro l'hub /documenti tramite frontend/src/pages/hub/DocumentiHub.jsx). È l'unico vero popup con overlay trovato in tutto il modulo Documenti: si apre sia dal sotto-tab 'Tutti i Documenti' (activeTab='email', tabella su documents_inbox) sia dal sotto-tab 'AI Estratti' (activeTab='ai', tabella su extracted_documents). Il sotto-tab 'Per Mittente' non ha righe con azione 'Vedi' e non apre mai questo modale. Il tab gemello 'Import Documenti' (ImportDocumenti.jsx) non ha alcun popup: usa solo alert() nativi e pannelli inline (verificato via grep su position:'fixed'/Modal/Drawer/Portal, nessun risultato).",
+  "file_sorgente": "frontend/src/pages/Documenti.jsx (blocco JSX del modale righe 1857-1953; stato selectedPdfDoc dichiarato riga 118; funzioni handleViewPdf riga 377, handleDownloadFile riga 358, closePdfViewer riga 406; secondo punto di apertura per il tab AI Estratti alle righe 1788-1803)",
+  "come_si_apre": "Due punti d'ingresso distinti, entrambi impostano lo stesso stato selectedPdfDoc che pilota il modale: 1) bottone 'Vedi' su una riga della tabella 'Tutti i Documenti' → handleViewPdf(doc) scarica il file dal backend (GET, responseType 'blob'), crea un Blob application/pdf e un object URL locale, poi setSelectedPdfDoc({...doc, pdfUrl}); durante l'attesa il bottone resta disabilitato (stato pdfLoading). 2) bottone 'Vedi' su una riga della tabella 'AI Estratti' → il documento ha già in memoria il campo file_base64 (caricato con include_file=true dalla GET iniziale), quindi il codice decodifica il base64 client-side con atob() in un array di byte, costruisce un Blob e un object URL SENZA nessuna nuova chiamata di rete, poi chiama comunque setSelectedPdfDoc({...doc, pdfUrl}). Il modale non è un componente separato ma un blocco JSX renderizzato in coda al componente principale, condizionato da `{selectedPdfDoc && (...)}`: è un vero overlay con position:'fixed', inset:0, sfondo rgba(0,0,0,0.7) e zIndex:1000, non un pannello inline.",
+  "scopo": "Permettere di guardare subito il contenuto di un documento (fattura, F24, busta paga, estratto conto, ecc.) senza dover scaricare il file sul disco e aprirlo con un lettore esterno — un'anteprima rapida per verificare che il documento scaricato/estratto sia quello giusto prima di procedere con altre azioni (cambio categoria, eliminazione, ecc.).",
+  "contenuto_e_campi": "Riquadro bianco centrato (90% larghezza, max 1000px, altezza 90vh) con: header grigio chiaro contenente icona 📄, nome file (selectedPdfDoc.filename), sottotitolo con etichetta categoria (da CATEGORY_COLORS) ed eventuale dimensione file formattata (formatBytes); a destra due bottoni (Scarica e ✕); corpo che occupa tutto lo spazio restante con sfondo grigio scuro (#525659, colore tipico dei lettori PDF) contenente un <iframe> a piena larghezza/altezza che punta all'object URL locale del PDF (selectedPdfDoc.pdfUrl) — il rendering del PDF è quindi delegato al motore PDF nativo del browser dentro l'iframe, nessun visualizzatore custom lato React.",
+  "bottoni_azioni": [
+    {
+      "etichetta": "📥 Scarica (nell'header del modale)",
+      "cosa_fa_al_click": "Richiama handleDownloadFile(selectedPdfDoc): la stessa funzione usata anche dal bottone di download nella riga di tabella sottostante.",
+      "endpoint_chiamato": "GET /api/documenti/documento/{id}/download (responseType blob)",
+      "logica_backend": "download_documento in app/routers/documenti.py: legge il documento da documents_inbox per id (404 se non trovato), poi decodifica il campo pdf_data (stringa base64 salvata su MongoDB) a chunk di 1.048.576 byte tramite un generatore (_decode_chunks) invece di un singolo base64.b64decode() sull'intera stringa — ottimizzazione esplicita in commento per evitare di tenere in RAM contemporaneamente sia la stringa base64 sia i bytes decodificati, causa di OOM-kill (502) su file grandi in produzione (Render). Ritorna uno StreamingResponse con media_type application/pdf e header Content-Disposition attachment;filename=... .",
+      "formula_matematica": "N/A",
+      "validazioni": "Nessuna lato client oltre al try/catch; il backend risponde 404 se il documento non esiste più.",
+      "casi_errore": "Se la richiesta fallisce, alert(`❌ Errore download: ${error.message}`); il modale resta aperto."
+    },
+    {
+      "etichetta": "✕ (nell'header del modale)",
+      "cosa_fa_al_click": "Richiama closePdfViewer(): se selectedPdfDoc.pdfUrl esiste, chiama window.URL.revokeObjectURL(selectedPdfDoc.pdfUrl) per liberare la memoria del blob locale, poi azzera lo stato (setSelectedPdfDoc(null)).",
+      "endpoint_chiamato": "nessuno",
+      "logica_backend": "N/A — operazione puramente client-side.",
+      "formula_matematica": "N/A",
+      "validazioni": "n/a",
+      "casi_errore": "n/a"
+    },
+    {
+      "etichetta": "Click sull'overlay semi-trasparente di sfondo",
+      "cosa_fa_al_click": "Il div esterno dell'overlay ha onClick={closePdfViewer}, mentre il riquadro bianco interno ha onClick={e => e.stopPropagation()}: cliccando fuori dal riquadro (sull'area scura) il modale si chiude allo stesso modo del bottone ✕; cliccando dentro il riquadro il click non si propaga e il modale resta aperto.",
+      "endpoint_chiamato": "nessuno",
+      "logica_backend": "N/A",
+      "formula_matematica": "N/A",
+      "validazioni": "n/a",
+      "casi_errore": "n/a"
+    }
+  ],
+  "come_si_chiude": "Bottone '✕' nell'header, click sull'overlay scuro fuori dal riquadro bianco. Nessuna gestione del tasto ESC nel codice. Non c'è nessuna azione di 'conferma/submit' perché il modale è di sola visualizzazione: non modifica mai alcun dato.",
+  "effetti_su_pagina_sottostante": "Nessuno sui dati: la chiusura del modale si limita a liberare l'object URL locale del PDF (revokeObjectURL) e ad azzerare lo stato selectedPdfDoc; non viene richiamato alcun reload della tabella sottostante (né loadData() né loadAiDocuments()), perché aprire/chiudere il visualizzatore non altera in alcun modo i documenti in documents_inbox o extracted_documents."
+}

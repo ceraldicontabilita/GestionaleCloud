@@ -1,0 +1,163 @@
+{
+  "pagina": "Impostazioni Email (F24 Email Settings)",
+  "url": "https://impresasemplice.online/impostazioni-f24-email",
+  "file_sorgente_frontend": [
+    "frontend/src/pages/ImpostazioniF24Email.jsx (1046 righe: componente principale ImpostazioniF24Email + sotto-componenti locali Toggle e GmailSettingsSection)"
+  ],
+  "file_sorgente_backend": [
+    "app/routers/f24_email_settings.py (montato su /api/f24-email-settings: impostazioni GET/POST, aggiungi-mittente, rimuovi-mittente/{email}, toggle-auto-scan, log-scansioni, scan-manuale, stato-sistema)",
+    "app/routers/settings_router.py (montato su /api/settings: gmail GET/POST, gmail/test — credenziali IMAP condivise per tutto il download email del gestionale)",
+    "app/routers/f24/email_f24.py (funzione scarica_e_processa, invocata da POST /api/f24-email-settings/scan-manuale — esegue il download IMAP effettivo e il parsing dei F24 dagli allegati)"
+  ],
+  "scopo_generale": "Pagina di configurazione per il sistema di download automatico dei modelli F24 via email: da un lato permette di gestire le CREDENZIALI Gmail IMAP condivise (una sola casella per tutto il sistema, con App Password), dall'altro la LISTA DEI MITTENTI autorizzati (tipicamente commercialista e consulente del lavoro) con relative parole chiave usate per riconoscere quali email contengono F24 da scaricare, la frequenza di scansione automatica e lo storico delle scansioni eseguite. È una pagina puramente di configurazione: non elabora né mostra i F24 stessi (quello è compito di altri moduli, es. Riconciliazione F24), ma innesca/pilota il processo di acquisizione automatica.",
+  "bottoni_azioni": [
+    {
+      "etichetta": "🔄 Aggiorna (header Stato Sistema)",
+      "cosa_fa_al_click": "Richiama fetchData(): 3 GET in parallelo con Promise.all.",
+      "endpoint_chiamato": "GET /api/f24-email-settings/impostazioni · GET /api/f24-email-settings/stato-sistema · GET /api/f24-email-settings/log-scansioni?limit=10",
+      "logica_backend": "get_impostazioni: legge il documento f24_email_settings con tipo='f24_settings'; se non esiste lo crea con 3 mittenti di default hard-coded (rosaria.marotta@email.it, grazia.studioferrantini@email.it, f.ferrantini@email.it) e lo inserisce in DB. get_stato_sistema: legge le stesse impostazioni, l'ultima riga di f24_scan_log per timestamp decrescente, e conta f24_commercialista con status='da_pagare'/'pagato' più email_allegati non processati. get_log_scansioni: ultime N righe di f24_scan_log ordinate per timestamp decrescente.",
+      "formula_matematica": "N/A",
+      "aggiornamento_ui": "Normalizza eventuali mittenti salvati come semplice stringa (schema legacy) in oggetto completo {email, nome, tipo:'altro', categoria_f24:'generico', attivo:true, parole_chiave:[]} prima di salvarli in stato; aggiorna le 4 card statistiche (Scansione Auto, Intervallo, Mittenti Configurati, F24 da Pagare) e il banner 'Ultima scansione'.",
+      "casi_errore": "catch → console.error('Errore caricamento impostazioni'), nessun messaggio visibile all'utente."
+    },
+    {
+      "etichetta": "▶ Scansiona Ora",
+      "cosa_fa_al_click": "runManualScan(): imposta scanning=true (spinner sul bottone), poi POST.",
+      "endpoint_chiamato": "POST /api/f24-email-settings/scan-manuale",
+      "logica_backend": "esegui_scan_manuale (f24_email_settings.py) chiama scarica_e_processa(giorni=7) del modulo app/routers/f24/email_f24.py (parametro 'giorni' hard-coded a 7 in questa chiamata manuale, INDIPENDENTE dal valore 'giorni_indietro' configurato dall'utente nelle impostazioni — che si applica solo alla scansione automatica programmata). Logga il risultato (o l'errore) in f24_scan_log con tipo='manuale' e success=True/False.",
+      "formula_matematica": "N/A",
+      "aggiornamento_ui": "alert() bloccante con il riepilogo: 'Email trovate: N, Allegati scaricati: N, F24 inseriti: N' (letti da download.email_trovate, download.allegati_scaricati, processamento.f24_inseriti della risposta), poi fetchData() per ricaricare tutto.",
+      "casi_errore": "catch → alert('Errore scansione: ' + detail/message); scanning torna a false nel finally."
+    },
+    {
+      "etichetta": "Toggle 'Scansione Auto' (Attiva/Disattiva)",
+      "cosa_fa_al_click": "toggleAutoScan(attivo) — click diretto sul componente Toggle, nessuna conferma richiesta.",
+      "endpoint_chiamato": "POST /api/f24-email-settings/toggle-auto-scan?attivo={bool}",
+      "logica_backend": "toggle_auto_scan (f24_email_settings.py): update_one upsert su f24_email_settings, imposta auto_scan_attivo e updated_at. Non avvia né ferma direttamente alcun processo qui — presumibilmente un job schedulato altrove (app/scheduler.py, non letto in questa analisi) controlla periodicamente questo flag prima di eseguire la scansione automatica.",
+      "formula_matematica": "N/A",
+      "aggiornamento_ui": "Aggiornamento ottimistico (setSettings locale) seguito comunque da un fetchData() completo di conferma.",
+      "casi_errore": "catch → console.error('Errore toggle auto-scan'), nessun messaggio visibile."
+    },
+    {
+      "etichetta": "Salva Impostazioni (sezione Configurazione Scansione: intervallo minuti, giorni indietro)",
+      "cosa_fa_al_click": "saveSettings(): invia l'intero oggetto mittenti insieme ai 2 valori numerici modificati.",
+      "endpoint_chiamato": "POST /api/f24-email-settings/impostazioni",
+      "logica_backend": "update_impostazioni (f24_email_settings.py, valida con Pydantic EmailSettingsUpdate/MittenteConfig): sovrascrive INTERAMENTE il documento f24_email_settings (mittenti, scan_interval_minuti, giorni_indietro, auto_scan_attivo) con update_one upsert — quindi questa chiamata rimpiazza anche l'intera lista mittenti con quella corrente in stato locale (incluse eventuali modifiche a parole chiave/toggle attivo fatte inline sulla tabella mittenti ma non ancora salvate separatamente).",
+      "formula_matematica": "N/A (min/max lato input: intervallo 5-120 minuti, giorni_indietro 1-365, validati solo client-side su HTML5 number input, non rivalidati esplicitamente dal backend oltre al tipo)",
+      "aggiornamento_ui": "alert('Impostazioni salvate!'), poi fetchData().",
+      "casi_errore": "catch → alert('Errore salvataggio: ' + detail/message)."
+    },
+    {
+      "etichetta": "+ Aggiungi Mittente (form inline) → Aggiungi",
+      "cosa_fa_al_click": "addMittente(): valida client-side che email e nome siano compilati (alert bloccante altrimenti), poi POST.",
+      "endpoint_chiamato": "POST /api/f24-email-settings/aggiungi-mittente",
+      "logica_backend": "aggiungi_mittente (f24_email_settings.py): legge le impostazioni correnti, verifica case-insensitive che l'email non sia già presente (400 'Mittente già esistente' altrimenti), fa append del nuovo mittente (con parole_chiave iniziali vuote — il form di creazione non le espone) e aggiorna il documento.",
+      "formula_matematica": "N/A",
+      "aggiornamento_ui": "Chiude il form (showAddMittente=false), resetta newMittente ai default, richiama fetchData().",
+      "casi_errore": "catch → alert('Errore: ' + detail/message) — es. se l'email esiste già."
+    },
+    {
+      "etichetta": "Trash2 (rimuovi mittente, riga tabella)",
+      "cosa_fa_al_click": "removeMittente(email): prima window.confirm('Rimuovere {email}?').",
+      "endpoint_chiamato": "DELETE /api/f24-email-settings/rimuovi-mittente/{email}",
+      "logica_backend": "rimuovi_mittente (f24_email_settings.py): filtra l'array mittenti escludendo quello con email corrispondente (case-insensitive); 404 se non trovato (nessuna riga rimossa), altrimenti aggiorna il documento con la lista filtrata.",
+      "formula_matematica": "N/A",
+      "aggiornamento_ui": "fetchData() dopo la conferma di successo.",
+      "casi_errore": "catch → alert('Errore: ' + detail/message)."
+    },
+    {
+      "etichetta": "Toggle 'Attivo' per singolo mittente (riga tabella)",
+      "cosa_fa_al_click": "updateMittente(index, 'attivo', valore) — SOLO stato locale React (setSettings), NESSUNA chiamata di rete immediata.",
+      "endpoint_chiamato": "Nessuna chiamata diretta: la modifica resta solo in memoria finché l'utente non preme 'Salva Impostazioni' (sezione Configurazione Scansione), che invia l'intero oggetto mittenti aggiornato.",
+      "logica_backend": "N/A finché non viene premuto Salva Impostazioni (vedi sopra).",
+      "formula_matematica": "N/A",
+      "aggiornamento_ui": "Il toggle cambia colore/posizione immediatamente; la riga si affievolisce (opacity 0.5) se disattivato.",
+      "casi_errore": "Se l'utente naviga via senza premere 'Salva Impostazioni', la modifica viene PERSA silenziosamente (nessun avviso di modifiche non salvate)."
+    },
+    {
+      "etichetta": "+ parola (aggiungi parola chiave a un mittente, riga tabella)",
+      "cosa_fa_al_click": "addKeywordToMittente(index): aggiunge la parola digitata (trim, dedup) all'array parole_chiave locale del mittente — anche questa SOLO in stato locale React, invio a Enter o click sul bottone '+'.",
+      "endpoint_chiamato": "Nessuna chiamata diretta: stesso comportamento del toggle Attivo — persiste solo con 'Salva Impostazioni'.",
+      "logica_backend": "N/A finché non viene premuto Salva Impostazioni.",
+      "formula_matematica": "N/A",
+      "aggiornamento_ui": "La parola chiave appare come chip rimovibile subito nella UI.",
+      "casi_errore": "Stesso rischio di perdita modifiche non salvate del toggle Attivo."
+    },
+    {
+      "etichetta": "× (rimuovi singola parola chiave, sul chip)",
+      "cosa_fa_al_click": "removeKeyword(mittenteIndex, keyword) — filtra l'array parole_chiave locale.",
+      "endpoint_chiamato": "Nessuna chiamata diretta (stesso pattern: persiste solo con Salva Impostazioni).",
+      "logica_backend": "N/A",
+      "formula_matematica": "N/A",
+      "aggiornamento_ui": "Il chip sparisce immediatamente.",
+      "casi_errore": "Stesso rischio di perdita modifiche non salvate."
+    },
+    {
+      "etichetta": "Salva credenziali (sezione Credenziali Gmail IMAP, in fondo alla pagina)",
+      "cosa_fa_al_click": "salva() del sotto-componente GmailSettingsSection: disabilitato finché imap_user e gmail_app_password non sono entrambi compilati.",
+      "endpoint_chiamato": "POST /api/settings/gmail",
+      "logica_backend": "salva_gmail_settings (settings_router.py): valida imap_user non vuoto (400 altrimenti) e gmail_app_password lungo almeno 8 caratteri dopo rimozione spazi (400 'App Password non valida' altrimenti). Salva in MongoDB (collection 'settings', chiave='gmail') imap_user, gmail_app_password (in CHIARO, non hashata — commento nel codice dice solo 'non nel codice sorgente', ma resta in chiaro nel DB), imap_host. Esegue SUBITO un test di connessione IMAP reale (imaplib.IMAP4_SSL, login/logout) in un thread separato (asyncio.to_thread) per non bloccare l'event loop.",
+      "formula_matematica": "N/A",
+      "aggiornamento_ui": "Mostra messaggio di successo/errore basato sul risultato del test IMAP incluso nella stessa risposta (status='ok' se il test riesce, altrimenti 'salvato_con_errore' con il dettaglio dell'errore IMAP, ma le credenziali vengono comunque salvate anche se il test fallisce). Aggiorna cfg locale con has_password=true.",
+      "casi_errore": "catch → setMsg({ok:false, testo: detail || 'Errore durante il salvataggio'}) mostrato in un banner colorato sotto il form."
+    },
+    {
+      "etichetta": "Testa connessione (sezione Credenziali Gmail IMAP)",
+      "cosa_fa_al_click": "testConnessione(): NON invia i valori del form corrente, testa le credenziali GIÀ SALVATE nel database.",
+      "endpoint_chiamato": "POST /api/settings/gmail/test",
+      "logica_backend": "test_gmail_connection (settings_router.py): legge le credenziali salvate (collection 'settings', chiave='gmail') con fallback alle variabili d'ambiente IMAP_USER/IMAP_PASSWORD/IMAP_HOST se non presenti a DB, poi esegue lo stesso test IMAP4_SSL login/logout.",
+      "formula_matematica": "N/A",
+      "aggiornamento_ui": "Mostra il risultato nel banner (✓ Connessione IMAP riuscita per {user} oppure ✗ con l'errore).",
+      "casi_errore": "catch generico → setMsg({ok:false, testo:'Errore durante il test'})."
+    },
+    {
+      "etichetta": "Mostra/Nascondi (App Password)",
+      "cosa_fa_al_click": "Toggle locale showPass tra type='password' e type='text' sull'input della App Password.",
+      "endpoint_chiamato": "Nessuno",
+      "logica_backend": "N/A",
+      "formula_matematica": "N/A",
+      "aggiornamento_ui": "Cambia solo la visibilità del testo digitato.",
+      "casi_errore": "N/A"
+    }
+  ],
+  "operazioni_di_registrazione": [
+    {
+      "nome": "Scansione manuale email → download e import F24",
+      "sequenza_esatta": "1) Click su 'Scansiona Ora'. 2) POST /api/f24-email-settings/scan-manuale. 3) Il backend invoca scarica_e_processa(giorni=7) del modulo email_f24.py: si collega alla casella IMAP con le credenziali salvate in /api/settings/gmail, cerca le email dai mittenti configurati e attivi (con eventuale filtro per parole chiave), scarica gli allegati PDF/XML trovati, li salva (presumibilmente in email_allegati) e tenta il parsing dei dati F24 dagli allegati, inserendo i modelli riconosciuti (collezione f24_commercialista o simile). 4) Il risultato dettagliato (email_trovate, allegati_scaricati, f24_inseriti) viene sia restituito al frontend per l'alert, sia loggato in f24_scan_log con tipo='manuale'.",
+      "collezioni_coinvolte": ["f24_scan_log (log dell'operazione)", "email_allegati (allegati scaricati, non ancora processati per il conteggio 'allegati_da_processare')", "f24_commercialista (F24 effettivamente inseriti/riconosciuti — nome dedotto dal conteggio in stato-sistema)"],
+      "campi_scritti": {
+        "f24_scan_log": "timestamp, tipo='manuale', risultato (oggetto completo restituito da scarica_e_processa) oppure errore, success"
+      },
+      "effetti_collaterali": "Se il parsing dell'allegato fallisce o non riconosce un F24 valido, l'allegato resta con processato=False e contribuisce al contatore 'allegati_da_processare' mostrato in stato-sistema, ma questa pagina non offre un'azione diretta per rilavorarlo manualmente."
+    },
+    {
+      "nome": "Salvataggio impostazioni mittenti/scansione (unico punto di persistenza per modifiche fatte alla tabella mittenti)",
+      "sequenza_esatta": "1) L'utente modifica intervallo/giorni indietro e/o interagisce con i toggle 'Attivo' o le parole chiave sulla tabella mittenti — tutte queste modifiche restano SOLO in stato React locale. 2) Solo il click su 'Salva Impostazioni' invia POST /api/f24-email-settings/impostazioni con l'intero payload {mittenti, scan_interval_minuti, giorni_indietro, auto_scan_attivo}. 3) Il backend sovrascrive integralmente il documento f24_email_settings.",
+      "collezioni_coinvolte": ["f24_email_settings"],
+      "campi_scritti": {
+        "f24_email_settings": "mittenti (array completo, sovrascritto), scan_interval_minuti, giorni_indietro, auto_scan_attivo, updated_at"
+      },
+      "effetti_collaterali": "Essendo una sovrascrittura completa dell'array mittenti, qualunque modifica fatta da un'altra sessione/tab del browser tra il caricamento e il salvataggio verrebbe persa (nessun meccanismo di concorrenza/lock rilevato nel codice)."
+    },
+    {
+      "nome": "Salvataggio credenziali Gmail IMAP",
+      "sequenza_esatta": "1) L'utente compila email, App Password (16 caratteri, spazi rimossi automaticamente in input), e host IMAP (default imap.gmail.com). 2) Click 'Salva credenziali'. 3) POST /api/settings/gmail: validazione lunghezza minima password, upsert in MongoDB collection 'settings' con chiave='gmail'. 4) Il backend esegue subito un test di login IMAP reale e restituisce l'esito insieme alla conferma di salvataggio.",
+      "collezioni_coinvolte": ["settings"],
+      "campi_scritti": {
+        "settings": "chiave='gmail', imap_user, gmail_app_password (testo in chiaro), imap_host, aggiornato_il"
+      },
+      "effetti_collaterali": "Queste credenziali sono CONDIVISE da tutto il sistema di download email (non solo F24: presumibilmente anche fatture ricevute via email, cedolini, ecc., stando ai commenti nella Mappa Gestionale) — cambiarle qui impatta ogni processo che scarica allegati dalla stessa casella Gmail."
+    }
+  ],
+  "collegamenti_con_altre_pagine": [
+    "Nessun <Link> di navigazione esplicito nel codice: la pagina è raggiungibile solo dal menu principale e non offre scorciatoie dirette verso i moduli che consumano i F24 scaricati (es. Riconciliazione F24)."
+  ],
+  "popup_e_modali_presenti": [
+    "Nessun vero modale: il form 'Nuovo Mittente' è un pannello espandibile inline (non un overlay) mostrato/nascosto con showAddMittente."
+  ],
+  "note_tecniche": [
+    "RISCHIO SICUREZZA rilevato nel codice: la Gmail App Password viene salvata in chiaro nel database MongoDB (campo gmail_app_password), non cifrata né hashata — il commento nel form dice solo 'non nel codice', ma non è cifrata a riposo.",
+    "Le modifiche a 'Attivo' e alle parole chiave sui singoli mittenti nella tabella NON si salvano automaticamente: serve premere il bottone 'Salva Impostazioni' della sezione Configurazione Scansione (sopra la tabella mittenti) — un utente che modifica solo la tabella e naviga via perde le modifiche senza alcun avviso.",
+    "Il parametro 'giorni_indietro' configurabile dall'utente si applica solo alla scansione automatica programmata; lo Scan manuale usa sempre 7 giorni hard-coded, indipendentemente dal valore salvato."
+  ]
+}

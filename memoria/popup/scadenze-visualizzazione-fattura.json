@@ -1,0 +1,42 @@
+{
+  "popup": "Modal Visualizzazione Fattura (InvoiceXMLViewer)",
+  "pagina_di_provenienza": "Scadenze e Notifiche (/scadenze), bottone 👁️ su ogni riga della tabella scadenze con tipo FATTURA (o source='fattura')",
+  "file_sorgente": "frontend/src/components/InvoiceXMLViewer.jsx (1592 righe, componente condiviso — non specifico di Scadenze) montato da frontend/src/pages/Scadenze.jsx (righe 1254-1263: {viewingInvoice && invoiceData && <InvoiceXMLViewer invoice={invoiceData} onClose={...} />})",
+  "come_si_apre": "Click sull'icona 👁️ 'Visualizza Dettagli Fattura' sulla riga di una scadenza di tipo FATTURA: il click esegue prima una fetch GET, poi imposta lo stato che monta il componente. È un vero overlay: il componente stesso ritorna un div con position:'fixed', inset a tutta pagina, sfondo rgba(0,0,0,0.7) e zIndex:1000, pannello bianco centrato max-width 900px/max-height 90vh.",
+  "scopo": "Mostra il dettaglio strutturato della fattura fornitore collegata alla scadenza, in stile 'AssoInvoice' (il software gestionale di fatturazione più diffuso in Italia), con tre modalità di visualizzazione selezionabili: Semplificata (solo dati fiscalmente rilevanti, compatta), Completa (tutti i dati incluse informazioni gestionali interne) e Ministeriale (formato ufficiale che replica l'aspetto delle fatture elettroniche validate da Agenzia Entrate/Sogei). Serve a consultare/stampare la fattura senza lasciare la pagina Scadenze e senza aprire una nuova scheda del browser.",
+  "contenuto_e_campi": "Header: numero fattura e nome fornitore, toggle a 3 opzioni per la modalità di vista (Semplificata/Completa/Ministeriale), bottone Stampa, bottone Chiudi. Corpo (dipende dalla vista): dati testata (numero, data, fornitore con P.IVA/CF), righe fattura con descrizione/quantità/prezzo unitario/aliquota IVA, riepilogo imponibile/IVA/totale, modalità di pagamento (mappata sui codici SdI: MP01 contanti, MP02 assegno, MP05 bonifico, MP08 carta, ecc.), tipo documento SdI (TD01 fattura, TD04 nota di credito, TD16-TD20 varie integrazioni/autofatture, ecc.). Il componente normalizza i dati ricevuti (normalizeInvoice) leggendo campi sia in italiano (linee, quantita, prezzo_unitario, aliquota_iva, imponibile, iva) sia in inglese (line_items, quantity, unit_price, vat_rate, taxable_amount, vat_amount) per tollerare formati diversi.",
+  "bottoni_azioni": [
+    {
+      "etichetta": "Toggle Semplificata / Completa / Ministeriale (header)",
+      "cosa_fa_al_click": "setViewMode(...): cambia solo lo stato locale viewMode, nessuna nuova chiamata di rete — i dati sono già tutti disponibili nell'oggetto invoice passato come prop, viene solo ricalcolato/riformattato il rendering (renderCurrentView()).",
+      "endpoint_chiamato": "nessuno",
+      "logica_backend": "n/d",
+      "formula_matematica": "n/d",
+      "validazioni": "n/d",
+      "casi_errore": "n/d"
+    },
+    {
+      "etichetta": "🖨️ Stampa",
+      "cosa_fa_al_click": "generatePDFFromHTML(): costruisce lato client un documento HTML completo (buildMinisterialeHTML() o buildAssoSoftwareHTML() a seconda della vista corrente) con CSS di stampa dedicato, apre una nuova finestra/scheda con quell'HTML e uno script inline che chiama window.print() al caricamento — nessuna generazione PDF lato server, è la funzione di stampa nativa del browser che l'utente può poi salvare come PDF.",
+      "endpoint_chiamato": "nessuno (tutto client-side, riusa i dati già caricati in invoice)",
+      "logica_backend": "n/d",
+      "formula_matematica": "n/d",
+      "validazioni": "n/d",
+      "casi_errore": "Se il browser blocca i popup, la nuova finestra di stampa potrebbe non aprirsi senza alcun messaggio d'errore visibile all'utente (nessun try/catch esplicito attorno a window.open nel codice)."
+    },
+    {
+      "etichetta": "✕ Chiudi (header)",
+      "cosa_fa_al_click": "onClose(): callback passata dal genitore (Scadenze.jsx esegue setViewingInvoice(null) e setInvoiceData(null)).",
+      "endpoint_chiamato": "nessuno",
+      "logica_backend": "n/d",
+      "formula_matematica": "n/d",
+      "validazioni": "n/d",
+      "casi_errore": "n/d"
+    }
+  ],
+  "come_si_chiude": "Unico bottone '✕ Chiudi' nell'header del modal, che invoca la callback onClose passata dal genitore. A differenza di altri modali della pagina, QUESTO componente non ha un overlay cliccabile per chiudere (il div esterno con position:fixed non ha onClick) e non gestisce il tasto ESC: l'unico modo per chiuderlo è il bottone dedicato.",
+  "effetti_su_pagina_sottostante": "Nessuno: è un visualizzatore di sola lettura, nessuna scrittura viene effettuata durante l'apertura né alla chiusura. Il genitore si limita ad azzerare gli stati viewingInvoice/invoiceData, senza richiamare loadData().",
+  "note_tecniche": [
+    "BUG POTENZIALE individuato confrontando frontend e backend: il bottone 👁️ chiama GET /api/fatture/{fattura_id} (gestito da get_fattura in app/routers/invoices/fatture_upload.py, che delega a get_fattura_dettaglio in app/routers/fatture_module/crud.py), il quale restituisce un oggetto WRAPPER {fattura: {...}, righe: [...], allegati: [...]} — NON la fattura appiattita. Il frontend però fa setInvoiceData(res.data) e passa quell'intero wrapper come prop 'invoice' a InvoiceXMLViewer, che si aspetta invece i campi della fattura direttamente sul livello radice (es. invoice.invoice_number, invoice.linee, invoice.imponibile). Il risultato probabile è che il modal si apra ma mostri numero fattura, fornitore, righe e importi tutti vuoti/undefined, perché i dati reali sono annidati sotto invoiceData.fattura e invoiceData.righe invece che sulla radice."
+  ]
+}

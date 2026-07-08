@@ -1,0 +1,31 @@
+{
+  "nome_popup": "ModalFattura (componente condiviso)",
+  "file_sorgente": "frontend/src/components/ModalFattura.jsx (110 righe, componente riusabile)",
+  "pagine_da_cui_si_apre": [
+    "NOTA IMPORTANTE verificata nel codice sorgente (grep su tutto frontend/src): ad oggi l'unico punto della UI che importa e monta effettivamente <ModalFattura /> è frontend/src/pages/GestioneAssegni.jsx (riga 9 import, riga 3736 utilizzo) — una pagina che NON fa parte del gruppo Prima Nota / Fatture / Corrispettivi / Fornitori oggetto di questo audit. Il componente NON risulta importato né in ArchivioFattureRicevute.jsx, né in Corrispettivi.jsx, né in Fornitori.jsx, né in PrimaNota.jsx: la documentazione preesistente (memoria/pagine/fatture.json) che lo descriveva come 'usato da Scadenze, Prima Nota Provvisori, Fornitori' non trova riscontro nel codice attuale ed è quindi obsoleta/imprecisa su questo punto. Viene comunque documentato qui in quanto componente architetturalmente condiviso e riferito esplicitamente nella documentazione della pagina Fatture."
+  ],
+  "come_si_apre": "In GestioneAssegni.jsx: viene montato condizionalmente con {fatturaView && <ModalFattura .../>} quando lo stato locale fatturaView (oggetto {id, numero}) viene valorizzato da un click su una riga/azione 'vedi fattura' collegata a un assegno (il modale riceve fatturaId=fatturaView.id, numero=fatturaView.numero).",
+  "scopo": "Mostra il documento di una fattura (vista AssoInvoice) DENTRO la pagina corrente tramite un iframe, invece di aprire una nuova scheda del browser come fa invece il link statico 'Vedi' presente in ArchivioFattureRicevute.jsx. Serve per non far perdere all'utente il contesto/stato della pagina chiamante (es. la selezione fatture in corso in GestioneAssegni.jsx) mentre consulta il documento.",
+  "dati_mostrati": "Nessuna fetch diretta dal componente stesso: il titolo mostra 'Fattura {numero||fatturaId}' (numero passato come prop, opzionale) e il corpo è un <iframe> il cui src punta direttamente a GET /api/fatture-ricevute/fattura/{fatturaId}/view-assoinvoice — è il browser stesso a caricare l'HTML della fattura dentro l'iframe, non una chiamata Axios gestita da React.",
+  "campi_e_bottoni": [
+    {
+      "elemento": "Bottone '✕' nell'header (aria-label=\"Chiudi\", data-testid=\"modal-fattura-close\")",
+      "cosa_fa": "onClick={onClose}: invoca la callback passata dal genitore per chiudere il modale (nel caso di GestioneAssegni.jsx, setFatturaView(null)).",
+      "endpoint_chiamato": "nessuno",
+      "validazioni": "n/d"
+    },
+    {
+      "elemento": "Iframe con la fattura",
+      "cosa_fa": "Carica e mostra l'HTML della vista AssoInvoice della fattura, generato lato server (stessa logica di view_fattura_assoinvoice in fatture_module/crud.py: trasformazione XSLT se l'XML è disponibile, altrimenti HTML di fallback fatto in casa).",
+      "endpoint_chiamato": "GET /api/fatture-ricevute/fattura/{fatturaId}/view-assoinvoice (chiamato direttamente dal browser tramite l'attributo src dell'iframe, non da JS)",
+      "validazioni": "n/d — se fatturaId è vuoto/null, il componente ritorna null e non renderizza nulla (if (!fatturaId) return null)"
+    }
+  ],
+  "cosa_succede_alla_conferma": "Non esiste un'azione di 'conferma'/submit in questo componente: è un modale di sola visualizzazione, nessuna scrittura viene effettuata al suo interno. L'unica interazione utile oltre alla lettura del contenuto dell'iframe è la chiusura.",
+  "come_si_chiude": [
+    "Bottone '✕' nell'header (onClick={onClose})",
+    "Click sull'overlay scuro fuori dal riquadro bianco (onClick={onClose} sul div esterno; il contenuto interno ha stopPropagation per non chiudersi se si clicca dentro)",
+    "Tasto ESC: gestito esplicitamente con un useEffect che registra un listener document.addEventListener('keydown', ...) e chiama onClose() se e.key==='Escape' — comportamento presente SOLO in questo componente tra tutti quelli auditati, non replicato negli altri popup di Prima Nota/Fornitori/Corrispettivi"
+  ],
+  "effetto_su_pagina_sottostante": "Nessun refresh o ricaricamento dati viene innescato dalla chiusura: essendo un modale di sola lettura (nessuna scrittura), il genitore si limita ad azzerare lo stato che teneva aperto il modale (es. setFatturaView(null)), senza richiamare alcuna fetch."
+}

@@ -1,0 +1,18 @@
+{
+  "nome_popup": "Modale 'Dettaglio Versamenti - {Mese} {Anno}'",
+  "pagine_da_cui_si_apre": ["Contabilità > Controllo Mensile (ControlloMensile.jsx), solo nella vista Mensile (viewMode='mese')"],
+  "come_si_apre": "Click sul pulsante 'Versamenti' visibile solo nella vista mensile dettagliata (non nella vista annuale). Chiama setShowVersamentiModal(true). Il componente interno VersamentiModal ritorna null se showVersamentiModal è false.",
+  "scopo": "Mostrare l'elenco dei movimenti di Prima Nota Cassa del mese corrente classificati come 'versamento' (uscite verso banca), per verificare/riconciliare il totale versamenti usato nel confronto POS/corrispettivi della pagina.",
+  "dati_mostrati": "Titolo dinamico con mese/anno selezionati (monthNames[meseSelezionato-1] + anno). Se l'array versamentiDettaglio è vuoto, testo 'Nessun versamento registrato per questo mese.'. Altrimenti tabella con colonne Data (formatDateIT), Descrizione (v.descrizione o v.categoria come fallback), Importo (valore assoluto formattato in euro, colore verde); riga di piede TOTALE con la somma di Math.abs(importo) su tutti i versamenti. I dati (versamentiDettaglio) sono già presenti in memoria: sono stati filtrati client-side dai movimenti di Prima Nota Cassa del mese scaricati in precedenza da loadMonthData (GET /api/prima-nota/cassa), selezionando i record con categoria 'Versamento' (o categoria/descrizione contenente 'versamento', case-insensitive) e tipo 'uscita'.",
+  "campi_e_bottoni": [
+    {"elemento": "Pulsante '✕' nell'header", "cosa_fa": "Chiude il modale: setShowVersamentiModal(false)", "endpoint_chiamato": "nessuno", "validazioni": "n/a"},
+    {"elemento": "Click sull'overlay scuro di sfondo", "cosa_fa": "Chiude il modale (onClick sull'overlay esterno; il box interno usa stopPropagation per non chiudersi al click al suo interno)", "endpoint_chiamato": "nessuno", "validazioni": "n/a"},
+    {"elemento": "Righe della tabella", "cosa_fa": "Sola visualizzazione, nessuna interazione", "endpoint_chiamato": "nessuno", "validazioni": "n/a"}
+  ],
+  "cosa_succede_alla_conferma": "Non è un form: nessuna azione di conferma/submit, nessuna chiamata al backend viene effettuata dal modale (i dati sono già in memoria, filtrati lato client).",
+  "come_si_chiude": [
+    "Pulsante '✕' nell'header",
+    "Click sull'area esterna al box (overlay)"
+  ],
+  "effetto_su_pagina_sottostante": "Nessuno: il modale è puramente informativo/di sola lettura, la chiusura non causa ricaricamenti né modifiche alla tabella giornaliera sottostante."
+}

@@ -1,0 +1,161 @@
+{
+  "pagina": "Fatture (Archivio Fatture Ricevute)",
+  "url": "https://impresasemplice.online/fatture",
+  "file_sorgente_frontend": [
+    "frontend/src/pages/hub/FattureHub.jsx (hub/tab-switcher: monta ArchivioFattureRicevute.jsx quando l'URL NON contiene /corrispettivi, alternandolo con Corrispettivi.jsx tramite display:none/block senza smontarlo)",
+    "frontend/src/pages/ArchivioFattureRicevute.jsx",
+    "frontend/src/components/ModalFattura.jsx (usato da altre pagine per mostrare la stessa vista fattura in un iframe modale)",
+    "frontend/src/hooks/useData.js (contiene deleteFattura/payFattura ma risulta CODICE MORTO: non importato da nessuna pagina attiva)"
+  ],
+  "file_sorgente_backend": [
+    "app/routers/invoices/fatture_upload.py (montato su /api/fatture — import XML/ZIP/P7M, delete con cascade, pagamento legacy)",
+    "app/routers/invoices/invoices_main.py (montato su /api/invoices — sola lettura, dedup applicativo)",
+    "app/routers/invoices/invoices_emesse.py (fatture attive/emesse, modulo minimale/non completato)",
+    "app/routers/invoices/fatture_drive.py (montato su /api/fatture/drive — ingest automatico da Google Drive)",
+    "app/routers/invoices/__init__.py",
+    "app/routers/fatture_module/__init__.py (montato su /api/fatture-ricevute — È IL BACKEND REALMENTE CONSUMATO da ArchivioFattureRicevute.jsx: non fa parte della cartella app/routers/invoices/ ma è indispensabile per capire questa pagina)",
+    "app/routers/fatture_module/crud.py",
+    "app/routers/fatture_module/pagamento.py",
+    "app/routers/fatture_module/helpers.py",
+    "app/routers/fatture_module/metodo_pagamento.py",
+    "app/routers/fatture_module/ciclo_utils.py",
+    "app/routers/fatture_module/common.py",
+    "app/services/cascade_operations.py",
+    "app/services/business_rules.py (BusinessRules.can_delete_invoice)",
+    "app/router_registry.py (righe 177-179: mount dei tre prefissi /api/fatture, /api/fatture (drive), /api/fatture-ricevute)"
+  ],
+  "scopo_generale": "Questa pagina è l'archivio consultabile di tutte le fatture passive (fatture ricevute dai fornitori) importate nel gestionale, via XML/P7M caricati manualmente, via sincronizzazione automatica da Google Drive (ogni 15 minuti) o via PEC/SDI attraverso la stessa casella email. Serve al titolare/amministrazione per cercare una fattura per fornitore/mese/numero, controllare lo stato (importata, pagata, anomala), vedere il documento originale renderizzato in stile 'AssoInvoice' e capire — tramite un badge — con quale metodo il fornitore viene solitamente pagato. È DELIBERATAMENTE una pagina di sola consultazione: le azioni di scrittura vere e proprie (pagare una fattura, eliminarla, cambiarne il metodo di pagamento, caricare nuovi XML) sono state spostate in altre pagine dedicate (Import Documenti per l'upload, Scadenze/Dashboard/Fornitori per il pagamento manuale) proprio per evitare che un click distratto sull'archivio generi una scrittura contabile.",
+  "sezioni_tab": [
+    {
+      "nome": "Archivio (unica vista di questa pagina)",
+      "descrizione": "4 card statistiche in alto (Fatture Totali, Importo Totale, Fornitori, Anomale, da GET /api/fatture-ricevute/statistiche), una barra filtri (Anno globale in sola lettura, Mese, Fornitore, Stato, Ricerca testuale con bottone Cerca), e la tabella/lista delle fatture con colonne Data/Numero/Fornitore/Imponibile/IVA/Totale/Azioni. È raggiungibile anche in modalità 'deep-link' passando ?invoice_id=<id> nell'URL (usata da altre pagine, es. modale PayPal), che evidenzia la riga per 4 secondi o mostra un banner se la fattura non è nell'anno attualmente filtrato."
+    },
+    {
+      "nome": "Corrispettivi (tab gemello, documentato separatamente)",
+      "descrizione": "Raggiungibile dallo stesso hub FattureHub.jsx quando l'URL contiene /corrispettivi — vedi il file di documentazione dedicato memoria/pagine/corrispettivi.json."
+    }
+  ],
+  "bottoni_azioni": [
+    {
+      "etichetta": "Filtri: Mese / Fornitore / Stato (select) e campo Ricerca",
+      "dove_si_trova": "Barra filtri in cima alla pagina",
+      "cosa_fa_al_click": "Ogni select/input scrive il valore tramite setHs(...) dell'hook useHashState, che sincronizza lo stato col fragment dell'URL (#mese=&fornitore=&stato=&search=), rendendo ogni combinazione di filtri deep-linkabile e condivisibile. Il cambio di stato ri-triggera automaticamente fetchFatture() tramite l'useEffect su [fetchFatture, anno]. Il valore 'Stato' = 'senza_metodo' è un caso speciale: NON viene inviato al backend come parametro stato, la fetch avviene senza quel filtro e il risultato viene filtrato lato client tenendo solo le fatture il cui fornitore ha fornitore_metodo_pagamento vuoto/'da_configurare'/'misto'/'altro'.",
+      "endpoint_chiamato": "GET /api/fatture-ricevute/archivio?anno=&mese=&fornitore_piva=&stato=&search=&limit=500",
+      "logica_backend": "Funzione get_archivio_fatture in app/routers/fatture_module/crud.py (righe 148-367). Legge in parallelo (asyncio.gather) DUE collection con schema diverso: 'invoices' (schema inglese, canale XML/Drive/P7M) e 'fatture_passive' (collection legacy, non più scritta da alcun endpoint attivo, solo letta). Filtro anno su invoices: $or su campo anno (int) + regex ^anno su data_documento + regex ^anno su invoice_date (per coprire documenti pre-backfill). Filtro mese: range di stringhe YYYY-MM-01..YYYY-MM-{ultimo giorno, calcolato con calendar.monthrange}. Filtro stato='pagata': $or su 4 varianti di campo (stato in [pagata,paid], status=='paid', pagato==True, stato_pagamento=='pagata'); stato='importata' è la negazione esatta di questi 4; stato='anomala' = importo assente/≤0 OPPURE numero documento assente, su entrambi gli schemi di campo. Dopo aver interrogato le due collection, normalizza ogni documento in un formato unico italiano (_normalizza_da_invoices / _normalizza_da_fatture_passive — se manca l'imponibile ma c'è un importo_totale>0, lo stima scorporando IVA al 22%: imponibile=importo_totale/1.22). Applica un dedup a due livelli: 1) stesso xml_filename presente in entrambe le collection → tiene la versione 'invoices'; 2) stessa chiave di contenuto (numero+piva+data+importo arrotondato) → tiene il documento con prima nota/pagamento già collegato. Arricchisce ogni fattura con fornitore_metodo_pagamento leggendo l'anagrafica fornitori (una singola query con $or su tutte le P.IVA coinvolte, non N+1). Pagina in memoria (skip/limit applicati DOPO l'unione, non a livello Mongo).",
+      "formula_matematica": "Stima IVA quando mancante: imponibile = round(importo_totale / 1.22, 2); iva = round(importo_totale - imponibile, 2) (aliquota 22% assunta come default).",
+      "aggiornamento_ui": "setFatture(items) sull'array ricevuto da res.data.fatture; le card statistiche derivano invece da una chiamata separata a /statistiche, non da questo array.",
+      "casi_errore": "catch(err) → console.error('Errore caricamento fatture:', err), NESSUN messaggio visibile all'utente (silenzioso) — la lista resta semplicemente vuota o non aggiornata."
+    },
+    {
+      "etichetta": "Cerca",
+      "dove_si_trova": "Fine della barra filtri",
+      "cosa_fa_al_click": "onClick={fetchFatture} — richiama esplicitamente il fetch (ridondante con l'effect reattivo che già si attiva ad ogni cambio filtro, ma utile per forzare un refresh immediato senza cambiare filtri, es. dopo aver corretto un dato altrove). Anche il tasto Enter nel campo Ricerca fa lo stesso (onKeyDown).",
+      "endpoint_chiamato": "GET /api/fatture-ricevute/archivio (stessi parametri correnti)",
+      "logica_backend": "Identica alla voce precedente.",
+      "formula_matematica": "N/A",
+      "aggiornamento_ui": "Uguale a sopra.",
+      "casi_errore": "Uguale a sopra."
+    },
+    {
+      "etichetta": "📄 Vedi (link per riga, sia in vista mobile che desktop)",
+      "dove_si_trova": "Colonna Azioni di ogni riga/card fattura",
+      "cosa_fa_al_click": "NON è un handler React: è un tag <a href=\"/api/fatture-ricevute/fattura/{id}/view-assoinvoice\" target=\"_blank\"> che apre il documento in una nuova scheda del browser. Nessun onClick, nessuna gestione di errore lato client.",
+      "endpoint_chiamato": "GET /api/fatture-ricevute/fattura/{id}/view-assoinvoice",
+      "logica_backend": "Funzione view_fattura_assoinvoice in fatture_module/crud.py (righe 370-463). Cerca la fattura in invoices (poi fallback ObjectId). Se esiste un file XML su disco (xml_file_path) lo legge; se è un .p7m estrae l'XML dalla busta firmata CAdES individuando il tag <?xml o <FatturaElettronica nei byte grezzi. Altrimenti usa il campo xml_raw/xml_content già salvato nel documento Mongo. Se l'XML è disponibile, applica una VERA trasformazione XSLT con il foglio di stile ufficiale app/static/FoglioStileAssoSoftware.xsl (via lxml.etree.XSLT) per produrre l'HTML — è lo stesso stile di visualizzazione standard 'AssoInvoice' usato da molti gestionali italiani. Se l'XML non è disponibile o la trasformazione fallisce, genera un HTML fatto in casa con generate_invoice_html() (fatture_module/helpers.py): card con header, badge stato, riquadri Imponibile/IVA/Totale (con scorporo automatico al 22% se manca l'imponibile), tabella righe da dettaglio_righe_fatture o dal campo linee. QUESTO HTML DI FALLBACK CONTIENE due bottoni JavaScript vanilla 'Paga in CASSA' e 'Paga in BANCA' con onclick che fa un fetch('/api/fatture-ricevute/paga-manuale', ...) direttamente dal browser — un secondo punto di ingresso al pagamento manuale, completamente indipendente da React, visibile solo quando la fattura non ha un XML sorgente disponibile.",
+      "formula_matematica": "Scorporo IVA di fallback nell'HTML custom: imponibile = importo_totale/1.22 se mancante.",
+      "aggiornamento_ui": "Apertura di una nuova scheda del browser con l'HTML della fattura (non un vero PDF: se serve il PDF allegato esiste un endpoint diverso, GET /fattura/{id}/pdf/{allegato_id}, che serve un file base64 salvato in allegati_fatture).",
+      "casi_errore": "Se la fattura non esiste, FastAPI risponde con una pagina di errore JSON grezza mostrata direttamente nella nuova scheda (nessuna gestione custom lato frontend, perché è un link diretto e non una chiamata Axios)."
+    },
+    {
+      "etichetta": "Badge stato pagamento (💵 ✓ Cassa / 🏦 ✓ Banca / 💵 Cassa / 🏦 Banca / — ) — SOLA LETTURA, non cliccabile",
+      "dove_si_trova": "Colonna Azioni di ogni riga, accanto al link Vedi",
+      "cosa_fa_al_click": "Nessuna azione: è un elemento <span> statico, non un bottone. Se la fattura è pagata (f.pagato || f.status==='paid' || f.stato_pagamento==='pagata'), mostra il metodo effettivo derivato con priorità: 1) prima_nota_cassa_id/prima_nota_banca_id presenti sulla fattura, 2) fallback su metodo_pagamento_effettivo/metodo_pagamento salvati sulla fattura. Se NON pagata ma il fornitore ha un metodo configurato in anagrafica (fornitore_metodo_pagamento — letto ESCLUSIVAMENTE dal campo dell'anagrafica fornitore, mai dal metodo di incasso dichiarato dal cedente nell'XML, per evitare confusione tra 'come il fornitore vuole essere pagato dai suoi clienti' e 'come io pago questo fornitore'), mostra un badge informativo con tooltip esplicito 'Metodo del fornitore — la registrazione avviene in Prima Nota'. Se nessun metodo è configurato, mostra un trattino con tooltip 'Fornitore senza metodo di pagamento — impostalo in Fornitori; la registrazione si fa in Prima Nota'.",
+      "endpoint_chiamato": "Nessuno — dato già presente nella risposta di /archivio",
+      "logica_backend": "N/A (calcolo puramente di visualizzazione lato frontend).",
+      "formula_matematica": "N/A",
+      "aggiornamento_ui": "N/A",
+      "casi_errore": "N/A"
+    },
+    {
+      "etichetta": "Banner deep-link '📄 Vedi la fattura adesso' / '✕' (chiudi banner)",
+      "dove_si_trova": "In cima alla pagina, visibile solo quando si arriva con ?invoice_id=<id> e la fattura non è nell'anno correntemente filtrato",
+      "cosa_fa_al_click": "Il link 'Vedi la fattura adesso' apre in nuova scheda /api/fatture-ricevute/fattura/{id}/view-assoinvoice (stesso comportamento del bottone Vedi). Il bottone '✕' richiama setInvoiceNotFoundWarning(null) e rimuove i parametri invoice_id/id dall'URL corrente.",
+      "endpoint_chiamato": "GET /api/fatture-ricevute/fattura/{id} (per determinare l'anno reale della fattura, prima di mostrare il banner) e GET .../view-assoinvoice (al click sul link)",
+      "logica_backend": "get_fattura_dettaglio (crud.py) — lookup semplice per id con fallback ObjectId; se anche questo fallisce, il banner mostra 'la fattura non esiste più o è stata eliminata'.",
+      "formula_matematica": "N/A",
+      "aggiornamento_ui": "Mostra/nasconde il banner giallo di avviso in cima pagina.",
+      "casi_errore": "Se il lookup diretto fallisce (catch), setInvoiceNotFoundWarning({id, notExist:true}) — banner con messaggio di fattura inesistente/cancellata."
+    },
+    {
+      "etichetta": "CopyLinkButton",
+      "dove_si_trova": "Accanto al bottone Cerca",
+      "cosa_fa_al_click": "Copia negli appunti l'URL corrente con i filtri correnti nel fragment — componente condiviso, nessuna chiamata API.",
+      "endpoint_chiamato": "Nessuno",
+      "logica_backend": "N/A",
+      "formula_matematica": "N/A",
+      "aggiornamento_ui": "Feedback di copia riuscita.",
+      "casi_errore": "N/A"
+    }
+  ],
+  "operazioni_di_registrazione": [
+    {
+      "nome": "Import fattura XML/P7M (singolo, bulk o via ZIP) — canali: upload manuale, Google Drive automatico (ogni 15'), PEC/SDI via casella email",
+      "sequenza_esatta": "Tutti i canali convergono sulla pipeline condivisa process_xml_bytes() in app/routers/invoices/fatture_upload.py (righe 933-1087), richiamata da POST /api/fatture/upload-xml (singolo), POST /api/fatture/upload-xml-bulk (multiplo/ZIP con estrazione ricorsiva anche di ZIP annidati), e dal job di sync Google Drive. Passi: 1) se il file è una busta .p7m (CAdES), estrae l'XML interno (extract_xml_from_p7m, con fallback su base64-decode); 2) decodifica il testo provando in ordine utf-8/utf-8-sig/latin-1/iso-8859-1; 3) fa il parsing con parse_fattura_xml (estrae fornitore, numero, date, importi, righe, riepiloghi IVA, riferimenti a fatture collegate); 4) calcola invoice_key = f'{numero}_{piva}_{data}' normalizzato e maiuscolo — se esiste già un documento con questa chiave in 'invoices', l'import si ferma con stato 'duplicate' (HTTP 409 sull'upload singolo); 5) ensure_supplier_exists(): cerca il fornitore per P.IVA (partita_iva o piva), poi per nome (regex sui primi 30 caratteri); se trovato aggiorna SOLO i campi anagrafici mancanti (mai sovrascrive dati già presenti) e genera alert FORN_INATTIVO_USATO/FORN_DATI_INCOERENTI se pertinenti; se non trovato CREA un nuovo fornitore con metodo_pagamento=None, giorni_pagamento=30, source='auto_from_invoice', e genera un alert 'fornitore_senza_metodo_pagamento' con link diretto alla scheda fornitore; 6) REGOLA metodo pagamento (citazione testuale dal codice): 'metodo pagamento SOLO dal fornitore (mai dall'XML). Se il fornitore non ha un metodo → sospesa → resta nei provvisori'; 7) calcola data_scadenza = data_fattura + 30 giorni (fisso, non legge le condizioni di pagamento reali dall'XML); 8) inserisce il documento in 'invoices' con doppio schema di campi EN+IT ridondanti (invoice_number/numero_fattura, total_amount/importo_totale, ecc.) e xml_raw (l'XML testuale intero) salvato in Mongo, status='imported'; 9) chiama auto_registra_prima_nota(): QUESTA FUNZIONE RITORNA SEMPRE None — nessun movimento di Prima Nota viene mai creato all'import, indipendentemente dal metodo del fornitore (vedi sotto, 'Rimozione del pagamento certo'); 10) se la fattura è una nota di credito (tipo_documento TD04/TD08) con riferimenti DatiFattureCollegate, _collega_nota_credito() cerca la fattura originale (stesso fornitore, invoice_number==IdDocumento del riferimento) e la collega bidirezionalmente: sulla NC scrive fattura_collegata_id, sull'originale scrive note_credito_collegate (append) e ricalcola importo_netto = round(importo_originale - somma di tutte le NC collegate, 2) — netting best-effort, se l'originale non si trova la NC resta salvata senza collegamento; 11) propaga un evento FATTURA_CREATED sull'event bus (best-effort, try/except), che attiva handler indipendenti per creare la partita in scadenziario, generare alert fornitore, scrivere audit log e aggiornare le giacenze di magazzino (warehouse_inventory) dalle righe merce.",
+      "collezioni_coinvolte": ["invoices", "fornitori", "alerts", "dettaglio_righe_fatture (indirettamente via event bus)", "warehouse_inventory (indirettamente via event bus)", "scadenziario_fornitori (indirettamente via event bus)"],
+      "campi_scritti": {
+        "invoices": "id, invoice_key, supplier_id, invoice_number/numero_fattura, invoice_date/data_fattura, data_scadenza, tipo_documento, supplier_name/cedente_denominazione, supplier_vat/cedente_piva, total_amount/importo_totale, imponibile, iva, fornitore{}, cliente{}, linee[], riepilogo_iva[], metodo_pagamento (dal fornitore o 'sospesa'), status='imported', source, filename, xml_raw, anno, created_at",
+        "fornitori (se nuovo)": "id, nome, ragione_sociale, partita_iva, piva, codice_fiscale, metodo_pagamento=None, giorni_pagamento=30, source='auto_from_invoice', dati_incompleti=False",
+        "alerts (se fornitore nuovo)": "tipo='fornitore_senza_metodo_pagamento', fornitore_id, fornitore_piva, priorita='alta', link=/fornitori?piva=..."
+      },
+      "effetti_collaterali": "La fattura resta sempre in stato 'imported'/non pagata: nessun movimento contabile viene creato in questa fase. Se manca il metodo del fornitore, la fattura verrà classificata come 'sospesa' nella pagina Prima Nota → Provvisori in attesa di conferma manuale dell'utente."
+    },
+    {
+      "nome": "Pagamento manuale di una fattura (Cassa o Banca) — invocato da Scadenze, Dashboard, Fornitori o dal bottone di fallback nella vista AssoInvoice, NON da questa pagina",
+      "sequenza_esatta": "Endpoint POST /api/fatture-ricevute/paga-manuale (app/routers/fatture_module/pagamento.py, righe 14-127). Body: fattura_id, scadenza_id (opzionale), importo, metodo ('cassa' o 'banca', default 'banca'), data_pagamento, fornitore, numero_fattura. Validazione: importo>0 e metodo in {cassa,banca} obbligatori (400 altrimenti — nessun altro metodo, es. assegno, è gestibile da questo endpoint). Punto esplicito nel codice: 'La riconciliazione è un processo separato (estratto conto bancario). Il pagamento manuale via banca NON deve auto-riconciliare la fattura' → auto_riconciliato è sempre False. Sceglie la collection target (prima_nota_cassa o prima_nota_banca) in base al metodo. Dedup: se esiste già un movimento con quel fattura_id nella collection target, lo riusa invece di duplicarlo. Altrimenti crea un nuovo movimento con stato='confermato', provvisorio=False (quindi REGISTRATO SUBITO COME DEFINITIVO, non come provvisorio in attesa di conferma — è un flusso alternativo e più diretto rispetto al percorso 'Prima Nota → tab Provvisori → conferma'), riconciliato=False, source='pagamento_manuale'. Se è passato scadenza_id, aggiorna la relativa voce in scadenziario_fornitori a stato='pagato'. Aggiorna la fattura in 'invoices' con status='paid', pagato=True, stato_pagamento='pagata', data_pagamento, metodo_pagamento_effettivo, e valorizza prima_nota_cassa_id oppure prima_nota_banca_id (l'altro azzerato). Propaga evento FATTURA_PAGATA sull'event bus (best-effort).",
+      "collezioni_coinvolte": ["prima_nota_cassa oppure prima_nota_banca", "invoices", "scadenziario_fornitori (se scadenza_id presente)"],
+      "campi_scritti": {
+        "prima_nota_cassa/banca": "id, data, descrizione='Pagamento Fatt. {numero} - {fornitore}', causale='Pagamento fattura fornitore', importo, tipo='uscita', categoria='fornitori', stato='confermato', fattura_id, metodo_pagamento, provvisorio=False, riconciliato=False, source='pagamento_manuale'",
+        "invoices": "status='paid', pagato=True, stato_pagamento='pagata', data_pagamento, metodo_pagamento_effettivo, prima_nota_cassa_id/prima_nota_banca_id"
+      },
+      "effetti_collaterali": "Diverso e più diretto del flusso 'Prima Nota Provvisori → conferma': qui il movimento nasce già confermato/definitivo. È il meccanismo usato in pratica per pagare una fattura dalle pagine Scadenze/Dashboard/Fornitori."
+    },
+    {
+      "nome": "Eliminazione di una fattura con cascade delete e doppia conferma",
+      "sequenza_esatta": "Endpoint DELETE /api/fatture/{invoice_id}?force=&hard_delete= (app/routers/invoices/fatture_upload.py, righe 1472-1549). NOTA: nessun bottone in ArchivioFattureRicevute.jsx richiama questo endpoint — l'unico chiamante individuato nel frontend è l'hook useData.js (funzione deleteFattura), che risulta non importato da alcuna pagina attiva; l'endpoint resta comunque il meccanismo di cascade-delete ufficiale del sistema, documentato qui perché richiesto esplicitamente. Sequenza: 1) recupera la fattura (404 se assente); 2) CascadeOperations.is_fattura_registrata + get_entita_correlate calcolano cosa verrebbe toccato (prima nota, scadenze, movimenti magazzino, riconciliazioni, assegni collegati); 3) BusinessRules.can_delete_invoice blocca sempre (errore, non superabile nemmeno con force) se la fattura è già pagata (payment_status='paid' o pagato=True) o con pagamento parziale, o se status='registered'; genera solo un warning (superabile con force=true) se ha movimenti di magazzino; 4) se ci sono warning o la fattura risulta 'registrata' (ha prima nota/scadenze/ecc.) e force non è stato passato, la richiesta NON esegue l'eliminazione: ritorna {status:'warning', require_force:true, warnings, entita_correlate} — pattern di doppia conferma, il chiamante deve ripetere la richiesta con force=true; 5) se la validazione bloccante fallisce del tutto → HTTP 400; 6) altrimenti esegue CascadeOperations.delete_fattura_cascade(db, invoice_id, hard_delete) — di default hard_delete=False (soft delete).",
+      "collezioni_coinvolte": ["invoices", "dettaglio_righe_fatture", "prima_nota_banca", "prima_nota_cassa", "scadenziario_fornitori", "warehouse_movements", "riconciliazioni", "assegni", "partite_aperte", "alerts", "riconciliazioni_match"],
+      "campi_scritti": {
+        "dettaglio_righe_fatture": "soft: {deleted:True, deleted_at} — hard: delete_many",
+        "prima_nota_banca/cassa": "soft: {deleted:True, status:'deleted', deleted_at, note} — hard: delete_many. Il campo status='deleted' è quello letto da TUTTE le query di riepilogo (Prima Nota, Finanziaria, Bilancio): senza impostarlo il movimento resterebbe 'vivo' anche a fattura cancellata",
+        "scadenziario_fornitori": "soft: {deleted:True, deleted_at, stato:'annullato'} — hard: delete_many",
+        "warehouse_movements": "sempre e solo ANNULLATO, mai eliminato: {annullato:True, annullato_at, note_annullamento}",
+        "riconciliazioni": "sempre hard delete_many (match scadenza_id con regex sull'id fattura)",
+        "assegni": "sganciato, mai eliminato: $unset su fattura_collegata/numero_fattura/data_fattura",
+        "partite_aperte": "soft: solo quelle in stato aperta/parziale → {stato:'annullata', annullata_at, motivo_annullamento} — hard: delete_many",
+        "alerts": "sempre risolti anche in soft-delete: {stato:'risolto', risolto:True, resolved_by:'cascade_delete'}",
+        "riconciliazioni_match": "{stato:'respinto', respinto_at, motivo:'fattura eliminata'} per quelli in stato confermato/candidato",
+        "invoices": "soft: {status:'deleted', entity_status:'deleted', deleted_at} — hard: delete_one (eseguito due volte identiche nel codice, refuso innocuo, non impatta il risultato)"
+      },
+      "effetti_collaterali": "Operazione NON transazionale (nessuna sessione Mongo): un errore a metà lascia uno stato parzialmente applicato, mitigato dal fatto che ogni fase è avvolta in try/except che accumula in risultato['errori'] senza interrompere le fasi successive."
+    },
+    {
+      "nome": "Rimozione del 'pagamento certo' (cambio di comportamento recente, luglio 2026) — cosa succede oggi cambiando il metodo di pagamento di un fornitore",
+      "sequenza_esatta": "In passato esisteva un flag booleano pagamento_certo sul fornitore che permetteva, per fornitori senza ambiguità (es. Amazon: sempre e solo bonifico), di registrare automaticamente e immediatamente in Prima Nota ogni fattura importata, saltando la conferma manuale. Questo meccanismo è stato RIMOSSO. Prova diretta nel codice, funzione auto_registra_prima_nota() in app/routers/invoices/fatture_upload.py: la funzione ritorna sempre None indipendentemente dal metodo passato, con questo commento testuale: 'il metodo impostato sul fornitore è solo un SUGGERIMENTO, mai una registrazione automatica — una fattura può finire pagata diversamente da come previsto, quindi resta sempre provvisoria in attesa di conferma manuale dell'utente da Prima Nota → Provvisori. Il pagamento certo che permetteva di saltare questa conferma per singoli fornitori è stato rimosso'. Conferma incrociata in app/routers/prima_nota_module/sync.py: sia il side-effect di auto-conferma silenziosa dentro la GET dei provvisori (righe 674-758) sia il job schedulato ogni 30 minuti auto_conferma_provvisori_per_metodo() sono stati disattivati — quest'ultimo oggi si limita a produrre un report di classificazione (contatori 'restate_in_provvisoria_*') senza eseguire alcuna scrittura, e ritorna esplicitamente il messaggio \"Il 'pagamento certo' è stato rimosso: nessuna fattura viene più spostata automaticamente, restano tutte in Provvisoria per la conferma manuale\". Anche il dizionario PAYMENT_METHODS in app/routers/suppliers_module/common.py conferma nel commento che 'certo è stato rimosso: il sistema non può sapere con certezza dove imputare il pagamento solo dal metodo impostato in anagrafica'. CONSEGUENZA PRATICA: oggi, cambiare il metodo di pagamento di un fornitore (da Fornitori.jsx) NON tocca in alcun modo le fatture già importate: nessuna fattura cambia stato, nessun movimento di Prima Nota viene creato o modificato. Ogni fattura importata da XML resta sempre status='imported'/non pagata finché l'utente non la conferma manualmente da Prima Nota → tab Provvisori, oppure la paga esplicitamente da Scadenze/Dashboard/Fornitori tramite paga-manuale, oppure — solo su azione batch amministrativa esplicita, mai automatica — tramite l'endpoint POST /api/fatture-ricevute/backfill-autoroute.",
+      "collezioni_coinvolte": ["invoices (nessuna scrittura contabile automatica)", "fornitori (solo il campo metodo_pagamento viene aggiornato, isolatamente)"],
+      "campi_scritti": {"fornitori": "metodo_pagamento, metodo_pagamento_dal, storico_metodi_pagamento (append)"},
+      "effetti_collaterali": "Un commento residuo in Fornitori.jsx (righe ~2383-2384: 'L'auto-conferma delle fatture per metodo fornitore è AUTOMATICA: avviene all'import di ogni fattura e col job ogni 30 minuti') è OBSOLETO e contraddice il comportamento reale attuale — segnalato come incoerenza di documentazione interna da correggere, non riflette più il codice."
+    }
+  ],
+  "collegamenti_con_altre_pagine": [
+    "Import Documenti (/documenti/import) — è dove avviene realmente l'upload XML/ZIP delle fatture (POST /api/fatture/upload-xml-bulk); l'empty-state di questa pagina rimanda esplicitamente lì ('Vai a Import Unificato per importare fatture').",
+    "Scadenze.jsx, Dashboard.jsx (widget scadenze), Fornitori.jsx (modale Estratto Fatture) — sono le pagine dove avviene realmente il pagamento manuale (POST /api/fatture-ricevute/paga-manuale), non in questo archivio.",
+    "Prima Nota (PrimaNota.jsx, tab Provvisori) — è dove le fatture 'sospese'/provvisorie attendono la conferma manuale dell'utente (endpoint POST /api/prima-nota/provvisori/conferma), flusso indipendente dal pagamento manuale diretto sopra.",
+    "Fornitori.jsx — l'anagrafica fornitore determina il metodo_pagamento mostrato come badge informativo qui e il valore di fallback 'sospesa' se non configurato.",
+    "Corrispettivi.jsx — tab gemello sotto lo stesso hub FattureHub.jsx, riguarda gli scontrini fiscali giornalieri e non le fatture fornitore.",
+    "Admin.jsx — card dedicata allo stato/sync manuale dell'ingest automatico da Google Drive (GET/POST /api/fatture/drive/status, /drive/sync)."
+  ],
+  "popup_e_modali_presenti": [
+    "Nessun vero modale nativo di questa pagina: il 'dettaglio fattura' si apre sempre in una NUOVA SCHEDA del browser (target=\"_blank\" su /api/fatture-ricevute/fattura/{id}/view-assoinvoice), non in un overlay in-page.",
+    "Componente condiviso ModalFattura.jsx (usato da ALTRE pagine come Scadenze, Prima Nota Provvisori, Fornitori, non da ArchivioFattureRicevute.jsx stessa) che mostra la stessa vista AssoInvoice dentro un <iframe> in un vero modale in-page.",
+    "Banner di avviso (non un vero modale, un pannello inline) per il deep-link ?invoice_id= quando la fattura richiesta non è nell'anno correntemente filtrato o non esiste più."
+  ]
+}

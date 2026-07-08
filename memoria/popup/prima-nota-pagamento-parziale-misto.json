@@ -1,0 +1,42 @@
+{
+  "nome_popup": "Modale \"Pagamento parziale (Misto)\"",
+  "file_sorgente": "frontend/src/pages/PrimaNota.jsx (righe 1585-1751, definito inline nel componente principale, non in un file separato)",
+  "pagine_da_cui_si_apre": ["Prima Nota (PrimaNota.jsx) — tab PROVVISORI"],
+  "come_si_apre": "Click sul bottone 'Misto' presente su ogni card fattura del tab Provvisori (riga ~1020). Il click esegue setParzialeImportoCassa('') per azzerare il campo e poi setParzialeModal(p) passando l'intero oggetto provvisorio (fattura) selezionato, che fa comparire il modale (reso condizionalmente con {parzialeModal && (...)}).",
+  "scopo": "Sostituisce un vecchio prompt() nativo del browser (commento esplicito nel codice: 'sostituisce il vecchio prompt() del browser'). Permette di dividere il pagamento di UNA fattura fornitore ancora provvisoria tra CASSA (contanti) e BANCA (bonifico): l'utente inserisce solo la quota pagata in contanti, il residuo per la banca viene calcolato automaticamente e mostrato prima della conferma, evitando errori di calcolo manuale.",
+  "dati_mostrati": "Tutti i dati vengono dall'oggetto 'provvisorio' passato al momento dell'apertura (già presente in memoria, nessuna nuova fetch): fornitore (troncato a 40 caratteri), numero fattura (fattura_numero), totale fattura (importo, formattato a 2 decimali), fattura_id, fattura_data. Il residuo banca è calcolato client-side in tempo reale mentre l'utente digita l'importo cassa.",
+  "campi_e_bottoni": [
+    {
+      "elemento": "Input numerico 'Importo pagato in CASSA' (type=number, step=0.01, min=0, max=importo fattura, autoFocus)",
+      "cosa_fa": "Aggiorna lo stato parzialeImportoCassa ad ogni digitazione (onChange). Il valore viene poi validato in una IIFE che calcola ci=parseFloat(parzialeImportoCassa) e valido = !isNaN(ci) && ci>0 && ci<=importo fattura.",
+      "endpoint_chiamato": "nessuno (solo calcolo locale)",
+      "validazioni": "Se valido, mostra il riquadro 'Residuo in BANCA' = round((importoTotale - ci) * 100) / 100. Se non valido (vuoto, 0, negativo, o maggiore del totale fattura) il riquadro residuo non appare e il bottone Conferma resta disabilitato."
+    },
+    {
+      "elemento": "Bottone 'Annulla'",
+      "cosa_fa": "onClick => setParzialeModal(null): chiude il modale senza inviare alcuna richiesta. Disabilitato (cursor:'wait') mentre parzialeSaving=true, ma resta comunque cliccabile solo se non in salvataggio.",
+      "endpoint_chiamato": "nessuno",
+      "validazioni": "n/d"
+    },
+    {
+      "elemento": "Bottone 'Conferma' (label diventa 'Salvataggio...' durante l'invio)",
+      "cosa_fa": "Disabilitato se !valido || parzialeSaving. Al click: setParzialeSaving(true), poi POST /api/pagamenti/registra per la quota cassa (importo=ci, metodo='contanti'); se residuoBanca>0 esegue una SECONDA POST /api/pagamenti/registra per il residuo (metodo='bonifico'). Le due chiamate sono sequenziali (await in sequenza, non in parallelo). Al successo di entrambe: rimuove la fattura dall'array locale provvisori (setProvvisori filter su fattura_id) e chiude il modale (setParzialeModal(null)).",
+      "endpoint_chiamato": "POST /api/pagamenti/registra (chiamata 1 volta se residuoBanca=0, altrimenti 2 volte in sequenza)",
+      "validazioni": "Il bottone è disabilitato finché !valido (importo cassa non compilato, ≤0 o > totale fattura). Nessuna validazione lato client sul secondo importo (residuo), calcolato automaticamente e sempre coerente per costruzione (residuo = totale - cassa)."
+    },
+    {
+      "elemento": "Click fuori dal riquadro (overlay scuro)",
+      "cosa_fa": "onClick sull'overlay esterno => !parzialeSaving && setParzialeModal(null): chiude il modale come Annulla, ma SOLO se non è in corso un salvataggio (per evitare di interrompere le due chiamate POST in volo). Il click dentro il riquadro bianco non chiude (stopPropagation).",
+      "endpoint_chiamato": "nessuno",
+      "validazioni": "n/d"
+    }
+  ],
+  "cosa_succede_alla_conferma": "1) POST /api/pagamenti/registra con {fattura_id, importo: importoCassaInserito, metodo:'contanti', data: fattura_data, note:'€{cassa} di €{totale}'}. Questo endpoint (app/routers/multi_pagamento.py::registra_pagamento) crea un documento nella collection 'pagamenti' (fattura_id, importo, metodo, data, note, prima_nota_id inizialmente null), poi crea un movimento in prima_nota_cassa (categoria='Fatture', riferimento='PAG-{pagamento_id}', descrizione='Pag. contanti Fatt. {numero} - {fornitore troncato}') e aggiorna il pagamento con prima_nota_id/prima_nota_tipo. 2) Se residuoBanca>0, seconda POST /api/pagamenti/registra identica ma con metodo='bonifico' e note='Residuo banca €{residuo}': crea un secondo documento 'pagamenti' e un movimento in prima_nota_banca. 3) Dopo ciascuna registrazione, il backend richiama _ricalcola_stato_fattura: somma TUTTI i pagamenti registrati per quella fattura in 'pagamenti' e aggiorna invoices.stato_pagamento su 'pagata' (|residuo|≤0.05), 'parzialmente_pagata' (residuo>0.05), 'eccedenza' (residuo<-0.05) o 'non_pagata'; scrive anche totale_pagato, residuo_da_pagare, num_pagamenti sulla fattura. 4) Nel frontend, al termine di entrambe le chiamate, la fattura viene rimossa dall'array 'provvisori' in memoria (senza un reload completo di loadAllData()) e il modale si chiude.",
+  "come_si_chiude": [
+    "Bottone 'Annulla' (se non in salvataggio)",
+    "Click sull'overlay scuro fuori dal riquadro (se non in salvataggio)",
+    "Conferma riuscita (chiusura automatica dopo il successo di entrambe le POST)",
+    "Nessuna chiusura con tasto Esc gestita esplicitamente nel codice"
+  ],
+  "effetto_su_pagina_sottostante": "La fattura confermata sparisce immediatamente dalla lista Provvisori (aggiornamento locale ottimistico, NON un loadAllData() completo — quindi i saldi Cassa/Banca mostrati nelle card di riepilogo restano quelli calcolati all'ultimo caricamento fino al prossimo refresh manuale o cambio filtro). In caso di errore su una delle due POST, viene mostrato alert('Errore: ' + dettaglio) e il modale resta aperto con parzialeSaving riportato a false (finally), permettendo di ritentare."
+}

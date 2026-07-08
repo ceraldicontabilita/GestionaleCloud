@@ -1,0 +1,102 @@
+{
+  "pagina": "Integrazioni OpenAPI.it (XBRL Bilanci Camera di Commercio)",
+  "url": "https://impresasemplice.online/integrazioni-openapi",
+  "file_sorgente_frontend": [
+    "frontend/src/pages/hub/IntegrazioniHub.jsx",
+    "frontend/src/pages/IntegrazioniOpenAPI.jsx"
+  ],
+  "file_sorgente_backend": [
+    "app/routers/openapi_it.py (montato su prefix /api/openapi in app/router_registry.py riga ~275)"
+  ],
+  "scopo_generale": "Pagina che permette di richiedere bilanci ufficiali in formato XBRL (e PDF/verbale assemblea) dalla Camera di Commercio tramite il servizio a pagamento OpenAPI.it (endpoint 'bilancio-ottico'). L'utente inserisce la Partita IVA di un'azienda, opzionalmente l'anno di chiusura, e invia la richiesta; il bilancio viene elaborato in modo ASINCRONO da OpenAPI.it (10-15 minuti) e l'utente deve poi cliccare 'Verifica' sulla riga corrispondente per controllarne lo stato. La pagina mostra anche una tab 'Configurazione' puramente informativa su come impostare la API key. IMPORTANTE: nonostante il nome del componente e della cartella ('IntegrazioniOpenAPI'), questa pagina NON è collegata al router app/routers/openapi_imprese.py (montato su /api/openapi-imprese), che è un servizio DIVERSO — arricchimento anagrafico fornitori (ragione sociale, PEC, SDI, ATECO) — usato altrove nell'app (verosimilmente dalla scheda Fornitori), non da questa schermata.",
+  "bottoni_azioni": [
+    {
+      "etichetta": "🔄 Aggiorna Stato (header pagina)",
+      "cosa_fa_al_click": "Richiama loadStatus(): imposta loading=true, interroga lo stato del servizio XBRL e aggiorna la card di stato in alto (badge 'Configurato'/'Non configurato' e riga 'Stato: ...').",
+      "endpoint_chiamato": "GET /api/openapi/xbrl/status",
+      "logica_backend": "get_xbrl_status() in openapi_it.py NON fa nessuna chiamata esterna né controlla realmente se OPENAPI_IT_KEY è impostata: restituisce sempre un oggetto statico con status='available', environment (sandbox/produzione da env OPENAPI_IT_ENV), base_url, description, features, tassonomia e costo_stimato ('€2.95 - €4.50 per bilancio').",
+      "formula_matematica": "nessuna",
+      "aggiornamento_ui": "setXbrlStatus(response.data); la card 'XBRL - Bilanci' mostra badge(xbrlStatus?.api_key_configured ? 'success':'error') e il testo 'Stato: {xbrlStatus?.status}'.",
+      "casi_errore": "BUG CONFERMATO leggendo il codice: il frontend legge il campo xbrlStatus?.api_key_configured per decidere il badge 'Configurato'/'Non configurato' e per il testo in tab Configurazione ('(configurata)'/'(mancante)'), ma il backend NON restituisce mai un campo api_key_configured (i campi reali sono status, environment, base_url, description, features, tassonomia, costo_stimato). Risultato pratico: il badge mostra SEMPRE '✗ Non configurato' e il campo API Key mostra SEMPRE '(mancante)', indipendentemente dal fatto che OPENAPI_IT_KEY sia realmente impostata o meno nel .env del backend. Se la chiamata fallisce (es. rete), il .catch() imposta { status: 'error' } e il badge resta comunque 'Non configurato'."
+    },
+    {
+      "etichetta": "Tab '📊 XBRL Bilanci'",
+      "cosa_fa_al_click": "setActiveTab('xbrl') + richiama loadXbrlRequests() per ricaricare la tabella delle richieste recenti.",
+      "endpoint_chiamato": "GET /api/openapi/xbrl/storico-richieste?limit=20",
+      "logica_backend": "get_storico_richieste_xbrl(limit) legge dalla collection MongoDB 'richieste_bilanci', ordina per created_at decrescente e restituisce { richieste: [...], count }.",
+      "formula_matematica": "nessuna",
+      "aggiornamento_ui": "setXbrlRequests(res.data.richieste || []) popola la tabella 'Richieste Recenti'.",
+      "casi_errore": "In caso di eccezione viene solo loggato in console (console.error), la tabella resta con i dati precedenti o vuota."
+    },
+    {
+      "etichetta": "Tab '⚙️ Configurazione'",
+      "cosa_fa_al_click": "setActiveTab('config'); nessuna chiamata API. Mostra solo una tabella statica con il campo API Key mascherato e istruzioni testuali su come rigenerare/aggiornare OPENAPI_IT_KEY nel .env e riavviare il backend.",
+      "endpoint_chiamato": "nessuno",
+      "logica_backend": "nessuna (solo dati già in xbrlStatus caricati al mount)",
+      "formula_matematica": "nessuna",
+      "aggiornamento_ui": "Cambia il pannello visibile.",
+      "casi_errore": "vedi bug api_key_configured sopra: il valore mostrato è sempre '(mancante)'."
+    },
+    {
+      "etichetta": "📤 Richiedi Bilancio (data-testid=richiedi-xbrl-btn)",
+      "cosa_fa_al_click": "richiediXbrl(): se il campo Partita IVA è vuoto mostra alert('Inserisci la Partita IVA') e interrompe. Altrimenti costruisce payload { partita_iva, anno_chiusura? (solo se valorizzato, convertito con parseInt) }, imposta xbrlLoading=true, chiama l'API, mostra il risultato e ricarica la lista richieste.",
+      "endpoint_chiamato": "POST /api/openapi/xbrl/richiedi-bilancio",
+      "logica_backend": "richiedi_bilancio_xbrl() in openapi_it.py: costruisce payload {cf_piva_id: partita_iva, anno_chiusura?} e fa una POST HTTP verso {VISURE_BASE_URL}/bilancio-ottico (sandbox: https://test.visurecamerali.openapi.it, produzione: https://visurecamerali.openapi.it, selezionata da env OPENAPI_IT_ENV) con header Authorization: Bearer OPENAPI_IT_KEY. Se OpenAPI.it risponde 200/201/202, legge result['id'] come request_id e INSERISCE un documento nella collection 'richieste_bilanci' con {id, partita_iva, anno_chiusura, status:'pending', created_at}. Risponde al frontend con {status:'pending', request_id, message, check_url}. Se OpenAPI.it risponde con errore, solleva HTTPException con lo status code e il corpo di errore ricevuto; se c'è un errore di rete (httpx.HTTPError) risponde 500.",
+      "formula_matematica": "nessuna",
+      "aggiornamento_ui": "setXbrlResult(res.data) mostra un box verde con il messaggio e l'ID richiesta; viene richiamata loadXbrlRequests() per aggiornare la tabella.",
+      "casi_errore": "Se manca la Partita IVA: alert bloccante lato frontend, nessuna chiamata. Se la POST fallisce: alert('Errore: ' + e.response?.data?.detail || e.message). Nota: il backend NON valida il formato della Partita IVA (lunghezza/cifre) prima di inviarla a OpenAPI.it, a differenza di app/routers/openapi_imprese.py che invece valida 11 cifre."
+    },
+    {
+      "etichetta": "🔄 Aggiorna (card Richieste Recenti)",
+      "cosa_fa_al_click": "Richiama di nuovo loadXbrlRequests().",
+      "endpoint_chiamato": "GET /api/openapi/xbrl/storico-richieste?limit=20",
+      "logica_backend": "come sopra.",
+      "formula_matematica": "nessuna",
+      "aggiornamento_ui": "Ricarica la tabella.",
+      "casi_errore": "console.error silenzioso."
+    },
+    {
+      "etichetta": "Verifica (per ogni riga della tabella richieste)",
+      "cosa_fa_al_click": "checkXbrlStatus(r.id): chiama l'endpoint di stato per quella richiesta e mostra un alert() con lo stato corrente; poi ricarica la lista.",
+      "endpoint_chiamato": "GET /api/openapi/xbrl/bilancio/{request_id}",
+      "logica_backend": "get_bilancio_xbrl(request_id) fa una GET verso {VISURE_BASE_URL}/bilancio-ottico/{request_id}. Se OpenAPI.it risponde 200, legge lo status: se 'completed' costruisce un oggetto con denominazione, partita_iva, anno_bilancio, data_deposito e dei download_links calcolati (/api/openapi/xbrl/download/{request_id}/xbrl|pdf|verbale) SOLO in memoria nella risposta HTTP — AGGIORNA nel DB (collection richieste_bilanci) SOLO i campi status e updated_at, MAI i dati del bilancio o i download_links. Se 'pending' restituisce solo un messaggio. Se 404 restituisce status='not_found'.",
+      "formula_matematica": "nessuna",
+      "aggiornamento_ui": "alert(`Stato: ${res.data.status}\\n${res.data.message || ''}`); poi loadXbrlRequests() per rinfrescare la tabella con lo status aggiornato.",
+      "casi_errore": "Se la richiesta fallisce: alert('Errore: ' + ...). BUG CONFERMATO: gli endpoint di DOWNLOAD (/api/openapi/xbrl/download/{request_id}/xbrl|pdf|verbale) menzionati nel campo download_links della risposta NON ESISTONO nel router openapi_it.py — non sono implementati da nessuna parte nel backend letto. Sarebbero comunque irraggiungibili dalla UI perché il pulsante di download (vedi sotto) non viene mai mostrato."
+    },
+    {
+      "etichetta": "📥 Download (link, visibile solo se stato='completed' E r.download_url è valorizzato)",
+      "cosa_fa_al_click": "Apre r.download_url in una nuova scheda (link <a target=\"_blank\">).",
+      "endpoint_chiamato": "nessuna chiamata API — è un semplice link HTML al valore del campo download_url della riga.",
+      "logica_backend": "N/A lato click, ma il campo che lo abilita viene letto da GET /api/openapi/xbrl/storico-richieste, che restituisce i documenti grezzi della collection 'richieste_bilanci'.",
+      "formula_matematica": "nessuna",
+      "aggiornamento_ui": "nessuno, è solo un link esterno.",
+      "casi_errore": "BUG CONFERMATO: il documento salvato in 'richieste_bilanci' non contiene MAI un campo 'download_url' (né al momento dell'inserimento in richiedi_bilancio_xbrl, né in nessun update successivo — get_bilancio_xbrl aggiorna solo status/updated_at). Di conseguenza r.download_url è sempre undefined e questo pulsante NON VIENE MAI MOSTRATO, anche quando lo stato di una richiesta risulta 'completed' tramite 'Verifica'."
+    }
+  ],
+  "operazioni_di_registrazione": [
+    {
+      "nome": "Richiesta bilancio XBRL",
+      "sequenza_esatta": "1) L'utente compila Partita IVA (obbligatoria) e Anno Chiusura (opzionale) nel form 'Richiedi Bilancio'. 2) Click su 'Richiedi Bilancio' → validazione lato frontend (piva non vuota). 3) POST /api/openapi/xbrl/richiedi-bilancio con {partita_iva, anno_chiusura?}. 4) Il backend invia una POST HTTP esterna a OpenAPI.it (endpoint bilancio-ottico) con la API key OPENAPI_IT_KEY. 5) Se OpenAPI.it accetta la richiesta (200/201/202), il backend inserisce UN NUOVO documento nella collection 'richieste_bilanci' con status='pending'. 6) Il backend risponde con request_id e messaggio. 7) Il frontend mostra il risultato e ricarica la tabella storico chiamando GET /api/openapi/xbrl/storico-richieste. 8) L'utente deve poi cliccare manualmente 'Verifica' (nessun polling automatico) per far avanzare lo status del record nel DB da 'pending' a 'completed'/'error'/altro.",
+      "collezioni_coinvolte": ["richieste_bilanci"],
+      "campi_scritti": {
+        "id": "request_id restituito da OpenAPI.it",
+        "partita_iva": "dal form",
+        "anno_chiusura": "dal form, opzionale",
+        "status": "'pending' alla creazione; aggiornato a valore restituito da OpenAPI.it solo quando l'utente clicca 'Verifica' (es. 'completed', 'error')",
+        "created_at": "timestamp ISO UTC alla creazione",
+        "updated_at": "timestamp ISO UTC, scritto SOLO dalla verifica di stato, non dalla creazione"
+      },
+      "effetti_collaterali": "Genera un costo reale sul conto OpenAPI.it (stimato €2.95-€4.50 per bilancio secondo la UI). Nessun collegamento automatico con altre collection (es. non aggiorna la scheda fornitore/bilancio nel gestionale): il dato del bilancio XBRL vero e proprio (base64 PDF/XBRL) non viene mai persistito nel database di GestionaleCloud, solo referenziato tramite l'ID richiesta esterno."
+    }
+  ],
+  "collegamenti_con_altre_pagine": [
+    "Nessun link/navigazione diretta verso altre pagine trovato nel codice di IntegrazioniOpenAPI.jsx.",
+    "Condivide l'Hub 'Integrazioni' (frontend/src/pages/hub/IntegrazioniHub.jsx) con la pagina Gestione PagoPA (sotto-vista raggiunta tramite l'URL /pagopa).",
+    "Distinto (nome simile ma NON collegato) dal router app/routers/openapi_imprese.py che arricchisce le schede fornitore — probabilmente usato dalla pagina Fornitori, non da questa."
+  ],
+  "popup_e_modali_presenti": [
+    "Nessun modale (dialog) HTML nella pagina.",
+    "Uso di alert() nativo del browser per: 'Inserisci la Partita IVA' (validazione mancante), errori delle chiamate API (richiediXbrl, checkXbrlStatus), e per mostrare l'esito di 'Verifica' (stato + messaggio)."
+  ]
+}

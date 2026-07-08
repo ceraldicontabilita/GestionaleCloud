@@ -1,0 +1,97 @@
+{
+  "pagina": "Gestione Mutui",
+  "url": "https://impresasemplice.online/contabilita/mutui",
+  "file_sorgente_frontend": [
+    "/home/user/GestionaleCloud/frontend/src/pages/Mutui.jsx"
+  ],
+  "file_sorgente_backend": [
+    "/home/user/GestionaleCloud/app/routers/mutui.py",
+    "/home/user/GestionaleCloud/app/routers/mutui_parser.py"
+  ],
+  "scopo_generale": "Pagina di consultazione e gestione dei mutui/finanziamenti bancari aziendali. Mostra statistiche aggregate (importo totale accordato, già pagato, debito residuo, percentuale di completamento e di riconciliazione), le prossime scadenze rate nei 30 giorni, e per ciascun mutuo una card espandibile con l'intero piano di ammortamento rata per rata (numero, scadenza, quota capitale, quota interessi, totale, stato Pagata/Da pagare/Scaduta, esito riconciliazione). L'unica azione interattiva diretta nella UI è il bottone di riconciliazione automatica delle rate pagate con i movimenti dell'estratto conto bancario. I mutui e i relativi piani di ammortamento vengono creati/importati tramite un parser di PDF (endpoint dedicati in mutui_parser.py) che al momento NON risultano collegati a nessun bottone/form visibile in Mutui.jsx: l'import è quindi un'operazione backend-only o eseguita da un'altra parte dell'applicazione non coperta da questo file.",
+  "bottoni_azioni": [
+    {
+      "etichetta": "Riconcilia Automaticamente (in alto a destra, icona RefreshCw)",
+      "cosa_fa_al_click": "riconciliaAutomatico(): imposta riconciliaLoading=true e invia la POST con parametri fissi tolleranza_importo=1.0 e tolleranza_giorni=7 (valori hard-coded nel frontend, non modificabili dall'utente in questa pagina).",
+      "endpoint_chiamato": "POST /api/mutui/riconcilia",
+      "logica_backend": "Router mutui.riconcilia_mutui_con_estratto_conto(): 1) recupera TUTTI i mutui (nessun filtro). 2) Per ogni mutuo, per ogni rata con stato=='Pagata' e riconciliata!=true: calcola una finestra di ricerca [data_scadenza - tolleranza_giorni, data_scadenza + tolleranza_giorni] e un intervallo di importo [importo_totale - tolleranza_importo, importo_totale + tolleranza_importo]. 3) Cerca in db['estratto_conto_movimenti'] un movimento con data nella finestra, tipo='uscita', importo nell'intervallo, riconciliato!=true, e descrizione (o descrizione_originale) che matcha via regex case-insensitive 'MUTUO|RATA|FINANZIAMENTO'. 4) Se non trovato, tenta un fallback SENZA il filtro sulla descrizione, ma SOLO se la query per importo+data restituisce un candidato univoco (esattamente 1 risultato) — evita match ambigui con causali bancarie generiche. 5) Se trovato un match: aggiorna la rata nel mutuo (rate.$.riconciliata=true, movimento_bancario_id, data_pagamento_effettivo, note_riconciliazione='Riconciliazione automatica') e incrementa rate_riconciliate; marca il movimento bancario come riconciliato=true con tipo_documento='mutuo' e riferimenti al mutuo/rata; crea inoltre un nuovo movimento in db['prima_nota_banca'] (tipo='uscita', importo=rata totale, descrizione con dettaglio capitale/interessi, categoria='Rata mutuo', source='mutuo_rata', riferimenti mutuo_id/rata_numero/quota_capitale/quota_interessi, riconciliato=true) e salva il suo id sulla rata (prima_nota_banca_id). 6) Se nessun match: la rata viene contata come 'riconciliazioni_manuali_richieste' senza alcuna scrittura. 7) Al termine del ciclo su tutti i mutui, ricalcola per ciascun mutuo rate_riconciliate (contando le rate con riconciliata=true) e percentuale_riconciliazione = rate_riconciliate/rate_pagate*100, salvandoli sul documento mutuo.",
+      "formula_matematica": "Finestra temporale match: |data_movimento - data_scadenza_rata| <= tolleranza_giorni (7 gg default). Finestra importo match: |importo_movimento - importo_totale_rata| <= tolleranza_importo (1.00 EUR default). percentuale_riconciliazione (per mutuo) = rate_riconciliate / rate_pagate * 100, arrotondata a 2 decimali (0 se rate_pagate=0). percentuale_completamento (dashboard, calcolata altrove) = totale_pagato_capitale / importo_totale_accordato * 100.",
+      "aggiornamento_ui": "setLastRiconciliazione(dati) e loadData() per ricaricare mutui+statistiche aggiornate; poi un alert() nativo del browser con il conteggio di 'rate riconciliate automaticamente' e 'rate che richiedono riconciliazione manuale'.",
+      "casi_errore": "alert('Errore durante la riconciliazione') generico su qualunque eccezione lato client; lato server eventuali eccezioni non gestite tornano HTTP 500 con detail=str(e). Nota: se una rata ha data_scadenza in formato non parsabile con strptime('%d/%m/%Y'), viene semplicemente saltata (continue) senza errore visibile."
+    },
+    {
+      "etichetta": "Card mutuo (click sull'header per espandere/collassare)",
+      "cosa_fa_al_click": "toggleExpanded(mutuo.mutuo_id): mostra/nasconde il dettaglio del piano di ammortamento completo (tabella di tutte le rate) e i box riepilogo (Capitale Pagato, Interessi Pagati, Totale Versato).",
+      "endpoint_chiamato": "n/a (i dati delle rate sono già presenti nell'oggetto mutuo caricato da GET /api/mutui/ all'avvio pagina, nessuna chiamata aggiuntiva al click)",
+      "logica_backend": "n/a",
+      "formula_matematica": "n/a",
+      "aggiornamento_ui": "Espande/collassa la sezione dettaglio con tabella rate e riepilogo importi.",
+      "casi_errore": "n/a"
+    }
+  ],
+  "operazioni_di_registrazione": [
+    {
+      "nome": "Riconciliazione automatica rate-movimenti bancari (POST /api/mutui/riconcilia)",
+      "sequenza_esatta": "Descritta in dettaglio sopra nel bottone 'Riconcilia Automaticamente'. In sintesi: matching per data+importo+causale tra rate 'Pagata' non ancora riconciliate e movimenti di estratto_conto_movimenti con tipo='uscita', poi doppia scrittura di conferma (rata nel mutuo + movimento estratto conto) e generazione di un movimento gemello in prima_nota_banca.",
+      "collezioni_coinvolte": ["mutui", "estratto_conto_movimenti", "prima_nota_banca"],
+      "campi_scritti": {
+        "mutui.rate.$.riconciliata": "bool true",
+        "mutui.rate.$.movimento_bancario_id": "string, _id del movimento bancario matchato",
+        "mutui.rate.$.data_pagamento_effettivo": "data presa da data_valuta o data del movimento bancario",
+        "mutui.rate.$.note_riconciliazione": "'Riconciliazione automatica' | 'Riconciliazione manuale' (per l'endpoint manuale) | testo custom",
+        "mutui.rate.$.prima_nota_banca_id": "id del movimento gemello creato in prima_nota_banca",
+        "mutui.rate_riconciliate": "contatore incrementale, poi ricalcolato per intero mutuo a fine ciclo",
+        "mutui.percentuale_riconciliazione": "float ricalcolato a fine ciclo",
+        "estratto_conto_movimenti.riconciliato": "true",
+        "estratto_conto_movimenti.tipo_documento": "'mutuo'",
+        "estratto_conto_movimenti.documento_id": "mutuo_id",
+        "estratto_conto_movimenti.rata_numero": "numero rata riconciliata",
+        "prima_nota_banca (nuovo doc)": "tipo='uscita', importo=rata['importo_totale'], categoria='Rata mutuo', source='mutuo_rata', quota_capitale/quota_interessi copiate dalla rata, riconciliato=true"
+      },
+      "effetti_collaterali": "Impatta il saldo calcolato di prima_nota_banca (nuova uscita registrata) — è l'unico punto in cui il pagamento di una rata mutuo si traduce in un movimento di prima nota; se la riconciliazione automatica fallisce (nessun match), la rata resta 'Pagata' ma priva di qualunque movimento di prima nota collegato finché non si esegue una riconciliazione manuale."
+    },
+    {
+      "nome": "Riconciliazione manuale singola rata (PUT /api/mutui/{mutuo_id}/rate/{numero_rata}/riconcilia — endpoint presente nel backend ma NON risulta richiamato da alcun bottone in Mutui.jsx)",
+      "sequenza_esatta": "Riceve movimento_id esplicito (via query/param) e note opzionali. Cerca il movimento in estratto_conto_movimenti per ObjectId, con fallback per campo 'id' stringa. Se non trovato, 404. Aggiorna la rata specifica (stessa struttura di campi della riconciliazione automatica ma note_riconciliazione='Riconciliazione manuale' o testo custom), marca il movimento come riconciliato, e ricalcola rate_riconciliate/percentuale_riconciliazione per il mutuo.",
+      "collezioni_coinvolte": ["mutui", "estratto_conto_movimenti"],
+      "campi_scritti": {
+        "mutui.rate.$.riconciliata": "true",
+        "mutui.rate.$.movimento_bancario_id, data_pagamento_effettivo, note_riconciliazione": "come sopra",
+        "estratto_conto_movimenti.riconciliato/tipo_documento/documento_id/rata_numero": "come sopra"
+      },
+      "effetti_collaterali": "A differenza della riconciliazione automatica, QUESTO endpoint non crea un movimento gemello in prima_nota_banca — quindi una riconciliazione manuale non genera un'uscita di prima nota, solo il collegamento rata<->movimento bancario."
+    },
+    {
+      "nome": "Import piano di ammortamento da PDF (POST /api/mutui/parse-pdf, POST /api/mutui/import-pdf, POST /api/mutui/parse-multiple — nessuno di questi endpoint è richiamato da Mutui.jsx: probabilmente esposti per uso da altra pagina/flusso di import documenti, non coperta da questo file)",
+      "sequenza_esatta": "parse_mutuo_pdf(pdf_path) usa pdfplumber per estrarre il testo dal PDF (formato specifico: 'BPM - Banca Popolare di Milano'), poi applica regex per estrarre: intestatario, tipo_finanziamento, importo_accordato, numero_delibera, rate_residue_dichiarate. Per le rate usa una regex a riga singola che matcha 'N° rata | data DD/MM/YYYY | importo EUR | quota capitale EUR | quota interessi EUR | stato (Pagata|Da pagare|Scaduta)'. Ordina le rate per numero_rata. Calcola statistiche aggregate: rate_pagate/rate_da_pagare (conteggio per stato), totale_pagato_capitale/interessi/totale (somma sulle rate Pagata), debito_residuo_capitale/interessi/totale (somma sulle rate NON Pagata), prossima_rata (prima rata con stato 'Da pagare' nell'ordine). L'endpoint /parse-pdf restituisce solo un preview (nessuna scrittura DB). L'endpoint /import-pdf genera mutuo_id='mutuo_{numero_delibera}', verifica se esiste già (se sì e aggiorna_esistente=false, 400), e fa insert_one o update_one su db['mutui'] con il documento completo (rate incluse come array embedded nel documento mutuo, banca hard-coded 'BPM - Banca Popolare di Milano').",
+      "collezioni_coinvolte": ["mutui"],
+      "campi_scritti": {
+        "mutui.mutuo_id": "'mutuo_{numero_delibera}'",
+        "mutui.rate[]": "array di rate estratte dal PDF, ciascuna con numero_rata, data_scadenza, importo_totale, quota_capitale, quota_interessi, stato, riconciliata=false, movimento_bancario_id=null",
+        "mutui.totale_rate, rate_pagate, rate_da_pagare": "dalle statistiche del parser",
+        "mutui.totale_pagato_capitale/interessi/totale, debito_residuo_capitale/interessi/totale": "dalle statistiche del parser",
+        "mutui.prossima_data_scadenza, prossimo_importo": "dalla prima rata 'Da pagare' trovata",
+        "mutui.rate_riconciliate": "0 all'import",
+        "mutui.percentuale_riconciliazione": "0.0 all'import"
+      },
+      "effetti_collaterali": "Nessun collegamento automatico con prima_nota_banca al momento dell'import: le rate storiche marcate 'Pagata' dal PDF non generano movimenti di prima nota retroattivi, la riconciliazione (automatica o manuale) è l'unico meccanismo che collega rate pagate a movimenti/prima nota."
+    },
+    {
+      "nome": "CRUD manuale mutuo (POST/PUT/DELETE /api/mutui/{mutuo_id} — non richiamati da Mutui.jsx, endpoint di servizio)",
+      "sequenza_esatta": "create_mutuo: verifica unicità mutuo_id, insert_one con created_at/updated_at aggiunti lato server. update_mutuo: rimuove _id/mutuo_id/created_at dal payload, poi $set con update_data + updated_at. delete_mutuo: delete_one per mutuo_id.",
+      "collezioni_coinvolte": ["mutui"],
+      "campi_scritti": {},
+      "effetti_collaterali": "Nessuno oltre alla modifica diretta del documento mutuo; non tocca rate o prima nota."
+    }
+  ],
+  "collegamenti_con_altre_pagine": [
+    "Estratto Conto Bancario: fonte dei movimenti (collection estratto_conto_movimenti) usati come base per il matching della riconciliazione automatica/manuale.",
+    "Prima Nota Banca: destinazione dei movimenti di uscita generati automaticamente quando una rata mutuo viene riconciliata via /api/mutui/riconcilia (categoria 'Rata mutuo').",
+    "Chiusura Esercizio: il debito residuo dei mutui non risulta incluso esplicitamente nel bilancino di chiusura esercizio (che considera solo ricavi da corrispettivi e costi da acquisti/personale/ammortamenti/TFR) né nel riporto saldi dell'apertura nuovo esercizio (che riporta cassa, banca, debiti fornitori, assegni, TFR ma non menziona mutui) — collegamento contabile non implementato."
+  ],
+  "popup_e_modali_presenti": [
+    "Nessun vero modale/dialog nella pagina: la lista mutui è composta da card espandibili in-page (accordion), non popup.",
+    "Feedback della riconciliazione automatica mostrato con un semplice alert() nativo del browser (conteggio riconciliazioni automatiche vs manuali richieste), non un componente modale dedicato.",
+    "Nessuna interfaccia di upload PDF visibile in questa pagina, nonostante gli endpoint di parsing/import PDF esistano nel backend (mutui_parser.py) — probabile funzionalità non ancora collegata al frontend oppure gestita da un'altra pagina non inclusa in questa analisi."
+  ]
+}

@@ -1,0 +1,117 @@
+{
+  "pagina": "Previsioni Acquisti",
+  "url": "https://impresasemplice.online/contabilita/previsioni-acquisti",
+  "file_sorgente_frontend": [
+    "/home/user/GestionaleCloud/frontend/src/pages/PrevisioniAcquisti.jsx"
+  ],
+  "file_sorgente_backend": [
+    "/home/user/GestionaleCloud/app/routers/previsioni_acquisti.py"
+  ],
+  "scopo_generale": "Pagina che analizza lo storico degli acquisti (estratto dalle righe delle fatture XML passive) per mostrare statistiche di consumo (confronto anno corrente vs anno precedente, medie giornaliere/settimanali, frequenza di acquisto) e per generare previsioni di quanto e quando riordinare ogni prodotto nelle prossime N settimane, con relativo costo stimato. Non usa un modello statistico complesso (nessuna media mobile pesata né stagionalità): il calcolo è una semplice media aritmetica sull'intero periodo storico proiettata linearmente sul numero di giorni/settimane richiesti. E' pensata per un bar-pasticceria per aiutare l'imprenditore a decidere cosa e quanto ordinare ai fornitori abituali.",
+  "bottoni_azioni": [
+    {
+      "etichetta": "Tab '📈 Statistiche <anno>'",
+      "cosa_fa_al_click": "Imposta activeTab='statistiche' e ricarica i dati (loadData, triggerato anche da useEffect su [annoGlobale, activeTab, settimanePrevisione]).",
+      "endpoint_chiamato": "GET /api/previsioni-acquisti/statistiche?anno=<annoGlobale>",
+      "logica_backend": "Funzione statistiche_acquisti in previsioni_acquisti.py. Aggrega la collezione 'acquisti_prodotti' filtrando per anno=<anno richiesto> (e opzionalmente per nome prodotto, parametro non usato da questa pagina che filtra lato client). Raggruppa per descrizione_normalizzata sommando quantita e totale_linea, contando num_acquisti, tracciando primo/ultimo acquisto (date min/max). Per ciascun prodotto calcola i giorni_periodo effettivi (differenza tra ultimo e primo acquisto, minimo 1 giorno; se le date mancano usa GIORNI_LAVORATIVI_ANNO=340 come fallback). Esegue una seconda aggregazione identica sull'anno precedente (anno-1) per ottenere quantita_totale_prec. Calcola variazione_pct = ((quantita_corrente - quantita_precedente)/quantita_precedente)*100 (se anno precedente=0, variazione_pct=100 se c'è consumo quest'anno altrimenti 0). Assegna trend '↑' se variazione_pct>5, '↓' se <-5, altrimenti '→'.",
+      "formula_matematica": "media_giornaliera = quantita_totale / 340 (GIORNI_LAVORATIVI_ANNO fisso); media_settimanale = media_giornaliera * 7; frequenza_giorni = giorni_periodo / num_acquisti (giorni_periodo = ultimo_acquisto - primo_acquisto, minimo 1); variazione_pct = ((quantita_anno_corrente - quantita_anno_precedente) / quantita_anno_precedente) * 100",
+      "aggiornamento_ui": "Popola l'array statistiche mostrato nella lista prodotti (icona 📊), con badge di trend colorato (verde ↑ >5%, rosso ↓ <-5%, grigio → altrimenti) e percentuale di variazione. Il click su una riga espande i dettagli (spesa totale, n. ordini, frequenza in giorni, quantità anno precedente, date primo/ultimo acquisto).",
+      "casi_errore": "In caso di errore di rete, viene loggato in console (console.error) ma non mostrato alcun messaggio visibile all'utente; la lista resta vuota mostrando il messaggio 'Nessun dato trovato' con suggerimento di premere 'Popola Storico'."
+    },
+    {
+      "etichetta": "Tab '🔮 Previsioni'",
+      "cosa_fa_al_click": "Imposta activeTab='previsioni' e ricarica i dati usando come anno_riferimento l'anno globale meno 1 (annoGlobale - 1, quindi le previsioni si basano sempre sullo storico dell'anno precedente rispetto a quello selezionato).",
+      "endpoint_chiamato": "GET /api/previsioni-acquisti/previsioni?anno_riferimento=<annoGlobale-1>&settimane_previsione=<settimanePrevisione>",
+      "logica_backend": "Funzione previsioni_acquisti in previsioni_acquisti.py. Aggrega 'acquisti_prodotti' filtrando per anno=anno_riferimento, raggruppando per descrizione_normalizzata: somma quantita_totale, conta num_acquisti, raccoglie set di fornitori (addToSet), calcola prezzo_medio (media di prezzo_unitario). Scarta prodotti con quantita_totale<=0, ordina per quantita_totale decrescente, limite 200 prodotti.",
+      "formula_matematica": "media_settimanale = (quantita_totale_anno_riferimento / 340) * 7; quantita_prevista = media_settimanale * settimane_previsione; settimane_anno = 340/7 ≈ 48.57; frequenza_ordine_settimane = settimane_anno / num_acquisti (se num_acquisti=0 -> default 52); prossimo_ordine_tra_giorni = frequenza_ordine_settimane * 7; costo_stimato = quantita_prevista * prezzo_medio; costo_totale_stimato (mostrato in cima) = somma di costo_stimato su tutti i prodotti restituiti",
+      "aggiornamento_ui": "Popola l'array previsioni e il box riepilogativo 'Costo stimato prossime N settimane' (formatEuro(costoTotale)) mostrato solo se costoTotale>0. Ogni riga mostra quantità prevista, media/settimana e costo stimato; espandendo la riga si vedono quantità anno di riferimento, prezzo medio, ogni quante settimane si ordina di solito, tra quanti giorni è previsto il prossimo ordine e i fornitori abituali (max 3, da addToSet dell'anno di riferimento).",
+      "casi_errore": "Come sopra: errori loggati in console senza feedback visivo dedicato; se non ci sono prodotti risultato vuoto e messaggio 'Nessun dato trovato'."
+    },
+    {
+      "etichetta": "Selettore 'settimane_previsione' (select: 1/2/4/8/12 settimane, visibile solo nel tab Previsioni)",
+      "cosa_fa_al_click": "Aggiorna lo stato settimanePrevisione, il che rilancia automaticamente loadData tramite useEffect (dipendenza [annoGlobale, activeTab, settimanePrevisione]) richiamando l'endpoint /previsioni con il nuovo valore.",
+      "endpoint_chiamato": "GET /api/previsioni-acquisti/previsioni?anno_riferimento=&settimane_previsione=<valore selezionato>",
+      "logica_backend": "Stessa funzione previsioni_acquisti descritta sopra; cambia solo il moltiplicatore settimane_previsione nella formula quantita_prevista = media_settimanale * settimane_previsione.",
+      "formula_matematica": "quantita_prevista = media_settimanale * settimane_previsione (vedi bottone Tab Previsioni per dettaglio completo)",
+      "aggiornamento_ui": "Ricalcola e ridisegna tutta la lista previsioni e il costo totale stimato.",
+      "casi_errore": "n/a (nessuna validazione lato client; il backend vincola settimane_previsione tra 1 e 52 con Query(..., ge=1, le=52))"
+    },
+    {
+      "etichetta": "Bottone refresh '🔄' (data-testid=refresh-btn)",
+      "cosa_fa_al_click": "Richiama manualmente loadData() per ricaricare i dati del tab correntemente attivo, senza cambiare parametri.",
+      "endpoint_chiamato": "GET /api/previsioni-acquisti/statistiche?anno= oppure GET /api/previsioni-acquisti/previsioni?anno_riferimento=&settimane_previsione= a seconda del tab attivo",
+      "logica_backend": "Stessa logica delle rispettive funzioni statistiche_acquisti o previsioni_acquisti già descritte.",
+      "formula_matematica": "n/a (nessun nuovo calcolo, solo ri-esecuzione della query)",
+      "aggiornamento_ui": "Mostra lo stato 'loading' (spinner testuale ⏳ 'Caricamento...') mentre la richiesta è in corso, poi aggiorna la lista.",
+      "casi_errore": "Come sopra, errori solo in console."
+    },
+    {
+      "etichetta": "Bottone 'Popola Storico' (🔄 Popola Storico, data-testid=popola-storico-btn)",
+      "cosa_fa_al_click": "Invoca handlePopolaStorico(): disabilita il bottone (setPopolando(true)), chiama l'endpoint di popolamento storico, mostra un alert con l'esito (fatture processate e prodotti registrati), poi ricarica i dati (loadData()).",
+      "endpoint_chiamato": "POST /api/previsioni-acquisti/popola-storico",
+      "logica_backend": "Funzione popola_storico_da_fatture in previsioni_acquisti.py. Conta il totale documenti nella collezione 'invoices'. Poi itera con un cursore su TUTTE le fatture della collezione 'invoices' (senza filtro per anno o stato: rielabora l'intero storico ogni volta) e per ciascuna chiama registra_acquisto_da_fattura(db, fattura). Questa funzione estrae le righe (fattura['linee'] o fattura['lines']), per ognuna calcola: fornitore (supplier_name), anno e mese estratti da invoice_date (split su '-'), descrizione (o description), quantita (o quantity, default 1), prezzo_unitario (o unit_price), totale_linea (o total), unita_misura (o unit, default 'PZ' se assente), codice prodotto. Normalizza la descrizione in descrizione_normalizzata = descrizione.strip().upper()[:100] per permettere il raggruppamento tra fatture diverse dello stesso prodotto. Prima di inserire, verifica se esiste già un documento con la stessa combinazione {fattura_id, descrizione_normalizzata} nella collezione 'acquisti_prodotti' per evitare duplicati in caso di ri-esecuzione; se non esiste, inserisce un nuovo documento. Righe senza descrizione vengono saltate. Eventuali eccezioni per singola fattura vengono catturate, loggate e contate come errore senza interrompere il ciclo sulle altre fatture.",
+      "formula_matematica": "n/a (operazione di ETL/estrazione dati, non un calcolo previsionale). E' il passo di alimentazione dei dati storici su cui si basano poi le formule di statistiche_acquisti e previsioni_acquisti.",
+      "aggiornamento_ui": "Alert con testo '✅ Storico popolato!\\n\\nFatture processate: X\\nProdotti registrati: Y'. Dopo la chiusura dell'alert viene richiamato loadData() per aggiornare la lista visibile nel tab corrente.",
+      "casi_errore": "In caso di eccezione nella chiamata POST, alert con '❌ Errore: ' + dettaglio (err.response.data.detail o err.message). Lato backend, errori per singola fattura vengono conteggiati nel campo 'errori' della risposta ma non bloccano l'elaborazione delle altre fatture (nessuna eccezione HTTP viene sollevata a meno di un errore infrastrutturale generale)."
+    },
+    {
+      "etichetta": "Riga prodotto (click per espandere/comprimere dettagli, data-testid=product-item-{idx})",
+      "cosa_fa_al_click": "Toggle locale dello stato expandedId (nessuna chiamata di rete): se l'id della riga cliccata è già espanso lo richiude, altrimenti lo apre mostrando i campi di dettaglio (diversi per tab statistiche/previsioni, vedi sopra).",
+      "endpoint_chiamato": "n/a",
+      "logica_backend": "n/a",
+      "formula_matematica": "n/a",
+      "aggiornamento_ui": "Espande/comprime il pannello dettagli sotto la riga cliccata.",
+      "casi_errore": "n/a"
+    },
+    {
+      "etichetta": "Campo di ricerca 'Cerca prodotto' (data-testid=search-input)",
+      "cosa_fa_al_click": "Filtro client-side: aggiorna searchTerm e filtra l'array già caricato (statistiche o previsioni) confrontando il testo digitato (case-insensitive) con il campo descrizione (tab statistiche) o prodotto (tab previsioni). Nessuna chiamata al backend.",
+      "endpoint_chiamato": "n/a",
+      "logica_backend": "n/a",
+      "formula_matematica": "n/a",
+      "aggiornamento_ui": "Filtra in tempo reale la lista mostrata (filteredData), limitata comunque ai primi 50 elementi (filteredData.slice(0,50)).",
+      "casi_errore": "n/a"
+    }
+  ],
+  "operazioni_di_registrazione": [
+    {
+      "nome": "Popolamento storico acquisti da fatture (Popola Storico)",
+      "sequenza_esatta": "1) L'utente preme 'Popola Storico'. 2) Backend conta i documenti in 'invoices'. 3) Itera con cursore su TUTTI i documenti di 'invoices' (senza filtro), per ciascuno estrae le righe/linee e per ogni riga con descrizione valorizzata verifica se esiste già in 'acquisti_prodotti' un record con lo stesso {fattura_id, descrizione_normalizzata}; se assente lo inserisce. 4) Ritorna conteggi fatture_processate, prodotti_registrati, errori, totale_fatture.",
+      "collezioni_coinvolte": ["invoices (lettura, sola lettura, campo _id escluso dalla proiezione)", "acquisti_prodotti (lettura per check duplicati + scrittura insert_one)"],
+      "campi_scritti": {
+        "fattura_id": "id della fattura di origine (fattura.get('id',''))",
+        "numero_fattura": "numero fattura",
+        "fornitore": "nome fornitore (supplier_name)",
+        "data_fattura": "data fattura formato stringa YYYY-MM-DD (invoice_date)",
+        "anno": "int estratto dal primo segmento di data_fattura (split su '-'); fallback anno corrente se data mancante o non parsabile",
+        "mese": "int estratto dal secondo segmento di data_fattura, None se non disponibile",
+        "descrizione": "descrizione originale della riga fattura",
+        "descrizione_normalizzata": "descrizione.strip().upper() troncata a 100 caratteri, usata come chiave di raggruppamento/deduplicazione",
+        "codice_prodotto": "codice articolo se presente in fattura",
+        "quantita": "float, quantita o quantity della riga, default 1 se vuoto/0",
+        "unita_misura": "stringa, default 'PZ' se non specificata",
+        "prezzo_unitario": "float, prezzo_unitario o unit_price",
+        "totale_linea": "float, totale o total della riga",
+        "created_at": "datetime ISO UTC di creazione del record"
+      },
+      "effetti_collaterali": "Non modifica in alcun modo le fatture originali né altre collezioni; è puramente additivo su 'acquisti_prodotti'. Essendo idempotente per fattura/prodotto (check su fattura_id+descrizione_normalizzata) può essere rieseguito più volte senza duplicare le righe già registrate, ma NON aggiorna righe esistenti se nel frattempo la fattura originale fosse stata modificata (nessun update, solo insert se non esiste)."
+    },
+    {
+      "nome": "Registrazione automatica acquisto da fattura (registra_acquisto_da_fattura)",
+      "sequenza_esatta": "Funzione richiamabile anche da altri punti del sistema (secondo il commento nel codice: 'Chiamato ogni volta che viene processato un XML fattura'), oltre che dal batch 'Popola Storico'. Non è direttamente collegata a un bottone di questa pagina ma è la stessa logica di scrittura descritta sopra.",
+      "collezioni_coinvolte": ["acquisti_prodotti"],
+      "campi_scritti": {
+        "vedi": "stessa struttura documentata nell'operazione 'Popolamento storico acquisti da fatture'"
+      },
+      "effetti_collaterali": "Se integrata nel flusso di importazione XML fatture (fuori da questa pagina), alimenta incrementalmente lo storico ad ogni nuova fattura caricata, così che le statistiche/previsioni restino aggiornate senza dover rilanciare manualmente 'Popola Storico'."
+    }
+  ],
+  "collegamenti_con_altre_pagine": [
+    "Fatture Fornitori / Import XML (modulo che genera i documenti in 'invoices' con le righe/linee da cui questa pagina estrae i dati per 'acquisti_prodotti').",
+    "Contesto Anno Globale (useAnnoGlobale) condiviso con Utile Obiettivo e le altre pagine di Contabilità: il tab Statistiche usa l'anno globale corrente, il tab Previsioni usa anno globale - 1 come anno di riferimento storico.",
+    "Endpoint non usati da questa pagina ma presenti nello stesso router e potenzialmente collegabili: GET /api/previsioni-acquisti/prodotti (lista aggregata di tutti i prodotti acquistati, con filtri anno/fornitore/ricerca) e GET /api/previsioni-acquisti/confronto-ordine (confronta una quantità che si vuole ordinare con la media storica per singolo ordine e restituisce un giudizio SOPRA MEDIA/SOTTO MEDIA/IN LINEA con soglia +/-20%) — nessuno dei due è richiamato dal file PrevisioniAcquisti.jsx attuale."
+  ],
+  "popup_e_modali_presenti": [
+    "Nessun modale React. Solo alert() nativi del browser: uno di successo dopo 'Popola Storico' (con conteggio fatture processate e prodotti registrati) e uno di errore in caso di fallimento della stessa chiamata."
+  ]
+}

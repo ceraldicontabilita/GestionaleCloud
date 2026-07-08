@@ -1,0 +1,43 @@
+{
+  "nome_popup": "Dropdown 'Associa Fattura' (NON è un vero modale)",
+  "nota_tipologia": "IMPORTANTE: come il dropdown 'Associa Salario', non è un overlay/popup centrato ma un pannello absolute (top:100%, left:0, zIndex:100) ancorato al bottone nella cella tabella. Si esclude a vicenda con il dropdown 'Associa Salario' (aprire l'uno chiude l'altro).",
+  "file_sorgente": "/home/user/GestionaleCloud/frontend/src/pages/ArchivioBonifici.jsx (bottone/dropdown righe ~1243-1290+; logica toggleAssociaFatturaDropdown riga 355, loadFattureCompatibili riga 343, handleAssociaFattura riga 369, handleDisassociaFattura riga 382; endpoint backend in app/routers/bonifici_module/associazioni.py)",
+  "pagine_da_cui_si_apre": ["Archivio Bonifici (/riconciliazione/archivio-bonifici)"],
+  "come_si_apre": "Click sul bottone '📄 Fattura' (data-testid=btn-associa-fattura-{id}) nella colonna 'Associa Fattura' di una riga bonifico non ancora associato a fattura (visibile solo se !t.fattura_associata). toggleAssociaFatturaDropdown(bonifico_id): chiude prima l'eventuale dropdown salario aperto, poi apre/chiude questo dropdown e, se lo sta aprendo, chiama loadFattureCompatibili(bonifico_id).",
+  "scopo": "Proporre e collegare un bonifico a una fattura fornitore presente nella collezione invoices, con tolleranza sull'importo del ±5%.",
+  "dati_mostrati": "Se in caricamento: '⏳ Caricamento...'. Lista di fatture compatibili con punteggio colorato e link '📄 Vedi' verso la vista PDF della fattura.",
+  "campi_e_bottoni": [
+    {
+      "elemento": "Bottone '📄 Fattura' / '▼ Scegli'",
+      "cosa_fa": "Apre/chiude il dropdown come descritto sopra.",
+      "endpoint_chiamato": "GET /api/archivio-bonifici/fatture-compatibili/{bonifico_id} (solo in apertura)",
+      "validazioni": "nessuna"
+    },
+    {
+      "elemento": "Link '📄 Vedi' su ogni riga fattura del dropdown",
+      "cosa_fa": "Apre in nuova scheda la vista AssoInvoice della fattura.",
+      "endpoint_chiamato": "GET /api/fatture-ricevute/fattura/{id}/view-assoinvoice",
+      "validazioni": "nessuna, indipendente dall'eventuale associazione"
+    },
+    {
+      "elemento": "Riga fattura nel dropdown (click, esclusa l'area del link Vedi)",
+      "cosa_fa": "handleAssociaFattura(bonifico_id, fattura_id, collection): associa il bonifico alla fattura scelta.",
+      "endpoint_chiamato": "POST /api/archivio-bonifici/associa-fattura?bonifico_id=...&fattura_id=...&collection=...",
+      "validazioni": "Lato server (associazioni.py::associa_fattura_a_bonifico): 422 se fattura_id vuoto; 409 con messaggio 'Disassocia prima' se il bonifico è già associato a un'altra fattura diversa da quella richiesta; 404 se il bonifico non è trovato in nessuna delle due collection (bonifici_transfers, fallback archivio_bonifici). Se valido, scrive fattura_associata_id, fattura_collection, stato_riconciliazione='associato', data_associazione sul bonifico. IMPORTANTE: NON scrive nulla sul documento fattura (collection invoices) — nessun bonifico_associato/bonifico_id sull'invoice, a differenza dell'auto-associazione a fine job di import che aggiorna anche la fattura. NON imposta nemmeno fattura_associata=true sul bonifico (lo fa solo l'auto-associazione), quindi il bonifico può restare visibile nel tab 'Da Associare' anche dopo un'associazione manuale riuscita."
+    },
+    {
+      "elemento": "MISMATCH CONTRATTO DATI (bug reale nel codice)",
+      "cosa_fa": "Il frontend legge res.data.fatture_compatibili dalla risposta di GET /fatture-compatibili/{id}, ma il backend (get_fatture_compatibili) restituisce direttamente una LISTA semplice, non un oggetto con quella chiave; inoltre per ogni riga il frontend si aspetta f.numero_fattura, f.fornitore, f.compatibilita_score, f.data_fattura, f.importo, f.collection — campi che il backend NON restituisce (i nomi reali sono invoice_number, fornitore/fornitore_denominazione, totale/importo_totale, nessun collection/score/data_fattura).",
+      "endpoint_chiamato": "GET /api/archivio-bonifici/fatture-compatibili/{bonifico_id}",
+      "validazioni": "Effetto pratico: res.data.fatture_compatibili è undefined → dropdown sempre vuoto con messaggio 'Nessuna fattura compatibile trovata'. Questa funzionalità risulta rotta nello stato attuale del repository, esattamente come il dropdown Associa Salario."
+    }
+  ],
+  "cosa_succede_alla_conferma": "Se il match funzionasse (ignorando il bug sopra), la POST scriverebbe fattura_associata_id, fattura_collection, stato_riconciliazione='associato', data_associazione sul bonifico (senza toccare la fattura in invoices). Il frontend chiude il dropdown (setAssociaFatturaDropdown(null), svuota fattureCompatibili) e richiama loadTransfers().",
+  "come_si_chiude": [
+    "Ricliccando lo stesso bottone '📄 Fattura'/'▼ Scegli' (toggle)",
+    "Aprendo il dropdown salario su qualunque riga (i due dropdown si escludono a vicenda)",
+    "Click fuori dal container principale della pagina (listener globale mousedown su dropdownRef)",
+    "Automaticamente dopo un click riuscito su una riga fattura"
+  ],
+  "effetto_su_pagina_sottostante": "loadTransfers() ricarica la tabella. Poiché né fattura_associata né lo stato della fattura vengono aggiornati end-to-end come nel percorso automatico, il bonifico può restare visibile nel tab 'Da Associare' pur avendo un fattura_associata_id valorizzato — comportamento potenzialmente confuso per l'operatore. La rimozione dell'associazione fattura (bottone '✗' accanto al badge '📄 {numero}' quando presente) chiama DELETE /api/archivio-bonifici/disassocia-fattura/{bonifico_id} SENZA alcuna vera conferma utente: il codice costruisce due messaggi (msg1/msg2) come per il salario ma NON chiama mai window.confirm() su di essi — bug di UX reale, il tooltip recita 'Rimuovi associazione (doppia conferma)' ma la richiesta parte immediatamente al click."
+}

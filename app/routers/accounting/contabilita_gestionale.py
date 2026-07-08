@@ -780,10 +780,19 @@ async def get_budget_vs_consuntivo(
     budget_data = await get_budget_completo(anno)
     
     # --- CONSUNTIVO RICAVI (corrispettivi) ---
-    query_corr = {"$or": [
-        {"data": {"$regex": f"^{anno_str}"}},
-        {"anno": anno}
-    ]}
+    # Esclude i corrispettivi eliminati (soft-delete su entity_status) —
+    # senza questo filtro un doppione cancellato restava sommato nei
+    # ricavi consuntivi, falsando lo scostamento Budget vs Consuntivo
+    # (stesso bug già corretto in bilancio.py/piano_conti.py).
+    query_corr = {
+        "$and": [
+            {"$or": [
+                {"data": {"$regex": f"^{anno_str}"}},
+                {"anno": anno}
+            ]},
+            {"entity_status": {"$ne": "deleted"}},
+        ]
+    }
     corrispettivi = await db[Collections.CORRISPETTIVI].find(query_corr, {"_id": 0}).to_list(10000)
     
     ricavi_mensili = {m: 0 for m in range(1, 13)}
@@ -797,10 +806,19 @@ async def get_budget_vs_consuntivo(
             ricavi_mensili[m] += float(c.get("totale_imponibile") or c.get("totale") or 0)
     
     # --- CONSUNTIVO COSTI (fatture ricevute) ---
-    query_fatt = {"$or": [
-        {"data_documento": {"$regex": f"^{anno_str}"}},
-        {"anno": anno}
-    ]}
+    # Esclude le fatture eliminate (status "deleted"/"archived", vedi
+    # cascade_operations.py) — stesso motivo del filtro sui corrispettivi
+    # sopra: senza questo, una fattura cancellata restava sommata nei
+    # costi consuntivi.
+    query_fatt = {
+        "$and": [
+            {"$or": [
+                {"data_documento": {"$regex": f"^{anno_str}"}},
+                {"anno": anno}
+            ]},
+            {"status": {"$nin": ["deleted", "archived"]}},
+        ]
+    }
     fatture = await db[Collections.INVOICES].find(query_fatt, {"_id": 0}).to_list(10000)
     
     costi_mensili = {m: 0 for m in range(1, 13)}

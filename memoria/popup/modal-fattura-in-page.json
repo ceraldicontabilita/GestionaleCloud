@@ -1,0 +1,44 @@
+{
+  "nome_popup": "ModalFattura (componente condiviso, visualizzazione fattura in-page)",
+  "file_sorgente": "/home/user/GestionaleCloud/frontend/src/components/ModalFattura.jsx (110 righe, componente autonomo riusabile)",
+  "pagine_da_cui_si_apre": [
+    "Assegni (/riconciliazione/assegni) — importato in GestioneAssegni.jsx, usato da vari punti: bottone '📄 Vedi' dentro il modale 'Collega Fatture' (righe ~3663-3683 di GestioneAssegni.jsx), bottone 'Vedi 📄' su righe tabella/ambigui/dettaglio match L2-L3/combinazioni (setFatturaView({id,numero}) impostato da decine di punti diversi della UI)",
+      "Presumibilmente riusabile da qualunque altra pagina che importi il componente da '../components/ModalFattura' (verificato l'uso diretto solo in GestioneAssegni.jsx nell'ambito di questo incarico; non è escluso che altre pagine del gestionale lo importino altrove)"
+  ],
+  "come_si_apre": "Reso condizionalmente ({fatturaView && <ModalFattura .../>}) quando lo stato del componente genitore (es. fatturaView in GestioneAssegni.jsx) è valorizzato con {id, numero}. Il componente stesso ha una guard interna (if (!fatturaId) return null) quindi è sicuro montarlo sempre nell'albero JSX e passare fatturaId eventualmente null/undefined.",
+  "scopo": "Mostrare il PDF/vista AssoInvoice di una fattura senza mai aprire una nuova scheda del browser, mantenendo il contesto della pagina chiamante (es. il modale Collega Fatture resta sotto, sovrapposto da questo che ha zIndex più alto).",
+  "dati_mostrati": "Nessun dato strutturato caricato via fetch dal componente stesso: il contenuto è delegato interamente a un <iframe> che punta a GET /api/fatture-ricevute/fattura/{fatturaId}/view-assoinvoice (endpoint del modulo Fatture Ricevute, fuori scope di questo file). Il componente mostra solo un header con titolo '📄 Fattura {numero || fatturaId}' (troncato con ellissi se troppo lungo) e il bottone di chiusura.",
+  "campi_e_bottoni": [
+    {
+      "elemento": "Bottone '✕' nell'header (aria-label=Chiudi, data-testid=modal-fattura-close)",
+      "cosa_fa": "Chiama la prop onClose() passata dal genitore (tipicamente setFatturaView(null)).",
+      "endpoint_chiamato": "nessuno",
+      "validazioni": "nessuna"
+    },
+    {
+      "elemento": "Click sull'overlay scuro esterno (onClick sull'elemento fixed inset:0)",
+      "cosa_fa": "Chiama onClose() (il riquadro interno ha e.stopPropagation() per non chiudersi quando si interagisce con l'iframe).",
+      "endpoint_chiamato": "nessuno",
+      "validazioni": "nessuna"
+    },
+    {
+      "elemento": "Tasto ESC (listener keydown globale su document, attivo per tutta la vita del componente montato)",
+      "cosa_fa": "Chiama onClose() se e.key === 'Escape'.",
+      "endpoint_chiamato": "nessuno",
+      "validazioni": "nessuna"
+    },
+    {
+      "elemento": "Iframe interno",
+      "cosa_fa": "Carica direttamente src='/api/fatture-ricevute/fattura/{fatturaId}/view-assoinvoice'; qualunque interazione (scroll, eventuale download PDF) avviene dentro l'iframe stesso, fuori dal controllo di questo componente React.",
+      "endpoint_chiamato": "GET /api/fatture-ricevute/fattura/{fatturaId}/view-assoinvoice (chiamato dal browser come navigazione dell'iframe, non da axios/fetch React)",
+      "validazioni": "nessuna lato componente; eventuali errori (404, fattura non trovata) sono gestiti/mostrati dalla pagina servita dentro l'iframe stesso, non intercettati da ModalFattura"
+    }
+  ],
+  "cosa_succede_alla_conferma": "Non esiste un'azione di 'conferma' vera e propria: il modale è di sola visualizzazione (nessuna scrittura, nessuna azione che modifichi dati). L'unica interazione utile è la chiusura.",
+  "come_si_chiude": [
+    "Bottone '✕' nell'header",
+    "Click sull'overlay scuro esterno al riquadro",
+    "Tasto ESC"
+  ],
+  "effetto_su_pagina_sottostante": "Nessun effetto sui dati della pagina sottostante: essendo puramente di visualizzazione, alla chiusura la pagina/il modale che lo ha aperto resta esattamente nello stato in cui era prima (es. se aperto da dentro il modale 'Collega Fatture', la selezione fatture di quel modale non viene toccata)."
+}

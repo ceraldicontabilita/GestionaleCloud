@@ -1,0 +1,376 @@
+{
+  "pagina": "Learning Machine",
+  "url": "https://impresasemplice.online/learning-machine (sotto-tab su path: /learning-machine/dashboard, /learning-machine/fornitori (default), /learning-machine/assegni, /learning-machine/documenti, /learning-machine/regole, /learning-machine/universale)",
+  "file_sorgente_frontend": [
+    "frontend/src/pages/LearningMachine.jsx (1499 righe — pagina centralizzata con 6 tab: Dashboard, Fornitori & Keywords, Pattern Assegni, Classificazione Documenti, ⚙️ Regole Categorizzazione (componente lazy separato), 🌐 Training Universale (componente lazy separato))",
+    "frontend/src/pages/RegoleCategorizzazione.jsx (892 righe — montato in lazy dentro il tab 'regole' di LearningMachine.jsx; la route diretta /regole-categorizzazione fa ora un redirect a /learning-machine/regole, quindi il file NON è più raggiungibile come pagina standalone)",
+    "frontend/src/pages/LearningMachineUniversale.jsx (391 righe — montato in lazy dentro il tab 'universale'; un solo bottone 'Impara Tutto' che avvia 5 sotto-moduli di apprendimento sull'intero dataset)"
+  ],
+  "file_sorgente_backend": [
+    "app/routers/fornitori_learning.py (prefix /api/fornitori-learning — stats, lista/non-classificati, salva/elimina keyword fornitore, riclassifica-con-keywords, suggerisci-keywords, centri-costo-disponibili, più endpoint su F24/magazzino non raggiunti da bottoni in questa pagina)",
+    "app/routers/bank/assegni_learning.py (prefix /api/assegni/learning — pulizia-duplicati, learn, associa-intelligente, associa-combinazioni-avanzato (non esposto da bottoni), stats-avanzate)",
+    "app/routers/learning_machine.py (prefix /api/learning-machine — dashboard, regole-apprese, usati dal tab 'Classificazione Documenti'; scan/feedback/documenti/statistiche-feedback/reset-learning esistono ma non sono raggiunti da alcun bottone in questa pagina, sono usati dalla pagina esterna /classificazione-email)",
+    "app/routers/learning_universal.py (prefix /api/learning-universal — status, train/all, results, usati dal tab 'Training Universale')",
+    "app/routers/accounting/regole_categorizzazione.py (prefix /api/regole — download/upload Excel, get regole, fornitore/descrizione/categorie CRUD, usati dal tab 'Regole Categorizzazione')",
+    "app/routers/accounting/contabilita_avanzata.py (POST /api/contabilita/ricategorizza-fatture — azionato dal bottone 'Applica alle Fatture' dentro il tab Regole)",
+    "app/services/learning_machine_cdc.py (CENTRI_COSTO, classifica_fattura_per_centro_costo, classifica_f24_per_centro_costo, calcola_importi_fiscali — motore di classificazione per centro di costo usato da fornitori_learning.py)",
+    "app/services/categorizzazione_contabile.py (PATTERNS_FORNITORE, categorizza_fattura_completa — motore di categorizzazione contabile usato sia dai default del tab Regole sia da ricategorizza-fatture)"
+  ],
+  "scopo_generale": "Pagina centralizzata di tutte le funzionalità di apprendimento automatico/euristico del gestionale: NON è un vero motore di machine learning statistico, ma un insieme di 6 sotto-sistemi indipendenti che condividono l'etichetta 'Learning Machine' — (1) associazione fornitore→keyword→centro di costo per la classificazione delle fatture, (2) apprendimento di pattern fornitore-importo dagli assegni già associati per suggerire automaticamente le associazioni future, (3) classificazione automatica documenti-email a 23 categorie con feedback loop manuale, (4) gestione delle regole di categorizzazione contabile fornitore/descrizione→conto+deducibilità con export/import Excel, (5) un modulo 'Training Universale' che ricalcola in un colpo solo pattern su fornitori/pagamenti/movimenti bancari/stagionalità vendite/assegni. Ogni sotto-sistema legge/scrive collection MongoDB proprie e indipendenti: non esiste un modello o uno storage unificato di 'apprendimento', quindi i progressi in un tab non influenzano gli altri.",
+  "sezioni_tab": [
+    {
+      "nome": "Dashboard",
+      "descrizione": "Vista riassuntiva con 4 StatCard (Fornitori Configurati + % copertura, Fatture Classificate %, Pattern Assegni + accuracy, F24 Classificati %) alimentate da /api/fornitori-learning/stats e /api/assegni/learning/stats-avanzate, più 3 Azioni Rapide (Riclassifica Tutte le Fatture, Apprendi Pattern Assegni, Aggiorna Statistiche) che sono shortcut verso azioni residenti negli altri tab."
+    },
+    {
+      "nome": "Fornitori & Keywords (tab di default, mappato sul path base /learning-machine)",
+      "descrizione": "Elenco fornitori 'Altri costi non classificati' non ancora configurati (a sinistra) e form di configurazione keyword→centro di costo (a destra, con keyword suggerite generate dalle descrizioni delle linee fattura); sotto, griglia dei fornitori già configurati con possibilità di eliminazione."
+    },
+    {
+      "nome": "Pattern Assegni",
+      "descrizione": "Stats (pattern appresi, accuracy, assegni totali, non associati) e 3 card azione: Apprendi Pattern (learn), Associazione Intelligente (associa-intelligente), Pulizia Duplicati (anteprima dry_run + eliminazione)."
+    },
+    {
+      "nome": "Classificazione Documenti",
+      "descrizione": "Stats generali (documenti classificati, regole apprese, accuracy media, feedback ricevuti) più un box informativo statico 'Come Funziona' (Scansione Email → Classificazione → Feedback Loop) e un link a /classificazione-email (pagina esterna non coperta da questo audit) per operare realmente sul feedback loop."
+    },
+    {
+      "nome": "⚙️ Regole Categorizzazione (componente RegoleCategorizzazione.jsx, montato lazy)",
+      "descrizione": "Gestione completa delle regole fornitore→categoria e descrizione→categoria, con relative categorie (conto contabile + deducibilità IRES/IRAP), download/upload Excel a 5 fogli, azione 'Applica alle Fatture' che rigenera tutti i movimenti contabili, e CRUD manuale di singole regole."
+    },
+    {
+      "nome": "🌐 Training Universale (componente LearningMachineUniversale.jsx, montato lazy)",
+      "descrizione": "Un solo bottone '🧠 Impara Tutto' che avvia in sequenza 5 sotto-moduli di apprendimento su tutto il dataset (fornitori, pagamenti, movimenti bancari, stagionalità corrispettivi, assegni) e mostra card di risultato per ciascuno; salva il risultato aggregato in una collection dedicata, consultabile anche senza rilanciare il training."
+    }
+  ],
+  "bottoni_azioni": [
+    {
+      "etichetta": "🔄 Aggiorna Statistiche (Dashboard) / 🔄 Aggiorna (header di ogni tab)",
+      "cosa_fa_al_click": "loadDashboardStats() per il tab Dashboard (sempre eseguito anche al mount della pagina, indipendentemente dal tab attivo); loadFornitoriData()/loadAssegniStats()/loadDocumentiStats() per gli altri tab, triggerati sia al click sia automaticamente al cambio di activeTab.",
+      "endpoint_chiamato": "GET /api/fornitori-learning/stats (Dashboard) — vedi endpoint specifici per gli altri tab più sotto",
+      "logica_backend": "get_learning_stats in fornitori_learning.py: conta fornitori_con_keywords (collection fornitori_keywords), calcola fornitori unici distinti da invoices.supplier_name, conta fatture totali e quelle con centro_costo_id valorizzato, stesso calcolo per f24_unificato.",
+      "formula_matematica": "copertura_fornitori% = fornitori_con_keywords / max(totale_fornitori,1) * 100; percentuale_fatture% = fatture_classificate / max(totale_fatture,1) * 100; percentuale_f24% = f24_classificati / max(totale_f24,1) * 100 — tutte arrotondate a 1 decimale.",
+      "aggiornamento_ui": "Aggiorna le 4 StatCard della Dashboard.",
+      "casi_errore": "catch → console.error, nessun messaggio visibile."
+    },
+    {
+      "etichetta": "▶ Riclassifica Tutte le Fatture (Azione Rapida, Dashboard)",
+      "cosa_fa_al_click": "Passa activeTab a 'fornitori' e richiama riclassificaFatture() — STESSA azione del bottone 'Riclassifica Fatture' nel tab Fornitori.",
+      "endpoint_chiamato": "POST /api/fornitori-learning/riclassifica-con-keywords",
+      "logica_backend": "Vedi bottone 'Riclassifica Fatture' più sotto.",
+      "formula_matematica": "N/A",
+      "aggiornamento_ui": "Messaggio banner di successo/errore, loadFornitoriData() + loadDashboardStats().",
+      "casi_errore": "Messaggio 'Errore riclassificazione' nel banner."
+    },
+    {
+      "etichetta": "🧠 Apprendi Pattern Assegni (Azione Rapida, Dashboard)",
+      "cosa_fa_al_click": "Passa activeTab a 'assegni' e richiama handleLearnAssegni() — STESSA azione del bottone 'Avvia Learning' nel tab Pattern Assegni.",
+      "endpoint_chiamato": "POST /api/assegni/learning/learn",
+      "logica_backend": "Vedi operazione di registrazione 'Apprendimento pattern assegni' più sotto.",
+      "formula_matematica": "N/A",
+      "aggiornamento_ui": "Banner con 'Appresi N nuovi pattern!', loadAssegniStats().",
+      "casi_errore": "Messaggio 'Errore nel learning' nel banner."
+    },
+    {
+      "etichetta": "Aggiorna (tab Fornitori & Keywords)",
+      "cosa_fa_al_click": "loadFornitoriData(): 3 chiamate in parallelo (Promise.all).",
+      "endpoint_chiamato": "GET /api/fornitori-learning/non-classificati?limit=100 + GET /api/fornitori-learning/lista + GET /api/fornitori-learning/centri-costo-disponibili",
+      "logica_backend": "fornitori_non_classificati: aggregation su 'invoices' filtrata a centro_costo_nome='Altri costi non classificati' e supplier_name non vuoto, raggruppata per fornitore (count_non_class, prime linee di esempio), esclude i fornitori già presenti in fornitori_keywords (match su nome normalizzato); per ciascun fornitore residuo ricalcola poi i TOTALI REALI (tutte le fatture, non solo quelle non classificate) con una seconda aggregation dedicata. lista_fornitori_keywords: semplice find su 'fornitori_keywords' ordinato per fatture_count decrescente. centri_costo_disponibili: espone staticamente il dizionario CENTRI_COSTO del modulo learning_machine_cdc.py.",
+      "formula_matematica": "N/A",
+      "aggiornamento_ui": "Popola le liste 'Da Classificare' e 'Configurati', e il dropdown centri di costo nel form.",
+      "casi_errore": "Banner 'Errore nel caricamento dei fornitori'."
+    },
+    {
+      "etichetta": "Riclassifica Fatture (tab Fornitori & Keywords, disabilitato se non ci sono fornitori configurati)",
+      "cosa_fa_al_click": "riclassificaFatture(): nessuna conferma preventiva.",
+      "endpoint_chiamato": "POST /api/fornitori-learning/riclassifica-con-keywords",
+      "logica_backend": "riclassifica_con_keywords_personalizzate: carica tutte le configurazioni fornitore→keyword→centro suggerito da fornitori_keywords (400/errore soft se vuoto). Per ciascun fornitore configurato: cerca in 'invoices' le fatture ancora in 'Altri costi non classificati' o senza centro_costo_id che matchano il nome fornitore (regex case-insensitive, escaped). Per ogni fattura trovata: se è specificato un centro_costo_suggerito valido (per chiave interna o per codice tipo B7.5.3) lo usa direttamente; altrimenti richiama classifica_fattura_per_centro_costo(fornitore, testo_keywords, []) del motore learning_machine_cdc, che assegna un punteggio a ciascun centro di costo sommando la lunghezza delle keyword configurate che matchano nel testo e sceglie il centro con punteggio più alto (fallback '99_ALTRI_COSTI' se nessun match). Aggiorna centro_costo_id/centro_costo_nome/classificazione_fonte='keywords_personalizzate' sulla fattura.",
+      "formula_matematica": "Score centro di costo = somma(len(keyword) per ogni keyword del centro trovata nel testo); confidence normalizzata = min(score/50, 1.0) — la confidence non viene però usata/mostrata da questo endpoint, solo lo score serve a scegliere il centro vincente (max).",
+      "aggiornamento_ui": "Banner 'Riclassificate N fatture!', loadFornitoriData() + loadDashboardStats().",
+      "casi_errore": "Banner 'Errore riclassificazione'; se non ci sono fornitori configurati, il backend risponde con success=false e messaggio dedicato (non mostrato esplicitamente dal frontend in quel ramo, che comunque non entra nel then di successo)."
+    },
+    {
+      "etichetta": "Card fornitore 'Da Classificare' (click)",
+      "cosa_fa_al_click": "selezionaFornitore(fornitore): imposta il fornitore selezionato e richiama subito il suggerimento keyword.",
+      "endpoint_chiamato": "GET /api/fornitori-learning/suggerisci-keywords/{fornitore_nome}",
+      "logica_backend": "suggerisci_keywords: carica fino a 20 fatture del fornitore (regex sul nome), estrae parole da descrizione generale e da ciascuna linea fattura, scartando stop-words italiane comuni e parole <=3 caratteri; conta le frequenze e restituisce le 15 parole più frequenti.",
+      "formula_matematica": "Ranking = frequenza assoluta della parola nelle descrizioni analizzate, ordinata decrescente, troncata ai primi 15 elementi.",
+      "aggiornamento_ui": "Apre il form di configurazione a destra con le keyword suggerite cliccabili.",
+      "casi_errore": "console.error silenzioso se la chiamata fallisce (il form resta comunque aperto senza suggerimenti)."
+    },
+    {
+      "etichetta": "+ keyword suggerita (chip cliccabile nel form)",
+      "cosa_fa_al_click": "aggiungiKeywordSuggerita(keyword): aggiunge la parola al campo testo keywords (separato da virgola) se non già presente.",
+      "endpoint_chiamato": "Nessuno.",
+      "logica_backend": "N/A",
+      "formula_matematica": "N/A",
+      "aggiornamento_ui": "Aggiorna il campo input keywords.",
+      "casi_errore": "N/A"
+    },
+    {
+      "etichetta": "Salva Keywords",
+      "cosa_fa_al_click": "salvaFornitore(): validazione client-side minima (keywords non vuote, altrimenti banner d'errore).",
+      "endpoint_chiamato": "POST /api/fornitori-learning/salva {fornitore_nome, keywords: [...], centro_costo_suggerito}",
+      "logica_backend": "salva_fornitore_keywords: normalizza il nome fornitore (normalizza_nome_fornitore — minuscolo, rimozione suffissi societari come srl/spa/sas/snc/di/soc.coop./onlus), ricalcola fatture_count e totale_fatture con una regex sul nome fornitore originale (non normalizzato), poi fa upsert su 'fornitori_keywords' con chiave fornitore_nome_normalizzato — se esiste aggiorna, altrimenti crea un nuovo id 'fk_<nome_normalizzato_con_underscore>'. Le keyword vengono salvate in minuscolo e trim.",
+      "formula_matematica": "N/A",
+      "aggiornamento_ui": "Banner 'Fornitore salvato!', chiude il form, loadFornitoriData() + loadDashboardStats().",
+      "casi_errore": "Banner 'Errore nel salvataggio'."
+    },
+    {
+      "etichetta": "Annulla (form configurazione fornitore)",
+      "cosa_fa_al_click": "Deseleziona il fornitore corrente (setSelectedFornitore(null)).",
+      "endpoint_chiamato": "Nessuno.",
+      "logica_backend": "N/A",
+      "formula_matematica": "N/A",
+      "aggiornamento_ui": "Chiude il form.",
+      "casi_errore": "N/A"
+    },
+    {
+      "etichetta": "🗑️ (elimina fornitore configurato)",
+      "cosa_fa_al_click": "eliminaFornitoreKeywords(id): window.confirm() di conferma prima della chiamata.",
+      "endpoint_chiamato": "DELETE /api/fornitori-learning/{fornitore_id}",
+      "logica_backend": "Elimina il record da 'fornitori_keywords' per id (404 se non trovato). Le fatture già riclassificate con questa configurazione NON vengono ripristinate: centro_costo_id/classificazione_fonte restano quelli assegnati in precedenza.",
+      "formula_matematica": "N/A",
+      "aggiornamento_ui": "Banner 'Eliminato', loadFornitoriData().",
+      "casi_errore": "Banner 'Errore eliminazione'."
+    },
+    {
+      "etichetta": "Aggiorna (tab Pattern Assegni)",
+      "cosa_fa_al_click": "loadAssegniStats().",
+      "endpoint_chiamato": "GET /api/assegni/learning/stats-avanzate",
+      "logica_backend": "get_stats_avanzate: carica TUTTI gli assegni (fino a 10000) e calcola in memoria (non via aggregation): totale, con_beneficiario (beneficiario valorizzato e non in '-'/'N/A'), con_fattura, distribuzione per stato, per tipo di associazione (associazione_tipo, default 'manuale'), importo totale per stato, numero di duplicati per 'numero' assegno (count>1).",
+      "formula_matematica": "health_score = (con_beneficiario / totale * 100) se totale>0 altrimenti 0, arrotondato a 1 decimale — è la 'accuracy' mostrata nella StatCard.",
+      "aggiornamento_ui": "Aggiorna le 4 StatCard (Pattern Appresi, Accuracy, Assegni Totali, Non Associati).",
+      "casi_errore": "console.error silenzioso."
+    },
+    {
+      "etichetta": "🧠 Avvia Learning (card Apprendi Pattern)",
+      "cosa_fa_al_click": "handleLearnAssegni(): nessuna conferma.",
+      "endpoint_chiamato": "POST /api/assegni/learning/learn",
+      "logica_backend": "Vedi operazione di registrazione 'Apprendimento pattern assegni' più sotto.",
+      "formula_matematica": "Vedi operazione dedicata.",
+      "aggiornamento_ui": "Box verde con 'Appresi N pattern da M assegni', banner successo, loadAssegniStats().",
+      "casi_errore": "Banner 'Errore nel learning'."
+    },
+    {
+      "etichetta": "⚡ Associa Automaticamente (card Associazione Intelligente)",
+      "cosa_fa_al_click": "handleAssociaIntelligente(): nessuna conferma, usa i parametri di default del backend (tolleranza_importo=5.0, tolleranza_giorni=60, usa_learning=true — il frontend non espone questi parametri in UI).",
+      "endpoint_chiamato": "POST /api/assegni/learning/associa-intelligente",
+      "logica_backend": "Vedi operazione di registrazione 'Associazione intelligente assegni-fatture' più sotto.",
+      "formula_matematica": "Vedi operazione dedicata.",
+      "aggiornamento_ui": "Banner 'Associati N assegni!', loadAssegniStats().",
+      "casi_errore": "Banner 'Errore associazione'."
+    },
+    {
+      "etichetta": "Anteprima (card Pulizia Duplicati)",
+      "cosa_fa_al_click": "handlePuliziaDuplicati(true) — modalità dry_run, sola analisi.",
+      "endpoint_chiamato": "POST /api/assegni/learning/pulizia-duplicati?dry_run=true",
+      "logica_backend": "Vedi operazione di registrazione 'Pulizia duplicati assegni' più sotto — con dry_run=true nessuna scrittura avviene, solo il calcolo di cosa VERREBBE eliminato.",
+      "formula_matematica": "Vedi operazione dedicata.",
+      "aggiornamento_ui": "Box rosso con 'Trovati N duplicati'; il bottone 'Elimina' resta disabilitato finché non è stata eseguita almeno un'anteprima (puliziaResult deve essere valorizzato).",
+      "casi_errore": "Banner 'Errore pulizia'."
+    },
+    {
+      "etichetta": "Elimina (card Pulizia Duplicati, abilitato solo dopo un'Anteprima)",
+      "cosa_fa_al_click": "handlePuliziaDuplicati(false) — esecuzione reale, nessuna window.confirm ulteriore oltre l'aver già visto l'anteprima.",
+      "endpoint_chiamato": "POST /api/assegni/learning/pulizia-duplicati?dry_run=false",
+      "logica_backend": "Come sopra ma con delete_one effettivo per ciascun id identificato come duplicato/vuoto.",
+      "formula_matematica": "Vedi operazione dedicata.",
+      "aggiornamento_ui": "Se record_eliminati>0: banner 'Eliminati N duplicati!' e loadAssegniStats(); il box mostra sia i duplicati trovati sia quelli effettivamente eliminati.",
+      "casi_errore": "Banner 'Errore pulizia'."
+    },
+    {
+      "etichetta": "Aggiorna (tab Classificazione Documenti)",
+      "cosa_fa_al_click": "loadDocumentiStats(): 2 chiamate in parallelo, ciascuna con fallback silenzioso a dato nullo/vuoto se fallisce.",
+      "endpoint_chiamato": "GET /api/learning-machine/dashboard + GET /api/learning-machine/regole-apprese",
+      "logica_backend": "get_learning_dashboard: aggregation per categoria su 'documenti_classificati' (collection DIVERSA da documents_inbox/documents_classified usate nella pagina Documenti), conta documenti totali/con pdf/processati/non_classificati, conta feedback in 'learning_feedback' e regole in 'learning_rules', elenca gli ultimi 10 documenti. get_learned_rules_api: find su 'learning_rules'.",
+      "formula_matematica": "N/A",
+      "aggiornamento_ui": "Aggiorna le 4 StatCard (Documenti Classificati, Regole Apprese, Accuracy Media, Feedback Ricevuti).",
+      "casi_errore": "console.error silenzioso, stats restano null (le card mostrano 0)."
+    },
+    {
+      "etichetta": "Vai a Classificazione Email (link)",
+      "cosa_fa_al_click": "Navigazione React Router verso /classificazione-email.",
+      "endpoint_chiamato": "Nessuno da qui — la pagina di destinazione (fuori scope di questo audit) è quella che realmente usa /api/learning-machine/scan, /feedback, /documenti, /statistiche-feedback per far funzionare il ciclo di scansione+correzione+apprendimento.",
+      "logica_backend": "N/A",
+      "formula_matematica": "N/A",
+      "aggiornamento_ui": "Cambio pagina.",
+      "casi_errore": "N/A"
+    },
+    {
+      "etichetta": "📥 Scarica Excel (tab Regole Categorizzazione)",
+      "cosa_fa_al_click": "handleDownloadExcel(): scarica il blob e lo salva come 'regole_categorizzazione.xlsx'.",
+      "endpoint_chiamato": "GET /api/regole/download-regole",
+      "logica_backend": "download_regole_excel: legge le regole da 'regole_categorizzazione_fornitori'/'_descrizioni'/'regole_categorie' nel DB; se vuote usa i default hardcoded (PATTERNS_FORNITORE del modulo categorizzazione_contabile.py convertito in forma leggibile, e una lista fissa di ~26 regole di default per descrizione). Genera un Workbook openpyxl a 5 fogli: 'Regole Fornitori' (pattern, categoria, note), 'Regole Descrizioni' (idem), 'Categorie' (categoria, codice conto, nome conto da DEFAULT_PIANO_CONTI, deducibilità IRES%, deducibilità IRAP%, note), 'Piano dei Conti' (da collection piano_conti), 'Istruzioni' (testo guida statico). Ogni foglio ha ~20-50 righe vuote pre-formattate in coda per facilitare l'inserimento di nuove regole.",
+      "formula_matematica": "N/A",
+      "aggiornamento_ui": "Banner '✅ File Excel scaricato!' e download nativo del browser.",
+      "casi_errore": "Banner '❌ Errore nel download'."
+    },
+    {
+      "etichetta": "📤 Carica Excel",
+      "cosa_fa_al_click": "handleUploadExcel(file): invio immediato alla selezione del file, nessuna anteprima/conferma.",
+      "endpoint_chiamato": "POST /api/regole/upload-regole (multipart/form-data)",
+      "logica_backend": "upload_regole_excel: valida estensione .xlsx/.xls (400 altrimenti). Per ciascun foglio presente ('Regole Fornitori', 'Regole Descrizioni', 'Categorie'), legge riga per riga (da riga 2) le colonne attese, normalizza la categoria (minuscolo, spazi→underscore), e se il foglio ha almeno una riga valida ESEGUE UNA SOSTITUZIONE TOTALE: delete_many({}) sull'intera collection seguito da insert_many delle nuove righe — quindi caricare un Excel con un foglio incompleto CANCELLA tutte le regole di quel tipo precedentemente presenti nel DB, anche quelle non incluse nel file caricato.",
+      "formula_matematica": "N/A",
+      "aggiornamento_ui": "Banner con conteggio regole fornitori/descrizioni caricate, fetchRegole() per ricaricare la vista.",
+      "casi_errore": "Banner '❌ Errore nel caricamento'; 400 esplicito se l'estensione del file non è Excel."
+    },
+    {
+      "etichetta": "🔄 Applica alle Fatture",
+      "cosa_fa_al_click": "handleRicategorizza(): nessuna conferma preventiva nonostante sia un'operazione distruttiva (azzera e ricrea tutti i movimenti contabili).",
+      "endpoint_chiamato": "POST /api/contabilita/ricategorizza-fatture",
+      "logica_backend": "ricategorizza_tutte_fatture in contabilita_avanzata.py: 1) azzera il saldo (set a 0) di TUTTI i conti in 'piano_conti' TRANNE Cassa (01.01.01) e Banca (01.01.02); 2) elimina fisicamente TUTTI i documenti in 'movimenti_contabili' (delete_many({})); 3) rilegge tutte le fatture attive (entity_status non 'deleted') e per ciascuna richiama categorizza_fattura_completa(linee, fornitore) del motore categorizzazione_contabile.py, che assegna un conto costo principale in base al riepilogo dei conti individuati sulle singole linee (sceglie quello con importo maggiore, default 05.01.01 'Acquisto merci' se nessun match); crea un movimento contabile in partita doppia (dare: conto costo per l'imponibile + IVA a credito 01.04.01 per l'iva; avere: debiti v/fornitori 02.01.01 per il totale), aggiorna i saldi dei conti coinvolti, e marca la fattura con registrata_contabilita=true, movimento_contabile_id, categoria_contabile, conto_costo_codice/nome, percentuale_deducibilita_ires/irap; 4) ripete un'elaborazione analoga per tutti i 'corrispettivi' (registrazione incassi cassa/POS + ricavi, con IVA calcolata scorporando l'aliquota 10% tipica della ristorazione).",
+      "formula_matematica": "IVA fattura = fattura.iva se presente, altrimenti fattura.total_tax; imponibile = importo_totale - iva (se importo_totale>iva, altrimenti = importo_totale). IVA corrispettivo = totale * 0.10 / (1+0.10) [scorporo al 10%]; imponibile_corrispettivo = totale - iva.",
+      "aggiornamento_ui": "Banner con fatture processate e eventuali errori (primi 3 mostrati, troncati con '…' se di più).",
+      "casi_errore": "Banner '❌ Ricategorizzazione non riuscita' se success=false; banner di warning se ci sono errori parziali per singola fattura (l'operazione continua comunque sulle altre)."
+    },
+    {
+      "etichetta": "➕ Nuova Regola",
+      "cosa_fa_al_click": "Toggle del form inline (pattern, categoria, note).",
+      "endpoint_chiamato": "Nessuno in questa fase.",
+      "logica_backend": "N/A",
+      "formula_matematica": "N/A",
+      "aggiornamento_ui": "Mostra/nasconde il form.",
+      "casi_errore": "N/A"
+    },
+    {
+      "etichetta": "✅ Salva (form Nuova Regola)",
+      "cosa_fa_al_click": "handleAddRule(): validazione client-side (pattern e categoria obbligatori).",
+      "endpoint_chiamato": "POST /api/regole/fornitore {pattern, categoria, note}",
+      "logica_backend": "aggiungi_regola_fornitore: normalizza la categoria (minuscolo, spazi→underscore), se esiste già una regola con lo stesso pattern esatto la aggiorna (categoria/note/updated_at), altrimenti la crea con tipo='fornitore', attivo=true. NOTA: il form nel frontend crea SEMPRE una regola di tipo 'fornitore' (non esiste un selettore per creare una regola di tipo 'descrizione' da UI, nonostante l'endpoint POST /api/regole/descrizione esista lato backend).",
+      "formula_matematica": "N/A",
+      "aggiornamento_ui": "Banner '✅ Regola aggiunta!', chiude il form, fetchRegole().",
+      "casi_errore": "Banner con il messaggio di errore del backend se success=false, oppure '❌ Errore nell'aggiunta della regola' su eccezione di rete."
+    },
+    {
+      "etichetta": "✕ Annulla (form Nuova Regola)",
+      "cosa_fa_al_click": "Chiude il form senza salvare.",
+      "endpoint_chiamato": "Nessuno.",
+      "logica_backend": "N/A",
+      "formula_matematica": "N/A",
+      "aggiornamento_ui": "Nasconde il form.",
+      "casi_errore": "N/A"
+    },
+    {
+      "etichetta": "🔍 Cerca regola... (barra ricerca)",
+      "cosa_fa_al_click": "Filtro CLIENT-SIDE su pattern/categoria (case-insensitive, substring) applicato alle tabelle Fornitori/Descrizioni già caricate in memoria.",
+      "endpoint_chiamato": "Nessuno.",
+      "logica_backend": "N/A",
+      "formula_matematica": "N/A",
+      "aggiornamento_ui": "Filtra le righe visibili.",
+      "casi_errore": "N/A"
+    },
+    {
+      "etichetta": "Tab interni: associazioni / fornitori / descrizioni / categorie",
+      "cosa_fa_al_click": "Cambia la vista (associazioni: raggruppamento per categoria con fornitori+descrizioni insieme; fornitori/descrizioni: tabelle singole con azione elimina; categorie: card con conto+deducibilità).",
+      "endpoint_chiamato": "Nessuno (dati già caricati da fetchRegole al mount).",
+      "logica_backend": "N/A",
+      "formula_matematica": "N/A",
+      "aggiornamento_ui": "Cambio contenuto visualizzato.",
+      "casi_errore": "N/A"
+    },
+    {
+      "etichetta": "🗑️ Elimina (riga regola, tab Fornitori/Descrizioni/vista Associazioni)",
+      "cosa_fa_al_click": "handleDeleteRule(tipo, pattern): nessuna conferma preventiva.",
+      "endpoint_chiamato": "DELETE /api/regole/elimina/{tipo}/{pattern}",
+      "logica_backend": "elimina_regola: sceglie la collection (regole_categorizzazione_fornitori se tipo='fornitore', altrimenti regole_categorizzazione_descrizioni) e fa delete_one per pattern esatto (404 se non trovato). NOTA: se la regola eliminata era una delle regole DI DEFAULT (mai salvata nel DB, generata al volo da PATTERNS_FORNITORE), il delete_one non trova nulla da eliminare nel DB → 404 → banner di errore, ma la regola ricompare comunque al refresh successivo perché i default vengono sempre riaggiunti da get_regole() se non presenti nel DB con lo stesso pattern.",
+      "formula_matematica": "N/A",
+      "aggiornamento_ui": "Banner '✅ Regola eliminata!', fetchRegole().",
+      "casi_errore": "Banner '❌ Errore nell'eliminazione'."
+    },
+    {
+      "etichetta": "🧠 Impara Tutto (tab Training Universale, unico bottone)",
+      "cosa_fa_al_click": "startLearning(): nessuna conferma, disabilita il bottone durante l'esecuzione.",
+      "endpoint_chiamato": "POST /api/learning-universal/train/all",
+      "logica_backend": "Vedi operazione di registrazione 'Training Universale — apprendimento pattern su tutti i moduli' più sotto.",
+      "formula_matematica": "Vedi operazione dedicata.",
+      "aggiornamento_ui": "Al termine (status='completed') mostra una ResultCard per ciascuno dei 5 moduli (Fornitori, Stagionalità Vendite, Assegni, Tempi Pagamento, Movimenti Bancari) con insight testuali e un box 'beneficio' che spiega cosa questo abilita nel gestionale; se status non è 'completed' mostra l'errore restituito dal backend.",
+      "casi_errore": "Box rosso con il messaggio di errore (dal campo error della risposta o dal detail dell'eccezione HTTP)."
+    }
+  ],
+  "operazioni_di_registrazione": [
+    {
+      "nome": "Salvataggio keyword fornitore → centro di costo (POST /api/fornitori-learning/salva)",
+      "sequenza_esatta": "Normalizzazione nome fornitore (minuscolo + rimozione suffissi societari) → ricalcolo fatture_count/totale_fatture via regex sul nome originale su 'invoices' → upsert su 'fornitori_keywords' (update se esiste già un record con lo stesso nome normalizzato, altrimenti insert con id deterministico derivato dal nome).",
+      "collezioni_coinvolte": ["fornitori_keywords"],
+      "campi_scritti": {
+        "fornitori_keywords": "id, fornitore_nome, fornitore_nome_normalizzato, keywords (lowercase, trim), centro_costo_suggerito, note, fatture_count, totale_fatture, created_at (solo alla creazione), updated_at"
+      },
+      "effetti_collaterali": "Nessuna fattura viene toccata in questo momento: la classificazione effettiva avviene SOLO al successivo click su 'Riclassifica Fatture'."
+    },
+    {
+      "nome": "Riclassificazione fatture con keyword personalizzate (POST /api/fornitori-learning/riclassifica-con-keywords)",
+      "sequenza_esatta": "Per ogni fornitore configurato in 'fornitori_keywords': trova le fatture di quel fornitore ancora in 'Altri costi non classificati' o senza centro_costo_id → se il fornitore ha un centro_costo_suggerito valido lo applica direttamente, altrimenti chiama il motore learning_machine_cdc.classifica_fattura_per_centro_costo che assegna un punteggio a ciascun centro di costo (somma delle lunghezze delle keyword configurate trovate nel testo) e sceglie il migliore → aggiorna ogni fattura con il nuovo centro di costo.",
+      "collezioni_coinvolte": ["fornitori_keywords (sola lettura)", "invoices"],
+      "campi_scritti": {
+        "invoices": "centro_costo_id, centro_costo_nome, classificazione_fonte='keywords_personalizzate'"
+      },
+      "effetti_collaterali": "Le fatture aggiornate NON vengono ri-registrate contabilmente (nessun movimento in movimenti_contabili viene creato/modificato qui) — quella scrittura avviene solo tramite 'Applica alle Fatture' nel tab Regole Categorizzazione, che è un motore SEPARATO (categorizzazione_contabile.py, non learning_machine_cdc.py)."
+    },
+    {
+      "nome": "Apprendimento pattern assegni (POST /api/assegni/learning/learn)",
+      "sequenza_esatta": "Carica tutti gli assegni con beneficiario valorizzato E (importo>0 OPPURE fattura_id presente). Raggruppa per beneficiario normalizzato (maiuscolo, rimozione suffissi societari/congiunzioni, rimozione caratteri speciali). Per ogni gruppo con almeno 1 assegno: calcola importo_min/max/medio, le 5 combinazioni di importo più frequenti (Counter arrotondato a 2 decimali), ed estrae keyword dalle descrizioni (tokenizzazione maiuscola, esclusione stopword italiane + termini generici come PRELIEVO/ASSEGNO/PAGAMENTO/BONIFICO/NUM/CRA/DM, minimo 4 caratteri). Fa upsert su 'assegni_learning' con id deterministico 'learn_<fornitore_troncato_30>'. Per i fornitori con almeno 2 assegni, aggiorna ANCHE 'fornitori_keywords' (solo se il record esiste già — upsert=False) con assegni_count e importo_medio_assegno.",
+      "collezioni_coinvolte": ["assegni (sola lettura)", "assegni_learning", "fornitori_keywords"],
+      "campi_scritti": {
+        "assegni_learning": "id, fornitore_normalizzato, fornitore_originale, count_assegni, importo_min, importo_max, importo_medio, importi_frequenti (lista di [importo,count]), keywords (lista), updated_at",
+        "fornitori_keywords": "assegni_count, importo_medio_assegno, updated_at (solo se il fornitore esiste già in questa collection)"
+      },
+      "effetti_collaterali": "Nessuna scrittura sugli assegni stessi — 'learn' è puramente un passo di analisi/aggregazione, l'associazione vera avviene con 'associa-intelligente' o 'associa-combinazioni-avanzato'."
+    },
+    {
+      "nome": "Associazione intelligente assegni↔fatture (POST /api/assegni/learning/associa-intelligente)",
+      "sequenza_esatta": "Carica gli assegni senza beneficiario valido o senza fattura_id (importo>0). Carica tutte le fatture con total_amount>0. Carica i pattern da 'assegni_learning' (se usa_learning=true). Per ciascun assegno prova in ordine 3 strategie fino al primo match: (1) MATCH ESATTO — cerca nell'indice fatture-per-importo un importo uguale (con tolleranza incrementale a passi di 1 centesimo fino a tolleranza_importo, sia in eccesso che in difetto) che abbia UN SOLO candidato; (2) MATCH LEARNING — cerca nella descrizione dell'assegno le prime 10 lettere di un fornitore noto dai pattern appresi, verifica che l'importo rientri nel range [importo_min,importo_max] del pattern, poi cerca tra le fatture quella dello stesso fornitore con importo entro tolleranza_importo*2; (3) MATCH PATTERN DESCRIZIONE — estrae keyword dalla descrizione dell'assegno e le confronta con le parole del nome fornitore di ogni fattura, richiede overlap>=2 parole e importo entro tolleranza_importo*3. Il primo match trovato viene applicato subito: aggiorna l'assegno con beneficiario/fattura_id/numero_fattura/associazione_tipo/associazione_automatica=true.",
+      "collezioni_coinvolte": ["assegni", "invoices (sola lettura)", "assegni_learning (sola lettura)"],
+      "campi_scritti": {
+        "assegni": "beneficiario, fattura_id, numero_fattura, fornitore_fattura, associazione_tipo ('esatto'|'learning'|'pattern'), associazione_automatica=true, updated_at"
+      },
+      "effetti_collaterali": "Una fattura può essere assegnata a PIÙ assegni diversi (non c'è marcatura/rimozione della fattura dall'indice dopo un match, a differenza dell'endpoint 'associa-combinazioni-avanzato' che invece rimuove la fattura abbinata dall'indice); tolleranze di default lato backend (5€ di importo, 60 giorni — questi ultimi dichiarati ma non effettivamente usati nel confronto date del codice) non sono esposte/configurabili dal bottone frontend."
+    },
+    {
+      "nome": "Pulizia duplicati assegni (POST /api/assegni/learning/pulizia-duplicati)",
+      "sequenza_esatta": "Carica tutti gli assegni. Raggruppa per numero assegno. Per i gruppi con numero VUOTO e più di un elemento: li ordina per completezza (presenza beneficiario, presenza importo, updated_at) e mantiene solo il primo, marcando gli altri da eliminare. Per i gruppi con numero NON vuoto e più di un elemento: calcola uno score di completezza (beneficiario presente +3, importo presente +2, fattura collegata +2, stato='pagato' +1), ordina per score decrescente e updated_at, mantiene il primo, marca gli altri da eliminare. Aggiunge inoltre alla lista da eliminare ogni record totalmente vuoto (senza numero, importo, beneficiario) non già incluso. Se dry_run=false, esegue delete_one per ciascun id marcato.",
+      "collezioni_coinvolte": ["assegni"],
+      "campi_scritti": {"assegni": "nessuna scrittura in dry_run=true; delete fisico dei record identificati come duplicati/vuoti in dry_run=false"},
+      "effetti_collaterali": "Cancellazione fisica e irreversibile (nessun soft-delete); in caso di errore su un singolo id l'operazione prosegue sugli altri e riporta l'errore in risultati.errori senza interrompersi."
+    },
+    {
+      "nome": "Ricategorizzazione contabile completa delle fatture (POST /api/contabilita/ricategorizza-fatture — bottone 'Applica alle Fatture')",
+      "sequenza_esatta": "Vedi bottone omonimo sopra per la sequenza completa: reset saldi piano conti (tranne cassa/banca) → cancellazione totale movimenti_contabili → per ogni fattura attiva: categorizzazione tramite categorizzazione_contabile.py, creazione movimento in partita doppia, aggiornamento saldi → stessa elaborazione per i corrispettivi (incassi cassa/POS + ricavi).",
+      "collezioni_coinvolte": ["piano_conti", "movimenti_contabili", "invoices", "corrispettivi"],
+      "campi_scritti": {
+        "piano_conti": "saldo (azzerato e poi ricostruito conto per conto man mano che i movimenti vengono creati)",
+        "movimenti_contabili": "id, tipo, data, descrizione, fattura_id/corrispettivo, categoria_principale, percentuale_deducibilita_ires/irap, righe (array dare/avere), totale_dare, totale_avere, created_at",
+        "invoices": "registrata_contabilita=true, movimento_contabile_id, categoria_contabile, conto_costo_codice/nome, percentuale_deducibilita_ires/irap"
+      },
+      "effetti_collaterali": "Operazione GLOBALE e distruttiva: ogni click ricostruisce da zero l'intera contabilità movimenti derivata da fatture/corrispettivi; eventuali annotazioni manuali fatte direttamente su movimenti_contabili al di fuori di questo flusso vengono perse."
+    },
+    {
+      "nome": "Training Universale — apprendimento pattern su tutti i moduli (POST /api/learning-universal/train/all)",
+      "sequenza_esatta": "Esegue in sequenza 5 sotto-funzioni indipendenti, ciascuna con try/except proprio (un fallimento in una non blocca le altre): (1) learn_supplier_patterns — legge 'fornitori', raggruppa per metodo_pagamento, estrae parole chiave dalla ragione sociale, top 20 per frequenza; (2) learn_payment_patterns — legge 'invoices' con stato pagata/paid/PAGATA, calcola il ritardo in giorni tra data_documento e data_pagamento per fornitore, mantiene solo fornitori con almeno 3 pagamenti e calcola un indice di 'consistency'; (3) learn_movement_categories — legge 'movimenti_banca', estrae keyword dalla descrizione/causale raggruppate per categoria esistente, genera regole {categoria, keywords top 5, confidence}; (4) learn_seasonal_patterns — legge 'corrispettivi', calcola medie mensili di incasso, individua mesi di picco (>1.2x la media) e mesi deboli (<0.8x la media), determina un trend growing/declining/stable in base al conteggio; (5) learn_assegni_associations — legge 'assegni', conta quelli già associati a una fattura, estrae keyword dai beneficiari. Il risultato aggregato dei 5 moduli viene salvato con upsert in 'learning_results' (documento singolo con _id='latest'), sanificando le chiavi None in stringa 'unknown' per compatibilità JSON.",
+      "collezioni_coinvolte": ["fornitori", "invoices", "movimenti_banca", "corrispettivi", "assegni", "learning_results"],
+      "campi_scritti": {
+        "learning_results": "documento _id='latest' con started_at, modules: {fornitori, pagamenti, movimenti, stagionalita, assegni} (ciascuno con le proprie metriche), completed_at"
+      },
+      "effetti_collaterali": "Nessuna scrittura sulle collection sorgente (fornitori/invoices/movimenti_banca/corrispettivi/assegni restano invariate): è un training di sola LETTURA che produce un report consultabile via GET /api/learning-universal/results o /suggestions/{module}; esiste anche un endpoint POST /api/learning-universal/apply-suggestions che applicherebbe le regole apprese sui movimenti bancari non categorizzati, ma non è raggiunto da alcun bottone in questa pagina."
+    },
+    {
+      "nome": "Classificazione centro di costo di un F24 in base al codice tributo (motore condiviso, non un bottone diretto in questa pagina ma cuore della 'percentuale F24' mostrata in Dashboard)",
+      "sequenza_esatta": "Ogni F24 in 'f24_unificato' privo di centro_costo_id può essere classificato dal motore learning_machine_cdc.classifica_f24_per_centro_costo, che mappa il codice tributo a un centro di costo tramite TRIBUTI_F24_MAPPING (es. codici IVA periodica, ritenute personale, IMU) e calcola gli importi deducibili/detraibili con calcola_importi_fiscali.",
+      "collezioni_coinvolte": ["f24_unificato"],
+      "campi_scritti": {"f24_unificato": "centro_costo_id, centro_costo_nome, centro_costo_codice, tipo_tributo_principale, classificazione_fonte"},
+      "effetti_collaterali": "Formula deducibilità: imponibile_deducibile_ires = imponibile * deducibilita_ires (oppure, se il centro di costo ha un limite_annuo — es. noleggio auto — imponibile_limitato = min(imponibile, limite_annuo) e la deducibilità si applica solo su quella quota, il resto è indeducibile); stessa logica separata per IRAP con la propria percentuale."
+    }
+  ],
+  "collegamenti_con_altre_pagine": [
+    "Fatture (Archivio Fatture Ricevute) — le fatture riclassificate da 'Riclassifica Fatture' e da 'Applica alle Fatture' mostrano lì il centro_costo/categoria_contabile aggiornati.",
+    "Pattern Assegni ↔ pagina Assegni (Banca) — gli assegni associati automaticamente da questa pagina sono visibili/gestibili nell'archivio assegni.",
+    "Contabilità Avanzata / Piano dei Conti — 'Applica alle Fatture' scrive direttamente sui saldi del piano dei conti consultabile in quelle pagine.",
+    "/classificazione-email (pagina esterna non coperta da questo audit) — è la reale interfaccia operativa per il feedback loop del tab 'Classificazione Documenti' (scan email, correzione categoria, invio feedback); in questa pagina il tab mostra solo statistiche riepilogative in sola lettura.",
+    "F24 (sezioni tributi/scadenze) — beneficia della classificazione per centro di costo del modulo learning_machine_cdc, richiamabile anche da fornitori_learning.py::classifica-f24 (endpoint esistente ma non azionato da alcun bottone in questa pagina)."
+  ],
+  "popup_e_modali_presenti": [
+    "MessageBanner — banner colorato (verde successo / rosso errore) in cima alla pagina, condiviso da tutte le azioni dei tab Dashboard/Fornitori/Assegni/Documenti, con chiusura manuale (×).",
+    "Nel tab Regole Categorizzazione: banner di messaggio dedicato (stesso pattern ma componente locale), form inline 'Nuova Regola' (non un vero modale, sezione espandibile in pagina).",
+    "Nessun modale di conferma per azioni distruttive come 'Applica alle Fatture' (azzera tutti i movimenti contabili), 'Elimina fornitore', 'Elimina regola', 'Associa Automaticamente' (assegni) — window.confirm() nativo presente solo per 'Elimina fornitore configurato'."
+  ]
+}

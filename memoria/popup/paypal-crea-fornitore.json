@@ -1,0 +1,79 @@
+{
+  "nome_popup": "CreaFornitorePaypalModal (crea fornitore inline + mappa)",
+  "file_sorgente": "/home/user/GestionaleCloud/frontend/src/pages/RiconciliazionePaypal.jsx, righe 1524-1721 — componente definito INLINE nello stesso file della pagina (non un file separato in components/), montato condizionalmente riga ~1509 ({createModal && <CreaFornitorePaypalModal .../>})",
+  "pagine_da_cui_si_apre": ["Riconciliazione PayPal (/riconciliazione/paypal), tab 'Mapping Fornitori'"],
+  "come_si_apre": "Click sul bottone '➕ Crea nuovo' (data-testid=crea-forn-btn-{paypal_account_id}) su una riga del tab Mapping Fornitori, per un account PayPal ancora senza fornitore associato. Il click imposta setCreateModal({paypal_account_id, nome_controparte, email_controparte, importo_totale, n_tx}) con i dati aggregati di quell'account già presenti in mappingData (nessuna nuova chiamata di rete all'apertura). Il modale è un overlay fisso (position:fixed, inset:0, sfondo rgba(0,0,0,0.5), zIndex 1100) con riquadro bianco max-width 560px.",
+  "scopo": "Permettere di creare in un colpo solo un nuovo fornitore in anagrafica E collegarlo (mappare) immediatamente al paypal_account_id, per gli account PayPal (tipicamente fornitori SaaS/esteri) che non hanno ancora un fornitore corrispondente in anagrafica.",
+  "dati_mostrati": "Sottotitolo con Account ID PayPal (monospace) e numero di transazioni (context.n_tx). Form precompilato: Ragione sociale = context.nome_controparte, Email = context.email_controparte, Note = testo generato automaticamente 'Creato da PayPal mapping ({n_tx} transazioni, totale €{importo_totale assoluto, 2 decimali})'. Nessun'altra chiamata GET all'apertura: tutti i dati mostrati provengono dal context passato dal genitore.",
+  "campi_e_bottoni": [
+    {
+      "elemento": "Input 'Ragione sociale *' (autoFocus, obbligatorio)",
+      "cosa_fa": "Aggiorna form.ragione_sociale in stato locale.",
+      "endpoint_chiamato": "nessuno",
+      "validazioni": "Validazione al submit: se form.ragione_sociale.trim() è vuoto, setError('La ragione sociale è obbligatoria') e non invia nulla. Il bottone 'Crea e mappa' è anche disabilitato staticamente se il campo è vuoto."
+    },
+    {
+      "elemento": "Input 'P.IVA / VAT' (placeholder 'es. IE9952657T')",
+      "cosa_fa": "Aggiorna form.piva forzando sempre uppercase (toUpperCase() ad ogni digitazione).",
+      "endpoint_chiamato": "nessuno",
+      "validazioni": "Nessuna validazione di formato lato client (accetta P.IVA estere di formato diverso da quello italiano, coerente con l'uso per fornitori esteri)."
+    },
+    {
+      "elemento": "Select 'Nazione'",
+      "cosa_fa": "Aggiorna form.nazione tra le opzioni IT/IE/NL/DE/FR/ES/GB/US/LU/OTHER (default 'IT').",
+      "endpoint_chiamato": "nessuno",
+      "validazioni": "nessuna"
+    },
+    {
+      "elemento": "Input 'Email'",
+      "cosa_fa": "Aggiorna form.email, precompilato da context.email_controparte.",
+      "endpoint_chiamato": "nessuno",
+      "validazioni": "type='email' HTML5 nativo, nessuna validazione JS aggiuntiva."
+    },
+    {
+      "elemento": "Textarea 'Note'",
+      "cosa_fa": "Aggiorna form.note, precompilata col testo automatico descritto sopra ma liberamente modificabile.",
+      "endpoint_chiamato": "nessuno",
+      "validazioni": "nessuna"
+    },
+    {
+      "elemento": "Checkbox 'Escludi da magazzino' (default checked=true)",
+      "cosa_fa": "Aggiorna form.esclude_magazzino; il testo di supporto consiglia di lasciarlo attivo per i fornitori PayPal (SaaS, servizi cloud, abbonamenti), che tipicamente non generano movimenti di magazzino.",
+      "endpoint_chiamato": "nessuno",
+      "validazioni": "nessuna"
+    },
+    {
+      "elemento": "Bottone 'Annulla' (footer)",
+      "cosa_fa": "Chiama onClose() senza salvare (disabilitato mentre loading=true).",
+      "endpoint_chiamato": "nessuno",
+      "validazioni": "nessuna"
+    },
+    {
+      "elemento": "Bottone '✕' in alto a destra (aria-label=Chiudi)",
+      "cosa_fa": "Chiama onClose(), stesso effetto di Annulla.",
+      "endpoint_chiamato": "nessuno",
+      "validazioni": "nessuna"
+    },
+    {
+      "elemento": "Click sull'overlay scuro esterno al riquadro",
+      "cosa_fa": "onClick sul contenitore esterno chiama onClose() (il riquadro interno ha stopPropagation).",
+      "endpoint_chiamato": "nessuno",
+      "validazioni": "nessuna"
+    },
+    {
+      "elemento": "Bottone '➕ Crea e mappa' (footer, disabilitato se loading o ragione_sociale vuota)",
+      "cosa_fa": "submit(): valida ragione_sociale non vuota, poi invia {paypal_account_id: context.paypal_account_id, ...form} (tutti i campi del form appiattiti insieme all'account id di contesto).",
+      "endpoint_chiamato": "POST /api/paypal-api/crea-fornitore-e-mappa",
+      "validazioni": "Lato server (crea_fornitore_e_mappa in app/routers/paypal_api.py): 409 se paypal_account_id è già mappato a un fornitore esistente; 409 se la P.IVA fornita coincide con quella di un fornitore già esistente (con suggerimento di usare /mappa-fornitore su quel fornitore invece di crearne uno duplicato); 400 se paypal_account_id o ragione_sociale mancano lato server (doppia validazione, oltre a quella client)."
+    }
+  ],
+  "cosa_succede_alla_conferma": "Il backend crea un nuovo documento nella collezione 'fornitori' con: id (uuid), ragione_sociale/nome, piva, codice_fiscale, email, telefono, indirizzo, cap, comune, provincia, nazione, iban vuoto (PayPal non usa IBAN), iban_lista, metodo_pagamento='paypal' (fisso), giorni_pagamento default, esclude_magazzino (dal checkbox), escludi_da_tracciabilita, paypal_account_id già valorizzato con l'account di contesto (quindi il fornitore nasce già mappato, senza bisogno di un secondo step), note, source='paypal_mapping', created_at/updated_at. Ritorna anche il conteggio delle transazioni che beneficeranno subito del mapping (n_transazioni_collegabili). Il frontend chiama onCreated() passato dal genitore, che: chiude il modale (setCreateModal(null)), richiama loadMapping() (la riga dell'account sparisce dalla lista 'non mappati' perché ora ha un fornitore associato) e mostra un toast di successo '✓ Fornitore creato e mappato'.",
+  "come_si_chiude": [
+    "Bottone '✕' in alto a destra",
+    "Bottone 'Annulla' nel footer",
+    "Click sull'overlay scuro esterno",
+    "Automaticamente dopo un submit riuscito (via onCreated → setCreateModal(null) nel genitore)",
+    "In caso di errore del submit il modale resta aperto e mostra un banner rosso inline con il detail dell'errore, permettendo di correggere e ritentare"
+  ],
+  "effetto_su_pagina_sottostante": "Dopo la creazione riuscita, il tab 'Mapping Fornitori' si aggiorna (loadMapping()): l'account PayPal appena mappato sparisce dall'elenco 'non mappati' perché ora esiste un fornitore con quel paypal_account_id. Il nuovo fornitore è da quel momento visibile anche nell'Anagrafica Fornitori generale e disponibile come candidato per future riconciliazioni fatture. Nessun aggiornamento automatico delle transazioni PayPal già esistenti in questa chiamata: la loro associazione a fatture avviene solo con una successiva riconciliazione (POST /api/paypal-api/riconcilia, es. tramite 'Sync PayPal API')."
+}

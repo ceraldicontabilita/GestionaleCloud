@@ -1,0 +1,283 @@
+{
+  "pagina": "Prima Nota (Cassa / Banca / Provvisori)",
+  "url": "https://impresasemplice.online/prima-nota",
+  "file_sorgente_frontend": [
+    "frontend/src/pages/PrimaNota.jsx",
+    "frontend/src/pages/hub/PrimaNotaHub.jsx (wrapper che monta PrimaNota.jsx e DatiProvvisoriPage.jsx senza rismontarli quando si cambia tab, per non perdere lo stato)"
+  ],
+  "file_sorgente_backend": [
+    "app/routers/prima_nota_module/__init__.py (registrazione di tutte le rotte sotto prefisso /api/prima-nota)",
+    "app/routers/prima_nota_module/cassa.py (CRUD movimenti Cassa)",
+    "app/routers/prima_nota_module/banca.py (CRUD movimenti Banca)",
+    "app/routers/prima_nota_module/sync.py (conferma provvisori, registrazione pagamenti fattura, sync corrispettivi/estratto conto)",
+    "app/routers/prima_nota_module/manutenzione.py (sposta_movimento tra cassa/banca, dedup, diagnostica)",
+    "app/routers/prima_nota_module/common.py (costanti collection, calcolo saldo anni precedenti)",
+    "app/routers/prima_nota_module/stats.py (anni disponibili, saldo finale, export Excel)",
+    "app/routers/bank/estratto_conto.py (import CSV estratto conto, usato dal tab Banca per /api/estratto-conto-movimenti/*)",
+    "app/routers/multi_pagamento.py (POST /api/pagamenti/registra, usato dalla modale 'Pagamento parziale (Misto)')",
+    "app/services/business_rules.py (BusinessRules.can_delete_movement, regole di blocco/avviso sull'eliminazione di un movimento)",
+    "app/services/cascade_operations.py (CascadeOperations.delete_fattura_cascade: cosa succede a prima_nota_cassa/banca quando si elimina una FATTURA, non il movimento)"
+  ],
+  "scopo_generale": "È il registro di cassa e banca dell'azienda: tiene traccia di tutti i movimenti di denaro reale (contante in cassa e movimenti sul conto corrente) e li tiene separati per capire quanto contante c'è fisicamente in negozio e quanto c'è in banca. Serve all'amministrazione/contabilità per: registrare a fine giornata l'incasso (corrispettivo) e le uscite (POS, versamenti in banca, piccole spese), tenere sotto controllo il saldo cassa e banca anno per anno, e smaltire le fatture fornitore che arrivano via XML decidendo se sono state pagate in contanti o con bonifico/banca (tab 'Provvisori'). È il cuore contabile-operativo quotidiano del gestionale: da qui partono i collegamenti verso le fatture (stato_pagamento), l'estratto conto bancario e i corrispettivi elettronici.",
+  "sezioni_tab": [
+    {
+      "nome": "CASSA",
+      "descrizione": "Movimenti in denaro CONTANTE: corrispettivi giornalieri (incasso lordo IVA), incassi POS registrati manualmente come promemoria, versamenti in banca (uscita dalla cassa), fatture pagate in contanti, piccole spese. La creazione di un movimento in questa sezione viene BLOCCATA dal backend se la descrizione contiene parole chiave chiaramente bancarie (bonifico, SEPA, F24, POS bancario, ecc.), per impedire che dati bancari finiscano per errore in cassa."
+    },
+    {
+      "nome": "BANCA",
+      "descrizione": "Vista che unisce due fonti: i movimenti importati dall'Estratto Conto bancario (collection estratto_conto_movimenti, letti da /api/estratto-conto-movimenti/movimenti) e i movimenti creati manualmente nella collection prima_nota_banca (es. pagamenti fattura via bonifico, confermati dai Provvisori). Il frontend deduplica i due elenchi (per id e per combinazione data+importo+tipo) prima di mostrarli in un'unica tabella con saldo progressivo."
+    },
+    {
+      "nome": "PROVVISORI",
+      "descrizione": "Elenco delle fatture ricevute NON ancora registrate in Prima Nota (nessun movimento cassa/banca collegato, stato_pagamento diverso da 'pagata'). Per ognuna il sistema suggerisce automaticamente 'cassa', 'banca' o 'sospesa' in base al metodo di pagamento impostato in anagrafica fornitore (mai dal metodo dichiarato nell'XML della fattura, ritenuto inaffidabile). L'utente conferma riga per riga (o in blocco con 'Conferma Tutte') la destinazione reale."
+    }
+  ],
+  "bottoni_azioni": [
+    {
+      "etichetta": "🧹 Pulisci duplicati",
+      "dove_si_trova": "Header in alto a destra, sempre visibile",
+      "cosa_fa_al_click": "navigate('/prima-nota/pulizia') — è un semplice link React Router, nessuna chiamata API: apre la pagina PuliziaPrimaNota.jsx.",
+      "endpoint_chiamato": "nessuno (navigazione client-side)",
+      "logica_backend": "n/d",
+      "formula_matematica": "n/d",
+      "aggiornamento_ui": "Cambia pagina verso /prima-nota/pulizia.",
+      "casi_errore": "n/d"
+    },
+    {
+      "etichetta": "🔄 (refresh)",
+      "dove_si_trova": "Header in alto a destra",
+      "cosa_fa_al_click": "Richiama loadAllData(), che rilancia in parallelo le 4 chiamate di caricamento (cassa, estratto conto, banca, provvisori) per l'anno/mese correnti.",
+      "endpoint_chiamato": "GET /api/prima-nota/cassa, GET /api/estratto-conto-movimenti/movimenti, GET /api/prima-nota/banca, GET /api/prima-nota/provvisori",
+      "logica_backend": "Vedi 'operazioni_di_registrazione' più sotto per il dettaglio di list_prima_nota_cassa/banca.",
+      "formula_matematica": "n/d",
+      "aggiornamento_ui": "Aggiorna cassaData, bancaData, provvisori con i dati freschi dal server; mostra lo spinner 'Caricamento...' nella tabella durante il fetch.",
+      "casi_errore": "Errore loggato in console (console.error), nessun alert visibile all'utente."
+    },
+    {
+      "etichetta": "💾 (Corrispettivo, riquadro Chiusure Giornaliere)",
+      "dove_si_trova": "Tab CASSA → pannello a tendina 'Chiusure Giornaliere' → card 'Corrispettivo'",
+      "cosa_fa_al_click": "handleSaveCorrispettivo(): valida che l'importo sia stato inserito e che la data sia dell'anno selezionato (altrimenti chiede conferma); poi POST.",
+      "endpoint_chiamato": "POST /api/prima-nota/cassa",
+      "logica_backend": "create_prima_nota_cassa (cassa.py): body inviato è {data, tipo:'entrata', importo, descrizione:'Corrispettivo giornaliero {data} (provvisorio)', categoria:'Corrispettivi', source:'manual_entry', provvisorio:true}. Il backend valida i campi obbligatori (data/tipo/importo/descrizione), controlla importo>0 (altrimenti 422), controlla che la descrizione NON contenga parole chiave bancarie (altrimenti 400 'Questo movimento sembra bancario...'). ATTENZIONE: il campo 'provvisorio:true' inviato dal frontend viene IGNORATO dal backend — non esiste nello schema del documento salvato, che contiene solo id, data, tipo, importo, descrizione, categoria, riferimento, fornitore_piva, fattura_id, note, source, created_at. Il commento nel frontend che dice 'verrà sovrascritto quando arriva l'XML' non corrisponde quindi a un meccanismo automatico presente nel backend: la sovrascrittura reale avviene solo tramite la pagina Pulizia Prima Nota (diagnosi + risincronizzazione), non da un job che confronta 'provvisorio'.",
+      "formula_matematica": "Nessun calcolo: inserimento diretto di un documento con importo positivo e tipo='entrata' nella collection prima_nota_cassa.",
+      "aggiornamento_ui": "Reset del form corrispettivo, richiamo di loadAllData() per ricaricare tutta la pagina.",
+      "casi_errore": "alert('Errore: ' + dettaglio) se la POST fallisce (es. 400 per parola bancaria rilevata, 422 per importo ≤ 0)."
+    },
+    {
+      "etichetta": "💾 (POS, riquadro Chiusure Giornaliere)",
+      "dove_si_trova": "Tab CASSA → 'Chiusure Giornaliere' → card 'POS'",
+      "cosa_fa_al_click": "handleSavePos(): somma pos1 (unico campo attivo nell'interfaccia compatta) e invia una uscita.",
+      "endpoint_chiamato": "POST /api/prima-nota/cassa",
+      "logica_backend": "create_prima_nota_cassa con body {data, tipo:'uscita', importo:totale, descrizione:'POS giornaliero {data} (provvisorio)', categoria:'POS', source:'manual_pos', provvisorio:true}. Stesse regole di validazione della card Corrispettivo; anche qui 'provvisorio' è ignorato dal backend.",
+      "formula_matematica": "totale = parseFloat(pos.pos1) || 0 (gli altri due campi pos2/pos3 sono legacy, sempre azzerati dal codice quando si scrive in pos1).",
+      "aggiornamento_ui": "Reset form POS, loadAllData().",
+      "casi_errore": "alert('Errore: ' + dettaglio)."
+    },
+    {
+      "etichetta": "💾 (Versamento, riquadro Chiusure Giornaliere)",
+      "dove_si_trova": "Tab CASSA → 'Chiusure Giornaliere' → card 'Versamento'",
+      "cosa_fa_al_click": "handleSaveVersamento(): registra un'uscita di cassa per il denaro portato fisicamente in banca.",
+      "endpoint_chiamato": "POST /api/prima-nota/cassa",
+      "logica_backend": "create_prima_nota_cassa con body {data, tipo:'uscita', importo, descrizione:'Versamento in banca {data}', categoria:'Versamento', source:'manual_entry'} (nessun flag provvisorio qui).",
+      "formula_matematica": "Nessun calcolo, solo scrittura diretta.",
+      "aggiornamento_ui": "Reset form, loadAllData(), alert('✅ Versamento salvato!').",
+      "casi_errore": "alert('Errore: ' + dettaglio)."
+    },
+    {
+      "etichetta": "💾 (Movimento Altro, riquadro Chiusure Giornaliere)",
+      "dove_si_trova": "Tab CASSA → 'Chiusure Giornaliere' → card 'Altro'",
+      "cosa_fa_al_click": "handleSaveMovimento(): registra un movimento generico entrata/uscita con descrizione libera.",
+      "endpoint_chiamato": "POST /api/prima-nota/cassa",
+      "logica_backend": "create_prima_nota_cassa con body {data, tipo (selezionato dall'utente), importo, descrizione, categoria: 'Incasso' se tipo=entrata altrimenti 'Spese', source:'manual_entry'}. Passa dal filtro anti-parole-bancarie come tutti gli altri form Cassa.",
+      "formula_matematica": "Nessun calcolo.",
+      "aggiornamento_ui": "Reset form, loadAllData(), alert('✅ Movimento salvato!').",
+      "casi_errore": "alert('Errore: ' + dettaglio); se descrizione contiene keyword bancaria → 400 con messaggio esplicito che indirizza l'utente alla sezione Banca."
+    },
+    {
+      "etichetta": "🏦 / 💵 (sposta movimento, icona nella riga tabella)",
+      "dove_si_trova": "Tabella movimenti, colonna Azioni, sia in Cassa (icona 🏦 = sposta in Banca) sia in Banca (icona 💵 = sposta in Cassa) — visibile solo se readOnly=false",
+      "cosa_fa_al_click": "handleSpostaMovimento(movimentoId, da, a) chiamata dal componente MovementsTable.",
+      "endpoint_chiamato": "POST /api/prima-nota/sposta-movimento  body {movimento_id, da, a}",
+      "logica_backend": "sposta_movimento (manutenzione.py): valida da/a ∈ {cassa,banca} e diversi tra loro. Cerca il documento nella collection sorgente (prima_nota_cassa o prima_nota_banca). CASO SPECIALE: se da='banca' e il movimento non è in prima_nota_banca, cerca in estratto_conto_movimenti (perché il tab Banca mostra anche righe dell'estratto conto): se lo trova, copia il documento nella collection di destinazione, lo cancella FISICAMENTE (delete_one, non soft-delete) da estratto_conto_movimenti, e propaga l'evento TRASFERIMENTO_CREATO. CASO STANDARD: rimuove _id dal documento, aggiunge moved_from/moved_at, lo inserisce nella collection di destinazione e cancella FISICAMENTE il documento originale dalla collection sorgente (delete_one, non soft-delete — a differenza della DELETE singola che fa soft-delete). Se il movimento ha fattura_id collegato, aggiorna la FATTURA: prima_nota_tipo=a, metodo_pagamento e payment_method='contanti' se a='cassa' altrimenti 'bonifico', prima_nota_cassa_id/prima_nota_banca_id impostato in modo mutuamente esclusivo. Propaga evento TRASFERIMENTO_CREATO.",
+      "formula_matematica": "Nessuna somma: è uno spostamento 1:1 del documento tra collection, l'importo resta identico. L'effetto sul saldo è indiretto: il movimento smette di contare nel saldo della collection di origine e inizia a contare in quella di destinazione dal prossimo ricalcolo.",
+      "aggiornamento_ui": "Icona diventa ⏳ durante la richiesta (stato spostando), poi loadAllData() ricarica tutto; nessun alert di successo esplicito (solo alert in caso di errore).",
+      "casi_errore": "alert('Errore spostamento: ' + dettaglio); 404 se il movimento non esiste in nessuna delle collection interrogate, 400 se da==a o valori non validi."
+    },
+    {
+      "etichetta": "✏️ (modifica movimento)",
+      "dove_si_trova": "Tabella movimenti, colonna Azioni (sia Cassa che Banca)",
+      "cosa_fa_al_click": "Apre EditMovimentoModal con i dati precompilati del movimento selezionato.",
+      "endpoint_chiamato": "PUT /api/prima-nota/cassa/{id}  oppure  PUT /api/prima-nota/banca/{id}",
+      "logica_backend": "update_prima_nota_cassa / update_prima_nota_banca: aggiorna solo i campi passati tra data, tipo, importo, descrizione, categoria, riferimento, note, fornitore/ragione_sociale, più updated_at. Per la Banca, se l'id non è trovato in prima_nota_banca (perché il record mostrato in tabella arriva dall'estratto conto), il backend fa un secondo tentativo di update sulla collection estratto_conto_movimenti prima di restituire 404.",
+      "formula_matematica": "Nessuna: sovrascrittura diretta dei campi.",
+      "aggiornamento_ui": "Alla conferma il modale passa automaticamente al movimento successivo nella pagina corrente (o alla pagina successiva) per velocizzare la correzione di più righe di fila; loadAllData() viene richiamata dal genitore tramite onEdit → handleEditMovimento.",
+      "casi_errore": "alert('Errore nel salvataggio: ' + dettaglio); 404 se il movimento non esiste in nessuna delle due collection interrogate."
+    },
+    {
+      "etichetta": "🗑️ (elimina movimento)",
+      "dove_si_trova": "Tabella movimenti, colonna Azioni",
+      "cosa_fa_al_click": "handleDeleteMovimento(tipo, id).",
+      "endpoint_chiamato": "DELETE /api/prima-nota/cassa/{id}  oppure  DELETE /api/prima-nota/banca/{id}  (eventualmente ripetuta con ?force=true)",
+      "logica_backend": "delete_movimento_cassa / delete_movimento_banca: cerca il movimento; se non esiste → 404. Applica BusinessRules.can_delete_movement: BLOCCA (errore, 400) se status='reconciled' (movimento già riconciliato con la banca); genera AVVISO (non blocca) se status='confirmed', oppure se il movimento ha invoice_id o corrispettivo_id collegato. Se ci sono avvisi e la richiesta non ha force=true, ritorna {status:'warning', warnings, require_force:true} con HTTP 200 (non un errore) — il frontend intercetta questo caso e chiede conferma con window.confirm mostrando gli avvisi, poi ripete la DELETE con ?force=true. Se non ci sono avvisi (o force=true), il movimento viene SOFT-DELETE: entity_status='deleted', status='deleted', deleted_at=ora (il documento resta nel database, non viene mai cancellato fisicamente da questo endpoint). Se il movimento aveva fattura_id, la FATTURA collegata (matchata anche su prima_nota_id=movimento_id, per sicurezza) torna 'da pagare': stato_pagamento='', pagato=false, paid=false, e vengono rimossi (unset) prima_nota_id, prima_nota_tipo, prima_nota_cassa_id/banca_id, data_pagamento. Per la Banca: se il movimento non è trovato in prima_nota_banca ma esiste in estratto_conto_movimenti, viene invece cancellato FISICAMENTE (delete_one) senza applicare BusinessRules e senza toccare la fattura.",
+      "formula_matematica": "Il saldo si aggiorna automaticamente al prossimo ricalcolo perché la query di lista esclude sempre status IN ('deleted','archived').",
+      "aggiornamento_ui": "loadAllData() dopo l'eliminazione (con o senza force).",
+      "casi_errore": "alert('Errore: ' + dettaglio) per errori bloccanti (400) o 404; per gli avvisi non bloccanti, un window.confirm con l'elenco dei motivi prima di procedere col force."
+    },
+    {
+      "etichetta": "📄 Vedi / 📎 Bonifico / 🏛️ F24 / 🧾 Corrisp.",
+      "dove_si_trova": "Tabella movimenti, colonna 'Documento'",
+      "cosa_fa_al_click": "Sono link <a target=\"_blank\"> statici, non handler JS: aprono direttamente l'URL del documento associato al movimento a seconda di quale id è presente (fattura_id, bonifico_pdf_id, f24_id, corrispettivo_id/xml_filename).",
+      "endpoint_chiamato": "GET /api/fatture-ricevute/fattura/{fattura_id}/view-assoinvoice  |  GET /api/archivio-bonifici/transfers/{bonifico_pdf_id}/pdf  |  GET /api/f24/{f24_id}  |  GET /api/corrispettivi/{corrispettivo_id}/view  |  GET /api/corrispettivi/view-by-filename?filename=...",
+      "logica_backend": "Endpoint esterni al modulo Prima Nota (fatture-ricevute, archivio-bonifici, f24, corrispettivi): restituiscono il documento/PDF collegato, non fanno parte di prima_nota_module.",
+      "formula_matematica": "n/d",
+      "aggiornamento_ui": "Apre una nuova scheda del browser col documento.",
+      "casi_errore": "Gestito dall'endpoint di destinazione (fuori dallo scope di questo modulo)."
+    },
+    {
+      "etichetta": "Import CSV Estratto Conto (input file nascosto, tab Banca)",
+      "dove_si_trova": "Tab BANCA (bottone/etichetta non incluso nello snippet letto per intero ma il gestore handleImportCSVBanca è presente nel componente e collegato a bancaCSVRef)",
+      "cosa_fa_al_click": "handleImportCSVBanca(e): prende il file scelto, lo invia come multipart/form-data.",
+      "endpoint_chiamato": "POST /api/estratto-conto-movimenti/import",
+      "logica_backend": "app/routers/bank/estratto_conto.py — import incrementale: inserisce le nuove righe del CSV nella collection estratto_conto_movimenti saltando i duplicati già presenti (dettaglio implementativo fuori dallo scope dei file richiesti per questo report, il file non fa parte di prima_nota_module).",
+      "formula_matematica": "n/d",
+      "aggiornamento_ui": "alert con messaggio, conteggio 'Inseriti' e 'Duplicati saltati'; loadAllData() al termine.",
+      "casi_errore": "alert('Errore import: ' + dettaglio)."
+    },
+    {
+      "etichetta": "Forza Reimport Estratto Conto (input file nascosto, tab Banca)",
+      "dove_si_trova": "Tab BANCA",
+      "cosa_fa_al_click": "handleForceReimportBanca(e): chiede conferma esplicita con window.confirm (avviso ⚠️ che verranno cancellati tutti i movimenti degli anni presenti nel CSV) prima di inviare il file.",
+      "endpoint_chiamato": "POST /api/estratto-conto-movimenti/force-reimport",
+      "logica_backend": "app/routers/bank/estratto_conto.py — cancella e reinserisce COMPLETAMENTE i movimenti degli anni coperti dal CSV (incluse eventuali righe che prima erano state deduplicate come commissioni doppie); usato per correggere un saldo errato dovuto a import parziali precedenti.",
+      "formula_matematica": "n/d",
+      "aggiornamento_ui": "alert con riepilogo (anni aggiornati, record cancellati, movimenti importati, nuovi totali entrate/uscite/saldo); loadAllData().",
+      "casi_errore": "alert('Errore reimport: ' + dettaglio); se l'utente annulla la conferma, l'input file viene resettato e nulla viene inviato."
+    },
+    {
+      "etichetta": "✓ Conferma Tutte (tab Provvisori)",
+      "dove_si_trova": "Tab PROVVISORI, header del riquadro giallo",
+      "cosa_fa_al_click": "Filtra i provvisori con suggerimento 'cassa' o 'banca' (esclude 'sospesa', perché non ha una destinazione certa), poi chiama in sequenza (un ciclo await, non in parallelo) l'endpoint di conferma per ciascuno, contando successi ed errori.",
+      "endpoint_chiamato": "POST /api/prima-nota/provvisori/conferma  (una chiamata per ogni fattura confermabile)  body {fattura_id, metodo: p.suggerimento}",
+      "logica_backend": "conferma_fattura_provvisoria, vedi dettaglio nel bottone singolo 'Conferma' più sotto — qui applicata in loop lato client.",
+      "formula_matematica": "n/d",
+      "aggiornamento_ui": "Al termine del ciclo: loadAllData() e alert riepilogativo (es. '✓ N fatture confermate, X errori. Y restano in sospeso...').",
+      "casi_errore": "Ogni fallimento della singola chiamata viene contato in 'errori' ma non interrompe il ciclo; l'utente vede solo il totale nell'alert finale, non il dettaglio riga per riga."
+    },
+    {
+      "etichetta": "✓ Conferma (riga provvisorio)",
+      "dove_si_trova": "Tab PROVVISORI, singola card fattura",
+      "cosa_fa_al_click": "Chiama la conferma usando il metodo SUGGERITO dal sistema per quella fattura (p.suggerimento), non visibile solo se la fattura è già 'sospesa'.",
+      "endpoint_chiamato": "POST /api/prima-nota/provvisori/conferma  body {fattura_id, metodo: p.suggerimento}",
+      "logica_backend": "conferma_fattura_provvisoria (sync.py): carica la fattura da invoices; se metodo='sospesa' aggiorna solo invoices.stato_pagamento='sospesa' (nessun movimento creato, unset prima_nota_id) e ritorna. Altrimenti sceglie la collection (prima_nota_cassa se metodo='cassa', prima_nota_banca altrimenti). DEDUP: cerca se esiste già un movimento con riferimento='FATT-{fattura_id}'; se sì, non duplica, aggiorna solo la fattura (stato_pagamento='pagata', prima_nota_tipo, prima_nota_id=id esistente) e ritorna 'Già registrata'. Altrimenti crea il movimento: id nuovo, data=invoice_date, tipo='uscita' (fisso, indipendentemente dal tipo di documento — quindi note: questa funzione NON gestisce fatture attive/note di credito come entrata, sempre uscita), categoria='Fatture', descrizione='Fatt. {numero} - {fornitore troncato a 30 caratteri}', importo=total_amount, riferimento='FATT-{fattura_id}', fattura_id, source='conferma_provvisori', created_at. Inserisce nella collection scelta. Aggiorna invoices: stato_pagamento='pagata', prima_nota_id=nuovo id, prima_nota_tipo=metodo, payment_method='contanti' se cassa altrimenti il payment_method esistente o 'bonifico'.",
+      "formula_matematica": "movimento.importo = fattura.total_amount (l'intero importo della fattura, nessuna suddivisione).",
+      "aggiornamento_ui": "setProvvisori rimuove la fattura dall'elenco locale (senza attendere un reload completo).",
+      "casi_errore": "alert(e.message); 404 se la fattura non esiste."
+    },
+    {
+      "etichetta": "🏪 Cassa / 🏦 Banca (riga provvisorio, forzatura manuale)",
+      "dove_si_trova": "Tab PROVVISORI, singola card fattura",
+      "cosa_fa_al_click": "Come 'Conferma' ma forza esplicitamente metodo='cassa' oppure metodo='banca', indipendentemente dal suggerimento del sistema.",
+      "endpoint_chiamato": "POST /api/prima-nota/provvisori/conferma  body {fattura_id, metodo:'cassa'|'banca'}",
+      "logica_backend": "Identica a conferma_fattura_provvisoria descritta sopra.",
+      "formula_matematica": "movimento.importo = fattura.total_amount.",
+      "aggiornamento_ui": "setProvvisori rimuove la riga dall'elenco locale.",
+      "casi_errore": "alert(e.message)."
+    },
+    {
+      "etichetta": "⏳ Sospesa (riga provvisorio)",
+      "dove_si_trova": "Tab PROVVISORI, singola card fattura",
+      "cosa_fa_al_click": "Marca la fattura come 'sospesa': nessuna destinazione certa, resta nei provvisori ma etichettata diversamente.",
+      "endpoint_chiamato": "POST /api/prima-nota/provvisori/conferma  body {fattura_id, metodo:'sospesa'}",
+      "logica_backend": "conferma_fattura_provvisoria: ramo metodo=='sospesa' — aggiorna SOLO invoices: stato_pagamento='sospesa', metodo_pagamento_effettivo='sospesa', prima_nota_tipo='sospesa', unset prima_nota_id. NESSUN movimento viene creato in prima_nota_cassa/banca.",
+      "formula_matematica": "n/d (nessun movimento contabile).",
+      "aggiornamento_ui": "setProvvisori aggiorna il suggerimento della riga a 'sospesa' (la riga resta visibile ma cambia badge, invece di sparire).",
+      "casi_errore": "alert con dettaglio errore da response.data.detail/message."
+    },
+    {
+      "etichetta": "Misto",
+      "dove_si_trova": "Tab PROVVISORI, singola card fattura",
+      "cosa_fa_al_click": "Apre il modale 'Pagamento parziale (Misto)': l'utente specifica quanto della fattura è stato pagato in contanti (CASSA); il residuo viene calcolato automaticamente per la BANCA.",
+      "endpoint_chiamato": "POST /api/pagamenti/registra  (chiamata 1 o 2 volte: sempre per la quota cassa se >0, poi per il residuo banca se >0)",
+      "logica_backend": "registra_pagamento in app/routers/multi_pagamento.py (endpoint condiviso col sistema multi-pagamento, NON specifico di Prima Nota): crea un documento in collection 'pagamenti' (fattura_id, importo, metodo, data, note, prima_nota_id inizialmente null), poi crea un movimento in prima_nota_cassa (se metodo in contanti/cassa/carta) o prima_nota_banca (altrimenti) con categoria='Fatture', riferimento='PAG-{pagamento_id}', descrizione='Pag. {metodo} Fatt. {numero} - {fornitore troncato}'. Aggiorna il pagamento con prima_nota_id/prima_nota_tipo. Se metodo='assegno' collega anche la collection assegni. Infine richiama _ricalcola_stato_fattura: somma TUTTI i pagamenti registrati per quella fattura in collection 'pagamenti' (non solo questo), confronta con fattura.total_amount e imposta invoices.stato_pagamento su 'non_pagata' (somma≤0), 'parzialmente_pagata' (residuo>0.05), 'eccedenza' (residuo<-0.05) o 'pagata' (altrimenti); scrive anche totale_pagato, residuo_da_pagare, num_pagamenti sulla fattura.",
+      "formula_matematica": "residuoBanca = round((importoTotaleFattura - importoCassaInserito) * 100) / 100. Se residuoBanca > 0, viene registrata anche la seconda chiamata per il bonifico. Stato fattura: residuo = totale - somma(pagamenti); 'pagata' se |residuo|≤0.05, 'parzialmente_pagata' se residuo>0.05, 'eccedenza' se residuo<-0.05.",
+      "aggiornamento_ui": "setProvvisori rimuove la fattura dall'elenco locale dopo il completamento di entrambe le chiamate; il modale si chiude.",
+      "casi_errore": "alert('Errore: ' + dettaglio); il pulsante 'Conferma' del modale resta disabilitato finché l'importo cassa inserito non è valido (>0 e ≤ importo fattura)."
+    },
+    {
+      "etichetta": "Filtri Mese / Descrizione / Categoria / DARE-AVERE / Data / Importo (tabella movimenti)",
+      "dove_si_trova": "Sopra e dentro la tabella movimenti, sia Cassa che Banca",
+      "cosa_fa_al_click": "Filtraggio 100% client-side su movimentiFiltrati (nessuna chiamata API): agisce sui dati già scaricati con loadAllData().",
+      "endpoint_chiamato": "nessuno",
+      "logica_backend": "n/d — logica interamente nel browser.",
+      "formula_matematica": "Il saldo progressivo mostrato in tabella (colonna 'Saldo') è calcolato SEMPRE sull'elenco COMPLETO dei movimenti (non su quello filtrato), per evitare di mostrare un saldo fuorviante quando si filtra per es. per un solo fornitore. Formula: si ordinano tutti i movimenti per data crescente, si parte da saldoIniziale=saldoPrecedente (0 per Cassa, bancaData.saldo_precedente per Banca) e per ognuno: nuovoSaldo = saldoPrecedente + importo se tipo='entrata', altrimenti saldoPrecedente - importo. Il 'Totale selezione' mostrato quando ci sono filtri attivi è invece calcolato SOLO sui movimenti filtrati: somma(entrate) - somma(uscite) dei soli movimenti visibili, ed è etichettato esplicitamente come diverso dal saldo reale.",
+      "aggiornamento_ui": "Ricalcolo istantaneo della tabella e del contatore 'N / M movimenti'.",
+      "casi_errore": "n/d"
+    },
+    {
+      "etichetta": "Bottoni Mese (Gen…Dic, Tutti)",
+      "dove_si_trova": "Sopra la tabella movimenti, sia Cassa che Banca",
+      "cosa_fa_al_click": "setSelectedMonth(i) aggiorna lo stato hash dell'URL (#mese=N), che triggera l'useEffect e richiama loadAllData() con i parametri data_da/data_a impostati sul mese scelto.",
+      "endpoint_chiamato": "GET /api/prima-nota/cassa e/o GET /api/prima-nota/banca con data_da/data_a del mese",
+      "logica_backend": "list_prima_nota_cassa/banca filtrano ulteriormente per data_da/data_a oltre che per anno.",
+      "formula_matematica": "Il saldo mostrato nelle card di riepilogo cambia: entrate/uscite dell'aggregazione MongoDB sono ristrette al mese, quindi 'saldo_anno' in realtà rappresenta il saldo del solo mese selezionato quando un mese è attivo.",
+      "aggiornamento_ui": "Evidenzia il bottone del mese attivo, ricarica dati e tabella.",
+      "casi_errore": "n/d"
+    }
+  ],
+  "operazioni_di_registrazione": [
+    {
+      "nome": "Registrazione Corrispettivo giornaliero (Cassa)",
+      "sequenza_esatta": "1) Utente inserisce data + importo lordo IVA nel riquadro 'Chiusure Giornaliere'. 2) Frontend valida che l'importo sia presente e chiede conferma se la data non è nell'anno selezionato. 3) POST /api/prima-nota/cassa con tipo='entrata', categoria='Corrispettivi'. 4) Backend valida importo>0 e assenza di parole bancarie nella descrizione. 5) Inserisce un nuovo documento in prima_nota_cassa con id=uuid4, created_at=ora UTC ISO. 6) Nessun collegamento automatico al corrispettivo XML reale: è un inserimento manuale indipendente. La sincronizzazione con l'XML del registratore telematico (collection 'corrispettivi') avviene con un flusso SEPARATO (sync_corrispettivi_anno, gestito dalla pagina Pulizia Prima Nota), che inserisce ULTERIORI movimenti con source='corrispettivi_sync' e categoria='Corrispettivi' — quindi può capitare di avere sia il movimento manuale sia quello sincronizzato per lo stesso giorno finché non viene fatta pulizia duplicati.",
+      "collezioni_coinvolte": ["prima_nota_cassa"],
+      "campi_scritti": {"id": "uuid4", "data": "string YYYY-MM-DD", "tipo": "entrata", "importo": "float > 0", "descrizione": "Corrispettivo giornaliero {data} (provvisorio)", "categoria": "Corrispettivi", "riferimento": "null (non passato dal frontend)", "source": "manual_entry", "created_at": "ISO datetime UTC"},
+      "effetti_collaterali": "Nessuno su altre entità: non tocca invoices, non tocca l'estratto conto."
+    },
+    {
+      "nome": "Conferma fattura provvisoria in Cassa o Banca",
+      "sequenza_esatta": "1) Utente clicca Conferma/Cassa/Banca su una card in tab Provvisori. 2) POST /api/prima-nota/provvisori/conferma con fattura_id e metodo. 3) Backend carica la fattura da invoices. 4) Verifica dedup su riferimento='FATT-{fattura_id}' nella collection di destinazione: se già esiste, non crea un secondo movimento, ma allinea comunque la fattura (evita 'buchi' se il movimento era stato creato da un altro flusso, es. sync automatico). 5) Se non esiste, crea il movimento (tipo sempre 'uscita', importo = total_amount intero) nella collection scelta. 6) Aggiorna la fattura: stato_pagamento='pagata', prima_nota_id, prima_nota_tipo, payment_method.",
+      "collezioni_coinvolte": ["invoices", "prima_nota_cassa oppure prima_nota_banca"],
+      "campi_scritti": {"prima_nota_cassa|banca.id": "uuid4", "prima_nota_cassa|banca.riferimento": "FATT-{fattura_id}", "prima_nota_cassa|banca.importo": "= invoices.total_amount", "invoices.stato_pagamento": "pagata", "invoices.prima_nota_id": "= id nuovo movimento", "invoices.prima_nota_tipo": "cassa|banca", "invoices.payment_method": "contanti se cassa, altrimenti invariato o bonifico"},
+      "effetti_collaterali": "La fattura sparisce dalla lista Provvisori al prossimo caricamento (perché la query get_fatture_provvisorie esclude le fatture con prima_nota_id valorizzato e stato_pagamento='pagata'). Il saldo di cassa o banca cambia dal prossimo ricalcolo (entrate/uscite ricalcolate via aggregazione MongoDB, non incrementali)."
+    },
+    {
+      "nome": "Sposta un movimento esistente da Cassa a Banca (o viceversa)",
+      "sequenza_esatta": "1) Utente clicca l'icona 🏦/💵 sulla riga della tabella. 2) POST /api/prima-nota/sposta-movimento con movimento_id, da, a. 3) Il backend individua il documento nella collection di origine (o nell'estratto conto se da='banca' e non trovato in prima_nota_banca). 4) Copia il documento (senza _id) nella collection di destinazione aggiungendo moved_from/moved_at. 5) Elimina FISICAMENTE (non soft-delete) il documento dalla collection/estratto conto di origine. 6) Se collegato a una fattura, aggiorna prima_nota_tipo/metodo_pagamento/payment_method/prima_nota_cassa_id/prima_nota_banca_id sulla fattura. 7) Propaga un evento TRASFERIMENTO_CREATO sull'event bus interno (per eventuali listener di altri moduli, es. riconciliazione).",
+      "collezioni_coinvolte": ["prima_nota_cassa", "prima_nota_banca", "estratto_conto_movimenti (solo se origine banca da estratto conto)", "invoices (solo se il movimento è collegato a una fattura)"],
+      "campi_scritti": {"documento spostato.moved_from": "cassa|banca|banca_estratto_conto", "documento spostato.moved_at": "ISO datetime", "invoices.prima_nota_tipo": "nuova destinazione", "invoices.metodo_pagamento / payment_method": "contanti o bonifico"},
+      "effetti_collaterali": "L'importo del movimento NON cambia; cambia solo la collection in cui vive, quindi si sposta da un saldo (es. Cassa) all'altro (Banca) al prossimo ricalcolo."
+    },
+    {
+      "nome": "Eliminazione di un movimento (soft-delete) collegato a una fattura",
+      "sequenza_esatta": "1) Utente clicca 🗑️. 2) DELETE /api/prima-nota/{cassa|banca}/{id}. 3) BusinessRules.can_delete_movement valuta il documento: se status='reconciled' → blocco totale (400). Se status='confirmed' oppure ha invoice_id/corrispettivo_id → avviso non bloccante. 4) Se ci sono avvisi e non è stato passato force=true, il backend risponde con status 200 ma {require_force:true, warnings:[...]} SENZA eliminare nulla. 5) Il frontend mostra i warning in un window.confirm e, se l'utente conferma, ripete la DELETE con ?force=true. 6) A quel punto (o se non c'erano avvisi) il movimento viene marcato entity_status='deleted', status='deleted', deleted_at=ora — MAI cancellato fisicamente da questo endpoint. 7) Se il movimento aveva fattura_id, la fattura collegata (match anche su prima_nota_id=movimento_id) torna 'da pagare': stato_pagamento vuoto, pagato/paid=false, e vengono rimossi tutti i riferimenti prima_nota_*.",
+      "collezioni_coinvolte": ["prima_nota_cassa oppure prima_nota_banca", "invoices (se collegata)"],
+      "campi_scritti": {"movimento.entity_status": "deleted", "movimento.status": "deleted", "movimento.deleted_at": "ISO datetime", "invoices.stato_pagamento": "'' (stringa vuota)", "invoices.pagato": "false", "invoices.paid": "false"},
+      "effetti_collaterali": "La fattura ricompare automaticamente nella lista Provvisori al prossimo caricamento della pagina, perché torna a soddisfare la query 'senza prima_nota_id valido'."
+    },
+    {
+      "nome": "Eliminazione (cascade) di un'INTERA fattura da Fatture Ricevute — effetto su Prima Nota",
+      "sequenza_esatta": "Fuori da questa pagina, ma rilevante: quando una fattura viene eliminata dal modulo Fatture Ricevute, CascadeOperations.delete_fattura_cascade viene invocata. In modalità soft-delete (default), esegue update_many su prima_nota_banca e prima_nota_cassa filtrando per fattura_id={id}, impostando deleted=true, status='deleted', deleted_at, note='Eliminato per rimozione fattura {id}'. In modalità hard_delete, cancella fisicamente i documenti con delete_many. Vengono inoltre annullate le scadenze collegate (scadenziario_fornitori), annullati (non eliminati) i movimenti di magazzino, sganciati gli assegni collegati, risolti gli alert aperti sulla fattura e annullate le partite aperte collegate.",
+      "collezioni_coinvolte": ["prima_nota_banca", "prima_nota_cassa", "scadenziario_fornitori", "warehouse_movements", "riconciliazioni", "assegni", "partite_aperte", "alerts", "riconciliazioni_match"],
+      "campi_scritti": {"prima_nota_banca|cassa.status": "deleted (soft) o record cancellato (hard)", "prima_nota_banca|cassa.deleted": "true"},
+      "effetti_collaterali": "Tutti i movimenti Prima Nota collegati a quella fattura spariscono dai saldi Cassa/Banca (perché le query li escludono con status NIN [deleted,archived]). A differenza della singola DELETE di un movimento, qui NON viene fatto il rollback dello stato della fattura (la fattura stessa sta per sparire)."
+    },
+    {
+      "nome": "Sincronizzazione automatica notturna (job schedulato, non un bottone)",
+      "sequenza_esatta": "Menzionata nel commento del codice: la sincronizzazione fatture/corrispettivi/riconciliazione gira in automatico sul server ogni 30 minuti tramite un job chiamato 'Automazioni Prima Nota' — non è stato letto il file dello scheduler in questo audit, ma è referenziato esplicitamente nei commenti di PrimaNota.jsx come motivo per cui non esiste un bottone manuale di sync generale nella pagina principale.",
+      "collezioni_coinvolte": ["prima_nota_cassa", "prima_nota_banca", "invoices"],
+      "campi_scritti": {},
+      "effetti_collaterali": "Le fatture con metodo fornitore certo vengono registrate automaticamente; solo quelle sospese/miste/senza metodo restano visibili nel tab Provvisori."
+    }
+  ],
+  "collegamenti_con_altre_pagine": [
+    "Pulizia Prima Nota (/prima-nota/pulizia): raggiungibile dal bottone header '🧹 Pulisci duplicati'; agisce sulle stesse collection prima_nota_cassa/banca e sulla collection corrispettivi.",
+    "Dati Provvisori (montata dallo stesso PrimaNotaHub sotto altro path, es. /prima-nota/provvisori o /dati-provvisori): è una pagina DIVERSA dal tab 'Provvisori' di questa pagina — usa collection dati_provvisori e propone abbinamenti fattura↔movimento bancario, mentre il tab Provvisori qui presente lavora su invoices/prima_nota_cassa/banca in base al metodo fornitore.",
+    "Fatture Ricevute: link diretto '📄 Vedi'/'📄 Fattura' apre /api/fatture-ricevute/fattura/{id}/view-assoinvoice; l'eliminazione di una fattura da quella pagina innesca la cascade su questa (vedi operazioni_di_registrazione).",
+    "Estratto Conto: il tab Banca legge direttamente da /api/estratto-conto-movimenti/movimenti (collection estratto_conto_movimenti), e i bottoni di import CSV/force-reimport richiamano gli endpoint di quel modulo.",
+    "Archivio Bonifici, F24, Corrispettivi: link diretti nella colonna 'Documento' della tabella movimenti."
+  ],
+  "popup_e_modali_presenti": [
+    "Modale 'Pagamento parziale (Misto)': permette di dividere il pagamento di una fattura provvisoria tra Cassa e Banca, mostrando totale fattura, importo cassa da inserire e residuo banca calcolato in tempo reale.",
+    "EditMovimentoModal: form di modifica di un movimento Cassa o Banca esistente (data, tipo, importo, categoria, descrizione, riferimento, note), con navigazione automatica al movimento successivo dopo il salvataggio."
+  ]
+}
