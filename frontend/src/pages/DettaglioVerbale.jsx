@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api';
 import { PageLayout, PageSection } from '../components/PageLayout';
-import { button, formatEuro, badge, COLORS } from '../lib/utils';
+import { formatEuro, COLORS, BORDER_RADIUS, FONT } from '../lib/utils';
+import { Button, Badge } from '../components/ds';
 
 export default function DettaglioVerbale() {
   const { numeroVerbale, prefisso, numero } = useParams();
@@ -47,9 +48,9 @@ export default function DettaglioVerbale() {
       <PageLayout title="Dettaglio verbale" subtitle={`Verbale ${verbaleId}`}>
         <PageSection title="Errore">
           <div style={{ color: COLORS.danger, marginBottom: 16 }}>{error}</div>
-          <button style={button('primary')} onClick={() => navigate(-1)}>
+          <Button variant="primary" onClick={() => navigate(-1)}>
             Torna indietro
-          </button>
+          </Button>
         </PageSection>
       </PageLayout>
     );
@@ -63,9 +64,9 @@ export default function DettaglioVerbale() {
       title="Dettaglio verbale"
       subtitle={`Verbale ${verbale?.numero_verbale || verbaleId}`}
       actions={
-        <button style={button('secondary')} onClick={() => navigate(-1)}>
+        <Button variant="secondary" onClick={() => navigate(-1)}>
           Indietro
-        </button>
+        </Button>
       }
     >
       <PageSection title="Riepilogo">
@@ -73,7 +74,7 @@ export default function DettaglioVerbale() {
           <div><strong>Numero</strong><div>{verbale?.numero_verbale || verbaleId}</div></div>
           <div><strong>Fornitore</strong><div>{verbale?.fornitore || '-'}</div></div>
           <div><strong>Targa</strong><div>{verbale?.targa || '-'}</div></div>
-          <div><strong>Stato</strong><div><span style={badge(stato === 'pagato' ? 'success' : stato === 'sospeso' ? 'warning' : 'neutral')}>{stato}</span></div></div>
+          <div><strong>Stato</strong><div><Badge variant={stato === 'pagato' ? 'success' : stato === 'sospeso' ? 'warning' : 'neutral'}>{stato}</Badge></div></div>
           <div><strong>Importo</strong><div>{formatEuro(verbale?.importo || verbale?.totale || 0)}</div></div>
           <div><strong>PDF disponibili</strong><div>{pdfCount}</div></div>
         </div>
@@ -94,7 +95,7 @@ export default function DettaglioVerbale() {
                 style={{
                   padding: 12,
                   border: `1px solid ${COLORS.border}`,
-                  borderRadius: 8,
+                  borderRadius: BORDER_RADIUS.md,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
@@ -106,11 +107,31 @@ export default function DettaglioVerbale() {
                   <div style={{ fontSize: 12, color: COLORS.textMuted }}>{pdf.descrizione || 'Documento associato al verbale'}</div>
                 </div>
                 {pdf.url ? (
-                  <a href={pdf.url} target="_blank" rel="noreferrer" style={button('outline')}>
+                  <a
+                    href={pdf.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 7,
+                      padding: '8px 16px',
+                      fontSize: 13,
+                      borderRadius: BORDER_RADIUS.sm,
+                      border: `1px solid ${COLORS.primary}`,
+                      background: 'transparent',
+                      color: COLORS.primary,
+                      fontWeight: 600,
+                      fontFamily: FONT.family,
+                      textDecoration: 'none',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
                     Apri
                   </a>
                 ) : (
-                  <span style={badge('neutral')}>Disponibile</span>
+                  <Badge variant="neutral">Disponibile</Badge>
                 )}
               </div>
             ))}
