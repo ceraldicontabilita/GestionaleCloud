@@ -40,10 +40,14 @@ export default function FattureHub() {
   return (
     <div style={{ width: '100%' }}>
       <div style={{ display: isCorresp ? 'none' : 'block' }}>
-        <Suspense fallback={<Loading />}>{visitedArchivio && <ArchivioContent />}</Suspense>
+        <Suspense fallback={<Loading />}>
+          {visitedArchivio && <ArchivioContent key={`archivio-${anno}`} />}
+        </Suspense>
       </div>
       <div style={{ display: isCorresp ? 'block' : 'none' }}>
-        <Suspense fallback={<Loading />}>{visitedCorresp && <CorrispettiviContent />}</Suspense>
+        <Suspense fallback={<Loading />}>
+          {visitedCorresp && <CorrispettiviContent key={`corrispettivi-${anno}`} />}
+        </Suspense>
       </div>
     </div>
   );

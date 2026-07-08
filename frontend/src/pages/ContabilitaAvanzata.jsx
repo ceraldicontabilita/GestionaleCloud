@@ -264,6 +264,10 @@ export default function ContabilitaAvanzata() {
 
   const fetchData = async () => {
     setLoading(true);
+    setImposte(null);
+    setStatistiche(null);
+    setBilancio(null);
+    setDisponibilita(null);
     try {
       const [impRes, statRes, bilRes, aliqRes, dispRes] = await Promise.all([
         api
@@ -276,13 +280,13 @@ export default function ContabilitaAvanzata() {
         api.get(`/api/contabilita/aliquote-irap`).catch(() => null),
         api.get(`/api/contabilita/disponibilita-liquide?anno=${selectedYear}`).catch(() => null),
       ]);
-      if (impRes?.data) setImposte(impRes.data);
-      if (statRes?.data) setStatistiche(statRes.data);
-      if (bilRes?.data) setBilancio(bilRes.data);
+      setImposte(impRes?.data ?? null);
+      setStatistiche(statRes?.data ?? null);
+      setBilancio(bilRes?.data ?? null);
       if (aliqRes?.data) {
         setAliquoteIrap(aliqRes.data.aliquote || {});
       }
-      if (dispRes?.data) setDisponibilita(dispRes.data);
+      setDisponibilita(dispRes?.data ?? null);
     } catch (err) {
       console.error('Errore caricamento dati:', err);
     }
@@ -709,6 +713,9 @@ export default function ContabilitaAvanzata() {
             </div>
           </div>
         )}
+        {activeTab === 'imposte' && !imposte && (
+          <div style={styles.note}>Nessun dato fiscale disponibile per l'anno {selectedYear}.</div>
+        )}
 
         {/* Tab: Statistiche */}
         {activeTab === 'statistiche' && statistiche && (
@@ -806,6 +813,11 @@ export default function ContabilitaAvanzata() {
                 🔄 Ricategorizza Tutte le Fatture
               </button>
             </div>
+          </div>
+        )}
+        {activeTab === 'statistiche' && !statistiche && (
+          <div style={styles.note}>
+            Nessuna statistica di categorizzazione disponibile per l'anno {selectedYear}.
           </div>
         )}
 
@@ -1003,6 +1015,11 @@ export default function ContabilitaAvanzata() {
                 </div>
               </div>
             </div>
+          </div>
+        )}
+        {activeTab === 'bilancio' && !bilancio && (
+          <div style={styles.note}>
+            Nessun bilancio dettagliato disponibile per l'anno {selectedYear}.
           </div>
         )}
       </div>

@@ -1,5 +1,6 @@
 import React, { lazy, Suspense, useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
+import { useAnnoGlobale } from '../../contexts/AnnoContext';
 
 const PrimaNotaContent = lazy(() => import('../PrimaNota.jsx'));
 const DatiProvvisoriContent = lazy(() => import('../DatiProvvisoriPage.jsx'));
@@ -22,6 +23,7 @@ const Loading = () => (
 );
 
 export default function PrimaNotaHub() {
+  const { anno } = useAnnoGlobale();
   const location = useLocation();
   const path = location.pathname;
   const isProvvisori = path.includes('provvisori') || path.includes('dati-provvisori');
@@ -38,10 +40,14 @@ export default function PrimaNotaHub() {
   return (
     <div style={{ width: '100%' }}>
       <div style={{ display: isProvvisori ? 'none' : 'block' }}>
-        <Suspense fallback={<Loading />}>{visitedPrimaNota && <PrimaNotaContent />}</Suspense>
+        <Suspense fallback={<Loading />}>
+          {visitedPrimaNota && <PrimaNotaContent key={`prima-nota-${anno}`} />}
+        </Suspense>
       </div>
       <div style={{ display: isProvvisori ? 'block' : 'none' }}>
-        <Suspense fallback={<Loading />}>{visitedProvvisori && <DatiProvvisoriContent />}</Suspense>
+        <Suspense fallback={<Loading />}>
+          {visitedProvvisori && <DatiProvvisoriContent key={`dati-provvisori-${anno}`} />}
+        </Suspense>
       </div>
     </div>
   );

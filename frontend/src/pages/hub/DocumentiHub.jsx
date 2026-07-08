@@ -130,7 +130,9 @@ export default function DocumentiHub() {
           const C = CONTENTS[tab.id];
           return (
             <div key={tab.id} style={{ display: activeTab === tab.id ? 'block' : 'none' }}>
-              <Suspense fallback={<Loading />}>{visitedTabs.has(tab.id) && <C />}</Suspense>
+              <Suspense fallback={<Loading />}>
+                {visitedTabs.has(tab.id) && <C key={`${tab.id}-${anno}`} />}
+              </Suspense>
             </div>
           );
         })}

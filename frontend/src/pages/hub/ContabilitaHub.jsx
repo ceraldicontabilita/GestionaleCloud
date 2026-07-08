@@ -197,7 +197,9 @@ export default function ContabilitaHub() {
           { id: 'previsioni-acquisti', C: PrevisioniAcquistiContent },
         ].map(({ id, C }) => (
           <div key={id} style={{ display: activeTab === id ? 'block' : 'none' }}>
-            <Suspense fallback={<Loading />}>{visitedTabs.has(id) && <C />}</Suspense>
+            <Suspense fallback={<Loading />}>
+              {visitedTabs.has(id) && <C key={`${id}-${anno}`} />}
+            </Suspense>
           </div>
         ))}
       </div>

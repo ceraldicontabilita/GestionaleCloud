@@ -1,18 +1,35 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
 const AnnoContext = createContext();
+const STORAGE_KEY = 'annoGlobale';
+
+function normalizeYear(value) {
+  const parsed = Number.parseInt(String(value ?? ''), 10);
+  const currentYear = new Date().getFullYear();
+  return Number.isFinite(parsed) && parsed >= 2018 && parsed <= currentYear + 5
+    ? parsed
+    : currentYear;
+}
 
 export function AnnoProvider({ children }) {
-  // Default: anno corrente, con persistenza in localStorage
   const [anno, setAnno] = useState(() => {
-    const saved = localStorage.getItem('annoGlobale');
-    return saved ? parseInt(saved) : new Date().getFullYear();
+    const saved = localStorage.getItem(STORAGE_KEY);
+    return normalizeYear(saved);
   });
 
-  // Persiste quando cambia
   useEffect(() => {
-    localStorage.setItem('annoGlobale', anno.toString());
+    localStorage.setItem(STORAGE_KEY, String(normalizeYear(anno)));
   }, [anno]);
+
+  useEffect(() => {
+    const handleStorage = event => {
+      if (event.key !== STORAGE_KEY) return;
+      setAnno(normalizeYear(event.newValue));
+    };
+
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
 
   return (
     <AnnoContext.Provider value={{ anno, setAnno }}>
@@ -33,13 +50,12 @@ export function useAnnoGlobale() {
 export function AnnoSelector({ style = {} }) {
   const { anno, setAnno } = useAnnoGlobale();
   const currentYear = new Date().getFullYear();
-  // Include anni dal 2018 in avanti per coprire tutti i dati storici
-  const years = [2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, currentYear, currentYear + 1].filter((v, i, a) => a.indexOf(v) === i).sort();
+  const years = Array.from({ length: currentYear - 2018 + 2 }, (_, index) => 2018 + index);
 
   return (
     <select
       value={anno}
-      onChange={(e) => setAnno(parseInt(e.target.value))}
+      onChange={e => setAnno(normalizeYear(e.target.value))}
       style={{
         padding: '6px 12px',
         borderRadius: 6,

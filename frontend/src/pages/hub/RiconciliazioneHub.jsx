@@ -1,5 +1,6 @@
 import React, { lazy, Suspense } from 'react';
 import { useLocation } from 'react-router-dom';
+import { useAnnoGlobale } from '../../contexts/AnnoContext';
 
 const RiconciliazioneContent = lazy(() => import('../RiconciliazioneUnificata.jsx'));
 const PaypalContent = lazy(() => import('../RiconciliazionePaypal.jsx'));
@@ -25,25 +26,26 @@ const Loading = () => (
 );
 
 export default function RiconciliazioneHub() {
+  const { anno } = useAnnoGlobale();
   const location = useLocation();
   const path = location.pathname;
 
   // Determina quale contenuto mostrare
   const getContent = () => {
     if (path.includes('/archivio-bonifici')) {
-      return <BonificiContent />;
+      return <BonificiContent key={`bonifici-${anno}`} />;
     }
     if (path.includes('/gestione-assegni') || path.includes('/assegni')) {
-      return <AssegniContent />;
+      return <AssegniContent key={`assegni-${anno}`} />;
     }
     if (path.includes('/paypal')) {
-      return <PaypalContent />;
+      return <PaypalContent key={`paypal-${anno}`} />;
     }
     if (path.includes('/coerenza-pos')) {
-      return <CoerenzaPOSContent />;
+      return <CoerenzaPOSContent key={`coerenza-pos-${anno}`} />;
     }
     // Default: riconciliazione bancaria
-    return <RiconciliazioneContent />;
+    return <RiconciliazioneContent key={`riconciliazione-${anno}`} />;
   };
 
   return (
