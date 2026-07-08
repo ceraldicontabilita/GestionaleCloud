@@ -223,7 +223,7 @@ def _register_core(app: FastAPI):
         cash,
         settings as settings_base,
         finanziaria, gestione_riservata, commercialista, scadenze,
-        pianificazione, admin, verifica_coerenza,
+        pianificazione, admin, admin_rollback, verifica_coerenza,
         documenti, cespiti, scadenzario_fornitori, controllo_gestione,
         chiusura_esercizio,
         configurazioni, alerts,
@@ -249,6 +249,7 @@ def _register_core(app: FastAPI):
     app.include_router(scadenze.router, prefix="/api/scadenze", tags=["Scadenze"])
     app.include_router(pianificazione.router, prefix="/api/pianificazione", tags=["Pianificazione"])
     app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
+    app.include_router(admin_rollback.router, tags=["Admin Rollback"])
     app.include_router(verifica_coerenza.router, prefix="/api/verifica-coerenza", tags=["Verifica Coerenza"])
     app.include_router(documenti.router, prefix="/api/documenti", tags=["Documenti"])
     app.include_router(operazioni_router, prefix="/api/operazioni-da-confermare", tags=["Operazioni"])

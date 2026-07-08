@@ -5,6 +5,7 @@ import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { STYLES, COLORS, button, badge, formatEuro, useIsMobile, RG, pagePad } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
 import { useHashState } from '../hooks/useHashState';
+import { Trash2, AlertTriangle, X, Loader2, CheckCircle2 } from 'lucide-react';
 
 export default function Admin() {
   const isMobile = useIsMobile();
@@ -501,6 +502,9 @@ export default function Admin() {
         </button>
         <button onClick={() => handleTabChange('system')} style={tabStyle(activeTab === 'system')}>
           🗄️ Sistema
+        </button>
+        <button onClick={() => handleTabChange('rollback')} style={tabStyle(activeTab === 'rollback')}>
+          🗑️ Rollback Dati
         </button>
       </div>
 
@@ -1415,12 +1419,267 @@ export default function Admin() {
         </div>
       )}
 
+      {activeTab === 'rollback' && <RollbackDatiTab />}
+
       {/* TAB SINCRONIZZAZIONE */}
 
       {/* TAB MANUTENZIONE - Logiche Intelligenti */}
 
       {/* TAB ESPORTAZIONI */}
     </PageLayout>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TAB ROLLBACK DATI — elimina dati per intervallo di tempo, per sezione.
+// Strumento per controlli di precisione: elimina gli ultimi N giorni di una
+// sezione, poi re-importa e verifica che i calcoli tornino corretti.
+// ═══════════════════════════════════════════════════════════════════════════
+function RollbackDatiTab() {
+  const [sezioni, setSezioni] = useState([]);
+  const [periodi, setPeriodi] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [conferma, setConferma] = useState(null); // { sezione, periodo, totale, dettaglio } | null
+  const [contando, setContando] = useState(null); // `${sezione}:${periodo}` in corso
+  const [eliminando, setEliminando] = useState(false);
+  const [esito, setEsito] = useState(null); // { tipo: 'ok'|'errore', messaggio } | null
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await api.get('/api/admin/rollback/sezioni');
+        setSezioni(res.data.sezioni || []);
+        setPeriodi(res.data.periodi || []);
+      } catch (e) {
+        setEsito({ tipo: 'errore', messaggio: 'Impossibile caricare le sezioni: ' + (e.response?.data?.detail || e.message) });
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const chiediConferma = async (sezioneChiave, sezioneLabel, periodoChiave, periodoLabel) => {
+    const key = `${sezioneChiave}:${periodoChiave}`;
+    setContando(key);
+    setEsito(null);
+    try {
+      const res = await api.get(`/api/admin/rollback/${sezioneChiave}/conta`, { params: { periodo: periodoChiave } });
+      setConferma({
+        sezioneChiave, sezioneLabel, periodoChiave, periodoLabel,
+        totale: res.data.totale, dettaglio: res.data.dettaglio,
+        dataDa: res.data.data_da, dataA: res.data.data_a,
+      });
+    } catch (e) {
+      setEsito({ tipo: 'errore', messaggio: 'Errore nel conteggio: ' + (e.response?.data?.detail || e.message) });
+    } finally {
+      setContando(null);
+    }
+  };
+
+  const confermaEliminazione = async () => {
+    if (!conferma) return;
+    setEliminando(true);
+    try {
+      const res = await api.delete(`/api/admin/rollback/${conferma.sezioneChiave}`, { params: { periodo: conferma.periodoChiave } });
+      setEsito({
+        tipo: 'ok',
+        messaggio: `Eliminati ${res.data.totale_eliminati} record da "${conferma.sezioneLabel}" (${conferma.periodoLabel}, dal ${conferma.dataDa} al ${conferma.dataA}).`,
+      });
+      setConferma(null);
+    } catch (e) {
+      setEsito({ tipo: 'errore', messaggio: 'Errore durante l\'eliminazione: ' + (e.response?.data?.detail || e.message) });
+    } finally {
+      setEliminando(false);
+    }
+  };
+
+  if (loading) {
+    return <div style={{ padding: 24, color: '#64748b' }}>Caricamento sezioni...</div>;
+  }
+
+  return (
+    <div>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: 10,
+          background: '#fef3c7',
+          border: '1px solid #fde68a',
+          borderRadius: 8,
+          padding: '12px 14px',
+          marginBottom: 16,
+          fontSize: 13,
+          color: '#92400e',
+        }}
+      >
+        <AlertTriangle size={18} style={{ flexShrink: 0, marginTop: 1 }} />
+        <div>
+          <strong>Strumento per controlli di precisione.</strong> Elimina i dati reali di un
+          periodo da una sezione — usalo per verificare che, dopo un re-import, i calcoli
+          tornino corretti. L'operazione è irreversibile: viene sempre mostrato il numero
+          esatto di record coinvolti prima di chiedere conferma.
+        </div>
+      </div>
+
+      {esito && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '10px 14px',
+            borderRadius: 8,
+            marginBottom: 16,
+            fontSize: 13,
+            fontWeight: 600,
+            background: esito.tipo === 'ok' ? '#dcfce7' : '#fee2e2',
+            color: esito.tipo === 'ok' ? '#166534' : '#991b1b',
+          }}
+        >
+          {esito.tipo === 'ok' ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
+          {esito.messaggio}
+        </div>
+      )}
+
+      <div style={{ display: 'grid', gap: 12 }}>
+        {sezioni.map(sez => (
+          <div
+            key={sez.chiave}
+            style={{
+              background: '#fff',
+              border: '1px solid #e2e8f0',
+              borderRadius: 10,
+              padding: 14,
+            }}
+          >
+            <div style={{ fontWeight: 700, fontSize: 14, color: '#0f2744', marginBottom: 10 }}>
+              {sez.label}
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {periodi.map(p => {
+                const key = `${sez.chiave}:${p.chiave}`;
+                const isLoading = contando === key;
+                return (
+                  <button
+                    key={p.chiave}
+                    onClick={() => chiediConferma(sez.chiave, sez.label, p.chiave, p.label)}
+                    disabled={isLoading}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      padding: '8px 12px',
+                      minHeight: 40,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      background: '#fff',
+                      color: '#b91c1c',
+                      border: '1px solid #fecaca',
+                      borderRadius: 6,
+                      cursor: isLoading ? 'default' : 'pointer',
+                      opacity: isLoading ? 0.6 : 1,
+                    }}
+                  >
+                    {isLoading ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                    {p.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Modale di conferma */}
+      {conferma && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => !eliminando && setConferma(null)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 2000, padding: 16,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#fff', borderRadius: 10, maxWidth: 440, width: '100%',
+              padding: 20, position: 'relative', boxShadow: '0 20px 50px rgba(0,0,0,0.25)',
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => !eliminando && setConferma(null)}
+              aria-label="Chiudi"
+              style={{
+                position: 'absolute', top: 8, right: 8, width: 40, height: 40,
+                border: 'none', background: 'transparent', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b',
+              }}
+            >
+              <X size={18} />
+            </button>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, color: '#b91c1c' }}>
+              <AlertTriangle size={20} />
+              <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>Confermi l'eliminazione?</h3>
+            </div>
+
+            <p style={{ fontSize: 13, color: '#334155', margin: '0 0 12px' }}>
+              Stai per eliminare in modo permanente <strong>{conferma.totale}</strong> record
+              da <strong>{conferma.sezioneLabel}</strong> — periodo <strong>{conferma.periodoLabel}</strong>
+              {' '}(dal {conferma.dataDa} al {conferma.dataA}).
+            </p>
+
+            {conferma.dettaglio && conferma.dettaglio.length > 0 && (
+              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 12px', marginBottom: 16, fontSize: 12 }}>
+                {conferma.dettaglio.map(d => (
+                  <div key={d.collezione} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0' }}>
+                    <span style={{ color: '#64748b' }}>{d.collezione}</span>
+                    <span style={{ fontWeight: 700 }}>{d.count}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {conferma.totale === 0 ? (
+              <div style={{ fontSize: 12, color: '#64748b', fontStyle: 'italic' }}>
+                Nessun record da eliminare in questo periodo.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button
+                  onClick={() => setConferma(null)}
+                  disabled={eliminando}
+                  style={{
+                    padding: '10px 16px', fontSize: 13, fontWeight: 600,
+                    background: '#f1f5f9', color: '#475569', border: 'none', borderRadius: 6, cursor: 'pointer',
+                  }}
+                >
+                  Annulla
+                </button>
+                <button
+                  onClick={confermaEliminazione}
+                  disabled={eliminando}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    padding: '10px 16px', fontSize: 13, fontWeight: 700,
+                    background: '#b91c1c', color: '#fff', border: 'none', borderRadius: 6,
+                    cursor: eliminando ? 'default' : 'pointer', opacity: eliminando ? 0.7 : 1,
+                  }}
+                >
+                  {eliminando ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                  Elimina definitivamente
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
