@@ -727,15 +727,36 @@ function PrimaNotaDesktop() {
             </span>
             <button
               onClick={async () => {
-                for (const p of provvisori) {
+                // "sospesa" non è un metodo di registrazione: il backend la
+                // lascia intenzionalmente nei provvisori (nessuna
+                // destinazione certa, richiede scelta manuale cassa/banca).
+                // Includerla qui dava l'impressione di un bottone rotto:
+                // "Conferma Tutte" sembrava non fare nulla per la
+                // maggioranza delle fatture (spesso in sospesa).
+                const confermabili = provvisori.filter(
+                  p => p.suggerimento === 'cassa' || p.suggerimento === 'banca'
+                );
+                const sospeseCount = provvisori.length - confermabili.length;
+                let ok = 0;
+                let errori = 0;
+                for (const p of confermabili) {
                   try {
                     await api.post('/api/prima-nota/provvisori/conferma', {
                       fattura_id: p.fattura_id,
                       metodo: p.suggerimento,
                     });
-                  } catch { /* suggerimento non applicabile — ignorato */ }
+                    ok += 1;
+                  } catch {
+                    errori += 1;
+                  }
                 }
-                loadAllData();
+                await loadAllData();
+                const msgErrori = errori > 0 ? `, ${errori} errori` : '';
+                const msgSospese =
+                  sospeseCount > 0
+                    ? `\n${sospeseCount} restano in sospeso: nessun metodo certo, vanno confermate una per una (Cassa/Banca) con i bottoni sulla singola riga.`
+                    : '';
+                alert(`✓ ${ok} fatture confermate${msgErrori}.${msgSospese}`);
               }}
               style={{
                 padding: '8px 16px',
@@ -751,6 +772,13 @@ function PrimaNotaDesktop() {
               ✓ Conferma Tutte
             </button>
           </div>
+
+          {provvisori.length > 30 && (
+            <div style={{ fontSize: 12, color: '#92400e', marginBottom: 8 }}>
+              Mostrate le prime 30 di {provvisori.length} — "Conferma Tutte" agisce comunque su
+              tutte, non solo su quelle visibili.
+            </div>
+          )}
 
           {provvisori.slice(0, 30).map(p => {
             const isCassa = p.suggerimento === 'cassa';
