@@ -273,8 +273,12 @@ async def ricategorizza_documenti(db) -> Dict[str, Any]:
     for doc in docs:
         filename = doc.get("filename", "").lower()
         new_category = None
-        
-        # Regole di categorizzazione
+
+        # Regole di categorizzazione — stessa lista di
+        # email_document_downloader.py::categorize_document() (usata
+        # all'import), qui riapplicata ai documenti che ci erano finiti
+        # PRIMA che quelle regole includessero satispay/inps/certificazione
+        # unica, e restavano bloccati in "altro" per sempre.
         if "bnl" in filename:
             new_category = "estratto_conto"
         elif "nexi" in filename:
@@ -287,7 +291,19 @@ async def ricategorizza_documenti(db) -> Dict[str, Any]:
             new_category = "busta_paga"
         elif "f24" in filename:
             new_category = "f24"
-        
+        elif "cartella" in filename or "esattor" in filename or "ader" in filename or "equitalia" in filename:
+            new_category = "cartella_esattoriale"
+        elif "satispay" in filename:
+            new_category = "satispay"
+        elif "inps" in filename or "dm10" in filename or "uniemens" in filename:
+            new_category = "contributi_inps"
+        elif "cud" in filename or "certificazione unica" in filename:
+            new_category = "certificazione_unica"
+        else:
+            from app.services.email_document_downloader import _CF_ANNO_PATTERN
+            if _CF_ANNO_PATTERN.search(doc.get("filename", "")):
+                new_category = "certificazione_unica"
+
         if new_category:
             await db["documents_inbox"].update_one(
                 {"id": doc["id"]},

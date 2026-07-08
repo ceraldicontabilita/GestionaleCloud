@@ -17,6 +17,14 @@ const CATEGORY_COLORS = {
     icon: '⚠️',
     label: 'Cartelle Esattoriali',
   },
+  satispay: { bg: '#fee7f3', text: '#db2777', icon: '📱', label: 'Satispay' },
+  contributi_inps: { bg: '#e0f2fe', text: '#0369a1', icon: '🏛️', label: 'INPS' },
+  certificazione_unica: {
+    bg: '#ecfccb',
+    text: '#4d7c0f',
+    icon: '👤',
+    label: 'Certificazioni Uniche',
+  },
   altro: { bg: '#f1f5f9', text: '#475569', icon: '📄', label: 'Altri' },
 };
 

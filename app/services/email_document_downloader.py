@@ -28,12 +28,15 @@ DOCUMENTS_DIR.mkdir(exist_ok=True)
 CATEGORIES = {
     "f24": "F24",
     "fattura": "Fatture",
-    "busta_paga": "Buste Paga", 
+    "busta_paga": "Buste Paga",
     "estratto_conto": "Estratti Conto",
     "quietanza": "Quietanze",
     "bonifico": "Bonifici",
     "cartella_esattoriale": "Cartelle Esattoriali",
     "scheda_tecnica": "Schede Tecniche",
+    "satispay": "Satispay",
+    "contributi_inps": "INPS",
+    "certificazione_unica": "Certificazioni Uniche",
     "altro": "Altri"
 }
 
@@ -58,8 +61,25 @@ KEYWORD_CATEGORY_MAP = {
     "specifica prodotto": "scheda_tecnica",
     "scheda prodotto": "scheda_tecnica",
     "informazioni tecniche": "scheda_tecnica",
-    "technical data": "scheda_tecnica"
+    "technical data": "scheda_tecnica",
+    # Satispay, INPS, Certificazione Unica — prima mancanti: questi documenti
+    # finivano sempre in "altro" (mostrato in Gestione Documenti come "Da
+    # classificare"/"Altri"), segnalato dall'utente.
+    "satispay": "satispay",
+    "inps": "contributi_inps",
+    "dm10": "contributi_inps",
+    "uniemens": "contributi_inps",
+    "contributi": "contributi_inps",
+    "certificazione unica": "certificazione_unica",
+    "cud": "certificazione_unica",
 }
+
+# Nome file tipico di una Certificazione Unica: "<codice fiscale> - <anno>"
+# (es. "VSPVCN67T26F839P - 2025"), pattern condiviso con
+# app/routers/documents_inbox_classify.py::PATTERNS.
+_CF_ANNO_PATTERN = re.compile(
+    r"[A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z]\s*[-_]\s*\d{4}", re.I
+)
 
 for cat_dir in CATEGORIES.values():
     (DOCUMENTS_DIR / cat_dir).mkdir(exist_ok=True)
@@ -112,41 +132,65 @@ def categorize_document(filename: str, subject: str = "", sender: str = "", sear
             if kw_lower in subject_lower or kw_lower in filename_lower:
                 return get_category_from_keyword(kw)
     
-    # Cartelle Esattoriali
-    cartella_patterns = ['cartella esattoriale', 'cartella esattoria', 'agenzia entrate riscossione', 
-                         'equitalia', 'ader', 'intimazione', 'ingiunzione']
-    if any(x in subject_lower or x in filename_lower for x in cartella_patterns):
+    # Cartelle Esattoriali — 'cartella' + 'esattor' controllati come sottostringhe
+    # indipendenti (non l'intera frase con spazio) perché i nomi file reali usano
+    # separatori diversi, es. "cartella_esattoriale_2024.pdf".
+    cartella_altri_patterns = ['agenzia entrate riscossione', 'equitalia', 'ader', 'intimazione', 'ingiunzione']
+    if any(x in subject_lower or x in filename_lower for x in cartella_altri_patterns) or (
+        ('cartella' in subject_lower or 'cartella' in filename_lower)
+        and ('esattor' in subject_lower or 'esattor' in filename_lower)
+    ):
         return "cartella_esattoriale"
-    
+
+    # INPS / contributi previdenziali — controllato PRIMA di F24 perché il
+    # pattern F24 'tribut' (per "tributo/tributi") è anche sottostringa di
+    # "contributi", facendo classificare erroneamente come F24 documenti
+    # tipo "INPS_contributi_giugno.pdf".
+    inps_patterns = ['inps', 'dm10', 'uniemens', 'contributi previdenziali', 'contributi inps']
+    if any(x in subject_lower or x in filename_lower for x in inps_patterns):
+        return "contributi_inps"
+
     # F24 - Pattern nell'oggetto o nel nome file
     f24_patterns = ['f24', 'f-24', 'f_24', 'mod.f24', 'modello f24', 'tribut']
     if any(x in subject_lower or x in filename_lower for x in f24_patterns):
         return "f24"
-    
+
     # Quietanze F24
     if any(x in filename_lower or x in subject_lower for x in ['quietanza', 'ricevuta f24', 'pagamento f24']):
         return "quietanza"
-    
+
     # Fatture
     fattura_patterns = ['fattura', 'invoice', 'fatt.', 'ft.']
     if any(x in subject_lower or x in filename_lower for x in fattura_patterns):
         return "fattura"
-    
+
     # Buste paga
     busta_patterns = ['busta paga', 'cedolino', 'lul', 'libro unico']
     if any(x in subject_lower or x in filename_lower for x in busta_patterns):
         return "busta_paga"
-    
+
+    # Certificazione Unica — riconosciuta anche dal nome file tipico
+    # "<codice fiscale> - <anno>" (es. "VSPVCN67T26F839P - 2025"), che senza
+    # questo controllo finiva sempre in "altro" pur essendo chiaramente un
+    # documento dipendente.
+    cu_patterns = ['certificazione unica', 'cud']
+    if any(x in subject_lower or x in filename_lower for x in cu_patterns) or _CF_ANNO_PATTERN.search(filename):
+        return "certificazione_unica"
+
+    # Satispay
+    if 'satispay' in subject_lower or 'satispay' in filename_lower:
+        return "satispay"
+
     # Estratti conto
     estratto_patterns = ['estratto conto', 'movimenti', 'saldo']
     if any(x in subject_lower or x in filename_lower for x in estratto_patterns):
         return "estratto_conto"
-    
+
     # Bonifici
     bonifico_patterns = ['bonifico', 'sepa', 'disposizione']
     if any(x in subject_lower or x in filename_lower for x in bonifico_patterns):
         return "bonifico"
-    
+
     # Default: altro (accetta comunque il documento)
     return "altro"
 
