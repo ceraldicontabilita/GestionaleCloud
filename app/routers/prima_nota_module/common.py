@@ -42,8 +42,14 @@ CATEGORIE_BANCA = [
     "Altro"
 ]
 
-# Categorie da escludere nei conteggi
-CATEGORIE_ESCLUSE = ["POS_DUPLICATO"]
+# Categorie da escludere nei conteggi: non sono movimenti bancari/di cassa
+# reali, quindi non devono mai contribuire a saldi/entrate/uscite.
+# "Corrispettivi POS" è la chiusura POS serale inserita manualmente
+# dall'utente (PUT /api/pos-corrispettivi/chiusura-giornaliera) — serve solo
+# per la verifica di coerenza con l'importo elettronico dichiarato nel
+# corrispettivo XML (che è già la fonte fiscale corretta ed è già contato
+# in Prima Nota Cassa all'import); non è un secondo incasso reale.
+CATEGORIE_ESCLUSE = ["POS_DUPLICATO", "Corrispettivi POS"]
 
 
 def clean_mongo_doc(doc: Dict[str, Any]) -> Dict[str, Any]:
@@ -63,7 +69,8 @@ async def calcola_saldo_anni_precedenti(db, collection: str, anno: int) -> float
     
     query = {
         "data": {"$lt": f"{anno}-01-01"},
-        "status": {"$nin": ["deleted", "archived"]}
+        "status": {"$nin": ["deleted", "archived"]},
+        "categoria": {"$nin": CATEGORIE_ESCLUSE}
     }
     
     pipeline = [

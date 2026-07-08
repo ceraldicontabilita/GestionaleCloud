@@ -9,7 +9,7 @@ import uuid
 
 from app.database import Database
 from .common import (
-    COLLECTION_PRIMA_NOTA_BANCA, TIPO_MOVIMENTO, calcola_saldo_anni_precedenti
+    COLLECTION_PRIMA_NOTA_BANCA, TIPO_MOVIMENTO, CATEGORIE_ESCLUSE, calcola_saldo_anni_precedenti
 )
 
 
@@ -24,9 +24,12 @@ async def list_prima_nota_banca(
 ) -> Dict[str, Any]:
     """Lista movimenti prima nota banca con saldo separato per anno."""
     db = Database.get_db()
-    
-    query = {"status": {"$nin": ["deleted", "archived"]}}
-    
+
+    query = {
+        "status": {"$nin": ["deleted", "archived"]},
+        "categoria": {"$nin": CATEGORIE_ESCLUSE}
+    }
+
     if anno:
         query["$or"] = [
             {"anno": anno},
