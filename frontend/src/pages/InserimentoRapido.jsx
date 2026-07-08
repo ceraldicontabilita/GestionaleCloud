@@ -1,19 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
-import {
-  formatEuro,
-  formatDateIT,
-  STYLES,
-  COLORS,
-  button,
-  badge,
-  useIsMobile,
-  RG,
-  pagePad,
-} from '../lib/utils';
+import { formatEuro, formatDateIT, COLORS, SHADOWS, BORDER_RADIUS, useIsMobile } from '../lib/utils';
 import api from '../api';
 import { PageLayout } from '../components/PageLayout';
+import { Button, Input, Select } from '../components/ds';
 import {
   Banknote,
   Building2,
@@ -30,11 +21,11 @@ import {
   History,
 } from 'lucide-react';
 
-// Stili inline per massima semplicità mobile
+// Stili inline per massima semplicità mobile (token del design system)
 const styles = {
   container: {
     minHeight: '100vh',
-    background: 'var(--bg-primary, #f8fafc)',
+    background: COLORS.bg,
     padding: '12px',
     paddingBottom: '80px',
   },
@@ -45,10 +36,10 @@ const styles = {
     marginBottom: '20px',
   },
   card: {
-    background: 'white',
-    borderRadius: '12px',
+    background: COLORS.card,
+    borderRadius: BORDER_RADIUS.md,
     padding: '16px',
-    boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+    boxShadow: SHADOWS.sm,
     cursor: 'pointer',
     transition: 'all 0.2s ease',
     border: '2px solid transparent',
@@ -58,14 +49,10 @@ const styles = {
     gap: '8px',
     minHeight: '100px',
   },
-  cardActive: {
-    borderColor: '#2563eb',
-    background: '#eff6ff',
-  },
   cardIcon: {
     width: '40px',
     height: '40px',
-    borderRadius: '10px',
+    borderRadius: BORDER_RADIUS.lg,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -74,13 +61,13 @@ const styles = {
     fontSize: '13px',
     fontWeight: '500',
     textAlign: 'center',
-    color: '#1e293b',
+    color: COLORS.text,
   },
   form: {
-    background: 'white',
-    borderRadius: '12px',
+    background: COLORS.card,
+    borderRadius: BORDER_RADIUS.md,
     padding: '16px',
-    boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+    boxShadow: SHADOWS.sm,
   },
   formTitle: {
     fontSize: '16px',
@@ -89,6 +76,7 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     gap: '8px',
+    color: COLORS.text,
   },
   inputGroup: {
     marginBottom: '16px',
@@ -98,70 +86,26 @@ const styles = {
     fontSize: '13px',
     fontWeight: '500',
     marginBottom: '6px',
-    color: '#475569',
-  },
-  input: {
-    width: '100%',
-    padding: '14px 12px',
-    fontSize: '16px',
-    border: '1px solid #e2e8f0',
-    borderRadius: '8px',
-    outline: 'none',
-    transition: 'border-color 0.2s',
-  },
-  inputFocus: {
-    borderColor: '#2563eb',
+    color: COLORS.gray[600],
   },
   btnRow: {
     display: 'flex',
     gap: '8px',
     marginBottom: '12px',
   },
-  btn: {
-    flex: 1,
-    padding: '14px',
-    fontSize: '14px',
-    fontWeight: '500',
-    borderRadius: '8px',
-    border: 'none',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '6px',
-    transition: 'all 0.2s',
-  },
-  btnPrimary: {
-    background: '#2563eb',
-    color: 'white',
-  },
-  btnSuccess: {
-    background: '#22c55e',
-    color: 'white',
-  },
-  btnOutline: {
-    background: 'white',
-    color: '#475569',
-    border: '1px solid #e2e8f0',
-  },
-  btnOutlineActive: {
-    background: '#eff6ff',
-    color: '#2563eb',
-    border: '2px solid #2563eb',
-  },
   message: {
     padding: '12px',
-    borderRadius: '8px',
+    borderRadius: BORDER_RADIUS.sm,
     marginBottom: '12px',
     fontSize: '14px',
   },
   messageSuccess: {
-    background: '#dcfce7',
-    color: '#166534',
+    background: COLORS.successLight,
+    color: COLORS.success,
   },
   messageError: {
-    background: '#fef2f2',
-    color: '#dc2626',
+    background: COLORS.dangerLight,
+    color: COLORS.danger,
   },
   list: {
     marginTop: '16px',
@@ -171,8 +115,8 @@ const styles = {
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: '12px',
-    background: '#f8fafc',
-    borderRadius: '8px',
+    background: COLORS.bgAlt,
+    borderRadius: BORDER_RADIUS.sm,
     marginBottom: '8px',
   },
   listItemLeft: {
@@ -183,27 +127,28 @@ const styles = {
   listItemDesc: {
     fontSize: '14px',
     fontWeight: '500',
+    color: COLORS.text,
   },
   listItemMeta: {
     fontSize: '12px',
-    color: '#64748b',
+    color: COLORS.textMuted,
   },
   listItemAmount: {
     fontSize: '15px',
     fontWeight: '600',
-    color: '#1e293b',
+    color: COLORS.text,
   },
 };
 
 // Menu principale
 const MENU_ITEMS = [
-  { id: 'corrispettivi', label: 'Corrispettivi', icon: Banknote, color: '#22c55e', bg: '#dcfce7' },
-  { id: 'pos', label: 'POS Serale', icon: CreditCard, color: '#0891b2', bg: '#cffafe' },
-  { id: 'versamenti', label: 'Versamenti Banca', icon: Building2, color: '#2563eb', bg: '#dbeafe' },
-  { id: 'apporto', label: 'Apporto Soci', icon: Users, color: '#8b5cf6', bg: '#ede9fe' },
-  { id: 'fatture', label: 'Fatture Ricevute', icon: FileText, color: '#f59e0b', bg: '#fef3c7' },
-  { id: 'acconti', label: 'Acconti Dipendenti', icon: Wallet, color: '#ec4899', bg: '#fce7f3' },
-  { id: 'presenze', label: 'Presenze', icon: Users, color: '#06b6d4', bg: '#cffafe' },
+  { id: 'corrispettivi', label: 'Corrispettivi', icon: Banknote, color: COLORS.success, bg: COLORS.successLight },
+  { id: 'pos', label: 'POS Serale', icon: CreditCard, color: COLORS.info, bg: COLORS.infoLight },
+  { id: 'versamenti', label: 'Versamenti Banca', icon: Building2, color: COLORS.info, bg: COLORS.infoLight },
+  { id: 'apporto', label: 'Apporto Soci', icon: Users, color: COLORS.accent, bg: COLORS.accentSoft },
+  { id: 'fatture', label: 'Fatture Ricevute', icon: FileText, color: COLORS.warning, bg: COLORS.warningLight },
+  { id: 'acconti', label: 'Acconti Dipendenti', icon: Wallet, color: COLORS.danger, bg: COLORS.dangerLight },
+  { id: 'presenze', label: 'Presenze', icon: Users, color: COLORS.info, bg: COLORS.infoLight },
 ];
 
 export default function InserimentoRapido() {
@@ -452,15 +397,14 @@ export default function InserimentoRapido() {
   const renderCorrispettiviForm = () => (
     <div style={styles.form}>
       <h3 style={styles.formTitle}>
-        <Banknote size={20} color="#22c55e" />
+        <Banknote size={20} color={COLORS.success} />
         Nuovo Corrispettivo
       </h3>
 
       <div style={styles.inputGroup}>
         <label style={styles.label}>Data</label>
-        <input
+        <Input
           type="date"
-          style={styles.input}
           value={formData.data || defaultDate}
           onChange={e => setFormData({ ...formData, data: e.target.value })}
         />
@@ -468,11 +412,10 @@ export default function InserimentoRapido() {
 
       <div style={styles.inputGroup}>
         <label style={styles.label}>Importo (€)</label>
-        <input
+        <Input
           type="number"
           inputMode="decimal"
           placeholder="0.00"
-          style={styles.input}
           value={formData.importo || ''}
           onChange={e => setFormData({ ...formData, importo: e.target.value })}
         />
@@ -480,42 +423,41 @@ export default function InserimentoRapido() {
 
       <div style={styles.inputGroup}>
         <label style={styles.label}>Note (opzionale)</label>
-        <input
+        <Input
           type="text"
           placeholder="Es: Incasso giornaliero"
-          style={styles.input}
           value={formData.descrizione || ''}
           onChange={e => setFormData({ ...formData, descrizione: e.target.value })}
         />
       </div>
 
-      <button
-        style={{ ...styles.btn, ...styles.btnSuccess, width: '100%' }}
+      <Button
+        variant="success"
+        style={{ width: '100%' }}
         onClick={handleSaveCorrispettivo}
         disabled={loading}
+        iconLeft={<Save size={18} />}
       >
-        <Save size={18} />
         {loading ? 'Salvataggio...' : 'Salva Corrispettivo'}
-      </button>
+      </Button>
     </div>
   );
 
   const renderPosForm = () => (
     <div style={styles.form}>
       <h3 style={styles.formTitle}>
-        <CreditCard size={20} color="#0891b2" />
+        <CreditCard size={20} color={COLORS.info} />
         Incasso POS Serale
       </h3>
-      <p style={{ fontSize: '13px', color: '#64748b', marginTop: '-8px', marginBottom: '16px' }}>
+      <p style={{ fontSize: '13px', color: COLORS.textMuted, marginTop: '-8px', marginBottom: '16px' }}>
         Inserisci qui l'incasso POS reale in chiusura cassa, per confrontarlo con gli accrediti
         in banca (vedi Coerenza POS Corrispettivi).
       </p>
 
       <div style={styles.inputGroup}>
         <label style={styles.label}>Data</label>
-        <input
+        <Input
           type="date"
-          style={styles.input}
           value={formData.data || defaultDate}
           onChange={e => setFormData({ ...formData, data: e.target.value })}
         />
@@ -523,11 +465,10 @@ export default function InserimentoRapido() {
 
       <div style={styles.inputGroup}>
         <label style={styles.label}>Incasso POS (€)</label>
-        <input
+        <Input
           type="number"
           inputMode="decimal"
           placeholder="0.00"
-          style={styles.input}
           value={formData.importo ?? ''}
           onChange={e => setFormData({ ...formData, importo: e.target.value })}
         />
@@ -535,38 +476,37 @@ export default function InserimentoRapido() {
 
       <div style={styles.inputGroup}>
         <label style={styles.label}>Note (opzionale)</label>
-        <input
+        <Input
           type="text"
           placeholder="Es: scontrino POS n. 123"
-          style={styles.input}
           value={formData.note || ''}
           onChange={e => setFormData({ ...formData, note: e.target.value })}
         />
       </div>
 
-      <button
-        style={{ ...styles.btn, background: '#0891b2', color: 'white', width: '100%' }}
+      <Button
+        variant="info"
+        style={{ width: '100%' }}
         onClick={handleSavePos}
         disabled={loading}
+        iconLeft={<Save size={18} />}
       >
-        <Save size={18} />
         {loading ? 'Salvataggio...' : 'Salva Incasso POS'}
-      </button>
+      </Button>
     </div>
   );
 
   const renderVersamentiForm = () => (
     <div style={styles.form}>
       <h3 style={styles.formTitle}>
-        <Building2 size={20} color="#2563eb" />
+        <Building2 size={20} color={COLORS.info} />
         Versamento in Banca
       </h3>
 
       <div style={styles.inputGroup}>
         <label style={styles.label}>Data</label>
-        <input
+        <Input
           type="date"
-          style={styles.input}
           value={formData.data || defaultDate}
           onChange={e => setFormData({ ...formData, data: e.target.value })}
         />
@@ -574,11 +514,10 @@ export default function InserimentoRapido() {
 
       <div style={styles.inputGroup}>
         <label style={styles.label}>Importo (€)</label>
-        <input
+        <Input
           type="number"
           inputMode="decimal"
           placeholder="0.00"
-          style={styles.input}
           value={formData.importo || ''}
           onChange={e => setFormData({ ...formData, importo: e.target.value })}
         />
@@ -586,38 +525,37 @@ export default function InserimentoRapido() {
 
       <div style={styles.inputGroup}>
         <label style={styles.label}>Note (opzionale)</label>
-        <input
+        <Input
           type="text"
           placeholder="Es: Versamento settimanale"
-          style={styles.input}
           value={formData.descrizione || ''}
           onChange={e => setFormData({ ...formData, descrizione: e.target.value })}
         />
       </div>
 
-      <button
-        style={{ ...styles.btn, ...styles.btnPrimary, width: '100%' }}
+      <Button
+        variant="primary"
+        style={{ width: '100%' }}
         onClick={handleSaveVersamento}
         disabled={loading}
+        iconLeft={<Save size={18} />}
       >
-        <Save size={18} />
         {loading ? 'Salvataggio...' : 'Salva Versamento'}
-      </button>
+      </Button>
     </div>
   );
 
   const renderApportoForm = () => (
     <div style={styles.form}>
       <h3 style={styles.formTitle}>
-        <Users size={20} color="#8b5cf6" />
+        <Users size={20} color={COLORS.accent} />
         Apporto Soci
       </h3>
 
       <div style={styles.inputGroup}>
         <label style={styles.label}>Data</label>
-        <input
+        <Input
           type="date"
-          style={styles.input}
           value={formData.data || defaultDate}
           onChange={e => setFormData({ ...formData, data: e.target.value })}
         />
@@ -625,11 +563,10 @@ export default function InserimentoRapido() {
 
       <div style={styles.inputGroup}>
         <label style={styles.label}>Importo (€)</label>
-        <input
+        <Input
           type="number"
           inputMode="decimal"
           placeholder="0.00"
-          style={styles.input}
           value={formData.importo || ''}
           onChange={e => setFormData({ ...formData, importo: e.target.value })}
         />
@@ -638,47 +575,55 @@ export default function InserimentoRapido() {
       <div style={styles.inputGroup}>
         <label style={styles.label}>Destinazione</label>
         <div style={styles.btnRow}>
-          <button
+          <Button
+            variant="secondary"
             style={{
-              ...styles.btn,
-              ...(formData.destinazione === 'cassa' ? styles.btnOutlineActive : styles.btnOutline),
+              flex: 1,
+              ...(formData.destinazione === 'cassa'
+                ? { background: COLORS.primarySoft, color: COLORS.primary, borderColor: COLORS.primary }
+                : {}),
             }}
             onClick={() => setFormData({ ...formData, destinazione: 'cassa' })}
+            iconLeft={<Wallet size={16} />}
           >
-            <Wallet size={16} /> Cassa
-          </button>
-          <button
+            Cassa
+          </Button>
+          <Button
+            variant="secondary"
             style={{
-              ...styles.btn,
-              ...(formData.destinazione === 'banca' ? styles.btnOutlineActive : styles.btnOutline),
+              flex: 1,
+              ...(formData.destinazione === 'banca'
+                ? { background: COLORS.primarySoft, color: COLORS.primary, borderColor: COLORS.primary }
+                : {}),
             }}
             onClick={() => setFormData({ ...formData, destinazione: 'banca' })}
+            iconLeft={<Building2 size={16} />}
           >
-            <Building2 size={16} /> Banca
-          </button>
+            Banca
+          </Button>
         </div>
       </div>
 
-      <button
-        style={{ ...styles.btn, background: '#8b5cf6', color: 'white', width: '100%' }}
+      <Button
+        style={{ width: '100%', background: COLORS.accent, borderColor: COLORS.accent }}
         onClick={handleSaveApporto}
         disabled={loading}
+        iconLeft={<Save size={18} />}
       >
-        <Save size={18} />
         {loading ? 'Salvataggio...' : 'Salva Apporto'}
-      </button>
+      </Button>
     </div>
   );
 
   const renderFattureList = () => (
     <div style={styles.form}>
       <h3 style={styles.formTitle}>
-        <FileText size={20} color="#f59e0b" />
+        <FileText size={20} color={COLORS.warning} />
         Fatture da Pagare
       </h3>
 
       {fatture.length === 0 ? (
-        <p style={{ textAlign: 'center', color: '#64748b', padding: '20px' }}>
+        <p style={{ textAlign: 'center', color: COLORS.textMuted, padding: '20px' }}>
           Nessuna fattura da pagare
         </p>
       ) : (
@@ -705,28 +650,22 @@ export default function InserimentoRapido() {
                   {formatEuro(f.total_amount || f.importo || 0)}
                 </span>
                 <div style={{ display: 'flex', gap: '4px' }}>
-                  <button
-                    style={{
-                      ...styles.btn,
-                      padding: '8px 12px',
-                      fontSize: '12px',
-                      ...styles.btnOutline,
-                    }}
+                  <Button
+                    size="sm"
+                    variant="secondary"
                     onClick={() => handlePagaFattura(f, 'CASSA')}
+                    iconLeft={<Wallet size={14} />}
                   >
-                    <Wallet size={14} /> Cassa
-                  </button>
-                  <button
-                    style={{
-                      ...styles.btn,
-                      padding: '8px 12px',
-                      fontSize: '12px',
-                      ...styles.btnPrimary,
-                    }}
+                    Cassa
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="primary"
                     onClick={() => handlePagaFattura(f, 'BANCA')}
+                    iconLeft={<Building2 size={14} />}
                   >
-                    <Building2 size={14} /> Banca
-                  </button>
+                    Banca
+                  </Button>
                 </div>
               </div>
             </div>
@@ -739,14 +678,13 @@ export default function InserimentoRapido() {
   const renderAccontiForm = () => (
     <div style={styles.form}>
       <h3 style={styles.formTitle}>
-        <Wallet size={20} color="#ec4899" />
+        <Wallet size={20} color={COLORS.danger} />
         Acconto Dipendente
       </h3>
 
       <div style={styles.inputGroup}>
         <label style={styles.label}>Dipendente</label>
-        <select
-          style={styles.input}
+        <Select
           value={formData.dipendente_id || ''}
           onChange={e => setFormData({ ...formData, dipendente_id: e.target.value })}
         >
@@ -756,14 +694,13 @@ export default function InserimentoRapido() {
               {d.cognome} {d.nome}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
 
       <div style={styles.inputGroup}>
         <label style={styles.label}>Data</label>
-        <input
+        <Input
           type="date"
-          style={styles.input}
           value={formData.data || defaultDate}
           onChange={e => setFormData({ ...formData, data: e.target.value })}
         />
@@ -771,11 +708,10 @@ export default function InserimentoRapido() {
 
       <div style={styles.inputGroup}>
         <label style={styles.label}>Importo (€)</label>
-        <input
+        <Input
           type="number"
           inputMode="decimal"
           placeholder="0.00"
-          style={styles.input}
           value={formData.importo || ''}
           onChange={e => setFormData({ ...formData, importo: e.target.value })}
         />
@@ -783,37 +719,36 @@ export default function InserimentoRapido() {
 
       <div style={styles.inputGroup}>
         <label style={styles.label}>Note (opzionale)</label>
-        <input
+        <Input
           type="text"
           placeholder="Es: Anticipo stipendio"
-          style={styles.input}
           value={formData.note || ''}
           onChange={e => setFormData({ ...formData, note: e.target.value })}
         />
       </div>
 
-      <button
-        style={{ ...styles.btn, background: '#ec4899', color: 'white', width: '100%' }}
+      <Button
+        variant="danger"
+        style={{ width: '100%' }}
         onClick={handleSaveAcconto}
         disabled={loading}
+        iconLeft={<Save size={18} />}
       >
-        <Save size={18} />
         {loading ? 'Salvataggio...' : 'Salva Acconto'}
-      </button>
+      </Button>
     </div>
   );
 
   const renderPresenzeForm = () => (
     <div style={styles.form}>
       <h3 style={styles.formTitle}>
-        <Users size={20} color="#06b6d4" />
+        <Users size={20} color={COLORS.info} />
         Registra Presenza/Assenza
       </h3>
 
       <div style={styles.inputGroup}>
         <label style={styles.label}>Dipendente</label>
-        <select
-          style={styles.input}
+        <Select
           value={formData.dipendente_id || ''}
           onChange={e => setFormData({ ...formData, dipendente_id: e.target.value })}
         >
@@ -823,14 +758,13 @@ export default function InserimentoRapido() {
               {d.cognome} {d.nome}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
 
       <div style={styles.inputGroup}>
         <label style={styles.label}>Data</label>
-        <input
+        <Input
           type="date"
-          style={styles.input}
           value={formData.data || defaultDate}
           onChange={e => setFormData({ ...formData, data: e.target.value })}
         />
@@ -846,51 +780,48 @@ export default function InserimentoRapido() {
           }}
         >
           {[
-            { id: 'PRESENTE', label: 'Presente', color: '#22c55e' },
-            { id: 'FERIE', label: 'Ferie', color: '#f59e0b' },
-            { id: 'MALATTIA', label: 'Malattia', color: '#ef4444' },
-            { id: 'PERMESSO', label: 'Permesso', color: '#8b5cf6' },
-          ].map(tipo => (
-            <button
-              key={tipo.id}
-              style={{
-                ...styles.btn,
-                padding: '12px',
-                fontSize: '13px',
-                background: formData.tipo_presenza === tipo.id ? tipo.color : '#f8fafc',
-                color: formData.tipo_presenza === tipo.id ? 'white' : '#475569',
-                border: `1px solid ${formData.tipo_presenza === tipo.id ? tipo.color : '#e2e8f0'}`,
-              }}
-              onClick={() => setFormData({ ...formData, tipo_presenza: tipo.id })}
-            >
-              {tipo.label}
-            </button>
-          ))}
+            { id: 'PRESENTE', label: 'Presente', variant: 'success' },
+            { id: 'FERIE', label: 'Ferie', variant: 'warning' },
+            { id: 'MALATTIA', label: 'Malattia', variant: 'danger' },
+            { id: 'PERMESSO', label: 'Permesso', accent: true },
+          ].map(tipo => {
+            const active = formData.tipo_presenza === tipo.id;
+            return (
+              <Button
+                key={tipo.id}
+                variant={active && !tipo.accent ? tipo.variant : 'secondary'}
+                style={active && tipo.accent ? { background: COLORS.accent, borderColor: COLORS.accent, color: '#fff' } : {}}
+                onClick={() => setFormData({ ...formData, tipo_presenza: tipo.id })}
+              >
+                {tipo.label}
+              </Button>
+            );
+          })}
         </div>
       </div>
 
       {formData.tipo_presenza === 'PRESENTE' && (
         <div style={styles.inputGroup}>
           <label style={styles.label}>Ore lavorate</label>
-          <input
+          <Input
             type="number"
             inputMode="decimal"
             placeholder="8"
-            style={styles.input}
             value={formData.ore || ''}
             onChange={e => setFormData({ ...formData, ore: e.target.value })}
           />
         </div>
       )}
 
-      <button
-        style={{ ...styles.btn, background: '#06b6d4', color: 'white', width: '100%' }}
+      <Button
+        variant="info"
+        style={{ width: '100%' }}
         onClick={handleSavePresenza}
         disabled={loading}
+        iconLeft={<Save size={18} />}
       >
-        <Save size={18} />
         {loading ? 'Salvataggio...' : 'Salva Presenza'}
-      </button>
+      </Button>
     </div>
   );
 
@@ -955,7 +886,7 @@ export default function InserimentoRapido() {
             {ultimiInserimenti.length > 0 && (
               <div style={{ ...styles.form, marginTop: '8px' }}>
                 <h3 style={{ ...styles.formTitle, fontSize: '14px', marginBottom: '12px' }}>
-                  <History size={16} color="#64748b" />
+                  <History size={16} color={COLORS.textMuted} />
                   Ultimi Inserimenti
                 </h3>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -967,34 +898,34 @@ export default function InserimentoRapido() {
                         justifyContent: 'space-between',
                         alignItems: 'center',
                         padding: '10px 12px',
-                        background: '#f8fafc',
-                        borderRadius: '8px',
+                        background: COLORS.bgAlt,
+                        borderRadius: BORDER_RADIUS.sm,
                         borderLeft: `3px solid ${
                           ins.tipo === 'corrispettivo'
-                            ? '#22c55e'
+                            ? COLORS.success
                             : ins.tipo === 'versamento'
-                              ? '#2563eb'
+                              ? COLORS.info
                               : ins.tipo === 'acconto'
-                                ? '#ec4899'
+                                ? COLORS.danger
                                 : ins.tipo === 'presenza'
-                                  ? '#06b6d4'
-                                  : '#64748b'
+                                  ? COLORS.info
+                                  : COLORS.textMuted
                         }`,
                       }}
                     >
                       <div>
-                        <div style={{ fontSize: '13px', fontWeight: '500', color: '#1e293b' }}>
+                        <div style={{ fontSize: '13px', fontWeight: '500', color: COLORS.text }}>
                           {ins.descrizione}
                         </div>
-                        <div style={{ fontSize: '11px', color: '#64748b' }}>{formatDateIT(ins.data)}</div>
+                        <div style={{ fontSize: '11px', color: COLORS.textMuted }}>{formatDateIT(ins.data)}</div>
                       </div>
                       {ins.importo && (
-                        <span style={{ fontSize: '14px', fontWeight: '600', color: '#1e293b' }}>
+                        <span style={{ fontSize: '14px', fontWeight: '600', color: COLORS.text }}>
                           {formatEuro(ins.importo)}
                         </span>
                       )}
                       {ins.ore && (
-                        <span style={{ fontSize: '13px', color: '#64748b' }}>{ins.ore}h</span>
+                        <span style={{ fontSize: '13px', color: COLORS.textMuted }}>{ins.ore}h</span>
                       )}
                     </div>
                   ))}
@@ -1005,21 +936,17 @@ export default function InserimentoRapido() {
         ) : (
           <>
             {/* Back button */}
-            <button
-              style={{
-                ...styles.btn,
-                ...styles.btnOutline,
-                marginBottom: '16px',
-                justifyContent: 'flex-start',
-              }}
+            <Button
+              variant="secondary"
+              style={{ marginBottom: '16px', justifyContent: 'flex-start' }}
               onClick={() => {
                 setActiveSection(null);
                 resetForm();
               }}
+              iconLeft={<ArrowLeft size={18} />}
             >
-              <ArrowLeft size={18} />
               Torna al menu
-            </button>
+            </Button>
 
             {/* Form attivo */}
             {renderActiveForm()}
