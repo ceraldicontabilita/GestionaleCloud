@@ -1267,12 +1267,18 @@ async def auto_associa_assegni() -> Dict[str, Any]:
         "total_amount": {"$gt": 0}
     }, {"_id": 0}).to_list(5000)
     
-    # Filtra: solo fatture di fornitori con metodo assegno o misto o senza metodo
+    # Filtra: solo fatture di fornitori esplicitamente pagabili con assegno
+    # (metodo 'assegno', legacy, o 'misto'). Un metodo NON impostato veniva
+    # trattato come "compatibile" per difetto — così qualsiasi fornitore mai
+    # configurato (es. Amazon, pagato con carta/bonifico ma senza un metodo
+    # esplicito a sistema) finiva tra i candidati assegno solo per
+    # coincidenza di importo, cosa che non ha alcun senso pratico (nessuno
+    # paga Amazon con un assegno italiano).
     fatture = []
     for f in fatture_raw:
         piva = f.get('supplier_vat', '')
         metodo = metodo_fornitori.get(piva, '')
-        if metodo in ['assegno', 'misto', '']:
+        if metodo in ['assegno', 'misto']:
             fatture.append(f)
     
     # Carica associazioni storiche per learning

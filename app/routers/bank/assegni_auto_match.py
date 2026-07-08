@@ -141,7 +141,13 @@ async def _enrich_assegni_con_piva(db, assegni: List[Dict[str, Any]]) -> int:
 
 async def _load_open_invoices_by_piva(db) -> Dict[str, List[Dict[str, Any]]]:
     """Fatture aperte/parziali raggruppate per P.IVA fornitore.
-    Esclude pagate, annullate, eliminate. Applica eventuali note credito."""
+    Esclude pagate, annullate, eliminate. Applica eventuali note credito.
+    Esclude anche i fornitori il cui metodo di pagamento è ESPLICITAMENTE
+    'banca'/'cassa'/'certo' (nessun assegno possibile per definizione — es.
+    Amazon è configurato "certo: sempre e solo banca") — il vincolo è solo
+    un'esclusione, non un requisito: un fornitore senza metodo configurato
+    resta comunque candidato, per non nascondere match reali di fornitori
+    mai censiti a sistema."""
     invoices = await db["invoices"].find({
         "$and": [
             {"$or": [
@@ -153,12 +159,23 @@ async def _load_open_invoices_by_piva(db) -> Dict[str, List[Dict[str, Any]]]:
         ]
     }, {"_id": 0}).to_list(20000)
 
+    metodo_non_assegno = set()
+    async for f in db["fornitori"].find(
+        {"metodo_pagamento": {"$in": ["banca", "cassa", "certo"]}},
+        {"_id": 0, "partita_iva": 1}
+    ):
+        piva_f = _norm_piva(f.get("partita_iva"))
+        if piva_f:
+            metodo_non_assegno.add(piva_f)
+
     by_piva: Dict[str, List[Dict[str, Any]]] = {}
     for inv in invoices:
         if _is_paid_status(inv.get("payment_status")) or _is_paid_status(inv.get("pagato")):
             continue
         piva = _norm_piva(inv.get("supplier_vat") or inv.get("cedente_id_fiscale") or inv.get("partita_iva"))
         if not piva:
+            continue
+        if piva in metodo_non_assegno:
             continue
         total = _f(inv.get("total_amount") or inv.get("importo_totale"))
         paid = _f(inv.get("importo_pagato") or 0)
