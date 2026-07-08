@@ -1,0 +1,86 @@
+{
+  "pagina": "Strumenti → Pianificazione",
+  "url": "https://impresasemplice.online/strumenti/pianificazione",
+  "file_sorgente_frontend": [
+    "/home/user/GestionaleCloud/frontend/src/pages/hub/StrumentiHub.jsx",
+    "/home/user/GestionaleCloud/frontend/src/pages/Pianificazione.jsx"
+  ],
+  "file_sorgente_backend": [
+    "/home/user/GestionaleCloud/app/routers/public_api.py (righe 546-598: endpoint effettivamente usati da questa pagina, GET/POST /pianificazione/events, montato con prefix /api → percorso finale /api/pianificazione/events)",
+    "/home/user/GestionaleCloud/app/routers/pianificazione.py (router separato montato con prefix /api/pianificazione, espone SOLO /costi-previsionali — NON usato da questa pagina, vedi nota sotto)",
+    "/home/user/GestionaleCloud/app/router_registry.py (riga 48: include_router(public_api.router, prefix=\"/api\") ; riga 250: include_router(pianificazione.router, prefix=\"/api/pianificazione\"))"
+  ],
+  "scopo_generale": "Agenda personale/interna per annotare eventi legati all'attività aziendale (riunioni, scadenze fiscali, promemoria, attività da fare). Il testo esplicativo mostrato quando la lista è vuota chiarisce che NON è un calendario condiviso né sincronizzato con Google Calendar: è pensata come spazio unico per tenere traccia di date come scadenza IVA, rinnovo contratti, appuntamenti col commercialista. Permette solo creazione e visualizzazione degli eventi: non esistono, né in frontend né in backend, funzioni di modifica o cancellazione di un evento già creato.",
+  "bottoni_azioni": [
+    {
+      "etichetta": "+ Nuovo Evento (in alto a destra, data-testid=btn-nuovo-evento)",
+      "cosa_fa_al_click": "Alterna showForm (mostra/nasconde il pannello del form di creazione)",
+      "endpoint_chiamato": "Nessuno",
+      "logica_backend": "N/A",
+      "formula_matematica": "N/A",
+      "aggiornamento_ui": "Mostra/nasconde la sezione 'Nuovo Evento' con i campi Titolo/Data/Ora/Tipo/Note",
+      "casi_errore": "Nessuno"
+    },
+    {
+      "etichetta": "Aggiorna (icona RefreshCw, in alto a destra)",
+      "cosa_fa_al_click": "Richiama loadEvents()",
+      "endpoint_chiamato": "GET /api/pianificazione/events",
+      "logica_backend": "list_events (in public_api.py): legge TUTTI i documenti della collection planning_events (proiezione senza _id), poi ordina in memoria (non con sort MongoDB) usando come chiave scheduled_date se presente, altrimenti start_date (fallback per compatibilità con eventi creati con lo schema vecchio), altrimenti stringa vuota; applica infine skip/limit lato Python sull'array già ordinato (default limit=10000, quindi in pratica restituisce sempre tutto).",
+      "formula_matematica": "chiave_ordinamento(evento) = evento.scheduled_date OR evento.start_date OR '' (ordine crescente, cioè i più vecchi/prossimi per primi salvo eventi senza data che finiscono in cima perché stringa vuota)",
+      "aggiornamento_ui": "Sostituisce l'array events e ricostruisce la lista di card sottostante; se la risposta non è un array puro usa r.data.items come fallback",
+      "casi_errore": "Errore loggato in console (console.error), nessun banner visibile all'utente per questa specifica chiamata"
+    },
+    {
+      "etichetta": "💾 Salva (submit del form, data-testid=btn-salva)",
+      "cosa_fa_al_click": "handleCreateEvent(e): previene il submit di default, azzera l'errore, invia i dati del form",
+      "endpoint_chiamato": "POST /api/pianificazione/events  Body: { title, scheduled_date: \"{date}T{time}:00\", event_type, notes, status: 'scheduled' }",
+      "logica_backend": "create_event (in public_api.py): estrae scheduled_date preferendo data.scheduled_date, fallback su data.start_date (retrocompatibilità); estrae event_type preferendo data.event_type, fallback su data.type; estrae notes preferendo data.notes, fallback su data.description. Costruisce un documento con id=uuid4() e SALVA VOLUTAMENTE OGNI CAMPO IN DOPPIO FORMATO per compatibilità tra client vecchi e nuovi: scheduled_date E start_date con lo stesso valore, event_type E type con lo stesso valore, notes E description con lo stesso valore, più end_date (vuoto se non fornito), status (default 'scheduled'), created_at. Inserisce in planning_events con insert_one.",
+      "formula_matematica": "N/A (nessun calcolo, solo normalizzazione/duplicazione campi)",
+      "aggiornamento_ui": "Chiude il form (showForm=false), resetta i campi del form ai valori di default (data odierna, ora 09:00, tipo 'meeting'), richiama loadEvents() per mostrare subito il nuovo evento nella lista",
+      "casi_errore": "Se la POST fallisce, err viene impostato con 'Errore: ' + (e.response.data.detail o e.message) e mostrato in banner rosso sopra il form; il form NON si chiude in caso di errore (il codice che chiude il form è dentro il blocco try, dopo la await riuscita)"
+    },
+    {
+      "etichetta": "Tipo evento (select nel form: 🤝 Riunione / ⏰ Scadenza / 🔔 Promemoria / ✅ Attività)",
+      "cosa_fa_al_click": "Aggiorna newEvent.type nello state locale del form",
+      "endpoint_chiamato": "Nessuno",
+      "logica_backend": "N/A",
+      "formula_matematica": "N/A",
+      "aggiornamento_ui": "Determina icona e colore di sfondo della card una volta creato l'evento: meeting=#dbeafe/🤝, deadline=#fef2f2/⏰, reminder=#fef3c7/🔔, task=#dcfce7/✅, default=#f1f5f9/📌",
+      "casi_errore": "Nessuno"
+    },
+    {
+      "etichetta": "Annulla / X (chiudono il form senza salvare)",
+      "cosa_fa_al_click": "setShowForm(false), il contenuto digitato nel form NON viene azzerato da questi due bottoni specifici (solo un salvataggio riuscito resetta i campi)",
+      "endpoint_chiamato": "Nessuno",
+      "logica_backend": "N/A",
+      "formula_matematica": "N/A",
+      "aggiornamento_ui": "Nasconde il form",
+      "casi_errore": "Nessuno"
+    }
+  ],
+  "operazioni_di_registrazione": [
+    {
+      "nome": "Creazione di un evento in agenda",
+      "sequenza_esatta": "1) Utente compila Titolo (obbligatorio), Data (obbligatoria, default oggi), Ora (default 09:00), Tipo (default 'meeting'), Note (opzionali) → 2) Click su 'Salva' → 3) Frontend combina data+ora in un'unica stringa ISO-like 'YYYY-MM-DDTHH:MM:00' e invia POST /api/pianificazione/events → 4) Backend genera id univoco, duplica i campi in schema nuovo+vecchio, imposta status='scheduled' e created_at → 5) insert_one su planning_events → 6) Frontend chiude il form, resetta i campi e ricarica l'intera lista con una nuova GET.",
+      "collezioni_coinvolte": ["planning_events"],
+      "campi_scritti": {
+        "id": "uuid4 generato dal backend",
+        "title": "dal form",
+        "scheduled_date / start_date": "stessa stringa 'YYYY-MM-DDTHH:MM:00' costruita dal frontend",
+        "end_date": "stringa vuota (il form non permette di impostarla)",
+        "event_type / type": "uno tra meeting|deadline|reminder|task",
+        "notes / description": "testo libero opzionale",
+        "status": "'scheduled' (fisso, il form non permette altri stati in creazione)",
+        "created_at": "datetime.now(timezone.utc).isoformat()"
+      },
+      "effetti_collaterali": "Nessun effetto su altre collezioni o pagine: è un evento isolato, non collegato a fatture/scadenze fiscali reali del sistema (anche se concettualmente l'utente può annotarci manualmente una scadenza IVA)."
+    }
+  ],
+  "collegamenti_con_altre_pagine": [
+    "Nessun collegamento diretto/automatico con altre collezioni del gestionale (fatture, F24, IVA): è uno strumento di annotazione manuale indipendente",
+    "NOTA: il router app/routers/pianificazione.py espone anche GET/POST/DELETE /api/pianificazione/costi-previsionali (una feature di budgeting su collection separata 'costi_previsionali', protetta da autenticazione via get_current_user) ma questa funzionalità NON è utilizzata da nessun elemento della pagina Pianificazione.jsx attuale: è codice presente nel backend ma orfano lato frontend in questa pagina."
+  ],
+  "popup_e_modali_presenti": [
+    "Nessun vero modale/overlay: il 'Nuovo Evento' è una sezione (PageSection) che si espande/comprime inline nella pagina, non un popup separato."
+  ]
+}
