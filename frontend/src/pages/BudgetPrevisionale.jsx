@@ -1,8 +1,24 @@
 import React, { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
-import { formatEuro, useIsMobile } from '../lib/utils';
+import { COLORS, BORDER_RADIUS, FONT, formatEuro, useIsMobile } from '../lib/utils';
 import { PageLayout, PageSection, PageGrid, PageLoading } from '../components/PageLayout';
+import {
+  Button,
+  Badge,
+  Card,
+  Input,
+  Select,
+  Tabs,
+  StatCard,
+  Table,
+  TableWrap,
+  Th,
+  Td,
+  RowActions,
+  RowActionButton,
+} from '../components/ds';
 import {
   BarChart3,
   Plus,
@@ -17,8 +33,6 @@ import {
   X,
   Edit2,
 } from 'lucide-react';
-
-const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace';
 
 const NOMI_MESI = [
   '',
@@ -129,19 +143,20 @@ export default function BudgetPrevisionale() {
       resetForm();
       loadAll();
     } catch (err) {
-      alert('Errore: ' + (err.response?.data?.error || err.message));
+      toast.error('Errore', { description: err.response?.data?.error || err.message });
     } finally {
       setSaving(false);
     }
   };
 
   const handleDelete = async voce => {
+    // Azione distruttiva/irreversibile: elimina definitivamente la voce di budget.
     if (!confirm(`Eliminare "${voce}" dal budget ${anno}?`)) return;
     try {
       await api.delete(`/api/contabilita-gestionale/budget/${anno}/${encodeURIComponent(voce)}`);
       loadAll();
     } catch (err) {
-      alert('Errore: ' + err.message);
+      toast.error('Errore', { description: err.message });
     }
   };
 
@@ -151,11 +166,11 @@ export default function BudgetPrevisionale() {
       const res = await api.post(
         `/api/contabilita-gestionale/budget/duplica/${anno}/${annoDestinazione}?variazione_pct=${variazionePct}`
       );
-      alert(res.data.messaggio);
+      toast.success(res.data.messaggio);
       setShowDuplica(false);
       loadAll();
     } catch (err) {
-      alert('Errore: ' + err.message);
+      toast.error('Errore', { description: err.message });
     } finally {
       setSaving(false);
     }
@@ -187,7 +202,7 @@ export default function BudgetPrevisionale() {
         ].join(';')
       );
     }
-    const blob = new Blob(['\uFEFF' + rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const blob = new Blob(['﻿' + rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -197,8 +212,8 @@ export default function BudgetPrevisionale() {
   };
 
   const getValBadge = val => {
-    if (val === 'positivo') return { bg: '#dcfce7', color: '#16a34a', icon: '✓' };
-    return { bg: '#fee2e2', color: '#dc2626', icon: '✗' };
+    if (val === 'positivo') return { variant: 'success', icon: '✓' };
+    return { variant: 'danger', icon: '✗' };
   };
 
   // ---- RENDER ----
@@ -208,63 +223,27 @@ export default function BudgetPrevisionale() {
       icon={<BarChart3 size={28} />}
       subtitle={`Budget annuale, distribuzione mensile e confronto con consuntivo – Anno ${anno}`}
       actions={
-        <button
+        <Button
+          variant="secondary"
           onClick={loadAll}
           disabled={loading}
-          style={{
-            padding: '8px 16px',
-            minHeight: 40,
-            borderRadius: 6,
-            border: '1px solid #e2e8f0',
-            background: 'white',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            fontSize: 13,
-            fontWeight: 500,
-          }}
+          iconLeft={<RefreshCw size={14} />}
         >
-          <RefreshCw size={14} /> Aggiorna
-        </button>
+          Aggiorna
+        </Button>
       }
     >
       {/* Tabs */}
-      <div
-        style={{
-          display: 'flex',
-          gap: 0,
-          marginBottom: 24,
-          borderBottom: '2px solid #e2e8f0',
-          flexWrap: 'wrap',
-        }}
-      >
-        {[
-          { id: 'budget', label: 'Budget', icon: <BarChart3 size={16} /> },
-          { id: 'confronto', label: 'Budget vs Consuntivo', icon: <Target size={16} /> },
-          { id: 'andamento', label: 'Andamento Mensile', icon: <TrendingUp size={16} /> },
-        ].map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            style={{
-              padding: '12px 20px',
-              minHeight: 40,
-              border: 'none',
-              background: activeTab === tab.id ? '#0f2744' : 'transparent',
-              color: activeTab === tab.id ? 'white' : '#64748b',
-              fontSize: 13,
-              fontWeight: 600,
-              cursor: 'pointer',
-              borderRadius: '6px 6px 0 0',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-            }}
-          >
-            {tab.icon} {tab.label}
-          </button>
-        ))}
+      <div style={{ marginBottom: 24 }}>
+        <Tabs
+          items={[
+            { key: 'budget', label: 'Budget', icon: <BarChart3 size={16} /> },
+            { key: 'confronto', label: 'Budget vs Consuntivo', icon: <Target size={16} /> },
+            { key: 'andamento', label: 'Andamento Mensile', icon: <TrendingUp size={16} /> },
+          ]}
+          value={activeTab}
+          onChange={setActiveTab}
+        />
       </div>
 
       {loading ? (
@@ -277,177 +256,75 @@ export default function BudgetPrevisionale() {
               {/* Summary Cards */}
               {budget?.totali && (
                 <PageGrid cols={4} gap={16}>
-                  <div
-                    style={{
-                      background: 'white',
-                      padding: 16,
-                      borderRadius: 8,
-                      border: '1px solid #e2e8f0',
-                      borderLeft: '4px solid #0f2744',
-                    }}
-                  >
-                    <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600, letterSpacing: 0.5 }}>
-                      RICAVI BUDGET
-                    </div>
-                    <div style={{ fontSize: 22, fontWeight: 700, color: '#16a34a', marginTop: 4, fontFamily: MONO }}>
-                      {formatEuro(budget.totali.ricavi_budget)}
-                    </div>
-                  </div>
-                  <div
-                    style={{
-                      background: 'white',
-                      padding: 16,
-                      borderRadius: 8,
-                      border: '1px solid #e2e8f0',
-                      borderLeft: '4px solid #0f2744',
-                    }}
-                  >
-                    <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600, letterSpacing: 0.5 }}>
-                      COSTI BUDGET
-                    </div>
-                    <div style={{ fontSize: 22, fontWeight: 700, color: '#dc2626', marginTop: 4, fontFamily: MONO }}>
-                      {formatEuro(budget.totali.costi_budget)}
-                    </div>
-                  </div>
-                  <div
-                    style={{
-                      background: 'white',
-                      padding: 16,
-                      borderRadius: 8,
-                      border: '1px solid #e2e8f0',
-                      borderLeft: `4px solid ${budget.totali.margine_budget >= 0 ? '#16a34a' : '#dc2626'}`,
-                    }}
-                  >
-                    <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', letterSpacing: 0.5 }}>
-                      MARGINE
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 22,
-                        fontWeight: 700,
-                        marginTop: 4,
-                        fontFamily: MONO,
-                        color: budget.totali.margine_budget >= 0 ? '#16a34a' : '#dc2626',
-                      }}
-                    >
-                      {formatEuro(budget.totali.margine_budget)}
-                    </div>
-                  </div>
-                  <div
-                    style={{
-                      background: 'white',
-                      padding: 16,
-                      borderRadius: 8,
-                      border: '1px solid #e2e8f0',
-                      borderLeft: '4px solid #0f2744',
-                    }}
-                  >
-                    <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600, letterSpacing: 0.5 }}>MARGINE %</div>
-                    <div style={{ fontSize: 22, fontWeight: 700, color: '#0f2744', marginTop: 4, fontFamily: MONO }}>
-                      {budget.totali.margine_pct}%
-                    </div>
-                  </div>
+                  <StatCard
+                    icon={<TrendingUp size={18} />}
+                    label="Ricavi Budget"
+                    value={formatEuro(budget.totali.ricavi_budget)}
+                    accent="success"
+                  />
+                  <StatCard
+                    icon={<TrendingDown size={18} />}
+                    label="Costi Budget"
+                    value={formatEuro(budget.totali.costi_budget)}
+                    accent="danger"
+                  />
+                  <StatCard
+                    icon={<Target size={18} />}
+                    label="Margine"
+                    value={formatEuro(budget.totali.margine_budget)}
+                    accent={budget.totali.margine_budget >= 0 ? 'success' : 'danger'}
+                  />
+                  <StatCard
+                    icon={<BarChart3 size={18} />}
+                    label="Margine %"
+                    value={`${budget.totali.margine_pct}%`}
+                    accent="primary"
+                  />
                 </PageGrid>
               )}
 
               {/* Actions */}
               <div style={{ display: 'flex', gap: 8, margin: '20px 0', flexWrap: 'wrap' }}>
-                <button
+                <Button
+                  variant="primary"
+                  iconLeft={<Plus size={14} />}
                   onClick={() => {
                     resetForm();
                     setShowForm(true);
                   }}
-                  style={{
-                    padding: '8px 16px',
-                    minHeight: 40,
-                    borderRadius: 6,
-                    border: 'none',
-                    background: '#0f2744',
-                    color: 'white',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    fontSize: 13,
-                    fontWeight: 600,
-                  }}
                 >
-                  <Plus size={14} /> Nuova Voce
-                </button>
-                <button
+                  Nuova Voce
+                </Button>
+                <Button
+                  variant="secondary"
+                  iconLeft={<Copy size={14} />}
                   onClick={() => setShowDuplica(true)}
-                  style={{
-                    padding: '8px 16px',
-                    minHeight: 40,
-                    borderRadius: 6,
-                    border: '1px solid #e2e8f0',
-                    background: 'white',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    fontSize: 13,
-                    fontWeight: 500,
-                  }}
                 >
-                  <Copy size={14} /> Duplica Anno
-                </button>
-                <button
-                  onClick={exportCSV}
-                  style={{
-                    padding: '8px 16px',
-                    minHeight: 40,
-                    borderRadius: 6,
-                    border: 'none',
-                    background: '#0f2744',
-                    color: 'white',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    fontSize: 13,
-                    fontWeight: 600,
-                  }}
-                >
-                  <Download size={14} /> CSV
-                </button>
+                  Duplica Anno
+                </Button>
+                <Button variant="primary" iconLeft={<Download size={14} />} onClick={exportCSV}>
+                  CSV
+                </Button>
               </div>
 
               {/* Form */}
               {showForm && (
-                <div
-                  style={{
-                    background: '#f8fafc',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: 8,
-                    padding: 20,
-                    marginBottom: 20,
-                  }}
-                >
-                  <div
-                    style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}
-                  >
-                    <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>
-                      {editingVoce ? `Modifica: ${editingVoce}` : 'Nuova voce di budget'}
-                    </h3>
-                    <button
+                <Card
+                  title={editingVoce ? `Modifica: ${editingVoce}` : 'Nuova voce di budget'}
+                  actions={
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       onClick={resetForm}
                       aria-label="Chiudi"
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        cursor: 'pointer',
-                        minWidth: 40,
-                        minHeight: 40,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        color: '#64748b',
-                      }}
+                      style={{ padding: 6 }}
                     >
-                      <X size={20} />
-                    </button>
-                  </div>
+                      <X size={18} />
+                    </Button>
+                  }
+                  style={{ marginBottom: 20 }}
+                  bodyStyle={{ background: COLORS.bgAlt }}
+                >
                   <div
                     style={{
                       display: 'grid',
@@ -461,25 +338,18 @@ export default function BudgetPrevisionale() {
                         style={{
                           fontSize: 12,
                           fontWeight: 500,
-                          color: '#475569',
+                          color: COLORS.gray[600],
                           display: 'block',
                           marginBottom: 4,
                         }}
                       >
                         Voce
                       </label>
-                      <input
+                      <Input
                         value={formVoce}
                         onChange={e => setFormVoce(e.target.value)}
                         disabled={!!editingVoce}
                         placeholder="es. Materie prime"
-                        style={{
-                          width: '100%',
-                          padding: '8px 12px',
-                          border: '1px solid #e2e8f0',
-                          borderRadius: 6,
-                          fontSize: 14,
-                        }}
                       />
                     </div>
                     <div>
@@ -487,51 +357,34 @@ export default function BudgetPrevisionale() {
                         style={{
                           fontSize: 12,
                           fontWeight: 500,
-                          color: '#475569',
+                          color: COLORS.gray[600],
                           display: 'block',
                           marginBottom: 4,
                         }}
                       >
                         Categoria
                       </label>
-                      <select
-                        value={formCategoria}
-                        onChange={e => setFormCategoria(e.target.value)}
-                        style={{
-                          width: '100%',
-                          padding: '8px 12px',
-                          border: '1px solid #e2e8f0',
-                          borderRadius: 6,
-                          fontSize: 14,
-                        }}
-                      >
+                      <Select value={formCategoria} onChange={e => setFormCategoria(e.target.value)}>
                         <option value="costo">Costo</option>
                         <option value="ricavo">Ricavo</option>
-                      </select>
+                      </Select>
                     </div>
                     <div>
                       <label
                         style={{
                           fontSize: 12,
                           fontWeight: 500,
-                          color: '#475569',
+                          color: COLORS.gray[600],
                           display: 'block',
                           marginBottom: 4,
                         }}
                       >
                         Importo annuo €
                       </label>
-                      <input
+                      <Input
                         type="number"
                         value={formImporto}
                         onChange={e => setFormImporto(e.target.value)}
-                        style={{
-                          width: '100%',
-                          padding: '8px 12px',
-                          border: '1px solid #e2e8f0',
-                          borderRadius: 6,
-                          fontSize: 14,
-                        }}
                       />
                     </div>
                     <div>
@@ -539,46 +392,31 @@ export default function BudgetPrevisionale() {
                         style={{
                           fontSize: 12,
                           fontWeight: 500,
-                          color: '#475569',
+                          color: COLORS.gray[600],
                           display: 'block',
                           marginBottom: 4,
                         }}
                       >
                         Note
                       </label>
-                      <input
-                        value={formNote}
-                        onChange={e => setFormNote(e.target.value)}
-                        style={{
-                          width: '100%',
-                          padding: '8px 12px',
-                          border: '1px solid #e2e8f0',
-                          borderRadius: 6,
-                          fontSize: 14,
-                        }}
-                      />
+                      <Input value={formNote} onChange={e => setFormNote(e.target.value)} />
                     </div>
                   </div>
                   <div style={{ marginBottom: 16 }}>
                     <div
                       style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}
                     >
-                      <span style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: COLORS.gray[600] }}>
                         Mensile
                       </span>
-                      <button
+                      <Button
+                        variant="secondary"
+                        size="sm"
                         onClick={distribuisciUniforme}
-                        style={{
-                          fontSize: 11,
-                          padding: '2px 8px',
-                          border: '1px solid #cbd5e1',
-                          borderRadius: 4,
-                          background: 'white',
-                          cursor: 'pointer',
-                        }}
+                        style={{ padding: '2px 8px', fontSize: 11 }}
                       >
                         Distribuisci uniforme
-                      </button>
+                      </Button>
                     </div>
                     <div
                       style={{
@@ -592,14 +430,14 @@ export default function BudgetPrevisionale() {
                           <label
                             style={{
                               fontSize: 10,
-                              color: '#94a3b8',
+                              color: COLORS.textSubtle,
                               display: 'block',
                               textAlign: 'center',
                             }}
                           >
                             {nome}
                           </label>
-                          <input
+                          <Input
                             type="number"
                             value={formMensili[i + 1] || ''}
                             onChange={e =>
@@ -609,57 +447,34 @@ export default function BudgetPrevisionale() {
                               }))
                             }
                             style={{
-                              width: '100%',
-                              padding: '4px',
-                              border: '1px solid #e2e8f0',
-                              borderRadius: 4,
+                              padding: 4,
                               fontSize: 11,
                               textAlign: 'center',
-                              fontFamily: MONO,
+                              fontFamily: FONT.mono,
                             }}
                           />
                         </div>
                       ))}
                     </div>
                   </div>
-                  <button
+                  <Button
+                    variant="primary"
                     onClick={handleSave}
                     disabled={saving || !formVoce.trim() || !formImporto}
-                    style={{
-                      padding: '10px 24px',
-                      minHeight: 40,
-                      borderRadius: 6,
-                      border: 'none',
-                      background: '#0f2744',
-                      color: 'white',
-                      cursor: 'pointer',
-                      fontSize: 13,
-                      fontWeight: 600,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 6,
-                    }}
+                    iconLeft={<Save size={16} />}
                   >
-                    <Save size={16} />{' '}
                     {saving ? 'Salvataggio...' : editingVoce ? 'Aggiorna' : 'Salva'}
-                  </button>
-                </div>
+                  </Button>
+                </Card>
               )}
 
               {/* Duplica */}
               {showDuplica && (
-                <div
-                  style={{
-                    background: '#fffbeb',
-                    border: '1px solid #fbbf24',
-                    borderRadius: 8,
-                    padding: 20,
-                    marginBottom: 20,
-                  }}
+                <Card
+                  title={`Duplica Budget ${anno} →`}
+                  style={{ marginBottom: 20, border: `1px solid ${COLORS.warning}` }}
+                  bodyStyle={{ background: COLORS.warningLight }}
                 >
-                  <h3 style={{ margin: '0 0 12px', fontSize: 16, fontWeight: 600 }}>
-                    Duplica Budget {anno} →
-                  </h3>
                   <div
                     style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}
                   >
@@ -669,17 +484,11 @@ export default function BudgetPrevisionale() {
                       >
                         Anno dest.
                       </label>
-                      <input
+                      <Input
                         type="number"
                         value={annoDestinazione}
                         onChange={e => setAnnoDestinazione(parseInt(e.target.value))}
-                        style={{
-                          padding: '8px 12px',
-                          border: '1px solid #e2e8f0',
-                          borderRadius: 6,
-                          width: 100,
-                          fontFamily: MONO,
-                        }}
+                        style={{ width: 100, fontFamily: FONT.mono }}
                       />
                     </div>
                     <div>
@@ -688,83 +497,42 @@ export default function BudgetPrevisionale() {
                       >
                         Variazione %
                       </label>
-                      <input
+                      <Input
                         type="number"
                         value={variazionePct}
                         onChange={e => setVariazionePct(parseFloat(e.target.value) || 0)}
-                        style={{
-                          padding: '8px 12px',
-                          border: '1px solid #e2e8f0',
-                          borderRadius: 6,
-                          width: 100,
-                          fontFamily: MONO,
-                        }}
+                        style={{ width: 100, fontFamily: FONT.mono }}
                       />
                     </div>
-                    <button
-                      onClick={handleDuplica}
-                      disabled={saving}
-                      style={{
-                        padding: '8px 16px',
-                        minHeight: 40,
-                        borderRadius: 6,
-                        border: 'none',
-                        background: '#0f2744',
-                        color: 'white',
-                        cursor: 'pointer',
-                        fontSize: 13,
-                        fontWeight: 600,
-                      }}
-                    >
+                    <Button variant="primary" onClick={handleDuplica} disabled={saving}>
                       Duplica
-                    </button>
-                    <button
-                      onClick={() => setShowDuplica(false)}
-                      style={{
-                        padding: '8px 16px',
-                        minHeight: 40,
-                        borderRadius: 6,
-                        border: '1px solid #e2e8f0',
-                        background: 'white',
-                        cursor: 'pointer',
-                        fontSize: 13,
-                      }}
-                    >
+                    </Button>
+                    <Button variant="secondary" onClick={() => setShowDuplica(false)}>
                       Annulla
-                    </button>
+                    </Button>
                   </div>
-                </div>
+                </Card>
               )}
 
               {/* Tabella Budget */}
               {budget?.voci?.length > 0 ? (
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <TableWrap>
+                  <Table>
                     <thead>
-                      <tr style={{ background: '#f8fafc', color: '#64748b' }}>
-                        <th style={{ padding: '10px 8px', textAlign: 'left', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>Voce</th>
-                        <th style={{ padding: '10px 8px', textAlign: 'center', width: 70, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                      <tr>
+                        <Th>Voce</Th>
+                        <Th align="center" style={{ width: 70 }}>
                           Tipo
-                        </th>
-                        <th style={{ padding: '10px 8px', textAlign: 'right', width: 110, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                        </Th>
+                        <Th align="right" style={{ width: 110 }}>
                           Annuale
-                        </th>
+                        </Th>
                         {NOMI_MESI.slice(1).map((m, i) => (
-                          <th
-                            key={i}
-                            style={{
-                              padding: '10px 2px',
-                              textAlign: 'right',
-                              width: 65,
-                              fontSize: 11,
-                              textTransform: 'uppercase',
-                              letterSpacing: 0.5,
-                            }}
-                          >
+                          <Th key={i} align="right" style={{ width: 65, padding: '10px 2px' }}>
                             {m}
-                          </th>
+                          </Th>
                         ))}
-                        <th style={{ padding: '10px 4px', width: 70 }}></th>
+                        <Th style={{ width: 70 }} />
                       </tr>
                     </thead>
                     <tbody>
@@ -773,97 +541,68 @@ export default function BudgetPrevisionale() {
                         return (
                           <tr
                             key={v.voce}
-                            style={{
-                              background: idx % 2 === 0 ? 'white' : '#fafafa',
-                              borderBottom: '1px solid #f1f5f9',
-                            }}
+                            style={{ background: idx % 2 === 0 ? COLORS.card : COLORS.bgAlt }}
                           >
-                            <td style={{ padding: '8px', fontWeight: 500 }}>{v.voce}</td>
-                            <td style={{ padding: '8px', textAlign: 'center' }}>
-                              <span
-                                style={{
-                                  padding: '2px 6px',
-                                  borderRadius: 8,
-                                  fontSize: 10,
-                                  fontWeight: 600,
-                                  background: isR ? '#dcfce7' : '#fee2e2',
-                                  color: isR ? '#16a34a' : '#dc2626',
-                                }}
-                              >
+                            <Td style={{ fontWeight: 500 }}>{v.voce}</Td>
+                            <Td align="center">
+                              <Badge variant={isR ? 'success' : 'danger'}>
                                 {isR ? 'RIC' : 'COSTO'}
-                              </span>
-                            </td>
-                            <td
-                              style={{
-                                padding: '8px',
-                                textAlign: 'right',
-                                fontWeight: 700,
-                                fontFamily: MONO,
-                                color: isR ? '#16a34a' : '#dc2626',
-                              }}
+                              </Badge>
+                            </Td>
+                            <Td
+                              align="right"
+                              mono
+                              style={{ fontWeight: 700, color: isR ? COLORS.success : COLORS.danger }}
                             >
                               {formatEuro(v.importo_annuale)}
-                            </td>
+                            </Td>
                             {NOMI_MESI.slice(1).map((_, i) => (
-                              <td
+                              <Td
                                 key={i}
-                                style={{
-                                  padding: '8px 2px',
-                                  textAlign: 'right',
-                                  fontSize: 11,
-                                  color: '#64748b',
-                                  fontFamily: MONO,
-                                }}
+                                align="right"
+                                mono
+                                style={{ padding: '8px 2px', fontSize: 11, color: COLORS.textMuted }}
                               >
                                 {v.mensile?.[i + 1] ? formatEuro(v.mensile[i + 1]) : '-'}
-                              </td>
+                              </Td>
                             ))}
-                            <td style={{ padding: '8px 4px', textAlign: 'center' }}>
-                              <button
-                                onClick={() => startEdit(v)}
-                                style={{
-                                  background: 'none',
-                                  border: 'none',
-                                  cursor: 'pointer',
-                                  marginRight: 4,
-                                  padding: 6,
-                                }}
-                                title="Modifica"
-                              >
-                                <Edit2 size={14} color="#0f2744" />
-                              </button>
-                              <button
-                                onClick={() => handleDelete(v.voce)}
-                                style={{
-                                  background: 'none',
-                                  border: 'none',
-                                  cursor: 'pointer',
-                                  padding: 6,
-                                }}
-                                title="Elimina"
-                              >
-                                <Trash2 size={14} color="#dc2626" />
-                              </button>
-                            </td>
+                            <Td align="center" style={{ padding: '8px 4px' }}>
+                              <RowActions>
+                                <RowActionButton
+                                  variant="primary"
+                                  onClick={() => startEdit(v)}
+                                  title="Modifica"
+                                >
+                                  <Edit2 size={14} />
+                                </RowActionButton>
+                                <RowActionButton
+                                  variant="danger"
+                                  onClick={() => handleDelete(v.voce)}
+                                  title="Elimina"
+                                >
+                                  <Trash2 size={14} />
+                                </RowActionButton>
+                              </RowActions>
+                            </Td>
                           </tr>
                         );
                       })}
                     </tbody>
                     <tfoot>
-                      <tr style={{ background: '#0f2744', color: 'white', fontWeight: 700 }}>
-                        <td colSpan={2} style={{ padding: '12px 8px' }}>
+                      <tr style={{ background: COLORS.primary, color: '#fff' }}>
+                        <Td colSpan={2} style={{ color: '#fff', fontWeight: 700 }}>
                           TOTALI
-                        </td>
-                        <td style={{ padding: '12px 8px', textAlign: 'right', fontFamily: MONO }}>
+                        </Td>
+                        <Td align="right" mono style={{ color: '#fff', fontWeight: 700 }}>
                           {formatEuro(budget.totali.ricavi_budget - budget.totali.costi_budget)}
-                        </td>
-                        <td colSpan={13}></td>
+                        </Td>
+                        <Td colSpan={13} style={{ color: '#fff' }} />
                       </tr>
                     </tfoot>
-                  </table>
-                </div>
+                  </Table>
+                </TableWrap>
               ) : (
-                <div style={{ textAlign: 'center', padding: 60, color: '#64748b' }}>
+                <div style={{ textAlign: 'center', padding: 60, color: COLORS.textMuted }}>
                   <BarChart3 size={48} style={{ margin: '0 auto 16px', opacity: 0.3 }} />
                   <p>Nessuna voce di budget per {anno}</p>
                   <p style={{ fontSize: 13 }}>
@@ -880,26 +619,14 @@ export default function BudgetPrevisionale() {
               {/* Filtro mese */}
               <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 20 }}>
                 <label style={{ fontSize: 13, fontWeight: 500 }}>Periodo:</label>
-                <select
-                  value={meseConfronto || ''}
-                  onChange={e => handleMeseChange(e.target.value)}
-                  style={{
-                    padding: '8px 16px',
-                    minHeight: 40,
-                    border: '1px solid #e2e8f0',
-                    borderRadius: 6,
-                    background: 'white',
-                    fontSize: 13,
-                    fontWeight: 500,
-                  }}
-                >
+                <Select value={meseConfronto || ''} onChange={e => handleMeseChange(e.target.value)}>
                   <option value="">Anno intero</option>
                   {NOMI_MESI.slice(1).map((m, i) => (
                     <option key={i} value={i + 1}>
                       {m}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
 
               {/* Summary */}
@@ -909,28 +636,23 @@ export default function BudgetPrevisionale() {
                     const t = confronto.totali[key];
                     const color =
                       key === 'ricavi'
-                        ? '#16a34a'
+                        ? COLORS.success
                         : key === 'costi'
-                          ? '#dc2626'
+                          ? COLORS.danger
                           : t.consuntivo >= t.budget
-                            ? '#16a34a'
-                            : '#dc2626';
+                            ? COLORS.success
+                            : COLORS.danger;
                     return (
-                      <div
+                      <Card
                         key={key}
-                        style={{
-                          background: 'white',
-                          padding: 16,
-                          borderRadius: 8,
-                          border: '1px solid #e2e8f0',
-                          borderLeft: '4px solid #0f2744',
-                        }}
+                        style={{ borderLeft: `4px solid ${COLORS.primary}` }}
+                        bodyStyle={{ padding: 16 }}
                       >
                         <div
                           style={{
                             fontSize: 12,
                             fontWeight: 600,
-                            color: '#475569',
+                            color: COLORS.gray[600],
                             textTransform: 'uppercase',
                             marginBottom: 12,
                           }}
@@ -945,14 +667,23 @@ export default function BudgetPrevisionale() {
                           }}
                         >
                           <div>
-                            <div style={{ fontSize: 11, color: '#94a3b8' }}>Budget</div>
-                            <div style={{ fontSize: 18, fontWeight: 700, color: '#475569', fontFamily: MONO }}>
+                            <div style={{ fontSize: 11, color: COLORS.textSubtle }}>Budget</div>
+                            <div
+                              style={{
+                                fontSize: 18,
+                                fontWeight: 700,
+                                color: COLORS.gray[600],
+                                fontFamily: FONT.mono,
+                              }}
+                            >
                               {formatEuro(t.budget)}
                             </div>
                           </div>
                           <div>
-                            <div style={{ fontSize: 11, color: '#94a3b8' }}>Consuntivo</div>
-                            <div style={{ fontSize: 18, fontWeight: 700, color, fontFamily: MONO }}>
+                            <div style={{ fontSize: 11, color: COLORS.textSubtle }}>Consuntivo</div>
+                            <div
+                              style={{ fontSize: 18, fontWeight: 700, color, fontFamily: FONT.mono }}
+                            >
                               {formatEuro(t.consuntivo)}
                             </div>
                           </div>
@@ -961,13 +692,13 @@ export default function BudgetPrevisionale() {
                           style={{
                             marginTop: 8,
                             padding: '4px 8px',
-                            borderRadius: 6,
-                            background: t.scostamento >= 0 ? '#dcfce7' : '#fee2e2',
+                            borderRadius: BORDER_RADIUS.sm,
+                            background: t.scostamento >= 0 ? COLORS.successLight : COLORS.dangerLight,
                             textAlign: 'center',
                             fontSize: 13,
                             fontWeight: 600,
-                            fontFamily: MONO,
-                            color: t.scostamento >= 0 ? '#16a34a' : '#dc2626',
+                            fontFamily: FONT.mono,
+                            color: t.scostamento >= 0 ? COLORS.success : COLORS.danger,
                           }}
                         >
                           Scost: {t.scostamento >= 0 ? '+' : ''}
@@ -975,7 +706,7 @@ export default function BudgetPrevisionale() {
                           {t.scostamento_pct !== undefined &&
                             ` (${t.scostamento_pct >= 0 ? '+' : ''}${t.scostamento_pct}%)`}
                         </div>
-                      </div>
+                      </Card>
                     );
                   })}
                 </PageGrid>
@@ -983,27 +714,29 @@ export default function BudgetPrevisionale() {
 
               {/* Tabella confronto voci */}
               {confronto.confronto_voci?.length > 0 && (
-                <div style={{ overflowX: 'auto', marginTop: 20 }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+                <TableWrap style={{ marginTop: 20 }}>
+                  <Table>
                     <thead>
-                      <tr style={{ background: '#f8fafc', color: '#64748b' }}>
-                        <th style={{ padding: '12px 8px', textAlign: 'left', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>Voce</th>
-                        <th style={{ padding: '12px 8px', textAlign: 'center', width: 70, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                      <tr>
+                        <Th>Voce</Th>
+                        <Th align="center" style={{ width: 70 }}>
                           Tipo
-                        </th>
-                        <th style={{ padding: '12px 8px', textAlign: 'right', width: 120, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                        </Th>
+                        <Th align="right" style={{ width: 120 }}>
                           Budget
-                        </th>
-                        <th style={{ padding: '12px 8px', textAlign: 'right', width: 120, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                        </Th>
+                        <Th align="right" style={{ width: 120 }}>
                           Consuntivo
-                        </th>
-                        <th style={{ padding: '12px 8px', textAlign: 'right', width: 120, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                        </Th>
+                        <Th align="right" style={{ width: 120 }}>
                           Scostamento
-                        </th>
-                        <th style={{ padding: '12px 8px', textAlign: 'center', width: 80, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>%</th>
-                        <th style={{ padding: '12px 8px', textAlign: 'center', width: 80, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                        </Th>
+                        <Th align="center" style={{ width: 80 }}>
+                          %
+                        </Th>
+                        <Th align="center" style={{ width: 80 }}>
                           Esito
-                        </th>
+                        </Th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1013,94 +746,58 @@ export default function BudgetPrevisionale() {
                         return (
                           <tr
                             key={v.voce}
-                            style={{
-                              background: idx % 2 === 0 ? 'white' : '#fafafa',
-                              borderBottom: '1px solid #f1f5f9',
-                            }}
+                            style={{ background: idx % 2 === 0 ? COLORS.card : COLORS.bgAlt }}
                           >
-                            <td style={{ padding: '10px 8px', fontWeight: 500 }}>{v.voce}</td>
-                            <td style={{ padding: '10px 8px', textAlign: 'center' }}>
-                              <span
-                                style={{
-                                  padding: '2px 6px',
-                                  borderRadius: 8,
-                                  fontSize: 10,
-                                  fontWeight: 600,
-                                  background: isR ? '#dcfce7' : '#fee2e2',
-                                  color: isR ? '#16a34a' : '#dc2626',
-                                }}
-                              >
+                            <Td style={{ fontWeight: 500 }}>{v.voce}</Td>
+                            <Td align="center">
+                              <Badge variant={isR ? 'success' : 'danger'}>
                                 {isR ? 'RIC' : 'COSTO'}
-                              </span>
-                            </td>
-                            <td
-                              style={{
-                                padding: '10px 8px',
-                                textAlign: 'right',
-                                color: '#475569',
-                                fontFamily: MONO,
-                              }}
-                            >
+                              </Badge>
+                            </Td>
+                            <Td align="right" mono style={{ color: COLORS.gray[600] }}>
                               {formatEuro(v.budget)}
-                            </td>
-                            <td
-                              style={{
-                                padding: '10px 8px',
-                                textAlign: 'right',
-                                fontWeight: 600,
-                                fontFamily: MONO,
-                                color: isR ? '#16a34a' : '#dc2626',
-                              }}
+                            </Td>
+                            <Td
+                              align="right"
+                              mono
+                              style={{ fontWeight: 600, color: isR ? COLORS.success : COLORS.danger }}
                             >
                               {formatEuro(v.consuntivo)}
-                            </td>
-                            <td
+                            </Td>
+                            <Td
+                              align="right"
+                              mono
                               style={{
-                                padding: '10px 8px',
-                                textAlign: 'right',
                                 fontWeight: 600,
-                                fontFamily: MONO,
-                                color: v.scostamento >= 0 ? '#16a34a' : '#dc2626',
+                                color: v.scostamento >= 0 ? COLORS.success : COLORS.danger,
                               }}
                             >
                               {v.scostamento >= 0 ? '+' : ''}
                               {formatEuro(v.scostamento)}
-                            </td>
-                            <td
+                            </Td>
+                            <Td
+                              align="center"
                               style={{
-                                padding: '10px 8px',
-                                textAlign: 'center',
                                 fontSize: 12,
-                                color: v.scostamento_pct >= 0 ? '#16a34a' : '#dc2626',
+                                color: v.scostamento_pct >= 0 ? COLORS.success : COLORS.danger,
                               }}
                             >
                               {v.scostamento_pct >= 0 ? '+' : ''}
                               {v.scostamento_pct}%
-                            </td>
-                            <td style={{ padding: '10px 8px', textAlign: 'center' }}>
-                              <span
-                                style={{
-                                  padding: '2px 8px',
-                                  borderRadius: 10,
-                                  fontSize: 11,
-                                  fontWeight: 600,
-                                  background: vb.bg,
-                                  color: vb.color,
-                                }}
-                              >
-                                {vb.icon}
-                              </span>
-                            </td>
+                            </Td>
+                            <Td align="center">
+                              <Badge variant={vb.variant}>{vb.icon}</Badge>
+                            </Td>
                           </tr>
                         );
                       })}
                     </tbody>
-                  </table>
-                </div>
+                  </Table>
+                </TableWrap>
               )}
 
               {(!confronto.confronto_voci || confronto.confronto_voci.length === 0) && (
-                <div style={{ textAlign: 'center', padding: 60, color: '#64748b' }}>
+                <div style={{ textAlign: 'center', padding: 60, color: COLORS.textMuted }}>
                   <Target size={48} style={{ margin: '0 auto 16px', opacity: 0.3 }} />
                   <p>Nessun confronto disponibile. Crea prima il budget nella tab "Budget".</p>
                 </div>
@@ -1111,10 +808,10 @@ export default function BudgetPrevisionale() {
           {/* ==================== TAB ANDAMENTO ==================== */}
           {activeTab === 'andamento' && confronto?.andamento_mensile && (
             <>
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <TableWrap>
+                <Table>
                   <thead>
-                    <tr style={{ background: '#f8fafc', color: '#64748b' }}>
+                    <tr>
                       {[
                         ['Mese', 'left'],
                         ['Ricavi Budget', 'right'],
@@ -1126,18 +823,9 @@ export default function BudgetPrevisionale() {
                         ['Margine Budget', 'right'],
                         ['Margine Reale', 'right'],
                       ].map(([label, align]) => (
-                        <th
-                          key={label}
-                          style={{
-                            padding: '12px 8px',
-                            textAlign: align,
-                            fontSize: 11,
-                            textTransform: 'uppercase',
-                            letterSpacing: 0.5,
-                          }}
-                        >
+                        <Th key={label} align={align}>
                           {label}
-                        </th>
+                        </Th>
                       ))}
                     </tr>
                   </thead>
@@ -1152,137 +840,100 @@ export default function BudgetPrevisionale() {
                         <tr
                           key={m.mese}
                           style={{
-                            background: idx % 2 === 0 ? 'white' : '#fafafa',
-                            borderBottom: '1px solid #f1f5f9',
+                            background: idx % 2 === 0 ? COLORS.card : COLORS.bgAlt,
                             opacity: hasData ? 1 : 0.5,
                           }}
                         >
-                          <td style={{ padding: '10px 8px', fontWeight: 500 }}>
-                            {NOMI_MESI[m.mese]}
-                          </td>
-                          <td
-                            style={{
-                              padding: '10px 8px',
-                              textAlign: 'right',
-                              color: '#94a3b8',
-                              fontFamily: MONO,
-                            }}
-                          >
+                          <Td style={{ fontWeight: 500 }}>{NOMI_MESI[m.mese]}</Td>
+                          <Td align="right" mono style={{ color: COLORS.textSubtle }}>
                             {formatEuro(m.ricavi_budget)}
-                          </td>
-                          <td
-                            style={{
-                              padding: '10px 8px',
-                              textAlign: 'right',
-                              fontWeight: 600,
-                              fontFamily: MONO,
-                              color: '#16a34a',
-                            }}
-                          >
+                          </Td>
+                          <Td align="right" mono style={{ fontWeight: 600, color: COLORS.success }}>
                             {formatEuro(m.ricavi_consuntivo)}
-                          </td>
-                          <td
+                          </Td>
+                          <Td
+                            align="right"
+                            mono
                             style={{
-                              padding: '10px 8px',
-                              textAlign: 'right',
                               fontSize: 12,
-                              fontFamily: MONO,
-                              color: deltaRic >= 0 ? '#16a34a' : '#dc2626',
+                              color: deltaRic >= 0 ? COLORS.success : COLORS.danger,
                             }}
                           >
                             {hasData ? `${deltaRic >= 0 ? '+' : ''}${formatEuro(deltaRic)}` : '-'}
-                          </td>
-                          <td
-                            style={{
-                              padding: '10px 8px',
-                              textAlign: 'right',
-                              color: '#94a3b8',
-                              fontFamily: MONO,
-                              background: '#f8fafc',
-                            }}
+                          </Td>
+                          <Td
+                            align="right"
+                            mono
+                            style={{ color: COLORS.textSubtle, background: COLORS.bgAlt }}
                           >
                             {formatEuro(m.costi_budget)}
-                          </td>
-                          <td
-                            style={{
-                              padding: '10px 8px',
-                              textAlign: 'right',
-                              fontWeight: 600,
-                              fontFamily: MONO,
-                              color: '#dc2626',
-                              background: '#f8fafc',
-                            }}
+                          </Td>
+                          <Td
+                            align="right"
+                            mono
+                            style={{ fontWeight: 600, color: COLORS.danger, background: COLORS.bgAlt }}
                           >
                             {formatEuro(m.costi_consuntivo)}
-                          </td>
-                          <td
+                          </Td>
+                          <Td
+                            align="right"
+                            mono
                             style={{
-                              padding: '10px 8px',
-                              textAlign: 'right',
                               fontSize: 12,
-                              fontFamily: MONO,
-                              background: '#f8fafc',
-                              color: deltaCosti <= 0 ? '#16a34a' : '#dc2626',
+                              background: COLORS.bgAlt,
+                              color: deltaCosti <= 0 ? COLORS.success : COLORS.danger,
                             }}
                           >
                             {hasData
                               ? `${deltaCosti >= 0 ? '+' : ''}${formatEuro(deltaCosti)}`
                               : '-'}
-                          </td>
-                          <td
-                            style={{
-                              padding: '10px 8px',
-                              textAlign: 'right',
-                              color: '#64748b',
-                              fontFamily: MONO,
-                            }}
-                          >
+                          </Td>
+                          <Td align="right" mono style={{ color: COLORS.textMuted }}>
                             {formatEuro(margineBudget)}
-                          </td>
-                          <td
+                          </Td>
+                          <Td
+                            align="right"
+                            mono
                             style={{
-                              padding: '10px 8px',
-                              textAlign: 'right',
                               fontWeight: 700,
-                              fontFamily: MONO,
-                              color: margineReale >= 0 ? '#16a34a' : '#dc2626',
+                              color: margineReale >= 0 ? COLORS.success : COLORS.danger,
                             }}
                           >
                             {hasData ? formatEuro(margineReale) : '-'}
-                          </td>
+                          </Td>
                         </tr>
                       );
                     })}
                   </tbody>
                   <tfoot>
-                    <tr style={{ background: '#0f2744', color: 'white', fontWeight: 700 }}>
-                      <td style={{ padding: '12px 8px' }}>TOTALE</td>
-                      <td style={{ padding: '12px 8px', textAlign: 'right', fontFamily: MONO }}>
+                    <tr style={{ background: COLORS.primary, color: '#fff' }}>
+                      <Td style={{ color: '#fff', fontWeight: 700 }}>TOTALE</Td>
+                      <Td align="right" mono style={{ color: '#fff', fontWeight: 700 }}>
                         {formatEuro(
                           confronto.andamento_mensile.reduce((s, m) => s + m.ricavi_budget, 0)
                         )}
-                      </td>
-                      <td style={{ padding: '12px 8px', textAlign: 'right', fontFamily: MONO }}>
+                      </Td>
+                      <Td align="right" mono style={{ color: '#fff', fontWeight: 700 }}>
                         {formatEuro(
                           confronto.andamento_mensile.reduce((s, m) => s + m.ricavi_consuntivo, 0)
                         )}
-                      </td>
-                      <td style={{ padding: '12px 8px' }}></td>
-                      <td style={{ padding: '12px 8px', textAlign: 'right', fontFamily: MONO }}>
+                      </Td>
+                      <Td style={{ color: '#fff' }} />
+                      <Td align="right" mono style={{ color: '#fff', fontWeight: 700 }}>
                         {formatEuro(
                           confronto.andamento_mensile.reduce((s, m) => s + m.costi_budget, 0)
                         )}
-                      </td>
-                      <td style={{ padding: '12px 8px', textAlign: 'right', fontFamily: MONO }}>
+                      </Td>
+                      <Td align="right" mono style={{ color: '#fff', fontWeight: 700 }}>
                         {formatEuro(
                           confronto.andamento_mensile.reduce((s, m) => s + m.costi_consuntivo, 0)
                         )}
-                      </td>
-                      <td colSpan={3}></td>
+                      </Td>
+                      <Td colSpan={3} style={{ color: '#fff' }} />
                     </tr>
                   </tfoot>
-                </table>
-              </div>
+                </Table>
+              </TableWrap>
 
               {/* Barra grafica semplice */}
               <PageSection title="Grafico Andamento" style={{ marginTop: 24 }}>
@@ -1321,7 +972,7 @@ export default function BudgetPrevisionale() {
                             style={{
                               width: 12,
                               height: Math.max(hRicavi, 2),
-                              background: '#16a34a',
+                              background: COLORS.success,
                               borderRadius: '3px 3px 0 0',
                             }}
                             title={`Ricavi: ${formatEuro(m.ricavi_consuntivo)}`}
@@ -1330,13 +981,15 @@ export default function BudgetPrevisionale() {
                             style={{
                               width: 12,
                               height: Math.max(hCosti, 2),
-                              background: '#dc2626',
+                              background: COLORS.danger,
                               borderRadius: '3px 3px 0 0',
                             }}
                             title={`Costi: ${formatEuro(m.costi_consuntivo)}`}
                           />
                         </div>
-                        <span style={{ fontSize: 10, color: '#94a3b8' }}>{NOMI_MESI[m.mese]}</span>
+                        <span style={{ fontSize: 10, color: COLORS.textSubtle }}>
+                          {NOMI_MESI[m.mese]}
+                        </span>
                       </div>
                     );
                   })}
@@ -1347,7 +1000,7 @@ export default function BudgetPrevisionale() {
                       style={{
                         width: 12,
                         height: 12,
-                        background: '#16a34a',
+                        background: COLORS.success,
                         borderRadius: 2,
                         display: 'inline-block',
                       }}
@@ -1359,7 +1012,7 @@ export default function BudgetPrevisionale() {
                       style={{
                         width: 12,
                         height: 12,
-                        background: '#dc2626',
+                        background: COLORS.danger,
                         borderRadius: 2,
                         display: 'inline-block',
                       }}
