@@ -26,13 +26,17 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/admin/rollback", tags=["Admin Rollback"])
 
 # ── Periodi consentiti ────────────────────────────────────────────────────
+# Due tipi: "relativo" (ultimi N giorni da oggi, utile per i controlli di
+# precisione su dati appena importati) e "anno" (intero anno solare — più
+# utile di "N anni fa" quando si vuole svuotare un anno preciso senza dover
+# calcolare a mente quanti anni indietro sia rispetto a oggi).
 PERIODI = {
-    "1g": {"label": "1 giorno", "giorni": 1},
-    "1s": {"label": "1 settimana", "giorni": 7},
-    "1m": {"label": "1 mese", "giorni": 30},
-    "1a": {"label": "1 anno", "giorni": 365},
-    "2a": {"label": "2 anni", "giorni": 730},
-    "3a": {"label": "3 anni", "giorni": 1095},
+    "1g": {"label": "1 giorno", "tipo": "relativo", "giorni": 1},
+    "1s": {"label": "1 settimana", "tipo": "relativo", "giorni": 7},
+    "1m": {"label": "1 mese", "tipo": "relativo", "giorni": 30},
+    "2023": {"label": "Anno 2023", "tipo": "anno", "anno": 2023},
+    "2024": {"label": "Anno 2024", "tipo": "anno", "anno": 2024},
+    "2025": {"label": "Anno 2025", "tipo": "anno", "anno": 2025},
 }
 
 # ── Sezioni: collezione/i + campi data candidati (provati in OR) ──────────
@@ -93,13 +97,25 @@ SEZIONI: Dict[str, Dict[str, Any]] = {
 }
 
 
-def _valida_periodo(periodo: str) -> int:
+def _range_periodo(periodo: str) -> "tuple[str, str]":
+    """Ritorna (data_da, data_a) in formato YYYY-MM-DD per il periodo scelto.
+
+    Periodi "relativo": [oggi - N giorni, oggi]. Periodi "anno": tutto
+    l'anno solare [1 gennaio, 31 dicembre] indipendentemente da oggi.
+    """
     if periodo not in PERIODI:
         raise HTTPException(
             status_code=400,
             detail=f"Periodo non valido: {periodo!r}. Usare uno tra: {', '.join(PERIODI.keys())}",
         )
-    return PERIODI[periodo]["giorni"]
+    cfg = PERIODI[periodo]
+    if cfg["tipo"] == "anno":
+        anno = cfg["anno"]
+        return f"{anno:04d}-01-01", f"{anno:04d}-12-31"
+
+    oggi = datetime.now(timezone.utc)
+    cutoff = oggi - timedelta(days=cfg["giorni"])
+    return cutoff.strftime("%Y-%m-%d"), oggi.strftime("%Y-%m-%d")
 
 
 def _valida_sezione(sezione: str) -> Dict[str, Any]:
@@ -157,14 +173,9 @@ async def conta_da_eliminare(sezione: str, periodo: str) -> Dict[str, Any]:
     Usato dal frontend per mostrare "stai per eliminare N record" prima
     della conferma. Nessun requisito di ruolo: è una sola lettura.
     """
-    giorni = _valida_periodo(periodo)
+    cutoff_str, oggi_str = _range_periodo(periodo)
     sezione_cfg = _valida_sezione(sezione)
     db = Database.get_db()
-
-    oggi = datetime.now(timezone.utc)
-    cutoff = oggi - timedelta(days=giorni)
-    oggi_str = oggi.strftime("%Y-%m-%d")
-    cutoff_str = cutoff.strftime("%Y-%m-%d")
 
     dettaglio = []
     totale = 0
@@ -197,14 +208,9 @@ async def elimina_periodo(
     illimitata). Ogni cancellazione viene loggata con utente, sezione,
     periodo e conteggio per collezione.
     """
-    giorni = _valida_periodo(periodo)
+    cutoff_str, oggi_str = _range_periodo(periodo)
     sezione_cfg = _valida_sezione(sezione)
     db = Database.get_db()
-
-    oggi = datetime.now(timezone.utc)
-    cutoff = oggi - timedelta(days=giorni)
-    oggi_str = oggi.strftime("%Y-%m-%d")
-    cutoff_str = cutoff.strftime("%Y-%m-%d")
 
     dettaglio = []
     totale_eliminati = 0
