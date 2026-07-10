@@ -341,16 +341,30 @@ async def get_archivio_fatture(
             {"_id": 0, "partita_iva": 1, "piva": 1, "vat_number": 1,
              "metodo_pagamento": 1, "metodo_pagamento_predefinito": 1, "ragione_sociale": 1}
         ).to_list(len(pive) * 3 + 10)
+        # MOTORE UNICO: il metodo esposto al frontend è quello CANONICO
+        # (cassa/banca/misto) del motore prima nota — prima si mandava il
+        # valore grezzo (es. 'da_configurare' in metodo_pagamento_predefinito)
+        # e il badge in Fatture diceva "senza metodo" mentre Fornitori
+        # mostrava Banca: incoerenza segnalata dall'utente il 10/07.
+        from app.engines.prima_nota_engine import normalizza_metodo_pagamento
         map_metodo = {}
         map_nome = {}
         for fdoc in fornitori_docs:
-            metodo = fdoc.get("metodo_pagamento_predefinito") or fdoc.get("metodo_pagamento") or ""
+            metodo = (
+                normalizza_metodo_pagamento(fdoc.get("metodo_pagamento_predefinito"))
+                or normalizza_metodo_pagamento(fdoc.get("metodo_pagamento"))
+                or ""
+            )
             for key in (fdoc.get("partita_iva"), fdoc.get("piva"), fdoc.get("vat_number")):
                 piva = (key or "").strip()
-                if piva:
+                if not piva:
+                    continue
+                # Un doppione del fornitore SENZA metodo non deve cancellare
+                # il metodo del record buono con la stessa P.IVA
+                if metodo or piva not in map_metodo:
                     map_metodo[piva] = metodo
-                    if fdoc.get("ragione_sociale"):
-                        map_nome[piva] = fdoc["ragione_sociale"]
+                if fdoc.get("ragione_sociale") and piva not in map_nome:
+                    map_nome[piva] = fdoc["ragione_sociale"]
         for f in all_fatture:
             piva = (f.get("supplier_vat") or f.get("fornitore_partita_iva") or "").strip()
             f["fornitore_metodo_pagamento"] = map_metodo.get(piva, "")
