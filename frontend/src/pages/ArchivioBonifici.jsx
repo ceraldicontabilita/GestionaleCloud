@@ -5,6 +5,7 @@ import { useAnnoGlobale } from '../contexts/AnnoContext';
 import {
   formatEuro,
   formatDateIT,
+  formatDateGGMM,
   STYLES,
   COLORS,
   button,
@@ -14,6 +15,7 @@ import {
   pagePad,
 } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
+import { ListaAdattiva } from '../components/ds';
 import { useHashState } from '../hooks/useHashState';
 import { CopyLinkButton } from '../components/CopyLinkButton';
 import { useConfirm } from '../components/ui/ConfirmDialog';
@@ -450,6 +452,10 @@ export default function ArchivioBonifici() {
 
   // Dati da mostrare in base al tab
   const transfersToShow = activeTab === 'da_associare' ? bonificiDaAssociare : bonificiAssociati;
+
+  // Sfondo verde dei bonifici riconciliati: prima era sul <tr> della vecchia
+  // tabella, con ListaAdattiva va applicato cella per cella (tdStyle)
+  const sfondoRic = t => (t.riconciliato ? { background: '#f0fdf4' } : undefined);
 
   return (
     <div style={{ maxWidth: 1400, margin: '0 auto', padding: '16px' }} ref={dropdownRef}>
@@ -971,83 +977,110 @@ export default function ArchivioBonifici() {
               : 'Nessun bonifico associato. Seleziona il tab "Da Associare" per iniziare.'}
           </div>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead>
-                <tr
-                  style={{
-                    background: '#f8fafc',
-                    color: '#64748b',
-                    fontSize: 11,
-                    textTransform: 'uppercase',
-                  }}
-                >
-                  <th style={{ padding: 8, textAlign: 'center', width: 40 }}>✓</th>
-                  <th style={{ padding: 8, textAlign: 'left' }}>Data</th>
-                  <th style={{ padding: 8, textAlign: 'right' }}>Importo</th>
-                  <th style={{ padding: 8, textAlign: 'left' }}>Beneficiario</th>
-                  <th style={{ padding: 8, textAlign: 'left' }}>Causale</th>
-                  <th style={{ padding: 8, textAlign: 'left' }}>CRO/TRN</th>
-                  <th style={{ padding: 8, textAlign: 'left', width: 180 }}>
-                    {activeTab === 'associati' ? 'Salario Associato' : 'Associa Salario'}
-                  </th>
-                  <th style={{ padding: 8, textAlign: 'left', width: 180 }}>
-                    {activeTab === 'associati' ? 'Fattura Associata' : 'Associa Fattura'}
-                  </th>
-                  <th style={{ padding: 8, textAlign: 'left', width: 100 }}>Note</th>
-                  <th style={{ padding: 8, textAlign: 'center', width: 50 }}>🗑️</th>
-                </tr>
-              </thead>
-              <tbody>
-                {transfersToShow.map((t, idx) => (
-                  <tr
-                    key={t.id || idx}
-                    style={{
-                      borderBottom: '1px solid #f1f5f9',
-                      background: t.riconciliato ? '#f0fdf4' : 'white',
-                    }}
-                  >
-                    <td style={{ padding: 8, textAlign: 'center' }}>
-                      {t.riconciliato ? (
-                        <span
-                          style={{ color: '#16a34a', fontSize: 16 }}
-                          title={`Riconciliato: ${t.movimento_descrizione || 'Trovato in estratto conto'}`}
-                        >
-                          ✅
-                        </span>
-                      ) : (
-                        <span style={{ color: '#d1d5db', fontSize: 14 }}>—</span>
-                      )}
-                    </td>
-                    <td style={{ padding: 8, whiteSpace: 'nowrap' }}>{formatDate(t.data)}</td>
-                    <td
-                      style={{
-                        padding: 8,
-                        textAlign: 'right',
-                        fontWeight: 'bold',
-                        color: '#16a34a',
-                        whiteSpace: 'nowrap',
-                        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-                      }}
-                    >
+          <div style={{ padding: isMobile ? 10 : 0 }}>
+            <ListaAdattiva
+              testId="bonifici-table"
+              dati={transfersToShow}
+              pageSize={50}
+              chiave={(t, idx) => t.id || idx}
+              colonne={[
+                {
+                  key: 'riconciliato',
+                  label: '✓',
+                  align: 'center',
+                  // Su mobile lo stato ✅ diventa prefisso del beneficiario (titolo)
+                  ruoloCard: 'omesso',
+                  tdStyle: sfondoRic,
+                  render: t =>
+                    t.riconciliato ? (
+                      <span
+                        style={{ color: '#16a34a', fontSize: 16 }}
+                        title={`Riconciliato: ${t.movimento_descrizione || 'Trovato in estratto conto'}`}
+                      >
+                        ✅
+                      </span>
+                    ) : (
+                      <span style={{ color: '#d1d5db', fontSize: 14 }}>—</span>
+                    ),
+                },
+                {
+                  key: 'data',
+                  label: 'Data',
+                  ruoloCard: 'sottotitolo',
+                  // Su mobile solo giorno/mese: l'anno è nel selettore globale
+                  render: t => (isMobile ? formatDateGGMM(t.data) : formatDate(t.data)) || '-',
+                  tdStyle: t => ({ whiteSpace: 'nowrap', ...sfondoRic(t) }),
+                },
+                {
+                  key: 'importo',
+                  label: 'Importo',
+                  align: 'right',
+                  mono: true,
+                  ruoloCard: 'importo',
+                  render: t => (
+                    <span style={{ fontWeight: 'bold', color: '#16a34a' }}>
                       {formatEuro(t.importo)}
-                    </td>
-                    <td style={{ padding: 8 }}>{t.beneficiario?.nome || '-'}</td>
-                    <td
-                      style={{
-                        padding: 8,
-                        maxWidth: 180,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                      }}
-                      title={t.causale}
-                    >
-                      {t.causale || '-'}
-                    </td>
-                    <td style={{ padding: 8, fontSize: 10 }}>{t.cro_trn || '-'}</td>
-                    {/* Colonna Associa a Salario */}
-                    <td style={{ padding: 8, position: 'relative' }}>
+                    </span>
+                  ),
+                  tdStyle: t => ({ whiteSpace: 'nowrap', ...sfondoRic(t) }),
+                },
+                {
+                  key: 'beneficiario',
+                  label: 'Beneficiario',
+                  ruoloCard: 'titolo',
+                  render: t => (
+                    <>
+                      {isMobile && t.riconciliato ? '✅ ' : ''}
+                      {t.beneficiario?.nome || '-'}
+                    </>
+                  ),
+                  tdStyle: sfondoRic,
+                },
+                {
+                  key: 'causale',
+                  label: 'Causale',
+                  ruoloCard: 'dettaglio',
+                  iconaCard: '💬',
+                  render: t => {
+                    if (isMobile) {
+                      // Causale accorciata: nella card resta su una riga
+                      const c = t.causale || '-';
+                      return c.length > 30 ? `${c.substring(0, 30)}…` : c;
+                    }
+                    return (
+                      <span
+                        title={t.causale}
+                        style={{
+                          display: 'block',
+                          maxWidth: 180,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {t.causale || '-'}
+                      </span>
+                    );
+                  },
+                  tdStyle: sfondoRic,
+                },
+                {
+                  key: 'cro_trn',
+                  label: 'CRO/TRN',
+                  ruoloCard: 'omesso',
+                  render: t => t.cro_trn || '-',
+                  tdStyle: t => ({ fontSize: 10, ...sfondoRic(t) }),
+                },
+                {
+                  key: 'salario',
+                  label: activeTab === 'associati' ? 'Salario Associato' : 'Associa Salario',
+                  ruoloCard: 'dettaglio',
+                  iconaCard: '💰',
+                  tdStyle: sfondoRic,
+                  // position:relative sul wrapper: ancora il dropdown sia nella
+                  // cella desktop sia nella card mobile
+                  render: t => (
+                    <div style={{ position: 'relative', display: 'inline-block' }}>
                       {t.salario_associato ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                           <span
@@ -1256,9 +1289,17 @@ export default function ArchivioBonifici() {
                           )}
                         </div>
                       )}
-                    </td>
-                    {/* NUOVA COLONNA: Associa a Fattura */}
-                    <td style={{ padding: 8, position: 'relative' }}>
+                    </div>
+                  ),
+                },
+                {
+                  key: 'fattura',
+                  label: activeTab === 'associati' ? 'Fattura Associata' : 'Associa Fattura',
+                  ruoloCard: 'dettaglio',
+                  iconaCard: '📄',
+                  tdStyle: sfondoRic,
+                  render: t => (
+                    <div style={{ position: 'relative', display: 'inline-block' }}>
                       {t.fattura_associata ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                           <span
@@ -1429,9 +1470,17 @@ export default function ArchivioBonifici() {
                           )}
                         </div>
                       )}
-                    </td>
-                    <td style={{ padding: 8 }}>
-                      {editingNote === t.id ? (
+                    </div>
+                  ),
+                },
+                {
+                  key: 'note',
+                  label: 'Note',
+                  ruoloCard: 'dettaglio',
+                  iconaCard: '📝',
+                  tdStyle: sfondoRic,
+                  render: t =>
+                    editingNote === t.id ? (
                         <div style={{ display: 'flex', gap: 4 }}>
                           <input
                             type="text"
@@ -1493,27 +1542,32 @@ export default function ArchivioBonifici() {
                         >
                           {t.note || '+ Nota'}
                         </div>
-                      )}
-                    </td>
-                    <td style={{ padding: 8, textAlign: 'center' }}>
-                      <button
-                        onClick={() => handleDelete(t.id)}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          cursor: 'pointer',
-                          fontSize: 14,
-                          opacity: 0.6,
-                        }}
-                        title="Elimina"
-                      >
-                        🗑️
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      ),
+                },
+                {
+                  key: 'elimina',
+                  label: '🗑️',
+                  align: 'center',
+                  ruoloCard: 'azioni',
+                  tdStyle: sfondoRic,
+                  render: t => (
+                    <button
+                      onClick={() => handleDelete(t.id)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        fontSize: 14,
+                        opacity: 0.6,
+                      }}
+                      title="Elimina"
+                    >
+                      🗑️
+                    </button>
+                  ),
+                },
+              ]}
+            />
           </div>
         )}
       </div>
