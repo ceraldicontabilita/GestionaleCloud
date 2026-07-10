@@ -499,6 +499,16 @@ def start_scheduler():
         except Exception as e:
             logger.error(f"[SCHEDULER-DRIVE-CEDOLINI] errore: {e}")
 
+    # ── Google Drive: import corrispettivi RT (XML) ogni ora ───────────────
+    async def _drive_corrispettivi_job():
+        from app.database import Database
+        from app.services import drive_corrispettivi_ingest
+        try:
+            result = await drive_corrispettivi_ingest.sync(Database.get_db())
+            logger.info(f"[SCHEDULER-DRIVE-CORRISPETTIVI] {result}")
+        except Exception as e:
+            logger.error(f"[SCHEDULER-DRIVE-CORRISPETTIVI] errore: {e}")
+
     # ── Automazioni Prima Nota: le ex funzioni "manuali" girano da sole ────
     # 1. corrispettivi → prima nota cassa (idempotente)
     # 2. fatture provvisorie → cassa/banca secondo il metodo fornitore
@@ -568,6 +578,13 @@ def start_scheduler():
         _drive_cedolini_job,
         'interval', hours=1,
         id="drive_cedolini_ingest", name="Import Cedolini da Google Drive (ogni ora)",
+        replace_existing=True,
+    )
+
+    scheduler.add_job(
+        _drive_corrispettivi_job,
+        'interval', hours=1,
+        id="drive_corrispettivi_ingest", name="Import Corrispettivi da Google Drive (ogni ora)",
         replace_existing=True,
     )
 
