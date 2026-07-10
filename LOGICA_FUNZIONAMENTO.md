@@ -1,0 +1,285 @@
+# Ceraldi ERP — Logica di funzionamento
+
+Documento di riferimento per chi usa il gestionale (amministrazione, commercialista).
+Descrive come funziona davvero il sistema, letto dal codice implementato — non è una
+specifica di progetto ma il comportamento reale in produzione.
+
+Ultimo aggiornamento: 10/07/2026.
+
+---
+
+## 1. Regola decisionale (vale per tutto il sistema)
+
+```
+Caso certo     -> il sistema agisce da solo
+Caso probabile -> il sistema PROPONE, decidi tu
+Caso dubbio    -> resta in verifica + avviso, nessuna azione automatica
+```
+
+Il sistema non forza mai una riconciliazione o una trattenuta incerta. Tu intervieni
+solo per: confermare pagamenti, correggere dati estratti, approvare trattenute,
+risolvere avvisi, verificare discrepanze POS.
+
+Altre garanzie trasversali:
+
+- **Nessun documento viene mai importato due volte**: ogni file ha un'impronta sul
+  contenuto (hash); una copia identica viene ignorata in silenzio (solo un contatore
+  nei log tecnici, nessun avviso).
+- **Il documento originale non viene mai modificato**: il sistema lavora su copie e
+  dati estratti; l'originale resta sempre visibile con "Vedi Documento".
+- **Ogni modifica manuale è tracciata** (chi, quando, valore prima/dopo — audit log).
+- **Ogni errore genera un avviso risolvibile**, mai un fallimento silenzioso.
+
+---
+
+## 2. Flusso documenti (da dove entrano le carte)
+
+| Documento | Fonte | Come |
+|---|---|---|
+| Fatture fornitori | **Solo Google Drive** (cartella dedicata) | controllo automatico ogni ora + subito a ogni riavvio |
+| Corrispettivi RT | Google Drive (XML del registratore telematico) | ogni ora |
+| Estratti conto | Google Drive (CSV/Excel Banco BPM) | ogni ora (oggi spento, in attesa di validazione) |
+| Quietanze F24 | Google Drive (PDF) | ogni ora (oggi spento) |
+| Cedolini | **Email** da Studio Ferrantini (mittenti attendibili) | ogni ora (attivo) |
+| F24 commercialista | Email da mittenti attendibili | ogni ora (oggi spento) |
+| Verbali/multe | Email da mittenti attendibili | ogni ora (oggi spento) |
+
+Regola non negoziabile: **le fatture arrivano SOLO da Drive, mai da Gmail**. Se una
+scansione email trova un file che sembra una fattura elettronica, non la importa:
+genera un avviso di anomalia (qualcuno sta mandando fatture per il canale sbagliato).
+
+Ogni documento entra in "Documenti / Import" con uno stato di lavorazione:
+trovato → importato → classificato → elaborato dal parser → record gestionale creato.
+Se il parser fallisce: stato di errore + avviso, il documento resta consultabile.
+
+---
+
+## 3. Fatture
+
+1. Il file XML/P7M viene scaricato da Drive e ne vengono estratti: fornitore, partita
+   IVA, numero, data, imponibile, IVA, totale, righe di dettaglio (descrizione,
+   quantità, prezzi), data scadenza, modalità di pagamento.
+2. **Se il fornitore non esiste ancora, viene creato automaticamente** (la partita IVA
+   è la chiave). Il **metodo di pagamento del fornitore è una scelta tua** (Cassa /
+   Banca / Misto / Non definito): l'XML può suggerire, ma non decide mai.
+3. La fattura eredita il metodo di pagamento del fornitore:
+   - **Cassa** → si paga col bottone "Paga in Cassa" (movimento in Prima Nota Cassa);
+   - **Banca** → "Paga in Banca" (movimento in Prima Nota Banca);
+   - **Misto** → la fattura va in Prima Nota **Provvisoria**: confermi tu la
+     divisione tra cassa e banca, e solo dopo nascono i movimenti veri;
+   - **Non definito** → avviso: serve una tua scelta.
+4. **Data scadenza**: quella scritta in fattura è solo informativa. Diventa una
+   scadenza operativa (pagina Scadenze, con avvisi) **solo se la fattura indica
+   pagamento a mezzo agente** ("pagamento a mezzo agente", "rimessa diretta agente",
+   ecc.).
+5. Se in una riga della fattura compare **esattamente una targa** dei veicoli
+   aziendali censiti, la fattura viene collegata automaticamente a quel veicolo
+   (correggibile a mano). Zero o più targhe → nessun collegamento automatico.
+6. "Segna pagata manualmente" esiste per i pagamenti avvenuti fuori sistema: la
+   fattura risulta pagata ma senza un movimento di cassa/banca collegato.
+
+---
+
+## 4. Prima Nota (Cassa / Banca / Provvisoria)
+
+I movimenti non si inseriscono mai liberamente: nascono sempre da un'azione precisa.
+
+**Cassa**
+- Conferma di un corrispettivo giornaliero → **due movimenti**: entrata per l'intero
+  corrispettivo, uscita per il POS elettronico (che è in viaggio verso la banca).
+  Il netto in cassa è il contante effettivo.
+- "Paga in Cassa" su una fattura → uscita collegata alla fattura.
+
+**Banca**
+- "Paga in Banca" su una fattura → uscita collegata alla fattura.
+- Registrazione di un accredito POS → entrata con categoria "pos_accreditato".
+
+**Provvisoria**
+- Solo fatture di fornitori "misto", in attesa della tua divisione cassa/banca.
+
+**Saldo progressivo**: ogni movimento porta il saldo aggiornato a quel punto, in
+ordine cronologico. Un movimento retrodatato ricalcola a cascata i saldi successivi.
+A parità di giorno l'ordine di inserimento è garantito (l'uscita POS segue sempre
+l'entrata corrispettivo).
+
+**Protezioni**: un doppio click su "Conferma" non può creare movimenti doppi
+(la seconda richiesta viene rifiutata); ogni azione registra chi/quando (audit log).
+
+---
+
+## 5. Corrispettivi e coerenza POS (calendario accrediti)
+
+Regola di fondo: **il confronto POS↔banca usa sempre il calendario di giorni
+lavorativi e festivi, mai il semplice mese contabile.** Uno slittamento spiegato dal
+calendario non è un'anomalia e non genera mai avvisi.
+
+1. Inserisci corrispettivo manuale reale e POS della chiusura serale, poi Conferma.
+2. Il sistema calcola la **data prevista di accredito** del POS:
+   - vendita lun–ven → primo giorno lavorativo dopo il giorno successivo
+     (venerdì → lunedì, se non festivo);
+   - vendita sab/dom → primo lunedì (o martedì, secondo contratto POS) successivo,
+     spostato avanti se festivo.
+   Le festività nazionali sono popolate automaticamente per anno.
+3. Il corrispettivo resta "in attesa accredito". Quando l'accredito compare in banca
+   lo registri dalla pagina Riconciliazione: il sistema confronta l'importo
+   accreditato col POS atteso dei giorni coperti —
+   entro tolleranza → **riconciliato**; oltre → **discrepanza reale** (da verificare).
+4. Avvisi automatici SOLO se il calendario non spiega la differenza:
+   - accredito in ritardo (data prevista + tolleranza superate, nessun accredito);
+   - discrepanza di importo banca vs atteso;
+   - POS manuale ≠ POS dell'XML del registratore oltre tolleranza.
+
+---
+
+## 6. Riconciliazione bancaria (estratto conto ↔ prima nota banca)
+
+**Da dove arrivano i movimenti banca**: l'estratto conto (CSV/Excel Banco BPM,
+cartella Drive dedicata) viene letto riga per riga; ogni riga diventa un movimento
+bancario con saldo progressivo. Ogni riga ha un'impronta propria: ricaricare lo
+stesso estratto non duplica nulla.
+
+**Il matching automatico** confronta ogni movimento banca non riconciliato con le
+righe di Prima Nota Banca non riconciliate:
+
+- **Filtri duri** (un candidato che non li passa non viene proprio considerato,
+  qualunque cosa dica la descrizione):
+  - stesso segno (entrata con entrata, uscita con uscita);
+  - differenza importo entro **2,00 €**;
+  - distanza tra le date entro **5 giorni**.
+- La somiglianza del testo (descrizione/causale) serve **solo** a scegliere tra più
+  candidati già validi — mai a far passare un candidato con importo o data fuori
+  soglia.
+
+**Classificazione:**
+
+| Esito | Condizione | Cosa fa il sistema |
+|---|---|---|
+| **Certo** | un solo candidato, stesso importo (±0,01 €) e stessa data | collega automaticamente le due righe (operazione atomica: o entrambe o nessuna) e registra la riconciliazione come "auto confermata" |
+| **Probabile** | un solo candidato ma non esatto; oppure più candidati con un vincitore netto | crea una **proposta**: le righe restano non riconciliate finché non confermi (o rifiuti) tu |
+| **Dubbio** | nessun candidato, o più candidati troppo vicini tra loro | apre un "dubbio" con l'elenco dei candidati, **mai** una scelta automatica |
+
+Esiste anche la **riconciliazione manuale**: colleghi tu un movimento banca a una
+riga di prima nota. Se nel frattempo il sistema aveva già riconciliato quella riga,
+la tua richiesta viene rifiutata con un conflitto (mai una sovrascrittura muta).
+
+Le righe già riconciliate (incluse quelle POS, che nascono già riconciliate) non
+rientrano mai nei giri successivi. Un movimento va "in verifica" solo su tua azione.
+
+Nota: le soglie (2 €, 5 giorni, ecc.) sono valori di partenza ragionevoli, mai
+ancora tarati su un ciclo reale di dati — quando la banca inizierà a popolarsi
+davvero andranno riviste.
+
+---
+
+## 7. F24 e Quietanze
+
+Distinzione non negoziabile: **l'F24 è il documento DA pagare; la quietanza è la
+prova UFFICIALE dell'avvenuto pagamento.** Sono due archivi separati che il sistema
+collega — mai confusi. Per questo **non esiste** un bottone "segna F24 pagato": un
+F24 risulta pagato solo quando gli viene collegata una quietanza.
+
+- Gli F24 arrivano via email dal commercialista (mittenti attendibili); le quietanze
+  da una cartella Drive dedicata (entrambi i canali oggi spenti in attesa di file
+  reali di conferma per i parser).
+- Un controllo giornaliero genera avvisi per F24 in scadenza (entro 7 giorni) o
+  scaduti e non ancora quietanzati.
+- **Matching automatico F24↔Quietanza**: prima condizione assoluta, **stesso codice
+  fiscale** (senza, il candidato non esiste proprio); poi importi (±0,01 € per il
+  certo, ±2,00 € per il probabile), finestra di 10 giorni sulla data, e la
+  sovrapposizione dei codici tributo come spareggio. Stessa scala
+  certo/probabile/dubbio della banca: il certo si applica da solo, il resto aspetta te.
+  (Un pagamento può precedere la scadenza: qui il "certo" non richiede stessa data.)
+
+---
+
+## 8. Cedolini e Dipendenti
+
+- I cedolini (Libro Unico, formato Zucchetti) arrivano **via email** dallo Studio
+  Ferrantini (mittenti attendibili configurati; canale attivo). Il PDF viene anche
+  archiviato in copia su Drive.
+- Il parser estrae: dati anagrafici, periodo, netto, lordo, competenze, trattenute,
+  IRPEF, contributi, TFR, ferie/permessi, tredicesima/quattordicesima, presenze
+  giornaliere, ecc.
+- **Il codice fiscale è la chiave**: il cedolino viene collegato al dipendente; se il
+  dipendente non esiste ancora viene creato automaticamente; la matricola è chiave
+  secondaria (uno stesso dipendente può avere più matricole nel tempo).
+- Lo stesso cedolino (dipendente + matricola + mese + anno) non viene mai duplicato.
+- Un PDF che contiene più di un dipendente non viene elaborato automaticamente:
+  genera un avviso di verifica (mai un'elaborazione alla cieca su un formato mai
+  visto).
+- La creazione automatica del movimento stipendio e la riconciliazione
+  cedolino↔banca/cassa non sono ancora attive (fase successiva della roadmap).
+
+---
+
+## 9. Scadenze operative
+
+La pagina Scadenze mostra **solo** le scadenze che richiedono davvero attenzione:
+
+1. fatture con **pagamento a mezzo agente** non ancora pagate;
+2. **F24 da pagare**.
+
+Non mostra tutte le date di scadenza formali delle fatture (sarebbero rumore), né i
+cedolini (lo stipendio è un obbligo mensile con un suo ciclo dedicato, non una
+"scadenza dubbia da sorvegliare").
+
+Urgenza calcolata a video: **scaduta** / **imminente** (entro 7 giorni) / normale.
+Azioni disponibili: Paga in Cassa / Paga in Banca / Segna già pagata (solo fatture) /
+Sposta in verifica (fatture e F24 — l'avviso lo genera poi il sistema).
+
+---
+
+## 10. Verbali, veicoli e trattenute
+
+**Flusso verbale**: email da mittente attendibile → estrazione di numero verbale,
+targa, importo, date → collegamento al veicolo (targa) e al conducente assegnatario
+→ ricerca del pagamento in prima nota (cassa e banca, finestra ampia di 90 giorni
+perché le multe si pagano anche molto dopo la notifica; vale anche l'importo
+ridotto) → stessa scala certo/probabile/dubbio.
+
+**Regola non negoziabile sulla trattenuta**: se il verbale è di una targa aziendale,
+con un conducente assegnato, e il pagamento risulta fatto dalla società, il sistema
+**crea solo una PROPOSTA di recupero in busta paga**. La trattenuta:
+
+1. viene proposta dal sistema (mai applicata);
+2. la confermi tu, indicando esplicitamente mese e anno di competenza;
+3. la comunichi al consulente del lavoro (passaggio tracciato);
+4. quando arriva il cedolino di quel mese, il sistema ti avvisa di verificare che la
+   trattenuta ci sia davvero — la chiusura finale resta una tua conferma manuale.
+
+Se il cedolino atteso non arriva, avviso dedicato.
+
+**Veicoli**: anagrafica gestita a mano (targa, marca, modello, conducente, stato
+contratto attivo/cessato).
+
+---
+
+## 11. Noleggio auto e contratti cessati
+
+- I costi auto arrivano per due strade: **fatture** collegate al veicolo via targa
+  (canoni, assicurazione, manutenzione) e **costi manuali** per ciò che non ha
+  fattura nel sistema (bollo, altro). La vista costi per veicolo somma fatture +
+  verbali + costi manuali, senza doppi conteggi.
+- **Regola non negoziabile**: se il contratto di un veicolo risulta **cessato**,
+  il sistema **non genera mai** l'avviso "manca la fattura di noleggio". Solo per i
+  veicoli attivi controlla che arrivino fatture con regolarità (soglia 45 giorni).
+- Se in una fattura di un veicolo attivo compaiono diciture di chiusura ("cessazione
+  contratto", "ultimo canone", "restituzione veicolo"...), il sistema genera **solo
+  un avviso informativo**: lo stato del contratto lo cambi sempre e solo tu.
+
+---
+
+## 12. Cosa è acceso e cosa è spento oggi
+
+| Canale | Stato | Perché |
+|---|---|---|
+| Fatture da Drive | **Attivo** | parser validato su file reali |
+| Corrispettivi da Drive | **Attivo** | validato su file reale del registratore |
+| Cedolini via email | **Attivo** | validato su un file reale; sotto osservazione |
+| Estratti conto da Drive | Spento | in attesa di export reale Banco BPM di conferma |
+| Quietanze da Drive | Spento | validato su un solo file, formato fragile |
+| F24 via email | Spento | nessun F24 reale mai visto dal parser |
+| Verbali via email | Spento | nessun verbale reale mai visto dal parser |
+
+Il principio è sempre lo stesso: **un canale si accende solo dopo che il suo parser
+è stato verificato su documenti veri** — meglio nessun dato che dati sbagliati.
