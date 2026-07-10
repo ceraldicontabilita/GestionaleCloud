@@ -576,6 +576,32 @@ def start_scheduler():
         replace_existing=True
     )
 
+    # Task Controllo POS con calendario - ogni giorno alle 7:30.
+    # Genera avvisi SOLO quando il calendario (lavorativi/festivi) non spiega
+    # la differenza: accredito in ritardo oltre la data prevista, importo
+    # banca diverso dal POS atteso, POS manuale diverso dall'XML oltre
+    # tolleranza. Gli slittamenti fisiologici (weekend/festivi) non generano
+    # mai nulla: sono il comportamento previsto dal calendario.
+    async def controllo_pos_calendario_task():
+        try:
+            from app.routers.pos_corrispettivi_check import alert_oggi
+            r = await alert_oggi(tolleranza_euro=0.5)
+            logger.info(
+                f"[SCHEDULER-POS] alert banca={r.get('num_alert_banca', 0)} "
+                f"compensazioni={r.get('num_alert_compensazione', 0)} "
+                f"xml mancanti={r.get('num_alert_xml_mancante', 0)}"
+            )
+        except Exception as e:
+            logger.error(f"[SCHEDULER-POS] errore controllo POS calendario: {e}")
+
+    scheduler.add_job(
+        controllo_pos_calendario_task,
+        CronTrigger(hour=7, minute=30),
+        id="controllo_pos_calendario",
+        name="Controllo POS con calendario accrediti (ogni giorno ore 7:30)",
+        replace_existing=True
+    )
+
     # Task Scadenze F24 - ogni giorno alle 8:00
     scheduler.add_job(
         check_scadenze_f24_task,

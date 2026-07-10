@@ -1,23 +1,33 @@
 """
 POS Accredito Date Calculator - Logica sfasamento accrediti POS
 
-Regole di sfasamento:
-- Pagamento Lunedì → Accredito Martedì (+1 giorno lavorativo)
-- Pagamento Martedì → Accredito Mercoledì (+1 giorno lavorativo)
-- Pagamento Mercoledì → Accredito Giovedì (+1 giorno lavorativo)
-- Pagamento Giovedì → Accredito Venerdì (+1 giorno lavorativo)
-- Pagamento Venerdì → Accredito Lunedì (+3 giorni, salta weekend)
-- Pagamento Sabato → Accredito Martedì (+3 giorni)
-- Pagamento Domenica → Accredito Martedì (+2 giorni)
+PUNTO UNICO del calendario accrediti POS in tutto il gestionale: ogni
+confronto POS<->banca deve passare da qui (mai dal semplice mese contabile).
 
-Se il giorno di accredito cade in un festivo, slitta al primo giorno lavorativo successivo.
+Regole di sfasamento:
+- Pagamento Lunedì-Giovedì → accredito il giorno lavorativo successivo (+1)
+- Pagamento Venerdì → accredito Lunedì
+- Pagamento Sabato/Domenica → accredito Lunedì oppure Martedì, secondo il
+  contratto POS (variabile d'ambiente POS_ACCREDITO_WEEKEND = "lunedi"
+  [default] | "martedi")
+
+Se il giorno di accredito cade in un festivo, slitta al primo giorno
+lavorativo successivo. Le festività nazionali (fisse + Pasqua/Pasquetta)
+sono generate automaticamente per anno.
 """
 
 from datetime import date, datetime, timedelta
 from typing import Optional, List, Tuple
 import logging
+import os
 
 logger = logging.getLogger(__name__)
+
+
+def _weekend_accredito_config() -> str:
+    """Regola contrattuale per gli incassi di sabato/domenica: "lunedi" o "martedi"."""
+    v = os.getenv("POS_ACCREDITO_WEEKEND", "lunedi").strip().lower()
+    return "martedi" if v.startswith("mart") else "lunedi"
 
 # Festivi fissi italiani (giorno, mese)
 FESTIVI_FISSI = [
@@ -110,13 +120,16 @@ def prossimo_giorno_lavorativo(data: date, festivi: Optional[List[date]] = None)
     return data
 
 
-def calcola_data_accredito_pos(data_pagamento: date) -> Tuple[date, int, str]:
+def calcola_data_accredito_pos(data_pagamento: date,
+                               weekend_accredito: Optional[str] = None) -> Tuple[date, int, str]:
     """
     Calcola la data di accredito POS basata sulla data di pagamento.
-    
+
     Args:
         data_pagamento: Data del pagamento POS
-        
+        weekend_accredito: "lunedi" | "martedi" per gli incassi sab/dom
+            (default: variabile POS_ACCREDITO_WEEKEND, altrimenti "lunedi")
+
     Returns:
         Tuple con:
         - data_accredito: Data prevista di accredito
@@ -126,9 +139,12 @@ def calcola_data_accredito_pos(data_pagamento: date) -> Tuple[date, int, str]:
     festivi = get_festivi_anno(data_pagamento.year)
     if data_pagamento.month == 12:
         festivi.extend(get_festivi_anno(data_pagamento.year + 1))
-    
+
+    weekend = (weekend_accredito or _weekend_accredito_config())
+    weekend = "martedi" if str(weekend).lower().startswith("mart") else "lunedi"
+
     giorno_settimana = data_pagamento.weekday()  # 0=Lunedì, 6=Domenica
-    
+
     # Regole di sfasamento base
     if giorno_settimana <= 3:  # Lunedì-Giovedì
         # Accredito il giorno lavorativo successivo (+1)
@@ -139,28 +155,40 @@ def calcola_data_accredito_pos(data_pagamento: date) -> Tuple[date, int, str]:
         data_accredito_base = data_pagamento + timedelta(days=3)
         note_base = "Pagamento Venerdì → Accredito Lunedì (+3 giorni)"
     elif giorno_settimana == 5:  # Sabato
-        # Accredito Martedì (+3 giorni)
-        data_accredito_base = data_pagamento + timedelta(days=3)
-        note_base = "Pagamento Sabato → Accredito Martedì (+3 giorni)"
+        giorni = 2 if weekend == "lunedi" else 3
+        data_accredito_base = data_pagamento + timedelta(days=giorni)
+        note_base = f"Pagamento Sabato → Accredito {'Lunedì' if weekend == 'lunedi' else 'Martedì'} (+{giorni} giorni)"
     else:  # Domenica
-        # Accredito Martedì (+2 giorni)
-        data_accredito_base = data_pagamento + timedelta(days=2)
-        note_base = "Pagamento Domenica → Accredito Martedì (+2 giorni)"
-    
+        giorni = 1 if weekend == "lunedi" else 2
+        data_accredito_base = data_pagamento + timedelta(days=giorni)
+        note_base = f"Pagamento Domenica → Accredito {'Lunedì' if weekend == 'lunedi' else 'Martedì'} (+{giorni} giorni)"
+
     # Verifica se la data di accredito base cade in un festivo
     data_accredito_finale = prossimo_giorno_lavorativo(data_accredito_base, festivi)
-    
+
     # Calcola sfasamento effettivo
     giorni_sfasamento = (data_accredito_finale - data_pagamento).days
-    
+
     # Aggiungi note se c'è stato slittamento per festivi
     if data_accredito_finale != data_accredito_base:
         giorni_extra = (data_accredito_finale - data_accredito_base).days
         note = f"{note_base} + {giorni_extra} giorni (festivo)"
     else:
         note = note_base
-    
+
     return data_accredito_finale, giorni_sfasamento, note
+
+
+def data_accredito_prevista_str(data_incasso: str,
+                                weekend_accredito: Optional[str] = None) -> Optional[str]:
+    """Versione comoda per stringhe YYYY-MM-DD: ritorna la data prevista di
+    accredito come stringa, o None se la data in ingresso non e' valida."""
+    try:
+        d = datetime.strptime(str(data_incasso)[:10], "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        return None
+    accredito, _, _ = calcola_data_accredito_pos(d, weekend_accredito)
+    return accredito.isoformat()
 
 
 def calcola_sfasamento_periodo(data_inizio: date, data_fine: date) -> List[dict]:

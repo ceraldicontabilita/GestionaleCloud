@@ -700,25 +700,16 @@ async def list_chiusure_audit(
 def _data_accredito_attesa(data_incasso_str: str) -> str:
     """Dato il giorno di incasso POS, ritorna il giorno atteso di accredito banca.
 
-    Regole:
-      - Lunedì-Giovedì → +1 giorno lavorativo
-      - Venerdì, Sabato, Domenica → Lunedì successivo
+    Delega al calendario unico del gestionale (app/utils/pos_accredito.py):
+    lun-gio → +1 lavorativo; ven → lunedì; sab/dom → lunedì o martedì secondo
+    contratto (POS_ACCREDITO_WEEKEND); slittamento automatico sui festivi
+    nazionali. Prima questa funzione aveva una copia locale della regola
+    SENZA festivi: un accredito posticipato da una festività infrasettimanale
+    generava un falso "mancante".
     """
-    try:
-        d = datetime.strptime(data_incasso_str, "%Y-%m-%d")
-    except (ValueError, TypeError):
-        return data_incasso_str
-    # weekday(): Lun=0, Mar=1, Mer=2, Gio=3, Ven=4, Sab=5, Dom=6
-    wd = d.weekday()
-    if wd <= 3:  # Lun-Gio
-        accredito = d + timedelta(days=1)
-    elif wd == 4:  # Ven → Lun (+3)
-        accredito = d + timedelta(days=3)
-    elif wd == 5:  # Sab → Lun (+2)
-        accredito = d + timedelta(days=2)
-    else:  # Dom → Lun (+1)
-        accredito = d + timedelta(days=1)
-    return accredito.strftime("%Y-%m-%d")
+    from app.utils.pos_accredito import data_accredito_prevista_str
+    prevista = data_accredito_prevista_str(data_incasso_str)
+    return prevista if prevista else data_incasso_str
 
 
 async def _carica_pos_manuale_per_data(db) -> Dict[str, float]:

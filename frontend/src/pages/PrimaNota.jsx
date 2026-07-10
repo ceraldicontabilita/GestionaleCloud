@@ -2111,8 +2111,13 @@ function MovementsTable({
   // filtrata, non il saldo reale del conto — fuorviante e potenzialmente
   // letto come "quanto ho davvero in cassa/banca". Si calcola una volta
   // sola sull'elenco completo e si applica ai movimenti filtrati per id.
-  const movimentiForward = [...movimenti].sort((a, b) =>
-    (a.data || '').localeCompare(b.data || '')
+  // Ordine: cronologico per data movimento; a parità di data, per ordine di
+  // inserimento (created_at) — così l'uscita POS segue sempre l'entrata
+  // corrispettivo dello stesso giorno e il saldo intermedio è coerente.
+  const movimentiForward = [...movimenti].sort(
+    (a, b) =>
+      (a.data || '').localeCompare(b.data || '') ||
+      (a.created_at || '').localeCompare(b.created_at || '')
   );
   const balanceMap = {};
   movimentiForward.reduce((prevBal, m) => {

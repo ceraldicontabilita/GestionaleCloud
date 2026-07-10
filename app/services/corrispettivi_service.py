@@ -106,11 +106,21 @@ class CorrispettiviService:
             # Metadata
             "created_at": datetime.now(timezone.utc).isoformat(),
             "updated_at": datetime.now(timezone.utc).isoformat(),
-            
+
             # Relazioni
             "prima_nota_id": None
         }
-        
+
+        # Calendario accrediti POS: se c'e' quota elettronica, il corrispettivo
+        # entra "in attesa accredito" con la data prevista dal calendario
+        # (giorni lavorativi + festivi, mai il semplice mese contabile).
+        if corr_doc["pagato_pos"] and corr_doc["pagato_pos"] > 0:
+            from app.utils.pos_accredito import data_accredito_prevista_str
+            prevista = data_accredito_prevista_str(corr_doc["data"])
+            if prevista:
+                corr_doc["data_prevista_accredito"] = prevista
+                corr_doc["stato_accredito"] = "in_attesa_accredito"
+
         # 4. Salva corrispettivo
         await self.corrispettivi.insert_one(corr_doc.copy())
         corr_id = corr_doc["id"]
@@ -384,6 +394,28 @@ class CorrispettiviService:
             now         = datetime.now(timezone.utc).isoformat()
 
             entrata_id = None
+
+            # Dedup: se per questo corrispettivo esistono gia' movimenti cassa
+            # (es. creati dalla conferma serale manuale, o da un import XML
+            # precedente), NON duplicarli — si allineano gli importi al dato
+            # XML ufficiale.
+            esistente = await self.db["prima_nota_cassa"].find_one(
+                {"corrispettivo_id": corr_id, "tipo": "entrata",
+                 "status": {"$nin": ["deleted", "archived"]}},
+                {"_id": 0, "id": 1},
+            )
+            if esistente:
+                if totale > 0:
+                    await self.db["prima_nota_cassa"].update_one(
+                        {"corrispettivo_id": corr_id, "tipo": "entrata"},
+                        {"$set": {"importo": round(totale, 2), "updated_at": now}},
+                    )
+                if elettronico and elettronico > 0:
+                    await self.db["prima_nota_cassa"].update_one(
+                        {"corrispettivo_id": corr_id, "tipo": "uscita"},
+                        {"$set": {"importo": round(elettronico, 2), "updated_at": now}},
+                    )
+                return esistente.get("id")
 
             # 1. DARE — entrata totale corrispettivo in cassa
             if totale > 0:

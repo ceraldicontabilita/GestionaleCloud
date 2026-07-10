@@ -731,7 +731,7 @@ async def conferma_fattura_provvisoria(data: Dict = Body(...)) -> Dict:
     
     pn_id = str(uuid.uuid4())
     collection = COLLECTION_PRIMA_NOTA_CASSA if metodo == "cassa" else COLLECTION_PRIMA_NOTA_BANCA
-    
+
     # Dedup
     existing = await db[collection].find_one({"riferimento": f"FATT-{fattura_id}"})
     if existing:
@@ -745,7 +745,18 @@ async def conferma_fattura_provvisoria(data: Dict = Body(...)) -> Dict:
             }}
         )
         return {"success": True, "message": "Già registrata"}
-    
+
+    # CLAIM ATOMICO sulla fattura: un doppio click sulla Conferma trova
+    # prima_nota_id gia' valorizzato e viene rifiutato (niente doppioni).
+    claim = await db["invoices"].find_one_and_update(
+        {"id": fattura_id,
+         "$or": [{"prima_nota_id": None}, {"prima_nota_id": ""},
+                 {"prima_nota_id": {"$exists": False}}]},
+        {"$set": {"prima_nota_id": pn_id, "prima_nota_tipo": metodo}},
+    )
+    if claim is None:
+        return {"success": True, "message": "Già registrata (conferma concorrente)"}
+
     movimento = {
         "id": pn_id,
         "data": data_fatt,
@@ -758,21 +769,131 @@ async def conferma_fattura_provvisoria(data: Dict = Body(...)) -> Dict:
         "source": "conferma_provvisori",
         "created_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
     }
-    
+
     await db[collection].insert_one(movimento)
-    
+
     # Update fattura
     await db["invoices"].update_one(
         {"id": fattura_id},
         {"$set": {
             "stato_pagamento": "pagata",
-            "prima_nota_id": pn_id,
-            "prima_nota_tipo": metodo,
             "payment_method": "contanti" if metodo == "cassa" else fattura.get("payment_method", "bonifico"),
         }}
     )
-    
+
+    # Audit: chi ha confermato e quando.
+    try:
+        from app.services.audit_logger import log_evento
+        await log_evento(
+            modulo="prima_nota",
+            azione="conferma_fattura_provvisoria",
+            entita_id=fattura_id,
+            entita_collection="invoices",
+            db=db,
+            nuovo_stato={"metodo": metodo, "importo": importo, "movimento_id": pn_id},
+            fonte="provvisori_conferma",
+            utente=str(data.get("performed_by") or "operatore"),
+        )
+    except Exception:
+        logger.exception("Audit conferma provvisoria fallito")
+
     return {"success": True, "metodo": metodo, "importo": importo, "fornitore": fornitore}
+
+
+async def conferma_divisione_provvisoria(data: Dict = Body(...)) -> Dict:
+    """
+    Conferma la DIVISIONE di una fattura di fornitore "Misto" tra cassa e banca.
+    Body: { fattura_id, importo_cassa, importo_banca, performed_by? }
+
+    Regola canonica: la fattura di un fornitore Misto resta in Prima Nota
+    Provvisoria finche' l'utente non conferma come dividere l'importo; solo
+    dopo la conferma nascono i movimenti veri nei due registri.
+    La somma cassa+banca deve coincidere col totale fattura (tolleranza 1 cent).
+    """
+    db = Database.get_db()
+
+    fattura_id = data.get("fattura_id")
+    try:
+        importo_cassa = round(float(data.get("importo_cassa", 0) or 0), 2)
+        importo_banca = round(float(data.get("importo_banca", 0) or 0), 2)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="importo_cassa/importo_banca non numerici")
+
+    if not fattura_id:
+        raise HTTPException(status_code=400, detail="fattura_id obbligatorio")
+    if importo_cassa < 0 or importo_banca < 0 or (importo_cassa + importo_banca) <= 0:
+        raise HTTPException(status_code=400, detail="Importi non validi")
+
+    fattura = await db["invoices"].find_one({"id": fattura_id}, {"_id": 0})
+    if not fattura:
+        raise HTTPException(status_code=404, detail="Fattura non trovata")
+
+    totale = round(float(fattura.get("total_amount") or fattura.get("importo_totale") or 0), 2)
+    if abs((importo_cassa + importo_banca) - totale) > 0.01:
+        raise HTTPException(
+            status_code=400,
+            detail=f"La somma cassa ({importo_cassa}) + banca ({importo_banca}) "
+                   f"deve coincidere col totale fattura ({totale})",
+        )
+
+    # CLAIM ATOMICO: doppio click rifiutato.
+    claim = await db["invoices"].find_one_and_update(
+        {"id": fattura_id,
+         "$or": [{"prima_nota_id": None}, {"prima_nota_id": ""},
+                 {"prima_nota_id": {"$exists": False}}]},
+        {"$set": {"prima_nota_tipo": "misto", "prima_nota_id": "in_divisione"}},
+    )
+    if claim is None:
+        return {"success": True, "message": "Fattura già registrata in prima nota"}
+
+    risultato = await registra_pagamento_fattura(
+        fattura=fattura,
+        metodo_pagamento="misto",
+        importo_cassa=importo_cassa,
+        importo_banca=importo_banca,
+    )
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await db["invoices"].update_one(
+        {"id": fattura_id},
+        {"$set": {
+            "stato_pagamento": "pagata",
+            "pagato": True,
+            "prima_nota_id": risultato.get("cassa") or risultato.get("banca") or "",
+            "prima_nota_cassa_id": risultato.get("cassa"),
+            "prima_nota_banca_id": risultato.get("banca"),
+            "prima_nota_tipo": "misto",
+            "divisione_misto": {"cassa": importo_cassa, "banca": importo_banca},
+            "data_pagamento": now_iso[:10],
+            "updated_at": now_iso,
+        }}
+    )
+
+    # Audit: chi ha confermato la divisione e come.
+    try:
+        from app.services.audit_logger import log_evento
+        await log_evento(
+            modulo="prima_nota",
+            azione="conferma_divisione_misto",
+            entita_id=fattura_id,
+            entita_collection="invoices",
+            db=db,
+            nuovo_stato={"importo_cassa": importo_cassa, "importo_banca": importo_banca,
+                         "movimenti": risultato},
+            fonte="provvisori_conferma_divisione",
+            utente=str(data.get("performed_by") or "operatore"),
+        )
+    except Exception:
+        logger.exception("Audit conferma divisione misto fallito")
+
+    return {
+        "success": True,
+        "fattura_id": fattura_id,
+        "importo_cassa": importo_cassa,
+        "importo_banca": importo_banca,
+        "movimento_cassa_id": risultato.get("cassa"),
+        "movimento_banca_id": risultato.get("banca"),
+    }
 
 
 
@@ -1224,6 +1345,21 @@ async def crea_entrata_cassa_da_corrispettivo(
             "success": True,
             "duplicato": True,
             "message": f"Movimenti per il {data} già creati in precedenza (id: {existing_entrata.get('id')})",
+        }
+
+    # CLAIM ATOMICO sul corrispettivo: un doppio click sulla Conferma trova il
+    # flag già impostato e viene rifiutato (niente movimenti doppi anche con
+    # due richieste concorrenti).
+    claim = await db["corrispettivi"].find_one_and_update(
+        {"id": corr_id, "prima_nota_cassa_generata": {"$ne": True}},
+        {"$set": {"prima_nota_cassa_generata": True,
+                  "prima_nota_cassa_generata_at": now}},
+    )
+    if claim is None:
+        return {
+            "success": True,
+            "duplicato": True,
+            "message": f"Movimenti per il {data} già confermati (richiesta concorrente rifiutata)",
         }
 
     # Estrai valori dal corrispettivo (tolleranti a schema legacy)
