@@ -1,13 +1,13 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { formatEuro, formatDateIT, STYLES, COLORS, SHADOWS, BORDER_RADIUS, useIsMobile } from '../lib/utils';
+import { formatEuro, formatDateIT, formatDateGGMM, STYLES, COLORS, SHADOWS, BORDER_RADIUS, useIsMobile } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
 import ModalFattura from '../components/ModalFattura';
-import { Button, Badge, StatCard, Table, TableWrap, Th, Td, Input, RowActions, RowActionButton } from '../components/ds';
+import { Button, Badge, StatCard, Table, TableWrap, Th, Td, Input, RowActions, RowActionButton, ListaAdattiva } from '../components/ds';
 
 const STATI_ASSEGNO = {
   vuoto: { label: 'Valido', variant: 'success' },
@@ -617,7 +617,10 @@ export default function GestioneAssegni() {
   };
 
   // FILTRO ASSEGNI LATO CLIENT
-  const filteredAssegni = assegni.filter(a => {
+  // useMemo (vincolo ListaAdattiva): la lista resetta la paginazione quando
+  // cambia il riferimento di `dati`; senza memo ogni re-render (es. una
+  // spunta di selezione) ricreerebbe l'array e riporterebbe la lista a 50 righe.
+  const filteredAssegni = useMemo(() => assegni.filter(a => {
     // Escludi assegni sporchi (senza numero o importo null)
     if (!a.numero || a.importo === null || a.importo === undefined) {
       return false;
@@ -657,7 +660,15 @@ export default function GestioneAssegni() {
       return false;
     }
     return true;
-  });
+  }), [
+    assegni,
+    filterFornitore,
+    filterImportoMin,
+    filterImportoMax,
+    filterNumeroAssegno,
+    filterNumeroFattura,
+    filterSoloDaAssociare,
+  ]);
 
   // Reset filtri
   const resetFilters = () => {
@@ -680,7 +691,23 @@ export default function GestioneAssegni() {
     return groups;
   };
 
-  const carnets = groupByCarnet();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const carnets = useMemo(groupByCarnet, [filteredAssegni]);
+
+  // Elenco piatto nell'ordine per carnet: stesse righe, nello stesso ordine,
+  // della vecchia tabella desktop che iterava i gruppi carnet.
+  const listaAssegni = useMemo(() => Object.values(carnets).flat(), [carnets]);
+
+  // Evidenzia su desktop le righe selezionate, come la vecchia tabella
+  const tdSelezione = assegno =>
+    selectedAssegni.has(assegno.id) ? { background: COLORS.successLight } : undefined;
+
+  // Apre la fattura collegata nel modale in-page (niente nuove schede)
+  const apriFattura = assegno =>
+    setFatturaView({
+      id: assegno.fattura_collegata || assegno.fatture_collegate?.[0]?.fattura_id,
+      numero: assegno.numero_fattura,
+    });
 
   // Genera PDF per un singolo carnet
   const generateCarnetPDF = (carnetId, carnetAssegni) => {
@@ -2202,481 +2229,337 @@ export default function GestioneAssegni() {
           </p>
         </div>
       ) : (
-        <>
-          {/* MOBILE CARDS VIEW */}
-          <div className="md:hidden" style={{ display: 'block' }}>
-            <style>{`
-              @media (min-width: 769px) {
-                .mobile-cards-assegni { display: none !important; }
-                .desktop-table-assegni { display: block !important; }
-              }
-              @media (max-width: 768px) {
-                .mobile-cards-assegni { display: block !important; }
-                .desktop-table-assegni { display: none !important; }
-              }
-            `}</style>
-            <div className="mobile-cards-assegni">
-              <div style={{ padding: '12px 0', borderBottom: `1px solid ${COLORS.border}`, marginBottom: 12 }}>
-                <h3 style={{ margin: 0, fontSize: 16 }}>
-                  Lista Assegni ({filteredAssegni.length})
-                </h3>
-              </div>
-              {Object.entries(carnets).map(([carnetId, carnetAssegni], carnetIdx) => (
-                <div key={carnetId} style={{ marginBottom: 16 }}>
-                  {/* Carnet Header Mobile */}
-                  <div
+        // Contenitore-card solo su desktop: su mobile le card di ListaAdattiva
+        // hanno già sfondo e bordo propri
+        <div
+          style={
+            isMobile
+              ? undefined
+              : {
+                  background: COLORS.card,
+                  borderRadius: BORDER_RADIUS.lg,
+                  overflow: 'hidden',
+                  boxShadow: SHADOWS.md,
+                }
+          }
+        >
+          <div
+            style={{
+              padding: isMobile ? '12px 0' : 16,
+              borderBottom: `1px solid ${COLORS.border}`,
+              marginBottom: isMobile ? 12 : 0,
+            }}
+          >
+            <h3 style={{ margin: 0, fontSize: isMobile ? 16 : undefined }}>
+              Lista Assegni ({filteredAssegni.length})
+            </h3>
+          </div>
+          <ListaAdattiva
+            testId="assegni-table"
+            dati={listaAssegni}
+            pageSize={50}
+            chiave={(a, i) => a.id || i}
+            colonne={[
+              {
+                // Selezione: colonna solo desktop; su mobile la spunta
+                // sta tra le azioni della card
+                key: 'sel',
+                ruoloCard: 'omesso',
+                align: 'center',
+                tdStyle: tdSelezione,
+                label: (
+                  <input
+                    type="checkbox"
+                    checked={
+                      selectedAssegni.size === filteredAssegni.length &&
+                      filteredAssegni.length > 0
+                    }
+                    onChange={toggleSelectAll}
+                    data-testid="select-all-checkbox"
+                    style={{ width: 18, height: 18, cursor: 'pointer' }}
+                    title="Seleziona tutti"
+                  />
+                ),
+                render: assegno => (
+                  <input
+                    type="checkbox"
+                    checked={selectedAssegni.has(assegno.id)}
+                    onChange={() => toggleSelectAssegno(assegno.id)}
+                    data-testid={`select-${assegno.id}`}
+                    style={{ width: 18, height: 18, cursor: 'pointer' }}
+                  />
+                ),
+              },
+              {
+                key: 'numero',
+                label: 'N. Assegno',
+                ruoloCard: 'dettaglio',
+                iconaCard: '🔢',
+                tdStyle: tdSelezione,
+                render: assegno => (
+                  <span
                     style={{
-                      background: COLORS.infoLight,
-                      padding: '10px 12px',
-                      borderRadius: `${BORDER_RADIUS.md}px ${BORDER_RADIUS.md}px 0 0`,
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      flexWrap: 'wrap',
-                      gap: 8,
+                      fontFamily: 'monospace',
+                      fontWeight: 'bold',
+                      color: COLORS.primaryLight,
+                      fontSize: 13,
                     }}
                   >
+                    {/* Su mobile solo il progressivo: il prefisso carnet
+                        è identico su tutto il blocchetto */}
+                    {isMobile ? assegno.numero?.split('-')[1] || assegno.numero : assegno.numero}
+                  </span>
+                ),
+              },
+              {
+                key: 'stato',
+                label: 'Stato',
+                align: 'center',
+                ruoloCard: 'dettaglio',
+                tdStyle: tdSelezione,
+                render: assegno => (
+                  <Badge variant={STATI_ASSEGNO[assegno.stato]?.variant || 'neutral'}>
+                    {STATI_ASSEGNO[assegno.stato]?.label || assegno.stato}
+                  </Badge>
+                ),
+              },
+              {
+                key: 'beneficiario',
+                label: 'Beneficiario / Note',
+                ruoloCard: 'titolo',
+                tdStyle: assegno => ({ maxWidth: 250, ...(tdSelezione(assegno) || {}) }),
+                render: assegno =>
+                  editingId === assegno.id ? (
+                    <Input
+                      type="text"
+                      value={editForm.beneficiario}
+                      onChange={e => setEditForm({ ...editForm, beneficiario: e.target.value })}
+                      placeholder="Beneficiario"
+                      style={{ padding: 6, fontSize: 12 }}
+                    />
+                  ) : (
                     <div>
-                      <strong style={{ fontSize: 14 }}>Carnet {carnetIdx + 1}</strong>
-                      <span style={{ color: COLORS.textMuted, marginLeft: 8, fontSize: 12 }}>
-                        ({carnetAssegni.length} assegni)
-                      </span>
-                    </div>
-                    <div style={{ fontWeight: 'bold', color: COLORS.primaryLight, fontSize: 14 }}>
-                      {formatEuro(
-                        carnetAssegni.reduce((s, a) => s + (parseFloat(a.importo) || 0), 0)
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Assegni Cards */}
-                  {carnetAssegni.map((assegno, idx) => (
-                    <div
-                      key={assegno.id}
-                      style={{
-                        background: selectedAssegni.has(assegno.id)
-                          ? COLORS.successLight
-                          : idx % 2 === 0
-                            ? COLORS.card
-                            : COLORS.bgAlt,
-                        padding: 12,
-                        borderBottom: `1px solid ${COLORS.border}`,
-                        borderLeft: `1px solid ${COLORS.border}`,
-                        borderRight: `1px solid ${COLORS.border}`,
-                        ...(idx === carnetAssegni.length - 1
-                          ? { borderRadius: `0 0 ${BORDER_RADIUS.md}px ${BORDER_RADIUS.md}px` }
-                          : {}),
-                      }}
-                    >
-                      {/* Row 1: Checkbox + Numero + Stato + Importo */}
-                      <div
-                        style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          marginBottom: 8,
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <input
-                            type="checkbox"
-                            checked={selectedAssegni.has(assegno.id)}
-                            onChange={() => toggleSelectAssegno(assegno.id)}
-                            style={{ width: 18, height: 18, cursor: 'pointer' }}
-                          />
+                      <div style={{ fontWeight: 500, fontSize: 13 }}>
+                        {assegno.beneficiario ? (
+                          assegno.beneficiario
+                        ) : assegno.fornitore_fattura ? (
                           <span
-                            style={{
-                              fontFamily: 'monospace',
-                              fontWeight: 'bold',
-                              color: COLORS.primaryLight,
-                              fontSize: 13,
-                            }}
+                            style={{ fontStyle: 'italic', color: COLORS.textMuted }}
+                            title="Fornitore dedotto dalla fattura collegata"
                           >
-                            {assegno.numero?.split('-')[1] || assegno.numero}
+                            → {assegno.fornitore_fattura}
                           </span>
-                          <Badge variant={STATI_ASSEGNO[assegno.stato]?.variant || 'neutral'}>
-                            {STATI_ASSEGNO[assegno.stato]?.label || assegno.stato}
-                          </Badge>
-                        </div>
-                        <span style={{ fontWeight: 'bold', fontSize: 15, color: COLORS.primaryLight }}>
-                          {formatEuro(assegno.importo)}
-                        </span>
+                        ) : (
+                          '-'
+                        )}
                       </div>
-
-                      {/* Row 2: Beneficiario (o fornitore dedotto dalla fattura collegata) */}
-                      {assegno.beneficiario ? (
-                        <div style={{ fontSize: 13, marginBottom: 6 }}>
-                          <span style={{ color: COLORS.textMuted }}>👤</span> {assegno.beneficiario}
-                        </div>
-                      ) : assegno.fornitore_fattura ? (
-                        <div
-                          style={{
-                            fontSize: 13,
-                            marginBottom: 6,
-                            fontStyle: 'italic',
-                            color: COLORS.textMuted,
-                          }}
-                          title="Fornitore dedotto dalla fattura collegata"
-                        >
-                          <span style={{ color: COLORS.textMuted }}>👤</span> →{' '}
-                          {assegno.fornitore_fattura}
-                        </div>
-                      ) : null}
-
-                      {/* Row 3: Fattura (se presente) */}
-                      {assegno.numero_fattura && (
-                        <div
-                          style={{
-                            fontSize: 12,
-                            color: COLORS.info,
-                            marginBottom: 6,
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 6,
-                          }}
-                        >
-                          <span>📄 Fatt. {assegno.numero_fattura}</span>
-                          {assegno.data_fattura && (
-                            <span style={{ color: COLORS.textMuted }}>
-                              ({formatDateIT(assegno.data_fattura)})
-                            </span>
-                          )}
-                          {/* Apre la fattura in un modale in-page (niente nuove schede) */}
-                          {(assegno.fattura_collegata ||
-                            assegno.fatture_collegate?.[0]?.fattura_id) && (
-                            <Button
-                              variant="success"
-                              onClick={() =>
-                                setFatturaView({
-                                  id:
-                                    assegno.fattura_collegata ||
-                                    assegno.fatture_collegate?.[0]?.fattura_id,
-                                  numero: assegno.numero_fattura,
-                                })
-                              }
-                            >
-                              📄 Vedi
-                            </Button>
-                          )}
+                      {assegno.note && (
+                        <div style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 2 }}>
+                          {assegno.note}
                         </div>
                       )}
-
-                      {/* Row 4: Azioni */}
-                      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                    </div>
+                  ),
+              },
+              {
+                key: 'importo',
+                label: 'Importo',
+                align: 'right',
+                ruoloCard: 'importo',
+                tdStyle: tdSelezione,
+                render: assegno =>
+                  editingId === assegno.id ? (
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={editForm.importo}
+                      onChange={e =>
+                        setEditForm({ ...editForm, importo: parseFloat(e.target.value) || '' })
+                      }
+                      placeholder="0.00"
+                      style={{ padding: 6, width: 80, textAlign: 'right', fontSize: 12 }}
+                    />
+                  ) : (
+                    <span style={{ fontWeight: 'bold', fontSize: 13 }}>
+                      {formatEuro(assegno.importo)}
+                    </span>
+                  ),
+              },
+              {
+                key: 'fattura',
+                label: 'Fattura / Data',
+                ruoloCard: 'dettaglio',
+                iconaCard: '📄',
+                tdStyle: tdSelezione,
+                render: assegno =>
+                  editingId === assegno.id ? (
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <Input
+                        type="date"
+                        value={editForm.data_fattura}
+                        onChange={e => setEditForm({ ...editForm, data_fattura: e.target.value })}
+                        style={{ padding: 4, fontSize: 11, width: 110 }}
+                      />
+                      <Input
+                        type="text"
+                        value={editForm.numero_fattura}
+                        onChange={e =>
+                          setEditForm({ ...editForm, numero_fattura: e.target.value })
+                        }
+                        placeholder="N.Fatt"
+                        style={{ padding: 4, fontSize: 11, width: 80 }}
+                      />
+                    </div>
+                  ) : isMobile ? (
+                    assegno.numero_fattura || assegno.data_fattura ? (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        {assegno.numero_fattura && (
+                          <span style={{ color: COLORS.info }}>
+                            Fatt. {assegno.numero_fattura}
+                          </span>
+                        )}
+                        {/* Su mobile solo GG/MM: l'anno è nel selettore globale */}
+                        {assegno.data_fattura && (
+                          <span style={{ color: COLORS.textMuted, fontSize: 11 }}>
+                            ({formatDateGGMM(assegno.data_fattura)})
+                          </span>
+                        )}
+                        {(assegno.fattura_collegata ||
+                          assegno.fatture_collegate?.[0]?.fattura_id) && (
+                          <Button
+                            variant="success"
+                            size="sm"
+                            onClick={() => apriFattura(assegno)}
+                            title="Visualizza Fattura"
+                            data-testid={`view-fattura-${assegno.id}`}
+                          >
+                            📄 Vedi
+                          </Button>
+                        )}
+                      </span>
+                    ) : (
+                      '-'
+                    )
+                  ) : (
+                    <div style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {/* Pulsante per visualizzare fattura in modale in-page */}
+                      {(assegno.fattura_collegata ||
+                        assegno.fatture_collegate?.[0]?.fattura_id) && (
                         <Button
-                          variant="secondary"
+                          variant="success"
+                          size="sm"
+                          onClick={e => {
+                            e.stopPropagation();
+                            apriFattura(assegno);
+                          }}
+                          title="Visualizza Fattura"
+                          data-testid={`view-fattura-${assegno.id}`}
+                        >
+                          📄 Vedi
+                        </Button>
+                      )}
+                      {/* Info fattura */}
+                      <div>
+                        {assegno.numero_fattura && (
+                          <div style={{ color: COLORS.info }}>
+                            Fatt. {assegno.numero_fattura}
+                          </div>
+                        )}
+                        {assegno.data_fattura && (
+                          <div style={{ color: COLORS.textMuted, fontSize: 11 }}>
+                            {formatDateIT(assegno.data_fattura)}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ),
+              },
+              {
+                key: 'azioni',
+                label: 'Azioni',
+                align: 'center',
+                ruoloCard: 'azioni',
+                tdStyle: tdSelezione,
+                render: assegno => (
+                  <RowActions style={{ justifyContent: isMobile ? 'flex-end' : 'center' }}>
+                    {isMobile && (
+                      <input
+                        type="checkbox"
+                        checked={selectedAssegni.has(assegno.id)}
+                        onChange={() => toggleSelectAssegno(assegno.id)}
+                        data-testid={`select-${assegno.id}`}
+                        style={{ width: 18, height: 18, cursor: 'pointer' }}
+                      />
+                    )}
+                    {editingId === assegno.id ? (
+                      <>
+                        <RowActionButton
+                          variant="success"
+                          onClick={handleSaveEdit}
+                          style={{ width: 28, height: 28 }}
+                          title="Salva"
+                        >
+                          ✓
+                        </RowActionButton>
+                        <RowActionButton
+                          variant="danger"
+                          onClick={cancelEdit}
+                          style={{ width: 28, height: 28 }}
+                          title="Annulla"
+                        >
+                          ✕
+                        </RowActionButton>
+                      </>
+                    ) : (
+                      <>
+                        <RowActionButton
+                          variant="neutral"
                           onClick={() => startEdit(assegno)}
-                          style={{ flex: 1 }}
+                          data-testid={`edit-${assegno.id}`}
+                          title="Modifica"
                         >
-                          ✏️ Modifica
-                        </Button>
-                        <Button
-                          variant="info"
+                          ✏️
+                        </RowActionButton>
+                        <RowActionButton
+                          variant="neutral"
                           onClick={() => openFattureModal(assegno)}
-                          style={{ flex: 1 }}
+                          data-testid={`fatture-${assegno.id}`}
+                          title="Collega Fatture"
                         >
-                          📄 Fatture
-                        </Button>
-                        <Button
+                          📄
+                        </RowActionButton>
+                        {/* STAMPA singolo assegno: il carnet è il prefisso
+                            del numero, come in groupByCarnet */}
+                        <RowActionButton
+                          variant="info"
+                          onClick={() => {
+                            const doc = generateCarnetPDF(
+                              assegno.numero?.split('-')[0] || 'Senza Carnet',
+                              [assegno]
+                            );
+                            doc.save(`Assegno_${assegno.numero}.pdf`);
+                          }}
+                          data-testid={`print-${assegno.id}`}
+                          title="Stampa"
+                        >
+                          🖨️
+                        </RowActionButton>
+                        <RowActionButton
                           variant="danger"
                           onClick={() => handleDelete(assegno)}
-                          style={{ minWidth: 44 }}
+                          data-testid={`delete-${assegno.id}`}
                           title="Elimina"
                         >
                           🗑️
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* DESKTOP TABLE VIEW */}
-          <div
-            className="desktop-table-assegni"
-            style={{
-              background: COLORS.card,
-              borderRadius: BORDER_RADIUS.lg,
-              overflow: 'hidden',
-              boxShadow: SHADOWS.md,
-            }}
-          >
-            <div style={{ padding: 16, borderBottom: `1px solid ${COLORS.border}` }}>
-              <h3 style={{ margin: 0 }}>Lista Assegni ({filteredAssegni.length})</h3>
-            </div>
-
-            <TableWrap style={{ border: 'none', borderRadius: 0 }}>
-              <Table>
-                <thead>
-                  <tr>
-                    <Th align="center" style={{ width: 40 }}>
-                      <input
-                        type="checkbox"
-                        checked={
-                          selectedAssegni.size === filteredAssegni.length &&
-                          filteredAssegni.length > 0
-                        }
-                        onChange={toggleSelectAll}
-                        data-testid="select-all-checkbox"
-                        style={{ width: 18, height: 18, cursor: 'pointer' }}
-                        title="Seleziona tutti"
-                      />
-                    </Th>
-                    <Th>N. Assegno</Th>
-                    <Th align="center">Stato</Th>
-                    <Th>Beneficiario / Note</Th>
-                    <Th align="right">Importo</Th>
-                    <Th>Fattura / Data</Th>
-                    <Th align="center">Azioni</Th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {Object.entries(carnets).map(([carnetId, carnetAssegni], carnetIdx) => (
-                    <React.Fragment key={carnetId}>
-                      {carnetAssegni.map((assegno, idx) => (
-                        <tr
-                          key={assegno.id}
-                          style={{
-                            background: selectedAssegni.has(assegno.id) ? COLORS.successLight : COLORS.card,
-                          }}
-                        >
-                          {/* Checkbox selezione */}
-                          <Td align="center">
-                            <input
-                              type="checkbox"
-                              checked={selectedAssegni.has(assegno.id)}
-                              onChange={() => toggleSelectAssegno(assegno.id)}
-                              data-testid={`select-${assegno.id}`}
-                              style={{ width: 18, height: 18, cursor: 'pointer' }}
-                            />
-                          </Td>
-
-                          {/* Numero Assegno */}
-                          <Td>
-                            <span
-                              style={{
-                                fontFamily: 'monospace',
-                                fontWeight: 'bold',
-                                color: COLORS.primaryLight,
-                                fontSize: 13,
-                              }}
-                            >
-                              {assegno.numero}
-                            </span>
-                          </Td>
-
-                          {/* Stato */}
-                          <Td align="center">
-                            <Badge variant={STATI_ASSEGNO[assegno.stato]?.variant || 'neutral'}>
-                              {STATI_ASSEGNO[assegno.stato]?.label || assegno.stato}
-                            </Badge>
-                          </Td>
-
-                          {/* Beneficiario + Note in colonna unica */}
-                          <Td style={{ maxWidth: 250 }}>
-                            {editingId === assegno.id ? (
-                              <Input
-                                type="text"
-                                value={editForm.beneficiario}
-                                onChange={e =>
-                                  setEditForm({ ...editForm, beneficiario: e.target.value })
-                                }
-                                placeholder="Beneficiario"
-                                style={{ padding: 6, fontSize: 12 }}
-                              />
-                            ) : (
-                              <div>
-                                <div style={{ fontWeight: 500, fontSize: 13 }}>
-                                  {assegno.beneficiario ? (
-                                    assegno.beneficiario
-                                  ) : assegno.fornitore_fattura ? (
-                                    <span
-                                      style={{ fontStyle: 'italic', color: COLORS.textMuted }}
-                                      title="Fornitore dedotto dalla fattura collegata"
-                                    >
-                                      → {assegno.fornitore_fattura}
-                                    </span>
-                                  ) : (
-                                    '-'
-                                  )}
-                                </div>
-                                {assegno.note && (
-                                  <div style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 2 }}>
-                                    {assegno.note}
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </Td>
-
-                          {/* Importo */}
-                          <Td align="right">
-                            {editingId === assegno.id ? (
-                              <Input
-                                type="number"
-                                step="0.01"
-                                value={editForm.importo}
-                                onChange={e =>
-                                  setEditForm({
-                                    ...editForm,
-                                    importo: parseFloat(e.target.value) || '',
-                                  })
-                                }
-                                placeholder="0.00"
-                                style={{ padding: 6, width: 80, textAlign: 'right', fontSize: 12 }}
-                              />
-                            ) : (
-                              <span style={{ fontWeight: 'bold', fontSize: 13 }}>
-                                {formatEuro(assegno.importo)}
-                              </span>
-                            )}
-                          </Td>
-
-                          {/* Data + N.Fattura combinati */}
-                          <Td>
-                            {editingId === assegno.id ? (
-                              <div style={{ display: 'flex', gap: 4 }}>
-                                <Input
-                                  type="date"
-                                  value={editForm.data_fattura}
-                                  onChange={e =>
-                                    setEditForm({ ...editForm, data_fattura: e.target.value })
-                                  }
-                                  style={{ padding: 4, fontSize: 11, width: 110 }}
-                                />
-                                <Input
-                                  type="text"
-                                  value={editForm.numero_fattura}
-                                  onChange={e =>
-                                    setEditForm({ ...editForm, numero_fattura: e.target.value })
-                                  }
-                                  placeholder="N.Fatt"
-                                  style={{ padding: 4, fontSize: 11, width: 80 }}
-                                />
-                              </div>
-                            ) : (
-                              <div
-                                style={{
-                                  fontSize: 12,
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: 6,
-                                }}
-                              >
-                                {/* Pulsante per visualizzare fattura in modale in-page */}
-                                {(assegno.fattura_collegata ||
-                                  assegno.fatture_collegate?.[0]?.fattura_id) && (
-                                  <Button
-                                    variant="success"
-                                    size="sm"
-                                    onClick={e => {
-                                      e.stopPropagation();
-                                      setFatturaView({
-                                        id:
-                                          assegno.fattura_collegata ||
-                                          assegno.fatture_collegate?.[0]?.fattura_id,
-                                        numero: assegno.numero_fattura,
-                                      });
-                                    }}
-                                    title="Visualizza Fattura"
-                                    data-testid={`view-fattura-${assegno.id}`}
-                                  >
-                                    📄 Vedi
-                                  </Button>
-                                )}
-                                {/* Info fattura */}
-                                <div>
-                                  {assegno.numero_fattura && (
-                                    <div style={{ color: COLORS.info }}>
-                                      Fatt. {assegno.numero_fattura}
-                                    </div>
-                                  )}
-                                  {assegno.data_fattura && (
-                                    <div style={{ color: COLORS.textMuted, fontSize: 11 }}>
-                                      {formatDateIT(assegno.data_fattura)}
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            )}
-                          </Td>
-
-                          {/* Azioni - STAMPA ed ELIMINA nella stessa riga */}
-                          <Td align="center">
-                            <RowActions style={{ justifyContent: 'center' }}>
-                              {editingId === assegno.id ? (
-                                <>
-                                  <RowActionButton
-                                    variant="success"
-                                    onClick={handleSaveEdit}
-                                    style={{ width: 28, height: 28 }}
-                                    title="Salva"
-                                  >
-                                    ✓
-                                  </RowActionButton>
-                                  <RowActionButton
-                                    variant="danger"
-                                    onClick={cancelEdit}
-                                    style={{ width: 28, height: 28 }}
-                                    title="Annulla"
-                                  >
-                                    ✕
-                                  </RowActionButton>
-                                </>
-                              ) : (
-                                <>
-                                  <RowActionButton
-                                    variant="neutral"
-                                    onClick={() => startEdit(assegno)}
-                                    data-testid={`edit-${assegno.id}`}
-                                    title="Modifica"
-                                  >
-                                    ✏️
-                                  </RowActionButton>
-                                  <RowActionButton
-                                    variant="neutral"
-                                    onClick={() => openFattureModal(assegno)}
-                                    data-testid={`fatture-${assegno.id}`}
-                                    title="Collega Fatture"
-                                  >
-                                    📄
-                                  </RowActionButton>
-                                  {/* STAMPA singolo assegno */}
-                                  <RowActionButton
-                                    variant="info"
-                                    onClick={() => {
-                                      const doc = generateCarnetPDF(carnetId, [assegno]);
-                                      doc.save(`Assegno_${assegno.numero}.pdf`);
-                                    }}
-                                    data-testid={`print-${assegno.id}`}
-                                    title="Stampa"
-                                  >
-                                    🖨️
-                                  </RowActionButton>
-                                  {/* ELIMINA */}
-                                  <RowActionButton
-                                    variant="danger"
-                                    onClick={() => handleDelete(assegno)}
-                                    data-testid={`delete-${assegno.id}`}
-                                    title="Elimina"
-                                  >
-                                    🗑️
-                                  </RowActionButton>
-                                </>
-                              )}
-                            </RowActions>
-                          </Td>
-                        </tr>
-                      ))}
-                    </React.Fragment>
-                  ))}
-                </tbody>
-              </Table>
-            </TableWrap>
-          </div>
-        </>
+                        </RowActionButton>
+                      </>
+                    )}
+                  </RowActions>
+                ),
+              },
+            ]}
+          />
+        </div>
       )}
       {/* Generate Modal */}
       {showGenerate && (
