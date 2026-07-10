@@ -92,6 +92,13 @@ class Settings(BaseSettings):
     GOOGLE_DRIVE_FATTURE_FOLDER_ID: Optional[str] = None  # cartella Drive da cui leggere gli XML
     GOOGLE_DRIVE_SA_FILE: Optional[str] = None            # path al JSON del service account
     GOOGLE_DRIVE_SA_JSON: Optional[str] = None            # oppure il JSON inline (alternativa al file)
+    # Altre cartelle Drive (specifica utente 10-07-2026): gli ID vanno nelle
+    # variabili d'ambiente su Render, MAI nel codice. Stesso service account:
+    # basta condividere ogni cartella con la sua email.
+    GOOGLE_DRIVE_CEDOLINI_FOLDER_ID: Optional[str] = None      # cedolini paga (PDF)
+    GOOGLE_DRIVE_CORRISPETTIVI_FOLDER_ID: Optional[str] = None # corrispettivi RT
+    GOOGLE_DRIVE_QUIETANZE_FOLDER_ID: Optional[str] = None     # quietanze F24
+    GOOGLE_DRIVE_ESTRATTI_FOLDER_ID: Optional[str] = None      # estratti conto
     
     # Telegram
     TELEGRAM_BOT_TOKEN: Optional[str] = None
