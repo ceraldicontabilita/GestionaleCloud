@@ -1563,9 +1563,10 @@ export default function Fornitori() {
     }
   };
 
-  // Mostra estratto fatture fornitore (anno esplicito quando si arriva dal
-  // riepilogo fatturato, altrimenti anno globale)
-  const handleViewInvoicesModal = async (supplier, anno = selectedYear) => {
+  // Mostra estratto fatture fornitore. Default: TUTTI gli anni (richiesta
+  // utente 10/07 — non solo l'anno globale); anno esplicito solo quando si
+  // arriva dal riepilogo fatturato di un anno preciso.
+  const handleViewInvoicesModal = async (supplier, anno = '') => {
     if (!idFornitore(supplier)) {
       alert('Questo fornitore non ha una Partita IVA');
       return;
@@ -1588,7 +1589,7 @@ export default function Fornitori() {
 
     try {
       const res = await api.get(
-        `/api/suppliers/${idFornitore(supplier)}/fatture?anno=${anno}`
+        `/api/suppliers/${idFornitore(supplier)}/fatture${anno ? `?anno=${anno}` : ''}`
       );
       setEstrattoModal(prev => ({ ...prev, data: res.data, loading: false }));
     } catch (error) {
@@ -2599,6 +2600,33 @@ export default function Fornitori() {
                       {estrattoModal.fornitore?.partita_iva}
                     </div>
                   </div>
+                  {/* Toggle magazzino anche da dentro l'estratto (richiesta
+                      utente 10/07): stesso comportamento del badge in lista */}
+                  <Button
+                    variant={estrattoModal.fornitore?.esclude_magazzino ? 'warning' : 'success'}
+                    size="sm"
+                    data-testid="btn-toggle-magazzino-estratto"
+                    onClick={async () => {
+                      const f = estrattoModal.fornitore;
+                      if (!f) return;
+                      const nuovo = !f.esclude_magazzino;
+                      await handleToggleEsclude(idFornitore(f), nuovo);
+                      setEstrattoModal(prev => ({
+                        ...prev,
+                        fornitore: { ...prev.fornitore, esclude_magazzino: nuovo },
+                      }));
+                    }}
+                    title={
+                      estrattoModal.fornitore?.esclude_magazzino
+                        ? 'Click: RIMETTI nel magazzino (le fatture popoleranno le giacenze)'
+                        : 'Click: ESCLUDI dal magazzino (le fatture NON creano carichi)'
+                    }
+                    style={{ marginLeft: 'auto', marginRight: 12 }}
+                  >
+                    {estrattoModal.fornitore?.esclude_magazzino
+                      ? '🚫 Escluso magazzino'
+                      : '📦 In magazzino'}
+                  </Button>
                   <Button
                     variant="ghost"
                     onClick={() => setEstrattoModal(prev => ({ ...prev, open: false }))}

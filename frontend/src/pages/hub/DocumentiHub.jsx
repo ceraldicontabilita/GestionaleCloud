@@ -1,5 +1,5 @@
 import React, { lazy, Suspense, useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { useAnnoGlobale } from '../../contexts/AnnoContext';
 import { useHashState } from '../../hooks/useHashState';
 
@@ -41,9 +41,8 @@ const getTabFromPath = pathname => {
 
 export default function DocumentiHub() {
   const { anno } = useAnnoGlobale();
-  const navigate = useNavigate();
   const location = useLocation();
-  const [error, setError] = useState(null);
+  const [error] = useState(null);
 
   // Deep link: hash riflette il tab attivo — la route PATH è il meccanismo primario
   const initTab = getTabFromPath(location.pathname);
@@ -63,12 +62,6 @@ export default function DocumentiHub() {
     });
   }, [location.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleTabChange = tabId => {
-    setError(null);
-    setHs('tab', tabId);
-    navigate(tabId === 'archivio' ? '/documenti' : `/documenti/${tabId}`);
-  };
-
   const CONTENTS = {
     archivio: ArchivioContent,
     import: ImportContent,
@@ -76,40 +69,9 @@ export default function DocumentiHub() {
 
   return (
     <div style={{ width: '100%' }}>
-      {/* Tab Bar uniforme */}
-      <div
-        style={{
-          display: 'flex',
-          gap: 6,
-          padding: '8px 16px',
-          background: 'white',
-          borderBottom: '1px solid #e2e8f0',
-          borderRadius: '8px 8px 0 0',
-          flexWrap: 'wrap',
-        }}
-      >
-        {TABS.map(tab => (
-          <button
-            key={tab.id}
-            data-testid={`tab-documenti-${tab.id}`}
-            onClick={() => handleTabChange(tab.id)}
-            style={{
-              padding: '7px 13px',
-              borderRadius: 6,
-              border: `1px solid ${activeTab === tab.id ? tab.color : '#e2e8f0'}`,
-              fontWeight: activeTab === tab.id ? 700 : 500,
-              fontSize: 12,
-              cursor: 'pointer',
-              transition: 'all 140ms ease',
-              background: activeTab === tab.id ? tab.color : '#ffffff',
-              color: activeTab === tab.id ? 'white' : '#64748b',
-              boxShadow: activeTab === tab.id ? '0 1px 2px rgba(15,39,68,0.08)' : 'none',
-            }}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      {/* Niente barra tab (richiesta utente 10/07): la pagina Documenti mostra
+          SOLO l'archivio; l'Import Documenti si raggiunge dal menù Altro →
+          Import Documenti (/documenti/import). Le route restano entrambe. */}
 
       {/* Tab Content */}
       <div style={{ padding: '16px 0 0 0' }}>

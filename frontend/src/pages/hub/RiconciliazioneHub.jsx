@@ -69,14 +69,22 @@ export default function RiconciliazioneHub() {
     return <RiconciliazioneContent key={`riconciliazione-${anno}`} />;
   };
 
+  // Pagine "canoniche" senza barra hub (richiesta utente 10/07):
+  // - /riconciliazione/f24 → solo F24, senza bancaria/bonifici/assegni/paypal;
+  // - /riconciliazione/coerenza-pos → solo Coerenza POS.
+  // Ci si arriva dal menù Altro; le altre sezioni hanno le loro voci di menù.
+  const nascondiTabs = path.includes('/f24') || path.includes('/coerenza-pos');
+
   return (
     <div style={{ width: '100%' }}>
-      <HubTabs
-        testIdPrefix="tab-riconciliazione"
-        activeId={activeTab}
-        onSelect={tab => navigate(tab.to)}
-        tabs={tabs}
-      />
+      {!nascondiTabs && (
+        <HubTabs
+          testIdPrefix="tab-riconciliazione"
+          activeId={activeTab}
+          onSelect={tab => navigate(tab.to)}
+          tabs={tabs}
+        />
+      )}
       <Suspense fallback={<Loading />}>{getContent()}</Suspense>
     </div>
   );

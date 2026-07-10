@@ -17,7 +17,6 @@ import {
   CreditCard,
   Landmark,
   Receipt,
-  Wallet,
   Map,
 } from 'lucide-react';
 import api from '../../api';
@@ -41,7 +40,8 @@ const NAV_ITEMS = [
 ];
 
 const ALTRO_ITEMS = [
-  { to: '/fatture/corrispettivi', label: 'Corrispettivi', Icon: Wallet },
+  // Corrispettivi NON è più qui: si raggiunge dal tab "Corrispettivi"
+  // dentro la pagina Fatture (richiesta utente 10/07, un solo posto canonico)
   { to: '/riconciliazione/f24', label: 'F24', Icon: Receipt },
   { to: '/contabilita', label: 'Contabilita', Icon: FileBarChart },
   { to: '/documenti', label: 'Documenti', Icon: BookMarked },

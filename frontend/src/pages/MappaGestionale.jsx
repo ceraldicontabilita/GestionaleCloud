@@ -102,8 +102,9 @@ const AREAS = [
     Icon: FileInput,
     color: '#7c3aed',
     group: 'Ingresso',
-    purpose: 'Porta unica per acquisire, classificare, deduplicare, vedere e riprocessare ogni documento.',
-    pages: ['Import', 'Archivio', 'Da classificare', 'Non associati', 'Reprocessing'],
+    purpose:
+      'Porta unica per acquisire, classificare, deduplicare, vedere e riprocessare ogni documento. Archivio (/documenti) e Import (menù Altro → Import Documenti) sono pagine separate.',
+    pages: ['Archivio (pagina Documenti)', 'Import (Altro → Import Documenti)', 'Da classificare', 'Non associati', 'Reprocessing'],
     inputs: [
       'Fatture XML/P7M da Drive',
       'Corrispettivi XML da Drive',
@@ -159,12 +160,13 @@ const AREAS = [
   {
     id: 'corrispettivi',
     title: 'Corrispettivi / POS',
-    route: '/coerenza-pos',
+    route: '/riconciliazione/coerenza-pos',
     Icon: CreditCard,
     color: '#dc2626',
     group: 'Incassi',
-    purpose: 'Confronta XML, corrispettivo manuale, POS serale e accrediti banca usando il calendario.',
-    pages: ['Giornaliera', 'POS serale', 'Calendario accrediti', 'Riconciliazione cumulativa'],
+    purpose:
+      'Confronta XML, corrispettivo manuale, POS serale e accrediti banca usando il calendario. I corrispettivi si vedono SOLO nel tab Corrispettivi della pagina Fatture; la Coerenza POS è una pagina a sé (Altro → Incassi POS), senza tab di altre sezioni.',
+    pages: ['Corrispettivi (tab in Fatture)', 'POS serale', 'Calendario accrediti', 'Coerenza POS (pagina dedicata)'],
     inputs: ['XML RT', 'Totale manuale', 'POS serale', 'Accrediti banca', 'Giorni lavorativi/festivi'],
     outputs: ['Entrata cassa totale', 'Uscita POS', 'POS atteso banca', 'Slittamenti fisiologici', 'Alert reali'],
     links: ['prima-nota', 'riconciliazione', 'admin', 'controllo'],
@@ -189,8 +191,9 @@ const AREAS = [
     Icon: CheckCircle2,
     color: '#15803d',
     group: 'Chiusura',
-    purpose: 'Collega movimenti reali a fatture, F24, quietanze, cedolini, POS, PayPal, PagoPA e verbali.',
-    pages: ['Banca', 'Fatture', 'F24/quietanze', 'Cedolini', 'POS', 'PayPal', 'Verbali'],
+    purpose:
+      'Collega movimenti reali a fatture, F24, quietanze, cedolini, POS, PayPal, PagoPA e verbali. Gli F24 hanno una pagina dedicata (Altro → F24) che mostra SOLO gli F24.',
+    pages: ['Banca', 'Fatture', 'F24 (pagina dedicata)', 'Cedolini', 'POS', 'PayPal', 'Verbali'],
     inputs: ['Movimenti banca', 'Partite aperte', 'F24', 'Quietanze', 'Cedolini netti', 'POS attesi', 'Verbali'],
     outputs: ['Documenti pagati', 'Residui', 'Alert chiusi', 'Trattenute proposte', 'Partitario aggiornato'],
     links: ['prima-nota', 'fatture', 'fiscale', 'cedolini', 'corrispettivi', 'verbali'],

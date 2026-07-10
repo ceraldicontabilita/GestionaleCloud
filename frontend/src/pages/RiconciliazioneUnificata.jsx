@@ -809,7 +809,12 @@ export default function RiconciliazioneUnificata() {
 
       {/* Tab Navigation — stessa grafica delle barre tab degli hub:
           attivo navy pieno, inattivo bianco con bordo. Su mobile i bottoni
-          riempiono la riga in modo uniforme con font ridotto. */}
+          riempiono la riga in modo uniforme con font ridotto.
+          PAGINA F24 (richiesta utente 10/07): quando si è su /riconciliazione/f24
+          si vedono SOLO gli F24 — niente barra tab (dashboard, banca, stipendi,
+          documenti, PayPal hanno il loro posto altrove) e F24 non compare
+          nemmeno come tab della pagina Riconciliazione. */}
+      {activeTab !== 'f24' && (
       <div
         style={{
           display: 'flex',
@@ -822,7 +827,7 @@ export default function RiconciliazioneUnificata() {
           border: '1px solid #e2e8f0',
         }}
       >
-        {TABS.map(tab => {
+        {TABS.filter(t => t.id !== 'f24').map(tab => {
           const count = tab.id === 'dashboard' ? null : (stats[tab.id] ?? null);
           const attivo = activeTab === tab.id;
           return (
@@ -865,6 +870,7 @@ export default function RiconciliazioneUnificata() {
           );
         })}
       </div>
+      )}
 
       {/* Tab Content */}
       <div

@@ -1,1 +1,0 @@
-import{j as s,v as i,k as o,l as n}from"./index-D_drQ0A5.js";function d({children:r,style:e={},...t}){return s.jsx("select",{style:{padding:"9px 12px",borderRadius:n.sm,border:`1px solid ${o.border}`,fontSize:13,background:o.card,color:o.text,boxSizing:"border-box",outline:"none",cursor:"pointer",fontFamily:i.family,...e},...t,children:r})}export{d as S};

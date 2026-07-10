@@ -14,7 +14,6 @@ import {
   pagePad,
 } from '../lib/utils';
 import { useHashState } from '../hooks/useHashState';
-import { CopyLinkButton } from '../components/CopyLinkButton';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 import ModalFattura from '../components/ModalFattura';
 
@@ -674,20 +673,6 @@ function PrimaNotaDesktop() {
             🗑️ Pulisci duplicati
           </button>
 
-          <button
-            onClick={loadAllData}
-            style={{
-              padding: '6px 12px',
-              background: 'rgba(255,255,255,0.2)',
-              color: 'white',
-              border: '1px solid rgba(255,255,255,0.3)',
-              borderRadius: 6,
-              cursor: 'pointer',
-              fontWeight: '500',
-            }}
-          >
-            🔄
-          </button>
         </div>
       </div>
 
@@ -778,7 +763,6 @@ function PrimaNotaDesktop() {
           <span style={{ fontSize: isMobile ? 15 : 18 }}>⚠️</span>
           PROVVISORI{provvisori.length > 0 ? ` (${provvisori.length})` : ''}
         </button>
-        {!isMobile && <CopyLinkButton style={{ flexShrink: 0 }} />}
       </div>
 
       {/* ===== FATTURE ANNUNCIATE DA EMAIL (in arrivo) ===== */}
