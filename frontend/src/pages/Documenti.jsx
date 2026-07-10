@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { toast } from 'sonner';
-import { formatEuro, formatDateIT, STYLES, COLORS, SHADOWS, BORDER_RADIUS } from '../lib/utils';
+import { formatEuro, formatDateIT, STYLES, COLORS, BORDER_RADIUS } from '../lib/utils';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { PageLayout } from '../components/PageLayout';
+import DocumentViewerModal from '../components/DocumentViewerModal';
 import {
   Button,
   Badge,
@@ -138,7 +139,6 @@ export default function Documenti() {
 
   // PDF Viewer
   const [selectedPdfDoc, setSelectedPdfDoc] = useState(null);
-  const [pdfLoading, setPdfLoading] = useState(false);
 
   // Controlla lo stato del lock email
   const checkEmailLock = async () => {
@@ -397,41 +397,14 @@ export default function Documenti() {
     }
   };
 
-  // Visualizza PDF
-  const handleViewPdf = async doc => {
-    setPdfLoading(true);
-    try {
-      const response = await api.get(`/api/documenti/documento/${doc.id}/download`, {
-        responseType: 'blob',
-      });
-
-      const pdfBlob = new Blob([response.data], { type: 'application/pdf' });
-      const pdfUrl = window.URL.createObjectURL(pdfBlob);
-
-      setSelectedPdfDoc({
-        ...doc,
-        pdfUrl,
-      });
-    } catch (error) {
-      const status = error.response?.status;
-      if (status === 502 || status === 504) {
-        toast.error('Documento non disponibile', {
-          description:
-            'Il documento è troppo grande o il servizio è momentaneamente non disponibile. Riprova tra qualche istante.',
-        });
-      } else {
-        toast.error('Errore visualizzazione', { description: error.message });
-      }
-    } finally {
-      setPdfLoading(false);
-    }
+  // Visualizza PDF: il download del blob, il loading e la revoca dell'URL
+  // sono gestiti dal motore condiviso DocumentViewerModal (fetchUrl).
+  const handleViewPdf = doc => {
+    setSelectedPdfDoc(doc);
   };
 
   // Chiudi PDF Viewer
   const closePdfViewer = () => {
-    if (selectedPdfDoc?.pdfUrl) {
-      window.URL.revokeObjectURL(selectedPdfDoc.pdfUrl);
-    }
     setSelectedPdfDoc(null);
   };
 
@@ -1061,7 +1034,6 @@ export default function Documenti() {
                                 variant="info"
                                 size="sm"
                                 onClick={() => handleViewPdf(doc)}
-                                disabled={pdfLoading}
                                 title="Visualizza PDF"
                                 data-testid={`view-pdf-${doc.id}`}
                               >
@@ -1510,80 +1482,18 @@ export default function Documenti() {
         </div>
       ) : null}
 
-      {/* PDF Viewer Modal */}
+      {/* PDF Viewer Modal — motore condiviso "Vedi Documento" */}
       {selectedPdfDoc && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(15,39,68,0.7)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000,
-            padding: 20,
-          }}
-          onClick={closePdfViewer}
-        >
-          <div
-            style={{
-              background: COLORS.card,
-              borderRadius: BORDER_RADIUS.lg,
-              width: '90%',
-              maxWidth: 1000,
-              height: '90vh',
-              display: 'flex',
-              flexDirection: 'column',
-              overflow: 'hidden',
-              boxShadow: SHADOWS.modal,
-            }}
-            onClick={e => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div
-              style={{
-                padding: '12px 20px',
-                borderBottom: `1px solid ${COLORS.border}`,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                background: COLORS.bgAlt,
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 20 }}>📄</span>
-                <div>
-                  <div style={{ fontWeight: 600, color: COLORS.text }}>{selectedPdfDoc.filename}</div>
-                  <div style={{ fontSize: 12, color: COLORS.textMuted }}>
-                    {CATEGORY_COLORS[selectedPdfDoc.category]?.label || selectedPdfDoc.category}
-                    {selectedPdfDoc.file_size && ` • ${formatBytes(selectedPdfDoc.file_size)}`}
-                  </div>
-                </div>
-              </div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <Button variant="primary" size="sm" onClick={() => handleDownloadFile(selectedPdfDoc)}>
-                  📥 Scarica
-                </Button>
-                <Button variant="secondary" size="sm" onClick={closePdfViewer} style={{ fontSize: 18 }}>
-                  ✕
-                </Button>
-              </div>
-            </div>
-
-            {/* PDF Content */}
-            <div style={{ flex: 1, background: '#525659' }}>
-              <iframe
-                src={selectedPdfDoc.pdfUrl}
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  border: 'none',
-                }}
-                title={selectedPdfDoc.filename}
-              />
-            </div>
-          </div>
-        </div>
+        <DocumentViewerModal
+          title={`📄 ${selectedPdfDoc.filename}`}
+          subtitle={`${CATEGORY_COLORS[selectedPdfDoc.category]?.label || selectedPdfDoc.category}${
+            selectedPdfDoc.file_size ? ` • ${formatBytes(selectedPdfDoc.file_size)}` : ''
+          }`}
+          fetchUrl={`/api/documenti/documento/${selectedPdfDoc.id}/download`}
+          onClose={closePdfViewer}
+          onDownload={() => handleDownloadFile(selectedPdfDoc)}
+          maxWidth={1000}
+        />
       )}
     </PageLayout>
   );

@@ -1,8 +1,15 @@
 {
   "nome_popup": "ModalFattura (componente condiviso)",
-  "file_sorgente": "frontend/src/components/ModalFattura.jsx (110 righe, componente riusabile)",
+  "file_sorgente": "frontend/src/components/ModalFattura.jsx — dal 2026-07 è un wrapper sottile sul motore condiviso frontend/src/components/DocumentViewerModal.jsx (unico punto di verità per il pattern 'Vedi Documento': overlay, header navy, ESC/overlay/✕ per chiudere, iframe; supporta sia src diretto sia fetchUrl blob via API). Stessi data-testid di sempre (modal-fattura-overlay, modal-fattura-close).",
   "pagine_da_cui_si_apre": [
-    "NOTA IMPORTANTE verificata nel codice sorgente (grep su tutto frontend/src): ad oggi l'unico punto della UI che importa e monta effettivamente <ModalFattura /> è frontend/src/pages/GestioneAssegni.jsx (riga 9 import, riga 3736 utilizzo) — una pagina che NON fa parte del gruppo Prima Nota / Fatture / Corrispettivi / Fornitori oggetto di questo audit. Il componente NON risulta importato né in ArchivioFattureRicevute.jsx, né in Corrispettivi.jsx, né in Fornitori.jsx, né in PrimaNota.jsx: la documentazione preesistente (memoria/pagine/fatture.json) che lo descriveva come 'usato da Scadenze, Prima Nota Provvisori, Fornitori' non trova riscontro nel codice attuale ed è quindi obsoleta/imprecisa su questo punto. Viene comunque documentato qui in quanto componente architetturalmente condiviso e riferito esplicitamente nella documentazione della pagina Fatture."
+    "ArchivioBonifici.jsx",
+    "ArchivioFattureRicevute.jsx",
+    "GestioneAssegni.jsx",
+    "NoleggioAuto.jsx",
+    "PrimaNota.jsx",
+    "RiconciliazionePaypal.jsx",
+    "Scadenze.jsx",
+    "(più il wrapper components/InvoiceXMLViewer.jsx). Il modale PDF generico di Documenti.jsx (F24, cedolini, estratti conto, quietanze...) usa direttamente DocumentViewerModal in modalità fetchUrl: prima era un'implementazione inline duplicata e scollegata."
   ],
   "come_si_apre": "In GestioneAssegni.jsx: viene montato condizionalmente con {fatturaView && <ModalFattura .../>} quando lo stato locale fatturaView (oggetto {id, numero}) viene valorizzato da un click su una riga/azione 'vedi fattura' collegata a un assegno (il modale riceve fatturaId=fatturaView.id, numero=fatturaView.numero).",
   "scopo": "Mostra il documento di una fattura (vista AssoInvoice) DENTRO la pagina corrente tramite un iframe, invece di aprire una nuova scheda del browser come fa invece il link statico 'Vedi' presente in ArchivioFattureRicevute.jsx. Serve per non far perdere all'utente il contesto/stato della pagina chiamante (es. la selezione fatture in corso in GestioneAssegni.jsx) mentre consulta il documento.",
