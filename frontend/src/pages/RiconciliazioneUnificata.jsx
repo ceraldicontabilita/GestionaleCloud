@@ -4,6 +4,7 @@ import api from '../api';
 import {
   formatEuro,
   formatDateIT,
+  formatDateGGMM,
   STYLES,
   COLORS,
   button,
@@ -12,6 +13,7 @@ import {
   RG,
   pagePad,
 } from '../lib/utils';
+import { ListaAdattiva } from '../components/ds';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 import { toast } from 'sonner';
@@ -885,6 +887,7 @@ export default function RiconciliazioneUnificata() {
             processing={processing}
             title="Movimenti Bancari"
             emptyText="Tutti i movimenti sono stati riconciliati"
+            vistaLista
           />
         )}
         {activeTab === 'assegni' && (
@@ -1030,7 +1033,12 @@ function MovimentiTab({
   title,
   emptyText,
   showFattura,
+  // vistaLista: solo la tab Banca usa ListaAdattiva (tabella su desktop,
+  // card compatte su mobile); le altre tab restano su MovimentoCard.
+  vistaLista = false,
 }) {
+  const isMobile = useIsMobile();
+
   if (movimenti.length === 0) {
     return (
       <div style={{ padding: 60, textAlign: 'center', color: '#94a3b8' }}>
@@ -1040,6 +1048,77 @@ function MovimentiTab({
     );
   }
 
+  // Azioni per riga: stessi bottoni (e stili) di MovimentoCard
+  const renderAzioni = m => {
+    const inCorso = processing === m.movimento_id || processing === m.id;
+    return (
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+        <button
+          onClick={() => onConferma(m)}
+          disabled={inCorso}
+          style={{
+            padding: '8px 16px',
+            minHeight: 40,
+            background: '#0f2744',
+            color: 'white',
+            border: 'none',
+            borderRadius: 6,
+            fontWeight: 600,
+            cursor: 'pointer',
+            fontSize: 13,
+          }}
+        >
+          {inCorso ? '⏳' : '✓'} Conferma
+        </button>
+        <button
+          onClick={() => onIgnora(m)}
+          disabled={inCorso}
+          style={{
+            padding: '8px 12px',
+            minHeight: 40,
+            minWidth: 40,
+            background: 'white',
+            color: '#64748b',
+            border: '1px solid #e2e8f0',
+            borderRadius: 6,
+            cursor: 'pointer',
+            fontSize: 13,
+          }}
+        >
+          ✕
+        </button>
+        {onElimina && (
+          <button
+            onClick={() => onElimina(m)}
+            disabled={inCorso}
+            data-testid="btn-elimina-movimento"
+            title="Elimina definitivamente"
+            style={{
+              padding: '8px 12px',
+              minHeight: 40,
+              minWidth: 40,
+              background: '#fee2e2',
+              color: '#dc2626',
+              border: 'none',
+              borderRadius: 6,
+              cursor: 'pointer',
+              fontSize: 13,
+            }}
+          >
+            🗑️
+          </button>
+        )}
+      </div>
+    );
+  };
+
+  const nominativoDi = m =>
+    m.ragione_sociale ||
+    m.fornitore ||
+    m.dipendente?.nome_completo ||
+    m.dipendente ||
+    m.nome_estratto;
+
   return (
     <div>
       <div style={{ padding: 16, background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
@@ -1047,19 +1126,190 @@ function MovimentiTab({
           {title} ({movimenti.length})
         </h3>
       </div>
-      <div>
-        {movimenti.map((m, idx) => (
-          <MovimentoCard
-            key={m.movimento_id || m.id || idx}
-            movimento={m}
-            onConferma={onConferma}
-            onIgnora={onIgnora}
-            onElimina={onElimina}
-            processing={processing === m.movimento_id || processing === m.id}
-            showFattura={showFattura}
+      {vistaLista ? (
+        <div style={{ padding: isMobile ? '0 10px 10px' : 0 }}>
+          {/* pageSize alto (200): la paginazione vera resta quella lato server
+              ("Carica altri" sotto il tab, currentLimit/hasMore) — così la barra
+              interna di ListaAdattiva non si sovrappone finché non superiamo
+              200 righe caricate. */}
+          <ListaAdattiva
+            testId="movimenti-banca-lista"
+            dati={movimenti}
+            pageSize={200}
+            chiave={(m, i) => m.movimento_id || m.id || i}
+            colonne={[
+              {
+                key: 'data',
+                label: 'Data',
+                ruoloCard: 'dettaglio',
+                iconaCard: '📅',
+                // Su mobile solo giorno/mese (l'anno è nel selettore globale)
+                render: m => {
+                  const d = m.data || m.data_emissione;
+                  if (!d) return 'Data N/D';
+                  return isMobile ? formatDateGGMM(d) : formatDateIT(d);
+                },
+                tdStyle: { whiteSpace: 'nowrap', fontSize: 13 },
+              },
+              {
+                key: 'nominativo',
+                label: 'Nominativo',
+                ruoloCard: 'sottotitolo',
+                render: m => nominativoDi(m) || '-',
+                tdStyle: { fontWeight: 700, color: '#1e293b', fontSize: 13 },
+              },
+              {
+                key: 'descrizione',
+                label: 'Descrizione',
+                ruoloCard: 'titolo',
+                render: m => {
+                  const desc =
+                    m.descrizione?.substring(0, 100) ||
+                    m.descrizione_originale?.substring(0, 100) ||
+                    '-';
+                  if (isMobile) return desc.substring(0, 60);
+                  const numeroFattura = m.numero_fattura || m.fattura_collegata;
+                  return (
+                    <div>
+                      <div style={{ fontSize: 12, color: '#94a3b8', fontWeight: 400 }}>{desc}</div>
+                      {m.periodo && (
+                        <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+                          Periodo: {m.periodo || m.mese_riferimento}
+                        </div>
+                      )}
+                      {numeroFattura && (
+                        <div style={{ fontSize: 11, color: '#3b82f6', marginTop: 2 }}>
+                          📄 Fattura: {numeroFattura}
+                        </div>
+                      )}
+                      {m.beneficiario && (
+                        <div style={{ fontSize: 11, color: '#d97706', marginTop: 2 }}>
+                          👤 Beneficiario: {m.beneficiario}
+                        </div>
+                      )}
+                    </div>
+                  );
+                },
+              },
+              {
+                key: 'stato',
+                label: 'Stato',
+                ruoloCard: 'dettaglio',
+                render: m => {
+                  const sugg = m.suggerimenti?.[0];
+                  const hasMatch = m.associazione_automatica && sugg;
+                  const datiIncompleti = m.dati_incompleti || m.stato === 'vuoto';
+                  if (hasMatch) {
+                    return (
+                      <span
+                        style={{
+                          padding: '2px 8px',
+                          background: '#dcfce7',
+                          color: '#16a34a',
+                          borderRadius: 6,
+                          fontSize: 11,
+                          fontWeight: 600,
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        ✅ Match:{' '}
+                        {sugg.fornitore || sugg.nome || sugg.dipendente || 'Match'}{' '}
+                        {formatEuro(sugg.importo || 0)}
+                      </span>
+                    );
+                  }
+                  if (datiIncompleti) {
+                    return (
+                      <span
+                        style={{
+                          padding: '2px 8px',
+                          background: '#fef3c7',
+                          color: '#92400e',
+                          borderRadius: 6,
+                          fontSize: 11,
+                          fontWeight: 600,
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        ⚠️ Dati incompleti
+                      </span>
+                    );
+                  }
+                  return (
+                    <span
+                      style={{
+                        padding: '2px 8px',
+                        background: '#f1f5f9',
+                        color: '#64748b',
+                        borderRadius: 6,
+                        fontSize: 11,
+                        fontWeight: 600,
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      Da riconciliare
+                    </span>
+                  );
+                },
+              },
+              {
+                key: 'importo',
+                label: 'Importo',
+                align: 'right',
+                mono: true,
+                ruoloCard: 'importo',
+                render: m => (
+                  <span
+                    style={{
+                      color: m.importo < 0 ? '#dc2626' : '#16a34a',
+                      fontWeight: 700,
+                      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {/* Su mobile il segno rende esplicito entrata/uscita;
+                        su desktop resta il valore assoluto come prima */}
+                    {isMobile
+                      ? `${m.importo < 0 ? '-' : '+'}${formatEuro(Math.abs(m.importo || 0))}`
+                      : m.importo
+                        ? formatEuro(Math.abs(m.importo))
+                        : '€ 0,00'}
+                  </span>
+                ),
+              },
+              {
+                key: 'movimento_id',
+                label: 'ID',
+                mono: true,
+                ruoloCard: 'omesso',
+                render: m => m.movimento_id || m.id || '-',
+                tdStyle: { fontSize: 11, color: '#94a3b8' },
+              },
+              {
+                key: 'azioni',
+                label: 'Azioni',
+                align: 'center',
+                ruoloCard: 'azioni',
+                render: renderAzioni,
+              },
+            ]}
           />
-        ))}
-      </div>
+        </div>
+      ) : (
+        <div>
+          {movimenti.map((m, idx) => (
+            <MovimentoCard
+              key={m.movimento_id || m.id || idx}
+              movimento={m}
+              onConferma={onConferma}
+              onIgnora={onIgnora}
+              onElimina={onElimina}
+              processing={processing === m.movimento_id || processing === m.id}
+              showFattura={showFattura}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
