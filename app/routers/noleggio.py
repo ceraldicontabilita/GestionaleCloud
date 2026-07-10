@@ -657,8 +657,12 @@ async def get_riepilogo_controlli(
         reverse=True,
     )
 
-    # ── 2) Trattenute dipendenti da confermare (stato 'proposta' o assente) ──
-    query_trattenute = {"$or": [{"stato": "proposta"}, {"stato": None}]}
+    # ── 2) Trattenute dipendenti da confermare: stato 'proposta', il
+    # legacy 'da_applicare' (record pre-ciclo di vita) o assente ──
+    query_trattenute = {"$or": [
+        {"stato": {"$in": ["proposta", "da_applicare"]}},
+        {"stato": None},
+    ]}
     proiezione_trattenute = {
         "_id": 0, "id": 1, "dipendente_id": 1, "dipendente_nome": 1, "importo": 1,
         "descrizione": 1, "mese": 1, "anno": 1, "numero_verbale": 1, "targa": 1, "stato": 1,

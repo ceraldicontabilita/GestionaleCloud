@@ -471,37 +471,44 @@ async def _crea_trattenuta_verbale(
     data_pagamento: str
 ) -> None:
     """
-    Crea una trattenuta sulla busta paga del dipendente driver per il verbale pagato.
+    Crea una PROPOSTA di trattenuta sulla busta paga del dipendente driver
+    per il verbale pagato (ciclo di vita: proposta → confermata → ...).
     """
     try:
-        # Determina mese/anno della trattenuta (mese successivo al pagamento)
-        try:
-            dt = datetime.fromisoformat(data_pagamento.replace('Z', '+00:00'))
-        except Exception:
-            dt = datetime.now(timezone.utc)
-        
-        mese_trattenuta = dt.month + 1 if dt.month < 12 else 1
-        anno_trattenuta = dt.year if dt.month < 12 else dt.year + 1
-        
-        trattenuta = {
-            "id": str(uuid.uuid4()),
-            "dipendente_id": verbale["driver_id"],
-            "dipendente_nome": verbale.get("driver", ""),
-            "tipo": "verbale_multa",
-            "descrizione": f"Verbale {verbale.get('numero_verbale', '')} - Targa {verbale.get('targa', '')}",
-            "importo": abs(verbale.get("importo", 0)),
-            "mese": mese_trattenuta,
-            "anno": anno_trattenuta,
-            "verbale_id": verbale["id"],
-            "numero_verbale": verbale.get("numero_verbale"),
-            "data_verbale": verbale.get("data_verbale"),
-            "data_pagamento": data_pagamento,
-            "targa": verbale.get("targa"),
-            "stato": "da_applicare",
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        }
-        
+        from app.services.trattenute_verbali_service import (
+            costruisci_trattenuta_da_verbale, mese_successivo,
+        )
+
+        # Record completo del ciclo di vita (stato iniziale: proposta)
+        trattenuta = await costruisci_trattenuta_da_verbale(
+            db, verbale,
+            data_pagamento=data_pagamento,
+            importo_pagato=abs(verbale.get("importo", 0)),
+            fonte="pipeline_quietanze",
+        )
+        # Compat legacy: mese/anno numerici del mese cedolino suggerito
+        periodo = trattenuta.get("mese_cedolino_suggerito") or mese_successivo(
+            datetime.now(timezone.utc)
+        )
+        anno_trattenuta, mese_trattenuta = (int(x) for x in periodo.split("-"))
+        trattenuta["mese"] = mese_trattenuta
+        trattenuta["anno"] = anno_trattenuta
+        trattenuta["data_verbale"] = verbale.get("data_verbale")
+
         await db["trattenute_dipendenti"].insert_one(trattenuta)
+
+        from app.services.audit_logger import log_evento
+        await log_evento(
+            modulo="trattenute_verbali", azione="proposta_creata",
+            entita_id=trattenuta["id"], entita_collection="trattenute_dipendenti",
+            db=db, nuovo_stato={"stato": trattenuta["stato"]},
+            fonte="pipeline_quietanze",
+            dettaglio=(
+                f"Proposta trattenuta per verbale {verbale.get('numero_verbale','')} "
+                f"— €{trattenuta['importo_da_recuperare']:.2f}, "
+                f"cedolino suggerito {trattenuta['mese_cedolino_suggerito']}"
+            ),
+        )
         
         # Aggiorna verbale
         await db["verbali_noleggio"].update_one(

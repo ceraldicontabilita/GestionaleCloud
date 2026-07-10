@@ -204,6 +204,12 @@ ALERT_CATALOG: Dict[str, Dict[str, Any]] = {
         "titolo": "Incoerenza tra cedolino e presenze",
         "condizione_chiusura": "Differenza spiegata"
     },
+    "TRATTENUTA_NON_IN_CEDOLINO": {
+        "modulo": "cedolini",
+        "severita": "warning",
+        "titolo": "Trattenuta verbale non trovata nel cedolino",
+        "condizione_chiusura": "Trattenuta trovata in un cedolino successivo o gestita dall'utente"
+    },
     
     # --- Dipendenti ---
     "DIP_INCOMPLETO": {

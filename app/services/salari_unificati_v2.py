@@ -459,6 +459,10 @@ async def processa_cedolino_v2(
                 "mese": int(mese),
                 "anno": int(anno),
                 "tipo_cedolino": cedolino_data.get("tipo_cedolino", "mensile"),
+                # Testo grezzo del PDF: usato dal handler per verificare la
+                # presenza delle voci di trattenuta verbale (evento in-memory,
+                # non viene persistito).
+                "pdf_text": pdf_text or "",
             }, db, source_module="cedolini_manager_v2")
         except Exception:
             logger.exception("Errore propagazione cedolino.importato (canale D V2)")

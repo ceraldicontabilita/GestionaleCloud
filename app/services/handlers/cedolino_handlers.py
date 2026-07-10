@@ -82,6 +82,21 @@ async def on_cedolino_importato(event: Dict[str, Any], db) -> Optional[Dict]:
         if partita:
             risultati.append("partita_stipendio_creata")
 
+    # Verifica trattenute verbali attese in questo cedolino: se il dipendente
+    # ha trattenute comunicate al consulente per questo mese, controlla che la
+    # voce di trattenuta compaia nel testo/voci del cedolino (recuperata_in_busta)
+    # oppure alza l'alert TRATTENUTA_NON_IN_CEDOLINO. Best-effort: non deve
+    # MAI bloccare l'import del cedolino.
+    try:
+        from app.services.trattenute_verbali_service import verifica_trattenute_cedolino
+        esito_trattenute = await verifica_trattenute_cedolino(event, db)
+        if esito_trattenute.get("recuperate"):
+            risultati.append(f"trattenute_recuperate:{esito_trattenute['recuperate']}")
+        if esito_trattenute.get("non_trovate"):
+            risultati.append(f"trattenute_non_trovate:{esito_trattenute['non_trovate']}")
+    except Exception:
+        logger.exception(f"Errore verifica trattenute verbali per cedolino {cedolino_id}")
+
     # Alert dati economici incompleti
     if not netto and tipo_cedolino not in ("solo_trattenute", "sospensione"):
         await genera_alert(

@@ -287,6 +287,27 @@ con un conducente assegnato, e il pagamento risulta fatto dalla società, il sis
 
 Se il cedolino atteso non arriva, avviso dedicato.
 
+**Ciclo di vita della trattenuta** (endpoint `/api/trattenute-verbali`): stati
+`proposta → confermata → comunicata_consulente → in_attesa_cedolino →
+recuperata_in_busta | non_trovata_nel_cedolino | esclusa | da_verificare`.
+
+- La proposta nasce quando il pagamento della società risulta accertato
+  (upload quietanza manuale o pipeline quietanze email); il mese cedolino
+  suggerito è **il mese successivo al pagamento** (formato AAAA-MM).
+- **Conferma** = sempre tua, con mese cedolino esplicito; puoi anche
+  **rimandare** a un altro mese (da proposta/confermata) o **escludere**
+  con motivo. Ogni passaggio finisce nell'audit log.
+- All'import del cedolino del mese atteso il sistema cerca nel testo le voci
+  "trattenuta verbale", "multa", "recupero verbale", "trattenuta dipendente",
+  "addebito auto" (maiuscole/minuscole indifferenti): se trovata, la trattenuta
+  passa a `recuperata_in_busta` e il verbale viene marcato recuperato; se il
+  cedolino arriva **senza** la voce scatta l'avviso "Trattenuta verbale non
+  trovata nel cedolino" e lo stato `non_trovata_nel_cedolino`. Il controllo è
+  best-effort: non blocca mai l'import del cedolino.
+- **Report per il consulente**: `/api/trattenute-verbali/report-consulente`
+  esporta in Excel dipendente, matricola, codice fiscale, targa, numero
+  verbale, data infrazione, importi, mese cedolino suggerito, stato e nota.
+
 **Veicoli**: anagrafica gestita a mano (targa, marca, modello, conducente, stato
 contratto attivo/cessato).
 

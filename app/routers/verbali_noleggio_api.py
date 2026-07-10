@@ -266,16 +266,32 @@ async def upload_quietanza_verbale(verbale_id: str, data: Dict[str, Any] = Body(
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
         await db["note_presenze_consulente"].insert_one(nota)
-        
-        # Anche in trattenute_dipendenti
-        await db["trattenute_dipendenti"].insert_one({
-            **nota,
-            "tipo": "verbale_multa",
-            "stato": "da_applicare",
-            "numero_verbale": verbale.get("numero_verbale"),
-            "targa": verbale.get("targa"),
-        })
-    
+
+        # Anche in trattenute_dipendenti: PROPOSTA di trattenuta con il
+        # ciclo di vita completo (proposta → confermata → comunicata → ...).
+        from app.services.trattenute_verbali_service import costruisci_trattenuta_da_verbale
+        verbale_aggiornato = {**verbale, **update}
+        trattenuta = await costruisci_trattenuta_da_verbale(
+            db, verbale_aggiornato,
+            data_pagamento=data.get("data_pagamento"),
+            importo_pagato=float(data.get("importo_pagato", 0)),
+            fonte="upload_quietanza_manuale",
+        )
+        await db["trattenute_dipendenti"].insert_one(trattenuta)
+
+        from app.services.audit_logger import log_evento
+        await log_evento(
+            modulo="trattenute_verbali", azione="proposta_creata",
+            entita_id=trattenuta["id"], entita_collection="trattenute_dipendenti",
+            db=db, nuovo_stato={"stato": trattenuta["stato"]},
+            fonte="upload_quietanza_manuale",
+            dettaglio=(
+                f"Proposta trattenuta per verbale {verbale.get('numero_verbale','')} "
+                f"— €{trattenuta['importo_da_recuperare']:.2f}, "
+                f"cedolino suggerito {trattenuta['mese_cedolino_suggerito']}"
+            ),
+        )
+
     return {"success": True, "message": f"Quietanza caricata per verbale {verbale.get('numero_verbale','')}"}
 
 
