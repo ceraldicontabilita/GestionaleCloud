@@ -51,7 +51,7 @@ Altre garanzie trasversali:
 | Corrispettivi RT | Google Drive (XML del registratore telematico) | ogni ora |
 | Estratti conto | Google Drive (CSV/Excel Banco BPM) | ogni ora (oggi spento, in attesa di validazione) |
 | Quietanze F24 | Google Drive (PDF) | ogni ora (oggi spento) |
-| Cedolini | **Email** da Studio Ferrantini (mittenti attendibili) | ogni ora (attivo) |
+| Cedolini | **Email** da mittenti attendibili + **cartella Drive cedolini paga** (PDF) | ogni ora (attivo) |
 | F24 commercialista | Email da mittenti attendibili | ogni ora (oggi spento) |
 | Verbali/multe | Email da mittenti attendibili | ogni ora (oggi spento) |
 | Avvisi fattura in arrivo | **Email** da noreply@fatturazioneelettronica.aruba.it | ogni ora (attivo, solo dall'attivazione in avanti) |
@@ -235,6 +235,10 @@ F24 risulta pagato solo quando gli viene collegata una quietanza.
 - I cedolini (Libro Unico, formato Zucchetti) arrivano **via email** dallo Studio
   Ferrantini (mittenti attendibili configurati; canale attivo). Il PDF viene anche
   archiviato in copia su Drive.
+- In alternativa i PDF possono essere messi nella **cartella Drive dei cedolini
+  paga**: ogni ora il sistema li scarica, li deduplica per hash (stessi controlli
+  dei cedolini email) e li immette nella stessa pipeline di elaborazione; i file
+  lavorati vengono spostati nella sottocartella Drive `Elaborate`.
 - Il parser estrae: dati anagrafici, periodo, netto, lordo, competenze, trattenute,
   IRPEF, contributi, TFR, ferie/permessi, tredicesima/quattordicesima, presenze
   giornaliere, ecc.
@@ -304,6 +308,15 @@ recuperata_in_busta | non_trovata_nel_cedolino | esclusa | da_verificare`.
   cedolino arriva **senza** la voce scatta l'avviso "Trattenuta verbale non
   trovata nel cedolino" e lo stato `non_trovata_nel_cedolino`. Il controllo è
   best-effort: non blocca mai l'import del cedolino.
+- La verifica **non guarda solo il cedolino appena importato**: un ripescaggio
+  giornaliero (ore 8:30) riesamina i **cedolini vecchi già archiviati** nel
+  gestionale (arrivati da posta o Drive in qualsiasi momento) per le trattenute
+  confermate/comunicate/in attesa, cercando la voce nei cedolini dal mese
+  suggerito in poi, con le stesse regole e gli stessi avvisi del controllo
+  all'import. Se il cedolino del mese atteso non è ancora in archivio, la
+  trattenuta resta com'è. Lancio manuale:
+  `POST /api/trattenute-verbali/retro-verifica`. Nessun dato viene mai
+  cancellato.
 - **Report per il consulente**: `/api/trattenute-verbali/report-consulente`
   esporta in Excel dipendente, matricola, codice fiscale, targa, numero
   verbale, data infrazione, importi, mese cedolino suggerito, stato e nota.

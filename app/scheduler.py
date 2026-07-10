@@ -489,6 +489,16 @@ def start_scheduler():
         except Exception as e:
             logger.error(f"[SCHEDULER-DRIVE-FATTURE] errore: {e}")
 
+    # ── Google Drive: import cedolini paga (PDF) ogni ora ──────────────────
+    async def _drive_cedolini_job():
+        from app.database import Database
+        from app.services import drive_cedolini_ingest
+        try:
+            result = await drive_cedolini_ingest.sync(Database.get_db())
+            logger.info(f"[SCHEDULER-DRIVE-CEDOLINI] {result}")
+        except Exception as e:
+            logger.error(f"[SCHEDULER-DRIVE-CEDOLINI] errore: {e}")
+
     # ── Automazioni Prima Nota: le ex funzioni "manuali" girano da sole ────
     # 1. corrispettivi → prima nota cassa (idempotente)
     # 2. fatture provvisorie → cassa/banca secondo il metodo fornitore
@@ -551,6 +561,13 @@ def start_scheduler():
         'interval', minutes=15,
         next_run_time=datetime.now(),
         id="drive_fatture_ingest", name="Import Fatture da Google Drive (ogni 15 min + al riavvio)",
+        replace_existing=True,
+    )
+
+    scheduler.add_job(
+        _drive_cedolini_job,
+        'interval', hours=1,
+        id="drive_cedolini_ingest", name="Import Cedolini da Google Drive (ogni ora)",
         replace_existing=True,
     )
 
@@ -658,7 +675,31 @@ def start_scheduler():
         name="Controllo Scadenze F24 (ogni giorno ore 8:00)",
         replace_existing=True
     )
-    
+
+    # Task Verifica retroattiva trattenute verbali - ogni giorno alle 8:30.
+    # Ripesca i cedolini GIÀ archiviati (posta/Drive, in qualsiasi momento):
+    # per le trattenute confermate/comunicate/in attesa cerca la voce di
+    # trattenuta nei cedolini con periodo >= mese suggerito e applica le
+    # stesse transizioni del percorso on-import (recuperata_in_busta /
+    # non_trovata_nel_cedolino + alert). Idempotente, nessuna cancellazione.
+    async def verifica_trattenute_retro_task():
+        try:
+            from app.services.trattenute_verbali_service import verifica_trattenute_retroattiva
+            from app.database import Database
+            r = await verifica_trattenute_retroattiva(Database.get_db())
+            logger.info(f"[SCHEDULER-TRATTENUTE] verifica retroattiva: {r}")
+        except Exception as e:
+            logger.error(f"[SCHEDULER-TRATTENUTE] errore verifica retroattiva: {e}")
+
+    scheduler.add_job(
+        verifica_trattenute_retro_task,
+        CronTrigger(hour=8, minute=30),
+        id="verifica_trattenute_retro",
+        name="Verifica retroattiva trattenute verbali nei cedolini (ogni giorno ore 8:30)",
+        replace_existing=True
+    )
+
+
     # Task Scadenze F24 - anche alle 14:00 come reminder pomeridiano
     scheduler.add_job(
         check_scadenze_f24_task,
