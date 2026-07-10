@@ -16,7 +16,16 @@ locali senza cambiare il risultato per nessun chiamante esistente:
   valore assoluto, altri devono preservare gli importi negativi)
 - puo' rimuovere i suffissi "h"/"hm" usati nei giustificativi presenze
   (es. "8,66hm" = ore)
+- riconosce il punto usato SOLO come separatore migliaia senza virgola
+  decimale ("1.234" = milleduecentotrentaquattro, "12.345.678"): se ogni
+  gruppo dopo il primo punto e' di esattamente 3 cifre, i punti vengono
+  rimossi come migliaia (comportamento storico dei parser F24 ed estratto
+  conto, dove il formato e' sempre italiano)
 """
+import re
+
+# "1.234", "12.345.678": punto solo come separatore migliaia, nessuna virgola
+_SOLO_MIGLIAIA = re.compile(r'^[+-]?\d{1,3}(\.\d{3})+$')
 
 
 def parse_importo_ita(value, *, default: float = 0.0, keep_sign: bool = True,
@@ -47,6 +56,9 @@ def parse_importo_ita(value, *, default: float = 0.0, keep_sign: bool = True,
             s = s.replace(',', '')
     elif ',' in s:
         s = s.replace(',', '.')
+    elif _SOLO_MIGLIAIA.match(s):
+        # solo punti in posizione migliaia, niente virgola: "1.234" -> 1234
+        s = s.replace('.', '')
 
     try:
         result = float(s)

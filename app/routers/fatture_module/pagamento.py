@@ -305,9 +305,10 @@ async def aggiorna_metodi_pagamento_da_fornitori() -> Dict[str, Any]:
         {"_id": 0, "id": 1, "fornitore_partita_iva": 1, "supplier_vat": 1, "fornitore_piva": 1}
     ).to_list(10000)
     
+    from app.engines.prima_nota_engine import normalizza_metodo_pagamento
+
     aggiornate = 0
     riconciliate = 0
-    METODI_BANCA = {"banca", "bonifico", "sepa", "bonifico bancario", "bonif.", "mp05", "mp19"}
 
     # OTTIMIZZAZIONE: carica TUTTI i fornitori in una sola query (no N+1)
     pive_necessarie = set()
@@ -349,8 +350,8 @@ async def aggiorna_metodi_pagamento_da_fornitori() -> Dict[str, Any]:
             "metodo_pagamento": metodo,
             "updated_at": datetime.now(timezone.utc).isoformat()
         }
-        # Auto-riconciliazione per pagamenti banca
-        if any(m in metodo for m in METODI_BANCA):
+        # Auto-riconciliazione per pagamenti banca (regola unica del motore)
+        if normalizza_metodo_pagamento(metodo) == "banca":
             update["riconciliato"] = True
             riconciliate += 1
 

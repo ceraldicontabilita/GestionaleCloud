@@ -163,17 +163,31 @@ async def propagate_event(
             })
             # Visibilità sui fallimenti (ereditata dal vecchio bus core, che
             # segnalava gli handler falliti): best-effort, non deve mai
-            # bloccare la propagazione degli altri handler.
+            # bloccare la propagazione degli altri handler. Upsert con
+            # contatore: un handler rotto durante un import massivo (es. ZIP
+            # di 365 corrispettivi = 365 eventi) produce UNA segnalazione
+            # aggiornata, non centinaia di duplicati.
             try:
-                await db["agenti_segnalazioni"].insert_one({
-                    "tipo": "event_handler_fallito",
-                    "evento": event_type,
-                    "handler": handler.__name__,
-                    "errore": str(e)[:500],
-                    "source_module": source_module,
-                    "created_at": datetime.now(timezone.utc).isoformat(),
-                    "letta": False,
-                })
+                await db["agenti_segnalazioni"].update_one(
+                    {
+                        "tipo": "event_handler_fallito",
+                        "evento": event_type,
+                        "handler": handler.__name__,
+                        "letta": False,
+                    },
+                    {
+                        "$set": {
+                            "errore": str(e)[:500],
+                            "source_module": source_module,
+                            "updated_at": datetime.now(timezone.utc).isoformat(),
+                        },
+                        "$inc": {"occorrenze": 1},
+                        "$setOnInsert": {
+                            "created_at": datetime.now(timezone.utc).isoformat(),
+                        },
+                    },
+                    upsert=True,
+                )
             except Exception:
                 pass
     
@@ -328,19 +342,16 @@ def register_all_handlers():
         from app.handlers.tfr import handler_aggiorna_tfr
         from app.handlers.notifiche import handler_notifica_cedolino
 
-        async def cedolino_bus_core_adapter_prima_nota(event_context, db):
+        def _con_nome_dipendente(handler):
             # Il vecchio bus usava "nome_dipendente", i publisher di questo bus
             # usano "dipendente_nome": normalizza senza toccare gli handler.
-            payload = {**event_context,
-                       "nome_dipendente": event_context.get("nome_dipendente")
-                       or event_context.get("dipendente_nome") or ""}
-            return await handler_prima_nota_cedolino(payload, db)
-
-        async def cedolino_bus_core_adapter_notifica(event_context, db):
-            payload = {**event_context,
-                       "nome_dipendente": event_context.get("nome_dipendente")
-                       or event_context.get("dipendente_nome") or ""}
-            return await handler_notifica_cedolino(payload, db)
+            async def adapter(event_context, db):
+                payload = {**event_context,
+                           "nome_dipendente": event_context.get("nome_dipendente")
+                           or event_context.get("dipendente_nome") or ""}
+                return await handler(payload, db)
+            adapter.__name__ = f"{handler.__name__}_adapter"
+            return adapter
 
         # Prima di questa migrazione prima_nota_salari e TFR scattavano SOLO
         # per i cedolini passati da cedolini_manager (doppio publish sui due
@@ -348,9 +359,9 @@ def register_all_handlers():
         # buste-paga non creavano né il movimento stipendio né la quota TFR.
         # Ora scattano per tutti i canali; gli handler sono idempotenti
         # (anti-duplicato per dipendente+mese+anno).
-        register_handler(EventTypes.CEDOLINO_IMPORTATO, cedolino_bus_core_adapter_prima_nota)
+        register_handler(EventTypes.CEDOLINO_IMPORTATO, _con_nome_dipendente(handler_prima_nota_cedolino))
         register_handler(EventTypes.CEDOLINO_IMPORTATO, handler_aggiorna_tfr)
-        register_handler(EventTypes.CEDOLINO_IMPORTATO, cedolino_bus_core_adapter_notifica)
+        register_handler(EventTypes.CEDOLINO_IMPORTATO, _con_nome_dipendente(handler_notifica_cedolino))
     except Exception as e:
         logger.warning(f"Handler cedolini (ex bus core) non registrati: {e}")
 

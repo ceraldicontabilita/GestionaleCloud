@@ -38,13 +38,10 @@ fatture come innesco per il popolamento magazzino, la fonte reale è Google Driv
    `scorta_minima` in tutto `app/`. Esiste solo il campo `giacenza_minima` sul prodotto, ma
    è confrontato SOLO dentro una funzione morta (`on_verifica_sotto_scorta`, vedi punto 2) —
    non genera mai un ordine o una notifica di riordino nella pratica.
-2. **Handler duplicato e morto per il carico magazzino**: `app/handlers/magazzino.py`
-   (`handler_carico_magazzino`) è registrato sul vecchio bus `app.core.event_bus` per
-   l'evento `"fattura.importata"`, ma quell'evento non viene MAI pubblicato nel percorso
-   reale di import fattura (solo `"fornitore.aggiornato"` lo è, da
-   `suppliers_module/base.py:580`) — **questo handler non si attiva mai**. L'handler
-   realmente vivo è `magazzino_handlers.py` (bus diverso, `EventTypes.FATTURA_CREATED`).
-   Stesso pattern di doppio-event-bus già segnalato come irrisolto nell'audit generale.
+2. ~~**Handler duplicato e morto per il carico magazzino**~~ — **SUPERATO (lug 2026)**:
+   il doppio event bus è stato unificato (`app/core/event_bus.py` rimosso, unica registry
+   in `app/services/event_bus.py`). L'handler vivo per il carico magazzino resta
+   `magazzino_handlers.py::on_fattura_righe_magazzino` su `EventTypes.FATTURA_CREATED`.
 3. ~~**`on_verifica_sotto_scorta` non è mai chiamata**~~ — **RISOLTO**. Schedulato job
    giornaliero (ore 6:30, `app/scheduler.py::check_scorta_magazzino_task`).
 4. ~~**Solo 2 alert su 5 registrati sono realmente generati**~~ — **RISOLTO per altri 2**:

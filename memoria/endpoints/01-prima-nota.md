@@ -4,7 +4,7 @@ Documentazione dei router: `app/routers/prima_nota_module/` (prefisso `/api/prim
 
 Concetti chiave del dominio:
 - **Collezioni canoniche**: `prima_nota_cassa` e `prima_nota_banca` (la vecchia `prima_nota` è legacy morta). Movimento = `{id, data (YYYY-MM-DD), tipo: entrata|uscita, importo (positivo), descrizione, categoria, riferimento, fattura_id, source, status}`. L'eliminazione "sicura" è soft-delete (`status:"deleted"`); molti endpoint di manutenzione fanno però hard-delete.
-- **"Il metodo fornitore comanda"**: `classifica_metodo_fornitore()` in `sync.py` è la regola unica per l'auto-conferma dei provvisori: metodo fornitore in `cassa/contanti/cash/contante` → Cassa; `bonifico/banca/riba/sepa/rid/sdd/assegno` → Banca; tutto il resto (paypal, carta, misto, compensazione, nessun metodo) → resta Provvisoria.
+- **"Il metodo fornitore comanda"**: la regola unica vive nel motore condiviso `app/engines/prima_nota_engine.py` (`classifica_metodo_fornitore()` in `sync.py` è solo un wrapper). Canonico a 3 valori (lug 2026): contanti/contrassegno → Cassa; OGNI strumento che transita dal conto corrente (bonifico/banca/riba/sepa/rid/sdd/assegno/carta/bancomat/paypal/stripe/domiciliazione/MPxx) → Banca; misto → Provvisoria in attesa di conferma; metodo vuoto/non riconosciuto → resta Provvisoria con richiesta all'utente.
 - **Fattura pagata** = tripla `pagato:true, paid:true, stato_pagamento:"pagata"` su `invoices` (schema doppio EN/IT: `total_amount|importo_totale`, `invoice_number|numero_fattura`, `supplier_vat|cedente_piva`, ecc.). Non tutti gli endpoint settano la tripla completa (vedi Note nei singoli endpoint).
 - Il riferimento standard dei movimenti da fattura è `FATT-{fattura_id}` (usato per il dedup ovunque nel modulo).
 

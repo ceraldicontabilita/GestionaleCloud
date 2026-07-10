@@ -25,7 +25,9 @@ COL_ESTRATTO_CONTO = "estratto_conto_movimenti"
 QUERY_FATTURA_NON_PAGATA = {
     "$and": [
         {"pagato": {"$ne": True}},
-        {"stato_pagamento": {"$nin": ["pagata", "paid"]}},
+        # "sospesa" = bloccata manualmente in Prima Nota Provvisoria:
+        # esclusa dal matching/riconciliazione automatica.
+        {"stato_pagamento": {"$nin": ["pagata", "paid", "sospesa"]}},
     ]
 }
 

@@ -1014,6 +1014,21 @@ async def emetti_assegno(
         {"$or": [{"id": assegno_id}, {"numero": assegno_id}]}, {"_id": 0}
     )
     if assegno_upd and assegno_upd.get("importo"):
+        # Anti-duplicato: se la fattura collegata ha gia' un movimento banca
+        # (es. creato dall'auto-instradamento per metodo fornitore "assegno"
+        # -> banca), non crearne un secondo per la stessa fattura.
+        fattura_collegata = assegno_upd.get("fattura_collegata")
+        if fattura_collegata:
+            esistente = await db["prima_nota_banca"].find_one({
+                "fattura_id": fattura_collegata,
+                "status": {"$nin": ["deleted", "archived"]},
+            }, {"_id": 0, "id": 1})
+            if esistente:
+                await db[COLLECTION_ASSEGNI].update_one(
+                    {"$or": [{"id": assegno_id}, {"numero": assegno_id}]},
+                    {"$set": {"prima_nota_banca_id": esistente["id"]}}
+                )
+                return {"message": "Assegno emesso (movimento banca già presente per la fattura collegata)"}
         numero = assegno_upd.get("numero", assegno_id)
         parti = [f"Assegno n.{numero}"]
         if assegno_upd.get("numero_fattura"):

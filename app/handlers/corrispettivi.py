@@ -127,7 +127,10 @@ async def handler_check_coerenza_pos(payload: Dict[str, Any], db) -> Dict[str, A
         data = (corr.get("data") or "")[:10]
         elettronico_dichiarato = float(
             corr.get("totale_elettronico") or
-            corr.get("pagamento_elettronico") or 0
+            corr.get("pagamento_elettronico") or
+            # nome campo reale nei documenti creati da corrispettivi_service
+            corr.get("pagato_pos") or
+            corr.get("pagato_elettronico") or 0
         )
 
         if elettronico_dichiarato <= 0 or not data:

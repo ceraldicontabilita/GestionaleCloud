@@ -81,12 +81,30 @@ const METODI_PAGAMENTO = {
 // Valori legacy ancora presenti sui fornitori già salvati prima della
 // semplificazione a 3 metodi — tradotti in sola lettura per continuare a
 // mostrare/filtrare correttamente i dati esistenti senza una migrazione.
+// DEVE restare allineata alla regola unica del backend
+// (app/engines/prima_nota_engine.py): ogni strumento che transita dal
+// conto corrente -> banca; contanti/contrassegno -> cassa.
 const METODO_LEGACY_A_CANONICO = {
   contanti: 'cassa',
+  contante: 'cassa',
+  cash: 'cassa',
+  contrassegno: 'cassa',
   assegno: 'banca',
   bonifico: 'banca',
+  'bonifico bancario': 'banca',
+  bancario: 'banca',
+  bancomat: 'banca',
   rid: 'banca',
+  riba: 'banca',
+  sepa: 'banca',
+  sdd: 'banca',
+  mav: 'banca',
+  rav: 'banca',
   carta: 'banca',
+  'carta di credito': 'banca',
+  paypal: 'banca',
+  stripe: 'banca',
+  domiciliazione: 'banca',
 };
 
 // Canale (cassa/banca/misto) da un valore grezzo, anche legacy.

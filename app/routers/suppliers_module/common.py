@@ -38,8 +38,11 @@ PAYMENT_TERMS = [
     {"code": "120GG", "days": 120, "label": "120 giorni"},
 ]
 
-# Metodi bancari che richiedono IBAN
-METODI_BANCARI = ["banca", "bonifico", "assegno", "rid", "carta"]
+# Metodi bancari che richiedono IBAN: punto unico nel motore condiviso
+# (prima questa lista era un sottoinsieme divergente da quella di
+# suppliers/iban_service.py: "sepa"/"riba"/... risultavano bancari in un
+# flusso e non nell'altro).
+from app.engines.prima_nota_engine import METODI_RICHIEDONO_IBAN as METODI_BANCARI
 
 
 def clean_mongo_doc(doc: Dict[str, Any]) -> Dict[str, Any]:

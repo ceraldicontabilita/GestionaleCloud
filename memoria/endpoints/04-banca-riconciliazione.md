@@ -416,7 +416,7 @@ Mini-CRUD autenticato sulla collezione legacy `bank_statements` più due stub. 5
 5. Bug export Excel (tipo derivato dal segno su importi assoluti → tutto "Entrata", verificato nel codice).
 6. `commit`/`import-direct` accettano `collection` libera dal client (rischio integrità/sicurezza); `import-direct` non lancia la riconciliazione paghe che `commit` esegue.
 7. Riconciliazione asimmetrica: `riconcilia-manuale` marca solo `prima_nota_banca`; il flusso di estratto_conto.py marca anche il lato EC.
-8. Due event bus diversi per lo stesso dominio (`app.services.event_bus` vs `app.core.event_bus`).
+8. ~~Due event bus diversi per lo stesso dominio~~ — **RISOLTO (lug 2026)**: bus unico in `app.services.event_bus`, il bus core è stato rimosso e i suoi handler migrati.
 
 ---
 

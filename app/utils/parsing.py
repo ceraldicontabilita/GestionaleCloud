@@ -4,11 +4,6 @@ Utility functions for parsing.
 from app.utils.numeri_italiani import parse_importo_ita
 
 
-class ParsingError(Exception):
-    """Custom exception for parsing errors."""
-    pass
-
-
 def safe_float(value, default=0.0):
     """Safely convert value to float (formato italiano incluso)."""
     return parse_importo_ita(value, default=default, keep_sign=True)

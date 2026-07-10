@@ -11,14 +11,12 @@ from datetime import datetime, timezone
 
 from .constants import Collections
 from app.utils.iban import IBAN_PATTERN
+from app.engines.prima_nota_engine import METODI_RICHIEDONO_IBAN
 
 logger = logging.getLogger(__name__)
 
-# Metodi di pagamento che richiedono IBAN
-METODI_BANCARI = [
-    "bonifico", "banca", "sepa", "rid", "sdd", 
-    "assegno", "riba", "mav", "rav", "f24", "carta", "misto"
-]
+# Metodi di pagamento che richiedono IBAN: punto unico nel motore condiviso.
+METODI_BANCARI = METODI_RICHIEDONO_IBAN
 
 
 async def estrai_iban_da_fatture(db, piva: str) -> Optional[str]:

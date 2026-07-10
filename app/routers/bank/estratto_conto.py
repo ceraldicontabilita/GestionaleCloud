@@ -443,7 +443,9 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
         from app.routers.invoices.fatture_upload import find_ec_match_for_invoice
         provvisori = await db["invoices"].find({
             "total_amount": {"$gt": 0},
-            "stato_pagamento": {"$nin": ["pagata", "paid"]},
+            # "sospesa" = bloccata manualmente in Prima Nota Provvisoria:
+            # esclusa dal matching automatico, come in riconciliazione_bancaria.
+            "stato_pagamento": {"$nin": ["pagata", "paid", "sospesa"]},
             "pagato": {"$ne": True},
             "$or": [{"prima_nota_id": None}, {"prima_nota_id": {"$exists": False}}, {"prima_nota_id": ""}]
         }, {"_id": 0, "id": 1, "supplier_name": 1, "supplier_vat": 1, "total_amount": 1,

@@ -38,6 +38,15 @@ PROVVISORIA = "provvisoria"
 _KEYWORDS_CASSA = {"cassa", "contanti", "contante", "cash", "mp01"}
 _KEYWORDS_MISTO = {"misto"}
 
+# Valori (canonici + legacy ancora in DB) dei metodi pagamento che richiedono
+# un IBAN in anagrafica fornitore. Usata nelle query Mongo $in dei moduli
+# fornitori/IBAN: punto unico al posto delle due liste divergenti che prima
+# vivevano in suppliers/iban_service.py e suppliers_module/common.py.
+METODI_RICHIEDONO_IBAN = [
+    "banca", "bonifico", "sepa", "rid", "sdd",
+    "assegno", "riba", "mav", "rav", "f24", "carta", "misto",
+]
+
 # Ogni altra parola chiave storicamente usata per uno strumento che transita
 # dal conto corrente: tutte ricondotte a "banca" (decisione 2026-07).
 _KEYWORDS_BANCA_SUBSTRING = (
@@ -71,7 +80,9 @@ def normalizza_metodo_pagamento(metodo_raw: Optional[str]) -> Optional[str]:
     if m in _KEYWORDS_MISTO or "misto" in m:
         return MISTO
 
-    if m in _KEYWORDS_CASSA or "contant" in m or "cash" in m:
+    # "contrassegno" = contanti alla consegna: e' CASSA, e va controllato
+    # PRIMA del loop banca perche' contiene la sottostringa "assegn".
+    if m in _KEYWORDS_CASSA or "contant" in m or "cash" in m or "contrassegn" in m:
         return CASSA
 
     if m in ("mp01",):

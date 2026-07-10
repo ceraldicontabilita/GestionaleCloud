@@ -49,8 +49,13 @@ in `app/routers/invoices/fatture_upload.py`).
   deducibile IRES e IVA detraibile.
 - Rimosso l'handler magazzino duplicato/morto (`app/handlers/magazzino.py`), corretti i due
   commenti fuorvianti (Magazzino "gestito solo da Lotti", Dipendenti "SOLO LETTURA").
-- Restano da migrare sullo stesso pattern (documentato in `app/core/handlers_registry.py`):
-  learning fornitore da fattura, costo ricette da fattura diretta, notifiche websocket.
+- ~~Restano da migrare sullo stesso pattern~~ — **FATTO (lug 2026)**: i due event bus sono
+  stati unificati in `app/services/event_bus.py` (il vecchio `app/core/event_bus.py` e
+  `handlers_registry.py` sono stati rimossi). Migrati: prima_nota_salari + TFR + notifica
+  WS cedolino (ora su `CEDOLINO_IMPORTATO`, per TUTTI i canali), matching estratto conto
+  (`ESTRATTO_CONTO_IMPORTATO`), learning fornitore (`FORNITORE_UPDATED`), prima nota
+  corrispettivi + check POS (`CORRISPETTIVI_IMPORTATI`). Il costo ricette è stato rimosso
+  del tutto (feature ricette/HACCP fuori dal gestionale, competenza dell'app esterna).
 - **Alert**: wired `RIC_MATCH_AMBIGUO` nel motore di riconciliazione (era definito ma mai
   generato). Backlog alert ancora morti, in ordine di sforzo/valore: `BNK_TRASFERIMENTO_INCOMPLETO`
   (richiede uno scan periodico dei movimenti `trasferimento_interno` senza
