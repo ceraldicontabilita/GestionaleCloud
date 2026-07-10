@@ -224,13 +224,13 @@ async def handler_aggiorna_costo_ricette(payload: Dict[str, Any], db) -> Dict[st
                     variazione = abs(prezzo_nuovo - prezzo_vecchio) / prezzo_vecchio
                     if variazione > VARIAZIONE_MIN:
                         try:
-                            from app.core.event_bus import bus
-                            await bus.publish("ingrediente.prezzo_cambiato", payload={
+                            from app.services.event_bus import propagate_event, EventTypes
+                            await propagate_event(EventTypes.INGREDIENTE_PREZZO_CAMBIATO, {
                                 "ingrediente_nome": ing["nome"],
                                 "vecchio_prezzo":   prezzo_vecchio,
                                 "nuovo_prezzo":     prezzo_nuovo,
                                 "variazione_pct":   round(variazione * 100, 2),
-                            }, db=db, save_to_db=False)
+                            }, db, source_module="ricette_price_history")
                         except Exception:
                             pass
             except Exception:

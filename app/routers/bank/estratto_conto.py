@@ -611,10 +611,10 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
         except Exception as e:
             logger.error(f"Errore sync generico estratto conto -> prima nota: {e}")
 
-    # ── EVENTO: pubblica sul Bus per matching automatico ──
+    # ── EVENTO: pubblica sul bus unico per matching automatico ──
     try:
-        from app.core.event_bus import bus
-        await bus.publish("estratto_conto.importato", payload={
+        from app.services.event_bus import propagate_event, EventTypes
+        await propagate_event(EventTypes.ESTRATTO_CONTO_IMPORTATO, {
             "movimenti": [
                 {
                     "id":          m.get("id"),
@@ -627,7 +627,7 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
             ],
             "banca":    records_to_insert[0].get("banca", "") if records_to_insert else "",
             "inseriti": inserted,
-        }, db=db, save_to_db=False)
+        }, db, source_module="estratto_conto_import")
     except Exception as _ev:
         logger.debug(f"[EstrattoContoRouter] Event Bus: {_ev}")
 

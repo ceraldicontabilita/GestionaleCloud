@@ -125,15 +125,15 @@ class CorrispettiviService:
         
         logger.info(f"Corrispettivo created: {corr_id}")
 
-        # ── EVENTO: pubblica sul Bus per check POS ──
+        # ── EVENTO: pubblica sul bus unico per prima nota e check POS ──
         try:
-            from app.core.event_bus import bus
-            await bus.publish("corrispettivi.importati", payload={
+            from app.services.event_bus import propagate_event, EventTypes
+            await propagate_event(EventTypes.CORRISPETTIVI_IMPORTATI, {
                 "corrispettivi": [corr_doc],
                 "data":          corr_doc.get("data"),
                 "totale":        corr_doc.get("totale"),
                 "id":            corr_id,
-            }, db=self.db, save_to_db=False)
+            }, self.db, source_module="corrispettivi_service")
         except Exception as _ev:
             logger.debug(f"[CorrispettiviService] Event Bus: {_ev}")
 

@@ -228,27 +228,11 @@ async def processa_cedolino_completo(
         
         result["success"] = True
 
-        # ── EVENTO: pubblica sul Bus per TFR e notifiche automatiche ──
-        try:
-            from app.core.event_bus import bus
-            await bus.publish("cedolino.importato", payload={
-                "cedolino_id":    movimento_id,
-                "dipendente_id":  dipendente_id,
-                "nome_dipendente": nome,
-                "codice_fiscale": cedolino_data.get("codice_fiscale", ""),
-                "mese":           mese,
-                "anno":           anno,
-                "netto":          netto,
-                "lordo":          cedolino_data.get("lordo", 0),
-                "tfr_quota_mese": cedolino_data.get("tfr_quota_mese", 0),
-            }, db=db, save_to_db=False)
-        except Exception as ev_e:
-            logger.debug(f"[CedoliniManager] Event Bus legacy: {ev_e}")
-
-        # ── NUOVO EVENT BUS RELAZIONALE (partita aperta + alert) ──
-        # Canale D: pipeline email_monitor_service / post_download_pipeline.
-        # Prima mancava del tutto: cedolini arrivati via email automatica non
-        # generavano partite stipendio nel sistema relazionale.
+        # ── EVENT BUS UNICO: partita aperta, alert, prima nota salari, TFR,
+        # notifica WS. Prima qui c'era un doppio publish su due bus separati
+        # (bus core per prima_nota/TFR/notifiche + bus relazionale per partita/
+        # alert): ora tutti gli handler vivono sull'unico bus e questo è
+        # l'unico punto di pubblicazione.
         try:
             from app.services.event_bus import propagate_event, EventTypes
             await propagate_event(EventTypes.CEDOLINO_IMPORTATO, {
@@ -258,6 +242,7 @@ async def processa_cedolino_completo(
                 "codice_fiscale": cf,
                 "netto": netto,
                 "lordo": cedolino_data.get("lordo", 0),
+                "tfr_quota_mese": cedolino_data.get("tfr_quota_mese", 0),
                 "mese": mese,
                 "anno": anno,
                 "tipo_cedolino": cedolino_data.get("tipo_cedolino", "mensile"),

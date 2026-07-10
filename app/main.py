@@ -36,19 +36,14 @@ async def lifespan(app: FastAPI):
 
     settings.validate_startup()
 
-    try:
-        from app.core.handlers_registry import registra_tutti_gli_handler
-
-        registra_tutti_gli_handler()
-    except Exception:
-        pass
-
+    # Bus eventi unico (app/services/event_bus.py): include anche gli handler
+    # migrati dal vecchio bus core (app/core/event_bus.py, rimosso).
     try:
         from app.services.event_bus import register_all_handlers
 
         register_all_handlers()
     except Exception as e:
-        logger.warning(f"Event bus relazionale non inizializzato: {e}")
+        logger.warning(f"Event bus non inizializzato: {e}")
 
     try:
         from app.services.alert_engine import seed_alert_definitions

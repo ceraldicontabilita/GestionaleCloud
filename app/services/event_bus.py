@@ -73,6 +73,14 @@ class EventTypes:
     
     # Corrispettivi
     CORRISPETTIVO_REGISTRATO = "corrispettivo.registrato"
+    # Import massivo XML corrispettivi (distinto dal singolo registrato sopra)
+    CORRISPETTIVI_IMPORTATI = "corrispettivi.importati"
+
+    # Estratto conto (import massivo movimenti — migrato dal vecchio bus core)
+    ESTRATTO_CONTO_IMPORTATO = "estratto_conto.importato"
+
+    # Magazzino / ricette (migrato dal vecchio bus core)
+    INGREDIENTE_PREZZO_CAMBIATO = "ingrediente.prezzo_cambiato"
     
     # Trasferimenti
     TRASFERIMENTO_CREATO = "trasferimento.creato"
@@ -156,6 +164,21 @@ async def propagate_event(
                 "success": False,
                 "error": str(e)
             })
+            # Visibilità sui fallimenti (ereditata dal vecchio bus core, che
+            # segnalava gli handler falliti): best-effort, non deve mai
+            # bloccare la propagazione degli altri handler.
+            try:
+                await db["agenti_segnalazioni"].insert_one({
+                    "tipo": "event_handler_fallito",
+                    "evento": event_type,
+                    "handler": handler.__name__,
+                    "errore": str(e)[:500],
+                    "source_module": source_module,
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "letta": False,
+                })
+            except Exception:
+                pass
     
     logger.info(
         f"Evento '{event_type}' propagato: "
@@ -298,6 +321,72 @@ def register_all_handlers():
         register_handler(EventTypes.DOCUMENTO_INSTRADATO, on_documento_instradato)
     except Exception as e:
         logger.warning(f"Handler documenti non registrati: {e}")
+
+    # --- Handler migrati dal vecchio bus core (app/core/event_bus.py, rimosso) ---
+    # Il vecchio bus aveva una registry separata: gli eventi pubblicati qui non
+    # raggiungevano i suoi handler e viceversa. Da questa migrazione esiste UNA
+    # SOLA registry. Ordine di registrazione = vecchio ordine di priorità.
+    try:
+        from app.handlers.prima_nota import handler_prima_nota_cedolino
+        from app.handlers.tfr import handler_aggiorna_tfr
+        from app.handlers.notifiche import handler_notifica_cedolino
+
+        async def cedolino_bus_core_adapter_prima_nota(event_context, db):
+            # Il vecchio bus usava "nome_dipendente", i publisher di questo bus
+            # usano "dipendente_nome": normalizza senza toccare gli handler.
+            payload = {**event_context,
+                       "nome_dipendente": event_context.get("nome_dipendente")
+                       or event_context.get("dipendente_nome") or ""}
+            return await handler_prima_nota_cedolino(payload, db)
+
+        async def cedolino_bus_core_adapter_notifica(event_context, db):
+            payload = {**event_context,
+                       "nome_dipendente": event_context.get("nome_dipendente")
+                       or event_context.get("dipendente_nome") or ""}
+            return await handler_notifica_cedolino(payload, db)
+
+        # Prima di questa migrazione prima_nota_salari e TFR scattavano SOLO
+        # per i cedolini passati da cedolini_manager (doppio publish sui due
+        # bus): i cedolini importati via pipeline email/salari_unificati/
+        # buste-paga non creavano né il movimento stipendio né la quota TFR.
+        # Ora scattano per tutti i canali; gli handler sono idempotenti
+        # (anti-duplicato per dipendente+mese+anno).
+        register_handler(EventTypes.CEDOLINO_IMPORTATO, cedolino_bus_core_adapter_prima_nota)
+        register_handler(EventTypes.CEDOLINO_IMPORTATO, handler_aggiorna_tfr)
+        register_handler(EventTypes.CEDOLINO_IMPORTATO, cedolino_bus_core_adapter_notifica)
+    except Exception as e:
+        logger.warning(f"Handler cedolini (ex bus core) non registrati: {e}")
+
+    try:
+        from app.handlers.estratto_conto import handler_matching_estratto_conto
+        register_handler(EventTypes.ESTRATTO_CONTO_IMPORTATO, handler_matching_estratto_conto)
+    except Exception as e:
+        logger.warning(f"Handler matching estratto conto non registrato: {e}")
+
+    try:
+        from app.handlers.corrispettivi import (
+            handler_prima_nota_corrispettivi,
+            handler_check_coerenza_pos,
+        )
+        register_handler(EventTypes.CORRISPETTIVI_IMPORTATI, handler_prima_nota_corrispettivi)
+        register_handler(EventTypes.CORRISPETTIVI_IMPORTATI, handler_check_coerenza_pos)
+    except Exception as e:
+        logger.warning(f"Handler corrispettivi importati non registrati: {e}")
+
+    try:
+        from app.handlers.fornitore import handler_aggiorna_learning_fornitore
+        # Sul vecchio bus era su "fornitore.aggiornato"; qui l'evento canonico
+        # è FORNITORE_UPDATED. Con payload scarno (solo id+metodo) l'handler fa
+        # skip da solo; quando aggiorna, unisce le keyword senza mai cancellarle.
+        register_handler(EventTypes.FORNITORE_UPDATED, handler_aggiorna_learning_fornitore)
+    except Exception as e:
+        logger.warning(f"Handler learning fornitore non registrato: {e}")
+
+    try:
+        from app.handlers.ricette import handler_aggiorna_costo_ricette
+        register_handler(EventTypes.INGREDIENTE_PREZZO_CAMBIATO, handler_aggiorna_costo_ricette)
+    except Exception as e:
+        logger.warning(f"Handler costo ricette non registrato: {e}")
 
     registered = sum(len(h) for h in _handlers.values())
     logger.info(f"Event bus pronto: {registered} handler registrati per {len(_handlers)} tipi evento")
