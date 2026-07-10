@@ -5,6 +5,13 @@ name: Verifica produzione
 
 on:
   workflow_dispatch:
+  # Auto: ogni push su main che tocca il build verificato (o questo file)
+  # fa partire il controllo — il deploy si auto-verifica da solo.
+  push:
+    branches: [main]
+    paths:
+      - "frontend/dist/**"
+      - ".github/workflows/verifica-produzione.yml"
 
 jobs:
   verifica:
