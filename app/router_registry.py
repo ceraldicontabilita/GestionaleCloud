@@ -41,6 +41,7 @@ def register_all_routers(app: FastAPI) -> None:
 # ─── Auth & Public ───────────────────────────────────────────────────────────
 def _register_auth(app: FastAPI):
     from app.routers import auth, public_api, pin_login
+    from app.routers.erp_bridge import router as erp_bridge_router
     from app.routers.legal_pages import router as legal_router
 
     app.include_router(public_api.router, prefix="/api", tags=["Public API"])
@@ -51,6 +52,11 @@ def _register_auth(app: FastAPI):
     # refresh). pin_login.router has no internal prefix, so it keeps "/api/auth".
     app.include_router(auth.router, tags=["Authentication"])
     app.include_router(pin_login.router, prefix="/api/auth", tags=["PIN Login"])
+    # ERP Bridge: ponte inbound dall'app esterna collegata allo stesso DB
+    # (ceraldiapp.it) che invia al gestionale le fatture importate dalla PEC.
+    # NON rimuovere: endpoint chiamato dall'altra app.
+    # Il router ha già prefix interno "/api/erp/ponte", quindi NO prefix qui.
+    app.include_router(erp_bridge_router)
     app.include_router(legal_router, tags=["Legal"])
 
     from app.routers.whatsapp_webhook import router as whatsapp_router
