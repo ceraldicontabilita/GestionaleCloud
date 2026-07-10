@@ -1,22 +1,31 @@
 """
-PIN Login router — consente l'accesso veloce via PIN dall'app mobile Ceraldi.
-Il PIN <ADMIN_PIN> concede un JWT admin, senza richiedere username/password.
+PIN Login router — consente l'accesso veloce via PIN (tastierino web/mobile).
+Il PIN corretto concede un JWT admin, senza richiedere username/password.
 
 Flow:
   POST /api/auth/pin-login
-  body: {"pin": "<ADMIN_PIN>"}
+  body: {"pin": "123456"}
   → ritorna {"access_token": "...", "token_type": "bearer", ...}
 
-Il PIN non viene mai memorizzato in chiaro: viene confrontato come SHA-256
-contro l'hash configurato nella variabile d'ambiente PIN_HASH_ADMIN.
+Configurazione (variabili d'ambiente, basta UNA delle due):
+  ADMIN_PIN      = PIN in chiaro (es. ADMIN_PIN=123456) — logica semplice,
+                   stessa filosofia di ADMIN_PASSWORD nel login email.
+  PIN_HASH_ADMIN = SHA-256 hex del PIN, per chi preferisce non tenere il PIN
+                   in chiaro nell'ambiente:
+                   python -c "import hashlib;print(hashlib.sha256(b'PIN').hexdigest())"
 
-Aggiunto nella chat-8 per ceraldi mobile.
+Se nessuna delle due è impostata, il login via PIN è disattivato (fail-safe)
+e l'endpoint risponde 503 con un messaggio chiaro invece di un 401 generico.
+
+Le variabili vengono lette A OGNI RICHIESTA (non all'import del modulo):
+elimina i problemi di ordine di caricamento del file .env.
 """
 from fastapi import APIRouter, HTTPException, Body, Request, Response, status
 from datetime import datetime, timedelta, timezone
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import os
 import hashlib
+import hmac
 import logging
 import time
 
@@ -33,17 +42,32 @@ router = APIRouter()
 # CONFIG
 # ============================================================================
 
-# SHA-256 hex del PIN admin, letto dall'ambiente (NON hardcodato).
-# Imposta PIN_HASH_ADMIN in pl.env con: python -c "import hashlib;print(hashlib.sha256(b'NUOVO_PIN').hexdigest())"
-# Se la variabile non è impostata, il login via PIN è disattivato (fail-safe).
-PIN_HASH_ADMIN = os.getenv("PIN_HASH_ADMIN", "")
-
-# Username/email dell'utente admin a cui il PIN concede accesso.
-# Questo utente DEVE esistere in collection users.
+# Username dell'utente admin a cui il PIN concede accesso, se esiste in
+# collection users. Se non esiste NESSUN utente, il login funziona comunque
+# con un'identita' admin sintetica (il sistema e' mono-utente: stesso
+# comportamento del login email/password che vive solo di variabili ambiente).
 PIN_ADMIN_USERNAME = "ceraldi"
+PIN_ADMIN_EMAIL_DEFAULT = os.getenv("ADMIN_EMAIL", "ceraldigroupsrl@gmail.com")
 
 # Durata del token emesso via PIN (in minuti). Default: stesso del login normale.
 PIN_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
+
+
+def _verifica_pin(pin: str) -> Optional[bool]:
+    """Confronta il PIN con la configurazione in ambiente.
+
+    Ritorna True/False se il confronto e' possibile, None se il login PIN
+    non e' configurato affatto (nessuna variabile impostata).
+    """
+    admin_pin = os.getenv("ADMIN_PIN", "").strip()
+    pin_hash_admin = os.getenv("PIN_HASH_ADMIN", "").strip().lower()
+
+    if admin_pin:
+        return hmac.compare_digest(pin, admin_pin)
+    if pin_hash_admin:
+        pin_hash = hashlib.sha256(pin.encode("utf-8")).hexdigest()
+        return hmac.compare_digest(pin_hash, pin_hash_admin)
+    return None
 
 # ============================================================================
 # ANTI BRUTE FORCE (in-memory, per IP)
@@ -116,37 +140,47 @@ async def pin_login(
         _register_failure(ip)
         raise HTTPException(status_code=400, detail="PIN non valido")
 
-    pin_hash = hashlib.sha256(pin.encode("utf-8")).hexdigest()
-
-    # Verifica hash
-    if pin_hash != PIN_HASH_ADMIN:
+    # Verifica contro ADMIN_PIN (in chiaro) o PIN_HASH_ADMIN (SHA-256)
+    esito = _verifica_pin(pin)
+    if esito is None:
+        logger.error("PIN-login: nessuna variabile ADMIN_PIN o PIN_HASH_ADMIN configurata")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Login PIN non configurato sul server: impostare ADMIN_PIN "
+                   "(o PIN_HASH_ADMIN) nelle variabili d'ambiente",
+        )
+    if not esito:
         _register_failure(ip)
         logger.warning(f"PIN-login: PIN errato da IP {ip}")
         raise HTTPException(status_code=401, detail="PIN non valido")
 
-    # PIN corretto: recupera utente admin
-    db = Database.get_db()
-    user_repo = UserRepository(db[Collections.USERS])
-
+    # PIN corretto: recupera l'utente admin dal DB se esiste; il sistema e'
+    # mono-utente, quindi in assenza di utenti in collection il login funziona
+    # comunque con un'identita' admin sintetica (come il login email/password,
+    # che vive solo di variabili d'ambiente).
     user = None
-    # 1. tenta username
     try:
-        user = await user_repo.find_by_username(PIN_ADMIN_USERNAME)
+        db = Database.get_db()
+        user_repo = UserRepository(db[Collections.USERS])
+        try:
+            user = await user_repo.find_by_username(PIN_ADMIN_USERNAME)
+        except Exception:
+            user = None
+        if not user:
+            user = await db[Collections.USERS].find_one({"role": "admin"})
+        if not user:
+            user = await db[Collections.USERS].find_one({"is_active": True})
     except Exception:
-        user = None
-    # 2. fallback: cerca primo utente con ruolo admin
-    if not user:
-        user = await db[Collections.USERS].find_one({"role": "admin"})
-    # 3. fallback finale: primo utente qualsiasi
-    if not user:
-        user = await db[Collections.USERS].find_one({"is_active": True})
+        logger.exception("PIN-login: lookup utente fallito, uso identita' admin sintetica")
+        user_repo = None
 
     if not user:
-        logger.error("PIN-login: nessun utente admin trovato nel DB")
-        raise HTTPException(
-            status_code=500,
-            detail="Nessun utente admin configurato nel sistema",
-        )
+        user = {
+            "id": "admin",
+            "email": PIN_ADMIN_EMAIL_DEFAULT,
+            "name": "Amministratore",
+            "role": "admin",
+        }
 
     # Estrai user_id
     user_id = str(user.get("id") or user.get("_id"))
@@ -172,7 +206,8 @@ async def pin_login(
 
     # Aggiorna last_login se il repo lo supporta
     try:
-        await user_repo.update_last_login(user_id)
+        if user_repo is not None:
+            await user_repo.update_last_login(user_id)
     except Exception:
         pass
 
@@ -209,10 +244,16 @@ async def pin_login(
     summary="Health check endpoint PIN login",
 )
 async def pin_login_health() -> Dict[str, Any]:
-    """Verifica che il router PIN sia registrato e raggiungibile."""
+    """Verifica che il router PIN sia registrato e configurato.
+
+    Diagnostica: dice QUALE variabile e' attiva senza rivelarne il valore.
+    """
+    admin_pin_set = bool(os.getenv("ADMIN_PIN", "").strip())
+    pin_hash_set = bool(os.getenv("PIN_HASH_ADMIN", "").strip())
     return {
         "ok": True,
-        "configured": bool(PIN_HASH_ADMIN),
+        "configured": admin_pin_set or pin_hash_set,
+        "fonte": "ADMIN_PIN" if admin_pin_set else ("PIN_HASH_ADMIN" if pin_hash_set else None),
         "admin_username": PIN_ADMIN_USERNAME,
         "token_expire_minutes": PIN_TOKEN_EXPIRE_MINUTES,
     }

@@ -3,7 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { Delete } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
+// Lunghezza tipica del PIN (auto-invio alla sesta cifra); il backend accetta
+// 4-12 cifre, quindi il tastierino ha anche un tasto di conferma esplicito.
 const PIN_LENGTH = 6;
+const PIN_MIN = 4;
+const PIN_MAX = 12;
 
 export default function Login() {
   const [pin, setPin] = useState('');
@@ -31,9 +35,12 @@ export default function Login() {
         navigate('/', { replace: true });
       } catch (err) {
         const status = err.response?.status;
+        // 429 (troppi tentativi) e 503 (PIN non configurato sul server)
+        // hanno messaggi specifici dal backend: mostrarli aiuta a capire
+        // il problema reale invece di un generico "PIN non valido".
         setError(
-          status === 429
-            ? err.response?.data?.detail || 'Troppi tentativi, riprova tra poco'
+          status === 429 || status === 503
+            ? err.response?.data?.detail || 'PIN non valido'
             : 'PIN non valido'
         );
         setPin('');
@@ -46,12 +53,14 @@ export default function Login() {
   );
 
   // Aggiunge una cifra; alla sesta parte il login automaticamente
+  // (il backend accetta PIN 4-12 cifre: per lunghezze diverse da 6 c'è
+  // il tasto di conferma ✓ / il tasto Invio della tastiera fisica).
   const pressDigit = useCallback(
     digit => {
       if (loading) return;
       setError('');
       setPin(prev => {
-        if (prev.length >= PIN_LENGTH) return prev;
+        if (prev.length >= PIN_MAX) return prev;
         const next = prev + digit;
         if (next.length === PIN_LENGTH) {
           submitPin(next);
@@ -68,6 +77,14 @@ export default function Login() {
     setPin(prev => prev.slice(0, -1));
   }, [loading]);
 
+  const pressSubmit = useCallback(() => {
+    if (loading) return;
+    setPin(prev => {
+      if (prev.length >= PIN_MIN) submitPin(prev);
+      return prev;
+    });
+  }, [loading, submitPin]);
+
   // Tastiera fisica: cifre, Backspace, Invio (per uso desktop)
   useEffect(() => {
     const handleKey = e => {
@@ -75,13 +92,13 @@ export default function Login() {
         pressDigit(e.key);
       } else if (e.key === 'Backspace') {
         pressBackspace();
-      } else if (e.key === 'Enter' && pin.length === PIN_LENGTH) {
-        submitPin(pin);
+      } else if (e.key === 'Enter') {
+        pressSubmit();
       }
     };
     document.addEventListener('keydown', handleKey);
     return () => document.removeEventListener('keydown', handleKey);
-  }, [pressDigit, pressBackspace, submitPin, pin]);
+  }, [pressDigit, pressBackspace, pressSubmit]);
 
   const keypadButtonStyle = {
     height: 56,
@@ -155,7 +172,7 @@ export default function Login() {
               padding: '10px 0 22px',
             }}
           >
-            {Array.from({ length: PIN_LENGTH }).map((_, i) => (
+            {Array.from({ length: Math.max(PIN_LENGTH, pin.length) }).map((_, i) => (
               <span
                 key={i}
                 style={{
@@ -191,8 +208,20 @@ export default function Login() {
                 {d}
               </button>
             ))}
-            {/* cella vuota per allineare lo 0 al centro */}
-            <span aria-hidden="true" />
+            <button
+              type="button"
+              onClick={pressSubmit}
+              disabled={loading || pin.length < PIN_MIN}
+              aria-label="Conferma PIN"
+              data-testid="pin-key-submit"
+              style={{
+                ...keypadButtonStyle,
+                color: pin.length >= PIN_MIN ? 'var(--c-success, #16a34a)' : 'var(--c-text-muted)',
+                opacity: loading || pin.length < PIN_MIN ? 0.5 : 1,
+              }}
+            >
+              ✓
+            </button>
             <button
               type="button"
               onClick={() => pressDigit('0')}
