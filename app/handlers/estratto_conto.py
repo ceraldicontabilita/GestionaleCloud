@@ -14,7 +14,10 @@ from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
-TOLLERANZA_IMPORTO = 2.00      # €2 di differenza accettata
+# Scelta utente (10/07/2026): "solo importo esatto ±0,01 €" — il matching
+# automatico propone solo corrispondenze quasi perfette sull'importo; tutto
+# il resto resta riconciliazione manuale.
+TOLLERANZA_IMPORTO = 0.01      # solo importo esatto (±1 centesimo)
 TOLLERANZA_GIORNI  = 30        # finestra temporale per il match
 SOGLIA_AUTO        = 0.90      # sopra questa soglia abbina in automatico
 SOGLIA_PROPOSTA    = 0.60      # sopra questa soglia propone all'utente
@@ -33,16 +36,13 @@ def _score_match(movimento: Dict, fattura: Dict) -> float:
     if imp_mov <= 0 or imp_fatt <= 0:
         return 0.0
 
-    # Match importo (peso 60%)
+    # Match importo (peso 60%) — FILTRO DURO: solo importo esatto ±0,01 €
+    # (scelta utente 10/07/2026), qualunque cosa dica la descrizione.
     diff = abs(imp_mov - imp_fatt)
-    if diff <= 0.01:
+    if diff <= TOLLERANZA_IMPORTO:
         score += 0.60
-    elif diff <= TOLLERANZA_IMPORTO:
-        score += 0.45
-    elif diff / imp_fatt <= 0.02:   # entro il 2%
-        score += 0.35
     else:
-        return 0.0  # importo troppo diverso, scarta subito
+        return 0.0  # importo diverso, scarta subito
 
     # Match fornitore nella descrizione (peso 30%)
     desc = (movimento.get("descrizione") or movimento.get("description") or "").upper()

@@ -543,10 +543,14 @@ def start_scheduler():
         id="link_verbali_fatture", name="Link Verbali ↔ Fatture (ogni 60 min)",
         replace_existing=True,
     )
+    # Scelta utente (10/07/2026): ogni 15 minuti E un controllo immediato a
+    # ogni riavvio del server (next_run_time=now: la prima esecuzione parte
+    # subito, poi prosegue a intervalli regolari).
     scheduler.add_job(
         _drive_ingest_job,
         'interval', minutes=15,
-        id="drive_fatture_ingest", name="Import Fatture da Google Drive (ogni 15 min)",
+        next_run_time=datetime.now(),
+        id="drive_fatture_ingest", name="Import Fatture da Google Drive (ogni 15 min + al riavvio)",
         replace_existing=True,
     )
     scheduler.add_job(
