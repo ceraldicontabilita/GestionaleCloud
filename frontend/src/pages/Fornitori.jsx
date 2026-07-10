@@ -29,6 +29,9 @@ import {
   Table,
   Th,
   Td,
+  ListaAdattiva,
+  RowActions,
+  RowActionButton,
 } from '../components/ds';
 import {
   Search,
@@ -38,8 +41,6 @@ import {
   FileText,
   Building2,
   Phone,
-  Mail,
-  MapPin,
   CreditCard,
   AlertCircle,
   Check,
@@ -848,29 +849,10 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
   );
 }
 
-// Supplier Card con cambio rapido metodo
-function SupplierCard({
-  supplier,
-  onEdit,
-  onDelete,
-  onViewInvoices,
-  onChangeMetodo,
-  onSearchPiva,
-  onShowFatturato,
-  onShowSchedeTecniche,
-  onToggleEsclude,
-  selectedYear,
-}) {
-  const nome =
-    supplier.ragione_sociale ||
-    supplier.denominazione ||
-    supplier.nome ||
-    supplier.name ||
-    'Senza nome';
-  const piva = supplier.partita_iva || supplier.piva || null;
-  const hasIncomplete = !piva || !supplier.comune || !supplier.email || !supplier.telefono;
-  const hasPiva = !!piva;
-  // NIENTE default fittizio: se il metodo non è impostato, la card lo deve
+// Badge metodo pagamento (cassa/banca/misto) cliccabile con menu a comparsa:
+// stessa logica della vecchia card fornitore, riusata per riga in ListaAdattiva.
+function MetodoBadge({ supplier, onChangeMetodo }) {
+  // NIENTE default fittizio: se il metodo non è impostato, la riga lo deve
   // DIRE (prima mostrava "Bonifico" e il filtro "senza metodo" sembrava rotto)
   const metodoKey = supplier.metodo_pagamento ? metodoCanonico(supplier) : '';
   const metodo = metodoKey
@@ -878,20 +860,8 @@ function SupplierCard({
     : { label: '⚠️ Da impostare', color: COLORS.warning };
   const [showMetodoMenu, setShowMetodoMenu] = useState(false);
   const [updating, setUpdating] = useState(false);
-  const [searching, setSearching] = useState(false);
-  const [loadingFatturato, setLoadingFatturato] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
   const buttonRef = React.useRef(null);
-
-  const handleShowFatturato = async () => {
-    if (!piva) {
-      alert('Questo fornitore non ha una Partita IVA');
-      return;
-    }
-    setLoadingFatturato(true);
-    await onShowFatturato(supplier, selectedYear);
-    setLoadingFatturato(false);
-  };
 
   const handleMetodoChange = async newMetodo => {
     if (newMetodo === metodoKey) {
@@ -902,13 +872,6 @@ function SupplierCard({
     setShowMetodoMenu(false);
     await onChangeMetodo(supplier.id, newMetodo);
     setUpdating(false);
-  };
-
-  const handleSearchPiva = async () => {
-    if (!piva) return;
-    setSearching(true);
-    await onSearchPiva(supplier);
-    setSearching(false);
   };
 
   const openMenu = () => {
@@ -934,324 +897,37 @@ function SupplierCard({
   };
 
   return (
-    <div
-      style={{
-        backgroundColor: 'white',
-        borderRadius: BORDER_RADIUS.lg,
-        border: `1px solid ${COLORS.border}`,
-        overflow: 'hidden',
-        transition: 'all 0.2s',
-        position: 'relative',
-      }}
-      onMouseEnter={e => {
-        e.currentTarget.style.boxShadow = SHADOWS.lg;
-        e.currentTarget.style.transform = 'translateY(-2px)';
-      }}
-      onMouseLeave={e => {
-        e.currentTarget.style.boxShadow = 'none';
-        e.currentTarget.style.transform = 'translateY(0)';
-      }}
-    >
-      {/* Barra colore in alto */}
-      <div
+    <>
+      {/* Resta un <button> nativo (non <Button>) perché serve un ref DOM
+          reale per calcolare la posizione del menu a comparsa. */}
+      <button
+        ref={buttonRef}
+        onClick={openMenu}
+        disabled={updating}
         style={{
-          height: '4px',
-          background: hasIncomplete
-            ? COLORS.warning
-            : COLORS.primary,
+          padding: '6px 12px',
+          borderRadius: BORDER_RADIUS.sm,
+          fontSize: '12px',
+          fontWeight: 600,
+          backgroundColor: metodo.bg,
+          color: metodo.color,
+          border: `2px solid ${metodo.color}20`,
+          cursor: updating ? 'wait' : 'pointer',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '4px',
+          transition: 'all 0.2s',
+          opacity: updating ? 0.6 : 1,
+          fontFamily: FONT.family,
         }}
-      />
-
-      <div style={{ padding: '16px' }}>
-        {/* Nome e Badge */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'flex-start',
-            justifyContent: 'space-between',
-            marginBottom: '12px',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0 }}>
-            <div
-              style={{
-                width: '44px',
-                height: '44px',
-                borderRadius: BORDER_RADIUS.lg,
-                background: COLORS.primary,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'white',
-                fontWeight: 600,
-                fontSize: '18px',
-                flexShrink: 0,
-              }}
-            >
-              {nome[0].toUpperCase()}
-            </div>
-            <div style={{ minWidth: 0 }}>
-              <div
-                style={{
-                  fontWeight: 600,
-                  color: COLORS.gray[800],
-                  fontSize: '15px',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                }}
-              >
-                {nome}
-              </div>
-              {piva && (
-                <div style={{ fontSize: '12px', color: COLORS.textMuted, fontFamily: 'monospace' }}>
-                  P.IVA {piva}
-                </div>
-              )}
-            </div>
-          </div>
-          {hasIncomplete && (
-            <div
-              style={{
-                backgroundColor: COLORS.warningLight,
-                borderRadius: BORDER_RADIUS.full,
-                padding: '6px',
-                flexShrink: 0,
-              }}
-              title="Dati incompleti"
-            >
-              <AlertCircle size={14} color={COLORS.warning} />
-            </div>
-          )}
-        </div>
-
-        {/* Info */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
-          {supplier.comune && (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                fontSize: '13px',
-                color: COLORS.textMuted,
-              }}
-            >
-              <MapPin size={14} />
-              <span>
-                {supplier.comune}
-                {supplier.provincia && ` (${supplier.provincia})`}
-              </span>
-            </div>
-          )}
-          {supplier.email && (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                fontSize: '13px',
-                color: COLORS.textMuted,
-              }}
-            >
-              <Mail size={14} />
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {supplier.email}
-              </span>
-            </div>
-          )}
-        </div>
-
-        {/* Stats e Metodo Pagamento */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            paddingTop: '12px',
-            borderTop: `1px solid ${COLORS.bg}`,
-          }}
-        >
-          <div style={{ display: 'flex', gap: '20px' }}>
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '18px', fontWeight: 700, color: COLORS.gray[800] }}>
-                {supplier.fatture_count || 0}
-              </div>
-              <div style={{ fontSize: '11px', color: COLORS.textSubtle }}>Fatture</div>
-            </div>
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '18px', fontWeight: 700, color: COLORS.gray[800] }}>
-                {supplier.giorni_pagamento || 30}
-              </div>
-              <div style={{ fontSize: '11px', color: COLORS.textSubtle }}>Giorni</div>
-            </div>
-          </div>
-
-          {/* Badge Metodo - Cliccabile per cambio rapido.
-              Nota: resta un <button> nativo (non <Button>) perché serve un
-              ref DOM reale per calcolare la posizione del menu a comparsa
-              (Button non inoltra ref ai figli). */}
-          <div style={{ position: 'relative' }}>
-            <button
-              ref={buttonRef}
-              onClick={openMenu}
-              disabled={updating}
-              style={{
-                padding: '6px 12px',
-                borderRadius: BORDER_RADIUS.sm,
-                fontSize: '12px',
-                fontWeight: 600,
-                backgroundColor: metodo.bg,
-                color: metodo.color,
-                border: `2px solid ${metodo.color}20`,
-                cursor: updating ? 'wait' : 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px',
-                transition: 'all 0.2s',
-                opacity: updating ? 0.6 : 1,
-                fontFamily: FONT.family,
-              }}
-              title="Clicca per cambiare metodo pagamento"
-            >
-              <CreditCard size={12} />
-              {updating ? '...' : metodo.label}
-              <span style={{ marginLeft: '2px', fontSize: '10px' }}>▼</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Flag badges — cliccabili per toggle rapido */}
-        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '10px' }}>
-          <Button
-            variant={supplier.esclude_magazzino ? 'warning' : 'success'}
-            size="sm"
-            onClick={async e => {
-              e.stopPropagation();
-              if (onToggleEsclude) {
-                await onToggleEsclude(supplier.id, !supplier.esclude_magazzino);
-              }
-            }}
-            data-testid={`btn-toggle-esclude-magazzino-${supplier.id}`}
-            title={
-              supplier.esclude_magazzino
-                ? 'Click: RIMETTI nel magazzino (le fatture popoleranno le giacenze)'
-                : 'Click: ESCLUDI dal magazzino (le fatture NON creano carichi)'
-            }
-            style={{ padding: '4px 10px', fontSize: '11px' }}
-          >
-            {supplier.esclude_magazzino ? '🚫 Escluso magazzino' : '📦 In magazzino'}
-          </Button>
-        </div>
-      </div>
-
-      {/* Actions */}
-      <div
-        style={{
-          display: 'flex',
-          borderTop: `1px solid ${COLORS.bg}`,
-          backgroundColor: COLORS.bgAlt,
-          flexWrap: 'wrap',
-        }}
+        title="Clicca per cambiare metodo pagamento"
       >
-        {/* Pulsante Fatturato Anno */}
-        {hasPiva && (
-          <Button
-            variant="ghost"
-            onClick={handleShowFatturato}
-            disabled={loadingFatturato}
-            style={{ flex: 1, borderRadius: 0, padding: '12px', color: COLORS.info, minWidth: '70px' }}
-            title={`Visualizza fatturato ${selectedYear}`}
-            data-testid={`btn-fatturato-${supplier.id}`}
-          >
-            <TrendingUp size={15} /> {loadingFatturato ? '...' : `${selectedYear}`}
-          </Button>
-        )}
-        {/* Pulsante Fatturato anno precedente - sempre visibile */}
-        {selectedYear !== selectedYear - 1 && (
-          <Button
-            variant="ghost"
-            onClick={async () => {
-              setLoadingFatturato(true);
-              await onShowFatturato(supplier, selectedYear - 1);
-              setLoadingFatturato(false);
-            }}
-            disabled={loadingFatturato}
-            style={{ flex: 1, borderRadius: 0, padding: '12px', color: COLORS.textMuted, minWidth: '70px' }}
-            title={`Visualizza fatturato ${selectedYear - 1}`}
-          >
-            <TrendingUp size={15} /> {selectedYear - 1}
-          </Button>
-        )}
-        {/* Pulsante Cerca P.IVA - sempre visibile se ha P.IVA */}
-        {hasPiva && (
-          <Button
-            variant="ghost"
-            onClick={handleSearchPiva}
-            disabled={searching}
-            style={{ flex: 1, borderRadius: 0, padding: '12px', color: COLORS.warning }}
-            title="Cerca dati azienda tramite Partita IVA"
-          >
-            <Search size={15} /> {searching ? 'Ricerca...' : 'Cerca P.IVA'}
-          </Button>
-        )}
-        {/* Pulsante Schede Tecniche */}
-        <Button
-          variant="ghost"
-          onClick={() => onShowSchedeTecniche && onShowSchedeTecniche(supplier)}
-          style={{
-            flex: 1,
-            borderRadius: 0,
-            padding: '12px',
-            borderLeft: hasPiva ? `1px solid ${COLORS.border}` : 'none',
-            color: COLORS.primary,
-          }}
-          title="Visualizza schede tecniche prodotti"
-          data-testid={`btn-schede-tecniche-${supplier.id}`}
-        >
-          📋 Schede
-        </Button>
-        <Button
-          variant="ghost"
-          onClick={() => onViewInvoices(supplier)}
-          style={{
-            flex: 1,
-            borderRadius: 0,
-            padding: '12px',
-            borderLeft: hasPiva ? `1px solid ${COLORS.border}` : 'none',
-            color: COLORS.textMuted,
-          }}
-        >
-          <FileText size={15} /> Fatture
-        </Button>
-        <Button
-          variant="ghost"
-          onClick={() => onEdit(supplier)}
-          style={{
-            flex: 1,
-            borderRadius: 0,
-            padding: '12px',
-            borderLeft: `1px solid ${COLORS.border}`,
-            color: COLORS.textMuted,
-          }}
-        >
-          <Edit2 size={15} /> Modifica
-        </Button>
-        <Button
-          variant="ghost"
-          onClick={() => onDelete(supplier.id)}
-          style={{
-            borderRadius: 0,
-            padding: '12px 16px',
-            borderLeft: `1px solid ${COLORS.border}`,
-            color: COLORS.textSubtle,
-          }}
-        >
-          <Trash2 size={15} />
-        </Button>
-      </div>
+        <CreditCard size={12} />
+        {updating ? '...' : metodo.label}
+        <span style={{ marginLeft: '2px', fontSize: '10px' }}>▼</span>
+      </button>
 
-      {/* Menu dropdown con Portal - fuori dalla card */}
+      {/* Menu dropdown con Portal - fuori dalla riga */}
       {showMetodoMenu && (
         <Portal>
           {/* Overlay per chiudere */}
@@ -1319,7 +995,112 @@ function SupplierCard({
           </div>
         </Portal>
       )}
-    </div>
+    </>
+  );
+}
+
+// Azioni per riga fornitore in formato compatto da tabella/card: le STESSE
+// azioni della vecchia card (fatturato anno e anno-1, cerca P.IVA, schede
+// tecniche, estratto fatture, modifica, elimina).
+function AzioniFornitore({
+  supplier,
+  selectedYear,
+  isMobile,
+  onEdit,
+  onDelete,
+  onViewInvoices,
+  onSearchPiva,
+  onShowFatturato,
+  onShowSchedeTecniche,
+}) {
+  const piva = supplier.partita_iva || supplier.piva || null;
+  const hasPiva = !!piva;
+  const [searching, setSearching] = useState(false);
+  const [loadingFatturato, setLoadingFatturato] = useState(false);
+
+  const handleShowFatturato = async anno => {
+    setLoadingFatturato(true);
+    await onShowFatturato(supplier, anno);
+    setLoadingFatturato(false);
+  };
+
+  const handleSearchPiva = async () => {
+    if (!piva) return;
+    setSearching(true);
+    await onSearchPiva(supplier);
+    setSearching(false);
+  };
+
+  return (
+    <RowActions
+      style={{
+        justifyContent: isMobile ? 'flex-end' : 'center',
+        flexWrap: 'wrap',
+        // Su mobile i bottoni vanno a capo su due righe dentro la card
+        maxWidth: isMobile ? 160 : undefined,
+      }}
+    >
+      {hasPiva && (
+        <RowActionButton
+          variant="info"
+          onClick={() => handleShowFatturato(selectedYear)}
+          disabled={loadingFatturato}
+          title={`Visualizza fatturato ${selectedYear}`}
+          data-testid={`btn-fatturato-${supplier.id}`}
+          style={{ width: 'auto', padding: '0 6px', gap: 3, fontSize: 11, fontWeight: 600 }}
+        >
+          <TrendingUp size={13} /> {loadingFatturato ? '...' : selectedYear}
+        </RowActionButton>
+      )}
+      <RowActionButton
+        variant="neutral"
+        onClick={() => handleShowFatturato(selectedYear - 1)}
+        disabled={loadingFatturato}
+        title={`Visualizza fatturato ${selectedYear - 1}`}
+        style={{ width: 'auto', padding: '0 6px', gap: 3, fontSize: 11, fontWeight: 600 }}
+      >
+        <TrendingUp size={13} /> {selectedYear - 1}
+      </RowActionButton>
+      {hasPiva && (
+        <RowActionButton
+          onClick={handleSearchPiva}
+          disabled={searching}
+          title="Cerca dati azienda tramite Partita IVA"
+          style={{ background: COLORS.warningLight, color: COLORS.warning }}
+        >
+          <Search size={14} />
+        </RowActionButton>
+      )}
+      <RowActionButton
+        variant="primary"
+        onClick={() => onShowSchedeTecniche && onShowSchedeTecniche(supplier)}
+        title="Visualizza schede tecniche prodotti"
+        data-testid={`btn-schede-tecniche-${supplier.id}`}
+      >
+        📋
+      </RowActionButton>
+      <RowActionButton
+        variant="neutral"
+        onClick={() => onViewInvoices(supplier)}
+        title="Estratto fatture"
+      >
+        <FileText size={14} />
+      </RowActionButton>
+      <RowActionButton
+        variant="neutral"
+        onClick={() => onEdit(supplier)}
+        title="Modifica anagrafica"
+      >
+        <Edit2 size={14} />
+      </RowActionButton>
+      <RowActionButton
+        variant="danger"
+        onClick={() => onDelete(supplier.id)}
+        title="Elimina fornitore"
+      >
+        <Trash2 size={14} />
+      </RowActionButton>
+    </RowActions>
   );
 }
 
@@ -2172,31 +1953,150 @@ export default function Fornitori() {
             </p>
           </div>
         ) : (
+          /* Lista unica desktop/mobile (ListaAdattiva, ex griglia di card):
+             tabella su monitor, card compatte su telefono */
           <div
             style={{
-              display: 'grid',
-              gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(320px, 1fr))',
-              gap: isMobile ? 12 : 16,
+              backgroundColor: COLORS.card,
+              borderRadius: BORDER_RADIUS.lg,
+              boxShadow: SHADOWS.sm,
+              padding: isMobile ? '10px' : '4px 0',
             }}
           >
-            {filteredSuppliers.map(supplier => (
-              <SupplierCard
-                key={supplier.id}
-                supplier={supplier}
-                onEdit={s => {
-                  setCurrentSupplier(s);
-                  setModalOpen(true);
-                }}
-                onDelete={handleDelete}
-                onViewInvoices={handleViewInvoices}
-                onChangeMetodo={handleChangeMetodo}
-                onSearchPiva={handleSearchPiva}
-                onShowFatturato={handleShowFatturato}
-                onShowSchedeTecniche={handleViewSchedeTecniche}
-                onToggleEsclude={handleToggleEsclude}
-                selectedYear={selectedYear}
-              />
-            ))}
+            <ListaAdattiva
+              testId="lista-fornitori"
+              dati={filteredSuppliers}
+              pageSize={50}
+              chiave={(s, i) => s.id || i}
+              colonne={[
+                {
+                  key: 'ragione_sociale',
+                  label: 'Fornitore',
+                  ruoloCard: 'titolo',
+                  render: s => {
+                    const nome =
+                      s.ragione_sociale || s.denominazione || s.nome || s.name || 'Senza nome';
+                    const incompleto =
+                      !(s.partita_iva || s.piva) || !s.comune || !s.email || !s.telefono;
+                    return (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        {nome}
+                        {incompleto && (
+                          <span title="Dati incompleti" style={{ display: 'inline-flex' }}>
+                            <AlertCircle size={14} color={COLORS.warning} />
+                          </span>
+                        )}
+                      </span>
+                    );
+                  },
+                  tdStyle: { fontWeight: 600, color: COLORS.gray[800], fontSize: 14 },
+                },
+                {
+                  // Vincolo mobile: P.IVA mai nelle card
+                  key: 'partita_iva',
+                  label: 'P.IVA',
+                  mono: true,
+                  ruoloCard: 'omesso',
+                  render: s => s.partita_iva || s.piva || '-',
+                  tdStyle: { fontSize: 13, color: COLORS.textMuted },
+                },
+                {
+                  // Vincolo mobile: IBAN mai nelle card
+                  key: 'iban',
+                  label: 'IBAN',
+                  mono: true,
+                  ruoloCard: 'omesso',
+                  render: s => s.iban || '-',
+                  tdStyle: { fontSize: 12, color: COLORS.textMuted },
+                },
+                {
+                  key: 'email',
+                  label: 'Email',
+                  ruoloCard: 'omesso',
+                  render: s => s.email || '-',
+                  tdStyle: { fontSize: 13, color: COLORS.textMuted },
+                },
+                {
+                  key: 'comune',
+                  label: 'Località',
+                  ruoloCard: 'dettaglio',
+                  iconaCard: '📍',
+                  render: s =>
+                    s.comune ? `${s.comune}${s.provincia ? ` (${s.provincia})` : ''}` : '-',
+                  tdStyle: { fontSize: 13, color: COLORS.textMuted },
+                },
+                {
+                  key: 'fatture_count',
+                  label: 'Fatture',
+                  align: 'center',
+                  ruoloCard: 'dettaglio',
+                  iconaCard: '🧾',
+                  render: s => s.fatture_count || 0,
+                },
+                {
+                  key: 'giorni_pagamento',
+                  label: 'Giorni',
+                  align: 'center',
+                  ruoloCard: 'dettaglio',
+                  render: s => s.giorni_pagamento || 30,
+                },
+                {
+                  key: 'metodo_pagamento',
+                  label: 'Metodo',
+                  align: 'center',
+                  ruoloCard: 'dettaglio',
+                  render: s => <MetodoBadge supplier={s} onChangeMetodo={handleChangeMetodo} />,
+                },
+                {
+                  key: 'esclude_magazzino',
+                  label: 'Magazzino',
+                  align: 'center',
+                  ruoloCard: 'dettaglio',
+                  iconaCard: ' ', // il bottone si spiega da solo: niente prefisso "Magazzino:"
+                  render: s => (
+                    <Button
+                      variant={s.esclude_magazzino ? 'warning' : 'success'}
+                      size="sm"
+                      onClick={async e => {
+                        e.stopPropagation();
+                        await handleToggleEsclude(s.id, !s.esclude_magazzino);
+                      }}
+                      data-testid={`btn-toggle-esclude-magazzino-${s.id}`}
+                      title={
+                        s.esclude_magazzino
+                          ? 'Click: RIMETTI nel magazzino (le fatture popoleranno le giacenze)'
+                          : 'Click: ESCLUDI dal magazzino (le fatture NON creano carichi)'
+                      }
+                      style={{ padding: '4px 10px', fontSize: 11 }}
+                    >
+                      {s.esclude_magazzino ? '🚫 Escluso magazzino' : '📦 In magazzino'}
+                    </Button>
+                  ),
+                },
+                {
+                  key: 'azioni',
+                  label: 'Azioni',
+                  align: 'center',
+                  ruoloCard: 'azioni',
+                  render: s => (
+                    <AzioniFornitore
+                      supplier={s}
+                      selectedYear={selectedYear}
+                      isMobile={isMobile}
+                      onEdit={sup => {
+                        setCurrentSupplier(sup);
+                        setModalOpen(true);
+                      }}
+                      onDelete={handleDelete}
+                      onViewInvoices={handleViewInvoices}
+                      onSearchPiva={handleSearchPiva}
+                      onShowFatturato={handleShowFatturato}
+                      onShowSchedeTecniche={handleViewSchedeTecniche}
+                    />
+                  ),
+                },
+              ]}
+            />
           </div>
         )}
       </div>
