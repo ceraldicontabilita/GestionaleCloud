@@ -3,11 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
-import { formatEuro, formatDateIT, COLORS, SHADOWS, BORDER_RADIUS, useIsMobile } from '../lib/utils';
+import { formatEuro, formatDateIT, formatDateGGMM, COLORS, SHADOWS, BORDER_RADIUS, useIsMobile } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
 import ModalFattura from '../components/ModalFattura';
 import { useConfirm } from '../components/ui/ConfirmDialog';
-import { Button, Badge, StatCard, Input, Select, Table, Th, Td, RowActions, RowActionButton } from '../components/ds';
+import { Button, Badge, StatCard, Input, Select, RowActions, RowActionButton, ListaAdattiva } from '../components/ds';
 
 export default function Scadenze() {
   const isMobile = useIsMobile();
@@ -158,6 +158,30 @@ export default function Scadenze() {
         return { variant: 'success', bg: COLORS.successLight, border: COLORS.success, text: COLORS.success };
     }
   };
+
+  // Semaforo di urgenza per riga (desktop): sfondo colorato, bordo sinistro
+  // e attenuazione delle scadenze passate — replicato via tdStyle per cella.
+  const isScadenzaPassata = s => s.giorni_mancanti !== undefined && s.giorni_mancanti < 0;
+  const tdStyleScadenza = (s, extra = {}) => {
+    const st = getPriorityStyle(s.priorita, s.urgente);
+    const passata = isScadenzaPassata(s);
+    return {
+      background: passata ? COLORS.gray[50] : st.bg,
+      opacity: passata ? 0.6 : 1,
+      ...extra,
+    };
+  };
+
+  const testoGiorni = s =>
+    s.giorni_mancanti === undefined
+      ? ''
+      : s.giorni_mancanti === 0
+        ? 'OGGI'
+        : s.giorni_mancanti === 1
+          ? '1g'
+          : s.giorni_mancanti < 0
+            ? `-${Math.abs(s.giorni_mancanti)}g`
+            : `${s.giorni_mancanti}g`;
 
   const getTipoIcon = tipo => {
     switch (tipo) {
@@ -648,171 +672,200 @@ export default function Scadenze() {
               Nessuna scadenza trovata per i filtri selezionati.
             </div>
           ) : (
-            <div style={{ maxHeight: '60vh', overflow: 'auto' }}>
-              {/* Tabella scadenze */}
-              <Table style={{ fontSize: 12 }}>
-                <thead>
-                  <tr style={{ borderBottom: `2px solid ${COLORS.border}`, background: COLORS.bgAlt }}>
-                    <Th align="center" style={{ width: 70 }}>
-                      Tipo
-                    </Th>
-                    <Th align="right" style={{ width: 90 }}>
-                      Importo
-                    </Th>
-                    <Th align="center" style={{ width: 70 }}>
-                      Data
-                    </Th>
-                    <Th align="center" style={{ width: 60 }}>
-                      Giorni
-                    </Th>
-                    <Th align="left">Descrizione</Th>
-                    <Th align="center" style={{ width: 100 }}>
-                      Azioni
-                    </Th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {scadenze.map((s, idx) => {
-                    const style = getPriorityStyle(s.priorita, s.urgente);
-                    const isPassata = s.giorni_mancanti !== undefined && s.giorni_mancanti < 0;
-
-                    return (
-                      <tr
-                        key={s.id || `scad-${idx}`}
+            <div
+              style={{
+                maxHeight: '60vh',
+                overflow: 'auto',
+                padding: isMobile ? '10px' : 0,
+              }}
+            >
+              <ListaAdattiva
+                testId="scadenze-table"
+                dati={scadenze}
+                pageSize={50}
+                chiave={(s, idx) => s.id || `scad-${idx}`}
+                colonne={[
+                  {
+                    // Su mobile il badge Tipo (semaforo urgenza) è riportato
+                    // nel titolo della card, quindi qui è 'omesso'.
+                    key: 'tipo',
+                    label: 'Tipo',
+                    align: 'center',
+                    ruoloCard: 'omesso',
+                    render: s => (
+                      <Badge variant={getPriorityStyle(s.priorita, s.urgente).variant}>
+                        {s.tipo}
+                      </Badge>
+                    ),
+                    tdStyle: s =>
+                      tdStyleScadenza(s, {
+                        borderLeft: `4px solid ${getPriorityStyle(s.priorita, s.urgente).border}`,
+                      }),
+                  },
+                  {
+                    key: 'importo',
+                    label: 'Importo',
+                    align: 'right',
+                    mono: true,
+                    ruoloCard: 'importo',
+                    render: s => (s.importo > 0 ? formatEuro(s.importo) : '-'),
+                    tdStyle: s =>
+                      tdStyleScadenza(s, {
+                        fontWeight: 'bold',
+                        color: getPriorityStyle(s.priorita, s.urgente).text,
+                      }),
+                  },
+                  {
+                    key: 'data',
+                    label: 'Data',
+                    align: 'center',
+                    ruoloCard: 'dettaglio',
+                    iconaCard: '📅',
+                    // Su mobile solo gg/mm: l'anno è nel selettore globale
+                    render: s => (isMobile ? formatDateGGMM(s.data) || '-' : formatDate(s.data)),
+                    tdStyle: s => tdStyleScadenza(s, { color: COLORS.textMuted }),
+                  },
+                  {
+                    key: 'giorni_mancanti',
+                    label: 'Giorni',
+                    align: 'center',
+                    ruoloCard: 'dettaglio',
+                    iconaCard: '⏳',
+                    render: s => (
+                      <span
                         style={{
-                          background: isPassata ? COLORS.gray[50] : style.bg,
-                          opacity: isPassata ? 0.6 : 1,
-                          borderLeft: `4px solid ${style.border}`,
-                          borderBottom: `1px solid ${COLORS.gray[100]}`,
+                          fontWeight: 'bold',
+                          color:
+                            isScadenzaPassata(s) || s.urgente ? COLORS.danger : COLORS.textMuted,
                         }}
                       >
-                        <Td align="center">
-                          <Badge variant={style.variant}>{s.tipo}</Badge>
-                        </Td>
-                        <Td align="right" mono style={{ fontWeight: 'bold', color: style.text }}>
-                          {s.importo > 0 ? formatEuro(s.importo) : '-'}
-                        </Td>
-                        <Td align="center" style={{ color: COLORS.textMuted }}>
-                          {formatDate(s.data)}
-                        </Td>
-                        <Td
-                          align="center"
-                          style={{
-                            fontWeight: 'bold',
-                            color: isPassata || s.urgente ? COLORS.danger : COLORS.textMuted,
-                          }}
-                        >
-                          {s.giorni_mancanti === undefined
-                            ? ''
-                            : s.giorni_mancanti === 0
-                              ? 'OGGI'
-                              : s.giorni_mancanti === 1
-                                ? '1g'
-                                : s.giorni_mancanti < 0
-                                  ? `-${Math.abs(s.giorni_mancanti)}g`
-                                  : `${s.giorni_mancanti}g`}
-                        </Td>
-                        <Td
-                          style={{
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                            maxWidth: 250,
-                          }}
-                        >
-                          {s.descrizione}
-                          {s.fornitore && (
-                            <span style={{ color: COLORS.textSubtle, marginLeft: 8 }}>
-                              • {s.fornitore}
-                            </span>
-                          )}
-                        </Td>
-                        <Td align="center">
-                          {s.source === 'custom' && (
-                            <RowActions style={{ justifyContent: 'center' }}>
+                        {testoGiorni(s)}
+                      </span>
+                    ),
+                    tdStyle: s => tdStyleScadenza(s),
+                  },
+                  {
+                    key: 'descrizione',
+                    label: 'Descrizione',
+                    align: 'left',
+                    ruoloCard: 'titolo',
+                    render: s => (
+                      <>
+                        {/* Badge urgenza visibile anche nella card mobile */}
+                        {isMobile && (
+                          <Badge variant={getPriorityStyle(s.priorita, s.urgente).variant}>
+                            {s.tipo}
+                          </Badge>
+                        )}
+                        {isMobile ? ' ' : null}
+                        {s.descrizione}
+                        {s.fornitore && (
+                          <span style={{ color: COLORS.textSubtle, marginLeft: 8 }}>
+                            • {s.fornitore}
+                          </span>
+                        )}
+                      </>
+                    ),
+                    tdStyle: s =>
+                      tdStyleScadenza(s, {
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        maxWidth: 250,
+                      }),
+                  },
+                  {
+                    key: 'azioni',
+                    label: 'Azioni',
+                    align: 'center',
+                    ruoloCard: 'azioni',
+                    tdStyle: s => tdStyleScadenza(s),
+                    render: s => (
+                      <>
+                        {s.source === 'custom' && (
+                          <RowActions style={{ justifyContent: isMobile ? 'flex-end' : 'center' }}>
+                            <RowActionButton
+                              variant="success"
+                              onClick={() => handleCompleta(s.id)}
+                              title="Segna come completata"
+                            >
+                              ✓
+                            </RowActionButton>
+                            <RowActionButton
+                              variant="danger"
+                              onClick={() => handleElimina(s.id)}
+                              title="Elimina"
+                            >
+                              🗑️
+                            </RowActionButton>
+                          </RowActions>
+                        )}
+
+                        {/* Pulsanti Visualizza Fattura per scadenze tipo FATTURA */}
+                        {(s.tipo === 'FATTURA' || s.source === 'fattura') &&
+                          (s.fattura_id || s.id) && (
+                            <RowActions
+                              style={{
+                                justifyContent: isMobile ? 'flex-end' : 'center',
+                                marginTop: s.source === 'custom' ? 6 : 0,
+                              }}
+                            >
                               <RowActionButton
-                                variant="success"
-                                onClick={() => handleCompleta(s.id)}
-                                title="Segna come completata"
+                                variant="info"
+                                onClick={() => {
+                                  setViewingInvoice({
+                                    id: s.fattura_id || s.id,
+                                    numero: s.numero_fattura || s.numero || s.descrizione,
+                                  });
+                                }}
+                                title="Visualizza Dettagli Fattura"
+                                data-testid={`view-invoice-${s.fattura_id || s.id}`}
                               >
-                                ✓
+                                👁️
                               </RowActionButton>
-                              <RowActionButton
-                                variant="danger"
-                                onClick={() => handleElimina(s.id)}
-                                title="Elimina"
+                              <a
+                                href={`/api/fatture-ricevute/fattura/${s.fattura_id || s.id}/view-assoinvoice`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  width: 28,
+                                  height: 28,
+                                  borderRadius: BORDER_RADIUS.sm,
+                                  background: COLORS.successLight,
+                                  color: COLORS.success,
+                                  fontSize: 12,
+                                  textDecoration: 'none',
+                                }}
+                                title="Visualizza PDF Fattura"
+                                data-testid={`pdf-invoice-${s.fattura_id || s.id}`}
                               >
-                                🗑️
-                              </RowActionButton>
+                                📄
+                              </a>
                             </RowActions>
                           )}
 
-                          {/* Pulsanti Visualizza Fattura per scadenze tipo FATTURA */}
-                          {(s.tipo === 'FATTURA' || s.source === 'fattura') &&
-                            (s.fattura_id || s.id) && (
-                              <RowActions
-                                style={{
-                                  justifyContent: 'center',
-                                  marginTop: s.source === 'custom' ? 6 : 0,
-                                }}
-                              >
-                                <RowActionButton
-                                  variant="info"
-                                  onClick={() => {
-                                    setViewingInvoice({
-                                      id: s.fattura_id || s.id,
-                                      numero: s.numero_fattura || s.numero || s.descrizione,
-                                    });
-                                  }}
-                                  title="Visualizza Dettagli Fattura"
-                                  data-testid={`view-invoice-${s.fattura_id || s.id}`}
-                                >
-                                  👁️
-                                </RowActionButton>
-                                <a
-                                  href={`/api/fatture-ricevute/fattura/${s.fattura_id || s.id}/view-assoinvoice`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    width: 28,
-                                    height: 28,
-                                    borderRadius: BORDER_RADIUS.sm,
-                                    background: COLORS.successLight,
-                                    color: COLORS.success,
-                                    fontSize: 12,
-                                    textDecoration: 'none',
-                                  }}
-                                  title="Visualizza PDF Fattura"
-                                  data-testid={`pdf-invoice-${s.fattura_id || s.id}`}
-                                >
-                                  📄
-                                </a>
-                              </RowActions>
-                            )}
-
-                          {/* Bottone Paga Cassa/Banca */}
-                          {!paidIds.has(s.id) &&
-                            (s.tipo === 'FATTURA' || s.source === 'fattura' || s.importo > 0) && (
-                              <Button
-                                variant="warning"
-                                size="sm"
-                                onClick={() => setPagaModal(s)}
-                                title="Registra Pagamento"
-                                style={{ marginTop: 4, fontSize: 11, padding: '4px 10px' }}
-                              >
-                                💰 Paga
-                              </Button>
-                            )}
-                          {paidIds.has(s.id) && <Badge variant="success">✓ Pagato</Badge>}
-                        </Td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </Table>
+                        {/* Bottone Paga Cassa/Banca */}
+                        {!paidIds.has(s.id) &&
+                          (s.tipo === 'FATTURA' || s.source === 'fattura' || s.importo > 0) && (
+                            <Button
+                              variant="warning"
+                              size="sm"
+                              onClick={() => setPagaModal(s)}
+                              title="Registra Pagamento"
+                              style={{ marginTop: 4, fontSize: 11, padding: '4px 10px' }}
+                            >
+                              💰 Paga
+                            </Button>
+                          )}
+                        {paidIds.has(s.id) && <Badge variant="success">✓ Pagato</Badge>}
+                      </>
+                    ),
+                  },
+                ]}
+              />
             </div>
           )}
         </div>

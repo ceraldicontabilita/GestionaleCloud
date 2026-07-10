@@ -1,6 +1,14 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { toast } from 'sonner';
-import { formatEuro, formatDateIT, STYLES, COLORS, BORDER_RADIUS } from '../lib/utils';
+import {
+  formatEuro,
+  formatDateIT,
+  formatDateGGMM,
+  STYLES,
+  COLORS,
+  BORDER_RADIUS,
+  useIsMobile,
+} from '../lib/utils';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { PageLayout } from '../components/PageLayout';
@@ -19,6 +27,7 @@ import {
   Td,
   RowActions,
   RowActionButton,
+  ListaAdattiva,
 } from '../components/ds';
 
 // Palette categorica: colori distintivi per tipo documento (non sono colori di
@@ -73,6 +82,7 @@ const DEFAULT_KEYWORDS = [
 
 export default function Documenti() {
   const { anno } = useAnnoGlobale();
+  const isMobile = useIsMobile();
   const [documents, setDocuments] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -413,6 +423,9 @@ export default function Documenti() {
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   };
+
+  // Sfondo riga come nella tabella originale: processato = bgAlt, altrimenti card
+  const sfondoRiga = doc => ({ background: doc.processed ? COLORS.bgAlt : COLORS.card });
 
   const formatDate = dateStr => {
     if (!dateStr) return '-';
@@ -944,158 +957,207 @@ export default function Documenti() {
                 <p style={{ fontSize: 14 }}>Clicca &quot;Scarica da Email&quot; per iniziare</p>
               </div>
             ) : (
-              <TableWrap>
-                <Table>
-                  <thead>
-                    <tr>
-                      <Th style={{ width: 40 }}>Cat.</Th>
-                      <Th>Nome File</Th>
-                      <Th>Da Email</Th>
-                      <Th>Mittente</Th>
-                      <Th align="center">Data Email</Th>
-                      <Th align="center">Data Doc.</Th>
-                      <Th align="right">Dim.</Th>
-                      <Th align="center">Stato</Th>
-                      <Th align="center">Azioni</Th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {documents.map((doc, idx) => {
+              <ListaAdattiva
+                testId="documenti-table"
+                dati={documents}
+                pageSize={50}
+                chiave={(doc, i) => doc.id || i}
+                colonne={[
+                  {
+                    // Su mobile l'icona categoria è nel titolo (vedi Nome File)
+                    key: 'category',
+                    label: 'Cat.',
+                    ruoloCard: 'omesso',
+                    render: doc => {
                       const catStyle = CATEGORY_COLORS[doc.category] || CATEGORY_COLORS.altro;
-                      const statusStyle = STATUS_LABELS[doc.status] || STATUS_LABELS.nuovo;
-
                       return (
-                        <tr
-                          key={doc.id || idx}
-                          style={{ background: doc.processed ? COLORS.bgAlt : COLORS.card }}
+                        <span
+                          style={{
+                            display: 'inline-block',
+                            padding: '4px 8px',
+                            borderRadius: BORDER_RADIUS.sm,
+                            background: catStyle.bg,
+                            fontSize: 16,
+                          }}
+                          title={doc.category_label}
                         >
-                          <Td>
-                            <span
-                              style={{
-                                display: 'inline-block',
-                                padding: '4px 8px',
-                                borderRadius: BORDER_RADIUS.sm,
-                                background: catStyle.bg,
-                                fontSize: 16,
-                              }}
-                              title={doc.category_label}
-                            >
-                              {catStyle.icon}
-                            </span>
-                          </Td>
-                          <Td>
-                            <div style={{ fontWeight: 'bold', color: COLORS.text }}>
-                              {doc.filename}
-                            </div>
-                            <div style={{ fontSize: 11, color: COLORS.textSubtle }}>
-                              {doc.category_label}
-                            </div>
-                          </Td>
-                          <Td style={{ maxWidth: 200 }}>
-                            <div
-                              style={{
-                                whiteSpace: 'nowrap',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                fontSize: 12,
-                                color: COLORS.textMuted,
-                              }}
-                              title={doc.email_subject}
-                            >
-                              {doc.email_subject || '-'}
-                            </div>
-                          </Td>
-                          <Td style={{ fontSize: 12, color: COLORS.textMuted }}>
-                            {doc.email_from?.split('<')[0]?.trim() || '-'}
-                          </Td>
-                          <Td align="center" style={{ fontSize: 12 }}>
-                            {formatDate(doc.email_date)}
-                          </Td>
-                          <Td
-                            align="center"
-                            style={{
-                              fontSize: 12,
-                              color: COLORS.text,
-                              fontWeight: 500,
-                            }}
-                          >
-                            {doc.document_date ? formatDate(doc.document_date) : '-'}
-                          </Td>
-                          <Td align="right" mono style={{ fontSize: 12 }}>
-                            {formatBytes(doc.size_bytes)}
-                          </Td>
-                          <Td align="center">
-                            <Badge variant={statusStyle.variant}>{statusStyle.label}</Badge>
-                          </Td>
-                          <Td align="center">
-                            <RowActions style={{ justifyContent: 'center' }}>
-                              {/* Bottone Visualizza PDF */}
-                              <Button
-                                variant="info"
-                                size="sm"
-                                onClick={() => handleViewPdf(doc)}
-                                title="Visualizza PDF"
-                                data-testid={`view-pdf-${doc.id}`}
-                              >
-                                Vedi
-                              </Button>
-
-                              <RowActionButton onClick={() => handleDownloadFile(doc)} title="Scarica file">
-                                📥
-                              </RowActionButton>
-
-                              {!doc.processed && (
-                                <Select
-                                  onChange={e => {
-                                    if (e.target.value) {
-                                      handleProcessDocument(doc, e.target.value);
-                                      e.target.value = '';
-                                    }
-                                  }}
-                                  style={{ padding: '4px 8px', fontSize: 11, background: COLORS.infoLight }}
-                                  defaultValue=""
-                                >
-                                  <option value="">Carica in...</option>
-                                  <option value="f24">F24</option>
-                                  <option value="fatture">Fatture</option>
-                                  <option value="buste_paga">Buste Paga</option>
-                                  <option value="estratto_conto">Estratto Conto</option>
-                                  <option value="quietanze">Quietanze</option>
-                                </Select>
-                              )}
-
-                              <Select
-                                onChange={e => {
-                                  if (e.target.value && e.target.value !== doc.category) {
-                                    handleChangeCategory(doc.id, e.target.value);
-                                  }
-                                }}
-                                value={doc.category}
-                                style={{ padding: '4px 8px', fontSize: 11 }}
-                                title="Cambia categoria"
-                              >
-                                {Object.entries(categories).map(([key, label]) => (
-                                  <option key={key} value={key}>
-                                    {label}
-                                  </option>
-                                ))}
-                              </Select>
-
-                              <RowActionButton
-                                variant="danger"
-                                onClick={() => handleDeleteDocument(doc.id)}
-                                title="Elimina"
-                              >
-                                🗑️
-                              </RowActionButton>
-                            </RowActions>
-                          </Td>
-                        </tr>
+                          {catStyle.icon}
+                        </span>
                       );
-                    })}
-                  </tbody>
-                </Table>
-              </TableWrap>
+                    },
+                    tdStyle: sfondoRiga,
+                  },
+                  {
+                    key: 'filename',
+                    label: 'Nome File',
+                    ruoloCard: 'titolo',
+                    render: doc => {
+                      const catStyle = CATEGORY_COLORS[doc.category] || CATEGORY_COLORS.altro;
+                      return (
+                        <>
+                          <div style={{ fontWeight: 'bold', color: COLORS.text }}>
+                            {isMobile ? `${catStyle.icon} ` : ''}
+                            {doc.filename}
+                          </div>
+                          <div style={{ fontSize: 11, color: COLORS.textSubtle }}>
+                            {doc.category_label}
+                          </div>
+                        </>
+                      );
+                    },
+                    tdStyle: sfondoRiga,
+                  },
+                  {
+                    // Oggetto email lungo: solo desktop, su mobile basta il mittente
+                    key: 'email_subject',
+                    label: 'Da Email',
+                    ruoloCard: 'omesso',
+                    render: doc => (
+                      <div
+                        style={{
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          fontSize: 12,
+                          color: COLORS.textMuted,
+                        }}
+                        title={doc.email_subject}
+                      >
+                        {doc.email_subject || '-'}
+                      </div>
+                    ),
+                    tdStyle: doc => ({ ...sfondoRiga(doc), maxWidth: 200 }),
+                  },
+                  {
+                    key: 'email_from',
+                    label: 'Mittente',
+                    ruoloCard: 'sottotitolo',
+                    render: doc => doc.email_from?.split('<')[0]?.trim() || '-',
+                    tdStyle: doc => ({
+                      ...sfondoRiga(doc),
+                      fontSize: 12,
+                      color: COLORS.textMuted,
+                    }),
+                  },
+                  {
+                    key: 'email_date',
+                    label: 'Data Email',
+                    align: 'center',
+                    ruoloCard: 'dettaglio',
+                    iconaCard: '📅',
+                    // Su mobile solo giorno/mese: la data completa con orario
+                    // faceva andare a capo la riga dettagli della card
+                    render: doc =>
+                      isMobile ? formatDateGGMM(doc.email_date) : formatDate(doc.email_date),
+                    tdStyle: doc => ({ ...sfondoRiga(doc), fontSize: 12 }),
+                  },
+                  {
+                    key: 'document_date',
+                    label: 'Data Doc.',
+                    align: 'center',
+                    ruoloCard: 'dettaglio',
+                    hideMobile: true, // spesso vuota: su mobile basta la data email
+                    render: doc => (doc.document_date ? formatDate(doc.document_date) : '-'),
+                    tdStyle: doc => ({
+                      ...sfondoRiga(doc),
+                      fontSize: 12,
+                      color: COLORS.text,
+                      fontWeight: 500,
+                    }),
+                  },
+                  {
+                    key: 'size_bytes',
+                    label: 'Dim.',
+                    align: 'right',
+                    mono: true,
+                    ruoloCard: 'dettaglio',
+                    iconaCard: '💾',
+                    render: doc => formatBytes(doc.size_bytes),
+                    tdStyle: doc => ({ ...sfondoRiga(doc), fontSize: 12 }),
+                  },
+                  {
+                    key: 'status',
+                    label: 'Stato',
+                    align: 'center',
+                    ruoloCard: 'dettaglio',
+                    render: doc => {
+                      const statusStyle = STATUS_LABELS[doc.status] || STATUS_LABELS.nuovo;
+                      return <Badge variant={statusStyle.variant}>{statusStyle.label}</Badge>;
+                    },
+                    tdStyle: sfondoRiga,
+                  },
+                  {
+                    key: 'azioni',
+                    label: 'Azioni',
+                    align: 'center',
+                    ruoloCard: 'azioni',
+                    render: doc => (
+                      <RowActions style={{ justifyContent: 'center' }}>
+                        {/* Bottone Visualizza PDF */}
+                        <Button
+                          variant="info"
+                          size="sm"
+                          onClick={() => handleViewPdf(doc)}
+                          title="Visualizza PDF"
+                          data-testid={`view-pdf-${doc.id}`}
+                        >
+                          Vedi
+                        </Button>
+
+                        <RowActionButton onClick={() => handleDownloadFile(doc)} title="Scarica file">
+                          📥
+                        </RowActionButton>
+
+                        {!doc.processed && (
+                          <Select
+                            onChange={e => {
+                              if (e.target.value) {
+                                handleProcessDocument(doc, e.target.value);
+                                e.target.value = '';
+                              }
+                            }}
+                            style={{ padding: '4px 8px', fontSize: 11, background: COLORS.infoLight }}
+                            defaultValue=""
+                          >
+                            <option value="">Carica in...</option>
+                            <option value="f24">F24</option>
+                            <option value="fatture">Fatture</option>
+                            <option value="buste_paga">Buste Paga</option>
+                            <option value="estratto_conto">Estratto Conto</option>
+                            <option value="quietanze">Quietanze</option>
+                          </Select>
+                        )}
+
+                        <Select
+                          onChange={e => {
+                            if (e.target.value && e.target.value !== doc.category) {
+                              handleChangeCategory(doc.id, e.target.value);
+                            }
+                          }}
+                          value={doc.category}
+                          style={{ padding: '4px 8px', fontSize: 11 }}
+                          title="Cambia categoria"
+                        >
+                          {Object.entries(categories).map(([key, label]) => (
+                            <option key={key} value={key}>
+                              {label}
+                            </option>
+                          ))}
+                        </Select>
+
+                        <RowActionButton
+                          variant="danger"
+                          onClick={() => handleDeleteDocument(doc.id)}
+                          title="Elimina"
+                        >
+                          🗑️
+                        </RowActionButton>
+                      </RowActions>
+                    ),
+                    tdStyle: sfondoRiga,
+                  },
+                ]}
+              />
             )}
           </Card>
 
