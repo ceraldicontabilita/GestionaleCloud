@@ -282,6 +282,22 @@ async def escludi_trattenuta(
     return {"success": True, "trattenuta": trattenuta}
 
 
+@router.post("/retro-verifica")
+@handle_errors
+async def retro_verifica_trattenute() -> Dict[str, Any]:
+    """
+    Lancio manuale della verifica retroattiva: ripesca i cedolini già
+    archiviati (posta/Drive) e verifica le trattenute confermate/comunicate/
+    in attesa con le stesse regole del percorso on-import. Stesso giro del
+    job giornaliero delle 8:30 (id 'verifica_trattenute_retro').
+    """
+    from app.services.trattenute_verbali_service import verifica_trattenute_retroattiva
+
+    db = Database.get_db()
+    esito = await verifica_trattenute_retroattiva(db)
+    return {"success": True, **esito}
+
+
 @router.get("/report-consulente")
 @handle_errors
 async def report_consulente(

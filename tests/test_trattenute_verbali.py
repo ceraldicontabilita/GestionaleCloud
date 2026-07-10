@@ -7,8 +7,10 @@ from datetime import date, datetime, timezone
 
 from app.services.trattenute_verbali_service import (
     PAROLE_VOCE_TRATTENUTA,
+    cedolini_candidati,
     estrai_testo_cedolino,
     mese_successivo,
+    periodo_cedolino,
     periodo_yyyymm,
     trova_voce_trattenuta,
     valida_mese_cedolino,
@@ -130,3 +132,67 @@ class TestEstraiTestoCedolino:
 
     def test_input_none(self):
         assert estrai_testo_cedolino(None) == ""
+
+
+# ── cedolini_candidati (verifica retroattiva) ───────────────────────────
+
+def _ced(id_, mese=None, anno=None):
+    doc = {"id": id_}
+    if mese is not None:
+        doc["mese"] = mese
+    if anno is not None:
+        doc["anno"] = anno
+    return doc
+
+
+class TestPeriodoCedolino:
+    def test_periodo_da_mese_anno(self):
+        assert periodo_cedolino(_ced("c1", 7, 2026)) == "2026-07"
+
+    def test_periodo_non_ricostruibile(self):
+        assert periodo_cedolino(_ced("c1")) is None
+        assert periodo_cedolino(_ced("c1", 13, 2026)) is None
+        assert periodo_cedolino(None) is None
+        assert periodo_cedolino("non-un-dict") is None
+
+
+class TestCedoliniCandidati:
+    def test_filtra_per_periodo_minimo(self):
+        cedolini = [
+            _ced("vecchio", 5, 2026),
+            _ced("atteso", 7, 2026),
+            _ced("successivo", 8, 2026),
+        ]
+        ids = [c["id"] for c in cedolini_candidati(cedolini, "2026-07")]
+        # I cedolini precedenti al mese atteso non sono candidati
+        assert ids == ["atteso", "successivo"]
+
+    def test_ordinati_per_periodo_crescente(self):
+        cedolini = [
+            _ced("dicembre", 12, 2026),
+            _ced("agosto", 8, 2026),
+            _ced("gennaio_2027", 1, 2027),
+        ]
+        ids = [c["id"] for c in cedolini_candidati(cedolini, "2026-08")]
+        # Ordine cronologico: prima il mese atteso, poi i successivi
+        # (anche a cavallo d'anno: 2027-01 dopo 2026-12)
+        assert ids == ["agosto", "dicembre", "gennaio_2027"]
+
+    def test_periodo_min_non_ricostruibile_prende_tutti(self):
+        cedolini = [_ced("a", 1, 2025), _ced("b", 6, 2026)]
+        assert len(cedolini_candidati(cedolini, None)) == 2
+
+    def test_cedolino_senza_periodo_incluso_in_coda(self):
+        # Un cedolino senza mese/anno leggibili resta candidato (best-effort,
+        # può contenere la voce) ma va DOPO quelli con periodo noto
+        cedolini = [_ced("senza_periodo"), _ced("con_periodo", 7, 2026)]
+        ids = [c["id"] for c in cedolini_candidati(cedolini, "2026-07")]
+        assert ids == ["con_periodo", "senza_periodo"]
+
+    def test_lista_vuota(self):
+        assert cedolini_candidati([], "2026-07") == []
+        assert cedolini_candidati(None, "2026-07") == []
+
+    def test_nessun_candidato_se_tutti_precedenti(self):
+        cedolini = [_ced("a", 1, 2026), _ced("b", 2, 2026)]
+        assert cedolini_candidati(cedolini, "2026-07") == []
