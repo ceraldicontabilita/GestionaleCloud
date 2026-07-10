@@ -97,12 +97,51 @@ async def get_paypal_transactions(
         query["tipo"] = tipo
     if solo_pagamenti:
         query["lordo"] = {"$lt": 0}
-    
+
     transactions = await db[COLL_PAYPAL_TRANSACTIONS].find(
         query, {"_id": 0}
     ).sort("data", -1).limit(limit).to_list(limit)
 
     _backfill_controparte(transactions)
+
+    # ── Conversioni valuta (eventi T02xx) ──────────────────────────────────
+    # Un pagamento in valuta estera (es. MongoDB in USD) genera DUE gambe di
+    # conversione T0200: -EUR e +USD. In lista compariva quindi una "seconda
+    # riga" senza controparte con un importo diverso (l'EUR reale) accanto al
+    # pagamento USD mostrato col simbolo €. Qui accoppiamo le gambe al
+    # pagamento (paypal_reference_id) e:
+    #  - sul pagamento estero scriviamo importo_eur + valuta originale;
+    #  - marchiamo le gambe T02xx accoppiate (is_conversione) e con
+    #    solo_pagamenti le togliamo dalla lista (il loro valore è già
+    #    mostrato sul pagamento). Le conversioni orfane restano visibili.
+    per_riferimento: Dict[str, List[Dict[str, Any]]] = {}
+    for t in transactions:
+        ref = t.get("paypal_reference_id")
+        if ref and str(t.get("tipo", "")).startswith("T02"):
+            per_riferimento.setdefault(ref, []).append(t)
+
+    for t in transactions:
+        if str(t.get("tipo", "")).startswith("T02"):
+            continue
+        valuta = t.get("currency")
+        if not valuta or valuta == "EUR":
+            continue
+        gambe = per_riferimento.get(t.get("transaction_id"), [])
+        gamba_eur = next(
+            (g for g in gambe if g.get("currency") == "EUR"
+             and (g.get("lordo", 0) < 0) == (t.get("lordo", 0) < 0)),
+            None,
+        )
+        if gamba_eur:
+            t["importo_eur"] = gamba_eur.get("lordo")
+            t["importo_valuta"] = t.get("lordo")
+            t["valuta_originale"] = valuta
+            for g in gambe:
+                g["is_conversione"] = True
+                g["conversione_di"] = t.get("transaction_id")
+
+    if solo_pagamenti:
+        transactions = [t for t in transactions if not t.get("is_conversione")]
 
     # Descrizione leggibile: le transazioni da API PayPal non hanno il campo
     # "descrizione" ma trasportano oggetto/nota/numero fattura del fornitore.
@@ -114,9 +153,15 @@ async def get_paypal_transactions(
                 or (f"Fatt. {t['invoice_id_fornitore']}" if t.get("invoice_id_fornitore") else "")
             )
 
-    # Statistiche
-    totale_pagamenti = sum(t['lordo'] for t in transactions if t.get('lordo', 0) < 0)
-    totale_accrediti = sum(t['lordo'] for t in transactions if t.get('lordo', 0) > 0)
+    # Statistiche in EURO: per i pagamenti in valuta usa l'importo della
+    # conversione (prima si sommavano USD ed EUR insieme, contando due volte
+    # lo stesso pagamento: gamba valuta + gamba conversione).
+    def _importo_eur(t: Dict[str, Any]) -> float:
+        return float(t.get("importo_eur", t.get("lordo", 0)) or 0)
+
+    utili = [t for t in transactions if not t.get("is_conversione")]
+    totale_pagamenti = sum(_importo_eur(t) for t in utili if _importo_eur(t) < 0)
+    totale_accrediti = sum(_importo_eur(t) for t in utili if _importo_eur(t) > 0)
     
     return {
         "transactions": transactions,

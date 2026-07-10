@@ -607,6 +607,41 @@ def start_scheduler():
         name="Quadratura fatture Drive Elaborate (domenica ore 5:00)",
         replace_existing=True,
     )
+
+    # Stessa quadratura Elaborate anche per cedolini e corrispettivi
+    # (richiesta utente 10/07): archivio Drive ↔ gestionale, buchi recuperati.
+    async def _drive_quadratura_cedolini_job():
+        from app.database import Database
+        from app.services import drive_cedolini_ingest
+        try:
+            r = await drive_cedolini_ingest.verifica_quadratura_elaborate(Database.get_db())
+            logger.info(f"[SCHEDULER-QUADRATURA-CEDOLINI] {r if r.get('status') != 'ok' else {k: r[k] for k in ('controllati', 'quadrati', 'recuperati', 'errori')}}")
+        except Exception as e:
+            logger.error(f"[SCHEDULER-QUADRATURA-CEDOLINI] errore: {e}")
+
+    async def _drive_quadratura_corrispettivi_job():
+        from app.database import Database
+        from app.services import drive_corrispettivi_ingest
+        try:
+            r = await drive_corrispettivi_ingest.verifica_quadratura_elaborate(Database.get_db())
+            logger.info(f"[SCHEDULER-QUADRATURA-CORRISPETTIVI] {r if r.get('status') != 'ok' else {k: r[k] for k in ('controllati', 'quadrati', 'recuperati', 'errori')}}")
+        except Exception as e:
+            logger.error(f"[SCHEDULER-QUADRATURA-CORRISPETTIVI] errore: {e}")
+
+    scheduler.add_job(
+        _drive_quadratura_cedolini_job,
+        CronTrigger(day_of_week="sun", hour=5, minute=15),
+        id="drive_cedolini_quadratura",
+        name="Quadratura cedolini Drive Elaborate (domenica ore 5:15)",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        _drive_quadratura_corrispettivi_job,
+        CronTrigger(day_of_week="sun", hour=5, minute=30),
+        id="drive_corrispettivi_quadratura",
+        name="Quadratura corrispettivi Drive Elaborate (domenica ore 5:30)",
+        replace_existing=True,
+    )
     scheduler.add_job(
         _automazioni_prima_nota_job,
         'interval', minutes=30,

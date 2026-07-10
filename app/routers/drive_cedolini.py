@@ -38,3 +38,15 @@ async def drive_sync() -> Dict[str, Any]:
     if not drive_cedolini_ingest.start_background_sync(db):
         return {"status": "running", "message": "Sincronizzazione già in corso"}
     return {"status": "started", "message": "Sincronizzazione avviata"}
+
+
+@router.post("/drive/quadratura")
+async def drive_quadratura() -> Dict[str, Any]:
+    """Doppio controllo Elaborate ↔ gestionale per i cedolini.
+
+    Ripassa i PDF archiviati in "Elaborate" e recupera i buchi (file
+    archiviato senza documento nel gestionale). Idempotente, non sposta
+    file. Gira anche da sola una volta a settimana.
+    """
+    db = Database.get_db()
+    return await drive_cedolini_ingest.verifica_quadratura_elaborate(db)

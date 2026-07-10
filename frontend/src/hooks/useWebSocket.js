@@ -15,9 +15,13 @@ const QUERY_INVALIDATIONS = {
 };
 
 function getWebSocketUrl() {
-  // Usa il protocollo e host correnti (funziona sia in dev che in produzione)
+  // Il backend accetta il WebSocket SOLO con ?token=JWT (middleware auth):
+  // senza token la connessione veniva rifiutata con 403 in loop continuo
+  // (riempiva i log del server a ogni retry). Nessun token → nessun tentativo.
+  const token = localStorage.getItem('auth_token');
+  if (!token) return null;
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  return `${protocol}//${window.location.host}/api/ws/notifications`;
+  return `${protocol}//${window.location.host}/api/ws/notifications?token=${encodeURIComponent(token)}`;
 }
 
 export function useWebSocketNotifications() {
@@ -44,6 +48,7 @@ export function useWebSocketNotifications() {
       }
 
       const url = getWebSocketUrl();
+      if (!url) return; // non autenticato: inutile tentare
       let ws;
       try {
         ws = new WebSocket(url);

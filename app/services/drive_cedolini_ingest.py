@@ -284,3 +284,78 @@ async def _do_sync(db) -> Dict[str, Any]:
         upsert=True,
     )
     return result
+
+
+async def verifica_quadratura_elaborate(db) -> Dict[str, Any]:
+    """Doppio controllo Elaborate ↔ gestionale per i CEDOLINI.
+
+    Ripassa TUTTI i PDF archiviati nella sottocartella "Elaborate" e verifica
+    che ognuno abbia il suo documento nel gestionale (dedup per impronta md5,
+    la stessa dell'import): presente = quadrato, assente = buco recuperato
+    (re-import nella stessa pipeline). Non sposta file, niente doppioni.
+    """
+    if not is_configured():
+        return {"status": "not_configured"}
+    service = _build_drive_service()
+    if service is None:
+        return {"status": "error", "message": "Service Drive non disponibile"}
+
+    parent_id = settings.GOOGLE_DRIVE_CEDOLINI_FOLDER_ID
+    esito = {"status": "ok", "controllati": 0, "quadrati": 0,
+             "recuperati": 0, "errori": 0, "details": []}
+    try:
+        elaborate_id = _get_or_create_elaborate_folder(service, parent_id)
+        if not elaborate_id:
+            return {"status": "ok", "message": "Nessuna cartella Elaborate", **esito}
+        recuperati_da_processare = 0
+        for f in _list_pdf_files(service, elaborate_id):
+            esito["controllati"] += 1
+            try:
+                content = _download_bytes(service, f["id"])
+                if not content:
+                    esito["errori"] += 1
+                    continue
+                content_hash = hashlib.md5(content).hexdigest()
+                existing = await db["documents_inbox"].find_one(
+                    {"file_hash": content_hash}, {"_id": 0, "id": 1}
+                )
+                if existing:
+                    esito["quadrati"] += 1
+                else:
+                    doc = build_inbox_doc(content, f["name"])
+                    await db["documents_inbox"].insert_one(doc)
+                    esito["recuperati"] += 1
+                    recuperati_da_processare += 1
+                    esito["details"].append({"file": f["name"], "recuperato": True})
+                    logger.warning(f"Quadratura cedolini: recuperato buco {f['name']}")
+            except Exception as e:
+                esito["errori"] += 1
+                esito["details"].append({"file": f["name"], "error": str(e)})
+        if recuperati_da_processare:
+            try:
+                from app.services.email_monitor_service import processa_nuovi_documenti
+                await processa_nuovi_documenti(db)
+            except Exception:
+                logger.exception("Quadratura cedolini: errore pipeline processamento")
+    except Exception as e:
+        return {"status": "error", "message": str(e), **esito}
+
+    if esito["recuperati"] or esito["errori"]:
+        try:
+            from app.services.alert_engine import genera_alert
+            await genera_alert(
+                "DOC_QUADRATURA_DRIVE", "quadratura_cedolini", "documents_inbox",
+                f"Quadratura Drive cedolini: {esito['recuperati']} recuperati, "
+                f"{esito['errori']} errori su {esito['controllati']} file in Elaborate",
+                db,
+            )
+        except Exception:
+            logger.exception("Alert quadratura cedolini non generato")
+
+    now = datetime.now(timezone.utc).isoformat()
+    await db["sistema_stato"].update_one(
+        {"chiave": _STATO_KEY},
+        {"$set": {"last_quadratura": {"quando": now, **{k: esito[k] for k in ('controllati', 'quadrati', 'recuperati', 'errori')}}}},
+        upsert=True,
+    )
+    return esito

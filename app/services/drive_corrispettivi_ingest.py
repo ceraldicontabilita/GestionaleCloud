@@ -210,3 +210,72 @@ async def _do_sync(db) -> Dict[str, Any]:
         upsert=True,
     )
     return result
+
+
+async def verifica_quadratura_elaborate(db) -> Dict[str, Any]:
+    """Doppio controllo Elaborate ↔ gestionale per i CORRISPETTIVI.
+
+    Stessa logica della quadratura fatture: ripassa TUTTI gli XML archiviati
+    nella sottocartella "Elaborate" e verifica che ognuno abbia il suo
+    corrispettivo nel gestionale. process_xml è idempotente (dedup per hash
+    contenuto e per data): duplicate = quadrato, imported = buco recuperato.
+    Non sposta file, non può creare doppioni.
+    """
+    if not is_configured():
+        return {"status": "not_configured"}
+    service = _build_drive_service()
+    if service is None:
+        return {"status": "error", "message": "Service Drive non disponibile"}
+
+    from app.services.corrispettivi_service import get_corrispettivi_service
+    corr_service = get_corrispettivi_service()
+
+    parent_id = settings.GOOGLE_DRIVE_CORRISPETTIVI_FOLDER_ID
+    esito = {"status": "ok", "controllati": 0, "quadrati": 0,
+             "recuperati": 0, "errori": 0, "details": []}
+    try:
+        elaborate_id = _get_or_create_elaborate_folder(service, parent_id)
+        if not elaborate_id:
+            return {"status": "ok", "message": "Nessuna cartella Elaborate", **esito}
+        for f in _list_xml_files(service, elaborate_id):
+            esito["controllati"] += 1
+            try:
+                content = _download_bytes(service, f["id"])
+                if not content:
+                    esito["errori"] += 1
+                    continue
+                r = await corr_service.process_xml(content, f["name"])
+                if r.get("status") == "duplicate":
+                    esito["quadrati"] += 1
+                elif r.get("status") == "error":
+                    esito["errori"] += 1
+                    esito["details"].append({"file": f["name"], "error": r.get("message")})
+                else:
+                    esito["recuperati"] += 1
+                    esito["details"].append({"file": f["name"], "recuperato": True})
+                    logger.warning(f"Quadratura corrispettivi: recuperato buco {f['name']}")
+            except Exception as e:
+                esito["errori"] += 1
+                esito["details"].append({"file": f["name"], "error": str(e)})
+    except Exception as e:
+        return {"status": "error", "message": str(e), **esito}
+
+    if esito["recuperati"] or esito["errori"]:
+        try:
+            from app.services.alert_engine import genera_alert
+            await genera_alert(
+                "DOC_QUADRATURA_DRIVE", "quadratura_corrispettivi", "corrispettivi",
+                f"Quadratura Drive corrispettivi: {esito['recuperati']} recuperati, "
+                f"{esito['errori']} errori su {esito['controllati']} file in Elaborate",
+                db,
+            )
+        except Exception:
+            logger.exception("Alert quadratura corrispettivi non generato")
+
+    now = datetime.now(timezone.utc).isoformat()
+    await db["sistema_stato"].update_one(
+        {"chiave": _STATO_KEY},
+        {"$set": {"last_quadratura": {"quando": now, **{k: esito[k] for k in ('controllati', 'quadrati', 'recuperati', 'errori')}}}},
+        upsert=True,
+    )
+    return esito

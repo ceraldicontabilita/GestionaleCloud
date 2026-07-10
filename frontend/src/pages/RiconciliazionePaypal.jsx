@@ -794,7 +794,26 @@ export default function RiconciliazionePaypal() {
                         mono
                         style={{ fontWeight: 600, color: tx.lordo < 0 ? COLORS.danger : COLORS.success }}
                       >
-                        {formatEuro(tx.lordo)}
+                        {/* Pagamento in valuta estera: mostra l'EURO reale
+                            (dalla conversione T0200 accoppiata dal backend)
+                            e la valuta originale come dettaglio */}
+                        {tx.importo_eur != null ? (
+                          <>
+                            {formatEuro(tx.importo_eur)}
+                            <div style={{ fontSize: 10, color: COLORS.textSubtle, fontWeight: 400 }}>
+                              {Math.abs(tx.importo_valuta).toFixed(2)} {tx.valuta_originale}
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            {formatEuro(tx.lordo)}
+                            {tx.is_conversione && (
+                              <div style={{ fontSize: 10, color: COLORS.textSubtle, fontWeight: 400 }}>
+                                conversione valuta
+                              </div>
+                            )}
+                          </>
+                        )}
                       </Td>
                       <Td align="center">
                         {tx.riconciliato_banca ? (
