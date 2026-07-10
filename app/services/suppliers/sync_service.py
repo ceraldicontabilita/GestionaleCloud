@@ -28,13 +28,18 @@ async def sincronizza_da_fatture(db, limit: int = 1000) -> Dict[str, Any]:
         "skipped": 0
     }
     
-    # Aggrega fornitori unici dalle fatture
+    # Aggrega fornitori unici dalle fatture.
+    # NB: porta con sé anche il cliente (cessionario) per la guardia
+    # anti-autofattura qui sotto: se cedente = cessionario NON è un
+    # fornitore ma l'azienda stessa (fantasmi "Ceraldi Group" con P.IVA
+    # altrui, segnalati dall'utente il 10/07).
     pipeline = [
         {"$match": {"supplier_vat": {"$exists": True, "$nin": [None, ""]}}},
         {"$group": {
             "_id": "$supplier_vat",
             "nome": {"$first": "$supplier_name"},
             "fornitore": {"$first": "$fornitore"},
+            "cliente": {"$first": "$cliente"},
             "count": {"$sum": 1}
         }},
         {"$limit": limit}
@@ -46,6 +51,19 @@ async def sincronizza_da_fatture(db, limit: int = 1000) -> Dict[str, Any]:
         try:
             piva = normalizza_piva(f.get("_id", ""))
             if not piva or len(piva) != 11:
+                risultato["skipped"] += 1
+                continue
+
+            # Guardia anti-autofattura: cedente che coincide col cessionario
+            # (per P.IVA o per nome normalizzato) non va in anagrafica.
+            from app.routers.invoices.fatture_upload import _norm_nome_azienda
+            cliente = f.get("cliente") or {}
+            cliente_piva = normalizza_piva(cliente.get("partita_iva", "") or "")
+            if cliente_piva and cliente_piva == piva:
+                risultato["skipped"] += 1
+                continue
+            nome_cedente = _norm_nome_azienda(f.get("nome"))
+            if nome_cedente and nome_cedente == _norm_nome_azienda(cliente.get("denominazione")):
                 risultato["skipped"] += 1
                 continue
             

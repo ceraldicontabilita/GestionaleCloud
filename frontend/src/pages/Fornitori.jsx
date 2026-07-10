@@ -4,6 +4,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import Portal from '../components/Portal';
+import ModalFattura from '../components/ModalFattura';
 import { PageLayout } from '../components/PageLayout';
 import {
   formatEuro,
@@ -36,7 +37,6 @@ import {
 import {
   Search,
   Edit2,
-  Trash2,
   Plus,
   FileText,
   Building2,
@@ -120,6 +120,23 @@ const metodoCanonico = supplier => canaleCanonico(supplier?.metodo_pagamento);
 
 const getMetodo = key => METODI_PAGAMENTO[key] || METODI_PAGAMENTO.banca;
 
+// Identificatore da usare nelle chiamate API: id applicativo, altrimenti
+// P.IVA (anche nei campi legacy). I fornitori storici possono NON avere il
+// campo 'id': prima la PUT andava a /api/suppliers/undefined e rispondeva
+// 404 "Fornitore non trovato" (segnalato dall'utente sul cambio metodo
+// dalla lista "Fatture senza metodo").
+const idFornitore = s => s?.id || s?.partita_iva || s?.piva || s?.vat_number || '';
+
+// Anno dell'ultima fattura ricevuta (per capire se il fornitore è attuale
+// o solo ricorrente/storico). ultima_fattura_data arriva dal backend come
+// "YYYY-MM-DD..." — basta il prefisso anno.
+const annoUltimaFattura = s => {
+  const d = s?.ultima_fattura_data;
+  if (!d || typeof d !== 'string' || d.length < 4) return null;
+  const anno = parseInt(d.slice(0, 4), 10);
+  return Number.isFinite(anno) ? anno : null;
+};
+
 const emptySupplier = {
   ragione_sociale: '',
   partita_iva: '',
@@ -137,6 +154,7 @@ const emptySupplier = {
   metodo_pagamento: 'banca',
   giorni_pagamento: 30,
   esclude_magazzino: false,
+  cessato: false,
   note: '',
 };
 
@@ -816,6 +834,28 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
               {/* Nota: il toggle "Esclude dal Magazzino" è ora un badge cliccabile
                 direttamente sulla card del fornitore (accanto al metodo di pagamento).
                 Basta cliccare su "📦 In magazzino" / "🚫 Escluso magazzino" per cambiare. */}
+
+              {/* Fornitore cessato: escluso dalla lista (visibile solo col
+                  chip "Cessati"), MAI eliminato — le fatture storiche restano. */}
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  fontSize: '13px',
+                  fontWeight: 500,
+                  color: COLORS.gray[700],
+                  cursor: 'pointer',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={!!form.cessato}
+                  onChange={e => handleChange('cessato', e.target.checked)}
+                  data-testid="check-fornitore-cessato"
+                />
+                🚪 Fornitore cessato (nascosto dalla lista, fatture storiche conservate)
+              </label>
             </div>
           </div>
 
@@ -870,7 +910,7 @@ function MetodoBadge({ supplier, onChangeMetodo }) {
     }
     setUpdating(true);
     setShowMetodoMenu(false);
-    await onChangeMetodo(supplier.id, newMetodo);
+    await onChangeMetodo(idFornitore(supplier), newMetodo);
     setUpdating(false);
   };
 
@@ -1012,6 +1052,7 @@ function AzioniFornitore({
   onSearchPiva,
   onShowFatturato,
   onShowSchedeTecniche,
+  onToggleCessato,
 }) {
   const piva = supplier.partita_iva || supplier.piva || null;
   const hasPiva = !!piva;
@@ -1051,13 +1092,20 @@ function AzioniFornitore({
       testId: `btn-schede-tecniche-${supplier.id}`,
     },
     { label: '📄 Estratto fatture', onClick: () => onViewInvoices(supplier) },
+    onToggleCessato && {
+      label: supplier.cessato ? '↩️ Riattiva fornitore' : '🚪 Segna come cessato',
+      onClick: () => onToggleCessato(supplier),
+      testId: `btn-toggle-cessato-${idFornitore(supplier)}`,
+    },
     {
       label: '🗑️ Elimina fornitore',
-      onClick: () => onDelete(supplier.id),
+      onClick: () => onDelete(idFornitore(supplier)),
       pericolosa: true,
     },
   ].filter(Boolean);
 
+  // Icone su UNA fila e ben visibili (richiesta utente 10/07): bottoni
+  // 30×30 con icone più grandi, mai a capo.
   return (
     <RowActions style={{ justifyContent: isMobile ? 'flex-end' : 'center', flexWrap: 'nowrap' }}>
       {hasPiva && (
@@ -1067,24 +1115,26 @@ function AzioniFornitore({
           disabled={loadingFatturato}
           title={`Visualizza fatturato ${selectedYear}`}
           data-testid={`btn-fatturato-${supplier.id}`}
-          style={{ width: 'auto', padding: '0 6px', gap: 3, fontSize: 11, fontWeight: 600 }}
+          style={{ width: 'auto', height: 30, padding: '0 8px', gap: 4, fontSize: 12, fontWeight: 700 }}
         >
-          <TrendingUp size={13} /> {loadingFatturato ? '...' : selectedYear}
+          <TrendingUp size={15} /> {loadingFatturato ? '...' : selectedYear}
         </RowActionButton>
       )}
       <RowActionButton
-        variant="neutral"
+        variant="primary"
         onClick={() => onEdit(supplier)}
         title="Modifica anagrafica"
+        data-testid={`btn-modifica-${idFornitore(supplier)}`}
+        style={{ width: 30, height: 30 }}
       >
-        <Edit2 size={14} />
+        <Edit2 size={16} />
       </RowActionButton>
       <div style={{ position: 'relative', display: 'inline-block' }}>
         <RowActionButton
           variant="neutral"
           onClick={() => setMenuAperto(a => !a)}
           title="Altre azioni"
-          style={{ fontWeight: 800 }}
+          style={{ fontWeight: 800, width: 30, height: 30, fontSize: 16 }}
         >
           ⋯
         </RowActionButton>
@@ -1149,6 +1199,10 @@ export default function Fornitori() {
 
   const [filterIncomplete, setFilterIncomplete] = useState(false);
   const [filterSenzaMetodo, setFilterSenzaMetodo] = useState(false);
+  // I fornitori cessati sono nascosti di default: questo chip li fa vedere
+  const [mostraCessati, setMostraCessati] = useState(false);
+  // Fattura aperta in visualizzazione (ModalFattura) dall'estratto
+  const [fatturaView, setFatturaView] = useState(null);
   // PR #5e850c8: filtri avanzati backend
   const [filterAnzianita, setFilterAnzianita] = useState('tutti'); // tutti | nuovo | storico
   const [giorniNuovo, setGiorniNuovo] = useState(90);
@@ -1248,7 +1302,12 @@ export default function Fornitori() {
     }
   }, [debouncedSearch, filterAnzianita, giorniNuovo, debouncedProdotto]);
 
+  const cessatiCount = suppliers.filter(s => s.cessato).length;
+
   const filteredSuppliers = suppliers.filter(s => {
+    // Fornitori cessati: il sistema li salta nella visualizzazione
+    // (richiesta utente 10/07); restano visibili attivando il chip "Cessati".
+    if (s.cessato && !mostraCessati) return false;
     if (filterMetodo !== 'tutti') {
       // niente default fittizio: senza metodo NON è "banca"
       if (!s.metodo_pagamento) return false;
@@ -1289,8 +1348,17 @@ export default function Fornitori() {
       }
 
       setModalOpen(false);
+      if (currentSupplier?.id) {
+        // Modifica: aggiorna SOLO la riga sul posto, senza ricaricare tutta
+        // la lista (il ricaricamento faceva perdere pagina e posizione).
+        const chiave = idFornitore(currentSupplier);
+        setSuppliers(prev =>
+          prev.map(s => (idFornitore(s) === chiave ? { ...s, ...formData } : s))
+        );
+      } else {
+        reloadData(); // Nuovo fornitore: serve il ricaricamento completo
+      }
       setCurrentSupplier(null);
-      reloadData(); // Ricarica dati aggiornati
     } catch (error) {
       alert('Errore salvataggio: ' + (error.response?.data?.detail || error.message));
     } finally {
@@ -1305,7 +1373,9 @@ export default function Fornitori() {
       await api.put(`/api/suppliers/${supplierId}`, payload);
 
       // Aggiorna lo stato locale immediatamente
-      setSuppliers(prev => prev.map(s => (s.id === supplierId ? { ...s, ...payload } : s)));
+      setSuppliers(prev =>
+        prev.map(s => (idFornitore(s) === supplierId ? { ...s, ...payload } : s))
+      );
     } catch (error) {
       alert('Errore aggiornamento metodo: ' + (error.response?.data?.detail || error.message));
     }
@@ -1316,17 +1386,43 @@ export default function Fornitori() {
     try {
       await api.put(`/api/suppliers/${supplierId}`, { esclude_magazzino: nuovoValore });
       setSuppliers(prev =>
-        prev.map(s => (s.id === supplierId ? { ...s, esclude_magazzino: nuovoValore } : s))
+        prev.map(s =>
+          idFornitore(s) === supplierId ? { ...s, esclude_magazzino: nuovoValore } : s
+        )
       );
     } catch (error) {
       alert('Errore aggiornamento magazzino: ' + (error.response?.data?.detail || error.message));
     }
   };
 
+  // Toggle "cessato" dal menù ⋯: il fornitore sparisce dalla lista (o
+  // ricompare) senza ricaricare la pagina; le fatture storiche restano.
+  const handleToggleCessato = async supplier => {
+    const chiave = idFornitore(supplier);
+    const nuovoValore = !supplier.cessato;
+    const nome = supplier.ragione_sociale || supplier.denominazione || supplier.nome || chiave;
+    if (
+      nuovoValore &&
+      !window.confirm(
+        `Segnare "${nome}" come CESSATO?\n\nIl fornitore sparisce dalla lista (chip "Cessati" per rivederlo); fatture e storico restano.`
+      )
+    ) {
+      return;
+    }
+    try {
+      await api.put(`/api/suppliers/${chiave}`, { cessato: nuovoValore });
+      setSuppliers(prev =>
+        prev.map(s => (idFornitore(s) === chiave ? { ...s, cessato: nuovoValore } : s))
+      );
+    } catch (error) {
+      alert('Errore aggiornamento stato: ' + (error.response?.data?.detail || error.message));
+    }
+  };
+
   // Eliminazione fornitore dal database
   const handleDelete = async (id, forceDelete = false) => {
     if (!forceDelete) {
-      const supplier = suppliers.find(s => s.id === id);
+      const supplier = suppliers.find(s => idFornitore(s) === id);
       const nome =
         supplier?.ragione_sociale || supplier?.nome || supplier?.name || 'questo fornitore';
       if (
@@ -1340,12 +1436,18 @@ export default function Fornitori() {
     try {
       const url = forceDelete ? `/api/suppliers/${id}?force=true` : `/api/suppliers/${id}`;
       await api.delete(url);
-      reloadData();
+      // Rimozione locale: niente ricaricamento completo (spinner + perdita
+      // della posizione in lista)
+      setSuppliers(prev => prev.filter(s => idFornitore(s) !== id));
+      setTotaliFiltrati(prev => ({
+        ...prev,
+        totale_fornitori: Math.max(0, (prev.totale_fornitori || 1) - 1),
+      }));
     } catch (error) {
       const errorMsg =
         error.response?.data?.detail || error.response?.data?.message || error.message;
       if (error.response?.status === 400 && errorMsg.includes('fatture collegate')) {
-        const supplier = suppliers.find(s => s.id === id);
+        const supplier = suppliers.find(s => idFornitore(s) === id);
         const nome =
           supplier?.ragione_sociale || supplier?.nome || supplier?.name || 'questo fornitore';
         if (
@@ -1398,9 +1500,12 @@ export default function Fornitori() {
         }
 
         if (Object.keys(updates).length > 0) {
-          // Aggiorna automaticamente
-          await api.put(`/api/suppliers/${supplier.id}`, updates);
-          reloadData();
+          // Aggiorna automaticamente (solo la riga, senza ricaricare la lista)
+          const chiave = idFornitore(supplier);
+          await api.put(`/api/suppliers/${chiave}`, updates);
+          setSuppliers(prev =>
+            prev.map(s => (idFornitore(s) === chiave ? { ...s, ...updates } : s))
+          );
         } else {
           alert(
             `Nessun dato nuovo trovato per ${supplier.ragione_sociale || supplier.partita_iva}.\nI dati sono già completi o non disponibili su VIES.`
@@ -1417,7 +1522,12 @@ export default function Fornitori() {
   };
 
   // Stato per modale fatturato
-  const [fatturatoModal, setFatturatoModal] = useState({ open: false, data: null, loading: false });
+  const [fatturatoModal, setFatturatoModal] = useState({
+    open: false,
+    fornitore: null,
+    data: null,
+    loading: false,
+  });
 
   // Stato per modale estratto fatture
   const [estrattoModal, setEstrattoModal] = useState({
@@ -1437,25 +1547,26 @@ export default function Fornitori() {
 
   // Mostra fatturato fornitore per anno
   const handleShowFatturato = async (supplier, anno) => {
-    if (!supplier.partita_iva) {
+    if (!(supplier.partita_iva || supplier.piva || supplier.vat_number)) {
       alert('Questo fornitore non ha una Partita IVA');
       return;
     }
 
-    setFatturatoModal({ open: true, data: null, loading: true });
+    setFatturatoModal({ open: true, fornitore: supplier, data: null, loading: true });
 
     try {
-      const res = await api.get(`/api/suppliers/${supplier.id}/fatturato?anno=${anno}`);
-      setFatturatoModal({ open: true, data: res.data, loading: false });
+      const res = await api.get(`/api/suppliers/${idFornitore(supplier)}/fatturato?anno=${anno}`);
+      setFatturatoModal({ open: true, fornitore: supplier, data: res.data, loading: false });
     } catch (error) {
       alert('Errore caricamento fatturato: ' + (error.response?.data?.detail || error.message));
-      setFatturatoModal({ open: false, data: null, loading: false });
+      setFatturatoModal({ open: false, fornitore: null, data: null, loading: false });
     }
   };
 
-  // Mostra estratto fatture fornitore
-  const handleViewInvoicesModal = async supplier => {
-    if (!supplier.partita_iva && !supplier.id) {
+  // Mostra estratto fatture fornitore (anno esplicito quando si arriva dal
+  // riepilogo fatturato, altrimenti anno globale)
+  const handleViewInvoicesModal = async (supplier, anno = selectedYear) => {
+    if (!idFornitore(supplier)) {
       alert('Questo fornitore non ha una Partita IVA');
       return;
     }
@@ -1466,7 +1577,7 @@ export default function Fornitori() {
       data: null,
       loading: true,
       filtri: {
-        anno: selectedYear,
+        anno,
         data_da: '',
         data_a: '',
         importo_min: '',
@@ -1477,7 +1588,7 @@ export default function Fornitori() {
 
     try {
       const res = await api.get(
-        `/api/suppliers/${supplier.id || supplier.partita_iva}/fatture?anno=${selectedYear}`
+        `/api/suppliers/${idFornitore(supplier)}/fatture?anno=${anno}`
       );
       setEstrattoModal(prev => ({ ...prev, data: res.data, loading: false }));
     } catch (error) {
@@ -1503,7 +1614,7 @@ export default function Fornitori() {
       if (tipo && tipo !== 'tutti') params.append('tipo', tipo);
 
       const res = await api.get(
-        `/api/suppliers/${estrattoModal.fornitore.id || estrattoModal.fornitore.partita_iva}/fatture?${params.toString()}`
+        `/api/suppliers/${idFornitore(estrattoModal.fornitore)}/fatture?${params.toString()}`
       );
       setEstrattoModal(prev => ({ ...prev, data: res.data, loading: false }));
     } catch (error) {
@@ -1699,6 +1810,33 @@ export default function Fornitori() {
             <span>✅ Attivi</span>
             <span style={{ fontSize: 16 }}>{totaliFiltrati.attivi}</span>
           </Badge>
+          {cessatiCount > 0 && (
+            <Badge
+              variant="neutral"
+              onClick={() => setMostraCessati(v => !v)}
+              data-testid="badge-cessati"
+              title={
+                mostraCessati
+                  ? 'Clicca per nascondere di nuovo i fornitori cessati'
+                  : 'I fornitori cessati sono nascosti: clicca per vederli'
+              }
+              style={{
+                padding: '8px 14px',
+                background: mostraCessati ? COLORS.dangerLight : COLORS.bg,
+                color: mostraCessati ? COLORS.danger : COLORS.textMuted,
+                fontSize: 13,
+                textTransform: 'none',
+                border: `1px solid ${mostraCessati ? COLORS.danger : COLORS.border}`,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                cursor: 'pointer',
+              }}
+            >
+              <span>🚪 Cessati</span>
+              <span style={{ fontSize: 16 }}>{cessatiCount}</span>
+            </Badge>
+          )}
         </div>
 
         {/* Tabs */}
@@ -2009,6 +2147,11 @@ export default function Fornitori() {
                     return (
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                         {nome}
+                        {s.cessato && (
+                          <Badge variant="danger" style={{ fontSize: 10, padding: '2px 6px' }}>
+                            CESSATO
+                          </Badge>
+                        )}
                         {incompleto && (
                           <span title="Dati incompleti" style={{ display: 'inline-flex' }}>
                             <AlertCircle size={14} color={COLORS.warning} />
@@ -2062,6 +2205,40 @@ export default function Fornitori() {
                   render: s => s.fatture_count || 0,
                 },
                 {
+                  // Anno dell'ULTIMA fattura: a colpo d'occhio si vede se il
+                  // fornitore è attuale (verde = fattura nell'anno globale)
+                  // o solo storico/ricorrente (richiesta utente 10/07).
+                  key: 'ultima_fattura',
+                  label: 'Ultima fatt.',
+                  align: 'center',
+                  ruoloCard: 'dettaglio',
+                  iconaCard: '🕐',
+                  render: s => {
+                    const anno = annoUltimaFattura(s);
+                    if (!anno) return <span style={{ color: COLORS.textSubtle }}>—</span>;
+                    const attuale = anno >= selectedYear;
+                    return (
+                      <Badge
+                        variant={attuale ? 'success' : 'neutral'}
+                        title={
+                          attuale
+                            ? `Fornitore attuale: ultima fattura nel ${anno}`
+                            : `Ultima fattura nel ${anno} (nessuna nel ${selectedYear})`
+                        }
+                        style={{
+                          fontSize: 11,
+                          padding: '3px 8px',
+                          ...(attuale
+                            ? {}
+                            : { background: COLORS.gray[200], color: COLORS.textMuted }),
+                        }}
+                      >
+                        {anno}
+                      </Badge>
+                    );
+                  },
+                },
+                {
                   key: 'giorni_pagamento',
                   label: 'Giorni',
                   align: 'center',
@@ -2087,7 +2264,7 @@ export default function Fornitori() {
                       size="sm"
                       onClick={async e => {
                         e.stopPropagation();
-                        await handleToggleEsclude(s.id, !s.esclude_magazzino);
+                        await handleToggleEsclude(idFornitore(s), !s.esclude_magazzino);
                       }}
                       data-testid={`btn-toggle-esclude-magazzino-${s.id}`}
                       title={
@@ -2120,6 +2297,7 @@ export default function Fornitori() {
                       onSearchPiva={handleSearchPiva}
                       onShowFatturato={handleShowFatturato}
                       onShowSchedeTecniche={handleViewSchedeTecniche}
+                      onToggleCessato={handleToggleCessato}
                     />
                   ),
                 },
@@ -2139,6 +2317,15 @@ export default function Fornitori() {
         onSave={handleSave}
         saving={saving}
       />
+
+      {/* Visore fattura in-page, aperto dal bottone 👁 Vedi dell'estratto */}
+      {fatturaView && (
+        <ModalFattura
+          fatturaId={fatturaView.id}
+          numero={fatturaView.numero}
+          onClose={() => setFatturaView(null)}
+        />
+      )}
 
       {/* Modale Fatturato */}
       {fatturatoModal.open && (
@@ -2322,6 +2509,31 @@ export default function Fornitori() {
                     {(fatturatoModal.data?.numero_fatture ?? 0) === 0 && (
                       <div style={{ textAlign: 'center', color: COLORS.textMuted, padding: '20px' }}>
                         Nessuna fattura registrata per questo anno
+                      </div>
+                    )}
+
+                    {/* Dal riepilogo alle fatture VERE: apre l'estratto del
+                        fornitore già filtrato sull'anno del fatturato, da cui
+                        ogni fattura si può visualizzare col bottone 👁 Vedi */}
+                    {fatturatoModal.fornitore && (fatturatoModal.data?.numero_fatture ?? 0) > 0 && (
+                      <div style={{ textAlign: 'center', marginTop: 16 }}>
+                        <Button
+                          variant="primary"
+                          data-testid="btn-fatturato-vedi-fatture"
+                          onClick={() => {
+                            const fornitore = fatturatoModal.fornitore;
+                            const anno = fatturatoModal.data?.anno || selectedYear;
+                            setFatturatoModal({
+                              open: false,
+                              fornitore: null,
+                              data: null,
+                              loading: false,
+                            });
+                            handleViewInvoicesModal(fornitore, anno);
+                          }}
+                        >
+                          📄 Vedi le fatture ({fatturatoModal.data?.numero_fatture ?? 0})
+                        </Button>
                       </div>
                     )}
                   </div>
@@ -2696,10 +2908,25 @@ export default function Fornitori() {
                                 )}
                               </Td>
                               <Td align="center">
+                                <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
+                                  {/* VEDI la fattura vera e propria (visore
+                                      in-page, come nella pagina Fatture) */}
+                                  {f.id && (
+                                    <Button
+                                      variant="primary"
+                                      size="sm"
+                                      onClick={() =>
+                                        setFatturaView({ id: f.id, numero: f.numero })
+                                      }
+                                      data-testid={`btn-vedi-fattura-${f.id}`}
+                                      style={{ padding: '3px 8px', fontSize: 10 }}
+                                      title="Visualizza la fattura"
+                                    >
+                                      👁 Vedi
+                                    </Button>
+                                  )}
                                 {!f.pagato && !f.is_nota_credito && (
-                                  <div
-                                    style={{ display: 'flex', gap: 4, justifyContent: 'center' }}
-                                  >
+                                  <>
                                     <Button
                                       variant="success"
                                       size="sm"
@@ -2768,8 +2995,9 @@ export default function Fornitori() {
                                     >
                                       🏦 Banca
                                     </Button>
-                                  </div>
+                                  </>
                                 )}
+                                </div>
                               </Td>
                             </tr>
                           ))}

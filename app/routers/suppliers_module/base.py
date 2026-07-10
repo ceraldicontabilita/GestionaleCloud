@@ -446,7 +446,7 @@ async def get_supplier(supplier_id: str) -> Dict[str, Any]:
     db = Database.get_db()
     
     supplier = await db[Collections.SUPPLIERS].find_one(
-        {"$or": [{"id": supplier_id}, {"partita_iva": supplier_id}]},
+        _filtro_fornitore(supplier_id),
         {"_id": 0}
     )
     
@@ -550,7 +550,7 @@ async def update_supplier(supplier_id: str, data: Dict[str, Any] = Body(...)) ->
     data["updated_at"] = datetime.now(timezone.utc).isoformat()
     
     supplier = await db[Collections.SUPPLIERS].find_one(
-        {"$or": [{"id": supplier_id}, {"partita_iva": supplier_id}]},
+        _filtro_fornitore(supplier_id),
         {"partita_iva": 1}
     )
     
@@ -558,18 +558,18 @@ async def update_supplier(supplier_id: str, data: Dict[str, Any] = Body(...)) ->
         raise HTTPException(status_code=404, detail="Fornitore non trovato")
     
     result = await db[Collections.SUPPLIERS].update_one(
-        {"$or": [{"id": supplier_id}, {"partita_iva": supplier_id}]},
+        _filtro_fornitore(supplier_id),
         {"$set": data}
     )
     
     # Se metodo cambiato, salva nello storico
     if metodo_configurato:
         old_supplier = await db[Collections.SUPPLIERS].find_one(
-            {"$or": [{"id": supplier_id}, {"partita_iva": supplier_id}]},
+            _filtro_fornitore(supplier_id),
             {"metodo_pagamento": 1, "denominazione": 1}
         )
         await db[Collections.SUPPLIERS].update_one(
-            {"$or": [{"id": supplier_id}, {"partita_iva": supplier_id}]},
+            _filtro_fornitore(supplier_id),
             {"$push": {"storico_metodi_pagamento": {
                 "metodo": data["metodo_pagamento"],
                 "dal": data.get("metodo_pagamento_dal", datetime.now(timezone.utc).strftime("%Y-%m-%d")),
@@ -615,7 +615,7 @@ async def update_supplier(supplier_id: str, data: Dict[str, Any] = Body(...)) ->
     try:
         from app.services.event_bus import propagate_event, EventTypes
         fornitore_aggiornato = await db[Collections.SUPPLIERS].find_one(
-            {"$or": [{"id": supplier_id}, {"partita_iva": supplier_id}]},
+            _filtro_fornitore(supplier_id),
             {"_id": 0, "id": 1, "ragione_sociale": 1, "partita_iva": 1, "iban": 1, "metodo_pagamento": 1}
         )
         if fornitore_aggiornato:
@@ -642,7 +642,7 @@ async def toggle_supplier_active(supplier_id: str) -> Dict[str, Any]:
     db = Database.get_db()
 
     supplier = await db[Collections.SUPPLIERS].find_one(
-        {"$or": [{"id": supplier_id}, {"partita_iva": supplier_id}]}
+        _filtro_fornitore(supplier_id)
     )
 
     if not supplier:
@@ -693,7 +693,7 @@ async def delete_supplier(supplier_id: str, force: bool = Query(False)) -> Dict[
     db = Database.get_db()
     
     supplier = await db[Collections.SUPPLIERS].find_one(
-        {"$or": [{"id": supplier_id}, {"partita_iva": supplier_id}]}
+        _filtro_fornitore(supplier_id)
     )
     
     if not supplier:
@@ -746,6 +746,21 @@ async def delete_supplier(supplier_id: str, force: bool = Query(False)) -> Dict[
     return {"message": "Fornitore eliminato"}
 
 
+def _filtro_fornitore(supplier_id: str) -> dict:
+    """Filtro Mongo tollerante per trovare un fornitore da un identificatore.
+
+    L'identificatore può essere l'id applicativo oppure la P.IVA; i documenti
+    legacy però tengono la P.IVA in 'piva' o 'vat_number' (e alcuni non hanno
+    proprio il campo 'id'). Il lookup rigido {id, partita_iva} faceva
+    rispondere 404 "Fornitore non trovato" al cambio metodo dalla lista
+    "Fatture senza metodo" (segnalato dall'utente il 10/07).
+    """
+    condizioni = [{"id": supplier_id}]
+    for v in _varianti_piva(supplier_id):
+        condizioni += [{"partita_iva": v}, {"piva": v}, {"vat_number": v}]
+    return {"$or": condizioni}
+
+
 def _varianti_piva(piva: str) -> list:
     """Varianti con cui la stessa P.IVA può comparire sulle fatture.
 
@@ -781,7 +796,7 @@ async def get_supplier_fatturato(
     db = Database.get_db()
 
     supplier = await db[Collections.SUPPLIERS].find_one(
-        {"$or": [{"id": supplier_id}, {"partita_iva": supplier_id}, {"piva": supplier_id}]},
+        _filtro_fornitore(supplier_id),
         {"_id": 0}
     )
 
@@ -869,7 +884,7 @@ async def get_supplier_iban_from_invoices(supplier_id: str) -> Dict[str, Any]:
     db = Database.get_db()
     
     supplier = await db[Collections.SUPPLIERS].find_one(
-        {"$or": [{"id": supplier_id}, {"partita_iva": supplier_id}]},
+        _filtro_fornitore(supplier_id),
         {"_id": 0, "partita_iva": 1, "denominazione": 1, "ragione_sociale": 1, "iban": 1, "iban_lista": 1}
     )
     
@@ -930,7 +945,7 @@ async def update_supplier_payment_method(
         raise HTTPException(status_code=400, detail=f"Metodo non valido. Ammessi: {metodi_validi}")
     
     result = await db[Collections.SUPPLIERS].update_one(
-        {"$or": [{"id": supplier_id}, {"partita_iva": supplier_id}]},
+        _filtro_fornitore(supplier_id),
         {"$set": {"metodo_pagamento": metodo_lower, "updated_at": datetime.now(timezone.utc).isoformat()}}
     )
     
@@ -965,7 +980,7 @@ async def update_supplier_nome(supplier_id: str, data: Dict[str, Any] = Body(...
         raise HTTPException(status_code=400, detail="Denominazione richiesta")
     
     result = await db[Collections.SUPPLIERS].update_one(
-        {"$or": [{"id": supplier_id}, {"partita_iva": supplier_id}]},
+        _filtro_fornitore(supplier_id),
         {"$set": {
             "denominazione": denominazione,
             "ragione_sociale": denominazione,
@@ -1007,7 +1022,7 @@ async def get_fatture_fornitore(
     
     try:
         fornitore = await db[Collections.SUPPLIERS].find_one(
-            {"$or": [{"id": supplier_id}, {"partita_iva": supplier_id}, {"piva": supplier_id}]},
+            _filtro_fornitore(supplier_id),
             {"_id": 0}
         )
         
@@ -1129,7 +1144,7 @@ async def get_dati_da_fatture(supplier_id: str) -> Dict[str, Any]:
     db = Database.get_db()
 
     fornitore = await db[Collections.SUPPLIERS].find_one(
-        {"$or": [{"id": supplier_id}, {"partita_iva": supplier_id}, {"piva": supplier_id}]},
+        _filtro_fornitore(supplier_id),
         {"_id": 0}
     )
     if not fornitore:

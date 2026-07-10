@@ -11,9 +11,12 @@ import { TableWrap, Table, Th, Td } from './Table';
  *    titolo in grassetto + importo grande a destra + riga di dettagli
  *    piccoli + azioni in fondo (identico alla pagina Fatture).
  *
- * Paginazione integrata: mostra `pageSize` righe e mette la barra
- * "Carica altre" SIA SOPRA che SOTTO la lista (così non devi risalire
- * tutta la pagina per caricare il blocco successivo).
+ * Paginazione integrata A PAGINE NUMERATE (1 · 2 · 3 …): ogni pagina
+ * mostra `pageSize` righe e la barra dei numeri sta SIA SOPRA che SOTTO
+ * la lista (così non devi risalire tutta la pagina per cambiare blocco).
+ * La pagina corrente NON si resetta quando una singola riga viene
+ * aggiornata sul posto (toggle magazzino, cambio metodo, modifica):
+ * si torna a pagina 1 solo se cambia il numero di righe (filtri/anno).
  *
  * Spec colonna:
  *  { key, label, render?(item), align?, mono?, tdStyle?|fn(item),
@@ -28,64 +31,104 @@ export function ListaAdattiva({
   testId,
 }) {
   const isMobile = useIsMobile();
-  const [visibili, setVisibili] = useState(pageSize);
+  const [pagina, setPagina] = useState(1);
 
-  // Nuovi dati (cambio filtro/anno) → riparte dal primo blocco
+  // Torna a pagina 1 SOLO quando cambia il numero di righe (cambio
+  // filtro/anno). Un aggiornamento sul posto di una riga (toggle magazzino,
+  // cambio metodo, modifica) produce un nuovo array della STESSA lunghezza:
+  // la pagina corrente non deve resettarsi (richiesta utente 10/07: "dalla
+  // seconda pagina in poi quando cambio da in magazzino a escludi mi
+  // restituisce il ricaricamento della pagina").
   useEffect(() => {
-    setVisibili(pageSize);
-  }, [dati, pageSize]);
+    setPagina(1);
+  }, [dati.length, pageSize]);
 
-  const mostrate = dati.slice(0, visibili);
-  const rimanenti = dati.length - mostrate.length;
+  const totPagine = Math.max(1, Math.ceil(dati.length / pageSize));
+  const paginaCorrente = Math.min(pagina, totPagine);
+  const inizio = (paginaCorrente - 1) * pageSize;
+  const mostrate = dati.slice(inizio, inizio + pageSize);
 
   const valore = (col, item) => (col.render ? col.render(item) : item[col.key]);
 
-  const BarraCaricaAltre = ({ posizione }) =>
-    rimanenti > 0 ? (
+  // Numeri di pagina da mostrare: tutti fino a 7 pagine, altrimenti
+  // finestra attorno alla corrente con puntini (1 … 4 5 6 … 12).
+  const numeriPagina = () => {
+    if (totPagine <= 7) return Array.from({ length: totPagine }, (_, i) => i + 1);
+    const set = new Set(
+      [1, 2, paginaCorrente - 1, paginaCorrente, paginaCorrente + 1, totPagine - 1, totPagine].filter(
+        n => n >= 1 && n <= totPagine
+      )
+    );
+    const nums = [...set].sort((a, b) => a - b);
+    const out = [];
+    let prev = 0;
+    for (const n of nums) {
+      if (n - prev > 1) out.push('…');
+      out.push(n);
+      prev = n;
+    }
+    return out;
+  };
+
+  const stileBottone = attivo => ({
+    minWidth: 34,
+    padding: '7px 10px',
+    background: attivo ? '#0f2744' : 'white',
+    color: attivo ? 'white' : '#0f2744',
+    border: attivo ? '1px solid #0f2744' : `1px solid ${COLORS.border}`,
+    borderRadius: 6,
+    fontWeight: 700,
+    fontSize: 12.5,
+    cursor: attivo ? 'default' : 'pointer',
+    whiteSpace: 'nowrap',
+  });
+
+  const BarraPagine = ({ posizione }) =>
+    totPagine > 1 ? (
       <div
         style={{
           display: 'flex',
           justifyContent: 'center',
           alignItems: 'center',
-          gap: 10,
+          flexWrap: 'wrap',
+          gap: 6,
           padding: '10px 0',
         }}
       >
         <button
-          onClick={() => setVisibili(v => v + pageSize)}
-          data-testid={testId ? `${testId}-carica-altre-${posizione}` : undefined}
-          style={{
-            padding: '8px 16px',
-            background: '#0f2744',
-            color: 'white',
-            border: '1px solid #0f2744',
-            borderRadius: 6,
-            fontWeight: 700,
-            fontSize: 12.5,
-            cursor: 'pointer',
-            whiteSpace: 'nowrap',
-          }}
+          onClick={() => setPagina(p => Math.max(1, p - 1))}
+          disabled={paginaCorrente === 1}
+          data-testid={testId ? `${testId}-pagina-prec-${posizione}` : undefined}
+          style={{ ...stileBottone(false), opacity: paginaCorrente === 1 ? 0.4 : 1 }}
         >
-          ▼ Carica altre {Math.min(pageSize, rimanenti)}
+          ‹
         </button>
+        {numeriPagina().map((n, i) =>
+          n === '…' ? (
+            <span key={`dots-${i}`} style={{ fontSize: 12.5, color: COLORS.textSubtle, padding: '0 2px' }}>
+              …
+            </span>
+          ) : (
+            <button
+              key={n}
+              onClick={() => setPagina(n)}
+              data-testid={testId ? `${testId}-pagina-${n}-${posizione}` : undefined}
+              style={stileBottone(n === paginaCorrente)}
+            >
+              {n}
+            </button>
+          )
+        )}
         <button
-          onClick={() => setVisibili(dati.length)}
-          style={{
-            padding: '8px 14px',
-            background: 'white',
-            color: '#0f2744',
-            border: `1px solid ${COLORS.border}`,
-            borderRadius: 6,
-            fontWeight: 600,
-            fontSize: 12.5,
-            cursor: 'pointer',
-            whiteSpace: 'nowrap',
-          }}
+          onClick={() => setPagina(p => Math.min(totPagine, p + 1))}
+          disabled={paginaCorrente === totPagine}
+          data-testid={testId ? `${testId}-pagina-succ-${posizione}` : undefined}
+          style={{ ...stileBottone(false), opacity: paginaCorrente === totPagine ? 0.4 : 1 }}
         >
-          Tutte ({dati.length})
+          ›
         </button>
-        <span style={{ fontSize: 11.5, color: COLORS.textSubtle }}>
-          {mostrate.length} di {dati.length}
+        <span style={{ fontSize: 11.5, color: COLORS.textSubtle, marginLeft: 4 }}>
+          {inizio + 1}–{inizio + mostrate.length} di {dati.length}
         </span>
       </div>
     ) : null;
@@ -102,7 +145,7 @@ export function ListaAdattiva({
 
     return (
       <div data-testid={testId} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <BarraCaricaAltre posizione="sopra" />
+        <BarraPagine posizione="sopra" />
         {mostrate.map((item, i) => (
           <div
             key={chiave(item, i)}
@@ -193,7 +236,7 @@ export function ListaAdattiva({
             )}
           </div>
         ))}
-        <BarraCaricaAltre posizione="sotto" />
+        <BarraPagine posizione="sotto" />
       </div>
     );
   }
@@ -201,7 +244,7 @@ export function ListaAdattiva({
   // ── VISTA DESKTOP: tabella standard ──────────────────────────────────────
   return (
     <div data-testid={testId}>
-      <BarraCaricaAltre posizione="sopra" />
+      <BarraPagine posizione="sopra" />
       <TableWrap style={{ border: 'none', borderRadius: 0 }}>
         <Table style={{ background: 'transparent' }}>
           <thead>
@@ -240,7 +283,7 @@ export function ListaAdattiva({
           </tbody>
         </Table>
       </TableWrap>
-      <BarraCaricaAltre posizione="sotto" />
+      <BarraPagine posizione="sotto" />
     </div>
   );
 }

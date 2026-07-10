@@ -151,6 +151,24 @@ async def _collega_nota_credito(db, invoice: Dict[str, Any], session=None) -> Op
     return {"fattura_collegata_id": originale["id"], "importo_netto_originale": importo_netto}
 
 
+def _norm_nome_azienda(nome: str) -> str:
+    """Nome azienda normalizzato per confronti: maiuscole, solo alfanumerici.
+    'Ceraldi Group s.r.l.' == 'CERALDI GROUP SRL'."""
+    import re as _re
+    return _re.sub(r"[^A-Z0-9]", "", (nome or "").upper())
+
+
+def _piva_plausibile(vat: str) -> bool:
+    """True solo per una vera P.IVA (11 cifre, con o senza prefisso paese UE).
+    Un codice fiscale personale (16 alfanumerici) NON è una P.IVA: non deve
+    mai finire nel campo partita_iva di un fornitore."""
+    import re as _re
+    v = (vat or "").strip().upper().replace(" ", "")
+    if _re.fullmatch(r"[A-Z]{2}\d{11}", v):
+        return True
+    return bool(_re.fullmatch(r"\d{11}", v))
+
+
 async def ensure_supplier_exists(db, parsed_invoice: Dict[str, Any], session=None) -> Dict[str, Any]:
     """
     Verifica se il fornitore esiste. Se sì, aggiorna i campi anagrafici mancanti.
@@ -174,6 +192,39 @@ async def ensure_supplier_exists(db, parsed_invoice: Dict[str, Any], session=Non
     if not supplier_vat:
         return result
 
+    # ── GUARDIA AUTOFATTURE / cedente=cessionario ─────────────────────────
+    # Se il cedente coincide col cessionario della stessa fattura (autofatture
+    # TD16-TD27, integrazioni reverse charge, o XML con anagrafiche scambiate)
+    # NON è un fornitore: senza questa guardia l'azienda stessa finiva in
+    # anagrafica fornitori come "Ceraldi Group srl" con P.IVA/CF di terzi
+    # (fornitori fantasma segnalati dall'utente il 10/07).
+    cliente_data = parsed_invoice.get("cliente") or {}
+    cliente_piva = (cliente_data.get("partita_iva") or "").strip().upper().replace(" ", "")
+    cedente_piva_norm = supplier_vat.strip().upper().replace(" ", "")
+    stesso_soggetto = False
+    if cliente_piva and cliente_piva.lstrip("IT") == cedente_piva_norm.lstrip("IT"):
+        stesso_soggetto = True
+    nome_cedente_norm = _norm_nome_azienda(supplier_name)
+    nome_cliente_norm = _norm_nome_azienda(cliente_data.get("denominazione"))
+    if nome_cedente_norm and nome_cliente_norm and nome_cedente_norm == nome_cliente_norm:
+        stesso_soggetto = True
+    if stesso_soggetto:
+        logger.warning(
+            f"Fattura con cedente = cessionario ({supplier_name} / {supplier_vat}): "
+            f"probabile autofattura, NESSUN fornitore creato o aggiornato"
+        )
+        return result
+
+    # ── GUARDIA P.IVA VALIDA ──────────────────────────────────────────────
+    # Mai creare/agganciare un fornitore con un codice fiscale personale o
+    # una stringa qualsiasi nel campo partita_iva.
+    if not _piva_plausibile(supplier_vat):
+        logger.warning(
+            f"Identificativo cedente '{supplier_vat}' non è una P.IVA valida "
+            f"({supplier_name}): fornitore non creato automaticamente"
+        )
+        return result
+
     # Cerca fornitore per P.IVA (supporta sia 'piva' che 'partita_iva' come field name)
     # NB: niente proiezione {"_id": 0} — l'_id serve come filtro di update
     # perché i fornitori storici possono non avere il campo "id".
@@ -185,18 +236,35 @@ async def ensure_supplier_exists(db, parsed_invoice: Dict[str, Any], session=Non
         session=session
     )
 
-    # Se non trovato per P.IVA, cerca per denominazione/nome
+    # Se non trovato per P.IVA, cerca per denominazione/nome.
+    # SOLO uguaglianza esatta (normalizzata): il vecchio match a prefisso
+    # ("^CERALDI GROUP SRL" prendeva anche "CERALDI GROUP S.R.L.") poteva
+    # agganciare la fattura a un'azienda DIVERSA con nome simile e incollarle
+    # la P.IVA del cedente. E se il record trovato ha già una P.IVA diversa,
+    # è un'altra azienda: si crea un fornitore nuovo invece di sporcarlo.
     if not existing and supplier_name:
         import re as _re
-        safe_name = _re.escape(supplier_name[:30])
-        existing = await db[Collections.SUPPLIERS].find_one(
+        safe_name = _re.escape(supplier_name[:60])
+        candidato = await db[Collections.SUPPLIERS].find_one(
             {"$or": [
-                {"nome": {"$regex": f"^{safe_name}", "$options": "i"}},
-                {"ragione_sociale": {"$regex": f"^{safe_name}", "$options": "i"}},
-                {"denominazione": {"$regex": f"^{safe_name}", "$options": "i"}}
+                {"nome": {"$regex": f"^{safe_name}$", "$options": "i"}},
+                {"ragione_sociale": {"$regex": f"^{safe_name}$", "$options": "i"}},
+                {"denominazione": {"$regex": f"^{safe_name}$", "$options": "i"}}
             ]},
             session=session
         )
+        if candidato:
+            piva_candidato = (
+                candidato.get("partita_iva") or candidato.get("piva")
+                or candidato.get("vat_number") or ""
+            ).strip().upper().replace(" ", "")
+            if piva_candidato and piva_candidato.lstrip("IT") != cedente_piva_norm.lstrip("IT"):
+                logger.warning(
+                    f"Fornitore omonimo '{supplier_name}' ha P.IVA diversa "
+                    f"({piva_candidato} ≠ {supplier_vat}): niente aggancio per nome"
+                )
+            else:
+                existing = candidato
 
     fornitore_data = parsed_invoice.get("fornitore") or {}
 

@@ -13,6 +13,7 @@ from app.database import Database, Collections
 from app.middleware.performance import cache
 from app.utils.iban import IBAN_PATTERN as _IBAN_PATTERN_SHARED
 from .common import SUPPLIERS_CACHE_KEY, METODI_BANCARI, logger
+from .base import _filtro_fornitore
 
 router = APIRouter()
 
@@ -190,7 +191,7 @@ async def ricerca_iban_singolo_web(supplier_id: str) -> Dict[str, Any]:
     db = Database.get_db()
     
     fornitore = await db[Collections.SUPPLIERS].find_one(
-        {"$or": [{"id": supplier_id}, {"partita_iva": supplier_id}]},
+        _filtro_fornitore(supplier_id),
         {"_id": 0}
     )
     
@@ -218,7 +219,7 @@ async def ricerca_iban_singolo_web(supplier_id: str) -> Dict[str, Any]:
         
         if iban_pattern.match(iban) and len(iban) == 27:
             await db[Collections.SUPPLIERS].update_one(
-                {"$or": [{"id": supplier_id}, {"partita_iva": supplier_id}]},
+                _filtro_fornitore(supplier_id),
                 {"$set": {
                     "iban": iban,
                     "iban_fonte": "fatture_xml",

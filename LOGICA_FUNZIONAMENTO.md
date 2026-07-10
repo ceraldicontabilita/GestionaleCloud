@@ -78,6 +78,16 @@ Se il parser fallisce: stato di errore + avviso, il documento resta consultabile
 2. **Se il fornitore non esiste ancora, viene creato automaticamente** (la partita IVA
    è la chiave). Il **metodo di pagamento del fornitore è una scelta tua** (Cassa /
    Banca / Misto / Non definito): l'XML può suggerire, ma non decide mai.
+   Tre difese impediscono i "fornitori fantasma":
+   - se il cedente coincide col cessionario della stessa fattura (autofatture,
+     integrazioni reverse charge) **non** viene creato nessun fornitore: l'azienda
+     stessa non può finire in anagrafica fornitori;
+   - viene creato un fornitore solo con una **vera partita IVA** (11 cifre, con o
+     senza prefisso paese): un codice fiscale personale non finisce mai nel campo
+     P.IVA;
+   - l'aggancio per nome (quando la P.IVA non è ancora in anagrafica) scatta solo a
+     nome **identico**, mai a prefisso, e mai se il fornitore trovato ha già una
+     P.IVA diversa: in quel caso è un'azienda diversa e se ne crea una nuova.
 3. La fattura eredita il metodo di pagamento del fornitore:
    - **Cassa** → si paga col bottone "Paga in Cassa" (movimento in Prima Nota Cassa);
    - **Banca** → "Paga in Banca" (movimento in Prima Nota Banca);
@@ -93,6 +103,19 @@ Se il parser fallisce: stato di errore + avviso, il documento resta consultabile
    (correggibile a mano). Zero o più targhe → nessun collegamento automatico.
 6. "Segna pagata manualmente" esiste per i pagamenti avvenuti fuori sistema: la
    fattura risulta pagata ma senza un movimento di cassa/banca collegato.
+
+**Pagina Fornitori (anagrafica).**
+- La lista è a **pagine numerate** (1 · 2 · 3 …, 50 fornitori per pagina, barra sia
+  sopra che sotto). Cambiare metodo, magazzino o modificare l'anagrafica aggiorna
+  solo la riga: **non** si torna a pagina 1 e non si perde la posizione.
+- Ogni riga mostra l'**anno dell'ultima fattura** (verde = fattura nell'anno
+  selezionato → fornitore attuale; grigio = solo storico).
+- Un fornitore può essere segnato **cessato** (dal menù ⋯ o dalla matita): sparisce
+  dalla lista ma non viene eliminato — fatture e storico restano. Il chip "🚪
+  Cessati (N)" accanto a Totale/Attivi li fa rivedere.
+- Dal riepilogo **fatturato** si apre l'estratto fatture dell'anno, e da lì ogni
+  fattura si visualizza col bottone **👁 Vedi** (visore in pagina, senza nuove
+  schede).
 
 ---
 
