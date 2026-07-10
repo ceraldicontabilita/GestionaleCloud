@@ -27,13 +27,24 @@ jobs:
           DASH=$(ls frontend/dist/assets | grep '^Dashboard-' | head -1)
           echo "Bundle atteso: $ATTESO — chunk Dashboard: $DASH"
 
+          # NB: User-Agent da browser + --compressed — alcuni CDN/proxy
+          # rispondono diversamente (o bloccano) i curl "nudi", e il grep
+          # trovava '' anche a sito perfettamente funzionante. In errore
+          # stampiamo status HTTP e inizio del body per diagnosi reale.
+          UA="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36"
+
           # Il deploy Render può richiedere qualche minuto: ritenta fino a ~10'
           for i in $(seq 1 20); do
-            LIVE=$(curl -sS --max-time 20 https://impresasemplice.online/ | grep -o 'assets/index-[^"]*\.js' | head -1 || true)
-            echo "Tentativo $i: il sito serve '$LIVE'"
+            BODY=$(curl -sS --compressed -A "$UA" --max-time 20 https://impresasemplice.online/ || true)
+            CODE=$(curl -sS -o /dev/null -w '%{http_code}' --compressed -A "$UA" --max-time 20 https://impresasemplice.online/ || echo '000')
+            LIVE=$(printf '%s' "$BODY" | grep -o 'assets/index-[^"]*\.js' | head -1 || true)
+            echo "Tentativo $i: HTTP $CODE — il sito serve '$LIVE'"
             if [ "$LIVE" = "$ATTESO" ]; then
               echo "OK: il sito serve il bundle atteso"
               break
+            fi
+            if [ -z "$LIVE" ]; then
+              echo "  └ body (primi 300 caratteri): $(printf '%s' "$BODY" | head -c 300)"
             fi
             if [ "$i" = "20" ]; then
               echo "ERRORE: dopo 10 minuti il sito serve ancora un bundle diverso"; exit 1
