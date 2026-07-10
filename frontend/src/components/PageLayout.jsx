@@ -5,7 +5,7 @@
 
 import React from 'react';
 import { PageHeader } from './ds/PageHeader';
-import { COLORS, SPACING, BORDER_RADIUS, FONT } from '../lib/utils';
+import { COLORS, SPACING, BORDER_RADIUS, FONT, useIsMobile } from '../lib/utils';
 
 export function PageLayout({
   children,
@@ -73,16 +73,21 @@ export function PageSection({ title, icon, children, className = '', style = {} 
 }
 
 export function PageGrid({ cols = 2, gap = 20, minWidth, children }) {
+  const isMobile = useIsMobile();
   // auto-fit + minmax invece di repeat(cols, 1fr): su schermi stretti le colonne
   // si riducono finché serve invece di forzare N colonne e scroll orizzontale.
   // minWidth è derivato da cols quando non specificato esplicitamente.
-  const mw = minWidth || Math.max(140, Math.floor(960 / cols) - gap);
+  let mw = minWidth || Math.max(140, Math.floor(960 / cols) - gap);
+  // Su mobile le griglie da 3+ colonne (tipicamente card KPI) vanno 2 per
+  // riga invece di impilarsi in un'unica colonna gigante: entra il doppio
+  // delle informazioni senza scroll.
+  if (isMobile && cols >= 3) mw = Math.min(mw, 150);
   return (
     <div
       style={{
         display: 'grid',
         gridTemplateColumns: `repeat(auto-fit, minmax(min(${mw}px, 100%), 1fr))`,
-        gap,
+        gap: isMobile ? Math.min(gap, 12) : gap,
       }}
     >
       {React.Children.map(children, child => (

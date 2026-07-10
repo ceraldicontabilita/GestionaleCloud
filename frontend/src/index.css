@@ -361,4 +361,13 @@ table td.text-right, table th.text-right { text-align: right; }
   }
   .table-scroll table, .table-wrapper table { display: table; white-space: normal; }
   .page-content img, .page-content video, .page-content canvas, .page-content svg { max-width: 100%; height: auto; }
+
+  /* Densità mobile — caratteri leggermente più piccoli e padding ridotti
+     così entrano più informazioni a schermo. Le classi sono agganciate ai
+     componenti del design system: Table/Th/Td (ds-table) e StatCard. */
+  .ds-table { font-size: 12px !important; }
+  .ds-table th { padding: 8px 10px !important; font-size: 11px !important; }
+  .ds-table td { padding: 8px 10px !important; font-size: 12px !important; }
+  .ds-statcard { padding: 12px 14px !important; }
+  .ds-statcard-value { font-size: 19px !important; }
 }

@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useAnnoGlobale } from '../../contexts/AnnoContext';
 import { useHashState } from '../../hooks/useHashState';
+import { HubTabs } from '../../components/ds';
 
 const PianoContiContent = lazy(() => import('../PianoDeiConti.jsx'));
 const BilancioContent = lazy(() => import('../Bilancio.jsx'));
@@ -122,49 +123,13 @@ export default function ContabilitaHub() {
     <div style={{ width: '100%' }}>
       {/* Tab Bar — design system: navy attivo. Tutti i tab SEMPRE visibili
           (a capo automatico): niente scroll orizzontale che nasconde le voci. */}
-      <div
-        style={{
-          display: 'flex',
-          gap: 6,
-          padding: '8px 12px',
-          background: 'white',
-          borderBottom: '1px solid #e2e8f0',
-          borderRadius: '8px 8px 0 0',
-          flexWrap: 'wrap',
-        }}
-      >
-        {TABS.map(({ id, label, Icon }) => {
-          const attivo = activeTab === id;
-          return (
-            <button
-              key={id}
-              data-testid={`tab-contabilita-${id}`}
-              onClick={() => handleTabChange(id)}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '9px 13px',
-                minHeight: 40,
-                borderRadius: 6,
-                border: `1px solid ${attivo ? '#0f2744' : '#e2e8f0'}`,
-                fontWeight: attivo ? 700 : 500,
-                fontSize: 12,
-                whiteSpace: 'nowrap',
-                flexShrink: 0,
-                cursor: 'pointer',
-                transition: 'all 140ms ease',
-                background: attivo ? '#0f2744' : '#ffffff',
-                color: attivo ? '#fff' : '#64748b',
-                boxShadow: attivo ? '0 1px 2px rgba(15,39,68,0.12)' : 'none',
-              }}
-            >
-              <Icon size={14} />
-              {label}
-            </button>
-          );
-        })}
-      </div>
+      <HubTabs
+        testIdPrefix="tab-contabilita"
+        activeId={activeTab}
+        onSelect={tab => handleTabChange(tab.id)}
+        tabs={TABS}
+        style={{ marginBottom: 0 }}
+      />
 
       {/* Tab Content - mount-once */}
       <div style={{ padding: '16px 0 0 0' }}>

@@ -655,9 +655,9 @@ function PrimaNotaDesktop() {
             onClick={() => navigate('/prima-nota/pulizia')}
             style={{
               padding: '6px 12px',
-              background: '#b8860b',
+              background: 'rgba(255,255,255,0.2)',
               color: 'white',
-              border: 'none',
+              border: '1px solid rgba(255,255,255,0.3)',
               borderRadius: 6,
               cursor: 'pointer',
               fontWeight: '600',
@@ -704,26 +704,24 @@ function PrimaNotaDesktop() {
           onClick={() => setActiveSection('cassa')}
           style={{
             flex: 1,
-            padding: '12px 16px',
-            fontSize: 14,
+            padding: isMobile ? '10px 6px' : '12px 16px',
+            fontSize: isMobile ? 12 : 14,
             fontWeight: 'bold',
-            background:
-              activeSection === 'cassa'
-                ? '#0f2744'
-                : '#f3f4f6',
-            color: activeSection === 'cassa' ? 'white' : '#374151',
-            border: 'none',
+            background: activeSection === 'cassa' ? '#0f2744' : '#fff',
+            color: activeSection === 'cassa' ? 'white' : '#64748b',
+            border: `1px solid ${activeSection === 'cassa' ? '#0f2744' : '#e2e8f0'}`,
             borderRadius: 6,
             minHeight: 40,
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: 8,
+            gap: isMobile ? 4 : 8,
+            whiteSpace: 'nowrap',
           }}
         >
-          <span style={{ fontSize: 18 }}>💵</span>
-          CASSA {selectedYear}
+          <span style={{ fontSize: isMobile ? 15 : 18 }}>💵</span>
+          {isMobile ? 'CASSA' : `CASSA ${selectedYear}`}
         </button>
 
         <button
@@ -731,51 +729,50 @@ function PrimaNotaDesktop() {
           onClick={() => setActiveSection('banca')}
           style={{
             flex: 1,
-            padding: '12px 16px',
-            fontSize: 14,
+            padding: isMobile ? '10px 6px' : '12px 16px',
+            fontSize: isMobile ? 12 : 14,
             fontWeight: 'bold',
-            background:
-              activeSection === 'banca'
-                ? '#0f2744'
-                : '#f3f4f6',
-            color: activeSection === 'banca' ? 'white' : '#374151',
-            border: 'none',
+            background: activeSection === 'banca' ? '#0f2744' : '#fff',
+            color: activeSection === 'banca' ? 'white' : '#64748b',
+            border: `1px solid ${activeSection === 'banca' ? '#0f2744' : '#e2e8f0'}`,
             borderRadius: 6,
             minHeight: 40,
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: 8,
+            gap: isMobile ? 4 : 8,
+            whiteSpace: 'nowrap',
           }}
         >
-          <span style={{ fontSize: 18 }}>🏦</span>
-          BANCA {selectedYear}
+          <span style={{ fontSize: isMobile ? 15 : 18 }}>🏦</span>
+          {isMobile ? 'BANCA' : `BANCA ${selectedYear}`}
         </button>
         <button
           data-testid="btn-prima-nota-provvisori"
           onClick={() => setActiveSection('provvisori')}
           style={{
             flex: 1,
-            padding: '12px 16px',
-            fontSize: 14,
+            padding: isMobile ? '10px 6px' : '12px 16px',
+            fontSize: isMobile ? 12 : 14,
             fontWeight: 'bold',
-            background: activeSection === 'provvisori' ? '#0f2744' : '#f3f4f6',
-            color: activeSection === 'provvisori' ? 'white' : '#374151',
-            border: 'none',
+            background: activeSection === 'provvisori' ? '#0f2744' : '#fff',
+            color: activeSection === 'provvisori' ? 'white' : '#64748b',
+            border: `1px solid ${activeSection === 'provvisori' ? '#0f2744' : '#e2e8f0'}`,
             borderRadius: 6,
             minHeight: 40,
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: 8,
+            gap: isMobile ? 4 : 8,
+            whiteSpace: 'nowrap',
           }}
         >
-          <span style={{ fontSize: 18 }}>⚠️</span>
+          <span style={{ fontSize: isMobile ? 15 : 18 }}>⚠️</span>
           PROVVISORI{provvisori.length > 0 ? ` (${provvisori.length})` : ''}
         </button>
-        <CopyLinkButton style={{ flexShrink: 0 }} />
+        {!isMobile && <CopyLinkButton style={{ flexShrink: 0 }} />}
       </div>
 
       {/* ===== TAB PROVVISORI ===== */}

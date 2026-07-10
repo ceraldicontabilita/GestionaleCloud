@@ -591,13 +591,15 @@ export default function RiconciliazioneUnificata() {
           style={{
             padding: '8px 14px',
             minHeight: 40,
+            flex: isMobile ? '1 1 auto' : '0 1 auto',
             background: autoRepairRunning ? '#9ca3af' : '#0f2744',
             color: 'white',
-            border: 'none',
+            border: '1px solid #0f2744',
             borderRadius: 6,
             fontWeight: 600,
             fontSize: 13,
             cursor: autoRepairRunning ? 'wait' : 'pointer',
+            whiteSpace: 'nowrap',
           }}
         >
           {autoRepairRunning ? '⏳ Riparazione...' : '🔧 Auto-Ripara'}
@@ -622,15 +624,17 @@ export default function RiconciliazioneUnificata() {
           onClick={handleAutoRiconcilia}
           disabled={processing}
           style={{
-            padding: '10px 20px',
+            padding: '8px 14px',
             minHeight: 40,
+            flex: isMobile ? '1 1 auto' : '0 1 auto',
             background: '#0f2744',
             color: 'white',
-            border: 'none',
+            border: '1px solid #0f2744',
             borderRadius: 6,
             fontWeight: 600,
             fontSize: 13,
             cursor: 'pointer',
+            whiteSpace: 'nowrap',
           }}
         >
           {processing === 'auto' ? '⏳' : '⚡'} Auto-Riconcilia
@@ -639,8 +643,9 @@ export default function RiconciliazioneUnificata() {
           onClick={() => loadAllData(currentLimit)}
           disabled={processing}
           style={{
-            padding: '10px 16px',
+            padding: '8px 14px',
             minHeight: 40,
+            flex: isMobile ? '1 1 auto' : '0 1 auto',
             background: 'white',
             color: '#0f2744',
             border: '1px solid #e2e8f0',
@@ -648,6 +653,7 @@ export default function RiconciliazioneUnificata() {
             cursor: 'pointer',
             fontWeight: 600,
             fontSize: 13,
+            whiteSpace: 'nowrap',
           }}
         >
           🔄 Aggiorna
@@ -657,15 +663,17 @@ export default function RiconciliazioneUnificata() {
         <button
           onClick={() => setShowFilters(!showFilters)}
           style={{
-            padding: '10px 16px',
+            padding: '8px 14px',
             minHeight: 40,
+            flex: isMobile ? '1 1 auto' : '0 1 auto',
             background: showFilters ? '#0f2744' : 'white',
-            color: showFilters ? 'white' : '#1e293b',
-            border: '1px solid #e2e8f0',
+            color: showFilters ? 'white' : '#0f2744',
+            border: `1px solid ${showFilters ? '#0f2744' : '#e2e8f0'}`,
             borderRadius: 6,
             cursor: 'pointer',
             fontWeight: 600,
             fontSize: 13,
+            whiteSpace: 'nowrap',
           }}
         >
           🔍 Filtri {showFilters ? '▲' : '▼'}
@@ -797,11 +805,13 @@ export default function RiconciliazioneUnificata() {
         </div>
       )}
 
-      {/* Tab Navigation */}
+      {/* Tab Navigation — stessa grafica delle barre tab degli hub:
+          attivo navy pieno, inattivo bianco con bordo. Su mobile i bottoni
+          riempiono la riga in modo uniforme con font ridotto. */}
       <div
         style={{
           display: 'flex',
-          gap: 8,
+          gap: isMobile ? 6 : 8,
           marginBottom: 20,
           flexWrap: 'wrap',
           background: 'white',
@@ -812,31 +822,35 @@ export default function RiconciliazioneUnificata() {
       >
         {TABS.map(tab => {
           const count = tab.id === 'dashboard' ? null : (stats[tab.id] ?? null);
+          const attivo = activeTab === tab.id;
           return (
             <button
               key={tab.id}
               onClick={() => handleTabChange(tab.id)}
               style={{
-                padding: '12px 20px',
+                padding: isMobile ? '8px 8px' : '9px 13px',
                 minHeight: 40,
-                background: activeTab === tab.id ? tab.color : '#f8fafc',
-                color: activeTab === tab.id ? 'white' : '#1e293b',
-                border: 'none',
+                flex: isMobile ? '1 1 auto' : '0 1 auto',
+                justifyContent: 'center',
+                background: attivo ? tab.color : '#fff',
+                color: attivo ? 'white' : '#64748b',
+                border: `1px solid ${attivo ? tab.color : '#e2e8f0'}`,
                 borderRadius: 6,
-                fontWeight: 600,
+                fontWeight: attivo ? 700 : 500,
                 cursor: 'pointer',
-                fontSize: 13,
+                fontSize: isMobile ? 11.5 : 12,
                 display: 'flex',
                 alignItems: 'center',
-                gap: 8,
+                gap: 6,
+                whiteSpace: 'nowrap',
               }}
             >
               {tab.label}
               {count !== null && (
                 <span
                   style={{
-                    background: activeTab === tab.id ? 'rgba(255,255,255,0.3)' : tab.color,
-                    color: activeTab === tab.id ? 'white' : 'white',
+                    background: attivo ? 'rgba(255,255,255,0.3)' : tab.color,
+                    color: 'white',
                     padding: '2px 8px',
                     borderRadius: 10,
                     fontSize: 11,

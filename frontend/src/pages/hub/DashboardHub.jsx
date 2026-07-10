@@ -1,6 +1,7 @@
 import React, { lazy, Suspense, useEffect, useState } from 'react';
 import { LayoutDashboard, Network } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { HubTabs } from '../../components/ds';
 
 const DashboardContent = lazy(() => import('../Dashboard.jsx'));
 const DashboardRelazionaleContent = lazy(() => import('../DashboardRelazionale.jsx'));
@@ -44,46 +45,12 @@ export default function DashboardHub() {
 
   return (
     <div style={{ width: '100%' }}>
-      <div
-        style={{
-          display: 'flex',
-          gap: 8,
-          padding: '8px 12px',
-          background: 'white',
-          borderBottom: '1px solid #e2e8f0',
-          borderRadius: '8px 8px 0 0',
-          flexWrap: 'wrap',
-          marginBottom: 16,
-        }}
-      >
-        {tabs.map(({ id, label, Icon, to }) => {
-          const isActive = activeTab === id;
-          return (
-            <button
-              key={id}
-              onClick={() => navigate(to)}
-              data-testid={`tab-dashboard-${id}`}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '9px 13px',
-                minHeight: 40,
-                borderRadius: 6,
-                border: `1px solid ${isActive ? '#0f2744' : '#e2e8f0'}`,
-                background: isActive ? '#0f2744' : '#fff',
-                color: isActive ? '#fff' : '#64748b',
-                fontWeight: isActive ? 700 : 500,
-                fontSize: 12,
-                cursor: 'pointer',
-              }}
-            >
-              <Icon size={14} />
-              <span>{label}</span>
-            </button>
-          );
-        })}
-      </div>
+      <HubTabs
+        testIdPrefix="tab-dashboard"
+        activeId={activeTab}
+        onSelect={tab => navigate(tab.to)}
+        tabs={tabs}
+      />
       <div style={{ display: activeTab === 'dashboard' ? 'block' : 'none' }}>
         <Suspense fallback={<Loading />}>
           {visitedTabs.has('dashboard') && <DashboardContent />}

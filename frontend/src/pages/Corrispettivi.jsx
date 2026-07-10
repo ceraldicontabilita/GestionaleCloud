@@ -3,7 +3,7 @@ import { useHashState } from '../hooks/useHashState';
 import { CopyLinkButton } from '../components/CopyLinkButton';
 import { Link } from 'react-router-dom';
 import api from '../api';
-import { formatDateIT, formatEuro, COLORS, BORDER_RADIUS } from '../lib/utils';
+import { formatDateIT, formatEuro, COLORS, BORDER_RADIUS, useIsMobile } from '../lib/utils';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 import {
@@ -33,6 +33,7 @@ import {
  * I corrispettivi vengono importati tramite XML dal registratore telematico
  */
 export default function Corrispettivi() {
+  const isMobile = useIsMobile();
   const { anno: selectedYear } = useAnnoGlobale();
   const [corrispettivi, setCorrispettivi] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -309,7 +310,10 @@ export default function Corrispettivi() {
                   <thead>
                     <tr>
                       <Th>Data</Th>
-                      <Th>Matricola RT</Th>
+                      {/* La matricola RT è quasi sempre identica su ogni riga:
+                          su mobile la nascondiamo (resta nel dettaglio 👁) per
+                          far entrare le colonne con gli importi. */}
+                      {!isMobile && <Th>Matricola RT</Th>}
                       <Th align="right">💵 Cassa</Th>
                       <Th align="right">💳 POS</Th>
                       <Th align="right">Totale</Th>
@@ -328,9 +332,11 @@ export default function Corrispettivi() {
                         <Td style={{ fontWeight: 600, fontSize: 14 }}>
                           {formatDateIT(c.data) || '-'}
                         </Td>
-                        <Td style={{ fontSize: 13, color: COLORS.textMuted }}>
-                          {c.matricola_rt || '-'}
-                        </Td>
+                        {!isMobile && (
+                          <Td style={{ fontSize: 13, color: COLORS.textMuted }}>
+                            {c.matricola_rt || '-'}
+                          </Td>
+                        )}
                         <Td align="right" mono style={{ color: COLORS.success, fontWeight: 500 }}>
                           {formatEuro(c.pagato_contanti)}
                         </Td>

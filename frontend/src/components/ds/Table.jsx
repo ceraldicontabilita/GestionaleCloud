@@ -10,6 +10,7 @@ import { COLORS, BORDER_RADIUS, FONT } from '../../lib/utils';
 export function TableWrap({ children, style = {} }) {
   return (
     <div
+      className="table-scroll"
       style={{
         overflowX: 'auto',
         WebkitOverflowScrolling: 'touch',
@@ -28,6 +29,7 @@ export function TableWrap({ children, style = {} }) {
 export function Table({ children, style = {} }) {
   return (
     <table
+      className="ds-table"
       style={{
         width: '100%',
         borderCollapse: 'collapse',

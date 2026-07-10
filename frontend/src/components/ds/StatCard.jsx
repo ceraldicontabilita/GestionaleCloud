@@ -27,6 +27,7 @@ export function StatCard({
 
   return (
     <div
+      className="ds-statcard"
       onClick={onClick || undefined}
       style={{
         background: COLORS.card,
@@ -48,7 +49,7 @@ export function StatCard({
           textTransform: 'uppercase', letterSpacing: '0.4px',
         }}>{label}</span>
       </div>
-      <div style={{ fontSize: 24, fontWeight: 700, color: COLORS.primary, lineHeight: 1.2, fontFamily: FONT.family }}>
+      <div className="ds-statcard-value" style={{ fontSize: 24, fontWeight: 700, color: COLORS.primary, lineHeight: 1.2, fontFamily: FONT.family }}>
         {value}
       </div>
       {subtext && (
