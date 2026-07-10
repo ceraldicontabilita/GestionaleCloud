@@ -1,0 +1,44 @@
+# Verifica che la produzione (impresasemplice.online) serva ESATTAMENTE il
+# build committato in frontend/dist. Serve come conferma indipendente del
+# deploy quando l'ambiente di sviluppo non può raggiungere il sito.
+name: Verifica produzione
+
+on:
+  workflow_dispatch:
+
+jobs:
+  verifica:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bundle atteso (dal repo) vs bundle servito (dal sito)
+        run: |
+          set -e
+          ATTESO=$(grep -o 'assets/index-[^"]*\.js' frontend/dist/index.html | head -1)
+          DASH=$(ls frontend/dist/assets | grep '^Dashboard-' | head -1)
+          echo "Bundle atteso: $ATTESO — chunk Dashboard: $DASH"
+
+          # Il deploy Render può richiedere qualche minuto: ritenta fino a ~10'
+          for i in $(seq 1 20); do
+            LIVE=$(curl -sS --max-time 20 https://impresasemplice.online/ | grep -o 'assets/index-[^"]*\.js' | head -1 || true)
+            echo "Tentativo $i: il sito serve '$LIVE'"
+            if [ "$LIVE" = "$ATTESO" ]; then
+              echo "OK: il sito serve il bundle atteso"
+              break
+            fi
+            if [ "$i" = "20" ]; then
+              echo "ERRORE: dopo 10 minuti il sito serve ancora un bundle diverso"; exit 1
+            fi
+            sleep 30
+          done
+
+          # Il chunk Dashboard corretto deve rispondere 200
+          curl -sSf --max-time 20 -o /dev/null "https://impresasemplice.online/assets/$DASH"
+          echo "OK: chunk Dashboard ($DASH) servito correttamente"
+
+          # Backend vivo
+          curl -sSf --max-time 20 https://impresasemplice.online/api/health | head -c 200
+          echo ""
+          echo "VERIFICA PRODUZIONE COMPLETATA"
