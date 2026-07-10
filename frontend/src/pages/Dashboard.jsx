@@ -4,7 +4,17 @@ import api from '../api';
 import { Link } from 'react-router-dom';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { formatEuro, STYLES, COLORS, SHADOWS, BORDER_RADIUS, useIsMobile } from '../lib/utils';
-import { Button, Badge, StatCard, TableWrap, Table, Th, Td } from '../components/ds';
+import {
+  Button,
+  Badge,
+  StatCard,
+  TableWrap,
+  Table,
+  Th,
+  Td,
+  RowActions,
+  RowActionButton,
+} from '../components/ds';
 import { PageLayout } from '../components/PageLayout';
 import {
   LineChart,
