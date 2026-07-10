@@ -33,7 +33,10 @@ class Settings(BaseSettings):
     # Security
     SECRET_KEY: Optional[str] = None
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
+    # 30 giorni: gestionale interno con PIN — con le 24h di prima il token
+    # scadeva ogni mattina e l'utente vedeva "errore autenticazione" a ogni
+    # primo accesso della giornata. Override con env ACCESS_TOKEN_EXPIRE_MINUTES.
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 43200
 
     # CORS
     CORS_ORIGINS: str = "*"

@@ -114,10 +114,16 @@ export default function PianoDeiConti() {
         api.get(`/api/piano-conti/bilancio?anno=${annoGlobale}`),
       ]);
 
-      setConti(contiRes.data.conti || []);
-      setGrouped(contiRes.data.grouped || {});
-      setRegole(regoleRes.data.regole || []);
-      setBilancio(bilancioRes.data);
+      setConti(contiRes.data?.conti || []);
+      setGrouped(contiRes.data?.grouped || {});
+      setRegole(regoleRes.data?.regole || []);
+      // Difesa sulla forma: se il backend risponde con payload vuoto/inatteso
+      // (riavvio in corso) le card bilancio leggono i sotto-oggetti e
+      // manderebbero in crash la pagina — meglio nasconderle.
+      const bil = bilancioRes.data;
+      setBilancio(
+        bil?.stato_patrimoniale?.attivo && bil?.conto_economico?.ricavi ? bil : null
+      );
     } catch (error) {
       console.error('Error loading data:', error);
     } finally {

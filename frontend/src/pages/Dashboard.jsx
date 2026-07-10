@@ -167,8 +167,20 @@ export default function Dashboard() {
               pagheResults,
             ]) => {
               setSpeseCategoria(speseRes.data);
-              setConfrontoAnnuale(confrontoRes.data);
-              setStatoRiconciliazione(riconcRes.data);
+              // Difesa sulla FORMA dei dati: se il backend risponde con un
+              // payload vuoto/inatteso (riavvio, deploy in corso) i blocchi
+              // che leggono i sotto-oggetti non devono mandare in crash la
+              // pagina — meglio nascondere la card che mostrare l'errore rosso.
+              const confronto = confrontoRes.data;
+              setConfrontoAnnuale(
+                confronto?.anno_corrente && confronto?.variazioni_percentuali ? confronto : null
+              );
+              const riconc = riconcRes.data;
+              setStatoRiconciliazione(
+                riconc && !Array.isArray(riconc) && (riconc.riepilogo || riconc.fatture)
+                  ? riconc
+                  : null
+              );
               setImposteData(imposteRes.data);
               setScadenzeF24(f24Res.data);
               setLearningStats(learningRes.data);
@@ -1202,7 +1214,7 @@ export default function Dashboard() {
                 <div>
                   <div style={{ color: COLORS.textMuted }}>Da pagare</div>
                   <div style={{ fontWeight: 'bold', color: COLORS.danger }}>
-                    {formatEuro(statoRiconciliazione.fatture.importo_da_pagare)}
+                    {formatEuro(statoRiconciliazione?.fatture?.importo_da_pagare ?? 0)}
                   </div>
                 </div>
               </div>
@@ -1240,7 +1252,7 @@ export default function Dashboard() {
                 <div>
                   <div style={{ color: COLORS.textMuted }}>Da verificare</div>
                   <div style={{ fontWeight: 'bold', color: COLORS.warning }}>
-                    {statoRiconciliazione.salari.da_riconciliare}
+                    {statoRiconciliazione?.salari?.da_riconciliare ?? 0}
                   </div>
                 </div>
               </div>

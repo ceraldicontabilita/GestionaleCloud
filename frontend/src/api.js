@@ -22,17 +22,31 @@ api.interceptors.request.use(
   error => Promise.reject(error)
 );
 
-// Response interceptor: gestisce 401 (token scaduto/invalido)
+// Response interceptor: gestisce 401 (token scaduto/invalido) e ritenta
+// UNA volta le letture quando il backend sta ripartendo (cold start Render:
+// 502/503/504 o richiesta caduta) — evita la pagina d'errore al primo
+// accesso della giornata quando il server impiega qualche secondo a salire.
 api.interceptors.response.use(
   response => response,
-  error => {
+  async error => {
     if (error.response?.status === 401) {
       // Token scaduto o invalido - redirect a login
       localStorage.removeItem('auth_token');
       if (!window.location.pathname.includes('/login')) {
         window.location.href = '/login';
       }
+      return Promise.reject(error);
     }
+
+    const cfg = error.config || {};
+    const status = error.response?.status;
+    const transitorio = !error.response || status === 502 || status === 503 || status === 504;
+    if (transitorio && (cfg.method || '').toLowerCase() === 'get' && !cfg.__ritentata) {
+      cfg.__ritentata = true;
+      await new Promise(r => setTimeout(r, 2000));
+      return api.request(cfg);
+    }
+
     return Promise.reject(error);
   }
 );
