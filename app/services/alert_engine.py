@@ -388,6 +388,12 @@ ALERT_CATALOG: Dict[str, Dict[str, Any]] = {
         "titolo": "Fattura annunciata da email Aruba ma XML mai arrivato",
         "condizione_chiusura": "XML importato (riscontro) o attesa annullata"
     },
+    "FATTURA_ATTESA_OLTRE_TERMINE": {
+        "modulo": "documenti",
+        "severita": "critical",
+        "titolo": "Fattura attesa oltre il termine normativo (12 giorni SDI)",
+        "condizione_chiusura": "XML importato, fornitore sollecitato o attesa annullata"
+    },
     "EMAIL_ARUBA_NON_LEGGIBILE": {
         "modulo": "documenti",
         "severita": "info",

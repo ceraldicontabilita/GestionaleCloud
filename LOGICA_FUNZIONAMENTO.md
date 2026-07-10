@@ -106,15 +106,21 @@ I movimenti non si inseriscono mai liberamente: nascono sempre da un'azione prec
 - Quando Aruba avvisa che una fattura è stata recapitata, il sistema crea una
   "fattura attesa" con fornitore, numero e importo letti dalla mail, e il
   suggerimento cassa/banca preso dal metodo del fornitore (stesso motore di tutto
-  il resto). Nessun movimento nasce da solo.
-- Dal tab Provvisori puoi registrare subito l'**anticipo** (💵/🏦): il movimento è
-  marcato "annunciata da email, XML in arrivo".
+  il resto).
+- **Registrazione automatica (scelta del 10-07-2026)**: se il fornitore ha metodo
+  certo (Cassa o Banca), l'anticipo viene registrato **da solo** in prima nota,
+  marcato "annunciata da email, XML in arrivo" (nei Provvisori compare "✓ anticipo
+  (auto)"). Se il metodo è Misto o non definito, la scelta resta tua, a un tap
+  (💵/🏦) dal tab Provvisori.
 - Quando l'XML vero arriva (da Drive o quadratura Elaborate), il sistema **riscontra**
-  l'attesa per numero+importo: se avevi registrato l'anticipo, il movimento esistente
-  viene agganciato alla fattura — **mai due movimenti per la stessa fattura**.
-- Se dopo 3 giorni l'XML non è arrivato, il sistema ripassa da solo la cartella
-  Elaborate di Drive (recupero mirato: sa già cosa cercare); se manca ancora,
-  avviso "Fattura annunciata ma XML mai arrivato" con numero, fornitore e importo.
+  l'attesa per numero+importo: il movimento anticipato viene agganciato alla
+  fattura — **mai due movimenti per la stessa fattura**.
+- Solleciti a due stadi: dopo **3 giorni** senza XML il sistema ripassa da solo la
+  cartella Elaborate di Drive (recupero mirato: sa già cosa cercare) e, se manca
+  ancora, avviso "Fattura annunciata ma XML mai arrivato"; dopo **12 giorni** (il
+  termine normativo di emissione/trasmissione allo SDI della fattura immediata)
+  scatta l'allarme critico "oltre termine": va sollecitato il fornitore o
+  verificato il canale Drive.
 - Vale solo dall'attivazione in avanti: il pregresso resta coperto dalla quadratura
   Drive settimanale.
 

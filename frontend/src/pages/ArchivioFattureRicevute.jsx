@@ -60,6 +60,15 @@ export default function ArchivioFatture() {
   const stato = hs.stato;
   const search = hs.search;
 
+  // Debounce sulla ricerca: senza, ogni tasto premuto faceva partire una
+  // chiamata API (fetch da 500 fatture a battuta). La fetch usa il valore
+  // ritardato di 400ms; Invio e bottone "Cerca" restano immediati.
+  const [debouncedSearch, setDebouncedSearch] = useState(search);
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 400);
+    return () => clearTimeout(t);
+  }, [search]);
+
   // Dati
   const [fatture, setFatture] = useState([]);
   const [fornitori, setFornitori] = useState([]);
@@ -132,7 +141,7 @@ export default function ArchivioFatture() {
       if (fornitore) params.append('fornitore_piva', fornitore);
       // "senza_metodo" è un filtro client-side: fa fetch senza stato e poi filtra
       if (stato && stato !== 'senza_metodo') params.append('stato', stato);
-      if (search) params.append('search', search);
+      if (debouncedSearch) params.append('search', debouncedSearch);
       params.append('limit', '500');
 
       const res = await api.get(`/api/fatture-ricevute/archivio?${params.toString()}`);
@@ -150,7 +159,7 @@ export default function ArchivioFatture() {
       console.error('Errore caricamento fatture:', err);
     }
     setLoading(false);
-  }, [anno, mese, fornitore, stato, search]);
+  }, [anno, mese, fornitore, stato, debouncedSearch]);
 
   const fetchFornitori = async () => {
     try {
@@ -405,12 +414,20 @@ export default function ArchivioFatture() {
               placeholder="Numero fattura, fornitore..."
               value={search}
               onChange={e => setHs('search', e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && fetchFatture()}
+              onKeyDown={e => e.key === 'Enter' && setDebouncedSearch(search)}
               style={{ fontSize: 13 }}
             />
           </div>
           <div style={{ alignSelf: 'flex-end', display: 'flex', gap: 8 }}>
-            <Button variant="primary" size="sm" onClick={fetchFatture} style={{ fontSize: 13 }}>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => {
+                setDebouncedSearch(search);
+                fetchFatture();
+              }}
+              style={{ fontSize: 13 }}
+            >
               Cerca
             </Button>
             <CopyLinkButton />

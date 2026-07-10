@@ -10,9 +10,11 @@ numero fattura e importo. Questo servizio:
    estrae fornitore/numero/importo/data e salva una "fattura attesa"
    (collection `fatture_attese`). Le attese compaiono nei Provvisori
    come "in arrivo" con il suggerimento cassa/banca del fornitore
-   (stesso motore prima nota di tutto il resto). NON crea movimenti da
-   sola: la registrazione resta una conferma dell'utente, come per le
-   fatture vere (regola: mai registrazione automatica).
+   (stesso motore prima nota di tutto il resto).
+   REGISTRAZIONE AUTOMATICA (scelta utente "A2", 2026-07-10): se il
+   fornitore ha metodo certo (cassa o banca) l'anticipo viene registrato
+   da solo in prima nota; se il metodo è misto/assente resta la conferma
+   manuale a un tap dal tab Provvisori.
 
 2. `riscontra_fattura_attesa(db, invoice)` — chiamata dalla pipeline
    unica di import XML (process_fattura_to_db): quando l'XML vero
@@ -22,11 +24,14 @@ numero fattura e importo. Questo servizio:
    fattura vera (fattura_id) e la fattura marcata registrata: MAI due
    movimenti per la stessa fattura.
 
-3. `controlla_attese_scadute(db)` — attese annunciate ma senza XML dopo
-   N giorni (env ARUBA_ATTESA_GIORNI_ALERT, default 3): prova prima la
-   quadratura della cartella Drive "Elaborate" (così sappiamo GIÀ cosa
-   cercare invece di confrontare tutto), poi se manca ancora genera
-   l'alert FATTURA_ANNUNCIATA_NON_ARRIVATA con numero/fornitore/importo.
+3. `controlla_attese_scadute(db)` — due stadi:
+   - dopo ARUBA_ATTESA_GIORNI_ALERT giorni (default 3): prova la
+     quadratura della cartella Drive "Elaborate" (recupero mirato: si sa
+     GIÀ cosa cercare) e, se manca ancora, avviso
+     FATTURA_ANNUNCIATA_NON_ARRIVATA (warning);
+   - dopo ARUBA_ATTESA_GIORNI_CRITICO giorni (default 12, il termine
+     normativo di emissione/trasmissione della fattura immediata allo
+     SDI): allarme FATTURA_ATTESA_OLTRE_TERMINE (critical).
 
 Vale solo dall'attivazione in avanti (la posta vecchia è stata
 cancellata): il pregresso resta coperto dalla quadratura Drive.
@@ -239,6 +244,85 @@ async def _suggerimento_per_fornitore(db, nome: str) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Registrazione anticipo (condivisa: automatica dallo scanner, manuale dalla UI)
+# ---------------------------------------------------------------------------
+
+COLLECTION_PER_METODO = {"cassa": "prima_nota_cassa", "banca": "prima_nota_banca"}
+
+
+async def registra_anticipo(db, attesa_id: str, metodo: str, fonte: str = "manuale") -> Dict[str, Any]:
+    """Registra in prima nota l'anticipo di una fattura attesa.
+
+    Claim atomico sull'attesa (doppio click / doppio job = seconda richiesta
+    rifiutata). Solleva ValueError con messaggio leggibile se non registrabile.
+    Il movimento porta riferimento ATTESA-{id}: quando l'XML vero arriva,
+    riscontra_fattura_attesa lo aggancia alla fattura (mai doppioni).
+    """
+    metodo = (metodo or "").strip().lower()
+    if metodo not in COLLECTION_PER_METODO:
+        raise ValueError("metodo deve essere 'cassa' o 'banca'")
+
+    now = datetime.now(timezone.utc).isoformat()
+    movimento_id = str(uuid.uuid4())
+    collection = COLLECTION_PER_METODO[metodo]
+
+    attesa = await db[COLL_ATTESE].find_one_and_update(
+        {"id": attesa_id, "stato": {"$in": ["in_attesa_xml", "da_verificare"]},
+         "prima_nota_id": None},
+        {"$set": {"stato": "confermata_anticipo", "metodo_confermato": metodo,
+                  "prima_nota_id": movimento_id, "prima_nota_collection": collection,
+                  "confermata_at": now, "conferma_fonte": fonte}},
+    )
+    if not attesa:
+        raise ValueError("Attesa già confermata, riscontrata o inesistente")
+
+    importo = float(attesa.get("importo") or 0)
+    if importo <= 0:
+        # Rollback del claim: senza importo non si registra niente
+        await db[COLL_ATTESE].update_one(
+            {"id": attesa_id},
+            {"$set": {"stato": attesa.get("stato", "da_verificare"),
+                      "prima_nota_id": None, "prima_nota_collection": None}},
+        )
+        raise ValueError("Attesa senza importo: completala prima")
+
+    numero = attesa.get("numero_fattura") or "?"
+    fornitore = (attesa.get("fornitore_nome") or "Fornitore")[:40]
+    movimento = {
+        "id": movimento_id,
+        "data": attesa.get("data_documento") or (attesa.get("email_date") or now)[:10],
+        "tipo": "uscita",
+        "categoria": "Pagamento fornitore",
+        "importo": importo,
+        "descrizione": f"Pagamento fattura {numero} - {fornitore} (annunciata da email, XML in arrivo)",
+        "riferimento": f"ATTESA-{attesa_id}",
+        "numero_fattura": numero,
+        "fornitore_piva": attesa.get("fornitore_piva"),
+        "fattura_id": None,
+        "fattura_attesa_id": attesa_id,
+        "anticipo_da_email": True,
+        "source": "fattura_attesa_email",
+        "created_at": now,
+    }
+    await db[collection].insert_one(movimento.copy())
+    movimento.pop("_id", None)
+
+    try:
+        from app.services.audit_logger import log_evento
+        await log_evento(
+            "prima_nota", "conferma_attesa_email", attesa_id, COLL_ATTESE, db,
+            nuovo_stato={"metodo": metodo, "importo": importo,
+                         "numero_fattura": numero, "movimento_id": movimento_id},
+            fonte=fonte,
+            dettaglio=f"Anticipo fattura {numero} registrato in {metodo} da notifica email ({fonte})",
+        )
+    except Exception:
+        logger.debug("Audit conferma attesa non registrato")
+
+    return movimento
+
+
+# ---------------------------------------------------------------------------
 # Scan IMAP
 # ---------------------------------------------------------------------------
 
@@ -320,6 +404,7 @@ async def scan_notifiche_aruba(db, giorni: Optional[int] = None) -> Dict[str, An
     nuove = 0
     gia_note = 0
     non_leggibili = 0
+    auto_registrate = 0
 
     for msg in messaggi:
         esiste = await db[COLL_ATTESE].find_one(
@@ -367,6 +452,18 @@ async def scan_notifiche_aruba(db, giorni: Optional[int] = None) -> Dict[str, An
         await db[COLL_ATTESE].insert_one(attesa)
         nuove += 1
 
+        # A2 (scelta utente): metodo fornitore certo → anticipo registrato
+        # da solo. Misto/assente resta a conferma manuale nei Provvisori.
+        if parsed["completa"] and attesa["suggerimento"] in ("cassa", "banca"):
+            try:
+                await registra_anticipo(
+                    db, attesa["id"], attesa["suggerimento"],
+                    fonte="auto_metodo_fornitore",
+                )
+                auto_registrate += 1
+            except ValueError as e:
+                logger.warning(f"[Aruba] Anticipo non auto-registrato ({attesa['id']}): {e}")
+
         if not parsed["completa"]:
             non_leggibili += 1
             try:
@@ -387,9 +484,13 @@ async def scan_notifiche_aruba(db, giorni: Optional[int] = None) -> Dict[str, An
     )
 
     stats = {"new_invoices": nuove, "gia_note": gia_note,
-             "non_leggibili": non_leggibili, "messaggi_letti": len(messaggi)}
+             "non_leggibili": non_leggibili, "auto_registrate": auto_registrate,
+             "messaggi_letti": len(messaggi)}
     if nuove:
-        logger.info(f"[Aruba] {nuove} fatture annunciate da email ({non_leggibili} da verificare)")
+        logger.info(
+            f"[Aruba] {nuove} fatture annunciate da email "
+            f"({auto_registrate} anticipi auto-registrati, {non_leggibili} da verificare)"
+        )
     return {"success": True, "stats": stats}
 
 
@@ -482,56 +583,94 @@ async def riscontra_fattura_attesa(db, invoice: Dict[str, Any]) -> Optional[Dict
 # ---------------------------------------------------------------------------
 
 async def controlla_attese_scadute(db) -> Dict[str, Any]:
-    """Attese senza XML dopo N giorni: prova la quadratura Elaborate
-    (recupero mirato: sappiamo già cosa manca), poi alert per le superstiti."""
-    giorni = int(os.environ.get("ARUBA_ATTESA_GIORNI_ALERT", "3") or 3)
-    limite = (datetime.now(timezone.utc) - timedelta(days=giorni)).isoformat()
+    """Attese senza XML: due stadi.
+
+    Stadio 1 (default 3 giorni): recupero mirato con la quadratura Drive
+    "Elaborate" + avviso (warning) per le superstiti.
+    Stadio 2 (default 12 giorni = termine normativo di emissione/
+    trasmissione allo SDI della fattura immediata): allarme critico —
+    a questo punto la fattura DOVEVA esserci, va sollecitato il fornitore
+    o verificato il canale Drive.
+    """
+    giorni_warn = int(os.environ.get("ARUBA_ATTESA_GIORNI_ALERT", "3") or 3)
+    giorni_crit = int(os.environ.get("ARUBA_ATTESA_GIORNI_CRITICO", "12") or 12)
+    now = datetime.now(timezone.utc)
+    limite_warn = (now - timedelta(days=giorni_warn)).isoformat()
+    limite_crit = (now - timedelta(days=giorni_crit)).isoformat()
+
+    stati_aperti = {"stato": {"$in": ["in_attesa_xml", "confermata_anticipo", "da_verificare"]}}
 
     scadute = await db[COLL_ATTESE].find(
-        {"stato": {"$in": ["in_attesa_xml", "confermata_anticipo"]},
-         "alert_generato": {"$ne": True},
-         "created_at": {"$lt": limite}},
-        {"_id": 0},
-    ).to_list(100)
-    if not scadute:
-        return {"scadute": 0, "recuperate": 0}
-
-    # Tentativo di recupero: ripassa la cartella Drive "Elaborate"
-    # (idempotente). Se l'XML era lì, l'import scatena riscontra_fattura_attesa
-    # e l'attesa esce da questa lista.
-    try:
-        from app.services.drive_invoice_ingest import verifica_quadratura_elaborate, is_configured
-        if is_configured():
-            await verifica_quadratura_elaborate(db)
-    except Exception as e:
-        logger.warning(f"[Aruba] Quadratura Elaborate non riuscita: {e}")
-
-    ancora_scadute = await db[COLL_ATTESE].find(
-        {"id": {"$in": [s["id"] for s in scadute]},
-         "stato": {"$in": ["in_attesa_xml", "confermata_anticipo"]}},
+        {**stati_aperti, "alert_generato": {"$ne": True},
+         "created_at": {"$lt": limite_warn}},
         {"_id": 0},
     ).to_list(100)
 
-    alert_creati = 0
-    try:
-        from app.services.alert_engine import genera_alert
-        for a in ancora_scadute:
-            await genera_alert(
-                "FATTURA_ANNUNCIATA_NON_ARRIVATA", a["id"], COLL_ATTESE,
-                f"Fattura {a.get('numero_fattura', '?')} di "
-                f"{a.get('fornitore_nome', 'fornitore sconosciuto')} "
-                f"({a.get('importo', 0):.2f} €) annunciata da email il "
-                f"{(a.get('email_date') or '')[:10]} ma XML mai arrivato "
-                f"(né da Drive/Elaborate né da email)",
-                db,
-            )
-            await db[COLL_ATTESE].update_one(
-                {"id": a["id"]}, {"$set": {"alert_generato": True}}
-            )
-            alert_creati += 1
-    except Exception:
-        logger.exception("Errore alert FATTURA_ANNUNCIATA_NON_ARRIVATA")
+    recuperate = 0
+    alert_warn = 0
+    if scadute:
+        # Tentativo di recupero: ripassa la cartella Drive "Elaborate"
+        # (idempotente). Se l'XML era lì, l'import scatena
+        # riscontra_fattura_attesa e l'attesa esce da questa lista.
+        try:
+            from app.services.drive_invoice_ingest import verifica_quadratura_elaborate, is_configured
+            if is_configured():
+                await verifica_quadratura_elaborate(db)
+        except Exception as e:
+            logger.warning(f"[Aruba] Quadratura Elaborate non riuscita: {e}")
 
-    return {"scadute": len(scadute),
-            "recuperate": len(scadute) - len(ancora_scadute),
-            "alert": alert_creati}
+        ancora_scadute = await db[COLL_ATTESE].find(
+            {"id": {"$in": [s["id"] for s in scadute]}, **stati_aperti},
+            {"_id": 0},
+        ).to_list(100)
+        recuperate = len(scadute) - len(ancora_scadute)
+
+        try:
+            from app.services.alert_engine import genera_alert
+            for a in ancora_scadute:
+                await genera_alert(
+                    "FATTURA_ANNUNCIATA_NON_ARRIVATA", a["id"], COLL_ATTESE,
+                    f"Fattura {a.get('numero_fattura', '?')} di "
+                    f"{a.get('fornitore_nome', 'fornitore sconosciuto')} "
+                    f"({(a.get('importo') or 0):.2f} €) annunciata da email il "
+                    f"{(a.get('email_date') or '')[:10]} ma XML mai arrivato "
+                    f"(né da Drive/Elaborate né da email)",
+                    db,
+                )
+                await db[COLL_ATTESE].update_one(
+                    {"id": a["id"]}, {"$set": {"alert_generato": True}}
+                )
+                alert_warn += 1
+        except Exception:
+            logger.exception("Errore alert FATTURA_ANNUNCIATA_NON_ARRIVATA")
+
+    # Stadio 2: oltre il termine normativo dei 12 giorni → critico
+    alert_crit = 0
+    oltre_termine = await db[COLL_ATTESE].find(
+        {**stati_aperti, "alert_critico_generato": {"$ne": True},
+         "created_at": {"$lt": limite_crit}},
+        {"_id": 0},
+    ).to_list(100)
+    if oltre_termine:
+        try:
+            from app.services.alert_engine import genera_alert
+            for a in oltre_termine:
+                await genera_alert(
+                    "FATTURA_ATTESA_OLTRE_TERMINE", a["id"], COLL_ATTESE,
+                    f"Fattura {a.get('numero_fattura', '?')} di "
+                    f"{a.get('fornitore_nome', 'fornitore sconosciuto')} "
+                    f"({(a.get('importo') or 0):.2f} €): superati i {giorni_crit} "
+                    f"giorni (termine normativo SDI) dall'annuncio del "
+                    f"{(a.get('email_date') or '')[:10]} senza XML — sollecitare "
+                    f"il fornitore o verificare la cartella Drive",
+                    db,
+                )
+                await db[COLL_ATTESE].update_one(
+                    {"id": a["id"]}, {"$set": {"alert_critico_generato": True}}
+                )
+                alert_crit += 1
+        except Exception:
+            logger.exception("Errore alert FATTURA_ATTESA_OLTRE_TERMINE")
+
+    return {"scadute": len(scadute), "recuperate": recuperate,
+            "alert": alert_warn, "oltre_termine": alert_crit}

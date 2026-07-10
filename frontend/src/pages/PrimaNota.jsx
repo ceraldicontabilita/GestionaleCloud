@@ -796,8 +796,9 @@ function PrimaNotaDesktop() {
             📩 {attese.length} Fatture annunciate (in arrivo)
           </div>
           <div style={{ fontSize: 12, color: '#1e40af', marginBottom: 10 }}>
-            Avvisi da Aruba: l&apos;XML non è ancora arrivato. Puoi registrare subito
-            l&apos;anticipo — quando l&apos;XML arriva viene agganciato da solo, senza doppioni.
+            Avvisi da Aruba: l&apos;XML non è ancora arrivato. Se il fornitore ha metodo
+            certo l&apos;anticipo è già registrato da solo; qui decidi tu i casi dubbi.
+            All&apos;arrivo dell&apos;XML tutto si aggancia da solo, senza doppioni.
           </div>
           {attese.map(a => (
             <div
@@ -827,6 +828,7 @@ function PrimaNotaDesktop() {
                   {a.stato === 'confermata_anticipo' && (
                     <span style={{ color: '#16a34a', fontWeight: 700, marginLeft: 8 }}>
                       ✓ anticipo in {a.metodo_confermato}
+                      {a.conferma_fonte === 'auto_metodo_fornitore' ? ' (auto)' : ''}
                     </span>
                   )}
                   {a.stato === 'da_verificare' && (
