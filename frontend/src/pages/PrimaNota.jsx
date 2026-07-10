@@ -77,6 +77,8 @@ function PrimaNotaDesktop() {
 
   // Provvisori
   const [provvisori, setProvvisori] = useState([]);
+  // Fatture annunciate dalle notifiche email Aruba, XML non ancora arrivato
+  const [attese, setAttese] = useState([]);
   const [provLoading, setProvLoading] = useState(false);
   // Modale "Pagamento parziale" (Misto) — sostituisce il vecchio prompt()
   // del browser, che non mostrava un riepilogo e non permetteva di
@@ -181,15 +183,19 @@ function PrimaNotaDesktop() {
         ecParams.append('mese', String(selectedMonth + 1));
       }
 
-      const [cassaRes, estrattoContoRes, bancaManRes, provRes] = await Promise.all([
+      const [cassaRes, estrattoContoRes, bancaManRes, provRes, atteseRes] = await Promise.all([
         api.get(`/api/prima-nota/cassa?${params}`),
         api.get(`/api/estratto-conto-movimenti/movimenti?${ecParams}`),
         api.get(`/api/prima-nota/banca?${params}`),
         api
           .get(`/api/prima-nota/provvisori?anno=${selectedYear}`)
           .catch(() => ({ data: { provvisori: [] } })),
+        api
+          .get(`/api/prima-nota/attese?anno=${selectedYear}`)
+          .catch(() => ({ data: { attese: [] } })),
       ]);
       setProvvisori(provRes.data?.provvisori || []);
+      setAttese(atteseRes.data?.attese || []);
 
       setCassaData(cassaRes.data);
 
@@ -774,6 +780,112 @@ function PrimaNotaDesktop() {
         </button>
         {!isMobile && <CopyLinkButton style={{ flexShrink: 0 }} />}
       </div>
+
+      {/* ===== FATTURE ANNUNCIATE DA EMAIL (in arrivo) ===== */}
+      {activeSection === 'provvisori' && attese.length > 0 && (
+        <div
+          style={{
+            background: '#eff6ff',
+            border: '1px solid #2563eb',
+            borderRadius: 12,
+            padding: '14px 16px',
+            marginBottom: 16,
+          }}
+        >
+          <div style={{ fontWeight: 800, color: '#1e40af', fontSize: 15, marginBottom: 4 }}>
+            📩 {attese.length} Fatture annunciate (in arrivo)
+          </div>
+          <div style={{ fontSize: 12, color: '#1e40af', marginBottom: 10 }}>
+            Avvisi da Aruba: l&apos;XML non è ancora arrivato. Puoi registrare subito
+            l&apos;anticipo — quando l&apos;XML arriva viene agganciato da solo, senza doppioni.
+          </div>
+          {attese.map(a => (
+            <div
+              key={a.id}
+              style={{
+                background: 'white',
+                borderRadius: 10,
+                padding: '12px 14px',
+                marginBottom: 8,
+                border: '1px solid #bfdbfe',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: 8,
+              }}
+            >
+              <div style={{ flex: 1, minWidth: 160 }}>
+                <span style={{ fontWeight: 700, fontSize: 14, color: '#0f2744' }}>
+                  {(a.fornitore_nome || 'Fornitore da verificare').substring(0, 32)}
+                </span>
+                <span style={{ fontSize: 12, color: '#94a3b8', marginLeft: 6 }}>
+                  #{a.numero_fattura || '?'}
+                </span>
+                <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+                  📧 {formatDate((a.email_date || '').slice(0, 10))}
+                  {a.stato === 'confermata_anticipo' && (
+                    <span style={{ color: '#16a34a', fontWeight: 700, marginLeft: 8 }}>
+                      ✓ anticipo in {a.metodo_confermato}
+                    </span>
+                  )}
+                  {a.stato === 'da_verificare' && (
+                    <span style={{ color: '#dc2626', fontWeight: 700, marginLeft: 8 }}>
+                      ⚠ dati incompleti
+                    </span>
+                  )}
+                </div>
+              </div>
+              <span style={{ fontWeight: 800, fontSize: 15, color: '#0f2744' }}>
+                {a.importo ? formatEuro(a.importo) : '—'}
+              </span>
+              {a.stato === 'in_attesa_xml' && (
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {['cassa', 'banca'].map(m => (
+                    <button
+                      key={m}
+                      onClick={async () => {
+                        try {
+                          await api.post('/api/prima-nota/attese/conferma', {
+                            attesa_id: a.id,
+                            metodo: m,
+                          });
+                          await loadAllData();
+                          showFeedback(
+                            'Anticipo registrato',
+                            `Fattura ${a.numero_fattura || ''} registrata in ${m}: sarà agganciata all'XML in automatico.`
+                          );
+                        } catch (error) {
+                          showFeedback('Errore', getErrorMessage(error), 'danger');
+                        }
+                      }}
+                      style={{
+                        padding: '6px 10px',
+                        background:
+                          a.suggerimento === m ? '#0f2744' : '#fff',
+                        color: a.suggerimento === m ? 'white' : '#64748b',
+                        border: `1px solid ${a.suggerimento === m ? '#0f2744' : '#e2e8f0'}`,
+                        borderRadius: 6,
+                        fontWeight: 700,
+                        fontSize: 12,
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                      }}
+                      title={
+                        a.suggerimento === m
+                          ? 'Metodo suggerito dal fornitore'
+                          : `Registra in ${m}`
+                      }
+                    >
+                      {m === 'cassa' ? '💵 Cassa' : '🏦 Banca'}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* ===== TAB PROVVISORI ===== */}
       {activeSection === 'provvisori' && provvisori.length > 0 && (

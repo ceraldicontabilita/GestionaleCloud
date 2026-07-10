@@ -43,10 +43,15 @@ Altre garanzie trasversali:
 | Cedolini | **Email** da Studio Ferrantini (mittenti attendibili) | ogni ora (attivo) |
 | F24 commercialista | Email da mittenti attendibili | ogni ora (oggi spento) |
 | Verbali/multe | Email da mittenti attendibili | ogni ora (oggi spento) |
+| Avvisi fattura in arrivo | **Email** da noreply@fatturazioneelettronica.aruba.it | ogni ora (attivo, solo dall'attivazione in avanti) |
 
 Regola non negoziabile: **le fatture arrivano SOLO da Drive, mai da Gmail**. Se una
 scansione email trova un file che sembra una fattura elettronica, non la importa:
 genera un avviso di anomalia (qualcuno sta mandando fatture per il canale sbagliato).
+
+**Avvisi Aruba ≠ fatture**: dalla notifica Aruba il sistema legge solo fornitore,
+numero e importo e crea una "**fattura attesa**" (vedi §4): sa in anticipo cosa deve
+arrivare, ma il documento vero resta quello XML che arriva da Drive.
 
 Ogni documento entra in "Documenti / Import" con uno stato di lavorazione:
 trovato → importato → classificato → elaborato dal parser → record gestionale creato.
@@ -96,6 +101,22 @@ I movimenti non si inseriscono mai liberamente: nascono sempre da un'azione prec
 
 **Provvisoria**
 - Solo fatture di fornitori "misto", in attesa della tua divisione cassa/banca.
+
+**Fatture attese (avvisi email Aruba)** — nel tab Provvisori
+- Quando Aruba avvisa che una fattura è stata recapitata, il sistema crea una
+  "fattura attesa" con fornitore, numero e importo letti dalla mail, e il
+  suggerimento cassa/banca preso dal metodo del fornitore (stesso motore di tutto
+  il resto). Nessun movimento nasce da solo.
+- Dal tab Provvisori puoi registrare subito l'**anticipo** (💵/🏦): il movimento è
+  marcato "annunciata da email, XML in arrivo".
+- Quando l'XML vero arriva (da Drive o quadratura Elaborate), il sistema **riscontra**
+  l'attesa per numero+importo: se avevi registrato l'anticipo, il movimento esistente
+  viene agganciato alla fattura — **mai due movimenti per la stessa fattura**.
+- Se dopo 3 giorni l'XML non è arrivato, il sistema ripassa da solo la cartella
+  Elaborate di Drive (recupero mirato: sa già cosa cercare); se manca ancora,
+  avviso "Fattura annunciata ma XML mai arrivato" con numero, fornitore e importo.
+- Vale solo dall'attivazione in avanti: il pregresso resta coperto dalla quadratura
+  Drive settimanale.
 
 **Saldo progressivo**: ogni movimento porta il saldo aggiornato a quel punto, in
 ordine cronologico. Un movimento retrodatato ricalcola a cascata i saldi successivi.

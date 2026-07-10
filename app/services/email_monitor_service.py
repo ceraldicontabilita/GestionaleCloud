@@ -560,7 +560,18 @@ async def run_full_sync(db) -> Dict[str, Any]:
         # 1. Scarica email documenti (ultimo 1 giorno - i duplicati vengono saltati)
         results["email_sync"] = await sync_email_documents(db, giorni=1)
 
-        # 2. Scarica F24 automatici (se auto_scan_attivo)
+        # 2. Notifiche fatture Aruba → fatture attese (anticipo Prima Nota).
+        # Prima questo passo era solo dichiarato nel docstring: aruba_sync
+        # restava None e la riga di log sotto andava in errore (None.get).
+        try:
+            from app.services.aruba_notifiche import scan_notifiche_aruba, controlla_attese_scadute
+            results["aruba_sync"] = await scan_notifiche_aruba(db)
+            results["aruba_attese_scadute"] = await controlla_attese_scadute(db)
+        except Exception as e:
+            logger.warning(f"Scan notifiche Aruba non eseguito: {e}")
+            results["aruba_sync"] = {"success": False, "error": str(e), "stats": {}}
+
+        # 3. Scarica F24 automatici (se auto_scan_attivo)
         try:
             settings = await db["f24_email_settings"].find_one({"tipo": "f24_settings"})
             if settings and settings.get("auto_scan_attivo", False):
@@ -658,7 +669,7 @@ async def run_full_sync(db) -> Dict[str, Any]:
             results["processamento"].get("estratti_bnl", 0)
         )
         
-        aruba_new = results.get("aruba_sync", {}).get("stats", {}).get("new_invoices", 0)
+        aruba_new = (results.get("aruba_sync") or {}).get("stats", {}).get("new_invoices", 0)
         f24_new = results.get("f24_sync", {}).get("processamento", {}).get("f24_inseriti", 0) if results.get("f24_sync") else 0
         logger.info(f"✅ Sync completo - Doc: {results['email_sync'].get('new_documents', 0)}, Aruba: {aruba_new}, F24: {f24_new}, Processati: {_sync_stats['documents_processed']}")
         

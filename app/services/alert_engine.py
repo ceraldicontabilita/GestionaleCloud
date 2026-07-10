@@ -382,7 +382,19 @@ ALERT_CATALOG: Dict[str, Dict[str, Any]] = {
         "titolo": "Quadratura Drive: fatture archiviate senza record recuperate",
         "condizione_chiusura": "Verificato l'esito del recupero"
     },
-    
+    "FATTURA_ANNUNCIATA_NON_ARRIVATA": {
+        "modulo": "documenti",
+        "severita": "warning",
+        "titolo": "Fattura annunciata da email Aruba ma XML mai arrivato",
+        "condizione_chiusura": "XML importato (riscontro) o attesa annullata"
+    },
+    "EMAIL_ARUBA_NON_LEGGIBILE": {
+        "modulo": "documenti",
+        "severita": "info",
+        "titolo": "Notifica Aruba non interpretabile automaticamente",
+        "condizione_chiusura": "Attesa completata a mano o annullata"
+    },
+
     # --- Riconciliazione ---
     "RIC_NON_RICONCILIATO": {
         "modulo": "riconciliazione",

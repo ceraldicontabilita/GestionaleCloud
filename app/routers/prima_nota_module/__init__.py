@@ -42,6 +42,10 @@ from .sync import (
     auto_conferma_provvisori_per_metodo, annulla_auto_conferma,
     crea_entrata_cassa_da_corrispettivo,
 )
+from .attese import (
+    lista_fatture_attese, conferma_fattura_attesa, scan_notifiche_ora,
+    annulla_fattura_attesa,
+)
 from .manutenzione import (
     fix_tipo_movimento_fatture, recalculate_all_balances, cleanup_orphan_movements,
     regenerate_from_invoices, fix_versamenti_duplicati, fix_categories_and_duplicates,
@@ -112,6 +116,12 @@ router.add_api_route("/cassa/{movimento_id}", delete_movimento_cassa, methods=["
 router.add_api_route("/cassa/{movimento_id}/fattura", get_fattura_allegata_cassa, methods=["GET"])
 
 # Banca - Dinamiche
+# Fatture attese (annunciate dalle notifiche email Aruba)
+router.add_api_route("/attese", lista_fatture_attese, methods=["GET"])
+router.add_api_route("/attese/conferma", conferma_fattura_attesa, methods=["POST"])
+router.add_api_route("/attese/scan", scan_notifiche_ora, methods=["POST"])
+router.add_api_route("/attese/{attesa_id}/annulla", annulla_fattura_attesa, methods=["POST"])
+
 # Provvisori - Fatture da confermare
 router.add_api_route("/provvisori", get_fatture_provvisorie, methods=["GET"])
 router.add_api_route("/provvisori/conferma", conferma_fattura_provvisoria, methods=["POST"])
