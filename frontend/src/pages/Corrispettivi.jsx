@@ -3,7 +3,14 @@ import { useHashState } from '../hooks/useHashState';
 import { CopyLinkButton } from '../components/CopyLinkButton';
 import { Link } from 'react-router-dom';
 import api from '../api';
-import { formatDateIT, formatEuro, COLORS, BORDER_RADIUS, useIsMobile } from '../lib/utils';
+import {
+  formatDateIT,
+  formatDateGGMM,
+  formatEuro,
+  COLORS,
+  BORDER_RADIUS,
+  useIsMobile,
+} from '../lib/utils';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 import {
@@ -14,7 +21,17 @@ import {
   PageEmpty,
   PageError,
 } from '../components/PageLayout';
-import { Button, StatCard, TableWrap, Table, Th, Td, RowActions, RowActionButton } from '../components/ds';
+import {
+  Button,
+  StatCard,
+  TableWrap,
+  Table,
+  Th,
+  Td,
+  RowActions,
+  RowActionButton,
+  ListaAdattiva,
+} from '../components/ds';
 import {
   Receipt,
   Banknote,
@@ -304,74 +321,107 @@ export default function Corrispettivi() {
                 </div>
               </div>
             ) : (
-              <div data-testid="corrispettivi-table">
-              <TableWrap style={{ border: 'none', borderRadius: 0 }}>
-                <Table style={{ background: 'transparent' }}>
-                  <thead>
-                    <tr>
-                      <Th>Data</Th>
-                      {/* La matricola RT è quasi sempre identica su ogni riga:
-                          su mobile la nascondiamo (resta nel dettaglio 👁) per
-                          far entrare le colonne con gli importi. */}
-                      {!isMobile && <Th>Matricola RT</Th>}
-                      <Th align="right">💵 Cassa</Th>
-                      <Th align="right">💳 POS</Th>
-                      <Th align="right">Totale</Th>
-                      <Th align="right">IVA</Th>
-                      <Th align="center">Azioni</Th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {corrispettivi.map((c, i) => (
-                      <tr
-                        key={c.id || i}
-                        style={{ transition: 'background 0.15s' }}
-                        onMouseEnter={e => (e.currentTarget.style.background = COLORS.bgAlt)}
-                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                      >
-                        <Td style={{ fontWeight: 600, fontSize: 14 }}>
-                          {formatDateIT(c.data) || '-'}
-                        </Td>
-                        {!isMobile && (
-                          <Td style={{ fontSize: 13, color: COLORS.textMuted }}>
-                            {c.matricola_rt || '-'}
-                          </Td>
-                        )}
-                        <Td align="right" mono style={{ color: COLORS.success, fontWeight: 500 }}>
+              <div style={{ padding: isMobile ? '0 10px 10px' : 0 }}>
+                <ListaAdattiva
+                  testId="corrispettivi-table"
+                  dati={corrispettivi}
+                  pageSize={50}
+                  chiave={(c, i) => c.id || i}
+                  colonne={[
+                    {
+                      key: 'data',
+                      label: 'Data',
+                      ruoloCard: 'titolo',
+                      // Su mobile solo giorno/mese: l'anno è nel selettore
+                      // globale e la data intera andava a capo su 3 righe
+                      render: c =>
+                        (isMobile ? formatDateGGMM(c.data) : formatDateIT(c.data)) || '-',
+                      tdStyle: { fontWeight: 600, fontSize: 14, whiteSpace: 'nowrap' },
+                    },
+                    {
+                      // La matricola RT è quasi sempre identica su ogni riga:
+                      // su mobile è omessa (resta nel dettaglio 👁), su
+                      // desktop resta come colonna secondaria.
+                      key: 'matricola_rt',
+                      label: 'Matricola RT',
+                      ruoloCard: 'omesso',
+                      render: c => c.matricola_rt || '-',
+                      tdStyle: { fontSize: 13, color: COLORS.textMuted },
+                    },
+                    {
+                      key: 'pagato_contanti',
+                      label: '💵 Cassa',
+                      align: 'right',
+                      mono: true,
+                      ruoloCard: 'dettaglio',
+                      iconaCard: '💵',
+                      render: c => (
+                        <span style={{ color: COLORS.success, fontWeight: 500 }}>
                           {formatEuro(c.pagato_contanti)}
-                        </Td>
-                        <Td align="right" mono style={{ color: COLORS.info, fontWeight: 500 }}>
+                        </span>
+                      ),
+                    },
+                    {
+                      key: 'pagato_elettronico',
+                      label: '💳 POS',
+                      align: 'right',
+                      mono: true,
+                      ruoloCard: 'dettaglio',
+                      iconaCard: '💳',
+                      render: c => (
+                        <span style={{ color: COLORS.info, fontWeight: 500 }}>
                           {formatEuro(c.pagato_elettronico)}
-                        </Td>
-                        <Td align="right" mono style={{ fontWeight: 700 }}>
-                          {formatEuro(c.totale)}
-                        </Td>
-                        <Td align="right" mono style={{ color: COLORS.warning, fontWeight: 500 }}>
+                        </span>
+                      ),
+                    },
+                    {
+                      key: 'totale',
+                      label: 'Totale',
+                      align: 'right',
+                      mono: true,
+                      ruoloCard: 'importo',
+                      render: c => formatEuro(c.totale),
+                      tdStyle: { fontWeight: 700 },
+                    },
+                    {
+                      key: 'totale_iva',
+                      label: 'IVA',
+                      align: 'right',
+                      mono: true,
+                      ruoloCard: 'dettaglio',
+                      iconaCard: null,
+                      render: c => (
+                        <span style={{ color: COLORS.warning, fontWeight: 500 }}>
                           {formatEuro(c.totale_iva)}
-                        </Td>
-                        <Td align="center">
-                          <RowActions style={{ justifyContent: 'center' }}>
-                            <RowActionButton
-                              variant="info"
-                              onClick={() => setHs('selected', c.data || '')}
-                              title="Vedi dettaglio"
-                            >
-                              <Eye size={14} />
-                            </RowActionButton>
-                            <RowActionButton
-                              variant="danger"
-                              onClick={() => handleDelete(c.id)}
-                              title="Elimina"
-                            >
-                              <Trash2 size={14} />
-                            </RowActionButton>
-                          </RowActions>
-                        </Td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </Table>
-              </TableWrap>
+                        </span>
+                      ),
+                    },
+                    {
+                      key: 'azioni',
+                      label: 'Azioni',
+                      align: 'center',
+                      ruoloCard: 'azioni',
+                      render: c => (
+                        <RowActions style={{ justifyContent: isMobile ? 'flex-end' : 'center' }}>
+                          <RowActionButton
+                            variant="info"
+                            onClick={() => setHs('selected', c.data || '')}
+                            title="Vedi dettaglio"
+                          >
+                            <Eye size={14} />
+                          </RowActionButton>
+                          <RowActionButton
+                            variant="danger"
+                            onClick={() => handleDelete(c.id)}
+                            title="Elimina"
+                          >
+                            <Trash2 size={14} />
+                          </RowActionButton>
+                        </RowActions>
+                      ),
+                    },
+                  ]}
+                />
               </div>
             )}
           </PageSection>

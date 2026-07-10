@@ -5,6 +5,7 @@ import { useAnnoGlobale } from '../contexts/AnnoContext';
 import {
   formatEuro,
   formatDateIT,
+  formatDateGGMM,
   COLORS,
   SHADOWS,
   BORDER_RADIUS,
@@ -553,7 +554,7 @@ export default function ArchivioFatture() {
                   style={{
                     background: f.id === highlightedId ? COLORS.warningLight : COLORS.card,
                     borderRadius: BORDER_RADIUS.lg,
-                    padding: '14px 16px',
+                    padding: '10px 12px',
                     boxShadow: f.id === highlightedId
                       ? `0 0 0 3px ${COLORS.accent}, 0 8px 25px rgba(184,134,11,0.25)`
                       : SHADOWS.sm,
@@ -573,6 +574,8 @@ export default function ArchivioFatture() {
                     }}
                   >
                     <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+                      {/* Su mobile niente P.IVA: è nel "Vedi", qui ruba solo
+                          una riga per card (richiesta utente 10-07-2026) */}
                       <div
                         style={{
                           fontWeight: 700,
@@ -583,16 +586,6 @@ export default function ArchivioFatture() {
                         }}
                       >
                         {f.supplier_name || f.fornitore_ragione_sociale || '—'}
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 11,
-                          color: COLORS.textSubtle,
-                          marginTop: 2,
-                          wordBreak: 'break-word',
-                        }}
-                      >
-                        {f.supplier_vat || f.fornitore_partita_iva}
                       </div>
                     </div>
                     <div
@@ -614,24 +607,29 @@ export default function ArchivioFatture() {
                       rowGap: 4,
                       fontSize: 12,
                       color: COLORS.textMuted,
-                      marginBottom: 10,
+                      marginBottom: 8,
                       flexWrap: 'wrap',
                       minWidth: 0,
                     }}
                   >
+                    {/* Data compatta (gg/mm): l'anno è nel selettore globale
+                        e la data non deve pesare più di imponibile e IVA */}
                     <span style={{ minWidth: 0, whiteSpace: 'nowrap' }}>
-                      📅 {formatDateIT(f.invoice_date || f.data_documento)}
+                      {formatDateGGMM(f.invoice_date || f.data_documento)}
                     </span>
                     <span
                       style={{
                         minWidth: 0,
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
-                        maxWidth: '55%',
+                        maxWidth: '40%',
                       }}
                       title={f.invoice_number || f.numero_documento || ''}
                     >
                       #{f.invoice_number || f.numero_documento || '—'}
+                    </span>
+                    <span style={{ whiteSpace: 'nowrap' }}>
+                      Imp. {formatCurrency(f.imponibile)}
                     </span>
                     <span style={{ whiteSpace: 'nowrap' }}>IVA {formatCurrency(f.iva)}</span>
                   </div>

@@ -430,6 +430,16 @@ export function formatDateIT(dateStr) {
   }
 }
 
+/** Data compatta per mobile: solo giorno/mese, l'anno è già nel selettore
+ *  globale in alto. "2026-07-06" → "06/07". */
+export function formatDateGGMM(dateStr) {
+  const full = formatDateIT(dateStr);
+  if (!full || full === '-') return full;
+  const parts = full.split('-');
+  if (parts.length === 3) return `${parts[0]}/${parts[1]}`;
+  return full;
+}
+
 export function parseDateIT(dateStr) {
   if (!dateStr) return null;
   try {
