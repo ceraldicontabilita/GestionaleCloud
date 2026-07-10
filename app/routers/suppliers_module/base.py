@@ -746,6 +746,24 @@ async def delete_supplier(supplier_id: str, force: bool = Query(False)) -> Dict[
     return {"message": "Fornitore eliminato"}
 
 
+def _varianti_piva(piva: str) -> list:
+    """Varianti con cui la stessa P.IVA può comparire sulle fatture.
+
+    Le fatture elettroniche portano IdPaese+IdCodice: a seconda del canale
+    di import la P.IVA può essere salvata con o senza prefisso 'IT' (o con
+    spazi). Il confronto esatto faceva rispondere 'Nessuna fattura trovata'
+    all'Estratto Fatture anche quando il contatore della lista ne vedeva
+    (caso CASTAGNA SRL segnalato dall'utente il 10/07).
+    """
+    base = (piva or "").strip().upper().replace(" ", "")
+    varianti = {base}
+    if base.startswith("IT"):
+        varianti.add(base[2:])
+    else:
+        varianti.add(f"IT{base}")
+    return [v for v in varianti if v]
+
+
 @router.get("/{supplier_id}/fatturato")
 async def get_supplier_fatturato(
     supplier_id: str,
@@ -780,12 +798,13 @@ async def get_supplier_fatturato(
             "numero_fatture": 0
         }
 
+    varianti = _varianti_piva(piva)
     query = {
         "$and": [
             {"$or": [
-                {"fornitore_partita_iva": piva},
-                {"supplier_vat": piva},
-                {"cedente_piva": piva},
+                {"fornitore_partita_iva": {"$in": varianti}},
+                {"supplier_vat": {"$in": varianti}},
+                {"cedente_piva": {"$in": varianti}},
             ]},
             {"$or": [
                 {"data_documento": {"$regex": f"^{anno}"}},
@@ -1006,12 +1025,14 @@ async def get_fatture_fornitore(
                 "pagination": {"total": 0, "limit": limit, "skip": skip}
             }
 
-        # Filtro fornitore — deve sempre restare in AND con gli altri filtri
+        # Filtro fornitore — deve sempre restare in AND con gli altri filtri.
+        # Confronto tollerante al prefisso 'IT' (vedi _varianti_piva).
+        varianti = _varianti_piva(partita_iva)
         supplier_filter = {
             "$or": [
-                {"fornitore_partita_iva": partita_iva},
-                {"supplier_vat": partita_iva},
-                {"cedente_piva": partita_iva}
+                {"fornitore_partita_iva": {"$in": varianti}},
+                {"supplier_vat": {"$in": varianti}},
+                {"cedente_piva": {"$in": varianti}}
             ]
         }
         
