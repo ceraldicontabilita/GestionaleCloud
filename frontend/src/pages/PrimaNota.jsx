@@ -2127,6 +2127,10 @@ function MovementsTable({
   const [currentPage, setCurrentPage] = useState(1);
   const [editingMovimento, setEditingMovimento] = useState(null);
   const [spostando, setSpostando] = useState(null);
+  // Modale "Vedi fattura" del bottone VEDI: lo stato deve vivere QUI —
+  // prima chiamava il setter del componente padre (fuori scope) e il click
+  // mandava in crash la pagina (ReferenceError a runtime, invisibile al build)
+  const [fatturaView, setFatturaView] = useState(null);
   const itemsPerPage = 50;
 
   // FILTRI AVANZATI
@@ -3076,6 +3080,13 @@ function MovementsTable({
             )}
           </div>
         </div>
+      )}
+      {fatturaView && (
+        <ModalFattura
+          fatturaId={fatturaView.id}
+          numero={fatturaView.numero}
+          onClose={() => setFatturaView(null)}
+        />
       )}
     </div>
   );
