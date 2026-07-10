@@ -195,6 +195,21 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
                         algorithm=settings.ALGORITHM,
                     )
                     response.headers["X-Token-Rinnovato"] = nuovo
+                    # Rinnova anche il COOKIE di sessione (stessi flag del
+                    # login): il cookie serve agli iframe "Vedi fattura" che
+                    # non mandano il Bearer. Senza questo rinnovo, dopo
+                    # un'ora di uso il Bearer restava fresco ma il cookie
+                    # scadeva → "Authentication required" aprendo la fattura
+                    # dalla Prima Nota (segnalato dall'utente il 10/07).
+                    response.set_cookie(
+                        key="access_token",
+                        value=nuovo,
+                        httponly=True,
+                        secure=False,
+                        samesite="lax",
+                        max_age=int(vita.total_seconds()),
+                        path="/",
+                    )
         except Exception:
             logger.exception("Rinnovo scorrevole token non riuscito (non bloccante)")
 

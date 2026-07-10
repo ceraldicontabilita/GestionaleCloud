@@ -1165,6 +1165,162 @@ export default function Admin() {
 // Strumento per controlli di precisione: elimina gli ultimi N giorni di una
 // sezione, poi re-importa e verifica che i calcoli tornino corretti.
 // ═══════════════════════════════════════════════════════════════════════════
+// Card "Pulizia cartella Drive fatture per anno" (tab Rollback).
+// Incolli l'URL (o l'ID) della cartella Drive, scegli gli anni, CONTI
+// (nessun file toccato) e solo dopo sposti nel CESTINO Drive — recuperabile
+// per 30 giorni. L'anno viene letto dalla data del documento dentro l'XML;
+// i file con anno non determinabile NON vengono mai toccati.
+function PuliziaDriveFattureCard() {
+  const [folder, setFolder] = useState('');
+  const [anni, setAnni] = useState({ 2023: true, 2024: true, 2025: true });
+  const [contaRes, setContaRes] = useState(null);
+  const [busy, setBusy] = useState(null); // 'conta' | 'elimina' | null
+  const [errore, setErrore] = useState(null);
+
+  const anniScelti = Object.entries(anni)
+    .filter(([, v]) => v)
+    .map(([k]) => parseInt(k));
+
+  const lancia = async elimina => {
+    if (!folder.trim()) {
+      setErrore('Incolla l\'URL o l\'ID della cartella Drive');
+      return;
+    }
+    if (anniScelti.length === 0) {
+      setErrore('Seleziona almeno un anno');
+      return;
+    }
+    if (
+      elimina &&
+      !window.confirm(
+        `Spostare nel CESTINO Drive ${contaRes?.da_eliminare ?? '?'} file fattura degli anni ${anniScelti.join(', ')}?\n\nI file restano recuperabili dal cestino Drive per 30 giorni.`
+      )
+    ) {
+      return;
+    }
+    setBusy(elimina ? 'elimina' : 'conta');
+    setErrore(null);
+    try {
+      const res = await api.post(
+        `/api/admin/rollback/drive-fatture/${elimina ? 'elimina' : 'conta'}`,
+        { folder: folder.trim(), anni: anniScelti }
+      );
+      if (res.data.status === 'error') {
+        setErrore(res.data.message);
+      } else {
+        setContaRes(res.data);
+      }
+    } catch (e) {
+      setErrore(e.response?.data?.detail || e.message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div
+      style={{
+        background: COLORS.card,
+        border: `1px solid ${COLORS.border}`,
+        borderRadius: BORDER_RADIUS.lg,
+        padding: 14,
+        marginBottom: 12,
+      }}
+    >
+      <div style={{ fontWeight: 700, fontSize: 14, color: COLORS.primary, marginBottom: 4 }}>
+        📁 Cartella Drive fatture — pulizia per anno
+      </div>
+      <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 10 }}>
+        Dopo il rollback di un anno, i file XML/P7M su Drive vanno rimossi anche da qui,
+        altrimenti la sincronizzazione li reimporta. Legge l'anno dalla data del documento
+        dentro ogni file (sottocartelle incluse, anche &quot;Elaborate&quot;) e sposta nel{' '}
+        <strong>cestino</strong> Drive (recuperabile 30 giorni). I file con anno non
+        determinabile non vengono toccati.
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+        <input
+          type="text"
+          value={folder}
+          onChange={e => setFolder(e.target.value)}
+          placeholder="URL o ID della cartella Drive (es. https://drive.google.com/drive/folders/…)"
+          data-testid="input-drive-pulizia-folder"
+          style={{
+            flex: '1 1 320px',
+            padding: '9px 12px',
+            border: `1px solid ${COLORS.border}`,
+            borderRadius: BORDER_RADIUS.md,
+            fontSize: 13,
+          }}
+        />
+        {[2023, 2024, 2025].map(a => (
+          <label
+            key={a}
+            style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, fontWeight: 600, color: COLORS.text, cursor: 'pointer' }}
+          >
+            <input
+              type="checkbox"
+              checked={!!anni[a]}
+              onChange={e => setAnni(prev => ({ ...prev, [a]: e.target.checked }))}
+            />
+            {a}
+          </label>
+        ))}
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => lancia(false)}
+          disabled={busy !== null}
+          data-testid="btn-drive-pulizia-conta"
+        >
+          {busy === 'conta' ? '⏳ Conto…' : '🔍 Conta (nessuna modifica)'}
+        </Button>
+        <Button
+          variant="danger"
+          size="sm"
+          onClick={() => lancia(true)}
+          disabled={busy !== null || !contaRes || contaRes.da_eliminare === 0}
+          title={!contaRes ? 'Prima esegui il conteggio' : undefined}
+          data-testid="btn-drive-pulizia-elimina"
+        >
+          {busy === 'elimina' ? '⏳ Sposto nel cestino…' : '🗑️ Sposta nel cestino Drive'}
+        </Button>
+      </div>
+      {errore && (
+        <div style={{ marginTop: 10, fontSize: 13, fontWeight: 600, color: COLORS.danger }}>
+          ⚠️ {errore}
+        </div>
+      )}
+      {contaRes && (
+        <div
+          style={{
+            marginTop: 10,
+            background: COLORS.bgAlt,
+            border: `1px solid ${COLORS.border}`,
+            borderRadius: BORDER_RADIUS.md,
+            padding: '10px 12px',
+            fontSize: 13,
+          }}
+        >
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>
+            {contaRes.dry_run
+              ? `Trovati ${contaRes.da_eliminare} file da spostare nel cestino`
+              : `✅ Spostati nel cestino ${contaRes.eliminati} file`}{' '}
+            <span style={{ fontWeight: 500, color: COLORS.textMuted }}>
+              (esaminati {contaRes.esaminati}, altri anni {contaRes.altri_anni}, anno non
+              determinabile {contaRes.non_determinati}, errori {contaRes.errori})
+            </span>
+          </div>
+          <div style={{ color: COLORS.textMuted }}>
+            {Object.entries(contaRes.per_anno || {})
+              .map(([a, n]) => `${a}: ${n}`)
+              .join(' · ')}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function RollbackDatiTab() {
   const [sezioni, setSezioni] = useState([]);
   const [periodi, setPeriodi] = useState([]);
@@ -1271,6 +1427,11 @@ function RollbackDatiTab() {
           {esito.messaggio}
         </div>
       )}
+
+      {/* Pulizia cartella DRIVE per anno: complemento del rollback — senza
+          questa, i file XML restano su Drive e la sincronizzazione oraria
+          + la quadratura reimporterebbero tutto (richiesta utente 10/07). */}
+      <PuliziaDriveFattureCard />
 
       <div style={{ display: 'grid', gap: 12 }}>
         {sezioni.map(sez => (

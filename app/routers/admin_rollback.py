@@ -235,3 +235,42 @@ async def elimina_periodo(
         "totale_eliminati": totale_eliminati,
         "dettaglio": dettaglio,
     }
+
+
+# ── Pulizia cartella DRIVE fatture per anno ────────────────────────────────
+# Complemento del rollback (richiesta utente 10/07): eliminati i dati di un
+# anno dal gestionale, i file XML/P7M restano su Drive e la sincronizzazione
+# oraria + la quadratura li REIMPORTEREBBERO. Questi endpoint scandiscono la
+# cartella indicata (sottocartelle incluse, quindi anche "Elaborate"),
+# leggono l'anno dalla data del documento dentro l'XML e spostano nel
+# CESTINO Drive i file degli anni scelti (recuperabili 30 giorni).
+from pydantic import BaseModel
+
+
+class PuliziaDriveRequest(BaseModel):
+    folder: str          # ID o URL completo della cartella Drive
+    anni: List[int]      # es. [2023, 2024, 2025]
+
+
+@router.post("/drive-fatture/conta")
+async def conta_drive_fatture(req: PuliziaDriveRequest) -> Dict[str, Any]:
+    """Conta (senza toccare nulla) i file fattura degli anni scelti nella cartella."""
+    from app.services.drive_pulizia import pulizia_fatture_drive
+    return await pulizia_fatture_drive(req.folder, req.anni, dry_run=True)
+
+
+@router.post("/drive-fatture/elimina")
+async def elimina_drive_fatture(
+    req: PuliziaDriveRequest,
+    admin_user: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Sposta nel cestino Drive i file fattura degli anni scelti. Solo admin."""
+    from app.services.drive_pulizia import pulizia_fatture_drive
+    esito = await pulizia_fatture_drive(req.folder, req.anni, dry_run=False)
+    logger.warning(
+        f"[ADMIN ROLLBACK DRIVE] {admin_user.get('email', admin_user.get('sub', '?'))} "
+        f"ha cestinato {esito.get('eliminati', 0)} file fattura dalla cartella Drive "
+        f"{esito.get('folder_id')} (anni {esito.get('anni')}, "
+        f"esaminati {esito.get('esaminati', 0)}, non determinati {esito.get('non_determinati', 0)})"
+    )
+    return esito
