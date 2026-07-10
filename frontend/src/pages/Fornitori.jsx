@@ -1031,15 +1031,35 @@ function AzioniFornitore({
     setSearching(false);
   };
 
+  // Colonna Azioni compattata (richiesta utente 10/07: "troppa accozzaglia
+  // di icone"): restano visibili solo fatturato anno corrente e Modifica,
+  // tutto il resto va nel menù "⋯".
+  const [menuAperto, setMenuAperto] = useState(false);
+
+  const vociMenu = [
+    {
+      label: `📊 Fatturato ${selectedYear - 1}`,
+      onClick: () => handleShowFatturato(selectedYear - 1),
+    },
+    hasPiva && {
+      label: searching ? '🔎 Ricerca…' : '🔎 Cerca dati P.IVA',
+      onClick: handleSearchPiva,
+    },
+    {
+      label: '📋 Schede tecniche',
+      onClick: () => onShowSchedeTecniche && onShowSchedeTecniche(supplier),
+      testId: `btn-schede-tecniche-${supplier.id}`,
+    },
+    { label: '📄 Estratto fatture', onClick: () => onViewInvoices(supplier) },
+    {
+      label: '🗑️ Elimina fornitore',
+      onClick: () => onDelete(supplier.id),
+      pericolosa: true,
+    },
+  ].filter(Boolean);
+
   return (
-    <RowActions
-      style={{
-        justifyContent: isMobile ? 'flex-end' : 'center',
-        flexWrap: 'wrap',
-        // Su mobile i bottoni vanno a capo su due righe dentro la card
-        maxWidth: isMobile ? 160 : undefined,
-      }}
-    >
+    <RowActions style={{ justifyContent: isMobile ? 'flex-end' : 'center', flexWrap: 'nowrap' }}>
       {hasPiva && (
         <RowActionButton
           variant="info"
@@ -1054,52 +1074,60 @@ function AzioniFornitore({
       )}
       <RowActionButton
         variant="neutral"
-        onClick={() => handleShowFatturato(selectedYear - 1)}
-        disabled={loadingFatturato}
-        title={`Visualizza fatturato ${selectedYear - 1}`}
-        style={{ width: 'auto', padding: '0 6px', gap: 3, fontSize: 11, fontWeight: 600 }}
-      >
-        <TrendingUp size={13} /> {selectedYear - 1}
-      </RowActionButton>
-      {hasPiva && (
-        <RowActionButton
-          onClick={handleSearchPiva}
-          disabled={searching}
-          title="Cerca dati azienda tramite Partita IVA"
-          style={{ background: COLORS.warningLight, color: COLORS.warning }}
-        >
-          <Search size={14} />
-        </RowActionButton>
-      )}
-      <RowActionButton
-        variant="primary"
-        onClick={() => onShowSchedeTecniche && onShowSchedeTecniche(supplier)}
-        title="Visualizza schede tecniche prodotti"
-        data-testid={`btn-schede-tecniche-${supplier.id}`}
-      >
-        📋
-      </RowActionButton>
-      <RowActionButton
-        variant="neutral"
-        onClick={() => onViewInvoices(supplier)}
-        title="Estratto fatture"
-      >
-        <FileText size={14} />
-      </RowActionButton>
-      <RowActionButton
-        variant="neutral"
         onClick={() => onEdit(supplier)}
         title="Modifica anagrafica"
       >
         <Edit2 size={14} />
       </RowActionButton>
-      <RowActionButton
-        variant="danger"
-        onClick={() => onDelete(supplier.id)}
-        title="Elimina fornitore"
-      >
-        <Trash2 size={14} />
-      </RowActionButton>
+      <div style={{ position: 'relative', display: 'inline-block' }}>
+        <RowActionButton
+          variant="neutral"
+          onClick={() => setMenuAperto(a => !a)}
+          title="Altre azioni"
+          style={{ fontWeight: 800 }}
+        >
+          ⋯
+        </RowActionButton>
+        {menuAperto && (
+          <>
+            {/* chiude il menù cliccando fuori */}
+            <div
+              onClick={() => setMenuAperto(false)}
+              style={{ position: 'fixed', inset: 0, zIndex: 90 }}
+            />
+            <div
+              style={{
+                position: 'absolute', right: 0, top: '110%', zIndex: 100,
+                background: 'white', border: `1px solid ${COLORS.border}`,
+                borderRadius: 8, boxShadow: '0 8px 24px rgba(15,39,68,0.18)',
+                minWidth: 190, padding: 4,
+              }}
+            >
+              {vociMenu.map(voce => (
+                <button
+                  key={voce.label}
+                  data-testid={voce.testId}
+                  onClick={() => {
+                    setMenuAperto(false);
+                    voce.onClick();
+                  }}
+                  style={{
+                    display: 'block', width: '100%', textAlign: 'left',
+                    padding: '8px 10px', border: 'none', background: 'transparent',
+                    borderRadius: 6, fontSize: 12.5, cursor: 'pointer',
+                    color: voce.pericolosa ? '#dc2626' : COLORS.text,
+                    fontWeight: voce.pericolosa ? 700 : 500,
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = COLORS.bgAlt)}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                >
+                  {voce.label}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
     </RowActions>
   );
 }

@@ -121,6 +121,51 @@ export default function PuliziaPrimaNota() {
     }
   };
 
+  // Metodi discordanti: fatture registrate in un registro diverso dal metodo
+  // ATTUALE del fornitore (es. Varriale = Cassa in anagrafica ma fatture in
+  // Banca perché confermate prima della correzione). Diagnosi + spostamento
+  // per singola voce, sempre azione dell'utente.
+  const [discordanti, setDiscordanti] = useState(null);
+  const [spostandoId, setSpostandoId] = useState(null);
+
+  const lanciaDiagnosiMetodi = async () => {
+    azzeraErrori();
+    setLoading('metodi');
+    try {
+      const res = await api.get(`/api/prima-nota/diagnostica-metodi?anno=${anno}`);
+      setDiscordanti(res.data);
+    } catch (e) {
+      setErrore(e?.response?.data?.detail || e?.message || 'Errore durante la diagnosi metodi');
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  const spostaDiscordante = async voce => {
+    const conferma = window.confirm(
+      `Spostare il movimento del ${voce.data} (${voce.numero_fattura || voce.descrizione}, ` +
+      `${Number(voce.importo || 0).toFixed(2)} €) da ${voce.registro_attuale.toUpperCase()} ` +
+      `a ${voce.registro_atteso.toUpperCase()}?\n\nLa fattura collegata viene aggiornata di conseguenza.`
+    );
+    if (!conferma) return;
+    setSpostandoId(voce.movimento_id);
+    try {
+      await api.post('/api/prima-nota/sposta-scrittura', {
+        movimento_id: voce.movimento_id,
+        destinazione: voce.registro_atteso,
+      });
+      setDiscordanti(d => ({
+        ...d,
+        totale_discordanti: (d?.totale_discordanti || 1) - 1,
+        discordanti: (d?.discordanti || []).filter(x => x.movimento_id !== voce.movimento_id),
+      }));
+    } catch (e) {
+      setErrore(e?.response?.data?.detail || e?.message || 'Errore durante lo spostamento');
+    } finally {
+      setSpostandoId(null);
+    }
+  };
+
   const isBusy = loading !== null;
 
   return (
@@ -350,6 +395,92 @@ export default function PuliziaPrimaNota() {
                   </>
                 )}
               </div>
+            </div>
+          )}
+        </StepCard>
+
+        {/* ── REGISTRO PAGAMENTI: coerenza metodo fornitore ↔ registrazioni ── */}
+        <StepCard
+          numero="5"
+          titolo="Metodi discordanti (registro pagamenti ↔ anagrafica)"
+          descrizione={
+            'Confronta OGNI fattura registrata in Cassa/Banca con il metodo ATTUALE del fornitore ' +
+            '(es. fornitore Cassa con fatture finite in Banca perché confermate prima della correzione). ' +
+            'Ogni voce mostra data operazione e registro; lo spostamento è sempre una tua scelta, voce per voce.'
+          }
+        >
+          <button
+            onClick={lanciaDiagnosiMetodi}
+            disabled={isBusy}
+            style={{
+              padding: '10px 18px', background: '#0f2744', color: 'white',
+              border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 13,
+              cursor: isBusy ? 'wait' : 'pointer', display: 'inline-flex',
+              alignItems: 'center', gap: 8,
+            }}
+          >
+            {loading === 'metodi' ? <Loader2 size={15} className="animate-spin" /> : <Search size={15} />}
+            Controlla coerenza {anno}
+          </button>
+
+          {discordanti && (
+            <div style={{ marginTop: 14 }}>
+              {discordanti.totale_discordanti === 0 ? (
+                <div style={{
+                  padding: 12, background: '#f0fdf4', border: '1px solid #16a34a',
+                  borderRadius: 8, color: '#166534', fontSize: 13, fontWeight: 600,
+                  display: 'flex', alignItems: 'center', gap: 8,
+                }}>
+                  <CheckCircle size={16} /> Tutto coerente: ogni fattura registrata è nel registro
+                  previsto dal metodo del suo fornitore.
+                </div>
+              ) : (
+                <>
+                  <div style={{
+                    padding: 12, background: '#fffbeb', border: '1px solid #d97706',
+                    borderRadius: 8, color: '#92400e', fontSize: 13, fontWeight: 700, marginBottom: 10,
+                    display: 'flex', alignItems: 'center', gap: 8,
+                  }}>
+                    <AlertTriangle size={16} />
+                    {discordanti.totale_discordanti} registrazioni in contrasto con il metodo
+                    attuale del fornitore
+                  </div>
+                  {(discordanti.discordanti || []).map(v => (
+                    <div
+                      key={v.movimento_id}
+                      style={{
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        gap: 8, flexWrap: 'wrap', padding: '10px 12px', marginBottom: 6,
+                        background: 'white', border: '1px solid #fde68a', borderRadius: 8,
+                      }}
+                    >
+                      <div style={{ flex: 1, minWidth: 180, fontSize: 13 }}>
+                        <strong>{v.numero_fattura || v.descrizione}</strong>
+                        <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 2 }}>
+                          Operazione del {v.data} · {Number(v.importo || 0).toFixed(2)} € · oggi in{' '}
+                          <strong style={{ color: '#dc2626' }}>{v.registro_attuale.toUpperCase()}</strong>,
+                          {' '}il fornitore è{' '}
+                          <strong style={{ color: '#16a34a' }}>{v.registro_atteso.toUpperCase()}</strong>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => spostaDiscordante(v)}
+                        disabled={spostandoId === v.movimento_id}
+                        style={{
+                          padding: '7px 14px', background: '#0f2744', color: 'white',
+                          border: 'none', borderRadius: 6, fontWeight: 700, fontSize: 12,
+                          cursor: spostandoId === v.movimento_id ? 'wait' : 'pointer',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {spostandoId === v.movimento_id
+                          ? 'Sposto…'
+                          : `→ Sposta in ${v.registro_atteso}`}
+                      </button>
+                    </div>
+                  ))}
+                </>
+              )}
             </div>
           )}
         </StepCard>

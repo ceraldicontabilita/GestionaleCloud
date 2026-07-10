@@ -1012,3 +1012,72 @@ async def importa_movimento_ec_in_prima_nota(
         "ec_id": ec_id,
         "duplicato": False,
     }
+
+
+async def diagnostica_metodi_discordanti(anno: int = Query(...)) -> Dict:
+    """Fatture registrate in un registro DIVERSO dal metodo attuale del
+    fornitore ("doppio sistema" segnalato dall'utente il 10/07: Varriale
+    Cassa in anagrafica ma fatture in Banca).
+
+    Succede quando la fattura è stata confermata PRIMA che il metodo del
+    fornitore venisse corretto in anagrafica. La diagnostica confronta ogni
+    movimento collegato a fattura col metodo CANONICO attuale (motore unico)
+    e riporta i discordanti; lo spostamento resta un'azione dell'utente
+    (POST /sposta-scrittura per ogni voce).
+    Fornitori misto o senza metodo: esclusi (nessuna destinazione certa).
+    """
+    from app.engines.prima_nota_engine import normalizza_metodo_pagamento
+
+    db = Database.get_db()
+
+    # Metodo canonico attuale per P.IVA (tutte le chiavi storiche; un
+    # doppione senza metodo non sovrascrive il record buono)
+    metodo_per_piva: Dict[str, str] = {}
+    async for s in db["fornitori"].find(
+        {}, {"_id": 0, "partita_iva": 1, "piva": 1, "vat_number": 1,
+             "metodo_pagamento": 1, "metodo_pagamento_predefinito": 1}
+    ):
+        metodo = (
+            normalizza_metodo_pagamento(s.get("metodo_pagamento_predefinito"))
+            or normalizza_metodo_pagamento(s.get("metodo_pagamento"))
+            or ""
+        )
+        for k in (s.get("partita_iva"), s.get("piva"), s.get("vat_number")):
+            k = (str(k) if k else "").strip()
+            if k and (metodo or k not in metodo_per_piva):
+                metodo_per_piva[k] = metodo
+
+    discordanti = []
+    per_registro = {"cassa": COLLECTION_PRIMA_NOTA_CASSA, "banca": COLLECTION_PRIMA_NOTA_BANCA}
+    for registro, coll in per_registro.items():
+        async for mov in db[coll].find(
+            {"fattura_id": {"$nin": [None, ""]},
+             "data": {"$regex": f"^{anno}"},
+             "status": {"$nin": ["deleted", "archived"]}},
+            {"_id": 0, "id": 1, "data": 1, "importo": 1, "descrizione": 1,
+             "numero_fattura": 1, "fornitore_piva": 1, "fattura_id": 1},
+        ):
+            piva = (mov.get("fornitore_piva") or "").strip()
+            if not piva:
+                continue
+            atteso = metodo_per_piva.get(piva, "")
+            if atteso in ("cassa", "banca") and atteso != registro:
+                discordanti.append({
+                    "movimento_id": mov["id"],
+                    "registro_attuale": registro,
+                    "registro_atteso": atteso,
+                    "data": mov.get("data"),
+                    "importo": mov.get("importo"),
+                    "numero_fattura": mov.get("numero_fattura"),
+                    "descrizione": (mov.get("descrizione") or "")[:80],
+                    "fornitore_piva": piva,
+                    "fattura_id": mov.get("fattura_id"),
+                })
+
+    discordanti.sort(key=lambda d: d.get("data") or "", reverse=True)
+    return {
+        "anno": anno,
+        "totale_discordanti": len(discordanti),
+        "discordanti": discordanti[:200],
+        "azione": "POST /api/prima-nota/sposta-scrittura {movimento_id, destinazione} per ogni voce",
+    }
