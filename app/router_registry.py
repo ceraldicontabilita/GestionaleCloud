@@ -25,7 +25,6 @@ def register_all_routers(app: FastAPI) -> None:
     _register_email(app)
     _register_noleggio(app)
     _register_ai(app)
-    _register_tracciabilita(app)
 
     # Sistema relazionale (Chat 9e)
     try:
@@ -42,7 +41,6 @@ def register_all_routers(app: FastAPI) -> None:
 # ─── Auth & Public ───────────────────────────────────────────────────────────
 def _register_auth(app: FastAPI):
     from app.routers import auth, public_api, pin_login
-    from app.routers.erp_bridge import router as erp_bridge_router
     from app.routers.legal_pages import router as legal_router
 
     app.include_router(public_api.router, prefix="/api", tags=["Public API"])
@@ -53,10 +51,6 @@ def _register_auth(app: FastAPI):
     # refresh). pin_login.router has no internal prefix, so it keeps "/api/auth".
     app.include_router(auth.router, tags=["Authentication"])
     app.include_router(pin_login.router, prefix="/api/auth", tags=["PIN Login"])
-    # ERP Bridge: ponte inbound da ceraldiapp.it (app Tracciabilità esterna)
-    # che invia al gestionale le fatture importate dalla PEC.
-    # Il router ha già prefix interno "/api/erp/ponte", quindi NO prefix qui.
-    app.include_router(erp_bridge_router)
     app.include_router(legal_router, tags=["Legal"])
 
     from app.routers.whatsapp_webhook import router as whatsapp_router
@@ -329,12 +323,3 @@ def _register_ai(app: FastAPI):
     pass  # AI routers already registered in _register_email
 
 
-# ─── Tracciabilità Module ────────────────────────────────────────────────────
-def _register_tracciabilita(app: FastAPI):
-    """
-    NOTA: questa funzione è stata svuotata nel giro 11 (rimozione tracciabilità)
-    e nel giro 12 (consolidamento registrazioni in _register_core).
-    È mantenuta nel flusso di register_all_routers solo per retrocompatibilità
-    con eventuali hook futuri. Può essere rimossa in un giro successivo.
-    """
-    pass

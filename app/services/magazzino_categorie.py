@@ -4,8 +4,6 @@ Gestione Magazzino Bar/Pasticceria - Categorie Merceologiche
 Questo modulo implementa:
 1. Categorizzazione automatica prodotti dalle linee fattura XML
 2. Carico magazzino con estrazione quantità e unità di misura
-3. Scarico per produzione (distinta base / ricette)
-4. Gestione lotti e tracciabilità
 """
 
 from typing import Dict, Any, List, Tuple
@@ -411,44 +409,6 @@ def parse_linea_fattura(linea: Dict[str, Any], fornitore: str = "") -> Dict[str,
         "classificazione_confidence": confidence,
         "fornitore": fornitore
     }
-
-
-def calcola_scarico_ricetta(
-    ingredienti_ricetta: List[Dict[str, Any]],
-    porzioni_prodotte: int,
-    porzioni_ricetta: int
-) -> List[Dict[str, Any]]:
-    """
-    Calcola gli scarichi di magazzino per una produzione.
-    
-    Es: Ricetta per 10 porzioni, produciamo 100 sfogliatelle
-    -> Moltiplica tutti gli ingredienti per 10
-    
-    Returns:
-        Lista di scarichi da effettuare
-    """
-    fattore = porzioni_prodotte / porzioni_ricetta
-    
-    scarichi = []
-    for ing in ingredienti_ricetta:
-        # Gestisce quantità come stringa o numero
-        qta_raw = ing.get("quantita", 0) or ing.get("quantita_originale", 0)
-        try:
-            qta_originale = float(qta_raw) if qta_raw else 0.0
-        except (ValueError, TypeError):
-            qta_originale = 0.0
-        
-        unita = ing.get("unita", "") or ing.get("unita_originale", "")
-        
-        scarichi.append({
-            "ingrediente": ing.get("nome"),
-            "quantita_ricetta": qta_originale,
-            "quantita_scarico": qta_originale * fattore,
-            "unita_misura": unita,
-            "fattore_moltiplicazione": fattore
-        })
-    
-    return scarichi
 
 
 def get_tutte_categorie() -> List[Dict[str, Any]]:

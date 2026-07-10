@@ -185,13 +185,10 @@ async def notifica_fattura_xml_caricata(
     # Info automazioni
     if automazioni:
         mag = automazioni.get("magazzino", {})
-        ric = automazioni.get("ricette", {})
         op = automazioni.get("operazione", {})
-        
+
         if mag.get("products_updated", 0) > 0:
             message += "\n📦 Magazzino aggiornato"
-        if ric.get("ricette_aggiornate", 0) > 0:
-            message += f"\n🍳 {ric['ricette_aggiornate']} ricette aggiornate"
         if op.get("operazione_completata"):
             message += "\n✅ Operazione completata automaticamente"
     
@@ -267,7 +264,7 @@ async def test_connection() -> Dict[str, Any]:
 📱 Riceverai notifiche per:
 • Nuovi documenti email
 • Fatture Aruba da confermare
-• Aggiornamenti magazzino/ricette
+• Aggiornamenti magazzino
 
 <i>Sistema ERP Azienda in Cloud</i>"""
     

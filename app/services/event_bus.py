@@ -78,9 +78,6 @@ class EventTypes:
 
     # Estratto conto (import massivo movimenti — migrato dal vecchio bus core)
     ESTRATTO_CONTO_IMPORTATO = "estratto_conto.importato"
-
-    # Magazzino / ricette (migrato dal vecchio bus core)
-    INGREDIENTE_PREZZO_CAMBIATO = "ingrediente.prezzo_cambiato"
     
     # Trasferimenti
     TRASFERIMENTO_CREATO = "trasferimento.creato"
@@ -382,11 +379,6 @@ def register_all_handlers():
     except Exception as e:
         logger.warning(f"Handler learning fornitore non registrato: {e}")
 
-    try:
-        from app.handlers.ricette import handler_aggiorna_costo_ricette
-        register_handler(EventTypes.INGREDIENTE_PREZZO_CAMBIATO, handler_aggiorna_costo_ricette)
-    except Exception as e:
-        logger.warning(f"Handler costo ricette non registrato: {e}")
 
     registered = sum(len(h) for h in _handlers.values())
     logger.info(f"Event bus pronto: {registered} handler registrati per {len(_handlers)} tipi evento")

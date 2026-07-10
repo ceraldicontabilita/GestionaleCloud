@@ -542,8 +542,7 @@ async def run_full_sync(db) -> Dict[str, Any]:
     3. Scarica F24 automatici (se configurati)
     4. Ricategorizza documenti
     5. Processa nuovi documenti
-    6. Aggiorna ricette con nuovi prezzi
-    
+
     IMPORTANTE: I duplicati vengono SEMPRE saltati (controllo hash file)
     """
     global _last_sync, _sync_stats
@@ -555,7 +554,6 @@ async def run_full_sync(db) -> Dict[str, Any]:
         "f24_sync": None,
         "ricategorizzazione": None,
         "processamento": None,
-        "ricette_aggiornate": None
     }
     
     try:

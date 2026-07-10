@@ -177,15 +177,7 @@ COLL_MOVIMENTI_MAGAZZINO = "movimenti_magazzino"
 COLL_ACQUISTI_PRODOTTI = "acquisti_prodotti"  # 15065 docs
 COLL_DETTAGLIO_RIGHE_FATTURE = "dettaglio_righe_fatture"  # 11076 docs
 
-# Lotti e Tracciabilità
-COLL_LOTTI = "lotti"
-COLL_LOTTI_PRODUZIONE = "lotti_produzione"
-COLL_REGISTRO_LOTTI = "registro_lotti"
-COLL_TRACCIABILITA = "tracciabilita"  # 50 docs
-
-# Ricette e Produzione
-COLL_RICETTE = "ricette"  # 159 docs
-COLL_PRODUZIONI = "produzioni"
+# Dizionario prodotti / cataloghi
 COLL_DIZIONARIO_PRODOTTI = "dizionario_prodotti"  # 112 docs
 COLL_PRODUCT_CATALOG = "product_catalog"
 COLL_PRODUCT_MAPPINGS = "product_mappings"

@@ -33,10 +33,8 @@ PUBLIC_PATHS = {
     # Prima nessuna era whitelistata → 401 sempre, integrazioni di fatto
     # rotte in produzione (bug #24 audit memoria/endpoints/README.md).
     # Ciascuna si autentica con un proprio meccanismo (vedi i rispettivi
-    # router): WhatsApp col verify_token di Meta, il ponte ERP con
-    # ERP_BRIDGE_SECRET.
+    # router): WhatsApp col verify_token di Meta.
     "/api/whatsapp/webhook",
-    "/api/erp/ponte/fattura-ricevuta",
 
     # Pagine legali: già pubbliche in versione non-/api (bypass generico
     # "non è /api/"), whitelistate anche qui per coerenza sulla variante

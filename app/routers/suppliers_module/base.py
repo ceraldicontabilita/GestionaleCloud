@@ -665,14 +665,6 @@ async def toggle_supplier_active(supplier_id: str) -> Dict[str, Any]:
         {"$set": {"attivo": new_status, "updated_at": datetime.now(timezone.utc).isoformat()}}
     )
 
-    # Sync con tracciabilita: imposta escluso in base ad attivo
-    nome_fornitore = supplier.get("denominazione") or supplier.get("ragione_sociale") or ""
-    if nome_fornitore:
-        await db[Collections.SUPPLIERS].update_many(
-            {"nome": {"$regex": f"^{nome_fornitore[:30]}", "$options": "i"}},
-            {"$set": {"escluso": not new_status}}
-        )
-
     await cache.clear_pattern(SUPPLIERS_CACHE_KEY)
 
     result = {
