@@ -1506,30 +1506,27 @@ function PrimaNotaDesktop() {
       {/* ========== SEZIONE BANCA ========== */}
       {activeSection === 'banca' && (
         <section>
-          {/* Summary Cards Banca */}
+          {/* Summary Cards Banca — STESSE MiniCard compatte della Cassa
+              (richiesta utente 10/07: grafica uniforme tra i tre riquadri) */}
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-              gap: 16,
-              marginBottom: 20,
+              gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+              gap: 10,
+              marginBottom: 16,
             }}
           >
-            <SummaryCard
-              title={`Accrediti ${selectedYear}`}
+            <MiniCard
+              title={`Accrediti (DARE) ${selectedYear}`}
               value={formatEuro(bancaData.totale_entrate)}
               color="#16a34a"
-              icon="📈"
-              subtitle="Totale accrediti bancari (POS + bonifici + altro)"
             />
-            <SummaryCard
-              title={`Pagamenti ${selectedYear}`}
+            <MiniCard
+              title={`Pagamenti (AVERE) ${selectedYear}`}
               value={formatEuro(bancaData.totale_uscite)}
               color="#dc2626"
-              icon="📉"
-              subtitle="Totale addebiti (fornitori, tasse, stipendi)"
             />
-            <SummaryCard
+            <MiniCard
               title={`Saldo Banca ${selectedYear}`}
               value={formatEuro(
                 bancaData.saldo_anno || bancaData.totale_entrate - bancaData.totale_uscite
@@ -1539,26 +1536,21 @@ function PrimaNotaDesktop() {
                   ? '#16a34a'
                   : '#dc2626'
               }
-              icon="🏦"
-              subtitle={`Accrediti - Pagamenti ${selectedYear}`}
+              highlight
             />
             {bancaData.saldo_precedente !== undefined && bancaData.saldo_precedente !== 0 && (
-              <SummaryCard
+              <MiniCard
                 title="Saldo Cumulativo"
                 value={formatEuro(bancaData.saldo)}
                 color="#0f2744"
-                icon="💰"
-                subtitle="Saldo totale complessivo"
                 highlight
               />
             )}
             {bancaData.saldo_precedente !== undefined && bancaData.saldo_precedente !== 0 && (
-              <SummaryCard
+              <MiniCard
                 title="Riporto Anni Prec."
                 value={formatEuro(bancaData.saldo_precedente)}
                 color="#6b7280"
-                icon="↩️"
-                subtitle="Saldo al 31/12 anno prec."
               />
             )}
           </div>
@@ -2020,33 +2012,8 @@ function CompactEntryCard({ title, color, children }) {
   );
 }
 
-function SummaryCard({ title, value, color, icon, highlight: _highlight, subtitle }) {
-  return (
-    <div
-      style={{
-        background: 'white',
-        borderRadius: 8,
-        padding: 16,
-        border: '1px solid #e2e8f0',
-        borderLeft: '4px solid #0f2744',
-      }}
-    >
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: 8,
-        }}
-      >
-        <span style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5 }}>{title}</span>
-        <span style={{ fontSize: 18 }}>{icon}</span>
-      </div>
-      <div style={{ fontSize: 22, fontWeight: 700, color, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>{value}</div>
-      {subtitle && <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>{subtitle}</div>}
-    </div>
-  );
-}
+// SummaryCard rimossa (10/07): la Banca usa le stesse MiniCard della Cassa
+// per avere una grafica uniforme tra i tre riquadri.
 
 // eslint-disable-next-line no-unused-vars
 function MiniStatCard({ title, value, color }) {
@@ -2623,16 +2590,18 @@ function MovementsTable({
               <th style={{ padding: '8px 8px', textAlign: 'left', fontWeight: 600, fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}>
                 Descrizione
               </th>
-              <th style={{ padding: '8px 8px', textAlign: 'left', fontWeight: 600, fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}>
+              {/* Colonne numeriche STRETTE (richiesta utente 10/07): il
+                  respiro va alla descrizione e alla colonna Azioni */}
+              <th style={{ padding: '8px 6px', textAlign: 'left', fontWeight: 600, fontSize: 11, color: '#64748b', textTransform: 'uppercase', width: 100 }}>
                 N. Fattura
               </th>
-              <th style={{ padding: '8px 8px', textAlign: 'right', fontWeight: 600, fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}>
+              <th style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 600, fontSize: 11, color: '#64748b', textTransform: 'uppercase', width: 85 }}>
                 DARE
               </th>
-              <th style={{ padding: '8px 8px', textAlign: 'right', fontWeight: 600, fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}>
+              <th style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 600, fontSize: 11, color: '#64748b', textTransform: 'uppercase', width: 85 }}>
                 AVERE
               </th>
-              <th style={{ padding: '8px 8px', textAlign: 'right', fontWeight: 600, fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}>
+              <th style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 600, fontSize: 11, color: '#64748b', textTransform: 'uppercase', width: 95 }}>
                 Saldo
               </th>
               <th
@@ -2742,16 +2711,17 @@ function MovementsTable({
                 >
                   {splitNumeroFattura(mov).descr || '-'}
                 </td>
-                <td style={{ padding: '6px 8px', fontFamily: 'monospace', fontSize: 11, whiteSpace: 'nowrap' }}>
+                <td style={{ padding: '6px 6px', fontFamily: 'monospace', fontSize: 10.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 100 }}>
                   {splitNumeroFattura(mov).numero || '-'}
                 </td>
                 <td
                   style={{
-                    padding: '6px 8px',
+                    padding: '6px 6px',
                     textAlign: 'right',
                     color: '#16a34a',
                     fontWeight: mov.tipo === 'entrata' ? 'bold' : 'normal',
-                    fontSize: 12,
+                    fontSize: 11.5,
+                    whiteSpace: 'nowrap',
                     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
                   }}
                 >
@@ -2759,11 +2729,12 @@ function MovementsTable({
                 </td>
                 <td
                   style={{
-                    padding: '6px 8px',
+                    padding: '6px 6px',
                     textAlign: 'right',
                     color: '#dc2626',
                     fontWeight: mov.tipo === 'uscita' ? 'bold' : 'normal',
-                    fontSize: 12,
+                    fontSize: 11.5,
+                    whiteSpace: 'nowrap',
                     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
                   }}
                 >
@@ -2771,11 +2742,12 @@ function MovementsTable({
                 </td>
                 <td
                   style={{
-                    padding: '6px 8px',
+                    padding: '6px 6px',
                     textAlign: 'right',
                     fontWeight: 'bold',
                     color: mov.saldoProgressivo >= 0 ? '#16a34a' : '#dc2626',
-                    fontSize: 12,
+                    fontSize: 11.5,
+                    whiteSpace: 'nowrap',
                     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
                   }}
                 >
@@ -2899,6 +2871,8 @@ function MovementsTable({
                   )}
                 </td>
                 {!readOnly && (
+                  // Azioni LARGHE e leggibili (richiesta utente 10/07): bottoni
+                  // con etichetta al posto delle sole icone minuscole
                   <td style={{ padding: '6px 8px', textAlign: 'center', whiteSpace: 'nowrap' }}>
                     <button
                       onClick={async () => {
@@ -2914,43 +2888,56 @@ function MovementsTable({
                         background: '#0f2744',
                         color: 'white',
                         border: 'none',
-                        borderRadius: 4,
-                        padding: '3px 6px',
+                        borderRadius: 6,
+                        padding: '6px 10px',
                         cursor: spostando === mov.id ? 'wait' : 'pointer',
-                        fontSize: 10,
+                        fontSize: 11,
+                        fontWeight: 700,
                         marginRight: 4,
                         opacity: spostando === mov.id ? 0.6 : 1,
                       }}
                       title={tipo === 'cassa' ? 'Sposta in Banca' : 'Sposta in Cassa'}
                       data-testid={`sposta-movimento-${mov.id}`}
                     >
-                      {spostando === mov.id ? '⏳' : tipo === 'cassa' ? '🏦' : '💵'}
+                      {spostando === mov.id
+                        ? '⏳ Sposto…'
+                        : tipo === 'cassa'
+                          ? '🏦 Sposta in banca'
+                          : '💵 Sposta in cassa'}
                     </button>
                     <button
                       onClick={() => setEditingMovimento(mov)}
                       style={{
-                        background: 'none',
-                        border: 'none',
+                        background: '#f1f5f9',
+                        color: '#0f2744',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: 6,
+                        padding: '6px 10px',
                         cursor: 'pointer',
-                        fontSize: 14,
+                        fontSize: 11,
+                        fontWeight: 600,
                         marginRight: 4,
                       }}
                       title="Modifica"
                       data-testid={`edit-movimento-${mov.id}`}
                     >
-                      📝
+                      📝 Modifica
                     </button>
                     <button
                       onClick={() => onDelete(mov.id)}
                       style={{
-                        background: 'none',
-                        border: 'none',
+                        background: '#fef2f2',
+                        color: '#dc2626',
+                        border: '1px solid #fecaca',
+                        borderRadius: 6,
+                        padding: '6px 10px',
                         cursor: 'pointer',
-                        fontSize: 14,
+                        fontSize: 11,
+                        fontWeight: 600,
                       }}
                       title="Elimina"
                     >
-                      🗑️
+                      🗑️ Elimina
                     </button>
                   </td>
                 )}
