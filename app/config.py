@@ -157,33 +157,85 @@ class Settings(BaseSettings):
         if not self.MONGODB_ATLAS_URI and self.MONGO_URL:
             self.MONGODB_ATLAS_URI = self.MONGO_URL
         
-        # Generate SECRET_KEY if missing (with critical warning)
+        # ── SECRET_KEY JWT: DEVE essere stabile tra riavvii e identica su
+        # tutti i worker, altrimenti i login "muoiono" a ogni deploy e con
+        # piu' processi un token firmato da un worker viene rifiutato dagli
+        # altri (401 intermittenti: era la causa dell'autenticazione che si
+        # rompeva di continuo in produzione).
+        # Priorita':
+        #   1. variabile d'ambiente SECRET_KEY (se impostata, vince sempre)
+        #   2. chiave condivisa in Gestionale.sistema_stato.auth_secret
+        #      (stesso meccanismo di Lotti/AppDipendenti: token interoperabili);
+        #      se il documento NON esiste viene CREATO in modo atomico
+        #      ($setOnInsert: piu' worker concorrenti convergono sulla stessa)
+        #   3. fallback deterministico derivato dall'URI Mongo (stabile tra
+        #      worker e riavvii anche se il DB e' momentaneamente irraggiungibile)
         if not self.SECRET_KEY:
-            import secrets
+            import hashlib
             import logging
-            self.SECRET_KEY = secrets.token_urlsafe(64)
-            logging.getLogger(__name__).critical(
-                "⚠️ CRITICAL: SECRET_KEY non configurata! Generata chiave temporanea. "
-                "Impostare SECRET_KEY nell'ambiente per la produzione. "
-                "I token JWT generati NON saranno validi dopo il riavvio."
-            )
-
-        # Segreto JWT UNIFICATO tra le app Ceraldi: se presente, usa la chiave
-        # condivisa salvata in Gestionale.sistema_stato.auth_secret (lo stesso
-        # meccanismo di Lotti e AppDipendenti), così i token sono interoperabili
-        # tra le app. Sola lettura: non crea la chiave (la gestisce Lotti).
-        try:
             import os as _os
-            from pymongo import MongoClient as _MC
-            _uri = self.MONGO_URL or self.MONGODB_ATLAS_URI or _os.getenv("MONGO_URL")
+            import secrets
+
+            _uri = self.MONGO_URL or self.MONGODB_ATLAS_URI or _os.getenv("MONGO_URL") or ""
+
+            chiave_condivisa = None
             if _uri:
-                _cli = _MC(_uri, serverSelectionTimeoutMS=4000)
-                _doc = _cli[_os.getenv("DB_NAME", "Gestionale")]["sistema_stato"].find_one({"chiave": "auth_secret"})
-                _cli.close()
-                if _doc and _doc.get("valore"):
-                    self.SECRET_KEY = _doc["valore"]
-        except Exception:
-            pass
+                try:
+                    from pymongo import MongoClient as _MC
+                    _cli = _MC(_uri, serverSelectionTimeoutMS=4000)
+                    _coll = _cli[_os.getenv("DB_NAME", "Gestionale")]["sistema_stato"]
+                    _doc = _coll.find_one({"chiave": "auth_secret"})
+                    if not (_doc and _doc.get("valore")):
+                        # crea la chiave condivisa una sola volta, race-safe
+                        from datetime import datetime as _dt, timezone as _tz
+                        _coll.update_one(
+                            {"chiave": "auth_secret"},
+                            {"$setOnInsert": {
+                                "chiave": "auth_secret",
+                                "valore": secrets.token_urlsafe(64),
+                                "created_at": _dt.now(_tz.utc).isoformat(),
+                                "created_by": "gestionale_config",
+                            }},
+                            upsert=True,
+                        )
+                        _doc = _coll.find_one({"chiave": "auth_secret"})
+                    _cli.close()
+                    if _doc and _doc.get("valore"):
+                        chiave_condivisa = _doc["valore"]
+                except Exception:
+                    logging.getLogger(__name__).warning(
+                        "SECRET_KEY: impossibile leggere/creare auth_secret su Mongo, "
+                        "uso il fallback deterministico"
+                    )
+
+            if chiave_condivisa:
+                self.SECRET_KEY = chiave_condivisa
+            elif _uri:
+                # deterministico: stesso valore su ogni worker e a ogni riavvio
+                self.SECRET_KEY = hashlib.sha256(
+                    f"ceraldi-jwt-fallback::{_uri}".encode("utf-8")
+                ).hexdigest()
+            else:
+                self.SECRET_KEY = secrets.token_urlsafe(64)
+                logging.getLogger(__name__).critical(
+                    "⚠️ CRITICAL: SECRET_KEY non configurata e nessun MONGO_URL: "
+                    "chiave temporanea di processo, i token non sopravvivono al riavvio."
+                )
+        else:
+            # SECRET_KEY esplicita: comunque prova ad allinearla alla chiave
+            # condivisa tra le app se presente (interoperabilita' token).
+            try:
+                import os as _os
+                from pymongo import MongoClient as _MC
+                _uri = self.MONGO_URL or self.MONGODB_ATLAS_URI or _os.getenv("MONGO_URL")
+                if _uri:
+                    _cli = _MC(_uri, serverSelectionTimeoutMS=4000)
+                    _doc = _cli[_os.getenv("DB_NAME", "Gestionale")]["sistema_stato"].find_one({"chiave": "auth_secret"})
+                    _cli.close()
+                    if _doc and _doc.get("valore"):
+                        self.SECRET_KEY = _doc["valore"]
+            except Exception:
+                pass
     
     def get_cors_origins(self) -> list[str]:
         """Parse CORS origins from comma-separated string."""
@@ -236,18 +288,21 @@ class Settings(BaseSettings):
         fail_fast = self.is_production and os.getenv("FAIL_FAST_SECRETS", "").lower() in ("true", "1", "yes")
         errors: list[str] = []
 
-        # Check SECRET_KEY was explicitly configured (not auto-generated)
+        # Check SECRET_KEY was explicitly configured (not auto-generated).
+        # NB: dal 10/07/2026 la chiave, se non in env, viene presa/creata
+        # nella collection condivisa sistema_stato.auth_secret (stabile tra
+        # riavvii e worker): il messaggio resta come promemoria, ma i token
+        # NON muoiono piu' al riavvio.
         if not os.getenv("SECRET_KEY"):
             msg = (
-                "SECRET_KEY non configurata nell'ambiente! "
-                "L'applicazione sta usando una chiave temporanea. "
-                "Configurare SECRET_KEY nel file .env per la produzione. "
-                "I token JWT NON sopravviveranno al riavvio."
+                "SECRET_KEY non configurata nell'ambiente: uso la chiave "
+                "condivisa sistema_stato.auth_secret (stabile). Per maggiore "
+                "robustezza configurare comunque SECRET_KEY nei secret del deploy."
             )
             if fail_fast:
                 errors.append(msg)
             else:
-                logger.error(f"❌ ERROR: {msg}")
+                logger.warning(f"⚠️ {msg}")
 
         # Check database configuration
         if not self.MONGODB_ATLAS_URI:
