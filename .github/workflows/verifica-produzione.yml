@@ -27,16 +27,18 @@ jobs:
           DASH=$(ls frontend/dist/assets | grep '^Dashboard-' | head -1)
           echo "Bundle atteso: $ATTESO — chunk Dashboard: $DASH"
 
-          # NB: User-Agent da browser + --compressed — alcuni CDN/proxy
-          # rispondono diversamente (o bloccano) i curl "nudi", e il grep
-          # trovava '' anche a sito perfettamente funzionante. In errore
-          # stampiamo status HTTP e inizio del body per diagnosi reale.
+          # NB: la route "/" del backend serve l'index.html SOLO con
+          # Accept: text/html (altrimenti risponde il JSON di stato API —
+          # è così che il controllo trovava sempre '' a sito funzionante).
+          # Verifichiamo /login, che passa dal catch-all SPA, e mandiamo
+          # comunque l'header Accept da browser.
           UA="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36"
+          URL="https://impresasemplice.online/login"
 
           # Il deploy Render può richiedere qualche minuto: ritenta fino a ~10'
           for i in $(seq 1 20); do
-            BODY=$(curl -sS --compressed -A "$UA" --max-time 20 https://impresasemplice.online/ || true)
-            CODE=$(curl -sS -o /dev/null -w '%{http_code}' --compressed -A "$UA" --max-time 20 https://impresasemplice.online/ || echo '000')
+            BODY=$(curl -sS --compressed -A "$UA" -H 'Accept: text/html' --max-time 20 "$URL" || true)
+            CODE=$(curl -sS -o /dev/null -w '%{http_code}' --compressed -A "$UA" -H 'Accept: text/html' --max-time 20 "$URL" || echo '000')
             LIVE=$(printf '%s' "$BODY" | grep -o 'assets/index-[^"]*\.js' | head -1 || true)
             echo "Tentativo $i: HTTP $CODE — il sito serve '$LIVE'"
             if [ "$LIVE" = "$ATTESO" ]; then
