@@ -111,6 +111,12 @@ export default function ChatIntelligente() {
           timestamp: data.timestamp || new Date().toISOString(),
           queryType: data.query_type,
           dataCount: data.data_count,
+          // Risposta strutturata del motore AI (assenti col motore a keyword)
+          affidabilita: data.livello_affidabilita,
+          fonti: data.documenti_consultati,
+          datiMancanti: data.dati_mancanti,
+          anomalie: data.anomalie,
+          azioniProposte: data.azioni_proposte,
         },
       ]);
     } catch (error) {
@@ -310,7 +316,61 @@ export default function ChatIntelligente() {
               }}
             >
               {msg.text}
-              {msg.queryType && (
+              {/* Metadati strutturati del motore AI: affidabilità, fonti, mancanze */}
+              {(msg.affidabilita || (msg.fonti && msg.fonti.length > 0)) && (
+                <div
+                  style={{
+                    marginTop: 8,
+                    paddingTop: 8,
+                    borderTop: `1px solid ${COLORS.border}`,
+                    fontSize: 11,
+                    color: COLORS.textMuted,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 3,
+                  }}
+                >
+                  {msg.affidabilita && (
+                    <span>
+                      <span
+                        style={{
+                          display: 'inline-block',
+                          padding: '1px 8px',
+                          borderRadius: 10,
+                          fontWeight: 700,
+                          background:
+                            msg.affidabilita === 'certo'
+                              ? COLORS.successLight
+                              : msg.affidabilita === 'probabile'
+                                ? COLORS.warningLight
+                                : COLORS.dangerLight,
+                          color:
+                            msg.affidabilita === 'certo'
+                              ? COLORS.success
+                              : msg.affidabilita === 'probabile'
+                                ? COLORS.warning
+                                : COLORS.danger,
+                        }}
+                      >
+                        {msg.affidabilita}
+                      </span>
+                    </span>
+                  )}
+                  {msg.fonti && msg.fonti.length > 0 && (
+                    <span>📚 Fonti: {msg.fonti.join(' · ')}</span>
+                  )}
+                  {msg.datiMancanti && msg.datiMancanti.length > 0 && (
+                    <span>❓ Dati mancanti: {msg.datiMancanti.join(' · ')}</span>
+                  )}
+                  {msg.anomalie && msg.anomalie.length > 0 && (
+                    <span>⚠️ Anomalie: {msg.anomalie.join(' · ')}</span>
+                  )}
+                  {msg.azioniProposte && msg.azioniProposte.length > 0 && (
+                    <span>💡 Azioni: {msg.azioniProposte.join(' · ')}</span>
+                  )}
+                </div>
+              )}
+              {!msg.affidabilita && msg.queryType && (
                 <div
                   style={{
                     marginTop: 8,

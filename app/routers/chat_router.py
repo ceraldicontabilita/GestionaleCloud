@@ -361,11 +361,38 @@ async def chat_history(request: Request, session_id: str = None) -> Dict[str, An
 
 @router.post("/ask")
 async def chat_ask(request: Request, data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
-    """Risponde a domande in linguaggio naturale sui dati reali del gestionale."""
+    """Risponde a domande in linguaggio naturale sui dati reali del gestionale.
+
+    Con use_ai=true (default del widget) e ANTHROPIC_API_KEY configurata usa
+    il motore AI con strumenti tipizzati (app/services/chat_ai_engine.py):
+    risposta strutturata con affidabilita' certo/probabile/dubbio, fonti
+    consultate, dati mancanti e azioni proposte. Senza chiave API (o con
+    use_ai=false) ricade sul motore a parole chiave qui sotto.
+    """
     domanda = data.get("question", data.get("domanda", "") or "")
     domanda_lower = domanda.lower()
     db = Database.get_db()
     sid = _session_id(request, data)
+
+    # ── MOTORE AI (se configurato e richiesto) ──
+    if data.get("use_ai", True) and domanda.strip():
+        try:
+            from app.services import chat_ai_engine
+            if chat_ai_engine.is_configured():
+                storico = await _recupera_storico(db, sid)
+                strutturata = await chat_ai_engine.rispondi(domanda, sid, db, storico)
+                risultato = {
+                    "response": strutturata.get("risposta_testuale", ""),
+                    "query_type": "ai",
+                    **{k: v for k, v in strutturata.items() if k != "risposta_testuale"},
+                }
+                await _salva_scambio(db, sid, domanda, risultato)
+                risultato["status"] = "ok"
+                risultato["risposta"] = risultato.get("response")
+                risultato["session_id"] = sid
+                return risultato
+        except Exception:
+            logger.exception("Motore AI chat fallito: fallback al motore a parole chiave")
 
     handler = None
     for keywords, fn in _INTENTI:

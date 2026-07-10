@@ -1,0 +1,1057 @@
+{
+  "meta": {
+    "nome": "Ceraldi ERP — Logica completa per la chat intelligente",
+    "versione": "3.0-definitiva",
+    "aggiornato_al": "2026-07-10",
+    "azienda": {
+      "nome": "Ceraldi Caffe / Ceraldi Group SRL",
+      "settore": "bar/caffetteria",
+      "sede": "Napoli"
+    },
+    "scopo": "Fornire alla chat intelligente una base di conoscenza strutturata per comprendere documenti, record, movimenti, dipendenti, tributi, F24, quietanze, estratti conto, fatture, corrispettivi, POS, verbali, veicoli, trattenute, scadenze e anomalie. La chat deve ragionare come un consulente amministrativo e non come un semplice motore di ricerca.",
+    "principi_chat": [
+      "La chat deve interrogare tutte le entita collegate alla domanda.",
+      "La chat deve distinguere fatti certi, risultati probabili e casi dubbi.",
+      "La chat deve spiegare sempre su quali dati basa la risposta.",
+      "La chat deve indicare cosa manca per arrivare a una conclusione completa.",
+      "La chat deve proporre azioni ma non eseguire autonomamente operazioni con effetti fiscali, contabili o retributivi.",
+      "La chat deve conservare memoria delle decisioni e delle verifiche gia effettuate.",
+      "Ogni risposta deve includere stato, motivazione, fonti interne utilizzate e livello di affidabilita."
+    ],
+    "nota_implementazione": "La base di conoscenza è distinta dal motore operativo della chat. La sezione implementazione_chat_intelligente definisce backend, strumenti, memoria, frontend e sicurezza."
+  },
+  "regola_decisionale_globale": {
+    "certo": {
+      "descrizione": "Dati coerenti, univoci e completi.",
+      "azione_sistema": "Può classificare o collegare automaticamente solo se la regola è espressamente autorizzata.",
+      "risposta_chat": "Conferma il risultato e indica le prove trovate."
+    },
+    "probabile": {
+      "descrizione": "Dati compatibili ma non perfettamente univoci.",
+      "azione_sistema": "Propone il collegamento o l'azione e attende conferma utente.",
+      "risposta_chat": "Indica la conclusione più probabile, le alternative e cosa confermare."
+    },
+    "dubbio": {
+      "descrizione": "Dati mancanti, contraddittori o più candidati equivalenti.",
+      "azione_sistema": "Nessuna azione automatica; genera verifica e alert.",
+      "risposta_chat": "Non forza una conclusione e spiega quali dati mancano o sono incoerenti."
+    }
+  },
+  "struttura_standard_risposta_chat": {
+    "campi_obbligatori": [
+      "conclusione",
+      "stato",
+      "motivazione",
+      "dati_utilizzati",
+      "dati_mancanti",
+      "livello_affidabilita",
+      "azione_consigliata"
+    ],
+    "modello": {
+      "conclusione": "Risposta diretta alla domanda.",
+      "stato": "Stato amministrativo, contabile, fiscale, bancario o documentale.",
+      "motivazione": "Spiegazione del ragionamento eseguito.",
+      "dati_utilizzati": "Documenti, record e collegamenti interni usati.",
+      "dati_mancanti": "Elementi ancora non presenti o non verificati.",
+      "livello_affidabilita": "certo | probabile | dubbio",
+      "azione_consigliata": "Cosa dovrebbe fare l'utente."
+    }
+  },
+  "garanzie_trasversali": [
+    {
+      "id": "idempotenza",
+      "regola": "Nessun documento deve essere importato due volte. Usare hash SHA-256 sul contenuto."
+    },
+    {
+      "id": "originale_intoccabile",
+      "regola": "Il documento originale non viene mai modificato ed è sempre consultabile."
+    },
+    {
+      "id": "audit_log",
+      "regola": "Ogni modifica manuale registra utente, data, valore precedente e valore successivo."
+    },
+    {
+      "id": "alert_mai_silenzioso",
+      "regola": "Ogni errore di parsing, sincronizzazione, riconciliazione o incoerenza genera un alert."
+    },
+    {
+      "id": "interrogabilita",
+      "regola": "Ogni documento, record, movimento e alert deve essere interrogabile dalla chat."
+    },
+    {
+      "id": "spiegabilita",
+      "regola": "Ogni conclusione della chat deve essere ricostruibile dai dati utilizzati."
+    },
+    {
+      "id": "nessuna_azione_fiscale_automatica",
+      "regola": "La chat può proporre ma non applicare autonomamente rettifiche fiscali, contabili o retributive."
+    }
+  ],
+  "motore_ragionamento": {
+    "sequenza_generale": [
+      "Comprendere soggetto, periodo, importo, documento e tipo di domanda.",
+      "Individuare l'entita primaria.",
+      "Recuperare tutte le entita collegate.",
+      "Confrontare date, importi, codici, descrizioni, stati e documenti originali.",
+      "Applicare filtri duri e soglie del dominio.",
+      "Classificare il risultato come certo, probabile o dubbio.",
+      "Formulare una conclusione motivata.",
+      "Segnalare dati mancanti o anomalie.",
+      "Proporre l'azione successiva senza applicarla automaticamente."
+    ],
+    "gestione_periodi": {
+      "regola": "La chat deve comprendere date puntuali, mesi, intervalli e date relative.",
+      "esempi": [
+        "ad oggi",
+        "al 31 dicembre 2025",
+        "da gennaio a maggio 2026",
+        "nel mese di maggio 2026",
+        "negli ultimi 12 mesi"
+      ]
+    },
+    "gestione_nomi": {
+      "regola": "La chat deve tollerare inversione nome/cognome, maiuscole, accenti e piccole varianti, ma confermare tramite codice fiscale o matricola quando disponibili."
+    },
+    "gestione_importi": {
+      "regola": "Gli importi devono essere confrontati con tolleranze configurabili e con il segno corretto."
+    }
+  },
+  "domini": {
+    "f24": {
+      "nome": "F24, tributi, banca e quietanze",
+      "entita": [
+        "f24_commercialista",
+        "f24_tributi",
+        "quietanze",
+        "bank_movements",
+        "riconciliazioni_f24_quietanza",
+        "riconciliazioni_f24_banca"
+      ],
+      "principio": "L'F24 e il singolo tributo devono essere analizzati separatamente. Il pagamento bancario e la quietanza sono due prove diverse.",
+      "stati_f24": {
+        "pagato_e_quietanzato": {
+          "condizioni": [
+            "movimento bancario compatibile e riconciliato",
+            "quietanza ufficiale collegata"
+          ],
+          "significato": "Pagamento verificato e documentazione ufficiale completa."
+        },
+        "pagato_quietanza_mancante": {
+          "condizioni": [
+            "movimento bancario compatibile e riconciliato",
+            "quietanza non presente"
+          ],
+          "significato": "Pagamento bancario verificato, ma prova ufficiale ancora mancante."
+        },
+        "quietanzato_banca_non_riconciliata": {
+          "condizioni": [
+            "quietanza ufficiale presente",
+            "movimento bancario non trovato o non riconciliato"
+          ],
+          "significato": "Pagamento ufficialmente documentato, ma collegamento bancario incompleto."
+        },
+        "da_verificare": {
+          "condizioni": [
+            "F24 presente",
+            "nessuna quietanza",
+            "nessun movimento bancario riconciliato"
+          ],
+          "significato": "Non è possibile confermare il pagamento."
+        },
+        "non_pagato": {
+          "condizioni": [
+            "scadenza superata",
+            "nessuna prova bancaria",
+            "nessuna quietanza"
+          ],
+          "significato": "Presumibilmente non pagato, salvo documenti non ancora acquisiti."
+        }
+      },
+      "stati_tributo": {
+        "campi": [
+          "stato_pagamento",
+          "stato_quietanza",
+          "stato_bancario",
+          "stato_riconciliazione",
+          "livello_affidabilita"
+        ],
+        "regola": "Ogni tributo eredita il pagamento dell'F24 che lo contiene, salvo compensazioni, crediti, importi a zero o anomalie di parsing."
+      },
+      "campi_tributo": [
+        "sezione",
+        "codice_tributo",
+        "descrizione",
+        "ente",
+        "codice_ufficio",
+        "codice_atto",
+        "regione",
+        "codice_sede",
+        "matricola_inps",
+        "periodo_da",
+        "periodo_a",
+        "mese_riferimento",
+        "anno_riferimento",
+        "importo_a_debito",
+        "importo_a_credito",
+        "importo_netto",
+        "compensato",
+        "f24_id"
+      ],
+      "ragionamento": [
+        "Individuare il tributo richiesto per codice, descrizione, periodo o ente.",
+        "Risolvere il collegamento con l'F24 di appartenenza.",
+        "Verificare il totale F24 e la somma dei tributi.",
+        "Verificare l'eventuale presenza di crediti compensati.",
+        "Cercare quietanza compatibile.",
+        "Cercare movimento bancario compatibile.",
+        "Confrontare importo netto addebitato con totale F24.",
+        "Determinare se il singolo tributo è incluso nel pagamento.",
+        "Segnalare differenze, duplicati, periodi errati o codici anomali."
+      ],
+      "domande": [
+        "L'F24 del 16 giugno 2026 è stato pagato?",
+        "È presente la quietanza dell'F24 di maggio 2026?",
+        "L'F24 risulta pagato in banca ma senza quietanza?",
+        "Quale movimento bancario dimostra il pagamento dell'F24?",
+        "Quali F24 sono pagati ma non quietanzati?",
+        "Quali F24 hanno quietanza ma non sono riconciliati con la banca?",
+        "Quali F24 sono ancora da verificare?",
+        "Quali F24 sono scaduti?",
+        "Quali tributi contiene questo F24?",
+        "Il tributo IVA codice 6005 è stato pagato?",
+        "Il tributo INPS di maggio 2026 risulta versato?",
+        "In quale F24 è stato inserito il tributo 1040?",
+        "Quanto è stato versato per il codice tributo 6005 nel 2026?",
+        "Qual è il periodo di riferimento di questo tributo?",
+        "Questo tributo è stato compensato con un credito?",
+        "Quanto credito è stato usato nell'F24?",
+        "Qual è l'importo netto effettivamente addebitato?",
+        "Ci sono tributi duplicati nello stesso periodo?",
+        "Ci sono tributi con anno di riferimento errato?",
+        "Ci sono differenze tra totale F24 e somma dei tributi?",
+        "Quali tributi pagati non hanno ancora quietanza?",
+        "Quali tributi risultano pagati solo sulla base dell'estratto conto?",
+        "Quali tributi risultano pagati sulla base della quietanza ma non della banca?",
+        "Quanto abbiamo versato di IVA da gennaio a maggio 2026?",
+        "Quanto abbiamo versato di INPS nel 2025?",
+        "Confronta i tributi di maggio 2026 con maggio 2025.",
+        "Perché l'F24 di questo mese è più alto del mese precedente?"
+      ],
+      "esempi_risposta": [
+        {
+          "domanda": "L'F24 è stato pagato?",
+          "risposta": "Sì, il pagamento risulta eseguito perché è presente un addebito bancario compatibile e riconciliato. La quietanza ufficiale non è ancora presente. Stato: pagamento verificato, quietanza mancante. Affidabilità: certo."
+        },
+        {
+          "domanda": "Il tributo 6005 è stato pagato?",
+          "risposta": "Il tributo 6005 riferito a maggio 2026 è incluso nell'F24 pagato tramite banca. La quietanza dell'F24 non è ancora disponibile. Il tributo risulta quindi pagato, con documentazione ufficiale incompleta."
+        }
+      ]
+    },
+    "cedolini_dipendenti": {
+      "nome": "Dipendenti, cedolini, TFR, indennità, ferie e trattenute",
+      "entita": [
+        "cedolini",
+        "dipendenti",
+        "presenze",
+        "trattenute_dipendenti",
+        "verbali",
+        "bank_movements"
+      ],
+      "chiavi_identificazione": [
+        "codice_fiscale",
+        "matricola",
+        "nome",
+        "cognome"
+      ],
+      "campi_principali": [
+        "netto",
+        "lordo",
+        "totale_competenze",
+        "totale_trattenute",
+        "imponibile_irpef",
+        "trattenuta_irpef",
+        "imponibile_inps",
+        "contributi",
+        "detrazioni",
+        "addizionali",
+        "tfr_maturato_periodo",
+        "tfr_progressivo",
+        "tfr_liquidato",
+        "ferie_maturate",
+        "ferie_godute",
+        "ferie_residue",
+        "permessi_maturati",
+        "permessi_goduti",
+        "permessi_residui",
+        "tredicesima_maturata",
+        "tredicesima_pagata",
+        "quattordicesima_maturata",
+        "quattordicesima_pagata",
+        "trattamento_integrativo",
+        "indennita_l207",
+        "integrazione_salariale",
+        "malattia",
+        "maternita",
+        "infortunio",
+        "ore_ordinarie",
+        "ore_straordinarie",
+        "assenze",
+        "trattenute_verbali"
+      ],
+      "logica_tfr": {
+        "principio": "La chat deve distinguere TFR maturato nel singolo periodo, TFR progressivo, TFR liquidato e TFR residuo accantonato.",
+        "formule_logiche": {
+          "tfr_maturato_intervallo": "somma tfr_maturato_periodo dei cedolini compresi nell'intervallo",
+          "tfr_residuo": "tfr_progressivo - tfr_liquidato",
+          "tfr_a_data": "usare il valore progressivo dell'ultimo cedolino disponibile entro la data richiesta; se assente, sommare i periodi disponibili e dichiarare l'approssimazione"
+        },
+        "controlli": [
+          "verificare continuità dei mesi",
+          "segnalare cedolini mancanti",
+          "evitare doppio conteggio di TFR progressivo e TFR del mese",
+          "distinguere TFR maturato da TFR liquidato",
+          "segnalare rettifiche o conguagli"
+        ]
+      },
+      "logica_indennita": {
+        "principio": "Ogni indennità deve essere ricercata nel cedolino richiesto e confrontata con mesi precedenti e regole attese.",
+        "tipi": [
+          "indennita L.207",
+          "trattamento integrativo",
+          "integrazione salariale",
+          "indennita malattia",
+          "indennita maternita",
+          "indennita infortunio",
+          "indennita turno",
+          "indennita mansione",
+          "indennita trasferta",
+          "altre competenze"
+        ],
+        "stati": [
+          "presente",
+          "assente",
+          "presente_con_importo_diverso",
+          "non_verificabile"
+        ]
+      },
+      "logica_trattenute_verbali": {
+        "principio": "La trattenuta per verbale deve essere collegata al verbale, al dipendente, al mese di competenza e al cedolino in cui compare.",
+        "ciclo": [
+          "proposta",
+          "confermata",
+          "comunicata_al_consulente",
+          "attesa_nel_cedolino",
+          "trovata_nel_cedolino",
+          "non_trovata",
+          "chiusa"
+        ],
+        "controlli": [
+          "importo trattenuto",
+          "importo residuo",
+          "numero verbale",
+          "targa",
+          "mese previsto",
+          "mese effettivo",
+          "eventuale trattenuta parziale"
+        ]
+      },
+      "ragionamento": [
+        "Identificare con certezza il dipendente.",
+        "Individuare il cedolino o l'intervallo richiesto.",
+        "Leggere competenze, trattenute, indennità, TFR, ferie, permessi e presenze.",
+        "Confrontare il mese richiesto con mesi precedenti e successivi.",
+        "Collegare eventuali verbali e trattenute.",
+        "Verificare se il netto è coerente con competenze e trattenute.",
+        "Segnalare cedolini mancanti, dati anomali o parser non affidabile.",
+        "Fornire una conclusione distinta per ogni voce richiesta."
+      ],
+      "domande": [
+        "Quanto ha percepito netto Carmine Russo a maggio 2026?",
+        "Quanto ha percepito lordo Carmine Russo a maggio 2026?",
+        "Qual è la differenza tra lordo e netto?",
+        "Quali trattenute sono state applicate?",
+        "L'indennità L.207 è stata inserita nella busta paga di Carmine Russo di maggio 2026?",
+        "Il trattamento integrativo è stato riconosciuto?",
+        "È presente un'integrazione salariale?",
+        "Quali indennità sono presenti nel cedolino?",
+        "Quale indennità manca rispetto al mese precedente?",
+        "Perché il netto di maggio è più basso di aprile?",
+        "Qual è la quota TFR maturata nel mese?",
+        "Quanto TFR ha maturato ad oggi?",
+        "Quanto TFR aveva maturato al 31 dicembre 2025?",
+        "Quanto TFR ha maturato da gennaio a maggio 2026?",
+        "Quanto TFR è stato liquidato?",
+        "Quanto TFR rimane accantonato?",
+        "Ci sono mesi mancanti nel calcolo del TFR?",
+        "Quante ferie ha maturato?",
+        "Quante ferie ha utilizzato?",
+        "Quante ferie residue ha?",
+        "Quanti permessi residui ha?",
+        "Quante ore di straordinario ha fatto?",
+        "Quanti giorni di malattia risultano?",
+        "Ci sono assenze non giustificate?",
+        "È stata applicata una trattenuta per verbale auto?",
+        "A quale verbale corrisponde la trattenuta?",
+        "In quale cedolino è stata applicata?",
+        "Quanto è stato trattenuto?",
+        "Quanto resta ancora da trattenere?",
+        "La trattenuta è stata applicata nel mese corretto?",
+        "Quali verbali devono ancora essere recuperati in busta paga?",
+        "Il cedolino di maggio 2026 è arrivato?",
+        "Ci sono anomalie nel cedolino?",
+        "Confronta tutti i cedolini di Carmine Russo del 2026.",
+        "Quanto è costato complessivamente Carmine Russo nel 2026?",
+        "Qual è la media del netto mensile?",
+        "Quali dipendenti hanno avuto una variazione anomala del netto?",
+        "Quali dipendenti hanno TFR mancante o incoerente?",
+        "Quali dipendenti hanno trattenute per verbali ancora aperte?"
+      ],
+      "esempi_risposta": [
+        {
+          "domanda": "L'indennità L.207 è presente nel cedolino di maggio 2026?",
+          "risposta": "Sì. Nel cedolino di Carmine Russo di maggio 2026 è presente la voce Indennità L.207 per l'importo rilevato dal documento. Ho verificato il cedolino tramite codice fiscale e matricola. Affidabilità: certo."
+        },
+        {
+          "domanda": "Quanto TFR aveva maturato al 31 dicembre 2025?",
+          "risposta": "Il TFR maturato al 31 dicembre 2025 corrisponde al valore progressivo dell'ultimo cedolino disponibile entro quella data, al netto di eventuali somme già liquidate. Se manca un mese, la chat deve segnalarlo e non presentare il totale come definitivo."
+        }
+      ]
+    },
+    "verbali_veicoli_trattenute": {
+      "nome": "Verbali, veicoli, conducenti e recuperi",
+      "entita": [
+        "verbali",
+        "veicoli",
+        "dipendenti",
+        "trattenute_dipendenti",
+        "cedolini",
+        "prima_nota_cassa",
+        "prima_nota_banca"
+      ],
+      "ragionamento": [
+        "Identificare verbale, targa, data, importo e scadenza.",
+        "Individuare il veicolo e il conducente assegnato alla data del verbale.",
+        "Verificare se la società ha pagato il verbale.",
+        "Verificare se esiste una proposta di trattenuta.",
+        "Verificare se la trattenuta è stata comunicata al consulente.",
+        "Cercare la trattenuta nel cedolino previsto.",
+        "Calcolare importo recuperato e residuo.",
+        "Non applicare mai automaticamente la trattenuta."
+      ],
+      "domande": [
+        "Il verbale numero X è stato pagato?",
+        "Chi guidava il veicolo alla data del verbale?",
+        "Il pagamento è stato effettuato dalla società?",
+        "È stata proposta una trattenuta al dipendente?",
+        "La trattenuta è stata confermata?",
+        "È stata comunicata al consulente?",
+        "È comparsa nel cedolino?",
+        "Quanto è stato recuperato?",
+        "Quanto resta da recuperare?",
+        "Quali verbali non hanno ancora un conducente associato?",
+        "Quali trattenute non sono state trovate nel cedolino previsto?",
+        "Quali verbali sono stati pagati dalla società ma non recuperati?"
+      ]
+    },
+    "fatture_fornitori": {
+      "nome": "Fatture fornitori, pagamenti e scadenze",
+      "entita": [
+        "invoices",
+        "fornitori",
+        "prima_nota_cassa",
+        "prima_nota_banca",
+        "prima_nota_provvisoria",
+        "bank_movements",
+        "veicoli"
+      ],
+      "ragionamento": [
+        "Individuare fattura e fornitore.",
+        "Verificare metodo di pagamento impostato nell'anagrafica.",
+        "Verificare eventuale movimento di cassa o banca.",
+        "Verificare riconciliazione bancaria.",
+        "Distinguere pagamento effettivo da segna pagata manualmente.",
+        "Valutare scadenza operativa solo per pagamento a mezzo agente.",
+        "Segnalare differenze tra totale fattura e netto pagato."
+      ],
+      "domande": [
+        "Questa fattura è stata pagata?",
+        "Come è stata pagata?",
+        "Quale movimento dimostra il pagamento?",
+        "È stata segnata pagata manualmente?",
+        "Quali fatture sono ancora da pagare?",
+        "Quali fatture sono in provvisoria?",
+        "Quali fatture devono essere divise tra cassa e banca?",
+        "Quali fatture con pagamento a mezzo agente sono in scadenza?",
+        "Quanto abbiamo speso con questo fornitore nel 2026?",
+        "Quali fatture hanno importi incoerenti?",
+        "Quali fatture risultano pagate ma non riconciliate?",
+        "Quali fatture sono collegate a un veicolo?"
+      ]
+    },
+    "corrispettivi_pos": {
+      "nome": "Corrispettivi, contanti, POS e accrediti",
+      "entita": [
+        "corrispettivi",
+        "calendar_days",
+        "pos_riconciliazioni",
+        "prima_nota_cassa",
+        "prima_nota_banca",
+        "bank_movements"
+      ],
+      "ragionamento": [
+        "Confrontare corrispettivo manuale e XML.",
+        "Confrontare POS manuale e POS XML.",
+        "Calcolare contante effettivo.",
+        "Calcolare data prevista di accredito con calendario lavorativo.",
+        "Verificare accredito bancario.",
+        "Distinguere ritardo spiegato dal calendario da anomalia reale.",
+        "Segnalare differenze oltre tolleranza."
+      ],
+      "domande": [
+        "Quanto ho incassato oggi?",
+        "Quanto è stato incassato in contanti?",
+        "Quanto è stato incassato con POS?",
+        "Il corrispettivo manuale coincide con l'XML?",
+        "Il POS manuale coincide con il POS XML?",
+        "Quando è previsto l'accredito del POS?",
+        "Perché l'accredito di sabato non è ancora arrivato?",
+        "Quali accrediti POS sono in ritardo?",
+        "Quali giorni hanno discrepanze?",
+        "Quanto contante effettivo è entrato questo mese?",
+        "Quali accrediti bancari non sono stati collegati ai POS?"
+      ]
+    },
+    "riconciliazione_bancaria": {
+      "nome": "Riconciliazione tra banca e prima nota",
+      "entita": [
+        "bank_movements",
+        "prima_nota_banca",
+        "riconciliazioni"
+      ],
+      "filtri_duri": [
+        "stesso segno",
+        "delta importo entro tolleranza",
+        "delta giorni entro finestra"
+      ],
+      "ragionamento": [
+        "Applicare filtri duri.",
+        "Individuare candidati compatibili.",
+        "Usare il testo solo per scegliere tra candidati già compatibili.",
+        "Classificare certo, probabile o dubbio.",
+        "Non sovrascrivere mai una riconciliazione esistente."
+      ],
+      "domande": [
+        "Quali movimenti bancari non sono riconciliati?",
+        "Quali movimenti hanno una proposta di riconciliazione?",
+        "Perché questo movimento è dubbio?",
+        "Quali movimenti sono stati riconciliati automaticamente?",
+        "Quali movimenti sono stati riconciliati manualmente?",
+        "Ci sono pagamenti duplicati?",
+        "Ci sono addebiti bancari senza registrazione in prima nota?",
+        "Ci sono registrazioni in prima nota senza movimento bancario?"
+      ]
+    },
+    "prima_nota": {
+      "nome": "Prima nota cassa, banca e provvisoria",
+      "entita": [
+        "prima_nota_cassa",
+        "prima_nota_banca",
+        "prima_nota_provvisoria"
+      ],
+      "domande": [
+        "Qual è il saldo di cassa oggi?",
+        "Qual era il saldo al 31 dicembre 2025?",
+        "Qual è il saldo banca?",
+        "Quanto contante è entrato questo mese?",
+        "Quanto è uscito per fornitori?",
+        "Quali movimenti sono stati inseriti retroattivamente?",
+        "Quali movimenti hanno modificato il saldo progressivo?",
+        "Quali movimenti provvisori devono essere confermati?",
+        "Ci sono saldi negativi anomali?",
+        "Quali movimenti non hanno un documento collegato?"
+      ]
+    },
+    "iva": {
+      "nome": "IVA mensile e confronto con F24",
+      "entita": [
+        "invoices",
+        "corrispettivi",
+        "liquidazioni_iva",
+        "f24_tributi",
+        "quietanze",
+        "bank_movements"
+      ],
+      "ragionamento": [
+        "Calcolare IVA a debito dai corrispettivi.",
+        "Calcolare IVA detraibile dalle fatture.",
+        "Determinare debito o credito del periodo.",
+        "Individuare il tributo IVA nel relativo F24.",
+        "Verificare pagamento bancario e quietanza.",
+        "Confrontare importo calcolato e importo versato.",
+        "Segnalare differenze o periodi non coerenti."
+      ],
+      "domande": [
+        "Quanto IVA devo versare per maggio 2026?",
+        "Quanto credito IVA risulta?",
+        "Il tributo IVA del mese è stato inserito nell'F24?",
+        "L'IVA di maggio 2026 è stata pagata?",
+        "È presente la quietanza del versamento IVA?",
+        "Quanto è stato effettivamente addebitato in banca?",
+        "Ci sono differenze tra liquidazione e F24?",
+        "Perché l'IVA è aumentata rispetto al mese precedente?",
+        "Quali fatture incidono maggiormente sull'IVA?",
+        "Confronta IVA calcolata, IVA versata e quietanza."
+      ]
+    },
+    "veicoli_noleggio": {
+      "nome": "Veicoli, noleggio e costi",
+      "entita": [
+        "veicoli",
+        "invoices",
+        "verbali",
+        "noleggio_costi"
+      ],
+      "domande": [
+        "Quanto è costato questo veicolo nel 2026?",
+        "Quanto abbiamo pagato di noleggio?",
+        "Quanto abbiamo speso in manutenzione?",
+        "Quanti verbali ha ricevuto?",
+        "Il contratto risulta cessato?",
+        "Ci sono fatture dopo la cessazione?",
+        "Quali costi non hanno una fattura collegata?",
+        "Quali fatture contengono la targa del veicolo?"
+      ]
+    },
+    "documenti_import": {
+      "nome": "Documenti importati, errori e provenienza",
+      "entita": [
+        "documents_inbox",
+        "import_jobs",
+        "alerts",
+        "audit_log"
+      ],
+      "domande": [
+        "Quali documenti sono arrivati oggi?",
+        "Quali documenti sono in errore?",
+        "Quali documenti devono essere riprocessati?",
+        "Da quale canale è arrivato questo documento?",
+        "Questo documento è già stato importato?",
+        "Quale record è stato creato da questo documento?",
+        "Quali documenti non hanno prodotto alcun record?",
+        "Quali parser hanno generato più errori?",
+        "Quali documenti sono stati modificati manualmente?"
+      ]
+    },
+    "controllo_gestionale": {
+      "nome": "Analisi trasversale e consulenza amministrativa",
+      "ragionamento": [
+        "Aggregare dati da più domini.",
+        "Confrontare periodi omogenei.",
+        "Separare variazioni normali da anomalie.",
+        "Indicare le cause principali.",
+        "Ordinare le criticità per urgenza e impatto.",
+        "Proporre controlli o azioni successive."
+      ],
+      "domande": [
+        "Cosa richiede la mia attenzione oggi?",
+        "Quali documenti mancano?",
+        "Quali pagamenti risultano eseguiti ma senza documentazione ufficiale?",
+        "Quali riconciliazioni devo confermare?",
+        "Quali scadenze sono imminenti?",
+        "Quali scadenze sono già superate?",
+        "Quali anomalie contabili sono state rilevate?",
+        "Perché il saldo banca è diminuito?",
+        "Perché il costo del personale è aumentato?",
+        "Perché l'F24 è più alto del mese precedente?",
+        "Quali dipendenti hanno variazioni anomale?",
+        "Quali fornitori hanno aumentato i prezzi?",
+        "Quali costi sono cresciuti maggiormente?",
+        "Quali pagamenti non hanno un documento collegato?",
+        "Quali documenti hanno dati incoerenti?",
+        "Se oggi ci fosse un controllo, quali elementi sarebbero incompleti?",
+        "Fammi un riepilogo amministrativo della settimana.",
+        "Fammi un riepilogo delle anomalie del mese.",
+        "Quali decisioni attendono una mia conferma?"
+      ]
+    }
+  },
+  "regole_conversazionali": {
+    "domande_ambigue": {
+      "regola": "Se esistono più soggetti o documenti compatibili, la chat deve indicare le alternative e chiedere conferma solo quando indispensabile."
+    },
+    "domande_multiple": {
+      "regola": "La chat deve scomporre la richiesta e rispondere separatamente a ogni punto."
+    },
+    "assenza_dati": {
+      "regola": "La chat non deve inventare dati. Deve specificare quali documenti o record mancano e se la conclusione è solo parziale."
+    },
+    "confronti_temporali": {
+      "regola": "Usare periodi omogenei e dichiarare eventuali mesi mancanti."
+    },
+    "linguaggio": {
+      "regola": "Risposta chiara, diretta e amministrativamente corretta. Evitare formule tecniche inutili; spiegare invece la causa concreta."
+    }
+  },
+  "azioni_proponibili_dalla_chat": [
+    "Aprire il documento originale.",
+    "Mostrare il movimento bancario collegato.",
+    "Mostrare il cedolino o l'F24 collegato.",
+    "Proporre una riconciliazione.",
+    "Proporre la creazione di un alert.",
+    "Proporre una verifica manuale.",
+    "Proporre il collegamento tra quietanza e F24.",
+    "Proporre il collegamento tra trattenuta, verbale e cedolino.",
+    "Proporre il controllo di un mese mancante.",
+    "Proporre il confronto con il periodo precedente."
+  ],
+  "azioni_vietate_alla_chat": [
+    "Segnare autonomamente un F24 come pagato.",
+    "Applicare autonomamente una trattenuta in busta paga.",
+    "Modificare valori fiscali estratti dai documenti.",
+    "Confermare una riconciliazione probabile senza autorizzazione.",
+    "Eliminare documenti o movimenti.",
+    "Sovrascrivere collegamenti già confermati.",
+    "Presentare come certo un risultato con dati incompleti."
+  ],
+  "test_minimi_richiesti": [
+    {
+      "scenario": "F24 con movimento bancario ma senza quietanza",
+      "risultato_atteso": "Pagato; quietanza mancante; affidabilità certa se il match bancario è esatto."
+    },
+    {
+      "scenario": "F24 con quietanza ma senza movimento bancario",
+      "risultato_atteso": "Pagamento ufficialmente documentato; banca non riconciliata."
+    },
+    {
+      "scenario": "Tributo presente in F24 pagato",
+      "risultato_atteso": "Tributo pagato, salvo compensazioni o anomalie."
+    },
+    {
+      "scenario": "Indennità presente nel cedolino",
+      "risultato_atteso": "La chat conferma voce, importo, mese, dipendente e documento."
+    },
+    {
+      "scenario": "Calcolo TFR a una data",
+      "risultato_atteso": "Usa ultimo progressivo disponibile, sottrae liquidato e segnala mesi mancanti."
+    },
+    {
+      "scenario": "Trattenuta verbale prevista ma assente",
+      "risultato_atteso": "La chat segnala mancata applicazione e indica verbale, mese e importo."
+    },
+    {
+      "scenario": "Domanda su costo dipendente in intervallo",
+      "risultato_atteso": "Somma valori dei cedolini del periodo e segnala eventuali documenti mancanti."
+    }
+  ],
+  "output_api_chat_consigliato": {
+    "tipo": "json",
+    "schema": {
+      "risposta_testuale": "string",
+      "stato": "string",
+      "livello_affidabilita": "certo | probabile | dubbio",
+      "entita_principali": "array",
+      "documenti_consultati": "array",
+      "collegamenti_trovati": "array",
+      "dati_mancanti": "array",
+      "anomalie": "array",
+      "azioni_proposte": "array",
+      "richiede_conferma_utente": "boolean"
+    }
+  },
+  "implementazione_chat_intelligente": {
+    "stato_attuale": {
+      "roadmap_punto": 19,
+      "voce_menu": "Chat intelligente",
+      "stato": "non_implementata",
+      "frontend": "pagina_vuota",
+      "nota": "Questo file costituisce la base di conoscenza e descrive il comportamento atteso, ma non rappresenta il motore operativo della chat."
+    },
+    "architettura_generale": {
+      "flusso": [
+        "L'utente invia una domanda dalla pagina Chat intelligente.",
+        "Il frontend invia la richiesta al servizio backend autenticato.",
+        "Il backend recupera cronologia, permessi, azienda e contesto utile.",
+        "Il backend carica le regole pertinenti della base di conoscenza.",
+        "Il modello AI riceve domanda, contesto e strumenti autorizzati.",
+        "Il modello richiede al backend i dati necessari tramite strumenti controllati.",
+        "Il backend interroga MongoDB e, quando necessario, legge i documenti originali.",
+        "Il modello costruisce una risposta motivata con fonti, affidabilità e dati mancanti.",
+        "Il backend salva domanda, risposta, strumenti usati e decisioni.",
+        "Il frontend mostra la risposta e le eventuali azioni proposte."
+      ],
+      "principio": "La base di conoscenza stabilisce come ragionare. Il backend fornisce dati reali e controllati. Il modello formula la risposta. Il frontend rende disponibile la conversazione."
+    },
+    "componenti_da_costruire": {
+      "motore_backend": {
+        "descrizione": "Servizio backend che riceve la domanda dell'utente, recupera il contesto della conversazione, seleziona la parte utile della base di conoscenza, chiama il modello AI e gestisce gli strumenti.",
+        "responsabilita": [
+          "autenticare l'utente",
+          "verificare azienda, ruolo e permessi",
+          "recuperare la conversazione",
+          "recuperare le decisioni precedenti rilevanti",
+          "selezionare il contesto utile",
+          "chiamare il provider AI",
+          "esporre strumenti controllati per interrogare i dati",
+          "validare parametri e risultati degli strumenti",
+          "registrare ogni chiamata nel log",
+          "salvare domanda, risposta, fonti e decisioni",
+          "restituire una risposta strutturata al frontend"
+        ],
+        "endpoint_consigliati": [
+          "POST /api/chat/conversations",
+          "GET /api/chat/conversations",
+          "GET /api/chat/conversations/{id}",
+          "POST /api/chat/conversations/{id}/messages",
+          "GET /api/chat/conversations/{id}/messages",
+          "POST /api/chat/proposals/{id}/confirm",
+          "POST /api/chat/proposals/{id}/reject",
+          "GET /api/chat/messages/{id}/sources"
+        ]
+      },
+      "strumenti_dati": {
+        "principio": "Il modello AI non deve avere accesso diretto e illimitato a MongoDB. Il backend deve esporre strumenti autorizzati, tipizzati e validati.",
+        "regole": [
+          "Ogni strumento deve applicare i permessi dell'utente.",
+          "Ogni strumento deve limitare i campi restituiti.",
+          "Ogni chiamata deve essere registrata.",
+          "Gli strumenti di lettura devono essere separati da quelli con effetti sui dati.",
+          "Gli strumenti con effetti devono richiedere conferma esplicita dell'utente.",
+          "Il modello non può costruire query MongoDB libere."
+        ],
+        "strumenti_minimi": [
+          "cerca_documenti",
+          "leggi_documento",
+          "leggi_documento_originale",
+          "cerca_fatture",
+          "leggi_fattura",
+          "cerca_fornitori",
+          "cerca_f24",
+          "leggi_f24",
+          "leggi_tributi_f24",
+          "cerca_quietanze",
+          "cerca_movimenti_bancari",
+          "cerca_riconciliazioni",
+          "cerca_cedolini",
+          "leggi_cedolino",
+          "cerca_dipendenti",
+          "calcola_tfr",
+          "cerca_indennita",
+          "cerca_ferie_permessi",
+          "cerca_verbali",
+          "cerca_trattenute",
+          "cerca_veicoli",
+          "cerca_corrispettivi",
+          "cerca_accrediti_pos",
+          "cerca_movimenti_prima_nota",
+          "cerca_alert",
+          "cerca_audit_log"
+        ]
+      },
+      "lettura_documenti_originali": {
+        "fonte": "documents_inbox.raw_content_b64",
+        "regola": "Il contenuto originale è accessibile esclusivamente lato server.",
+        "divieti": [
+          "raw_content_b64 non deve comparire nelle API pubbliche",
+          "raw_content_b64 non deve essere inviato integralmente al frontend",
+          "il modello non deve ricevere documenti non pertinenti alla domanda",
+          "i documenti non devono essere modificati"
+        ],
+        "flusso": [
+          "Il modello richiede un documento tramite uno strumento autorizzato.",
+          "Il backend verifica utente, ruolo, azienda e collegamento del documento.",
+          "Il backend recupera i byte originali.",
+          "Il backend estrae testo, tabelle o dati necessari.",
+          "Il modello riceve solo il contenuto pertinente.",
+          "L'accesso viene registrato nell'audit log.",
+          "Il documento resta disponibile tramite la funzione Vedi Documento."
+        ],
+        "formati_supportati": [
+          "PDF",
+          "XML",
+          "P7M",
+          "CSV",
+          "Excel",
+          "immagini"
+        ]
+      },
+      "memoria_persistente": {
+        "principio": "La chat deve ricordare conversazioni, correzioni, decisioni confermate, preferenze operative e collegamenti già verificati.",
+        "collections": {
+          "chat_conversations": [
+            "id",
+            "titolo",
+            "utente_id",
+            "azienda_id",
+            "created_at",
+            "updated_at",
+            "stato",
+            "ultimo_messaggio_at"
+          ],
+          "chat_messages": [
+            "id",
+            "conversation_id",
+            "ruolo",
+            "contenuto",
+            "created_at",
+            "fonti",
+            "livello_affidabilita",
+            "dati_mancanti",
+            "anomalie",
+            "azioni_proposte"
+          ],
+          "chat_tool_calls": [
+            "id",
+            "conversation_id",
+            "message_id",
+            "nome_strumento",
+            "parametri_sanitizzati",
+            "esito",
+            "durata_ms",
+            "created_at"
+          ],
+          "chat_decisions": [
+            "id",
+            "conversation_id",
+            "entita_tipo",
+            "entita_id",
+            "decisione",
+            "motivazione",
+            "confermata_da",
+            "created_at"
+          ],
+          "chat_proposals": [
+            "id",
+            "conversation_id",
+            "tipo_azione",
+            "entita_tipo",
+            "entita_id",
+            "parametri",
+            "stato",
+            "created_at",
+            "confirmed_at",
+            "confirmed_by"
+          ]
+        },
+        "regole": [
+          "Le correzioni dell'utente devono prevalere sulle ipotesi precedenti.",
+          "Una decisione confermata deve essere riutilizzata quando pertinente.",
+          "La memoria non deve sostituire i dati ufficiali del gestionale.",
+          "Le conversazioni devono essere filtrate per azienda e autorizzazioni.",
+          "I dati sensibili devono essere conservati secondo i permessi applicativi."
+        ]
+      },
+      "frontend": {
+        "pagina": "Chat intelligente",
+        "stato_attuale": "pagina_vuota",
+        "funzioni_minime": [
+          "elenco conversazioni",
+          "creazione nuova conversazione",
+          "invio domanda",
+          "visualizzazione risposta progressiva",
+          "visualizzazione fonti utilizzate",
+          "apertura documento originale",
+          "visualizzazione livello di affidabilita",
+          "visualizzazione dati mancanti",
+          "visualizzazione anomalie",
+          "visualizzazione azioni proposte",
+          "conferma o rifiuto delle proposte",
+          "cronologia persistente",
+          "ricerca nelle conversazioni",
+          "rinomina e archiviazione conversazioni"
+        ],
+        "componenti_risposta": [
+          "risposta principale",
+          "stato",
+          "livello di affidabilita",
+          "documenti consultati",
+          "record collegati",
+          "dati mancanti",
+          "anomalie",
+          "azioni consigliate",
+          "pulsanti di conferma quando necessari"
+        ]
+      },
+      "provider_ai": {
+        "provider_preferito": "Anthropic",
+        "modello": "configurabile tramite variabile ambiente",
+        "variabili_ambiente": [
+          "ANTHROPIC_API_KEY",
+          "ANTHROPIC_MODEL"
+        ],
+        "deploy": "Render",
+        "sicurezza": [
+          "La chiave API non deve essere inserita nel frontend.",
+          "La chiave API non deve essere salvata nel repository.",
+          "La chiave deve essere configurata esclusivamente nei secret di Render.",
+          "La chiave non deve comparire nei log applicativi.",
+          "La chiave precedentemente transitata in chat deve essere revocata e rigenerata prima dell'uso in produzione.",
+          "Devono essere configurati limiti di spesa e monitoraggio delle chiamate.",
+          "Il modello utilizzato deve poter essere sostituito senza modificare la logica di dominio."
+        ]
+      }
+    },
+    "regola_operativa": {
+      "principio": "La chat analizza, spiega, confronta e propone, ma non modifica autonomamente dati contabili, fiscali, bancari, amministrativi o retributivi.",
+      "azioni_solo_lettura": [
+        "consultare dati",
+        "leggere documenti",
+        "calcolare riepiloghi",
+        "confrontare periodi",
+        "individuare anomalie",
+        "ricostruire collegamenti",
+        "proporre riconciliazioni",
+        "proporre controlli"
+      ],
+      "azioni_con_conferma_esplicita": [
+        "confermare una riconciliazione",
+        "collegare una quietanza a un F24",
+        "collegare un movimento bancario",
+        "chiudere o risolvere un alert",
+        "confermare una trattenuta",
+        "modificare una classificazione",
+        "registrare una decisione amministrativa",
+        "creare una scrittura definitiva"
+      ],
+      "azioni_vietate_autonomamente": [
+        "modificare importi fiscali",
+        "segnare un F24 come pagato senza prova",
+        "registrare pagamenti",
+        "applicare trattenute in busta paga",
+        "eliminare documenti",
+        "modificare cedolini",
+        "creare scritture contabili definitive",
+        "sovrascrivere riconciliazioni confermate",
+        "alterare i documenti originali"
+      ]
+    },
+    "output_backend_consigliato": {
+      "schema": {
+        "conversation_id": "string",
+        "message_id": "string",
+        "risposta_testuale": "string",
+        "stato": "string",
+        "livello_affidabilita": "certo | probabile | dubbio",
+        "entita_principali": "array",
+        "documenti_consultati": "array",
+        "collegamenti_trovati": "array",
+        "dati_mancanti": "array",
+        "anomalie": "array",
+        "azioni_proposte": "array",
+        "richiede_conferma_utente": "boolean"
+      }
+    },
+    "criteri_di_accettazione": [
+      "La chat risponde usando dati reali e non solo la base di conoscenza.",
+      "Ogni risposta indica le fonti interne utilizzate.",
+      "La cronologia resta disponibile dopo logout e nuovo accesso.",
+      "La chat distingue sempre certo, probabile e dubbio.",
+      "La chat può leggere in sicurezza PDF, XML ed Excel originali.",
+      "Nessuna azione con effetti sui dati viene eseguita senza conferma.",
+      "Ogni chiamata agli strumenti è tracciata.",
+      "La chiave Anthropic non è esposta al frontend o al repository.",
+      "La pagina frontend non è più vuota ed è collegata agli endpoint backend.",
+      "Le risposte rispettano le regole specifiche di ogni dominio."
+    ]
+  }
+}
