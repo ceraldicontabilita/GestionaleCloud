@@ -401,6 +401,20 @@ ALERT_CATALOG: Dict[str, Dict[str, Any]] = {
         "condizione_chiusura": "Attesa completata a mano o annullata"
     },
 
+    # --- Noleggio auto ---
+    "NOL_FATTURA_MANCANTE": {
+        "modulo": "fatture",
+        "severita": "warning",
+        "titolo": "Veicolo attivo senza fatture di noleggio recenti (da verificare)",
+        "condizione_chiusura": "Nuova fattura arrivata o contratto marcato cessato"
+    },
+    "NOL_CESSAZIONE_RILEVATA": {
+        "modulo": "fatture",
+        "severita": "info",
+        "titolo": "Probabile cessazione contratto noleggio (dicitura in fattura)",
+        "condizione_chiusura": "Stato contratto confermato dall'utente sulla scheda veicolo"
+    },
+
     # --- Riconciliazione ---
     "RIC_NON_RICONCILIATO": {
         "modulo": "riconciliazione",

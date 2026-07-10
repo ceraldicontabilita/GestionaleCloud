@@ -294,16 +294,32 @@ contratto attivo/cessato).
 
 ## 11. Noleggio auto e contratti cessati
 
-- I costi auto arrivano per due strade: **fatture** collegate al veicolo via targa
-  (canoni, assicurazione, manutenzione) e **costi manuali** per ciò che non ha
-  fattura nel sistema (bollo, altro). La vista costi per veicolo somma fatture +
-  verbali + costi manuali, senza doppi conteggi.
-- **Regola non negoziabile**: se il contratto di un veicolo risulta **cessato**,
-  il sistema **non genera mai** l'avviso "manca la fattura di noleggio". Solo per i
-  veicoli attivi controlla che arrivino fatture con regolarità (soglia 45 giorni).
-- Se in una fattura di un veicolo attivo compaiono diciture di chiusura ("cessazione
-  contratto", "ultimo canone", "restituzione veicolo"...), il sistema genera **solo
-  un avviso informativo**: lo stato del contratto lo cambi sempre e solo tu.
+Principio del modulo (specifica 10-07-2026): auto/targa → contratto → fatture e
+costi → pagamenti → driver assegnato → verbali → eventuali trattenute → report.
+
+- **Anagrafica veicolo**: targa, marca/modello, società di noleggio, driver,
+  date, **stato contratto** (attivo/cessato/da verificare — lo cambi solo tu),
+  canone previsto, fringe benefit, note, **storico assegnazioni**.
+- **Storico assegnazioni driver**: il sistema non guarda solo il driver attuale
+  ma **il driver valido alla data dell'evento** — un verbale del 10/03 va a chi
+  aveva l'auto il 10/03. Ogni cambio driver chiude il periodo precedente e ne
+  apre uno nuovo, in automatico.
+- I costi auto arrivano dalle **fatture** collegate al veicolo via targa
+  (canoni, pedaggi, bollo, riparazioni, verbali rifatturati); la fattura resta
+  una normale fattura fornitore e segue il giro Fornitore → metodo pagamento
+  (di norma Banca) → Prima Nota → riconciliazione con l'estratto conto.
+- **Regola non negoziabile**: contratto **cessato** → il sistema **non genera
+  mai** l'avviso "manca la fattura di noleggio" (né scadenza canone); lo storico
+  costi resta. Solo per i veicoli **attivi** controlla ogni giorno (ore 7:45)
+  che arrivino fatture con regolarità: **soglia 35 giorni**
+  (`NOLEGGIO_GIORNI_SENZA_FATTURA`).
+- Se mancano fatture da oltre 35 giorni, il sistema **prima rilegge l'ultima
+  fattura**: se contiene diciture di chiusura ("cessazione contratto", "ultimo
+  canone", "restituzione veicolo", "conguaglio finale"...) genera un avviso
+  **informativo** "probabile contratto cessato — conferma tu lo stato";
+  altrimenti un avviso **soft** "da verificare". Mai un allarme grave immediato.
+- Caso già deciso: **GG782PN Alfa Romeo Stelvio = contratto cessato** (il
+  sistema lo imposta da solo solo se lo stato non è mai stato toccato).
 
 ---
 

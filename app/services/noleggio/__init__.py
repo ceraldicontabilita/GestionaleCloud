@@ -20,6 +20,12 @@ from .processors import (
     scan_fatture_noleggio,
     scegli_veicolo_per_fattura
 )
+from .controlli import (
+    DICITURE_CESSAZIONE,
+    contiene_segnali_cessazione,
+    driver_alla_data,
+    controlla_regolarita_canoni,
+)
 
 __all__ = [
     # Constants
@@ -39,5 +45,10 @@ __all__ = [
     # Processors
     "processa_fattura_noleggio",
     "scan_fatture_noleggio",
-    "scegli_veicolo_per_fattura"
+    "scegli_veicolo_per_fattura",
+    # Controlli (regolarità canoni / cessazioni / storico driver)
+    "DICITURE_CESSAZIONE",
+    "contiene_segnali_cessazione",
+    "driver_alla_data",
+    "controlla_regolarita_canoni",
 ]

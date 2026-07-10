@@ -626,6 +626,30 @@ def start_scheduler():
         replace_existing=True
     )
 
+    # Task Regolarità canoni noleggio - ogni giorno alle 7:45.
+    # Per i veicoli con contratto ATTIVO controlla che arrivino fatture
+    # entro NOLEGGIO_GIORNI_SENZA_FATTURA (35 gg, scelta utente); se
+    # mancano rilegge l'ultima fattura: diciture di cessazione → avviso
+    # informativo "probabile contratto cessato" (lo stato lo cambia solo
+    # l'utente), altrimenti avviso soft "da verificare". Contratti
+    # cessati: MAI avvisi (regola non negoziabile).
+    async def controllo_canoni_noleggio_task():
+        try:
+            from app.services.noleggio import controlla_regolarita_canoni
+            from app.database import Database
+            r = await controlla_regolarita_canoni(Database.get_db())
+            logger.info(f"[SCHEDULER-NOLEGGIO] controllo canoni: {r}")
+        except Exception as e:
+            logger.error(f"[SCHEDULER-NOLEGGIO] errore controllo canoni: {e}")
+
+    scheduler.add_job(
+        controllo_canoni_noleggio_task,
+        CronTrigger(hour=7, minute=45),
+        id="controllo_canoni_noleggio",
+        name="Regolarità canoni noleggio (ogni giorno ore 7:45)",
+        replace_existing=True
+    )
+
     # Task Scadenze F24 - ogni giorno alle 8:00
     scheduler.add_job(
         check_scadenze_f24_task,

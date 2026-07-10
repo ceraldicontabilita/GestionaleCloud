@@ -103,11 +103,31 @@ async def _get_verbali_completi_per_targa(
             "fonte": "posta+fattura" if esistente else "fattura",
         }
 
+    # Responsabile ALLA DATA dell'infrazione (storico assegnazioni, motore
+    # controlli): il verbale di marzo va al driver che aveva l'auto a marzo,
+    # non a quello attuale. Fallback esplicito al driver corrente se lo
+    # storico non copre la data.
+    veicolo = await db[COLLECTION].find_one({"targa": targa_upper}, {"_id": 0})
+    if veicolo:
+        from app.services.noleggio import driver_alla_data
+        for v in verbali_per_numero.values():
+            v["driver_competente"] = driver_alla_data(veicolo, v.get("data_verbale"))
+
     return sorted(
         verbali_per_numero.values(),
         key=lambda x: x.get("data_verbale") or "",
         reverse=True,
     )
+
+
+@router.post("/controllo-canoni")
+@handle_errors
+async def controllo_canoni_manuale() -> Dict[str, Any]:
+    """Lancia subito il controllo regolarità canoni (di norma gira ogni
+    giorno alle 7:45). Contratti cessati esclusi per regola."""
+    db = Database.get_db()
+    from app.services.noleggio import controlla_regolarita_canoni
+    return await controlla_regolarita_canoni(db)
 
 
 @router.get("/veicoli")
@@ -260,6 +280,13 @@ async def get_veicoli(
             veicolo["potenza_kw"] = salvato.get("potenza_kw") or veicolo.get("potenza_kw")
             veicolo["cilindrata"] = salvato.get("cilindrata") or veicolo.get("cilindrata")
             veicolo["telaio"] = salvato.get("telaio") or veicolo.get("telaio")
+            # Specifica Noleggio 10-07-2026: stato contratto (deciso solo
+            # dall'utente), canone previsto, fringe benefit, storico driver
+            veicolo["stato_contratto"] = salvato.get("stato_contratto") or "attivo"
+            veicolo["stato_veicolo"] = salvato.get("stato_veicolo")
+            veicolo["canone_previsto"] = salvato.get("canone_previsto")
+            veicolo["fringe_benefit"] = salvato.get("fringe_benefit")
+            veicolo["assegnazioni"] = salvato.get("assegnazioni") or []
 
         # Canone mensile: se non è stato configurato a mano, lo stimiamo dal
         # canone più recente effettivamente fatturato — meglio di lasciarlo
@@ -657,13 +684,41 @@ async def update_veicolo(
     # alimentazione, potenza_kw, cilindrata) valorizzati dal lookup OpenAPI
     # Automotive e canone_mensile: prima venivano persi in salvataggio perché
     # assenti da questa whitelist, nonostante il frontend li raccogliesse.
+    # stato_contratto/stato_veicolo/canone_previsto/fringe_benefit/assegnazioni:
+    # specifica Noleggio 10-07-2026 (lo stato contratto lo cambia SOLO l'utente;
+    # assegnazioni = storico driver [{driver, driver_id, dal, al}]).
     for campo in ["driver", "driver_id", "marca", "modello", "contratto",
                   "codice_cliente", "centro_fatturazione",
                   "data_inizio", "data_fine", "note", "fornitore_noleggio", "fornitore_piva",
                   "canone_mensile", "anno_immatricolazione", "alimentazione",
-                  "potenza_kw", "cilindrata"]:
+                  "potenza_kw", "cilindrata",
+                  "stato_contratto", "stato_veicolo", "canone_previsto",
+                  "fringe_benefit", "assegnazioni"]:
         if campo in data:
             update_data[campo] = data[campo]
+
+    # Cambio driver = nuovo capitolo dello storico assegnazioni: chiudiamo
+    # l'assegnazione aperta e ne apriamo una nuova, così i verbali futuri
+    # trovano il responsabile GIUSTO alla data dell'infrazione.
+    if data.get("driver") or data.get("driver_id"):
+        oggi = datetime.now(timezone.utc).date().isoformat()
+        esistente = await db[COLLECTION].find_one(
+            {"targa": targa.upper()}, {"_id": 0, "driver": 1, "driver_id": 1, "assegnazioni": 1}
+        ) or {}
+        if (esistente.get("driver_id") or esistente.get("driver")) and (
+            esistente.get("driver_id") != data.get("driver_id")
+        ):
+            storico = esistente.get("assegnazioni") or []
+            aperte = [a for a in storico if not a.get("al")]
+            for a in aperte:
+                a["al"] = oggi
+            storico = [a for a in storico if a.get("al")] + [{
+                "driver": update_data.get("driver", esistente.get("driver")),
+                "driver_id": update_data.get("driver_id", esistente.get("driver_id")),
+                "dal": oggi,
+                "al": None,
+            }]
+            update_data["assegnazioni"] = data.get("assegnazioni", storico)
     
     result = await db[COLLECTION].update_one(
         {"targa": targa.upper()},
