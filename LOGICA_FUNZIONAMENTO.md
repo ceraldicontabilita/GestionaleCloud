@@ -1,5 +1,16 @@
 # Ceraldi ERP — Logica di funzionamento
 
+## 0. Accesso e sessione
+
+- Login con **PIN** (tastierino) o email+password.
+- **La sessione scade dopo 1 ora di inattività**: finché usi l'app il token
+  si rinnova da solo a ogni richiesta (sessione scorrevole) e non ti
+  interrompe mai; se l'app resta ferma per più di un'ora, il collegamento
+  successivo richiede di nuovo il PIN. Scelta voluta: nel gestionale ci sono
+  dati sensibili, niente sessioni lunghe.
+- Durata regolabile con la variabile d'ambiente `ACCESS_TOKEN_EXPIRE_MINUTES`
+  (default 60).
+
 Documento di riferimento per chi usa il gestionale (amministrazione, commercialista).
 Descrive come funziona davvero il sistema, letto dal codice implementato — non è una
 specifica di progetto ma il comportamento reale in produzione.

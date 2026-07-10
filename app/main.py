@@ -158,6 +158,8 @@ app.add_middleware(
     allow_credentials=settings.ALLOW_CREDENTIALS,
     allow_methods=["*"],
     allow_headers=["*"],
+    # Sessione scorrevole: il browser deve poter leggere il token rinnovato
+    expose_headers=["X-Token-Rinnovato"],
 )
 
 try:

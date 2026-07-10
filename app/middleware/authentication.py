@@ -6,6 +6,8 @@ This middleware ensures no endpoint is accidentally left unprotected.
 Individual routers can still use Depends(get_current_user) for user context,
 but this middleware acts as a safety net.
 """
+from datetime import datetime, timedelta, timezone
+
 from fastapi import Request, HTTPException
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -159,7 +161,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             request.state.user_id = user_id
             request.state.user_email = payload.get("email")
             request.state.user_role = payload.get("role", "user")
-            
+
         except JWTError as e:
             logger.warning(f"Auth middleware: invalid token on {path}: {e}")
             return JSONResponse(
@@ -167,5 +169,33 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
                 content={"detail": "Invalid or expired token"},
                 headers={"WWW-Authenticate": "Bearer"}
             )
-        
-        return await call_next(request)
+
+        response = await call_next(request)
+
+        # --- SESSIONE SCORREVOLE (regola utente: PIN dopo 1 ora di
+        # inattività). Se il token ha superato metà vita, ne emettiamo uno
+        # fresco nello header X-Token-Rinnovato: il frontend lo salva e la
+        # scadenza riparte. Usando l'app la sessione non cade mai; ferma
+        # per più di ACCESS_TOKEN_EXPIRE_MINUTES → 401 → PIN.
+        try:
+            exp = payload.get("exp")
+            if exp:
+                vita = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+                residuo = datetime.fromtimestamp(exp, tz=timezone.utc) - datetime.now(timezone.utc)
+                if timedelta(0) < residuo < vita / 2:
+                    nuovo = jwt.encode(
+                        {
+                            "sub": user_id,
+                            "email": payload.get("email"),
+                            "name": payload.get("name"),
+                            "role": payload.get("role", "user"),
+                            "exp": datetime.now(timezone.utc) + vita,
+                        },
+                        settings.SECRET_KEY,
+                        algorithm=settings.ALGORITHM,
+                    )
+                    response.headers["X-Token-Rinnovato"] = nuovo
+        except Exception:
+            logger.exception("Rinnovo scorrevole token non riuscito (non bloccante)")
+
+        return response

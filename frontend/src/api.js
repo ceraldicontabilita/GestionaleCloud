@@ -27,7 +27,15 @@ api.interceptors.request.use(
 // 502/503/504 o richiesta caduta) — evita la pagina d'errore al primo
 // accesso della giornata quando il server impiega qualche secondo a salire.
 api.interceptors.response.use(
-  response => response,
+  response => {
+    // Sessione scorrevole: il backend rinnova il token mentre usi l'app
+    // (scade solo dopo 1 ora di inattività, poi richiede il PIN)
+    const rinnovato = response.headers?.['x-token-rinnovato'];
+    if (rinnovato) {
+      localStorage.setItem('auth_token', rinnovato);
+    }
+    return response;
+  },
   async error => {
     if (error.response?.status === 401) {
       // Token scaduto o invalido - redirect a login
