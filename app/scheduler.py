@@ -509,6 +509,18 @@ def start_scheduler():
         except Exception as e:
             logger.error(f"[SCHEDULER-DRIVE-CORRISPETTIVI] errore: {e}")
 
+    # ── Google Drive: import quietanze F24 (PDF) ogni ora ──────────────────
+    # Canale acceso su scelta esplicita dell'utente (10/07/2026): stesso
+    # motore unico dell'upload manuale (parsing + matching automatico F24).
+    async def _drive_quietanze_job():
+        from app.database import Database
+        from app.services import drive_quietanze_ingest
+        try:
+            result = await drive_quietanze_ingest.sync(Database.get_db())
+            logger.info(f"[SCHEDULER-DRIVE-QUIETANZE] {result}")
+        except Exception as e:
+            logger.error(f"[SCHEDULER-DRIVE-QUIETANZE] errore: {e}")
+
     # ── Automazioni Prima Nota: le ex funzioni "manuali" girano da sole ────
     # 1. corrispettivi → prima nota cassa (idempotente)
     # 2. fatture provvisorie → cassa/banca secondo il metodo fornitore
@@ -588,6 +600,13 @@ def start_scheduler():
         replace_existing=True,
     )
 
+    scheduler.add_job(
+        _drive_quietanze_job,
+        'interval', hours=1,
+        id="drive_quietanze_ingest", name="Import Quietanze F24 da Google Drive (ogni ora)",
+        replace_existing=True,
+    )
+
     # Quadratura settimanale Elaborate ↔ gestionale: verifica che ogni file
     # archiviato in Drive/Elaborate abbia la sua fattura nel gestionale;
     # i buchi vengono re-importati (idempotente) e segnalati con un alert.
@@ -640,6 +659,23 @@ def start_scheduler():
         CronTrigger(day_of_week="sun", hour=5, minute=30),
         id="drive_corrispettivi_quadratura",
         name="Quadratura corrispettivi Drive Elaborate (domenica ore 5:30)",
+        replace_existing=True,
+    )
+
+    async def _drive_quadratura_quietanze_job():
+        from app.database import Database
+        from app.services import drive_quietanze_ingest
+        try:
+            r = await drive_quietanze_ingest.verifica_quadratura_elaborate(Database.get_db())
+            logger.info(f"[SCHEDULER-QUADRATURA-QUIETANZE] {r if r.get('status') != 'ok' else {k: r[k] for k in ('controllati', 'quadrati', 'recuperati', 'errori')}}")
+        except Exception as e:
+            logger.error(f"[SCHEDULER-QUADRATURA-QUIETANZE] errore: {e}")
+
+    scheduler.add_job(
+        _drive_quadratura_quietanze_job,
+        CronTrigger(day_of_week="sun", hour=5, minute=45),
+        id="drive_quietanze_quadratura",
+        name="Quadratura quietanze Drive Elaborate (domenica ore 5:45)",
         replace_existing=True,
     )
     scheduler.add_job(

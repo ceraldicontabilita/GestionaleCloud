@@ -190,7 +190,7 @@ def _register_invoices(app: FastAPI):
 #     widget "buste paga / distinte F24 da pagare" della Dashboard
 def _register_employees(app: FastAPI):
     from app.routers.employees import dipendenti
-    from app.routers import tfr, libro_unico_parser, f24_parser, drive_cedolini, drive_corrispettivi
+    from app.routers import tfr, libro_unico_parser, f24_parser, drive_cedolini, drive_corrispettivi, drive_quietanze
 
     app.include_router(dipendenti.router, prefix="/api/dipendenti", tags=["Dipendenti"])
     app.include_router(tfr.router, prefix="/api/tfr", tags=["TFR"])
@@ -198,6 +198,7 @@ def _register_employees(app: FastAPI):
     app.include_router(f24_parser.router, prefix="/api/paghe", tags=["F24 Parser"])
     app.include_router(drive_cedolini.router, prefix="/api/cedolini", tags=["Cedolini Drive"])
     app.include_router(drive_corrispettivi.router, prefix="/api/corrispettivi", tags=["Corrispettivi Drive"])
+    app.include_router(drive_quietanze.router, prefix="/api/f24/quietanze", tags=["Quietanze Drive"])
 
 
 # ─── Reports Module ──────────────────────────────────────────────────────────

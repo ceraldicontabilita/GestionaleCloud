@@ -123,7 +123,8 @@ class Settings(BaseSettings):
     ENABLE_DRIVE_FATTURE_SYNC: bool = True
     ENABLE_DRIVE_CEDOLINI_SYNC: bool = True
     ENABLE_DRIVE_CORRISPETTIVI_SYNC: bool = True
-    ENABLE_DRIVE_QUIETANZE_SYNC: bool = False
+    # Quietanze: ACCESO su scelta esplicita dell'utente (10/07/2026)
+    ENABLE_DRIVE_QUIETANZE_SYNC: bool = True
     ENABLE_DRIVE_ESTRATTI_CONTO_SYNC: bool = False
     
     # Telegram

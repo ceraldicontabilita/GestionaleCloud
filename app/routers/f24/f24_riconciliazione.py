@@ -9,7 +9,6 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 from app.database import Database
 from app.services.parser_f24 import parse_f24_commercialista, confronta_codici_tributo
-from app.services.f24_parser import parse_quietanza_f24
 from app.services.alert_engine import genera_alert
 import os
 import uuid
@@ -882,10 +881,6 @@ async def dashboard_riconciliazione(
 # UPLOAD MULTIPLO QUIETANZE CON MATCHING AUTOMATICO
 # ============================================
 
-QUIETANZE_DIR = "/tmp/uploads/quietanze_f24"
-os.makedirs(QUIETANZE_DIR, exist_ok=True)
-
-
 @router.post("/quietanze/upload-multiplo")
 @handle_errors
 async def upload_quietanze_multiplo(
@@ -902,17 +897,23 @@ async def upload_quietanze_multiplo(
     
     La VERA riconciliazione avviene poi con l'estratto conto bancario.
     La quietanza è un doppio controllo (protocollo Agenzia Entrate).
+
+    Il lavoro vero (parsing, dedup, salvataggio, matching, alert) sta nel
+    MOTORE UNICO app/services/quietanze_import.py, lo stesso usato dal
+    canale Google Drive: qui resta solo la gestione dell'upload HTTP.
     """
-    
+    from app.services.quietanze_import import importa_quietanza_bytes
+
     db = Database.get_db()
-    
+
     risultati = {
         "totale_caricati": 0,
         "totale_matchati": 0,
         "totale_senza_match": 0,
+        "totale_duplicati": 0,
         "dettaglio": []
     }
-    
+
     for file in files:
         if not file.filename.lower().endswith('.pdf'):
             risultati["dettaglio"].append({
@@ -921,14 +922,9 @@ async def upload_quietanze_multiplo(
                 "error": "Il file deve essere un PDF"
             })
             continue
-        
-        # Architettura MongoDB-only: leggi e codifica in Base64
-        file_id = str(uuid.uuid4())
-        
+
         try:
             content = await file.read()
-            import base64
-            pdf_base64 = base64.b64encode(content).decode('utf-8')
         except Exception as e:
             risultati["dettaglio"].append({
                 "filename": file.filename,
@@ -936,226 +932,20 @@ async def upload_quietanze_multiplo(
                 "error": f"Errore lettura file: {str(e)}"
             })
             continue
-        
-        # Parsing quietanza con bytes
-        try:
-            parsed = parse_quietanza_f24(pdf_content=content)
-        except Exception as e:
-            logger.error(f"Errore parsing quietanza {file.filename}: {e}")
-            risultati["dettaglio"].append({
-                "filename": file.filename,
-                "success": False,
-                "error": f"Errore parsing: {str(e)}"
-            })
+
+        esito = await importa_quietanza_bytes(db, content, file.filename, fonte="upload_manuale")
+        risultati["dettaglio"].append(esito)
+        if not esito.get("success"):
             continue
-        
-        if "error" in parsed and parsed.get("error"):
-            risultati["dettaglio"].append({
-                "filename": file.filename,
-                "success": False,
-                "error": parsed["error"]
-            })
+        if esito.get("duplicate"):
+            risultati["totale_duplicati"] += 1
             continue
-        
-        # Estrai dati chiave dalla quietanza
-        dg = parsed.get("dati_generali", {})
-        protocollo = dg.get("protocollo_telematico", "")
-        saldo_quietanza = dg.get("saldo_delega", 0) or parsed.get("totali", {}).get("saldo_netto", 0)
-        data_pagamento = dg.get("data_pagamento")
-        codice_fiscale = dg.get("codice_fiscale", "")
-        
-        # Estrai tutti i codici tributo dalla quietanza
-        codici_quietanza = set()
-        for t in parsed.get("sezione_erario", []):
-            if t.get("codice_tributo"):
-                codici_quietanza.add(t["codice_tributo"])
-        for t in parsed.get("sezione_inps", []):
-            if t.get("causale"):
-                codici_quietanza.add(t["causale"])
-        for t in parsed.get("sezione_regioni", []):
-            if t.get("codice_tributo"):
-                codici_quietanza.add(t["codice_tributo"])
-        for t in parsed.get("sezione_tributi_locali", []):
-            if t.get("codice_tributo"):
-                codici_quietanza.add(t["codice_tributo"])
-        
-        # Salva quietanza nel database con pdf_data (architettura MongoDB-only)
-        quietanza_doc = {
-            "id": file_id,
-            "filename": file.filename,
-            "pdf_data": pdf_base64,  # Architettura MongoDB-only
-            "dati_generali": dg,
-            "protocollo_telematico": protocollo,
-            "data_pagamento": data_pagamento,
-            "codice_fiscale": codice_fiscale,
-            "saldo": saldo_quietanza,
-            "sezione_erario": parsed.get("sezione_erario", []),
-            "sezione_inps": parsed.get("sezione_inps", []),
-            "sezione_regioni": parsed.get("sezione_regioni", []),
-            "sezione_tributi_locali": parsed.get("sezione_tributi_locali", []),
-            "sezione_inail": parsed.get("sezione_inail", []),
-            "totali": parsed.get("totali", {}),
-            "codici_tributo": list(codici_quietanza),
-            "f24_associati": [],
-            "created_at": datetime.now(timezone.utc).isoformat()
-        }
-        
-        await db[COLL_QUIETANZE].insert_one(quietanza_doc.copy())
         risultati["totale_caricati"] += 1
-        
-        # ============================================
-        # MATCHING AUTOMATICO CON F24 COMMERCIALISTA (v3)
-        # Confronto per singolo codice tributo + periodo + importo
-        # ============================================
-        
-        # Codici ravvedimento da escludere dal confronto
-        CODICI_RAVVEDIMENTO = {
-            '8901', '8902', '8903', '8904', '8906', '8907', '8911',
-            '1989', '1990', '1991', '1992', '1993', '1994',
-            '1507', '1508', '1509', '1510', '1511', '1512',
-        }
-        
-        def estrai_tributi_dettaglio_v3(doc: dict) -> list:
-            """Estrae lista tributi con codice, periodo, importo."""
-            tributi = []
-            for sezione in ["sezione_erario", "sezione_regioni", "sezione_tributi_locali"]:
-                for item in doc.get(sezione, []):
-                    codice = item.get("codice_tributo", "")
-                    if codice:
-                        tributi.append({
-                            "codice": codice,
-                            "periodo": item.get("periodo_riferimento", "").strip(),
-                            "importo": float(item.get("importo_debito", 0) or item.get("importo", 0) or 0)
-                        })
-            for item in doc.get("sezione_inps", []):
-                causale = item.get("causale", "")
-                if causale:
-                    tributi.append({
-                        "codice": causale,
-                        "periodo": item.get("periodo_riferimento", "").strip(),
-                        "importo": float(item.get("importo_debito", 0) or item.get("importo", 0) or 0)
-                    })
-            return tributi
-        
-        tributi_quietanza = estrai_tributi_dettaglio_v3(parsed)
-        
-        # Crea lookup quietanza: (codice, periodo) -> importo
-        quietanza_lookup = {}
-        codici_ravv = []
-        importo_ravv = 0
-        for t in tributi_quietanza:
-            key = (t["codice"], t["periodo"])
-            quietanza_lookup[key] = t["importo"]
-            if t["codice"] in CODICI_RAVVEDIMENTO:
-                codici_ravv.append(t["codice"])
-                importo_ravv += t["importo"]
-        
-        # Cerca F24 da pagare
-        f24_da_pagare = await db[COLL_F24_COMMERCIALISTA].find({
-            "status": "da_pagare",
-            "riconciliato": False
-        }, {"_id": 0}).to_list(1000)
-        
-        f24_matchati = []
-        
-        for f24 in f24_da_pagare:
-            tributi_f24 = estrai_tributi_dettaglio_v3(f24)
-            
-            # Filtra codici ravvedimento
-            tributi_f24_principali = [t for t in tributi_f24 if t["codice"] not in CODICI_RAVVEDIMENTO]
-            
-            if not tributi_f24_principali:
-                continue
-            
-            # Verifica che TUTTI i tributi F24 siano in quietanza
-            tributi_trovati = 0
-            for t in tributi_f24_principali:
-                key = (t["codice"], t["periodo"])
-                if key in quietanza_lookup:
-                    diff = abs(t["importo"] - quietanza_lookup[key])
-                    if diff <= 0.50:  # Tolleranza €0.50
-                        tributi_trovati += 1
-            
-            # Match = TUTTI i tributi F24 trovati
-            is_match = tributi_trovati == len(tributi_f24_principali)
-            
-            if is_match:
-                # MATCH TROVATO! 
-                saldo_f24 = f24.get("totali", {}).get("saldo_netto", 0)
-                is_ravveduto = len(codici_ravv) > 0
-                
-                # Aggiorna F24 come pagato
-                update_data = {
-                    "status": "pagato",
-                    "quietanza_id": file_id,
-                    "protocollo_quietanza": protocollo,
-                    "data_pagamento_quietanza": data_pagamento,
-                    "riconciliato_quietanza": True,
-                    "match_tributi_trovati": tributi_trovati,
-                    "match_tributi_totali": len(tributi_f24_principali),
-                    "updated_at": datetime.now(timezone.utc).isoformat()
-                }
-                
-                if is_ravveduto:
-                    update_data["ravveduto"] = True
-                    update_data["importo_ravvedimento"] = round(importo_ravv, 2)
-                    update_data["codici_ravvedimento"] = codici_ravv
-                
-                await db[COLL_F24_COMMERCIALISTA].update_one(
-                    {"id": f24["id"]},
-                    {"$set": update_data}
-                )
-                
-                # Aggiorna quietanza con F24 associato
-                await db[COLL_QUIETANZE].update_one(
-                    {"id": file_id},
-                    {"$push": {"f24_associati": f24["id"]}}
-                )
-                
-                f24_matchati.append({
-                    "f24_id": f24["id"],
-                    "f24_filename": f24.get("file_name"),
-                    "importo_f24": saldo_f24,
-                    "importo_quietanza": saldo_quietanza,
-                    "tributi_matchati": f"{tributi_trovati}/{len(tributi_f24_principali)}",
-                    "ravveduto": is_ravveduto,
-                    "importo_ravvedimento": round(importo_ravv, 2) if is_ravveduto else 0
-                })
-                
-                risultati["totale_matchati"] += 1
-                break  # Un F24 per quietanza (one-to-one)
-        
-        # Risultato per questa quietanza
-        dettaglio_file = {
-            "filename": file.filename,
-            "success": True,
-            "quietanza_id": file_id,
-            "protocollo": protocollo,
-            "saldo": saldo_quietanza,
-            "data_pagamento": data_pagamento,
-            "codici_tributo": len(codici_quietanza),
-            "f24_matchati": f24_matchati
-        }
-        
-        if not f24_matchati:
+        if esito.get("f24_matchati"):
+            risultati["totale_matchati"] += 1
+        else:
             risultati["totale_senza_match"] += 1
-            dettaglio_file["warning"] = "Nessun F24 corrispondente trovato"
-            
-            # Crea alert per quietanza senza match
-            alert = {
-                "id": str(uuid.uuid4()),
-                "tipo": "quietanza_senza_match",
-                "quietanza_id": file_id,
-                "message": f"Quietanza {file.filename} (€{saldo_quietanza:.2f}) non corrisponde a nessun F24 in attesa",
-                "importo": saldo_quietanza,
-                "protocollo": protocollo,
-                "status": "pending",
-                "created_at": datetime.now(timezone.utc).isoformat()
-            }
-            await db[COLL_F24_ALERTS].insert_one(alert.copy())
-        
-        risultati["dettaglio"].append(dettaglio_file)
-    
+
     return risultati
 
 

@@ -50,7 +50,7 @@ Altre garanzie trasversali:
 | Fatture fornitori | **Solo Google Drive** (cartella dedicata) | controllo automatico ogni ora + subito a ogni riavvio |
 | Corrispettivi RT | Google Drive (XML del registratore telematico) | ogni ora |
 | Estratti conto | Google Drive (CSV/Excel Banco BPM) | ogni ora (oggi spento, in attesa di validazione) |
-| Quietanze F24 | Google Drive (PDF) | ogni ora (oggi spento) |
+| Quietanze F24 | Google Drive (PDF) + upload manuale dalla pagina F24 | ogni ora (**attivo** dal 10/07/2026) |
 | Cedolini | **Email** da mittenti attendibili + **cartella Drive cedolini paga** (PDF) | ogni ora (attivo) |
 | F24 commercialista | Email da mittenti attendibili | ogni ora (oggi spento) |
 | Verbali/multe | Email da mittenti attendibili | ogni ora (oggi spento) |
@@ -239,9 +239,13 @@ prova UFFICIALE dell'avvenuto pagamento.** Sono due archivi separati che il sist
 collega — mai confusi. Per questo **non esiste** un bottone "segna F24 pagato": un
 F24 risulta pagato solo quando gli viene collegata una quietanza.
 
-- Gli F24 arrivano via email dal commercialista (mittenti attendibili); le quietanze
-  da una cartella Drive dedicata (entrambi i canali oggi spenti in attesa di file
-  reali di conferma per i parser).
+- Gli F24 arrivano via email dal commercialista (mittenti attendibili — canale oggi
+  spento in attesa di file reali di conferma). Le **quietanze** entrano da DUE porte
+  con lo STESSO motore (parsing, dedup per impronta md5, matching automatico):
+  la cartella **Google Drive dedicata** (controllo ogni ora, file spostati in
+  `Elaborate`, quadratura domenicale ore 5:45 che recupera i buchi) e l'**upload
+  manuale** dalla pagina F24. La stessa quietanza caricata due volte non crea
+  mai doppioni.
 - Un controllo giornaliero genera avvisi per F24 in scadenza (entro 7 giorni) o
   scaduti e non ancora quietanzati.
 - **Matching automatico F24↔Quietanza**: prima condizione assoluta, **stesso codice
@@ -403,7 +407,7 @@ costi → pagamenti → driver assegnato → verbali → eventuali trattenute �
 | Corrispettivi da Drive | **Attivo** | validato su file reale del registratore |
 | Cedolini via email | **Attivo** | validato su un file reale; sotto osservazione |
 | Estratti conto da Drive | Spento | in attesa di export reale Banco BPM di conferma |
-| Quietanze da Drive | Spento | validato su un solo file, formato fragile |
+| Quietanze da Drive | **Attivo** (scelta 10/07/2026) | stesso motore dell'upload manuale: dedup per impronta, matching automatico F24, quadratura domenicale 5:45 |
 | F24 via email | Spento | nessun F24 reale mai visto dal parser |
 | Verbali via email | Spento | nessun verbale reale mai visto dal parser |
 
