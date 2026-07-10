@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../api';
 import {
   formatEuro,
@@ -34,6 +35,7 @@ import {
 export default function NoleggioAuto() {
   const isMobile = useIsMobile();
   const confirm = useConfirm();
+  const navigate = useNavigate();
   // Anno unico e globale (barra di navigazione in alto) → nessun selettore
   // locale duplicato: una pagina con un filtro anno proprio, indipendente
   // da quello globale, dava l'impressione che cambiare l'anno in alto non
@@ -65,6 +67,11 @@ export default function NoleggioAuto() {
     fatture: [],
     errore: '',
   });
+  // Cruscotto "Controlli": conteggi + prime voci di ciò che richiede
+  // attenzione (verbali aperti, trattenute, driver mancanti, ...).
+  // Se l'API fallisce o è vuota il pannello semplicemente non appare.
+  const [controlli, setControlli] = useState(null);
+  const [controlloAperto, setControlloAperto] = useState(null);
   // Stato per lookup OpenAPI
   const [lookupLoading, setLookupLoading] = useState(false);
   const [lookupResult, setLookupResult] = useState(null);
@@ -106,6 +113,42 @@ export default function NoleggioAuto() {
   useEffect(() => {
     fetchVeicoli();
   }, [fetchVeicoli]);
+
+  const fetchControlli = useCallback(async () => {
+    try {
+      const annoParam = annoFiltro ? `?anno=${annoFiltro}` : '';
+      const res = await api.get(`/api/noleggio/riepilogo-controlli${annoParam}`);
+      setControlli(res.data || null);
+    } catch {
+      // Degrado silenzioso: senza dati il pannello Controlli non si mostra
+      setControlli(null);
+    }
+  }, [annoFiltro]);
+
+  useEffect(() => {
+    fetchControlli();
+  }, [fetchControlli]);
+
+  const openFattureNonAssociate = async () => {
+    setModalFattureNonAssociate({ open: true, loading: true, fatture: [], errore: '' });
+    try {
+      const annoParam = annoFiltro ? `?anno=${annoFiltro}` : '';
+      const res = await api.get(`/api/noleggio/fatture-non-associate${annoParam}`);
+      setModalFattureNonAssociate({
+        open: true,
+        loading: false,
+        fatture: res.data.fatture || [],
+        errore: '',
+      });
+    } catch (e) {
+      setModalFattureNonAssociate({
+        open: true,
+        loading: false,
+        fatture: [],
+        errore: e.response?.data?.detail || e.message,
+      });
+    }
+  };
 
   const handleSaveVeicolo = async () => {
     if (!editingVeicolo) return;
@@ -241,6 +284,80 @@ export default function NoleggioAuto() {
     }
   };
 
+  // Chip del pannello Controlli: solo colori del design system.
+  // "Verbali aperti" naviga al tab Verbali (sezione già esistente),
+  // "Fatture da associare" apre il modal già presente in pagina,
+  // gli altri espandono una piccola lista sotto i chip.
+  const controlliChips = [
+    {
+      key: 'verbali_aperti',
+      label: 'Verbali aperti',
+      color: COLORS.danger,
+      bg: COLORS.dangerLight,
+      onClick: () => navigate('/noleggio/verbali'),
+    },
+    {
+      key: 'trattenute_da_confermare',
+      label: 'Trattenute da confermare',
+      color: COLORS.warning,
+      bg: COLORS.warningLight,
+    },
+    {
+      key: 'auto_senza_driver',
+      label: 'Auto senza driver',
+      color: COLORS.info,
+      bg: COLORS.infoLight,
+    },
+    {
+      key: 'fatture_non_associate',
+      label: 'Fatture da associare',
+      color: COLORS.warning,
+      bg: COLORS.warningLight,
+      onClick: openFattureNonAssociate,
+    },
+    {
+      key: 'pagamenti_non_riconciliati',
+      label: 'Pagamenti da riconciliare',
+      color: COLORS.danger,
+      bg: COLORS.dangerLight,
+    },
+    {
+      key: 'alert_aperti',
+      label: 'Avvisi',
+      color: COLORS.primary,
+      bg: COLORS.primarySoft,
+    },
+  ];
+  const totaleControlli = controlliChips.reduce(
+    (acc, c) => acc + (controlli?.[c.key]?.count || 0),
+    0
+  );
+
+  const descriviVoceControllo = (key, item) => {
+    switch (key) {
+      case 'trattenute_da_confermare':
+        return `${item?.dipendente_nome || 'Dipendente N/D'} • ${formatEuro(Number(item?.importo || 0))}${
+          item?.numero_verbale ? ` • Verbale ${item.numero_verbale}` : ''
+        }${item?.targa ? ` • ${item.targa}` : ''}`;
+      case 'auto_senza_driver':
+        return `${item?.targa || '-'} • ${
+          [item?.marca, item?.modello].filter(Boolean).join(' ') || 'Modello N/D'
+        }${item?.fornitore_noleggio ? ` • ${item.fornitore_noleggio.split(' ')[0]}` : ''}`;
+      case 'pagamenti_non_riconciliati':
+        return `${item?.supplier_name || 'Fornitore N/D'} • Fatt. ${item?.invoice_number || 'N/D'} del ${formatDate(
+          item?.invoice_date
+        )} • ${formatEuro(Number(item?.total_amount || 0))}`;
+      case 'alert_aperti':
+        return `${item?.titolo || item?.codice || 'Avviso'}${item?.dettaglio ? ` — ${item.dettaglio}` : ''}`;
+      case 'verbali_aperti':
+        return `Verbale ${item?.numero_verbale || 'N/D'} • ${item?.targa || '-'} • ${formatDate(
+          item?.data_verbale
+        )} • ${formatEuro(Number(item?.importo || 0))}`;
+      default:
+        return '';
+    }
+  };
+
   return (
     <div style={{ maxWidth: 1400, margin: '0 auto' }}>
       {/* Header — stile uniforme al resto delle pagine (STYLES.header) */}
@@ -252,6 +369,113 @@ export default function NoleggioAuto() {
           </p>
         </div>
       </div>
+
+      {/* Pannello Controlli — cruscotto "cosa richiede attenzione".
+          Compare solo se c'è almeno una segnalazione; API in errore o
+          vuota → nessun render (optional chaining ovunque). */}
+      {totaleControlli > 0 && (
+        <div
+          style={{
+            background: COLORS.card,
+            border: `1px solid ${COLORS.border}`,
+            borderLeft: `4px solid ${COLORS.primary}`,
+            borderRadius: BORDER_RADIUS.md,
+            boxShadow: SHADOWS.sm,
+            padding: '12px 16px',
+            marginBottom: 20,
+          }}
+          data-testid="noleggio-controlli"
+        >
+          <div
+            style={{
+              fontSize: 13,
+              fontWeight: 700,
+              color: COLORS.primary,
+              marginBottom: 8,
+            }}
+          >
+            🔎 Controlli — {totaleControlli} da verificare
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {controlliChips.map(chip => {
+              const count = controlli?.[chip.key]?.count || 0;
+              if (count <= 0) return null;
+              const attivo = controlloAperto === chip.key;
+              return (
+                <button
+                  key={chip.key}
+                  onClick={() =>
+                    chip.onClick
+                      ? chip.onClick()
+                      : setControlloAperto(attivo ? null : chip.key)
+                  }
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '6px 12px',
+                    borderRadius: 999,
+                    border: `1px solid ${chip.color}`,
+                    background: attivo ? chip.color : chip.bg,
+                    color: attivo ? '#fff' : chip.color,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    fontFamily: FONT.family,
+                  }}
+                  data-testid={`controllo-chip-${chip.key}`}
+                >
+                  {chip.label}
+                  <span
+                    style={{
+                      background: attivo ? 'rgba(255,255,255,0.25)' : chip.color,
+                      color: '#fff',
+                      borderRadius: 999,
+                      padding: '1px 7px',
+                      fontSize: 11,
+                      fontWeight: 700,
+                    }}
+                  >
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {controlloAperto && (controlli?.[controlloAperto]?.items || []).length > 0 && (
+            <div
+              style={{
+                marginTop: 10,
+                borderTop: `1px solid ${COLORS.border}`,
+                paddingTop: 8,
+              }}
+            >
+              {(controlli?.[controlloAperto]?.items || []).map((item, i) => (
+                <div
+                  key={item?.id || i}
+                  style={{
+                    fontSize: 12,
+                    color: COLORS.text,
+                    padding: '4px 0',
+                    borderBottom: `1px solid ${COLORS.gray[100]}`,
+                  }}
+                >
+                  {descriviVoceControllo(controlloAperto, item)}
+                </div>
+              ))}
+              {(controlli?.[controlloAperto]?.count || 0) >
+                (controlli?.[controlloAperto]?.items || []).length && (
+                <div style={{ fontSize: 11, color: COLORS.textSubtle, marginTop: 6 }}>
+                  … e altre{' '}
+                  {(controlli?.[controlloAperto]?.count || 0) -
+                    (controlli?.[controlloAperto]?.items || []).length}{' '}
+                  voci
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Azioni */}
       <div
@@ -309,26 +533,7 @@ export default function NoleggioAuto() {
             <Button
               size="sm"
               variant="warning"
-              onClick={async () => {
-                setModalFattureNonAssociate({ open: true, loading: true, fatture: [], errore: '' });
-                try {
-                  const annoParam = annoFiltro ? `?anno=${annoFiltro}` : '';
-                  const res = await api.get(`/api/noleggio/fatture-non-associate${annoParam}`);
-                  setModalFattureNonAssociate({
-                    open: true,
-                    loading: false,
-                    fatture: res.data.fatture || [],
-                    errore: '',
-                  });
-                } catch (e) {
-                  setModalFattureNonAssociate({
-                    open: true,
-                    loading: false,
-                    fatture: [],
-                    errore: e.response?.data?.detail || e.message,
-                  });
-                }
-              }}
+              onClick={openFattureNonAssociate}
               style={{
                 padding: '4px 10px',
                 fontSize: 11,

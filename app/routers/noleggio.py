@@ -590,6 +590,157 @@ async def get_fatture_non_associate(
     }
 
 
+@router.get("/riepilogo-controlli")
+@handle_errors
+async def get_riepilogo_controlli(
+    anno: Optional[int] = Query(None, description="Anno per le fatture non associate")
+) -> Dict[str, Any]:
+    """
+    Cruscotto di controllo del noleggio: in un colpo solo i conteggi e le
+    prime 10 voci di tutto ciò che richiede attenzione — verbali non
+    pagati/chiusi (unione delle due fonti, dedup per numero_verbale come
+    _get_verbali_completi_per_targa ma senza filtro targa), trattenute
+    da confermare, contratti cessati, auto senza driver, fatture non
+    associate, pagamenti fornitori noleggio non riconciliati (anno
+    corrente) e alert NOL_* aperti del motore alert.
+    """
+    db = Database.get_db()
+    LIMITE_VOCI = 10
+    STATI_VERBALE_CHIUSI = ("pagato", "chiuso")
+
+    # ── 1) Verbali aperti: unione posta + fatture, dedup numero_verbale ──
+    verbali_per_numero: Dict[str, Dict[str, Any]] = {}
+    proiezione_posta = {
+        "_id": 0, "numero_verbale": 1, "numero_verbale_old": 1, "targa": 1,
+        "data_verbale": 1, "created_at": 1, "importo": 1, "stato": 1, "driver": 1,
+    }
+    async for v in db[COLLECTION_VERBALI_POSTA].find({}, proiezione_posta):
+        numero = v.get("numero_verbale") or v.get("numero_verbale_old")
+        if not numero:
+            continue
+        stato = v.get("stato")
+        verbali_per_numero[numero] = {
+            "numero_verbale": numero,
+            "targa": (v.get("targa") or "").upper(),
+            "data_verbale": v.get("data_verbale") or (v.get("created_at") or "")[:10],
+            "importo": float(v.get("importo") or 0),
+            "stato": stato,
+            "chiuso": stato in STATI_VERBALE_CHIUSI,
+            "driver": v.get("driver"),
+            "fonte": "posta",
+        }
+    proiezione_fatture = {
+        "_id": 0, "numero_verbale": 1, "targa": 1, "data_verbale": 1,
+        "data": 1, "importo": 1, "stato_pagamento": 1,
+    }
+    async for v in db[COLLECTION_VERBALI_FATTURE].find({}, proiezione_fatture):
+        numero = v.get("numero_verbale")
+        if not numero:
+            continue
+        esistente = verbali_per_numero.get(numero, {})
+        stato_pagamento = v.get("stato_pagamento")
+        verbali_per_numero[numero] = {
+            **esistente,
+            "numero_verbale": numero,
+            "targa": esistente.get("targa") or (v.get("targa") or "").upper(),
+            "data_verbale": esistente.get("data_verbale") or v.get("data_verbale") or v.get("data"),
+            "importo": esistente.get("importo") or float(v.get("importo") or 0),
+            "stato": esistente.get("stato") or stato_pagamento,
+            # Chiuso se ALMENO UNA delle due fonti lo dà pagato/chiuso —
+            # stessa semantica del flag "pagato" del motore per targa.
+            "chiuso": esistente.get("chiuso", False) or stato_pagamento in STATI_VERBALE_CHIUSI,
+            "fonte": "posta+fattura" if esistente else "fattura",
+        }
+    verbali_aperti = sorted(
+        (v for v in verbali_per_numero.values() if not v.pop("chiuso", False)),
+        key=lambda x: x.get("data_verbale") or "",
+        reverse=True,
+    )
+
+    # ── 2) Trattenute dipendenti da confermare (stato 'proposta' o assente) ──
+    query_trattenute = {"$or": [{"stato": "proposta"}, {"stato": None}]}
+    proiezione_trattenute = {
+        "_id": 0, "id": 1, "dipendente_id": 1, "dipendente_nome": 1, "importo": 1,
+        "descrizione": 1, "mese": 1, "anno": 1, "numero_verbale": 1, "targa": 1, "stato": 1,
+    }
+    trattenute_count = await db["trattenute_dipendenti"].count_documents(query_trattenute)
+    trattenute_items = await db["trattenute_dipendenti"].find(
+        query_trattenute, proiezione_trattenute
+    ).sort("created_at", -1).to_list(LIMITE_VOCI)
+
+    # ── 3) Contratti cessati/chiusi ──
+    query_cessati = {"stato_contratto": {"$in": ["cessato", "chiuso"]}}
+    proiezione_veicolo = {
+        "_id": 0, "targa": 1, "marca": 1, "modello": 1, "driver": 1,
+        "fornitore_noleggio": 1, "data_fine": 1, "stato_contratto": 1,
+    }
+    cessati_count = await db[COLLECTION].count_documents(query_cessati)
+    cessati_items = await db[COLLECTION].find(
+        query_cessati, proiezione_veicolo
+    ).sort("data_fine", -1).to_list(LIMITE_VOCI)
+
+    # ── 4) Auto senza driver (contratto non cessato) ──
+    # $in con None copre sia campo assente sia campo nullo/vuoto.
+    query_senza_driver = {
+        "driver": {"$in": [None, ""]},
+        "driver_id": {"$in": [None, ""]},
+        "stato_contratto": {"$nin": ["cessato", "chiuso"]},
+    }
+    senza_driver_count = await db[COLLECTION].count_documents(query_senza_driver)
+    senza_driver_items = await db[COLLECTION].find(
+        query_senza_driver, proiezione_veicolo
+    ).sort("targa", 1).to_list(LIMITE_VOCI)
+
+    # ── 5) Fatture non associate: riusa l'endpoint esistente ──
+    dati_fatture = await get_fatture_non_associate(anno=anno)
+    fatture_items = dati_fatture.get("fatture", [])
+
+    # ── 6) Pagamenti non riconciliati: fatture fornitori noleggio anno
+    # corrente né pagate né riconciliate, proiezione minima ──
+    anno_corrente = datetime.now().year
+    query_pagamenti = {
+        "supplier_vat": {"$in": list(FORNITORI_NOLEGGIO.values())},
+        "invoice_date": {"$regex": f"^{anno_corrente}"},
+        "pagato": {"$ne": True},
+        "riconciliato": {"$ne": True},
+    }
+    proiezione_pagamenti = {
+        "_id": 0, "invoice_number": 1, "invoice_date": 1,
+        "supplier_name": 1, "supplier_vat": 1, "total_amount": 1,
+    }
+    pagamenti_count = await db["invoices"].count_documents(query_pagamenti)
+    pagamenti_items = await db["invoices"].find(
+        query_pagamenti, proiezione_pagamenti
+    ).sort("invoice_date", -1).to_list(LIMITE_VOCI)
+
+    # ── 7) Alert NOL_* aperti dal motore alert (collection 'alerts') ──
+    query_alert = {"codice": {"$regex": "^NOL_"}, "stato": "aperto"}
+    proiezione_alert = {
+        "_id": 0, "id": 1, "codice": 1, "titolo": 1, "dettaglio": 1,
+        "severita": 1, "entita_id": 1, "created_at": 1,
+    }
+    alert_count = await db["alerts"].count_documents(query_alert)
+    alert_items = await db["alerts"].find(
+        query_alert, proiezione_alert
+    ).sort("created_at", -1).to_list(LIMITE_VOCI)
+
+    sezioni = {
+        "verbali_aperti": {"count": len(verbali_aperti), "items": verbali_aperti[:LIMITE_VOCI]},
+        "trattenute_da_confermare": {"count": trattenute_count, "items": trattenute_items},
+        "contratti_cessati": {"count": cessati_count, "items": cessati_items},
+        "auto_senza_driver": {"count": senza_driver_count, "items": senza_driver_items},
+        "fatture_non_associate": {"count": len(fatture_items), "items": fatture_items[:LIMITE_VOCI]},
+        "pagamenti_non_riconciliati": {"count": pagamenti_count, "items": pagamenti_items},
+        "alert_aperti": {"count": alert_count, "items": alert_items},
+    }
+    return {
+        **sezioni,
+        "totale_segnalazioni": sum(s["count"] for s in sezioni.values()),
+        "anno_pagamenti": anno_corrente,
+        "anno": anno,
+    }
+
+
 @router.get("/fornitori")
 @handle_errors
 async def get_fornitori() -> Dict[str, Any]:
