@@ -334,19 +334,26 @@ export default function ArchivioFatture() {
         </div>
       )}
 
-      {/* Filtri */}
-      <Card style={{ marginBottom: 20 }}>
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+      {/* Filtri — su mobile griglia 2 colonne compatta (prima ogni campo
+          occupava una riga intera e la card mangiava tutto lo schermo) */}
+      <Card style={{ marginBottom: isMobile ? 12 : 20, ...(isMobile ? { padding: 12 } : {}) }}>
+        <div
+          style={
+            isMobile
+              ? { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }
+              : { display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }
+          }
+        >
           <div>
-            <label style={{ fontSize: 11, color: COLORS.textMuted, display: 'block', marginBottom: 4 }}>
+            <label style={{ fontSize: 11, color: COLORS.textMuted, display: 'block', marginBottom: 2 }}>
               Anno
             </label>
             <div
               style={{
-                padding: '9px 12px',
+                padding: isMobile ? '8px 10px' : '9px 12px',
                 borderRadius: BORDER_RADIUS.sm,
                 border: `1px solid ${COLORS.border}`,
-                minWidth: 80,
+                minWidth: isMobile ? 0 : 80,
                 background: COLORS.gray[100],
                 color: COLORS.textMuted,
                 fontWeight: 600,
@@ -358,13 +365,13 @@ export default function ArchivioFatture() {
             </div>
           </div>
           <div>
-            <label style={{ fontSize: 11, color: COLORS.textMuted, display: 'block', marginBottom: 4 }}>
+            <label style={{ fontSize: 11, color: COLORS.textMuted, display: 'block', marginBottom: 2 }}>
               Mese
             </label>
             <Select
               value={mese}
               onChange={e => setHs('mese', e.target.value)}
-              style={{ minWidth: 110, fontSize: 13 }}
+              style={{ minWidth: isMobile ? 0 : 110, width: isMobile ? '100%' : undefined, fontSize: 13 }}
             >
               {MESI.map(m => (
                 <option key={m.value} value={m.value}>
@@ -374,13 +381,13 @@ export default function ArchivioFatture() {
             </Select>
           </div>
           <div>
-            <label style={{ fontSize: 11, color: COLORS.textMuted, display: 'block', marginBottom: 4 }}>
+            <label style={{ fontSize: 11, color: COLORS.textMuted, display: 'block', marginBottom: 2 }}>
               Fornitore
             </label>
             <Select
               value={fornitore}
               onChange={e => setHs('fornitore', e.target.value)}
-              style={{ minWidth: 180, fontSize: 13 }}
+              style={{ minWidth: isMobile ? 0 : 180, width: isMobile ? '100%' : undefined, fontSize: 13 }}
             >
               <option value="">Tutti i fornitori</option>
               {fornitori.map(f => (
@@ -391,13 +398,13 @@ export default function ArchivioFatture() {
             </Select>
           </div>
           <div>
-            <label style={{ fontSize: 11, color: COLORS.textMuted, display: 'block', marginBottom: 4 }}>
+            <label style={{ fontSize: 11, color: COLORS.textMuted, display: 'block', marginBottom: 2 }}>
               Stato
             </label>
             <Select
               value={stato}
               onChange={e => setHs('stato', e.target.value)}
-              style={{ minWidth: 100, fontSize: 13 }}
+              style={{ minWidth: isMobile ? 0 : 100, width: isMobile ? '100%' : undefined, fontSize: 13 }}
             >
               <option value="">Tutti</option>
               <option value="importata">Importate</option>
@@ -406,32 +413,32 @@ export default function ArchivioFatture() {
               <option value="senza_metodo">🔍 ⚠️ Senza metodo pagamento</option>
             </Select>
           </div>
-          <div style={{ flex: 1, minWidth: 180 }}>
-            <label style={{ fontSize: 11, color: COLORS.textMuted, display: 'block', marginBottom: 4 }}>
+          <div style={isMobile ? { gridColumn: '1 / -1' } : { flex: 1, minWidth: 180 }}>
+            <label style={{ fontSize: 11, color: COLORS.textMuted, display: 'block', marginBottom: 2 }}>
               Ricerca
             </label>
-            <Input
-              type="text"
-              placeholder="Numero fattura, fornitore..."
-              value={search}
-              onChange={e => setHs('search', e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && setDebouncedSearch(search)}
-              style={{ fontSize: 13 }}
-            />
-          </div>
-          <div style={{ alignSelf: 'flex-end', display: 'flex', gap: 8 }}>
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => {
-                setDebouncedSearch(search);
-                fetchFatture();
-              }}
-              style={{ fontSize: 13 }}
-            >
-              Cerca
-            </Button>
-            <CopyLinkButton />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Input
+                type="text"
+                placeholder="Numero fattura, fornitore..."
+                value={search}
+                onChange={e => setHs('search', e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && setDebouncedSearch(search)}
+                style={{ fontSize: 13, flex: 1 }}
+              />
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => {
+                  setDebouncedSearch(search);
+                  fetchFatture();
+                }}
+                style={{ fontSize: 13, flexShrink: 0 }}
+              >
+                Cerca
+              </Button>
+              {!isMobile && <CopyLinkButton />}
+            </div>
           </div>
         </div>
       </Card>
