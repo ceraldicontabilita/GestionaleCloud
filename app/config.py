@@ -93,12 +93,38 @@ class Settings(BaseSettings):
     GOOGLE_DRIVE_SA_FILE: Optional[str] = None            # path al JSON del service account
     GOOGLE_DRIVE_SA_JSON: Optional[str] = None            # oppure il JSON inline (alternativa al file)
     # Altre cartelle Drive (specifica utente 10-07-2026): gli ID vanno nelle
-    # variabili d'ambiente su Render, MAI nel codice. Stesso service account:
-    # basta condividere ogni cartella con la sua email.
+    # variabili d'ambiente su Render, MAI nel codice.
     GOOGLE_DRIVE_CEDOLINI_FOLDER_ID: Optional[str] = None      # cedolini paga (PDF)
     GOOGLE_DRIVE_CORRISPETTIVI_FOLDER_ID: Optional[str] = None # corrispettivi RT
     GOOGLE_DRIVE_QUIETANZE_FOLDER_ID: Optional[str] = None     # quietanze F24
     GOOGLE_DRIVE_ESTRATTI_FOLDER_ID: Optional[str] = None      # estratti conto
+
+    # Nomi REALI già presenti nell'ambiente Render dell'utente (file .env
+    # del 10-07-2026): il codice li accetta come alias — vale il primo
+    # valorizzato tra il nome GOOGLE_DRIVE_* e questi.
+    DRIVE_FOLDER_CEDOLINI_ID: Optional[str] = None
+    DRIVE_FOLDER_CORRISPETTIVI_ID: Optional[str] = None
+    DRIVE_FOLDER_QUIETANZE_ID: Optional[str] = None
+    DRIVE_FOLDER_ESTRATTI_CONTO_ID: Optional[str] = None
+    DRIVE_FOLDER_FATTURE_ID: Optional[str] = None
+
+    # Service account DEDICATI per cartella (scelta utente: un account per
+    # canale). Se valorizzato, il canale usa il suo; altrimenti ricade su
+    # GOOGLE_DRIVE_SA_JSON/SA_FILE condiviso. Ogni cartella Drive deve essere
+    # condivisa con la client_email del service account che la legge.
+    GOOGLE_SERVICE_ACCOUNT_JSON_CEDOLINI: Optional[str] = None
+    GOOGLE_SERVICE_ACCOUNT_JSON_CORRISPETTIVI: Optional[str] = None
+    GOOGLE_SERVICE_ACCOUNT_JSON_FATTURE: Optional[str] = None
+    GOOGLE_SERVICE_ACCOUNT_JSON_QUIETANZE: Optional[str] = None
+    GOOGLE_SERVICE_ACCOUNT_JSON_ESTRATTI_CONTO: Optional[str] = None
+
+    # Interruttori canali Drive (accesi/spenti — regola utente): letti
+    # dall'ambiente, default = stato attuale dei canali.
+    ENABLE_DRIVE_FATTURE_SYNC: bool = True
+    ENABLE_DRIVE_CEDOLINI_SYNC: bool = True
+    ENABLE_DRIVE_CORRISPETTIVI_SYNC: bool = True
+    ENABLE_DRIVE_QUIETANZE_SYNC: bool = False
+    ENABLE_DRIVE_ESTRATTI_CONTO_SYNC: bool = False
     
     # Telegram
     TELEGRAM_BOT_TOKEN: Optional[str] = None

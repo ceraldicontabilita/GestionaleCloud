@@ -63,10 +63,31 @@ def start_background_sync(db) -> bool:
     return True
 
 
+def _folder_id() -> Optional[str]:
+    """ID cartella: nome canonico o alias reale dell'ambiente Render."""
+    return settings.GOOGLE_DRIVE_CEDOLINI_FOLDER_ID or settings.DRIVE_FOLDER_CEDOLINI_ID
+
+
+def _load_credentials_cedolini():
+    """Service account DEDICATO ai cedolini se configurato, altrimenti quello
+    condiviso del modulo fatture. Ritorna (credentials, None) o (None, errore)."""
+    if settings.GOOGLE_SERVICE_ACCOUNT_JSON_CEDOLINI:
+        try:
+            from google.oauth2 import service_account
+            from app.services.drive_invoice_ingest import _parse_sa_json, _SCOPES
+            info = _parse_sa_json(settings.GOOGLE_SERVICE_ACCOUNT_JSON_CEDOLINI)
+            return service_account.Credentials.from_service_account_info(info, scopes=_SCOPES), None
+        except Exception as e:
+            return None, f"GOOGLE_SERVICE_ACCOUNT_JSON_CEDOLINI non valido: {e}"
+    return _load_credentials()
+
+
 def is_configured() -> bool:
     return bool(
-        settings.GOOGLE_DRIVE_CEDOLINI_FOLDER_ID
-        and (settings.GOOGLE_DRIVE_SA_FILE or settings.GOOGLE_DRIVE_SA_JSON)
+        settings.ENABLE_DRIVE_CEDOLINI_SYNC
+        and _folder_id()
+        and (settings.GOOGLE_SERVICE_ACCOUNT_JSON_CEDOLINI
+             or settings.GOOGLE_DRIVE_SA_FILE or settings.GOOGLE_DRIVE_SA_JSON)
     )
 
 
@@ -116,7 +137,7 @@ def _build_drive_service():
     """
     if not is_configured():
         return None
-    creds, err = _load_credentials()
+    creds, err = _load_credentials_cedolini()
     if creds is None:
         logger.error(f"Drive cedolini: {err}")
         return None
@@ -156,12 +177,12 @@ async def get_status(db) -> Dict[str, Any]:
     state = await db["sistema_stato"].find_one({"chiave": _STATO_KEY}, {"_id": 0}) or {}
     credenziali_errore = None
     if is_configured():
-        _, credenziali_errore = _load_credentials()
+        _, credenziali_errore = _load_credentials_cedolini()
     return {
         "configured": is_configured(),
         "credenziali_ok": is_configured() and credenziali_errore is None,
         "credenziali_errore": credenziali_errore,
-        "folder_id": settings.GOOGLE_DRIVE_CEDOLINI_FOLDER_ID,
+        "folder_id": _folder_id(),
         "sync_running": is_sync_running(),
         "last_sync": state.get("valore"),
         "last_result": state.get("last_result"),
@@ -185,14 +206,14 @@ async def _do_sync(db) -> Dict[str, Any]:
             "message": "Imposta GOOGLE_DRIVE_CEDOLINI_FOLDER_ID e il service account "
                        "(GOOGLE_DRIVE_SA_FILE o GOOGLE_DRIVE_SA_JSON).",
         }
-    creds, cred_err = _load_credentials()
+    creds, cred_err = _load_credentials_cedolini()
     if creds is None:
         return {"status": "error", "message": f"Credenziali Google Drive non valide: {cred_err}"}
     service = _build_drive_service()
     if service is None:
         return {"status": "error", "message": "Service Drive non disponibile (errore costruzione client)."}
 
-    parent_id = settings.GOOGLE_DRIVE_CEDOLINI_FOLDER_ID
+    parent_id = _folder_id()
     result = {
         "status": "ok", "total": 0, "imported": 0, "duplicates": 0,
         "errors": 0, "moved": 0, "details": [],
@@ -300,7 +321,7 @@ async def verifica_quadratura_elaborate(db) -> Dict[str, Any]:
     if service is None:
         return {"status": "error", "message": "Service Drive non disponibile"}
 
-    parent_id = settings.GOOGLE_DRIVE_CEDOLINI_FOLDER_ID
+    parent_id = _folder_id()
     esito = {"status": "ok", "controllati": 0, "quadrati": 0,
              "recuperati": 0, "errori": 0, "details": []}
     try:
