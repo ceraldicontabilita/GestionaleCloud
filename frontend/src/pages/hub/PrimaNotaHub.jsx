@@ -1,8 +1,6 @@
 import React, { lazy, Suspense, useState, useEffect } from 'react';
-import { BrushCleaning, BookOpenText, ClipboardList } from 'lucide-react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { useAnnoGlobale } from '../../contexts/AnnoContext';
-import { HubTabs } from '../../components/ds';
 
 const PrimaNotaContent = lazy(() => import('../PrimaNota.jsx'));
 const DatiProvvisoriContent = lazy(() => import('../DatiProvvisoriPage.jsx'));
@@ -28,7 +26,6 @@ const Loading = () => (
 export default function PrimaNotaHub() {
   const { anno } = useAnnoGlobale();
   const location = useLocation();
-  const navigate = useNavigate();
   const path = location.pathname;
   const isProvvisori = path.includes('provvisori') || path.includes('dati-provvisori');
   const isPulizia = path.includes('/pulizia');
@@ -47,16 +44,10 @@ export default function PrimaNotaHub() {
 
   return (
     <div style={{ width: '100%' }}>
-      <HubTabs
-        testIdPrefix="tab-prima-nota"
-        activeId={activeTab}
-        onSelect={tab => navigate(tab.to)}
-        tabs={[
-          { id: 'prima-nota', label: 'Prima nota', Icon: BookOpenText, to: '/prima-nota' },
-          { id: 'provvisori', label: 'Provvisori', Icon: ClipboardList, to: '/prima-nota#sezione=provvisori' },
-          { id: 'pulizia', label: 'Pulizia', Icon: BrushCleaning, to: '/prima-nota/pulizia' },
-        ]}
-      />
+      {/* Niente barra tab hub (richiesta utente 10/07): la pagina Prima Nota
+          ha GIÀ i suoi sottotab CASSA / BANCA / PROVVISORI — la barra sopra
+          ("Prima nota" / "Provvisori") era un doppione. La Pulizia si
+          raggiunge dal bottone "🗑️ Pulisci duplicati" dentro la pagina. */}
       <div style={{ display: activeTab === 'prima-nota' ? 'block' : 'none' }}>
         <Suspense fallback={<Loading />}>
           {visitedPrimaNota && <PrimaNotaContent key={`prima-nota-${anno}`} />}

@@ -71,9 +71,11 @@ export default function RiconciliazioneHub() {
 
   // Pagine "canoniche" senza barra hub (richiesta utente 10/07):
   // - /riconciliazione/f24 → solo F24, senza bancaria/bonifici/assegni/paypal;
-  // - /riconciliazione/coerenza-pos → solo Coerenza POS.
-  // Ci si arriva dal menù Altro; le altre sezioni hanno le loro voci di menù.
-  const nascondiTabs = path.includes('/f24') || path.includes('/coerenza-pos');
+  // - /riconciliazione/coerenza-pos → solo Coerenza POS;
+  // - /riconciliazione/paypal → solo PayPal (ha la sua voce di menù in alto).
+  // Ci si arriva dal menù; le altre sezioni hanno le loro voci dedicate.
+  const nascondiTabs =
+    path.includes('/f24') || path.includes('/coerenza-pos') || path.includes('/paypal');
 
   return (
     <div style={{ width: '100%' }}>
