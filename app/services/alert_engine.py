@@ -376,6 +376,12 @@ ALERT_CATALOG: Dict[str, Dict[str, Any]] = {
         "titolo": "Documento da rielaborare con nuove regole",
         "condizione_chiusura": "Rielaborato"
     },
+    "DOC_QUADRATURA_DRIVE": {
+        "modulo": "documenti",
+        "severita": "warning",
+        "titolo": "Quadratura Drive: fatture archiviate senza record recuperate",
+        "condizione_chiusura": "Verificato l'esito del recupero"
+    },
     
     # --- Riconciliazione ---
     "RIC_NON_RICONCILIATO": {

@@ -553,6 +553,26 @@ def start_scheduler():
         id="drive_fatture_ingest", name="Import Fatture da Google Drive (ogni 15 min + al riavvio)",
         replace_existing=True,
     )
+
+    # Quadratura settimanale Elaborate ↔ gestionale: verifica che ogni file
+    # archiviato in Drive/Elaborate abbia la sua fattura nel gestionale;
+    # i buchi vengono re-importati (idempotente) e segnalati con un alert.
+    async def _drive_quadratura_job():
+        from app.database import Database
+        from app.services import drive_invoice_ingest
+        try:
+            r = await drive_invoice_ingest.verifica_quadratura_elaborate(Database.get_db())
+            logger.info(f"[SCHEDULER-DRIVE-QUADRATURA] {r if r.get('status') != 'ok' else {k: r[k] for k in ('totale_file_elaborate', 'quadrati', 'recuperati', 'errori')}}")
+        except Exception as e:
+            logger.error(f"[SCHEDULER-DRIVE-QUADRATURA] errore: {e}")
+
+    scheduler.add_job(
+        _drive_quadratura_job,
+        CronTrigger(day_of_week="sun", hour=5, minute=0),
+        id="drive_fatture_quadratura",
+        name="Quadratura fatture Drive Elaborate (domenica ore 5:00)",
+        replace_existing=True,
+    )
     scheduler.add_job(
         _automazioni_prima_nota_job,
         'interval', minutes=30,

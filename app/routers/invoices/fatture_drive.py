@@ -38,3 +38,17 @@ async def drive_sync() -> Dict[str, Any]:
     if not drive_invoice_ingest.start_background_sync(db):
         return {"status": "running", "message": "Sincronizzazione già in corso"}
     return {"status": "started", "message": "Sincronizzazione avviata"}
+
+
+@router.post("/drive/quadratura")
+async def drive_quadratura() -> Dict[str, Any]:
+    """Doppio controllo Elaborate ↔ gestionale.
+
+    Ripassa TUTTI i file archiviati nella sottocartella Drive "Elaborate" e
+    verifica che ognuno abbia la sua fattura nel gestionale. I buchi (file
+    spostato in archivio ma record mai creato) vengono importati subito:
+    l'operazione è idempotente, non può creare doppioni e non sposta file.
+    Gira anche da sola una volta a settimana; da qui la lanci quando vuoi.
+    """
+    db = Database.get_db()
+    return await drive_invoice_ingest.verifica_quadratura_elaborate(db)

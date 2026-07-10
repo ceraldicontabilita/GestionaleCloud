@@ -280,3 +280,100 @@ async def _do_sync(db) -> Dict[str, Any]:
         upsert=True,
     )
     return result
+
+
+# ============================================================================
+# QUADRATURA ELABORATE ↔ GESTIONALE (doppio controllo)
+# ============================================================================
+# I file elaborati vengono spostati nella sottocartella Drive "Elaborate":
+# da li' il sync normale non li guarda piu'. Se un import fosse andato storto
+# a meta' (file spostato ma record non scritto), quella fattura resterebbe
+# invisibile per sempre. Questa verifica ripassa TUTTI i file di Elaborate
+# nella stessa pipeline idempotente:
+#   - record gia' presente  -> "duplicate"  -> quadra, nessuna azione
+#   - record MANCANTE       -> viene importato ORA (recupero automatico)
+#   - parse fallito          -> segnalato nei dettagli
+# Non sposta ne' modifica nessun file: Elaborate resta l'archivio.
+
+async def verifica_quadratura_elaborate(db) -> Dict[str, Any]:
+    """Doppio controllo: ogni file in Elaborate deve avere la sua fattura nel
+    gestionale. I buchi vengono recuperati automaticamente (import idempotente).
+    """
+    if not is_configured():
+        return {"status": "not_configured",
+                "message": "Configura prima il service account e la cartella Drive."}
+    creds, cred_err = _load_credentials()
+    if creds is None:
+        return {"status": "error", "message": f"Credenziali non valide: {cred_err}"}
+    service = _build_drive_service()
+    if service is None:
+        return {"status": "error", "message": "Service Drive non disponibile."}
+
+    from app.routers.invoices.fatture_upload import process_xml_bytes
+
+    parent_id = settings.GOOGLE_DRIVE_FATTURE_FOLDER_ID
+    esito: Dict[str, Any] = {
+        "status": "ok", "totale_file_elaborate": 0,
+        "quadrati": 0, "recuperati": 0, "errori": 0,
+        "dettaglio_recuperati": [], "dettaglio_errori": [],
+    }
+    try:
+        elaborate_id = _get_or_create_elaborate_folder(service, parent_id)
+        if not elaborate_id:
+            return {"status": "error", "message": "Cartella Elaborate non trovata."}
+
+        files = _list_xml_files(service, elaborate_id)
+        esito["totale_file_elaborate"] = len(files)
+
+        for f in files:
+            fid, fname = f["id"], f["name"]
+            try:
+                content = _download_bytes(service, fid)
+                res = await process_xml_bytes(db, content, fname, source="quadratura_drive")
+                st = res.get("status")
+                if st == "duplicate":
+                    esito["quadrati"] += 1
+                elif st == "imported":
+                    # BUCO TROVATO E RIPARATO: il file era in Elaborate ma la
+                    # fattura non esisteva nel gestionale.
+                    esito["recuperati"] += 1
+                    if len(esito["dettaglio_recuperati"]) < 50:
+                        esito["dettaglio_recuperati"].append(fname)
+                else:
+                    esito["errori"] += 1
+                    if len(esito["dettaglio_errori"]) < 20:
+                        esito["dettaglio_errori"].append({"file": fname, "errore": res.get("error")})
+            except Exception as e:
+                esito["errori"] += 1
+                if len(esito["dettaglio_errori"]) < 20:
+                    esito["dettaglio_errori"].append({"file": fname, "errore": str(e)[:200]})
+    except Exception as e:
+        logger.error(f"Quadratura Elaborate: errore: {e}")
+        return {"status": "error", "message": str(e)}
+
+    # Se sono stati trovati buchi, genera un avviso: non deve mai passare
+    # inosservato che dei file "elaborati" non avevano il loro record.
+    if esito["recuperati"] > 0 or esito["errori"] > 0:
+        try:
+            from app.services.alert_engine import genera_alert
+            await genera_alert(
+                "DOC_QUADRATURA_DRIVE", "drive_fatture", "documents_inbox",
+                f"Quadratura Drive Elaborate: {esito['recuperati']} fatture recuperate "
+                f"(erano archiviate senza record nel gestionale), {esito['errori']} file in errore. "
+                f"Recuperate: {', '.join(esito['dettaglio_recuperati'][:10])}",
+                db,
+            )
+        except Exception:
+            logger.exception("Quadratura: errore generazione alert")
+
+    # Persisti l'ultima quadratura nello stato del sync (visibile in Admin).
+    await db[_SYNC_STATE_COLLECTION].update_one(
+        {"_id": _SYNC_STATE_ID},
+        {"$set": {
+            "last_quadratura": datetime.now(timezone.utc).isoformat(),
+            "last_quadratura_result": {k: esito[k] for k in
+                                        ("totale_file_elaborate", "quadrati", "recuperati", "errori")},
+        }},
+        upsert=True,
+    )
+    return esito
