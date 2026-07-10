@@ -70,6 +70,8 @@ _DOMINI_KEYWORDS = {
                              "permess", "netto", "lordo", "indennit", "irpef", "contribut",
                              "tredicesima", "quattordicesima", "matricola"],
     "verbali_veicoli_trattenute": ["verbal", "multa", "targa", "trattenut", "conducente", "driver"],
+    "noleggio": ["auto", "veicolo", "targa", "noleggio", "bmw", "mazda", "stelvio", "alfa",
+                  "x1", "x3", "cx-60", "verbale", "multa", "driver", "canone", "trattenuta"],
     "fatture_fornitori": ["fattur", "fornitor", "pagament", "scadenz"],
     "corrispettivi_pos": ["corrispettiv", "pos", "incass", "contant", "accredit", "scontrin"],
     "riconciliazione_bancaria": ["riconcili", "estratto conto", "movimento banc", "banca"],
@@ -297,6 +299,111 @@ async def _tool_cerca_verbali(db, args):
     return await db["verbali_noleggio"].find(q, proj).sort("data_verbale", -1).to_list(_limite(args))
 
 
+# Tetto piu' basso per i tool del noleggio: la flotta e' piccola, 30 bastano.
+MAX_RISULTATI_NOLEGGIO = 30
+
+
+async def _tool_cerca_veicoli_noleggio(db, args):
+    q: Dict[str, Any] = {}
+    if args.get("targa"):
+        q["targa"] = {"$regex": str(args["targa"])[:10], "$options": "i"}
+    if args.get("stato_contratto"):
+        q["stato_contratto"] = str(args["stato_contratto"])[:40]
+    if args.get("driver"):
+        t = str(args["driver"])[:60]
+        # driver corrente O presente nello storico assegnazioni
+        q["$or"] = [
+            {"driver": {"$regex": t, "$options": "i"}},
+            {"assegnazioni.driver": {"$regex": t, "$options": "i"}},
+        ]
+    # `assegnazioni` incluso apposta: e' lo storico [{driver, dal, al}] che
+    # permette di rispondere a "chi aveva la targa X in data Y".
+    proj = {"_id": 0, "targa": 1, "marca": 1, "modello": 1, "driver": 1, "driver_id": 1,
+            "fornitore_noleggio": 1, "stato_contratto": 1, "canone_mensile": 1,
+            "canone_previsto": 1, "data_inizio": 1, "data_fine": 1, "assegnazioni": 1,
+            "note": 1}
+    limite = min(_limite(args), MAX_RISULTATI_NOLEGGIO)
+    return await db["veicoli_noleggio"].find(q, proj).sort("targa", 1).to_list(limite)
+
+
+async def _tool_cerca_verbali_noleggio(db, args):
+    """Unisce verbali da posta (verbali_noleggio) e da fatture noleggiatori
+    (verbali_noleggio_completi), deduplicati per numero_verbale — stessa
+    logica di _get_verbali_completi_per_targa in app/routers/noleggio.py."""
+    limite = min(_limite(args), MAX_RISULTATI_NOLEGGIO)
+
+    q_posta: Dict[str, Any] = {}
+    q_fatture: Dict[str, Any] = {}
+    if args.get("targa"):
+        t = str(args["targa"])[:10]
+        q_posta["targa"] = {"$regex": t, "$options": "i"}
+        q_fatture["targa"] = {"$regex": t, "$options": "i"}
+    if args.get("numero_verbale"):
+        n = str(args["numero_verbale"])[:30]
+        q_posta["numero_verbale"] = {"$regex": n, "$options": "i"}
+        q_fatture["numero_verbale"] = {"$regex": n, "$options": "i"}
+    if args.get("stato"):
+        q_posta["stato"] = str(args["stato"])[:40]
+        q_fatture["stato_pagamento"] = str(args["stato"])[:40]
+    if args.get("anno"):
+        anno = int(args["anno"])
+        q_posta["$or"] = [{"data_verbale": {"$regex": f"^{anno}"}},
+                          {"created_at": {"$regex": f"^{anno}"}}]
+        q_fatture["anno"] = anno
+
+    # MAI i PDF nel contesto del modello: restano lato server.
+    proj_no_pdf = {"_id": 0, "pdf_data": 0, "pdf_allegati": 0, "quietanza_pdf": 0}
+    per_numero: Dict[str, Dict[str, Any]] = {}
+
+    posta = await db["verbali_noleggio"].find(q_posta, proj_no_pdf) \
+        .sort("data_verbale", -1).to_list(limite * 3)
+    for v in posta:
+        numero = v.get("numero_verbale") or v.get("numero_verbale_old")
+        if not numero:
+            continue
+        per_numero[numero] = {
+            "numero_verbale": numero,
+            "targa": v.get("targa"),
+            "data_verbale": v.get("data_verbale") or (v.get("created_at") or "")[:10],
+            "importo": float(v.get("importo") or 0),
+            "stato": v.get("stato"),
+            "pagato": v.get("stato") == "pagato",
+            "conducente": v.get("conducente"),
+            "dipendente_id": v.get("dipendente_id"),
+            "trattenuta_stato": v.get("trattenuta_stato"),
+            "fattura_id": v.get("fattura_id"),
+            "fattura_numero": v.get("fattura_numero"),
+            "ha_ricevuta": bool(v.get("pdf_ricevuta_path") or v.get("quietanza_ricevuta")),
+            "fonte": "posta",
+        }
+
+    completi = await db["verbali_noleggio_completi"].find(q_fatture, proj_no_pdf) \
+        .sort("data_verbale", -1).to_list(limite * 3)
+    for v in completi:
+        numero = v.get("numero_verbale")
+        if not numero:
+            continue
+        esistente = per_numero.get(numero, {})
+        stato_pagamento = v.get("stato_pagamento")
+        per_numero[numero] = {
+            **esistente,
+            "numero_verbale": numero,
+            "targa": esistente.get("targa") or v.get("targa"),
+            "data_verbale": esistente.get("data_verbale") or v.get("data_verbale") or v.get("data"),
+            "importo": esistente.get("importo") or float(v.get("importo") or 0),
+            "stato": esistente.get("stato") or stato_pagamento,
+            "pagato": esistente.get("pagato", False) or stato_pagamento == "pagato",
+            "fattura_id": esistente.get("fattura_id") or v.get("fattura_id"),
+            "fattura_numero": esistente.get("fattura_numero") or v.get("numero_fattura"),
+            "ha_ricevuta": esistente.get("ha_ricevuta", False),
+            "fonte": "posta+fattura" if esistente else "fattura",
+        }
+
+    ordinati = sorted(per_numero.values(),
+                      key=lambda x: x.get("data_verbale") or "", reverse=True)
+    return ordinati[:limite]
+
+
 async def _tool_cerca_corrispettivi(db, args):
     q: Dict[str, Any] = dict(_range_data(args, "data"))
     proj = {"_id": 0, "id": 1, "data": 1, "totale": 1, "totale_manuale": 1, "totale_xml": 1,
@@ -348,6 +455,8 @@ _TOOL_EXECUTORS = {
     "cerca_cedolini": _tool_cerca_cedolini,
     "cerca_dipendenti": _tool_cerca_dipendenti,
     "cerca_verbali": _tool_cerca_verbali,
+    "cerca_veicoli_noleggio": _tool_cerca_veicoli_noleggio,
+    "cerca_verbali_noleggio": _tool_cerca_verbali_noleggio,
     "cerca_corrispettivi": _tool_cerca_corrispettivi,
     "cerca_movimenti_prima_nota": _tool_cerca_movimenti_prima_nota,
     "cerca_alert": _tool_cerca_alert,
@@ -391,6 +500,23 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
      "description": "Cerca verbali/multe (numero, targa, stato, trattenuta).",
      "input_schema": {"type": "object", "properties": {
          "targa": _S, "numero_verbale": _S, "stato": _S, **_LIM}}},
+    {"name": "cerca_veicoli_noleggio",
+     "description": "Cerca i veicoli a noleggio della flotta: targa, marca/modello, driver corrente, "
+                    "fornitore, canone mensile, stato contratto e storico assegnazioni [{driver, dal, al}] "
+                    "(usalo per 'chi aveva la targa X in data Y').",
+     "input_schema": {"type": "object", "properties": {
+         "targa": _S,
+         "stato_contratto": {**_S, "description": "es. attivo | cessato"},
+         "driver": {**_S, "description": "nome del driver, corrente o nello storico"},
+         "limite": {**_I, "description": f"max risultati (tetto {MAX_RISULTATI_NOLEGGIO})"}}}},
+    {"name": "cerca_verbali_noleggio",
+     "description": "Cerca i verbali/multe dei veicoli a noleggio unendo i due canali (posta e fatture "
+                    "noleggiatori), deduplicati per numero verbale: stato pagamento, conducente, "
+                    "trattenuta, fattura collegata.",
+     "input_schema": {"type": "object", "properties": {
+         "targa": _S, "numero_verbale": _S,
+         "stato": {**_S, "description": "es. pagato | da_pagare"}, "anno": _I,
+         "limite": {**_I, "description": f"max risultati (tetto {MAX_RISULTATI_NOLEGGIO})"}}}},
     {"name": "cerca_corrispettivi",
      "description": "Cerca corrispettivi giornalieri (totale, contanti, POS, stato accredito POS).",
      "input_schema": {"type": "object", "properties": {"data_da": _S, "data_a": _S, **_LIM}}},

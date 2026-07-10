@@ -623,6 +623,36 @@
         "Quali fatture contengono la targa del veicolo?"
       ]
     },
+    "noleggio": {
+      "nome": "Noleggio auto: flotta, canoni, contratti, verbali e trattenute",
+      "descrizione": "Modulo che ricostruisce la flotta a noleggio dalle fatture dei noleggiatori e dai verbali arrivati via posta, con storico dei driver e proposte di recupero in busta paga.",
+      "entita": [
+        "veicoli_noleggio",
+        "invoices",
+        "verbali_noleggio",
+        "verbali_noleggio_completi",
+        "dipendenti",
+        "cedolini"
+      ],
+      "ragionamento": [
+        "Le fatture dei noleggiatori sono riconosciute per P.IVA: ALD Automotive (01924961004), ARVAL (04911190488), Leasys (06714021000), LeasePlan (02615080963). LeasePlan non riporta la targa in fattura: l'associazione al veicolo è manuale.",
+        "Le righe fattura sono categorizzate in: canoni, pedaggio, verbali, bollo, costi extra, riparazioni.",
+        "Lo stato del contratto (attivo/cessato) lo decide SOLO l'utente: il sistema segnala i segnali di cessazione trovati in fattura ma non cambia mai lo stato da solo. Un contratto cessato non genera mai avvisi sui canoni.",
+        "Ogni veicolo ha un driver corrente e uno storico assegnazioni [{driver, dal, al}]: il responsabile di un verbale è il driver alla data dell'infrazione (driver_alla_data), non quello attuale.",
+        "I verbali arrivano da due canali: posta PEC/Gmail (verbali_noleggio) e fatture dei noleggiatori (verbali_noleggio_completi). Lo stesso verbale può comparire in entrambi e va deduplicato per numero_verbale.",
+        "Le trattenute in busta paga per i verbali non sono MAI automatiche: il sistema le propone soltanto e l'utente decide se applicarle."
+      ],
+      "domande": [
+        "Quanto costa la BMW X1 al mese?",
+        "Quali auto hanno un contratto attivo?",
+        "La Stelvio GG782PN è ancora attiva?",
+        "Chi aveva la targa GX037HJ a marzo 2025?",
+        "Quali verbali sono collegati a Vincenzo?",
+        "Quali verbali non sono stati recuperati in busta paga?",
+        "Quali verbali ha ricevuto questo veicolo nel 2025?",
+        "Il verbale è stato pagato dalla società o dal dipendente?"
+      ]
+    },
     "documenti_import": {
       "nome": "Documenti importati, errori e provenienza",
       "entita": [

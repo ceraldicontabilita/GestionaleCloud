@@ -320,6 +320,21 @@ costi → pagamenti → driver assegnato → verbali → eventuali trattenute �
   altrimenti un avviso **soft** "da verificare". Mai un allarme grave immediato.
 - Caso già deciso: **GG782PN Alfa Romeo Stelvio = contratto cessato** (il
   sistema lo imposta da solo solo se lo stato non è mai stato toccato).
+- **Chat intelligente**: può interrogare (solo lettura) veicoli e verbali del
+  noleggio — canone mensile, stato contratto, driver alla data grazie allo
+  storico assegnazioni, verbali uniti dai due canali (posta + fatture) senza
+  duplicati e senza mai esporre i PDF. Come per il resto della chat: risponde
+  e propone, non modifica mai nulla.
+- **Pannello "Controlli"** (in testa al tab Flotta Auto): riepilogo in un colpo
+  solo di ciò che richiede attenzione, con chip cliccabili mostrati **solo se
+  il conteggio è maggiore di zero** — verbali aperti (non pagati/chiusi, uniti
+  dai due canali senza duplicati; il chip porta al tab Verbali), trattenute
+  dipendenti da confermare, auto attive senza driver, fatture da associare a
+  un veicolo (apre l'elenco già esistente), pagamenti dell'anno corrente verso
+  i fornitori noleggio non ancora pagati/riconciliati e avvisi NOL_* aperti.
+  I chip senza una sezione dedicata espandono una piccola lista (prime 10
+  voci). Se il servizio non risponde o non c'è nulla da segnalare, il pannello
+  semplicemente non compare. Dati da `GET /api/noleggio/riepilogo-controlli`.
 
 ---
 
