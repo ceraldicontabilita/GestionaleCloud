@@ -21,6 +21,7 @@ import uuid
 import logging
 
 from app.database import Database
+from app.engines.prima_nota_engine import decide_destinazione_fattura
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/sync", tags=["Sincronizzazione Dati"])
@@ -57,12 +58,16 @@ async def sync_fattura_to_prima_nota(fattura_id: str, db) -> Dict[str, Any]:
     
     if not metodo:
         return {"success": False, "error": "Metodo pagamento non specificato"}
-    
-    # Determina collection target
-    if metodo.lower() in ["cassa", "contanti"]:
-        collection = "prima_nota_cassa"
-    else:
-        collection = "prima_nota_banca"
+
+    # Determina collection target tramite il motore unico di instradamento.
+    destinazione = decide_destinazione_fattura(metodo)
+    if destinazione not in ("cassa", "banca"):
+        return {
+            "success": False,
+            "error": f"Metodo pagamento '{metodo}' non auto-instradabile: richiede "
+                     "conferma manuale in Prima Nota Provvisoria (fornitore Misto o senza metodo definito)",
+        }
+    collection = "prima_nota_cassa" if destinazione == "cassa" else "prima_nota_banca"
     
     # Cerca movimento esistente collegato
     movimento_esistente = await db[collection].find_one({

@@ -30,6 +30,8 @@ import logging
 from datetime import datetime, timezone
 import os
 
+from app.utils.numeri_italiani import parse_importo_ita
+
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
@@ -98,19 +100,7 @@ def parse_date_it(date_str: str) -> Optional[str]:
 
 def parse_importo(value: str) -> float:
     """Converte importo stringa in float"""
-    if not value:
-        return 0.0
-    try:
-        # Rimuovi spazi e caratteri non numerici tranne punto e virgola
-        clean = value.strip().replace(' ', '').replace('€', '')
-        # Gestisce formato italiano con virgola decimale
-        if ',' in clean and '.' in clean:
-            clean = clean.replace('.', '').replace(',', '.')
-        elif ',' in clean:
-            clean = clean.replace(',', '.')
-        return float(clean)
-    except Exception:
-        return 0.0
+    return parse_importo_ita(value)
 
 
 @router.post("/import-distinte-bpm")

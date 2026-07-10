@@ -7,10 +7,9 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict
 
-logger = logging.getLogger(__name__)
+from app.engines.prima_nota_engine import decide_destinazione_fattura
 
-METODI_CASSA  = {"cassa", "contanti"}
-METODI_BANCA  = {"bonifico", "sepa", "rid", "riba", "assegno", "carta", "altro", "misto", "banca"}
+logger = logging.getLogger(__name__)
 
 
 async def handler_prima_nota_fattura(payload: Dict[str, Any], db) -> Dict[str, Any]:
@@ -31,13 +30,17 @@ async def handler_prima_nota_fattura(payload: Dict[str, Any], db) -> Dict[str, A
     if importo <= 0:
         return {"skipped": True, "reason": "importo zero"}
 
-    # Determina collection
-    if metodo in METODI_CASSA:
+    # Determina collection tramite il motore unico di instradamento.
+    # 'misto' e 'non definito' non vengono mai auto-instradati qui: questo
+    # handler scrive un solo movimento in una sola collection e non ha modo
+    # di dividere l'importo, la conferma resta alla Prima Nota Provvisoria.
+    destinazione = decide_destinazione_fattura(metodo)
+    if destinazione == "cassa":
         collection = "prima_nota_cassa"
-    elif metodo in METODI_BANCA:
+    elif destinazione == "banca":
         collection = "prima_nota_banca"
     else:
-        return {"skipped": True, "reason": f"metodo pagamento sconosciuto: {metodo}"}
+        return {"skipped": True, "reason": f"metodo pagamento non auto-instradabile (richiede Prima Nota Provvisoria): {metodo}"}
 
     # Anti-duplicato
     esistente = await db[collection].find_one({"fattura_id": fattura_id, "source": "fattura_pagata"})

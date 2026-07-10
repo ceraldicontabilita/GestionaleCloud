@@ -4,6 +4,7 @@ Validatori per il modulo Fornitori.
 from typing import Dict, Any, List
 
 from .constants import CAMPI_OBBLIGATORI_P0, CAMPI_CONSIGLIATI
+from app.utils.iban import valida_iban as _valida_iban_condiviso
 
 
 def clean_mongo_doc(doc: Dict[str, Any]) -> Dict[str, Any]:
@@ -76,11 +77,7 @@ def normalizza_piva(piva: str) -> str:
 
 def valida_iban(iban: str) -> bool:
     """Valida formato base IBAN italiano."""
-    if not iban:
-        return False
-    iban_clean = "".join(c for c in iban if c.isalnum()).upper()
-    # IBAN italiano: IT + 2 check digits + 1 CIN + 5 ABI + 5 CAB + 12 conto
-    return len(iban_clean) == 27 and iban_clean.startswith("IT")
+    return _valida_iban_condiviso(iban)
 
 
 def estrai_denominazione(fornitore: Dict[str, Any]) -> str:

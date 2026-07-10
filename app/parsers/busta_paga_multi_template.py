@@ -10,6 +10,8 @@ import re
 from typing import Dict, Any, Optional, Tuple
 import fitz  # PyMuPDF
 
+from app.utils.numeri_italiani import parse_importo_ita
+
 
 def detect_template(text: str) -> str:
     """Rileva quale template è in uso basandosi sul contenuto del PDF."""
@@ -92,20 +94,7 @@ def parse_template_zucchetti_presenze(text: str) -> Dict[str, Any]:
 
 def parse_importo(value_str: str) -> float:
     """Converte una stringa importo in float."""
-    if not value_str:
-        return 0.0
-    clean = value_str.strip().replace(' ', '').replace('+', '').replace('-', '')
-    if ',' in clean and '.' in clean:
-        if clean.index('.') < clean.index(','):
-            clean = clean.replace('.', '').replace(',', '.')
-        else:
-            clean = clean.replace(',', '')
-    elif ',' in clean:
-        clean = clean.replace(',', '.')
-    try:
-        return float(clean)
-    except ValueError:
-        return 0.0
+    return parse_importo_ita(value_str, keep_sign=False)
 
 
 def parse_template_csc_napoli(text: str) -> Dict[str, Any]:

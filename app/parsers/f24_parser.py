@@ -6,6 +6,8 @@ import logging
 from typing import Dict, Any, List
 from datetime import datetime
 
+from app.utils.numeri_italiani import parse_importo_ita
+
 logger = logging.getLogger(__name__)
 
 
@@ -204,15 +206,7 @@ def parse_f24_pdf(pdf_bytes: bytes) -> Dict[str, Any]:
 
 def parse_amount(amount_str: str) -> float:
     """Parse Italian number format to float."""
-    if not amount_str:
-        return 0.0
-    try:
-        # Remove spaces and handle Italian format (1.234,56 or 1.234, 56)
-        clean = amount_str.strip().replace(" ", "")
-        clean = clean.replace(".", "").replace(",", ".")
-        return float(clean)
-    except Exception:
-        return 0.0
+    return parse_importo_ita(amount_str)
 
 
 def get_tributo_name(codice: str) -> str:

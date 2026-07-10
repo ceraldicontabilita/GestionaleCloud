@@ -9,19 +9,14 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional
 import logging
 
+from app.utils.numeri_italiani import parse_importo_ita
+
 logger = logging.getLogger(__name__)
 
 
 def parse_importo(value: str) -> float:
     """Converte stringa importo italiano in float."""
-    if not value or value.strip() == "":
-        return 0.0
-    # Rimuovi spazi e sostituisci separatori
-    value = value.strip().replace(".", "").replace(",", ".")
-    try:
-        return float(value)
-    except Exception:
-        return 0.0
+    return parse_importo_ita(value)
 
 
 def parse_data(value: str) -> Optional[str]:

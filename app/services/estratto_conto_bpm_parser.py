@@ -10,19 +10,14 @@ from typing import Dict, List, Any, Optional
 from io import StringIO
 import logging
 
+from app.utils.numeri_italiani import parse_importo_ita
+
 logger = logging.getLogger(__name__)
 
 
 def parse_importo_bpm(value: str) -> float:
     """Converte importo BPM (formato italiano) in float."""
-    if not value:
-        return 0.0
-    # Rimuovi spazi e converti virgola in punto
-    value = str(value).strip().replace('.', '').replace(',', '.')
-    try:
-        return float(value)
-    except ValueError:
-        return 0.0
+    return parse_importo_ita(value)
 
 
 def parse_data_bpm(value: str) -> Optional[datetime]:

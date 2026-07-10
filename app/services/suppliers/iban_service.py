@@ -10,11 +10,9 @@ from datetime import datetime, timezone
 
 
 from .constants import Collections
+from app.utils.iban import IBAN_PATTERN
 
 logger = logging.getLogger(__name__)
-
-# Regex per IBAN italiano
-IBAN_PATTERN = re.compile(r'IT\d{2}[A-Z]?\d{5}\d{5}[A-Z0-9]{12}', re.IGNORECASE)
 
 # Metodi di pagamento che richiedono IBAN
 METODI_BANCARI = [

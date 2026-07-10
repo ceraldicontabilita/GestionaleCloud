@@ -16,6 +16,8 @@ import logging
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
+from app.utils.numeri_italiani import parse_importo_ita
+
 logger = logging.getLogger(__name__)
 
 # Mappatura codici giustificativi dal Libro Unico ai codici standard
@@ -51,17 +53,7 @@ MESI_ITALIANI = {
 
 def parse_importo(s: str) -> float:
     """Converte stringa in float (gestisce formato italiano con hm = ore minuti)."""
-    if not s:
-        return 0.0
-    s = s.strip().replace(' ', '').replace('hm', '').replace('h', '')
-    if ',' in s and '.' in s:
-        s = s.replace('.', '').replace(',', '.')
-    elif ',' in s:
-        s = s.replace(',', '.')
-    try:
-        return float(s)
-    except ValueError:
-        return 0.0
+    return parse_importo_ita(s, strip_ore_suffix=True)
 
 
 def extract_periodo_libro_unico(text: str) -> Tuple[Optional[int], Optional[int], str]:

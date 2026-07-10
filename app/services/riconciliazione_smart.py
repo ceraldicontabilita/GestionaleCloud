@@ -337,7 +337,9 @@ async def cerca_fatture_fornitore(
     data_max: str = None
 ) -> List[Dict[str, Any]]:
     """Cerca fatture di un fornitore, opzionalmente filtrate per importo."""
-    query = {"pagato": {"$ne": True}}
+    # "sospesa" = bloccata manualmente in Prima Nota Provvisoria, esclusa
+    # dal matching automatico di riconciliazione.
+    query = {"pagato": {"$ne": True}, "stato_pagamento": {"$ne": "sospesa"}}
     
     if piva_fornitore:
         query["$or"] = [

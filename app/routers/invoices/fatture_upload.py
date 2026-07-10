@@ -1454,9 +1454,13 @@ async def paga_fattura(invoice_id: str) -> Dict[str, Any]:
         payment_date=datetime.now(timezone.utc).isoformat()[:10]
     )
     
-    if result.get("errors"):
-        logger.warning(f"Propagation errors: {result['errors']}")
-    
+    if not result.get("movement_created"):
+        logger.warning(f"Propagation errors: {result.get('errors')}")
+        raise HTTPException(
+            status_code=400,
+            detail=result.get("errors", ["Impossibile registrare il pagamento"])[0],
+        )
+
     return {
         "success": True,
         "message": "Fattura pagata con successo",

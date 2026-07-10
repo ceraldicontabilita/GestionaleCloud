@@ -371,12 +371,12 @@ async def backfill_autoroute_da_metodo_fornitore() -> Dict[str, Any]:
     legge il metodo di pagamento dell'anagrafica fornitore e crea automaticamente
     il movimento in `prima_nota_cassa` o `prima_nota_banca`.
     
-    Metodi mappati (vedi metodo_pagamento.py):
-      - contanti/cassa/MP01              → prima_nota_cassa
-      - banca/bonifico/carta/SEPA/RID/
-        PayPal/MP05/MP08/MP19/MP20/MP21  → prima_nota_banca
-      - assegno/MP02/MP03                → NON auto-routato (gestione manuale)
-      - ambiguo/vuoto/misto              → NON auto-routato
+    Metodi mappati (vedi motore app.engines.prima_nota_engine):
+      - contanti/cassa/MP01                        → prima_nota_cassa
+      - banca/bonifico/carta/assegno/SEPA/RID/
+        PayPal/MP02/MP03/MP05/MP08/MP19/MP20/MP21  → prima_nota_banca
+      - misto                                       → NON auto-routato (Prima Nota Provvisoria)
+      - ambiguo/vuoto                               → NON auto-routato
     """
     from .metodo_pagamento import normalizza_metodo_pagamento
     db = Database.get_db()
@@ -386,7 +386,7 @@ async def backfill_autoroute_da_metodo_fornitore() -> Dict[str, Any]:
         "analizzate": 0,
         "confermate_cassa": 0,
         "confermate_banca": 0,
-        "skip_assegno": 0,
+        "skip_misto": 0,
         "skip_metodo_non_definito": 0,
         "skip_fornitore_non_trovato": 0,
         "skip_gia_confermate": 0,
@@ -438,8 +438,8 @@ async def backfill_autoroute_da_metodo_fornitore() -> Dict[str, Any]:
                 continue
 
             dest = normalizza_metodo_pagamento(metodo_fornitore)
-            if dest == "assegno":
-                report["skip_assegno"] += 1
+            if dest == "misto":
+                report["skip_misto"] += 1
                 continue
             if dest not in ("cassa", "banca"):
                 report["skip_metodo_non_definito"] += 1

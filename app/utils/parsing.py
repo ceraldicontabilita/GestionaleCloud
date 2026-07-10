@@ -1,6 +1,8 @@
 """
 Utility functions for parsing.
 """
+from app.utils.numeri_italiani import parse_importo_ita
+
 
 class ParsingError(Exception):
     """Custom exception for parsing errors."""
@@ -8,20 +10,8 @@ class ParsingError(Exception):
 
 
 def safe_float(value, default=0.0):
-    """Safely convert value to float."""
-    if value is None:
-        return default
-    try:
-        if isinstance(value, str):
-            # Handle Italian number format (1.234,56 -> 1234.56)
-            value = value.strip().replace('€', '').replace(' ', '')
-            if ',' in value and '.' in value:
-                value = value.replace('.', '').replace(',', '.')
-            elif ',' in value:
-                value = value.replace(',', '.')
-        return float(value)
-    except (ValueError, TypeError):
-        return default
+    """Safely convert value to float (formato italiano incluso)."""
+    return parse_importo_ita(value, default=default, keep_sign=True)
 
 
 def safe_int(value, default=0):

@@ -17,6 +17,7 @@ import logging
 import uuid
 
 from app.database import Database, Collections
+from app.engines.prima_nota_engine import decide_destinazione_fattura
 
 logger = logging.getLogger(__name__)
 
@@ -61,8 +62,15 @@ class DataPropagationService:
             results["errors"].append("Fattura non trovata")
             return results
         
-        # 2. Determina collection per movimento
-        collection = "prima_nota_cassa" if payment_method.lower() in ["cassa", "contanti"] else "prima_nota_banca"
+        # 2. Determina collection per movimento tramite il motore unico di instradamento
+        destinazione = decide_destinazione_fattura(payment_method)
+        if destinazione not in ("cassa", "banca"):
+            results["errors"].append(
+                f"Metodo pagamento '{payment_method}' non auto-instradabile: richiede "
+                "conferma manuale in Prima Nota Provvisoria (fornitore Misto o senza metodo definito)"
+            )
+            return results
+        collection = "prima_nota_cassa" if destinazione == "cassa" else "prima_nota_banca"
         
         # 3. Crea movimento
         movement_id = str(uuid.uuid4())

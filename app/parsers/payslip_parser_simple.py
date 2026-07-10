@@ -14,6 +14,8 @@ import logging
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
+from app.utils.numeri_italiani import parse_importo_ita
+
 logger = logging.getLogger(__name__)
 
 # Mesi italiani
@@ -26,19 +28,7 @@ MESI_ITALIANI = {
 
 def parse_importo(s: str) -> float:
     """Converte stringa in float (gestisce formato italiano)."""
-    if not s:
-        return 0.0
-    # Rimuovi spazi e caratteri non numerici (eccetto . e ,)
-    s = s.strip().replace(' ', '')
-    # Formato italiano: 1.234,56 -> 1234.56
-    if ',' in s and '.' in s:
-        s = s.replace('.', '').replace(',', '.')
-    elif ',' in s:
-        s = s.replace(',', '.')
-    try:
-        return float(s)
-    except ValueError:
-        return 0.0
+    return parse_importo_ita(s)
 
 
 def extract_periodo(text: str) -> Tuple[Optional[int], Optional[int], str]:

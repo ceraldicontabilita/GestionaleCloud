@@ -215,7 +215,9 @@ async def _alert_pagamento_multiplo(db, mov_id: Optional[str], importo: float) -
         candidates = await db[Collections.INVOICES].find(
             {
                 "pagato": {"$ne": True},
-                "stato_pagamento": {"$nin": ["pagata", "paid"]},
+                # "sospesa" = l'utente ha bloccato la fattura in Prima Nota
+                # Provvisoria: non deve essere toccata dal matching automatico.
+                "stato_pagamento": {"$nin": ["pagata", "paid", "sospesa"]},
             },
             {"_id": 1, "numero_fattura": 1, "invoice_number": 1,
              "importo_totale": 1, "total_amount": 1,
@@ -589,8 +591,10 @@ async def riconcilia_movimenti_banca() -> Dict[str, Any]:
                 fatture_candidate = await db[Collections.INVOICES].find({
                     "$and": [
                         {"pagato": {"$ne": True}},
-                        # Coerenza: alcuni flussi marcano il pagamento solo qui
-                        {"stato_pagamento": {"$nin": ["pagata", "paid"]}},
+                        # Coerenza: alcuni flussi marcano il pagamento solo qui.
+                        # "sospesa" = bloccata manualmente in Prima Nota
+                        # Provvisoria, esclusa dal matching automatico.
+                        {"stato_pagamento": {"$nin": ["pagata", "paid", "sospesa"]}},
                         {"$or": [
                             # Match esatto
                             {"importo_totale": {"$gte": importo - 0.05, "$lte": importo + 0.05}},

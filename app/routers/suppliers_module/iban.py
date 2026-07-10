@@ -11,6 +11,7 @@ import httpx
 
 from app.database import Database, Collections
 from app.middleware.performance import cache
+from app.utils.iban import IBAN_PATTERN as _IBAN_PATTERN_SHARED
 from .common import SUPPLIERS_CACHE_KEY, METODI_BANCARI, logger
 
 router = APIRouter()
@@ -57,9 +58,9 @@ async def ricerca_iban_fornitori_web() -> Dict[str, Any]:
             **risultato
         }
     
-    # Regex per IBAN italiano
-    iban_pattern = re.compile(r'IT\d{2}[A-Z]?\d{5}\d{5}[A-Z0-9]{12}', re.IGNORECASE)
-    
+    # Regex per IBAN italiano (condivisa, vedi app/utils/iban.py)
+    iban_pattern = _IBAN_PATTERN_SHARED
+
     async with httpx.AsyncClient(timeout=15.0) as client:
         for fornitore in fornitori_senza_iban:
             piva = fornitore.get("partita_iva", "")
@@ -202,7 +203,7 @@ async def ricerca_iban_singolo_web(supplier_id: str) -> Dict[str, Any]:
     if not piva:
         raise HTTPException(status_code=400, detail="Fornitore senza Partita IVA")
     
-    iban_pattern = re.compile(r'IT\d{2}[A-Z]?\d{5}\d{5}[A-Z0-9]{12}', re.IGNORECASE)
+    iban_pattern = _IBAN_PATTERN_SHARED
     
     fattura_con_iban = await db["invoices"].find_one(
         {

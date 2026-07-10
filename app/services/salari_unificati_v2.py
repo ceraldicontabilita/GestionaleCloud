@@ -37,6 +37,8 @@ from datetime import datetime, timezone, date
 from typing import Dict, Any, List, Optional
 import calendar
 
+from app.utils.numeri_italiani import parse_importo_ita
+
 logger = logging.getLogger(__name__)
 
 
@@ -76,12 +78,8 @@ def estrai_ferie_rol_from_text(text: str) -> Dict[str, Any]:
     def parse_importo(val):
         if not val:
             return 0.0
-        val = str(val).strip().replace('.', '').replace(',', '.').replace(' ', '')
-        val = re.sub(r'[^\d.\-]', '', val)
-        try:
-            return abs(float(val))
-        except (ValueError, TypeError):
-            return 0.0
+        val = re.sub(r'[^\d.,\-]', '', str(val).strip())
+        return parse_importo_ita(val, keep_sign=False)
     
     # === FERIE ===
     # Formato: "Ferie  8,66666  14,00000  -5,33334 GG."

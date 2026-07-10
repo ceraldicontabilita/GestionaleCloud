@@ -9,6 +9,7 @@ import logging
 import uuid
 
 from app.database import Database, Collections
+from app.engines.prima_nota_engine import decide_destinazione_fattura, normalizza_metodo_pagamento
 from .common import (
     COLLECTION_PRIMA_NOTA_CASSA, COLLECTION_PRIMA_NOTA_BANCA
 )
@@ -20,29 +21,23 @@ logger = logging.getLogger(__name__)
 TIPI_FATTURA_ATTIVA = ["TD24", "TD25", "TD26", "TD27"]
 TIPI_NOTA_CREDITO = ["TD04", "TD08"]
 
-# Metodi fornitore -> destinazione Prima Nota (REGOLA UNICA: il metodo
-# fornitore comanda). Usata sia dalla pagina Provvisori (get_fatture_provvisorie)
-# sia dal job schedulato (auto_conferma_provvisori_per_metodo): prima erano
-# due liste diverse e un fornitore con metodo "assegno"/"carta"/"altro" veniva
-# auto-confermato aprendo la pagina ma restava bloccato in provvisori nel job
-# automatico (o viceversa) — incoerenza silenziosa tra i due percorsi.
-METODI_CASSA = {"cassa", "contanti", "cash", "contante"}
-# "carta" incluso per coerenza con METODI_BANCARI in suppliers_module/common.py
-# e con la classificazione canaleCanonico/metodoCanonico di Fornitori.jsx —
-# prima era assente qui e un fornitore con "carta" risultava "Banca" sulla
-# scheda fornitore ma "sospesa" in Prima Nota Provvisori.
-METODI_BANCA = {"bonifico", "banca", "riba", "sepa", "rid", "sdd", "assegno", "carta"}
-# paypal/compensazione/misto/sospesa/altro/senza-metodo: restano in
-# provvisoria in attesa di un match con l'estratto conto o di una decisione manuale.
+# Metodi fornitore -> destinazione Prima Nota: REGOLA UNICA, delegata al
+# motore centralizzato app.engines.prima_nota_engine (prima esistevano liste
+# di parole chiave diverse in piu' punti del codice, non sincronizzate tra
+# loro: un fornitore con metodo "assegno"/"carta" poteva risultare "Banca"
+# in un punto e "sospeso" in un altro — vedi storia di questo file).
 
 
 def classifica_metodo_fornitore(metodo: str) -> str:
-    """Ritorna 'cassa' | 'banca' | 'sospesa' per un metodo pagamento fornitore."""
-    m = (metodo or "").strip().lower()
-    if m in METODI_CASSA:
-        return "cassa"
-    if m in METODI_BANCA:
-        return "banca"
+    """Ritorna 'cassa' | 'banca' | 'sospesa' per un metodo pagamento fornitore.
+
+    'sospesa' copre sia il fornitore Misto (Prima Nota Provvisoria, in attesa
+    di conferma su come dividere il pagamento) sia il fornitore senza metodo
+    definito: in entrambi i casi la fattura resta nei Provvisori.
+    """
+    destinazione = decide_destinazione_fattura(metodo)
+    if destinazione in ("cassa", "banca"):
+        return destinazione
     return "sospesa"
 
 
@@ -123,19 +118,19 @@ async def registra_pagamento_fattura(
         await db[collection].insert_one(mov.copy())
         return (mov["id"], False)
 
-    metodo = (metodo_pagamento or "").lower()
+    canonico = normalizza_metodo_pagamento(metodo_pagamento)
 
-    if metodo in ["cassa", "contanti"]:
+    if canonico == "cassa":
         mid, dup = await _insert_idempotente(COLLECTION_PRIMA_NOTA_CASSA, importo_totale, descrizione_base)
         risultato["cassa"] = mid
         risultato["duplicato"] = dup
 
-    elif metodo in ["banca", "bonifico", "assegno", "riba", "carta", "sepa", "mav", "rav", "rid", "f24"]:
+    elif canonico == "banca":
         mid, dup = await _insert_idempotente(COLLECTION_PRIMA_NOTA_BANCA, importo_totale, descrizione_base)
         risultato["banca"] = mid
         risultato["duplicato"] = dup
 
-    elif metodo == "misto":
+    elif canonico == "misto":
         if importo_cassa > 0:
             mid, dup_c = await _insert_idempotente(
                 COLLECTION_PRIMA_NOTA_CASSA, importo_cassa, f"{descrizione_base} (contanti)"
