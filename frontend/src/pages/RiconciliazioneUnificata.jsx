@@ -915,6 +915,7 @@ export default function RiconciliazioneUnificata() {
             onLoadF24={loadF24OnDemand}
             f24Loading={f24Loading}
             onRefresh={loadAllData}
+            anno={anno}
           />
         )}
         {activeTab === 'stipendi' && (
@@ -1644,7 +1645,176 @@ function MovimentoCard({ movimento, onConferma, onIgnora, onElimina, processing,
   );
 }
 
-function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefresh }) {
+// ── Tabella §20 della specifica F24 (memoria/SPECIFICA_F24_CEDOLINI_...) ──
+// Periodo di competenza, scadenza naturale, data pagamento, giorni di
+// ritardo, stato, tipo versamento, causale INPS, documento collegato,
+// possibile duplicazione e motivazione automatica. Il "pagato in ritardo"
+// è evidenziato con scadenza naturale e data effettiva, come da specifica.
+const STILI_STATO_F24 = {
+  pagato_nei_termini: { label: '✅ Pagato nei termini', bg: '#dcfce7', color: '#166534' },
+  pagato_in_ritardo: { label: '⚠️ PAGATO IN RITARDO', bg: '#fee2e2', color: '#991b1b' },
+  non_pagato: { label: '❌ Non pagato', bg: '#ffedd5', color: '#9a3412' },
+  in_scadenza: { label: '🕐 In scadenza', bg: '#dbeafe', color: '#1e40af' },
+  periodo_ignoto: { label: '❓ Periodo ignoto', bg: '#f1f5f9', color: '#64748b' },
+};
+
+const STILI_DUP_F24 = {
+  da_verificare: { label: '🚨 Da verificare', bg: '#fee2e2', color: '#991b1b' },
+  collegato_no_duplicato: { label: '🔗 Collegato (no doppio)', bg: '#dbeafe', color: '#1e40af' },
+  no: { label: 'No', bg: '#f1f5f9', color: '#64748b' },
+};
+
+function TabellaAnalisiF24({ anno }) {
+  const [righe, setRighe] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [errore, setErrore] = useState(null);
+  const [soloAnno, setSoloAnno] = useState(true);
+
+  const carica = async filtraAnno => {
+    setLoading(true);
+    setErrore(null);
+    try {
+      const qs = filtraAnno && anno ? `?anno=${anno}` : '';
+      const res = await api.get(`/api/f24-analisi/tabella${qs}`);
+      setRighe(res.data.righe || []);
+    } catch (e) {
+      setErrore(e.response?.data?.detail || e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const cellaTh = {
+    padding: '8px 8px', textAlign: 'left', fontWeight: 600, fontSize: 11,
+    color: '#64748b', textTransform: 'uppercase', whiteSpace: 'nowrap',
+  };
+  const cella = { padding: '6px 8px', fontSize: 12, verticalAlign: 'top' };
+
+  return (
+    <div style={{ padding: 16, borderBottom: '1px solid #e2e8f0', background: 'white' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <h3 style={{ margin: 0, fontSize: 15, color: '#0f2744' }}>
+          📋 Analisi F24 — scadenze, ravvedimenti e duplicazioni
+        </h3>
+        <button
+          data-testid="btn-carica-analisi-f24"
+          onClick={() => carica(soloAnno)}
+          disabled={loading}
+          style={{
+            padding: '8px 14px', minHeight: 38, background: '#0f2744', color: 'white',
+            border: 'none', borderRadius: 6, cursor: loading ? 'wait' : 'pointer',
+            fontWeight: 600, fontSize: 12.5,
+          }}
+        >
+          {loading ? '⏳ Analizzo…' : righe ? '🔄 Ricarica' : '📊 Carica analisi'}
+        </button>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12.5, color: '#334155', cursor: 'pointer' }}>
+          <input type="checkbox" checked={soloAnno} onChange={e => setSoloAnno(e.target.checked)} />
+          Solo anno {anno}
+        </label>
+        {righe && (
+          <span style={{ fontSize: 12, color: '#64748b' }}>
+            {righe.length} modelli · in ritardo:{' '}
+            {righe.filter(r => r.stato_pagamento === 'pagato_in_ritardo').length} · possibili
+            duplicazioni: {righe.filter(r => r.possibile_duplicazione === 'da_verificare').length}
+          </span>
+        )}
+      </div>
+
+      {errore && (
+        <div style={{ marginTop: 10, fontSize: 13, color: '#dc2626', fontWeight: 600 }}>
+          ⚠️ {errore}
+        </div>
+      )}
+
+      {righe && righe.length === 0 && (
+        <div style={{ marginTop: 12, fontSize: 13, color: '#64748b' }}>
+          Nessun F24 trovato{soloAnno ? ` per l'anno ${anno}` : ''}.
+        </div>
+      )}
+
+      {righe && righe.length > 0 && (
+        <div style={{ overflowX: 'auto', marginTop: 12 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 980 }}>
+            <thead>
+              <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                <th style={cellaTh}>Periodo competenza</th>
+                <th style={cellaTh}>Scadenza naturale</th>
+                <th style={cellaTh}>Pagamento effettivo</th>
+                <th style={{ ...cellaTh, textAlign: 'center' }}>Giorni ritardo</th>
+                <th style={cellaTh}>Stato pagamento</th>
+                <th style={cellaTh}>Tipo versamento</th>
+                <th style={cellaTh}>Causale INPS</th>
+                <th style={cellaTh}>Documento collegato</th>
+                <th style={cellaTh}>Possibile duplicazione</th>
+                <th style={cellaTh}>Motivazione</th>
+              </tr>
+            </thead>
+            <tbody>
+              {righe.map((r, idx) => {
+                const stato = STILI_STATO_F24[r.stato_pagamento] || STILI_STATO_F24.periodo_ignoto;
+                const dup = STILI_DUP_F24[r.possibile_duplicazione] || STILI_DUP_F24.no;
+                const inRitardo = r.stato_pagamento === 'pagato_in_ritardo';
+                return (
+                  <tr
+                    key={r.f24_id || idx}
+                    data-testid={`riga-analisi-f24-${r.f24_id || idx}`}
+                    style={{
+                      borderBottom: '1px solid #f1f5f9',
+                      background: inRitardo ? '#fff7f7' : idx % 2 ? '#f8fafc' : 'white',
+                    }}
+                  >
+                    <td style={{ ...cella, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                      {r.periodo_competenza || '—'}
+                      {r.file && (
+                        <div style={{ fontSize: 10.5, color: '#94a3b8', fontWeight: 400, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {r.file}
+                        </div>
+                      )}
+                    </td>
+                    <td style={{ ...cella, whiteSpace: 'nowrap', fontFamily: 'monospace' }}>
+                      {r.scadenza_naturale || '—'}
+                    </td>
+                    <td style={{ ...cella, whiteSpace: 'nowrap', fontFamily: 'monospace', fontWeight: inRitardo ? 700 : 400, color: inRitardo ? '#991b1b' : '#0f172a' }}>
+                      {r.data_pagamento || '—'}
+                    </td>
+                    <td style={{ ...cella, textAlign: 'center', fontWeight: 700, color: r.giorni_ritardo > 0 ? '#dc2626' : '#16a34a' }}>
+                      {r.giorni_ritardo ?? '—'}
+                    </td>
+                    <td style={cella}>
+                      <span style={{ padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700, background: stato.bg, color: stato.color, whiteSpace: 'nowrap' }}>
+                        {stato.label}
+                      </span>
+                    </td>
+                    <td style={{ ...cella, whiteSpace: 'nowrap' }}>
+                      {r.tipo_versamento === 'ordinario' ? 'Ordinario'
+                        : r.tipo_versamento === 'regolarizzazione' ? '🔁 Regolarizzazione'
+                          : '🔁 Ravvedimento'}
+                    </td>
+                    <td style={{ ...cella, fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+                      {(r.causali_inps || []).join(', ') || '—'}
+                    </td>
+                    <td style={{ ...cella, whiteSpace: 'nowrap' }}>
+                      {r.documento_collegato?.quietanza_id ? '🧾 Quietanza' : '—'}
+                    </td>
+                    <td style={cella}>
+                      <span style={{ padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700, background: dup.bg, color: dup.color, whiteSpace: 'nowrap' }}>
+                        {dup.label}
+                      </span>
+                    </td>
+                    <td style={{ ...cella, minWidth: 220, color: '#475569' }}>{r.motivazione}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefresh, anno }) {
   const [selezionati, setSelezionati] = useState(new Set());
   const [metodoBatch] = useState('banca');
   const [salvandoBatch, setSalvandoBatch] = useState(false);
@@ -1655,6 +1825,8 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
 
   if (f24Validi.length === 0) {
     return (
+      <div>
+      <TabellaAnalisiF24 anno={anno} />
       <div style={{ padding: 60, textAlign: 'center', color: '#94a3b8' }}>
         <div style={{ fontSize: 48, marginBottom: 12, opacity: 0.5 }}>📄</div>
         <div>Nessun F24 pendente da pagare</div>
@@ -1679,6 +1851,7 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
             {f24Loading ? '⏳ Caricamento F24...' : '🔍 Carica F24 pendenti'}
           </button>
         )}
+      </div>
       </div>
     );
   }
@@ -1760,6 +1933,7 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
 
   return (
     <div>
+      <TabellaAnalisiF24 anno={anno} />
       <div style={{ padding: 16, background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
         <div
           style={{
