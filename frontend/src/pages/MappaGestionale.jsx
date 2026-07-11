@@ -699,6 +699,7 @@ const styles = {
     fontSize: 26,
     lineHeight: 1.15,
     letterSpacing: 0,
+    color: '#fff',
   },
   lead: {
     margin: '8px 0 0',

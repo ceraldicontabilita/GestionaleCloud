@@ -435,55 +435,50 @@ export default function LearningMachine() {
 
   return (
     <div style={{ padding: 20, maxWidth: 1400, margin: '0 auto' }}>
-      {/* Header */}
+      {/* Header COMPATTO: una sola riga. Prima era un bannerone da 24px di
+          padding con il titolo h1 INVISIBILE (il CSS globale colora gli
+          h1-h4 di navy → navy su navy) e un sottotitolo inutile: metà card
+          sembrava vuota (segnalato l'11/07). */}
       <div
         style={{
           background: COLORS.primary,
           borderRadius: BORDER_RADIUS.md,
-          padding: 24,
-          marginBottom: 20,
+          padding: '10px 14px',
+          marginBottom: 14,
           color: 'white',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: 8,
         }}
       >
-        <div
+        <h1
           style={{
+            margin: 0,
+            fontSize: 17,
+            fontWeight: 'bold',
             display: 'flex',
-            justifyContent: 'space-between',
             alignItems: 'center',
-            flexWrap: 'wrap',
-            gap: 16,
+            gap: 8,
+            color: 'white',
           }}
         >
-          <div>
-            <h1
-              style={{
-                margin: 0,
-                fontSize: 24,
-                fontWeight: 'bold',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 12,
-              }}
-            >
-              <Brain size={28} /> Learning Machine
-            </h1>
-            <p style={{ margin: '8px 0 0 0', opacity: 0.9, fontSize: 14 }}>
-              Sistema di apprendimento automatico per classificazione e associazione
-            </p>
-          </div>
-          <div
-            style={{
-              background: 'rgba(255,255,255,0.15)',
-              padding: '8px 16px',
-              borderRadius: 8,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-            }}
-          >
-            <Zap size={18} />
-            <span style={{ fontWeight: 600 }}>Sistema Attivo</span>
-          </div>
+          <Brain size={20} /> Learning Machine
+        </h1>
+        <div
+          style={{
+            background: 'rgba(255,255,255,0.15)',
+            padding: '4px 10px',
+            borderRadius: 8,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            fontSize: 12,
+          }}
+        >
+          <Zap size={14} />
+          <span style={{ fontWeight: 600 }}>Attivo</span>
         </div>
       </div>
 
@@ -657,7 +652,9 @@ export default function LearningMachine() {
                   costo
                 </p>
               </div>
-              <div style={{ display: 'flex', gap: 8 }}>
+              {/* flexWrap: senza, i bottoni uscivano dalla card su telefono
+                  (segnalato l'11/07) */}
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <Button variant="secondary" onClick={loadFornitoriData} disabled={fornitoriLoading}>
                   <RefreshCw size={16} className={fornitoriLoading ? 'animate-spin' : ''} />
                   Aggiorna

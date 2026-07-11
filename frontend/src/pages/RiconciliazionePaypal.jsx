@@ -375,6 +375,7 @@ export default function RiconciliazionePaypal() {
                 alignItems: 'center',
                 gap: 10,
                 fontFamily: FONT.family,
+                color: 'white',
               }}
             >
               <CreditCard size={24} /> Gestione PayPal
