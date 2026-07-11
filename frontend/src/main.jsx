@@ -54,6 +54,36 @@ const LazyPage = ({ children }) => (
   <Suspense fallback={<PageLoader />}>{children}</Suspense>
 );
 
+// Pagina 404 reale — mostra URL richiesto e link alla Dashboard
+function NotFound() {
+  const loc = typeof window !== 'undefined' ? window.location.pathname : '';
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', alignItems: 'center',
+      justifyContent: 'center', minHeight: '60vh', gap: 16, padding: 32,
+      textAlign: 'center',
+    }}>
+      <div style={{ fontSize: 56, lineHeight: 1 }}>404</div>
+      <div style={{ fontSize: 22, fontWeight: 700, color: '#1e293b' }}>
+        Pagina non trovata
+      </div>
+      <div style={{ fontSize: 14, color: '#64748b', maxWidth: 400 }}>
+        L'URL <code style={{ background: '#f1f5f9', padding: '2px 6px', borderRadius: 4 }}>{loc}</code>{' '}
+        non corrisponde a nessuna pagina del gestionale.
+      </div>
+      <a
+        href="/"
+        style={{
+          marginTop: 8, padding: '10px 24px', background: '#1a40b5', color: '#fff',
+          borderRadius: 8, fontWeight: 600, fontSize: 14, textDecoration: 'none',
+        }}
+      >
+        Torna alla Dashboard
+      </a>
+    </div>
+  );
+}
+
 const router = createBrowserRouter([
   { path: "/login", element: <Login /> },
   { path: "/gestione-riservata", element: <LazyPage><GestioneRiservata /></LazyPage> },
@@ -233,8 +263,8 @@ const router = createBrowserRouter([
       { path: "fisco/*", element: <Navigate to="/contabilita/calendario" replace /> },
       { path: "riconciliazione-unificata", element: <Navigate to="/riconciliazione" replace /> },
       
-      // === CATCH-ALL: rotte non trovate → Dashboard ===
-      { path: "*", element: <Navigate to="/" replace /> },
+      // === CATCH-ALL: rotte non trovate → pagina 404 ===
+      { path: "*", element: <NotFound /> },
     ]
   }
 ]);

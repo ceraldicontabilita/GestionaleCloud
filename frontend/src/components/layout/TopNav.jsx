@@ -18,6 +18,7 @@ import {
   Landmark,
   Receipt,
   Map,
+  MoreHorizontal,
 } from 'lucide-react';
 import api from '../../api';
 import { AnnoSelector } from '../../contexts/AnnoContext';
@@ -215,7 +216,7 @@ const AltroDropdown = memo(function AltroDropdown({ isAltroActive }) {
         aria-expanded={open}
         onClick={() => setOpen(v => !v)}
       >
-        <span style={{ fontSize: 13 }}>�</span>
+        <MoreHorizontal size={13} style={{ marginRight: 2 }} />
         <span>Altro</span>
         <ChevronDown
           size={11}

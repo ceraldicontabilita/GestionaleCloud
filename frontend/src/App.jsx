@@ -136,7 +136,7 @@ export default function App() {
                   className="mobile-menu-close"
                   onClick={() => setShowMobileMenu(false)}
                 >
-                  �S"
+                  \u00d7
                 </button>
               </div>
               <div className="mobile-menu-items">
@@ -185,7 +185,7 @@ export default function App() {
               marginBottom: 20,
               borderRadius: 10,
             }}>
-              <span style={{ fontSize: 24 }}>�a�️</span>
+              <span style={{ fontSize: 24 }}>🔔</span>
               <div style={{ flex: 1 }}>
                 <strong>{alertCommercialista.message}</strong>
               </div>
@@ -227,7 +227,7 @@ export default function App() {
                   padding: 5
                 }}
               >
-                �S"
+                \u00d7
               </button>
             </div>
           )}

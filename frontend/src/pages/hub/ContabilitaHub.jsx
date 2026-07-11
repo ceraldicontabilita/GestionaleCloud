@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useState, useEffect } from 'react';
+import React, { lazy, Suspense, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   BarChart3, TrendingUp, BadgeCheck, CalendarCheck, Calendar,
@@ -6,7 +6,7 @@ import {
   Target, Package,
 } from 'lucide-react';
 import { useAnnoGlobale } from '../../contexts/AnnoContext';
-import { useHashState } from '../../hooks/useHashState';
+
 import { HubTabs } from '../../components/ds';
 
 const PianoContiContent = lazy(() => import('../PianoDeiConti.jsx'));
@@ -94,28 +94,12 @@ export default function ContabilitaHub() {
   const location = useLocation();
   const [error, setError] = useState(null);
 
-  // Deep link: hash riflette il tab attivo — la route PATH è il meccanismo primario
-  const [hs, setHs] = useHashState({ tab: getTabFromPath(location.pathname) });
-  const activeTab = getTabFromPath(location.pathname); // path ha la precedenza
-
-  // Traccia i tab visitati: una volta montato, il componente NON viene smontato
-  const [visitedTabs, setVisitedTabs] = useState(
-    () => new Set([getTabFromPath(location.pathname)])
-  );
-
-  useEffect(() => {
-    const t = getTabFromPath(location.pathname);
-    setHs('tab', t);
-    setVisitedTabs(prev => {
-      const n = new Set(prev);
-      n.add(t);
-      return n;
-    });
-  }, [location.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Il path è l'unica fonte di verità per il tab attivo.
+  // Hash rimosso: causava stato duplicato e back-button imprevedibile.
+  const activeTab = getTabFromPath(location.pathname);
 
   const handleTabChange = tabId => {
     setError(null);
-    setHs('tab', tabId);
     navigate(tabId === 'piano-conti' ? '/contabilita' : `/contabilita/${tabId}`);
   };
 
@@ -160,13 +144,13 @@ export default function ContabilitaHub() {
           { id: 'avanzata', C: AvanzataContent },
           { id: 'utile', C: UtileObiettivoContent },
           { id: 'previsioni-acquisti', C: PrevisioniAcquistiContent },
-        ].map(({ id, C }) => (
-          <div key={id} style={{ display: activeTab === id ? 'block' : 'none' }}>
-            <Suspense fallback={<Loading />}>
-              {visitedTabs.has(id) && <C key={`${id}-${anno}`} />}
+        ].map(({ id, C }) =>
+          activeTab === id ? (
+            <Suspense key={id} fallback={<Loading />}>
+              <C key={`${id}-${anno}`} />
             </Suspense>
-          </div>
-        ))}
+          ) : null
+        )}
       </div>
     </div>
   );

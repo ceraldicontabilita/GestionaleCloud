@@ -34,10 +34,12 @@ import {
 import { Eye, EyeOff, TrendingUp, Lock, AlertTriangle, Users } from 'lucide-react';
 import WidgetVerificaCoerenza from '../components/WidgetVerificaCoerenza';
 import WidgetAgenti from '../components/WidgetAgenti';
+import { useConfirm } from '../components/ui/ConfirmDialog';
 
 export default function Dashboard() {
   const isMobile = useIsMobile();
   const { anno } = useAnnoGlobale();
+  const confirm = useConfirm();
   const [h, setH] = useState(null);
   const [sum, setSum] = useState(null);
   const [err, setErr] = useState('');
@@ -79,32 +81,55 @@ export default function Dashboard() {
    * Ora avviabile manualmente con pulsante.
    */
   const eseguiAutoRiparazione = async () => {
+    const ok = await confirm({
+      title: 'Auto-riparazione dati',
+      message:
+        'Questa operazione eseguirà:\n• Ricostruzione dati fatture ricevute\n• Riconciliazione automatica globale\n\nLe modifiche sono irreversibili. Continuare?',
+      confirmText: 'Avvia riparazione',
+      cancelText: 'Annulla',
+      variant: 'warning',
+    });
+    if (!ok) return;
+
     setAutoRepairStatus('running');
-    try {
-      // Esegue riparazioni
-      const [fatRes, ricRes] = await Promise.all([
-        api.post('/api/fatture-ricevute/auto-ricostruisci-dati').catch(() => ({ data: {} })),
-        api.post('/api/batch/auto-riconcilia-tutto').catch(() => ({ data: {} })),
-      ]);
 
-      const totaleCorrezioni =
-        (fatRes.data.campi_corretti || 0) +
-        (fatRes.data.fornitori_associati || 0) +
-        (ricRes.data.riconciliazioni_auto || 0);
+    // Promise.allSettled: non maschera fallimenti parziali
+    const [fatResult, ricResult] = await Promise.allSettled([
+      api.post('/api/fatture-ricevute/auto-ricostruisci-dati'),
+      api.post('/api/batch/auto-riconcilia-tutto'),
+    ]);
 
-      
-      setAutoRepairStatus({
-        fatture: fatRes.data,
-        riconciliazione: ricRes.data,
-        totale: totaleCorrezioni,
+    const fatOk = fatResult.status === 'fulfilled';
+    const ricOk = ricResult.status === 'fulfilled';
+
+    if (!fatOk && !ricOk) {
+      console.error('Auto-riparazione: entrambe le operazioni fallite', {
+        fatture: fatResult.reason,
+        riconciliazione: ricResult.reason,
       });
-
-      // Ricarica dati dopo riparazione (senza reload pagina)
-      setReloadKey(k => k + 1);
-    } catch (error) {
-      console.warn('Auto-riparazione non riuscita:', error);
-      setAutoRepairStatus({ error: true, totale: 0 });
+      setAutoRepairStatus({ error: true, totale: 0, msg: 'Entrambe le operazioni fallite' });
+      return;
     }
+
+    const fatData = fatOk ? (fatResult.value.data || {}) : {};
+    const ricData = ricOk ? (ricResult.value.data || {}) : {};
+
+    const totaleCorrezioni =
+      (fatData.campi_corretti || 0) +
+      (fatData.fornitori_associati || 0) +
+      (ricData.riconciliazioni_auto || 0);
+
+    setAutoRepairStatus({
+      fatture: fatData,
+      riconciliazione: ricData,
+      totale: totaleCorrezioni,
+      parziale: !fatOk || !ricOk,
+      fatture_errore: !fatOk,
+      riconciliazione_errore: !ricOk,
+    });
+
+    // Ricarica dati solo se almeno un'operazione è riuscita
+    setReloadKey(k => k + 1);
   };
 
   // Auto-riparazione DISABILITATA per performance (eseguire manualmente se necessario)
@@ -125,13 +150,14 @@ export default function Dashboard() {
         setSum(summaryData);
 
         // Load trend mensile, calendario POS e scadenze - con timeout individuale
+        const sig = { signal: controller.signal };
         const [trendRes, posRes, scadenzeRes, bilancioRes] = await Promise.all([
-          api.get(`/api/dashboard/trend-mensile?anno=${anno}`).catch(() => ({ data: null })),
+          api.get(`/api/dashboard/trend-mensile?anno=${anno}`, sig).catch(() => ({ data: null })),
           api
-            .get(`/api/pos-accredito/calendario-mensile/${anno}/${new Date().getMonth() + 1}`)
+            .get(`/api/pos-accredito/calendario-mensile/${anno}/${new Date().getMonth() + 1}`, sig)
             .catch(() => ({ data: null })),
-          api.get('/api/scadenze/prossime?giorni=30&limit=8').catch(() => ({ data: null })),
-          api.get(`/api/dashboard/bilancio-istantaneo?anno=${anno}`).catch(() => ({ data: null })),
+          api.get('/api/scadenze/prossime?giorni=30&limit=8', sig).catch(() => ({ data: null })),
+          api.get(`/api/dashboard/bilancio-istantaneo?anno=${anno}`, sig).catch(() => ({ data: null })),
         ]);
 
         // Imposta dati primari immediatamente
@@ -293,8 +319,20 @@ export default function Dashboard() {
             >
               {autoRepairStatus === 'running' ? <>Riparazione...</> : <>Auto-ripara dati</>}
             </Button>
-            {autoRepairStatus && autoRepairStatus !== 'running' && autoRepairStatus.totale > 0 && (
-              <Badge variant="success">{autoRepairStatus.totale} correzioni</Badge>
+            {autoRepairStatus && autoRepairStatus !== 'running' && (
+              autoRepairStatus.error ? (
+                <Badge variant="danger">Riparazione fallita</Badge>
+              ) : autoRepairStatus.parziale ? (
+                <Badge variant="warning">
+                  Parziale — {autoRepairStatus.totale} correzioni
+                  {autoRepairStatus.fatture_errore ? ' (fatture: errore)' : ''}
+                  {autoRepairStatus.riconciliazione_errore ? ' (riconciliazione: errore)' : ''}
+                </Badge>
+              ) : autoRepairStatus.totale > 0 ? (
+                <Badge variant="success">{autoRepairStatus.totale} correzioni</Badge>
+              ) : (
+                <Badge variant="neutral">Nessuna correzione necessaria</Badge>
+              )
             )}
             {err ? (
               <span style={{ color: COLORS.danger, fontSize: 14 }}>{err}</span>

@@ -9,6 +9,7 @@ const PaypalContent = lazy(() => import('../RiconciliazionePaypal.jsx'));
 const AssegniContent = lazy(() => import('../GestioneAssegni.jsx'));
 const BonificiContent = lazy(() => import('../ArchivioBonifici.jsx'));
 const CoerenzaPOSContent = lazy(() => import('../CoerenzaPOSCorrispettivi.jsx'));
+const F24Content = lazy(() => import('../CalendarioFiscale.jsx'));
 
 const Loading = () => (
   <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>
@@ -64,6 +65,9 @@ export default function RiconciliazioneHub() {
     }
     if (path.includes('/coerenza-pos')) {
       return <CoerenzaPOSContent key={`coerenza-pos-${anno}`} />;
+    }
+    if (path.includes('/f24')) {
+      return <F24Content key={`f24-${anno}`} />;
     }
     // Default: riconciliazione bancaria
     return <RiconciliazioneContent key={`riconciliazione-${anno}`} />;
