@@ -1,110 +1,100 @@
 import React, { useState, useEffect } from "react";
-import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { NavLink, Outlet } from "react-router-dom";
 import api from "./api";
 import ErrorBoundary from "./components/ErrorBoundary";
 import TopNav from "./components/layout/TopNav";
 import { UploadProvider } from "./contexts/UploadContext";
 import { UploadStatusBar } from "./components/UploadStatusBar";
 import ChatIntelligente from "./components/ChatIntelligente";
-import F24EmailSync from "./components/F24EmailSync";
 import { useWebSocketNotifications } from "./hooks/useWebSocket";
 import "./styles/topnav.css";
 
-// Mobile navigation items
 const MOBILE_NAV = [
-  { to: "/", label: "Dashboard", icon: "\u2302" },
-  { to: "/fatture", label: "Fatture", icon: "\u25A3" },
-  { to: "/prima-nota", label: "Prima Nota", icon: "\u25A4" },
-  { to: "/riconciliazione", label: "Riconciliazione", icon: "\u2194" },
-  { to: "/more", label: "Menu", icon: "\u22EF", isMenu: true },
+  { to: "/", label: "Dashboard", icon: "⌂" },
+  { to: "/fatture", label: "Fatture", icon: "▣" },
+  { to: "/prima-nota", label: "Prima Nota", icon: "▤" },
+  { to: "/riconciliazione", label: "Riconciliazione", icon: "↔" },
+  { to: "/more", label: "Menu", icon: "⋯", isMenu: true },
 ];
 
-// URL dell'app esterna AppDipendenti (gestione HR spostata fuori dal gestionale).
 const APP_DIPENDENTI_URL = "https://appdipendenti.onrender.com";
 
-// Full menu items for mobile overlay.
-// NOTA: elenco mantenuto a mano in parallelo a NAV_ITEMS/ALTRO_ITEMS di TopNav.jsx
-// (menu desktop) se aggiungi una voce l?, aggiungila anche qui o sparisce su mobile.
 const ALL_NAV_ITEMS = [
-  { to: "/", label: "Dashboard", icon: "\u2302" },
-  { to: "/fatture", label: "Fatture passive", icon: "\u25A3" },
-  { to: "/fatture/corrispettivi", label: "Corrispettivi", icon: "\u20AC" },
-  { to: "/fornitori", label: "Fornitori", icon: "\u25EB" },
-  { to: "/prima-nota", label: "Prima Nota", icon: "\u25A4" },
-  { to: "/riconciliazione", label: "Riconciliazione", icon: "\u2194" },
-  { to: "/riconciliazione/assegni", label: "Assegni", icon: "\u25A6" },
-  { to: "/riconciliazione/paypal", label: "PayPal", icon: "\u25C9" },
-  { to: "/riconciliazione/f24", label: "F24", icon: "\u25A0" },
-  { to: "/contabilita", label: "Contabilita", icon: "\u25A7" },
-  { to: "/riconciliazione/coerenza-pos", label: "Incassi POS", icon: "\u25A5" },
-  { to: "/noleggio", label: "Noleggi", icon: "\u25B6" },
-  { to: "/scadenze", label: "Scadenze", icon: "\u23F1" },
-  { to: "/documenti", label: "Documenti", icon: "\u25A1" },
-  { to: "/documenti/import", label: "Import documenti", icon: "\u2B06" },
-  { to: "/strumenti", label: "Strumenti", icon: "\u25B3" },
-  { to: "/admin", label: "Admin", icon: "\u2699" },
-  { to: "/mappa-gestionale", label: "Mappa gestionale", icon: "\u25A8" },
-  { to: null, href: APP_DIPENDENTI_URL, label: "HR", icon: "\u25C6", external: true },
+  { to: "/", label: "Dashboard", icon: "⌂" },
+  { to: "/fatture", label: "Fatture passive", icon: "▣" },
+  { to: "/fatture/corrispettivi", label: "Corrispettivi", icon: "€" },
+  { to: "/fornitori", label: "Fornitori", icon: "◫" },
+  { to: "/prima-nota", label: "Prima Nota", icon: "▤" },
+  { to: "/riconciliazione", label: "Riconciliazione", icon: "↔" },
+  { to: "/riconciliazione/assegni", label: "Assegni", icon: "▦" },
+  { to: "/riconciliazione/paypal", label: "PayPal", icon: "◉" },
+  { to: "/riconciliazione/f24", label: "F24", icon: "■" },
+  { to: "/contabilita", label: "Contabilità", icon: "▧" },
+  { to: "/riconciliazione/coerenza-pos", label: "Incassi POS", icon: "▥" },
+  { to: "/noleggio", label: "Noleggi", icon: "▶" },
+  { to: "/scadenze", label: "Scadenze", icon: "⏱" },
+  { to: "/documenti", label: "Documenti", icon: "□" },
+  { to: "/documenti/import", label: "Import documenti", icon: "⬆" },
+  { to: "/strumenti", label: "Strumenti", icon: "△" },
+  { to: "/admin", label: "Admin", icon: "⚙" },
+  { to: "/mappa-gestionale", label: "Mappa gestionale", icon: "▨" },
+  { to: null, href: APP_DIPENDENTI_URL, label: "HR", icon: "◆", external: true },
 ];
 
 export default function App() {
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [alertCommercialista, setAlertCommercialista] = useState(null);
-  const [showF24Sync, setShowF24Sync] = useState(false);
-  const location = useLocation();
-  const navigate = useNavigate();
 
-  // Connessione WebSocket real-time gestisce notifiche push dallo scheduler
   useWebSocketNotifications();
 
-  // Load commercialista alert
   useEffect(() => {
     const loadAlertCommercialista = async () => {
       try {
         const res = await api.get('/api/commercialista/alert-status');
         if (res.data.show_alert) {
-          // Controlla se l'utente ha già chiuso questo avviso (per mese/anno)
           const dismissKey = `alert_dismissed_${res.data.mese_pendente}_${res.data.anno_pendente}`;
           if (!localStorage.getItem(dismissKey)) {
             setAlertCommercialista(res.data);
           }
         }
-      } catch (e) {
-        // Silently fail
+      } catch (error) {
+        console.warn('Impossibile caricare lo stato alert commercialista', {
+          endpoint: '/api/commercialista/alert-status',
+          status: error.response?.status,
+          message: error.message,
+        });
       }
     };
     loadAlertCommercialista();
   }, []);
 
+  const dismissCommercialistaAlert = () => {
+    if (alertCommercialista) {
+      const dismissKey = `alert_dismissed_${alertCommercialista.mese_pendente}_${alertCommercialista.anno_pendente}`;
+      localStorage.setItem(dismissKey, '1');
+    }
+    setAlertCommercialista(null);
+  };
+
   return (
     <UploadProvider>
       <div className="topnav-layout" data-testid="topnav-layout">
-        {/* Banner notifiche browser rimosso */}
-
-        {/* Upload Status Bar */}
         <UploadStatusBar />
-
-        {/* F24 Email Sync Popup */}
-        {showF24Sync && (
-          <F24EmailSync onClose={() => setShowF24Sync(false)} />
-        )}
-
-        {/* TOP NAVIGATION - Primary */}
         <TopNav />
 
-        {/* SECONDARY TABS rimossi */}
-
-        {/* Mobile Bottom Navigation */}
-        <nav className="mobile-nav-topnav" data-testid="mobile-nav">
-          {MOBILE_NAV.map((item) => (
+        <nav className="mobile-nav-topnav" data-testid="mobile-nav" aria-label="Navigazione mobile principale">
+          {MOBILE_NAV.map(item =>
             item.isMenu ? (
               <button
                 key="menu"
+                type="button"
                 className="mobile-nav-item"
-                onClick={() => setShowMobileMenu(!showMobileMenu)}
+                onClick={() => setShowMobileMenu(value => !value)}
                 data-testid="mobile-menu-toggle"
+                aria-expanded={showMobileMenu}
+                aria-controls="mobile-menu-panel"
               >
-                <span className="mobile-nav-icon">{item.icon}</span>
+                <span className="mobile-nav-icon" aria-hidden="true">{item.icon}</span>
                 <span className="mobile-nav-label">{item.label}</span>
               </button>
             ) : (
@@ -114,33 +104,35 @@ export default function App() {
                 className={({ isActive }) => `mobile-nav-item ${isActive ? "active" : ""}`}
                 onClick={() => setShowMobileMenu(false)}
               >
-                <span className="mobile-nav-icon">{item.icon}</span>
+                <span className="mobile-nav-icon" aria-hidden="true">{item.icon}</span>
                 <span className="mobile-nav-label">{item.label}</span>
               </NavLink>
             )
-          ))}
+          )}
         </nav>
 
-        {/* Mobile Menu Overlay */}
         {showMobileMenu && (
           <div
             className="mobile-menu-overlay"
             onClick={() => setShowMobileMenu(false)}
             data-testid="mobile-menu-overlay"
+            role="presentation"
           >
-            <div className="mobile-menu" onClick={(e) => e.stopPropagation()}>
+            <div id="mobile-menu-panel" className="mobile-menu" onClick={event => event.stopPropagation()}>
               <div className="mobile-menu-header">
                 <div className="brand-square">CG</div>
                 <span style={{ fontWeight: 700, fontSize: 16, color: '#1a40b5' }}>Ceraldi ERP</span>
                 <button
+                  type="button"
                   className="mobile-menu-close"
                   onClick={() => setShowMobileMenu(false)}
+                  aria-label="Chiudi menu"
                 >
-                  \u00d7
+                  ×
                 </button>
               </div>
               <div className="mobile-menu-items">
-                {ALL_NAV_ITEMS.map((item) => (
+                {ALL_NAV_ITEMS.map(item =>
                   item.external ? (
                     <a
                       key={item.href}
@@ -150,7 +142,7 @@ export default function App() {
                       className="mobile-menu-item"
                       onClick={() => setShowMobileMenu(false)}
                     >
-                      <span style={{ fontSize: 20 }}>{item.icon}</span>
+                      <span style={{ fontSize: 20 }} aria-hidden="true">{item.icon}</span>
                       <span>{item.label}</span>
                     </a>
                   ) : (
@@ -161,73 +153,37 @@ export default function App() {
                       className={({ isActive }) => `mobile-menu-item ${isActive ? "active" : ""}`}
                       onClick={() => setShowMobileMenu(false)}
                     >
-                      <span style={{ fontSize: 20 }}>{item.icon}</span>
+                      <span style={{ fontSize: 20 }} aria-hidden="true">{item.icon}</span>
                       <span>{item.label}</span>
                     </NavLink>
                   )
-                ))}
+                )}
               </div>
             </div>
           </div>
         )}
 
-        {/* Main Content */}
         <main className="page-content" data-testid="page-content">
-          {/* Alert Commercialista */}
           {alertCommercialista && (
-            <div style={{
-              background: '#b45309',
-              color: 'white',
-              padding: '12px 20px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 15,
-              marginBottom: 20,
-              borderRadius: 10,
-            }}>
-              <span style={{ fontSize: 24 }}>🔔</span>
-              <div style={{ flex: 1 }}>
+            <div className="commercialista-alert" role="alert">
+              <span className="commercialista-alert__icon" aria-hidden="true">🔔</span>
+              <div className="commercialista-alert__message">
                 <strong>{alertCommercialista.message}</strong>
               </div>
               <NavLink
                 to={`/commercialista?mese=${alertCommercialista?.mese_pendente || ''}&anno=${alertCommercialista?.anno_pendente || ''}`}
-                style={{
-                  padding: '8px 16px',
-                  background: 'white',
-                  color: '#f57c00',
-                  borderRadius: 6,
-                  fontWeight: 'bold',
-                  textDecoration: 'none',
-                  fontSize: 13
-                }}
-                onClick={() => {
-                  if (alertCommercialista) {
-                    const dismissKey = `alert_dismissed_${alertCommercialista.mese_pendente}_${alertCommercialista.anno_pendente}`;
-                    localStorage.setItem(dismissKey, '1');
-                    setAlertCommercialista(null);
-                  }
-                }}
+                className="commercialista-alert__action"
+                onClick={dismissCommercialistaAlert}
               >
                 Vai a Commercialista
               </NavLink>
               <button
-                onClick={() => {
-                  if (alertCommercialista) {
-                    const dismissKey = `alert_dismissed_${alertCommercialista.mese_pendente}_${alertCommercialista.anno_pendente}`;
-                    localStorage.setItem(dismissKey, '1');
-                  }
-                  setAlertCommercialista(null);
-                }}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'white',
-                  fontSize: 18,
-                  cursor: 'pointer',
-                  padding: 5
-                }}
+                type="button"
+                onClick={dismissCommercialistaAlert}
+                className="commercialista-alert__close"
+                aria-label="Chiudi avviso commercialista"
               >
-                \u00d7
+                ×
               </button>
             </div>
           )}
@@ -237,12 +193,9 @@ export default function App() {
           </ErrorBoundary>
         </main>
 
-        {/* Chat Intelligente AI */}
         <ChatIntelligente />
 
-        {/* Mobile Menu Styles */}
         <style>{`
-          /* Mobile Menu Overlay */
           .mobile-menu-overlay {
             position: fixed;
             inset: 0;
@@ -252,12 +205,7 @@ export default function App() {
             align-items: flex-end;
             animation: fadeIn 0.2s ease;
           }
-          
-          @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-          }
-          
+          @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
           .mobile-menu {
             background: white;
             width: 100%;
@@ -266,12 +214,7 @@ export default function App() {
             overflow: hidden;
             animation: slideUp 0.3s ease;
           }
-          
-          @keyframes slideUp {
-            from { transform: translateY(100%); }
-            to { transform: translateY(0); }
-          }
-          
+          @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
           .mobile-menu-header {
             display: flex;
             align-items: center;
@@ -282,7 +225,6 @@ export default function App() {
             top: 0;
             background: white;
           }
-          
           .mobile-menu-close {
             margin-left: auto;
             background: #f1f5f9;
@@ -296,18 +238,17 @@ export default function App() {
             align-items: center;
             justify-content: center;
           }
-          
           .mobile-menu-items {
             padding: 12px;
             overflow-y: auto;
             max-height: calc(85vh - 80px);
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
+            grid-template-columns: repeat(3, minmax(0, 1fr));
             gap: 8px;
           }
-          
           .mobile-menu-item {
             display: flex;
+            min-width: 0;
             flex-direction: column;
             align-items: center;
             justify-content: center;
@@ -318,19 +259,59 @@ export default function App() {
             color: #334155;
             font-size: 12px;
             text-align: center;
+            overflow-wrap: anywhere;
             transition: all 0.2s;
             text-decoration: none;
           }
-          
           .mobile-menu-item:hover,
-          .mobile-menu-item.active {
-            background: #1a40b5;
+          .mobile-menu-item.active { background: #1a40b5; color: white; }
+          .commercialista-alert {
+            background: #b45309;
             color: white;
+            padding: 12px 20px;
+            display: grid;
+            grid-template-columns: auto minmax(0, 1fr) auto auto;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
+            border-radius: 10px;
+            min-width: 0;
+          }
+          .commercialista-alert__icon { font-size: 24px; }
+          .commercialista-alert__message { min-width: 0; overflow-wrap: anywhere; }
+          .commercialista-alert__action {
+            padding: 8px 16px;
+            background: white;
+            color: #b45309;
+            border-radius: 6px;
+            font-weight: 700;
+            text-decoration: none;
+            font-size: 13px;
+            text-align: center;
+          }
+          .commercialista-alert__close {
+            background: transparent;
+            border: none;
+            color: white;
+            font-size: 20px;
+            cursor: pointer;
+            padding: 5px;
+          }
+          @media (max-width: 399px) {
+            .mobile-menu-items { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+          }
+          @media (max-width: 600px) {
+            .commercialista-alert {
+              grid-template-columns: auto minmax(0, 1fr) auto;
+              padding: 12px;
+            }
+            .commercialista-alert__action {
+              grid-column: 1 / -1;
+              width: 100%;
+            }
           }
         `}</style>
       </div>
     </UploadProvider>
   );
 }
-
-
