@@ -159,7 +159,16 @@ export default function ChatIntelligente() {
       <>
         <style>{`
           @media (max-width: 768px) {
-            [data-testid="chat-toggle"] { bottom: 84px !important; }
+            /* Su telefono: sceso appena sopra la barra di navigazione
+               inferiore (alta ~69px) senza coprirla, e più piccolo così
+               dà meno fastidio sul contenuto. */
+            [data-testid="chat-toggle"] {
+              bottom: 76px !important;
+              right: 12px !important;
+              width: 46px !important;
+              height: 46px !important;
+              font-size: 22px !important;
+            }
           }
         `}</style>
         <Button
