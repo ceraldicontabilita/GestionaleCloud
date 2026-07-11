@@ -104,6 +104,46 @@ def test_learning_senza_db_non_esplode():
     assert fonte == "tabella_statica"
 
 
+def test_fornitore_misto_classifica_dal_contenuto():
+    """Amazon marcato MISTO: decide il contenuto della fattura, non il fornitore.
+    Un mouse → piccole attrezzature (<516,46 €); contenuto ignoto → Altri costi."""
+    db = _FakeDb([{
+        "fornitore_nome": "Amazon Business EU S.a.r.l",
+        "fornitore_nome_normalizzato": "amazon business eu s.a.r.l, sede secondaria",
+        "keywords": [],
+        "centro_costo_suggerito": lm.FORNITORE_MISTO,
+    }])
+    # Fattura con un mouse → 5.3 piccole attrezzature/beni < 516,46
+    cdc_id, cfg, conf, fonte = asyncio.run(lm.classifica_fattura_con_learning(
+        db, "Amazon Business EU S.a.r.l, Sede Secondaria",
+        "", [{"descrizione": "Mouse wireless Logitech M185"}]
+    ))
+    assert fonte == "contenuto_fattura"
+    assert cdc_id == "5.3_PICCOLE_ATTREZZATURE"
+    # Fattura dal contenuto indecifrabile → resta Altri costi (da vedere a mano)
+    cdc_id2, _, _, fonte2 = asyncio.run(lm.classifica_fattura_con_learning(
+        db, "Amazon Business EU S.a.r.l, Sede Secondaria",
+        "", [{"descrizione": "XKWZ-9931 QQ"}]
+    ))
+    assert fonte2 == "contenuto_fattura"
+    assert cdc_id2 == "99_ALTRI_COSTI"
+
+
+def test_nuovi_centri_cucina_e_beni_sotto_516():
+    cdc_id, cfg = lm.risolvi_centro_costo("1.8_MATERIE_PRIME_CUCINA")
+    assert cfg and cfg["nome"] == "Materie prime cucina"
+    # cucina e pasticceria sono centri separati
+    cdc_p, cfg_p = lm.risolvi_centro_costo("1.3_MATERIE_PRIME_PASTICCERIA")
+    assert cdc_p != cdc_id
+    # 5.3 ora è la voce dei beni sotto soglia
+    _, cfg53 = lm.risolvi_centro_costo("5.3_PICCOLE_ATTREZZATURE")
+    assert "516" in cfg53["nome"]
+    # un contenuto cucina classifica su cucina
+    cdc, cfgc, conf = lm.classifica_fattura_per_centro_costo(
+        "", "", [{"descrizione": "passata di pomodoro e legumi"}])
+    assert cdc == "1.8_MATERIE_PRIME_CUCINA"
+
+
 def test_nome_da_config_schema_misto():
     """Il router non deve più esplodere sui documenti auto (KeyError)."""
     from app.routers.fornitori_learning import _nome_da_config

@@ -55,6 +55,22 @@ CENTRI_COSTO = {
         "fornitori": ["dolciaria acquaviva", "siro s.r.l", "f.lli fiorentino", "i cozzolino",
                    "master frost", "eurouova", "big food", "sud ingrosso"]
     },
+    # Separata dalla pasticceria su richiesta utente (11/07): due centri di
+    # costo distinti per materie prime pasticceria e materie prime cucina.
+    "1.8_MATERIE_PRIME_CUCINA": {
+        "codice": "B6.1.8",
+        "nome": "Materie prime cucina",
+        "categoria_bilancio": "B6",
+        "deducibilita_ires": 1.0,
+        "deducibilita_irap": 1.0,
+        "detraibilita_iva": 1.0,
+        "keywords": ["olio", "sale", "pepe", "pasta", "riso", "pomodoro", "passata",
+                    "pelati", "verdure", "ortofrutta", "insalata", "patate",
+                    "surgelato", "surgelati", "carne", "pollo", "manzo", "pesce",
+                    "tonno", "aceto", "spezie", "maionese", "besciamella", "brodo",
+                    "legumi", "conserve"],
+        "fornitori": []
+    },
     "1.4_PRODOTTI_SEMIFINITI": {
         "codice": "B6.1.4",
         "nome": "Prodotti semifiniti pasticceria",
@@ -182,13 +198,23 @@ CENTRI_COSTO = {
     },
     "5.3_PICCOLE_ATTREZZATURE": {
         "codice": "B7.5.3",
-        "nome": "Piccole attrezzature",
+        # Richiesta utente (11/07): voce per i beni strumentali sotto la
+        # soglia dei 516,46 € (art. 102 TUIR) — deducibili integralmente
+        # nell'esercizio, NON portati in ammortamento. È qui che finiscono
+        # gli acquisti "misti" tipo Amazon (mouse, lampadine, cavi...)
+        # quando il contenuto della fattura è attrezzatura minuta.
+        "nome": "Piccole attrezzature e beni < 516,46 € (no ammortamento)",
         "categoria_bilancio": "B7",
         "deducibilita_ires": 1.0,
         "deducibilita_irap": 1.0,
         "detraibilita_iva": 1.0,
         "keywords": ["teglia", "stampo", "frusta", "spatola", "sac à poche", "tappetino",
-                    "termometro", "bilancia", "dosatore"]
+                    "termometro", "bilancia", "dosatore",
+                    "mouse", "tastiera", "computer", "notebook", "monitor",
+                    "stampante", "toner", "cartuccia", "cavo", "lampadina",
+                    "lampada", "batterie", "pile", "caricatore", "adattatore",
+                    "hub", "router", "telecamera", "utensile", "trapano",
+                    "avvitatore", "prolunga", "ciabatta elettrica"]
     },
     
     # 6. AUTO AZIENDALI
@@ -676,6 +702,13 @@ def normalizza_nome_fornitore(nome: str) -> str:
     return nome.strip()
 
 
+# Sentinella per i fornitori "misti" (es. Amazon: mouse, lampadine, cavi...):
+# la classificazione per fornitore NON ha senso — ogni fattura va
+# classificata dal SUO contenuto (righe). Selezionabile dalla pagina
+# Learning come "centro di costo" del fornitore.
+FORNITORE_MISTO = "MISTO_PER_CONTENUTO"
+
+
 def risolvi_centro_costo(valore: str) -> Tuple[str, Dict[str, Any]]:
     """Risolve un centro di costo dalla chiave interna O dal codice bilancio
     (es. '1.1_CAFFE_BEVANDE_CALDE' oppure 'B6.1.1'). (None, None) se ignoto."""
@@ -730,6 +763,15 @@ async def classifica_fattura_con_learning(
             logger.warning(f"Learning: lookup fornitori_keywords fallito: {e}")
 
     if config:
+        # 0) fornitore MISTO (es. Amazon): la classificazione per fornitore
+        #    non ha senso — decide SOLO il contenuto della fattura (righe),
+        #    senza il match sul nome fornitore della tabella statica.
+        if config.get("centro_costo_suggerito") == FORNITORE_MISTO:
+            cdc_id, cdc_config, conf = classifica_fattura_per_centro_costo(
+                "", descrizione, linee_fattura
+            )
+            return cdc_id, cdc_config, conf, "contenuto_fattura"
+
         # 1) centro di costo scelto dall'utente: vince su tutto
         cdc_id, cdc_config = risolvi_centro_costo(config.get("centro_costo_suggerito"))
         if cdc_config:

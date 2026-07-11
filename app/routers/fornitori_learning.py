@@ -339,30 +339,43 @@ async def riclassifica_con_keywords_personalizzate() -> Dict[str, Any]:
             ]
         }).to_list(5000)
 
+        misto = centro_suggerito == lm.FORNITORE_MISTO
         ultimo_cdc_nome = None
         cambiate = 0
         for fatt in fatture:
-            # 1) centro di costo scelto dall'utente (chiave o codice —
-            #    risolutore UNICO del servizio)
-            cdc_id, cdc_config = lm.risolvi_centro_costo(centro_suggerito)
-
-            if not cdc_config:
-                # 2) classificazione standard pesata con le keywords
-                testo = " ".join(keywords)
+            fonte = "keywords_personalizzate"
+            if misto:
+                # Fornitore MISTO (es. Amazon): ogni fattura è classificata
+                # dal SUO contenuto (righe), mai dal fornitore. Se il
+                # contenuto non decide, resta in "da classificare".
                 cdc_id, cdc_config, _ = lm.classifica_fattura_per_centro_costo(
-                    fornitore_nome, testo, []
+                    "", fatt.get("descrizione", ""), fatt.get("linee") or []
                 )
+                if cdc_id == "99_ALTRI_COSTI":
+                    continue
+                fonte = "contenuto_fattura"
+            else:
+                # 1) centro di costo scelto dall'utente (chiave o codice —
+                #    risolutore UNICO del servizio)
+                cdc_id, cdc_config = lm.risolvi_centro_costo(centro_suggerito)
 
-            # Se il risultato è di nuovo "Altri costi", non è una riclassifica
-            if cdc_id == "99_ALTRI_COSTI" and fatt.get("centro_costo_id"):
-                continue
+                if not cdc_config:
+                    # 2) classificazione standard pesata con le keywords
+                    testo = " ".join(keywords)
+                    cdc_id, cdc_config, _ = lm.classifica_fattura_per_centro_costo(
+                        fornitore_nome, testo, []
+                    )
+
+                # Se il risultato è di nuovo "Altri costi", non è una riclassifica
+                if cdc_id == "99_ALTRI_COSTI" and fatt.get("centro_costo_id"):
+                    continue
 
             await db["invoices"].update_one(
                 {"_id": fatt["_id"]},
                 {"$set": {
                     "centro_costo_id": cdc_id,
                     "centro_costo_nome": cdc_config["nome"],
-                    "classificazione_fonte": "keywords_personalizzate"
+                    "classificazione_fonte": fonte
                 }}
             )
             riclassificate += 1
@@ -398,11 +411,26 @@ async def suggerisci_keywords(fornitore_nome: str) -> Dict[str, Any]:
         {"_id": 0, "linee": 1, "descrizione": 1}
     ).limit(20).to_list(20)
     
-    # Estrai parole frequenti dalle descrizioni
+    # Estrai parole frequenti dalle descrizioni.
+    # Oltre alle congiunzioni, si scartano i termini di DOCUMENTO/LOGISTICA
+    # (ddt, bolle, spedizione, riferimenti...) che non dicono nulla sulla
+    # merce: suggerire 'ddt' o 'spedizione' come keyword classificava
+    # tutto a caso (richiesta utente 11/07: 'elimina dalla proposta i
+    # bollettini, i DDT, le cose che non sono materie prime').
     parole = {}
-    stop_words = {"di", "da", "per", "con", "il", "la", "i", "le", "un", "una", "e", "o", 
+    stop_words = {"di", "da", "per", "con", "il", "la", "i", "le", "un", "una", "e", "o",
                   "in", "su", "del", "della", "dei", "delle", "al", "alla", "ai", "alle",
-                  "n.", "nr.", "art.", "pz.", "kg.", "lt.", "ml.", "cm.", "mm."}
+                  "n.", "nr.", "art.", "pz.", "kg.", "lt.", "ml.", "cm.", "mm.",
+                  # termini di documento/logistica, mai keyword di merce
+                  "ddt", "d.d.t.", "bolla", "bolle", "bollettino", "bollettini",
+                  "documento", "documenti", "trasporto", "spedizione", "spedizioni",
+                  "consegna", "consegne", "ordine", "ordini", "fattura", "fatture",
+                  "riferimento", "rif", "rif.", "codice", "articolo", "articoli",
+                  "colli", "collo", "porto", "vettore", "imballo", "imballaggio",
+                  "resa", "pagamento", "totale", "sconto", "omaggio", "cauzione",
+                  "acconto", "saldo", "iva", "imponibile", "aliquota", "listino",
+                  "contributo", "conai", "spese", "costi", "diritti", "segreteria",
+                  "periodo", "mese", "anno", "data", "numero", "cliente", "fornitore"}
     
     for fatt in fatture:
         # Descrizione generale
@@ -437,8 +465,14 @@ async def centri_costo_disponibili() -> List[Dict[str, str]]:
     Lista i centri di costo disponibili per la selezione
     """
     import app.services.learning_machine_cdc as lm
-    
+
+    # Prima voce: fornitore MISTO (es. Amazon) — ogni fattura classificata
+    # dal suo contenuto, mai dal fornitore (richiesta utente 11/07)
     return [
+        {"id": lm.FORNITORE_MISTO,
+         "nome": "🧩 Fornitore misto — classifica ogni fattura dal contenuto",
+         "codice": "MISTO"},
+    ] + [
         {"id": cdc_id, "nome": config["nome"], "codice": config["codice"]}
         for cdc_id, config in lm.CENTRI_COSTO.items()
     ]

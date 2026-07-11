@@ -254,8 +254,11 @@ export default function LearningMachine() {
   };
 
   const salvaFornitore = async () => {
-    if (!selectedFornitore || !keywords.trim()) {
-      setMessage({ type: 'error', text: 'Inserisci almeno una keyword' });
+    // Basta UNA delle due cose: keywords O un centro di costo scelto
+    // (per il "fornitore misto" le keywords non servono: classifica
+    // ogni fattura dal suo contenuto)
+    if (!selectedFornitore || (!keywords.trim() && !centroCostoSuggerito)) {
+      setMessage({ type: 'error', text: 'Inserisci almeno una keyword oppure scegli un centro di costo' });
       return;
     }
 
