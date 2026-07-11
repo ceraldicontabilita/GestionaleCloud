@@ -9,7 +9,7 @@ const PaypalContent = lazy(() => import('../RiconciliazionePaypal.jsx'));
 const AssegniContent = lazy(() => import('../GestioneAssegni.jsx'));
 const BonificiContent = lazy(() => import('../ArchivioBonifici.jsx'));
 const CoerenzaPOSContent = lazy(() => import('../CoerenzaPOSCorrispettivi.jsx'));
-const F24Content = lazy(() => import('../CalendarioFiscale.jsx'));
+const F24Content = lazy(() => import('../F24.jsx'));
 
 const Loading = () => (
   <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>
@@ -52,7 +52,6 @@ export default function RiconciliazioneHub() {
           ? 'coerenza-pos'
           : 'bancaria';
 
-  // Determina quale contenuto mostrare
   const getContent = () => {
     if (path.includes('/archivio-bonifici')) {
       return <BonificiContent key={`bonifici-${anno}`} />;
@@ -69,15 +68,9 @@ export default function RiconciliazioneHub() {
     if (path.includes('/f24')) {
       return <F24Content key={`f24-${anno}`} />;
     }
-    // Default: riconciliazione bancaria
     return <RiconciliazioneContent key={`riconciliazione-${anno}`} />;
   };
 
-  // Pagine "canoniche" senza barra hub (richiesta utente 10/07):
-  // - /riconciliazione/f24 → solo F24, senza bancaria/bonifici/assegni/paypal;
-  // - /riconciliazione/coerenza-pos → solo Coerenza POS;
-  // - /riconciliazione/paypal → solo PayPal (ha la sua voce di menù in alto).
-  // Ci si arriva dal menù; le altre sezioni hanno le loro voci dedicate.
   const nascondiTabs =
     path.includes('/f24') || path.includes('/coerenza-pos') || path.includes('/paypal');
 
