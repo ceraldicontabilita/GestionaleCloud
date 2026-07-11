@@ -628,7 +628,7 @@ export default function Admin() {
                   </div>
 
                   {/* Parole Chiave - Campi separati */}
-                  <div style={{ gridColumn: 'span 2' }}>
+                  <div style={{ gridColumn: '1 / -1' }}>
                     <label
                       style={{ fontSize: 11, fontWeight: 500, display: 'block', marginBottom: 4 }}
                     >
@@ -773,7 +773,7 @@ export default function Admin() {
                   </div>
 
                   {/* Parole Chiave - Campi separati */}
-                  <div style={{ gridColumn: 'span 2' }}>
+                  <div style={{ gridColumn: '1 / -1' }}>
                     <label
                       style={{ fontSize: 11, fontWeight: 500, display: 'block', marginBottom: 4 }}
                     >
@@ -1120,7 +1120,7 @@ export default function Admin() {
           </Card>
 
           {/* Statistiche Collections */}
-          <Card title="📊 Statistiche Database" style={{ gridColumn: 'span 2' }}>
+          <Card title="📊 Statistiche Database" style={{ gridColumn: '1 / -1' }}>
             {loading ? (
               <div style={{ textAlign: 'center', padding: 20, color: COLORS.textMuted }}>
                 Caricamento...
@@ -1710,7 +1710,7 @@ function FattureAdminTab() {
       </Card>
 
       {/* Refresh */}
-      <Card style={{ gridColumn: 'span 2' }} bodyStyle={{ display: 'flex', justifyContent: 'flex-end' }}>
+      <Card style={{ gridColumn: '1 / -1' }} bodyStyle={{ display: 'flex', justifyContent: 'flex-end' }}>
         <Button variant="secondary" size="sm" onClick={loadFattureStats} disabled={loading}>
           🔄 Aggiorna Stats
         </Button>

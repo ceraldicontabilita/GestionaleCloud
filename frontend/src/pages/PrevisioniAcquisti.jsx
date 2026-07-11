@@ -330,7 +330,7 @@ export default function PrevisioniAcquisti() {
                             {item.prossimo_ordine_tra_giorni} gg
                           </div>
                           {item.fornitori_abituali?.length > 0 && (
-                            <div style={{ gridColumn: 'span 2' }}>
+                            <div style={{ gridColumn: '1 / -1' }}>
                               <strong>Fornitori:</strong> {item.fornitori_abituali.join(', ')}
                             </div>
                           )}

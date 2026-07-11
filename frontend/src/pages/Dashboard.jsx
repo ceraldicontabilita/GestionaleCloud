@@ -270,7 +270,7 @@ export default function Dashboard() {
 
   if (loading) {
     return (
-      <PageLayout title="Dashboard" icon="\u25A1" subtitle="Panoramica">
+      <PageLayout title="Dashboard" icon="📊" subtitle="Panoramica">
         <div style={STYLES.card}>
           <p style={{ color: COLORS.textMuted }}>Caricamento in corso...</p>
         </div>
@@ -279,7 +279,7 @@ export default function Dashboard() {
   }
 
   return (
-    <PageLayout title={`Dashboard ${anno}`} icon="\u25A1" subtitle="Panoramica generale">
+    <PageLayout title={`Dashboard ${anno}`} icon="📊" subtitle="Panoramica generale">
       <div style={{ ...STYLES.card, marginBottom: 12 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -418,30 +418,38 @@ export default function Dashboard() {
                 </div>
                 <div
                   style={{
-                    gridColumn: 'span 4',
+                    // '1 / -1' = tutta la riga QUALUNQUE sia il numero di
+                    // colonne. Il vecchio 'span 4' su mobile (griglia a 2
+                    // colonne) creava colonne implicite fuori schermo: la
+                    // card rossa sbordava e "+ Incassi Extra" finiva
+                    // tagliata sul bordo destro (screenshot utente 11/07).
+                    gridColumn: '1 / -1',
                     background: COLORS.danger,
                     borderRadius: BORDER_RADIUS.md,
-                    padding: 20,
+                    padding: isMobile ? 14 : 20,
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
+                    flexWrap: 'wrap',
+                    gap: 8,
+                    minWidth: 0,
                   }}
                 >
-                  <div>
+                  <div style={{ minWidth: 0 }}>
                     <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: 14 }}>
                       VOLUME AFFARI REALE {anno}
                     </div>
                     <div
                       style={{
                         color: 'white',
-                        fontSize: 32,
+                        fontSize: isMobile ? 24 : 32,
                         fontWeight: 700,
                         display: 'flex',
                         alignItems: 'center',
                         gap: 10,
                       }}
                     >
-                      <TrendingUp size={28} />
+                      <TrendingUp size={isMobile ? 22 : 28} />
                       {formatEuro(volumeRealeData.volume_affari_reale)}
                     </div>
                   </div>
@@ -502,6 +510,10 @@ export default function Dashboard() {
                 gap: 8,
                 fontSize: 14,
                 fontWeight: 600,
+                // index.css impone il navy a TUTTI gli h1-h4: su questo
+                // widget a fondo navy il titolo diventava invisibile
+                // (audit 11/07 — "Bilancio Istantaneo" sparito)
+                color: 'white',
               }}
             >
               <TrendingUp size={18} /> Bilancio Istantaneo {anno}
