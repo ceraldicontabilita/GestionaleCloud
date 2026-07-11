@@ -15,9 +15,25 @@ Documento di riferimento per chi usa il gestionale (amministrazione, commerciali
 Descrive come funziona davvero il sistema, letto dal codice implementato — non è una
 specifica di progetto ma il comportamento reale in produzione.
 
-Ultimo aggiornamento: 10/07/2026.
+Ultimo aggiornamento: 11/07/2026.
 
 ---
+
+## 0-bis. Navigazione e pagine
+
+- I menù (barra in alto su desktop, barra in basso + griglia su telefono)
+  vengono tutti dalla **stessa configurazione unica** (`navigation.config.js`):
+  una voce aggiunta lì compare ovunque, niente più menù fuori sincrono.
+- Un indirizzo sbagliato mostra una **pagina "non trovata"** con l'URL
+  richiesto e i link alle sezioni vere (prima riportava in silenzio alla
+  Dashboard, mascherando i link rotti).
+- Su telefono, le sezioni con molti tab (es. Contabilità, 13 voci) mostrano
+  un **menù a tendina** al posto della muraglia di bottoni.
+- In Dashboard e Contabilità Avanzata, se un blocco non si carica per un
+  errore del server compare un **avviso giallo con l'elenco dei blocchi in
+  errore**: "niente dati" e "servizio in errore" non si confondono più.
+- Il bottone **Auto-ripara dati** (Dashboard) chiede conferma prima di
+  eseguire e riporta l'esito vero (correzioni fatte, operazioni fallite).
 
 ## 1. Regola decisionale (vale per tutto il sistema)
 

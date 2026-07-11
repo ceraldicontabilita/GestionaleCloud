@@ -770,7 +770,7 @@ export default function ArchivioFatture() {
                               {metodoPagEffettivo === 'cassa'
                                 ? 'Cassa'
                                 : 'Banca'}
-                              {isRiconciliata ? ' � EC' : ''}
+                              {isRiconciliata ? ' ✓ EC' : ''}
                             </Badge>
                           ) : fornBanca || fornCassa ? (
                             <Badge

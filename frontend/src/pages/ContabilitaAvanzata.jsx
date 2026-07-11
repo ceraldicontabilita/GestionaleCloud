@@ -123,6 +123,10 @@ export default function ContabilitaAvanzata() {
 
   const [message, setMessage] = useState(null);
   const [disponibilita, setDisponibilita] = useState(null);
+  // Blocchi il cui endpoint ha risposto con errore: distinti da "nessun dato".
+  // Prima ogni errore diventava null in silenzio e la pagina si caricava
+  // vuota senza spiegare quale endpoint fosse rotto.
+  const [erroriBlocchi, setErroriBlocchi] = useState([]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -130,28 +134,35 @@ export default function ContabilitaAvanzata() {
     setStatistiche(null);
     setBilancio(null);
     setDisponibilita(null);
-    try {
-      const [impRes, statRes, bilRes, aliqRes, dispRes] = await Promise.all([
-        api
-          .get(`/api/contabilita/calcolo-imposte?regione=${regione}&anno=${selectedYear}`)
-          .catch(() => null),
-        api
-          .get(`/api/contabilita/statistiche-categorizzazione?anno=${selectedYear}`)
-          .catch(() => null),
-        api.get(`/api/contabilita/bilancio-dettagliato?anno=${selectedYear}`).catch(() => null),
-        api.get(`/api/contabilita/aliquote-irap`).catch(() => null),
-        api.get(`/api/contabilita/disponibilita-liquide?anno=${selectedYear}`).catch(() => null),
-      ]);
-      setImposte(impRes?.data ?? null);
-      setStatistiche(statRes?.data ?? null);
-      setBilancio(bilRes?.data ?? null);
-      if (aliqRes?.data) {
-        setAliquoteIrap(aliqRes.data.aliquote || {});
-      }
-      setDisponibilita(dispRes?.data ?? null);
-    } catch (err) {
-      console.error('Errore caricamento dati:', err);
+    const errori = [];
+    const conErrore = nome => e => {
+      errori.push(`${nome} (${e?.response?.status || e?.message || 'endpoint non raggiungibile'})`);
+      return null;
+    };
+    const [impRes, statRes, bilRes, aliqRes, dispRes] = await Promise.all([
+      api
+        .get(`/api/contabilita/calcolo-imposte?regione=${regione}&anno=${selectedYear}`)
+        .catch(conErrore('Calcolo imposte')),
+      api
+        .get(`/api/contabilita/statistiche-categorizzazione?anno=${selectedYear}`)
+        .catch(conErrore('Statistiche categorizzazione')),
+      api
+        .get(`/api/contabilita/bilancio-dettagliato?anno=${selectedYear}`)
+        .catch(conErrore('Bilancio dettagliato')),
+      api.get(`/api/contabilita/aliquote-irap`).catch(conErrore('Aliquote IRAP')),
+      api
+        .get(`/api/contabilita/disponibilita-liquide?anno=${selectedYear}`)
+        .catch(conErrore('Disponibilità liquide')),
+    ]);
+    setImposte(impRes?.data ?? null);
+    setStatistiche(statRes?.data ?? null);
+    setBilancio(bilRes?.data ?? null);
+    if (aliqRes?.data) {
+      setAliquoteIrap(aliqRes.data.aliquote || {});
     }
+    setDisponibilita(dispRes?.data ?? null);
+    setErroriBlocchi(errori);
+    if (errori.length) console.warn('Contabilità Avanzata, blocchi in errore:', errori);
     setLoading(false);
   };
 
@@ -255,6 +266,25 @@ export default function ContabilitaAvanzata() {
         {message && (
           <div style={message.type === 'success' ? styles.messageSuccess : styles.messageError}>
             {message.text}
+          </div>
+        )}
+
+        {/* Blocchi in errore: distinti da "nessun dato" */}
+        {erroriBlocchi.length > 0 && (
+          <div
+            style={{
+              padding: '10px 14px',
+              background: '#fffbeb',
+              border: '1px solid #fcd34d',
+              borderRadius: 8,
+              color: '#92400e',
+              fontSize: 13,
+              marginBottom: 14,
+            }}
+            data-testid="contabilita-avanzata-errori"
+          >
+            ⚠️ Questi blocchi non sono disponibili per un errore del server (non è
+            mancanza di dati): {erroriBlocchi.join(' · ')}
           </div>
         )}
 

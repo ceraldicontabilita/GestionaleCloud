@@ -34,10 +34,16 @@ import {
 import { Eye, EyeOff, TrendingUp, Lock, AlertTriangle, Users } from 'lucide-react';
 import WidgetVerificaCoerenza from '../components/WidgetVerificaCoerenza';
 import WidgetAgenti from '../components/WidgetAgenti';
+import { useConfirm } from '../components/ui/ConfirmDialog';
 
 export default function Dashboard() {
   const isMobile = useIsMobile();
   const { anno } = useAnnoGlobale();
+  const confirm = useConfirm();
+  // Endpoint della dashboard falliti (per nome leggibile): prima gli errori
+  // venivano inghiottiti e le card sparivano in silenzio — impossibile capire
+  // se mancassero i dati o fosse rotto il backend.
+  const [apiErrors, setApiErrors] = useState([]);
   const [h, setH] = useState(null);
   const [sum, setSum] = useState(null);
   const [err, setErr] = useState('');
@@ -79,31 +85,46 @@ export default function Dashboard() {
    * Ora avviabile manualmente con pulsante.
    */
   const eseguiAutoRiparazione = async () => {
+    // Operazione che SCRIVE sui dati (ricostruzione fatture + riconciliazione
+    // automatica globale): mai avviarla per un click accidentale.
+    const ok = await confirm({
+      title: 'Auto-ripara dati',
+      message:
+        'Verranno eseguite due operazioni sui dati: ricostruzione dei campi ' +
+        'delle fatture ricevute e riconciliazione automatica globale. Procedere?',
+    });
+    if (!ok) return;
+
     setAutoRepairStatus('running');
-    try {
-      // Esegue riparazioni
-      const [fatRes, ricRes] = await Promise.all([
-        api.post('/api/fatture-ricevute/auto-ricostruisci-dati').catch(() => ({ data: {} })),
-        api.post('/api/batch/auto-riconcilia-tutto').catch(() => ({ data: {} })),
-      ]);
+    // allSettled: un fallimento NON deve travestirsi da "0 correzioni".
+    const [fatRes, ricRes] = await Promise.allSettled([
+      api.post('/api/fatture-ricevute/auto-ricostruisci-dati'),
+      api.post('/api/batch/auto-riconcilia-tutto'),
+    ]);
 
-      const totaleCorrezioni =
-        (fatRes.data.campi_corretti || 0) +
-        (fatRes.data.fornitori_associati || 0) +
-        (ricRes.data.riconciliazioni_auto || 0);
+    const falliti = [];
+    if (fatRes.status === 'rejected') falliti.push('ricostruzione fatture');
+    if (ricRes.status === 'rejected') falliti.push('riconciliazione automatica');
+    const fat = fatRes.status === 'fulfilled' ? fatRes.value.data || {} : {};
+    const ric = ricRes.status === 'fulfilled' ? ricRes.value.data || {} : {};
 
-      
-      setAutoRepairStatus({
-        fatture: fatRes.data,
-        riconciliazione: ricRes.data,
-        totale: totaleCorrezioni,
-      });
+    const totaleCorrezioni =
+      (fat.campi_corretti || 0) + (fat.fornitori_associati || 0) + (ric.riconciliazioni_auto || 0);
 
-      // Ricarica dati dopo riparazione (senza reload pagina)
+    if (falliti.length) {
+      console.warn('Auto-riparazione fallita per:', falliti, fatRes, ricRes);
+    }
+    setAutoRepairStatus({
+      fatture: fat,
+      riconciliazione: ric,
+      totale: totaleCorrezioni,
+      falliti,
+      error: falliti.length === 2,
+    });
+
+    // Ricarica i dati solo se almeno un'operazione è andata a buon fine
+    if (falliti.length < 2) {
       setReloadKey(k => k + 1);
-    } catch (error) {
-      console.warn('Auto-riparazione non riuscita:', error);
-      setAutoRepairStatus({ error: true, totale: 0 });
     }
   };
 
@@ -113,57 +134,89 @@ export default function Dashboard() {
   // }, []);
 
   useEffect(() => {
-    // Timeout per evitare blocchi
+    // Timeout reale: il signal è passato a OGNI richiesta (prima il controller
+    // veniva abortito ma nessuna chiamata lo riceveva, quindi il "timeout"
+    // non fermava nulla) e fa anche da guardia anti-race: al cambio anno le
+    // risposte vecchie non devono sovrascrivere i dati dell'anno nuovo.
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
+    const signal = controller.signal;
+    const vivo = () => !signal.aborted;
+    // Registra i blocchi non disponibili con un nome leggibile (niente più
+    // card che spariscono in silenzio).
+    const falliti = [];
+    const conErrore = nome => e => {
+      if (vivo()) {
+        falliti.push(nome);
+        console.warn(`Dashboard: "${nome}" non disponibile:`, e?.message || e);
+      }
+      return { data: null };
+    };
 
     (async () => {
       try {
         setLoading(true);
         const [healthData, summaryData] = await Promise.all([health(), dashboardSummary(anno)]);
+        if (!vivo()) return;
         setH(healthData);
         setSum(summaryData);
 
         // Load trend mensile, calendario POS e scadenze - con timeout individuale
         const [trendRes, posRes, scadenzeRes, bilancioRes] = await Promise.all([
-          api.get(`/api/dashboard/trend-mensile?anno=${anno}`).catch(() => ({ data: null })),
           api
-            .get(`/api/pos-accredito/calendario-mensile/${anno}/${new Date().getMonth() + 1}`)
-            .catch(() => ({ data: null })),
-          api.get('/api/scadenze/prossime?giorni=30&limit=8').catch(() => ({ data: null })),
-          api.get(`/api/dashboard/bilancio-istantaneo?anno=${anno}`).catch(() => ({ data: null })),
+            .get(`/api/dashboard/trend-mensile?anno=${anno}`, { signal })
+            .catch(conErrore('trend mensile')),
+          api
+            .get(`/api/pos-accredito/calendario-mensile/${anno}/${new Date().getMonth() + 1}`, {
+              signal,
+            })
+            .catch(conErrore('calendario POS')),
+          api
+            .get('/api/scadenze/prossime?giorni=30&limit=8', { signal })
+            .catch(conErrore('scadenze')),
+          api
+            .get(`/api/dashboard/bilancio-istantaneo?anno=${anno}`, { signal })
+            .catch(conErrore('bilancio istantaneo')),
         ]);
+        if (!vivo()) return;
 
         // Imposta dati primari immediatamente
         setTrendData(trendRes.data);
         setPosCalendario(posRes.data);
         setScadenzeData(scadenzeRes.data);
         setBilancioIstantaneo(bilancioRes.data);
+        setApiErrors([...falliti]);
 
         // Carica dati secondari DOPO i primari (non bloccanti)
         setLoading(false);
 
         // Grafici avanzati caricati in background (senza alert-limiti che è lento)
         Promise.all([
-          api.get(`/api/dashboard/spese-per-categoria?anno=${anno}`).catch(() => ({ data: null })),
-          api.get(`/api/dashboard/confronto-annuale?anno=${anno}`).catch(() => ({ data: null })),
           api
-            .get(`/api/dashboard/stato-riconciliazione?anno=${anno}`)
-            .catch(() => ({ data: null })),
+            .get(`/api/dashboard/spese-per-categoria?anno=${anno}`, { signal })
+            .catch(conErrore('spese per categoria')),
           api
-            .get(`/api/contabilita/calcolo-imposte?regione=campania&anno=${anno}`)
-            .catch(() => ({ data: null })),
+            .get(`/api/dashboard/confronto-annuale?anno=${anno}`, { signal })
+            .catch(conErrore('confronto annuale')),
           api
-            .get(`/api/f24-public/scadenze-prossime?giorni=60&limit=5`)
-            .catch(() => ({ data: null })),
-          api.get(`/api/fornitori-learning/stats`).catch(() => ({ data: null })),
+            .get(`/api/dashboard/stato-riconciliazione?anno=${anno}`, { signal })
+            .catch(conErrore('stato riconciliazione')),
+          api
+            .get(`/api/contabilita/calcolo-imposte?regione=campania&anno=${anno}`, { signal })
+            .catch(conErrore('imposte IRES/IRAP')),
+          api
+            .get(`/api/f24-public/scadenze-prossime?giorni=60&limit=5`, { signal })
+            .catch(conErrore('scadenze F24')),
+          api
+            .get(`/api/fornitori-learning/stats`, { signal })
+            .catch(conErrore('learning machine')),
           Promise.all([
             api
-              .get('/api/paghe/buste-paga?stato=DA_PAGARE')
-              .catch(() => ({ data: { data: [], count: 0 } })),
+              .get('/api/paghe/buste-paga?stato=DA_PAGARE', { signal })
+              .catch(conErrore('buste paga da pagare')),
             api
-              .get('/api/paghe/distinte-f24?stato=DA_PAGARE')
-              .catch(() => ({ data: { data: [], count: 0 } })),
+              .get('/api/paghe/distinte-f24?stato=DA_PAGARE', { signal })
+              .catch(conErrore('distinte F24 da pagare')),
           ]).catch(() => null),
         ])
           .then(
@@ -176,6 +229,7 @@ export default function Dashboard() {
               learningRes,
               pagheResults,
             ]) => {
+              if (!vivo()) return; // anno cambiato nel frattempo: dati vecchi, ignora
               setSpeseCategoria(speseRes.data);
               // Difesa sulla FORMA dei dati: se il backend risponde con un
               // payload vuoto/inatteso (riavvio, deploy in corso) i blocchi
@@ -204,33 +258,26 @@ export default function Dashboard() {
                   setAlertPagamenti({ buste, f24list, totStip, totF24 });
                 }
               }
+              setApiErrors([...falliti]);
             }
           )
           .catch(e => console.warn('Errore grafici secondari:', e));
 
         // Carica stats verbali/trattenute
         api
-          .get('/api/noleggio/veicoli?anno=' + anno)
+          .get('/api/noleggio/veicoli?anno=' + anno, { signal })
           .then(r => {
+            if (!vivo()) return;
             const veicoli = r.data?.veicoli || [];
             const stats = r.data?.statistiche || {};
-            // Conta verbali totali dai veicoli
-            const verbaliTot = veicoli.reduce((s, v) => s + (v.verbali?.length || 0), 0);
-            // Carica trattenute
-            api
-              .get('/api/email-download/statistiche')
-              .then(statRes => {
-                const verbaliEmail = statRes.data?.verbale?.totale || 0;
-                setVerbaliStats({
-                  veicoli: veicoli.length,
-                  canoni: stats.totale_canoni || 0,
-                  verbali_costo: stats.totale_verbali || 0,
-                  totale_noleggio: stats.totale_generale || 0,
-                });
-              })
-              .catch(() => {});
+            setVerbaliStats({
+              veicoli: veicoli.length,
+              canoni: stats.totale_canoni || 0,
+              verbali_costo: stats.totale_verbali || 0,
+              totale_noleggio: stats.totale_generale || 0,
+            });
           })
-          .catch(() => {});
+          .catch(conErrore('veicoli e verbali'));
 
       } catch (e) {
         console.error('Dashboard error:', e);
@@ -293,8 +340,20 @@ export default function Dashboard() {
             >
               {autoRepairStatus === 'running' ? <>Riparazione...</> : <>Auto-ripara dati</>}
             </Button>
-            {autoRepairStatus && autoRepairStatus !== 'running' && autoRepairStatus.totale > 0 && (
-              <Badge variant="success">{autoRepairStatus.totale} correzioni</Badge>
+            {autoRepairStatus && autoRepairStatus !== 'running' && (
+              autoRepairStatus.error ? (
+                <Badge variant="danger">Riparazione fallita: riprova più tardi</Badge>
+              ) : autoRepairStatus.falliti?.length ? (
+                <Badge variant="warning">
+                  {autoRepairStatus.totale} correzioni — fallita: {autoRepairStatus.falliti.join(', ')}
+                </Badge>
+              ) : (
+                <Badge variant="success">
+                  {autoRepairStatus.totale > 0
+                    ? `${autoRepairStatus.totale} correzioni`
+                    : 'Nessuna correzione necessaria'}
+                </Badge>
+              )
             )}
             {err ? (
               <span style={{ color: COLORS.danger, fontSize: 14 }}>{err}</span>
@@ -303,6 +362,23 @@ export default function Dashboard() {
             )}
           </div>
         </div>
+        {apiErrors.length > 0 && (
+          <div
+            style={{
+              marginTop: 10,
+              padding: '8px 12px',
+              background: '#fffbeb',
+              border: '1px solid #fcd34d',
+              borderRadius: 8,
+              color: '#92400e',
+              fontSize: 13,
+            }}
+            data-testid="dashboard-api-errors"
+          >
+            ⚠️ Sezioni non disponibili in questo momento (errore, non «nessun dato»):{' '}
+            {apiErrors.join(', ')}.
+          </div>
+        )}
       </div>
 
       {/* Widget Verifica Coerenza Dati */}

@@ -10,42 +10,10 @@ import F24EmailSync from "./components/F24EmailSync";
 import { useWebSocketNotifications } from "./hooks/useWebSocket";
 import "./styles/topnav.css";
 
-// Mobile navigation items
-const MOBILE_NAV = [
-  { to: "/", label: "Dashboard", icon: "\u2302" },
-  { to: "/fatture", label: "Fatture", icon: "\u25A3" },
-  { to: "/prima-nota", label: "Prima Nota", icon: "\u25A4" },
-  { to: "/riconciliazione", label: "Riconciliazione", icon: "\u2194" },
-  { to: "/more", label: "Menu", icon: "\u22EF", isMenu: true },
-];
-
-// URL dell'app esterna AppDipendenti (gestione HR spostata fuori dal gestionale).
-const APP_DIPENDENTI_URL = "https://appdipendenti.onrender.com";
-
-// Full menu items for mobile overlay.
-// NOTA: elenco mantenuto a mano in parallelo a NAV_ITEMS/ALTRO_ITEMS di TopNav.jsx
-// (menu desktop) se aggiungi una voce l?, aggiungila anche qui o sparisce su mobile.
-const ALL_NAV_ITEMS = [
-  { to: "/", label: "Dashboard", icon: "\u2302" },
-  { to: "/fatture", label: "Fatture passive", icon: "\u25A3" },
-  { to: "/fatture/corrispettivi", label: "Corrispettivi", icon: "\u20AC" },
-  { to: "/fornitori", label: "Fornitori", icon: "\u25EB" },
-  { to: "/prima-nota", label: "Prima Nota", icon: "\u25A4" },
-  { to: "/riconciliazione", label: "Riconciliazione", icon: "\u2194" },
-  { to: "/riconciliazione/assegni", label: "Assegni", icon: "\u25A6" },
-  { to: "/riconciliazione/paypal", label: "PayPal", icon: "\u25C9" },
-  { to: "/riconciliazione/f24", label: "F24", icon: "\u25A0" },
-  { to: "/contabilita", label: "Contabilita", icon: "\u25A7" },
-  { to: "/riconciliazione/coerenza-pos", label: "Incassi POS", icon: "\u25A5" },
-  { to: "/noleggio", label: "Noleggi", icon: "\u25B6" },
-  { to: "/scadenze", label: "Scadenze", icon: "\u23F1" },
-  { to: "/documenti", label: "Documenti", icon: "\u25A1" },
-  { to: "/documenti/import", label: "Import documenti", icon: "\u2B06" },
-  { to: "/strumenti", label: "Strumenti", icon: "\u25B3" },
-  { to: "/admin", label: "Admin", icon: "\u2699" },
-  { to: "/mappa-gestionale", label: "Mappa gestionale", icon: "\u25A8" },
-  { to: null, href: APP_DIPENDENTI_URL, label: "HR", icon: "\u25C6", external: true },
-];
+// Navigazione: FONTE UNICA in navigation.config.js, condivisa con TopNav.jsx.
+// Prima qui c'erano due elenchi mantenuti a mano (MOBILE_NAV/ALL_NAV_ITEMS)
+// gi\u00E0 andati fuori sincrono col desktop (voci ed etichette diverse).
+import { NAV_TUTTE, NAV_MOBILE_BAR } from "./navigation.config";
 
 export default function App() {
   const [showMobileMenu, setShowMobileMenu] = useState(false);
@@ -96,7 +64,7 @@ export default function App() {
 
         {/* Mobile Bottom Navigation */}
         <nav className="mobile-nav-topnav" data-testid="mobile-nav">
-          {MOBILE_NAV.map((item) => (
+          {NAV_MOBILE_BAR.map((item) => (
             item.isMenu ? (
               <button
                 key="menu"
@@ -104,17 +72,18 @@ export default function App() {
                 onClick={() => setShowMobileMenu(!showMobileMenu)}
                 data-testid="mobile-menu-toggle"
               >
-                <span className="mobile-nav-icon">{item.icon}</span>
+                <span className="mobile-nav-icon"><item.Icon size={20} /></span>
                 <span className="mobile-nav-label">{item.label}</span>
               </button>
             ) : (
               <NavLink
                 key={item.to}
                 to={item.to}
+                end={item.to === '/'}
                 className={({ isActive }) => `mobile-nav-item ${isActive ? "active" : ""}`}
                 onClick={() => setShowMobileMenu(false)}
               >
-                <span className="mobile-nav-icon">{item.icon}</span>
+                <span className="mobile-nav-icon"><item.Icon size={20} /></span>
                 <span className="mobile-nav-label">{item.label}</span>
               </NavLink>
             )
@@ -136,11 +105,11 @@ export default function App() {
                   className="mobile-menu-close"
                   onClick={() => setShowMobileMenu(false)}
                 >
-                  �S"
+                  ✕
                 </button>
               </div>
               <div className="mobile-menu-items">
-                {ALL_NAV_ITEMS.map((item) => (
+                {NAV_TUTTE.map((item) => (
                   item.external ? (
                     <a
                       key={item.href}
@@ -150,7 +119,7 @@ export default function App() {
                       className="mobile-menu-item"
                       onClick={() => setShowMobileMenu(false)}
                     >
-                      <span style={{ fontSize: 20 }}>{item.icon}</span>
+                      <item.Icon size={20} />
                       <span>{item.label}</span>
                     </a>
                   ) : (
@@ -161,7 +130,7 @@ export default function App() {
                       className={({ isActive }) => `mobile-menu-item ${isActive ? "active" : ""}`}
                       onClick={() => setShowMobileMenu(false)}
                     >
-                      <span style={{ fontSize: 20 }}>{item.icon}</span>
+                      <item.Icon size={20} />
                       <span>{item.label}</span>
                     </NavLink>
                   )
@@ -185,7 +154,7 @@ export default function App() {
               marginBottom: 20,
               borderRadius: 10,
             }}>
-              <span style={{ fontSize: 24 }}>�a�️</span>
+              <span style={{ fontSize: 24 }}>⚠️</span>
               <div style={{ flex: 1 }}>
                 <strong>{alertCommercialista.message}</strong>
               </div>
@@ -227,7 +196,7 @@ export default function App() {
                   padding: 5
                 }}
               >
-                �S"
+                ✕
               </button>
             </div>
           )}
@@ -304,6 +273,13 @@ export default function App() {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
             gap: 8px;
+          }
+
+          /* Telefoni stretti: 3 colonne comprimono le etichette, meglio 2 */
+          @media (max-width: 400px) {
+            .mobile-menu-items {
+              grid-template-columns: repeat(2, 1fr);
+            }
           }
           
           .mobile-menu-item {

@@ -14,6 +14,51 @@ import { useIsMobile } from '../../lib/utils';
  */
 export function HubTabs({ tabs = [], activeId, onSelect = () => {}, testIdPrefix = 'tab', style = {} }) {
   const isMobile = useIsMobile();
+
+  // Su telefono, oltre 6 tab diventano una muraglia di bottoni su 4-5 righe
+  // (es. Contabilità: 13 voci) che spinge il contenuto fuori schermo:
+  // meglio un menù a tendina nativo, una riga sola.
+  if (isMobile && tabs.length > 6) {
+    return (
+      <div
+        style={{
+          padding: '8px 12px',
+          background: 'white',
+          borderBottom: '1px solid #e2e8f0',
+          borderRadius: '8px 8px 0 0',
+          marginBottom: 16,
+          ...style,
+        }}
+      >
+        <select
+          value={activeId}
+          onChange={e => {
+            const tab = tabs.find(t => t.id === e.target.value);
+            if (tab) onSelect(tab);
+          }}
+          data-testid={`${testIdPrefix}-select`}
+          style={{
+            width: '100%',
+            minHeight: 40,
+            padding: '8px 10px',
+            borderRadius: 6,
+            border: '1px solid #0f2744',
+            background: '#0f2744',
+            color: '#fff',
+            fontWeight: 700,
+            fontSize: 13,
+          }}
+        >
+          {tabs.map(t => (
+            <option key={t.id} value={t.id}>
+              {t.label}
+            </option>
+          ))}
+        </select>
+      </div>
+    );
+  }
+
   return (
     <div
       style={{

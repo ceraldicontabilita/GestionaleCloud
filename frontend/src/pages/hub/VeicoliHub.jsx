@@ -2,6 +2,7 @@ import React, { lazy, Suspense, useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import api from '../../api';
 import { useAnnoGlobale } from '../../contexts/AnnoContext';
+import { PageLoader } from '../../components/ds';
 
 const FlottaContent = lazy(() => import('../NoleggioAuto.jsx'));
 const VerbaliContent = lazy(() => import('../VerbaliRiconciliazione.jsx'));
@@ -12,23 +13,6 @@ const TABS = [
   { id: 'costi', label: '💰 Riepilogo Costi', color: '#10b981' },
 ];
 
-const Loading = () => (
-  <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>
-    <div
-      style={{
-        width: 32,
-        height: 32,
-        border: '3px solid #e2e8f0',
-        borderTop: '3px solid #3b82f6',
-        borderRadius: '50%',
-        animation: 'spin 1s linear infinite',
-        margin: '0 auto 12px',
-      }}
-    />
-    <style>{`@keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}`}</style>
-    Caricamento...
-  </div>
-);
 
 const getTabFromPath = pathname => {
   if (pathname.includes('/verbali')) return 'verbali';
@@ -53,7 +37,7 @@ function RiepilogoCosti({ anno }) {
       .finally(() => setLoading(false));
   }, [anno]);
 
-  if (loading) return <Loading />;
+  if (loading) return <PageLoader />;
   if (!data)
     return (
       <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>
@@ -361,7 +345,7 @@ export default function VeicoliHub() {
 
       {/* Tab Content */}
       <div style={{ padding: '16px 0 0 0' }}>
-        <Suspense fallback={<Loading />}>
+        <Suspense fallback={<PageLoader />}>
           {/* Flotta: carica solo se visitato, poi mantieni montato */}
           {loadedTabs.has('flotta') && (
             <div style={{ display: activeTab === 'flotta' ? 'block' : 'none' }}>

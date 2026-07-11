@@ -1,27 +1,11 @@
 import React, { lazy, Suspense, useEffect, useState } from 'react';
 import { LayoutDashboard, Network } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { HubTabs } from '../../components/ds';
+import { HubTabs, PageLoader } from '../../components/ds';
 
 const DashboardContent = lazy(() => import('../Dashboard.jsx'));
 const DashboardRelazionaleContent = lazy(() => import('../DashboardRelazionale.jsx'));
 
-const Loading = () => (
-  <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>
-    <div
-      style={{
-        width: 32,
-        height: 32,
-        border: '3px solid #e2e8f0',
-        borderTop: '3px solid #2563eb',
-        borderRadius: '50%',
-        animation: 'spin 1s linear infinite',
-        margin: '0 auto 12px',
-      }}
-    />
-    Caricamento...
-  </div>
-);
 
 export default function DashboardHub() {
   const navigate = useNavigate();
@@ -52,12 +36,12 @@ export default function DashboardHub() {
         tabs={tabs}
       />
       <div style={{ display: activeTab === 'dashboard' ? 'block' : 'none' }}>
-        <Suspense fallback={<Loading />}>
+        <Suspense fallback={<PageLoader />}>
           {visitedTabs.has('dashboard') && <DashboardContent />}
         </Suspense>
       </div>
       <div style={{ display: activeTab === 'relazionale' ? 'block' : 'none' }}>
-        <Suspense fallback={<Loading />}>
+        <Suspense fallback={<PageLoader />}>
           {visitedTabs.has('relazionale') && <DashboardRelazionaleContent />}
         </Suspense>
       </div>

@@ -2,7 +2,7 @@ import React, { lazy, Suspense } from 'react';
 import { ArrowLeftRight, Banknote, CreditCard, Landmark, ScrollText } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAnnoGlobale } from '../../contexts/AnnoContext';
-import { HubTabs } from '../../components/ds';
+import { HubTabs, PageLoader } from '../../components/ds';
 
 const RiconciliazioneContent = lazy(() => import('../RiconciliazioneUnificata.jsx'));
 const PaypalContent = lazy(() => import('../RiconciliazionePaypal.jsx'));
@@ -10,22 +10,6 @@ const AssegniContent = lazy(() => import('../GestioneAssegni.jsx'));
 const BonificiContent = lazy(() => import('../ArchivioBonifici.jsx'));
 const CoerenzaPOSContent = lazy(() => import('../CoerenzaPOSCorrispettivi.jsx'));
 
-const Loading = () => (
-  <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>
-    <div
-      style={{
-        width: 32,
-        height: 32,
-        border: '3px solid #e2e8f0',
-        borderTop: '3px solid #2563eb',
-        borderRadius: '50%',
-        animation: 'spin 1s linear infinite',
-        margin: '0 auto 12px',
-      }}
-    />
-    Caricamento...
-  </div>
-);
 
 export default function RiconciliazioneHub() {
   const { anno } = useAnnoGlobale();
@@ -87,7 +71,7 @@ export default function RiconciliazioneHub() {
           tabs={tabs}
         />
       )}
-      <Suspense fallback={<Loading />}>{getContent()}</Suspense>
+      <Suspense fallback={<PageLoader />}>{getContent()}</Suspense>
     </div>
   );
 }

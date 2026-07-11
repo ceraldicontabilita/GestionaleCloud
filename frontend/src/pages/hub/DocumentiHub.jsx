@@ -2,6 +2,7 @@ import React, { lazy, Suspense, useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAnnoGlobale } from '../../contexts/AnnoContext';
 import { useHashState } from '../../hooks/useHashState';
+import { PageLoader } from '../../components/ds';
 
 const ArchivioContent = lazy(() => import('../Documenti.jsx'));
 const ImportContent = lazy(() => import('../ImportDocumenti.jsx'));
@@ -11,23 +12,6 @@ const TABS = [
   { id: 'import', label: '📥 Import Documenti', color: '#8b5cf6' },
 ];
 
-const Loading = () => (
-  <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>
-    <div
-      style={{
-        width: 32,
-        height: 32,
-        border: '3px solid #e2e8f0',
-        borderTop: '3px solid #3b82f6',
-        borderRadius: '50%',
-        animation: 'spin 1s linear infinite',
-        margin: '0 auto 12px',
-      }}
-    />
-    <style>{`@keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}`}</style>
-    Caricamento...
-  </div>
-);
 
 const getTabFromPath = pathname => {
   if (pathname.includes('/import-documenti') || pathname.includes('/documenti/import'))
@@ -92,7 +76,7 @@ export default function DocumentiHub() {
           const C = CONTENTS[tab.id];
           return (
             <div key={tab.id} style={{ display: activeTab === tab.id ? 'block' : 'none' }}>
-              <Suspense fallback={<Loading />}>
+              <Suspense fallback={<PageLoader />}>
                 {visitedTabs.has(tab.id) && <C key={`${tab.id}-${anno}`} />}
               </Suspense>
             </div>

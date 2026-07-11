@@ -5,6 +5,7 @@ export { Input } from './Input';
 export { Select } from './Select';
 export { Tabs } from './Tabs';
 export { HubTabs } from './HubTabs';
+export { PageLoader } from './PageLoader';
 export { ListaAdattiva } from './ListaAdattiva';
 export { Card } from './Card';
 export { PageHeader } from './PageHeader';

@@ -6,8 +6,7 @@ import {
   Target, Package,
 } from 'lucide-react';
 import { useAnnoGlobale } from '../../contexts/AnnoContext';
-import { useHashState } from '../../hooks/useHashState';
-import { HubTabs } from '../../components/ds';
+import { HubTabs, PageLoader } from '../../components/ds';
 
 const PianoContiContent = lazy(() => import('../PianoDeiConti.jsx'));
 const BilancioContent = lazy(() => import('../Bilancio.jsx'));
@@ -42,23 +41,6 @@ const TABS = [
   { id: 'previsioni-acquisti', label: 'Previsioni Acquisti', Icon: Package },
 ];
 
-const Loading = () => (
-  <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>
-    <div
-      style={{
-        width: 32,
-        height: 32,
-        border: '3px solid #e2e8f0',
-        borderTop: '3px solid #0f2744',
-        borderRadius: '50%',
-        animation: 'spin 1s linear infinite',
-        margin: '0 auto 12px',
-      }}
-    />
-    <style>{`@keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}`}</style>
-    Caricamento...
-  </div>
-);
 
 const getTabFromPath = pathname => {
   if (pathname.includes('/piano-dei-conti') || pathname.includes('/contabilita/piano-conti'))
@@ -94,18 +76,28 @@ export default function ContabilitaHub() {
   const location = useLocation();
   const [error, setError] = useState(null);
 
-  // Deep link: hash riflette il tab attivo — la route PATH è il meccanismo primario
-  const [hs, setHs] = useHashState({ tab: getTabFromPath(location.pathname) });
-  const activeTab = getTabFromPath(location.pathname); // path ha la precedenza
+  // UNICA fonte di verità per il tab attivo: il PATH. (Prima c'era anche un
+  // hash "#tab=..." aggiornato in parallelo: stato duplicato, URL incoerenti
+  // e back button imprevedibile — rimosso.)
+  const activeTab = getTabFromPath(location.pathname);
 
-  // Traccia i tab visitati: una volta montato, il componente NON viene smontato
+  // Sezione richiesta ma inesistente (es. /contabilita/qualcosa-a-caso):
+  // si ripiega su Piano dei Conti ma AVVISANDO, non in silenzio.
+  const sezioneSconosciuta =
+    activeTab === 'piano-conti' &&
+    /\/contabilita\/.+/.test(location.pathname) &&
+    !/piano-?(dei-)?conti/.test(location.pathname);
+
+  // Traccia i tab visitati: una volta montato, il componente NON viene
+  // smontato finché si resta nello stesso anno. Al CAMBIO ANNO si torna al
+  // solo tab attivo: prima tutti i tab visitati si rimontavano insieme
+  // (key legata all'anno) e partivano richieste duplicate in parallelo.
   const [visitedTabs, setVisitedTabs] = useState(
     () => new Set([getTabFromPath(location.pathname)])
   );
 
   useEffect(() => {
     const t = getTabFromPath(location.pathname);
-    setHs('tab', t);
     setVisitedTabs(prev => {
       const n = new Set(prev);
       n.add(t);
@@ -113,9 +105,12 @@ export default function ContabilitaHub() {
     });
   }, [location.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    setVisitedTabs(new Set([getTabFromPath(location.pathname)]));
+  }, [anno]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleTabChange = tabId => {
     setError(null);
-    setHs('tab', tabId);
     navigate(tabId === 'piano-conti' ? '/contabilita' : `/contabilita/${tabId}`);
   };
 
@@ -133,6 +128,24 @@ export default function ContabilitaHub() {
 
       {/* Tab Content - mount-once */}
       <div style={{ padding: '16px 0 0 0' }}>
+        {sezioneSconosciuta && (
+          <div
+            style={{
+              padding: '10px 14px',
+              background: '#fffbeb',
+              border: '1px solid #fcd34d',
+              borderRadius: 8,
+              color: '#92400e',
+              fontSize: 13,
+              marginBottom: 12,
+            }}
+            data-testid="contabilita-sezione-sconosciuta"
+          >
+            ⚠️ La sezione «{location.pathname.replace('/contabilita/', '')}» non esiste:
+            viene mostrato il Piano dei Conti. Se ci sei arrivato da un link interno,
+            segnalalo.
+          </div>
+        )}
         {error && (
           <div
             style={{
@@ -162,7 +175,7 @@ export default function ContabilitaHub() {
           { id: 'previsioni-acquisti', C: PrevisioniAcquistiContent },
         ].map(({ id, C }) => (
           <div key={id} style={{ display: activeTab === id ? 'block' : 'none' }}>
-            <Suspense fallback={<Loading />}>
+            <Suspense fallback={<PageLoader />}>
               {visitedTabs.has(id) && <C key={`${id}-${anno}`} />}
             </Suspense>
           </div>

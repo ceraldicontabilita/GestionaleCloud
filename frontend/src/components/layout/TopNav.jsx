@@ -1,60 +1,15 @@
 import React, { useState, useRef, useCallback, memo, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import {
-  LayoutDashboard,
-  FileText,
-  BookOpen,
-  Building2,
-  Users,
-  ChevronDown,
-  Bell,
-  Calendar,
-  Settings,
-  Wrench,
-  FileBarChart,
-  BookMarked,
-  Car,
-  CreditCard,
-  Landmark,
-  Receipt,
-  Map,
-} from 'lucide-react';
+import { ChevronDown, Bell, MoreHorizontal } from 'lucide-react';
 import api from '../../api';
 import { AnnoSelector } from '../../contexts/AnnoContext';
 import { COLORS, SHADOWS, useIsMobile } from '../../lib/utils';
 import InstallAppButton from '../InstallAppButton';
+// Navigazione: FONTE UNICA in navigation.config.js (condivisa col menù mobile
+// di App.jsx — prima erano 4 elenchi separati che andavano fuori sincrono).
+import { NAV_PRINCIPALI as NAV_ITEMS, NAV_ALTRO as ALTRO_ITEMS } from '../../navigation.config';
 
-/* ������ Costanti navigazione (definite fuori dal componente �  nessuna ricreazione) ������ */
-
-// URL dell'app esterna AppDipendenti (gestione HR spostata fuori dal gestionale).
-const APP_DIPENDENTI_URL = 'https://appdipendenti.onrender.com';
-
-const NAV_ITEMS = [
-  { to: '/', label: 'Dashboard', Icon: LayoutDashboard },
-  { to: '/fatture', label: 'Fatture', Icon: FileText },
-  { to: '/prima-nota', label: 'Prima Nota', Icon: BookOpen },
-  { to: '/fornitori', label: 'Fornitori', Icon: Building2 },
-  { to: '/riconciliazione', label: 'Riconciliazione', Icon: Landmark },
-  { to: '/riconciliazione/assegni', label: 'Assegni', Icon: FileBarChart },
-  { to: '/riconciliazione/paypal', label: 'PayPal', Icon: CreditCard },
-];
-
-const ALTRO_ITEMS = [
-  // Corrispettivi NON è più qui: si raggiunge dal tab "Corrispettivi"
-  // dentro la pagina Fatture (richiesta utente 10/07, un solo posto canonico)
-  { to: '/riconciliazione/f24', label: 'F24', Icon: Receipt },
-  { to: '/contabilita', label: 'Contabilita', Icon: FileBarChart },
-  { to: '/documenti', label: 'Documenti', Icon: BookMarked },
-  { to: '/documenti/import', label: 'Import Documenti', Icon: BookMarked },
-  { to: '/riconciliazione/coerenza-pos', label: 'Incassi POS', Icon: CreditCard },
-  { to: '/noleggio', label: 'Noleggi', Icon: Car },
-  { to: '/strumenti', label: 'Strumenti', Icon: Wrench },
-  { to: '/mappa-gestionale', label: 'Mappa', Icon: Map },
-  { to: null, href: APP_DIPENDENTI_URL, label: 'HR', Icon: Users, external: true },
-  { to: '/admin', label: 'Admin', Icon: Settings },
-];
-
-/* ������ Stili (definiti fuori �  creati una volta sola) ������ */
+/* Stili (definiti fuori dal componente — creati una volta sola) */
 const S = {
   nav: {
     position: 'fixed',
@@ -192,7 +147,7 @@ const S = {
   },
 };
 
-/* ������ Dropdown "Altro" � memoizzato separatamente per evitare re-render del nav ������ */
+/*     Dropdown "Altro"  memoizzato separatamente per evitare re-render del nav     */
 const AltroDropdown = memo(function AltroDropdown({ isAltroActive }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef(null);
@@ -215,7 +170,7 @@ const AltroDropdown = memo(function AltroDropdown({ isAltroActive }) {
         aria-expanded={open}
         onClick={() => setOpen(v => !v)}
       >
-        <span style={{ fontSize: 13 }}>�</span>
+        <MoreHorizontal size={14} />
         <span>Altro</span>
         <ChevronDown
           size={11}
@@ -262,7 +217,7 @@ const AltroDropdown = memo(function AltroDropdown({ isAltroActive }) {
   );
 });
 
-/* ������ TopNav principale � React.memo per evitare re-render da parent ������ */
+/*     TopNav principale  React.memo per evitare re-render da parent     */
 const TopNav = memo(function TopNav() {
   const location = useLocation();
   const isMobile = useIsMobile(768);
@@ -274,7 +229,7 @@ const TopNav = memo(function TopNav() {
 
   return (
     <>
-      {/* Stile globale per animazione dropdown � iniettato UNA volta */}
+      {/* Stile globale per animazione dropdown  iniettato UNA volta */}
       <style>{`
         @keyframes navDropIn {
           from { opacity: 0; transform: translateY(-6px); }
@@ -302,7 +257,7 @@ const TopNav = memo(function TopNav() {
         <div style={S.items} className="topnav-items-scroll topnav-items">
           {NAV_ITEMS.map(({ to, href, label, Icon, external }) =>
             external ? (
-              /* Link esterno (es. HR �  AppDipendenti) */
+              /* Link esterno (es. HR   AppDipendenti) */
               <a
                 key={label}
                 href={href}
@@ -329,13 +284,13 @@ const TopNav = memo(function TopNav() {
               </NavLink>
             )
           )}
-          {/* Dropdown "Altro" � ultimo item nella nav */}
+          {/* Dropdown "Altro"  ultimo item nella nav */}
           <AltroDropdown isAltroActive={isAltroActive} />
         </div>
 
         {/* Destra: Anno + Notifiche + Avatar */}
         <div style={S.right} className="topnav-right">
-          {/* Selettore Anno � label "ANNO" nascosta sotto 768px per fare spazio alle icone */}
+          {/* Selettore Anno  label "ANNO" nascosta sotto 768px per fare spazio alle icone */}
           <div style={S.annoWrap} data-testid="anno-selector">
             {!isMobile && <span style={S.annoLabel}>ANNO</span>}
             <AnnoSelector
@@ -354,7 +309,7 @@ const TopNav = memo(function TopNav() {
             />
           </div>
 
-          {/* Installa come app (PWA) � visibile solo se non già installata */}
+          {/* Installa come app (PWA)  visibile solo se non già installata */}
           <InstallAppButton />
 
           {/* Campana notifiche */}
@@ -375,7 +330,7 @@ const TopNav = memo(function TopNav() {
 
 export default TopNav;
 
-/* ������ Campana notifiche � usa /api/alerts/summary (sistema relazionale) ������ */
+/*     Campana notifiche  usa /api/alerts/summary (sistema relazionale)     */
 const NotificationBellMinimal = memo(function NotificationBellMinimal() {
   const [summary, setSummary] = useState({
     totale_aperti: 0,

@@ -49,6 +49,7 @@ const DatiProvvisoriPage = lazy(() => import("./pages/DatiProvvisoriPage.jsx"));
 const AgentiPage = lazy(() => import("./pages/Agenti.jsx"));
 const LearningMachine = lazy(() => import("./pages/LearningMachine.jsx"));
 const DashboardRelazionale = lazy(() => import("./pages/DashboardRelazionale.jsx"));
+const PaginaNonTrovata = lazy(() => import("./pages/PaginaNonTrovata.jsx"));
 
 const LazyPage = ({ children }) => (
   <Suspense fallback={<PageLoader />}>{children}</Suspense>
@@ -233,8 +234,9 @@ const router = createBrowserRouter([
       { path: "fisco/*", element: <Navigate to="/contabilita/calendario" replace /> },
       { path: "riconciliazione-unificata", element: <Navigate to="/riconciliazione" replace /> },
       
-      // === CATCH-ALL: rotte non trovate → Dashboard ===
-      { path: "*", element: <Navigate to="/" replace /> },
+      // === CATCH-ALL: pagina 404 REALE (prima: redirect silenzioso alla
+      // Dashboard, che mascherava i link interni sbagliati) ===
+      { path: "*", element: <LazyPage><PaginaNonTrovata /></LazyPage> },
     ]
   }
 ]);
@@ -265,7 +267,9 @@ ReactDOM.createRoot(document.getElementById("root")).render(
 // (o un SW ancora più vecchio con cache) su qualunque dispositivo.
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/service-worker.js').catch(() => {});
+    navigator.serviceWorker
+      .register('/service-worker.js')
+      .catch(e => console.warn('Service worker non registrato (Installa app non disponibile):', e));
   });
 }
 
