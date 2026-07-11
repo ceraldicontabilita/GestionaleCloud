@@ -722,6 +722,49 @@ def risolvi_centro_costo(valore: str) -> Tuple[str, Dict[str, Any]]:
     return None, None
 
 
+def punteggi_contenuto(
+    supplier_name: str, descrizione: str = "", linee_fattura: List[Dict] = None
+) -> Dict[str, int]:
+    """Punteggio keyword di OGNI centro di costo sul testo della fattura
+    (stessa costruzione del testo del classificatore). Serve alla decisione
+    'sicura vs ambigua': un centro è affidabile quando STACCA nettamente il
+    secondo, non quando le sue keyword sono semplicemente lunghe."""
+    testo = f"{supplier_name or ''} {descrizione or ''}"
+    if linee_fattura:
+        for linea in linee_fattura:
+            if isinstance(linea, dict):
+                testo += f" {linea.get('descrizione', '') or linea.get('description', '')}"
+    testo_lower = testo.lower()
+
+    scores: Dict[str, int] = {}
+    for cdc_id, config in CENTRI_COSTO.items():
+        score = 0
+        for keyword in config.get("keywords", []):
+            if keyword.lower() in testo_lower:
+                score += len(keyword)
+        if score > 0:
+            scores[cdc_id] = score
+    return scores
+
+
+def contenuto_decide_con_margine(
+    supplier_name: str, descrizione: str = "", linee_fattura: List[Dict] = None,
+    soglia_confidenza: float = 0.3,
+) -> bool:
+    """True se il contenuto della fattura decide in modo AFFIDABILE:
+    il centro migliore è l'unico a matchare, oppure stacca il secondo di
+    almeno il doppio, oppure la confidenza supera la soglia. Sotto questi
+    criteri la fattura resta 'ambigua' (mai classificata a caso)."""
+    scores = punteggi_contenuto(supplier_name, descrizione, linee_fattura)
+    if not scores:
+        return False
+    ordinati = sorted(scores.values(), reverse=True)
+    best = ordinati[0]
+    second = ordinati[1] if len(ordinati) > 1 else 0
+    confidenza = min(best / 50.0, 1.0)
+    return second == 0 or best >= 2 * second or confidenza >= soglia_confidenza
+
+
 async def carica_configurazioni_learning(db) -> List[Dict[str, Any]]:
     """Tutte le configurazioni fornitori_keywords (una lettura sola:
     per i lavori in massa si carica una volta e si passa alle chiamate)."""

@@ -144,6 +144,61 @@ def test_nuovi_centri_cucina_e_beni_sotto_516():
     assert cdc == "1.8_MATERIE_PRIME_CUCINA"
 
 
+def test_endpoint_classifica_da_contenuto_end_to_end(monkeypatch):
+    """Percorso COMPLETO del bottone '🧠 Classifica dal contenuto XML':
+    le fatture con righe chiare si classificano da sole, le ambigue restano."""
+    from app.routers import fornitori_learning as router_mod
+    from app.database import Database
+
+    fatture = [
+        {"_id": 1, "supplier_name": "FORNITORE A", "descrizione": "",
+         "linee": [{"descrizione": "Farina 00 sacchi da 25kg e zucchero semolato"}]},
+        {"_id": 2, "supplier_name": "FORNITORE B", "descrizione": "",
+         "linee": [{"descrizione": "Passata di pomodoro e legumi in scatola"}]},
+        {"_id": 3, "supplier_name": "AMAZON EU", "descrizione": "",
+         "linee": [{"descrizione": "Mouse wireless e tastiera USB"}]},
+        {"_id": 4, "supplier_name": "FORNITORE X", "descrizione": "",
+         "linee": [{"descrizione": "XKWZ-9931 QQ rif. 4471"}]},  # ambigua
+    ]
+
+    class _Coll:
+        def __init__(self, docs):
+            self.docs = docs
+            self.aggiornate = {}
+
+        def find(self, *a, **k):
+            class _Cur:
+                def __init__(self, d):
+                    self._d = d
+
+                async def to_list(self, n):
+                    return self._d[:n]
+            return _Cur(self.docs)
+
+        async def update_one(self, q, u, *a, **k):
+            self.aggiornate[q["_id"]] = u["$set"]
+
+    class _Db:
+        def __init__(self):
+            self.invoices = _Coll(fatture)
+            self.keywords = _Coll([])
+
+        def __getitem__(self, name):
+            return self.invoices if name == "invoices" else self.keywords
+
+    db = _Db()
+    monkeypatch.setattr(Database, "get_db", staticmethod(lambda: db))
+
+    esito = asyncio.run(router_mod.classifica_da_contenuto(soglia=0.3))
+
+    assert esito["success"] and esito["esaminate"] == 4
+    assert esito["classificate"] == 3 and esito["ambigue"] == 1
+    assert db.invoices.aggiornate[1]["centro_costo_id"] == "1.3_MATERIE_PRIME_PASTICCERIA"
+    assert db.invoices.aggiornate[2]["centro_costo_id"] == "1.8_MATERIE_PRIME_CUCINA"
+    assert db.invoices.aggiornate[3]["centro_costo_id"] == "5.3_PICCOLE_ATTREZZATURE"
+    assert 4 not in db.invoices.aggiornate  # l'ambigua NON viene toccata
+
+
 def test_nome_da_config_schema_misto():
     """Il router non deve più esplodere sui documenti auto (KeyError)."""
     from app.routers.fornitori_learning import _nome_da_config

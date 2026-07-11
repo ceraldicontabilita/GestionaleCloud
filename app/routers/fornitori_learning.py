@@ -435,8 +435,14 @@ async def classifica_da_contenuto(
             db, f.get("supplier_name", ""), f.get("descrizione", ""),
             f.get("linee") or [], configurazioni=configurazioni,
         )
+        # "Sicura" = configurazione del fornitore, oppure il contenuto
+        # decide con MARGINE netto (unico centro che matcha, o distacco 2x
+        # sul secondo, o confidenza sopra soglia). Altrimenti resta ambigua.
         sicura = (fonte == "keywords_personalizzate"
-                  or (cdc_id != "99_ALTRI_COSTI" and conf >= soglia))
+                  or (cdc_id != "99_ALTRI_COSTI"
+                      and lm.contenuto_decide_con_margine(
+                          f.get("supplier_name", ""), f.get("descrizione", ""),
+                          f.get("linee") or [], soglia_confidenza=soglia)))
         if not sicura:
             esito["ambigue"] += 1
             continue
