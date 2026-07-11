@@ -11,7 +11,7 @@
  * Creato: 4 Febbraio 2026
  */
 
-import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import api from '../api';
 import {
@@ -106,6 +106,8 @@ function LoadingSpinner({ text = 'Caricamento...' }) {
 
 export default function LearningMachine() {
   const isMobile = useIsMobile();
+  // Pannello "Configura Keywords": su mobile ci si scrolla sopra alla selezione
+  const formConfigRef = useRef(null);
   const confirm = useConfirm();
   // === URL TAB NAVIGATION ===
   const navigate = useNavigate();
@@ -230,6 +232,16 @@ export default function LearningMachine() {
     setSelectedFornitore(fornitore);
     setKeywords('');
     setCentroCostoSuggerito('');
+
+    // Su telefono la lista e il form "Configura Keywords" sono impilati:
+    // cliccando la scheda il form si apriva FUORI schermo più in basso e
+    // sembrava che "non succedesse nulla" (segnalato l'11/07). Porta il
+    // form in vista appena selezionato.
+    if (isMobile) {
+      setTimeout(() => {
+        formConfigRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 80);
+    }
 
     try {
       const res = await api.get(
@@ -737,11 +749,13 @@ export default function LearningMachine() {
 
               {/* Form configurazione */}
               <div
+                ref={formConfigRef}
                 style={{
                   background: COLORS.card,
                   borderRadius: BORDER_RADIUS.md,
                   padding: 20,
                   boxShadow: SHADOWS.md,
+                  scrollMarginTop: 70,
                 }}
               >
                 <h3
