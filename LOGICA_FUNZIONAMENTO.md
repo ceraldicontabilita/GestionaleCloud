@@ -255,6 +255,33 @@ F24 risulta pagato solo quando gli viene collegata una quietanza.
   certo/probabile/dubbio della banca: il certo si applica da solo, il resto aspetta te.
   (Un pagamento può precedere la scadenza: qui il "certo" non richiede stessa data.)
 
+**Motore tributi (specifica vincolante, 10/07/2026 — dettagli in
+memoria/SPECIFICA_F24_CEDOLINI_IRES_IRAP_CHAT.md).**
+- Ogni riga F24 viene **classificata** per natura (costo / ritenuta / credito /
+  sanzione / regolarizzazione / pagamento), ente (Erario, INPS, Regione, Comune,
+  INAIL) e deducibilità. **Il saldo F24 non è mai automaticamente un costo**:
+  ritenute IRPEF (1001…), addizionali (3802/3847/3848), crediti compensati
+  (1701/6869) e sanzioni (8906) non sono costi del personale.
+- **Scadenza naturale** = 16 del mese successivo al periodo; la pagina di
+  analisi mostra data pagamento, giorni di ritardo e stato (nei termini /
+  in ritardo / non pagato). **RC01** = regolarizzazione di un periodo
+  precedente: mai imputata al mese corrente.
+- **Associazione F24↔cedolini** solo con periodo, causale, posizione e
+  soggetto coerenti — con motivazione leggibile (la Chat sa spiegare perché
+  un F24 è stato associato o escluso). DM10 e RC01 dello stesso debito non
+  vengono mai sommati due volte; se risultano **entrambi pagati** scatta
+  l'alert "POSSIBILE DOPPIO PAGAMENTO" con quota capitale vs sanzioni.
+- **Quietanza senza F24** (Caso 3): il modello non viene mai ricostruito;
+  la quietanza resta come prova di pagamento non associata, con alert
+  bloccante "F24 mancante — prego caricare il modello F24 corrispondente".
+- API: `/api/f24-analisi/{id}`, `/api/f24-analisi/{id}/associazione`,
+  `/api/f24-analisi/doppi-pagamenti`. La Chat usa gli strumenti
+  `spiega_f24` e `doppi_pagamenti_f24`.
+- Motore fiscale separato: costo del personale (mai risommare netto/IRPEF/
+  addizionali/IVS dipendente), IRES con aliquota versionata per anno, IRAP
+  autonoma dal valore della produzione con deduzioni per tipologia di
+  personale (mai sottratto l'intero F24).
+
 ---
 
 ## 8. Cedolini e Dipendenti

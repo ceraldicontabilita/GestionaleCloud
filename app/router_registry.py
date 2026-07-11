@@ -68,10 +68,11 @@ def _register_auth(app: FastAPI):
 # f24_gestione_avanzata, f24_notifiche, codici_tributari.
 def _register_f24(app: FastAPI):
     from app.routers.f24 import f24_main, f24_riconciliazione, f24_public
-    from app.routers import f24_email_settings
+    from app.routers import f24_email_settings, f24_analisi
     from app.routers.bank import riconciliazione_f24_banca
 
     app.include_router(f24_main.router, prefix="/api/f24", tags=["F24"])
+    app.include_router(f24_analisi.router, prefix="/api/f24-analisi", tags=["F24 Analisi"])
     app.include_router(f24_riconciliazione.router, prefix="/api/f24-riconciliazione", tags=["F24 Riconciliazione"])
     app.include_router(f24_public.router, prefix="/api/f24-public", tags=["F24 Public"])
     app.include_router(f24_email_settings.router, prefix="/api/f24-email-settings", tags=["F24 Email"])

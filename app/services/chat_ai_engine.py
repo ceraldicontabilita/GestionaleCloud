@@ -446,8 +446,42 @@ async def _tool_cerca_documenti(db, args):
     return await db["documenti_scaricati"].find(q, proj).sort("created_at", -1).to_list(_limite(args))
 
 
+async def _tool_spiega_f24(db, args):
+    """Analisi tracciabile di un F24 col motore tributi (specifica
+    memoria/SPECIFICA_F24_CEDOLINI_IRES_IRAP_CHAT.md): classificazione per
+    natura/ente/deducibilità, scadenza naturale, ritardo, tipo versamento;
+    con mese+anno valuta anche l'associazione ai cedolini (§15)."""
+    from app.engines import tributi_engine as te
+    f24_id = str(args.get("f24_id") or "").strip()
+    if not f24_id:
+        return {"errore": "indicare f24_id"}
+    doc = None
+    for coll in ("f24_commercialista", "f24_unificato"):
+        doc = await db[coll].find_one({"id": f24_id}, {"_id": 0, "pdf_data": 0})
+        if doc:
+            break
+    if not doc:
+        return {"errore": f"F24 {f24_id} non trovato"}
+    out = te.classifica_f24(doc)
+    out["file"] = doc.get("file_name") or doc.get("filename")
+    if args.get("mese") and args.get("anno"):
+        out["associazione_cedolini"] = te.valuta_associazione_cedolini(
+            doc, int(args["mese"]), int(args["anno"])
+        )
+    return out
+
+
+async def _tool_doppi_pagamenti_f24(db, args):
+    """Scansione POSSIBILE DOPPIO PAGAMENTO (coppie DM10↔RC01 entrambe
+    pagate per lo stesso debito, §23 della specifica)."""
+    from app.routers.f24_analisi import scan_doppi_pagamenti
+    return await scan_doppi_pagamenti()
+
+
 _TOOL_EXECUTORS = {
     "cerca_fatture": _tool_cerca_fatture,
+    "spiega_f24": _tool_spiega_f24,
+    "doppi_pagamenti_f24": _tool_doppi_pagamenti_f24,
     "cerca_fornitori": _tool_cerca_fornitori,
     "cerca_f24": _tool_cerca_f24,
     "cerca_quietanze": _tool_cerca_quietanze,
@@ -484,6 +518,23 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
     {"name": "cerca_quietanze",
      "description": "Cerca quietanze F24 (protocollo, data versamento, saldo delega, F24 collegato).",
      "input_schema": {"type": "object", "properties": {"anno": _I, **_LIM}}},
+    {"name": "spiega_f24",
+     "description": "Spiega un F24 in modo TRACCIABILE: classifica ogni riga per natura "
+                    "(costo/ritenuta/credito/sanzione/regolarizzazione/pagamento), ente e "
+                    "deducibilità; calcola scadenza naturale, giorni di ritardo, stato e tipo "
+                    "versamento (ordinario/ravvedimento/RC01). Con mese+anno valuta anche se è "
+                    "associabile ai cedolini di quel periodo, con motivazione. Il saldo F24 non "
+                    "è mai automaticamente un costo: usa questo strumento per spiegare perché.",
+     "input_schema": {"type": "object", "properties": {
+         "f24_id": {**_S, "description": "id del modello F24"},
+         "mese": {**_I, "description": "mese dei cedolini per la verifica di associazione"},
+         "anno": {**_I, "description": "anno dei cedolini"}},
+      "required": ["f24_id"]}},
+    {"name": "doppi_pagamenti_f24",
+     "description": "Cerca possibili DOPPI PAGAMENTI: coppie F24 ordinario (DM10) e F24 di "
+                    "regolarizzazione (RC01) dello stesso periodo entrambe pagate, con quota "
+                    "capitale potenzialmente versata due volte e quota sanzioni/interessi.",
+     "input_schema": {"type": "object", "properties": {}}},
     {"name": "cerca_movimenti_bancari",
      "description": "Cerca movimenti dell'estratto conto bancario per data, testo o importo.",
      "input_schema": {"type": "object", "properties": {

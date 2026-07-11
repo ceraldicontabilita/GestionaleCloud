@@ -208,17 +208,39 @@ async def importa_quietanza_bytes(
     }
 
     if not f24_matchati:
-        risultato["warning"] = "Nessun F24 corrispondente trovato"
+        # CASO 3 della specifica (memoria/SPECIFICA_F24_CEDOLINI_IRES_IRAP_CHAT.md):
+        # esiste SOLO la quietanza → mai ricostruire l'F24 in automatico.
+        # La quietanza resta registrata come prova di pagamento non associata
+        # (stato dedicato) e nasce un alert bloccante che chiede il modello.
+        risultato["warning"] = "F24 mancante — prego caricare il modello F24 corrispondente"
+        await db[COLL_QUIETANZE].update_one(
+            {"id": file_id},
+            {"$set": {
+                "stato_associazione": "f24_mancante",
+                "calcolo_fiscale_sospeso": True,
+            }},
+        )
         alert = {
             "id": str(uuid.uuid4()),
             "tipo": "quietanza_senza_match",
+            "bloccante": True,
             "quietanza_id": file_id,
-            "message": f"Quietanza {filename} (€{saldo_quietanza:.2f}) non corrisponde a nessun F24 in attesa",
+            "message": (
+                f"F24 mancante — prego caricare il modello F24 corrispondente. "
+                f"La quietanza {filename} (€{saldo_quietanza:.2f}) conferma il pagamento "
+                f"ma non sostituisce il modello: senza F24 la classificazione di codici, "
+                f"causali, crediti e periodi resta sospesa."
+            ),
             "importo": saldo_quietanza,
             "protocollo": protocollo,
             "status": "pending",
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
         await db[COLL_F24_ALERTS].insert_one(alert.copy())
+    else:
+        await db[COLL_QUIETANZE].update_one(
+            {"id": file_id},
+            {"$set": {"stato_associazione": "associata", "calcolo_fiscale_sospeso": False}},
+        )
 
     return risultato

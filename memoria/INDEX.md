@@ -154,3 +154,26 @@ Corrispettivi: SOLO import manuale XML dal registratore telematico, MAI da Gmail
 
 Per il dettaglio funzionale vedi `LOGICA_OPERATIVA.md`.
 Per lo stato di progetto vedi `PRD.md`.
+
+## Specifica vincolante F24 / Cedolini / IRES / IRAP / Chat (10/07/2026)
+
+`SPECIFICA_F24_CEDOLINI_IRES_IRAP_CHAT.md` — documento dell'utente, fonte
+di verità per il motore contabilità paghe/fisco. Regole chiave:
+- F24 del consulente = dato UFFICIALE dei versamenti; cedolino/LUL = fonte
+  del costo retributivo e delle trattenute. Mai sostituire col calcolo interno.
+- Il saldo F24 NON è mai automaticamente il costo deducibile (ritenute,
+  addizionali, crediti compensati e sanzioni non sono costi del personale).
+- Associazione F24↔cedolini solo con periodo/causale/posizione/soggetto
+  coerenti; RC01 = regolarizzazione di periodo precedente, mai al mese corrente.
+- Scadenza naturale = 16 del mese successivo; stato "pagato in ritardo"
+  evidenziato con giorni di ritardo.
+- DM10↔RC01 dello stesso debito: mai sommati due volte; se entrambi pagati →
+  alert POSSIBILE DOPPIO PAGAMENTO (stati: da verificare/confermato/…).
+- Quietanza senza F24 (Caso 3): mai ricostruire il modello, alert bloccante
+  "F24 mancante", calcolo fiscale sospeso.
+Implementazione: `app/engines/tributi_engine.py` (classificazione §6-11,
+scadenze §20, associazione §15, DM10↔RC01 §21, doppio pagamento §23),
+`app/engines/fiscale_engine.py` (costo personale §12, IRES §13, IRAP §14),
+router `/api/f24-analisi/*`, tool chat `spiega_f24` e `doppi_pagamenti_f24`,
+Caso 3 in `app/services/quietanze_import.py`.
+Test: `tests/test_tributi_fiscale_engine.py` (incl. caso reale €50,61 §16).
