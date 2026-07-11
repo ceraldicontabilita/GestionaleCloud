@@ -35,6 +35,23 @@ Ultimo aggiornamento: 11/07/2026.
 - Il bottone **Auto-ripara dati** (Dashboard) chiede conferma prima di
   eseguire e riporta l'esito vero (correzioni fatte, operazioni fallite).
 
+## 0-ter. Dashboard (la scegli tu)
+
+- La Dashboard è comandata da DUE filtri in cima: **Anno** (globale) e
+  **Mese** (con "Tutto l'anno"). Ogni numero della pagina si riferisce al
+  periodo che selezioni tu — non ci sono più sezioni fisse che decidono
+  cosa guardare.
+- Sotto i filtri, delle **scorciatoie-domanda** ("Quanto ho incassato?",
+  "Quanto ho speso?", "Quanto ho in cassa/banca?", "Quanta IVA devo?")
+  portano la risposta secca del periodo in evidenza in cima.
+- I dati sono in **card separate**: Fatturato/Ricavi, Acquisti/Costi,
+  Utile/Margine, Cassa, Banca, IVA, Scadenze/F24, e un grafico dei 12 mesi
+  (tocca una barra per filtrare le card su quel mese).
+- Fonti reali per periodo: fatturato/costi/margine da controllo-gestione,
+  cassa/banca da prima nota, IVA da verifica coerenza, scadenze da scadenze,
+  grafico da trend mensile. Se un blocco non risponde compare l'avviso
+  giallo (errore ≠ "nessun dato").
+
 ## 1. Regola decisionale (vale per tutto il sistema)
 
 ```

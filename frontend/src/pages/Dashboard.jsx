@@ -1,149 +1,77 @@
-import React, { useEffect, useState } from 'react';
-import { dashboardSummary, health } from '../api';
-import api from '../api';
-import { Link } from 'react-router-dom';
-import { useAnnoGlobale } from '../contexts/AnnoContext';
-import { formatEuro, STYLES, COLORS, SHADOWS, BORDER_RADIUS, useIsMobile } from '../lib/utils';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Button,
-  Badge,
-  StatCard,
-  TableWrap,
-  Table,
-  Th,
-  Td,
-  RowActions,
-  RowActionButton,
-} from '../components/ds';
-import { PageLayout } from '../components/PageLayout';
-import {
-  LineChart,
-  Line,
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  BarChart,
-  Bar,
-  Legend,
-  PieChart,
-  Pie,
   Cell,
 } from 'recharts';
-import { Eye, EyeOff, TrendingUp, Lock, AlertTriangle, Users } from 'lucide-react';
-import WidgetVerificaCoerenza from '../components/WidgetVerificaCoerenza';
-import WidgetAgenti from '../components/WidgetAgenti';
-import { useConfirm } from '../components/ui/ConfirmDialog';
+import {
+  Wallet,
+  ShoppingCart,
+  Banknote,
+  Landmark,
+  Receipt,
+  CalendarClock,
+  TrendingUp,
+  TrendingDown,
+  HelpCircle,
+} from 'lucide-react';
+import api from '../api';
+import { useAnnoGlobale, AnnoSelector } from '../contexts/AnnoContext';
+import { formatEuro, COLORS } from '../lib/utils';
+import { PageLayout } from '../components/PageLayout';
+
+/**
+ * DASHBOARD — ricostruita da zero (11/07/2026, richiesta utente).
+ *
+ * Filosofia: la scegli TU. In cima selezioni Anno e Mese (o "Tutto l'anno")
+ * e OGNI numero della pagina si riferisce al periodo che hai scelto. Non c'è
+ * più una parata di sezioni fisse che decide cosa devi leggere: ci sono card
+ * separate, una per domanda, e delle scorciatoie-domanda che portano la
+ * risposta in evidenza in cima.
+ *
+ * Tutti i dati sono filtrabili per mese lato backend:
+ *  - Fatturato/Costi/Margine → /api/controllo-gestione/costi-ricavi?anno&mese
+ *  - Cassa/Banca            → /api/prima-nota/stats?data_da&data_a
+ *  - IVA                    → /api/verifica-coerenza/iva/{anno}/{mese}
+ *                             (tutto l'anno: /confronto-iva-completo/{anno})
+ *  - Scadenze/F24           → /api/scadenze?anno&mese
+ *  - Grafico 12 mesi        → /api/dashboard/trend-mensile?anno
+ */
+
+const MESI = [
+  'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
+  'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre',
+];
+
+const ultimoGiorno = (anno, mese) => new Date(anno, mese, 0).getDate();
 
 export default function Dashboard() {
-  const isMobile = useIsMobile();
   const { anno } = useAnnoGlobale();
-  const confirm = useConfirm();
-  // Endpoint della dashboard falliti (per nome leggibile): prima gli errori
-  // venivano inghiottiti e le card sparivano in silenzio — impossibile capire
-  // se mancassero i dati o fosse rotto il backend.
-  const [apiErrors, setApiErrors] = useState([]);
-  const [h, setH] = useState(null);
-  const [sum, setSum] = useState(null);
-  const [err, setErr] = useState('');
+  // 0 = tutto l'anno; 1..12 = mese singolo. È lo stato che comanda tutto.
+  const [mese, setMese] = useState(0);
+
+  const [costiRicavi, setCostiRicavi] = useState(null);
+  const [primaNota, setPrimaNota] = useState(null);
+  const [iva, setIva] = useState(null);
+  const [scadenze, setScadenze] = useState(null);
+  const [trend, setTrend] = useState(null);
+
   const [loading, setLoading] = useState(true);
-  const [trendData, setTrendData] = useState(null);
-  const [posCalendario, setPosCalendario] = useState(null);
-  const [scadenzeData, setScadenzeData] = useState(null);
-  // Nuovi stati per grafici avanzati
-  const [speseCategoria, setSpeseCategoria] = useState(null);
-  const [confrontoAnnuale, setConfrontoAnnuale] = useState(null);
-  const [statoRiconciliazione, setStatoRiconciliazione] = useState(null);
-  // Stato per widget IRES/IRAP
-  const [imposteData, setImposteData] = useState(null);
-  // Volume Affari Reale
-  const [showVolumeReale, setShowVolumeReale] = useState(false);
-  const [volumeRealeData, setVolumeRealeData] = useState(null);
-  const [volumeRealeLoading, setVolumeRealeLoading] = useState(false);
-  // Bilancio Istantaneo
-  const [bilancioIstantaneo, setBilancioIstantaneo] = useState(null);
-  const [scadenzeF24, setScadenzeF24] = useState(null);
+  const [erroriApi, setErroriApi] = useState([]);
+  // Scorciatoia-domanda selezionata (mostra la risposta grande in cima).
+  const [domanda, setDomanda] = useState(null);
 
-  // Alert Limiti Giustificativi
-
-  // Alert Pagamenti (Stipendi + F24 DA_PAGARE)
-  const [alertPagamenti, setAlertPagamenti] = useState(null);
-
-  // Verbali e Trattenute
-  const [verbaliStats, setVerbaliStats] = useState(null);
-
-  // Stato per auto-riparazione
-  const [autoRepairStatus, setAutoRepairStatus] = useState(null);
-  const [reloadKey, setReloadKey] = useState(0);
-
-  // Stato per Learning Machine
-  const [learningStats, setLearningStats] = useState(null);
-
-  /**
-   * LOGICA INTELLIGENTE: Esegue auto-riparazione dei dati.
-   * Ora avviabile manualmente con pulsante.
-   */
-  const eseguiAutoRiparazione = async () => {
-    // Operazione che SCRIVE sui dati (ricostruzione fatture + riconciliazione
-    // automatica globale): mai avviarla per un click accidentale.
-    const ok = await confirm({
-      title: 'Auto-ripara dati',
-      message:
-        'Verranno eseguite due operazioni sui dati: ricostruzione dei campi ' +
-        'delle fatture ricevute e riconciliazione automatica globale. Procedere?',
-    });
-    if (!ok) return;
-
-    setAutoRepairStatus('running');
-    // allSettled: un fallimento NON deve travestirsi da "0 correzioni".
-    const [fatRes, ricRes] = await Promise.allSettled([
-      api.post('/api/fatture-ricevute/auto-ricostruisci-dati'),
-      api.post('/api/batch/auto-riconcilia-tutto'),
-    ]);
-
-    const falliti = [];
-    if (fatRes.status === 'rejected') falliti.push('ricostruzione fatture');
-    if (ricRes.status === 'rejected') falliti.push('riconciliazione automatica');
-    const fat = fatRes.status === 'fulfilled' ? fatRes.value.data || {} : {};
-    const ric = ricRes.status === 'fulfilled' ? ricRes.value.data || {} : {};
-
-    const totaleCorrezioni =
-      (fat.campi_corretti || 0) + (fat.fornitori_associati || 0) + (ric.riconciliazioni_auto || 0);
-
-    if (falliti.length) {
-      console.warn('Auto-riparazione fallita per:', falliti, fatRes, ricRes);
-    }
-    setAutoRepairStatus({
-      fatture: fat,
-      riconciliazione: ric,
-      totale: totaleCorrezioni,
-      falliti,
-      error: falliti.length === 2,
-    });
-
-    // Ricarica i dati solo se almeno un'operazione è andata a buon fine
-    if (falliti.length < 2) {
-      setReloadKey(k => k + 1);
-    }
-  };
-
-  // Auto-riparazione DISABILITATA per performance (eseguire manualmente se necessario)
-  // useEffect(() => {
-  //   eseguiAutoRiparazione();
-  // }, []);
+  const etichettaPeriodo = mese ? `${MESI[mese - 1]} ${anno}` : `tutto il ${anno}`;
 
   useEffect(() => {
-    // Timeout reale: il signal è passato a OGNI richiesta (prima il controller
-    // veniva abortito ma nessuna chiamata lo riceveva, quindi il "timeout"
-    // non fermava nulla) e fa anche da guardia anti-race: al cambio anno le
-    // risposte vecchie non devono sovrascrivere i dati dell'anno nuovo.
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
     const signal = controller.signal;
     const vivo = () => !signal.aborted;
-    // Registra i blocchi non disponibili con un nome leggibile (niente più
-    // card che spariscono in silenzio).
     const falliti = [];
     const conErrore = nome => e => {
       if (vivo()) {
@@ -153,2176 +81,571 @@ export default function Dashboard() {
       return { data: null };
     };
 
+    // Range date del periodo scelto (mese singolo o intero anno).
+    const dataDa = mese ? `${anno}-${String(mese).padStart(2, '0')}-01` : `${anno}-01-01`;
+    const dataA = mese
+      ? `${anno}-${String(mese).padStart(2, '0')}-${String(ultimoGiorno(anno, mese)).padStart(2, '0')}`
+      : `${anno}-12-31`;
+
+    // IVA e scadenze cambiano endpoint a seconda che ci sia il mese o no.
+    const ivaReq = mese
+      ? api.get(`/api/verifica-coerenza/iva/${anno}/${mese}`, { signal }).catch(conErrore('IVA'))
+      : api
+          .get(`/api/verifica-coerenza/confronto-iva-completo/${anno}`, { signal })
+          .catch(conErrore('IVA'));
+    const scadReq = mese
+      ? api
+          .get(`/api/scadenze?anno=${anno}&mese=${mese}&include_passate=true&limit=30`, { signal })
+          .catch(conErrore('scadenze'))
+      : api
+          .get(`/api/scadenze/prossime?giorni=120&limit=12`, { signal })
+          .catch(conErrore('scadenze'));
+
     (async () => {
-      try {
-        setLoading(true);
-        const [healthData, summaryData] = await Promise.all([health(), dashboardSummary(anno)]);
-        if (!vivo()) return;
-        setH(healthData);
-        setSum(summaryData);
-
-        // Load trend mensile, calendario POS e scadenze - con timeout individuale
-        const [trendRes, posRes, scadenzeRes, bilancioRes] = await Promise.all([
-          api
-            .get(`/api/dashboard/trend-mensile?anno=${anno}`, { signal })
-            .catch(conErrore('trend mensile')),
-          api
-            .get(`/api/pos-accredito/calendario-mensile/${anno}/${new Date().getMonth() + 1}`, {
-              signal,
-            })
-            .catch(conErrore('calendario POS')),
-          api
-            .get('/api/scadenze/prossime?giorni=30&limit=8', { signal })
-            .catch(conErrore('scadenze')),
-          api
-            .get(`/api/dashboard/bilancio-istantaneo?anno=${anno}`, { signal })
-            .catch(conErrore('bilancio istantaneo')),
-        ]);
-        if (!vivo()) return;
-
-        // Imposta dati primari immediatamente
-        setTrendData(trendRes.data);
-        setPosCalendario(posRes.data);
-        setScadenzeData(scadenzeRes.data);
-        setBilancioIstantaneo(bilancioRes.data);
-        setApiErrors([...falliti]);
-
-        // Carica dati secondari DOPO i primari (non bloccanti)
-        setLoading(false);
-
-        // Grafici avanzati caricati in background (senza alert-limiti che è lento)
-        Promise.all([
-          api
-            .get(`/api/dashboard/spese-per-categoria?anno=${anno}`, { signal })
-            .catch(conErrore('spese per categoria')),
-          api
-            .get(`/api/dashboard/confronto-annuale?anno=${anno}`, { signal })
-            .catch(conErrore('confronto annuale')),
-          api
-            .get(`/api/dashboard/stato-riconciliazione?anno=${anno}`, { signal })
-            .catch(conErrore('stato riconciliazione')),
-          api
-            .get(`/api/contabilita/calcolo-imposte?regione=campania&anno=${anno}`, { signal })
-            .catch(conErrore('imposte IRES/IRAP')),
-          api
-            .get(`/api/f24-public/scadenze-prossime?giorni=60&limit=5`, { signal })
-            .catch(conErrore('scadenze F24')),
-          api
-            .get(`/api/fornitori-learning/stats`, { signal })
-            .catch(conErrore('learning machine')),
-          Promise.all([
-            api
-              .get('/api/paghe/buste-paga?stato=DA_PAGARE', { signal })
-              .catch(conErrore('buste paga da pagare')),
-            api
-              .get('/api/paghe/distinte-f24?stato=DA_PAGARE', { signal })
-              .catch(conErrore('distinte F24 da pagare')),
-          ]).catch(() => null),
-        ])
-          .then(
-            ([
-              speseRes,
-              confrontoRes,
-              riconcRes,
-              imposteRes,
-              f24Res,
-              learningRes,
-              pagheResults,
-            ]) => {
-              if (!vivo()) return; // anno cambiato nel frattempo: dati vecchi, ignora
-              setSpeseCategoria(speseRes.data);
-              // Difesa sulla FORMA dei dati: se il backend risponde con un
-              // payload vuoto/inatteso (riavvio, deploy in corso) i blocchi
-              // che leggono i sotto-oggetti non devono mandare in crash la
-              // pagina — meglio nascondere la card che mostrare l'errore rosso.
-              const confronto = confrontoRes.data;
-              setConfrontoAnnuale(
-                confronto?.anno_corrente && confronto?.variazioni_percentuali ? confronto : null
-              );
-              const riconc = riconcRes.data;
-              setStatoRiconciliazione(
-                riconc && !Array.isArray(riconc) && (riconc.riepilogo || riconc.fatture)
-                  ? riconc
-                  : null
-              );
-              setImposteData(imposteRes.data);
-              setScadenzeF24(f24Res.data);
-              setLearningStats(learningRes.data);
-              if (pagheResults) {
-                const [busteRes, f24AlertRes] = pagheResults;
-                const buste = busteRes.data?.data || [];
-                const f24list = f24AlertRes.data?.data || [];
-                const totStip = buste.reduce((s, b) => s + (b.netto_mese || 0), 0);
-                const totF24 = f24list.reduce((s, f) => s + (f.riepilogo?.totale_generale || 0), 0);
-                if (buste.length > 0 || f24list.length > 0) {
-                  setAlertPagamenti({ buste, f24list, totStip, totF24 });
-                }
-              }
-              setApiErrors([...falliti]);
-            }
-          )
-          .catch(e => console.warn('Errore grafici secondari:', e));
-
-        // Carica stats verbali/trattenute
+      setLoading(true);
+      const [crRes, pnRes, ivaRes, scadRes, trendRes] = await Promise.all([
         api
-          .get('/api/noleggio/veicoli?anno=' + anno, { signal })
-          .then(r => {
-            if (!vivo()) return;
-            const veicoli = r.data?.veicoli || [];
-            const stats = r.data?.statistiche || {};
-            setVerbaliStats({
-              veicoli: veicoli.length,
-              canoni: stats.totale_canoni || 0,
-              verbali_costo: stats.totale_verbali || 0,
-              totale_noleggio: stats.totale_generale || 0,
-            });
+          .get(`/api/controllo-gestione/costi-ricavi?anno=${anno}${mese ? `&mese=${mese}` : ''}`, {
+            signal,
           })
-          .catch(conErrore('veicoli e verbali'));
-
-      } catch (e) {
-        console.error('Dashboard error:', e);
-        setErr('Backend non raggiungibile. Verifica che il server sia attivo.');
-        setLoading(false);
-      }
+          .catch(conErrore('fatturato e costi')),
+        api
+          .get(`/api/prima-nota/stats?data_da=${dataDa}&data_a=${dataA}`, { signal })
+          .catch(conErrore('cassa e banca')),
+        ivaReq,
+        scadReq,
+        api
+          .get(`/api/dashboard/trend-mensile?anno=${anno}`, { signal })
+          .catch(conErrore('grafico annuale')),
+      ]);
+      if (!vivo()) return;
+      setCostiRicavi(crRes.data);
+      setPrimaNota(pnRes.data);
+      setIva(ivaRes.data);
+      setScadenze(scadRes.data);
+      setTrend(trendRes.data);
+      setErroriApi(falliti);
+      setLoading(false);
     })();
 
-    return () => {
-      clearTimeout(timeoutId);
-      controller.abort();
-    };
-  }, [anno, reloadKey]);
+    return () => controller.abort();
+  }, [anno, mese]);
 
-  // Carica Volume Affari Reale quando toggle attivato
-  async function loadVolumeReale() {
-    if (volumeRealeData && volumeRealeData.anno === anno) return;
-    setVolumeRealeLoading(true);
-    try {
-      const res = await api.get(`/api/gestione-riservata/volume-affari-reale?anno=${anno}`);
-      setVolumeRealeData(res.data);
-    } catch (e) {
-      console.error('Errore caricamento volume reale:', e);
-      setVolumeRealeData(null);
-    } finally {
-      setVolumeRealeLoading(false);
-    }
-  }
+  // ── Valori normalizzati per le card (difensivi sulla forma dei dati) ──
+  const ricavi = costiRicavi?.ricavi?.totale ?? null;
+  const costi = costiRicavi?.costi ?? null;
+  const margine = costiRicavi?.margine ?? null;
+  const cassa = primaNota?.cassa ?? null;
+  const banca = primaNota?.banca ?? null;
 
-  function handleToggleVolumeReale() {
-    const newValue = !showVolumeReale;
-    setShowVolumeReale(newValue);
-    if (newValue) {
-      loadVolumeReale();
-    }
-  }
+  // IVA: forma diversa fra mese (verifica) e anno (confronto completo).
+  const ivaDaVersare = mese
+    ? iva?.saldo?.iva_da_versare ?? null
+    : iva?.totali?.saldo_annuale != null
+      ? Math.max(iva.totali.saldo_annuale, 0)
+      : null;
+  const ivaACredito = mese
+    ? iva?.saldo?.iva_a_credito ?? null
+    : iva?.totali?.saldo_annuale != null
+      ? Math.max(-iva.totali.saldo_annuale, 0)
+      : null;
 
-  if (loading) {
-    return (
-      <PageLayout title="Dashboard" icon="📊" subtitle="Panoramica">
-        <div style={STYLES.card}>
-          <p style={{ color: COLORS.textMuted }}>Caricamento in corso...</p>
-        </div>
-      </PageLayout>
-    );
-  }
+  // ── Scorciatoie-domanda: la risposta grande in cima al periodo scelto ──
+  const RISPOSTE = useMemo(
+    () => [
+      {
+        id: 'incassato',
+        label: 'Quanto ho incassato?',
+        Icon: Wallet,
+        colore: COLORS.success,
+        valore: ricavi,
+        testo: v => `Hai incassato ${formatEuro(v)} (${etichettaPeriodo}).`,
+      },
+      {
+        id: 'speso',
+        label: 'Quanto ho speso?',
+        Icon: ShoppingCart,
+        colore: COLORS.danger,
+        valore: costi?.totale ?? null,
+        testo: v => `Hai speso ${formatEuro(v)} (${etichettaPeriodo}).`,
+      },
+      {
+        id: 'utile',
+        label: 'Quanto mi è rimasto?',
+        Icon: TrendingUp,
+        colore: COLORS.primary,
+        valore: margine?.importo ?? null,
+        testo: v =>
+          `${v >= 0 ? 'Utile' : 'Perdita'} di ${formatEuro(Math.abs(v))} (${etichettaPeriodo}${
+            margine?.percentuale != null ? `, margine ${margine.percentuale}%` : ''
+          }).`,
+      },
+      {
+        id: 'cassa',
+        label: 'Quanto ho in cassa?',
+        Icon: Banknote,
+        colore: COLORS.success,
+        valore: cassa?.saldo ?? null,
+        testo: v => `Saldo di cassa ${formatEuro(v)} nel periodo (${etichettaPeriodo}).`,
+      },
+      {
+        id: 'banca',
+        label: 'Quanto ho in banca?',
+        Icon: Landmark,
+        colore: COLORS.info,
+        valore: banca?.saldo ?? null,
+        testo: v => `Saldo di banca ${formatEuro(v)} nel periodo (${etichettaPeriodo}).`,
+      },
+      {
+        id: 'iva',
+        label: 'Quanta IVA devo?',
+        Icon: Receipt,
+        colore: COLORS.warning,
+        valore: ivaDaVersare,
+        testo: v =>
+          v > 0
+            ? `IVA da versare ${formatEuro(v)} (${etichettaPeriodo}).`
+            : `Nessuna IVA da versare${
+                ivaACredito ? `, a credito ${formatEuro(ivaACredito)}` : ''
+              } (${etichettaPeriodo}).`,
+      },
+    ],
+    [ricavi, costi, margine, cassa, banca, ivaDaVersare, ivaACredito, etichettaPeriodo]
+  );
+
+  const rispostaAttiva = RISPOSTE.find(r => r.id === domanda);
 
   return (
-    <PageLayout title={`Dashboard ${anno}`} icon="📊" subtitle="Panoramica generale">
-      <div style={{ ...STYLES.card, marginBottom: 12 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            {/* Pulsante Auto-Riparazione */}
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={eseguiAutoRiparazione}
-              disabled={autoRepairStatus === 'running'}
-              data-testid="btn-auto-repair"
-            >
-              {autoRepairStatus === 'running' ? <>Riparazione...</> : <>Auto-ripara dati</>}
-            </Button>
-            {autoRepairStatus && autoRepairStatus !== 'running' && (
-              autoRepairStatus.error ? (
-                <Badge variant="danger">Riparazione fallita: riprova più tardi</Badge>
-              ) : autoRepairStatus.falliti?.length ? (
-                <Badge variant="warning">
-                  {autoRepairStatus.totale} correzioni — fallita: {autoRepairStatus.falliti.join(', ')}
-                </Badge>
-              ) : (
-                <Badge variant="success">
-                  {autoRepairStatus.totale > 0
-                    ? `${autoRepairStatus.totale} correzioni`
-                    : 'Nessuna correzione necessaria'}
-                </Badge>
-              )
-            )}
-            {err ? (
-              <span style={{ color: COLORS.danger, fontSize: 14 }}>{err}</span>
-            ) : (
-              <Badge variant="success">Backend connesso</Badge>
-            )}
-          </div>
+    <PageLayout title="Dashboard" icon="📊" subtitle={`Numeri di ${etichettaPeriodo}`}>
+      {/* ── BARRA FILTRI: Anno (globale) + Mese ── */}
+      <div style={STILI.barraFiltri} data-testid="dashboard-filtri">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={STILI.etichetta}>Anno</span>
+          <AnnoSelector />
         </div>
-        {apiErrors.length > 0 && (
-          <div
-            style={{
-              marginTop: 10,
-              padding: '8px 12px',
-              background: '#fffbeb',
-              border: '1px solid #fcd34d',
-              borderRadius: 8,
-              color: '#92400e',
-              fontSize: 13,
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={STILI.etichetta}>Mese</span>
+          <select
+            value={mese}
+            onChange={e => {
+              setMese(Number(e.target.value));
+              setDomanda(null);
             }}
-            data-testid="dashboard-api-errors"
+            data-testid="dashboard-mese"
+            style={STILI.selectMese}
           >
-            ⚠️ Sezioni non disponibili in questo momento (errore, non «nessun dato»):{' '}
-            {apiErrors.join(', ')}.
-          </div>
-        )}
+            <option value={0}>Tutto l'anno</option>
+            {MESI.map((m, i) => (
+              <option key={m} value={i + 1}>
+                {m}
+              </option>
+            ))}
+          </select>
+        </div>
+        <span style={STILI.periodoAttivo}>
+          Stai guardando: <strong>{etichettaPeriodo}</strong>
+        </span>
       </div>
 
-      {/* Widget Verifica Coerenza Dati */}
-      <WidgetVerificaCoerenza anno={anno} />
-      <WidgetAgenti />
-
-      {/* Alert Limiti Giustificativi */}
-
-      {/* Alert Pagamenti DA_PAGARE (Stipendi + F24) */}
-      {alertPagamenti && <AlertPagamentiWidget data={alertPagamenti} />}
-
-      {/* Widget Scadenze */}
-      {scadenzeData && scadenzeData.scadenze && scadenzeData.scadenze.length > 0 && (
-        <ScadenzeWidget scadenze={scadenzeData} />
-      )}
-
-      {/* Toggle Volume Affari Reale - Compatto */}
-      <div
-        style={{
-          background: showVolumeReale
-            ? COLORS.primary
-            : COLORS.bgAlt,
-          borderRadius: BORDER_RADIUS.sm,
-          padding: 8,
-          marginBottom: 10,
-          border: showVolumeReale ? 'none' : `1px dashed ${COLORS.border}`,
-          transition: 'all 0.3s ease',
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: showVolumeReale && volumeRealeData ? 8 : 0,
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Lock size={12} color={showVolumeReale ? 'white' : COLORS.textMuted} />
-            <span
+      {/* ── SCORCIATOIE-DOMANDA ── */}
+      <div style={STILI.domandeWrap} data-testid="dashboard-domande">
+        <span style={{ ...STILI.etichetta, display: 'flex', alignItems: 'center', gap: 5 }}>
+          <HelpCircle size={14} /> Chiedi:
+        </span>
+        {RISPOSTE.map(r => {
+          const attiva = domanda === r.id;
+          return (
+            <button
+              key={r.id}
+              onClick={() => setDomanda(attiva ? null : r.id)}
+              data-testid={`domanda-${r.id}`}
               style={{
-                fontWeight: 600,
-                color: showVolumeReale ? 'white' : COLORS.gray[700],
-                fontSize: 11,
+                ...STILI.bottoneDomanda,
+                background: attiva ? r.colore : '#fff',
+                color: attiva ? '#fff' : COLORS.text,
+                borderColor: attiva ? r.colore : COLORS.border,
               }}
             >
-              Volume Affari
-            </span>
-          </div>
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={handleToggleVolumeReale}
-            data-testid="toggle-volume-reale"
-            iconLeft={showVolumeReale ? <EyeOff size={10} /> : <Eye size={10} />}
-            style={{
-              padding: '3px 8px',
-              fontSize: 10,
-              gap: 3,
-              background: showVolumeReale ? 'rgba(255,255,255,0.2)' : COLORS.primaryLight,
-              borderColor: showVolumeReale ? 'rgba(255,255,255,0.2)' : COLORS.primaryLight,
-            }}
-          >
-            {showVolumeReale ? 'Nascondi' : 'Mostra'}
-          </Button>
-        </div>
+              <r.Icon size={14} />
+              {r.label}
+            </button>
+          );
+        })}
+      </div>
 
-        {showVolumeReale && (
+      {/* Risposta grande alla domanda scelta */}
+      {rispostaAttiva && (
+        <div
+          style={{ ...STILI.rispostaBox, borderLeft: `5px solid ${rispostaAttiva.colore}` }}
+          data-testid="dashboard-risposta"
+        >
+          <rispostaAttiva.Icon size={26} style={{ color: rispostaAttiva.colore, flexShrink: 0 }} />
           <div>
-            {volumeRealeLoading ? (
-              <div style={{ color: 'rgba(255,255,255,0.7)', textAlign: 'center', padding: 20 }}>
-                Caricamento...
-              </div>
-            ) : volumeRealeData ? (
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)',
-                  gap: 15,
-                }}
-              >
-                <div style={{ background: 'rgba(255,255,255,0.1)', borderRadius: BORDER_RADIUS.md, padding: 16 }}>
-                  <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, marginBottom: 4 }}>
-                    Fatturato Ufficiale
-                  </div>
-                  <div style={{ color: 'white', fontSize: 20, fontWeight: 700 }}>
-                    {formatEuro(volumeRealeData.fatturato_ufficiale)}
-                  </div>
-                </div>
-                <div style={{ background: 'rgba(255,255,255,0.1)', borderRadius: BORDER_RADIUS.md, padding: 16 }}>
-                  <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, marginBottom: 4 }}>
-                    Corrispettivi
-                  </div>
-                  <div style={{ color: 'white', fontSize: 20, fontWeight: 700 }}>
-                    {formatEuro(volumeRealeData.corrispettivi)}
-                  </div>
-                </div>
-                <div style={{ background: 'rgba(16,185,129,0.3)', borderRadius: BORDER_RADIUS.md, padding: 16 }}>
-                  <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, marginBottom: 4 }}>
-                    + Incassi Extra
-                  </div>
-                  <div style={{ color: '#34d399', fontSize: 20, fontWeight: 700 }}>
-                    +{formatEuro(volumeRealeData.incassi_non_fatturati)}
-                  </div>
-                </div>
-                <div style={{ background: 'rgba(239,68,68,0.3)', borderRadius: BORDER_RADIUS.md, padding: 16 }}>
-                  <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, marginBottom: 4 }}>
-                    - Spese Extra
-                  </div>
-                  <div style={{ color: '#f87171', fontSize: 20, fontWeight: 700 }}>
-                    -{formatEuro(volumeRealeData.spese_non_fatturate)}
-                  </div>
-                </div>
-                <div
-                  style={{
-                    // '1 / -1' = tutta la riga QUALUNQUE sia il numero di
-                    // colonne. Il vecchio 'span 4' su mobile (griglia a 2
-                    // colonne) creava colonne implicite fuori schermo: la
-                    // card rossa sbordava e "+ Incassi Extra" finiva
-                    // tagliata sul bordo destro (screenshot utente 11/07).
-                    gridColumn: '1 / -1',
-                    background: COLORS.danger,
-                    borderRadius: BORDER_RADIUS.md,
-                    padding: isMobile ? 14 : 20,
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    flexWrap: 'wrap',
-                    gap: 8,
-                    minWidth: 0,
-                  }}
-                >
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: 14 }}>
-                      VOLUME AFFARI REALE {anno}
-                    </div>
-                    <div
-                      style={{
-                        color: 'white',
-                        fontSize: isMobile ? 24 : 32,
-                        fontWeight: 700,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 10,
-                      }}
-                    >
-                      <TrendingUp size={isMobile ? 22 : 28} />
-                      {formatEuro(volumeRealeData.volume_affari_reale)}
-                    </div>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12 }}>
-                      Ufficiale: {formatEuro(volumeRealeData.totale_ufficiale)}
-                    </div>
-                    <div
-                      style={{
-                        color: volumeRealeData.saldo_extra >= 0 ? '#34d399' : '#f87171',
-                        fontSize: 14,
-                        fontWeight: 600,
-                      }}
-                    >
-                      {volumeRealeData.saldo_extra >= 0 ? '+' : ''}
-                      {formatEuro(volumeRealeData.saldo_extra)} extra
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div style={{ color: 'rgba(255,255,255,0.7)', textAlign: 'center', padding: 20 }}>
-                Nessun dato disponibile.{' '}
-                <Link to="/gestione-riservata" style={{ color: '#e94560' }}>
-                  Aggiungi movimenti
-                </Link>
-              </div>
+            <div style={{ fontSize: 13, color: COLORS.textMuted }}>{rispostaAttiva.label}</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: COLORS.text }}>
+              {rispostaAttiva.valore == null
+                ? 'Dato non disponibile'
+                : rispostaAttiva.testo(rispostaAttiva.valore)}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Avviso endpoint in errore (distinto da "nessun dato") */}
+      {erroriApi.length > 0 && (
+        <div style={STILI.avvisoErrori} data-testid="dashboard-api-errors">
+          ⚠️ Sezioni non disponibili in questo momento (errore, non «nessun dato»):{' '}
+          {erroriApi.join(', ')}.
+        </div>
+      )}
+
+      {loading ? (
+        <div style={STILI.loading}>Caricamento di {etichettaPeriodo}…</div>
+      ) : (
+        <div style={STILI.griglia}>
+          {/* FATTURATO / RICAVI */}
+          <CardBox titolo="Fatturato / Ricavi" Icon={Wallet} colore={COLORS.success}>
+            <ValoreGrande valore={ricavi} colore={COLORS.success} />
+            {costiRicavi?.ricavi && (
+              <Riga label="di cui corrispettivi" valore={costiRicavi.ricavi.corrispettivi} />
             )}
-          </div>
-        )}
-      </div>
+            <Nota>Ricavi del periodo selezionato (corrispettivi incassati).</Nota>
+          </CardBox>
 
-      {/* Widget Bilancio Istantaneo - COMPATTO */}
-      {bilancioIstantaneo && (
-        <div
-          style={{
-            background: COLORS.primary,
-            borderRadius: BORDER_RADIUS.lg,
-            padding: 14,
-            marginTop: 12,
-            color: 'white',
-          }}
-          data-testid="widget-bilancio-istantaneo"
-        >
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: 10,
-            }}
+          {/* ACQUISTI / COSTI */}
+          <CardBox titolo="Acquisti / Costi" Icon={ShoppingCart} colore={COLORS.danger}>
+            <ValoreGrande valore={costi?.totale} colore={COLORS.danger} />
+            {costi && (
+              <>
+                <Riga label="Personale" valore={costi.personale} />
+                <Riga label="Acquisti merce" valore={costi.acquisti_merce} />
+                <Riga label="Altre uscite" valore={costi.altre_uscite} />
+              </>
+            )}
+          </CardBox>
+
+          {/* MARGINE */}
+          <CardBox
+            titolo={margine?.tipo === 'perdita' ? 'Perdita' : 'Utile / Margine'}
+            Icon={margine?.tipo === 'perdita' ? TrendingDown : TrendingUp}
+            colore={margine?.tipo === 'perdita' ? COLORS.danger : COLORS.primary}
           >
-            <h3
-              style={{
-                margin: 0,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                fontSize: 14,
-                fontWeight: 600,
-                // index.css impone il navy a TUTTI gli h1-h4: su questo
-                // widget a fondo navy il titolo diventava invisibile
-                // (audit 11/07 — "Bilancio Istantaneo" sparito)
-                color: 'white',
-              }}
-            >
-              <TrendingUp size={18} /> Bilancio Istantaneo {anno}
-            </h3>
-            <span style={{ fontSize: 11, opacity: 0.7 }}>
-              {bilancioIstantaneo.documenti?.fatture_ricevute || 0} fatt. •{' '}
-              {bilancioIstantaneo.documenti?.corrispettivi || 0} corr.
-            </span>
-          </div>
+            <ValoreGrande
+              valore={margine?.importo}
+              colore={margine?.tipo === 'perdita' ? COLORS.danger : COLORS.primary}
+            />
+            {margine?.percentuale != null && (
+              <Riga label="Margine %" valore={`${margine.percentuale}%`} raw />
+            )}
+            <Nota>Ricavi meno costi del periodo.</Nota>
+          </CardBox>
 
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)',
-              gap: 10,
-            }}
+          {/* CASSA */}
+          <CardBox titolo="Cassa" Icon={Banknote} colore={COLORS.success}>
+            <ValoreGrande valore={cassa?.saldo} colore={COLORS.success} />
+            {cassa && (
+              <>
+                <Riga label="Entrate" valore={cassa.entrate} />
+                <Riga label="Uscite" valore={cassa.uscite} />
+                <Riga label="Movimenti" valore={cassa.movimenti} raw />
+              </>
+            )}
+            <Nota>Saldo dei movimenti di cassa nel periodo.</Nota>
+          </CardBox>
+
+          {/* BANCA */}
+          <CardBox titolo="Banca" Icon={Landmark} colore={COLORS.info}>
+            <ValoreGrande valore={banca?.saldo} colore={COLORS.info} />
+            {banca && (
+              <>
+                <Riga label="Entrate" valore={banca.entrate} />
+                <Riga label="Uscite" valore={banca.uscite} />
+                <Riga label="Movimenti" valore={banca.movimenti} raw />
+              </>
+            )}
+            <Nota>Saldo dei movimenti di banca nel periodo.</Nota>
+          </CardBox>
+
+          {/* IVA */}
+          <CardBox titolo="IVA" Icon={Receipt} colore={COLORS.warning}>
+            {ivaDaVersare != null && ivaDaVersare > 0 ? (
+              <>
+                <ValoreGrande valore={ivaDaVersare} colore={COLORS.warning} />
+                <Nota>IVA da versare nel periodo.</Nota>
+              </>
+            ) : ivaACredito != null && ivaACredito > 0 ? (
+              <>
+                <ValoreGrande valore={ivaACredito} colore={COLORS.info} />
+                <Nota>IVA a credito nel periodo.</Nota>
+              </>
+            ) : (
+              <>
+                <ValoreGrande valore={0} colore={COLORS.textMuted} />
+                <Nota>Nessuna IVA da versare nel periodo.</Nota>
+              </>
+            )}
+          </CardBox>
+
+          {/* SCADENZE / F24 */}
+          <CardBox
+            titolo="Scadenze / F24"
+            Icon={CalendarClock}
+            colore={COLORS.warning}
+            fullWidth
           >
-            <div
-              style={{
-                background: 'rgba(16,185,129,0.2)',
-                borderRadius: BORDER_RADIUS.sm,
-                padding: 10,
-                borderLeft: `3px solid ${COLORS.success}`,
-              }}
-            >
-              <div style={{ fontSize: 10, opacity: 0.8 }}>RICAVI</div>
-              <div style={{ fontSize: 16, fontWeight: 700 }}>
-                {formatEuro(bilancioIstantaneo.ricavi?.totale || 0)}
-              </div>
-            </div>
-            <div
-              style={{
-                background: 'rgba(239,68,68,0.2)',
-                borderRadius: BORDER_RADIUS.sm,
-                padding: 10,
-                borderLeft: `3px solid ${COLORS.danger}`,
-              }}
-            >
-              <div style={{ fontSize: 10, opacity: 0.8 }}>COSTI</div>
-              <div style={{ fontSize: 16, fontWeight: 700 }}>
-                {formatEuro(bilancioIstantaneo.costi?.totale || 0)}
-              </div>
-            </div>
-            <div
-              style={{
-                background: 'rgba(59,130,246,0.2)',
-                borderRadius: BORDER_RADIUS.sm,
-                padding: 10,
-                borderLeft: `3px solid ${COLORS.info}`,
-              }}
-            >
-              <div style={{ fontSize: 10, opacity: 0.8 }}>SALDO IVA</div>
-              <div
-                style={{
-                  fontSize: 16,
-                  fontWeight: 700,
-                  color: (bilancioIstantaneo.iva?.saldo || 0) >= 0 ? '#f87171' : '#34d399',
-                }}
-              >
-                {formatEuro(bilancioIstantaneo.iva?.saldo || 0)}
-              </div>
-            </div>
-            <div
-              style={{
-                background:
-                  (bilancioIstantaneo.bilancio?.utile_lordo || 0) >= 0
-                    ? 'rgba(16,185,129,0.3)'
-                    : 'rgba(239,68,68,0.3)',
-                borderRadius: BORDER_RADIUS.sm,
-                padding: 10,
-                borderLeft: `3px solid ${(bilancioIstantaneo.bilancio?.utile_lordo || 0) >= 0 ? COLORS.success : COLORS.danger}`,
-              }}
-            >
-              <div style={{ fontSize: 10, opacity: 0.8 }}>UTILE LORDO</div>
-              <div
-                style={{
-                  fontSize: 16,
-                  fontWeight: 700,
-                  color:
-                    (bilancioIstantaneo.bilancio?.utile_lordo || 0) >= 0 ? '#34d399' : '#f87171',
-                }}
-              >
-                {formatEuro(bilancioIstantaneo.bilancio?.utile_lordo || 0)}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Widget IRES/IRAP - COMPATTO */}
-      {imposteData && (
-        <div
-          style={{
-            borderRadius: BORDER_RADIUS.lg,
-            padding: 14,
-            boxShadow: SHADOWS.sm,
-            marginTop: 12,
-            background: COLORS.primary,
-            color: 'white',
-          }}
-          data-testid="widget-calcolo-imposte"
-        >
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: 10,
-            }}
-          >
-            <div
-              style={{
-                fontSize: 14,
-                fontWeight: 600,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-              }}
-            >
-              Imposte {anno}{' '}
-              <span style={{ fontSize: 10, opacity: 0.7, fontWeight: 400 }}>
-                IRAP {imposteData.irap?.aliquota}%
-              </span>
-            </div>
-            <Link
-              to="/contabilita"
-              style={{
-                padding: '4px 10px',
-                background: 'rgba(255,255,255,0.2)',
-                color: 'white',
-                borderRadius: BORDER_RADIUS.sm,
-                textDecoration: 'none',
-                fontSize: 11,
-              }}
-            >
-              Dettaglio
-            </Link>
-          </div>
-
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)',
-              gap: 10,
-            }}
-          >
-            <div style={{ background: 'rgba(255,255,255,0.1)', borderRadius: BORDER_RADIUS.sm, padding: 10 }}>
-              <div style={{ fontSize: 10, opacity: 0.8 }}>Utile</div>
-              <div style={{ fontSize: 16, fontWeight: 'bold' }}>
-                {formatEuro(imposteData.utile_civilistico)}
-              </div>
-            </div>
-            <div style={{ background: 'rgba(255,255,255,0.1)', borderRadius: BORDER_RADIUS.sm, padding: 10 }}>
-              <div style={{ fontSize: 10, opacity: 0.8 }}>IRES (24%)</div>
-              <div style={{ fontSize: 16, fontWeight: 'bold', color: '#fbbf24' }}>
-                {formatEuro(imposteData.ires?.imposta_dovuta)}
-              </div>
-            </div>
-            <div style={{ background: 'rgba(255,255,255,0.1)', borderRadius: BORDER_RADIUS.sm, padding: 10 }}>
-              <div style={{ fontSize: 10, opacity: 0.8 }}>IRAP</div>
-              <div style={{ fontSize: 16, fontWeight: 'bold', color: '#a78bfa' }}>
-                {formatEuro(imposteData.irap?.imposta_dovuta)}
-              </div>
-            </div>
-            <div style={{ background: 'rgba(239,68,68,0.3)', borderRadius: BORDER_RADIUS.sm, padding: 10 }}>
-              <div style={{ fontSize: 10, opacity: 0.8 }}>TOTALE</div>
-              <div style={{ fontSize: 16, fontWeight: 'bold' }}>
-                {formatEuro(imposteData.totale_imposte)}
-              </div>
-            </div>
-          </div>
-
-          {/* Variazioni fiscali sintesi */}
-          {(imposteData.ires?.totale_variazioni_aumento > 0 ||
-            imposteData.ires?.totale_variazioni_diminuzione > 0) && (
-            <div
-              style={{
-                marginTop: 15,
-                padding: 12,
-                background: 'rgba(255,255,255,0.05)',
-                borderRadius: BORDER_RADIUS.md,
-                display: 'flex',
-                gap: 20,
-                fontSize: 13,
-              }}
-            >
-              <div>
-                <span style={{ opacity: 0.7 }}>Variazioni aumento: </span>
-                <span style={{ color: '#fca5a5' }}>
-                  {formatEuro(imposteData.ires?.totale_variazioni_aumento)}
-                </span>
-              </div>
-              <div>
-                <span style={{ opacity: 0.7 }}>Variazioni diminuzione: </span>
-                <span style={{ color: '#86efac' }}>
-                  {formatEuro(imposteData.ires?.totale_variazioni_diminuzione)}
-                </span>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {scadenzeF24 && scadenzeF24.scadenze && scadenzeF24.scadenze.length > 0 && (
-        <div
-          style={{
-            background: COLORS.card,
-            borderRadius: BORDER_RADIUS.lg,
-            padding: 14,
-            marginTop: 12,
-            border: `1px solid ${COLORS.border}`,
-            boxShadow: SHADOWS.sm,
-          }}
-          data-testid="widget-scadenze-f24"
-        >
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: 10,
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 16 }}>📋</span>
-              <span style={{ fontSize: 16 }}>F24</span>
-              <Badge variant="danger" style={{ fontSize: 10, padding: '2px 6px', borderRadius: BORDER_RADIUS.sm }}>
-                {scadenzeF24.totale || scadenzeF24.scadenze.length}
-              </Badge>
-            </div>
-            <Link to="/riconciliazione/f24" style={{ fontSize: 11, color: COLORS.info, textDecoration: 'none' }}>
-              Vedi tutti
-            </Link>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {(scadenzeF24?.scadenze ?? []).slice(0, 4).map((f24, idx) => {
-              const isUrgente = f24.giorni_mancanti <= 7;
-              const isScaduto = f24.giorni_mancanti < 0;
-              return (
-                <div
-                  key={idx}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '8px 10px',
-                    background: isScaduto ? COLORS.dangerLight : isUrgente ? COLORS.warningLight : COLORS.bgAlt,
-                    borderRadius: BORDER_RADIUS.sm,
-                    borderLeft: `3px solid ${isScaduto ? COLORS.danger : isUrgente ? COLORS.warning : COLORS.info}`,
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
-                    <span style={{ fontSize: 14 }}>{f24.tipo === 'IVA' ? '🧾' : '📋'}</span>
-                    <div>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: COLORS.text }}>
-                        {f24.descrizione || f24.tipo || 'F24'}
-                      </div>
-                      <div style={{ fontSize: 10, color: COLORS.textMuted }}>
-                        {f24.tributo || f24.codice_tributo || ''}
-                      </div>
-                    </div>
-                  </div>
-                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.danger }}>
-                      {formatEuro(f24.importo)}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 10,
-                        color: isScaduto ? COLORS.danger : isUrgente ? COLORS.warning : COLORS.textMuted,
-                      }}
-                    >
-                      {isScaduto
-                        ? 'Scaduto'
-                        : f24.giorni_mancanti === 0
-                          ? 'Oggi'
-                          : f24.giorni_mancanti === 1
-                            ? 'Domani'
-                            : `${f24.giorni_mancanti}g`}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {scadenzeF24.totale_importo > 0 && (
-            <div
-              style={{
-                marginTop: 10,
-                paddingTop: 10,
-                borderTop: `1px solid ${COLORS.border}`,
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-              }}
-            >
-              <span style={{ fontSize: 11, color: COLORS.textMuted }}>Totale da versare</span>
-              <span style={{ fontSize: 14, fontWeight: 700, color: COLORS.danger }}>
-                {formatEuro(scadenzeF24.totale_importo)}
-              </span>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Widget Noleggio Auto & Verbali */}
-      {verbaliStats && (
-        <div
-          style={{
-            background: COLORS.card,
-            borderRadius: BORDER_RADIUS.xl,
-            padding: 20,
-            boxShadow: SHADOWS.md,
-            marginTop: 20,
-            border: `1px solid ${COLORS.border}`,
-          }}
-        >
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: 16,
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontSize: 24 }}>🚗</span>
-              <div>
-                <div style={{ fontWeight: 'bold', fontSize: 16, color: COLORS.primaryLight }}>
-                  Noleggio Auto
-                </div>
-                <div style={{ fontSize: 12, color: COLORS.textMuted }}>
-                  {verbaliStats.veicoli} veicoli in flotta
-                </div>
-              </div>
-            </div>
-            <Link to="/noleggio" style={{ fontSize: 13, color: COLORS.info, textDecoration: 'none' }}>
-              Gestisci →
-            </Link>
-          </div>
-
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-              gap: 10,
-            }}
-          >
-            <StatCard label="Canoni" value={formatEuro(verbaliStats.canoni)} accent="info" />
-            <StatCard label="Verbali/Multe" value={formatEuro(verbaliStats.verbali_costo)} accent="danger" />
-            <StatCard label="Totale Noleggio" value={formatEuro(verbaliStats.totale_noleggio)} accent="success" />
-          </div>
-        </div>
-      )}
-
-      {trendData && (
-        <div
-          style={{
-            background: COLORS.card,
-            borderRadius: BORDER_RADIUS.xl,
-            padding: 20,
-            boxShadow: SHADOWS.md,
-            marginTop: 20,
-          }}
-        >
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: 20,
-            }}
-          >
-            <div>
-              <h2 style={{ fontSize: 18, margin: 0, fontWeight: 'bold', color: COLORS.primaryLight }}>
-                Trend Mensile {anno}
-              </h2>
-              <span style={{ fontSize: 13, color: COLORS.textMuted }}>Entrate vs Uscite</span>
-            </div>
-            <div style={{ display: 'flex', gap: 20, fontSize: 14 }}>
-              <div>
-                <span style={{ color: COLORS.success }}>Entrate:</span>{' '}
-                <strong>{formatEuro(trendData.totali?.entrate)}</strong>
-              </div>
-              <div>
-                <span style={{ color: COLORS.danger }}>Uscite:</span>{' '}
-                <strong>{formatEuro(trendData.totali?.uscite)}</strong>
-              </div>
-              <div>
-                <span style={{ color: trendData.totali?.saldo >= 0 ? COLORS.success : COLORS.danger }}>
-                  Saldo:
-                </span>{' '}
-                <strong style={{ color: trendData.totali?.saldo >= 0 ? COLORS.success : COLORS.danger }}>
-                  {formatEuro(trendData.totali?.saldo)}
-                </strong>
-              </div>
-            </div>
-          </div>
-
-          <div style={{ height: 300, width: '100%', minHeight: 300 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={trendData.trend_mensile}
-                margin={{ top: 5, right: 20, left: 10, bottom: 5 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" stroke={COLORS.border} />
-                <XAxis dataKey="mese_nome" tick={{ fontSize: 12 }} />
-                <YAxis tickFormatter={v => `€${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 11 }} />
-                <Tooltip
-                  formatter={value => formatEuro(value)}
-                  labelStyle={{ fontWeight: 'bold' }}
-                  contentStyle={{ borderRadius: BORDER_RADIUS.md, border: `1px solid ${COLORS.border}` }}
-                />
-                <Legend />
-                <Bar dataKey="entrate" fill={COLORS.success} name="Entrate" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="uscite" fill={COLORS.danger} name="Uscite" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-
-          {/* Statistiche */}
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-              gap: 15,
-              marginTop: 20,
-              padding: 15,
-              background: COLORS.bgAlt,
-              borderRadius: BORDER_RADIUS.md,
-            }}
-          >
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 12, color: COLORS.textMuted }}>Media Entrate</div>
-              <div style={{ fontSize: 18, fontWeight: 'bold', color: COLORS.success }}>
-                {formatEuro(trendData.statistiche?.media_entrate_mensile)}
-              </div>
-            </div>
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 12, color: COLORS.textMuted }}>Media Uscite</div>
-              <div style={{ fontSize: 18, fontWeight: 'bold', color: COLORS.danger }}>
-                {formatEuro(trendData.statistiche?.media_uscite_mensile)}
-              </div>
-            </div>
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 12, color: COLORS.textMuted }}>Picco Entrate</div>
-              <div style={{ fontSize: 18, fontWeight: 'bold' }}>
-                {trendData.statistiche?.mese_picco_entrate}
-              </div>
-            </div>
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 12, color: COLORS.textMuted }}>Picco Uscite</div>
-              <div style={{ fontSize: 18, fontWeight: 'bold' }}>
-                {trendData.statistiche?.mese_picco_uscite}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* IVA Trend Chart */}
-      {trendData && (
-        <div
-          style={{
-            background: COLORS.card,
-            borderRadius: BORDER_RADIUS.xl,
-            padding: 20,
-            boxShadow: SHADOWS.md,
-            marginTop: 20,
-          }}
-        >
-          <h2 style={{ fontSize: 18, margin: '0 0 15px 0', fontWeight: 'bold', color: COLORS.primaryLight }}>
-            Trend IVA {anno}
-          </h2>
-          <div style={{ height: 200, width: '100%', minHeight: 200 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart
-                data={trendData.trend_mensile}
-                margin={{ top: 5, right: 20, left: 10, bottom: 5 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" stroke={COLORS.border} />
-                <XAxis dataKey="mese_nome" tick={{ fontSize: 12 }} />
-                <YAxis tickFormatter={v => `€${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 11 }} />
-                <Tooltip
-                  formatter={value => formatEuro(value)}
-                  contentStyle={{ borderRadius: BORDER_RADIUS.md }}
-                />
-                <Legend />
-                <Line
-                  type="monotone"
-                  dataKey="iva_debito"
-                  stroke={COLORS.warning}
-                  strokeWidth={2}
-                  name="IVA Debito"
-                  dot={{ r: 3 }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="iva_credito"
-                  stroke={COLORS.info}
-                  strokeWidth={2}
-                  name="IVA Credito"
-                  dot={{ r: 3 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'center',
-              gap: 30,
-              marginTop: 15,
-              fontSize: 14,
-            }}
-          >
-            <div>
-              IVA Debito Totale:{' '}
-              <strong style={{ color: COLORS.warning }}>
-                {formatEuro(trendData.totali?.iva_debito)}
-              </strong>
-            </div>
-            <div>
-              IVA Credito Totale:{' '}
-              <strong style={{ color: COLORS.info }}>
-                {formatEuro(trendData.totali?.iva_credito)}
-              </strong>
-            </div>
-            <div>
-              Saldo IVA:{' '}
-              <strong style={{ color: trendData.totali?.saldo_iva >= 0 ? COLORS.danger : COLORS.success }}>
-                {formatEuro(Math.abs(trendData.totali?.saldo_iva))}{' '}
-                {trendData.totali?.saldo_iva >= 0 ? '(da versare)' : '(a credito)'}
-              </strong>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Nuova sezione: Grafici Avanzati */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 400px), 1fr))',
-          gap: 20,
-          marginTop: 20,
-        }}
-      >
-        {/* Grafico a Torta - Spese per Categoria */}
-        {speseCategoria && speseCategoria.categorie && speseCategoria.categorie.length > 0 && (
-          <div
-            style={{
-              background: COLORS.card,
-              borderRadius: BORDER_RADIUS.xl,
-              padding: 20,
-              boxShadow: SHADOWS.md,
-            }}
-          >
-            <h2
-              style={{ fontSize: 18, margin: '0 0 15px 0', fontWeight: 'bold', color: COLORS.primaryLight }}
-            >
-              Distribuzione Spese {anno}
-            </h2>
-            <div style={{ height: 280, display: 'flex', alignItems: 'center', minHeight: 280 }}>
-              <ResponsiveContainer width="60%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={speseCategoria.categorie}
-                    dataKey="valore"
-                    nameKey="nome"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={90}
-                    label={({ percentuale }) => `${percentuale}%`}
-                    labelLine={false}
-                  >
-                    {(speseCategoria?.categorie ?? []).map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={value => formatEuro(value)} />
-                </PieChart>
-              </ResponsiveContainer>
-              <div style={{ width: '40%', fontSize: 11, maxHeight: 250, overflow: 'auto' }}>
-                {(speseCategoria?.categorie ?? []).slice(0, 6).map((cat, idx) => (
-                  <div
-                    key={idx}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 6,
-                      marginBottom: 8,
-                      padding: '4px 8px',
-                      background: COLORS.bgAlt,
-                      borderRadius: BORDER_RADIUS.sm,
-                    }}
-                  >
-                    <span
-                      style={{
-                        width: 10,
-                        height: 10,
-                        borderRadius: 2,
-                        background: PIE_COLORS[idx % PIE_COLORS.length],
-                        flexShrink: 0,
-                      }}
-                    ></span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div
-                        style={{
-                          fontWeight: 500,
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                        }}
-                      >
-                        {cat.nome}
-                      </div>
-                      <div style={{ color: COLORS.textMuted }}>{formatEuro(cat.valore)}</div>
-                    </div>
+            {scadenze?.scadenze?.length ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {scadenze.scadenze.slice(0, 8).map((s, i) => (
+                  <div key={s.id || i} style={STILI.rigaScadenza}>
+                    <span style={{ fontWeight: 700, minWidth: 92 }}>{s.data}</span>
+                    <span style={STILI.tagTipo}>{s.tipo}</span>
+                    <span style={{ flex: 1, color: COLORS.text }}>{s.descrizione}</span>
+                    {s.importo ? (
+                      <span style={{ fontWeight: 700 }}>{formatEuro(s.importo)}</span>
+                    ) : null}
+                    {s.urgente && <span style={STILI.tagUrgente}>urgente</span>}
                   </div>
                 ))}
               </div>
-            </div>
-            <div
-              style={{
-                textAlign: 'center',
-                marginTop: 10,
-                padding: 10,
-                background: COLORS.successLight,
-                borderRadius: BORDER_RADIUS.md,
-              }}
-            >
-              <span style={{ color: COLORS.textMuted }}>Totale Spese: </span>
-              <strong style={{ color: COLORS.danger }}>
-                {formatEuro(speseCategoria.totale_spese)}
-              </strong>
-            </div>
-          </div>
-        )}
+            ) : (
+              <Nota>Nessuna scadenza {mese ? `in ${MESI[mese - 1]}` : 'nei prossimi mesi'}.</Nota>
+            )}
+          </CardBox>
 
-        {statoRiconciliazione && (
-          <div
-            style={{
-              background: COLORS.card,
-              borderRadius: BORDER_RADIUS.xl,
-              padding: 20,
-              boxShadow: SHADOWS.md,
-            }}
-          >
-            <h2
-              style={{ fontSize: 18, margin: '0 0 15px 0', fontWeight: 'bold', color: COLORS.primaryLight }}
+          {/* GRAFICO ANNO — con il mese selezionato evidenziato */}
+          {trend?.chart_data?.labels?.length > 0 && (
+            <CardBox
+              titolo={`Andamento ${anno} — entrate per mese`}
+              Icon={TrendingUp}
+              colore={COLORS.primary}
+              fullWidth
             >
-              Stato Riconciliazione {anno}
-            </h2>
-
-            {/* Barra progresso globale */}
-            <div style={{ marginBottom: 20 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
-                <span style={{ fontSize: 13, color: COLORS.textMuted }}>Progresso Globale</span>
-                <span
-                  style={{
-                    fontWeight: 'bold',
-                    color:
-                      (statoRiconciliazione?.riepilogo?.percentuale_globale ?? 0) >= 80
-                        ? COLORS.success
-                        : COLORS.warning,
+              <ResponsiveContainer width="100%" height={240}>
+                <BarChart
+                  data={trend.chart_data.labels.map((l, i) => ({
+                    mese: l,
+                    entrate: trend.chart_data.entrate?.[i] ?? 0,
+                    uscite: trend.chart_data.uscite?.[i] ?? 0,
+                  }))}
+                  onClick={e => {
+                    if (e?.activeTooltipIndex != null) {
+                      setMese(e.activeTooltipIndex + 1);
+                      setDomanda(null);
+                    }
                   }}
                 >
-                  {(statoRiconciliazione?.riepilogo?.percentuale_globale ?? 0)}%
-                </span>
-              </div>
-              <div
-                style={{ height: 12, background: COLORS.border, borderRadius: BORDER_RADIUS.sm, overflow: 'hidden' }}
-              >
-                <div
-                  style={{
-                    height: '100%',
-                    width: `${(statoRiconciliazione?.riepilogo?.percentuale_globale ?? 0)}%`,
-                    background:
-                      (statoRiconciliazione?.riepilogo?.percentuale_globale ?? 0) >= 80
-                        ? COLORS.success
-                        : COLORS.warning,
-                    borderRadius: BORDER_RADIUS.sm,
-                    transition: 'width 0.5s ease',
-                  }}
-                ></div>
-              </div>
-            </div>
-
-            <div style={{ background: COLORS.bgAlt, borderRadius: BORDER_RADIUS.md, padding: 12, marginBottom: 12 }}>
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  marginBottom: 8,
-                }}
-              >
-                Fatture Fornitori
-                <Badge variant={(statoRiconciliazione?.fatture?.percentuale_pagate ?? 0) >= 80 ? 'success' : 'warning'}>
-                  {(statoRiconciliazione?.fatture?.percentuale_pagate ?? 0)}%
-                </Badge>
-              </div>
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
-                  gap: 10,
-                  fontSize: 13,
-                }}
-              >
-                <div>
-                  <div style={{ color: COLORS.textMuted }}>Pagate</div>
-                  <div style={{ fontWeight: 'bold', color: COLORS.success }}>
-                    {(statoRiconciliazione?.fatture?.pagate ?? 0)} / {(statoRiconciliazione?.fatture?.totali ?? 0)}
-                  </div>
-                </div>
-                <div>
-                  <div style={{ color: COLORS.textMuted }}>Da pagare</div>
-                  <div style={{ fontWeight: 'bold', color: COLORS.danger }}>
-                    {formatEuro(statoRiconciliazione?.fatture?.importo_da_pagare ?? 0)}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div style={{ background: COLORS.bgAlt, borderRadius: BORDER_RADIUS.md, padding: 12 }}>
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  marginBottom: 8,
-                }}
-              >
-                <span style={{ fontWeight: 600 }}>Salari Dipendenti</span>
-                <Badge variant={(statoRiconciliazione?.salari?.percentuale_riconciliati ?? 0) >= 80 ? 'success' : 'warning'}>
-                  {(statoRiconciliazione?.salari?.percentuale_riconciliati ?? 0)}%
-                </Badge>
-              </div>
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
-                  gap: 10,
-                  fontSize: 13,
-                }}
-              >
-                <div>
-                  <div style={{ color: COLORS.textMuted }}>Riconciliati</div>
-                  <div style={{ fontWeight: 'bold', color: COLORS.success }}>
-                    {(statoRiconciliazione?.salari?.riconciliati ?? 0)} /{' '}
-                    {(statoRiconciliazione?.salari?.totali ?? 0)}
-                  </div>
-                </div>
-                <div>
-                  <div style={{ color: COLORS.textMuted }}>Da verificare</div>
-                  <div style={{ fontWeight: 'bold', color: COLORS.warning }}>
-                    {statoRiconciliazione?.salari?.da_riconciliare ?? 0}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <Link
-              to="/riconciliazione"
-              style={{
-                display: 'block',
-                marginTop: 15,
-                padding: '10px 16px',
-                background: COLORS.info,
-                color: 'white',
-                borderRadius: BORDER_RADIUS.md,
-                textAlign: 'center',
-                textDecoration: 'none',
-                fontWeight: 'bold',
-                fontSize: 13,
-              }}
-            >
-              Vai a Riconciliazione
-            </Link>
-          </div>
-        )}
-
-        {/* Widget Learning Machine */}
-        {learningStats && (
-          <div
-            style={{
-              background: COLORS.bgAlt,
-              borderRadius: BORDER_RADIUS.xl,
-              padding: 20,
-              boxShadow: SHADOWS.md,
-              border: `1px solid ${COLORS.successLight}`,
-            }}
-          >
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                marginBottom: 15,
-              }}
-            >
-              <h3 style={{ fontSize: 16, margin: 0, fontWeight: 'bold', color: COLORS.success }}>
-                🧠 Learning Machine
-              </h3>
-              <Badge variant="success">ATTIVA</Badge>
-            </div>
-
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
-                gap: 12,
-              }}
-            >
-              <StatCard
-                label="Fornitori"
-                value={learningStats.fornitori_con_keywords || 0}
-                subtext={`${learningStats.copertura_fornitori || 0}% copertura`}
-                accent="success"
-              />
-              <StatCard
-                label="Fatture"
-                value={`${learningStats.percentuale_fatture || 0}%`}
-                subtext={`${learningStats.fatture_classificate || 0}/${learningStats.totale_fatture || 0}`}
-                accent="success"
-              />
-              <StatCard
-                label="F24"
-                value={`${learningStats.percentuale_f24 || 0}%`}
-                subtext={`${learningStats.f24_classificati || 0}/${learningStats.totale_f24 || 0}`}
-                accent="success"
-              />
-            </div>
-
-            <Link
-              to="/learning-machine"
-              style={{
-                display: 'block',
-                marginTop: 12,
-                padding: '8px 14px',
-                background: COLORS.success,
-                color: 'white',
-                borderRadius: BORDER_RADIUS.md,
-                textAlign: 'center',
-                textDecoration: 'none',
-                fontWeight: 'bold',
-                fontSize: 12,
-              }}
-            >
-              Gestisci Learning Machine
-            </Link>
-          </div>
-        )}
-      </div>
-
-      {/* Confronto Anno Precedente */}
-      {confrontoAnnuale && (
-        <div
-          style={{
-            background: COLORS.card,
-            borderRadius: BORDER_RADIUS.xl,
-            padding: 20,
-            boxShadow: SHADOWS.md,
-            marginTop: 20,
-          }}
-        >
-          <h2 style={{ fontSize: 18, margin: '0 0 15px 0', fontWeight: 'bold', color: COLORS.primaryLight }}>
-            Confronto {anno} vs {anno - 1}
-          </h2>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-              gap: 15,
-            }}
-          >
-            <StatCard
-              label="Entrate"
-              value={formatEuro(confrontoAnnuale.anno_corrente.entrate)}
-              accent="success"
-              subtext={
-                <>
-                  <span
-                    style={{
-                      color: confrontoAnnuale.variazioni_percentuali.entrate >= 0 ? COLORS.success : COLORS.danger,
-                      fontWeight: 'bold',
-                    }}
-                  >
-                    {confrontoAnnuale.variazioni_percentuali.entrate >= 0 ? '↑' : '↓'}
-                    {Math.abs(confrontoAnnuale.variazioni_percentuali.entrate)}%
-                  </span>{' '}
-                  vs {anno - 1}
-                </>
-              }
-            />
-
-            <StatCard
-              label="Uscite"
-              value={formatEuro(confrontoAnnuale.anno_corrente.uscite)}
-              accent="danger"
-              subtext={
-                <>
-                  <span
-                    style={{
-                      color: confrontoAnnuale.variazioni_percentuali.uscite <= 0 ? COLORS.success : COLORS.danger,
-                      fontWeight: 'bold',
-                    }}
-                  >
-                    {confrontoAnnuale.variazioni_percentuali.uscite >= 0 ? '↑' : '↓'}
-                    {Math.abs(confrontoAnnuale.variazioni_percentuali.uscite)}%
-                  </span>{' '}
-                  vs {anno - 1}
-                </>
-              }
-            />
-
-            <StatCard
-              label="Saldo"
-              value={formatEuro(confrontoAnnuale.anno_corrente.saldo)}
-              accent={confrontoAnnuale.anno_corrente.saldo >= 0 ? 'success' : 'danger'}
-              subtext={
-                <>
-                  <span
-                    style={{
-                      color: confrontoAnnuale.variazioni_percentuali.saldo >= 0 ? COLORS.success : COLORS.danger,
-                      fontWeight: 'bold',
-                    }}
-                  >
-                    {confrontoAnnuale.variazioni_percentuali.saldo >= 0 ? '↑' : '↓'}
-                    {Math.abs(confrontoAnnuale.variazioni_percentuali.saldo)}%
-                  </span>{' '}
-                  vs {anno - 1}
-                </>
-              }
-            />
-
-            <StatCard
-              label="N. Fatture"
-              value={confrontoAnnuale.anno_corrente.num_fatture}
-              accent="info"
-              subtext={
-                <>
-                  <span style={{ color: COLORS.textMuted, fontWeight: 'bold' }}>
-                    {confrontoAnnuale.variazioni_percentuali.num_fatture >= 0 ? '↑' : '↓'}
-                    {Math.abs(confrontoAnnuale.variazioni_percentuali.num_fatture)}%
-                  </span>{' '}
-                  vs {anno - 1}
-                </>
-              }
-            />
-          </div>
+                  <CartesianGrid strokeDasharray="3 3" stroke={COLORS.border} />
+                  <XAxis dataKey="mese" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} width={70} tickFormatter={v => formatEuro(v)} />
+                  <Tooltip formatter={v => formatEuro(v)} />
+                  <Bar dataKey="entrate" name="Entrate" radius={[4, 4, 0, 0]}>
+                    {trend.chart_data.labels.map((l, i) => (
+                      <Cell
+                        key={l}
+                        fill={mese === i + 1 ? COLORS.primary : '#93b4d8'}
+                        cursor="pointer"
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+              <Nota>Tocca una barra per filtrare le card su quel mese.</Nota>
+            </CardBox>
+          )}
         </div>
       )}
-
-      {/* Quick Actions */}
-      <div
-        style={{
-          background: COLORS.card,
-          borderRadius: BORDER_RADIUS.xl,
-          padding: 20,
-          boxShadow: SHADOWS.md,
-          marginTop: 20,
-        }}
-      >
-        <h2 style={{ fontSize: 18, margin: '0 0 4px 0', fontWeight: 'bold', color: COLORS.primaryLight }}>
-          Azioni Rapide
-        </h2>
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-            gap: 15,
-            marginTop: 15,
-          }}
-        >
-          <Link to="/contabilita" style={quickActionStyle('#e0f2fe', '#0369a1')}>
-            <span style={{ fontSize: 20 }}>🧮</span>
-            <span>IRES/IRAP</span>
-          </Link>
-          <Link to="/regole-categorizzazione" style={quickActionStyle('#fef3c7', '#b45309')}>
-            <span style={{ fontSize: 20 }}>⚙️</span>
-            <span>Regole Categorie</span>
-          </Link>
-          <Link to="/import-export" style={quickActionStyle('#e3f2fd', '#1565c0')}>
-            <span style={{ fontSize: 20 }}>📤</span>
-            <span>Import/Export</span>
-          </Link>
-          <Link to="/bilancio" style={quickActionStyle('#f3e5f5', '#7b1fa2')}>
-            <span style={{ fontSize: 20 }}>📊</span>
-            <span>Bilancio</span>
-          </Link>
-          <Link to="/controllo-mensile" style={quickActionStyle('#e8f5e9', '#2e7d32')}>
-            <span style={{ fontSize: 20 }}>📈</span>
-            <span>Controllo Mensile</span>
-          </Link>
-          <Link to="/riconciliazione/f24" style={quickActionStyle('#fff3e0', '#e65100')}>
-            <span style={{ fontSize: 20 }}>📋</span>
-            <span>F24 / Tributi</span>
-          </Link>
-          <Link to="/commercialista" style={quickActionStyle('#fce4ec', '#c2185b')}>
-            <span style={{ fontSize: 20 }}>📁</span>
-            <span>Commercialista</span>
-          </Link>
-        </div>
-
-        {/* Report PDF Section */}
-        <div style={{ marginTop: 20, paddingTop: 20, borderTop: `1px solid ${COLORS.border}` }}>
-          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: COLORS.gray[600] }}>
-            📄 Scarica Report PDF
-          </div>
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <a
-              href={`/api/contabilita/export/pdf-dichiarazione?anno=${anno}&regione=campania`}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                padding: '8px 14px',
-                background: COLORS.danger,
-                color: 'white',
-                borderRadius: BORDER_RADIUS.sm,
-                textDecoration: 'none',
-                fontSize: 13,
-                fontWeight: 500,
-              }}
-            >
-            Dichiarazione IRES/IRAP
-            </a>
-            <a
-              href={`/api/report-pdf/mensile?anno=${anno}&mese=${new Date().getMonth() + 1}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                padding: '8px 14px',
-                background: COLORS.info,
-                color: 'white',
-                borderRadius: BORDER_RADIUS.sm,
-                textDecoration: 'none',
-                fontSize: 13,
-                fontWeight: 500,
-              }}
-            >
-            Report Mensile
-            </a>
-            <a
-              href="/api/report-pdf/scadenze?giorni=30"
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                padding: '8px 14px',
-                background: COLORS.danger,
-                color: 'white',
-                borderRadius: BORDER_RADIUS.sm,
-                textDecoration: 'none',
-                fontSize: 13,
-                fontWeight: 500,
-              }}
-            >
-            Report Scadenze
-            </a>
-            <a
-              href="/api/report-pdf/magazzino"
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                padding: '8px 14px',
-                background: COLORS.success,
-                color: 'white',
-                borderRadius: BORDER_RADIUS.sm,
-                textDecoration: 'none',
-                fontSize: 13,
-                fontWeight: 500,
-              }}
-            >
-            Report Magazzino
-            </a>
-          </div>
-        </div>
-      </div>
     </PageLayout>
   );
 }
 
-// Style helper
-const quickActionStyle = (bg, color) => ({
-  padding: 15,
-  background: bg,
-  borderRadius: BORDER_RADIUS.md,
-  textDecoration: 'none',
-  color: color,
-  display: 'flex',
-  alignItems: 'center',
-  gap: 10,
-  transition: 'transform 0.2s',
-});
+/* ────────────────────────── Componenti card ────────────────────────── */
 
-// Colori per grafico a torta
-const PIE_COLORS = [
-  '#3b82f6',
-  '#10b981',
-  '#f59e0b',
-  '#ef4444',
-  '#8b5cf6',
-  '#ec4899',
-  '#06b6d4',
-  '#84cc16',
-  '#f97316',
-  '#6366f1',
-];
-
-// POS Calendar Widget Component
-function POSCalendarWidget({ data }) {
-  if (!data || !data.giorni) return null;
-
-  const mesiNomi = [
-    '',
-    'Gennaio',
-    'Febbraio',
-    'Marzo',
-    'Aprile',
-    'Maggio',
-    'Giugno',
-    'Luglio',
-    'Agosto',
-    'Settembre',
-    'Ottobre',
-    'Novembre',
-    'Dicembre',
-  ];
-  const giorniSettimana = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'];
-
-  // Trova il primo giorno del mese
-  const primoGiorno = new Date(data.giorni[0].data_pagamento);
-  const offsetInizio = (primoGiorno.getDay() + 6) % 7; // Lunedì = 0
-
-  // Prepara griglia calendario
-  const settimane = [];
-  let settimanaCorrente = new Array(offsetInizio).fill(null);
-
-  data.giorni.forEach((g, idx) => {
-    const sfasamento = g.giorni_sfasamento;
-    const isFestivo = data.festivi?.includes(g.data_pagamento);
-
-    settimanaCorrente.push({
-      ...g,
-      giorno: idx + 1,
-      sfasamento,
-      isFestivo,
-    });
-
-    if (settimanaCorrente.length === 7) {
-      settimane.push(settimanaCorrente);
-      settimanaCorrente = [];
-    }
-  });
-
-  if (settimanaCorrente.length > 0) {
-    while (settimanaCorrente.length < 7) settimanaCorrente.push(null);
-    settimane.push(settimanaCorrente);
-  }
-
-  const getColor = (sfasamento, isFestivo) => {
-    if (isFestivo) return COLORS.dangerLight;
-    if (sfasamento === 1) return COLORS.successLight;
-    if (sfasamento === 2) return COLORS.warningLight;
-    if (sfasamento >= 3) return COLORS.dangerLight;
-    return COLORS.bgAlt;
-  };
-
+function CardBox({ titolo, Icon, colore, children, fullWidth = false }) {
   return (
-    <div>
-      <div style={{ textAlign: 'center', fontWeight: 'bold', marginBottom: 10 }}>
-        {mesiNomi[data.mese]} {data.anno}
+    <div style={{ ...STILI.card, ...(fullWidth ? { gridColumn: '1 / -1' } : {}) }}>
+      <div style={STILI.cardHeader}>
+        <span style={{ ...STILI.cardIcona, background: colore }}>
+          <Icon size={16} color="#fff" />
+        </span>
+        <h3 style={STILI.cardTitolo}>{titolo}</h3>
       </div>
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(7, 1fr)',
-          gap: 4,
-          fontSize: 12,
-        }}
-      >
-        {/* Header */}
-        {giorniSettimana.map(g => (
-          <div
-            key={g}
-            style={{
-              textAlign: 'center',
-              fontWeight: 'bold',
-              padding: 6,
-              color: g === 'Sab' || g === 'Dom' ? COLORS.danger : COLORS.gray[700],
-            }}
-          >
-            {g}
-          </div>
-        ))}
-
-        {/* Giorni */}
-        {settimane.flat().map((g, idx) => (
-          <div
-            key={idx}
-            style={{
-              textAlign: 'center',
-              padding: '8px 4px',
-              background: g ? getColor(g.sfasamento, g.isFestivo) : 'transparent',
-              borderRadius: BORDER_RADIUS.sm,
-              cursor: g ? 'pointer' : 'default',
-              position: 'relative',
-            }}
-            title={
-              g
-                ? `${g.giorno_settimana_pagamento}: Accredito in ${g.giorni_sfasamento} giorni\n${g.note}`
-                : ''
-            }
-          >
-            {g && (
-              <>
-                <div style={{ fontWeight: '500' }}>{g.giorno}</div>
-                <div style={{ fontSize: 9, color: COLORS.textMuted }}>+{g.sfasamento}g</div>
-              </>
-            )}
-          </div>
-        ))}
-      </div>
+      {children}
     </div>
   );
 }
 
-// Widget Alert Limiti Giustificativi
-// Widget Scadenze Component
-function ScadenzeWidget({ scadenze }) {
-  const [pagaModal, setPagaModal] = useState(null);
-  const [processing, setProcessing] = useState(false);
-  const [paidIds, setPaidIds] = useState(new Set()); // Track locally paid items
-
-  if (!scadenze || !scadenze.scadenze || scadenze.scadenze.length === 0) return null;
-
-  // Filter out locally paid items immediately
-  const visibleScadenze = scadenze.scadenze.filter(s => !paidIds.has(s.id));
-  const urgenti = visibleScadenze.filter(s => s.urgente);
-
-  const getPriorityColor = (priorita, urgente) => {
-    if (urgente) return { bg: COLORS.dangerLight, border: COLORS.danger, text: COLORS.danger };
-    switch (priorita) {
-      case 'critica':
-        return { bg: COLORS.dangerLight, border: COLORS.danger, text: COLORS.danger };
-      case 'alta':
-        return { bg: COLORS.accentSoft, border: COLORS.accent, text: COLORS.accent };
-      case 'media':
-        return { bg: COLORS.warningLight, border: COLORS.warning, text: COLORS.warning };
-      default:
-        return { bg: COLORS.successLight, border: COLORS.success, text: COLORS.success };
-    }
-  };
-
-  const getTipoIcon = tipo => {
-    switch (tipo) {
-      case 'IVA':
-        return '🧾';
-      case 'F24':
-        return '📋';
-      case 'FATTURA':
-        return '📄';
-      case 'INPS':
-        return '🏛️';
-      default:
-        return '📌';
-    }
-  };
-
-  const formatDate = dateStr => {
-    if (!dateStr) return '-';
-    const d = new Date(dateStr);
-    return d.toLocaleDateString('it-IT', { day: '2-digit', month: 'short' });
-  };
-
-  const handlePaga = async (scadenza, metodo) => {
-    setProcessing(true);
-    try {
-      await api.post('/api/fatture-ricevute/paga-manuale', {
-        fattura_id: scadenza.fattura_id || scadenza.id,
-        scadenza_id: scadenza.id,
-        importo: Math.abs(scadenza.importo),
-        metodo: metodo,
-        data_pagamento: new Date().toISOString().split('T')[0],
-        fornitore: scadenza.fornitore || '',
-        numero_fattura: scadenza.numero_fattura || '',
-      });
-      setPagaModal(null);
-      // Rimuovi immediatamente dalla lista locale — nessun reload
-      setPaidIds(prev => new Set([...prev, scadenza.id]));
-    } catch (e) {
-      alert('Errore pagamento: ' + (e.response?.data?.detail || e.message));
-    } finally {
-      setProcessing(false);
-    }
-  };
-
-  if (visibleScadenze.length === 0) return null;
-
+function ValoreGrande({ valore, colore }) {
   return (
-    <div
-      style={{
-        background: COLORS.card,
-        borderRadius: BORDER_RADIUS.xl,
-        padding: 20,
-        marginBottom: 20,
-        border: urgenti.length > 0 ? `2px solid ${COLORS.danger}` : `1px solid ${COLORS.border}`,
-        boxShadow: SHADOWS.sm,
-      }}
-    >
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: 15,
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 24 }}>📅</span>
-          <div>
-            <div style={{ fontWeight: 'bold', fontSize: 16 }}>Prossime Scadenze</div>
-            <div style={{ fontSize: 12, color: COLORS.textMuted }}>
-              {scadenze.totale} scadenze nei prossimi 30 giorni
-              {urgenti.length > 0 && (
-                <span style={{ color: COLORS.danger, fontWeight: 'bold', marginLeft: 8 }}>
-                  ⚠️ {urgenti.length} urgenti
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-        {scadenze.prossima_scadenza && (
-          <div
-            style={{
-              textAlign: 'right',
-              background: getPriorityColor(
-                scadenze.prossima_scadenza.priorita,
-                scadenze.prossima_scadenza.urgente
-              ).bg,
-              padding: '8px 12px',
-              borderRadius: BORDER_RADIUS.md,
-            }}
-          >
-            <div style={{ fontSize: 11, color: COLORS.textMuted }}>Prossima</div>
-            <div
-              style={{
-                fontWeight: 'bold',
-                color: getPriorityColor(
-                  scadenze.prossima_scadenza.priorita,
-                  scadenze.prossima_scadenza.urgente
-                ).text,
-              }}
-            >
-              {scadenze.prossima_scadenza.giorni_mancanti === 0
-                ? 'OGGI'
-                : scadenze.prossima_scadenza.giorni_mancanti === 1
-                  ? 'DOMANI'
-                  : `tra ${scadenze.prossima_scadenza.giorni_mancanti} giorni`}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Tabella scadenze */}
-      <TableWrap>
-        <Table style={{ fontSize: 11 }}>
-          <thead>
-            <tr style={{ borderBottom: `2px solid ${COLORS.border}`, background: COLORS.bgAlt }}>
-              <Th align="center" style={{ padding: '6px 8px', fontSize: 10, width: 60 }}>Tipo</Th>
-              <Th align="center" style={{ padding: '6px 8px', fontSize: 10, width: 80 }}>Importo</Th>
-              <Th align="center" style={{ padding: '6px 8px', fontSize: 10, width: 60 }}>Data</Th>
-              <Th align="center" style={{ padding: '6px 8px', fontSize: 10, width: 50 }}>Giorni</Th>
-              <Th align="center" style={{ padding: '6px 8px', fontSize: 10 }}>Descrizione</Th>
-              <Th align="center" style={{ padding: '6px 8px', fontSize: 10, width: 50 }}>Azioni</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {visibleScadenze.slice(0, 6).map((s, idx) => {
-              const colors = getPriorityColor(s.priorita, s.urgente);
-              return (
-                <tr
-                  key={s.id || `scad-${idx}`}
-                  style={{
-                    background: colors.bg,
-                    borderLeft: `3px solid ${colors.border}`,
-                    borderBottom: `1px solid ${COLORS.gray[100]}`,
-                  }}
-                >
-                  <Td align="center" style={{ padding: '6px 8px' }}>
-                    <span
-                      style={{
-                        padding: '2px 6px',
-                        background: colors.border + '30',
-                        borderRadius: BORDER_RADIUS.sm,
-                        color: colors.text,
-                        fontWeight: '600',
-                        fontSize: 10,
-                      }}
-                    >
-                      {s.tipo}
-                    </span>
-                  </Td>
-                  <Td
-                    align="center"
-                    mono
-                    style={{ padding: '6px 8px', fontWeight: 'bold', color: colors.text }}
-                  >
-                    {s.importo > 0 ? formatEuro(s.importo) : '-'}
-                  </Td>
-                  <Td align="center" style={{ padding: '6px 8px', color: COLORS.textMuted }}>
-                    {formatDate(s.data)}
-                  </Td>
-                  <Td
-                    align="center"
-                    style={{
-                      padding: '6px 8px',
-                      fontWeight: 'bold',
-                      color: s.giorni_mancanti <= 3 ? COLORS.danger : COLORS.textMuted,
-                    }}
-                  >
-                    {s.giorni_mancanti === 0
-                      ? 'OGGI'
-                      : s.giorni_mancanti === 1
-                        ? '1g'
-                        : s.giorni_mancanti < 0
-                          ? `${s.giorni_mancanti}g`
-                          : `${s.giorni_mancanti}g`}
-                  </Td>
-                  <Td
-                    align="center"
-                    style={{
-                      padding: '6px 8px',
-                      color: COLORS.textMuted,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                      maxWidth: 180,
-                    }}
-                  >
-                    {s.fornitore || s.descrizione || s.numero_fattura || ''}
-                  </Td>
-                  <Td align="center" style={{ padding: '6px 8px' }}>
-                    <RowActions style={{ justifyContent: 'center' }}>
-                      {(s.fattura_id || s.source === 'fattura') && (
-                        <a
-                          href={`/api/fatture-ricevute/fattura/${s.fattura_id || s.id}/view-assoinvoice`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            width: 28,
-                            height: 28,
-                            background: COLORS.infoLight,
-                            color: COLORS.info,
-                            borderRadius: BORDER_RADIUS.sm,
-                            fontSize: 10,
-                            textDecoration: 'none',
-                          }}
-                          title="Vedi"
-                        >
-                          📄
-                        </a>
-                      )}
-                      <RowActionButton
-                        variant="success"
-                        onClick={() => setPagaModal(s)}
-                        title="Paga"
-                      >
-                        ✓
-                      </RowActionButton>
-                    </RowActions>
-                  </Td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </Table>
-      </TableWrap>
-
-      {scadenze.totale > 6 && (
-        <div style={{ textAlign: 'center', marginTop: 12 }}>
-          <Link
-            to="/scadenze"
-            style={{
-              fontSize: 13,
-              color: COLORS.info,
-              textDecoration: 'none',
-            }}
-          >
-            Vedi tutte le {scadenze.totale} scadenze →
-          </Link>
-        </div>
-      )}
-
-      {/* Modal Pagamento */}
-      {pagaModal && (
-        <div
-          onClick={() => setPagaModal(null)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000,
-          }}
-        >
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{
-              background: COLORS.card,
-              borderRadius: BORDER_RADIUS.xl,
-              padding: 24,
-              maxWidth: 400,
-              width: '90%',
-              boxShadow: SHADOWS.modal,
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: COLORS.text }}>
-                Registra Pagamento
-              </h3>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setPagaModal(null)}
-                aria-label="Chiudi"
-                style={{
-                  width: 32,
-                  height: 32,
-                  flexShrink: 0,
-                  padding: 0,
-                  background: COLORS.bgAlt,
-                  color: COLORS.gray[600],
-                  fontSize: 16,
-                }}
-              >
-                ✕
-              </Button>
-            </div>
-
-            <div
-              style={{
-                background: COLORS.bgAlt,
-                borderRadius: BORDER_RADIUS.md,
-                padding: 16,
-                marginBottom: 20,
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                <span style={{ color: COLORS.textMuted, fontSize: 13 }}>Tipo:</span>
-                <span style={{ fontWeight: 600 }}>
-                  {pagaModal.tipo} {pagaModal.numero_fattura || ''}
-                </span>
-              </div>
-              {pagaModal.fornitore && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                  <span style={{ color: COLORS.textMuted, fontSize: 13 }}>Fornitore:</span>
-                  <span
-                    style={{
-                      fontWeight: 500,
-                      maxWidth: 200,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {pagaModal.fornitore}
-                  </span>
-                </div>
-              )}
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                <span style={{ color: COLORS.textMuted, fontSize: 13 }}>Scadenza:</span>
-                <span style={{ fontWeight: 500 }}>{formatDate(pagaModal.data)}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: COLORS.textMuted, fontSize: 13 }}>Importo:</span>
-                <span style={{ fontWeight: 700, color: COLORS.danger, fontSize: 16 }}>
-                  {formatEuro(pagaModal.importo)}
-                </span>
-              </div>
-            </div>
-
-            <p style={{ fontSize: 14, color: COLORS.textMuted, marginBottom: 16 }}>
-              Scegli il metodo di pagamento. Il movimento verrà registrato in Prima Nota.
-            </p>
-
-            <div style={{ display: 'flex', gap: 12, marginBottom: 16, justifyContent: 'center' }}>
-              <Button
-                variant="warning"
-                size="lg"
-                onClick={() => handlePaga(pagaModal, 'cassa')}
-                disabled={processing}
-                style={{
-                  flexDirection: 'column',
-                  gap: 4,
-                  minWidth: 140,
-                  padding: '14px 24px',
-                }}
-              >
-                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>💵 CASSA</span>
-                <span style={{ fontSize: 10, opacity: 0.9 }}>(pagato subito)</span>
-              </Button>
-              <Button
-                variant="info"
-                size="lg"
-                onClick={() => handlePaga(pagaModal, 'banca')}
-                disabled={processing}
-                style={{
-                  flexDirection: 'column',
-                  gap: 4,
-                  minWidth: 140,
-                  padding: '14px 24px',
-                }}
-              >
-                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>🏦 BANCA</span>
-                <span style={{ fontSize: 10, opacity: 0.9 }}>(da riconciliare)</span>
-              </Button>
-            </div>
-
-            <p style={{ fontSize: 12, color: COLORS.textSubtle, marginBottom: 12, textAlign: 'center' }}>
-              💡 Se paghi in <strong>CASSA</strong> la scadenza viene saldata immediatamente.
-              <br />
-              Se paghi in <strong>BANCA</strong> verrà riconciliata quando troveremo il movimento
-              nell&apos;estratto conto.
-            </p>
-
-            <Button
-              variant="secondary"
-              onClick={() => setPagaModal(null)}
-              style={{
-                width: '100%',
-                background: COLORS.bgAlt,
-                color: COLORS.textMuted,
-                border: 'none',
-              }}
-            >
-              Annulla
-            </Button>
-          </div>
-        </div>
-      )}
+    <div style={{ fontSize: 28, fontWeight: 800, color: valore == null ? COLORS.textMuted : colore }}>
+      {valore == null ? '—' : formatEuro(valore)}
     </div>
   );
 }
 
-// ===================================================
-// WIDGET: Alert Pagamenti DA_PAGARE (Stipendi + F24)
-// ===================================================
-function AlertPagamentiWidget({ data }) {
-  const { buste = [], f24list = [], totStip = 0, totF24 = 0 } = data;
-  const totale = totStip + totF24;
-
+function Riga({ label, valore, raw = false }) {
   return (
-    <div
-      data-testid="widget-alert-pagamenti"
-      style={{
-        background: COLORS.dangerLight,
-        border: `1px solid ${COLORS.warning}`,
-        borderLeft: `4px solid ${COLORS.warning}`,
-        borderRadius: BORDER_RADIUS.lg,
-        padding: '14px 18px',
-        marginBottom: 12,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        flexWrap: 'wrap',
-        gap: 12,
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: '1 1 300px' }}>
-        <span style={{ fontSize: 22 }}>📋</span>
-        <div>
-          <div style={{ fontWeight: 700, fontSize: 14, color: COLORS.warning }}>
-            Pagamenti in attesa di riconciliazione bancaria
-          </div>
-          <div
-            style={{
-              fontSize: 12,
-              color: COLORS.warning,
-              marginTop: 2,
-              display: 'flex',
-              gap: 16,
-              flexWrap: 'wrap',
-            }}
-          >
-            {buste.length > 0 && (
-              <span>
-                <strong>{buste.length}</strong> {buste.length === 1 ? 'stipendio' : 'stipendi'} —{' '}
-                {formatEuro(totStip)}
-              </span>
-            )}
-            {f24list.length > 0 && (
-              <span>
-                <strong>{f24list.length}</strong> {f24list.length === 1 ? 'F24' : 'F24'} —{' '}
-                {formatEuro(totF24)}
-              </span>
-            )}
-            <span style={{ color: COLORS.warning, fontWeight: 700 }}>Totale: {formatEuro(totale)}</span>
-          </div>
-          <div style={{ fontSize: 11, color: COLORS.warning, marginTop: 4 }}>
-            Carica l'estratto conto in "Import Documenti" per riconciliare automaticamente
-          </div>
-        </div>
-      </div>
-      <Link
-        to="/riconciliazione/stipendi"
-        data-testid="link-vai-paghe"
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 6,
-          padding: '8px 16px',
-          background: COLORS.warning,
-          color: 'white',
-          borderRadius: BORDER_RADIUS.md,
-          textDecoration: 'none',
-          fontSize: 13,
-          fontWeight: 700,
-          whiteSpace: 'nowrap',
-          boxShadow: SHADOWS.sm,
-        }}
-      >
-            Vai a Paghe
-      </Link>
+    <div style={STILI.riga}>
+      <span style={{ color: COLORS.textMuted }}>{label}</span>
+      <span style={{ fontWeight: 600, color: COLORS.text }}>
+        {valore == null ? '—' : raw ? valore : formatEuro(valore)}
+      </span>
     </div>
   );
 }
+
+function Nota({ children }) {
+  return <div style={STILI.nota}>{children}</div>;
+}
+
+/* ────────────────────────────── Stili ────────────────────────────── */
+
+const STILI = {
+  barraFiltri: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 16,
+    background: COLORS.card,
+    border: `1px solid ${COLORS.border}`,
+    borderRadius: 10,
+    padding: '12px 16px',
+    marginBottom: 12,
+  },
+  etichetta: {
+    fontSize: 11,
+    fontWeight: 700,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    color: COLORS.textMuted,
+  },
+  selectMese: {
+    padding: '7px 10px',
+    borderRadius: 8,
+    border: `1px solid ${COLORS.border}`,
+    background: '#fff',
+    color: COLORS.text,
+    fontWeight: 700,
+    fontSize: 14,
+    minWidth: 140,
+  },
+  periodoAttivo: {
+    marginLeft: 'auto',
+    fontSize: 13,
+    color: COLORS.textMuted,
+  },
+  domandeWrap: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  bottoneDomanda: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+    padding: '7px 12px',
+    borderRadius: 20,
+    border: `1px solid ${COLORS.border}`,
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: 'pointer',
+    transition: 'all 140ms ease',
+  },
+  rispostaBox: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 14,
+    background: COLORS.card,
+    border: `1px solid ${COLORS.border}`,
+    borderRadius: 10,
+    padding: '14px 18px',
+    marginBottom: 14,
+  },
+  avvisoErrori: {
+    padding: '8px 12px',
+    background: '#fffbeb',
+    border: '1px solid #fcd34d',
+    borderRadius: 8,
+    color: '#92400e',
+    fontSize: 13,
+    marginBottom: 12,
+  },
+  loading: {
+    padding: 40,
+    textAlign: 'center',
+    color: COLORS.textMuted,
+  },
+  griglia: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+    gap: 14,
+  },
+  card: {
+    background: COLORS.card,
+    border: `1px solid ${COLORS.border}`,
+    borderRadius: 12,
+    padding: 16,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+  },
+  cardHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 4,
+  },
+  cardIcona: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  cardTitolo: {
+    margin: 0,
+    fontSize: 15,
+    fontWeight: 700,
+    color: COLORS.text,
+  },
+  riga: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    fontSize: 13,
+    paddingTop: 2,
+  },
+  nota: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    marginTop: 4,
+  },
+  rigaScadenza: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    fontSize: 13,
+    padding: '6px 8px',
+    borderRadius: 6,
+    background: COLORS.bgAlt,
+    flexWrap: 'wrap',
+  },
+  tagTipo: {
+    fontSize: 11,
+    fontWeight: 700,
+    padding: '2px 7px',
+    borderRadius: 12,
+    background: COLORS.primarySoft,
+    color: COLORS.primary,
+  },
+  tagUrgente: {
+    fontSize: 11,
+    fontWeight: 700,
+    padding: '2px 7px',
+    borderRadius: 12,
+    background: COLORS.dangerLight,
+    color: COLORS.danger,
+  },
+};
