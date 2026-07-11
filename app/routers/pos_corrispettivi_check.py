@@ -753,18 +753,28 @@ async def _carica_pos_manuale_per_data(db) -> Dict[str, float]:
 async def _carica_accrediti_banca_pos(db, data_da: str, data_a: str) -> Dict[str, float]:
     """Carica gli accrediti POS in banca dall'estratto conto.
 
-    Sono i movimenti di tipo 'entrata' in prima_nota_banca che hanno caratteristica
-    di essere accrediti POS (non chiusure manuali, non altri movimenti). Si
-    identifica con descrizione/categoria o con causale bancaria specifica.
+    Sono i movimenti in ENTRATA di prima_nota_banca che sono accrediti del
+    provider POS (non chiusure manuali, non altri movimenti).
 
-    Strategia conservativa: prendo solo movimenti che hanno esplicitamente
-    POS/MONETICA nella descrizione o nella categoria — niente regex generiche
-    per evitare falsi positivi (bug risolto il 22/04/2026).
+    Fonte reale degli accrediti Ceraldi: NUMIA (unico provider POS attivo;
+    SumUp/Satispay NON sono usati — comparivano solo in una vecchia logica).
+    Prima questo caricatore cercava solo POS/MONETICA/NEXI/PAGOBANCOMAT e non
+    "NUMIA", e filtrava sul campo esatto tipo="entrata": così NON riconosceva
+    gli accrediti NUMIA dell'estratto conto e la FASE 2 li segnava tutti come
+    "mancanti" (falso disavanzo di ~126k su 41 giorni, 12/07/2026).
+
+    Correzioni:
+      1) aggiunta la keyword "NUMIA" (provider reale degli accrediti);
+      2) entrate identificate per importo>0 (come gli altri loader del file),
+         non per il campo "tipo" che alcune fonti non valorizzano.
+    Restano le keyword generiche storiche per retrocompatibilità con eventuali
+    diciture bancarie diverse; l'esclusione delle chiusure manuali evita di
+    ricontare i POS interni come accrediti (bug falsi positivi del 22/04/2026).
     """
     out: Dict[str, float] = {}
 
     keywords_pos = [
-        "POS ", "MONETICA", "MULTIBANCA POS", "NEXI", "PAGOBANCOMAT",
+        "NUMIA", "POS ", "MONETICA", "MULTIBANCA POS", "NEXI", "PAGOBANCOMAT",
         "INCASSO POS", "ACCREDITO POS", "BANCOMAT"
     ]
 
@@ -773,12 +783,14 @@ async def _carica_accrediti_banca_pos(db, data_da: str, data_a: str) -> Dict[str
 
     query = {
         "data": {"$gte": data_da, "$lte": data_a},
-        "tipo": "entrata",
+        # Entrate: importo positivo (robusto — non dipende dal campo "tipo",
+        # che non tutte le fonti di prima_nota_banca valorizzano)
+        "importo": {"$gt": 0},
         # Escludi le chiusure manuali (non sono accrediti bancari reali)
         "source": {"$nin": ["chiusura_pos_mobile", "corrispettivo_pos", "manuale_da_xml"]},
         "$or": [
             {"descrizione": {"$regex": regex_or, "$options": "i"}},
-            {"categoria": {"$regex": "pos|monetica", "$options": "i"}},
+            {"categoria": {"$regex": "pos|monetica|numia", "$options": "i"}},
         ],
     }
 

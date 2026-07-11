@@ -233,6 +233,16 @@ calendario non è un'anomalia e non genera mai avvisi.
    - discrepanza di importo banca vs atteso;
    - POS manuale ≠ POS dell'XML del registratore oltre tolleranza.
 
+**Provider degli accrediti POS: NUMIA.** Gli accrediti del POS in banca arrivano
+dal provider **NUMIA** (SumUp/Satispay non sono usati). La FASE 2 (POS reale vs
+Banca) riconosce come accredito i movimenti in entrata dell'estratto conto la cui
+descrizione/categoria contiene "NUMIA" (o le diciture bancarie POS generiche).
+Le entrate sono identificate per **importo positivo**, non per un campo interno.
+Nota (fix 12/07/2026): prima il caricatore non cercava la parola "NUMIA" e
+filtrava su un campo `tipo` non sempre valorizzato, quindi non agganciava gli
+accrediti NUMIA e la card "Accrediti banca mancanti" mostrava un falso disavanzo
+(soldi in realtà incassati e presenti in banca).
+
 ---
 
 ## 6. Riconciliazione bancaria (estratto conto ↔ prima nota banca)
