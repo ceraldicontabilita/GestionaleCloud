@@ -22,7 +22,7 @@ async def handler_classifica_cdc(payload: Dict[str, Any], db) -> Dict[str, Any]:
 
     try:
         from app.services.learning_machine_cdc import (
-            classifica_fattura_per_centro_costo,
+            classifica_fattura_con_learning,
             calcola_importi_fiscali,
         )
 
@@ -36,8 +36,11 @@ async def handler_classifica_cdc(payload: Dict[str, Any], db) -> Dict[str, Any]:
         imponibile     = float(payload.get("imponibile") or 0)
         iva            = float(payload.get("iva") or 0)
 
-        cdc_id, cdc_config, confidence = classifica_fattura_per_centro_costo(
-            fornitore_nome, descrizione, righe
+        # MOTORE UNICO col learning: consulta PRIMA le configurazioni
+        # dell'utente (fornitori_keywords), poi la tabella statica. Prima
+        # le fatture nuove ignoravano ciò che l'utente aveva insegnato.
+        cdc_id, cdc_config, confidence, fonte = await classifica_fattura_con_learning(
+            db, fornitore_nome, descrizione, righe
         )
 
         importi = calcola_importi_fiscali(imponibile, iva, cdc_config)
@@ -46,6 +49,7 @@ async def handler_classifica_cdc(payload: Dict[str, Any], db) -> Dict[str, Any]:
             "centro_costo_id":               cdc_id,
             "centro_costo_nome":             cdc_config.get("nome", ""),
             "classificazione_confidence":    confidence,
+            "classificazione_fonte":         fonte,
             "imponibile_deducibile_ires":    importi.get("imponibile_deducibile_ires", 0),
             "imponibile_indeducibile_ires":  importi.get("imponibile_indeducibile_ires", 0),
             "iva_detraibile":                importi.get("iva_detraibile", 0),

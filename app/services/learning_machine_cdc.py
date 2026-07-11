@@ -660,10 +660,100 @@ def classifica_fattura_per_centro_costo(
     return "99_ALTRI_COSTI", CENTRI_COSTO["99_ALTRI_COSTI"], 0.1
 
 
+def normalizza_nome_fornitore(nome: str) -> str:
+    """Nome fornitore normalizzato per il match con le keywords personalizzate.
+
+    MOTORE UNICO: la stessa normalizzazione usata dal router
+    fornitori_learning (che la importa da qui) e dal classificatore.
+    """
+    if not nome:
+        return ""
+    nome = nome.lower().strip()
+    for suffix in [" s.r.l.", " srl", " s.p.a.", " spa", " s.a.s.", " sas",
+                   " s.n.c.", " snc", " srls", " s.r.l.s.", " unipersonale",
+                   " di ", " soc. coop.", " coop.", " onlus"]:
+        nome = nome.replace(suffix, "")
+    return nome.strip()
+
+
+def risolvi_centro_costo(valore: str) -> Tuple[str, Dict[str, Any]]:
+    """Risolve un centro di costo dalla chiave interna O dal codice bilancio
+    (es. '1.1_CAFFE_BEVANDE_CALDE' oppure 'B6.1.1'). (None, None) se ignoto."""
+    if not valore:
+        return None, None
+    if valore in CENTRI_COSTO:
+        return valore, CENTRI_COSTO[valore]
+    for key, cfg in CENTRI_COSTO.items():
+        if cfg.get("codice") == valore:
+            return key, cfg
+    return None, None
+
+
+async def classifica_fattura_con_learning(
+    db,
+    supplier_name: str,
+    descrizione: str = "",
+    linee_fattura: List[Dict] = None,
+) -> Tuple[str, Dict[str, Any], float, str]:
+    """Classificazione COMPLETA di una fattura: prima la conoscenza APPRESA
+    (fornitori_keywords configurati dall'utente nella pagina Learning
+    Machine), poi la tabella statica come ripiego.
+
+    Prima di questa funzione l'import usava SOLO la tabella statica: le
+    configurazioni dell'utente non venivano mai consultate per le fatture
+    nuove — "il learning non impara" (segnalato l'11/07).
+
+    Ritorna (cdc_id, cdc_config, confidence, fonte) dove fonte è
+    'keywords_personalizzate' | 'keywords_apprese' | 'tabella_statica'.
+    """
+    nome_norm = normalizza_nome_fornitore(supplier_name)
+    config = None
+    if db is not None and nome_norm:
+        try:
+            # La collection contiene DUE schemi per storia: i salvataggi
+            # della pagina (fornitore_nome / fornitore_nome_normalizzato)
+            # e i documenti auto-creati dall'event bus (ragione_sociale).
+            # Il match deve accettarli entrambi.
+            candidati = await db["fornitori_keywords"].find(
+                {}, {"_id": 0, "fornitore_nome": 1, "ragione_sociale": 1,
+                     "fornitore_nome_normalizzato": 1, "keywords": 1,
+                     "centro_costo_suggerito": 1}
+            ).to_list(5000)
+            for c in candidati:
+                norm = (c.get("fornitore_nome_normalizzato")
+                        or normalizza_nome_fornitore(
+                            c.get("fornitore_nome") or c.get("ragione_sociale") or ""))
+                if norm and (norm in nome_norm or nome_norm in norm):
+                    config = c
+                    break
+        except Exception as e:
+            logger.warning(f"Learning: lookup fornitori_keywords fallito: {e}")
+
+    if config:
+        # 1) centro di costo scelto dall'utente: vince su tutto
+        cdc_id, cdc_config = risolvi_centro_costo(config.get("centro_costo_suggerito"))
+        if cdc_config:
+            return cdc_id, cdc_config, 0.95, "keywords_personalizzate"
+        # 2) keywords configurate: pesano nella classificazione standard
+        keywords = config.get("keywords") or []
+        if keywords:
+            testo = f"{descrizione or ''} {' '.join(keywords)}"
+            cdc_id, cdc_config, conf = classifica_fattura_per_centro_costo(
+                supplier_name, testo, linee_fattura
+            )
+            if cdc_id != "99_ALTRI_COSTI":
+                return cdc_id, cdc_config, max(conf, 0.6), "keywords_apprese"
+
+    cdc_id, cdc_config, conf = classifica_fattura_per_centro_costo(
+        supplier_name, descrizione, linee_fattura
+    )
+    return cdc_id, cdc_config, conf, "tabella_statica"
+
+
 def classifica_f24_per_tributo(codice_tributo: str) -> Tuple[str, Dict[str, Any]]:
     """
     Classifica un versamento F24 in base al codice tributo.
-    
+
     Returns:
         Tuple[centro_costo_id, config_centro]
     """

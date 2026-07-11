@@ -37,18 +37,21 @@ class FornitoreKeywordsResponse(BaseModel):
     updated_at: str
 
 
-def normalizza_nome_fornitore(nome: str) -> str:
-    """Normalizza il nome del fornitore per match fuzzy"""
-    if not nome:
-        return ""
-    # Rimuovi caratteri speciali e normalizza
-    nome = nome.lower().strip()
-    # Rimuovi suffissi comuni
-    for suffix in [" s.r.l.", " srl", " s.p.a.", " spa", " s.a.s.", " sas", 
-                   " s.n.c.", " snc", " srls", " s.r.l.s.", " unipersonale",
-                   " di ", " soc. coop.", " coop.", " onlus"]:
-        nome = nome.replace(suffix, "")
-    return nome.strip()
+# MOTORE UNICO: la normalizzazione vive nel servizio (usata anche dal
+# classificatore all'import) — qui solo il re-export per compatibilità.
+from app.services.learning_machine_cdc import normalizza_nome_fornitore  # noqa: E402
+
+
+def _nome_da_config(config: Dict[str, Any]) -> str:
+    """Nome fornitore da un documento fornitori_keywords, QUALUNQUE schema.
+
+    Nella collection convivono due schemi per storia: i salvataggi della
+    pagina Learning ({fornitore_nome, fornitore_nome_normalizzato}) e i
+    documenti auto-creati dall'event bus ({ragione_sociale, fornitore_id}).
+    L'accesso diretto config["fornitore_nome"] mandava in errore la
+    riclassifica appena c'era un documento auto (bug segnalato l'11/07:
+    'la riclassifica non funziona')."""
+    return (config.get("fornitore_nome") or config.get("ragione_sociale") or "").strip()
 
 
 @router.get("/stats")
@@ -57,9 +60,16 @@ async def get_learning_stats() -> Dict[str, Any]:
     Statistiche complete della Learning Machine.
     """
     db = Database.get_db()
-    
-    # Conta fornitori configurati
-    fornitori_con_keywords = await db[COLL_FORNITORI_KEYWORDS].count_documents({})
+
+    # Conta i fornitori DAVVERO configurati (con centro di costo scelto o
+    # keywords): i documenti auto-creati dall'event bus senza configurazione
+    # gonfiavano il contatore "CONFIGURATI" senza classificare nulla.
+    fornitori_con_keywords = await db[COLL_FORNITORI_KEYWORDS].count_documents({
+        "$or": [
+            {"centro_costo_suggerito": {"$nin": [None, ""]}},
+            {"keywords.0": {"$exists": True}},
+        ]
+    })
     
     # Conta fornitori totali (da fatture)
     fornitori_unici = await db["invoices"].distinct("supplier_name")
@@ -99,11 +109,23 @@ async def lista_fornitori_keywords() -> Dict[str, Any]:
     Lista tutti i fornitori con keywords configurate
     """
     db = Database.get_db()
-    
+
     fornitori = await db[COLL_FORNITORI_KEYWORDS].find(
         {}, {"_id": 0}
     ).sort("fatture_count", -1).to_list(5000)
-    
+
+    # Normalizza i DUE schemi presenti in collection: i documenti auto-creati
+    # dall'event bus (ragione_sociale) escono con gli stessi campi dei
+    # salvataggi della pagina, così il frontend li mostra correttamente.
+    for f in fornitori:
+        if not f.get("fornitore_nome"):
+            f["fornitore_nome"] = f.get("ragione_sociale") or ""
+        if not f.get("fornitore_nome_normalizzato"):
+            f["fornitore_nome_normalizzato"] = normalizza_nome_fornitore(f["fornitore_nome"])
+        f.setdefault("keywords", [])
+        f.setdefault("centro_costo_suggerito", None)
+        f["configurato"] = bool(f.get("centro_costo_suggerito") or f.get("keywords"))
+
     return {
         "totale": len(fornitori),
         "fornitori": fornitori
@@ -121,10 +143,19 @@ async def fornitori_non_classificati(limit: int = 50) -> Dict[str, Any]:
     # Trova fornitori già configurati
     configurati = await db[COLL_FORNITORI_KEYWORDS].distinct("fornitore_nome_normalizzato")
     
-    # Aggrega fornitori non classificati
+    # Aggrega fornitori non classificati.
+    # NB: una fattura è "da classificare" anche quando NON ha alcun centro
+    # di costo (handler mai girato / import vecchio) — prima si contavano
+    # solo quelle marcate esplicitamente 'Altri costi non classificati' e
+    # il contatore 'DA CLASSIFICARE' risultava bugiardo (2 su centinaia).
     pipeline = [
         {"$match": {
-            "centro_costo_nome": "Altri costi non classificati",
+            "$or": [
+                {"centro_costo_nome": "Altri costi non classificati"},
+                {"centro_costo_id": {"$exists": False}},
+                {"centro_costo_id": None},
+                {"centro_costo_id": ""},
+            ],
             "supplier_name": {"$nin": [None, ""]}
         }},
         {"$group": {
@@ -192,14 +223,17 @@ async def salva_fornitore_keywords(data: FornitoreKeywordsCreate) -> Dict[str, A
     db = Database.get_db()
     
     nome_norm = normalizza_nome_fornitore(data.fornitore_nome)
-    
-    # Conta fatture per questo fornitore
+
+    # Conta fatture per questo fornitore (re.escape: i nomi con punti,
+    # parentesi o '+' rompevano la regex e il salvataggio falliva)
+    import re as _re
+    nome_regex = _re.escape(data.fornitore_nome)
     fatture_count = await db["invoices"].count_documents({
-        "supplier_name": {"$regex": data.fornitore_nome, "$options": "i"}
+        "supplier_name": {"$regex": nome_regex, "$options": "i"}
     })
     totale = 0
     pipeline = [
-        {"$match": {"supplier_name": {"$regex": data.fornitore_nome, "$options": "i"}}},
+        {"$match": {"supplier_name": {"$regex": nome_regex, "$options": "i"}}},
         {"$group": {"_id": None, "tot": {"$sum": "$total_amount"}}}
     ]
     agg = await db["invoices"].aggregate(pipeline).to_list(1)
@@ -269,28 +303,27 @@ async def riclassifica_con_keywords_personalizzate() -> Dict[str, Any]:
             "message": "Nessun fornitore configurato. Aggiungi prima le keywords ai fornitori."
         }
     
-    # Import classificatore
-    import importlib
+    import re
     import app.services.learning_machine_cdc as lm
-    importlib.reload(lm)
-    
+
     riclassificate = 0
+    saltati_non_configurati = 0
     dettaglio = []
-    
+
     for config in keywords_config:
-        fornitore_nome = config["fornitore_nome"]
+        # Schema-tolerant: config["fornitore_nome"] esplodeva (KeyError →
+        # errore 500 sul bottone 'Riclassifica Fatture') appena in collection
+        # c'era un documento auto-creato dall'event bus.
+        fornitore_nome = _nome_da_config(config)
         keywords = config.get("keywords", [])
         centro_suggerito = config.get("centro_costo_suggerito")
-        
-        if not keywords:
+
+        if not fornitore_nome or (not keywords and not centro_suggerito):
+            saltati_non_configurati += 1
             continue
-        
-        # Trova fatture di questo fornitore in "Altri costi" o non classificate
-        # Usa regex per match parziale e case-insensitive
-        # Escape caratteri speciali nel nome per regex
-        import re
+
         nome_escaped = re.escape(fornitore_nome)
-        
+
         fatture = await db["invoices"].find({
             "$and": [
                 {"$or": [
@@ -305,34 +338,25 @@ async def riclassifica_con_keywords_personalizzate() -> Dict[str, Any]:
                 ]}
             ]
         }).to_list(5000)
-        
+
+        ultimo_cdc_nome = None
+        cambiate = 0
         for fatt in fatture:
-            # Usa le keywords per determinare il centro di costo
-            # Prima prova con il centro suggerito
-            cdc_id = None
-            cdc_config = None
-            
-            if centro_suggerito:
-                # Cerca il centro di costo per chiave interna o per codice
-                if centro_suggerito in lm.CENTRI_COSTO:
-                    cdc_id = centro_suggerito
-                    cdc_config = lm.CENTRI_COSTO[cdc_id]
-                else:
-                    # Cerca per codice (es. B7.5.3)
-                    for key, cfg in lm.CENTRI_COSTO.items():
-                        if cfg.get("codice") == centro_suggerito:
-                            cdc_id = key
-                            cdc_config = cfg
-                            break
-            
+            # 1) centro di costo scelto dall'utente (chiave o codice —
+            #    risolutore UNICO del servizio)
+            cdc_id, cdc_config = lm.risolvi_centro_costo(centro_suggerito)
+
             if not cdc_config:
-                # Altrimenti usa la classificazione standard con le keywords
+                # 2) classificazione standard pesata con le keywords
                 testo = " ".join(keywords)
                 cdc_id, cdc_config, _ = lm.classifica_fattura_per_centro_costo(
                     fornitore_nome, testo, []
                 )
-            
-            # Aggiorna fattura
+
+            # Se il risultato è di nuovo "Altri costi", non è una riclassifica
+            if cdc_id == "99_ALTRI_COSTI" and fatt.get("centro_costo_id"):
+                continue
+
             await db["invoices"].update_one(
                 {"_id": fatt["_id"]},
                 {"$set": {
@@ -342,17 +366,20 @@ async def riclassifica_con_keywords_personalizzate() -> Dict[str, Any]:
                 }}
             )
             riclassificate += 1
-        
-        if fatture:
+            cambiate += 1
+            ultimo_cdc_nome = cdc_config["nome"]
+
+        if cambiate:
             dettaglio.append({
                 "fornitore": fornitore_nome,
-                "fatture_riclassificate": len(fatture),
-                "nuovo_centro_costo": cdc_config["nome"] if fatture else None
+                "fatture_riclassificate": cambiate,
+                "nuovo_centro_costo": ultimo_cdc_nome
             })
-    
+
     return {
         "success": True,
         "totale_riclassificate": riclassificate,
+        "fornitori_saltati_non_configurati": saltati_non_configurati,
         "dettaglio": dettaglio
     }
 
@@ -687,18 +714,11 @@ async def riclassifica_singolo_f24(f24_id: str, data: Dict[str, Any] = Body(...)
     centro_costo_id = data.get("centro_costo_id")
     if not centro_costo_id:
         raise HTTPException(status_code=400, detail="centro_costo_id richiesto")
-    
-    # Verifica che il centro di costo esista
-    if centro_costo_id not in lm.CENTRI_COSTO:
-        # Prova a cercarlo per codice
-        for key, cfg in lm.CENTRI_COSTO.items():
-            if cfg.get("codice") == centro_costo_id:
-                centro_costo_id = key
-                break
-        else:
-            raise HTTPException(status_code=400, detail=f"Centro di costo '{centro_costo_id}' non trovato")
-    
-    cdc_config = lm.CENTRI_COSTO[centro_costo_id]
+
+    # Risolutore UNICO del servizio (chiave interna o codice bilancio)
+    centro_costo_id, cdc_config = lm.risolvi_centro_costo(centro_costo_id)
+    if not cdc_config:
+        raise HTTPException(status_code=400, detail=f"Centro di costo '{data.get('centro_costo_id')}' non trovato")
     
     result = await db["f24_unificato"].update_one(
         {"id": f24_id},

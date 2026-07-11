@@ -94,13 +94,20 @@ async def handler_aggiorna_learning_fornitore(payload: Dict[str, Any], db) -> Di
         logger.info(f"[HandlerFornitore] Updated keywords {ragione_sociale}: {len(all_kw)} total")
         return {"action": "updated", "keywords_count": len(all_kw)}
     else:
-        # Crea nuovo record
+        # Crea nuovo record — schema CANONICO della pagina Learning
+        # (fornitore_nome + fornitore_nome_normalizzato) oltre ai campi
+        # auto: prima i documenti auto usavano solo ragione_sociale e
+        # rompevano la riclassifica (KeyError su fornitore_nome).
+        from app.services.learning_machine_cdc import normalizza_nome_fornitore
         doc = {
             "id":             str(uuid.uuid4()),
             "fornitore_id":   fornitore_id,
             "ragione_sociale": ragione_sociale,
+            "fornitore_nome": ragione_sociale,
+            "fornitore_nome_normalizzato": normalizza_nome_fornitore(ragione_sociale),
             "piva":           piva,
             "keywords":       keywords_list[:50],
+            "centro_costo_suggerito": None,
             "source":         "auto_fattura",
             "created_at":     datetime.now(timezone.utc).isoformat(),
             "updated_at":     datetime.now(timezone.utc).isoformat(),
