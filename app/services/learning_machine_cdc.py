@@ -722,11 +722,28 @@ def risolvi_centro_costo(valore: str) -> Tuple[str, Dict[str, Any]]:
     return None, None
 
 
+async def carica_configurazioni_learning(db) -> List[Dict[str, Any]]:
+    """Tutte le configurazioni fornitori_keywords (una lettura sola:
+    per i lavori in massa si carica una volta e si passa alle chiamate)."""
+    if db is None:
+        return []
+    try:
+        return await db["fornitori_keywords"].find(
+            {}, {"_id": 0, "fornitore_nome": 1, "ragione_sociale": 1,
+                 "fornitore_nome_normalizzato": 1, "keywords": 1,
+                 "centro_costo_suggerito": 1}
+        ).to_list(5000)
+    except Exception as e:
+        logger.warning(f"Learning: lookup fornitori_keywords fallito: {e}")
+        return []
+
+
 async def classifica_fattura_con_learning(
     db,
     supplier_name: str,
     descrizione: str = "",
     linee_fattura: List[Dict] = None,
+    configurazioni: List[Dict[str, Any]] = None,
 ) -> Tuple[str, Dict[str, Any], float, str]:
     """Classificazione COMPLETA di una fattura: prima la conoscenza APPRESA
     (fornitori_keywords configurati dall'utente nella pagina Learning
@@ -741,26 +758,20 @@ async def classifica_fattura_con_learning(
     """
     nome_norm = normalizza_nome_fornitore(supplier_name)
     config = None
-    if db is not None and nome_norm:
-        try:
-            # La collection contiene DUE schemi per storia: i salvataggi
-            # della pagina (fornitore_nome / fornitore_nome_normalizzato)
-            # e i documenti auto-creati dall'event bus (ragione_sociale).
-            # Il match deve accettarli entrambi.
-            candidati = await db["fornitori_keywords"].find(
-                {}, {"_id": 0, "fornitore_nome": 1, "ragione_sociale": 1,
-                     "fornitore_nome_normalizzato": 1, "keywords": 1,
-                     "centro_costo_suggerito": 1}
-            ).to_list(5000)
-            for c in candidati:
-                norm = (c.get("fornitore_nome_normalizzato")
-                        or normalizza_nome_fornitore(
-                            c.get("fornitore_nome") or c.get("ragione_sociale") or ""))
-                if norm and (norm in nome_norm or nome_norm in norm):
-                    config = c
-                    break
-        except Exception as e:
-            logger.warning(f"Learning: lookup fornitori_keywords fallito: {e}")
+    if nome_norm:
+        # La collection contiene DUE schemi per storia: i salvataggi
+        # della pagina (fornitore_nome / fornitore_nome_normalizzato)
+        # e i documenti auto-creati dall'event bus (ragione_sociale).
+        # Il match deve accettarli entrambi.
+        candidati = (configurazioni if configurazioni is not None
+                     else await carica_configurazioni_learning(db))
+        for c in candidati:
+            norm = (c.get("fornitore_nome_normalizzato")
+                    or normalizza_nome_fornitore(
+                        c.get("fornitore_nome") or c.get("ragione_sociale") or ""))
+            if norm and (norm in nome_norm or nome_norm in norm):
+                config = c
+                break
 
     if config:
         # 0) fornitore MISTO (es. Amazon): la classificazione per fornitore

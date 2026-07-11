@@ -321,6 +321,45 @@ export default function LearningMachine() {
     setFornitoriLoading(false);
   };
 
+  // Classificazione AUTOMATICA di massa dal CONTENUTO delle righe XML:
+  // le fatture sicure si classificano da sole, le ambigue restano in lista
+  const classificaDaContenuto = async () => {
+    setFornitoriLoading(true);
+    try {
+      const res = await api.post('/api/fornitori-learning/classifica-da-contenuto');
+      setMessage({
+        type: 'success',
+        text: `Lette ${res.data.esaminate} fatture dal contenuto XML: ${res.data.classificate} classificate, ${res.data.ambigue} ambigue restano da decidere.`,
+      });
+      loadFornitoriData();
+      loadDashboardStats();
+    } catch (error) {
+      setMessage({ type: 'error', text: 'Errore classificazione dal contenuto' });
+    }
+    setFornitoriLoading(false);
+  };
+
+  // AI (stesso motore della Chat) SOLO sulle ambigue rimaste
+  const classificaConAI = async () => {
+    setFornitoriLoading(true);
+    try {
+      const res = await api.post('/api/fornitori-learning/classifica-ai');
+      if (res.data.success) {
+        setMessage({
+          type: 'success',
+          text: `AI: ${res.data.classificate} fatture classificate, ${res.data.ancora_ambigue ?? 0} restano ambigue.`,
+        });
+        loadFornitoriData();
+        loadDashboardStats();
+      } else {
+        setMessage({ type: 'error', text: res.data.message || 'AI non configurata' });
+      }
+    } catch (error) {
+      setMessage({ type: 'error', text: 'Errore classificazione AI' });
+    }
+    setFornitoriLoading(false);
+  };
+
   const aggiungiKeywordSuggerita = keyword => {
     const current = keywords ? keywords.split(',').map(k => k.trim()) : [];
     if (!current.includes(keyword)) {
@@ -630,6 +669,24 @@ export default function LearningMachine() {
                 >
                   <CheckCircle size={16} />
                   Riclassifica Fatture
+                </Button>
+                <Button
+                  variant="primary"
+                  onClick={classificaDaContenuto}
+                  disabled={fornitoriLoading}
+                  data-testid="btn-classifica-contenuto"
+                  title="Legge le righe XML di ogni fattura non classificata: le sicure si classificano da sole, le ambigue restano da decidere"
+                >
+                  🧠 Classifica dal contenuto XML
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={classificaConAI}
+                  disabled={fornitoriLoading}
+                  data-testid="btn-classifica-ai"
+                  title="Chiede all'AI (stesso motore della Chat) di classificare SOLO le fatture rimaste ambigue"
+                >
+                  ✨ AI sulle ambigue
                 </Button>
               </div>
             </div>

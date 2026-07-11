@@ -397,6 +397,155 @@ async def riclassifica_con_keywords_personalizzate() -> Dict[str, Any]:
     }
 
 
+@router.post("/classifica-da-contenuto")
+async def classifica_da_contenuto(
+    soglia: float = 0.3, limite: int = 4000
+) -> Dict[str, Any]:
+    """Classificazione AUTOMATICA di massa leggendo le RIGHE XML di ogni
+    fattura (richiesta utente 11/07: "per una classificazione vera devi
+    leggere le linee dell'XML e classificare automaticamente; a me devono
+    restare solo le ambigue").
+
+    Per ogni fattura non classificata:
+      1. configurazione del fornitore (learning) se esiste — vince sempre;
+      2. altrimenti il CONTENUTO delle righe decide, ma viene applicato
+         SOLO se la confidenza supera la soglia;
+      3. sotto soglia → resta "da classificare" (ambigua): mai a caso.
+    """
+    db = Database.get_db()
+    import app.services.learning_machine_cdc as lm
+
+    configurazioni = await lm.carica_configurazioni_learning(db)
+
+    fatture = await db["invoices"].find(
+        {"$or": [
+            {"centro_costo_nome": "Altri costi non classificati"},
+            {"centro_costo_id": {"$exists": False}},
+            {"centro_costo_id": None},
+            {"centro_costo_id": ""},
+        ]},
+        {"_id": 1, "supplier_name": 1, "descrizione": 1, "linee": 1}
+    ).to_list(limite)
+
+    esito = {"esaminate": len(fatture), "classificate": 0, "ambigue": 0,
+             "per_centro": {}, "soglia": soglia}
+
+    for f in fatture:
+        cdc_id, cdc_config, conf, fonte = await lm.classifica_fattura_con_learning(
+            db, f.get("supplier_name", ""), f.get("descrizione", ""),
+            f.get("linee") or [], configurazioni=configurazioni,
+        )
+        sicura = (fonte == "keywords_personalizzate"
+                  or (cdc_id != "99_ALTRI_COSTI" and conf >= soglia))
+        if not sicura:
+            esito["ambigue"] += 1
+            continue
+        await db["invoices"].update_one(
+            {"_id": f["_id"]},
+            {"$set": {
+                "centro_costo_id": cdc_id,
+                "centro_costo_nome": cdc_config["nome"],
+                "classificazione_confidence": conf,
+                "classificazione_fonte": fonte,
+            }}
+        )
+        esito["classificate"] += 1
+        esito["per_centro"][cdc_config["nome"]] = esito["per_centro"].get(cdc_config["nome"], 0) + 1
+
+    return {"success": True, **esito}
+
+
+@router.post("/classifica-ai")
+async def classifica_ambigue_con_ai(limite: int = 25) -> Dict[str, Any]:
+    """Classificazione INTELLIGENTE delle sole fatture ambigue: manda a
+    Claude le righe della fattura e l'elenco dei centri di costo, e applica
+    la scelta solo se il modello è confidente. Le indecise restano tali.
+
+    Usa la stessa configurazione della Chat (ANTHROPIC_API_KEY)."""
+    import json as _json
+    import os
+    import app.services.learning_machine_cdc as lm
+
+    if not os.getenv("ANTHROPIC_API_KEY", "").strip():
+        return {"success": False,
+                "message": "ANTHROPIC_API_KEY non configurata: la classificazione AI "
+                           "usa lo stesso motore della Chat intelligente."}
+
+    db = Database.get_db()
+    fatture = await db["invoices"].find(
+        {"$or": [
+            {"centro_costo_nome": "Altri costi non classificati"},
+            {"centro_costo_id": {"$exists": False}},
+            {"centro_costo_id": None},
+            {"centro_costo_id": ""},
+        ]},
+        {"_id": 0, "id": 1, "supplier_name": 1, "linee": 1}
+    ).to_list(max(1, min(limite, 50)))
+
+    if not fatture:
+        return {"success": True, "message": "Nessuna fattura ambigua da classificare",
+                "classificate": 0, "ancora_ambigue": 0}
+
+    centri = [{"id": k, "nome": v["nome"]} for k, v in lm.CENTRI_COSTO.items()]
+    voci = []
+    for f in fatture:
+        righe = [
+            (l.get("descrizione") or l.get("description") or "")[:120]
+            for l in (f.get("linee") or [])[:6] if isinstance(l, dict)
+        ]
+        voci.append({"id": f.get("id"), "fornitore": f.get("supplier_name", ""),
+                     "righe": [r for r in righe if r]})
+
+    prompt = (
+        "Classifica queste fatture di un bar/pasticceria nei centri di costo. "
+        "Rispondi SOLO con un array JSON di oggetti "
+        '{"id", "centro_costo_id", "confidenza" (0-1), "motivo" (breve)}. '
+        'Se il contenuto non basta per decidere usa centro_costo_id="AMBIGUA". '
+        "Non inventare centri fuori elenco.\n\n"
+        f"CENTRI DI COSTO: {_json.dumps(centri, ensure_ascii=False)}\n\n"
+        f"FATTURE: {_json.dumps(voci, ensure_ascii=False)}"
+    )
+
+    try:
+        import anthropic
+        from app.services.chat_ai_engine import _model_name  # stesso modello della Chat
+        client = anthropic.AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY", "").strip())
+        resp = await client.messages.create(
+            model=_model_name(), max_tokens=4000,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        testo = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
+        inizio, fine = testo.find("["), testo.rfind("]")
+        decisioni = _json.loads(testo[inizio:fine + 1]) if inizio >= 0 else []
+    except Exception as e:
+        logger.error(f"Classificazione AI fallita: {e}")
+        return {"success": False, "message": f"Errore chiamata AI: {e}"}
+
+    classificate = 0
+    dettaglio = []
+    for d in decisioni:
+        cdc_id, cdc_config = lm.risolvi_centro_costo(d.get("centro_costo_id"))
+        if not cdc_config or float(d.get("confidenza") or 0) < 0.6:
+            continue
+        res = await db["invoices"].update_one(
+            {"id": d.get("id")},
+            {"$set": {
+                "centro_costo_id": cdc_id,
+                "centro_costo_nome": cdc_config["nome"],
+                "classificazione_confidence": float(d.get("confidenza") or 0),
+                "classificazione_fonte": "ai",
+                "classificazione_motivo": str(d.get("motivo") or "")[:200],
+            }}
+        )
+        if res.matched_count:
+            classificate += 1
+            dettaglio.append({"id": d.get("id"), "centro": cdc_config["nome"],
+                              "motivo": str(d.get("motivo") or "")[:120]})
+
+    return {"success": True, "esaminate": len(fatture), "classificate": classificate,
+            "ancora_ambigue": len(fatture) - classificate, "dettaglio": dettaglio}
+
+
 @router.get("/suggerisci-keywords/{fornitore_nome}")
 async def suggerisci_keywords(fornitore_nome: str) -> Dict[str, Any]:
     """

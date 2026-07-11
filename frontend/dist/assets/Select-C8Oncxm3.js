@@ -1,0 +1,1 @@
+import{j as t,s as i,i as o,k as n}from"./index-B2X-LcOO.js";function d({children:r,style:e={},...s}){return t.jsx("select",{style:{padding:"9px 12px",borderRadius:n.sm,border:`1px solid ${o.border}`,fontSize:13,background:o.card,color:o.text,boxSizing:"border-box",outline:"none",cursor:"pointer",fontFamily:i.family,...e},...s,children:r})}export{d as S};
