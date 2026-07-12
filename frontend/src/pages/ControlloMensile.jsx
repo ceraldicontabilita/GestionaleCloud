@@ -55,6 +55,7 @@ const MONO = FONT.mono;
 
 export default function ControlloMensile() {
   const [loading, setLoading] = useState(true);
+  const [fontiErrore, setFontiErrore] = useState([]);
   const currentYear = new Date().getFullYear();
   const { anno } = useAnnoGlobale(); // Anno dal contesto globale
   const [viewMode, setViewMode] = useState('anno'); // 'anno' or 'mese'
@@ -126,18 +127,25 @@ export default function ControlloMensile() {
         data_a: endDate,
       });
 
-      // Carica dati in parallelo da TUTTE le fonti (Cassa, Corrispettivi, Estratto Conto Banca)
-      const [cassaRes, corrispRes, estrattoRes] = await Promise.all([
-        api
-          .get(`/api/prima-nota/cassa?${params}&limit=5000`)
-          .catch(() => ({ data: { movimenti: [] } })),
-        api
-          .get(`/api/corrispettivi?data_da=${startDate}&data_a=${endDate}&limit=500`)
-          .catch(() => ({ data: [] })),
-        api
-          .get(`/api/bank-statement/movements?data_da=${startDate}&data_a=${endDate}&limit=5000`)
-          .catch(() => ({ data: { movements: [] } })),
-      ]);
+      // Carica dati in parallelo da TUTTE le fonti (Cassa, Corrispettivi, Estratto Conto Banca).
+      // Con allSettled si distingue quale fonte è caduta: un errore del servizio
+      // non deve sparire dietro a un mese "senza dati".
+      const fonti = [
+        { nome: 'Cassa', vuoto: { data: { movimenti: [] } },
+          req: api.get(`/api/prima-nota/cassa?${params}&limit=5000`) },
+        { nome: 'Corrispettivi', vuoto: { data: [] },
+          req: api.get(`/api/corrispettivi?data_da=${startDate}&data_a=${endDate}&limit=500`) },
+        { nome: 'Estratto conto', vuoto: { data: { movements: [] } },
+          req: api.get(`/api/bank-statement/movements?data_da=${startDate}&data_a=${endDate}&limit=5000`) },
+      ];
+      const esiti = await Promise.allSettled(fonti.map(f => f.req));
+      const falliteNomi = [];
+      const [cassaRes, corrispRes, estrattoRes] = esiti.map((e, i) => {
+        if (e.status === 'fulfilled') return e.value;
+        falliteNomi.push(fonti[i].nome);
+        return fonti[i].vuoto;
+      });
+      setFontiErrore(falliteNomi);
 
       const cassa = cassaRes.data.movimenti || [];
       const corrispettivi = Array.isArray(corrispRes.data)
@@ -436,14 +444,20 @@ export default function ControlloMensile() {
         data_a: endDate,
       });
 
-      const [cassaRes, corrispRes] = await Promise.all([
-        api
-          .get(`/api/prima-nota/cassa?${params}&limit=10000`)
-          .catch(() => ({ data: { movimenti: [] } })),
-        api
-          .get(`/api/corrispettivi?data_da=${startDate}&data_a=${endDate}&limit=500`)
-          .catch(() => ({ data: [] })),
-      ]);
+      const fonti = [
+        { nome: 'Cassa', vuoto: { data: { movimenti: [] } },
+          req: api.get(`/api/prima-nota/cassa?${params}&limit=10000`) },
+        { nome: 'Corrispettivi', vuoto: { data: [] },
+          req: api.get(`/api/corrispettivi?data_da=${startDate}&data_a=${endDate}&limit=500`) },
+      ];
+      const esiti = await Promise.allSettled(fonti.map(f => f.req));
+      const falliteNomi = [];
+      const [cassaRes, corrispRes] = esiti.map((e, i) => {
+        if (e.status === 'fulfilled') return e.value;
+        falliteNomi.push(fonti[i].nome);
+        return fonti[i].vuoto;
+      });
+      setFontiErrore(falliteNomi);
 
       const cassa = cassaRes.data.movimenti || [];
       const corrispettivi = Array.isArray(corrispRes.data)
@@ -697,6 +711,19 @@ export default function ControlloMensile() {
       icon="📊"
       subtitle="Confronto dati automatici (XML) vs manuali (Prima Nota/Excel)"
     >
+      {fontiErrore.length > 0 && (
+        <div
+          style={{
+            background: COLORS.dangerLight, color: COLORS.danger,
+            border: `1px solid ${COLORS.danger}`, borderRadius: BORDER_RADIUS.md,
+            padding: '10px 14px', marginBottom: 16, fontSize: 14,
+          }}
+        >
+          ⚠️ Errore nel caricamento di: {fontiErrore.join(', ')}. I totali possono essere
+          incompleti — non è detto che il periodo sia senza movimenti. Riprova.
+        </div>
+      )}
+
       {/* Year Selector & View Toggle */}
       <div
         style={{

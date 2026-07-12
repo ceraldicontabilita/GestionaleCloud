@@ -89,6 +89,7 @@ export default function RiconciliazionePaypal() {
   const location = useLocation();
   const confirm = useConfirm();
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [dashboard, setDashboard] = useState(null);
   const [transactions, setTransactions] = useState([]);
   const [report, setReport] = useState(null);
@@ -128,6 +129,7 @@ export default function RiconciliazionePaypal() {
       setDashboard(res.data);
     } catch (e) {
       console.error(e);
+      setLoadError(true);
     }
   }, [annoFiltro]);
 
@@ -141,6 +143,7 @@ export default function RiconciliazionePaypal() {
       setTransactions(res.data.transactions || []);
     } catch (e) {
       console.error(e);
+      setLoadError(true);
     }
   }, [annoFiltro, soloPagamenti]);
 
@@ -151,6 +154,7 @@ export default function RiconciliazionePaypal() {
       setReport(res.data);
     } catch (e) {
       console.error(e);
+      setLoadError(true);
     }
   }, [annoFiltro]);
 
@@ -160,11 +164,13 @@ export default function RiconciliazionePaypal() {
       setStatements(res.data.statements || []);
     } catch (e) {
       console.error(e);
+      setLoadError(true);
     }
   }, []);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
+    setLoadError(false);
     await Promise.all([loadDashboard(), loadTransactions(), loadReport(), loadStatements()]);
     setLoading(false);
   }, [loadDashboard, loadTransactions, loadReport, loadStatements]);
@@ -359,6 +365,18 @@ export default function RiconciliazionePaypal() {
   return (
     <PageLayout title="PayPal" subtitle="Estratti conto, transazioni e riconciliazione">
       <div style={{ maxWidth: 1400, margin: '0 auto' }}>
+        {loadError && (
+          <div
+            style={{
+              background: COLORS.dangerLight, color: COLORS.danger,
+              border: `1px solid ${COLORS.danger}`, borderRadius: BORDER_RADIUS.md,
+              padding: '10px 14px', marginBottom: 12, fontSize: 14,
+            }}
+          >
+            ⚠️ Alcuni dati PayPal non sono stati caricati per un errore del servizio
+            (i valori mostrati potrebbero essere incompleti). Riprova con «Aggiorna».
+          </div>
+        )}
         {/* Header */}
         <div
           style={{

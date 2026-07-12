@@ -324,7 +324,7 @@ export default function RiconciliazioneUnificata() {
       setAssegni(assegniDaApi);
       setStats(bancaRes.data?.stats || {});
     } catch (e) {
-      console.error('Errore caricamento:', e);
+      toast.error('Caricamento non riuscito: ' + (e.response?.data?.detail || e.message));
     } finally {
       setLoadingMore(false);
     }
@@ -342,7 +342,7 @@ export default function RiconciliazioneUnificata() {
       setF24Pendenti(f24);
       setStats(prev => ({ ...prev, f24: f24.length }));
     } catch (e) {
-      console.warn('F24 non caricati:', e);
+      toast.error('F24 non caricati: ' + (e.response?.data?.detail || e.message));
     } finally {
       setF24Loading(false);
     }

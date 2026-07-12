@@ -45,8 +45,9 @@ export default function PianoDeiConti() {
           `/api/piano-conti/conto/${conto.codice}/movimenti?limit=40&anno=${annoGlobale}`
         );
         setContoDetail(res.data);
-      } catch {
-        /* mostra solo info base */
+      } catch (e) {
+        // Errore del servizio ≠ "conto senza movimenti": segnalalo.
+        toast.error('Movimenti del conto non caricati: ' + (e.response?.data?.detail || e.message));
       } finally {
         setLoadingDetail(false);
       }
