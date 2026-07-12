@@ -607,6 +607,26 @@ def start_scheduler():
         replace_existing=True,
     )
 
+    # ── Google Drive: nuovi canali documentali (dichiarazione IVA, cartelle
+    # esattoriali, avvisi bonari) ogni ora. Ogni canale gira solo se acceso e
+    # con la cartella configurata su Render (altrimenti no-op). ──
+    async def _drive_documenti_job():
+        from app.database import Database
+        from app.services import drive_documenti_ingest
+        try:
+            result = await drive_documenti_ingest.sync_tutti(Database.get_db())
+            logger.info(f"[SCHEDULER-DRIVE-DOCUMENTI] {result}")
+        except Exception as e:
+            logger.error(f"[SCHEDULER-DRIVE-DOCUMENTI] errore: {e}")
+
+    scheduler.add_job(
+        _drive_documenti_job,
+        'interval', hours=1,
+        id="drive_documenti_ingest",
+        name="Import documenti fiscali (dichiarazione IVA/esattoriali/avvisi) da Drive (ogni ora)",
+        replace_existing=True,
+    )
+
     # Quadratura settimanale Elaborate ↔ gestionale: verifica che ogni file
     # archiviato in Drive/Elaborate abbia la sua fattura nel gestionale;
     # i buchi vengono re-importati (idempotente) e segnalati con un alert.
