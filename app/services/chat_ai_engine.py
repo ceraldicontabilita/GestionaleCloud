@@ -478,9 +478,85 @@ async def _tool_doppi_pagamenti_f24(db, args):
     return await scan_doppi_pagamenti()
 
 
+async def _tool_spiega_iva_fattura(db, args):
+    """Spiegazione TRACCIABILE dell'attribuzione IVA di una fattura di acquisto
+    (SPECIFICA_IVA.md §20): quando è stata ricevuta, a quale periodo IVA è
+    attribuita per competenza e con quale regola, se e in quale liquidazione è
+    stata effettivamente utilizzata — così si vede perché NON viene conteggiata
+    due volte."""
+    from app.engines import iva_fatture, iva_engine
+    fid = str(args.get("fattura_id") or "").strip()
+    if not fid:
+        return {"errore": "indicare fattura_id"}
+    inv = await db["invoices"].find_one(
+        {"id": fid}, {"_id": 0, "pdf_data": 0, "xml_content": 0, "xml_base64": 0}
+    )
+    if not inv:
+        return {"errore": f"Fattura {fid} non trovata"}
+
+    campi = iva_fatture.campi_iva_da_fattura(inv)
+    data_ric = campi.get("data_ricezione") or inv.get("data_ricezione")
+    periodo_attr = inv.get("periodo_iva_attribuito") or campi.get("periodo_iva_attribuito")
+    regola = inv.get("regola_iva_applicata") or campi.get("regola_iva_applicata")
+    utilizzata = bool(inv.get("iva_utilizzata"))
+    periodo_uso = inv.get("periodo_iva_utilizzato")
+    liq_id = inv.get("liquidazione_id")
+
+    liq_stato = None
+    if liq_id:
+        liq_doc = await db["liquidazioni_iva"].find_one(
+            {"id": liq_id}, {"_id": 0, "stato": 1, "periodo": 1}
+        )
+        if liq_doc:
+            liq_stato = liq_doc.get("stato")
+            periodo_uso = periodo_uso or liq_doc.get("periodo")
+
+    regole_testo = {
+        iva_engine.STESSO_MESE: "operazione e ricezione nello stesso mese",
+        iva_engine.ENTRO_15_MESE_SUCCESSIVO: "ricevuta e registrata entro il 15 del mese successivo (stesso anno)",
+        iva_engine.RICEVUTA_DOPO_IL_15: "ricevuta dopo il 15 del mese successivo",
+        iva_engine.OPERAZIONE_ANNO_PRECEDENTE: "operazione dell'anno precedente: mai retroattribuita a dicembre",
+        "CORREZIONE_MANUALE": "periodo corretto manualmente dall'amministratore",
+    }
+    narrazione = []
+    if data_ric:
+        narrazione.append(f"Ricevuta il {data_ric}.")
+    if periodo_attr:
+        motivo = regole_testo.get(regola, regola or "")
+        narrazione.append(
+            f"IVA attribuita per competenza al periodo {periodo_attr}"
+            + (f" ({motivo})." if motivo else ".")
+        )
+    if utilizzata:
+        narrazione.append(
+            f"IVA già utilizzata nella liquidazione di {periodo_uso or 'un periodo precedente'}"
+            + (f" ({liq_stato})" if liq_stato else "")
+            + ": non viene conteggiata di nuovo."
+        )
+    else:
+        narrazione.append("IVA non ancora utilizzata in alcuna liquidazione: disponibile per il calcolo o la verifica annuale.")
+
+    return {
+        "fattura_id": fid,
+        "fornitore": inv.get("supplier_name"),
+        "numero": inv.get("invoice_number"),
+        "data_documento": inv.get("data_documento") or inv.get("invoice_date"),
+        "data_ricezione": data_ric,
+        "periodo_iva_attribuito": periodo_attr,
+        "regola_applicata": regola,
+        "iva_detraibile": campi.get("iva_detraibile") or inv.get("iva"),
+        "iva_utilizzata": utilizzata,
+        "periodo_iva_utilizzato": periodo_uso,
+        "liquidazione_id": liq_id,
+        "liquidazione_stato": liq_stato,
+        "spiegazione": " ".join(narrazione),
+    }
+
+
 _TOOL_EXECUTORS = {
     "cerca_fatture": _tool_cerca_fatture,
     "spiega_f24": _tool_spiega_f24,
+    "spiega_iva_fattura": _tool_spiega_iva_fattura,
     "doppi_pagamenti_f24": _tool_doppi_pagamenti_f24,
     "cerca_fornitori": _tool_cerca_fornitori,
     "cerca_f24": _tool_cerca_f24,
@@ -570,6 +646,15 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
          "mese": {**_I, "description": "mese dei cedolini per la verifica di associazione"},
          "anno": {**_I, "description": "anno dei cedolini"}},
       "required": ["f24_id"]}},
+    {"name": "spiega_iva_fattura",
+     "description": "Spiega in modo TRACCIABILE l'IVA di una fattura di acquisto (SPECIFICA_IVA): "
+                    "quando è stata ricevuta, a quale periodo IVA è attribuita per competenza e con "
+                    "quale regola (stesso mese / entro il 15 / dopo il 15 / cambio anno), se e in quale "
+                    "liquidazione è già stata utilizzata — così spieghi perché una fattura ricevuta in un "
+                    "mese può competere al mese precedente e non essere conteggiata due volte.",
+     "input_schema": {"type": "object", "properties": {
+         "fattura_id": {**_S, "description": "id della fattura di acquisto"}},
+      "required": ["fattura_id"]}},
     {"name": "doppi_pagamenti_f24",
      "description": "Cerca possibili DOPPI PAGAMENTI: coppie F24 ordinario (DM10) e F24 di "
                     "regolarizzazione (RC01) dello stesso periodo entrambe pagate, con quota "

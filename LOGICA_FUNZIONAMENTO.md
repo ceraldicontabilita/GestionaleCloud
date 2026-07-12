@@ -389,6 +389,16 @@ attribuita per competenza*, *in quale liquidazione è stata effettivamente usata
   escludi, reincludi, rinvia, segna indetraibile, segna recuperata in
   dichiarazione annuale, correggi il periodo attribuito. Un'azione non è
   ammessa su un'IVA **già confermata** in una liquidazione: prima va riaperta.
+- **Dashboard del mese**: per il mese scelto la pagina mostra l'IVA attribuita
+  al mese, quella **ricevuta nel mese ma di competenza del mese precedente**
+  (regola del 15), l'utilizzata, la non utilizzata, la rinviata e
+  l'indetraibile — così si legge a colpo d'occhio lo scarto tra "quando arriva"
+  e "quando si usa".
+- **Chat**: puoi chiedere alla chat di spiegare l'IVA di una singola fattura;
+  risponde in modo tracciabile (quando ricevuta, a quale mese attribuita, con
+  quale regola, se già usata e in quale liquidazione) — esattamente la logica
+  della specifica ("ricevuta l'8 febbraio, riguarda gennaio, IVA usata a
+  gennaio, a febbraio non riconteggiata").
 
 ---
 

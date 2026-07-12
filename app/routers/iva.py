@@ -430,6 +430,52 @@ async def _fatture_anno(db, anno: int) -> List[Dict[str, Any]]:
     ).to_list(20000)
 
 
+@router.get("/dashboard/{anno}/{mese}")
+async def dashboard_iva_mensile(anno: int, mese: int) -> Dict[str, Any]:
+    """Riquadri IVA del mese (§21): attribuita, ricevuta-ma-attribuita-al-mese-
+    precedente, utilizzata, non utilizzata, rinviata, indetraibile, credito
+    precedente, saldo e stato della liquidazione."""
+    db = Database.get_db()
+    periodo = f"{anno}-{mese:02d}"
+    prev = _periodo_precedente(periodo)
+
+    def _somma_iva(docs):
+        return round(sum(float(d.get("iva_detraibile") or d.get("iva") or 0) for d in docs), 2)
+
+    proj = {"_id": 0, "iva": 1, "iva_detraibile": 1, "stato_detrazione_iva": 1}
+    attribuite = await db[COLL].find({"periodo_iva_attribuito": periodo}, proj).to_list(20000)
+    utilizzate = await db[COLL].find({"periodo_iva_utilizzato": periodo}, proj).to_list(20000)
+    rinviate = await db[COLL].find(
+        {"periodo_iva_attribuito": periodo, "stato_detrazione_iva": "RINVIATA"}, proj
+    ).to_list(20000)
+    indetraibili = await db[COLL].find(
+        {"periodo_iva_attribuito": periodo, "stato_detrazione_iva": "INDETRAIBILE"}, proj
+    ).to_list(20000)
+    # ricevute NEL mese ma attribuite al mese PRECEDENTE (regola entro il 15)
+    ricevute_attr_prec = await db[COLL].find(
+        {"data_ricezione": {"$regex": f"^{periodo}"}, "periodo_iva_attribuito": prev}, proj
+    ).to_list(20000)
+
+    non_utilizzate = [d for d in attribuite if d.get("stato_detrazione_iva") not in
+                      ("INSERITA_IN_LIQUIDAZIONE", "INDETRAIBILE")]
+
+    liq_doc = await db[COLL_LIQ].find_one({"periodo": periodo}, {"_id": 0}, sort=[("versione", -1)])
+
+    return {
+        "periodo": periodo,
+        "iva_acquisti_attribuita": _somma_iva(attribuite),
+        "iva_ricevuta_attribuita_mese_precedente": _somma_iva(ricevute_attr_prec),
+        "iva_utilizzata": _somma_iva(utilizzate),
+        "iva_non_utilizzata": _somma_iva(non_utilizzate),
+        "iva_rinviata": _somma_iva(rinviate),
+        "iva_indetraibile": _somma_iva(indetraibili),
+        "credito_precedente": (liq_doc or {}).get("credito_precedente", 0),
+        "iva_vendite": (liq_doc or {}).get("iva_vendite", 0),
+        "saldo": (liq_doc or {}).get("saldo"),
+        "stato_liquidazione": (liq_doc or {}).get("stato"),
+    }
+
+
 @router.get("/riepilogo-annuale/{anno}")
 async def riepilogo_annuale(anno: int) -> Dict[str, Any]:
     """Riepilogo IVA dell'anno per categoria + calcolo annuale (§16-17)."""

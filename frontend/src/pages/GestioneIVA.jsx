@@ -57,6 +57,9 @@ export default function GestioneIVA() {
   const [riepilogo, setRiepilogo] = useState(null);
   const [anomalie, setAnomalie] = useState(null);
 
+  // Dashboard IVA del mese (Fase 5)
+  const [dashboard, setDashboard] = useState(null);
+
   const caricaRiepilogo = async () => {
     try {
       const [r, a] = await Promise.all([
@@ -72,6 +75,9 @@ export default function GestioneIVA() {
   };
 
   const caricaLiquidazione = async (p = periodo) => {
+    api.get(`/api/iva/dashboard/${anno}/${mese}`)
+      .then((d) => setDashboard(d.data))
+      .catch(() => setDashboard(null));
     try {
       const res = await api.get(`/api/iva/liquidazioni/${p}`);
       setLiquidazione(res.data?.corrente || null);
@@ -299,6 +305,35 @@ export default function GestioneIVA() {
             )}
           </div>
         </div>
+
+        {dashboard && (
+          <div style={{ ...STILI.riepilogo, borderBottom: 'none' }} data-testid="iva-dashboard-mese">
+            <div style={STILI.voce}>
+              <span style={STILI.voceLabel}>Attribuita al mese</span>
+              <strong>{formatEuro(dashboard.iva_acquisti_attribuita || 0)}</strong>
+            </div>
+            <div style={STILI.voce}>
+              <span style={STILI.voceLabel}>Ricevuta ma competenza mese prec.</span>
+              <strong>{formatEuro(dashboard.iva_ricevuta_attribuita_mese_precedente || 0)}</strong>
+            </div>
+            <div style={STILI.voce}>
+              <span style={STILI.voceLabel}>Utilizzata</span>
+              <strong>{formatEuro(dashboard.iva_utilizzata || 0)}</strong>
+            </div>
+            <div style={STILI.voce}>
+              <span style={STILI.voceLabel}>Non utilizzata</span>
+              <strong>{formatEuro(dashboard.iva_non_utilizzata || 0)}</strong>
+            </div>
+            <div style={STILI.voce}>
+              <span style={STILI.voceLabel}>Rinviata</span>
+              <strong>{formatEuro(dashboard.iva_rinviata || 0)}</strong>
+            </div>
+            <div style={STILI.voce}>
+              <span style={STILI.voceLabel}>Indetraibile</span>
+              <strong>{formatEuro(dashboard.iva_indetraibile || 0)}</strong>
+            </div>
+          </div>
+        )}
 
         {!liquidazione ? (
           <div style={STILI.vuoto}>
