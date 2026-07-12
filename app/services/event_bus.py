@@ -219,12 +219,14 @@ def register_all_handlers():
             on_fattura_created_crea_partita,
             on_fattura_created_alert_fornitore,
             on_fattura_created_audit,
+            on_fattura_created_iva,
             on_fattura_pagata_risolvi,
             on_fornitore_aggiornato_risolvi,
         )
         register_handler(EventTypes.FATTURA_CREATED, on_fattura_created_crea_partita)
         register_handler(EventTypes.FATTURA_CREATED, on_fattura_created_alert_fornitore)
         register_handler(EventTypes.FATTURA_CREATED, on_fattura_created_audit)
+        register_handler(EventTypes.FATTURA_CREATED, on_fattura_created_iva)
         register_handler(EventTypes.FATTURA_PAGATA, on_fattura_pagata_risolvi)
         register_handler(EventTypes.FORNITORE_UPDATED, on_fornitore_aggiornato_risolvi)
     except Exception as e:

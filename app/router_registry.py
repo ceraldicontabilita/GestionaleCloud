@@ -206,6 +206,11 @@ def _register_employees(app: FastAPI):
     from app.routers import documenti_fiscali
     app.include_router(documenti_fiscali.router, prefix="/api/documenti-fiscali", tags=["Documenti fiscali"])
 
+    # Gestione IVA (SPECIFICA_IVA.md): attribuzione periodo per competenza,
+    # IVA disponibile non utilizzata.
+    from app.routers import iva as iva_router
+    app.include_router(iva_router.router, prefix="/api/iva", tags=["IVA"])
+
 
 # ─── Reports Module ──────────────────────────────────────────────────────────
 def _register_reports(app: FastAPI):

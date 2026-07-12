@@ -181,6 +181,27 @@ async def on_fattura_created_audit(event: Dict[str, Any], db) -> Optional[Dict]:
     return {"action": "audit_log", "audit_id": audit_id}
 
 
+async def on_fattura_created_iva(event: Dict[str, Any], db) -> Optional[Dict]:
+    """All'arrivo di una fattura, calcola e salva i campi IVA per competenza
+    (periodo attribuito, regola, stato detrazione) con il motore iva_fatture.
+    Additivo: non tocca l'IVA già utilizzata. Non blocca mai l'import."""
+    from app.engines import iva_fatture
+
+    fattura_id = event.get("fattura_id")
+    if not fattura_id:
+        return None
+    try:
+        inv = await db["invoices"].find_one({"id": fattura_id})
+        if not inv:
+            return {"action": "skip", "reason": "fattura non trovata"}
+        campi = iva_fatture.campi_iva_da_fattura(inv)
+        await db["invoices"].update_one({"id": fattura_id}, {"$set": campi})
+        return {"action": "iva_attribuita", "periodo": campi.get("periodo_iva_attribuito")}
+    except Exception as e:
+        logger.warning(f"Attribuzione IVA fattura {fattura_id} non riuscita (non bloccante): {e}")
+        return {"action": "errore", "dettaglio": str(e)[:200]}
+
+
 # ============================================================
 # HANDLER 4: Quando una fattura viene pagata → risolvi alert
 # ============================================================
