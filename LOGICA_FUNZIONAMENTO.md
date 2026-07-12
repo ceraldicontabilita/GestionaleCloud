@@ -379,6 +379,16 @@ attribuita per competenza*, *in quale liquidazione è stata effettivamente usata
   non si sovrascrive: per correggerla va **riaperta** (libera di nuovo le sue
   fatture) oppure **rettificata** (la vecchia resta come storico, ne nasce una
   nuova versione). Ogni movimento IVA per fattura resta tracciato.
+- **Riepilogo annuale**: la pagina mostra, per l'anno scelto, l'IVA divisa per
+  categoria (utilizzata, non utilizzata, rinviata, indetraibile, rettificata,
+  recuperata in dichiarazione, da verificare), l'IVA vendite, l'IVA detraibile
+  annuale e il saldo finale (debito o credito), più il conteggio delle
+  **anomalie** trovate (bloccanti e avvisi: IVA negativa, retroattribuzione a
+  cavallo d'anno, date mancanti, fatture da verificare, IVA ferma da mesi).
+- **Azioni manuali** sulla singola fattura (con motivazione tracciata):
+  escludi, reincludi, rinvia, segna indetraibile, segna recuperata in
+  dichiarazione annuale, correggi il periodo attribuito. Un'azione non è
+  ammessa su un'IVA **già confermata** in una liquidazione: prima va riaperta.
 
 ---
 

@@ -16,6 +16,7 @@ from fastapi import APIRouter, HTTPException, Query
 from app.database import Database
 from app.engines import iva_fatture
 from app.engines import liquidazione_iva_engine as liq
+from app.engines import riepilogo_iva_engine as riep
 
 router = APIRouter()
 
@@ -412,3 +413,147 @@ async def liquidazione_periodo(periodo: str) -> Dict[str, Any]:
     ).to_list(100)
     corrente = versioni[0] if versioni else None
     return {"periodo": periodo, "corrente": corrente, "versioni": versioni}
+
+
+# ─── Riepilogo/calcolo annuale e anomalie (Fase 4) ──────────────────────────
+
+async def _fatture_anno(db, anno: int) -> List[Dict[str, Any]]:
+    proj = {
+        "_id": 0, "id": 1, "invoice_number": 1, "supplier_name": 1,
+        "data_documento": 1, "data_operazione": 1, "data_ricezione": 1,
+        "periodo_iva_attribuito": 1, "periodo_iva_utilizzato": 1,
+        "iva": 1, "iva_detraibile": 1, "iva_utilizzata": 1,
+        "stato_detrazione_iva": 1, "tipo_documento": 1, "annullata": 1,
+    }
+    return await db[COLL].find(
+        {"periodo_iva_attribuito": {"$regex": f"^{anno}"}}, proj
+    ).to_list(20000)
+
+
+@router.get("/riepilogo-annuale/{anno}")
+async def riepilogo_annuale(anno: int) -> Dict[str, Any]:
+    """Riepilogo IVA dell'anno per categoria + calcolo annuale (§16-17)."""
+    db = Database.get_db()
+    fatture = await _fatture_anno(db, anno)
+    liquidazioni = await db[COLL_LIQ].find(
+        {"periodo": {"$regex": f"^{anno}"}, "stato": {"$in": [liq.CONFERMATA, liq.TRASMESSA]}},
+        {"_id": 0},
+    ).to_list(1000)
+    return {
+        "anno": anno,
+        "categorie": riep.riepilogo_categorie(fatture),
+        "calcolo_annuale": riep.calcolo_annuale(fatture, liquidazioni),
+    }
+
+
+@router.get("/anomalie")
+async def anomalie_iva(
+    anno: int = Query(...),
+    mese_corrente: Optional[str] = Query(None, description="'YYYY-MM' per l'avviso 'non usata da mesi'"),
+) -> Dict[str, Any]:
+    """Controlli automatici (§18): anomalie bloccanti e di avviso sull'anno."""
+    db = Database.get_db()
+    fatture = await _fatture_anno(db, anno)
+    res = riep.rileva_anomalie(fatture, mese_corrente)
+    return {
+        "anno": anno,
+        "bloccanti": res["bloccanti"],
+        "avvisi": res["avvisi"],
+        "totale_bloccanti": len(res["bloccanti"]),
+        "totale_avvisi": len(res["avvisi"]),
+    }
+
+
+# ─── Azioni manuali sulle fatture (Fase 4, §19) ─────────────────────────────
+
+# Ogni azione richiede motivazione; l'IVA già utilizzata è protetta (va prima
+# riaperta la liquidazione). Ogni cambio è tracciato (vecchio→nuovo + movimento).
+async def _azione_stato_fattura(
+    fid: str, nuovo_stato: str, tipo_movimento: str, motivo: str, utente: str,
+    extra_set: Optional[Dict[str, Any]] = None, consenti_se_utilizzata: bool = False,
+) -> Dict[str, Any]:
+    db = Database.get_db()
+    inv = await db[COLL].find_one({"id": fid}, {"_id": 0})
+    if not inv:
+        raise HTTPException(status_code=404, detail="Fattura non trovata")
+    if inv.get("iva_utilizzata") is True and not consenti_se_utilizzata:
+        raise HTTPException(
+            status_code=409,
+            detail="IVA già utilizzata in una liquidazione: riapri la liquidazione prima di modificarla.",
+        )
+    ora = datetime.utcnow().isoformat()
+    vecchio = inv.get("stato_detrazione_iva")
+    campi = {"stato_detrazione_iva": nuovo_stato, "updated_at": ora}
+    if extra_set:
+        campi.update(extra_set)
+    await db[COLL].update_one({"id": fid}, {"$set": campi})
+    await db[COLL_MOV].insert_one({
+        "id": str(uuid.uuid4()),
+        "fattura_id": fid,
+        "tipo_movimento": tipo_movimento,
+        "periodo": campi.get("periodo_iva_attribuito") or inv.get("periodo_iva_attribuito"),
+        "importo_iva": inv.get("iva_detraibile") or inv.get("iva"),
+        "liquidazione_id": None,
+        "motivazione": motivo,
+        "valore_precedente": vecchio,
+        "valore_nuovo": nuovo_stato,
+        "created_at": ora,
+        "created_by": utente,
+    })
+    return {"success": True, "fattura_id": fid, "stato_precedente": vecchio, "stato_nuovo": nuovo_stato}
+
+
+@router.post("/fatture/{fid}/escludi")
+async def escludi_fattura(fid: str, motivo: str = Query(...), utente: str = Query("admin")):
+    """Esclude manualmente l'IVA della fattura dal calcolo (§19)."""
+    return await _azione_stato_fattura(
+        fid, "ESCLUSA", liq.MOV_ESCLUSIONE, motivo, utente,
+        extra_set={"disponibile_per_nuovo_calcolo": False, "motivo_esclusione": motivo},
+    )
+
+
+@router.post("/fatture/{fid}/includi")
+async def includi_fattura(fid: str, motivo: str = Query("Reinclusa manualmente"), utente: str = Query("admin")):
+    """Reinserisce nel calcolo una fattura esclusa/rinviata (§19)."""
+    return await _azione_stato_fattura(
+        fid, "DA_INSERIRE", liq.MOV_ATTRIBUZIONE, motivo, utente,
+        extra_set={"disponibile_per_nuovo_calcolo": True, "motivo_esclusione": None},
+    )
+
+
+@router.post("/fatture/{fid}/rinvia")
+async def rinvia_fattura(fid: str, motivo: str = Query(...), utente: str = Query("admin")):
+    """Rinvia l'IVA a un periodo successivo (§19)."""
+    return await _azione_stato_fattura(
+        fid, "RINVIATA", liq.MOV_ESCLUSIONE, motivo, utente,
+        extra_set={"disponibile_per_nuovo_calcolo": True},
+    )
+
+
+@router.post("/fatture/{fid}/indetraibile")
+async def indetraibile_fattura(fid: str, motivo: str = Query(...), utente: str = Query("admin")):
+    """Segna l'IVA come indetraibile per natura/limitazione (§19)."""
+    return await _azione_stato_fattura(
+        fid, "INDETRAIBILE", liq.MOV_RETTIFICA, motivo, utente,
+        extra_set={"disponibile_per_nuovo_calcolo": False},
+    )
+
+
+@router.post("/fatture/{fid}/recupero-annuale")
+async def recupero_annuale_fattura(fid: str, motivo: str = Query(...), utente: str = Query("admin")):
+    """Segna l'IVA come recuperata nella dichiarazione annuale (§19)."""
+    return await _azione_stato_fattura(
+        fid, "RECUPERATA_IN_DICHIARAZIONE_ANNUALE", liq.MOV_RECUPERO_ANNUALE, motivo, utente,
+    )
+
+
+@router.post("/fatture/{fid}/correggi-periodo")
+async def correggi_periodo_fattura(
+    fid: str, periodo: str = Query(..., description="Nuovo periodo 'YYYY-MM'"),
+    motivo: str = Query(...), utente: str = Query("admin"),
+):
+    """Corregge manualmente il periodo IVA attribuito (§19)."""
+    return await _azione_stato_fattura(
+        fid, "DA_INSERIRE", liq.MOV_RETTIFICA, motivo, utente,
+        extra_set={"periodo_iva_attribuito": periodo, "regola_iva_applicata": "CORREZIONE_MANUALE"},
+    )

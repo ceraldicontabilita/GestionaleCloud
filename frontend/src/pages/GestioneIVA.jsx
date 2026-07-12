@@ -53,6 +53,24 @@ export default function GestioneIVA() {
   const [busyLiq, setBusyLiq] = useState(false);
   const periodo = `${anno}-${String(mese).padStart(2, '0')}`;
 
+  // Riepilogo annuale + anomalie (Fase 4)
+  const [riepilogo, setRiepilogo] = useState(null);
+  const [anomalie, setAnomalie] = useState(null);
+
+  const caricaRiepilogo = async () => {
+    try {
+      const [r, a] = await Promise.all([
+        api.get(`/api/iva/riepilogo-annuale/${anno}`),
+        api.get(`/api/iva/anomalie?anno=${anno}`),
+      ]);
+      setRiepilogo(r.data);
+      setAnomalie(a.data);
+    } catch {
+      setRiepilogo(null);
+      setAnomalie(null);
+    }
+  };
+
   const caricaLiquidazione = async (p = periodo) => {
     try {
       const res = await api.get(`/api/iva/liquidazioni/${p}`);
@@ -128,6 +146,10 @@ export default function GestioneIVA() {
   useEffect(() => {
     caricaLiquidazione();
   }, [anno, mese]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    caricaRiepilogo();
+  }, [anno]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const ricalcolaAttribuzione = async () => {
     setRicalcolo(true);
@@ -352,6 +374,66 @@ export default function GestioneIVA() {
           </div>
         )}
       </div>
+
+      {/* ── Riepilogo annuale + anomalie (Fase 4) ─────────────────────── */}
+      {riepilogo && (
+        <div style={STILI.sezione} data-testid="riepilogo-annuale">
+          <h3 style={STILI.sezioneTitolo}>
+            <Wallet size={18} style={{ color: COLORS.primary }} /> Riepilogo annuale {anno}
+          </h3>
+          <div style={STILI.riepilogo}>
+            {[
+              ['Utilizzata', 'utilizzata'],
+              ['Non utilizzata', 'non_utilizzata'],
+              ['Rinviata', 'rinviata'],
+              ['Indetraibile', 'indetraibile'],
+              ['Rettificata', 'rettificata'],
+              ['Recuperata annuale', 'recuperata_annualmente'],
+              ['Da verificare', 'da_verificare'],
+            ].map(([label, key]) => (
+              <div key={key} style={STILI.voce}>
+                <span style={STILI.voceLabel}>{label}</span>
+                <strong>{formatEuro(riepilogo.categorie?.[key]?.iva || 0)}</strong>
+                <span style={{ fontSize: 11, color: COLORS.textMuted }}>
+                  {riepilogo.categorie?.[key]?.conteggio || 0} fatt.
+                </span>
+              </div>
+            ))}
+          </div>
+          <div style={{ ...STILI.riepilogo, borderTop: 'none' }}>
+            <div style={STILI.voce}>
+              <span style={STILI.voceLabel}>IVA vendite</span>
+              <strong>{formatEuro(riepilogo.calcolo_annuale?.iva_vendite || 0)}</strong>
+            </div>
+            <div style={STILI.voce}>
+              <span style={STILI.voceLabel}>IVA detraibile annuale</span>
+              <strong>{formatEuro(riepilogo.calcolo_annuale?.iva_detraibile_annuale || 0)}</strong>
+            </div>
+            <div style={STILI.voce}>
+              <span style={STILI.voceLabel}>Debito finale</span>
+              <strong style={{ color: COLORS.danger }}>
+                {formatEuro(riepilogo.calcolo_annuale?.debito_finale || 0)}
+              </strong>
+            </div>
+            <div style={STILI.voce}>
+              <span style={STILI.voceLabel}>Credito finale</span>
+              <strong style={{ color: COLORS.success }}>
+                {formatEuro(riepilogo.calcolo_annuale?.credito_finale || 0)}
+              </strong>
+            </div>
+          </div>
+          {anomalie && (anomalie.totale_bloccanti > 0 || anomalie.totale_avvisi > 0) && (
+            <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+              {anomalie.totale_bloccanti > 0 && (
+                <Badge variant="danger">{anomalie.totale_bloccanti} anomalie bloccanti</Badge>
+              )}
+              {anomalie.totale_avvisi > 0 && (
+                <Badge variant="warning">{anomalie.totale_avvisi} avvisi</Badge>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </PageLayout>
   );
 }
