@@ -807,8 +807,9 @@ async def get_conto_economico_dettagliato(
 
 @router.get("/export-pdf")
 @handle_errors
-async def export_bilancio_pdf(anno: int = Query(None)):
-    """Esporta Bilancio in PDF."""
+async def export_bilancio_pdf(anno: int = Query(None), mese: int = Query(None, description="Mese (1-12), opzionale")):
+    """Esporta Bilancio in PDF. Con `mese` il PDF rispecchia il filtro mensile
+    della pagina (fotografia a fine mese e flussi del mese)."""
     try:
         from reportlab.lib import colors
         from reportlab.lib.pagesizes import A4
@@ -817,13 +818,14 @@ async def export_bilancio_pdf(anno: int = Query(None)):
         from reportlab.lib.units import cm
     except ImportError:
         raise HTTPException(status_code=500, detail="reportlab non installato")
-    
+
     if not anno:
         anno = datetime.now().year
-    
-    # Carica dati usando le funzioni helper (non le endpoint functions)
-    stato_patrimoniale = await _get_stato_patrimoniale_data(anno)
-    conto_economico = await _get_conto_economico_data(anno)
+
+    # Carica dati usando le funzioni helper (non le endpoint functions).
+    # Con `mese` il PDF è coerente con ciò che si vede a schermo.
+    stato_patrimoniale = await _get_stato_patrimoniale_data(anno, mese)
+    conto_economico = await _get_conto_economico_data(anno, mese)
     
     # Crea PDF
     buffer = BytesIO()
@@ -836,7 +838,10 @@ async def export_bilancio_pdf(anno: int = Query(None)):
     elements = []
     
     # Titolo
-    elements.append(Paragraph(f"BILANCIO {anno}", title_style))
+    _MESI = ["", "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
+             "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
+    _titolo = f"BILANCIO {_MESI[mese]} {anno}" if mese and 1 <= mese <= 12 else f"BILANCIO {anno}"
+    elements.append(Paragraph(_titolo, title_style))
     elements.append(Paragraph(f"Generato il {datetime.now().strftime('%d-%m-%Y')}", styles['Normal']))
     elements.append(Spacer(1, 20))
     
@@ -1070,11 +1075,19 @@ async def get_confronto_annuale(
 
 
 # Helper functions per evitare problemi con Query params
-async def _get_stato_patrimoniale_data(anno: int) -> Dict[str, Any]:
-    """Helper interno per ottenere stato patrimoniale."""
+async def _get_stato_patrimoniale_data(anno: int, mese: int = None) -> Dict[str, Any]:
+    """Helper interno per ottenere stato patrimoniale.
+
+    Con `mese` la fotografia è alla fine di quel mese (coerente con la vista a
+    schermo); senza, è a fine anno."""
     db = Database.get_db()
-    
-    data_fine = f"{anno}-12-31"
+
+    if mese:
+        import calendar
+        ultimo_giorno = calendar.monthrange(anno, mese)[1]
+        data_fine = f"{anno}-{mese:02d}-{ultimo_giorno:02d}"
+    else:
+        data_fine = f"{anno}-12-31"
     
     # Cassa
     pipeline_cassa = [
@@ -1154,21 +1167,30 @@ async def _get_stato_patrimoniale_data(anno: int) -> Dict[str, Any]:
     }
 
 
-async def _get_conto_economico_data(anno: int) -> Dict[str, Any]:
+async def _get_conto_economico_data(anno: int, mese: int = None) -> Dict[str, Any]:
     """
     Helper interno per ottenere conto economico.
-    
+
     LOGICA CONTABILE CORRETTA:
     - Ricavi = SOLO Corrispettivi (vendite al pubblico)
     - Costi = Fatture Ricevute (da fornitori) - Note Credito
-    
+
     NOTA: Tutte le fatture nella collezione 'invoices' sono RICEVUTE (acquisti).
     Non esistono fatture emesse a clienti in questo sistema.
+
+    Con `mese` i flussi sono limitati a quel mese (coerente con la vista a
+    schermo); senza, all'intero anno.
     """
     db = Database.get_db()
-    
-    data_inizio = f"{anno}-01-01"
-    data_fine = f"{anno}-12-31"
+
+    if mese:
+        import calendar
+        ultimo_giorno = calendar.monthrange(anno, mese)[1]
+        data_inizio = f"{anno}-{mese:02d}-01"
+        data_fine = f"{anno}-{mese:02d}-{ultimo_giorno:02d}"
+    else:
+        data_inizio = f"{anno}-01-01"
+        data_fine = f"{anno}-12-31"
     
     # === RICAVI ===
     # Solo corrispettivi (vendite al pubblico)

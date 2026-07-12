@@ -429,12 +429,15 @@ export default function Bilancio() {
             size="lg"
             iconLeft={<Download size={16} />}
             onClick={() =>
-              window.open(`${api.defaults.baseURL}/api/bilancio/export-pdf?anno=${anno}`, '_blank')
+              window.open(
+                `${api.defaults.baseURL}/api/bilancio/export-pdf?anno=${anno}${mese ? `&mese=${mese}` : ''}`,
+                '_blank'
+              )
             }
             data-testid="export-pdf-btn"
             style={{ minHeight: 40 }}
           >
-            PDF {anno}
+            PDF {mese ? `${anno}/${String(mese).padStart(2, '0')}` : anno}
           </Button>
           <Button
             variant="outline"

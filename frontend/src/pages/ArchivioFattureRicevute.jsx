@@ -277,7 +277,7 @@ export default function ArchivioFatture() {
                   <Button
                     variant="primary"
                     size="sm"
-                    onClick={() => setFatturaView({ id: invoiceNotFoundWarning.id, numero: invoiceNotFoundWarning.numero_fattura || invoiceNotFoundWarning.fornitore })}
+                    onClick={() => setFatturaView({ id: invoiceNotFoundWarning.id, numero: invoiceNotFoundWarning.numero })}
                   >
                     Vedi la fattura adesso
                   </Button>
@@ -527,7 +527,7 @@ export default function ArchivioFatture() {
                   <Button
                     variant="info"
                     size="sm"
-                    onClick={() => setFatturaView({ id: f.id, numero: f.numero_fattura || f.numero || f.fornitore })}
+                    onClick={() => setFatturaView({ id: f.id, numero: f.invoice_number || f.numero_documento || f.numero_fattura })}
                   >
                     Vedi
                   </Button>
@@ -758,7 +758,7 @@ export default function ArchivioFatture() {
                           <Button
                             variant="info"
                             size="sm"
-                            onClick={() => setFatturaView({ id: f.id, numero: f.numero_fattura || f.numero || f.fornitore })}
+                            onClick={() => setFatturaView({ id: f.id, numero: f.invoice_number || f.numero_documento || f.numero_fattura })}
                           >
                             Vedi
                           </Button>

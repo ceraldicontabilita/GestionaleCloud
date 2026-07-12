@@ -234,6 +234,7 @@ export default function RiconciliazionePaypal() {
     });
     if (!ok) return;
     let mappati = 0;
+    let falliti = 0;
     for (const item of certi) {
       try {
         await api.post('/api/paypal-api/mappa-fornitore', {
@@ -242,10 +243,18 @@ export default function RiconciliazionePaypal() {
         });
         mappati++;
       } catch {
-        // continua col prossimo
+        falliti++;
       }
     }
-    toast.success(`Mappati ${mappati}/${certi.length} fornitori`);
+    // Non spacciare per successo un batch fallito: se nessuna mappatura è
+    // andata a buon fine è un errore, non "0 da mappare".
+    if (mappati === 0 && falliti > 0) {
+      toast.error(`Mappatura fallita su tutti i ${falliti} fornitori (errore del servizio).`);
+    } else if (falliti > 0) {
+      toast.error(`Mappati ${mappati}/${certi.length}; ${falliti} falliti per errore del servizio.`);
+    } else {
+      toast.success(`Mappati ${mappati}/${certi.length} fornitori`);
+    }
     loadMapping();
   };
 

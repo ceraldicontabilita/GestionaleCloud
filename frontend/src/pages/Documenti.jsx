@@ -122,12 +122,18 @@ export default function Documenti() {
   const [categorieMittente, setCategorieMittente] = useState([]);
   const [filtroMittente, setFiltroMittente] = useState('');
 
-  // Load categorie mittente
+  // Load categorie mittente (ricaricabile dal bottone "Aggiorna")
+  const loadCategorieMittente = async () => {
+    try {
+      const r = await api.get('/api/documenti-non-associati/categorie-mittente');
+      setCategorieMittente(r.data?.categorie || []);
+    } catch (e) {
+      // Errore del servizio ≠ "nessun mittente": segnalalo.
+      toast.error('Categorie mittente non caricate: ' + (e.response?.data?.detail || e.message));
+    }
+  };
   useEffect(() => {
-    api
-      .get('/api/documenti-non-associati/categorie-mittente')
-      .then(r => setCategorieMittente(r.data?.categorie || []))
-      .catch(() => {});
+    loadCategorieMittente();
   }, []);
 
   // AI Documents
@@ -464,7 +470,13 @@ export default function Documenti() {
       actions={
         <Button
           variant="secondary"
-          onClick={activeTab === 'email' ? loadData : loadAiDocuments}
+          onClick={
+            activeTab === 'categorie'
+              ? loadCategorieMittente
+              : activeTab === 'email'
+                ? loadData
+                : loadAiDocuments
+          }
           disabled={loading || aiLoading}
           iconLeft={loading || aiLoading ? '⏳' : '🔄'}
         >

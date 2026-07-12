@@ -159,13 +159,15 @@ export default function RiconciliazioneUnificata() {
     try {
       const res = await api.post('/api/fatture-ricevute/auto-ricostruisci-dati');
       if (res.data.riconciliazioni_auto > 0 || res.data.f24_corretti > 0) {
-        
         setAutoRepairStatus(res.data);
         // Ricarica dati dopo riparazione
         loadAllData();
+      } else {
+        toast.info('Auto-riparazione completata: niente da correggere.');
       }
     } catch (error) {
-      console.warn('Auto-riparazione non riuscita:', error);
+      // Errore del servizio ≠ "niente da riparare": va segnalato.
+      toast.error('Auto-riparazione non riuscita: ' + (error.response?.data?.detail || error.message));
     } finally {
       setAutoRepairRunning(false);
     }
