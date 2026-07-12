@@ -60,6 +60,18 @@ export default function GestioneIVA() {
   // Dashboard IVA del mese (Fase 5)
   const [dashboard, setDashboard] = useState(null);
 
+  // Calcola pregresso: esito persistente dell'ultimo ricalcolo
+  const [ultimoRic, setUltimoRic] = useState(null);
+
+  const caricaUltimoRic = async () => {
+    try {
+      const res = await api.get('/api/iva/ricalcola-attribuzione/ultimo');
+      setUltimoRic(res.data?.ultimo || null);
+    } catch {
+      setUltimoRic(null);
+    }
+  };
+
   const caricaRiepilogo = async () => {
     try {
       const [r, a] = await Promise.all([
@@ -155,18 +167,26 @@ export default function GestioneIVA() {
 
   useEffect(() => {
     caricaRiepilogo();
+    caricaUltimoRic();
   }, [anno]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const ricalcolaAttribuzione = async () => {
+  // Calcola pregresso: rilegge DAVVERO le fatture (tutte, o solo l'anno) e
+  // ricalcola l'IVA. tuttoIlPregresso=true → nessun filtro anno.
+  const ricalcolaAttribuzione = async (tuttoIlPregresso = true) => {
     setRicalcolo(true);
     setMsg(null);
     try {
-      const res = await api.post(`/api/iva/ricalcola-attribuzione?anno=${anno}`);
+      const q = tuttoIlPregresso ? '' : `?anno=${anno}`;
+      const res = await api.post(`/api/iva/ricalcola-attribuzione${q}`);
+      const r = res.data?.report || {};
       setMsg({
         tipo: 'ok',
-        testo: `Attribuzione ricalcolata su ${res.data?.aggiornate || 0} fatture.`,
+        testo: `Lette ${r.lette || 0} fatture: ${r.modificate || 0} aggiornate, `
+          + `${r.con_periodo || 0} attribuite, ${r.da_verificare || 0} da verificare.`,
       });
+      setUltimoRic(r);
       await carica();
+      await caricaRiepilogo();
     } catch (e) {
       setMsg({ tipo: 'errore', testo: 'Errore ricalcolo: ' + (e.response?.data?.detail || e.message) });
     } finally {
@@ -192,15 +212,81 @@ export default function GestioneIVA() {
           <Button variant="secondary" onClick={carica} disabled={loading}>
             <RefreshCw size={16} className={loading ? 'spin' : ''} /> Aggiorna
           </Button>
+        </div>
+      </div>
+
+      {/* ── Calcola pregresso (persistente) ───────────────────────────── */}
+      <div style={STILI.sezione} data-testid="calcola-pregresso">
+        <h3 style={STILI.sezioneTitolo}>
+          <Calculator size={18} style={{ color: COLORS.primary }} /> Calcola pregresso
+        </h3>
+        <p style={{ fontSize: 13, color: COLORS.textMuted, margin: '0 0 10px' }}>
+          Rilegge tutte le fatture di acquisto e ricalcola l'IVA per competenza
+          (periodo, regola, stato). Non tocca l'IVA già usata in una liquidazione
+          confermata. L'esito qui sotto resta memorizzato: sai sempre quante
+          fatture sono state lette e attribuite.
+        </p>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
           <Button
             variant="primary"
-            onClick={ricalcolaAttribuzione}
+            onClick={() => ricalcolaAttribuzione(true)}
             disabled={ricalcolo}
-            data-testid="iva-ricalcola"
+            data-testid="iva-ricalcola-tutto"
           >
-            {ricalcolo ? 'Ricalcolo…' : 'Ricalcola attribuzione'}
+            {ricalcolo ? 'Calcolo in corso…' : 'Calcola tutto il pregresso'}
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => ricalcolaAttribuzione(false)}
+            disabled={ricalcolo}
+            data-testid="iva-ricalcola-anno"
+          >
+            Solo {anno}
           </Button>
         </div>
+        {ultimoRic ? (
+          <div style={STILI.riepilogo} data-testid="ultimo-ricalcolo">
+            <div style={STILI.voce}>
+              <span style={STILI.voceLabel}>Fatture lette</span>
+              <strong>{ultimoRic.lette ?? 0}</strong>
+            </div>
+            <div style={STILI.voce}>
+              <span style={STILI.voceLabel}>Attribuite</span>
+              <strong>{ultimoRic.con_periodo ?? 0}</strong>
+            </div>
+            <div style={STILI.voce}>
+              <span style={STILI.voceLabel}>Da verificare</span>
+              <strong style={{ color: (ultimoRic.da_verificare || 0) > 0 ? COLORS.danger : COLORS.text }}>
+                {ultimoRic.da_verificare ?? 0}
+              </strong>
+            </div>
+            <div style={STILI.voce}>
+              <span style={STILI.voceLabel}>Aggiornate</span>
+              <strong>{ultimoRic.modificate ?? 0}</strong>
+            </div>
+            <div style={STILI.voce}>
+              <span style={STILI.voceLabel}>Già utilizzate</span>
+              <strong>{ultimoRic.gia_utilizzate ?? 0}</strong>
+            </div>
+            <div style={STILI.voce}>
+              <span style={STILI.voceLabel}>Ultimo calcolo</span>
+              <strong style={{ fontSize: 12 }}>{formatDateIT(ultimoRic.eseguito_il)}</strong>
+            </div>
+          </div>
+        ) : (
+          <div style={STILI.miniVuoto}>
+            Nessun ricalcolo eseguito finora. Premi «Calcola tutto il pregresso».
+          </div>
+        )}
+        {ultimoRic?.per_anno && Object.keys(ultimoRic.per_anno).length > 0 && (
+          <div style={{ marginTop: 8, fontSize: 12, color: COLORS.textMuted }}>
+            Attribuite per anno:{' '}
+            {Object.entries(ultimoRic.per_anno)
+              .sort()
+              .map(([a, n]) => `${a}: ${n}`)
+              .join(' · ')}
+          </div>
+        )}
       </div>
 
       {msg && (

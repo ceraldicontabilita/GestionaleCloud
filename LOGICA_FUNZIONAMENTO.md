@@ -360,11 +360,18 @@ separati tre momenti: *quando la fattura è ricevuta*, *a quale mese IVA è
 attribuita per competenza*, *in quale liquidazione è stata effettivamente usata*.
 
 - **Attribuzione automatica del periodo** (all'import di ogni fattura, e
-  ricalcolabile col bottone «Ricalcola attribuzione»): stesso mese →
+  ricalcolabile col pannello «Calcola pregresso»): stesso mese →
   quel mese; ricevuta e registrata **entro il 15** del mese dopo, stesso anno →
   mese dell'operazione; **dopo il 15** → mese di ricezione; **a cavallo d'anno**
   (operazione a dicembre, ricevuta a gennaio) → **gennaio, mai retroattribuita a
   dicembre**.
+- **Calcola pregresso**: il pannello in cima alla pagina rilegge DAVVERO tutte
+  le fatture di acquisto (o solo l'anno scelto) e ricalcola l'IVA — non è una
+  stima e non tocca l'IVA già usata in una liquidazione confermata. L'esito è
+  **memorizzato e sempre visibile** (fatture lette, attribuite, da verificare,
+  aggiornate, già utilizzate, ripartizione per anno, data dell'ultimo calcolo):
+  non serve ripetere il calcolo su periodi diversi per essere certi di cosa è
+  stato letto.
 - **IVA disponibile non utilizzata**: elenco delle fatture la cui IVA è
   attribuita per competenza ma non ancora inserita in nessuna liquidazione, con
   totale in cima. Le note di credito (TD04/TD08) non contano come credito.

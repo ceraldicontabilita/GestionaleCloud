@@ -35,13 +35,33 @@ def _periodo_precedente(periodo: str) -> str:
     return f"{anno}-{mese - 1:02d}"
 
 
+COLL_RICALC_LOG = "iva_ricalcolo_log"
+
+# Campi che servono al motore IVA: si proietta solo questo, così si leggono
+# DAVVERO tutte le fatture senza caricare i PDF/XML in base64 (che le
+# renderebbero pesantissime) e senza mai troncare l'elenco.
+_PROJ_RICALCOLO = {
+    "invoice_date": 1, "data_documento": 1, "linee": 1,
+    "data_ricezione_sdi": 1, "data_ricezione": 1, "created_at": 1,
+    "data_registrazione": 1, "iva": 1, "total_iva": 1, "iva_totale": 1,
+    "iva_utilizzata": 1, "periodo_iva_utilizzato": 1, "stato_detrazione_iva": 1,
+    "periodo_iva_attribuito": 1, "regola_iva_applicata": 1, "tipo_documento": 1,
+}
+
+
 @router.post("/ricalcola-attribuzione")
 async def ricalcola_attribuzione(
-    anno: Optional[int] = Query(None, description="Limita al singolo anno (opzionale)"),
+    anno: Optional[int] = Query(None, description="Limita al singolo anno (opzionale). Vuoto = TUTTE le fatture"),
+    utente: str = Query("admin"),
 ) -> Dict[str, Any]:
-    """Ricalcola e salva i campi IVA (periodo attribuito, regola, stato) su
-    tutte le fatture. Idempotente: non tocca l'IVA già utilizzata. Serve a
-    popolare le fatture ESISTENTI (le nuove vengono arricchite all'import)."""
+    """Calcola il PREGRESSO: rilegge DAVVERO tutte le fatture di acquisto (o di
+    un anno) e ricalcola i campi IVA (periodo attribuito per competenza, regola,
+    stato). Non tocca l'IVA già utilizzata in una liquidazione confermata.
+
+    Ritorna un report verificabile (lette, modificate, invariate, attribuite,
+    da verificare, già utilizzate + ripartizione per regola e per anno) e lo
+    SALVA in `iva_ricalcolo_log`, così l'esito resta consultabile e non serve
+    ripetere il calcolo per essere sicuri di cosa è stato letto."""
     db = Database.get_db()
     query: Dict[str, Any] = {}
     if anno:
@@ -50,15 +70,64 @@ async def ricalcola_attribuzione(
             {"data_documento": {"$regex": f"^{anno}"}},
         ]
 
-    aggiornate = 0
-    esaminate = 0
-    async for inv in db[COLL].find(query):
-        esaminate += 1
-        campi = iva_fatture.campi_iva_da_fattura(inv)
-        await db[COLL].update_one({"_id": inv["_id"]}, {"$set": campi})
-        aggiornate += 1
+    lette = modificate = invariate = 0
+    con_periodo = da_verificare = gia_utilizzate = 0
+    per_regola: Dict[str, int] = {}
+    per_anno: Dict[str, int] = {}
 
-    return {"success": True, "esaminate": esaminate, "aggiornate": aggiornate}
+    async for inv in db[COLL].find(query, _PROJ_RICALCOLO):
+        lette += 1
+        campi = iva_fatture.campi_iva_da_fattura(inv)
+
+        # modificata solo se un campo IVA cambia davvero rispetto all'esistente
+        cambia = any(inv.get(k) != v for k, v in campi.items())
+        if cambia:
+            await db[COLL].update_one({"_id": inv["_id"]}, {"$set": campi})
+            modificate += 1
+        else:
+            invariate += 1
+
+        periodo = campi.get("periodo_iva_attribuito")
+        if campi.get("iva_utilizzata"):
+            gia_utilizzate += 1
+        if periodo:
+            con_periodo += 1
+            per_anno[periodo[:4]] = per_anno.get(periodo[:4], 0) + 1
+        else:
+            da_verificare += 1
+        regola = campi.get("regola_iva_applicata") or "—"
+        per_regola[regola] = per_regola.get(regola, 0) + 1
+
+    report = {
+        "id": str(uuid.uuid4()),
+        "eseguito_il": datetime.utcnow().isoformat(),
+        "eseguito_da": utente,
+        "filtro_anno": anno,
+        "lette": lette,
+        "modificate": modificate,
+        "invariate": invariate,
+        "con_periodo": con_periodo,
+        "da_verificare": da_verificare,
+        "gia_utilizzate": gia_utilizzate,
+        "per_regola": per_regola,
+        "per_anno": per_anno,
+    }
+    # Persistenza dell'esito (best-effort: non deve far fallire il calcolo).
+    try:
+        await db[COLL_RICALC_LOG].insert_one(dict(report))
+    except Exception:
+        pass
+
+    return {"success": True, "esaminate": lette, "aggiornate": modificate, "report": report}
+
+
+@router.get("/ricalcola-attribuzione/ultimo")
+async def ultimo_ricalcolo() -> Dict[str, Any]:
+    """Ultimo esito del 'Calcola pregresso' (persistito): resta visibile nella
+    pagina così sai sempre quante fatture sono state lette e attribuite."""
+    db = Database.get_db()
+    doc = await db[COLL_RICALC_LOG].find_one({}, {"_id": 0}, sort=[("eseguito_il", -1)])
+    return {"ultimo": doc}
 
 
 @router.get("/fatture")

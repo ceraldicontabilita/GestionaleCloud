@@ -252,6 +252,7 @@ class Database:
         await _safe_index("movimenti_iva_fattura", "id", unique=True, name="idx_mov_iva_id")
         await _safe_index("movimenti_iva_fattura", [("fattura_id", 1), ("created_at", -1)], name="idx_mov_iva_fattura")
         await _safe_index("movimenti_iva_fattura", [("periodo", 1), ("tipo_movimento", 1)], name="idx_mov_iva_periodo_tipo")
+        await _safe_index("iva_ricalcolo_log", [("eseguito_il", -1)], name="idx_iva_ricalcolo_data")
         # Indici IVA su fatture (attribuzione/utilizzo per competenza)
         await _safe_index(Collections.INVOICES, "periodo_iva_attribuito", name="idx_invoices_periodo_iva")
         await _safe_index(Collections.INVOICES, "liquidazione_id", sparse=True, name="idx_invoices_liq_id")
