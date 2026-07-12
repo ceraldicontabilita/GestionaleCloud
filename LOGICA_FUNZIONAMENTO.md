@@ -332,6 +332,16 @@ memoria/SPECIFICA_F24_CEDOLINI_IRES_IRAP_CHAT.md).**
 - **Quietanza senza F24** (Caso 3): il modello non viene mai ricostruito;
   la quietanza resta come prova di pagamento non associata, con alert
   bloccante "F24 mancante — prego caricare il modello F24 corrispondente".
+- **Quietanza AdE → scadenza completata**: quando la quietanza dell'Agenzia
+  delle Entrate viene abbinata a un F24, le scadenze corrispondenti nel
+  **Calendario Fiscale** (Versamento ritenute, Contributi INPS, Liquidazione
+  IVA del periodo pagato) vengono segnate **completate** in automatico. Il
+  mese si ricava dalla **data di pagamento** della quietanza: ritenute e INPS
+  sul mese di versamento, IVA sul mese di competenza (versamento il 16 del
+  mese dopo). Sono esclusi i ravvedimenti e **RC01** (regolarizzazione di
+  periodo precedente, mai imputata al mese corrente). La marcatura è
+  tracciabile (salva quietanza e F24 di origine) e non tocca le scadenze già
+  completate a mano; un problema qui non blocca mai l'import della quietanza.
 - API: `/api/f24-analisi/{id}`, `/api/f24-analisi/{id}/associazione`,
   `/api/f24-analisi/doppi-pagamenti`. La Chat usa gli strumenti
   `spiega_f24` e `doppi_pagamenti_f24`.

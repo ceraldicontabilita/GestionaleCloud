@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 COLL_QUIETANZE = "quietanze_f24"
 COLL_F24_COMMERCIALISTA = "f24_commercialista"
 COLL_F24_ALERTS = "f24_riconciliazione_alerts"
+COLL_CALENDARIO = "calendario_fiscale"
 
 # Codici ravvedimento da escludere dal confronto tributi
 CODICI_RAVVEDIMENTO = {
@@ -30,6 +31,91 @@ CODICI_RAVVEDIMENTO = {
     '1989', '1990', '1991', '1992', '1993', '1994',
     '1507', '1508', '1509', '1510', '1511', '1512',
 }
+
+# Codici tributo → tipo di scadenza del calendario fiscale (app/routers/
+# fiscalita_italiana.py::genera_scadenze_anno). Servono a segnare COMPLETATA
+# la scadenza corrispondente quando arriva la quietanza dell'Agenzia Entrate.
+CODICI_RITENUTE = {'1001', '1002', '1012', '1040', '1627', '3802', '3847', '3848'}
+CODICI_IVA_MENSILE = {f'60{m:02d}' for m in range(1, 13)}  # 6001..6012
+
+
+def _tipo_scadenza_da_codice(codice: str) -> str:
+    """Mappa un codice tributo / causale F24 al tipo di scadenza del calendario.
+    Ritorna 'RITENUTE' | 'IVA' | 'INPS' | '' (ignoto)."""
+    c = (codice or '').strip().upper()
+    if c in CODICI_RITENUTE:
+        return 'RITENUTE'
+    if c in CODICI_IVA_MENSILE:
+        return 'IVA'
+    # INPS: causali DM10 (contributi correnti), Cxx (gestione separata), 5100.
+    # RC01 è regolarizzazione di periodo precedente (specifica F24): NON marca
+    # la scadenza del mese corrente.
+    if c == 'RC01':
+        return ''
+    if c.startswith('DM') or c == '5100' or (len(c) == 3 and c.startswith('C')):
+        return 'INPS'
+    return ''
+
+
+async def _marca_scadenze_calendario(db, f24: dict, data_pagamento: str, quietanza_id: str) -> list:
+    """Segna COMPLETATE nel calendario fiscale le scadenze pagate da questo F24.
+
+    Approccio conservativo e reversibile (rispetta la specifica F24):
+      - considera solo i tributi PRINCIPALI del F24 (ravvedimenti/RC01 esclusi);
+      - dai codici ricava i TIPI coinvolti (ritenute/IVA/INPS);
+      - usa la DATA DI PAGAMENTO della quietanza (dato certo dell'Agenzia
+        Entrate) come mese di versamento: per ritenute/INPS la scadenza ha
+        `data` = 16 di quel mese; per l'IVA la scadenza è di competenza del
+        mese precedente (versamento il 16 del mese dopo);
+      - marca solo scadenze non già completate; salva quietanza_id/f24_id per
+        tracciabilità e reversibilità.
+    Non tocca nulla se manca la data di pagamento o se il calendario non ha la
+    scadenza (es. anno non ancora generato)."""
+    if not data_pagamento or len(str(data_pagamento)) < 7:
+        return []
+    try:
+        anno_pag = int(str(data_pagamento)[:4])
+        mese_pag = int(str(data_pagamento)[5:7])
+    except (ValueError, TypeError):
+        return []
+
+    tipi = set()
+    for t in estrai_tributi_dettaglio(f24):
+        if t['codice'] in CODICI_RAVVEDIMENTO:
+            continue
+        tipo = _tipo_scadenza_da_codice(t['codice'])
+        if tipo:
+            tipi.add(tipo)
+
+    marcate = []
+    for tipo in tipi:
+        if tipo == 'RITENUTE':
+            sid = f"ritenute_{anno_pag}_{mese_pag:02d}"
+        elif tipo == 'INPS':
+            sid = f"inps_{anno_pag}_{mese_pag:02d}"
+        elif tipo == 'IVA':
+            # Versamento il 16 del mese successivo alla competenza:
+            # competenza = mese di pagamento - 1.
+            mese_comp = mese_pag - 1 if mese_pag > 1 else 12
+            anno_comp = anno_pag if mese_pag > 1 else anno_pag - 1
+            sid = f"iva_liq_{anno_comp}_{mese_comp:02d}"
+        else:
+            continue
+        res = await db[COLL_CALENDARIO].update_one(
+            {"id": sid, "completato": {"$ne": True}},
+            {"$set": {
+                "completato": True,
+                "data_completamento": data_pagamento,
+                "completato_da": "quietanza_f24",
+                "quietanza_id": quietanza_id,
+                "f24_id": f24.get("id"),
+            }},
+        )
+        if res.modified_count:
+            marcate.append(sid)
+    if marcate:
+        logger.info(f"Quietanza {quietanza_id}: scadenze calendario completate: {marcate}")
+    return marcate
 
 
 def estrai_tributi_dettaglio(doc: dict) -> list:
@@ -184,6 +270,16 @@ async def importa_quietanza_bytes(
         await db[COLL_QUIETANZE].update_one(
             {"id": file_id}, {"$push": {"f24_associati": f24["id"]}}
         )
+        # Quietanza AdE arrivata → segna COMPLETATE le relative scadenze del
+        # calendario fiscale (ritenute/IVA/INPS del periodo pagato). Difensivo:
+        # un problema qui non deve MAI far fallire l'import della quietanza.
+        try:
+            scadenze_completate = await _marca_scadenze_calendario(
+                db, f24, data_pagamento, file_id
+            )
+        except Exception as e:
+            logger.warning(f"Marcatura scadenze calendario non riuscita (non bloccante): {e}")
+            scadenze_completate = []
         f24_matchati.append({
             "f24_id": f24["id"],
             "f24_filename": f24.get("file_name"),
@@ -192,6 +288,7 @@ async def importa_quietanza_bytes(
             "tributi_matchati": f"{tributi_trovati}/{len(tributi_f24_principali)}",
             "ravveduto": is_ravveduto,
             "importo_ravvedimento": round(importo_ravv, 2) if is_ravveduto else 0,
+            "scadenze_completate": scadenze_completate,
         })
         break  # Un F24 per quietanza (one-to-one)
 
