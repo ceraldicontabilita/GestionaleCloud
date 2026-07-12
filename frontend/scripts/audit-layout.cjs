@@ -32,7 +32,7 @@ const PAGINE = [
   '/riconciliazione/coerenza-pos', '/riconciliazione/assegni',
   '/fatture', '/fatture/corrispettivi', '/documenti', '/documenti/import',
   '/admin', '/noleggio', '/learning-machine', '/scadenze', '/mappa-gestionale',
-  '/documenti-fiscali',
+  '/documenti-fiscali', '/iva',
 ];
 
 const VIEWPORTS = [

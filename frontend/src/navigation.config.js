@@ -49,6 +49,7 @@ export const NAV_PRINCIPALI = [
 // (richiesta utente 10/07, un solo posto canonico).
 export const NAV_ALTRO = [
   { to: '/riconciliazione/f24', label: 'F24', Icon: Receipt },
+  { to: '/iva', label: 'Gestione IVA', Icon: Receipt },
   { to: '/contabilita', label: 'Contabilita', Icon: FileBarChart },
   { to: '/documenti', label: 'Documenti', Icon: BookMarked },
   { to: '/documenti/import', label: 'Import Documenti', Icon: Upload },
