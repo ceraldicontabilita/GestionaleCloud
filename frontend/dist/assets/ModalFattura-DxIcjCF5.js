@@ -1,0 +1,1 @@
+import{j as a}from"./index-CyC2UkKs.js";import{D as i}from"./DocumentViewerModal-DdON4xEH.js";function u({fatturaId:t,numero:r,onClose:e}){return t?a.jsx(i,{title:`📄 Fattura ${r||t}`,src:`/api/fatture-ricevute/fattura/${t}/view-assoinvoice`,onClose:e,testIdPrefix:"modal-fattura"}):null}export{u as M};

@@ -352,7 +352,37 @@ memoria/SPECIFICA_F24_CEDOLINI_IRES_IRAP_CHAT.md).**
 
 ---
 
-## 8. Cedolini e Dipendenti
+## 8. Gestione IVA (attribuzione per competenza + liquidazioni mensili)
+
+Pagina **Gestione IVA** (menù «Altro»). Principio cardine: **la data in cui una
+fattura arriva non è il mese in cui la sua IVA si usa.** Il sistema tiene sempre
+separati tre momenti: *quando la fattura è ricevuta*, *a quale mese IVA è
+attribuita per competenza*, *in quale liquidazione è stata effettivamente usata*.
+
+- **Attribuzione automatica del periodo** (all'import di ogni fattura, e
+  ricalcolabile col bottone «Ricalcola attribuzione»): stesso mese →
+  quel mese; ricevuta e registrata **entro il 15** del mese dopo, stesso anno →
+  mese dell'operazione; **dopo il 15** → mese di ricezione; **a cavallo d'anno**
+  (operazione a dicembre, ricevuta a gennaio) → **gennaio, mai retroattribuita a
+  dicembre**.
+- **IVA disponibile non utilizzata**: elenco delle fatture la cui IVA è
+  attribuita per competenza ma non ancora inserita in nessuna liquidazione, con
+  totale in cima. Le note di credito (TD04/TD08) non contano come credito.
+- **Liquidazione mensile**: scegli mese e IVA vendite, premi «Calcola». Il
+  sistema seleziona solo le fatture del periodo **non ancora usate** e mostra
+  incluse/escluse (con il motivo di ogni esclusione) e il saldo (a debito o a
+  credito, col credito del mese precedente riportato). Il calcolo **non** tocca
+  ancora nulla: è una bozza.
+- **Conferma**: marca l'IVA delle fatture incluse come *utilizzata* legandola
+  alla liquidazione. Da quel momento la **stessa fattura non può rientrare in un
+  altro mese** — è il blocco alla doppia detrazione. Una liquidazione confermata
+  non si sovrascrive: per correggerla va **riaperta** (libera di nuovo le sue
+  fatture) oppure **rettificata** (la vecchia resta come storico, ne nasce una
+  nuova versione). Ogni movimento IVA per fattura resta tracciato.
+
+---
+
+## 9. Cedolini e Dipendenti
 
 - I cedolini (Libro Unico, formato Zucchetti) arrivano **via email** dallo Studio
   Ferrantini (mittenti attendibili configurati; canale attivo). Il PDF viene anche
@@ -376,7 +406,7 @@ memoria/SPECIFICA_F24_CEDOLINI_IRES_IRAP_CHAT.md).**
 
 ---
 
-## 9. Scadenze operative
+## 10. Scadenze operative
 
 La pagina Scadenze mostra **solo** le scadenze che richiedono davvero attenzione:
 
@@ -393,7 +423,7 @@ Sposta in verifica (fatture e F24 — l'avviso lo genera poi il sistema).
 
 ---
 
-## 10. Verbali, veicoli e trattenute
+## 11. Verbali, veicoli e trattenute
 
 **Flusso verbale**: email da mittente attendibile → estrazione di numero verbale,
 targa, importo, date → collegamento al veicolo (targa) e al conducente assegnatario
@@ -448,7 +478,7 @@ contratto attivo/cessato).
 
 ---
 
-## 11. Noleggio auto e contratti cessati
+## 12. Noleggio auto e contratti cessati
 
 Principio del modulo (specifica 10-07-2026): auto/targa → contratto → fatture e
 costi → pagamenti → driver assegnato → verbali → eventuali trattenute → report.
@@ -494,7 +524,7 @@ costi → pagamenti → driver assegnato → verbali → eventuali trattenute �
 
 ---
 
-## 12. Cosa è acceso e cosa è spento oggi
+## 13. Cosa è acceso e cosa è spento oggi
 
 | Canale | Stato | Perché |
 |---|---|---|

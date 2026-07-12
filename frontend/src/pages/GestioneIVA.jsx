@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { RefreshCw, Wallet } from 'lucide-react';
+import { RefreshCw, Wallet, Calculator, CheckCircle2, Unlock } from 'lucide-react';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
-import { formatEuro, formatDateIT, COLORS } from '../lib/utils';
+import { formatEuro, formatDateIT, COLORS, MESI_FULL } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
 import { Button, Badge } from '../components/ds';
 
@@ -29,12 +29,85 @@ const REGOLA_LABEL = {
   DA_VERIFICARE: '—',
 };
 
+const STATO_LIQ = {
+  BOZZA: { label: 'Bozza', variant: 'neutral' },
+  CALCOLATA: { label: 'Calcolata', variant: 'info' },
+  DA_VERIFICARE: { label: 'Da verificare', variant: 'warning' },
+  CONFERMATA: { label: 'Confermata', variant: 'success' },
+  TRASMESSA: { label: 'Trasmessa', variant: 'success' },
+  RIAPERTA: { label: 'Riaperta', variant: 'warning' },
+  RETTIFICATA: { label: 'Rettificata', variant: 'danger' },
+};
+
 export default function GestioneIVA() {
   const { anno } = useAnnoGlobale();
   const [dati, setDati] = useState(null);
   const [loading, setLoading] = useState(true);
   const [ricalcolo, setRicalcolo] = useState(false);
   const [msg, setMsg] = useState(null);
+
+  // Liquidazione mensile (Fase 3)
+  const [mese, setMese] = useState(1);
+  const [ivaVendite, setIvaVendite] = useState('0');
+  const [liquidazione, setLiquidazione] = useState(null);
+  const [busyLiq, setBusyLiq] = useState(false);
+  const periodo = `${anno}-${String(mese).padStart(2, '0')}`;
+
+  const caricaLiquidazione = async (p = periodo) => {
+    try {
+      const res = await api.get(`/api/iva/liquidazioni/${p}`);
+      setLiquidazione(res.data?.corrente || null);
+    } catch {
+      setLiquidazione(null);
+    }
+  };
+
+  const calcolaLiq = async () => {
+    setBusyLiq(true);
+    setMsg(null);
+    try {
+      const res = await api.post(
+        `/api/iva/liquidazioni/calcola?periodo=${periodo}&iva_vendite=${Number(ivaVendite) || 0}`
+      );
+      setLiquidazione(res.data?.liquidazione || null);
+    } catch (e) {
+      setMsg({ tipo: 'errore', testo: 'Errore calcolo: ' + (e.response?.data?.detail || e.message) });
+    } finally {
+      setBusyLiq(false);
+    }
+  };
+
+  const confermaLiq = async () => {
+    if (!liquidazione?.id) return;
+    setBusyLiq(true);
+    setMsg(null);
+    try {
+      await api.post(`/api/iva/liquidazioni/${liquidazione.id}/conferma`);
+      setMsg({ tipo: 'ok', testo: `Liquidazione ${periodo} confermata: IVA marcata come utilizzata.` });
+      await caricaLiquidazione();
+      await carica();
+    } catch (e) {
+      setMsg({ tipo: 'errore', testo: 'Errore conferma: ' + (e.response?.data?.detail || e.message) });
+    } finally {
+      setBusyLiq(false);
+    }
+  };
+
+  const riapriLiq = async () => {
+    if (!liquidazione?.id) return;
+    setBusyLiq(true);
+    setMsg(null);
+    try {
+      await api.post(`/api/iva/liquidazioni/${liquidazione.id}/riapri?motivo=Riapertura+manuale`);
+      setMsg({ tipo: 'ok', testo: `Liquidazione ${periodo} riaperta: IVA di nuovo disponibile.` });
+      await caricaLiquidazione();
+      await carica();
+    } catch (e) {
+      setMsg({ tipo: 'errore', testo: 'Errore riapertura: ' + (e.response?.data?.detail || e.message) });
+    } finally {
+      setBusyLiq(false);
+    }
+  };
 
   const carica = async () => {
     setLoading(true);
@@ -51,6 +124,10 @@ export default function GestioneIVA() {
   useEffect(() => {
     carica();
   }, [anno]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    caricaLiquidazione();
+  }, [anno, mese]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const ricalcolaAttribuzione = async () => {
     setRicalcolo(true);
@@ -154,6 +231,127 @@ export default function GestioneIVA() {
           </table>
         </div>
       )}
+
+      {/* ── Liquidazione mensile (Fase 3) ─────────────────────────────── */}
+      <div style={STILI.sezione} data-testid="liquidazione-mensile">
+        <h3 style={STILI.sezioneTitolo}>
+          <Calculator size={18} style={{ color: COLORS.primary }} /> Liquidazione mensile
+        </h3>
+        <div style={STILI.barra}>
+          <label style={STILI.campo}>
+            <span style={STILI.campoLabel}>Mese</span>
+            <select
+              value={mese}
+              onChange={(e) => setMese(Number(e.target.value))}
+              style={STILI.select}
+              data-testid="liq-mese"
+            >
+              {MESI_FULL.slice(1).map((m, i) => (
+                <option key={i + 1} value={i + 1}>{m}</option>
+              ))}
+            </select>
+          </label>
+          <label style={STILI.campo}>
+            <span style={STILI.campoLabel}>IVA vendite (€)</span>
+            <input
+              type="number"
+              value={ivaVendite}
+              onChange={(e) => setIvaVendite(e.target.value)}
+              style={STILI.input}
+              data-testid="liq-iva-vendite"
+            />
+          </label>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+            <Button variant="primary" onClick={calcolaLiq} disabled={busyLiq} data-testid="liq-calcola">
+              <Calculator size={16} /> Calcola
+            </Button>
+            {liquidazione && !['CONFERMATA', 'TRASMESSA'].includes(liquidazione.stato) && (
+              <Button variant="success" onClick={confermaLiq} disabled={busyLiq} data-testid="liq-conferma">
+                <CheckCircle2 size={16} /> Conferma
+              </Button>
+            )}
+            {liquidazione && ['CONFERMATA', 'TRASMESSA'].includes(liquidazione.stato) && (
+              <Button variant="secondary" onClick={riapriLiq} disabled={busyLiq} data-testid="liq-riapri">
+                <Unlock size={16} /> Riapri
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {!liquidazione ? (
+          <div style={STILI.vuoto}>
+            Nessuna liquidazione per {MESI_FULL[mese]} {anno}. Premi «Calcola» per crearla.
+          </div>
+        ) : (
+          <div>
+            <div style={STILI.riepilogo}>
+              <div style={STILI.voce}>
+                <span style={STILI.voceLabel}>Stato</span>
+                <Badge variant={(STATO_LIQ[liquidazione.stato] || STATO_LIQ.BOZZA).variant}>
+                  {(STATO_LIQ[liquidazione.stato] || {}).label || liquidazione.stato}
+                </Badge>
+              </div>
+              <div style={STILI.voce}>
+                <span style={STILI.voceLabel}>IVA vendite</span>
+                <strong>{formatEuro(liquidazione.iva_vendite)}</strong>
+              </div>
+              <div style={STILI.voce}>
+                <span style={STILI.voceLabel}>IVA acquisti</span>
+                <strong>{formatEuro(liquidazione.iva_acquisti)}</strong>
+              </div>
+              <div style={STILI.voce}>
+                <span style={STILI.voceLabel}>Credito precedente</span>
+                <strong>{formatEuro(liquidazione.credito_precedente)}</strong>
+              </div>
+              <div style={STILI.voce}>
+                <span style={STILI.voceLabel}>
+                  {liquidazione.saldo >= 0 ? 'IVA a debito' : 'IVA a credito'}
+                </span>
+                <strong style={{ color: liquidazione.saldo >= 0 ? COLORS.danger : COLORS.success }}>
+                  {formatEuro(Math.abs(liquidazione.saldo))}
+                </strong>
+              </div>
+              <div style={STILI.voce}>
+                <span style={STILI.voceLabel}>Versione</span>
+                <strong>#{liquidazione.versione}</strong>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 8 }}>
+              <div style={{ flex: '1 1 280px' }}>
+                <div style={STILI.bloccoTitolo}>
+                  Fatture incluse ({(liquidazione.fatture_incluse || []).length})
+                </div>
+                {(liquidazione.fatture_incluse || []).length === 0 ? (
+                  <div style={STILI.miniVuoto}>Nessuna fattura inclusa.</div>
+                ) : (
+                  (liquidazione.fatture_incluse || []).map((f, i) => (
+                    <div key={f.id || i} style={STILI.rigaMini}>
+                      <span>{f.supplier_name || '—'} · {f.invoice_number || '—'}</span>
+                      <strong>{formatEuro(f.iva)}</strong>
+                    </div>
+                  ))
+                )}
+              </div>
+              <div style={{ flex: '1 1 280px' }}>
+                <div style={STILI.bloccoTitolo}>
+                  Fatture escluse ({(liquidazione.fatture_escluse || []).length})
+                </div>
+                {(liquidazione.fatture_escluse || []).length === 0 ? (
+                  <div style={STILI.miniVuoto}>Nessuna esclusione.</div>
+                ) : (
+                  (liquidazione.fatture_escluse || []).map((f, i) => (
+                    <div key={f.id || i} style={STILI.rigaMini}>
+                      <span>{f.supplier_name || f.invoice_number || '—'}</span>
+                      <em style={{ fontSize: 11, color: COLORS.textMuted }}>{f.motivo_esclusione}</em>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </PageLayout>
   );
 }
@@ -176,4 +374,37 @@ const STILI = {
     fontWeight: 700, whiteSpace: 'nowrap',
   },
   td: { padding: '10px 12px', color: COLORS.text, whiteSpace: 'nowrap' },
+  sezione: {
+    background: COLORS.card, border: `1px solid ${COLORS.border}`,
+    borderRadius: 10, padding: 14, marginTop: 16,
+  },
+  sezioneTitolo: {
+    display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 12px',
+    fontSize: 16, fontWeight: 700, color: COLORS.text,
+  },
+  campo: { display: 'flex', flexDirection: 'column', gap: 4 },
+  campoLabel: { fontSize: 11, color: COLORS.textMuted, textTransform: 'uppercase', fontWeight: 700 },
+  select: {
+    padding: '8px 10px', borderRadius: 8, border: `1px solid ${COLORS.border}`,
+    background: COLORS.card, color: COLORS.text, fontSize: 14, minWidth: 120,
+  },
+  input: {
+    padding: '8px 10px', borderRadius: 8, border: `1px solid ${COLORS.border}`,
+    background: COLORS.card, color: COLORS.text, fontSize: 14, width: 140,
+  },
+  riepilogo: {
+    display: 'flex', flexWrap: 'wrap', gap: 16, padding: '12px 0',
+    borderTop: `1px solid ${COLORS.border}`, borderBottom: `1px solid ${COLORS.border}`,
+  },
+  voce: { display: 'flex', flexDirection: 'column', gap: 4, minWidth: 110 },
+  voceLabel: { fontSize: 11, color: COLORS.textMuted },
+  bloccoTitolo: {
+    fontSize: 12, fontWeight: 700, color: COLORS.textMuted,
+    textTransform: 'uppercase', margin: '10px 0 6px',
+  },
+  rigaMini: {
+    display: 'flex', justifyContent: 'space-between', gap: 8, padding: '6px 0',
+    borderTop: `1px solid ${COLORS.border}`, fontSize: 13, color: COLORS.text,
+  },
+  miniVuoto: { fontSize: 13, color: COLORS.textMuted, padding: '6px 0' },
 };

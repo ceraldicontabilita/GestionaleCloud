@@ -245,6 +245,17 @@ class Database:
         await _safe_index("alerts", [("codice", 1), ("entita_id", 1), ("stato", 1)], name="idx_alerts_codice_entita")
         await _safe_index("alerts", [("modulo", 1), ("stato", 1)], name="idx_alerts_modulo_stato")
 
+        # --- Liquidazioni IVA (SPECIFICA_IVA.md §22, Fase 3) ---
+        await _safe_index("liquidazioni_iva", "id", unique=True, name="idx_liq_iva_id")
+        await _safe_index("liquidazioni_iva", [("periodo", 1), ("versione", -1)], name="idx_liq_iva_periodo_ver")
+        await _safe_index("liquidazioni_iva", [("periodo", 1), ("stato", 1)], name="idx_liq_iva_periodo_stato")
+        await _safe_index("movimenti_iva_fattura", "id", unique=True, name="idx_mov_iva_id")
+        await _safe_index("movimenti_iva_fattura", [("fattura_id", 1), ("created_at", -1)], name="idx_mov_iva_fattura")
+        await _safe_index("movimenti_iva_fattura", [("periodo", 1), ("tipo_movimento", 1)], name="idx_mov_iva_periodo_tipo")
+        # Indici IVA su fatture (attribuzione/utilizzo per competenza)
+        await _safe_index(Collections.INVOICES, "periodo_iva_attribuito", name="idx_invoices_periodo_iva")
+        await _safe_index(Collections.INVOICES, "liquidazione_id", sparse=True, name="idx_invoices_liq_id")
+
         logger.info(f"✅ Database indexes: {created} creati, {skipped} già esistenti")
 
     @classmethod
