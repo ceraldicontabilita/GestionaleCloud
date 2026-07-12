@@ -53,24 +53,16 @@ export default function RiconciliazioneHub() {
     return <RiconciliazioneContent key={`riconciliazione-${anno}`} />;
   };
 
-  // Pagine "canoniche" senza barra hub (richiesta utente 10/07):
-  // - /riconciliazione/f24 → solo F24, senza bancaria/bonifici/assegni/paypal;
-  // - /riconciliazione/coerenza-pos → solo Coerenza POS;
-  // - /riconciliazione/paypal → solo PayPal (ha la sua voce di menù in alto).
-  // Ci si arriva dal menù; le altre sezioni hanno le loro voci dedicate.
-  const nascondiTabs =
-    path.includes('/f24') || path.includes('/coerenza-pos') || path.includes('/paypal');
-
+  // Barra hub sempre presente: ora è solo «← Indietro» + il selettore di
+  // sezione (richiesta utente 12/07: niente fila di tab delle altre pagine).
   return (
     <div style={{ width: '100%' }}>
-      {!nascondiTabs && (
-        <HubTabs
-          testIdPrefix="tab-riconciliazione"
-          activeId={activeTab}
-          onSelect={tab => navigate(tab.to)}
-          tabs={tabs}
-        />
-      )}
+      <HubTabs
+        testIdPrefix="tab-riconciliazione"
+        activeId={activeTab}
+        onSelect={tab => navigate(tab.to)}
+        tabs={tabs}
+      />
       <Suspense fallback={<PageLoader />}>{getContent()}</Suspense>
     </div>
   );

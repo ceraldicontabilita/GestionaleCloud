@@ -27,8 +27,13 @@ Ultimo aggiornamento: 11/07/2026.
 - Un indirizzo sbagliato mostra una **pagina "non trovata"** con l'URL
   richiesto e i link alle sezioni vere (prima riportava in silenzio alla
   Dashboard, mascherando i link rotti).
-- Su telefono, le sezioni con molti tab (es. Contabilità, 13 voci) mostrano
-  un **menù a tendina** al posto della muraglia di bottoni.
+- Entrando in una pagina di un hub (Riconciliazione, Contabilità, Fatture,
+  Documenti…) NON si vede più la fila dei tab di tutte le altre pagine: c'è
+  solo un pulsante **«← Indietro»** (torna alla pagina precedente) e, a destra,
+  un selettore discreto **«Vai a sezione»** per saltare a un'altra sezione
+  dello stesso hub senza tornare al menù (serve perché alcune sezioni — es. le
+  13 di Contabilità, Corrispettivi, Archivio bonifici — vivono solo dentro il
+  loro hub).
 - In Dashboard e Contabilità Avanzata, se un blocco non si carica per un
   errore del server compare un **avviso giallo con l'elenco dei blocchi in
   errore**: "niente dati" e "servizio in errore" non si confondono più.
