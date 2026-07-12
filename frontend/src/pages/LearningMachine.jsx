@@ -932,7 +932,7 @@ export default function LearningMachine() {
                       <Button
                         variant="primary"
                         onClick={salvaFornitore}
-                        disabled={saving || !keywords.trim()}
+                        disabled={saving || (!keywords.trim() && !centroCostoSuggerito)}
                         style={{ flex: 1, justifyContent: 'center' }}
                       >
                         {saving ? 'Salvataggio...' : 'Salva Keywords'}
@@ -1307,7 +1307,7 @@ export default function LearningMachine() {
                   Aggiorna
                 </Button>
                 <Link
-                  to="/classificazione-email"
+                  to="/documenti"
                   style={{
                     display: 'inline-flex',
                     alignItems: 'center',
@@ -1323,7 +1323,7 @@ export default function LearningMachine() {
                     textDecoration: 'none',
                   }}
                 >
-                  <FileText size={16} /> Vai a Classificazione Email
+                  <FileText size={16} /> Vai ai Documenti
                 </Link>
               </div>
             </div>

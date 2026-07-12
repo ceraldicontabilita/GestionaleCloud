@@ -1631,7 +1631,7 @@ export default function Fornitori() {
     setSchedeTecnicheModal({ open: true, fornitore: supplier, schede: [], loading: true });
     setSchedeTecnicheJob(null);
     try {
-      const res = await api.get(`/api/schede-tecniche/fornitore/${supplier.id}`);
+      const res = await api.get(`/api/schede-tecniche/fornitore/${idFornitore(supplier)}`);
       setSchedeTecnicheModal(prev => ({
         ...prev,
         schede: res.data.schede || [],
@@ -1651,7 +1651,7 @@ export default function Fornitori() {
     if (!supplier) return;
     try {
       setSchedeTecnicheJob({ stato: 'in_corso', prodotti_trovati: [], schede_trovate: 0 });
-      const res = await api.post('/api/schede-tecniche/cerca', { fornitore_id: supplier.id });
+      const res = await api.post('/api/schede-tecniche/cerca', { fornitore_id: idFornitore(supplier) });
       const jobId = res.data.job_id;
       // Polling ogni 3s finché completato
       const poll = setInterval(async () => {
@@ -1666,7 +1666,7 @@ export default function Fornitori() {
           ) {
             clearInterval(poll);
             // Ricarica le schede
-            const schedeRes = await api.get(`/api/schede-tecniche/fornitore/${supplier.id}`);
+            const schedeRes = await api.get(`/api/schede-tecniche/fornitore/${idFornitore(supplier)}`);
             setSchedeTecnicheModal(prev => ({
               ...prev,
               schede: schedeRes.data.schede || [],
@@ -1676,6 +1676,13 @@ export default function Fornitori() {
           }
         } catch (e) {
           clearInterval(poll);
+          // Prima il polling si fermava in silenzio lasciando lo spinner
+          // "Ricerca in corso" appeso: ora segnala l'interruzione.
+          setSchedeTecnicheJob(prev => ({
+            ...(prev || {}),
+            stato: 'errore',
+            errore: 'Verifica stato ricerca interrotta: ' + (e.response?.data?.detail || e.message),
+          }));
         }
       }, 3000);
     } catch (err) {

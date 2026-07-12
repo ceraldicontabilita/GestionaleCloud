@@ -847,9 +847,13 @@ export default function Scadenze() {
                             </RowActions>
                           )}
 
-                        {/* Bottone Paga Cassa/Banca */}
+                        {/* Bottone Paga: SOLO per le fatture. L'endpoint di
+                            pagamento è /api/fatture-ricevute/paga-manuale e vuole
+                            una fattura vera; su scadenze fiscali (IVA/F24/INPS,
+                            senza fattura_id) passava un id inesistente e falliva. */}
                         {!paidIds.has(s.id) &&
-                          (s.tipo === 'FATTURA' || s.source === 'fattura' || s.importo > 0) && (
+                          (s.tipo === 'FATTURA' || s.source === 'fattura') &&
+                          (s.fattura_id || s.id) && (
                             <Button
                               variant="warning"
                               size="sm"

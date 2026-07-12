@@ -7,6 +7,7 @@ import autoTable from 'jspdf-autotable';
 import { formatEuro, formatDateIT, formatDateGGMM, STYLES, COLORS, SHADOWS, BORDER_RADIUS, useIsMobile } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
 import ModalFattura from '../components/ModalFattura';
+import { useConfirm } from '../components/ui/ConfirmDialog';
 import { Button, Badge, StatCard, Table, TableWrap, Th, Td, Input, RowActions, RowActionButton, ListaAdattiva } from '../components/ds';
 
 const STATI_ASSEGNO = {
@@ -21,6 +22,7 @@ const STATI_ASSEGNO = {
 
 export default function GestioneAssegni() {
   const { anno } = useAnnoGlobale();
+  const confirm = useConfirm();
   const [assegni, setAssegni] = useState([]);
   const [_stats, setStats] = useState({ totale: 0, per_stato: {} });
   const [loading, setLoading] = useState(true);
@@ -395,6 +397,16 @@ export default function GestioneAssegni() {
   };
 
   const handleDelete = async assegno => {
+    // Azione distruttiva: conferma esplicita come nelle altre pagine (bonifici,
+    // riconciliazione). Prima eliminava l'assegno al primo click senza chiedere.
+    const ok = await confirm({
+      title: 'Elimina assegno',
+      message: `Eliminare l'assegno ${assegno.numero_assegno || assegno.numero || ''}${
+        assegno.beneficiario ? ' a ' + assegno.beneficiario : ''
+      }? L'operazione non è reversibile.`,
+      variant: 'danger',
+    });
+    if (!ok) return;
     try {
       await api.delete(`/api/assegni/${assegno.id}`);
       loadData();

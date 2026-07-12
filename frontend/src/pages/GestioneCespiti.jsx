@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from '../components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
+import { useConfirm } from '../components/ui/ConfirmDialog';
 import {
   Building2,
   Users,
@@ -145,6 +146,7 @@ const styles = {
 export default function GestioneCespiti() {
   const isMobile = useIsMobile();
   const { anno } = useAnnoGlobale();
+  const confirm = useConfirm();
   // URL Tab Support
   const navigate = useNavigate();
   const location = useLocation();
@@ -324,6 +326,12 @@ export default function GestioneCespiti() {
   };
 
   const handleDeleteCespite = async cespite => {
+    const ok = await confirm({
+      title: 'Elimina cespite',
+      message: `Eliminare il cespite "${cespite.descrizione || cespite.nome || ''}"? L'operazione non è reversibile.`,
+      variant: 'danger',
+    });
+    if (!ok) return;
     try {
       await api.delete(`/api/cespiti/${cespite.id}`);
       loadCespiti();

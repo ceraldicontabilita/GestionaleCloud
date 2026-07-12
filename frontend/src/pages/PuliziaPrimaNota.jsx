@@ -401,7 +401,7 @@ export default function PuliziaPrimaNota() {
 
         {/* ── REGISTRO PAGAMENTI: coerenza metodo fornitore ↔ registrazioni ── */}
         <StepCard
-          numero="5"
+          numero={6}
           titolo="Metodi discordanti (registro pagamenti ↔ anagrafica)"
           descrizione={
             'Confronta OGNI fattura registrata in Cassa/Banca con il metodo ATTUALE del fornitore ' +

@@ -11,6 +11,7 @@ import {
   useIsMobile,
 } from '../lib/utils';
 import { Button, Badge, StatCard, TableWrap, Table, Th, Td } from '../components/ds';
+import { useConfirm } from '../components/ui/ConfirmDialog';
 import {
   CheckCircle,
   AlertTriangle,
@@ -31,6 +32,7 @@ const MONO = FONT.mono;
 export default function ChiusuraEsercizio() {
   const isMobile = useIsMobile();
   const { anno } = useAnnoGlobale();
+  const confirm = useConfirm();
   const [loading, setLoading] = useState(true);
   const [stato, setStato] = useState(null);
   const [verifica, setVerifica] = useState(null);
@@ -79,6 +81,16 @@ export default function ChiusuraEsercizio() {
   }, [loadData]);
 
   const eseguiChiusura = async () => {
+    // Scrittura contabile di chiusura: irreversibile. Conferma obbligatoria.
+    const ok = await confirm({
+      title: `Chiudi esercizio ${anno}`,
+      message:
+        `Verranno generate le scritture di chiusura dell'esercizio ${anno}. ` +
+        `È un'operazione contabile importante e non reversibile. Procedere?`,
+      variant: 'danger',
+    });
+    if (!ok) return;
+
     setExecuting(true);
     setError(null);
     setSuccess(null);
@@ -102,6 +114,14 @@ export default function ChiusuraEsercizio() {
 
   const apriNuovoEsercizio = async () => {
     const nuovoAnno = anno + 1;
+    const ok = await confirm({
+      title: `Apri esercizio ${nuovoAnno}`,
+      message:
+        `Verranno riportati i saldi di apertura sul nuovo esercizio ${nuovoAnno}. ` +
+        `Procedere?`,
+    });
+    if (!ok) return;
+
     setExecuting(true);
     setError(null);
     setSuccess(null);
