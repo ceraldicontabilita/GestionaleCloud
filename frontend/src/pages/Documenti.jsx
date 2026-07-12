@@ -120,7 +120,26 @@ export default function Documenti() {
 
   // Categorie mittente
   const [categorieMittente, setCategorieMittente] = useState([]);
-  const [filtroMittente, setFiltroMittente] = useState('');
+  // Mittente selezionato → documenti NON ASSOCIATI di quel mittente
+  const [mittenteSelezionato, setMittenteSelezionato] = useState(null);
+  const [documentiMittente, setDocumentiMittente] = useState([]);
+  const [loadingMittente, setLoadingMittente] = useState(false);
+
+  const apriMittente = async (nome) => {
+    setMittenteSelezionato(nome);
+    setLoadingMittente(true);
+    try {
+      const r = await api.get(
+        `/api/documenti-non-associati/lista?categoria=${encodeURIComponent(nome)}&limit=200`
+      );
+      setDocumentiMittente(r.data?.documenti || []);
+    } catch (e) {
+      toast.error('Documenti del mittente non caricati: ' + (e.response?.data?.detail || e.message));
+      setDocumentiMittente([]);
+    } finally {
+      setLoadingMittente(false);
+    }
+  };
 
   // Load categorie mittente (ricaricabile dal bottone "Aggiorna")
   const loadCategorieMittente = async () => {
@@ -501,7 +520,45 @@ export default function Documenti() {
       </div>
 
       {/* Tab Categorie Mittente */}
-      {activeTab === 'categorie' && (
+      {activeTab === 'categorie' && mittenteSelezionato && (
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+            <Button
+              variant="secondary"
+              onClick={() => { setMittenteSelezionato(null); setDocumentiMittente([]); }}
+            >
+              ← Torna ai mittenti
+            </Button>
+            <h3 style={{ margin: 0 }}>
+              Documenti non associati — {mittenteSelezionato}
+            </h3>
+          </div>
+          {loadingMittente ? (
+            <div style={{ padding: 24, textAlign: 'center', color: COLORS.textMuted }}>Caricamento…</div>
+          ) : documentiMittente.length === 0 ? (
+            <div style={{ padding: 24, textAlign: 'center', color: COLORS.textMuted }}>
+              Nessun documento non associato per {mittenteSelezionato}.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {documentiMittente.map((d, i) => (
+                <div key={d.id || i} style={{ ...STYLES.card, padding: 12 }}>
+                  <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                    {d.filename || d.email_subject || 'Documento'}
+                  </div>
+                  <div style={{ fontSize: 12, color: COLORS.textMuted }}>
+                    {d.email_subject ? `${d.email_subject} · ` : ''}{d.email_from || ''}
+                    {d.downloaded_at ? ` · ${formatDate(d.downloaded_at)}` : ''}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tab Categorie Mittente — griglia mittenti */}
+      {activeTab === 'categorie' && !mittenteSelezionato && (
         <div>
           <div
             style={{
@@ -514,11 +571,7 @@ export default function Documenti() {
             {categorieMittente.map(cat => (
               <div
                 key={cat.nome}
-                onClick={() => {
-                  setFiltroMittente(cat.nome);
-                  setActiveTab('email');
-                  loadData();
-                }}
+                onClick={() => apriMittente(cat.nome)}
                 style={{
                   ...STYLES.card,
                   cursor: 'pointer',
