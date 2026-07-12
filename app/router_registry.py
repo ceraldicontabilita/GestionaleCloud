@@ -201,6 +201,11 @@ def _register_employees(app: FastAPI):
     app.include_router(drive_corrispettivi.router, prefix="/api/corrispettivi", tags=["Corrispettivi Drive"])
     app.include_router(drive_quietanze.router, prefix="/api/f24/quietanze", tags=["Quietanze Drive"])
 
+    # Documenti fiscali caricati a mano (dichiarazione IVA, cartelle
+    # esattoriali, avvisi bonari): upload → id → recupero/download.
+    from app.routers import documenti_fiscali
+    app.include_router(documenti_fiscali.router, prefix="/api/documenti-fiscali", tags=["Documenti fiscali"])
+
 
 # ─── Reports Module ──────────────────────────────────────────────────────────
 def _register_reports(app: FastAPI):
