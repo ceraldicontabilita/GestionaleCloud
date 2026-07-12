@@ -98,6 +98,12 @@ class Settings(BaseSettings):
     GOOGLE_DRIVE_CORRISPETTIVI_FOLDER_ID: Optional[str] = None # corrispettivi RT
     GOOGLE_DRIVE_QUIETANZE_FOLDER_ID: Optional[str] = None     # quietanze F24
     GOOGLE_DRIVE_ESTRATTI_FOLDER_ID: Optional[str] = None      # estratti conto
+    # Nuovi canali documentali (scelta utente 12-07-2026): cartelle Drive
+    # dedicate. Gli ID vanno su Render; ogni cartella condivisa con la
+    # client_email del service account che la legge.
+    GOOGLE_DRIVE_DICHIARAZIONI_IVA_FOLDER_ID: Optional[str] = None   # dichiarazioni IVA (PDF)
+    GOOGLE_DRIVE_CARTELLE_ESATTORIALI_FOLDER_ID: Optional[str] = None # cartelle esattoriali (PDF)
+    GOOGLE_DRIVE_AVVISI_BONARI_FOLDER_ID: Optional[str] = None       # avvisi bonari (PDF)
 
     # Nomi REALI già presenti nell'ambiente Render dell'utente (file .env
     # del 10-07-2026): il codice li accetta come alias — vale il primo
@@ -107,6 +113,9 @@ class Settings(BaseSettings):
     DRIVE_FOLDER_QUIETANZE_ID: Optional[str] = None
     DRIVE_FOLDER_ESTRATTI_CONTO_ID: Optional[str] = None
     DRIVE_FOLDER_FATTURE_ID: Optional[str] = None
+    DRIVE_FOLDER_DICHIARAZIONI_IVA_ID: Optional[str] = None
+    DRIVE_FOLDER_CARTELLE_ESATTORIALI_ID: Optional[str] = None
+    DRIVE_FOLDER_AVVISI_BONARI_ID: Optional[str] = None
 
     # Service account DEDICATI per cartella (scelta utente: un account per
     # canale). Se valorizzato, il canale usa il suo; altrimenti ricade su
@@ -126,6 +135,11 @@ class Settings(BaseSettings):
     # Quietanze: ACCESO su scelta esplicita dell'utente (10/07/2026)
     ENABLE_DRIVE_QUIETANZE_SYNC: bool = True
     ENABLE_DRIVE_ESTRATTI_CONTO_SYNC: bool = False
+    # Nuovi canali documentali (default SPENTI finché l'utente non crea le
+    # cartelle su Drive e ne mette gli ID su Render).
+    ENABLE_DRIVE_DICHIARAZIONI_IVA_SYNC: bool = False
+    ENABLE_DRIVE_CARTELLE_ESATTORIALI_SYNC: bool = False
+    ENABLE_DRIVE_AVVISI_BONARI_SYNC: bool = False
     
     # Telegram
     TELEGRAM_BOT_TOKEN: Optional[str] = None

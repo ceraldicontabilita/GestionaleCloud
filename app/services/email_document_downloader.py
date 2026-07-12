@@ -33,6 +33,8 @@ CATEGORIES = {
     "quietanza": "Quietanze",
     "bonifico": "Bonifici",
     "cartella_esattoriale": "Cartelle Esattoriali",
+    "avviso_bonario": "Avvisi Bonari",
+    "dichiarazione_iva": "Dichiarazioni IVA",
     "scheda_tecnica": "Schede Tecniche",
     "satispay": "Satispay",
     "contributi_inps": "INPS",
@@ -53,6 +55,15 @@ KEYWORD_CATEGORY_MAP = {
     "cartella esattoria": "cartella_esattoriale",
     "agenzia entrate riscossione": "cartella_esattoriale",
     "equitalia": "cartella_esattoriale",
+    # Avvisi bonari (comunicazioni di irregolarità 36-bis/54-bis)
+    "avviso bonario": "avviso_bonario",
+    "comunicazione irregolarita": "avviso_bonario",
+    "controllo automatizzato": "avviso_bonario",
+    # Dichiarazione IVA (annuale / LIPE)
+    "dichiarazione iva": "dichiarazione_iva",
+    "modello iva": "dichiarazione_iva",
+    "iva annuale": "dichiarazione_iva",
+    "lipe": "dichiarazione_iva",
     # Schede Tecniche
     "scheda tecnica": "scheda_tecnica",
     "technical sheet": "scheda_tecnica",

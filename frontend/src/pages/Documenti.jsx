@@ -48,6 +48,18 @@ const CATEGORY_COLORS = {
     icon: '⚠️',
     label: 'Cartelle Esattoriali',
   },
+  avviso_bonario: {
+    bg: '#ffedd5',
+    text: '#c2410c',
+    icon: '📨',
+    label: 'Avvisi Bonari',
+  },
+  dichiarazione_iva: {
+    bg: '#e0e7ff',
+    text: '#4338ca',
+    icon: '📊',
+    label: 'Dichiarazioni IVA',
+  },
   satispay: { bg: '#fee7f3', text: '#db2777', icon: '📱', label: 'Satispay' },
   contributi_inps: { bg: '#e0f2fe', text: '#0369a1', icon: '🏛️', label: 'INPS' },
   certificazione_unica: {

@@ -38,6 +38,8 @@ PATTERNS: List[Tuple[str, re.Pattern]] = [
     ("verbale",          re.compile(r"verbale|pagopa|avviso[_\-\s]?pago|cda[_\-\s]?\d", re.I)),
     ("contributi_inps",  re.compile(r"inps|dm10|uniemens|contributi", re.I)),
     ("pec_notifica",     re.compile(r"relatapec|copiaconfor?mepec|postacer?t|daticert", re.I)),
+    ("avviso_bonario",   re.compile(r"avviso[_\-\s]?bonario|comunicaz.*irregolar|36[_\-\s]?bis|54[_\-\s]?bis|esito.*liquidaz", re.I)),
+    ("dichiarazione_iva", re.compile(r"dichiaraz.*iva|modello[_\-\s]?iva|iva[_\-\s]?annual|lipe|liquidaz.*periodic", re.I)),
     ("cartella_esattoriale", re.compile(r"cartella|esattor|riscoss|ader|agenzia.*entra", re.I)),
     ("bonifico",         re.compile(r"bonifico|sepa|contabil.*banc", re.I)),
     ("scontrino",        re.compile(r"scontr|corrispet|sc\d{3,}", re.I)),
