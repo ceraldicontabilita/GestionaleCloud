@@ -48,7 +48,8 @@ export default function Mutui() {
       setMutui(mutuiRes.data.data || []);
       setStats(statsRes.data.data || null);
     } catch (error) {
-      console.error('Errore caricamento mutui:', error);
+      // Errore del servizio ≠ "nessun mutuo importato": va segnalato.
+      toast.error('Mutui non caricati: ' + (error.response?.data?.detail || error.message));
     } finally {
       setLoading(false);
     }

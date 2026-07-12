@@ -36,6 +36,7 @@ export default function ArchivioBonifici() {
   const [ordinanteFilter, setOrdinanteFilter] = useState('');
   const [beneficiarioFilter, setBeneficiarioFilter] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [riconciliazioneStats, setRiconciliazioneStats] = useState(null);
   const [riconciliando, setRiconciliando] = useState(false);
   const [editingNote, setEditingNote] = useState(null);
@@ -136,8 +137,11 @@ export default function ArchivioBonifici() {
 
       const res = await api.get(`/api/archivio-bonifici/transfers?${params.toString()}`);
       setTransfers(res.data || []);
+      setLoadError(false);
     } catch (error) {
-      console.error('Error loading transfers:', error);
+      // Errore del servizio ≠ "tutti associati": non spacciarlo per successo.
+      setLoadError(true);
+      toast.error('Bonifici non caricati: ' + (error.response?.data?.detail || error.message));
     } finally {
       setLoading(false);
     }
@@ -969,6 +973,10 @@ export default function ArchivioBonifici() {
         {loading ? (
           <div style={{ padding: 40, textAlign: 'center', color: '#64748b' }}>
             ⏳ Caricamento...
+          </div>
+        ) : loadError ? (
+          <div style={{ padding: 40, textAlign: 'center', color: '#b91c1c' }}>
+            ⚠️ Errore nel caricamento dei bonifici. Riprova con «Aggiorna».
           </div>
         ) : transfersToShow.length === 0 ? (
           <div style={{ padding: 40, textAlign: 'center', color: '#64748b' }}>

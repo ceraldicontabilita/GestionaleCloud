@@ -35,6 +35,7 @@ export default function BilancioVerifica() {
   const { anno } = useAnnoGlobale();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [bvError, setBvError] = useState(false);
   const [dettaglio, setDettaglio] = useState(false);
   const [search, setSearch] = useState('');
   const [filtroTipo, setFiltroTipo] = useState('tutti');
@@ -53,8 +54,10 @@ export default function BilancioVerifica() {
         `/api/contabilita-gestionale/bilancio-verifica?anno=${anno}&dettaglio=${dettaglio}`
       );
       setData(res.data);
+      setBvError(false);
     } catch (err) {
-      console.error('Errore BV:', err);
+      // Errore del servizio ≠ "nessun dato": distinguili nell'interfaccia.
+      setBvError(true);
     } finally {
       setLoading(false);
     }
@@ -609,6 +612,11 @@ export default function BilancioVerifica() {
             </p>
           </div>
         </>
+      ) : bvError ? (
+        <div style={{ textAlign: 'center', padding: 60, color: '#b91c1c' }}>
+          <FileText size={48} style={{ margin: '0 auto 16px', opacity: 0.3 }} />
+          <p>Errore nel caricamento del bilancio di verifica {anno}. Riprova con «Aggiorna».</p>
+        </div>
       ) : (
         <div style={{ textAlign: 'center', padding: 60, color: COLORS.textMuted }}>
           <FileText size={48} style={{ margin: '0 auto 16px', opacity: 0.3 }} />
