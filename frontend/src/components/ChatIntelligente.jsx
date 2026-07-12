@@ -3,11 +3,13 @@
  * Usa AI per interpretare le domande e fornire risposte basate sui dati reali.
  */
 import React, { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../api';
 import { Button, Input } from './ds';
 import { COLORS, SHADOWS, BORDER_RADIUS } from '../lib/utils';
 
 export default function ChatIntelligente() {
+  const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([
     {
@@ -117,6 +119,7 @@ export default function ChatIntelligente() {
           datiMancanti: data.dati_mancanti,
           anomalie: data.anomalie,
           azioniProposte: data.azioni_proposte,
+          documentiCitati: data.documenti_citati,
         },
       ]);
     } catch (error) {
@@ -390,6 +393,65 @@ export default function ChatIntelligente() {
                   }}
                 >
                   Query: {msg.queryType}
+                </div>
+              )}
+              {msg.documentiCitati && msg.documentiCitati.length > 0 && (
+                <div
+                  style={{
+                    marginTop: 8,
+                    paddingTop: 8,
+                    borderTop: `1px solid ${COLORS.border}`,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 6,
+                  }}
+                >
+                  {msg.documentiCitati.map((d, i) => (
+                    <div
+                      key={`${d.tipo}-${d.id}-${i}`}
+                      style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: 12 }}
+                    >
+                      <span style={{ flex: '1 1 120px', minWidth: 0, fontWeight: 600, overflowWrap: 'anywhere' }}>
+                        📎 {d.etichetta}
+                      </span>
+                      {d.download_url && (
+                        <a
+                          href={d.download_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            padding: '4px 9px',
+                            borderRadius: 6,
+                            background: COLORS.primary,
+                            color: '#fff',
+                            textDecoration: 'none',
+                            fontWeight: 600,
+                          }}
+                        >
+                          ⬇ Scarica
+                        </a>
+                      )}
+                      {d.page_url && (
+                        <button
+                          onClick={() => {
+                            navigate(d.page_url);
+                            setIsOpen(false);
+                          }}
+                          style={{
+                            padding: '4px 9px',
+                            borderRadius: 6,
+                            background: '#fff',
+                            border: `1px solid ${COLORS.border}`,
+                            color: COLORS.primary,
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Vai a →
+                        </button>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
             </div>

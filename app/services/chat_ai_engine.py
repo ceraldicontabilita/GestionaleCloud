@@ -497,6 +497,46 @@ _TOOL_EXECUTORS = {
     "cerca_documenti": _tool_cerca_documenti,
 }
 
+def _documenti_citati_da_tool(tool_name: str, risultato: Any) -> List[Dict[str, Any]]:
+    """Trasforma i risultati di un tool di ricerca in 'documenti citati' con
+    link di download e pagina di riferimento, così la chat può offrire
+    'Scarica' e 'Vai a'. Solo i tipi con un documento scaricabile per solo id."""
+    if not isinstance(risultato, list):
+        return []
+    out: List[Dict[str, Any]] = []
+    for r in risultato[:5]:
+        if not isinstance(r, dict):
+            continue
+        rid = r.get("id")
+        if not rid:
+            continue
+        if tool_name == "cerca_cedolini":
+            nome = r.get("nome_dipendente") or r.get("dipendente_nome") or "dipendente"
+            per = "/".join(str(r.get(k)) for k in ("mese", "anno") if r.get(k))
+            out.append({"tipo": "cedolino", "id": rid,
+                        "etichetta": f"Cedolino {nome} {per}".strip(),
+                        "download_url": f"/api/cedolini/{rid}/pdf",
+                        "page_url": "/riconciliazione/stipendi"})
+        elif tool_name == "cerca_fatture":
+            num = r.get("invoice_number") or ""
+            forn = r.get("supplier_name") or ""
+            out.append({"tipo": "fattura", "id": rid,
+                        "etichetta": f"Fattura {num} {forn}".strip(),
+                        "download_url": f"/api/fatture-ricevute/fattura/{rid}/view-assoinvoice",
+                        "page_url": "/fatture"})
+        elif tool_name == "cerca_f24":
+            out.append({"tipo": "f24", "id": rid,
+                        "etichetta": f"F24 {r.get('data_versamento') or ''}".strip(),
+                        "download_url": f"/api/f24-public/pdf/{rid}",
+                        "page_url": "/riconciliazione/f24"})
+        elif tool_name == "cerca_documenti":
+            out.append({"tipo": "documento", "id": rid,
+                        "etichetta": r.get("filename") or "Documento",
+                        "download_url": f"/api/documenti/documento/{rid}/download",
+                        "page_url": "/documenti"})
+    return out
+
+
 _S = {"type": "string"}
 _I = {"type": "integer"}
 _B = {"type": "boolean"}
@@ -640,6 +680,12 @@ async def rispondi(domanda: str, session_id: str, db,
     messages.append({"role": "user", "content": domanda})
 
     strumenti_usati: List[str] = []
+    documenti_citati: List[Dict[str, Any]] = []
+
+    def _aggiungi_citati(nuovi):
+        for d in nuovi:
+            if not any(c["tipo"] == d["tipo"] and c["id"] == d["id"] for c in documenti_citati):
+                documenti_citati.append(d)
 
     for _ in range(MAX_ITERAZIONI_TOOL):
         response = await client.messages.create(
@@ -659,6 +705,7 @@ async def rispondi(domanda: str, session_id: str, db,
                 "risposta_testuale": testo or "Non sono riuscito a produrre una risposta.",
                 "livello_affidabilita": "dubbio",
                 "documenti_consultati": strumenti_usati,
+                "documenti_citati": documenti_citati,
                 "dati_mancanti": [], "anomalie": [], "azioni_proposte": [],
                 "richiede_conferma_utente": False,
                 "motore": "ai",
@@ -678,6 +725,7 @@ async def rispondi(domanda: str, session_id: str, db,
                 strutturata.setdefault("anomalie", [])
                 strutturata.setdefault("azioni_proposte", [])
                 strutturata.setdefault("richiede_conferma_utente", False)
+                strutturata["documenti_citati"] = documenti_citati
                 strutturata["motore"] = "ai"
                 return strutturata
 
@@ -693,6 +741,7 @@ async def rispondi(domanda: str, session_id: str, db,
                     strumenti_usati.append(
                         f"{tu.name}({len(risultato) if isinstance(risultato, list) else 1} risultati)"
                     )
+                    _aggiungi_citati(_documenti_citati_da_tool(tu.name, risultato))
             except Exception as e:
                 logger.exception(f"Chat AI: errore strumento {tu.name}")
                 risultato = {"errore": str(e)[:300]}

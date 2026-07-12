@@ -7,14 +7,58 @@ Endpoint (montati sotto /api/cedolini):
 
 Il job schedulato (ogni ora) chiama la stessa `drive_cedolini_ingest.sync`.
 """
+import base64
 from typing import Dict, Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import Response
 
 from app.database import Database
 from app.services import drive_cedolini_ingest
 
 router = APIRouter()
+
+
+@router.get("/{cedolino_id}/pdf")
+async def scarica_cedolino_pdf(cedolino_id: str):
+    """Serve il PDF di un cedolino dato il suo ID.
+
+    Il record `cedolini` tiene i DATI estratti; il PDF vive nell'hub
+    documentale `documents_inbox` (campo `pdf_data` base64), da cui è arrivato
+    (Drive cedolini o allegato email). Cerchiamo il PDF in ordine: nel record
+    stesso, poi in documents_inbox per filename."""
+    db = Database.get_db()
+    ced = await db["cedolini"].find_one({"id": cedolino_id}, {"_id": 0})
+    if not ced:
+        raise HTTPException(status_code=404, detail="Cedolino non trovato")
+
+    filename = ced.get("filename") or f"cedolino_{cedolino_id}.pdf"
+    pdf_b64 = ced.get("pdf_data")
+
+    if not pdf_b64 and ced.get("filename"):
+        doc = await db["documents_inbox"].find_one(
+            {"filename": ced["filename"], "pdf_data": {"$exists": True}},
+            {"_id": 0, "pdf_data": 1},
+        )
+        if doc:
+            pdf_b64 = doc.get("pdf_data")
+
+    if not pdf_b64:
+        raise HTTPException(
+            status_code=404,
+            detail="PDF del cedolino non disponibile (non presente in archivio documenti)",
+        )
+
+    try:
+        content = base64.b64decode(pdf_b64)
+    except Exception:
+        raise HTTPException(status_code=500, detail="PDF del cedolino illeggibile")
+
+    return Response(
+        content=content,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
 
 
 @router.get("/drive/status")

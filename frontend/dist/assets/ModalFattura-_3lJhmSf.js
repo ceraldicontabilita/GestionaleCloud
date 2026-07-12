@@ -1,1 +1,0 @@
-import{j as a}from"./index-CPDA5wjv.js";import{D as i}from"./DocumentViewerModal-9q_W6U_3.js";function u({fatturaId:t,numero:r,onClose:e}){return t?a.jsx(i,{title:`📄 Fattura ${r||t}`,src:`/api/fatture-ricevute/fattura/${t}/view-assoinvoice`,onClose:e,testIdPrefix:"modal-fattura"}):null}export{u as M};
