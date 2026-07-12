@@ -50,6 +50,7 @@ const AgentiPage = lazy(() => import("./pages/Agenti.jsx"));
 const LearningMachine = lazy(() => import("./pages/LearningMachine.jsx"));
 const DashboardRelazionale = lazy(() => import("./pages/DashboardRelazionale.jsx"));
 const PaginaNonTrovata = lazy(() => import("./pages/PaginaNonTrovata.jsx"));
+const DocumentiFiscali = lazy(() => import("./pages/DocumentiFiscali.jsx"));
 
 const LazyPage = ({ children }) => (
   <Suspense fallback={<PageLoader />}>{children}</Suspense>
@@ -228,6 +229,9 @@ const router = createBrowserRouter([
       
       // === MAPPA GESTIONALE ===
       { path: "mappa-gestionale", element: <LazyPage><MappaGestionale /></LazyPage> },
+
+      // === DOCUMENTI FISCALI (dichiarazione IVA, esattoriali, avvisi bonari) ===
+      { path: "documenti-fiscali", element: <LazyPage><DocumentiFiscali /></LazyPage> },
 
       // === REDIRECT ROTTE LEGACY / MANCANTI ===
       { path: "fisco", element: <Navigate to="/contabilita/calendario" replace /> },
