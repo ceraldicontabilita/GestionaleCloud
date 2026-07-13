@@ -879,7 +879,19 @@ async def download_documents_from_email(
             existing_hash = await db["documents_inbox"].find_one({"file_hash": doc["file_hash"]})
             if existing_hash:
                 is_duplicate = True
-            
+
+            # METODO 1-bis (P2-1): dedup CROSS-CANALE — stesso md5 già scaricato
+            # nelle collezioni *_email_attachments dall'altra pipeline.
+            if not is_duplicate:
+                from app.services.deduplica import esiste_documento_cross_canale
+                altrove = await esiste_documento_cross_canale(
+                    db, doc["file_hash"], escludi_collezione="documents_inbox"
+                )
+                if altrove:
+                    is_duplicate = True
+                    logger.info(f"[dedup cross-canale] {doc['filename']} già "
+                                f"presente in {altrove['collezione']} — salto")
+
             # METODO 2: Controllo periodo (stesso documento per stesso periodo)
             if not is_duplicate and doc.get("identificatore_periodo"):
                 existing_period = await db["documents_inbox"].find_one({

@@ -283,12 +283,22 @@ class EmailFullDownloader:
             self.connection = None
     
     async def check_duplicate(self, pdf_hash: str) -> bool:
-        """Verifica se un PDF con questo hash esiste già."""
+        """Verifica se un PDF con questo hash esiste già, anche CROSS-CANALE
+        (P2-1): oltre alle collezioni allegati email, controlla `documents_inbox`
+        (dove lo stesso file può essere entrato dall'altra pipeline)."""
         # Controlla in tutte le collezioni di allegati
         for collection_name in CATEGORY_COLLECTIONS.values():
             existing = await self.db[collection_name].find_one({"pdf_hash": pdf_hash})
             if existing:
                 return True
+        # Cross-canale: stesso md5 già presente in documents_inbox
+        from app.services.deduplica import esiste_documento_cross_canale
+        from app.db_collections import COLL_DOCUMENTS_INBOX
+        altrove = await esiste_documento_cross_canale(self.db, pdf_hash)
+        if altrove and altrove["collezione"] == COLL_DOCUMENTS_INBOX:
+            logger.info(f"[dedup cross-canale] PDF già presente in "
+                        f"{altrove['collezione']} — salto reinserimento allegato")
+            return True
         return False
     
     async def save_pdf_to_db(

@@ -368,3 +368,45 @@ async def cerca_duplicato_dipendente(
             return _result(True, "probabile", existing, f"IBAN identico: {iban_clean}")
 
     return _result(False)
+
+
+# ============================================================
+# DEDUP CROSS-CANALE DOCUMENTI (P2-1)
+# ============================================================
+# Lo stesso PDF può arrivare per due strade diverse:
+#   - scaricamento completo email → collezioni *_email_attachments (campo `pdf_hash`)
+#   - pipeline documenti/allegati  → `documents_inbox` (campo `file_hash`)
+# Entrambe usano md5(contenuto). Senza un controllo incrociato, lo stesso file
+# poteva essere ingerito due volte (una per canale). Questa funzione cerca
+# l'impronta in ENTRAMBE le famiglie e dice se (e dove) esiste già.
+
+async def esiste_documento_cross_canale(
+    db, impronta_md5: str, escludi_collezione: Optional[str] = None
+) -> Optional[Dict[str, str]]:
+    """Cerca l'impronta md5 nelle collezioni allegati email (`pdf_hash`) e in
+    `documents_inbox` (`file_hash`). Ritorna {'collezione', 'campo'} della prima
+    corrispondenza, oppure None se il documento non è ancora presente altrove.
+
+    `escludi_collezione`: nome della collezione da NON controllare (di norma
+    quella in cui il chiamante sta per inserire, per non auto-rilevarsi)."""
+    if not impronta_md5:
+        return None
+    from app.db_collections import EMAIL_ATTACHMENT_COLLECTIONS, COLL_DOCUMENTS_INBOX
+
+    # documents_inbox usa `file_hash`
+    if escludi_collezione != COLL_DOCUMENTS_INBOX:
+        found = await db[COLL_DOCUMENTS_INBOX].find_one(
+            {"file_hash": impronta_md5}, {"_id": 1}
+        )
+        if found:
+            return {"collezione": COLL_DOCUMENTS_INBOX, "campo": "file_hash"}
+
+    # *_email_attachments usano `pdf_hash`
+    for coll in EMAIL_ATTACHMENT_COLLECTIONS:
+        if coll == escludi_collezione:
+            continue
+        found = await db[coll].find_one({"pdf_hash": impronta_md5}, {"_id": 1})
+        if found:
+            return {"collezione": coll, "campo": "pdf_hash"}
+
+    return None

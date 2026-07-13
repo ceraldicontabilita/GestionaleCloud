@@ -211,6 +211,24 @@ COLL_EMAIL_DOCUMENTS = "email_documents"
 COLL_EMAIL_ACCOUNTS = "email_accounts"
 COLL_FATTURE_EMAIL = "fatture_email_attachments"  # 158 docs
 
+# Elenco canonico di TUTTE le collezioni di allegati email per categoria
+# (campo impronta: `pdf_hash`). Usato per il dedup cross-canale con
+# documents_inbox (campo impronta: `file_hash`), stesso algoritmo md5.
+EMAIL_ATTACHMENT_COLLECTIONS = (
+    "f24_email_attachments",
+    "fatture_email_attachments",
+    "cedolini_email_attachments",
+    "estratti_email_attachments",
+    "quietanze_email_attachments",
+    "bonifici_email_attachments",
+    "verbali_email_attachments",
+    "certificati_email_attachments",
+    "cartelle_email_attachments",
+    "avvisi_bonari_email_attachments",
+    "dichiarazioni_iva_email_attachments",
+    "documenti_non_associati",
+)
+
 # Commercialista
 COLL_DOCUMENTI_COMMERCIALISTA = "documenti_commercialista"
 COLL_COMMERCIALISTA_CONFIG = "commercialista_config"
