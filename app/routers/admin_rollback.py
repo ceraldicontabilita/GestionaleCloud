@@ -14,7 +14,7 @@ un intervallo) ed espone prima un endpoint di sola conta, cosicché il
 frontend possa mostrare "stai per eliminare N record" prima di chiedere
 conferma.
 """
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Body
 from typing import Dict, Any, List
 from datetime import datetime, timezone, timedelta
 import logging
@@ -274,3 +274,68 @@ async def elimina_drive_fatture(
         f"esaminati {esito.get('esaminati', 0)}, non determinati {esito.get('non_determinati', 0)})"
     )
     return esito
+
+
+# ── Azzeramento TOTALE fatture (scelta utente: cancella tutto e reimporta) ──
+# Diverso dal rollback per periodo: svuota l'intera collezione `invoices`.
+# Per non rendere l'operazione irreversibile, PRIMA copia tutte le fatture in
+# una collezione di backup con timestamp (invoices_backup_AAAAMMGG_HHMMSS),
+# POI svuota `invoices`. Se il reimport va storto, i dati sono recuperabili dal
+# backup. Solo admin + stringa di conferma esplicita.
+
+_CONFERMA_AZZERA_FATTURE = "AZZERA-TUTTE-LE-FATTURE"
+
+
+@router.get("/fatture/azzera-tutto/conta")
+async def conta_azzera_fatture() -> Dict[str, Any]:
+    """Quante fatture verrebbero azzerate (sola lettura, per la conferma)."""
+    db = Database.get_db()
+    n = await db["invoices"].count_documents({})
+    return {"collezione": "invoices", "fatture": n,
+            "conferma_richiesta": _CONFERMA_AZZERA_FATTURE}
+
+
+@router.post("/fatture/azzera-tutto")
+async def azzera_tutte_le_fatture(
+    payload: Dict[str, Any] = Body(...),
+    admin_user: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Svuota l'intera collezione `invoices` DOPO averla archiviata in un backup
+    con timestamp (recuperabile). Solo admin. Richiede
+    `{"conferma": "AZZERA-TUTTE-LE-FATTURE", "timestamp": "AAAAMMGG_HHMMSS"}`
+    (il timestamp lo passa il frontend perché il backend non può generarlo qui)."""
+    if (payload or {}).get("conferma") != _CONFERMA_AZZERA_FATTURE:
+        raise HTTPException(status_code=400,
+                            detail=f"Conferma mancante o errata: attesa '{_CONFERMA_AZZERA_FATTURE}'")
+    ts = str((payload or {}).get("timestamp") or "").strip()
+    if not ts or not ts.replace("_", "").isdigit():
+        raise HTTPException(status_code=400,
+                            detail="Campo 'timestamp' (AAAAMMGG_HHMMSS) obbligatorio per nominare il backup")
+    db = Database.get_db()
+    backup = f"invoices_backup_{ts}"
+
+    totale = await db["invoices"].count_documents({})
+    if totale == 0:
+        return {"success": True, "fatture_archiviate": 0, "fatture_eliminate": 0,
+                "collezione_backup": None, "messaggio": "Nessuna fattura da azzerare."}
+
+    # Copia server-side dell'intera collezione nel backup, poi svuota.
+    await db["invoices"].aggregate([{"$match": {}}, {"$out": backup}]).to_list(1)
+    archiviate = await db[backup].count_documents({})
+    if archiviate < totale:
+        raise HTTPException(status_code=500,
+                            detail=f"Backup incompleto ({archiviate}/{totale}): azzeramento annullato.")
+    result = await db["invoices"].delete_many({})
+
+    logger.warning(
+        f"[ADMIN AZZERA FATTURE] {admin_user.get('email', admin_user.get('sub', '?'))} ha azzerato "
+        f"la collezione invoices: {result.deleted_count} eliminate, {archiviate} archiviate in '{backup}'"
+    )
+    return {
+        "success": True,
+        "fatture_archiviate": archiviate,
+        "fatture_eliminate": result.deleted_count,
+        "collezione_backup": backup,
+        "messaggio": (f"{result.deleted_count} fatture azzerate e archiviate in '{backup}'. "
+                      "Ora puoi reimportare da Drive/email/upload. Il backup è recuperabile."),
+    }
