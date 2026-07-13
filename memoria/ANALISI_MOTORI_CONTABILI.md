@@ -50,15 +50,16 @@ Due sistemi di registrazione cespiti/ammortamenti.
   movimenti ammortamento letti dalla chiusura esercizio) e migrare/deprecare l'altro.
 - **Rischio:** MEDIO. Da valutare quale ha i dati reali.
 
-## §6.6 — Estratto conto importer — AZIONE SICURA (documentazione)
-- Canonico dichiarato: `bank/estratto_conto.py` (scrive `estratto_conto_movimenti`).
-- `bank/bank_statement_import.py`: parser PDF/Excel multi-banca che scrive
-  `bank_statements_imported` (collezione separata), **FE-wired** (ControlloMensile,
-  RiconciliazionePaypal) → NON rimuovibile.
-- **Azione:** mantenerlo come **adattatore di import** documentato; il suo output va
-  convogliato nella canonica `estratto_conto_movimenti` a valle (verificare che non
-  resti una sorgente parallela per la riconciliazione).
-- **Rischio:** BASSO se solo documentazione; MEDIO se si ricabla l'output.
+## §6.6 — Estratto conto importer — ✅ VERIFICATO (già adapter corretto)
+- Canonico: `bank/estratto_conto.py` (scrive `estratto_conto_movimenti`).
+- `bank/bank_statement_import.py` (parser PDF/Excel multi-banca, **FE-wired**):
+  **già convoglia i MOVIMENTI nella canonica `estratto_conto_movimenti`** (riga 850,
+  con dedup + alert BNK_DUPLICATO). `bank_statements_imported` contiene SOLO i metadati
+  livello-documento dello statement caricato e **non ha alcun lettore di riconciliazione**
+  → NON è una sorgente parallela. Nessun ricablaggio necessario.
+- **Nota perf (audit §11):** l'insert dei movimenti è un `find_one`+`insert_one` per
+  riga (N+1) con dedup/alert per-movimento; non convertibile a bulk senza perdere la
+  semantica di dedup. Import occasionale, non hot path: lasciato.
 
 ## §6.7 — PayPal — dominio dedicato
 Unificare mapping fornitore, stati, pipeline riconciliazione, origine statement/API,

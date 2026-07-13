@@ -73,6 +73,11 @@ PROSSIMA FASE: P1 consolidamento collection/motori (§5-§8).
 - [x] §6.4 saldo Prima Nota: funzione unica common.aggrega_saldo_prima_nota (segno/riporto/
       saldo finale) usata da cassa.py e banca.py, valori invariati + test caratterizzazione
       (324 test). Follow-up: allineare query anno banca↔cassa (anno==""); stats/manutenzione.
+- [x] §6.6 EC importer: VERIFICATO già adapter corretto — bank_statement_import scrive i
+      movimenti nella canonica estratto_conto_movimenti (dedup+alert); bank_statements_imported
+      = solo metadati statement, nessun lettore riconciliazione. Nessun ricablaggio.
+      RESTANO §6.2 (dopo mapping schema CEE), §6.5 cespiti, §6.7 PayPal, §6.8 cash adapter,
+      §6.9 verbali: ognuno con test di caratterizzazione (più rischiosi, in attesa).
 - [x] §7 Classificazione endpoint: deliverable memoria/ENDPOINT_CLASSIFICAZIONE_FINALE.md
       generato da scripts/genera_classificazione_endpoint.py (rigenerabile) sulla route
       table reale, incrocia FE/scheduler/chat/migrazione/test. 1106 endpoint: 650 tenere,
