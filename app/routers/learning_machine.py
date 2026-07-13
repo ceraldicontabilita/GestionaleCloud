@@ -13,7 +13,8 @@ Funzionalità:
 - Report statistiche
 """
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
+from app.utils.dependencies import get_current_admin_user
 from typing import Dict, Any, List
 from datetime import datetime, timezone, timedelta
 from pydantic import BaseModel
@@ -553,9 +554,9 @@ async def get_feedback_stats() -> Dict[str, Any]:
 
 
 @router.delete("/reset-learning")
-async def reset_learning() -> Dict[str, Any]:
+async def reset_learning(_admin: Dict[str, Any] = Depends(get_current_admin_user)) -> Dict[str, Any]:
     """
-    Reset delle regole apprese (solo per admin).
+    Reset delle regole apprese (§12: SOLO admin, ora imposto via dependency).
     """
     db = Database.get_db()
     

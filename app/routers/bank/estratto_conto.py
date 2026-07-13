@@ -2,7 +2,8 @@
 Gestione Estratto Conto
 Salva e visualizza tutti i movimenti bancari importati con campi strutturati.
 """
-from fastapi import APIRouter, HTTPException, Query, UploadFile, File
+from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Depends
+from app.utils.dependencies import get_current_admin_user
 from typing import Dict, Any, List, Optional
 from datetime import datetime, date, timezone
 import logging
@@ -698,7 +699,7 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
 @router.post("/force-reimport")
 @router.post("/reimport")  # alias onesto: NON cancella nulla (vedi P0.6)
 @handle_errors
-async def force_reimport_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
+async def force_reimport_estratto_conto(file: UploadFile = File(...), _admin: Dict[str, Any] = Depends(get_current_admin_user)) -> Dict[str, Any]:
     """
     Re-import ADDITIVO dell'estratto conto da CSV (NON distruttivo).
     - NON cancella alcun record: i movimenti esistenti e le riconciliazioni

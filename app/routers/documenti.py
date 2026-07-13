@@ -3,7 +3,8 @@ Router Gestione Documenti
 API per scaricare, visualizzare e processare documenti dalle email.
 """
 
-from fastapi import APIRouter, Query, HTTPException
+from fastapi import APIRouter, Query, HTTPException, Depends
+from app.utils.dependencies import get_current_admin_user
 from fastapi.responses import StreamingResponse
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
@@ -2032,7 +2033,8 @@ async def processa_tutti_documenti() -> Dict[str, Any]:
 @router.post("/reimporta-da-filesystem")
 @handle_errors
 async def reimporta_documenti_da_filesystem(
-    force: bool = Query(False, description="Forza reimportazione anche se esistenti nel DB")
+    force: bool = Query(False, description="Forza reimportazione anche se esistenti nel DB"),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
 ) -> Dict[str, Any]:
     """
     Scansiona la cartella /app/documents e reimporta tutti i documenti nel database.

@@ -12,7 +12,8 @@ usata per scegliere il conto; qui restano solo dati contabili (niente
 temperature di conservazione, rischio o tracciabilità alimentare — quella
 è competenza dell'app HACCP separata, ceraldiapp.it).
 """
-from fastapi import APIRouter, HTTPException, Query, Body, Path
+from fastapi import APIRouter, HTTPException, Query, Body, Path, Depends
+from app.utils.dependencies import get_current_admin_user
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 import re
@@ -967,7 +968,7 @@ async def cerca_articoli(
 
 
 @router.delete("/reset-dizionario")
-async def reset_dizionario() -> Dict[str, Any]:
+async def reset_dizionario(_admin: Dict[str, Any] = Depends(get_current_admin_user)) -> Dict[str, Any]:
     """
     Elimina tutto il dizionario (per rigenerarlo).
     """

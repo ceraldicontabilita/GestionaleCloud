@@ -2,7 +2,8 @@
 Prima Nota Module - Manutenzione e Fix.
 Funzioni di fix, cleanup, recalculate per manutenzione dati.
 """
-from fastapi import HTTPException, Query, Body
+from fastapi import HTTPException, Query, Body, Depends
+from app.utils.dependencies import get_current_admin_user
 from pydantic import BaseModel
 from typing import Dict, Optional, Any
 from datetime import datetime, timezone
@@ -129,7 +130,7 @@ async def recalculate_all_balances(anno: Optional[int] = Query(None)) -> Dict:
     }
 
 
-async def cleanup_orphan_movements(anno: Optional[int] = Query(None)) -> Dict:
+async def cleanup_orphan_movements(anno: Optional[int] = Query(None), _admin: Dict = Depends(get_current_admin_user)) -> Dict:
     """Pulisce i movimenti Prima Nota orfani (fattura inesistente)."""
     db = Database.get_db()
     
@@ -560,7 +561,7 @@ async def fix_corrispettivi_importo(anno: int = Query(...)) -> Dict:
     }
 
 
-async def migrazione_pulisci_bancari_da_cassa() -> Dict[str, Any]:
+async def migrazione_pulisci_bancari_da_cassa(_admin: Dict[str, Any] = Depends(get_current_admin_user)) -> Dict[str, Any]:
     """
     MIGRAZIONE ONE-SHOT: Elimina tutti i movimenti bancari dalla prima_nota_cassa.
     
