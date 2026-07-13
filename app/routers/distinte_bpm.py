@@ -265,44 +265,6 @@ async def import_distinte_bpm(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/riconcilia-pagamento-manuale")
-async def riconcilia_pagamento_manuale(
-    dipendente_nome: str = Body(...),
-    importo: float = Body(...),
-    data_pagamento: str = Body(...)
-):
-    """
-    Riconcilia manualmente un pagamento con una busta paga.
-    Utile quando il match automatico fallisce.
-    """
-    db = get_db()
-    
-    # Cerca busta paga per nome (fuzzy)
-    busta = None
-    async for b in db.buste_paga.find({"stato_pagamento": "DA_PAGARE"}):
-        if match_names(dipendente_nome, b.get('dipendente_nome', '')):
-            busta = b
-            break
-    
-    if not busta:
-        raise HTTPException(status_code=404, detail=f"Busta paga non trovata per {dipendente_nome}")
-    
-    # Aggiorna
-    await db.buste_paga.update_one(
-        {"_id": busta['_id']},
-        {
-            "$set": {
-                "stato_pagamento": "PAGATO",
-                "data_pagamento": data_pagamento,
-                "importo_pagato": importo,
-                "riconciliato_da": "manuale",
-                "riconciliato_at": datetime.now(timezone.utc).isoformat()
-            }
-        }
-    )
-    
-    return {
-        "success": True,
-        "message": f"Pagamento riconciliato per {busta.get('dipendente_nome')}",
-        "busta_id": str(busta['_id'])
-    }
+# (route morta rimossa — §13.2, pulizia 2026-07-13: /riconcilia-pagamento-manuale,
+# zero chiamanti. L'ingresso vivo è POST /import-distinte-bpm, usato anche
+# internamente da documenti.upload_auto per tipo 'distinte_bpm'.)

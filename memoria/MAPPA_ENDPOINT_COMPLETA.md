@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1106 endpoint** in **110 gruppi**.
+> Totale **1087 endpoint** in **110 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 639 · ext esterni = 76 · — da verificare = 391
+**Riepilogo uso:** ✓ frontend = 639 · ext esterni = 76 · — da verificare = 372
 
 ## AI Parser  (11)
 
@@ -517,12 +517,11 @@
 | PUT | `/api/dipendenti/{dipendente_id}/libretto` | ✓ | employees.dipendenti |
 | GET | `/api/dipendenti/{dipendente_id}/report-ferie-permessi` | ✓ | employees.dipendenti |
 
-## Distinte BPM  (2)
+## Distinte BPM  (1)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
 | POST | `/api/paghe/import-distinte-bpm` | — | distinte_bpm |
-| POST | `/api/paghe/riconcilia-pagamento-manuale` | — | distinte_bpm |
 
 ## Dizionario Articoli  (11)
 
@@ -555,13 +554,12 @@
 | POST | `/api/document-ai/process-classified-email` | — | document_ai |
 | POST | `/api/document-ai/reprocess-and-save` | — | document_ai |
 
-## Documenti  (32)
+## Documenti  (28)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
 | GET | `/api/documenti/cartelle-email` | — | documenti |
 | GET | `/api/documenti/categorie` | — | documenti |
-| GET | `/api/documenti/confronto-cedolini-prima-nota` | — | documenti |
 | GET | `/api/documenti/documento/{doc_id}` | ✓ | documenti |
 | DELETE | `/api/documenti/documento/{doc_id}` | ✓ | documenti |
 | POST | `/api/documenti/documento/{doc_id}/cambia-categoria` | ✓ | documenti |
@@ -578,11 +576,8 @@
 | POST | `/api/documenti/processa-tutti` | — | documenti |
 | POST | `/api/documenti/reimporta-da-filesystem` | — | documenti |
 | POST | `/api/documenti/ricategorizza-documenti` | — | documenti |
-| POST | `/api/documenti/riepilogo-cedolini` | — | documenti |
-| GET | `/api/documenti/riepilogo-cedolini` | — | documenti |
 | POST | `/api/documenti/scarica-da-email` | ✓ | documenti |
 | GET | `/api/documenti/statistiche` | ✓ | documenti |
-| POST | `/api/documenti/sync-buste-paga` | — | documenti |
 | POST | `/api/documenti/sync-estratti-bnl` | — | documenti |
 | POST | `/api/documenti/sync-estratti-conto` | — | documenti |
 | POST | `/api/documenti/sync-f24-automatico` | ✓ | documenti |
@@ -764,16 +759,11 @@
 | POST | `/api/f24-email/scarica-e-processa` | ✓ | f24.email_f24 |
 | POST | `/api/f24-email/scarica-email` | ✓ | f24.email_f24 |
 
-## F24 Parser  (6)
+## F24 Parser  (1)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
-| GET | `/api/paghe/distinte-f24` | — | f24_parser |
-| GET | `/api/paghe/f24/lista` | — | f24_parser |
 | POST | `/api/paghe/import-f24` | — | f24_parser |
-| POST | `/api/paghe/parse-f24` | — | f24_parser |
-| POST | `/api/paghe/riconcilia-f24` | — | f24_parser |
-| GET | `/api/paghe/tributi-pagati` | — | f24_parser |
 
 ## F24 Public  (9)
 
@@ -1006,20 +996,11 @@
 | GET | `/privacy` | ext | legal_pages |
 | GET | `/terms` | ext | legal_pages |
 
-## Libro Unico Parser  (10)
+## Libro Unico Parser  (1)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
-| GET | `/api/paghe/acconti` | — | libro_unico_parser |
-| POST | `/api/paghe/acconti/{busta_id}` | — | libro_unico_parser |
-| DELETE | `/api/paghe/acconti/{busta_id}/{acconto_id}` | — | libro_unico_parser |
-| GET | `/api/paghe/buste-paga` | — | libro_unico_parser |
 | POST | `/api/paghe/import-libro-unico` | — | libro_unico_parser |
-| POST | `/api/paghe/parse-libro-unico` | — | libro_unico_parser |
-| POST | `/api/paghe/parse-libro-unico/dipendente/{indice}` | — | libro_unico_parser |
-| GET | `/api/paghe/presenze-mensili` | — | libro_unico_parser |
-| GET | `/api/paghe/presenze-mensili/{codice_fiscale}/{periodo}` | — | libro_unico_parser |
-| POST | `/api/paghe/riconcilia-stipendi` | — | libro_unico_parser |
 
 ## Multi-Pagamento  (6)
 

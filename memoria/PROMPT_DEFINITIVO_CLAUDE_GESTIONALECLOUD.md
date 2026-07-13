@@ -140,7 +140,15 @@ PROSSIMA FASE: P1 consolidamento collection/motori (§5-§8).
       non è whitelistato — canale di fatto spento verso l'esterno; NON whitelistato di mia
       iniziativa (regola parametri: /api/v1/keys/generate non ha altra auth propria,
       aprirlo permetterebbe a chiunque di generare chiavi). Decisione lasciata all'utente.
-- [ ] §13.2 altro codice morto (stub/v1): da fare con verifica.
+- [x] §13.2 pulizia pipeline paghe (2026-07-13, scelta utente): rimosse 19 route morte
+      verificate a zero chiamanti (parse-libro-unico ×2, riconcilia-stipendi, buste-paga,
+      presenze-mensili ×2, acconti ×3 in libro_unico_parser; parse-f24, riconcilia-f24,
+      tributi-pagati, distinte-f24, f24/lista in f24_parser; riconcilia-pagamento-manuale
+      in distinte_bpm; sync-buste-paga, riepilogo-cedolini ×2, confronto-cedolini-prima-nota
+      in documenti). Ingressi vivi intatti: import-libro-unico/import-f24/import-distinte-bpm
+      (usati da upload-auto), Drive cedolini (scheduler), PDF cedolino (chat). Endpoint
+      1106 → 1087. Residuo da valutare a parte: famiglia /api/dipendenti/libro-unico/*
+      (query-key FE definita ma mai usata) e route /api/v1 (canale spento, scelta utente).
 ### FASE FINALE — Verifiche e deliverable (§14-§17) — COMPLETATA (2026-07-13)
 - [x] §15.3 mappe rigenerate: genera_mappa.py (1106 endpoint, 107 prefissi, FE ✓=639)
       + genera_classificazione_endpoint.py (650 tenere / 437 verificare / 19 admin-only).

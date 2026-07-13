@@ -310,41 +310,10 @@ def parse_f24_pdf(pdf_path: str) -> Dict:
 
 
 # ============== API ENDPOINTS ==============
-
-@router.post("/parse-f24", summary="Parsa Modello F24")
-async def parse_f24_endpoint(file: UploadFile = File(...)):
-    """
-    Carica e parsa un PDF del Modello F24.
-    Estrae tutte le sezioni tributarie e il totale da pagare.
-    """
-    try:
-        if not file.filename.lower().endswith('.pdf'):
-            raise HTTPException(status_code=400, detail="Il file deve essere un PDF")
-        
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp:
-            content = await file.read()
-            tmp.write(content)
-            tmp_path = tmp.name
-        
-        try:
-            result = parse_f24_pdf(tmp_path)
-            
-            return {
-                "success": True,
-                "message": f"F24 parsato con successo. Totale da pagare: €{result['totale_da_pagare']:,.2f}",
-                "data": result
-            }
-        finally:
-            os.unlink(tmp_path)
-            
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Errore parsing F24: {e}")
-        raise HTTPException(status_code=500, detail=f"Errore parsing: {str(e)}")
-
-
-
+# NB (§13.2, pulizia 2026-07-13): rimosse le route morte /parse-f24,
+# /riconcilia-f24, /tributi-pagati, /distinte-f24, /f24/lista — zero
+# chiamanti (FE, interni, test). L'ingresso vivo è POST /import-f24,
+# usato anche internamente da documenti.upload_auto (tipo 'f24').
 
 # ============== DESCRIZIONE TRIBUTI F24 ==============
 DESCRIZIONE_TRIBUTI = {
@@ -707,125 +676,6 @@ async def import_f24(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/riconcilia-f24", summary="Riconcilia F24 con movimenti bancari")
-async def riconcilia_f24(
-    anno: Optional[int] = None
-):
-    """
-    Riesegue la riconciliazione bancaria per tutti gli F24 DA_PAGARE.
-    Normalmente avviene automaticamente al caricamento dell'estratto conto.
-    """
-    try:
-        db = Database.get_db()
-        from app.services.paghe_riconciliazione import riconcilia_tutti_f24
-        result = await riconcilia_tutti_f24(db, anno=anno)
-        return {
-            "success": True,
-            "message": f"Riconciliazione F24: {result['riconciliati']} pagati, {result['non_trovati']} da pagare",
-            "data": result
-        }
-    except Exception as e:
-        logger.error(f"Errore riconciliazione F24: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/tributi-pagati", summary="Storico tributi versati")
-async def get_tributi_pagati(
-    anno: Optional[int] = None,
-    codice_tributo: Optional[str] = None,
-    sezione: Optional[str] = None,
-    stato: Optional[str] = None
-):
-    """
-    Ritorna lo storico dei tributi pagati, ricercabile per codice, anno, sezione e stato.
-    """
-    try:
-        db = Database.get_db()
-        
-        query = {}
-        if anno:
-            query["anno_riferimento"] = {"$regex": str(anno)}
-        if codice_tributo:
-            query["codice_tributo"] = codice_tributo
-        if sezione:
-            query["sezione"] = sezione.upper()
-        if stato:
-            query["stato"] = stato.upper()
-        
-        tributi = await db.tributi_pagati.find(
-            query, {"_id": 0}
-        ).sort("data_scadenza", -1).to_list(length=1000)
-        
-        # Calcola totale
-        totale = sum(t.get("importo_netto", 0) for t in tributi)
-        
-        return {
-            "success": True,
-            "data": tributi,
-            "count": len(tributi),
-            "totale": round(totale, 2)
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/distinte-f24", summary="Lista distinte F24")
-async def get_distinte_f24(
-    anno: Optional[int] = None,
-    stato: Optional[str] = None
-):
-    """Lista delle distinte F24 con riepilogo aggregato."""
-    try:
-        db = Database.get_db()
-        
-        query = {}
-        if anno:
-            query["scadenza"] = {"$regex": str(anno)}
-        if stato:
-            query["stato"] = stato.upper()
-        
-        distinte = await db.distinte_f24.find(
-            query, {"_id": 0}
-        ).sort("data_scadenza", -1).to_list(length=200)
-        
-        return {
-            "success": True,
-            "data": distinte,
-            "count": len(distinte)
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/f24/lista", summary="Lista F24 importati")
-async def get_lista_f24(
-    anno: Optional[int] = None,
-    stato: Optional[str] = None
-):
-    """
-    Restituisce la lista degli F24 importati nel database.
-    """
-    try:
-        db = Database.get_db()
-        
-        query = {}
-        if anno:
-            query["scadenza"] = {"$regex": str(anno)}
-        if stato:
-            query["stato"] = stato
-        
-        f24_list = await db.f24_pagamenti.find(
-            query,
-            {"_id": 0, "f24_id": 1, "scadenza": 1, "totale_da_pagare": 1,
-             "stato": 1, "contribuente": 1, "imported_at": 1, "riconciliato": 1}
-        ).sort("scadenza", -1).to_list(length=100)
-        
-        return {
-            "success": True,
-            "data": f24_list,
-            "count": len(f24_list)
-        }
-        
-    except Exception as e:
-        logger.error(f"Errore lista F24: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+# (route morte rimosse: /riconcilia-f24, /tributi-pagati, /distinte-f24,
+#  /f24/lista — vedi nota §13.2 sopra; la riconciliazione automatica vive in
+#  services/paghe_riconciliazione ed è invocata dall'import estratto conto)

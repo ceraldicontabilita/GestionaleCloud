@@ -1,7 +1,7 @@
 # MAPPA ROUTER — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py — leggendo la route table reale di `register_all_routers`.
-> Totale **1106 endpoint** in **107 prefissi**.
+> Totale **1087 endpoint** in **107 prefissi**.
 
 Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app collegata / webhook / chatbot / scheduler / API pubblica) · `—` nessun riferimento noto (candidato verifica).
 
@@ -41,7 +41,7 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/dipendenti` | 51 | ✓ | employees.dipendenti |
 | `/api/dizionario-articoli` | 11 | ✓ | warehouse.dizionario_articoli |
 | `/api/document-ai` | 10 | ✓ | document_ai |
-| `/api/documenti` | 32 | ✓ | documenti |
+| `/api/documenti` | 28 | ✓ | documenti |
 | `/api/documenti-fiscali` | 2 | ✓ | documenti_fiscali |
 | `/api/documenti-inbox` | 5 | ✓ | documents_inbox_classify |
 | `/api/documenti-non-associati` | 7 | ✓ | documenti_non_associati |
@@ -74,7 +74,7 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/openapi-imprese` | 6 | ext | openapi_imprese |
 | `/api/operazioni-da-confermare` | 10 | ✓ | operazioni_module, operazioni_module.smart |
 | `/api/pagamenti` | 6 | ✓ | multi_pagamento |
-| `/api/paghe` | 18 | — | distinte_bpm, f24_parser, libro_unico_parser |
+| `/api/paghe` | 3 | — | distinte_bpm, f24_parser, libro_unico_parser |
 | `/api/pagopa` | 8 | ✓ | pagopa |
 | `/api/partite-aperte` | 3 | ✓ | partite_aperte_api |
 | `/api/paypal-api` | 11 | ✓ | paypal_api |
