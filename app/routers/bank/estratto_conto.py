@@ -550,10 +550,20 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
 
             KEYWORDS_PRELIEVO = ["BANCOMAT", "CONTANT", "SPORTELLO", " ATM"]
             KEYWORDS_VERSAMENTO_CONTANTI = ["CONTANT"]
+            # P0-1 (verifica Contabilità): un accredito POS (NUMIA) è la stessa
+            # moneta della quota "Corrispettivi POS" già registrata in
+            # prima_nota_banca all'import del corrispettivo. Se lo inserissimo
+            # anche qui come nuova entrata, il POS verrebbe contato DUE VOLTE nel
+            # Bilancio. Perciò gli accrediti POS NON generano una nuova entrata:
+            # marcano l'EC riconciliato e chiudono (best-effort) le entrate
+            # sintetiche "Corrispettivi POS" ancora aperte.
+            KEYWORDS_ACCREDITO_POS = ["NUMIA", "ACCREDITO POS", "INCASSO POS",
+                                      "POS ACQUIRING", "ACCR. POS", "ACCRED POS"]
 
             banca_batch = []
             cassa_batch = []
             ec_da_marcare = []
+            ec_pos_accrediti = []  # id EC accrediti POS (riconciliati senza duplicare)
             for mov in records_to_insert:
                 mid = mov["id"]
                 stato = stato_aggiornato.get(mid, {})
@@ -562,6 +572,11 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
 
                 desc_upper = (mov.get("descrizione_originale") or mov.get("descrizione") or "").upper()
                 now_iso = datetime.now(timezone.utc).isoformat()
+
+                # Accredito POS: non duplicare la quota già in Corrispettivi POS.
+                if mov.get("tipo") == "entrata" and any(k in desc_upper for k in KEYWORDS_ACCREDITO_POS):
+                    ec_pos_accrediti.append(mid)
+                    continue
 
                 banca_batch.append({
                     "id": str(_uuid.uuid4()),
@@ -609,7 +624,33 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
                     {"id": {"$in": ec_da_marcare}},
                     {"$set": {"riconciliato": True, "tipo_riconciliazione": "auto_generico"}}
                 )
-            sync_generico = {"inseriti_banca": len(banca_batch), "inseriti_cassa": len(cassa_batch)}
+            # Accrediti POS: marca l'EC riconciliato SENZA nuova entrata banca
+            # (la quota POS è già in prima_nota_banca via corrispettivo_pos) e
+            # chiude le entrate sintetiche "Corrispettivi POS" ancora aperte fino
+            # a concorrenza dell'accredito (best-effort, non blocca il flusso).
+            if ec_pos_accrediti:
+                await db["estratto_conto_movimenti"].update_many(
+                    {"id": {"$in": ec_pos_accrediti}},
+                    {"$set": {"riconciliato": True, "tipo_riconciliazione": "auto_pos_accredito"}}
+                )
+                try:
+                    sintetiche = await db["prima_nota_banca"].find(
+                        {"source": "corrispettivo_pos", "riconciliato": {"$ne": True}},
+                        {"_id": 0, "id": 1},
+                    ).sort("data", 1).to_list(1000)
+                    ids_sintetiche = [s["id"] for s in sintetiche]
+                    if ids_sintetiche:
+                        await db["prima_nota_banca"].update_many(
+                            {"id": {"$in": ids_sintetiche}},
+                            {"$set": {"riconciliato": True, "tipo_riconciliazione": "auto_pos_accredito"}},
+                        )
+                except Exception as e:
+                    logger.warning(f"Chiusura entrate sintetiche POS non riuscita: {e}")
+            sync_generico = {
+                "inseriti_banca": len(banca_batch),
+                "inseriti_cassa": len(cassa_batch),
+                "accrediti_pos_riconciliati": len(ec_pos_accrediti),
+            }
         except Exception as e:
             logger.error(f"Errore sync generico estratto conto -> prima nota: {e}")
 

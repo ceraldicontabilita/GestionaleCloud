@@ -458,19 +458,19 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/bank/estratto_conto.py:657`
+- File: `app/routers/bank/estratto_conto.py:698`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/bank/estratto_conto.py:1283`
+- File: `app/routers/bank/estratto_conto.py:1324`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/bank/estratto_conto.py:1500`
+- File: `app/routers/bank/estratto_conto.py:1541`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
