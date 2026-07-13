@@ -670,30 +670,47 @@ async def conferma_elimina_f24(alert_id: str) -> Dict[str, Any]:
         raise HTTPException(status_code=400, detail="Tipo alert non valido per eliminazione")
     
     f24_id = alert.get("f24_id")
-    
-    # Marca F24 come eliminato
+    # F24 che lo sostituisce (ravveduto pagato / nuovo): conserva il legame.
+    f24_sostitutivo = alert.get("f24_pagato_id") or alert.get("f24_nuovo_id")
+
+    # P1-D (fascicolo §21): NON un'eliminazione "cieca". Il modello originario
+    # resta storicizzato (soft-delete recuperabile) e collegato all'F24 che lo
+    # sostituisce, così il fascicolo mensile mantiene debito originario ↔
+    # ravvedimento senza doppio conteggio né perdita di storico.
+    now_iso = datetime.now(timezone.utc).isoformat()
+    # Manteniamo status="eliminato" (già escluso ovunque dalle liste attive e
+    # recuperabile), aggiungendo il legame di fascicolo col ravvedimento.
     await db[COLL_F24_COMMERCIALISTA].update_one(
         {"id": f24_id},
         {"$set": {
             "status": "eliminato",
+            "sostituito": True,
+            "sostituito_da_f24_id": f24_sostitutivo,
             "eliminato_da_alert": alert_id,
-            "updated_at": datetime.now(timezone.utc).isoformat()
+            "updated_at": now_iso,
         }}
     )
-    
+    # Traccia il legame anche sull'F24 sostitutivo (per la vista fascicolo).
+    if f24_sostitutivo:
+        await db[COLL_F24_COMMERCIALISTA].update_one(
+            {"id": f24_sostitutivo},
+            {"$set": {"sostituisce_f24_id": f24_id, "updated_at": now_iso}}
+        )
+
     # Risolvi alert
     await db[COLL_F24_ALERTS].update_one(
         {"id": alert_id},
         {"$set": {
             "status": "resolved",
-            "resolved_at": datetime.now(timezone.utc).isoformat()
+            "resolved_at": now_iso,
         }}
     )
-    
+
     return {
         "success": True,
-        "message": "F24 eliminato con successo",
-        "f24_id": f24_id
+        "message": "F24 originario storicizzato e collegato al ravvedimento (nessuna perdita di storico)",
+        "f24_id": f24_id,
+        "sostituito_da": f24_sostitutivo,
     }
 
 
