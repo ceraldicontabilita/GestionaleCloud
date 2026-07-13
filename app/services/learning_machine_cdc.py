@@ -6,7 +6,7 @@ Questo modulo implementa la classificazione intelligente delle fatture
 leggendo la DESCRIZIONE delle linee fattura per assegnare il centro di costo corretto.
 """
 
-from typing import Dict, Any, List, Tuple
+from typing import Dict, Any, List, Tuple, Optional
 import logging
 
 logger = logging.getLogger(__name__)
@@ -680,10 +680,49 @@ def classifica_fattura_per_centro_costo(
     if scores:
         best_cdc = max(scores, key=scores.get)
         confidence = min(scores[best_cdc] / 50.0, 1.0)  # Normalizza 0-1
-        return best_cdc, CENTRI_COSTO[best_cdc], confidence
-    
+        config_out = CENTRI_COSTO[best_cdc]
+        # P1-3 (verifica Contabilità): la voce "5.3 beni < 516,46 €" implica
+        # deduzione integrale SENZA ammortamento. Se però l'importo del bene
+        # supera la soglia dell'art. 102 TUIR, NON è un piccolo bene: va trattato
+        # come cespite (ammortamento). Ricaviamo l'importo dalle righe: se supera
+        # 516,46 € segnaliamo l'anomalia (flag + confidence bassa) invece di
+        # dedurlo integralmente in automatico.
+        if best_cdc == "5.3_PICCOLE_ATTREZZATURE":
+            importo_tot = _importo_da_linee(linee_fattura)
+            if importo_tot is not None and importo_tot > 516.46:
+                config_out = {
+                    **config_out,
+                    "sopra_soglia_516": True,
+                    "nota_soglia": (
+                        f"Bene da {importo_tot:.2f} € > 516,46 €: verificare se va "
+                        "a cespite/ammortamento invece che a costo integrale (art. 102 TUIR)."
+                    ),
+                }
+                confidence = min(confidence, 0.4)
+        return best_cdc, config_out, confidence
+
     # Fallback: altri costi
     return "99_ALTRI_COSTI", CENTRI_COSTO["99_ALTRI_COSTI"], 0.1
+
+
+def _importo_da_linee(linee_fattura: Optional[List[Dict]]) -> Optional[float]:
+    """Somma gli importi delle righe fattura (per la verifica soglia beni).
+    Ritorna None se le righe non hanno importi utilizzabili."""
+    if not linee_fattura:
+        return None
+    tot = 0.0
+    trovato = False
+    for l in linee_fattura:
+        if not isinstance(l, dict):
+            continue
+        val = l.get("prezzo_totale") or l.get("importo") or l.get("prezzo") or l.get("total")
+        try:
+            if val is not None:
+                tot += abs(float(val))
+                trovato = True
+        except (TypeError, ValueError):
+            continue
+    return tot if trovato else None
 
 
 def normalizza_nome_fornitore(nome: str) -> str:
