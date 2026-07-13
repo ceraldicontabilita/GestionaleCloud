@@ -271,9 +271,9 @@ async def process_classified_email(
     from bson import ObjectId
     from bson.errors import InvalidId
     try:
-        doc = await db["documents_classified"].find_one({"_id": ObjectId(email_id)})
+        doc = await db["documenti_classificati"].find_one({"_id": ObjectId(email_id)})
     except Exception:
-        doc = await db["documents_classified"].find_one({"msg_id": email_id})
+        doc = await db["documenti_classificati"].find_one({"msg_id": email_id})
     
     if not doc:
         raise HTTPException(status_code=404, detail="Documento non trovato")
@@ -300,7 +300,7 @@ async def process_classified_email(
     
     # Aggiorna il documento classificato con i dati estratti
     if result.get("structured_data", {}).get("success"):
-        await db["documents_classified"].update_one(
+        await db["documenti_classificati"].update_one(
             {"_id": doc["_id"]},
             {
                 "$set": {
@@ -374,7 +374,7 @@ async def get_classified_documents_stats():
         {"$sort": {"totale": -1}}
     ]
     
-    stats = await db["documents_classified"].aggregate(pipeline).to_list(length=100)
+    stats = await db["documenti_classificati"].aggregate(pipeline).to_list(length=100)
     
     # Totali
     totale_docs = sum(s["totale"] for s in stats)

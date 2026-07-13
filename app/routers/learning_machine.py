@@ -251,7 +251,7 @@ async def get_learning_dashboard() -> Dict[str, Any]:
     # Ultimi documenti
     ultimi = await db[COLLECTION_DOCS].find(
         {},
-        {"_id": 0, "_key": 0, "body_preview": 0}
+        {"_id": 0, "_key": 0, "body_preview": 0, "pdf_base64": 0}  # P1 §5.8: no blob PDF dei doc email
     ).sort("created_at", -1).limit(10).to_list(10)
     
     return {
@@ -291,7 +291,7 @@ async def get_documenti(
     
     cursor = db[COLLECTION_DOCS].find(
         filtro,
-        {"_id": 0, "_key": 0}
+        {"_id": 0, "_key": 0, "pdf_base64": 0}  # P1 §5.8: no blob PDF dei doc email
     ).sort("created_at", -1).skip(skip).limit(limit)
     
     docs = await cursor.to_list(limit)

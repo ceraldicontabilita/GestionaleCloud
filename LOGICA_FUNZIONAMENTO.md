@@ -151,6 +151,11 @@ Se il parser fallisce: stato di errore + avviso, il documento resta consultabile
    utenze, manutenzione) stanno su centri dedicati (CDC-90/91/92, CDC-99).
    Il campo `classificazione_fonte` dice da dove viene la scelta
    (keywords personalizzate / keywords apprese / tabella statica).
+8. **Documenti classificati (vista unica)**: i documenti classificati
+   automaticamente dalle email e quelli analizzati dalla Learning Machine ora
+   vivono in un'unica raccolta. I documenti arrivati da email compaiono nella
+   pagina Learning Machine sotto la loro categoria (campo `fonte` =
+   `email_classifier`), così hai un solo elenco reale invece di due separati.
    "Riclassifica Fatture" applica le tue configurazioni a tutte le fatture
    ancora in "Altri costi non classificati" O senza alcun centro di costo;
    "DA CLASSIFICARE" conta entrambe le condizioni, "CONFIGURATI" conta solo

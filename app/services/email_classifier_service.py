@@ -449,17 +449,28 @@ async def scan_and_classify_emails(
                                         "confidence": confidence,
                                         "gestionale_section": rule.gestionale_section,
                                         "processed": False,
-                                        "data_inserimento": datetime.now(timezone.utc).isoformat()
+                                        "data_inserimento": datetime.now(timezone.utc).isoformat(),
+                                        # Campi canonici P1 §5.8: collezione unica `documenti_classificati`
+                                        # (stessa della Learning Machine). Manteniamo i campi propri qui
+                                        # sopra e aggiungiamo quelli attesi dalla LM per una vista coerente.
+                                        "fonte": "email_classifier",
+                                        "_key": f"email_{subject[:50]}_{filename}",
+                                        "categoria": rule.category,
+                                        "from": sender,
+                                        "date": date_str,
+                                        "has_pdf": True,
+                                        "processato": False,
+                                        "created_at": datetime.now(timezone.utc).isoformat(),
                                     }
                                     
                                     # Evita duplicati
-                                    existing = await db["documents_classified"].find_one({
+                                    existing = await db["documenti_classificati"].find_one({
                                         "subject": subject,
                                         "filename": filename
                                     })
                                     
                                     if not existing:
-                                        await db["documents_classified"].insert_one(doc)
+                                        await db["documenti_classificati"].insert_one(doc)
                                         risultati["documenti_salvati"] += 1
                 
                 else:
@@ -506,7 +517,7 @@ async def process_classified_documents(db) -> Dict[str, Any]:
     }
     
     # Trova documenti non processati
-    cursor = db["documents_classified"].find({"processed": False})
+    cursor = db["documenti_classificati"].find({"processed": False})
     
     async for doc in cursor:
         try:
@@ -560,7 +571,7 @@ async def process_classified_documents(db) -> Dict[str, Any]:
                     })
             
             # Marca come processato
-            await db["documents_classified"].update_one(
+            await db["documenti_classificati"].update_one(
                 {"_id": doc["_id"]},
                 {"$set": {"processed": True, "data_processamento": datetime.now(timezone.utc).isoformat()}}
             )
@@ -622,7 +633,7 @@ async def process_documents_with_ai(
     # Processa solo documenti con PDF
     query["pdf_base64"] = {"$exists": True, "$ne": None}
     
-    cursor = db["documents_classified"].find(query)
+    cursor = db["documenti_classificati"].find(query)
     documents = await cursor.to_list(length=500)  # Max 500 documenti per batch
     
     for doc in documents:
@@ -663,7 +674,7 @@ async def process_documents_with_ai(
                 dettaglio["status"] = "extracted"
                 
                 # Aggiorna documento con dati estratti
-                await db["documents_classified"].update_one(
+                await db["documenti_classificati"].update_one(
                     {"_id": doc["_id"]},
                     {
                         "$set": {
@@ -712,7 +723,7 @@ async def process_documents_with_ai(
                 dettaglio["error"] = extraction_result.get("structured_data", {}).get("error", "Unknown error")[:200]
                 
                 # Marca come tentato ma fallito
-                await db["documents_classified"].update_one(
+                await db["documenti_classificati"].update_one(
                     {"_id": doc["_id"]},
                     {
                         "$set": {

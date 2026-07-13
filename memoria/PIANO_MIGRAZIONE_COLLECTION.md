@@ -146,6 +146,26 @@ inglesi risolvono alla canonica — `COLL_SUPPLIERS`, `Collections.SUPPLIERS`,
 - Test-guardia `tests/test_p1_fornitori.py`: gli alias risolvono a `fornitori` +
   scan del sorgente che vieta qualsiasi scrittura su `db["suppliers"]`.
 
-## 5.8-5.9 — DA FARE
-Documenti classificati (`documents_classified` vs `documenti_classificati`),
-magazzino (no giacenza fisica). Vedi PROMPT_DEFINITIVO §5.8-5.9.
+## 5.8 Documenti classificati — ✅ FATTO (scelta utente: unifica su `documenti_classificati`)
+Erano DUE sottosistemi vivi con schemi diversi, senza ponte: la classificazione
+automatica EMAIL (`documents_classified`: tipo/filename/pdf_base64/processed) e la
+Learning Machine FE-wired (`documenti_classificati`: _key/categoria/has_pdf/processato,
+1967 doc). Su scelta utente unificati sulla canonica italiana `documenti_classificati`.
+
+- `email_classifier_service.py` e `document_ai.py`: redirect da `documents_classified`
+  → `documenti_classificati`. Il doc email scritto porta ora ANCHE i campi canonici
+  della LM (categoria/_key/from/date/has_pdf/processato/created_at + `fonte`), oltre ai
+  propri (tipo/filename/pdf_base64/gestionale_section/processed) → le sue letture di
+  ritorno (`processed`, `_id`) continuano a funzionare.
+- `learning_machine.py`: liste (`/documenti`, ultimi) escludono `pdf_base64` in
+  proiezione per non gonfiare le risposte coi blob PDF dei doc email.
+- `COLL_DOCUMENTS_CLASSIFIED` ora = `documenti_classificati` (alias deprecato).
+- Migrazione non distruttiva: `python -m app.scripts.migra_documents_classified [--esegui]`
+  (mappa schema legacy→canonico, dedup per subject+filename). **Eseguire al deploy.**
+- Effetto per l'utente: i documenti classificati da email compaiono ora nella Learning
+  Machine sotto la loro categoria (vista unica).
+- Verifica: 312 test verdi · `tests/test_p1_documenti_classificati.py`.
+
+## 5.9 — DA FARE
+Magazzino (no giacenza fisica: solo Dizionario Articoli + storico acquisti; nessuna
+nuova scrittura di giacenza). Vedi PROMPT_DEFINITIVO §5.9.

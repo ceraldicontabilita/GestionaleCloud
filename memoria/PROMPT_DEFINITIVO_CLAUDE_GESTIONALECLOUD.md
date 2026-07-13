@@ -50,7 +50,11 @@ PROSSIMA FASE: P1 consolidamento collection/motori (§5-§8).
       Collections.SUPPLIERS/SupplierCollections.SUPPLIERS = fornitori; nessuna scrittura
       su `suppliers` letterale; POST /api/suppliers pubblico scrive in fornitori).
       Blindato con test-guardia (308 test).
-- [ ] §5.8 Documenti classificati · §5.9 Magazzino
+- [x] §5.8 Documenti classificati: unificati su `documenti_classificati` (scelta utente).
+      Redirect pipeline email (email_classifier_service/document_ai) → canonica con
+      mapping campi; LM esclude pdf_base64 dalle liste; migrazione documents_classified.
+      Effetto: doc email visibili in Learning Machine (312 test).
+- [ ] §5.9 Magazzino
 - [ ] §6 Unificazione motori contabili · §7 Classificazione 390 endpoint · §8 Viewer documenti
       Deliverable: memoria/PIANO_MIGRAZIONE_COLLECTION.md
 ### FASE P1 — F24/quietanze/IVA/prestazioni (§9-§11) — non iniziata
