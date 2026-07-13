@@ -1055,6 +1055,20 @@ async def get_bilancio(anno: str = None) -> Dict[str, Any]:
         bilancio["conto_economico"][key]["totale"] = round(bilancio["conto_economico"][key]["totale"], 2)
     bilancio["conto_economico"]["risultato"] = round(bilancio["conto_economico"]["risultato"], 2)
 
+    # §6.2/§6.3: vista derivata in PIANO DEI CONTI UFFICIALE CEE (scelta utente: il piano
+    # canonico è solo quello ufficiale del bilancio). Converte i saldi operativi interni
+    # nei conti ufficiali senza alterare l'output storico soprastante.
+    try:
+        from app.services.mapping_piano_conti import classifica_saldi_ufficiale
+        voci_ufficiali = classifica_saldi_ufficiale(real_saldi)
+        bilancio["bilancio_ufficiale"] = {
+            "stato_patrimoniale": [v for v in voci_ufficiali.values() if v["sezione"] == "SP"],
+            "conto_economico": [v for v in voci_ufficiali.values() if v["sezione"] == "CE"],
+            "nota": "Saldi riclassificati sul piano dei conti ufficiale CEE (mapping_piano_conti).",
+        }
+    except Exception as e:
+        logger.warning(f"Vista bilancio ufficiale non disponibile: {e}")
+
     return bilancio
 
 

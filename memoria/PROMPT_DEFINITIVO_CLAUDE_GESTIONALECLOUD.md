@@ -77,11 +77,13 @@ PROSSIMA FASE: P1 consolidamento collection/motori (§5-§8).
       movimenti nella canonica estratto_conto_movimenti (dedup+alert); bank_statements_imported
       = solo metadati statement, nessun lettore riconciliazione. Nessun ricablaggio.
       RESTANO §6.5 cespiti, §6.7 PayPal, §6.8 cash adapter, §6.9 verbali (in attesa).
-- [x] §6.2 mapping conti: creato app/services/mapping_piano_conti.py (tabella unica
-      NUMERICO_A_PUNTATO 96 conti + PUNTATO_A_CEE + classifica_saldi_cee vista derivata) + test
-      (330). Constatazione: numerico→puntato è LOSSY (~24 conti solo civilistici). Rewiring dei
-      6 bilanci RINVIATO: serve conferma utente su (1) ~24 conti solo-civilistici, (2) ~10
-      corrispondenze macro marcate VERIFICARE.
+- [x] §6.2/§6.3 PIANO UFFICIALE: l'utente ha fornito il bilancio ufficiale → canonico =
+      piano CEE del commercialista (231 conti) in app/services/piano_conti_ufficiale.py +
+      doc memoria/PIANO_CONTI_UFFICIALE_CERALDI.md. mapping_piano_conti.OPERATIVO_A_UFFICIALE
+      (codice interno→ufficiale) + classifica_saldi_ufficiale (vista derivata). Regola in
+      CLAUDE.md. Bilancio (`piano_conti /bilancio`) ora espone anche `bilancio_ufficiale`
+      (vista in codici ufficiali), output storico invariato (329 test).
+      Nota: i codici interni collidono con gli ufficiali → si converte sempre.
 - [x] §7 Classificazione endpoint: deliverable memoria/ENDPOINT_CLASSIFICAZIONE_FINALE.md
       generato da scripts/genera_classificazione_endpoint.py (rigenerabile) sulla route
       table reale, incrocia FE/scheduler/chat/migrazione/test. 1106 endpoint: 650 tenere,
