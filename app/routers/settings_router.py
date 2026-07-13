@@ -106,3 +106,82 @@ async def _test_imap(host: str, user: str, password: str) -> Dict[str, Any]:
             return {"ok": False, "error": str(e)}
 
     return await asyncio.to_thread(_test)
+
+
+# ============================================================
+# Chiave Anthropic (Assistente AI della chat)
+# ============================================================
+
+@router.get("/anthropic")
+async def get_anthropic_settings() -> Dict[str, Any]:
+    """Stato della chiave Anthropic per l'assistente AI (mai in chiaro)."""
+    import os
+    db = Database.get_db()
+    doc = await db["settings"].find_one({"chiave": "anthropic"}, {"_id": 0})
+    env_presente = bool(os.environ.get("ANTHROPIC_API_KEY", "").strip())
+    db_presente = bool(doc and doc.get("api_key"))
+    return {
+        "configurata": env_presente or db_presente,
+        "fonte": "env" if env_presente else ("database" if db_presente else None),
+        "modello": os.environ.get("ANTHROPIC_MODEL", "").strip() or "claude-sonnet-5",
+        "aggiornato_il": doc.get("aggiornato_il") if doc else None,
+    }
+
+
+@router.post("/anthropic")
+async def salva_anthropic_settings(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    """Salva (cifrata) la chiave API Anthropic per l'assistente AI. Facoltativo:
+    `modello`. La chiave viene testata subito con una chiamata minima."""
+    from fastapi import HTTPException
+    db = Database.get_db()
+    api_key = (data.get("api_key") or "").strip()
+    if not api_key or not api_key.startswith("sk-"):
+        raise HTTPException(400, "Chiave Anthropic non valida (deve iniziare con 'sk-')")
+
+    set_doc = {
+        "chiave": "anthropic",
+        "api_key": encrypt_credential(api_key),
+        "aggiornato_il": datetime.now(timezone.utc).isoformat(),
+    }
+    modello = (data.get("modello") or "").strip()
+    if modello:
+        set_doc["modello"] = modello
+
+    await db["settings"].update_one(
+        {"chiave": "anthropic"}, {"$set": set_doc}, upsert=True
+    )
+    test = await _test_anthropic(api_key, modello or None)
+    return {
+        "status": "ok" if test["ok"] else "salvato_con_errore",
+        "messaggio": ("Chiave salvata: l'assistente AI è attivo." if test["ok"]
+                      else f"Salvata, ma il test è fallito: {test.get('error')}"),
+        "test": test,
+    }
+
+
+@router.post("/anthropic/test")
+async def test_anthropic_connection() -> Dict[str, Any]:
+    """Testa la chiave Anthropic attualmente in uso (env o DB)."""
+    from app.services.chat_ai_engine import risolvi_api_key, _model_name
+    db = Database.get_db()
+    key = await risolvi_api_key(db)
+    if not key:
+        return {"ok": False, "error": "Nessuna chiave configurata"}
+    return await _test_anthropic(key, _model_name())
+
+
+async def _test_anthropic(api_key: str, modello: str = None) -> Dict[str, Any]:
+    """Chiamata minima per validare la chiave/il modello."""
+    try:
+        import anthropic
+        client = anthropic.AsyncAnthropic(api_key=api_key)
+        modello = modello or "claude-sonnet-5"
+        resp = await client.messages.create(
+            model=modello, max_tokens=8,
+            messages=[{"role": "user", "content": "ping"}],
+            timeout=20.0,
+        )
+        _ = resp  # risposta non usata: conta solo che non sollevi errori
+        return {"ok": True, "messaggio": f"Chiave valida (modello {modello})"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}

@@ -353,18 +353,22 @@ async def _recupera_storico(db, session_id: str, limit: int = STORICO_MAX_VOCI) 
 @router.get("/health")
 async def chat_health() -> Dict[str, Any]:
     """Diagnostica rapida del motore AI della chat: dice se la chiave è
-    configurata e quale modello verrebbe usato. Utile quando 'la chat non
-    risponde' per capire se è un problema di configurazione."""
+    configurata (da env o dalla pagina di configurazione) e quale modello
+    verrebbe usato. Utile quando 'la chat non risponde'."""
     from app.services import chat_ai_engine
-    configurata = chat_ai_engine.is_configured()
+    db = Database.get_db()
+    configurata = await chat_ai_engine.api_key_configurata(db)
+    fonte = "env" if chat_ai_engine.is_configured() else ("database" if configurata else None)
     return {
         "ai_configurata": configurata,
+        "fonte_chiave": fonte,
         "modello": chat_ai_engine._model_name() if configurata else None,
         "motore": "ai" if configurata else "solo_parole_chiave",
         "nota": (
             "Motore AI attivo." if configurata else
-            "ANTHROPIC_API_KEY non configurata: la chat usa solo il motore a "
-            "parole chiave. Imposta la chiave nelle variabili d'ambiente del server."
+            "Chiave Anthropic non configurata: la chat usa solo il motore a parole "
+            "chiave. Incolla la chiave nella pagina di configurazione (Impostazioni "
+            "→ Assistente AI) oppure impostala come variabile d'ambiente ANTHROPIC_API_KEY."
         ),
     }
 
@@ -399,7 +403,7 @@ async def chat_ask(request: Request, data: Dict[str, Any] = Body(...)) -> Dict[s
     ai_stato = None
     if data.get("use_ai", True) and domanda.strip():
         from app.services import chat_ai_engine
-        if not chat_ai_engine.is_configured():
+        if not await chat_ai_engine.api_key_configurata(db):
             ai_stato = "non_configurata"
         else:
             try:

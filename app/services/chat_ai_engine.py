@@ -38,8 +38,34 @@ STORICO_MESSAGGI_CONTESTO = 10
 
 
 def is_configured() -> bool:
-    """True se la chiave Anthropic e' configurata nell'ambiente."""
+    """True se la chiave Anthropic e' configurata nell'ambiente (env).
+    NB: non vede la chiave salvata nel DB — per quella usa `api_key_configurata`."""
     return bool(os.getenv("ANTHROPIC_API_KEY", "").strip())
+
+
+async def risolvi_api_key(db=None) -> str:
+    """Chiave Anthropic da usare: prima la variabile d'ambiente, poi (se assente)
+    la chiave salvata cifrata in `settings` (chiave='anthropic') dalla pagina di
+    configurazione del gestionale. Cosi' l'utente puo' attivare l'AI senza toccare
+    le variabili d'ambiente."""
+    env = os.getenv("ANTHROPIC_API_KEY", "").strip()
+    if env:
+        return env
+    if db is None:
+        return ""
+    try:
+        doc = await db["settings"].find_one({"chiave": "anthropic"}, {"_id": 0})
+        if doc and doc.get("api_key"):
+            from app.utils.crypto import decrypt_credential
+            return (decrypt_credential(doc["api_key"]) or "").strip()
+    except Exception:
+        logger.exception("Lettura chiave Anthropic dal DB fallita")
+    return ""
+
+
+async def api_key_configurata(db=None) -> bool:
+    """True se una chiave Anthropic e' disponibile da env o dal DB."""
+    return bool(await risolvi_api_key(db))
 
 
 def _model_name() -> str:
@@ -768,7 +794,8 @@ async def rispondi(domanda: str, session_id: str, db,
     """
     import anthropic
 
-    client = anthropic.AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY", "").strip())
+    api_key = await risolvi_api_key(db)
+    client = anthropic.AsyncAnthropic(api_key=api_key)
     system = _system_prompt(domanda)
 
     messages: List[Dict[str, Any]] = []
