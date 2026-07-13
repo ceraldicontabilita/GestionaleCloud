@@ -130,6 +130,26 @@ def test_senza_match_crea_alert(monkeypatch):
     assert len(alerts) == 1 and alerts[0]["tipo"] == "quietanza_senza_match"
 
 
+def test_quietanza_senza_f24_stato_canonico_e_nessuna_ricostruzione(monkeypatch):
+    """§9.3 (regola cardine): quietanza senza F24 → stato canonico
+    QUIETANZA_PRESENTE_F24_MANCANTE, alert bloccante, calcolo sospeso e NESSUN
+    F24 ricostruito automaticamente."""
+    _patch_parser(monkeypatch, PARSED_OK)
+    db = _FakeDb()
+    esito = asyncio.run(qi.importa_quietanza_bytes(db, b"%PDF-altro", "q3.pdf"))
+
+    assert esito.get("stato_quietanza") == "QUIETANZA_PRESENTE_F24_MANCANTE"
+    quietanza = db[qi.COLL_QUIETANZE].docs[0]
+    assert quietanza["stato_quietanza"] == "QUIETANZA_PRESENTE_F24_MANCANTE"
+    assert quietanza["calcolo_fiscale_sospeso"] is True
+    # alert bloccante
+    alerts = db[qi.COLL_F24_ALERTS].docs
+    assert alerts and alerts[0].get("bloccante") is True
+    # NESSUN F24 ricostruito in automatico (regola cardine CLAUDE.md)
+    assert db["f24_unificato"].docs == []
+    assert db["f24_models"].docs == []
+
+
 def test_parsing_fallito_non_salva(monkeypatch):
     _patch_parser(monkeypatch, {"error": "PDF illeggibile"})
     db = _FakeDb()

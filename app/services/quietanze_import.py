@@ -316,14 +316,20 @@ async def importa_quietanza_bytes(
         if esiste_f24_soggetto:
             warning = "F24 presente ma non corrispondente: verificare importi/periodo/codici."
             stato = "f24_non_corrispondente"
+            # stato canonico del prompt §9.3: F24 del soggetto esiste ma non combacia
+            stato_canonico = "QUIETANZA_PRESENTE_F24_NON_CORRISPONDENTE"
         else:
             warning = "F24 mancante — prego caricare il modello F24 corrispondente."
             stato = "f24_mancante"
+            # stato canonico del prompt §9.3 (regola cardine: mai ricostruire l'F24)
+            stato_canonico = "QUIETANZA_PRESENTE_F24_MANCANTE"
         risultato["warning"] = warning
+        risultato["stato_quietanza"] = stato_canonico
         await db[COLL_QUIETANZE].update_one(
             {"id": file_id},
             {"$set": {
                 "stato_associazione": stato,
+                "stato_quietanza": stato_canonico,
                 "calcolo_fiscale_sospeso": True,
             }},
         )
