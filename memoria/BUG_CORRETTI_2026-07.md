@@ -35,10 +35,25 @@ Ogni bug: problema → correzione → test di regressione. Baseline `b9ff5c7` (2
   `app/scripts/migra_stato_assegni_associato.py` (dry-run/`--esegui`, idempotente).
 - **Test**: `tests/test_p0_05_assegno_stato.py`.
 
+## P0.11 — Gestione riservata protetta solo dal frontend ✅
+- **File**: `app/routers/gestione_riservata.py` + `frontend/src/pages/GestioneRiservata.jsx`.
+- **Problema**: gli endpoint `/movimenti`, `/riepilogo`, `/volume-affari-reale` NON
+  verificavano il codice (solo `/login`); il login loggava il codice errato in chiaro.
+- **Fix**: dipendenza `richiedi_codice_riservato` (header `X-Reserved-Code`, confronto
+  `secrets.compare_digest`, **fail-closed** 503 se non configurato) applicata a tutti gli
+  endpoint dati; nessun log del segreto. Frontend invia il codice come header.
+- **Test**: `tests/test_p0_11_gestione_riservata.py` (negato senza/errato, fail-closed, no-log).
+
+## P0.12 — Token/api-key in query string ✅
+- **File**: `app/routers/public_api.py` (API pubblica v1).
+- **Problema**: `?api_key=` obbligatoria in query (loggabile) su `/v1/fatture|movimenti|stats`.
+- **Fix**: dipendenza `richiedi_api_key` — header `X-API-Key` preferito, query deprecata come
+  fallback con warning; la chiave non viene loggata.
+- **Test**: `tests/test_p0_12_api_key_header.py`.
+
 ## In lavorazione
 - P0.3 (Libro Unico `employees` vs `dipendenti`), P0.6 (force-reimport), P0.7 (F24 banca
-  collection), P0.8 (parser F24 DTO), P0.9 (pagamento idempotente), P0.10 (job state),
-  P0.11 (gestione riservata auth), P0.12 (token in query).
+  collection), P0.8 (parser F24 DTO), P0.9 (pagamento idempotente), P0.10 (job state).
 
 ---
-_Stato test: 264 verdi (baseline 257 + 7 nuovi). App boota, build frontend verde._
+_Stato test: 273 verdi (baseline 257 + 16 nuovi). App boota (1111 route), build frontend verde._

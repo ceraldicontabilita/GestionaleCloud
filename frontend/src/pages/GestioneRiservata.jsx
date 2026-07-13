@@ -33,6 +33,13 @@ import {
   CheckCircle,
 } from 'lucide-react';
 
+// Il codice riservato viene inviato al backend come header su ogni chiamata
+// dati (l'autorizzazione è lato server, non solo lato UI). Vedi P0.11.
+const GR_CODE_KEY = 'gr_code';
+function grConfig() {
+  return { headers: { 'X-Reserved-Code': sessionStorage.getItem(GR_CODE_KEY) || '' } };
+}
+
 // Login Component
 function LoginGestioneRiservata({ onLogin }) {
   const [code, setCode] = useState('');
@@ -48,6 +55,8 @@ function LoginGestioneRiservata({ onLogin }) {
       const res = await api.post('/api/gestione-riservata/login', { code });
       if (res.data.success) {
         localStorage.setItem('gestione_riservata_session', 'active');
+        // Conserva il codice per l'header di autorizzazione (solo per la sessione tab)
+        sessionStorage.setItem(GR_CODE_KEY, code);
         onLogin();
       }
     } catch (err) {
@@ -183,8 +192,8 @@ function DashboardGestioneRiservata({ onLogout }) {
       if (mese) url += `mese=${mese}`;
 
       const [movRes, riepRes] = await Promise.all([
-        api.get(url),
-        api.get(`/api/gestione-riservata/riepilogo?anno=${anno}${mese ? `&mese=${mese}` : ''}`),
+        api.get(url, grConfig()),
+        api.get(`/api/gestione-riservata/riepilogo?anno=${anno}${mese ? `&mese=${mese}` : ''}`, grConfig()),
       ]);
 
       setMovimenti(movRes.data || []);
@@ -199,9 +208,9 @@ function DashboardGestioneRiservata({ onLogout }) {
   async function handleSave() {
     try {
       if (editingId) {
-        await api.put(`/api/gestione-riservata/movimenti/${editingId}`, formData);
+        await api.put(`/api/gestione-riservata/movimenti/${editingId}`, formData, grConfig());
       } else {
-        await api.post('/api/gestione-riservata/movimenti', formData);
+        await api.post('/api/gestione-riservata/movimenti', formData, grConfig());
       }
       setShowForm(false);
       setEditingId(null);
@@ -221,7 +230,7 @@ function DashboardGestioneRiservata({ onLogout }) {
 
   async function handleDelete(id) {
     try {
-      await api.delete(`/api/gestione-riservata/movimenti/${id}`);
+      await api.delete(`/api/gestione-riservata/movimenti/${id}`, grConfig());
       loadData();
     } catch (e) {
       toast.error('Errore: ' + (e.response?.data?.detail || e.message));
@@ -243,6 +252,7 @@ function DashboardGestioneRiservata({ onLogout }) {
 
   function handleLogout() {
     localStorage.removeItem('gestione_riservata_session');
+    sessionStorage.removeItem(GR_CODE_KEY);
     onLogout();
   }
 

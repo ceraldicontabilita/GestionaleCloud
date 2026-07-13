@@ -19,10 +19,10 @@ Baseline: `b9ff5c7` · 257 test verdi · 1105 route · avvio lavori 13/07/2026.
 - [ ] P0.8 Processo F24 scaricati usa contratto parser errato
 - [ ] P0.9 Pagamento fattura non idempotente
 - [ ] P0.10 Stato job solo in memoria
-- [ ] P0.11 Gestione riservata protetta solo dal frontend
-- [ ] P0.12 Token in query string
+- [x] P0.11 Gestione riservata protetta solo dal frontend — auth backend header + test
+- [x] P0.12 Token in query string — header X-API-Key + fallback deprecato + test
 
-FATTI: P0.1, P0.2, P0.4, P0.5 (264 test verdi). PROSSIMI: P0.3, P0.11, P0.12, poi P0.6-P0.10.
+FATTI: P0.1, P0.2, P0.4, P0.5, P0.11, P0.12 (273 test verdi). PROSSIMI: P0.3, poi P0.6-P0.10.
 
 ### FASE P1 — Consolidamento collection/motori (§5-§8)  — non iniziata
 ### FASE P1 — F24/quietanze/IVA/prestazioni (§9-§11) — non iniziata

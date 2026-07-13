@@ -9,7 +9,7 @@ Gli endpoint principali sono stati spostati nei router modulari:
 - employees_payroll.py: /api/employees
 - f24_tributi.py: /api/f24
 """
-from fastapi import APIRouter, HTTPException, Query, Body, UploadFile, File
+from fastapi import APIRouter, HTTPException, Query, Body, UploadFile, File, Header, Depends
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 import uuid
@@ -917,6 +917,21 @@ async def global_search_public(
 import hashlib
 import secrets
 
+async def richiedi_api_key(
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
+    api_key: Optional[str] = Query(None, description="DEPRECATO: usare l'header X-API-Key"),
+) -> Dict[str, Any]:
+    """Autenticazione API pubblica v1. Preferisce l'header `X-API-Key`; accetta
+    ancora la query `?api_key=` per retrocompatibilità ma è SCONSIGLIATA (finisce
+    nei log/URL). Il valore della chiave non viene mai loggato. Vedi P0.12."""
+    chiave = x_api_key or api_key
+    if not chiave:
+        raise HTTPException(status_code=401, detail="API Key mancante (usare header X-API-Key)")
+    if not x_api_key and api_key:
+        logger.warning("API v1: chiave passata via query string (deprecato) — usare header X-API-Key")
+    return await verify_api_key_header(chiave)
+
+
 async def verify_api_key_header(x_api_key: str) -> Dict[str, Any]:
     """Verifica API Key e restituisce info client."""
     db = Database.get_db()
@@ -980,10 +995,9 @@ async def api_v1_fatture(
     tipo: str = Query("ricevute"),
     anno: Optional[int] = None,
     limit: int = Query(100, le=500),
-    x_api_key: str = Query(..., alias="api_key")
+    _client: Dict[str, Any] = Depends(richiedi_api_key),
 ) -> Dict[str, Any]:
-    """API pubblica - Lista fatture. Richiede api_key come parametro."""
-    await verify_api_key_header(x_api_key)
+    """API pubblica - Lista fatture. Autenticazione via header X-API-Key."""
     
     db = Database.get_db()
     collection = "fatture_ricevute" if tipo == "ricevute" else "fatture_emesse"
@@ -1004,10 +1018,9 @@ async def api_v1_movimenti(
     data_da: Optional[str] = None,
     data_a: Optional[str] = None,
     limit: int = Query(100, le=500),
-    x_api_key: str = Query(..., alias="api_key")
+    _client: Dict[str, Any] = Depends(richiedi_api_key),
 ) -> Dict[str, Any]:
-    """API pubblica - Lista movimenti prima nota."""
-    await verify_api_key_header(x_api_key)
+    """API pubblica - Lista movimenti prima nota. Auth via header X-API-Key."""
     
     db = Database.get_db()
     query = {}
@@ -1023,10 +1036,9 @@ async def api_v1_movimenti(
 @router.get("/v1/stats")
 async def api_v1_stats(
     anno: int = Query(...),
-    x_api_key: str = Query(..., alias="api_key")
+    _client: Dict[str, Any] = Depends(richiedi_api_key),
 ) -> Dict[str, Any]:
-    """API pubblica - Statistiche aggregate."""
-    await verify_api_key_header(x_api_key)
+    """API pubblica - Statistiche aggregate. Auth via header X-API-Key."""
     
     db = Database.get_db()
     

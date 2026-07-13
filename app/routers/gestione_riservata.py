@@ -2,12 +2,13 @@
 Gestione Riservata - Dati non fatturati (incassi/spese extra).
 Accesso protetto con codice da variabile d'ambiente.
 """
-from fastapi import APIRouter, HTTPException, Body, Query
+from fastapi import APIRouter, HTTPException, Body, Query, Header, Depends
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 from uuid import uuid4
 import logging
 import os
+import secrets
 
 from app.database import Database
 
@@ -21,18 +22,40 @@ if not GESTIONE_RISERVATA_CODE:
 COLLECTION_NAME = "gestione_riservata"
 
 
+def _codice_valido(code: Optional[str]) -> bool:
+    """Confronto a tempo costante col codice riservato. NON logga mai il segreto."""
+    if not GESTIONE_RISERVATA_CODE or not code:
+        return False
+    return secrets.compare_digest(str(code), GESTIONE_RISERVATA_CODE)
+
+
+async def richiedi_codice_riservato(
+    x_reserved_code: Optional[str] = Header(None)
+) -> None:
+    """Dipendenza di autorizzazione backend per l'area riservata. Il frontend invia
+    il codice nell'header `X-Reserved-Code` a ogni richiesta. Fail-closed: se il
+    codice non è configurato sul server, l'area è inaccessibile (503). Vedi P0.11."""
+    if not GESTIONE_RISERVATA_CODE:
+        raise HTTPException(status_code=503, detail="Area riservata non configurata")
+    if not _codice_valido(x_reserved_code):
+        # NB: non logghiamo mai il codice ricevuto.
+        logger.warning("Accesso Gestione Riservata negato: codice mancante o errato")
+        raise HTTPException(status_code=401, detail="Accesso riservato non autorizzato")
+
+
 @router.post("/login")
 async def gestione_riservata_login(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
-    """Login gestione riservata con codice accesso."""
+    """Verifica il codice di accesso all'area riservata (feedback per la UI).
+    L'autorizzazione vera è applicata su ogni endpoint dati via header."""
     code = str(data.get("code", "")).strip()
-    
+
     if not code:
         raise HTTPException(status_code=400, detail="Inserire il codice di accesso")
-    
-    if code != GESTIONE_RISERVATA_CODE:
-        logger.warning(f"Tentativo accesso Gestione Riservata fallito con codice: {code}")
+
+    if not _codice_valido(code):
+        logger.warning("Tentativo di accesso Gestione Riservata fallito")
         raise HTTPException(status_code=401, detail="Codice di accesso non valido")
-    
+
     return {
         "success": True,
         "message": "Accesso autorizzato",
@@ -44,7 +67,8 @@ async def gestione_riservata_login(data: Dict[str, Any] = Body(...)) -> Dict[str
 async def get_movimenti(
     anno: Optional[int] = Query(None),
     mese: Optional[int] = Query(None),
-    tipo: Optional[str] = Query(None)  # "incasso" o "spesa"
+    tipo: Optional[str] = Query(None),  # "incasso" o "spesa"
+    _: None = Depends(richiedi_codice_riservato),
 ) -> List[Dict[str, Any]]:
     """Lista movimenti non fatturati."""
     db = Database.get_db()
@@ -67,7 +91,10 @@ async def get_movimenti(
 
 
 @router.post("/movimenti")
-async def create_movimento(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+async def create_movimento(
+    data: Dict[str, Any] = Body(...),
+    _: None = Depends(richiedi_codice_riservato),
+) -> Dict[str, Any]:
     """Crea nuovo movimento non fatturato."""
     db = Database.get_db()
     
@@ -105,7 +132,8 @@ async def create_movimento(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
 @router.put("/movimenti/{movimento_id}")
 async def update_movimento(
     movimento_id: str,
-    data: Dict[str, Any] = Body(...)
+    data: Dict[str, Any] = Body(...),
+    _: None = Depends(richiedi_codice_riservato),
 ) -> Dict[str, Any]:
     """Aggiorna movimento esistente."""
     db = Database.get_db()
@@ -140,7 +168,10 @@ async def update_movimento(
 
 
 @router.delete("/movimenti/{movimento_id}")
-async def delete_movimento(movimento_id: str) -> Dict[str, Any]:
+async def delete_movimento(
+    movimento_id: str,
+    _: None = Depends(richiedi_codice_riservato),
+) -> Dict[str, Any]:
     """Elimina movimento (soft-delete)."""
     db = Database.get_db()
     
@@ -161,7 +192,8 @@ async def delete_movimento(movimento_id: str) -> Dict[str, Any]:
 @router.get("/riepilogo")
 async def get_riepilogo(
     anno: Optional[int] = Query(None),
-    mese: Optional[int] = Query(None)
+    mese: Optional[int] = Query(None),
+    _: None = Depends(richiedi_codice_riservato),
 ) -> Dict[str, Any]:
     """Riepilogo totali incassi/spese non fatturati."""
     db = Database.get_db()
@@ -202,7 +234,8 @@ async def get_riepilogo(
 @router.get("/volume-affari-reale")
 async def get_volume_affari_reale(
     anno: int = Query(...),
-    mese: Optional[int] = Query(None)
+    mese: Optional[int] = Query(None),
+    _: None = Depends(richiedi_codice_riservato),
 ) -> Dict[str, Any]:
     """
     Calcola il volume d'affari reale:
