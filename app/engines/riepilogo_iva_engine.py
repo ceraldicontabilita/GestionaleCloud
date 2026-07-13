@@ -10,7 +10,7 @@ annuale (§17) e l'elenco delle anomalie bloccanti/di avviso (§18).
 """
 from typing import Any, Dict, List, Optional
 
-TIPI_NOTA_CREDITO = ("TD04", "TD08")
+from app.constants.tipi_documento import TIPI_NOTA_CREDITO
 
 
 def _iva(f: Dict[str, Any]) -> float:

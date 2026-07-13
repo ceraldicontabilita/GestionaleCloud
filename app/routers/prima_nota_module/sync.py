@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 # Tipi documento fatture attive (vendite - ENTRATE)
 TIPI_FATTURA_ATTIVA = ["TD24", "TD25", "TD26", "TD27"]
-TIPI_NOTA_CREDITO = ["TD04", "TD08"]
+from app.constants.tipi_documento import TIPI_NOTA_CREDITO
 
 # Metodi fornitore -> destinazione Prima Nota: REGOLA UNICA, delegata al
 # motore centralizzato app.engines.prima_nota_engine (prima esistevano liste

@@ -43,7 +43,7 @@ MOV_RECUPERO_ANNUALE = "RECUPERO_ANNUALE"
 STATI_DETRAZIONE_AMMESSI = {"DA_INSERIRE", "NON_VALUTATA", "RINVIATA"}
 
 # Note di credito: non sono acquisti detraibili in positivo
-TIPI_NOTA_CREDITO = ("TD04", "TD08")
+from app.constants.tipi_documento import TIPI_NOTA_CREDITO
 
 
 def _iva_detraibile(f: Dict[str, Any]) -> float:

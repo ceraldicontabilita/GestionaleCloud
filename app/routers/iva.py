@@ -24,7 +24,7 @@ COLL = "invoices"
 COLL_LIQ = "liquidazioni_iva"
 COLL_MOV = "movimenti_iva_fattura"
 # Note di credito: non sono acquisti detraibili in positivo
-TIPI_NOTA_CREDITO = ("TD04", "TD08")
+from app.constants.tipi_documento import TIPI_NOTA_CREDITO
 
 
 def _periodo_precedente(periodo: str) -> str:
@@ -494,8 +494,20 @@ async def _fatture_anno(db, anno: int) -> List[Dict[str, Any]]:
         "iva": 1, "iva_detraibile": 1, "iva_utilizzata": 1,
         "stato_detrazione_iva": 1, "tipo_documento": 1, "annullata": 1,
     }
+    # Fatture attribuite all'anno + (P2-d) fatture DA_VERIFICARE con periodo
+    # nullo la cui data (documento/ricezione) cade nell'anno: senza questo
+    # ramo la categoria "IVA da verificare" del §16 non le contava mai.
     return await db[COLL].find(
-        {"periodo_iva_attribuito": {"$regex": f"^{anno}"}}, proj
+        {"$or": [
+            {"periodo_iva_attribuito": {"$regex": f"^{anno}"}},
+            {"periodo_iva_attribuito": {"$in": [None, ""]},
+             "stato_detrazione_iva": "DA_VERIFICARE",
+             "$or": [
+                 {"data_documento": {"$regex": f"^{anno}"}},
+                 {"data_ricezione": {"$regex": f"^{anno}"}},
+             ]},
+        ]},
+        proj,
     ).to_list(20000)
 
 

@@ -36,12 +36,15 @@ def campi_iva_da_fattura(inv: Dict[str, Any]) -> Dict[str, Any]:
     confermata non va ri-attribuita)."""
     data_documento = inv.get("data_documento") or inv.get("invoice_date")
     data_operazione = _data_operazione_da_righe(inv.get("linee")) or data_documento
-    # Data di ricezione: quando la fattura è diventata disponibile nel
-    # gestionale. Priorità: campo esplicito → data importazione (created_at).
+    # Data di ricezione: determina la regola dei 15 giorni per l'attribuzione.
+    # Priorità: ricezione SDI reale → data_ricezione → data documento.
+    # P2-a (fix 13/07/2026): NON usare più `created_at` (data di IMPORT nel
+    # gestionale) come ricezione: per le fatture storiche importate in blocco
+    # sarebbe l'anno di import (es. 2026) e mis-attribuirebbe massivamente il
+    # pregresso. La data del documento è un'àncora molto più affidabile.
     data_ricezione = (
         inv.get("data_ricezione_sdi")
         or inv.get("data_ricezione")
-        or (str(inv.get("created_at"))[:10] if inv.get("created_at") else None)
         or data_documento
     )
     data_registrazione = inv.get("data_registrazione") or data_ricezione

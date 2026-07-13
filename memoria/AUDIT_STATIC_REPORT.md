@@ -1988,7 +1988,7 @@ Generato da `scripts/audit_static.py`.
 
 ### P2 - timezone
 
-- File: `app/routers/iva.py:599`
+- File: `app/routers/iva.py:611`
 
 - Dettaglio: Sostituire con datetime.now(timezone.utc).
 
