@@ -209,12 +209,27 @@ def test_nome_da_config_schema_misto():
 
 def test_latte_bar_vs_pasticceria_per_contenuto():
     """Regola utente: latte fresco/intero → Bar (1.1); parzialmente scremato e
-    lunga conservazione (UHT) → Pasticceria (1.3). Latte generico → Bar."""
+    lunga conservazione (UHT) → Pasticceria (1.3). Latte generico → Bar.
+    (Fornitore neutro: il nome fornitore entra nello scoring, quindi 'Latteria'
+    conterrebbe 'latte' e falserebbe il test.)"""
     def cdc(desc):
-        cid, _, _ = lm.classifica_fattura_per_centro_costo("Latteria X", desc)
+        cid, _, _ = lm.classifica_fattura_per_centro_costo("Fornitore Generico Srl", desc)
         return cid
     assert cdc("Latte fresco intero 1L") == "1.1_CAFFE_BEVANDE_CALDE"
     assert cdc("Latte intero") == "1.1_CAFFE_BEVANDE_CALDE"
     assert cdc("Latte") == "1.1_CAFFE_BEVANDE_CALDE"
     assert cdc("Latte parzialmente scremato UHT 6x1L") == "1.3_MATERIE_PRIME_PASTICCERIA"
     assert cdc("Latte a lunga conservazione") == "1.3_MATERIE_PRIME_PASTICCERIA"
+
+
+def test_panna_bar_vs_pasticceria_per_contenuto():
+    """Regola utente (parallela al latte): panna fresca → Bar (1.1);
+    UHT/vegetale/lunga conservazione → Pasticceria (1.3); panna generica →
+    Pasticceria (materia prima, suo uso prevalente)."""
+    def cdc(desc):
+        cid, _, _ = lm.classifica_fattura_per_centro_costo("Fornitore Generico Srl", desc)
+        return cid
+    assert cdc("Panna fresca da montare 1L") == "1.1_CAFFE_BEVANDE_CALDE"
+    assert cdc("Panna UHT 1L") == "1.3_MATERIE_PRIME_PASTICCERIA"
+    assert cdc("Panna vegetale") == "1.3_MATERIE_PRIME_PASTICCERIA"
+    assert cdc("Panna") == "1.3_MATERIE_PRIME_PASTICCERIA"

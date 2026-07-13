@@ -30,7 +30,10 @@ CENTRI_COSTO = {
                     # Latte (regola utente): fresco/intero → Bar; parzialmente
                     # scremato / lunga conservazione (UHT) → Pasticceria (1.3).
                     # "latte" generico resta al Bar come default (cappuccino).
-                    "latte", "latte fresco", "latte intero"],
+                    "latte", "latte fresco", "latte intero",
+                    # Panna fresca (da guarnizione al banco) → Bar; panna UHT /
+                    # vegetale (materia prima) → Pasticceria (1.3).
+                    "panna fresca"],
         "fornitori": ["kimbo", "lavazza", "illy", "borbone", "nespresso"]
     },
     "1.2_BEVANDE_FREDDE_ALCOLICI": {
@@ -61,7 +64,11 @@ CENTRI_COSTO = {
                     # "latte" del Bar → vincono nello scoring per contenuto.
                     "latte parzialmente scremato", "latte scremato",
                     "latte uht", "latte a lunga conservazione",
-                    "latte lunga conservazione"],
+                    "latte lunga conservazione",
+                    # Panna: generica → Pasticceria (materia prima); UHT/vegetale
+                    # esplicite più specifiche della "panna fresca" del Bar.
+                    "panna uht", "panna vegetale",
+                    "panna a lunga conservazione", "panna lunga conservazione"],
         "fornitori": ["dolciaria acquaviva", "siro s.r.l", "f.lli fiorentino", "i cozzolino",
                    "master frost", "eurouova", "big food", "sud ingrosso"]
     },
