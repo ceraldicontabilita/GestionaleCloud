@@ -30,6 +30,19 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def campi_ricerca_verbale_in_fattura(numero_verbale: str) -> List[Dict[str, Any]]:
+    """Costruisce il `$or` per cercare il numero verbale dentro una fattura
+    `invoices`. Le righe fattura stanno nel campo canonico `linee` (NON `items`,
+    che non esiste su invoices) → prima la ricerca sulle righe non trovava mai
+    nulla. Vedi P0.4."""
+    rx = {"$regex": re.escape(numero_verbale), "$options": "i"}
+    return [
+        {"descrizione": rx}, {"body": rx}, {"note": rx}, {"notes": rx},
+        {"oggetto": rx}, {"subject": rx},
+        {"linee.descrizione": rx}, {"linee.description": rx},
+    ]
+
+
 # ===== UTILITY FUNCTIONS =====
 
 def extract_verbale_from_description(description: str) -> Optional[str]:
@@ -594,16 +607,7 @@ async def riconcilia_verbale(numero_verbale: str) -> Dict[str, Any]:
         # 1. Cerca fattura se non presente
         if not verbale.get("fattura_id"):
             fattura = await db["invoices"].find_one({
-                "$or": [
-                    {"descrizione": {"$regex": numero_verbale, "$options": "i"}},
-                    {"body": {"$regex": numero_verbale, "$options": "i"}},
-                    {"note": {"$regex": numero_verbale, "$options": "i"}},
-                    {"notes": {"$regex": numero_verbale, "$options": "i"}},
-                    {"oggetto": {"$regex": numero_verbale, "$options": "i"}},
-                    {"subject": {"$regex": numero_verbale, "$options": "i"}},
-                    {"items.descrizione": {"$regex": numero_verbale, "$options": "i"}},
-                    {"items.description": {"$regex": numero_verbale, "$options": "i"}}
-                ]
+                "$or": campi_ricerca_verbale_in_fattura(numero_verbale)
             })
             
             if fattura:

@@ -19,6 +19,26 @@ from app.utils.error_handler import handle_errors
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+# Collezione canonica F24 (upload manuale ed email confluiscono qui, vedi
+# memoria/AUDIT_RICOGNIZIONE §3 e PROMPT_DEFINITIVO P0.1).
+COLL_F24_CANONICA = "f24_unificato"
+
+
+async def conta_f24_da_pagare(db, limite_30: str) -> int:
+    """Conta i F24 non pagati con scadenza entro `limite_30`, leggendo SOLO la
+    collezione canonica `f24_unificato` e contando i documenti DISTINTI una volta
+    sola. Copre sia lo schema canonico (`scadenza`+`status`) sia quello legacy
+    (`data_scadenza`+`pagato`), senza sommare due count sulla stessa collezione
+    (che raddoppiava i documenti con entrambi gli schemi). Vedi P0.1."""
+    return await db[COLL_F24_CANONICA].count_documents({
+        "status": {"$nin": ["pagato", "eliminato"]},
+        "pagato": {"$ne": True},
+        "$or": [
+            {"scadenza": {"$gt": "", "$lte": limite_30}},
+            {"data_scadenza": {"$gt": "", "$lte": limite_30}},
+        ],
+    })
+
 # Scadenze fiscali fisse italiane
 SCADENZE_FISCALI = {
     "iva_q1": {"mese": 5, "giorno": 16, "descrizione": "Versamento IVA 1° Trimestre", "tipo": "IVA"},
@@ -633,21 +653,11 @@ async def get_dashboard_scadenze() -> Dict[str, Any]:
         "data_scadenza": {"$gte": oggi_str, "$lte": limite_30}
     })
     
-    # F24 da pagare
-    # NB: esistono due archivi F24 vivi, alimentati da percorsi diversi
-    # (upload manuale -> f24_unificato, scansione email automatica ->
-    # f24_commercialista, con schema campi diverso: status/scadenza invece
-    # di pagato/data_scadenza). Contare solo il primo faceva scomparire da
-    # questo alert i F24 arrivati via email (spesso la maggioranza).
-    f24_da_pagare_unificato = await db["f24_unificato"].count_documents({
-        "data_scadenza": {"$lte": limite_30},
-        "pagato": {"$ne": True}
-    })
-    f24_da_pagare_commercialista = await db["f24_unificato"].count_documents({
-        "scadenza": {"$lte": limite_30},
-        "status": {"$ne": "pagato"}
-    })
-    f24_da_pagare = f24_da_pagare_unificato + f24_da_pagare_commercialista
+    # F24 da pagare — collezione canonica unica f24_unificato, conteggio distinto
+    # (copre schema canonico `scadenza`/`status` e legacy `data_scadenza`/`pagato`).
+    # Vedi P0.1: prima due count sommate sulla stessa collezione raddoppiavano i
+    # documenti con entrambi gli schemi e la query legacy pescava a vuoto.
+    f24_da_pagare = await conta_f24_da_pagare(db, limite_30)
     
     # Scadenze fiscali prossime
     scadenze_fiscali = _genera_scadenze_fiscali(oggi.year, oggi.month, False)

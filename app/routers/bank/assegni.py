@@ -544,7 +544,9 @@ async def correggi_associazione_assegno(
 
         update_data["fattura_id"] = nuova_fattura_id
         update_data["pagato"] = True
-        update_data["stato"] = "associato"
+        # Stato canonico: "assegnato" (era "associato", valore NON presente in
+        # ASSEGNO_STATI → fuori schema, invisibile ai filtri per stato). Vedi P0.5.
+        update_data["stato"] = "assegnato"
         # alias per consistenza GET
         update_data["numero_fattura"] = numero_fattura_val
         update_data["fattura_numero"] = numero_fattura_val

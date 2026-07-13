@@ -19,6 +19,21 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def filtro_uscite_da_riconciliare() -> Dict[str, Any]:
+    """Filtro Mongo per i movimenti di USCITA non ancora riconciliati in
+    `estratto_conto_movimenti`. Copre entrambe le convenzioni di segno presenti
+    nei dati: importo positivo con `tipo="uscita"` (import canonico) e importo
+    negativo (import legacy). Prima si filtrava solo `importo < 0` e il job non
+    trovava mai le uscite salvate come positive → zero candidati. Vedi P0.2."""
+    return {
+        "riconciliato": {"$nin": ["riconciliato", "parziale", True]},
+        "$or": [
+            {"tipo": "uscita"},
+            {"importo": {"$lt": 0}},
+        ],
+    }
+
+
 class RiconciliazioneItem(BaseModel):
     movimento_id: str
     tipo_match: str  # fattura, f24, cedolino
@@ -183,10 +198,9 @@ async def auto_riconcilia_tutto(
     """Riconcilia automaticamente tutti i movimenti con match >= min_confidence%."""
     db = Database.get_db()
     
-    movimenti = await db["estratto_conto_movimenti"].find({
-        "riconciliato": {"$nin": ["riconciliato", "parziale"]},
-        "importo": {"$lt": 0}
-    }).to_list(500)
+    movimenti = await db["estratto_conto_movimenti"].find(
+        filtro_uscite_da_riconciliare()
+    ).to_list(500)
     
     proposte = []
     applicati = 0
