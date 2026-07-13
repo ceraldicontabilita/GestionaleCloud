@@ -22,7 +22,17 @@ corrispettivi in partita doppia, schema CEE puntato). Vedi commit §6.1.
   incompatibili in `prima_nota_cassa`.
 - **Rischio:** ALTO (tocca bilancio/mastro/giornale/saldo). Non procedere senza scelta.
 
-## §6.2 — Bilancio: 6 implementazioni — 🟡 FONDAMENTA FATTE (mapping + vista derivata)
+## §6.3 aggiornato — PIANO CANONICO = quello UFFICIALE del bilancio
+L'utente ha fornito il bilancio ufficiale: il piano dei conti canonico è quello CEE del
+commercialista (struttura 03/05/07/15/19/23/25/27/29/31/33/35/37/39/41 · 47/51/53/55/57/
+59/61/63/65/67/71/75/84), **memorizzato in `app/services/piano_conti_ufficiale.py`**
+(231 conti) e documentato in `memoria/PIANO_CONTI_UFFICIALE_CERALDI.md`.
+⚠️ I codici INTERNI dell'app collidono con gli ufficiali (interno `05.01.01`=Acquisto
+merci vs ufficiale `05`=Immobilizzazioni materiali). Perciò per bilancio/report si
+converte SEMPRE all'ufficiale via `mapping_piano_conti.OPERATIVO_A_UFFICIALE`.
+Regola resa vincolante in CLAUDE.md.
+
+## §6.2 — Bilancio: 6 implementazioni — 🟡 FONDAMENTA FATTE (mapping → ufficiale)
 Implementazioni rilevate: `accounting/piano_conti /bilancio` (fonte: `_calcola_saldi_
 piano_conti`), `accounting/contabilita_avanzata /bilancio-dettagliato`,
 `contabilita_italiana /bilancio/*`, `accounting/contabilita_gestionale`,
