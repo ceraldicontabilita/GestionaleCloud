@@ -57,26 +57,38 @@ async def extract_from_file(
         if save_to_db and result.get("structured_data", {}).get("success"):
             db = await get_database()
             
-            # Controllo duplicati: verifica se esiste già un documento con lo stesso filename
-            existing = await db["extracted_documents"].find_one({"filename": file.filename})
+            # Controllo duplicati per filename: sulla CANONICA e sull'archivio
+            # legacy extracted_documents (P1 §5.8, in dismissione)
+            existing = await db["documenti_classificati"].find_one(
+                {"fonte": "upload_ai", "filename": file.filename})
+            if not existing:
+                existing = await db["extracted_documents"].find_one({"filename": file.filename})
             if existing:
                 result["saved_to_db"] = False
                 result["duplicate"] = True
                 result["message"] = f"Documento '{file.filename}' già presente nel database"
                 return result
-            
-            # Salva in extracted_documents (archivio) - include file_base64 per visualizzazione
+
+            # Salva nella collezione CANONICA documenti_classificati (P1 §5.8,
+            # scelta utente) con fonte="upload_ai"; include file_base64 per la
+            # visualizzazione. La legacy extracted_documents non riceve più
+            # scritture da questo flusso (migrazione: migra_extracted_documents).
+            doc_type = result.get("structured_data", {}).get("document_type")
             doc = {
                 "filename": file.filename,
-                "document_type": result.get("structured_data", {}).get("document_type"),
+                "document_type": doc_type,
+                "categoria": doc_type,
+                "fonte": "upload_ai",
                 "extracted_data": result.get("structured_data", {}).get("data"),
                 "text_preview": result.get("text", "")[:1000],
                 "ocr_used": result.get("ocr_used"),
                 "model_used": model,
                 "file_base64": base64.b64encode(content).decode('utf-8'),
+                "has_pdf": True,
+                "processato": True,
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
-            await db["extracted_documents"].insert_one(doc)
+            await db["documenti_classificati"].insert_one(doc)
             result["saved_to_db"] = True
             
             # Salva ANCHE nelle collection del gestionale
@@ -115,16 +127,21 @@ async def extract_from_base64(
         
         if save_to_db and result.get("structured_data", {}).get("success"):
             db = await get_database()
+            # Scrive nella CANONICA documenti_classificati (P1 §5.8), come /extract
+            doc_type = result.get("structured_data", {}).get("document_type")
             doc = {
                 "filename": filename,
-                "document_type": result.get("structured_data", {}).get("document_type"),
+                "document_type": doc_type,
+                "categoria": doc_type,
+                "fonte": "upload_ai",
                 "extracted_data": result.get("structured_data", {}).get("data"),
                 "text_preview": result.get("text", "")[:1000],
                 "ocr_used": result.get("ocr_used"),
                 "model_used": model,
+                "processato": True,
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
-            await db["extracted_documents"].insert_one(doc)
+            await db["documenti_classificati"].insert_one(doc)
             result["saved_to_db"] = True
         
         return result
@@ -194,11 +211,11 @@ async def get_extracted_documents(
     - **include_file**: Se True, include il file_base64 (più pesante)
     """
     db = await get_database()
-    
+
     query = {}
     if document_type:
         query["document_type"] = document_type
-    
+
     # Definisci la proiezione - include sempre _id per poter eliminare
     projection = {
         "_id": 1,
@@ -210,25 +227,42 @@ async def get_extracted_documents(
         "model_used": 1,
         "created_at": 1
     }
-    
+
     if include_file:
         projection["file_base64"] = 1
-    
-    cursor = db["extracted_documents"].find(query, projection).sort("created_at", -1).skip(skip).limit(limit)
-    
-    documents = await cursor.to_list(length=limit)
-    
+
+    # P1 §5.8: legge la CANONICA documenti_classificati (fonte upload_ai) E,
+    # in transizione finché non gira migra_extracted_documents, anche la
+    # legacy extracted_documents. Dedup per filename (vince la canonica).
+    fetch_n = skip + limit
+    canonici = await db["documenti_classificati"].find(
+        {**query, "fonte": "upload_ai"}, projection
+    ).sort("created_at", -1).limit(fetch_n).to_list(fetch_n)
+    legacy = await db["extracted_documents"].find(
+        query, projection
+    ).sort("created_at", -1).limit(fetch_n).to_list(fetch_n)
+
+    visti = {d.get("filename") for d in canonici}
+    documents = canonici + [d for d in legacy if d.get("filename") not in visti]
+    documents.sort(key=lambda d: d.get("created_at") or "", reverse=True)
+    documents = documents[skip: skip + limit]
+
     # Converti ObjectId in stringa
     for doc in documents:
         if "_id" in doc:
             doc["id"] = str(doc["_id"])
             del doc["_id"]
-    
-    total = await db["extracted_documents"].count_documents(query)
-    
+
+    total_canonici = await db["documenti_classificati"].count_documents(
+        {**query, "fonte": "upload_ai"})
+    total_legacy = await db["extracted_documents"].count_documents(query)
+
     return {
         "documents": documents,
-        "total": total,
+        # Somma senza dedup profondo: indicativo in transizione, esatto dopo
+        # la migrazione (la legacy resta come archivio ma i filename coincidono)
+        "total": max(total_canonici, total_legacy) if (total_canonici and total_legacy)
+                 else total_canonici + total_legacy,
         "limit": limit,
         "skip": skip
     }
@@ -244,16 +278,23 @@ async def delete_extracted_document(doc_id: str):
     from bson.errors import InvalidId
     
     db = await get_database()
-    
+
     try:
-        result = await db["extracted_documents"].delete_one({"_id": ObjectId(doc_id)})
-        
-        if result.deleted_count == 0:
-            raise HTTPException(status_code=404, detail="Documento non trovato")
-        
-        return {"success": True, "message": "Documento eliminato"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        oid = ObjectId(doc_id)
+    except (InvalidId, TypeError):
+        raise HTTPException(status_code=400, detail="ID documento non valido")
+
+    # P1 §5.8: il documento può stare nella canonica (nuovi upload) o nella
+    # legacy extracted_documents (archivio pre-migrazione)
+    result = await db["documenti_classificati"].delete_one(
+        {"_id": oid, "fonte": "upload_ai"})
+    if result.deleted_count == 0:
+        result = await db["extracted_documents"].delete_one({"_id": oid})
+
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Documento non trovato")
+
+    return {"success": True, "message": "Documento eliminato"}
 
 
 @router.post("/process-classified-email")
@@ -359,8 +400,12 @@ async def get_classified_documents_stats():
     """
     db = await get_database()
     
-    # Pipeline aggregazione
+    # Pipeline aggregazione. Esclude gli upload manuali (fonte upload_ai,
+    # già processati per definizione): queste stats descrivono lo stato di
+    # processamento della pipeline email — stessi numeri di prima del
+    # consolidamento P1 §5.8.
     pipeline = [
+        {"$match": {"fonte": {"$ne": "upload_ai"}}},
         {
             "$group": {
                 "_id": "$tipo",

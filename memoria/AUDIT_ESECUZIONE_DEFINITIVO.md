@@ -44,7 +44,7 @@ Fonti canoniche effettive (criterio §17.2):
 | Dipendenti | `dipendenti` | `migra_employees_a_dipendenti`, `migra_staff_a_dipendenti` |
 | Cedolini | `cedolini` | `migra_payslips_a_cedolini` |
 | Contratti | `contratti` | `migra_employee_contracts_a_contratti` |
-| Documenti | `documenti_classificati` (scelta utente) | `migra_documents_classified` |
+| Documenti | `documenti_classificati` (scelta utente) | `migra_documents_classified` + `migra_extracted_documents` (upload AI manuali) |
 | Fornitori | `suppliers` (+ metodo pagamento canonico) | `migra_metodo_pagamento_fornitori` |
 | Estratto conto | `estratto_conto_movimenti` | — (già canonica) |
 | Prima Nota | `prima_nota_cassa` / `prima_nota_banca` | — (già canoniche) |

@@ -211,8 +211,8 @@ Contabilità/Prima Nota (evidenze file:riga nella ricognizione):
 - **A7** — Chiusura/ammortamenti scrivono `movimenti_contabili` mentre il libro giornale vive in `scritture_contabili`: due collezioni contabili parallele.
 
 Documenti/Dipendenti/Chat:
-- **B1** — Tre collezioni per i documenti: tab lista legge `documents_inbox`, tab AI legge `extracted_documents`, la canonica è `documenti_classificati` → i tab mostrano insiemi diversi.
-- **B2** — Alias legacy `documents_classified` deprecato con migrazione pendente (`app/scripts/migra_documents_classified.py`).
+- **B1** — ✅ RISOLTA (2026-07-13): i ruoli sono ora due, non tre. `documents_inbox` è lo STADIO inbox grezza (email/drive scaricati, pre-classificazione: non è un doppione); `documenti_classificati` è la CANONICA per tutto il classificato, incluse da oggi le estrazioni AI da upload manuale (`fonte="upload_ai"`, prima finivano in `extracted_documents`). Il tab "Classificati AI" legge canonica+legacy in transizione (dedup per filename); delete su entrambe; storico da portare con `python -m app.scripts.migra_extracted_documents --esegui`. `extracted_documents` resta viva SOLO per il flusso "da rivedere" di ai_parser (campo `status`, flusso separato). Fix collaterale: il viewer dei documenti AI ora usa il blob in memoria (prima creava il blob e poi chiamava un fetchUrl sbagliato) con revoca alla chiusura.
+- **B2** — Alias legacy `documents_classified`: codice già unificato sulla canonica; resta solo la migrazione dati al deploy (`app/scripts/migra_documents_classified.py`).
 - **B3** — Pipeline paghe (`/api/paghe/*`, `/api/cedolini/*`, distinte BPM) viva ma non azionabile dalla UI.
 - **B4** — Widget "buste paga da pagare" e riepilogo cedolini (`documenti.py:1260,1465,1595,1660`) senza chiamanti FE.
 - **B5** — Chat protetta solo dal middleware globale (nessun `Depends` per-route): accettabile (non è in allowlist) ma senza secondo livello.

@@ -208,7 +208,7 @@ COLL_DOCUMENTI_CLASSIFICATI = "documenti_classificati"  # CANONICA (P1 §5.8, sc
 COLL_DOCUMENTS_CLASSIFIED = "documenti_classificati"  # LEGACY/DEPRECATA (P1 §5.8): alias inglese ora unificato sulla canonica; migrare con app/scripts/migra_documents_classified.py
 COLL_DOCUMENTI_NON_ASSOCIATI = "documenti_non_associati"  # 285 docs
 COLL_INDICE_DOCUMENTI = "indice_documenti"  # DEPRECATA - dati migrati in invoices. Tenere per email_reconciliation index
-COLL_EXTRACTED_DOCUMENTS = "extracted_documents"
+COLL_EXTRACTED_DOCUMENTS = "extracted_documents"  # LEGACY/ARCHIVIO (P1 §5.8): gli upload AI manuali ora scrivono nella canonica documenti_classificati (fonte="upload_ai"); migrare lo storico con app/scripts/migra_extracted_documents.py. Resta viva SOLO per il flusso "da rivedere" di ai_parser (campo status).
 COLL_PORTAL_DOCUMENTS = "portal_documents"
 
 # Email

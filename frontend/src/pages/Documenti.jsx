@@ -428,17 +428,21 @@ export default function Documenti() {
 
   const handleDownloadFile = async doc => {
     try {
-      const response = await api.get(`/api/documenti/documento/${doc.id}/download`, {
-        responseType: 'blob',
-      });
-
-      const url = window.URL.createObjectURL(new Blob([response.data]));
+      // Documenti AI: il PDF è già in memoria come blob (nessun endpoint inbox)
+      let url = doc.pdfUrl;
+      if (!url) {
+        const response = await api.get(`/api/documenti/documento/${doc.id}/download`, {
+          responseType: 'blob',
+        });
+        url = window.URL.createObjectURL(new Blob([response.data]));
+      }
       const link = document.createElement('a');
       link.href = url;
       link.setAttribute('download', doc.filename);
       document.body.appendChild(link);
       link.click();
       link.remove();
+      if (!doc.pdfUrl) window.URL.revokeObjectURL(url);
     } catch (error) {
       toast.error('Errore download', { description: error.message });
     }
@@ -450,8 +454,9 @@ export default function Documenti() {
     setSelectedPdfDoc(doc);
   };
 
-  // Chiudi PDF Viewer
+  // Chiudi PDF Viewer (revoca l'eventuale blob dei documenti AI)
   const closePdfViewer = () => {
+    if (selectedPdfDoc?.pdfUrl) URL.revokeObjectURL(selectedPdfDoc.pdfUrl);
     setSelectedPdfDoc(null);
   };
 
@@ -1628,7 +1633,10 @@ export default function Documenti() {
           subtitle={`${CATEGORY_COLORS[selectedPdfDoc.category]?.label || selectedPdfDoc.category}${
             selectedPdfDoc.file_size ? ` • ${formatBytes(selectedPdfDoc.file_size)}` : ''
           }`}
-          fetchUrl={`/api/documenti/documento/${selectedPdfDoc.id}/download`}
+          // Documenti AI (tab Classificati AI): il PDF è già in memoria come blob
+          // (file_base64); i documenti archivio passano dal download autenticato
+          src={selectedPdfDoc.pdfUrl || undefined}
+          fetchUrl={selectedPdfDoc.pdfUrl ? undefined : `/api/documenti/documento/${selectedPdfDoc.id}/download`}
           onClose={closePdfViewer}
           onDownload={() => handleDownloadFile(selectedPdfDoc)}
           maxWidth={1000}
