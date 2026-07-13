@@ -446,10 +446,9 @@ async def backfill_autoroute_da_metodo_fornitore() -> Dict[str, Any]:
             if piva and metodo:
                 map_metodo[piva] = metodo
 
-    # Processa entrambe le collection di fatture
+    # Collezione canonica unica `invoices` (§5.4: fatture_passive consolidata)
     for coll_name, field_piva, field_numero, field_data, field_importo in [
         ("invoices",        "supplier_vat",          "invoice_number",  "invoice_date",  "total_amount"),
-        ("fatture_passive", "fornitore_piva",        "numero",          "data",          "importo_totale"),
     ]:
         cursor = db[coll_name].find(
             {
@@ -563,15 +562,11 @@ async def backfill_autoroute_da_metodo_fornitore() -> Dict[str, Any]:
                     update_fields["prima_nota_banca_id"] = movimento_id
                     report["confermate_banca"] += 1
 
-                # Aggiorna su entrambe le collection (fattura potrebbe esistere in entrambe)
+                # Aggiorna la fattura nella collezione canonica (§5.4: niente più
+                # cross-update su fatture_passive, consolidata in invoices).
                 await db[coll_name].update_one(
                     {"id": fattura_id} if doc.get("id") else {"dedup_key": fattura_id},
                     {"$set": update_fields}
-                )
-                # Cross-update (se stesso id esiste nell'altra collection per retro-compat)
-                other_coll = "fatture_passive" if coll_name == "invoices" else "invoices"
-                await db[other_coll].update_one(
-                    {"id": fattura_id}, {"$set": update_fields}
                 )
 
                 # --- EVENT BUS: propaga evento fattura pagata (via backfill auto-route) ---

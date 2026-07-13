@@ -27,17 +27,18 @@ async def _find_xml_for_fornitore(db, fornitore) -> List[Path]:
     piva = (fornitore.get("partita_iva") or fornitore.get("piva") or "").strip()
     nome = (fornitore.get("nome") or fornitore.get("ragione_sociale") or fornitore.get("denominazione") or "").strip()
 
-    # Cerca fatture passive associate a questo fornitore (per P.IVA o nome)
+    # Cerca le fatture del fornitore nella collezione canonica `invoices`
+    # (§5.4: fatture_passive consolidata). Campi canonici supplier_vat/supplier_name.
     or_clauses = []
     if piva:
-        or_clauses.append({"fornitore_piva": piva})
+        or_clauses.append({"supplier_vat": piva})
     if nome:
-        or_clauses.append({"fornitore_denominazione": {"$regex": re.escape(nome[:25]), "$options": "i"}})
+        or_clauses.append({"supplier_name": {"$regex": re.escape(nome[:25]), "$options": "i"}})
 
     if not or_clauses:
         return []
 
-    fatture = await db["fatture_passive"].find(
+    fatture = await db["invoices"].find(
         {"$or": or_clauses} if len(or_clauses) > 1 else or_clauses[0],
         {"_id": 0, "xml_filename": 1}
     ).limit(20).to_list(20)

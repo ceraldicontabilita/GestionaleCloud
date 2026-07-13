@@ -233,7 +233,10 @@ async def get_archivio_fatture(
             {"supplier_vat": {"$regex": search, "$options": "i"}},
         ]
 
-    # ── Costruisci filtri per `fatture_passive` ───────────────────────────────
+    # ── Consolidamento §5.4: `fatture_passive` migrata in `invoices`. La lettura
+    #    a due sorgenti (con dedup runtime) è stata rimossa: si legge SOLO la
+    #    canonica `invoices`. I filtri q_fp restano solo per non rompere codice a
+    #    valle ma non vengono più usati per interrogare la legacy.
     q_fp: dict = {}
     if anno:
         q_fp["anno"] = anno
@@ -257,25 +260,12 @@ async def get_archivio_fatture(
             {"fornitore_piva": {"$regex": search, "$options": "i"}},
         ]
 
-    # ── Esegui le query in parallelo ─────────────────────────────────────────
-    import asyncio as _asyncio
-    docs_inv_raw, docs_fp_raw = await _asyncio.gather(
-        db["invoices"].find(q_inv, {"_id": 0}).sort("invoice_date", -1).to_list(3000),
-        db["fatture_passive"].find(q_fp, {"_id": 0}).sort("data", -1).to_list(3000),
-    )
+    # ── Legge SOLO la collezione canonica `invoices` (§5.4) ──────────────────
+    docs_inv_raw = await db["invoices"].find(q_inv, {"_id": 0}).sort("invoice_date", -1).to_list(3000)
 
     # ── Normalizza ────────────────────────────────────────────────────────────
     normalized_inv = [_normalizza_da_invoices(d) for d in docs_inv_raw]
-    normalized_fp  = [_normalizza_da_fatture_passive(d) for d in docs_fp_raw]
-
-    # ── Deduplica: se stesso xml_filename in entrambe, preferisce invoices ───
-    xml_filenames_in_inv = {
-        d["_xml_filename"] for d in normalized_inv if d.get("_xml_filename")
-    }
-    normalized_fp = [
-        d for d in normalized_fp
-        if not (d.get("_xml_filename") and d["_xml_filename"] in xml_filenames_in_inv)
-    ]
+    normalized_fp = []  # nessuna seconda sorgente: fatture_passive è consolidata in invoices
 
     # ── Unisci e ordina per data_documento decrescente ────────────────────────
     all_fatture = normalized_inv + normalized_fp

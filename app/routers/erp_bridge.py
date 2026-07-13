@@ -103,26 +103,30 @@ async def ricevi_fattura_da_tracciabilita(
     except (ValueError, TypeError):
         anno = datetime.now(timezone.utc).year
 
-    dedup_key = f"{payload.numero_fattura}|{payload.partita_iva or payload.fornitore}"
+    # Consolidamento §5.4: il ponte scrive nella collezione CANONICA `invoices`
+    # (prima scriveva in `fatture_passive`, sorgente parallela che imponeva un
+    # dedup runtime a due collezioni). Dedup per `invoice_key` (numero+P.IVA+data).
+    from app.services.fatture_canonico import invoice_key as _invoice_key
+    key = _invoice_key(payload.numero_fattura, payload.partita_iva or payload.fornitore, data_iso)
 
     doc = {
-        "dedup_key": dedup_key,
-        "numero": payload.numero_fattura,
-        "fornitore_denominazione": payload.fornitore,
-        "fornitore_piva": payload.partita_iva,
-        "data": data_iso,
+        "invoice_key": key,
+        "invoice_number": payload.numero_fattura,
+        "supplier_name": payload.fornitore,
+        "supplier_vat": payload.partita_iva,
+        "invoice_date": data_iso,
         "anno": anno,
-        "importo_totale": round(payload.totale, 2),
+        "total_amount": round(payload.totale, 2),
         "imponibile": round(payload.imponibile, 2),
         "iva": round(payload.iva, 2),
-        "stato": "importata",
+        "status": "imported",
         "source": "tracciabilita",
-        "righe": [r.model_dump() for r in payload.righe],
+        "linee": [r.model_dump() for r in payload.righe],
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
 
-    result = await db["fatture_passive"].update_one(
-        {"dedup_key": dedup_key},
+    result = await db["invoices"].update_one(
+        {"invoice_key": key},
         {"$set": doc, "$setOnInsert": {
             "id": str(uuid.uuid4()),
             "created_at": datetime.now(timezone.utc).isoformat(),
@@ -139,7 +143,7 @@ async def ricevi_fattura_da_tracciabilita(
     return {
         "ok": True,
         "action": action,
-        "dedup_key": dedup_key,
+        "invoice_key": key,
         "anno": anno,
     }
 
@@ -149,7 +153,7 @@ async def ricevi_fattura_da_tracciabilita(
 async def ponte_status():
     """Verifica che il ponte ERP sia raggiungibile."""
     db = Database.get_db()
-    count = await db["fatture_passive"].count_documents({"source": "tracciabilita"})
+    count = await db["invoices"].count_documents({"source": "tracciabilita"})
     return {
         "ok": True,
         "db": "Gestionale",

@@ -43,9 +43,25 @@ Canonica `dipendenti`. Legacy `employees` migrata con
 $setOnInsert). Redirect letture/scritture `libro_unico_parser`, `verbali_noleggio_api`.
 Restano da valutare: `staff`, `payslips`, `employee_contracts`.
 
-## 5.3-5.9 — DA FARE
-Cedolini (`cedolini` vs `buste_paga`/`payslips`), fatture passive (`invoices` vs
-`fatture_passive`), fatture emesse (`fatture_emesse` vs `invoices_emesse`), estratto
+## 5.4 Fatture passive — ✅ FATTO
+**Canonica:** `invoices`. **Legacy:** `fatture_passive` (alimentata solo dal ponte
+ERP esterno, oggi disattivato fail-closed).
+
+- Helper `app/services/fatture_canonico.py`: `invoice_key(numero,piva,data)`,
+  `mappa_fattura_passiva()` (schema legacy→canonico), `salva_invoice_passiva()`
+  (upsert idempotente per invoice_key, non tocca lo stato derivato di fatture esistenti).
+- Ponte ERP `erp_bridge.py`: ora scrive/legge `invoices` (dedup per invoice_key),
+  non più `fatture_passive`.
+- `fatture_module/crud.py`: RIMOSSO il dedup runtime a due sorgenti; legge solo `invoices`.
+- Redirect lettori: `pagamento.py` (niente cross-update fatture_passive), `cespiti.py`,
+  `anagrafica_fornitori_xml.py` (campi canonici supplier_vat/supplier_name).
+- Migrazione: `python -m app.scripts.migra_fatture_passive_a_invoices [--esegui]`
+  (non distruttiva, dedup per invoice_key, non sovrascrive stato derivato).
+  **Eseguire al deploy**: i lettori ora usano solo `invoices`.
+- Verifica: 297 test verdi · `tests/test_p1_fatture_passive.py`.
+
+## 5.3, 5.5-5.9 — DA FARE
+Cedolini (`cedolini` vs `buste_paga`/`payslips`), fatture emesse (`fatture_emesse` vs `invoices_emesse`), estratto
 conto (canonica `estratto_conto_movimenti`), fornitori (`fornitori`), documenti
 classificati (`documents_classified` vs `documenti_classificati`), magazzino.
 Vedi PROMPT_DEFINITIVO §5.2-5.9.

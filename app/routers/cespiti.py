@@ -377,9 +377,10 @@ async def scan_fatture_per_cespiti(
     nuovi_cespiti: List[Dict[str, Any]] = []
     seen = set()
 
-    # Itera TUTTE le fatture passive non annullate (da entrambe le collection note)
+    # Itera le fatture passive non annullate — collezione canonica unica invoices
+    # (§5.4: fatture_passive consolidata in invoices).
     processed_total = 0
-    for coll_name in ("invoices", "fatture_passive"):
+    for coll_name in ("invoices",):
         if coll_name not in await db.list_collection_names():
             continue
         cursor = db[coll_name].find({
