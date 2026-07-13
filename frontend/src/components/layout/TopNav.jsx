@@ -226,7 +226,11 @@ const TopNav = memo(function TopNav() {
   const location = useLocation();
   const isMobile = useIsMobile(768);
 
-  const isAltroActive = ALTRO_ITEMS.some(
+  // NB: usa la lista a livello di modulo (ALTRO_ITEMS_RAW). La variante filtrata
+  // per admin (ALTRO_ITEMS) vive solo dentro AltroDropdown: referenziarla qui
+  // causava "ALTRO_ITEMS is not defined". Per l'evidenziazione del tab va bene la
+  // lista completa (il confronto è solo sul pathname).
+  const isAltroActive = ALTRO_ITEMS_RAW.some(
     item =>
       item.to && (location.pathname === item.to || location.pathname.startsWith(item.to + '/'))
   );
