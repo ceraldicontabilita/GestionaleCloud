@@ -20,6 +20,7 @@ Configurazione (variabili d'ambiente):
 import json
 import logging
 import os
+import re
 import time
 import uuid
 from datetime import datetime, timezone
@@ -223,7 +224,9 @@ async def _tool_cerca_quietanze(db, args):
         q["data_versamento"] = {"$regex": f"^{int(args['anno'])}"}
     proj = {"_id": 0, "id": 1, "data_versamento": 1, "saldo_delega": 1,
             "protocollo_telematico": 1, "f24_id": 1, "codice_fiscale": 1}
-    return await db["quietanze"].find(q, proj).sort("data_versamento", -1).to_list(_limite(args))
+    # Collezione canonica delle quietanze F24 (fix 13/07/2026: prima leggeva
+    # db["quietanze"] inesistente → tool sempre vuoto).
+    return await db["quietanze_f24"].find(q, proj).sort("data_versamento", -1).to_list(_limite(args))
 
 
 async def _tool_cerca_movimenti_bancari(db, args):
@@ -435,7 +438,7 @@ async def _tool_cerca_alert(db, args):
 async def _tool_cerca_documenti(db, args):
     q: Dict[str, Any] = {}
     if args.get("testo"):
-        q["filename"] = {"$regex": str(args["testo"])[:60], "$options": "i"}
+        q["filename"] = {"$regex": re.escape(str(args["testo"])[:60]), "$options": "i"}
     if args.get("categoria"):
         q["category"] = str(args["categoria"])[:40]
     if args.get("solo_errori"):
@@ -443,7 +446,9 @@ async def _tool_cerca_documenti(db, args):
     # MAI raw_content_b64: il contenuto originale resta lato server.
     proj = {"_id": 0, "id": 1, "filename": 1, "category": 1, "status": 1, "source": 1,
             "created_at": 1, "file_size": 1}
-    return await db["documenti_scaricati"].find(q, proj).sort("created_at", -1).to_list(_limite(args))
+    # Collezione canonica hub documenti (fix 13/07/2026: prima leggeva
+    # db["documenti_scaricati"] inesistente → tool sempre vuoto).
+    return await db["documents_inbox"].find(q, proj).sort("created_at", -1).to_list(_limite(args))
 
 
 async def _tool_spiega_f24(db, args):

@@ -19,10 +19,16 @@ async def scan_verbali_email_task():
     """
     Task eseguito ogni ora.
     Scansiona le email per trovare nuovi verbali e completare quelli sospesi.
+    Gated da ENABLE_EMAIL_VERBALI_SYNC (interruttore canale email verbali).
     """
+    from app.config import settings
+    if not getattr(settings, "ENABLE_EMAIL_VERBALI_SYNC", True):
+        logger.info("🚗 [SCHEDULER] Scan email verbali saltato (canale spento).")
+        return
+
     from app.database import Database
     from app.services.verbali_email_scanner import esegui_scan_verbali_email
-    
+
     logger.info("🚗 [SCHEDULER] Avvio scan email verbali...")
     
     try:
@@ -548,14 +554,14 @@ def start_scheduler():
         id="link_verbali_fatture", name="Link Verbali ↔ Fatture (ogni 60 min)",
         replace_existing=True,
     )
-    # Scelta utente (10/07/2026): ogni 15 minuti E un controllo immediato a
-    # ogni riavvio del server (next_run_time=now: la prima esecuzione parte
-    # subito, poi prosegue a intervalli regolari).
+    # Scelta utente (13/07/2026): ogni ORA (allineata al manuale) + un controllo
+    # immediato a ogni riavvio del server (next_run_time=now: la prima esecuzione
+    # parte subito, poi prosegue a intervalli regolari).
     scheduler.add_job(
         _drive_ingest_job,
-        'interval', minutes=15,
+        'interval', hours=1,
         next_run_time=datetime.now(),
-        id="drive_fatture_ingest", name="Import Fatture da Google Drive (ogni 15 min + al riavvio)",
+        id="drive_fatture_ingest", name="Import Fatture da Google Drive (ogni ora + al riavvio)",
         replace_existing=True,
     )
 

@@ -555,16 +555,21 @@ costi → pagamenti → driver assegnato → verbali → eventuali trattenute �
 
 | Canale | Stato | Perché |
 |---|---|---|
-| Fatture da Drive | **Attivo** | parser validato su file reali |
+| Fatture da Drive | **Attivo** (ogni ora, scelta 13/07/2026) | parser validato su file reali |
 | Corrispettivi da Drive | **Attivo** | validato su file reale del registratore |
 | Cedolini via email | **Attivo** | validato su un file reale; sotto osservazione |
 | Estratti conto da Drive | Spento | in attesa di export reale Banco BPM di conferma |
 | Quietanze da Drive | **Attivo** (scelta 10/07/2026) | stesso motore dell'upload manuale: dedup per impronta, matching automatico F24, quadratura domenicale 5:45 |
-| F24 via email | Spento | nessun F24 reale mai visto dal parser |
-| Verbali via email | Spento | nessun verbale reale mai visto dal parser |
+| F24 via email | **Attivo** (scelta 13/07/2026) | interruttore `ENABLE_EMAIL_F24_SYNC`; gli F24 email confluiscono in `f24_unificato`. ⚠️ parser non ancora validato su F24 reali: controllare i primi risultati |
+| Verbali via email | **Attivo** (scelta 13/07/2026) | interruttore `ENABLE_EMAIL_VERBALI_SYNC` |
 
-Il principio è sempre lo stesso: **un canale si accende solo dopo che il suo parser
-è stato verificato su documenti veri** — meglio nessun dato che dati sbagliati.
+Nota: F24 e Verbali via email sono stati **accesi su richiesta esplicita**
+(13/07/2026) nonostante i rispettivi parser non siano ancora stati validati su
+documenti reali. Ciascuno ha un interruttore dedicato (`ENABLE_EMAIL_F24_SYNC`,
+`ENABLE_EMAIL_VERBALI_SYNC`) per spegnerlo senza toccare le credenziali email.
+In generale il principio resta: **un canale andrebbe acceso dopo che il suo
+parser è stato verificato su documenti veri** — meglio nessun dato che dati
+sbagliati. Verificare i primi F24/verbali importati da email prima di fidarsi.
 
 ## 13-bis. Utenti e ruoli (chi può fare cosa)
 

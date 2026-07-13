@@ -148,6 +148,12 @@ class Settings(BaseSettings):
     ENABLE_DRIVE_DICHIARAZIONI_IVA_SYNC: bool = False
     ENABLE_DRIVE_CARTELLE_ESATTORIALI_SYNC: bool = False
     ENABLE_DRIVE_AVVISI_BONARI_SYNC: bool = False
+    # Canali EMAIL F24 e Verbali: ACCESI su scelta esplicita dell'utente
+    # (13/07/2026). Interruttore dedicato per poterli spegnere senza toccare
+    # le credenziali IMAP. NB: il parser F24 email non è ancora validato su
+    # F24 reali — controllare i primi risultati prima di fidarsi.
+    ENABLE_EMAIL_F24_SYNC: bool = True
+    ENABLE_EMAIL_VERBALI_SYNC: bool = True
     
     # Telegram
     TELEGRAM_BOT_TOKEN: Optional[str] = None

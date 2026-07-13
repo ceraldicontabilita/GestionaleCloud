@@ -34,7 +34,9 @@ logger = logging.getLogger(__name__)
 async def processa_f24_da_email(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
     """
     Processa tutti gli F24 PDF scaricati da Gmail.
-    Estrae codici tributo, periodi, importi e salva in f24_commercialista.
+    Estrae codici tributo, periodi, importi e salva nella collezione canonica
+    f24_unificato (scelta utente 13/07/2026: prima salvava in f24_commercialista
+    e gli F24 email non comparivano nel modulo F24 principale).
     """
     stats = {"processati": 0, "errori": 0, "gia_processati": 0, "nuovi": 0}
     
@@ -97,10 +99,10 @@ async def processa_f24_da_email(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
                     "mese": doc.get("mese"),
                 }
                 
-                # Dedup per hash
-                existing = await db["f24_commercialista"].find_one({"pdf_hash": doc.get("pdf_hash")})
+                # Dedup per hash — collezione canonica f24_unificato
+                existing = await db["f24_unificato"].find_one({"pdf_hash": doc.get("pdf_hash")})
                 if not existing:
-                    await db["f24_commercialista"].insert_one(f24_doc)
+                    await db["f24_unificato"].insert_one(f24_doc)
                     stats["nuovi"] += 1
                     logger.info(f"[PIPELINE-F24] Salvato: {filename}")
                 else:
@@ -648,28 +650,36 @@ async def esegui_pipeline_completa(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
     """
     logger.info("[PIPELINE] ▶️ Avvio pipeline post-download completa...")
     
+    from app.config import settings
+
     risultati = {}
-    
-    # 1. F24
-    try:
-        risultati["f24"] = await processa_f24_da_email(db)
-    except Exception as e:
-        logger.error(f"[PIPELINE] Errore F24: {e}")
-        risultati["f24"] = {"errore": str(e)}
-    
+
+    # 1. F24 — gated da ENABLE_EMAIL_F24_SYNC (interruttore canale email F24)
+    if getattr(settings, "ENABLE_EMAIL_F24_SYNC", True):
+        try:
+            risultati["f24"] = await processa_f24_da_email(db)
+        except Exception as e:
+            logger.error(f"[PIPELINE] Errore F24: {e}")
+            risultati["f24"] = {"errore": str(e)}
+    else:
+        risultati["f24"] = {"saltato": "canale email F24 spento (ENABLE_EMAIL_F24_SYNC)"}
+
     # 2. Cedolini
     try:
         risultati["cedolini"] = await processa_cedolini_da_email(db)
     except Exception as e:
         logger.error(f"[PIPELINE] Errore Cedolini: {e}")
         risultati["cedolini"] = {"errore": str(e)}
-    
-    # 3. Verbali
-    try:
-        risultati["verbali"] = await processa_verbali_da_email(db)
-    except Exception as e:
-        logger.error(f"[PIPELINE] Errore Verbali: {e}")
-        risultati["verbali"] = {"errore": str(e)}
+
+    # 3. Verbali — gated da ENABLE_EMAIL_VERBALI_SYNC
+    if getattr(settings, "ENABLE_EMAIL_VERBALI_SYNC", True):
+        try:
+            risultati["verbali"] = await processa_verbali_da_email(db)
+        except Exception as e:
+            logger.error(f"[PIPELINE] Errore Verbali: {e}")
+            risultati["verbali"] = {"errore": str(e)}
+    else:
+        risultati["verbali"] = {"saltato": "canale email verbali spento (ENABLE_EMAIL_VERBALI_SYNC)"}
     
     # 4. Quietanze
     try:
