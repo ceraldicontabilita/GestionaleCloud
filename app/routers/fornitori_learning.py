@@ -642,17 +642,20 @@ async def centri_costo_disponibili() -> List[Dict[str, str]]:
 # ============================================
 
 # Mappa centri di costo → categorie magazzino
+# Chiavi allineate ai codici reali di CENTRI_COSTO (prima alcune — 1.4_LATTE,
+# 1.5_PANE, 1.7_SALUMI, 7.3_PULIZIA_IGIENE — non esistevano e cadevano su "altro").
 CDC_TO_MAGAZZINO_CATEGORIA = {
     "1.1_CAFFE_BEVANDE_CALDE": "caffe",
     "1.2_BEVANDE_FREDDE_ALCOLICI": "bevande",
     "1.3_MATERIE_PRIME_PASTICCERIA": "dolci",
-    "1.4_LATTE_LATTICINI": "latticini",
-    "1.5_PANE_PRODOTTI_FORNO": "pane",
+    "1.4_PRODOTTI_SEMIFINITI": "dolci",
+    "1.5_GELATI_GRANITE": "gelato",
     "1.6_PRODOTTI_CONFEZIONATI": "snack",
-    "1.7_SALUMI_FORMAGGI": "salumi",
+    "1.8_MATERIE_PRIME_CUCINA": "alimentari",
     "2.1_ENERGIA_ELETTRICA": "utenze",
     "5.3_PICCOLE_ATTREZZATURE": "attrezzature",
-    "7.3_PULIZIA_IGIENE": "pulizia"
+    "12.1_PULIZIA_LOCALE": "pulizia",
+    "13.1_IMBALLAGGI": "packaging",
 }
 
 
