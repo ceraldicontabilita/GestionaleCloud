@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom';
 import { useNavigate, Link } from 'react-router-dom';
 import api from '../api';
 import { toast } from 'sonner';
+import { useConfirm } from '../components/ui/ConfirmDialog';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import Portal from '../components/Portal';
 import ModalFattura from '../components/ModalFattura';
@@ -1179,6 +1180,7 @@ function AzioniFornitore({
 
 export default function Fornitori() {
   const isMobile = useIsMobile();
+  const confirm = useConfirm();
   const { anno: selectedYear } = useAnnoGlobale();
   const navigate = useNavigate();
   const [suppliers, setSuppliers] = useState([]);
@@ -1390,9 +1392,11 @@ export default function Fornitori() {
     const nome = supplier.ragione_sociale || supplier.denominazione || supplier.nome || chiave;
     if (
       nuovoValore &&
-      !window.confirm(
-        `Segnare "${nome}" come CESSATO?\n\nIl fornitore sparisce dalla lista (chip "Cessati" per rivederlo); fatture e storico restano.`
-      )
+      !(await confirm({
+        title: 'Segna fornitore come cessato',
+        message: `Segnare "${nome}" come CESSATO? Il fornitore sparisce dalla lista (chip "Cessati" per rivederlo); fatture e storico restano.`,
+        variant: 'warning',
+      }))
     ) {
       return;
     }
@@ -1413,9 +1417,11 @@ export default function Fornitori() {
       const nome =
         supplier?.ragione_sociale || supplier?.nome || supplier?.name || 'questo fornitore';
       if (
-        !window.confirm(
-          `Eliminare definitivamente "${nome}"?\n\nAttenzione: questa operazione non può essere annullata.`
-        )
+        !(await confirm({
+          title: 'Elimina fornitore',
+          message: `Eliminare definitivamente "${nome}"? Questa operazione non può essere annullata.`,
+          variant: 'danger',
+        }))
       ) {
         return;
       }
@@ -1438,9 +1444,11 @@ export default function Fornitori() {
         const nome =
           supplier?.ragione_sociale || supplier?.nome || supplier?.name || 'questo fornitore';
         if (
-          window.confirm(
-            `"${nome}" ha fatture collegate. Eliminare comunque (eliminazione forzata)?`
-          )
+          await confirm({
+            title: 'Eliminazione forzata',
+            message: `"${nome}" ha fatture collegate. Eliminare comunque (eliminazione forzata)?`,
+            variant: 'danger',
+          })
         ) {
           handleDelete(id, true);
         }
@@ -2887,9 +2895,10 @@ export default function Fornitori() {
                                       size="sm"
                                       onClick={async () => {
                                         if (
-                                          !window.confirm(
-                                            `Confermi pagamento CASSA di ${formatEuro(f.importo_totale)} per fattura ${f.numero}?`
-                                          )
+                                          !(await confirm({
+                                            title: 'Pagamento in cassa',
+                                            message: `Confermi pagamento CASSA di ${formatEuro(f.importo_totale)} per fattura ${f.numero}?`,
+                                          }))
                                         )
                                           return;
                                         try {
@@ -2921,9 +2930,10 @@ export default function Fornitori() {
                                       size="sm"
                                       onClick={async () => {
                                         if (
-                                          !window.confirm(
-                                            `Confermi pagamento BANCA di ${formatEuro(f.importo_totale)} per fattura ${f.numero}?`
-                                          )
+                                          !(await confirm({
+                                            title: 'Pagamento in banca',
+                                            message: `Confermi pagamento BANCA di ${formatEuro(f.importo_totale)} per fattura ${f.numero}?`,
+                                          }))
                                         )
                                           return;
                                         try {

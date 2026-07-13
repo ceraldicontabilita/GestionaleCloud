@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../api';
+import { useConfirm } from '../components/ui/ConfirmDialog';
 import { COLORS } from '../lib/utils.js';
 import { toast } from 'sonner';
 
@@ -14,6 +15,7 @@ function labelRuolo(r) {
 }
 
 export default function Utenti() {
+  const confirm = useConfirm();
   const [utenti, setUtenti] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errore, setErrore] = useState(null);
@@ -86,7 +88,7 @@ export default function Utenti() {
   };
 
   const elimina = async u => {
-    if (!window.confirm(`Eliminare l'utente "${u.nome}"?`)) return;
+    if (!(await confirm({ title: 'Elimina utente', message: `Eliminare l'utente "${u.nome}"?`, variant: 'danger' }))) return;
     try {
       await api.delete(`/api/utenti/${u.id}`);
       toast.success('Utente eliminato');

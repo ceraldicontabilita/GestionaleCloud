@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../api';
+import { useConfirm } from '../components/ui/ConfirmDialog';
 import { formatEuro, formatDateIT, COLORS, SHADOWS, BORDER_RADIUS, FONT } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
@@ -31,6 +32,7 @@ const STATI_VERBALE = {
 };
 
 export default function VerbaliRiconciliazione() {
+  const confirm = useConfirm();
   const [loading, setLoading] = useState(true);
   const [dashboard, setDashboard] = useState(null);
   const [verbali, setVerbali] = useState([]);
@@ -145,11 +147,13 @@ export default function VerbaliRiconciliazione() {
         setSuccessMsg('Nessun verbale duplicato trovato');
         return;
       }
-      // Azione distruttiva/irreversibile (unisce ed elimina righe duplicate): window.confirm mantenuto volutamente.
+      // Azione distruttiva/irreversibile (unisce ed elimina righe duplicate): conferma esplicita obbligatoria.
       if (
-        !confirm(
-          `Trovati ${nGruppi} verbali duplicati (${anteprima.data.documenti_eliminati} righe da unire). Procedere con la pulizia?`
-        )
+        !(await confirm({
+          title: 'Pulizia verbali duplicati',
+          message: `Trovati ${nGruppi} verbali duplicati (${anteprima.data.documenti_eliminati} righe da unire). Procedere con la pulizia?`,
+          variant: 'danger',
+        }))
       ) {
         return;
       }

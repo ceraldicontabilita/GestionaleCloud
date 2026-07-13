@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import api from '../api';
+import { useConfirm } from '../components/ui/ConfirmDialog';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { COLORS, BORDER_RADIUS, FONT, formatEuro, useIsMobile } from '../lib/utils';
 import { PageLayout, PageSection, PageGrid, PageLoading } from '../components/PageLayout';
@@ -51,6 +52,7 @@ const NOMI_MESI = [
 ];
 
 export default function BudgetPrevisionale() {
+  const confirm = useConfirm();
   const isMobile = useIsMobile();
   const { anno } = useAnnoGlobale();
   const [activeTab, setActiveTab] = useState('budget');
@@ -151,7 +153,7 @@ export default function BudgetPrevisionale() {
 
   const handleDelete = async voce => {
     // Azione distruttiva/irreversibile: elimina definitivamente la voce di budget.
-    if (!confirm(`Eliminare "${voce}" dal budget ${anno}?`)) return;
+    if (!(await confirm({ title: 'Elimina voce budget', message: `Eliminare "${voce}" dal budget ${anno}?`, variant: 'danger' }))) return;
     try {
       await api.delete(`/api/contabilita-gestionale/budget/${anno}/${encodeURIComponent(voce)}`);
       loadAll();

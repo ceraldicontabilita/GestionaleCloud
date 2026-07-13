@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../api';
 import { toast } from 'sonner';
+import { useConfirm } from '../components/ui/ConfirmDialog';
 import { PageLayout } from '../components/PageLayout';
 import {
   RefreshCw,
@@ -13,6 +14,7 @@ import {
 } from 'lucide-react';
 
 export default function BatchReprocessing() {
+  const confirm = useConfirm();
   const [preview, setPreview] = useState(null);
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -290,11 +292,13 @@ export default function BatchReprocessing() {
               </p>
               <div className="flex flex-wrap gap-2">
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     if (
-                      window.confirm(
-                        'Sei sicuro? Questa operazione modificherà i dati nel database.'
-                      )
+                      await confirm({
+                        title: 'Riprocessa tutti i documenti',
+                        message: 'Questa operazione modificherà i dati nel database. Procedere?',
+                        variant: 'warning',
+                      })
                     ) {
                       startReprocessing(false, 'all');
                     }
@@ -306,8 +310,8 @@ export default function BatchReprocessing() {
                   Riprocessa Tutti
                 </button>
                 <button
-                  onClick={() => {
-                    if (window.confirm('Riprocessare tutti gli F24?')) {
+                  onClick={async () => {
+                    if (await confirm({ title: 'Riprocessa F24', message: 'Riprocessare tutti gli F24?' })) {
                       startReprocessing(false, 'f24');
                     }
                   }}
@@ -318,8 +322,8 @@ export default function BatchReprocessing() {
                   Riprocessa F24
                 </button>
                 <button
-                  onClick={() => {
-                    if (window.confirm('Riprocessare tutti i Cedolini?')) {
+                  onClick={async () => {
+                    if (await confirm({ title: 'Riprocessa cedolini', message: 'Riprocessare tutti i Cedolini?' })) {
                       startReprocessing(false, 'cedolini');
                     }
                   }}

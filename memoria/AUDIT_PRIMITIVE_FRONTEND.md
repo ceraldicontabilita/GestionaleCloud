@@ -10,27 +10,12 @@ Admin (17), GestioneCespiti (9), PrimaNotaSalariTab (6), ExportButton (4),
 PrimaNotaComponents (2), VerificaMovimentiBanca (1), BatchReprocessing (1).
 Restano confirm()/prompt()/window.open() (sezioni sotto).
 
-## `confirm(` — 36 occorrenze
-- `pages/Admin.jsx` : righe 1195
-- `pages/ArchivioBonifici.jsx` : righe 242, 366, 430
-- `pages/BatchReprocessing.jsx` : righe 294, 309, 321
-- `pages/BudgetPrevisionale.jsx` : righe 154
-- `pages/ChiusuraEsercizio.jsx` : righe 85, 117
-- `pages/Corrispettivi.jsx` : righe 86
-- `pages/Fornitori.jsx` : righe 1392, 1415, 1440, 2889, 2923
-- `pages/GestioneAssegni.jsx` : righe 402
-- `pages/GestioneCespiti.jsx` : righe 329
-- `pages/ImpostazioniF24Email.jsx` : righe 399
-- `pages/LearningMachine.jsx` : righe 290
-- `pages/NoleggioAuto.jsx` : righe 246
-- `pages/PianoDeiConti.jsx` : righe 157
-- `pages/PrimaNota.jsx` : righe 285, 367, 533, 913
-- `pages/PuliziaPrimaNota.jsx` : righe 64, 101, 145
-- `pages/RiconciliazionePaypal.jsx` : righe 236
-- `pages/RiconciliazioneUnificata.jsx` : righe 458, 2111, 2216
-- `pages/Scadenze.jsx` : righe 132
-- `pages/Utenti.jsx` : righe 89
-- `pages/VerbaliRiconciliazione.jsx` : righe 150
+## `confirm(` — ✅ COMPLETATO (0 residue)
+Tutti i confirm()/window.confirm() nativi convertiti nel ConfirmDialog canonico
+(useConfirm, provider già montato in main.jsx), con title/message/variant
+(danger per azioni distruttive, warning per operazioni di massa): Fornitori (5),
+PuliziaPrimaNota (3), BatchReprocessing (3), Admin (1), Utenti (1),
+BudgetPrevisionale (1), VerbaliRiconciliazione (1). PrimaNota.jsx usava già il pattern.
 
 ## `prompt(` — 3 occorrenze
 - `components/InstallAppButton.jsx` : righe 51

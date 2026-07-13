@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import api from '../api';
 import { toast } from 'sonner';
+import { useConfirm } from '../components/ui/ConfirmDialog';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { COLORS, SHADOWS, BORDER_RADIUS, useIsMobile } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
@@ -1172,6 +1173,7 @@ export default function Admin() {
 // per 30 giorni. L'anno viene letto dalla data del documento dentro l'XML;
 // i file con anno non determinabile NON vengono mai toccati.
 function PuliziaDriveFattureCard() {
+  const confirm = useConfirm();
   const [folder, setFolder] = useState('');
   const [anni, setAnni] = useState({ 2023: true, 2024: true, 2025: true });
   const [contaRes, setContaRes] = useState(null);
@@ -1193,9 +1195,11 @@ function PuliziaDriveFattureCard() {
     }
     if (
       elimina &&
-      !window.confirm(
-        `Spostare nel CESTINO Drive ${contaRes?.da_eliminare ?? '?'} file fattura degli anni ${anniScelti.join(', ')}?\n\nI file restano recuperabili dal cestino Drive per 30 giorni.`
-      )
+      !(await confirm({
+        title: 'Sposta file nel cestino Drive',
+        message: `Spostare nel CESTINO Drive ${contaRes?.da_eliminare ?? '?'} file fattura degli anni ${anniScelti.join(', ')}? I file restano recuperabili dal cestino Drive per 30 giorni.`,
+        variant: 'warning',
+      }))
     ) {
       return;
     }

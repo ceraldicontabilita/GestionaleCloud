@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import api from '../api';
+import { useConfirm } from '../components/ui/ConfirmDialog';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { PageLayout, PageSection } from '../components/PageLayout';
 import { AlertTriangle, CheckCircle, Search, Eye, Trash2, RefreshCw, Loader2 } from 'lucide-react';
@@ -18,6 +19,7 @@ import { AlertTriangle, CheckCircle, Search, Eye, Trash2, RefreshCw, Loader2 } f
  *  - POST /api/prima-nota/cassa/sync-corrispettivi?anno=N
  */
 export default function PuliziaPrimaNota() {
+  const confirm = useConfirm();
   const { anno } = useAnnoGlobale();
 
   const [loading, setLoading] = useState(null); // 'diagnosi' | 'anteprima' | 'pulisci' | 'risincronizza' | 'auto-conferma'
@@ -61,13 +63,15 @@ export default function PuliziaPrimaNota() {
       (anteprima?.cassa?.movimenti_da_eliminare || 0) +
       (anteprima?.banca?.movimenti_da_eliminare || 0);
 
-    const conferma = window.confirm(
-      `Stai per marcare come eliminati ${totaleDaEliminare} movimenti duplicati ` +
-      `(${anteprima?.cassa?.movimenti_da_eliminare || 0} in Cassa, ${anteprima?.banca?.movimenti_da_eliminare || 0} in Banca).\n\n` +
-      `Verranno contrassegnati come "deleted" (soft-delete). Non vengono cancellati fisicamente: ` +
-      `resteranno nel database e potranno essere ripristinati da un tecnico se qualcosa andasse storto.\n\n` +
-      `Procedere?`
-    );
+    const conferma = await confirm({
+      title: 'Pulizia duplicati Prima Nota',
+      message:
+        `Stai per marcare come eliminati ${totaleDaEliminare} movimenti duplicati ` +
+        `(${anteprima?.cassa?.movimenti_da_eliminare || 0} in Cassa, ${anteprima?.banca?.movimenti_da_eliminare || 0} in Banca). ` +
+        `Verranno contrassegnati come "deleted" (soft-delete): restano nel database e sono ripristinabili.`,
+      confirmText: 'Procedi',
+      variant: 'warning',
+    });
     if (!conferma) return;
 
     azzeraErrori();
@@ -98,15 +102,15 @@ export default function PuliziaPrimaNota() {
   };
 
   const lanciaAutoConferma = async () => {
-    const conferma = window.confirm(
-      `Smistamento provvisorie per metodo fornitore — anno ${anno}\n\n` +
-      `Verranno spostate dalla Provvisoria a Prima Nota Cassa/Banca le fatture in base al metodo pagamento del fornitore:\n` +
-      `• Fornitore CASSA → tutte le fatture in Prima Nota Cassa\n` +
-      `• Fornitore BANCA → solo fatture PAGATE in Prima Nota Banca\n` +
-      `• Fornitore PAYPAL/CARTA/senza metodo → restano in Provvisoria\n\n` +
-      `Ogni movimento creato è annullabile con un solo comando se qualcosa non torna.\n\n` +
-      `Procedere?`
-    );
+    const conferma = await confirm({
+      title: `Smistamento provvisorie — anno ${anno}`,
+      message:
+        `Le fatture in Provvisoria verranno spostate in Prima Nota Cassa/Banca in base al metodo ` +
+        `pagamento del fornitore (CASSA → tutte in Cassa; BANCA → solo le PAGATE in Banca; ` +
+        `PayPal/carta/senza metodo restano in Provvisoria). Ogni movimento creato è annullabile con un comando.`,
+      confirmText: 'Procedi',
+      variant: 'warning',
+    });
     if (!conferma) return;
     azzeraErrori();
     setLoading('auto-conferma');
@@ -142,11 +146,14 @@ export default function PuliziaPrimaNota() {
   };
 
   const spostaDiscordante = async voce => {
-    const conferma = window.confirm(
-      `Spostare il movimento del ${voce.data} (${voce.numero_fattura || voce.descrizione}, ` +
-      `${Number(voce.importo || 0).toFixed(2)} €) da ${voce.registro_attuale.toUpperCase()} ` +
-      `a ${voce.registro_atteso.toUpperCase()}?\n\nLa fattura collegata viene aggiornata di conseguenza.`
-    );
+    const conferma = await confirm({
+      title: 'Sposta movimento',
+      message:
+        `Spostare il movimento del ${voce.data} (${voce.numero_fattura || voce.descrizione}, ` +
+        `${Number(voce.importo || 0).toFixed(2)} €) da ${voce.registro_attuale.toUpperCase()} ` +
+        `a ${voce.registro_atteso.toUpperCase()}? La fattura collegata viene aggiornata di conseguenza.`,
+      confirmText: 'Sposta',
+    });
     if (!conferma) return;
     setSpostandoId(voce.movimento_id);
     try {
