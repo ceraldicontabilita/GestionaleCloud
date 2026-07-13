@@ -166,6 +166,12 @@ async def pin_login(
                         detail="Login PIN non configurato sul server",
                     )
             logger.warning(f"PIN-login: PIN errato da IP {ip}")
+            try:
+                from app.services.audit_logger import log_sicurezza
+                await log_sicurezza(db, azione="login_fallito",
+                                    dettaglio="PIN errato", utente="pin", ip=ip)
+            except Exception:
+                pass
             raise HTTPException(status_code=401, detail="PIN non valido")
 
     # Estrai user_id
@@ -201,6 +207,13 @@ async def pin_login(
     _clear_failures(ip)
 
     logger.info(f"PIN-login OK · IP {ip} · user {user_id} · role {user.get('role')}")
+    try:
+        from app.services.audit_logger import log_sicurezza
+        await log_sicurezza(db, azione="login_ok", dettaglio="Login PIN riuscito",
+                            utente=user.get("name") or user_id, ip=ip,
+                            extra={"ruolo": user.get("role")})
+    except Exception:
+        pass
 
     # Cookie di sessione: permette di aprire i link diretti alle API
     # (es. "Vedi fattura" in nuova scheda) senza header Authorization.

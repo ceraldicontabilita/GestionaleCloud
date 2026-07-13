@@ -1328,37 +1328,37 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/invoices/fatture_upload.py:985`
+- File: `app/routers/invoices/fatture_upload.py:990`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/invoices/fatture_upload.py:1176`
+- File: `app/routers/invoices/fatture_upload.py:1182`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/invoices/fatture_upload.py:1261`
+- File: `app/routers/invoices/fatture_upload.py:1278`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/invoices/fatture_upload.py:1364`
+- File: `app/routers/invoices/fatture_upload.py:1381`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/invoices/fatture_upload.py:1507`
+- File: `app/routers/invoices/fatture_upload.py:1524`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/invoices/fatture_upload.py:1677`
+- File: `app/routers/invoices/fatture_upload.py:1694`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 

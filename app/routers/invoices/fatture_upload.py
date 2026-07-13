@@ -952,9 +952,14 @@ def extract_xml_from_zip(zip_content: bytes, zip_filename: str = "archive.zip") 
         Lista di dict con {"filename": str, "content": bytes}
     """
     xml_files = []
-    
+
     try:
         with zipfile.ZipFile(io.BytesIO(zip_content), 'r') as zf:
+            # Anti zip-bomb: controlla la dimensione DECOMPRESSA dichiarata e il
+            # numero di elementi PRIMA di leggere qualsiasi contenuto.
+            from app.utils.upload_guard import controlla_zip
+            infos = zf.infolist()
+            controlla_zip(len(infos), sum(getattr(i, "file_size", 0) for i in infos))
             for name in zf.namelist():
                 # Salta directory
                 if name.endswith('/'):
@@ -995,7 +1000,8 @@ async def upload_fattura_xml(file: UploadFile = File(...)) -> Dict[str, Any]:
     if not (filename.lower().endswith(".xml") or is_p7m_content(filename)):
         raise HTTPException(status_code=400, detail="Il file deve essere in formato XML o P7M")
 
-    content = await file.read()
+    from app.utils.upload_guard import leggi_upload
+    content = await leggi_upload(file)
     db = Database.get_db()
     result = await process_xml_bytes(db, content, filename, source="xml_upload_manuale")
 
@@ -1195,10 +1201,11 @@ async def upload_fatture_xml_bulk(files: List[UploadFile] = File(...)) -> Dict[s
     # Raccoglie tutti i file XML (inclusi quelli estratti da ZIP)
     xml_files = []
     
+    from app.utils.upload_guard import leggi_upload
     for file in files:
         filename = file.filename or "unknown"
-        content = await file.read()
-        
+        content = await leggi_upload(file)
+
         if filename.lower().endswith('.zip'):
             # Estrai XML da ZIP
             try:
@@ -1255,6 +1262,16 @@ async def delete_all_invoices(
         )
     db = Database.get_db()
     result = await db[Collections.INVOICES].delete_many({})
+    try:
+        from app.services.audit_logger import log_sicurezza
+        await log_sicurezza(
+            db, azione="delete_massivo",
+            dettaglio=f"Eliminate TUTTE le fatture ({result.deleted_count})",
+            utente=_admin.get("email") or _admin.get("user_id") or "admin",
+            extra={"collection": "invoices", "deleted_count": result.deleted_count},
+        )
+    except Exception:
+        pass
     return {"deleted_count": result.deleted_count}
 
 

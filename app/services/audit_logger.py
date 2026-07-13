@@ -90,6 +90,35 @@ async def log_evento(
     return audit_id
 
 
+async def log_sicurezza(
+    db,
+    azione: str,
+    dettaglio: str = "",
+    utente: str = "sconosciuto",
+    ip: str = "",
+    extra: Optional[Dict[str, Any]] = None,
+) -> str:
+    """Scorciatoia per eventi di sicurezza (login, logout, operazioni distruttive).
+
+    azione: es. 'login_ok', 'login_fallito', 'delete_massivo'.
+    Non deve mai bloccare il flusso chiamante (best-effort come log_evento).
+    """
+    dati = dict(extra or {})
+    if ip:
+        dati["ip"] = ip
+    return await log_evento(
+        modulo="sicurezza",
+        azione=azione,
+        entita_id=utente or "sconosciuto",
+        entita_collection="auth",
+        db=db,
+        fonte="auth",
+        utente=utente or "sconosciuto",
+        dettaglio=dettaglio,
+        extra=dati or None,
+    )
+
+
 async def get_storia_entita(
     entita_id: str,
     db,

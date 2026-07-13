@@ -49,6 +49,21 @@ class LoginRequest(BaseModel):
     password: str
 
 
+async def _audit_login(ip: str, email: str, ok: bool) -> None:
+    """Registra il tentativo di login (best-effort, non blocca mai)."""
+    try:
+        from app.database import Database
+        from app.services.audit_logger import log_sicurezza
+        await log_sicurezza(
+            Database.get_db(),
+            azione="login_ok" if ok else "login_fallito",
+            dettaglio=f"Login email {'riuscito' if ok else 'fallito'}",
+            utente=email, ip=ip,
+        )
+    except Exception:
+        pass
+
+
 def _make_token(email: str, role: str = "admin", name: str = "Admin") -> str:
     # Il ruolo viaggia NEL token: il middleware e le dependency lo leggono da
     # qui. L'admin via env resta 'admin' (nessun cambiamento di comportamento).
@@ -116,8 +131,10 @@ async def auth_login(body: LoginRequest, request: Request, response: Response):
         )
     if body.email.lower() != ADMIN_EMAIL.lower() or not _check_password(body.password):
         login_lockout.register_failure(ip)
+        await _audit_login(ip, body.email, ok=False)
         raise HTTPException(status_code=401, detail="Credenziali errate")
     login_lockout.clear_failures(ip)
+    await _audit_login(ip, body.email, ok=True)
     token = _make_token(body.email)
     response.set_cookie(key="access_token", value=token, httponly=True,
                         secure=False, samesite="lax", max_age=TOKEN_EXPIRE_HOURS * 3600, path="/")
