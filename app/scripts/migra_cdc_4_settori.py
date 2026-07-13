@@ -26,14 +26,19 @@ from collections import Counter
 
 from app.database import Database, Collections
 from app.routers.accounting.centri_costo import CATEGORIA_TO_CDC
+from app.services.learning_machine_cdc import settore_di
 
 
 async def migra(esegui: bool = False):
     db = Database.get_db()
+    # Considera tutte le fatture che hanno un segnale per dedurre il settore:
+    # o il codice di dettaglio della Learning Machine (`centro_costo_id`) o la
+    # `categoria_contabile`.
     cursor = db[Collections.INVOICES].find(
-        {"categoria_contabile": {"$exists": True, "$nin": [None, ""]}},
+        {"$or": [{"centro_costo_id": {"$exists": True, "$nin": [None, ""]}},
+                 {"categoria_contabile": {"$exists": True, "$nin": [None, ""]}}]},
         {"_id": 1, "id": 1, "categoria_contabile": 1, "centro_costo": 1,
-         "centro_costo_manuale": 1},
+         "centro_costo_id": 1, "centro_costo_manuale": 1},
     )
     transizioni = Counter()
     da_aggiornare = 0
@@ -44,8 +49,13 @@ async def migra(esegui: bool = False):
         if f.get("centro_costo_manuale") is True:
             saltate_manuali += 1
             continue
-        cat = (f.get("categoria_contabile") or "").strip().lower()
-        nuovo = CATEGORIA_TO_CDC.get(cat)
+        # Priorità: settore dal codice dettaglio Learning Machine; poi categoria.
+        nuovo = None
+        if f.get("centro_costo_id"):
+            nuovo = settore_di(f["centro_costo_id"])
+        if not nuovo:
+            cat = (f.get("categoria_contabile") or "").strip().lower()
+            nuovo = CATEGORIA_TO_CDC.get(cat)
         if not nuovo:
             continue
         attuale = f.get("centro_costo")

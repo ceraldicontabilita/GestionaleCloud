@@ -1220,25 +1220,25 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/fornitori_learning.py:400`
+- File: `app/routers/fornitori_learning.py:401`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/fornitori_learning.py:464`
+- File: `app/routers/fornitori_learning.py:466`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/fornitori_learning.py:656`
+- File: `app/routers/fornitori_learning.py:659`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/fornitori_learning.py:785`
+- File: `app/routers/fornitori_learning.py:788`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 

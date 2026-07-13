@@ -68,7 +68,12 @@ CENTRI_COSTO = {
                     # Panna: generica → Pasticceria (materia prima); UHT/vegetale
                     # esplicite più specifiche della "panna fresca" del Bar.
                     "panna uht", "panna vegetale",
-                    "panna a lunga conservazione", "panna lunga conservazione"],
+                    "panna a lunga conservazione", "panna lunga conservazione",
+                    # Uova: materia prima di pasticceria (fresche o pastorizzate);
+                    # non sono articolo da bar. "uovo pastorizzato/liquido"
+                    # esplicitati per l'uovo industriale da produzione.
+                    "uovo pastorizzato", "uova pastorizzate", "uovo liquido",
+                    "tuorlo", "albume"],
         "fornitori": ["dolciaria acquaviva", "siro s.r.l", "f.lli fiorentino", "i cozzolino",
                    "master frost", "eurouova", "big food", "sud ingrosso"]
     },
@@ -569,6 +574,41 @@ CENTRI_COSTO["8.7_IRAP"] = {
 }
 
 
+# ============================================================================
+# MAPPA codici dettaglio (1.x…) → SETTORE / centro CDC dei 4 settori
+# ============================================================================
+# La Learning Machine classifica in codici di dettaglio (es. 1.3_MATERIE_PRIME_
+# PASTICCERIA); il ribaltamento e i margini ragionano sui 4 settori operativi
+# (CDC-01..04) + supporto/struttura (CDC-90/91/92/99). Questa mappa collega i
+# due sistemi: ogni dettaglio "rotola su" un settore. I codici non elencati
+# → CDC-99 (struttura, comunque ribaltato).
+SETTORE_DA_CENTRO_DETTAGLIO = {
+    # Operativi
+    "1.1_CAFFE_BEVANDE_CALDE": "CDC-01",   # Bar
+    "1.2_BEVANDE_FREDDE_ALCOLICI": "CDC-01",
+    "1.6_PRODOTTI_CONFEZIONATI": "CDC-01",
+    "1.3_MATERIE_PRIME_PASTICCERIA": "CDC-02",  # Pasticceria
+    "1.4_PRODOTTI_SEMIFINITI": "CDC-02",
+    "1.5_GELATI_GRANITE": "CDC-03",        # Gelateria
+    "1.8_MATERIE_PRIME_CUCINA": "CDC-04",  # Rosticceria
+    "13.1_IMBALLAGGI": "CDC-04",
+    # Supporto
+    "4.0_PERSONALE": "CDC-90",
+    "7.1_COMMERCIALISTA": "CDC-91",
+    "7.2_CONSULENTE_LAVORO": "CDC-91",
+    # Tutto il resto (utenze, affitto, manutenzioni, auto, tributi, assicurazioni,
+    # telefonia, banca, pulizia, attrezzature, altri costi) → struttura CDC-99.
+}
+
+
+def settore_di(centro_costo_id: Optional[str]) -> str:
+    """Ritorna il centro CDC del settore (CDC-01..04 / CDC-90/91/92 / CDC-99) a
+    partire dal codice di dettaglio della Learning Machine. Ignoto → CDC-99."""
+    if not centro_costo_id:
+        return "CDC-99"
+    return SETTORE_DA_CENTRO_DETTAGLIO.get(centro_costo_id, "CDC-99")
+
+
 def classifica_f24_per_centro_costo(f24_data: Dict[str, Any]) -> Tuple[str, Dict[str, Any], str]:
     """
     Classifica un documento F24 nel centro di costo corretto basandosi sui codici tributo.
@@ -666,30 +706,32 @@ def classifica_fattura_per_centro_costo(
             if fornitore.lower() in supplier_lower:
                 return cdc_id, config, 0.9  # Alta confidence per match fornitore
     
-    # FASE 2: Costruisci il testo da analizzare
-    testo_completo = f"{supplier_name or ''} {descrizione or ''}"
-    
-    # Aggiungi descrizioni delle linee fattura
+    # FASE 2: testo del CONTENUTO (descrizione + righe) separato dal nome
+    # fornitore. Il contenuto pesa il doppio: descrive COSA è stato comprato,
+    # mentre il nome fornitore è solo un indizio (evita che "Latteria X" spinga
+    # al Bar una fattura di "panna UHT").
+    testo_contenuto = f"{descrizione or ''}"
     if linee_fattura:
         for linea in linee_fattura:
             if isinstance(linea, dict):
                 desc_linea = linea.get("descrizione", "") or linea.get("description", "")
-                testo_completo += f" {desc_linea}"
-    
-    testo_lower = testo_completo.lower()
-    
+                testo_contenuto += f" {desc_linea}"
+    contenuto_lower = testo_contenuto.lower()
+
+    PESO_CONTENUTO = 2  # la descrizione conta il doppio del nome fornitore
+
     # Score per ogni centro di costo
     scores = {}
-    
+
     for cdc_id, config in CENTRI_COSTO.items():
         score = 0
-        keywords = config.get("keywords", [])
-        
-        for keyword in keywords:
-            if keyword.lower() in testo_lower:
-                # Peso maggiore per match più specifici
-                score += len(keyword)
-        
+        for keyword in config.get("keywords", []):
+            k = keyword.lower()
+            if k in contenuto_lower:
+                score += len(keyword) * PESO_CONTENUTO
+            elif k in supplier_lower:
+                score += len(keyword)  # match solo sul nome fornitore: peso base
+
         if score > 0:
             scores[cdc_id] = score
     

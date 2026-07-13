@@ -233,3 +233,33 @@ def test_panna_bar_vs_pasticceria_per_contenuto():
     assert cdc("Panna UHT 1L") == "1.3_MATERIE_PRIME_PASTICCERIA"
     assert cdc("Panna vegetale") == "1.3_MATERIE_PRIME_PASTICCERIA"
     assert cdc("Panna") == "1.3_MATERIE_PRIME_PASTICCERIA"
+
+
+def test_descrizione_vince_su_nome_fornitore():
+    """La descrizione pesa più del nome fornitore: una fattura di 'panna UHT' da
+    un fornitore che si chiama 'Latteria …' va alla Pasticceria, non al Bar."""
+    cid, cfg, _ = lm.classifica_fattura_per_centro_costo(
+        "Latteria Sorrentina Srl", "Panna UHT 1L")
+    assert cid == "1.3_MATERIE_PRIME_PASTICCERIA"
+    # Il nome fornitore resta un indizio quando la descrizione non decide.
+    cid2, _, _ = lm.classifica_fattura_per_centro_costo("Enel Energia SpA", "fornitura periodo")
+    assert cid2 == "2.1_ENERGIA_ELETTRICA"
+
+
+def test_uova_restano_pasticceria():
+    def cdc(desc):
+        cid, _, _ = lm.classifica_fattura_per_centro_costo("Fornitore Generico", desc)
+        return cid
+    assert cdc("Uovo pastorizzato 5kg") == "1.3_MATERIE_PRIME_PASTICCERIA"
+    assert cdc("Uova fresche") == "1.3_MATERIE_PRIME_PASTICCERIA"
+
+
+def test_settore_da_centro_dettaglio():
+    assert lm.settore_di("1.1_CAFFE_BEVANDE_CALDE") == "CDC-01"
+    assert lm.settore_di("1.3_MATERIE_PRIME_PASTICCERIA") == "CDC-02"
+    assert lm.settore_di("1.5_GELATI_GRANITE") == "CDC-03"
+    assert lm.settore_di("1.8_MATERIE_PRIME_CUCINA") == "CDC-04"
+    assert lm.settore_di("4.0_PERSONALE") == "CDC-90"
+    assert lm.settore_di("2.1_ENERGIA_ELETTRICA") == "CDC-99"
+    assert lm.settore_di(None) == "CDC-99"
+    assert lm.settore_di("codice_sconosciuto") == "CDC-99"

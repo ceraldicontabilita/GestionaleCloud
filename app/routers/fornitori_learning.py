@@ -374,6 +374,7 @@ async def riclassifica_con_keywords_personalizzate() -> Dict[str, Any]:
                 {"_id": fatt["_id"]},
                 {"$set": {
                     "centro_costo_id": cdc_id,
+                    "centro_costo": lm.settore_di(cdc_id),  # settore (CDC-01..04/99)
                     "centro_costo_nome": cdc_config["nome"],
                     "classificazione_fonte": fonte
                 }}
@@ -450,6 +451,7 @@ async def classifica_da_contenuto(
             {"_id": f["_id"]},
             {"$set": {
                 "centro_costo_id": cdc_id,
+                "centro_costo": lm.settore_di(cdc_id),  # settore (CDC-01..04/99)
                 "centro_costo_nome": cdc_config["nome"],
                 "classificazione_confidence": conf,
                 "classificazione_fonte": fonte,
@@ -537,6 +539,7 @@ async def classifica_ambigue_con_ai(limite: int = 25) -> Dict[str, Any]:
             {"id": d.get("id")},
             {"$set": {
                 "centro_costo_id": cdc_id,
+                "centro_costo": lm.settore_di(cdc_id),  # settore (CDC-01..04/99)
                 "centro_costo_nome": cdc_config["nome"],
                 "classificazione_confidence": float(d.get("confidenza") or 0),
                 "classificazione_fonte": "ai",
