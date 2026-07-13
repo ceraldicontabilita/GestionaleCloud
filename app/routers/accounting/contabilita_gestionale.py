@@ -1015,3 +1015,70 @@ async def duplica_budget(
         "messaggio": f"Duplicati {creati} voci da {anno_origine} a {anno_destinazione}",
         "variazione_applicata": f"{variazione_pct:+.1f}%"
     }
+
+
+# ============================================
+# 4. LIBRO GIORNALE e LIBRO MASTRO (partita doppia)
+#    Vedi memoria/LOGICA_LIBRO_MASTRO.md
+# ============================================
+
+@router.get("/libro-giornale")
+async def get_libro_giornale(
+    data_da: Optional[str] = Query(None, description="Data inizio (YYYY-MM-DD)"),
+    data_a: Optional[str] = Query(None, description="Data fine (YYYY-MM-DD)"),
+    invoice_key: Optional[str] = Query(None, description="Filtra per chiave fattura"),
+    limit: int = Query(500, description="Max scritture da restituire"),
+) -> Dict[str, Any]:
+    """Libro giornale: elenco cronologico delle scritture in partita doppia
+    (collezione `scritture_contabili`), separato dalle fatture → sopravvive
+    all'azzeramento. Ogni scrittura riporta il documento di origine e
+    l'`invoice_key` per la ricostruzione."""
+    db = Database.get_db()
+    match: Dict[str, Any] = {}
+    if invoice_key:
+        match["invoice_key"] = invoice_key
+    if data_da or data_a:
+        match["data_documento"] = {}
+        if data_da:
+            match["data_documento"]["$gte"] = data_da
+        if data_a:
+            match["data_documento"]["$lte"] = data_a
+    scritture = await db["scritture_contabili"].find(
+        match, {"_id": 0}
+    ).sort("data_documento", 1).to_list(limit)
+    tot_dare = 0.0
+    tot_avere = 0.0
+    for s in scritture:
+        for r in (s.get("righe") or []):
+            tot_dare += float(r.get("dare") or 0)
+            tot_avere += float(r.get("avere") or 0)
+    return {
+        "success": True,
+        "scritture": scritture,
+        "totale": len(scritture),
+        "totale_dare": round(tot_dare, 2),
+        "totale_avere": round(tot_avere, 2),
+        "quadratura": abs(round(tot_dare - tot_avere, 2)) < 0.01,
+    }
+
+
+@router.get("/libro-mastro")
+async def get_libro_mastro(
+    data_da: Optional[str] = Query(None, description="Data inizio (YYYY-MM-DD)"),
+    data_a: Optional[str] = Query(None, description="Data fine (YYYY-MM-DD)"),
+) -> Dict[str, Any]:
+    """Libro mastro: le scritture riclassificate per conto (mastrini) con saldo
+    dare/avere. È la base da cui il commercialista ricostruisce la contabilità."""
+    from app.services.libro_giornale import libro_mastro as _libro_mastro
+    db = Database.get_db()
+    mastrini = await _libro_mastro(db, data_da, data_a)
+    tot_dare = round(sum(m["dare"] for m in mastrini), 2)
+    tot_avere = round(sum(m["avere"] for m in mastrini), 2)
+    return {
+        "success": True,
+        "mastrini": mastrini,
+        "totale_conti": len(mastrini),
+        "totale_dare": tot_dare,
+        "totale_avere": tot_avere,
+        "quadratura": abs(round(tot_dare - tot_avere, 2)) < 0.01,
+    }

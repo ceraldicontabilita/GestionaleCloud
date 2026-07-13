@@ -11,6 +11,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+import logging
 from fastapi import APIRouter, HTTPException, Query
 
 from app.database import Database
@@ -18,6 +19,7 @@ from app.engines import iva_fatture
 from app.engines import liquidazione_iva_engine as liq
 from app.engines import riepilogo_iva_engine as riep
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 COLL = "invoices"
@@ -342,6 +344,21 @@ async def conferma_liquidazione(
                 "created_at": ora,
                 "created_by": utente,
             })
+            # STORIA: registra in quale dichiarazione/liquidazione IVA è entrata.
+            try:
+                _fk = await db[COLL].find_one({"id": fid}, {"_id": 0, "invoice_key": 1})
+                _key = (_fk or {}).get("invoice_key")
+                if _key:
+                    from app.services import storia_fatture as _storia
+                    await _storia.registra(
+                        db, _key, "iva_in_liquidazione",
+                        f"IVA inserita nella liquidazione {periodo} (€{f.get('iva')})",
+                        patch={"iva_utilizzata": True, "periodo_iva_utilizzato": periodo,
+                               "liquidazione_id": liq_id,
+                               "stato_detrazione_iva": "INSERITA_IN_LIQUIDAZIONE"},
+                    )
+            except Exception:
+                logger.exception(f"Storia: hook IVA liquidazione fallito per {fid}")
         else:
             saltate.append(fid)
 

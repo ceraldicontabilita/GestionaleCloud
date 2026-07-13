@@ -108,6 +108,29 @@ async def paga_fattura_manuale(payload: Dict[str, Any] = Body(...)) -> Dict[str,
         await db["invoices"].update_one({"id": fattura_id}, {"$set": update_fields})
         logger.info(f"Pagamento {'e riconciliazione ' if auto_riconciliato else ''}registrato: {fattura_id} -> {collection}, €{importo}")
 
+        # STORIA + LIBRO GIORNALE: logga l'operazione di pagamento in ordine
+        # cronologico e registra la scrittura in partita doppia (DARE Debiti
+        # v/fornitori / AVERE Cassa o Banca). Best-effort, non blocca il pagamento.
+        try:
+            inv = await db["invoices"].find_one({"id": fattura_id}, {"_id": 0}) \
+                or await db[COL_FATTURE_RICEVUTE].find_one({"id": fattura_id}, {"_id": 0})
+            key = (inv or {}).get("invoice_key")
+            if key:
+                from app.services import storia_fatture as _storia, libro_giornale as _lg
+                await _storia.registra(
+                    db, key, "pagata",
+                    f"Pagata in {metodo} il {data_pagamento} (€{importo})",
+                    patch={"stato_pagamento": "pagata", "metodo_pagamento": metodo,
+                           "data_pagamento": data_pagamento},
+                )
+                scr_id = await _lg.genera_scrittura_pagamento(db, inv, mezzo=metodo)
+                if scr_id:
+                    await _storia.registra(db, key, "scrittura_pagamento",
+                                           "Registrata scrittura di pagamento in partita doppia",
+                                           patch={"scrittura_pagamento_id": scr_id})
+        except Exception:
+            logger.exception(f"Storia/libro giornale: hook pagamento fallito per {fattura_id}")
+
         # --- EVENT BUS: propaga evento fattura pagata ---
         try:
             from app.services.event_bus import propagate_event, EventTypes
@@ -235,6 +258,20 @@ async def riconcilia_fattura_con_estratto_conto(payload: Dict[str, Any] = Body(.
                 "updated_at": datetime.now(timezone.utc).isoformat()
             }}
         )
+
+    # STORIA: logga la riconciliazione bancaria in ordine cronologico.
+    try:
+        key = fattura.get("invoice_key")
+        if key:
+            from app.services import storia_fatture as _storia
+            await _storia.registra(
+                db, key, "riconciliata",
+                f"Riconciliata con movimento estratto conto {movimento_id}",
+                patch={"riconciliato": True, "movimento_bancario_id": movimento_id,
+                       "estratto_conto_id": movimento_id, "stato_pagamento": "pagata"},
+            )
+    except Exception:
+        logger.exception(f"Storia: hook riconciliazione fallito per {fattura_id}")
 
     # --- EVENT BUS: propaga evento fattura pagata (via riconciliazione estratto conto) ---
     try:

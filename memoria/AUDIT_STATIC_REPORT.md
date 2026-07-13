@@ -5,7 +5,7 @@ Generato da `scripts/audit_static.py`.
 
 ## Sintesi
 
-- P1: 308
+- P1: 309
 - P2: 17
 - P3: 54
 - INFO: 16
@@ -1232,13 +1232,13 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/fornitori_learning.py:659`
+- File: `app/routers/fornitori_learning.py:662`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/fornitori_learning.py:788`
+- File: `app/routers/fornitori_learning.py:791`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
@@ -1334,37 +1334,37 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/invoices/fatture_upload.py:990`
+- File: `app/routers/invoices/fatture_upload.py:1016`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/invoices/fatture_upload.py:1182`
+- File: `app/routers/invoices/fatture_upload.py:1208`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/invoices/fatture_upload.py:1278`
+- File: `app/routers/invoices/fatture_upload.py:1304`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/invoices/fatture_upload.py:1381`
+- File: `app/routers/invoices/fatture_upload.py:1407`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/invoices/fatture_upload.py:1524`
+- File: `app/routers/invoices/fatture_upload.py:1550`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/invoices/fatture_upload.py:1694`
+- File: `app/routers/invoices/fatture_upload.py:1720`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
@@ -1376,31 +1376,31 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/iva.py:52`
+- File: `app/routers/iva.py:54`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/iva.py:249`
+- File: `app/routers/iva.py:251`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/iva.py:295`
+- File: `app/routers/iva.py:297`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/iva.py:364`
+- File: `app/routers/iva.py:381`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/iva.py:423`
+- File: `app/routers/iva.py:440`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
@@ -1563,6 +1563,12 @@ Generato da `scripts/audit_static.py`.
 ### P1 - body
 
 - File: `app/routers/settings_router.py:77`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/routers/settings_router.py:162`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
@@ -1958,43 +1964,43 @@ Generato da `scripts/audit_static.py`.
 
 ### P2 - timezone
 
-- File: `app/routers/iva.py:103`
+- File: `app/routers/iva.py:105`
 
 - Dettaglio: Sostituire con datetime.now(timezone.utc).
 
 ### P2 - timezone
 
-- File: `app/routers/iva.py:220`
+- File: `app/routers/iva.py:222`
 
 - Dettaglio: Sostituire con datetime.now(timezone.utc).
 
 ### P2 - timezone
 
-- File: `app/routers/iva.py:311`
+- File: `app/routers/iva.py:313`
 
 - Dettaglio: Sostituire con datetime.now(timezone.utc).
 
 ### P2 - timezone
 
-- File: `app/routers/iva.py:380`
+- File: `app/routers/iva.py:397`
 
 - Dettaglio: Sostituire con datetime.now(timezone.utc).
 
 ### P2 - timezone
 
-- File: `app/routers/iva.py:392`
+- File: `app/routers/iva.py:409`
 
 - Dettaglio: Sostituire con datetime.now(timezone.utc).
 
 ### P2 - timezone
 
-- File: `app/routers/iva.py:441`
+- File: `app/routers/iva.py:458`
 
 - Dettaglio: Sostituire con datetime.now(timezone.utc).
 
 ### P2 - timezone
 
-- File: `app/routers/iva.py:611`
+- File: `app/routers/iva.py:628`
 
 - Dettaglio: Sostituire con datetime.now(timezone.utc).
 
