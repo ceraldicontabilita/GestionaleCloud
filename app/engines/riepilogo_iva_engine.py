@@ -164,6 +164,16 @@ def rileva_anomalie(fatture: List[Dict[str, Any]], mese_corrente: Optional[str] 
             _add(avvisi, "data_ricezione_mancante", f, "Data ricezione SDI mancante")
         if f.get("stato_detrazione_iva") == "DA_VERIFICARE":
             _add(avvisi, "da_verificare", f, "Fattura con dati incompleti o incoerenti (da verificare)")
+        # §18: fattura (immediata) emessa/trasmessa oltre 12 giorni dall'operazione.
+        # Controllo documentale sul fornitore, non tocca il periodo IVA.
+        data_tx = f.get("data_trasmissione_sdi")
+        if data_tx:
+            from app.engines.iva_engine import controllo_emissione_12_giorni
+            chk = controllo_emissione_12_giorni(
+                f.get("data_operazione") or f.get("data_documento"), data_tx
+            )
+            if chk.get("anomalia"):
+                _add(avvisi, "emessa_oltre_12_giorni", f, chk["messaggio"])
         if mese_corrente and periodo and f.get("iva_utilizzata") is not True and iva > 0:
             # non utilizzata da più di 3 mesi
             try:

@@ -376,16 +376,48 @@ def confronta_dm10_rc01(f24_ordinario: Dict[str, Any], f24_rc01: Dict[str, Any])
 
     codici_a, codici_b = _codici_principali(f24_ordinario), _codici_principali(f24_rc01)
     comuni = codici_a & codici_b - {"DM10", "RC01"}
-    tributi_ok = len(comuni) > 0
+    # P1-A (§21): la coppia DM10 (debito INPS originario) ↔ RC01 (regolarizzazione)
+    # è di per sé un segnale di legame, anche senza altri codici erario comuni.
+    # Prima venivano esclusi entrambi e una regolarizzazione INPS "pura" non
+    # risultava mai collegata → il capitale INPS non entrava nel doppio pagamento.
+    coppia_dm10_rc01 = "DM10" in codici_a and "RC01" in codici_b
+    tributi_ok = len(comuni) > 0 or coppia_dm10_rc01
+    # I codici il cui capitale NON va contato due volte includono, nella
+    # regolarizzazione INPS, la causale RC01 stessa.
+    comuni_capitale = set(comuni)
+    if coppia_dm10_rc01:
+        comuni_capitale |= {"RC01", "DM10"}
     controlli.append({"campo": "codici_tributo_comuni", "ordinario": sorted(codici_a),
                       "rc01": sorted(codici_b), "coincide": tributi_ok,
-                      "obbligatorio": True, "comuni": sorted(comuni)})
+                      "obbligatorio": True, "comuni": sorted(comuni_capitale)})
 
-    collegati = cf_ok and periodo_ok and tributi_ok
+    # P1-B (§21 punti 3-4): matricola INPS e codice sede. Se entrambi i modelli
+    # dichiarano matricole INPS e non hanno alcuna matricola in comune, sono
+    # posizioni contributive diverse → NON collegare (evita falsi legami tra
+    # posizioni diverse dello stesso codice fiscale).
+    def _matricole(f24):
+        return {str(r.get("matricola")).strip().upper()
+                for r in (f24.get("sezione_inps") or []) if r.get("matricola")}
+    def _sedi(f24):
+        return {str(r.get("codice_sede")).strip().upper()
+                for r in (f24.get("sezione_inps") or []) if r.get("codice_sede")}
+    mat_a, mat_b = _matricole(f24_ordinario), _matricole(f24_rc01)
+    matricola_ok = True
+    if mat_a and mat_b:
+        matricola_ok = not mat_a.isdisjoint(mat_b)
+        controlli.append({"campo": "matricola_inps", "ordinario": sorted(mat_a),
+                          "rc01": sorted(mat_b), "coincide": matricola_ok, "obbligatorio": True})
+    sede_a, sede_b = _sedi(f24_ordinario), _sedi(f24_rc01)
+    if sede_a and sede_b:
+        controlli.append({"campo": "codice_sede", "ordinario": sorted(sede_a),
+                          "rc01": sorted(sede_b),
+                          "coincide": not sede_a.isdisjoint(sede_b), "obbligatorio": False})
+
+    collegati = cf_ok and periodo_ok and tributi_ok and matricola_ok
     return {
         "collegati": collegati,
         "controlli": controlli,
-        "tributi_comuni": sorted(comuni),
+        "tributi_comuni": sorted(comuni_capitale),
         "spiegazione": (
             "RC01 riconosciuto come regolarizzazione del debito originario: le "
             "righe comuni NON vanno registrate due volte in costi/debiti/pagamenti."

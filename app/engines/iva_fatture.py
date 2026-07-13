@@ -71,11 +71,16 @@ def campi_iva_da_fattura(inv: Dict[str, Any]) -> Dict[str, Any]:
         stato = "DA_INSERIRE"
         periodo_attribuito_finale = periodo_attribuito
 
+    # Data di trasmissione allo SDI (§7): serve al controllo documentale dei
+    # 12 giorni. La usiamo se presente sulla fattura; niente inferenze.
+    data_trasmissione_sdi = inv.get("data_trasmissione_sdi") or inv.get("data_invio_sdi")
+
     return {
         "data_documento": data_documento,
         "data_operazione": data_operazione,
         "data_ricezione": data_ricezione,
         "data_registrazione": data_registrazione,
+        "data_trasmissione_sdi": data_trasmissione_sdi,
         "periodo_iva_attribuito": periodo_attribuito_finale,
         "regola_iva_applicata": regola,
         "iva_detraibile": round(iva, 2),

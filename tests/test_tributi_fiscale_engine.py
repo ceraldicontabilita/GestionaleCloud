@@ -161,7 +161,10 @@ def test_possibile_doppio_pagamento():
     esito = te.rileva_doppio_pagamento(F24_ORDINARIO_11_2022, F24_50_61)
     assert esito["possibile_doppio_pagamento"] is True
     assert esito["stato"] == "da_verificare"
-    assert esito["quota_potenzialmente_duplicata"] == 1382.12  # capitale 1001 ripetuto
+    # P1-A (fix 13/07/2026): il capitale potenzialmente duplicato ora include
+    # SIA il tributo erario 1001 ripetuto (1382.12) SIA il capitale INPS
+    # DM10↔RC01 (2840.0), prima erroneamente escluso → 4222.12.
+    assert esito["quota_potenzialmente_duplicata"] == 4222.12
     assert esito["quota_sanzioni_interessi"] == 36.56
     assert "POSSIBILE DOPPIO PAGAMENTO" in esito["messaggio"]
 
