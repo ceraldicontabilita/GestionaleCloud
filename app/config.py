@@ -286,6 +286,16 @@ class Settings(BaseSettings):
                 # avviso critico. Se il DB è irraggiungibile l'app è comunque
                 # inoperante (è un'app MongoDB), quindi non si perde continuità
                 # reale delle sessioni.
+                # §12.2 fail-fast produzione (OPT-IN, non distruttivo di default): se
+                # SECRET_KEY_REQUIRED=true e siamo in produzione, rifiuta l'avvio invece
+                # di usare una chiave temporanea (che invaliderebbe i token ad ogni
+                # riavvio). Default off = comportamento attuale invariato.
+                _strict = _os.getenv("SECRET_KEY_REQUIRED", "").lower() in ("1", "true", "yes")
+                if _strict and self.ENVIRONMENT == "production":
+                    raise RuntimeError(
+                        "SECRET_KEY mancante in produzione (SECRET_KEY_REQUIRED=true): "
+                        "impostare SECRET_KEY nelle variabili d'ambiente. Avvio rifiutato."
+                    )
                 self.SECRET_KEY = secrets.token_urlsafe(64)
                 logging.getLogger(__name__).critical(
                     "⚠️ CRITICAL: SECRET_KEY non configurata e auth_secret non "

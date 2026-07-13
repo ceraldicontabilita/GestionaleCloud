@@ -112,9 +112,17 @@ PROSSIMA FASE: P1 consolidamento collection/motori (§5-§8).
       modulo morto referential_integrity.py.
 - [x] §12 guardia Admin-only su TUTTI i 13 endpoint distruttivi di migrazione/manutenzione
       (reset/cleanup/reimport/backfill/migra) — erano senza controllo ruolo. Test route table.
-- [ ] §12 restanti: allowlist endpoint pubblici, fail-fast produzione, protezione download.
-- [ ] §13.1 frontend: sostituire alert/confirm/prompt/window.open residui con componenti canonici.
-- [ ] §13.2 altro codice morto backend (stub, endpoint v1, migrazioni concluse).
+- [x] §12.2 fail-fast produzione: opt-in via env SECRET_KEY_REQUIRED=true (default off,
+      comportamento invariato) — rifiuta l'avvio se SECRET_KEY manca in produzione.
+- [x] §13.2 router non montati: verificato 0 (backend già pulito su questo fronte).
+- [~] §12.7 protezione download: NON bulk — molti PDF sono in <iframe src> che non invia
+      l'header auth; aggiungere Depends li romperebbe. Va fatto per-endpoint (blob-fetch/URL
+      firmati). Documentato, rinviato.
+- [~] §13.1 frontend primitive: 131 occorrenze (alert 80/confirm 36/prompt 3/window.open 12).
+      Esiste il sistema canonico (ConfirmDialog/use-toast) già parzialmente adottato, ma la
+      conversione (specie confirm→dialog dichiarativo) cambia il control-flow: non
+      automatizzabile in sicurezza. Deliverable checklist: memoria/AUDIT_PRIMITIVE_FRONTEND.md.
+- [ ] §12 allowlist endpoint pubblici · §13.2 altro codice morto (stub/v1): da fare con verifica.
 ### Deliverable (§16) — in corso: PROMPT salvato, tracker attivo
 
 ---
