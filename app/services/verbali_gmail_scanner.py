@@ -55,17 +55,11 @@ def _decode(s):
 
 
 async def get_senders_whitelist(db: AsyncIOMotorDatabase) -> Set[str]:
+    # Collezione canonica unica `mittenti_email` (con union legacy per
+    # retro-compatibilità) tramite l'accessor condiviso (P2-2).
     try:
-        cursor = db["mittenti_attendibili"].find({
-            "tipo_documento": "verbale_cds",
-            "attivo": True,
-            "canale": "gmail",
-        })
-        senders = set()
-        async for m in cursor:
-            addr = (m.get("indirizzo_email") or "").lower()
-            if addr:
-                senders.add(addr)
+        from app.services.mittenti import senders_attendibili
+        senders = await senders_attendibili(db, tipo_documento="verbale_cds", canale="gmail")
         if senders:
             return senders
     except Exception:

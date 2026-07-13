@@ -53,11 +53,18 @@ in questo commit.
   documento (valore parametrico, non modificare). **[Scelta utente]**
 
 ## P2 — robustezza
-- P2-1 dedup non incrociata tra `*_email_attachments` e `documents_inbox`
-  (possibile doppione cross-canale a parità di impronta).
-- P2-2 due collection mittenti (`mittenti_email` vs `mittenti_attendibili`).
-- P2-3 campi tassonomia ridondanti (`category`/`categoria`/`tipo_documento`).
-- P2-4 `gmail_full_scan_task` ignora `ENABLE_GMAIL_IMAP`.
+- P2-1 dedup cross-canale — RISOLTO: `deduplica.esiste_documento_cross_canale`
+  controlla la stessa impronta md5 sia negli `*_email_attachments` (`pdf_hash`)
+  sia in `documents_inbox` (`file_hash`); entrambi i flussi la consultano.
+- P2-2 collection mittenti — RISOLTO: fonte unica `mittenti_email` con accessor
+  condiviso `services/mittenti.senders_attendibili` (union legacy per
+  retro-compatibilità) + migrazione idempotente `migra_mittenti_legacy`
+  (script `app.scripts.migra_mittenti_attendibili_a_email`, endpoint
+  `POST /api/email-download/mittenti/migra-legacy`).
+- P2-3 campi tassonomia ridondanti — RISOLTO (giro 2): `tipo_documento` canonico
+  + helper `set_tassonomia_documento`/`leggi_tipo_documento`.
+- P2-4 `gmail_full_scan_task` ignora `ENABLE_GMAIL_IMAP` — RISOLTO: task pianificato
+  gated in `scheduler.py`.
 
 ## Conformi
 Canali Drive on/off (§13) ✔; dedup per canale ✔; associazione documento→entità e

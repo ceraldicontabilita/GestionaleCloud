@@ -914,6 +914,17 @@ async def list_mittenti() -> Dict[str, Any]:
     }
 
 
+@router.post("/mittenti/migra-legacy")
+async def migra_mittenti_legacy_endpoint(dry_run: bool = True) -> Dict[str, Any]:
+    """Migra i mittenti dalla vecchia collezione `mittenti_attendibili` alla
+    canonica `mittenti_email` (P2-2). Idempotente e non distruttiva. Con
+    `dry_run=true` (default) riporta solo cosa farebbe."""
+    from app.services.mittenti import migra_mittenti_legacy
+    db = Database.get_db()
+    r = await migra_mittenti_legacy(db, dry_run=dry_run)
+    return {"success": True, **r}
+
+
 @router.get("/mittenti/check")
 async def check_mittente(from_addr: str, canale: str = "gmail") -> Dict[str, Any]:
     """
