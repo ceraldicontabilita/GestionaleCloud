@@ -70,43 +70,14 @@ def _verifica_pin(pin: str) -> Optional[bool]:
     return None
 
 # ============================================================================
-# ANTI BRUTE FORCE (in-memory, per IP)
+# ANTI BRUTE FORCE — modulo condiviso con il login email (5 tentativi / 5 min)
 # ============================================================================
-_FAILED_ATTEMPTS: Dict[str, Dict[str, Any]] = {}
-MAX_ATTEMPTS = 8
-LOCK_SECONDS = 60
+from app.utils import login_lockout
 
-
-def _client_ip(request: Request) -> str:
-    """Estrae l'IP del client (supporto X-Forwarded-For per reverse proxy)."""
-    xff = request.headers.get("x-forwarded-for")
-    if xff:
-        return xff.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
-
-
-def _is_locked(ip: str) -> int:
-    """Ritorna i secondi residui di lock, 0 se non bloccato."""
-    rec = _FAILED_ATTEMPTS.get(ip)
-    if not rec:
-        return 0
-    if rec.get("locked_until", 0) > time.time():
-        return int(rec["locked_until"] - time.time())
-    return 0
-
-
-def _register_failure(ip: str):
-    rec = _FAILED_ATTEMPTS.get(ip) or {"count": 0, "locked_until": 0}
-    rec["count"] += 1
-    if rec["count"] >= MAX_ATTEMPTS:
-        rec["locked_until"] = time.time() + LOCK_SECONDS
-        rec["count"] = 0
-        logger.warning(f"PIN-login: IP {ip} locked for {LOCK_SECONDS}s")
-    _FAILED_ATTEMPTS[ip] = rec
-
-
-def _clear_failures(ip: str):
-    _FAILED_ATTEMPTS.pop(ip, None)
+_client_ip = login_lockout.client_ip
+_is_locked = login_lockout.seconds_locked
+_register_failure = login_lockout.register_failure
+_clear_failures = login_lockout.clear_failures
 
 
 # ============================================================================

@@ -11,7 +11,7 @@ logica usata da /api/fatture-ricevute/fattura/{id}. cleanup-duplicates è
 stato rimosso: la pulizia duplicati canonica gira già in automatico ogni
 30 min via fatture_module.crud.pulisci_duplicati_invoices (app/scheduler.py).
 """
-from fastapi import APIRouter, HTTPException, UploadFile, File, Query, Body
+from fastapi import APIRouter, HTTPException, UploadFile, File, Query, Body, Depends
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta, timezone
 import uuid
@@ -26,6 +26,7 @@ from app.database import Database, Collections
 from app.parsers.fattura_elettronica_parser import parse_fattura_xml, TIPO_DOC_MAP
 from app.services.xml_invoice_processor import extract_xml_from_p7m, is_p7m_content
 from app.utils.error_handler import handle_errors
+from app.utils.ruoli import richiedi_admin
 
 logger = logging.getLogger(__name__)
 
@@ -1243,9 +1244,10 @@ async def upload_fatture_xml_bulk(files: List[UploadFile] = File(...)) -> Dict[s
 @router.delete("/all")
 @handle_errors
 async def delete_all_invoices(
-    confirm: str = Query(..., description="Scrivere 'CONFERMA_ELIMINAZIONE' per procedere")
+    confirm: str = Query(..., description="Scrivere 'CONFERMA_ELIMINAZIONE' per procedere"),
+    _admin: Dict[str, Any] = Depends(richiedi_admin),
 ) -> Dict[str, Any]:
-    """Elimina tutte le fatture. Richiede conferma esplicita."""
+    """Elimina tutte le fatture. Richiede ruolo admin + conferma esplicita."""
     if confirm != "CONFERMA_ELIMINAZIONE":
         raise HTTPException(
             status_code=400,

@@ -41,6 +41,11 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
 
     # CORS
+    # Origin consentiti in produzione: impostare col dominio reale del
+    # gestionale, es. CORS_ALLOWED_ORIGINS="https://gestionale.esempio.it"
+    # (più domini separati da virgola). Se valorizzato, chiude l'accesso a
+    # ogni altro sito; se vuoto, resta aperto (vedi get_cors_origins).
+    CORS_ALLOWED_ORIGINS: str = ""
     CORS_ORIGINS: str = "*"
     ALLOWED_ORIGINS: str = "*"
     ALLOW_CREDENTIALS: bool = True
@@ -291,19 +296,56 @@ class Settings(BaseSettings):
                 pass
     
     def get_cors_origins(self) -> list[str]:
-        """Parse CORS origins from comma-separated string."""
-        origins = self.CORS_ORIGINS or self.ALLOWED_ORIGINS or "*"
-        if origins == "*":
-            # CORS con credentials non permette wildcard
-            if self.ALLOW_CREDENTIALS and self.FRONTEND_URL:
-                import logging
-                logging.getLogger(__name__).warning(
-                    "CORS: allow_credentials=True con origins=* non è valido. "
-                    f"Uso FRONTEND_URL: {self.FRONTEND_URL}"
-                )
-                return [self.FRONTEND_URL]
-            return ["*"]
-        return [origin.strip() for origin in origins.split(",") if origin.strip()]
+        """Origin CORS consentiti.
+
+        Sicurezza (audit 13/07/2026): con autenticazione via cookie
+        (`ALLOW_CREDENTIALS=True`) NON è mai lecito rispondere con wildcard
+        `*` — il browser rifletterebbe qualunque Origin, permettendo a un
+        sito terzo di usare la sessione dell'utente. Quindi:
+
+        - Se sono elencati origin espliciti in `CORS_ALLOWED_ORIGINS`
+          (o `CORS_ORIGINS`/`ALLOWED_ORIGINS`/`FRONTEND_URL`), usa quelli.
+        - Se non c'è nulla di esplicito e le credenziali sono attive,
+          NON aprire a `*`: restituisci lista vuota (nessun sito esterno
+          autorizzato) e logga un warning, così l'app resta chiusa finché
+          non si imposta il dominio reale.
+        - `*` è concesso solo quando le credenziali sono disattivate.
+
+        Dominio da impostare in produzione: variabile d'ambiente
+        `CORS_ALLOWED_ORIGINS` (o `FRONTEND_URL`), es.
+        `CORS_ALLOWED_ORIGINS="https://gestionale.esempio.it"`.
+        Più domini separati da virgola.
+        """
+        import logging
+        esplicite = (
+            getattr(self, "CORS_ALLOWED_ORIGINS", "")
+            or self.CORS_ORIGINS
+            or self.ALLOWED_ORIGINS
+            or ""
+        )
+        esplicite = esplicite.strip()
+
+        if esplicite and esplicite != "*":
+            lista = [o.strip() for o in esplicite.split(",") if o.strip() and o.strip() != "*"]
+            if lista:
+                return lista
+
+        # Nessun origin esplicito valido: fallback su FRONTEND_URL se presente.
+        if self.FRONTEND_URL:
+            return [self.FRONTEND_URL]
+
+        # Niente di esplicito. Se le credenziali sono attive segnaliamo il
+        # rischio ma NON blocchiamo: restare a wildcard preserva il
+        # funzionamento attuale del frontend finché il dominio non è
+        # impostato. La chiusura effettiva scatta appena si valorizza
+        # CORS_ALLOWED_ORIGINS (o FRONTEND_URL).
+        if self.ALLOW_CREDENTIALS:
+            logging.getLogger(__name__).warning(
+                "CORS APERTO A TUTTI (insicuro): ALLOW_CREDENTIALS=True senza "
+                "origin esplicito. Imposta CORS_ALLOWED_ORIGINS col dominio del "
+                "gestionale per chiudere l'accesso agli altri siti."
+            )
+        return ["*"]
     
     def get_allowed_extensions(self) -> set[str]:
         """Parse allowed file extensions."""

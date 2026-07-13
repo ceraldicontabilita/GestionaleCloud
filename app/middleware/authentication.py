@@ -162,6 +162,28 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             request.state.user_email = payload.get("email")
             request.state.user_role = payload.get("role", "user")
 
+            # --- CONTROLLO RUOLO (rete di sicurezza globale) ---
+            # Sola lettura: nessuna scrittura. Operatore: fuori dagli endpoint
+            # admin. Ruolo assente/sconosciuto → admin (mono-utente storico),
+            # quindi l'amministratore esistente non viene mai bloccato.
+            from app.utils.ruoli import (
+                normalizza_ruolo, METODI_SCRITTURA, PREFISSI_SOLO_ADMIN,
+                SOLA_LETTURA, ADMIN,
+            )
+            ruolo = normalizza_ruolo(payload.get("role"))
+            # /logout resta sempre permesso (serve anche in sola lettura).
+            if not path.startswith("/api/auth/"):
+                if ruolo == SOLA_LETTURA and method in METODI_SCRITTURA:
+                    return JSONResponse(
+                        status_code=403,
+                        content={"detail": "Account in sola lettura: operazione non consentita"},
+                    )
+                if ruolo != ADMIN and any(path.startswith(p) for p in PREFISSI_SOLO_ADMIN):
+                    return JSONResponse(
+                        status_code=403,
+                        content={"detail": "Operazione riservata all'amministratore"},
+                    )
+
         except JWTError as e:
             logger.warning(f"Auth middleware: invalid token on {path}: {e}")
             return JSONResponse(

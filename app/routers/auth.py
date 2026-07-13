@@ -7,11 +7,12 @@ import os
 import jwt
 import bcrypt
 from datetime import datetime, timedelta, timezone
-from fastapi import APIRouter, Response, Request, HTTPException
+from fastapi import APIRouter, Response, Request, HTTPException, status
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
 from app.config import settings
+from app.utils import login_lockout
 
 load_dotenv()
 
@@ -46,17 +47,22 @@ class LoginRequest(BaseModel):
     password: str
 
 
-def _make_token(email: str) -> str:
+def _make_token(email: str, role: str = "admin", name: str = "Admin") -> str:
+    # Il ruolo viaggia NEL token: il middleware e le dependency lo leggono da
+    # qui. L'admin via env resta 'admin' (nessun cambiamento di comportamento).
     payload = {
         "sub": email,
+        "email": email,
+        "name": name,
+        "role": role,
         "iat": datetime.now(timezone.utc),
         "exp": datetime.now(timezone.utc) + timedelta(hours=TOKEN_EXPIRE_HOURS),
     }
     return jwt.encode(payload, SECRET_KEY, algorithm="HS256")
 
 
-def verify_token(request: Request) -> str:
-    """Verifica JWT da cookie o header Authorization. Ritorna email utente."""
+def _decode_token(request: Request) -> dict:
+    """Decodifica il JWT da cookie o header Authorization. Ritorna il payload."""
     token = request.cookies.get("access_token")
     if not token:
         auth = request.headers.get("Authorization", "")
@@ -65,12 +71,16 @@ def verify_token(request: Request) -> str:
     if not token:
         raise HTTPException(status_code=401, detail="Non autenticato")
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-        return payload["sub"]
+        return jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Sessione scaduta")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Token non valido")
+
+
+def verify_token(request: Request) -> str:
+    """Verifica JWT da cookie o header Authorization. Ritorna email utente."""
+    return _decode_token(request)["sub"]
 
 
 # NB: gli alias legacy /api/login, /api/logout, /api/me sono stati rimossi
@@ -81,21 +91,31 @@ def verify_token(request: Request) -> str:
 @router.get("/auth/verify")
 async def verify(request: Request):
     """Compatibilità AuthContext frontend: verifica sessione attiva."""
-    email = verify_token(request)
+    from app.utils.ruoli import normalizza_ruolo
+    payload = _decode_token(request)
+    email = payload["sub"]
+    ruolo = normalizza_ruolo(payload.get("role"))
     return {
         "ok":    True,
-        "user":  {"email": email, "name": "Admin", "role": "admin"},
+        "user":  {"email": email, "name": payload.get("name", "Admin"), "role": ruolo},
         "email": email,
     }
 
 
 @router.post("/auth/login")
-async def auth_login(body: LoginRequest, response: Response):
+async def auth_login(body: LoginRequest, request: Request, response: Response):
     """Alias /api/auth/login → /api/login per compatibilità frontend."""
-    if body.email.lower() != ADMIN_EMAIL.lower():
+    ip = login_lockout.client_ip(request)
+    lock = login_lockout.seconds_locked(ip)
+    if lock > 0:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Troppi tentativi falliti. Riprova tra {lock} secondi.",
+        )
+    if body.email.lower() != ADMIN_EMAIL.lower() or not _check_password(body.password):
+        login_lockout.register_failure(ip)
         raise HTTPException(status_code=401, detail="Credenziali errate")
-    if not _check_password(body.password):
-        raise HTTPException(status_code=401, detail="Credenziali errate")
+    login_lockout.clear_failures(ip)
     token = _make_token(body.email)
     response.set_cookie(key="access_token", value=token, httponly=True,
                         secure=False, samesite="lax", max_age=TOKEN_EXPIRE_HOURS * 3600, path="/")
