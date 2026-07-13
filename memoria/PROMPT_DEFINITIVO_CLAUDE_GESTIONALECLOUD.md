@@ -65,8 +65,13 @@ PROSSIMA FASE: P1 consolidamento collection/motori (§5-§8).
       IRAP) e ora preserva ammortamenti/TFR (prima li cancellava). FIX giornale: date coerenti.
       §6.2/6.3/6.4 (bilancio unico, schema numerico contabilita_italiana, saldi Prima Nota):
       RINVIATE (contabilità viva, richiedono decisione schema canonico) (316 test).
-- [ ] §7 Classificazione 390 endpoint · §8 Viewer documenti
-      Deliverable: memoria/PIANO_MIGRAZIONE_COLLECTION.md
+- [x] §7 Classificazione endpoint: deliverable memoria/ENDPOINT_CLASSIFICAZIONE_FINALE.md
+      generato da scripts/genera_classificazione_endpoint.py (rigenerabile) sulla route
+      table reale, incrocia FE/scheduler/chat/migrazione/test. 1106 endpoint: 650 tenere,
+      437 verificare (nessun rif. noto → NON eliminare in blocco), 19 admin-only (migrazione/
+      manutenzione one-shot). Follow-up: applicare guard Admin-only ai 19.
+- [ ] §8 Viewer documenti
+      Deliverable: memoria/PIANO_MIGRAZIONE_COLLECTION.md, memoria/ENDPOINT_CLASSIFICAZIONE_FINALE.md
 ### FASE P1 — F24/quietanze/IVA/prestazioni (§9-§11) — non iniziata
 ### FASE P2 — Sicurezza/pulizia (§12-§13) — non iniziata
 ### Deliverable (§16) — in corso: PROMPT salvato, tracker attivo
