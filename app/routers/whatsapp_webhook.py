@@ -24,13 +24,14 @@ async def verify_webhook(
     Verifica webhook Meta — risponde alla challenge di verifica.
     Meta invia GET con hub.mode=subscribe, hub.verify_token e hub.challenge.
     """
-    logger.info(f"[WhatsApp Webhook] Verifica: mode={hub_mode}, token={hub_token}")
-    
+    # §12.6: non loggare il verify token (è un segreto).
+    logger.info(f"[WhatsApp Webhook] Verifica: mode={hub_mode}")
+
     if hub_mode == "subscribe" and hub_token == VERIFY_TOKEN:
         logger.info("[WhatsApp Webhook] ✅ Verifica riuscita")
         return PlainTextResponse(content=hub_challenge, status_code=200)
-    
-    logger.warning(f"[WhatsApp Webhook] ❌ Token non valido: {hub_token}")
+
+    logger.warning("[WhatsApp Webhook] ❌ Token di verifica non valido")
     raise HTTPException(status_code=403, detail="Token di verifica non valido")
 
 

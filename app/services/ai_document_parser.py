@@ -282,7 +282,8 @@ async def parse_document_with_ai(
     
     # Usa ANTHROPIC_API_KEY
     api_key = os.environ.get("ANTHROPIC_API_KEY")
-    logger.info(f"Using ANTHROPIC_API_KEY: {api_key[:20] if api_key else 'NOT SET'}...")
+    # §12.6: mai loggare il valore (nemmeno un prefisso) di un segreto.
+    logger.info(f"ANTHROPIC_API_KEY: {'configurata' if api_key else 'NON impostata'}")
     
     if not api_key:
         return {"error": "ANTHROPIC_API_KEY non configurata", "success": False}
