@@ -423,6 +423,24 @@ class Settings(BaseSettings):
             else:
                 logger.error(f"❌ ERROR: {msg}")
 
+        # DB_NAME: in produzione dev'essere valorizzato (default 'Gestionale').
+        if self.is_production and not (self.DB_NAME or "").strip():
+            msg = "DB_NAME non configurato in produzione."
+            errors.append(msg) if fail_fast else logger.error(f"❌ ERROR: {msg}")
+
+        # CORS in produzione: senza origin espliciti si ricade su una policy
+        # permissiva. Va impostato CORS_ALLOWED_ORIGINS col dominio reale (§8/SEC-2).
+        if self.is_production and not (self.CORS_ALLOWED_ORIGINS or "").strip():
+            msg = (
+                "CORS_ALLOWED_ORIGINS non configurato in produzione: imposta il "
+                "dominio reale (es. 'https://impresasemplice.online') nelle "
+                "variabili d'ambiente per limitare le origini consentite."
+            )
+            if fail_fast:
+                errors.append(msg)
+            else:
+                logger.warning(f"⚠️ {msg}")
+
         if errors:
             raise RuntimeError(
                 "Fail-fast produzione: configurazione mancante. "
