@@ -166,20 +166,6 @@ async def get_verbali_lista(
 # (registrato prima sotto lo stesso prefisso) e non veniva mai raggiunta.
 
 
-@router.post("/scarica-posta")
-@handle_errors
-async def scarica_posta_verbali() -> Dict[str, Any]:
-    """
-    Placeholder per il download verbali da email PEC.
-    In futuro integrerà con il sistema email.
-    """
-    return {
-        "message": "Funzionalità in sviluppo",
-        "status": "pending"
-    }
-
-
-
 @router.get("/alert-pagamenti")
 @handle_errors
 async def alert_verbali_non_pagati() -> Dict[str, Any]:

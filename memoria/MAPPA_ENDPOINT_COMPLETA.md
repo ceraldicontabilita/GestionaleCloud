@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1107 endpoint** in **110 gruppi**.
+> Totale **1105 endpoint** in **110 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 640 · ext esterni = 76 · — da verificare = 391
+**Riepilogo uso:** ✓ frontend = 639 · ext esterni = 76 · — da verificare = 390
 
 ## AI Parser  (11)
 
@@ -963,13 +963,12 @@
 | GET | `/api/invoices/by-month/{year}/{month}` | ✓ | invoices.invoices_main |
 | GET | `/api/invoices/{invoice_id}` | ✓ | invoices.invoices_main |
 
-## Invoices Emesse  (5)
+## Invoices Emesse  (4)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
 | GET | `/api/invoices/emesse` | ✓ | invoices.invoices_emesse |
 | POST | `/api/invoices/emesse` | ✓ | invoices.invoices_emesse |
-| POST | `/api/invoices/emesse/upload-xml` | ✓ | invoices.invoices_emesse |
 | GET | `/api/invoices/emesse/{invoice_id}` | ✓ | invoices.invoices_emesse |
 | DELETE | `/api/invoices/emesse/{invoice_id}` | ✓ | invoices.invoices_emesse |
 
@@ -1562,7 +1561,7 @@
 | PUT | `/api/utenti/{utente_id}` | ✓ | utenti |
 | DELETE | `/api/utenti/{utente_id}` | ✓ | utenti |
 
-## Verbali API  (13)
+## Verbali API  (12)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -1574,7 +1573,6 @@
 | GET | `/api/verbali-noleggio/note-consulente` | — | verbali_noleggio_api |
 | POST | `/api/verbali-noleggio/riconcilia-completo` | — | verbali_noleggio_api |
 | POST | `/api/verbali-noleggio/scan-gmail` | — | verbali_noleggio_api |
-| POST | `/api/verbali-noleggio/scarica-posta` | — | verbali_noleggio_api |
 | PUT | `/api/verbali-noleggio/{verbale_id}` | — | verbali_noleggio_api |
 | POST | `/api/verbali-noleggio/{verbale_id}/cerca-pagamento` | — | verbali_noleggio_api |
 | GET | `/api/verbali-noleggio/{verbale_id}/ricevuta-pdf` | — | verbali_noleggio_api |

@@ -1,7 +1,7 @@
 # MAPPA ROUTER — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py — leggendo la route table reale di `register_all_routers`.
-> Totale **1107 endpoint** in **107 prefissi**.
+> Totale **1105 endpoint** in **107 prefissi**.
 
 Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app collegata / webhook / chatbot / scheduler / API pubblica) · `—` nessun riferimento noto (candidato verifica).
 
@@ -63,7 +63,7 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/fornitori-learning` | 16 | ✓ | fornitori_learning |
 | `/api/genera-proposte` | 1 | — | dati_provvisori |
 | `/api/gestione-riservata` | 7 | ✓ | gestione_riservata |
-| `/api/invoices` | 9 | ✓ | invoices.invoices_emesse, invoices.invoices_main |
+| `/api/invoices` | 8 | ✓ | invoices.invoices_emesse, invoices.invoices_main |
 | `/api/iva` | 19 | ✓ | iva |
 | `/api/learning-machine` | 7 | ✓ | learning_machine |
 | `/api/learning-universal` | 5 | ✓ | learning_universal |
@@ -106,7 +106,7 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/trattenute-verbali` | 7 | — | trattenute_verbali |
 | `/api/utenti` | 4 | ✓ | utenti |
 | `/api/v1` | 5 | ext | public_api |
-| `/api/verbali-noleggio` | 32 | ✓ | verbali_noleggio, verbali_noleggio_api |
+| `/api/verbali-noleggio` | 31 | ✓ | verbali_noleggio, verbali_noleggio_api |
 | `/api/verbali-riconciliazione` | 26 | ✓ | verbali_riconciliazione |
 | `/api/verifica-coerenza` | 7 | ✓ | verifica_coerenza |
 | `/api/warehouse` | 6 | ✓ | public_api |
