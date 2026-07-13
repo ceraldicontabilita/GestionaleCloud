@@ -150,11 +150,11 @@ Piano completo: `memoria/PIANO_MIGRAZIONE_COLLECTION.md`.
 ## 10. Rischi residui e decisioni richieste all'utente
 
 1. **`/api/v1` (API key esterne)**: oggi richiede ANCHE il JWT (non è in
-   allowlist) → canale di fatto spento verso l'esterno. Non aperto di
-   iniziativa: `/api/v1/keys/generate` non ha altra auth propria, whitelistarlo
-   permetterebbe a chiunque di generare chiavi. **Decidere**: (a) lasciare
-   spento; (b) whitelistare `/api/v1/` DOPO aver protetto keys/generate
-   (admin-only); (c) rimuovere il canale.
+   allowlist) → canale di fatto spento verso l'esterno. **DECISIONE UTENTE
+   (2026-07-13): lasciare spento per ora.** Il test-fotografia dell'allowlist
+   (`TestAllowlistCongelata`) congela questo stato: per riaccenderlo in futuro
+   servirà prima proteggere `/api/v1/keys/generate` (admin-only), poi
+   whitelistare `/api/v1/` e aggiornare deliberatamente test e questo audit.
 2. **§6.7 PayPal**: 2 router + 6 service da consolidare — rinviato a sessione
    dedicata (area intrecciata, rischio regressione).
 3. **22 `to_list(100000)`/N+1** censiti in `memoria/AUDIT_PERFORMANCE_N1.md`:
