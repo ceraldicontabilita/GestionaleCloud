@@ -65,6 +65,10 @@ PROSSIMA FASE: P1 consolidamento collection/motori (§5-§8).
       IRAP) e ora preserva ammortamenti/TFR (prima li cancellava). FIX giornale: date coerenti.
       §6.2/6.3/6.4 (bilancio unico, schema numerico contabilita_italiana, saldi Prima Nota):
       RINVIATE (contabilità viva, richiedono decisione schema canonico) (316 test).
+- [~] §6.2-6.9: ANALISI prodotta (memoria/ANALISI_MOTORI_CONTABILI.md) con stato/rischio/
+      decisione per ogni sottosistema. §6.3 (schema piano conti CEE vs numerico) = decisione
+      utente BLOCCANTE per §6.2. Ordine sicuro: §6.4 saldo Prima Nota → §6.6 EC → §6.3 → §6.2
+      → §6.8 cash adapter/§6.5/§6.9/§6.7. Implementazione in attesa scelta schema.
 - [x] §7 Classificazione endpoint: deliverable memoria/ENDPOINT_CLASSIFICAZIONE_FINALE.md
       generato da scripts/genera_classificazione_endpoint.py (rigenerabile) sulla route
       table reale, incrocia FE/scheduler/chat/migrazione/test. 1106 endpoint: 650 tenere,
