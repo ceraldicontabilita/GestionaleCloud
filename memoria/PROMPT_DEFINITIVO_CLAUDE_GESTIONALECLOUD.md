@@ -141,7 +141,15 @@ PROSSIMA FASE: P1 consolidamento collection/motori (§5-§8).
       iniziativa (regola parametri: /api/v1/keys/generate non ha altra auth propria,
       aprirlo permetterebbe a chiunque di generare chiavi). Decisione lasciata all'utente.
 - [ ] §13.2 altro codice morto (stub/v1): da fare con verifica.
-### Deliverable (§16) — in corso: PROMPT salvato, tracker attivo
+### FASE FINALE — Verifiche e deliverable (§14-§17) — COMPLETATA (2026-07-13)
+- [x] §15.3 mappe rigenerate: genera_mappa.py (1106 endpoint, 107 prefissi, FE ✓=639)
+      + genera_classificazione_endpoint.py (650 tenere / 437 verificare / 19 admin-only).
+- [x] §15.1/15.2 suite 335 passed 2 skipped (baseline 257) · build Vite verde.
+- [x] §14 memoria/MATRICE_FUNZIONALE_FINALE.md (13 moduli, catena Route→…→Test).
+- [x] §8.6 memoria/AUDIT_VIEWER_DOCUMENTI.md (censimento viewer + auth).
+- [x] §16 memoria/AUDIT_ESECUZIONE_DEFINITIVO.md con verifica puntuale dei 19
+      criteri §17 (tutti ✅) + rischi residui e decisioni richieste (/api/v1,
+      §6.7 PayPal, to_list, migrazioni al deploy).
 
 ---
 
