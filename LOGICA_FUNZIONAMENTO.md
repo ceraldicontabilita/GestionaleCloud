@@ -582,10 +582,20 @@ entra col proprio PIN e ottiene i permessi del suo ruolo. I PIN non sono mai
 salvati in chiaro; il login è protetto da blocco anti-tentativi (5 errori →
 5 minuti di attesa, vale sia per il PIN sia per email+password).
 
-Sicurezza correlata (audit): l'accesso da browser esterni (CORS) si chiude al
-solo dominio del gestionale impostando la variabile d'ambiente
-`CORS_ALLOWED_ORIGINS`; finché non è impostata resta aperto (con avviso nei log)
-per non interrompere il servizio.
+**Durata sessione**: il login vale **1 ora di inattività**; mentre lavori si
+rinnova da solo (non cade mai durante l'uso), se resti fermo oltre un'ora devi
+rientrare.
+
+Sicurezza correlata (audit 13/07/2026):
+- Accesso da browser esterni (CORS) chiuso al solo dominio del gestionale
+  impostando `CORS_ALLOWED_ORIGINS`; finché non è impostata resta aperto (con
+  avviso nei log) per non interrompere il servizio.
+- Login protetto: 5 tentativi falliti → 5 minuti di blocco (email e PIN).
+- Le ricerche non interpretano più caratteri speciali come comandi (niente
+  regex injection); gli upload hanno un limite di dimensione.
+- **Ponte ERP disattivato** (scelta utente: non in uso): l'endpoint che
+  riceveva fatture dall'app esterna ora rifiuta sempre finché non lo si
+  riattiva impostando `ERP_BRIDGE_SECRET`.
 
 ## 14. Cosa NON fa più questo gestionale (dominio HACCP)
 

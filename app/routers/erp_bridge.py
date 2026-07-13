@@ -80,14 +80,20 @@ async def ricevi_fattura_da_tracciabilita(
     Riceve una fattura importata da Tracciabilità e la upserta in `fatture_passive`.
     Usa dedup_key = numero_fattura + partita_iva per evitare duplicati.
     """
-    if ERP_BRIDGE_SECRET:
-        if x_erp_secret != ERP_BRIDGE_SECRET:
-            raise HTTPException(status_code=401, detail="Segreto ponte non valido o mancante")
-    else:
-        logger.warning(
-            "[PONTE] ERP_BRIDGE_SECRET non configurato: endpoint pubblico senza verifica. "
-            "Impostare la variabile d'ambiente su Render per proteggerlo."
+    # Scelta utente 13/07/2026: il ponte ERP NON è in uso. L'endpoint è
+    # "fail-closed": senza ERP_BRIDGE_SECRET configurato rifiuta sempre (prima
+    # accettava scritture da chiunque con solo un warning). Per riattivarlo:
+    # impostare ERP_BRIDGE_SECRET sul server e farlo inviare all'app esterna
+    # nell'header X-Erp-Secret.
+    import hmac as _hmac
+    if not ERP_BRIDGE_SECRET:
+        logger.warning("[PONTE] Richiesta rifiutata: ponte ERP disattivato (nessun ERP_BRIDGE_SECRET).")
+        raise HTTPException(
+            status_code=503,
+            detail="Ponte ERP non attivo su questo server.",
         )
+    if not x_erp_secret or not _hmac.compare_digest(x_erp_secret, ERP_BRIDGE_SECRET):
+        raise HTTPException(status_code=401, detail="Segreto ponte non valido o mancante")
 
     db = Database.get_db()
 

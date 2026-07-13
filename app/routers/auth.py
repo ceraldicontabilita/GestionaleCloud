@@ -28,7 +28,10 @@ ADMIN_PASSWORD_HASH = os.getenv("ADMIN_PASSWORD_HASH", "")   # bcrypt (fallback)
 # diversa da quella del middleware, OGNI chiamata API rispondeva 401
 # ("Authentication required" su tutte le pagine).
 SECRET_KEY          = settings.SECRET_KEY
-TOKEN_EXPIRE_HOURS  = 24 * 7   # 7 giorni
+# Scelta utente 13/07/2026: 1 ora di inattività (poi ri-login). Il token vive
+# ACCESS_TOKEN_EXPIRE_MINUTES e il middleware lo rinnova da solo mentre l'utente
+# lavora (sessione scorrevole), quindi non cade mai durante l'uso attivo.
+TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
 
 
 def _check_password(plain: str) -> bool:
@@ -73,7 +76,7 @@ def _make_token(email: str, role: str = "admin", name: str = "Admin") -> str:
         "name": name,
         "role": role,
         "iat": datetime.now(timezone.utc),
-        "exp": datetime.now(timezone.utc) + timedelta(hours=TOKEN_EXPIRE_HOURS),
+        "exp": datetime.now(timezone.utc) + timedelta(minutes=TOKEN_EXPIRE_MINUTES),
     }
     return jwt.encode(payload, SECRET_KEY, algorithm="HS256")
 
@@ -137,9 +140,9 @@ async def auth_login(body: LoginRequest, request: Request, response: Response):
     await _audit_login(ip, body.email, ok=True)
     token = _make_token(body.email)
     response.set_cookie(key="access_token", value=token, httponly=True,
-                        secure=False, samesite="lax", max_age=TOKEN_EXPIRE_HOURS * 3600, path="/")
+                        secure=False, samesite="lax", max_age=TOKEN_EXPIRE_MINUTES * 60, path="/")
     response.set_cookie(key="session_active", value="1", httponly=False,
-                        secure=False, samesite="lax", max_age=TOKEN_EXPIRE_HOURS * 3600, path="/")
+                        secure=False, samesite="lax", max_age=TOKEN_EXPIRE_MINUTES * 60, path="/")
     return {
         "ok":          True,
         "email":       body.email,
