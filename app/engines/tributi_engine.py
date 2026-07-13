@@ -286,12 +286,26 @@ def classifica_f24(f24: Dict[str, Any]) -> Dict[str, Any]:
 
 # ── Associazione F24 ↔ cedolini (§15) ──────────────────────────────────────
 
+# Codici/causali tipici del versamento su lavoro dipendente (§15): ritenute
+# IRPEF dipendenti, addizionali, contributi INPS. Servono a verificare che il
+# modello sia coerente coi cedolini (non un F24 di sola IVA/IMU).
+CODICI_LAVORO_DIPENDENTE = {
+    "1001", "1004", "1012", "1305",           # ritenute IRPEF lavoro dipendente
+    "3802", "3847", "3848", "1601", "1701",    # addizionali regionali/comunali
+    "DM10", "DMRA", "RC01", "CF",              # INPS/contributi
+}
+
+
 def valuta_associazione_cedolini(
     f24: Dict[str, Any], mese_cedolini: int, anno_cedolini: int,
     codice_fiscale_azienda: Optional[str] = None,
+    matricole_cedolini: Optional[set] = None,
 ) -> Dict[str, Any]:
     """Verifica le condizioni della §15 e produce una motivazione leggibile
-    (usata anche dalla Chat intelligente per spiegare l'esito)."""
+    (usata anche dalla Chat intelligente per spiegare l'esito).
+
+    matricole_cedolini: se fornito (posizioni INPS dei cedolini), l'F24 deve
+    condividerne almeno una; altrimenti si tratta di posizioni diverse."""
     motivi: List[str] = []
     ok = True
 
@@ -301,6 +315,23 @@ def valuta_associazione_cedolini(
     if codice_fiscale_azienda and cf_f24 and cf_f24 != codice_fiscale_azienda.strip().upper():
         ok = False
         motivi.append(f"soggetto fiscale diverso ({cf_f24} ≠ {codice_fiscale_azienda})")
+
+    # 3. coerenza causali: il modello deve contenere codici/causali di lavoro
+    #    dipendente (ritenute/addizionali/contributi), altrimenti non è
+    #    associabile ai cedolini (§15).
+    codici_modello = {r["_codice"].upper() for r in _righe_f24(f24) if r["_codice"]}
+    if codici_modello and codici_modello.isdisjoint(CODICI_LAVORO_DIPENDENTE):
+        ok = False
+        motivi.append("il modello non contiene causali di lavoro dipendente "
+                      "(ritenute/addizionali/contributi): non associabile ai cedolini")
+
+    # 4. posizione contributiva (matricola INPS), se nota dai cedolini
+    if matricole_cedolini:
+        mat_f24 = {str(r.get("matricola")).strip().upper()
+                   for r in (f24.get("sezione_inps") or []) if r.get("matricola")}
+        if mat_f24 and mat_f24.isdisjoint({str(m).strip().upper() for m in matricole_cedolini}):
+            ok = False
+            motivi.append("matricola INPS del modello diversa da quella dei cedolini")
 
     # 2/6. periodo di riferimento coincidente col mese/anno dei cedolini
     periodo = periodo_prevalente(f24)

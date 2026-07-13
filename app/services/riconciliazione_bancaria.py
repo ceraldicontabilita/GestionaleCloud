@@ -719,7 +719,22 @@ async def riconcilia_movimenti_banca() -> Dict[str, Any]:
                     # Se c'è una sola fattura con questo score → riconcilia
                     fatture_buone = [f for f, s in fatture_scored if s >= 10]
 
+                    # P1-1 (LOGICA §6): la conferma automatica a confidenza media
+                    # (importo + un solo altro criterio) NON deve marcare "pagata"
+                    # senza una verifica di DATA plausibile. Se la data del
+                    # movimento non è coerente con la fattura (pagamento prima
+                    # della fattura o distante oltre ~6 mesi) l'auto-conferma
+                    # viene declassata a suggerimento manuale.
+                    data_plausibile = True
                     if len(fatture_buone) == 1:
+                        _f0 = fatture_buone[0]
+                        _giorni = _giorni_pagamento_plausibili(
+                            data_ec, _f0.get("data") or _f0.get("invoice_date") or ""
+                        )
+                        if _giorni is not None and (_giorni < -5 or _giorni > 180):
+                            data_plausibile = False
+
+                    if len(fatture_buone) == 1 and data_plausibile:
                         fattura = fatture_buone[0]
                         match_found = True
                         match_type = "fattura_match_parziale"
