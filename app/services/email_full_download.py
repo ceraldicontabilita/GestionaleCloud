@@ -243,7 +243,7 @@ class EmailFullDownloader:
             "enel", "sorgenia", "fastweb", "tim", "wind",
             "bolletta", "utenza", "fornitura",
             # Documenti fiscali
-            "scadenza", "importo", "scheda tecnica",
+            "scadenza", "importo",
             "pago pa", "pagopa", "avviso pagamento",
             "cartella esattorial", "pignoramento",
             "inps", "inail", "contribut",
@@ -625,7 +625,7 @@ class EmailFullDownloader:
         - Scansiona TUTTE le cartelle (non solo INBOX)
         - Le FATTURE non vengono scaricate da Gmail (arrivano solo via PEC o import manuale)
         - Scarica: cedolini, F24, estratti conto, verbali, quietanze, bonifici,
-          cartelle esattoriali, schede tecniche, certificati medici
+          cartelle esattoriali, certificati medici
         - Filtra per parole chiave amministrative e mittenti attendibili
         """
         if not self.connect():

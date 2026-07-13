@@ -35,7 +35,6 @@ CATEGORIES = {
     "cartella_esattoriale": "Cartelle Esattoriali",
     "avviso_bonario": "Avvisi Bonari",
     "dichiarazione_iva": "Dichiarazioni IVA",
-    "scheda_tecnica": "Schede Tecniche",
     "satispay": "Satispay",
     "contributi_inps": "INPS",
     "certificazione_unica": "Certificazioni Uniche",
@@ -64,15 +63,6 @@ KEYWORD_CATEGORY_MAP = {
     "modello iva": "dichiarazione_iva",
     "iva annuale": "dichiarazione_iva",
     "lipe": "dichiarazione_iva",
-    # Schede Tecniche
-    "scheda tecnica": "scheda_tecnica",
-    "technical sheet": "scheda_tecnica",
-    "data sheet": "scheda_tecnica",
-    "product specification": "scheda_tecnica",
-    "specifica prodotto": "scheda_tecnica",
-    "scheda prodotto": "scheda_tecnica",
-    "informazioni tecniche": "scheda_tecnica",
-    "technical data": "scheda_tecnica",
     # Satispay, INPS, Certificazione Unica — prima mancanti: questi documenti
     # finivano sempre in "altro" (mostrato in Gestione Documenti come "Da
     # classificare"/"Altri"), segnalato dall'utente.
