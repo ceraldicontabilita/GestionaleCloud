@@ -381,6 +381,51 @@ async def get_archivio_fatture(
     return {"fatture": paginated, "total": total, "limit": limit, "skip": skip}
 
 
+# CSS iniettato per rendere la fattura leggibile e ADATTA allo schermo (mobile):
+# il foglio ASSO è pensato per A4/desktop e sforava a destra sui telefoni.
+_CSS_FATTURA_RESPONSIVE = (
+    "<meta name='viewport' content='width=device-width, initial-scale=1, maximum-scale=5'>"
+    "<style>"
+    "html{-webkit-text-size-adjust:100%;}"
+    "*,*::before,*::after{box-sizing:border-box;}"
+    "body{margin:0!important;padding:10px!important;max-width:100%;overflow-x:auto;}"
+    "img{max-width:100%;height:auto;}"
+    # I <table> ASSO hanno width in pixel fissi: max-width:100% li fa rientrare
+    # nello schermo (il CSS vince sull'attributo width) senza stirare le tabelle
+    # interne di layout; le celle mandano a capo il testo invece di tagliarlo.
+    "table{max-width:100%!important;border-collapse:collapse;}"
+    "td,th{word-break:break-word;overflow-wrap:anywhere;}"
+    "</style>"
+)
+
+
+def _rendi_fattura_responsive(html_str: str) -> str:
+    """Inserisce viewport + CSS responsive nell'HTML della fattura, sia quando
+    l'XSL emette gia' <html>/<head>, sia quando no. Cosi' la fattura si adatta
+    alla larghezza dello schermo invece di essere tagliata a destra."""
+    if not html_str:
+        return html_str
+    lower = html_str.lower()
+    if "<head" in lower:
+        # inserisci subito dopo l'apertura del tag <head ...>
+        idx = lower.find("<head")
+        chiusura = html_str.find(">", idx)
+        if chiusura != -1:
+            return html_str[:chiusura + 1] + _CSS_FATTURA_RESPONSIVE + html_str[chiusura + 1:]
+    if "<html" in lower:
+        idx = lower.find("<html")
+        chiusura = html_str.find(">", idx)
+        if chiusura != -1:
+            return (html_str[:chiusura + 1] + "<head>" + _CSS_FATTURA_RESPONSIVE
+                    + "</head>" + html_str[chiusura + 1:])
+    # Nessun <html>/<head>: avvolgi tutto in un documento completo.
+    return (
+        "<!DOCTYPE html><html><head><meta charset='UTF-8'>"
+        + _CSS_FATTURA_RESPONSIVE +
+        "</head><body>" + html_str + "</body></html>"
+    )
+
+
 async def view_fattura_assoinvoice(fattura_id: str) -> HTMLResponse:
     """
     Visualizza fattura nel formato ASSO Software (FoglioStileAssoSoftware.xsl).
@@ -456,15 +501,9 @@ async def view_fattura_assoinvoice(fattura_id: str) -> HTMLResponse:
             html_result = transform(xml_doc)
             html_str = LET.tostring(html_result, pretty_print=True, encoding="unicode")
 
-            # Inietta un wrapper minimal se l'XSL non emette <html>
-            if "<html" not in html_str[:200].lower():
-                html_str = (
-                    "<!DOCTYPE html><html><head>"
-                    "<meta charset='UTF-8'>"
-                    "<style>body{font-family:Arial,sans-serif;font-size:12px;margin:20px;}</style>"
-                    "</head><body>" + html_str + "</body></html>"
-                )
-
+            # Adatta l'HTML allo schermo (viewport + CSS responsive), sia che
+            # l'XSL emetta <html> sia che no.
+            html_str = _rendi_fattura_responsive(html_str)
             return HTMLResponse(content=html_str)
         except Exception as xsl_err:
             logger.warning(f"Errore XSLT per {fattura_id}: {xsl_err} — fallback HTML generico")
@@ -474,7 +513,7 @@ async def view_fattura_assoinvoice(fattura_id: str) -> HTMLResponse:
     if not righe and fattura.get("linee"):
         righe = fattura.get("linee", [])
     html = generate_invoice_html(fattura, righe)
-    return HTMLResponse(content=html)
+    return HTMLResponse(content=_rendi_fattura_responsive(html))
 
 
 async def download_pdf_allegato(fattura_id: str, allegato_id: str) -> Response:
