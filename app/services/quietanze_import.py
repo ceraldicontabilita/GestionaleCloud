@@ -25,12 +25,8 @@ COLL_F24_COMMERCIALISTA = "f24_unificato"  # unificato 13/07/2026
 COLL_F24_ALERTS = "f24_riconciliazione_alerts"
 COLL_CALENDARIO = "calendario_fiscale"
 
-# Codici ravvedimento da escludere dal confronto tributi
-CODICI_RAVVEDIMENTO = {
-    '8901', '8902', '8903', '8904', '8906', '8907', '8911',
-    '1989', '1990', '1991', '1992', '1993', '1994',
-    '1507', '1508', '1509', '1510', '1511', '1512',
-}
+# Codici ravvedimento da escludere dal confronto tributi — fonte unica condivisa.
+from app.constants.codici_ravvedimento import CODICI_RAVVEDIMENTO
 
 # Codici tributo → tipo di scadenza del calendario fiscale (app/routers/
 # fiscalita_italiana.py::genera_scadenze_anno). Servono a segnare COMPLETATA
@@ -309,11 +305,25 @@ async def importa_quietanza_bytes(
         # esiste SOLO la quietanza → mai ricostruire l'F24 in automatico.
         # La quietanza resta registrata come prova di pagamento non associata
         # (stato dedicato) e nasce un alert bloccante che chiede il modello.
-        risultato["warning"] = "F24 mancante — prego caricare il modello F24 corrispondente"
+        # P2-I: distinguo "nessun F24 del soggetto" (vero Caso 3) da "un F24 del
+        # soggetto esiste ma non combacia" (verificare importi/periodo).
+        cf_norm = (codice_fiscale or "").strip().upper()
+        esiste_f24_soggetto = bool(cf_norm) and any(
+            (((f.get("dati_generali", {}) or {}).get("codice_fiscale") or f.get("codice_fiscale") or "")
+             .strip().upper() == cf_norm)
+            for f in f24_da_pagare
+        )
+        if esiste_f24_soggetto:
+            warning = "F24 presente ma non corrispondente: verificare importi/periodo/codici."
+            stato = "f24_non_corrispondente"
+        else:
+            warning = "F24 mancante — prego caricare il modello F24 corrispondente."
+            stato = "f24_mancante"
+        risultato["warning"] = warning
         await db[COLL_QUIETANZE].update_one(
             {"id": file_id},
             {"$set": {
-                "stato_associazione": "f24_mancante",
+                "stato_associazione": stato,
                 "calcolo_fiscale_sospeso": True,
             }},
         )
@@ -323,9 +333,8 @@ async def importa_quietanza_bytes(
             "bloccante": True,
             "quietanza_id": file_id,
             "message": (
-                f"F24 mancante — prego caricare il modello F24 corrispondente. "
-                f"La quietanza {filename} (€{saldo_quietanza:.2f}) conferma il pagamento "
-                f"ma non sostituisce il modello: senza F24 la classificazione di codici, "
+                f"{warning} La quietanza {filename} (€{saldo_quietanza:.2f}) conferma il "
+                f"pagamento ma senza il modello F24 corretto la classificazione di codici, "
                 f"causali, crediti e periodi resta sospesa."
             ),
             "importo": saldo_quietanza,

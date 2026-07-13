@@ -1136,7 +1136,7 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/f24/f24_riconciliazione.py:1300`
+- File: `app/routers/f24/f24_riconciliazione.py:1296`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 

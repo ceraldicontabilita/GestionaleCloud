@@ -1,6 +1,13 @@
 """
 Sistema Alert F24 con Riconciliazione Bancaria
-Gestisce notifiche scadenze e riconciliazione pagamenti
+Gestisce notifiche scadenze e riconciliazione pagamenti.
+
+LEGACY / NON REGISTRATO (verifica 13/07/2026): questo modulo NON è importato né
+schedulato da nessuna parte. Opera per-utente sulla collezione `f24` (non
+canonica) con stato "paid" (il resto del sistema usa `f24_unificato` e stato
+"pagato"). Le scadenze F24 attive girano invece via
+`app/services/f24_scadenze_notifiche.py` (scheduler check_scadenze_f24_task).
+Non allineare/riusare senza prima ricablarlo sulle collezioni canoniche.
 """
 from datetime import datetime, timedelta, timezone
 from typing import List, Dict

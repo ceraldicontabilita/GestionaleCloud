@@ -61,12 +61,8 @@ TABELLA_ERARIO: Dict[str, Dict[str, str]] = {
              "nota": "Trattenuta al lavoratore, debito verso il Comune"},
 }
 
-# Codici sanzioni/interessi da ravvedimento (coerenti col motore quietanze)
-CODICI_RAVVEDIMENTO = {
-    "8901", "8902", "8903", "8904", "8906", "8907", "8911",
-    "1989", "1990", "1991", "1992", "1993", "1994",
-    "1507", "1508", "1509", "1510", "1511", "1512",
-}
+# Codici sanzioni/interessi da ravvedimento — fonte unica condivisa.
+from app.constants.codici_ravvedimento import CODICI_RAVVEDIMENTO
 
 # ── Causali INPS (§9) ──────────────────────────────────────────────────────
 CAUSALI_INPS: Dict[str, Dict[str, str]] = {

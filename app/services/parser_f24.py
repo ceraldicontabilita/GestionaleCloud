@@ -75,8 +75,8 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
         "codici_ravvedimento": []
     }
     
-    CODICI_RAVVEDIMENTO = ['8901', '8902', '8903', '8904', '8906', '8907', '8911', '8913', '8918', '8926', '8929', '1990', '1991', '1993', '1994']
-    
+    from app.constants.codici_ravvedimento import CODICI_RAVVEDIMENTO
+
     try:
         if pdf_content:
             doc = fitz.open(stream=pdf_content, filetype="pdf")

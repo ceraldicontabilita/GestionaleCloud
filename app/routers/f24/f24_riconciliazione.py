@@ -1020,14 +1020,10 @@ async def riconcilia_tutto() -> Dict[str, Any]:
     - 1989, 1990, 1991, 1992, 1993, 1994 (interessi)
     """
     db = Database.get_db()
-    
-    # Codici ravvedimento/interessi da escludere dal confronto principale
-    CODICI_RAVVEDIMENTO = {
-        '8901', '8902', '8903', '8904', '8906', '8907', '8911',  # Ravvedimento
-        '1989', '1990', '1991', '1992', '1993', '1994',  # Interessi
-        '1507', '1508', '1509', '1510', '1511', '1512',  # Interessi IMU/TASI
-    }
-    
+
+    # Codici ravvedimento/interessi da escludere dal confronto — fonte unica.
+    from app.constants.codici_ravvedimento import CODICI_RAVVEDIMENTO
+
     # Recupera tutti gli F24 da pagare
     f24_da_pagare = await db[COLL_F24_COMMERCIALISTA].find(
         {"status": "da_pagare"},

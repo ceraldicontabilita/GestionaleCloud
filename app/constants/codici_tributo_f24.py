@@ -53,21 +53,22 @@ CODICI_TRIBUTO_F24 = {
         "sezione": "REGIONI"
     },
     
-    # ==================== IMU ====================
+    # ============ Addizionali comunali IRPEF (sezione erario/regioni-enti locali) ============
+    # P2-G: erano etichettate "IMU" ma sono addizionali comunali IRPEF, non IMU.
     "3847": {
         "descrizione": "Addizionale comunale IRPEF - acconto",
         "tipo": "misto",
-        "sezione": "IMU"
+        "sezione": "ADDIZIONALE_COMUNALE"
     },
     "3848": {
         "descrizione": "Addizionale comunale IRPEF - saldo",
         "tipo": "misto",
-        "sezione": "IMU"
+        "sezione": "ADDIZIONALE_COMUNALE"
     },
     "3797": {
         "descrizione": "Addizionale comunale IRPEF rimborsata",
         "tipo": "credito",
-        "sezione": "IMU"
+        "sezione": "ADDIZIONALE_COMUNALE"
     },
 }
 
