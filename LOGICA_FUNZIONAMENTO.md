@@ -144,13 +144,22 @@ Se il parser fallisce: stato di errore + avviso, il documento resta consultabile
 7. **Centri di costo (Learning Machine)**: all'import ogni fattura viene
    classificata dal motore unico che consulta PRIMA ciò che hai insegnato
    (fornitore → centro di costo/keywords nella pagina Learning Machine) e
-   solo come ripiego la tabella statica per il settore bar/pasticceria.
+   solo come ripiego la tabella statica dei settori.
+   I **settori operativi** sono quattro: **Bar/Caffetteria (CDC-01),
+   Pasticceria (CDC-02), Gelateria (CDC-03), Rosticceria (CDC-04)**; i costi di
+   supporto (Personale/Amministrazione/Marketing) e di struttura (affitto,
+   utenze, manutenzione) stanno su centri dedicati (CDC-90/91/92, CDC-99).
    Il campo `classificazione_fonte` dice da dove viene la scelta
    (keywords personalizzate / keywords apprese / tabella statica).
    "Riclassifica Fatture" applica le tue configurazioni a tutte le fatture
    ancora in "Altri costi non classificati" O senza alcun centro di costo;
    "DA CLASSIFICARE" conta entrambe le condizioni, "CONFIGURATI" conta solo
    i fornitori con una configurazione reale.
+   **Ribaltamento (contabilità analitica)**: i costi di supporto e struttura
+   vengono ribaltati sui quattro settori **in proporzione ai ricavi** di ciascun
+   settore. I ricavi per settore non sono tracciati: di default sono stimati
+   (proporzionali ai costi diretti, con avviso "stima"); puoi impostare le quote
+   reali con `POST /api/centri-costo/ribaltamento/quote-ricavo`.
 
 **Pagina Fornitori (anagrafica).**
 - La lista è a **pagine numerate** (1 · 2 · 3 …, 50 fornitori per pagina, barra sia

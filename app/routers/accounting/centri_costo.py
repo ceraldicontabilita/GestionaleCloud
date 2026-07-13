@@ -11,24 +11,33 @@ router = APIRouter()
 
 # ============== CENTRI DI COSTO ==============
 
-# Struttura standard TeamSystem per Bar/Pasticceria
+# Struttura centri di costo per i 4 settori operativi reali (scelta utente):
+# Bar/Caffetteria, Pasticceria, Gelateria, Rosticceria.
 CDC_STANDARD = {
-    # Centri Operativi (generano ricavi)
+    # Centri Operativi (generano ricavi) — i 4 settori reali
     "CDC-01": {"nome": "BAR / CAFFETTERIA", "tipo": "operativo", "descrizione": "Vendita caffè, bevande calde/fredde, snack"},
-    "CDC-02": {"nome": "PASTICCERIA", "tipo": "operativo", "descrizione": "Vendita dolci, torte, pasticcini"},
-    "CDC-03": {"nome": "LABORATORIO", "tipo": "operativo", "descrizione": "Produzione interna dolci e semilavorati"},
-    "CDC-04": {"nome": "ASPORTO / DELIVERY", "tipo": "operativo", "descrizione": "Vendite da asporto e consegne"},
-    
+    "CDC-02": {"nome": "PASTICCERIA", "tipo": "operativo", "descrizione": "Produzione e vendita dolci, torte, pasticcini"},
+    "CDC-03": {"nome": "GELATERIA", "tipo": "operativo", "descrizione": "Produzione e vendita gelato, sorbetti, semifreddi"},
+    "CDC-04": {"nome": "ROSTICCERIA", "tipo": "operativo", "descrizione": "Produzione e vendita gastronomia calda/fredda, tavola calda"},
+
     # Centri di Supporto (costi da ribaltare)
     "CDC-90": {"nome": "PERSONALE", "tipo": "supporto", "descrizione": "Costi del personale da ribaltare"},
     "CDC-91": {"nome": "AMMINISTRAZIONE", "tipo": "supporto", "descrizione": "Costi amministrativi e gestionali"},
     "CDC-92": {"nome": "MARKETING", "tipo": "supporto", "descrizione": "Pubblicità, promozioni, social"},
-    
+
     # Centro Struttura (costi fissi)
     "CDC-99": {"nome": "COSTI GENERALI / STRUTTURA", "tipo": "struttura", "descrizione": "Affitto, utenze, manutenzione"}
 }
 
-# Mapping automatico categoria_contabile → centro di costo
+# Elenco dei centri operativi (i settori che generano ricavi), usato dal
+# ribaltamento e dai margini.
+CDC_OPERATIVI = ("CDC-01", "CDC-02", "CDC-03", "CDC-04")
+# Centri i cui costi vengono ribaltati sui settori operativi (supporto + struttura).
+CDC_DA_RIBALTARE = ("CDC-90", "CDC-91", "CDC-92", "CDC-99")
+
+# Mapping automatico categoria_contabile → centro di costo (4 settori reali).
+# Le materie prime condivise sono assegnate al settore che ne è consumatore
+# prevalente; casi ambigui puntano al settore più probabile (rivedibile).
 CATEGORIA_TO_CDC = {
     # BAR / CAFFETTERIA
     "caffe": "CDC-01",
@@ -38,28 +47,32 @@ CATEGORIA_TO_CDC = {
     "vino": "CDC-01",
     "bibite": "CDC-01",
     "snack": "CDC-01",
-    
-    # PASTICCERIA
+
+    # PASTICCERIA (dolci + materie prime prevalenti da pasticceria)
     "pasticceria": "CDC-02",
     "dolci": "CDC-02",
     "torte": "CDC-02",
-    "gelato": "CDC-02",
-    
-    # LABORATORIO (materie prime per produzione)
-    "alimentari": "CDC-03",
-    "latticini": "CDC-03",
-    "uova": "CDC-03",
-    "farine": "CDC-03",
-    "zucchero": "CDC-03",
-    "surgelati": "CDC-03",
+    "farine": "CDC-02",
+    "zucchero": "CDC-02",
+    "uova": "CDC-02",
+    "cioccolato": "CDC-02",
+    "latticini": "CDC-02",
+
+    # GELATERIA
+    "gelato": "CDC-03",
     "frutta": "CDC-03",
-    "cioccolato": "CDC-03",
-    
-    # ASPORTO / DELIVERY
+
+    # ROSTICCERIA (gastronomia + materie prime salate + confezionamento asporto)
+    "gastronomia": "CDC-04",
+    "salumi": "CDC-04",
+    "carne": "CDC-04",
+    "pesce": "CDC-04",
+    "alimentari": "CDC-04",
+    "surgelati": "CDC-04",
     "imballaggi": "CDC-04",
     "packaging": "CDC-04",
     "delivery": "CDC-04",
-    
+
     # PERSONALE
     "stipendi": "CDC-90",
     "contributi": "CDC-90",
@@ -505,7 +518,7 @@ async def get_utile_per_cdc(anno: int = Query(...)) -> Dict[str, Any]:
     ]
     costi_per_cdc = await db[Collections.INVOICES].aggregate(costi_pipeline).to_list(20)
     
-    # Ricavi totali (per ora tutti su CDC-01 e CDC-02)
+    # Ricavi totali (non tracciati per settore: ripartiti come stima più sotto)
     ricavi_result = await db[Collections.CORRISPETTIVI].aggregate([
         {"$match": {"data": {"$gte": date_start, "$lte": date_end}}},
         {"$group": {"_id": None, "totale": {"$sum": "$totale"}}}
@@ -565,61 +578,43 @@ async def get_utile_per_cdc(anno: int = Query(...)) -> Dict[str, Any]:
 
 # ============== RIBALTAMENTO CDC ==============
 
-# Chiavi di ribaltamento standard per i centri di supporto.
-# NB: i codici devono coincidere con i centri "supporto" di CDC_STANDARD
-# (CDC-90 Personale, CDC-91 Amministrazione, CDC-92 Marketing, CDC-99
-# struttura), altrimenti nessun costo verrebbe intercettato. I vecchi codici
-# CDC-05/06/07 non esistono piu' e CDC-03/04 sono ora centri OPERATIVI
-# (Laboratorio/Asporto): ribaltarli redistribuirebbe per errore costi
-# operativi. Le percentuali dei criteri restano quelle configurate (valori
-# parametrici: non modificati d'iniziativa).
-CHIAVI_RIBALTAMENTO = {
-    "CDC-90": {  # Personale (era CDC-05)
-        "descrizione": "Costo personale ribaltato sui centri operativi",
-        "criteri": {
-            "CDC-01": 0.50,  # 50% Bar
-            "CDC-02": 0.50   # 50% Pasticceria
-        }
-    },
-    "CDC-91": {  # Amministrazione (era CDC-06)
-        "descrizione": "Costi amministrativi ribaltati sui centri operativi",
-        "criteri": {
-            "CDC-01": 0.50,
-            "CDC-02": 0.50
-        }
-    },
-    "CDC-92": {  # Marketing (era CDC-07)
-        "descrizione": "Marketing ribaltato sui centri operativi",
-        "criteri": {
-            "CDC-01": 0.45,
-            "CDC-02": 0.55
-        }
-    }
-}
+# Criterio di ribaltamento (scelta utente): i costi di supporto (CDC-90/91/92) e
+# di struttura (CDC-99) vengono ribaltati sui settori operativi in PROPORZIONE AI
+# RICAVI di ciascun settore. Non ci sono più percentuali fisse configurate: la
+# ripartizione segue i ricavi per settore. Poiché i ricavi non sono tracciati per
+# settore, le quote-ricavo sono una STIMA (proxy sui costi diretti, o override
+# manuale in `config_ribaltamento`): il risultato è etichettato come stima.
 
 
-@router.get("/ribaltamento/chiavi")
-async def get_chiavi_ribaltamento() -> Dict[str, Any]:
-    """Restituisce le chiavi di ribaltamento configurate."""
-    return {
-        "chiavi": CHIAVI_RIBALTAMENTO,
-        "centri_supporto": [k for k in CHIAVI_RIBALTAMENTO.keys()],
-        "centri_operativi": ["CDC-01", "CDC-02"]
-    }
+async def _quote_ricavo_per_settore(db) -> Optional[Dict[str, float]]:
+    """Override manuale delle quote-ricavo per settore (somma ~1), se configurato
+    in `config_ribaltamento`. None se assente."""
+    conf = await db["config_ribaltamento"].find_one({"_id": "quote_ricavo_settori"})
+    if not conf:
+        return None
+    quote = {k: float(v) for k, v in (conf.get("quote") or {}).items()
+             if k in CDC_OPERATIVI and float(v) > 0}
+    tot = sum(quote.values())
+    if tot <= 0:
+        return None
+    return {k: v / tot for k, v in quote.items()}
 
 
 @router.post("/ribaltamento/calcola")
 async def calcola_ribaltamento(anno: int = Query(...)) -> Dict[str, Any]:
-    """
-    Calcola il ribaltamento dei costi dai centri di supporto ai centri operativi.
-    Questo è il cuore della contabilità analitica TeamSystem.
-    """
+    """Ribalta i costi di supporto e struttura sui settori operativi in
+    proporzione ai ricavi di ciascun settore (scelta utente).
+
+    I ricavi per settore non sono tracciati: si usano le quote configurate in
+    `config_ribaltamento` (override manuale) oppure, in mancanza, una stima
+    proporzionale ai costi diretti di ciascun settore. Il campo `ricavi_stima`
+    segnala quando la ripartizione è stimata."""
     db = Database.get_db()
-    
+
     date_start = f"{anno}-01-01"
     date_end = f"{anno}-12-31"
-    
-    # 1. Recupera i costi per centro di costo
+
+    # 1. Costi per centro di costo
     costi_pipeline = [
         {"$match": {"invoice_date": {"$gte": date_start, "$lte": date_end}}},
         {"$group": {
@@ -630,72 +625,84 @@ async def calcola_ribaltamento(anno: int = Query(...)) -> Dict[str, Any]:
     ]
     costi_per_cdc = await db[Collections.INVOICES].aggregate(costi_pipeline).to_list(50)
     costi_dict = {c["_id"]: c["totale"] for c in costi_per_cdc}
-    
-    # 2. Inizializza i totali per i centri operativi (prima del ribaltamento)
-    costi_diretti = {
-        "CDC-01": costi_dict.get("CDC-01", 0),
-        "CDC-02": costi_dict.get("CDC-02", 0)
-    }
-    
-    # 3. Calcola i ribaltamenti
-    ribaltamenti = []
-    totale_ribaltato = {"CDC-01": 0, "CDC-02": 0}
-    
-    for cdc_supporto, config in CHIAVI_RIBALTAMENTO.items():
-        costo_supporto = costi_dict.get(cdc_supporto, 0)
-        if costo_supporto == 0:
-            continue
-            
-        for cdc_dest, quota in config["criteri"].items():
-            importo = costo_supporto * quota
-            totale_ribaltato[cdc_dest] = totale_ribaltato.get(cdc_dest, 0) + importo
-            
-            ribaltamenti.append({
-                "da_cdc": cdc_supporto,
-                "da_cdc_nome": CDC_STANDARD.get(cdc_supporto, {}).get("nome", cdc_supporto),
-                "a_cdc": cdc_dest,
-                "a_cdc_nome": CDC_STANDARD.get(cdc_dest, {}).get("nome", cdc_dest),
-                "quota_percentuale": quota * 100,
-                "importo_origine": round(costo_supporto, 2),
-                "importo_ribaltato": round(importo, 2)
-            })
-    
-    # 4. Calcola i costi pieni (diretti + ribaltati)
-    costi_pieni = {
-        "CDC-01": costi_diretti["CDC-01"] + totale_ribaltato.get("CDC-01", 0),
-        "CDC-02": costi_diretti["CDC-02"] + totale_ribaltato.get("CDC-02", 0)
-    }
-    
-    # 5. Recupera i ricavi per calcolare il margine
+
+    # 2. Costi diretti dei settori operativi
+    costi_diretti = {cdc: costi_dict.get(cdc, 0) for cdc in CDC_OPERATIVI}
+
+    # 3. Ricavi totali e quote-ricavo per settore
     ricavi_result = await db[Collections.CORRISPETTIVI].aggregate([
         {"$match": {"data": {"$gte": date_start, "$lte": date_end}}},
         {"$group": {"_id": None, "totale": {"$sum": "$totale"}}}
     ]).to_list(1)
     ricavi_totali = ricavi_result[0]["totale"] if ricavi_result else 0
-    
-    # Stima ricavi per CDC (da implementare con dati reali)
-    ricavi_cdc = {
-        "CDC-01": ricavi_totali * 0.40,  # 40% Bar
-        "CDC-02": ricavi_totali * 0.60   # 60% Pasticceria
-    }
-    
-    # 6. Calcola margini
+
+    quote_override = await _quote_ricavo_per_settore(db)
+    if quote_override:
+        quote_ricavo = {cdc: quote_override.get(cdc, 0.0) for cdc in CDC_OPERATIVI}
+        ricavi_stima = False
+    else:
+        # Proxy: ricavi per settore ∝ costi diretti (unico segnale di attività
+        # disponibile per settore). Se non ci sono costi diretti, ripartizione equa.
+        tot_diretti = sum(costi_diretti.values())
+        if tot_diretti > 0:
+            quote_ricavo = {cdc: costi_diretti[cdc] / tot_diretti for cdc in CDC_OPERATIVI}
+        else:
+            quote_ricavo = {cdc: 1.0 / len(CDC_OPERATIVI) for cdc in CDC_OPERATIVI}
+        ricavi_stima = True
+    ricavi_cdc = {cdc: ricavi_totali * quote_ricavo[cdc] for cdc in CDC_OPERATIVI}
+
+    # 4. Ribalta supporto + struttura in proporzione ai ricavi
+    ribaltamenti = []
+    totale_ribaltato = {cdc: 0.0 for cdc in CDC_OPERATIVI}
+    for cdc_fonte in CDC_DA_RIBALTARE:
+        costo_fonte = costi_dict.get(cdc_fonte, 0)
+        if costo_fonte == 0:
+            continue
+        for cdc_dest in CDC_OPERATIVI:
+            quota = quote_ricavo[cdc_dest]
+            if quota <= 0:
+                continue
+            importo = costo_fonte * quota
+            totale_ribaltato[cdc_dest] += importo
+            ribaltamenti.append({
+                "da_cdc": cdc_fonte,
+                "da_cdc_nome": CDC_STANDARD.get(cdc_fonte, {}).get("nome", cdc_fonte),
+                "a_cdc": cdc_dest,
+                "a_cdc_nome": CDC_STANDARD.get(cdc_dest, {}).get("nome", cdc_dest),
+                "quota_percentuale": round(quota * 100, 1),
+                "importo_origine": round(costo_fonte, 2),
+                "importo_ribaltato": round(importo, 2)
+            })
+
+    # 5. Costi pieni (diretti + ribaltati) e margini per settore
+    costi_pieni = {cdc: costi_diretti[cdc] + totale_ribaltato[cdc] for cdc in CDC_OPERATIVI}
     margini = {}
-    for cdc in ["CDC-01", "CDC-02"]:
+    for cdc in CDC_OPERATIVI:
+        r = ricavi_cdc[cdc]
         margini[cdc] = {
             "cdc": cdc,
             "nome": CDC_STANDARD.get(cdc, {}).get("nome", cdc),
-            "ricavi": round(ricavi_cdc[cdc], 2),
+            "ricavi": round(r, 2),
+            "quota_ricavo_percentuale": round(quote_ricavo[cdc] * 100, 1),
             "costi_diretti": round(costi_diretti[cdc], 2),
-            "costi_ribaltati": round(totale_ribaltato.get(cdc, 0), 2),
+            "costi_ribaltati": round(totale_ribaltato[cdc], 2),
             "costi_pieni": round(costi_pieni[cdc], 2),
-            "margine_diretto": round(ricavi_cdc[cdc] - costi_diretti[cdc], 2),
-            "margine_pieno": round(ricavi_cdc[cdc] - costi_pieni[cdc], 2),
-            "margine_percentuale": round((ricavi_cdc[cdc] - costi_pieni[cdc]) / ricavi_cdc[cdc] * 100, 1) if ricavi_cdc[cdc] > 0 else 0
+            "margine_diretto": round(r - costi_diretti[cdc], 2),
+            "margine_pieno": round(r - costi_pieni[cdc], 2),
+            "margine_percentuale": round((r - costi_pieni[cdc]) / r * 100, 1) if r > 0 else 0,
         }
-    
+
     return {
         "anno": anno,
+        "criterio": "proporzionale_ai_ricavi",
+        "ricavi_stima": ricavi_stima,
+        "avviso_ricavi": (
+            "Ricavi per settore stimati (proporzionali ai costi diretti): i ricavi "
+            "reali non sono tracciati per settore. Configura le quote reali con "
+            "/ribaltamento/quote-ricavo per un ribaltamento esatto."
+            if ricavi_stima else
+            "Ribaltamento basato sulle quote-ricavo per settore configurate."
+        ),
         "ribaltamenti": ribaltamenti,
         "totali_ribaltati": {k: round(v, 2) for k, v in totale_ribaltato.items()},
         "margini_per_cdc": list(margini.values()),
@@ -708,18 +715,21 @@ async def calcola_ribaltamento(anno: int = Query(...)) -> Dict[str, Any]:
     }
 
 
-@router.post("/ribaltamento/aggiorna-chiavi")
-async def aggiorna_chiavi_ribaltamento(chiavi: Dict[str, Any] = Body(...)) -> Dict[str, str]:
-    """
-    Aggiorna le chiavi di ribaltamento.
-    Le chiavi vengono salvate nel database per persistenza.
-    """
+@router.post("/ribaltamento/quote-ricavo")
+async def imposta_quote_ricavo(quote: Dict[str, float] = Body(...)) -> Dict[str, Any]:
+    """Imposta le quote-ricavo reali per settore (es. {"CDC-01": 0.4, "CDC-03": 0.3,
+    ...}) usate dal ribaltamento proporzionale. Le quote vengono normalizzate a 1.
+    Senza questa configurazione il ribaltamento usa una stima sui costi diretti."""
     db = Database.get_db()
-    
+    valide = {k: float(v) for k, v in (quote or {}).items()
+              if k in CDC_OPERATIVI and float(v) >= 0}
+    if not valide or sum(valide.values()) <= 0:
+        raise HTTPException(status_code=400,
+                            detail="Fornire almeno una quota > 0 per un settore operativo valido")
     await db["config_ribaltamento"].update_one(
-        {"_id": "chiavi_ribaltamento"},
-        {"$set": {"chiavi": chiavi, "updated_at": datetime.now(timezone.utc).isoformat()}},
+        {"_id": "quote_ricavo_settori"},
+        {"$set": {"quote": valide, "updated_at": datetime.now(timezone.utc).isoformat()}},
         upsert=True
     )
-    
-    return {"message": "Chiavi di ribaltamento aggiornate"}
+    return {"success": True, "quote_salvate": valide,
+            "settori": {cdc: CDC_STANDARD[cdc]["nome"] for cdc in CDC_OPERATIVI}}

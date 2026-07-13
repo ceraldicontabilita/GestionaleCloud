@@ -5,7 +5,7 @@ Generato da `scripts/audit_static.py`.
 
 ## Sintesi
 
-- P1: 307
+- P1: 308
 - P2: 17
 - P3: 54
 - INFO: 16
@@ -110,13 +110,13 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/accounting/centri_costo.py:197`
+- File: `app/routers/accounting/centri_costo.py:210`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/accounting/centri_costo.py:611`
+- File: `app/routers/accounting/centri_costo.py:603`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
@@ -962,7 +962,13 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/email_download.py:1050`
+- File: `app/routers/email_download.py:917`
+
+- Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
+
+### P1 - body
+
+- File: `app/routers/email_download.py:1061`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
@@ -2030,19 +2036,19 @@ Generato da `scripts/audit_static.py`.
 
 ### P2 - timezone
 
-- File: `app/services/verbali_gmail_scanner.py:268`
+- File: `app/services/verbali_gmail_scanner.py:262`
 
 - Dettaglio: Sostituire con datetime.now(timezone.utc).
 
 ### P2 - timezone
 
-- File: `app/services/verbali_gmail_scanner.py:289`
+- File: `app/services/verbali_gmail_scanner.py:283`
 
 - Dettaglio: Sostituire con datetime.now(timezone.utc).
 
 ### P2 - timezone
 
-- File: `app/services/verbali_gmail_scanner.py:303`
+- File: `app/services/verbali_gmail_scanner.py:297`
 
 - Dettaglio: Sostituire con datetime.now(timezone.utc).
 
@@ -2090,7 +2096,7 @@ Generato da `scripts/audit_static.py`.
 
 ### P3 - fetch-race
 
-- File: `frontend/src/components/layout/TopNav.jsx:360`
+- File: `frontend/src/components/layout/TopNav.jsx:364`
 
 - Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.
 
