@@ -1,6 +1,7 @@
 """
 Warehouse repository for inventory and stock management.
 """
+import re
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
 import logging
@@ -274,9 +275,9 @@ class WarehouseRepository(BaseRepository):
             "user_id": user_id,
             "is_active": True,
             "$or": [
-                {"product_name": {"$regex": query, "$options": "i"}},
-                {"product_code": {"$regex": query, "$options": "i"}},
-                {"product_description": {"$regex": query, "$options": "i"}}
+                {"product_name": {"$regex": re.escape(query), "$options": "i"}},
+                {"product_code": {"$regex": re.escape(query), "$options": "i"}},
+                {"product_description": {"$regex": re.escape(query), "$options": "i"}}
             ]
         }
         

@@ -286,8 +286,8 @@ async def cerca_dipendente_per_nome(db, nome: str) -> Optional[Dict[str, Any]]:
     # Prima cerca match esatto
     dipendente = await db.employees.find_one(
         {"$or": [
-            {"nome_completo": {"$regex": nome, "$options": "i"}},
-            {"full_name": {"$regex": nome, "$options": "i"}},
+            {"nome_completo": {"$regex": re.escape(nome), "$options": "i"}},
+            {"full_name": {"$regex": re.escape(nome), "$options": "i"}},
         ]},
         {"_id": 0, "id": 1, "nome_completo": 1, "full_name": 1, "iban": 1}
     )

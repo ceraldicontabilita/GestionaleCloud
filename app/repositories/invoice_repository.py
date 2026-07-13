@@ -1,6 +1,7 @@
 """
 Invoice repository for passive invoices management.
 """
+import re
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone, date
 import logging
@@ -371,8 +372,8 @@ class InvoiceRepository(BaseRepository):
             "user_id": user_id,
             "status": {"$ne": "deleted"},
             "$or": [
-                {"supplier_name": {"$regex": query, "$options": "i"}},
-                {"invoice_number": {"$regex": query, "$options": "i"}}
+                {"supplier_name": {"$regex": re.escape(query), "$options": "i"}},
+                {"invoice_number": {"$regex": re.escape(query), "$options": "i"}}
             ]
         }
         

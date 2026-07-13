@@ -13,6 +13,7 @@ from fastapi import APIRouter, HTTPException, Query, Body, UploadFile, File
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 import uuid
+import re
 import logging
 
 from datetime import timezone
@@ -751,10 +752,10 @@ async def global_search_public(
     try:
         invoice_results = await db[Collections.INVOICES].find(
             {"$or": [
-                {"cedente_denominazione": {"$regex": q, "$options": "i"}},
-                {"supplier_name": {"$regex": q, "$options": "i"}},
-                {"numero_fattura": {"$regex": q, "$options": "i"}},
-                {"invoice_number": {"$regex": q, "$options": "i"}}
+                {"cedente_denominazione": {"$regex": re.escape(q), "$options": "i"}},
+                {"supplier_name": {"$regex": re.escape(q), "$options": "i"}},
+                {"numero_fattura": {"$regex": re.escape(q), "$options": "i"}},
+                {"invoice_number": {"$regex": re.escape(q), "$options": "i"}}
             ]},
             {"_id": 0, "id": 1, "invoice_key": 1, "numero_fattura": 1, "invoice_number": 1, 
              "cedente_denominazione": 1, "supplier_name": 1, "importo_totale": 1, "total_amount": 1,
@@ -783,17 +784,17 @@ async def global_search_public(
         if words:
             # Crea pattern che cerca ogni parola
             word_patterns = [{"$or": [
-                {"denominazione": {"$regex": w, "$options": "i"}},
-                {"name": {"$regex": w, "$options": "i"}}
+                {"denominazione": {"$regex": re.escape(w), "$options": "i"}},
+                {"name": {"$regex": re.escape(w), "$options": "i"}}
             ]} for w in words]
             
             supplier_query = {"$and": word_patterns} if len(word_patterns) > 1 else word_patterns[0]
         else:
             supplier_query = {"$or": [
-                {"denominazione": {"$regex": q, "$options": "i"}},
-                {"name": {"$regex": q, "$options": "i"}},
-                {"partita_iva": {"$regex": q, "$options": "i"}},
-                {"vat_number": {"$regex": q, "$options": "i"}}
+                {"denominazione": {"$regex": re.escape(q), "$options": "i"}},
+                {"name": {"$regex": re.escape(q), "$options": "i"}},
+                {"partita_iva": {"$regex": re.escape(q), "$options": "i"}},
+                {"vat_number": {"$regex": re.escape(q), "$options": "i"}}
             ]}
         
         supplier_results = await db[Collections.SUPPLIERS].find(
@@ -812,8 +813,8 @@ async def global_search_public(
             try:
                 pipeline = [
                     {"$match": {"$or": [
-                        {"cedente_denominazione": {"$regex": nome[:20], "$options": "i"}},
-                        {"supplier_name": {"$regex": nome[:20], "$options": "i"}},
+                        {"cedente_denominazione": {"$regex": re.escape(nome[:20]), "$options": "i"}},
+                        {"supplier_name": {"$regex": re.escape(nome[:20]), "$options": "i"}},
                         {"supplier_id": sup_id}
                     ]}},
                     {"$group": {
@@ -848,10 +849,10 @@ async def global_search_public(
     try:
         product_results = await db[Collections.WAREHOUSE_PRODUCTS].find(
             {"$or": [
-                {"nome": {"$regex": q, "$options": "i"}},
-                {"name": {"$regex": q, "$options": "i"}},
-                {"codice": {"$regex": q, "$options": "i"}},
-                {"code": {"$regex": q, "$options": "i"}}
+                {"nome": {"$regex": re.escape(q), "$options": "i"}},
+                {"name": {"$regex": re.escape(q), "$options": "i"}},
+                {"codice": {"$regex": re.escape(q), "$options": "i"}},
+                {"code": {"$regex": re.escape(q), "$options": "i"}}
             ]},
             {"_id": 0, "id": 1, "nome": 1, "name": 1, "codice": 1, "code": 1, 
              "giacenza": 1, "quantity": 1, "prezzo": 1, "price": 1}
@@ -876,11 +877,11 @@ async def global_search_public(
     try:
         employee_results = await db[Collections.EMPLOYEES].find(
             {"$or": [
-                {"nome": {"$regex": q, "$options": "i"}},
-                {"cognome": {"$regex": q, "$options": "i"}},
-                {"name": {"$regex": q, "$options": "i"}},
-                {"codice_fiscale": {"$regex": q, "$options": "i"}},
-                {"fiscal_code": {"$regex": q, "$options": "i"}}
+                {"nome": {"$regex": re.escape(q), "$options": "i"}},
+                {"cognome": {"$regex": re.escape(q), "$options": "i"}},
+                {"name": {"$regex": re.escape(q), "$options": "i"}},
+                {"codice_fiscale": {"$regex": re.escape(q), "$options": "i"}},
+                {"fiscal_code": {"$regex": re.escape(q), "$options": "i"}}
             ]},
             {"_id": 0, "id": 1, "nome": 1, "cognome": 1, "name": 1, 
              "codice_fiscale": 1, "fiscal_code": 1, "mansione": 1, "role": 1}

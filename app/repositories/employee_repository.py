@@ -2,6 +2,7 @@
 Employee repository.
 Data access layer for employee operations.
 """
+import re
 from typing import List, Dict, Any, Optional
 from datetime import date, timedelta
 import logging
@@ -147,10 +148,10 @@ class EmployeeRepository(BaseRepository):
             filter_query={
                 "user_id": user_id,
                 "$or": [
-                    {"full_name": {"$regex": query, "$options": "i"}},
-                    {"first_name": {"$regex": query, "$options": "i"}},
-                    {"last_name": {"$regex": query, "$options": "i"}},
-                    {"codice_fiscale": {"$regex": query, "$options": "i"}}
+                    {"full_name": {"$regex": re.escape(query), "$options": "i"}},
+                    {"first_name": {"$regex": re.escape(query), "$options": "i"}},
+                    {"last_name": {"$regex": re.escape(query), "$options": "i"}},
+                    {"codice_fiscale": {"$regex": re.escape(query), "$options": "i"}}
                 ]
             },
             skip=skip,

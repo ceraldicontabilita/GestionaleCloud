@@ -302,7 +302,7 @@ async def get_product_catalog(db, category: Optional[str] = None, search: Option
     """
     query = {}
     if category:
-        query["categoria"] = {"$regex": category, "$options": "i"}
+        query["categoria"] = {"$regex": re.escape(category), "$options": "i"}
     
     # --- 1. Cerca in warehouse_stocks (giacenze reali) ---
     stock_query = dict(query)
@@ -315,13 +315,13 @@ async def get_product_catalog(db, category: Optional[str] = None, search: Option
             search_terms = search.split()
             if len(search_terms) == 1:
                 stock_query["$or"] = [
-                    {"descrizione": {"$regex": search, "$options": "i"}},
-                    {"codice": {"$regex": search, "$options": "i"}},
+                    {"descrizione": {"$regex": re.escape(search), "$options": "i"}},
+                    {"codice": {"$regex": re.escape(search), "$options": "i"}},
                 ]
             else:
                 conditions = []
                 for term in search_terms:
-                    conditions.append({"descrizione": {"$regex": term, "$options": "i"}})
+                    conditions.append({"descrizione": {"$regex": re.escape(term), "$options": "i"}})
                 stock_query["$and"] = conditions
     
     stocks = await db["warehouse_stocks"].find(stock_query, {"_id": 0}).limit(500).to_list(500)
@@ -350,7 +350,7 @@ async def get_product_catalog(db, category: Optional[str] = None, search: Option
     if len(result) == 0:
         diz_query = {}
         if category:
-            diz_query["ingrediente_canonico"] = {"$regex": category, "$options": "i"}
+            diz_query["ingrediente_canonico"] = {"$regex": re.escape(category), "$options": "i"}
         if search:
             if exact:
                 diz_query["$or"] = [
@@ -361,13 +361,13 @@ async def get_product_catalog(db, category: Optional[str] = None, search: Option
                 search_terms = search.split()
                 if len(search_terms) == 1:
                     diz_query["$or"] = [
-                        {"nome_originale": {"$regex": search, "$options": "i"}},
-                        {"nome_normalizzato": {"$regex": search, "$options": "i"}},
+                        {"nome_originale": {"$regex": re.escape(search), "$options": "i"}},
+                        {"nome_normalizzato": {"$regex": re.escape(search), "$options": "i"}},
                     ]
                 else:
                     conditions = []
                     for term in search_terms:
-                        conditions.append({"nome_originale": {"$regex": term, "$options": "i"}})
+                        conditions.append({"nome_originale": {"$regex": re.escape(term), "$options": "i"}})
                     diz_query["$and"] = conditions
         
         diz_products = await db["dizionario_prodotti"].find(diz_query, {"_id": 0}).limit(500).to_list(500)

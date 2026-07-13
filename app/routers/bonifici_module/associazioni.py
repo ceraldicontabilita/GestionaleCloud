@@ -3,6 +3,7 @@ Endpoint aggiuntivi Archivio Bonifici.
 Gestisce associazioni fatture/salari ai bonifici, sync IBAN, ricerche per dipendente.
 """
 
+import re
 from fastapi import APIRouter, HTTPException, Query
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
@@ -355,7 +356,7 @@ async def get_bonifici_dipendente(dipendente_id: str) -> List[Dict[str, Any]]:
     bonifici = await db["archivio_bonifici"].find({
         "$or": [
             {"operazione_salario_id": {"$exists": True}, "dipendente_id": dipendente_id},
-            {"beneficiario": {"$regex": nome, "$options": "i"}} if nome else {},
+            {"beneficiario": {"$regex": re.escape(nome), "$options": "i"}} if nome else {},
         ]
     }).sort("data", -1).to_list(100)
     

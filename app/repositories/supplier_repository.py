@@ -1,6 +1,7 @@
 """
 Supplier repository for supplier management.
 """
+import re
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 import logging
@@ -208,8 +209,8 @@ class SupplierRepository(BaseRepository):
         filter_query = {
             "user_id": user_id,
             "$or": [
-                {"name": {"$regex": query, "$options": "i"}},
-                {"vat_number": {"$regex": query, "$options": "i"}}
+                {"name": {"$regex": re.escape(query), "$options": "i"}},
+                {"vat_number": {"$regex": re.escape(query), "$options": "i"}}
             ]
         }
         

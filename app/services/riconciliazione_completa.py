@@ -48,7 +48,7 @@ async def riconcilia_pagopa_con_banca(db) -> Dict[str, Any]:
         
         for term in search_terms:
             mov = await db["estratto_conto_movimenti"].find_one(
-                {"descrizione": {"$regex": term, "$options": "i"}},
+                {"descrizione": {"$regex": re.escape(term), "$options": "i"}},
                 {"_id": 0}
             )
             if mov:
@@ -106,7 +106,7 @@ async def riconcilia_cartelle_agenzia_entrate(db) -> Dict[str, Any]:
         found = False
         for term in search_terms:
             mov = await db["estratto_conto_movimenti"].find_one(
-                {"descrizione": {"$regex": term, "$options": "i"}, "tipo": "uscita"},
+                {"descrizione": {"$regex": re.escape(term), "$options": "i"}, "tipo": "uscita"},
                 {"_id": 0}
             )
             if mov:
