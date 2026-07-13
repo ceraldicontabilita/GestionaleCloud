@@ -61,3 +61,28 @@ dati** (documento/F24 nella collection sbagliata) e **doppio conteggio latente**
 Tutte le verifiche sono in sola lettura tranne la rimozione del residuo HACCP
 `scheda_tecnica` (già dentro la rimozione HACCP autorizzata). I valori parametrici
 sono riportati senza modificarli, come da CLAUDE.md.
+
+## STATO CORREZIONI (13/07/2026 — "procedi con tutto")
+
+Tutti i P0/P1 tecnici sono stati CORRETTI e sono in produzione (232 test verdi):
+
+| Voce | Stato | Commit/nota |
+|---|---|---|
+| P0-1 POS doppio conteggio | ✅ risolto | accrediti POS non duplicano l'entrata "Corrispettivi POS" |
+| P0 Documenti — F24 email in collection sbagliata | ✅ risolto | unificato su `f24_unificato` (+ migrazione dry-run) |
+| P0-2 Documenti — allegati email non scaricabili | ✅ risolto | download risolve anche `*_email_attachments` |
+| IVA P1-a (12 giorni + data_trasmissione_sdi) | ✅ risolto | avviso `emessa_oltre_12_giorni` |
+| IVA P1-b (ricalcolo su confermate) | ✅ risolto | preserva `periodo_iva_attribuito` |
+| F24 P1-A/B (DM10↔RC01 capitale INPS + matricola) | ✅ risolto | capitale INPS conteggiato; posizioni diverse non collegate |
+| F24 P1-C (alert bloccante cancellabile) | ✅ risolto | `/riconcilia-tutto` rigenera l'alert |
+| F24 P1-D (ravvedimento elimina) | ✅ risolto | fascicolo: storicizza + collega, non elimina |
+| F24 P1-E (associazione cedolini) | ✅ risolto | coerenza causali + matricola |
+| Contabilità P1-1 (auto-conferma senza data) | ✅ risolto | conferma media richiede data plausibile |
+| Contabilità P1-2 (riconciliazione manuale) | ✅ risolto | guard 409 + marca l'EC |
+| Contabilità P1-3 (516,46 sull'importo) | ✅ risolto | flag `sopra_soglia_516` + confidence bassa |
+| Chat P1 (collezioni sbagliate) | ✅ risolto | `quietanze_f24` / `documents_inbox` |
+
+Restano P2 minori (robustezza/coerenza documentale) e le scelte parametriche
+già applicate (canali email, frequenza, collezioni). Il P0-1 POS va comunque
+provato su un estratto conto reale con accredito NUMIA prima di riaccendere il
+canale Estratti Conto.
