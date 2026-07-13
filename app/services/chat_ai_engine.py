@@ -793,6 +793,10 @@ async def rispondi(domanda: str, session_id: str, db,
         response = await client.messages.create(
             model=_model_name(),
             max_tokens=2000,
+            # Temperature bassa (scelta utente): risposte coerenti e
+            # riproducibili, adatte a un assistente contabile-fiscale, ma con
+            # un minimo di naturalezza nel linguaggio.
+            temperature=0.3,
             system=system,
             messages=messages,
             tools=TOOLS_SCHEMA,
