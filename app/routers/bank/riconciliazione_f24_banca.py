@@ -9,7 +9,6 @@ from fastapi import APIRouter, UploadFile, File, HTTPException
 from typing import Optional
 from datetime import datetime, timezone
 from uuid import uuid4
-import hashlib
 import logging
 
 from app.database import Database
@@ -94,14 +93,28 @@ async def upload_estratto_conto_bpm(file: UploadFile = File(...)):
         for mov in result["movimenti_f24"]:
             data_mov = mov.get("data_contabile") or mov.get("data_valuta")
             descr = mov.get("descrizione", "")
-            fingerprint = hashlib.md5(
-                f"{data_mov}|{mov.get('importo')}|{descr[:50]}".encode("utf-8")
-            ).hexdigest()
+            importo = mov.get("importo")
+            # Dedup per CHIAVE NATURALE (data + importo assoluto + descrizione):
+            # l'importer canonico usa un fingerprint con uuid random, quindi non
+            # posso riusare quel campo per il dedup cross-import. Controllo invece
+            # se il movimento è già presente per i suoi dati reali, così non
+            # duplico ciò che l'importer principale ha già inserito. Vedi P0.7.
+            try:
+                importo_abs = round(abs(float(importo or 0)), 2)
+            except (TypeError, ValueError):
+                importo_abs = 0.0
+            esiste = await db[COLL_ESTRATTO_CONTO].find_one({
+                "data": data_mov,
+                "descrizione": descr,
+                "$expr": {"$eq": [{"$abs": {"$toDouble": {"$ifNull": ["$importo", 0]}}}, importo_abs]},
+            }, {"_id": 1})
+            if esiste:
+                continue
             record = {
                 "id": str(uuid4()),
                 "data": data_mov,
                 "data_valuta": mov.get("data_valuta"),
-                "importo": mov.get("importo"),
+                "importo": importo,
                 "tipo": mov.get("tipo", "uscita"),
                 "descrizione": descr,
                 "categoria": mov.get("categoria", "F24"),
@@ -111,16 +124,10 @@ async def upload_estratto_conto_bpm(file: UploadFile = File(...)):
                 "source": "estratto_bpm_f24",
                 "estratto_file": file.filename,
                 "riconciliato": False,
-                "fingerprint": fingerprint,
                 "created_at": datetime.now(timezone.utc).isoformat(),
             }
-            res_up = await db[COLL_ESTRATTO_CONTO].update_one(
-                {"fingerprint": fingerprint},
-                {"$setOnInsert": record},
-                upsert=True,
-            )
-            if res_up.upserted_id is not None:
-                f24_importati += 1
+            await db[COLL_ESTRATTO_CONTO].insert_one(record.copy())
+            f24_importati += 1
         
         return {
             "success": True,

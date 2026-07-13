@@ -67,3 +67,19 @@ def test_niente_variabile_globale_di_stato():
     src = Path("app/routers/batch_reprocessing.py").read_text(encoding="utf-8")
     assert "global _job_state" not in src
     assert "job_state" in src  # collezione persistente
+
+
+def test_job_stallato_sblocca_dopo_soglia():
+    """Un job running con heartbeat vecchio è considerato stale e non blocca."""
+    from datetime import datetime, timezone, timedelta
+    import app.routers.batch_reprocessing as br2
+    # running recente -> NON stallato
+    recente = {"running": True, "updated_at": datetime.now(timezone.utc).isoformat()}
+    assert br2._job_stallato(recente) is False
+    # running vecchio oltre soglia -> stallato
+    vecchio = {"running": True, "updated_at": (datetime.now(timezone.utc) - timedelta(minutes=br2.STALE_DOPO_MIN + 5)).isoformat()}
+    assert br2._job_stallato(vecchio) is True
+    # non running -> mai stallato
+    assert br2._job_stallato({"running": False}) is False
+    # running senza heartbeat -> stallato (prudenza)
+    assert br2._job_stallato({"running": True, "updated_at": None}) is True

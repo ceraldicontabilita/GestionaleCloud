@@ -26,10 +26,18 @@ async def migra(esegui: bool) -> dict:
         chiave = {"codice_fiscale": cf} if cf else {"id": doc.get("id")}
         if not any(chiave.values()):
             continue
-        # non sovrascrivere con vuoti
-        patch = {k: v for k, v in doc.items() if v not in (None, "", [])}
+        # non sovrascrivere con vuoti; e NON toccare mai l'id canonico di un
+        # dipendente esistente ($setOnInsert) per non rompere i riferimenti
+        # (cedolini/TFR/prima_nota_salari collegano per id). Vedi review P0.3.
+        patch = {k: v for k, v in doc.items()
+                 if v not in (None, "", []) and k not in ("id", "_id")}
+        on_insert = {}
+        if doc.get("id"):
+            on_insert["id"] = doc["id"]
         if esegui:
-            await db[CANONICA].update_one(chiave, {"$set": patch}, upsert=True)
+            await db[CANONICA].update_one(
+                chiave, {"$set": patch, "$setOnInsert": on_insert}, upsert=True
+            )
         migrati += 1
     return {"trovati": len(legacy_docs), "migrati": migrati, "applicato": bool(esegui)}
 

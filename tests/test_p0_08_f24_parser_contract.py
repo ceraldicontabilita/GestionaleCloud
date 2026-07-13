@@ -17,3 +17,10 @@ def test_parser_non_restituisce_success_ne_f24_data():
     # il parser restituisce dati_generali/sezione_erario, non un wrapper success
     assert '"dati_generali"' in src
     assert '"sezione_erario"' in src
+
+
+def test_processa_f24_imposta_file_name_per_dedup():
+    """Il file_name deve essere impostato prima del controllo duplicati, altrimenti
+    find_one({'file_name': None}) salterebbe sempre l'import (review P0.8)."""
+    src = Path("app/routers/documenti.py").read_text(encoding="utf-8")
+    assert 'f24_data["file_name"] = doc.get("filename")' in src

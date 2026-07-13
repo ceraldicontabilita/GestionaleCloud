@@ -20,6 +20,7 @@ router = APIRouter(tags=["Batch Reprocessing"])
 
 COLL_JOB_STATE = "job_state"
 JOB_KEY = "batch_reprocessing"
+STALE_DOPO_MIN = 30  # un job "running" senza heartbeat da oltre 30 min è morto
 
 _STATO_INIZIALE = {
     "job_id": JOB_KEY,
@@ -119,10 +120,28 @@ async def _run_job(service: BatchReprocessingService, method: str, dry_run: bool
         await _set_state(db, {"error": str(exc), "progress": "Errore", "running": False})
 
 
+def _job_stallato(stato: Dict[str, Any]) -> bool:
+    """Un job 'running' il cui heartbeat è più vecchio di STALE_DOPO_MIN è
+    considerato morto (es. worker crashato): non deve bloccare i job futuri.
+    Prima, senza questo controllo, un crash lasciava running=True per sempre."""
+    if not stato.get("running"):
+        return False
+    upd = stato.get("updated_at")
+    if not upd:
+        return True
+    try:
+        ts = datetime.fromisoformat(upd)
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        return (datetime.now(timezone.utc) - ts).total_seconds() > STALE_DOPO_MIN * 60
+    except (ValueError, TypeError):
+        return True
+
+
 async def _avvia(method: str, dry_run: bool, label: str) -> Dict[str, str]:
     db = Database.get_db()
     stato = await _get_state(db)
-    if stato.get("running"):
+    if stato.get("running") and not _job_stallato(stato):
         return {"detail": "Job gia in corso"}
     service = BatchReprocessingService()
     asyncio.create_task(_run_job(service, method, dry_run))

@@ -105,3 +105,18 @@ _Stato test: 283 verdi (baseline 257 + 26 nuovi). App boota (1112 route), build 
 ---
 ## ✅ FASE P0 COMPLETATA — tutti i 12 bug corretti con test di regressione.
 _Stato test: 287 verdi (baseline 257 + 30 nuovi). App boota (1112 route), build frontend verde._
+
+## Correzioni post code-review (auto-review 8 angoli)
+La review ha trovato che 2 fix P0 non risolvevano davvero il bug, + altri difetti:
+- **P0.8**: `processa_f24_scaricati` non impostava `file_name` → dup-check a vuoto
+  saltava l'import. Ora imposta `f24_data["file_name"] = doc.get("filename")`.
+- **P0.7**: il fingerprint BPM aveva formula diversa dall'importer canonico → dedup
+  cross-import inefficace. Ora dedup per **chiave naturale** (data+|importo|+descr).
+- **P0.4**: la fattura veniva collegata con `_id` (ObjectId) invece di `id` (UUID).
+- **P0.3 (migrazione)**: `$set` sovrascriveva l'`id` canonico del dipendente → ora
+  `id` solo in `$setOnInsert`, mai sovrascritto.
+- **P0.9**: aggiunto `try/except DuplicateKeyError` → idempotente anche sotto race.
+- **P0.10**: aggiunto heartbeat anti-stallo (job running >30min = stale, non blocca).
+- (falso positivo review) `frontend/dist/` è versionato di proposito (negazione
+  esplicita in `.gitignore` per il deploy Render): ripristinato, nessuna modifica.
+_Test: 290 verdi. App boota (1112 route)._

@@ -993,11 +993,15 @@ async def processa_f24_scaricati() -> Dict[str, Any]:
             ):
                 f24_data = dict(parsed)
                 f24_data["id"] = str(uuid4())
+                # file_name è la chiave del controllo duplicati sotto: senza,
+                # find_one({"file_name": None}) matcherebbe a vuoto e salterebbe
+                # SEMPRE l'import (come fa sync_f24_automatico). Vedi P0.8.
+                f24_data["file_name"] = doc.get("filename")
 
                 # Rimuovi _id
                 if "_id" in f24_data:
                     del f24_data["_id"]
-                
+
                 # Aggiungi info
                 f24_data["email_source"] = {
                     "subject": doc.get("email_subject", ""),

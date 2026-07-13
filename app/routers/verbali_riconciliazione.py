@@ -611,7 +611,9 @@ async def riconcilia_verbale(numero_verbale: str) -> Dict[str, Any]:
             })
             
             if fattura:
-                updates["fattura_id"] = str(fattura["_id"])
+                # id canonico UUID (non l'ObjectId _id): tutto il resto dell'app
+                # collega le fatture per `id`. Vedi P0.4.
+                updates["fattura_id"] = fattura.get("id") or str(fattura.get("_id"))
                 updates["fattura_numero"] = fattura.get("invoice_number")
                 updates["fornitore"] = fattura.get("supplier_name") or fattura.get("fornitore")
                 messages.append(f"Fattura trovata: {fattura.get('invoice_number')}")

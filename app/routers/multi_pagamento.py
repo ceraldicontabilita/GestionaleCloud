@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query, Body
+from pymongo.errors import DuplicateKeyError
 from app.database import Database
 from app.utils.error_handler import handle_errors
 
@@ -171,8 +172,15 @@ async def registra_pagamento(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
 
-    await db["pagamenti"].insert_one(pagamento)
-    
+    try:
+        await db["pagamenti"].insert_one(pagamento)
+    except DuplicateKeyError:
+        # Race: un submit concorrente identico ha già inserito il pagamento
+        # (indice unique su idempotency_key). Rispondi idempotente, non 500.
+        esistente = await db["pagamenti"].find_one({"idempotency_key": idem}, {"_id": 0})
+        stato = await _ricalcola_stato_fattura(db, fattura_id)
+        return {"success": True, "idempotente": True, "pagamento": esistente, "stato_fattura": stato}
+
     # Registra in Prima Nota
     pn_collection = "prima_nota_cassa" if metodo in ["contanti", "cassa", "carta"] else "prima_nota_banca"
     pn_tipo = "cassa" if metodo in ["contanti", "cassa", "carta"] else "banca"
