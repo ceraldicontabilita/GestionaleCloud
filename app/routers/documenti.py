@@ -467,7 +467,7 @@ async def processa_documento(
     
     # Mappa destinazioni agli endpoint
     destination_map = {
-        "f24": "f24_commercialista",
+        "f24": "f24_unificato",
         "fatture": "invoices",
         "buste_paga": "buste_paga",
         "estratto_conto": "estratto_conto",

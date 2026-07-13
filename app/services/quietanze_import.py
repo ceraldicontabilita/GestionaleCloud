@@ -21,7 +21,7 @@ from typing import Any, Dict
 logger = logging.getLogger(__name__)
 
 COLL_QUIETANZE = "quietanze_f24"
-COLL_F24_COMMERCIALISTA = "f24_commercialista"
+COLL_F24_COMMERCIALISTA = "f24_unificato"  # unificato 13/07/2026
 COLL_F24_ALERTS = "f24_riconciliazione_alerts"
 COLL_CALENDARIO = "calendario_fiscale"
 

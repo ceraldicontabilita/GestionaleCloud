@@ -180,7 +180,7 @@ async def riconcilia_automatico(
             
             if not match_found and "I24" in descrizione:
                 # Match F24
-                f24 = await db.f24_commercialista.find_one({
+                f24 = await db["f24_unificato"].find_one({
                     "importo_totale": {"$gte": importo * 0.99, "$lte": importo * 1.01}
                 }, {"_id": 0, "id": 1})
                 
@@ -360,7 +360,7 @@ async def cerca_f24_per_associazione(
     if data:
         query["data_scadenza"] = {"$regex": f"^{data[:7]}"}
 
-    f24_list = await db.f24_commercialista.find(query, {"_id": 0}).sort("data_scadenza", -1).limit(limit).to_list(limit)
+    f24_list = await db["f24_unificato"].find(query, {"_id": 0}).sort("data_scadenza", -1).limit(limit).to_list(limit)
 
     return {"f24": f24_list, "totale": len(f24_list)}
 
@@ -385,7 +385,7 @@ async def conferma_f24_batch(request: ConfermaBatchRequest) -> Dict[str, Any]:
         if not f24_id:
             errori.append({"operazione": op, "errore": "operazione_id mancante"})
             continue
-        result = await db.f24_commercialista.update_one(
+        result = await db["f24_unificato"].update_one(
             {"id": f24_id},
             {"$set": {
                 "riconciliato": True,

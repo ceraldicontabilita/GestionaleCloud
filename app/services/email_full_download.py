@@ -937,7 +937,7 @@ async def smart_auto_associate(db: AsyncIOMotorDatabase) -> Dict[str, int]:
                     {"$set": {
                         "associato": True,
                         "documento_associato_id": f24["id"],
-                        "documento_associato_collection": "f24_commercialista",
+                        "documento_associato_collection": "f24_unificato",
                         "associated_at": datetime.now(timezone.utc).isoformat()
                     }}
                 )
@@ -1042,7 +1042,7 @@ async def smart_auto_associate_v2(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
                     {"$set": {
                         "status": "associato",
                         "associated_to": f24["id"],
-                        "associated_collection": "f24_commercialista",
+                        "associated_collection": "f24_unificato",
                         "associated_at": datetime.now(timezone.utc).isoformat()
                     }}
                 )
@@ -1381,7 +1381,7 @@ async def associate_f24_from_filesystem(db: AsyncIOMotorDatabase) -> Dict[str, i
                     {"$set": {
                         "status": "associato",
                         "associated_to": f24["id"],
-                        "associated_collection": "f24_commercialista",
+                        "associated_collection": "f24_unificato",
                         "associated_at": datetime.now(timezone.utc).isoformat()
                     }}
                 )

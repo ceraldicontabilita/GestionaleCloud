@@ -24,7 +24,7 @@ UPLOAD_DIR = "/tmp/uploads/f24_commercialista"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # Collections
-COLL_F24_COMMERCIALISTA = "f24_commercialista"
+COLL_F24_COMMERCIALISTA = "f24_unificato"  # unificato 13/07/2026
 COLL_QUIETANZE = "quietanze_f24"
 COLL_F24_ALERTS = "f24_riconciliazione_alerts"
 
@@ -1237,9 +1237,26 @@ async def riconcilia_tutto() -> Dict[str, Any]:
     # Conta quietanze non usate
     risultati["quietanze_usate"] = len(quietanze_usate)
     risultati["quietanze_non_usate"] = len(quietanze) - len(quietanze_usate)
-    
-    # Pulisci vecchi alert
+
+    # Pulisci i vecchi alert e RIGENERA quello bloccante per le quietanze
+    # rimaste orfane (P1-C, SPECIFICA F24 Caso 3): l'alert "F24 mancante" deve
+    # persistere finché non arriva il modello. Prima /riconcilia-tutto lo
+    # cancellava e non lo ricreava → una quietanza orfana perdeva l'avviso.
     await db[COLL_F24_ALERTS].delete_many({"tipo": "quietanza_senza_match"})
+    now_iso = datetime.now(timezone.utc).isoformat()
+    for q in quietanze:
+        qid = q.get("id")
+        if qid and qid not in quietanze_usate:
+            await db[COLL_F24_ALERTS].insert_one({
+                "id": str(uuid.uuid4()),
+                "tipo": "quietanza_senza_match",
+                "bloccante": True,
+                "quietanza_id": qid,
+                "messaggio": "F24 mancante per questa quietanza: caricare il modello F24.",
+                "protocollo_telematico": q.get("protocollo_telematico"),
+                "saldo": q.get("saldo_delega") or q.get("saldo"),
+                "created_at": now_iso,
+            })
     
     return {
         "success": True,

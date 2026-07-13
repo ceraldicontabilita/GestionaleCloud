@@ -255,8 +255,8 @@ async def get_stato_sistema() -> Dict[str, Any]:
     )
     
     # Conteggi F24
-    f24_da_pagare = await db["f24_commercialista"].count_documents({"status": "da_pagare"})
-    f24_pagati = await db["f24_commercialista"].count_documents({"status": "pagato"})
+    f24_da_pagare = await db["f24_unificato"].count_documents({"status": "da_pagare"})
+    f24_pagati = await db["f24_unificato"].count_documents({"status": "pagato"})
     allegati_da_processare = await db["email_allegati"].count_documents({"processato": False})
     
     return {

@@ -24,7 +24,7 @@ EMAIL_PASSWORD = settings.EMAIL_PASSWORD or settings.IMAP_PASSWORD or settings.E
 # Collections
 COLL_EMAIL_LOG = "email_download_log"
 COLL_ALLEGATI = "email_allegati"
-COLL_F24_COMMERCIALISTA = "f24_commercialista"
+COLL_F24_COMMERCIALISTA = "f24_unificato"  # unificato 13/07/2026
 COLL_QUIETANZE = "quietanze_f24"
 
 

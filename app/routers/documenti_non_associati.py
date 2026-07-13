@@ -59,7 +59,7 @@ def extract_pdf_from_p7s(p7s_data: bytes) -> Optional[bytes]:
 # Collezioni target per associazione
 TARGET_COLLECTIONS = {
     "fatture": {"collection": "invoices", "label": "Fatture Ricevute"},
-    "f24": {"collection": "f24_commercialista", "label": "F24"},
+    "f24": {"collection": "f24_unificato", "label": "F24"},
     "cedolini": {"collection": "payslips", "label": "Cedolini/Buste Paga"},
     "verbali": {"collection": "verbali_multe", "label": "Verbali e Multe"},
     "cartelle": {"collection": "cartelle_esattoriali", "label": "Cartelle Esattoriali"},
@@ -279,7 +279,7 @@ async def genera_proposta_associazione(db, doc: Dict) -> Dict[str, Any]:
     
     elif any(p in text for p in ["f24", "tribut", "agenzia entrate", "iva", "ires", "irpef"]):
         proposta["tipo_suggerito"] = "f24"
-        proposta["collezione_suggerita"] = "f24_commercialista"
+        proposta["collezione_suggerita"] = "f24_unificato"
     
     elif any(p in text for p in ["busta paga", "cedolino", "stipendio", "retribuzione"]):
         proposta["tipo_suggerito"] = "cedolini"

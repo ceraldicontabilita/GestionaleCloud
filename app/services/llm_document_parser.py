@@ -313,7 +313,7 @@ async def batch_parse_f24(db, limit: int = 50) -> Dict[str, Any]:
             
             if parsed.get("success"):
                 # Check dedup
-                existing = await db["f24_commercialista"].find_one({"pdf_hash": doc.get("pdf_hash")})
+                existing = await db["f24_unificato"].find_one({"pdf_hash": doc.get("pdf_hash")})
                 if not existing:
                     import uuid
                     from datetime import datetime, timezone
@@ -335,7 +335,7 @@ async def batch_parse_f24(db, limit: int = 50) -> Dict[str, Any]:
                         "source": "gmail_llm_parse",
                         "imported_at": datetime.now(timezone.utc).isoformat(),
                     }
-                    await db["f24_commercialista"].insert_one(f24_doc)
+                    await db["f24_unificato"].insert_one(f24_doc)
                     stats["nuovi_f24"] += 1
                 
                 stats["con_tributi"] += 1

@@ -643,7 +643,7 @@ async def get_dashboard_scadenze() -> Dict[str, Any]:
         "data_scadenza": {"$lte": limite_30},
         "pagato": {"$ne": True}
     })
-    f24_da_pagare_commercialista = await db["f24_commercialista"].count_documents({
+    f24_da_pagare_commercialista = await db["f24_unificato"].count_documents({
         "scadenza": {"$lte": limite_30},
         "status": {"$ne": "pagato"}
     })

@@ -30,7 +30,7 @@ COLLECTION_F24 = "f24_unificato"
 # le scadenze fiscali arrivate via email non generavano MAI un alert
 # proattivo (Telegram/email/campanella), a prescindere da quanto fossero
 # imminenti o scadute.
-COLLECTION_F24_COMMERCIALISTA = "f24_commercialista"
+COLLECTION_F24_COMMERCIALISTA = "f24_unificato"  # unificato 13/07/2026
 COLLECTION_ALERT = "alert_scadenze_f24"
 COLLECTION_NOTIFICHE = "notifiche_scadenze"
 

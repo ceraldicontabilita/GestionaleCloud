@@ -24,7 +24,7 @@ from app.db_collections import (
 # silenziosamente un archivio diverso da quello popolato dall'upload F24
 # commercialista, quindi la riconciliazione con l'estratto conto non
 # trovava mai nulla (bug #6 audit memoria/endpoints/README.md).
-COLL_F24_COMMERCIALISTA = "f24_commercialista"
+COLL_F24_COMMERCIALISTA = "f24_unificato"  # unificato 13/07/2026
 from app.services.estratto_conto_bpm_parser import (
     parse_estratto_conto_bpm,
     riconcilia_f24_con_estratto,
