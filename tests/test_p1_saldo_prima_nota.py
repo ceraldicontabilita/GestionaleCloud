@@ -19,11 +19,17 @@ class _Coll:
         self.movimenti = movimenti
 
     def aggregate(self, pipeline):
-        # emula $match + $group entrate/uscite della pipeline reale
+        # emula $match + $group entrate/uscite della pipeline reale,
+        # incluso il $convert dell'importo (onError/onNull → 0)
+        def _num(d):
+            try:
+                return float(d.get("importo", 0))
+            except (TypeError, ValueError):
+                return 0.0
         match = pipeline[0]["$match"]
         docs = [d for d in self.movimenti if _match(d, match)]
-        entrate = sum(d.get("importo", 0) for d in docs if d.get("tipo") == "entrata")
-        uscite = sum(d.get("importo", 0) for d in docs if d.get("tipo") == "uscita")
+        entrate = sum(_num(d) for d in docs if d.get("tipo") == "entrata")
+        uscite = sum(_num(d) for d in docs if d.get("tipo") == "uscita")
         if not docs:
             return _Agg([])
         return _Agg([{"_id": None, "entrate": entrate, "uscite": uscite}])
@@ -119,3 +125,47 @@ def test_esclusioni_non_contano():
              "categoria": {"$nin": common.CATEGORIE_ESCLUSE}}
     s = _run(common.aggrega_saldo_prima_nota(db, "prima_nota_cassa", query, anno=None))
     assert s["saldo"] == 100.0  # deleted e Corrispettivi POS esclusi
+
+
+def test_importo_stringa_convertito():
+    """§6.4 estratto conto: alcuni doc storici hanno importo come STRINGA.
+    Il motore li somma comunque ($convert onError/onNull → 0)."""
+    movimenti = [
+        {"tipo": "entrata", "importo": "100.50", "data": "2026-03-01"},
+        {"tipo": "uscita", "importo": 30.0, "data": "2026-03-02"},
+        {"tipo": "entrata", "importo": "non-un-numero", "data": "2026-03-03"},  # → 0
+        {"tipo": "entrata", "importo": None, "data": "2026-03-04"},             # → 0
+    ]
+    db = _Db(_Coll(movimenti))
+    s = _run(common.aggrega_saldo_prima_nota(db, "estratto_conto_movimenti", {}, anno=None))
+    assert s["totale_entrate"] == 100.50
+    assert s["totale_uscite"] == 30.0
+    assert s["saldo"] == 70.50
+
+
+def test_riporto_query_base_esplicita_estratto_conto():
+    """§6.4 estratto conto sul motore unico: con query_base_precedente={} il
+    riporto considera TUTTI i movimenti prima dell'anno (comportamento storico
+    dell'estratto conto, che non ha soft-delete né categorie escluse); con il
+    default (None) restano le esclusioni della Prima Nota."""
+    movimenti = [
+        # anno precedente: uno "deleted" (in EC non esiste, ma verifica la semantica)
+        {"tipo": "entrata", "importo": 200.0, "data": "2025-06-01", "status": "deleted"},
+        {"tipo": "entrata", "importo": 100.0, "data": "2025-07-01"},
+        # anno corrente
+        {"tipo": "entrata", "importo": 50.0, "data": "2026-02-01"},
+    ]
+    db = _Db(_Coll(movimenti))
+    query_anno = {"data": {"$gte": "2026-01-01", "$lte": "2026-12-31"}}
+
+    # Semantica estratto conto: riporto su TUTTO (300)
+    s_ec = _run(common.aggrega_saldo_prima_nota(
+        db, "estratto_conto_movimenti", query_anno, anno=2026, query_base_precedente={}))
+    assert s_ec["saldo_precedente"] == 300.0
+    assert s_ec["saldo"] == 350.0
+
+    # Semantica Prima Nota (default): il "deleted" resta escluso dal riporto (100)
+    s_pn = _run(common.aggrega_saldo_prima_nota(
+        db, "prima_nota_banca", query_anno, anno=2026))
+    assert s_pn["saldo_precedente"] == 100.0
+    assert s_pn["saldo"] == 150.0

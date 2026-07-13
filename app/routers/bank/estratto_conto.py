@@ -13,6 +13,7 @@ import csv
 
 from app.database import Database
 from app.utils.error_handler import handle_errors
+from app.routers.prima_nota_module.common import aggrega_saldo_prima_nota
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -988,47 +989,24 @@ async def get_movimenti(
         except (ValueError, TypeError):
             m["importo"] = 0.0
 
-    # Calcola totali anno selezionato
-    pipeline = [
-        {"$match": query},
-        {"$group": {
-            "_id": None,
-            "totale_entrate": {"$sum": {"$cond": [{"$eq": ["$tipo", "entrata"]}, {"$toDouble": "$importo"}, 0]}},
-            "totale_uscite": {"$sum": {"$cond": [{"$eq": ["$tipo", "uscita"]}, {"$toDouble": "$importo"}, 0]}}
-        }}
-    ]
-    totali_result = await db["estratto_conto_movimenti"].aggregate(pipeline).to_list(1)
-    totali = totali_result[0] if totali_result else {"totale_entrate": 0, "totale_uscite": 0}
-
-    # Calcola saldo_precedente (tutti gli anni precedenti a quello selezionato)
-    saldo_precedente = 0.0
-    if anno:
-        pipeline_prec = [
-            {"$match": {"data": {"$lt": f"{anno}-01-01"}}},
-            {"$group": {
-                "_id": None,
-                "entrate": {"$sum": {"$cond": [{"$eq": ["$tipo", "entrata"]}, {"$toDouble": "$importo"}, 0]}},
-                "uscite": {"$sum": {"$cond": [{"$eq": ["$tipo", "uscita"]}, {"$toDouble": "$importo"}, 0]}}
-            }}
-        ]
-        prec_result = await db["estratto_conto_movimenti"].aggregate(pipeline_prec).to_list(1)
-        if prec_result:
-            saldo_precedente = round(prec_result[0].get("entrate", 0) - prec_result[0].get("uscite", 0), 2)
-
-    totale_entrate = round(totali.get("totale_entrate", 0), 2)
-    totale_uscite = round(totali.get("totale_uscite", 0), 2)
-    saldo_anno = round(totale_entrate - totale_uscite, 2)
+    # §6.4: totali/riporto/saldo dalla funzione UNICA di saldo (stessa formula
+    # di cassa/banca). query_base_precedente={} riproduce il comportamento
+    # storico dell'estratto conto: il riporto considera TUTTI i movimenti
+    # prima dell'anno (qui non esistono soft-delete né categorie escluse).
+    saldi = await aggrega_saldo_prima_nota(
+        db, "estratto_conto_movimenti", query, anno, query_base_precedente={}
+    )
 
     return {
         "movimenti": movimenti,
         "totale": total,
         "offset": offset,
         "limit": limit,
-        "totale_entrate": totale_entrate,
-        "totale_uscite": totale_uscite,
-        "saldo_anno": saldo_anno,
-        "saldo_precedente": saldo_precedente,
-        "saldo": round(saldo_precedente + saldo_anno, 2),
+        "totale_entrate": saldi["totale_entrate"],
+        "totale_uscite": saldi["totale_uscite"],
+        "saldo_anno": saldi["saldo_anno"],
+        "saldo_precedente": saldi["saldo_precedente"],
+        "saldo": saldi["saldo"],
         "anno": anno
     }
 
