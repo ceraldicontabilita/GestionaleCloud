@@ -1147,6 +1147,29 @@ async def _get_stato_patrimoniale_data(anno: int, mese: int = None) -> Dict[str,
     totale_passivo = totale_debiti
     patrimonio_netto = totale_attivo - totale_passivo
     
+    # §6.2: riclassificazione sui CODICI UFFICIALI del piano dei conti (CEE Ceraldi).
+    # Additiva: non altera la struttura storica sopra.
+    from app.services.piano_conti_ufficiale import CONTI_UFFICIALI
+
+    def _voce(codice, saldo):
+        return {"codice": codice, "descrizione": CONTI_UFFICIALI.get(codice, codice),
+                "saldo": round(saldo, 2)}
+
+    voci_ufficiali = {
+        "attivo": [
+            _voce("19.03.03", saldo_cassa),
+            _voce("19.01.01", saldo_banca),
+            _voce("15.05", totale_crediti),
+        ],
+        "passivo": [
+            _voce("33.03.01", totale_debiti),
+        ],
+        "patrimonio_netto": [
+            {"codice": "23", "descrizione": "Capitale e riserve",
+             "saldo": round(patrimonio_netto, 2)},
+        ],
+    }
+
     return {
         "anno": anno,
         "attivo": {
@@ -1165,7 +1188,8 @@ async def _get_stato_patrimoniale_data(anno: int, mese: int = None) -> Dict[str,
                 "totale": round(totale_debiti, 2)
             },
             "patrimonio_netto": round(patrimonio_netto, 2)
-        }
+        },
+        "voci_ufficiali": voci_ufficiali,
     }
 
 
@@ -1252,6 +1276,25 @@ async def _get_conto_economico_data(anno: int, mese: int = None) -> Dict[str, An
     aliquota_imposte = 0.28
     utile_netto = risultato_operativo * (1 - aliquota_imposte) if risultato_operativo > 0 else risultato_operativo
     
+    # §6.2: riclassificazione sui CODICI UFFICIALI del piano dei conti (CEE Ceraldi).
+    from app.services.piano_conti_ufficiale import CONTI_UFFICIALI
+
+    def _voce_ce(codice, saldo):
+        return {"codice": codice, "descrizione": CONTI_UFFICIALI.get(codice, codice),
+                "saldo": round(saldo, 2)}
+
+    voci_ufficiali = {
+        "ricavi": [
+            _voce_ce("47.01.03", totale_corrispettivi),
+        ],
+        "costi": [
+            _voce_ce("55.01.07", totale_acquisti),
+            _voce_ce("55.05.01", -totale_note_credito),  # sconti/note credito riducono i costi
+            {"codice": "84", "descrizione": "Imposte dell'esercizio (stima)",
+             "saldo": round(risultato_operativo * aliquota_imposte if risultato_operativo > 0 else 0, 2)},
+        ],
+    }
+
     return {
         "anno": anno,
         "ricavi": {
@@ -1268,7 +1311,8 @@ async def _get_conto_economico_data(anno: int, mese: int = None) -> Dict[str, An
             "risultato_operativo": round(risultato_operativo, 2),
             "utile_lordo": round(risultato_operativo, 2),
             "utile_netto": round(utile_netto, 2)
-        }
+        },
+        "voci_ufficiali": voci_ufficiali,
     }
 
 

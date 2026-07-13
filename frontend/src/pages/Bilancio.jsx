@@ -69,10 +69,45 @@ export default function Bilancio() {
     }
   };
 
+  // §6.2: riclassificazione sui CODICI UFFICIALI del piano dei conti (CEE del bilancio).
+  const renderVociUfficiali = (vociUfficiali, titolo) => {
+    if (!vociUfficiali) return null;
+    const gruppi = Object.entries(vociUfficiali).filter(([, righe]) => Array.isArray(righe) && righe.length);
+    if (!gruppi.length) return null;
+    return (
+      <details style={{ marginTop: 20 }}>
+        <summary style={{ cursor: 'pointer', fontWeight: 600, color: COLORS.textMuted }}>
+          📓 Piano dei conti ufficiale (CEE) — {titolo}
+        </summary>
+        <div style={{ marginTop: 12, overflowX: 'auto' }}>
+          {gruppi.map(([gruppo, righe]) => (
+            <div key={gruppo} style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 12, textTransform: 'uppercase', color: COLORS.textMuted, marginBottom: 4 }}>
+                {gruppo.replace('_', ' ')}
+              </div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <tbody>
+                  {righe.map((r, i) => (
+                    <tr key={i} style={{ borderBottom: `1px solid ${COLORS.border}` }}>
+                      <td style={{ padding: '4px 8px', fontFamily: FONT.mono, whiteSpace: 'nowrap' }}>{r.codice}</td>
+                      <td style={{ padding: '4px 8px' }}>{r.descrizione}</td>
+                      <td style={{ padding: '4px 8px', textAlign: 'right', fontFamily: FONT.mono }}>{formatEuro(r.saldo)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ))}
+        </div>
+      </details>
+    );
+  };
+
   const StatoPatrimonialeView = () => {
     if (!statoPatrimoniale) return null;
     const { attivo, passivo } = statoPatrimoniale;
     return (
+      <>
       <PageGrid cols={2} gap={24}>
         {/* ATTIVO */}
         <div
@@ -243,6 +278,8 @@ export default function Bilancio() {
           </div>
         </div>
       </PageGrid>
+      {renderVociUfficiali(statoPatrimoniale.voci_ufficiali, 'Stato Patrimoniale')}
+      </>
     );
   };
 
@@ -401,6 +438,7 @@ export default function Bilancio() {
             Margine: {risultato.margine_percentuale}%
           </div>
         </div>
+        {renderVociUfficiali(contoEconomico.voci_ufficiali, 'Conto Economico')}
       </div>
     );
   };
