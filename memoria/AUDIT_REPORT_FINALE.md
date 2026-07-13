@@ -73,6 +73,25 @@ Da valutare insieme, riguardano il controllo di accesso:
 15. **Governance nomi collection**: unificare `db_collections.py` e la classe
     `Collections` in un'unica fonte di verità (ha già causato il bug P0).
 
+## Stato aggiornato interventi sicurezza (13/07/2026)
+
+Risolti e in produzione:
+- **P0/P1 auth**: rate limiting login 5/5 (SEC-1), CORS via `CORS_ALLOWED_ORIGINS`
+  (SEC-2), ruoli Admin/Operatore/Sola lettura con PIN personale (SEC-3),
+  SECRET_KEY non più derivata dall'URI (SEC-6).
+- **P1 ruoli/distruttivi**: ruoli reali + `DELETE /api/fatture/all` solo admin.
+- **P1 ponte ERP**: fail-closed (scelta utente: non in uso).
+- **P1 regex injection**: `re.escape` su tutti gli input utente (SEC-5).
+- **P2**: password admin a tempo costante, DB_NAME allineato (SEC-6); limite
+  upload + audit log login/delete massivi (SEC-7); durata sessione 1 ora
+  (scelta utente).
+
+Rimasti aperti (minori, bassa priorità):
+- Whitelist auth per prefisso `/api/auth/` e `/api/public/` ancora ampia (non
+  ristretta a path espliciti: rischio di romperne l'auth se toccata a caldo).
+- Fail-fast di boot in produzione non attivo di default (scelta ops: attivarlo
+  potrebbe impedire l'avvio con configurazione incompleta).
+
 ## Decisioni richieste all'utente (regola parametri CLAUDE.md)
 Prima di toccare i P0/P1 di sicurezza servono le tue scelte su:
 - **Origin CORS** consentiti in produzione (dominio/i reali del frontend).
