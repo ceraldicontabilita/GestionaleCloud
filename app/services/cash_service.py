@@ -61,13 +61,26 @@ class CashService:
             f"€{movement_data.amount} - {movement_data.description}"
         )
         
+        data_iso = movement_data.date.isoformat()
         movement_doc = movement_data.model_dump()
         movement_doc.update({
             "user_id": user_id,
-            "date": movement_data.date.isoformat(),
-            "created_at": datetime.now(timezone.utc)
+            "date": data_iso,
+            "created_at": datetime.now(timezone.utc),
+            # §6.8: ADAPTER verso la canonica `prima_nota_cassa` (Collections.CASH_MOVEMENTS
+            # punta già lì). Scriviamo ANCHE i campi canonici italiani così il movimento
+            # è visto dal saldo Prima Nota (che aggrega su tipo/importo/data/status), senza
+            # doppia scrittura su una seconda collection.
+            "tipo": movement_data.type,
+            "importo": movement_data.amount,
+            "data": data_iso,
+            "categoria": movement_data.category,
+            "descrizione": movement_data.description,
+            "status": "attivo",
+            "anno": movement_data.date.year,
+            "fonte": "cash_adapter",
         })
-        
+
         movement_id = await self.movement_repo.create(movement_doc)
         
         logger.info(f"✅ Cash movement created: {movement_id}")

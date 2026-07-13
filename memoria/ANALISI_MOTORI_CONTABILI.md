@@ -94,14 +94,16 @@ idempotenza. È un dominio ampio già parzialmente consolidato (task #23/#31).
 - **Azione:** audit dedicato del flusso PayPal (paypal_api/paypal_statements/
   paypal_email_recovery) prima di unificare. Rischio MEDIO.
 
-## §6.8 — Prima Nota Cassa: `cash.py`/`cash_movements` — AZIONE (adapter)
-`cash.py` (+ `cash_service.py` + `cash_repository`) è un sistema cassa PARALLELO che
-scrive `cash_movements`, **FE-wired** (`/api/cash` in api.js) → NON eliminabile.
-La canonica è `prima_nota_cassa`.
-- **Azione:** trasformare `cash.py` in **adapter** verso `prima_nota_cassa` SENZA
-  doppia scrittura (una sola collezione reale), preservando l'API `/api/cash` usata dal
-  frontend. Richiede mappare gli schemi cash_movements↔prima_nota_cassa.
-- **Rischio:** MEDIO-ALTO (cassa viva col frontend). Fare con test di caratterizzazione.
+## §6.8 — Prima Nota Cassa: `cash.py` — ✅ FATTO (adapter)
+Verifica: `Collections.CASH_MOVEMENTS` **è già** `prima_nota_cassa` (nessuna collezione
+`cash_movements` separata), e `/api/cash` **non è usato da nessuna pagina** (funzioni
+`getCashMovements`/`createCashMovement` in api.js senza chiamanti). Quindi nessuna doppia
+scrittura su collezioni diverse; il difetto era solo lo schema inglese (`type/amount`)
+che il saldo Prima Nota (che aggrega su `tipo/importo/data/status`) ignorava.
+- **Fatto:** `cash_service.create_movement` ora scrive ANCHE i campi canonici italiani
+  (tipo/importo/data/categoria/status/anno + `fonte="cash_adapter"`) mantenendo quelli
+  inglesi → il movimento è visto dal saldo Prima Nota. Adapter senza doppia scrittura.
+- Test `tests/test_p1_cash_adapter.py`. Rischio basso (endpoint FE-inutilizzato).
 
 ## §6.9 — Verbali: tre router
 `verbali_noleggio`, `verbali_noleggio_api`, `verbali_riconciliazione`. Separare
