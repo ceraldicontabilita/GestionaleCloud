@@ -381,18 +381,26 @@ async def get_archivio_fatture(
     return {"fatture": paginated, "total": total, "limit": limit, "skip": skip}
 
 
-# CSS iniettato per rendere la fattura leggibile e ADATTA allo schermo (mobile):
-# il foglio ASSO è pensato per A4/desktop e sforava a destra sui telefoni.
-_CSS_FATTURA_RESPONSIVE = (
+# Il foglio ASSO è disegnato a larghezza FISSA (#fattura-elettronica ha
+# min-width:800px e le tabelle sono a 800px): un min-width vince su max-width,
+# quindi non si può "refloware" senza rompere il layout. Su mobile lo si fa
+# quindi rientrare dicendo al browser che la pagina è larga ~820px: il browser
+# la rimpicciolisce per farla stare nello schermo (adattivo a ogni telefono),
+# mantenendo intatto l'impaginato. Su desktop il viewport è ininfluente.
+_META_SCALE_TO_FIT = (
+    "<meta name='viewport' content='width=820'>"
+    "<style>html,body{margin:0!important;padding:0!important;}"
+    "img{max-width:100%;height:auto;}</style>"
+)
+
+# Per l'HTML di fallback (semplice, non a 800px fissi): reflow classico.
+_META_REFLOW = (
     "<meta name='viewport' content='width=device-width, initial-scale=1, maximum-scale=5'>"
     "<style>"
     "html{-webkit-text-size-adjust:100%;}"
     "*,*::before,*::after{box-sizing:border-box;}"
     "body{margin:0!important;padding:10px!important;max-width:100%;overflow-x:auto;}"
     "img{max-width:100%;height:auto;}"
-    # I <table> ASSO hanno width in pixel fissi: max-width:100% li fa rientrare
-    # nello schermo (il CSS vince sull'attributo width) senza stirare le tabelle
-    # interne di layout; le celle mandano a capo il testo invece di tagliarlo.
     "table{max-width:100%!important;border-collapse:collapse;}"
     "td,th{word-break:break-word;overflow-wrap:anywhere;}"
     "</style>"
@@ -400,29 +408,30 @@ _CSS_FATTURA_RESPONSIVE = (
 
 
 def _rendi_fattura_responsive(html_str: str) -> str:
-    """Inserisce viewport + CSS responsive nell'HTML della fattura, sia quando
-    l'XSL emette gia' <html>/<head>, sia quando no. Cosi' la fattura si adatta
-    alla larghezza dello schermo invece di essere tagliata a destra."""
+    """Inserisce il viewport giusto nell'HTML della fattura perché stia nello
+    schermo del telefono. Se è il foglio ASSO a larghezza fissa (800px) usa lo
+    "scale-to-fit" (rimpicciolisce mantenendo il layout); altrimenti il reflow."""
     if not html_str:
         return html_str
     lower = html_str.lower()
+    fisso_800 = ("fattura-elettronica" in lower
+                 or "min-width: 800px" in lower or "min-width:800px" in lower)
+    meta = _META_SCALE_TO_FIT if fisso_800 else _META_REFLOW
+
     if "<head" in lower:
-        # inserisci subito dopo l'apertura del tag <head ...>
         idx = lower.find("<head")
         chiusura = html_str.find(">", idx)
         if chiusura != -1:
-            return html_str[:chiusura + 1] + _CSS_FATTURA_RESPONSIVE + html_str[chiusura + 1:]
+            return html_str[:chiusura + 1] + meta + html_str[chiusura + 1:]
     if "<html" in lower:
         idx = lower.find("<html")
         chiusura = html_str.find(">", idx)
         if chiusura != -1:
-            return (html_str[:chiusura + 1] + "<head>" + _CSS_FATTURA_RESPONSIVE
-                    + "</head>" + html_str[chiusura + 1:])
-    # Nessun <html>/<head>: avvolgi tutto in un documento completo.
+            return (html_str[:chiusura + 1] + "<head>" + meta + "</head>"
+                    + html_str[chiusura + 1:])
     return (
         "<!DOCTYPE html><html><head><meta charset='UTF-8'>"
-        + _CSS_FATTURA_RESPONSIVE +
-        "</head><body>" + html_str + "</body></html>"
+        + meta + "</head><body>" + html_str + "</body></html>"
     )
 
 
