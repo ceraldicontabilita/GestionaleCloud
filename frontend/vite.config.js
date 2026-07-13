@@ -59,6 +59,18 @@ export default defineConfig({
     }
   },
   build: {
-    chunkSizeWarningLimit: 700
-  }
+    chunkSizeWarningLimit: 700,
+    rollupOptions: {
+      output: {
+        // Separa i vendor stabili in chunk propri: cambiano di rado, quindi
+        // restano in cache del browser quando cambia il codice dell'app
+        // (l'utente non riscarica React/router/query/grafici ad ogni deploy).
+        manualChunks: {
+          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+          'query-vendor': ['@tanstack/react-query'],
+          'charts-vendor': ['recharts'],
+        },
+      },
+    },
+  },
 })

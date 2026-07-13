@@ -1,0 +1,1 @@
+import{j as t}from"./query-vendor-BspPuSqR.js";import{d as e,r as a}from"./react-vendor-DOuoiqAa.js";function s(){const r=e();return a.useEffect(()=>{r("/prima-nota#sezione=provvisori",{replace:!0})},[r]),t.jsx("div",{})}export{s as default};
