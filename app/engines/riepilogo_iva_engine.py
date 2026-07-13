@@ -80,6 +80,33 @@ def riepilogo_categorie(fatture: List[Dict[str, Any]]) -> Dict[str, Dict[str, fl
     return {k: {"iva": v[0], "conteggio": v[1]} for k, v in cat.items()}
 
 
+def _dedup_liquidazioni_per_periodo(
+    liq: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Difesa (P2-f/g): una liquidazione per periodo. La query annuale include sia
+    CONFERMATA sia TRASMESSA: lo stesso periodo puo' comparire in due documenti
+    (versioni/stati diversi) e verrebbe conteggiato due volte. Si tiene, per ogni
+    periodo, il documento nello stato piu' avanzato (TRASMESSA > CONFERMATA) e, a
+    parita', la `versione` piu' alta. Le voci senza periodo restano tutte."""
+    _priorita_stato = {"TRASMESSA": 2, "CONFERMATA": 1}
+    per_periodo: Dict[str, Dict[str, Any]] = {}
+    senza_periodo: List[Dict[str, Any]] = []
+    for l in liq:
+        periodo = l.get("periodo")
+        if not periodo:
+            senza_periodo.append(l)
+            continue
+        corr = per_periodo.get(periodo)
+        if corr is None:
+            per_periodo[periodo] = l
+            continue
+        chiave_l = (_priorita_stato.get(l.get("stato"), 0), float(l.get("versione") or 0))
+        chiave_corr = (_priorita_stato.get(corr.get("stato"), 0), float(corr.get("versione") or 0))
+        if chiave_l > chiave_corr:
+            per_periodo[periodo] = l
+    return list(per_periodo.values()) + senza_periodo
+
+
 def calcolo_annuale(
     fatture: List[Dict[str, Any]],
     liquidazioni_confermate: Optional[List[Dict[str, Any]]] = None,
@@ -92,7 +119,7 @@ def calcolo_annuale(
     Parte dalle liquidazioni confermate per l'IVA vendite e il credito finale.
     """
     cat = riepilogo_categorie(fatture)
-    liq = liquidazioni_confermate or []
+    liq = _dedup_liquidazioni_per_periodo(liquidazioni_confermate or [])
 
     iva_vendite = round(sum(float(l.get("iva_vendite") or 0) for l in liq), 2)
     iva_acquisti_utilizzata = cat["utilizzata"]["iva"]
@@ -100,6 +127,9 @@ def calcolo_annuale(
         cat["non_utilizzata"]["iva"] + cat["rinviata"]["iva"]
         + cat["recuperata_annualmente"]["iva"], 2
     )
+    # L'IVA rettificata e quella indetraibile NON entrano nel detraibile: sono
+    # escluse per costruzione (categorie separate, non sommate qui), non
+    # sottratte. Le riportiamo in output solo a scopo informativo (P2-e).
     iva_detraibile_annuale = round(iva_acquisti_utilizzata + iva_recuperabile, 2)
 
     # Saldo annuale dalle liquidazioni confermate (debito - credito).

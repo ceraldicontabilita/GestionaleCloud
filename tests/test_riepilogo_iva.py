@@ -59,6 +59,23 @@ def test_calcolo_annuale_da_liquidazioni_confermate():
     assert r["debito_finale"] == 250 and r["credito_finale"] == 0
 
 
+def test_calcolo_annuale_dedup_liquidazioni_stesso_periodo():
+    # Stesso periodo presente sia come CONFERMATA sia come TRASMESSA: va contato
+    # una sola volta (si tiene lo stato più avanzato), non raddoppiato (P2-f/g).
+    liq = [
+        {"periodo": "2026-01", "stato": "CONFERMATA", "versione": 1,
+         "iva_vendite": 100, "debito_periodo": 30},
+        {"periodo": "2026-01", "stato": "TRASMESSA", "versione": 2,
+         "iva_vendite": 100, "debito_periodo": 30},
+        {"periodo": "2026-02", "stato": "CONFERMATA", "versione": 1,
+         "iva_vendite": 50, "debito_periodo": 10},
+    ]
+    r = riep.calcolo_annuale([], liq)
+    assert r["iva_vendite"] == 150  # 100 (una volta) + 50, non 250
+    assert r["totale_debito"] == 40
+    assert r["liquidazioni_confermate"] == 2
+
+
 def test_anomalie_bloccanti_e_avvisi():
     fatture = [
         _f(id="neg", iva_detraibile=-5),                                   # bloccante
