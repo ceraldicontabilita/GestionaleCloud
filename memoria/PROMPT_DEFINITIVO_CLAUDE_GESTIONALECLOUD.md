@@ -107,7 +107,14 @@ PROSSIMA FASE: P1 consolidamento collection/motori (§5-§8).
 - [x] §11 Prestazioni: to_list(None) → tetto+log; §11.4 job state già fatto (P0.10);
       deliverable memoria/AUDIT_PERFORMANCE_N1.md per i 22 to_list(100000)/N+1 (da
       valutare uno per uno: aggregazioni finanziarie non troncabili a blocco).
-### FASE P2 — Sicurezza/pulizia (§12-§13) — non iniziata
+### FASE P2 — Sicurezza/pulizia (§12-§13) — IN CORSO
+- [x] §12.6 no segreti nei log (ai_document_parser, whatsapp_webhook) + §13.2 rimosso
+      modulo morto referential_integrity.py.
+- [x] §12 guardia Admin-only su TUTTI i 13 endpoint distruttivi di migrazione/manutenzione
+      (reset/cleanup/reimport/backfill/migra) — erano senza controllo ruolo. Test route table.
+- [ ] §12 restanti: allowlist endpoint pubblici, fail-fast produzione, protezione download.
+- [ ] §13.1 frontend: sostituire alert/confirm/prompt/window.open residui con componenti canonici.
+- [ ] §13.2 altro codice morto backend (stub, endpoint v1, migrazioni concluse).
 ### Deliverable (§16) — in corso: PROMPT salvato, tracker attivo
 
 ---
