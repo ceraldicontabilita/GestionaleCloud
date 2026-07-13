@@ -262,7 +262,7 @@ async def calcola_iva_debito_corretto(db, anno: int, mese: int) -> Dict[str, Any
         }}
     ]
     
-    result_fatt = await db["invoices_emesse"].aggregate(pipeline_fatt).to_list(1)
+    result_fatt = await db["fatture_emesse"].aggregate(pipeline_fatt).to_list(1)
     iva_fatture_emesse = result_fatt[0]["totale_iva"] if result_fatt else 0
     
     # 3. Note di credito emesse (riducono IVA a debito)
@@ -277,7 +277,7 @@ async def calcola_iva_debito_corretto(db, anno: int, mese: int) -> Dict[str, Any
         }}
     ]
     
-    result_nc = await db["invoices_emesse"].aggregate(pipeline_nc).to_list(1)
+    result_nc = await db["fatture_emesse"].aggregate(pipeline_nc).to_list(1)
     iva_note_credito = result_nc[0]["totale_iva_storno"] if result_nc else 0
     
     # Totale IVA a debito

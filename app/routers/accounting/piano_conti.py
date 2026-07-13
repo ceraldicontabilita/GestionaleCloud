@@ -892,8 +892,8 @@ async def get_movimenti_per_conto(
             ]
         # "fatture" non è mai stata una collection reale (nessun altro punto del
         # codice la scrive): le fatture emesse (crediti v/clienti) vivono in
-        # invoices_emesse. Prima questo ramo restituiva sempre lista vuota.
-        docs = await db["invoices_emesse"].find(
+        # fatture_emesse (canonica P1 §5.5). Prima questo ramo restituiva sempre lista vuota.
+        docs = await db["fatture_emesse"].find(
             q_crediti, {"_id": 0}
         ).sort("data_fattura", -1).limit(limit).to_list(limit)
         movimenti = [
@@ -904,7 +904,7 @@ async def get_movimenti_per_conto(
              "fonte": "Fatture Emesse"}
             for d in docs
         ]
-        fonte = "invoices_emesse"
+        fonte = "fatture_emesse"
 
     # ── DEBITI V/FORNITORI ────────────────────────────────────────────────────
     # NB: "fatture_passive" non è mai stata la collection reale delle fatture

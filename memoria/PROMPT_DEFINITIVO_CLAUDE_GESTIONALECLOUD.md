@@ -38,7 +38,11 @@ PROSSIMA FASE: P1 consolidamento collection/motori (§5-§8).
       employee_contracts→contratti_dipendenti (canonica CRUD; FIX cessazione che
       terminava i contratti sull'alias vuoto) + test, staff→dipendenti (deprecata).
       Migrazioni: migra_employee_contracts_a_contratti / migra_staff_a_dipendenti (302 test).
-- [ ] §5.5 Fatture emesse · §5.6 Estratto conto · §5.7 Fornitori · §5.8 Documenti classificati · §5.9 Magazzino
+- [x] §5.5 Fatture emesse: canonica `fatture_emesse` (scelta utente: "un unico posto
+      reale"). Risolto split-brain (writer su invoices_emesse, lettori su fatture_emesse):
+      redirect writer CRUD + ragioneria/dashboard/piano_conti → fatture_emesse; invoices_emesse
+      deprecata + migrazione. Follow-up: armonizzare gli schemi campi dei lettori (304 test).
+- [ ] §5.6 Estratto conto · §5.7 Fornitori · §5.8 Documenti classificati · §5.9 Magazzino
 - [ ] §6 Unificazione motori contabili · §7 Classificazione 390 endpoint · §8 Viewer documenti
       Deliverable: memoria/PIANO_MIGRAZIONE_COLLECTION.md
 ### FASE P1 — F24/quietanze/IVA/prestazioni (§9-§11) — non iniziata

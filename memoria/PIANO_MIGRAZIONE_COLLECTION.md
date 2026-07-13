@@ -94,8 +94,26 @@ cedolino elaborato → `cedolini` (canonica); riepilogo aggregato → `riepilogo
   cedolini/distinte/TFR.
 - Verifica: 301 test verdi · `tests/test_p1_cedolini.py`.
 
-## 5.5-5.9 — DA FARE
-Fatture emesse (`fatture_emesse` vs `invoices_emesse`), estratto
+## 5.5 Fatture emesse — ✅ FATTO
+**Canonica (scelta utente "deve leggere da un unico posto reale"):** `fatture_emesse`.
+Prima era split-brain: writer CRUD su `invoices_emesse`, ma metà dei lettori contabili
+leggeva `fatture_emesse` (vuota, senza writer) → crediti/ricavi/IVA incoerenti.
+
+- Redirect writer CRUD `invoices/invoices_emesse.py` → `fatture_emesse` (create/read/
+  read-by-id/delete). Route `/api/invoices/emesse` invariata.
+- Redirect lettori residui: `ragioneria_service.py` (IVA a debito), `reports/dashboard.py`
+  (ricavi), `accounting/piano_conti.py` (+ label `fonte`). Ora TUTTI i consumer
+  (bilancio/contabilità/IVA/dashboard/public_api) leggono `fatture_emesse`.
+- `invoices_emesse` marcata LEGACY/DEPRECATA. Migrazione non distruttiva:
+  `python -m app.scripts.migra_invoices_emesse_a_fatture [--esegui]` (dedup per id o
+  numero+data). **Eseguire al deploy**: i writer/lettori ora usano solo `fatture_emesse`.
+- Nota: la feature "fatture emesse" resta con schemi disomogenei tra i lettori
+  (data_fattura/importo vs data_documento/iva); l'armonizzazione dei CAMPI è un
+  follow-up separato — qui è stato unificato il POSTO (collection unica).
+- Verifica: 304 test verdi · `tests/test_p1_fatture_emesse.py`.
+
+## 5.6-5.9 — DA FARE
+Estratto
 conto (canonica `estratto_conto_movimenti`), fornitori (`fornitori`), documenti
 classificati (`documents_classified` vs `documenti_classificati`), magazzino.
 Vedi PROMPT_DEFINITIVO §5.2/5.5-5.9.

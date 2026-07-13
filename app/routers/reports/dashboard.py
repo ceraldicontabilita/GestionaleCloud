@@ -584,7 +584,7 @@ async def get_bilancio_istantaneo(
 ) -> Dict[str, Any]:
     """
     Calcola il bilancio istantaneo basato sulle fatture caricate.
-    - Ricavi: fatture emesse (invoices_emesse) o corrispettivi
+    - Ricavi: fatture emesse (fatture_emesse, canonica P1 §5.5) o corrispettivi
     - Costi: fatture ricevute (invoices)
     - IVA a Debito: IVA sulle vendite
     - IVA a Credito: IVA sugli acquisti
@@ -614,7 +614,7 @@ async def get_bilancio_istantaneo(
         ricavi_corr = corr_res[0] if corr_res else {"imponibile": 0, "iva": 0, "totale": 0}
         
         # Fatture emesse (se presenti) - cerca anche per data
-        fatt_emesse_res = await db["invoices_emesse"].aggregate([
+        fatt_emesse_res = await db["fatture_emesse"].aggregate([
             {"$match": {
                 "$or": [
                     {"anno": anno},

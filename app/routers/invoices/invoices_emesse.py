@@ -21,7 +21,7 @@ async def get_invoices_emesse(
 ) -> List[Dict[str, Any]]:
     """Get list of issued invoices."""
     db = Database.get_db()
-    invoices = await db["invoices_emesse"].find({}, {"_id": 0}).sort("date", -1).to_list(500)
+    invoices = await db["fatture_emesse"].find({}, {"_id": 0}).sort("date", -1).to_list(500)
     return invoices
 
 
@@ -35,7 +35,7 @@ async def get_invoice_emessa(
 ) -> Dict[str, Any]:
     """Get a specific issued invoice."""
     db = Database.get_db()
-    invoice = await db["invoices_emesse"].find_one({"id": invoice_id}, {"_id": 0})
+    invoice = await db["fatture_emesse"].find_one({"id": invoice_id}, {"_id": 0})
     return invoice or {}
 
 
@@ -53,7 +53,7 @@ async def create_invoice_emessa(
     data["id"] = str(uuid4())
     data["created_at"] = datetime.now(timezone.utc)
     data["user_id"] = current_user["user_id"]
-    await db["invoices_emesse"].insert_one(data.copy())
+    await db["fatture_emesse"].insert_one(data.copy())
     return {"message": "Invoice created", "id": data["id"]}
 
 
@@ -67,5 +67,5 @@ async def delete_invoice_emessa(
 ) -> Dict[str, str]:
     """Delete an issued invoice."""
     db = Database.get_db()
-    await db["invoices_emesse"].delete_one({"id": invoice_id})
+    await db["fatture_emesse"].delete_one({"id": invoice_id})
     return {"message": "Invoice deleted"}

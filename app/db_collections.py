@@ -25,8 +25,8 @@ COLL_FAILED_INVOICES = "failed_invoices"
 COLL_ALLEGATI_FATTURE = "allegati_fatture"
 
 # Fatture Emesse (fatture attive)
-COLL_FATTURE_EMESSE = "fatture_emesse"  # Da implementare
-COLL_INVOICES_EMESSE = "invoices_emesse"  # Alias legacy
+COLL_FATTURE_EMESSE = "fatture_emesse"  # CANONICA (P1 §5.5): unico posto reale per le fatture emesse (writer CRUD + tutti i lettori contabili/IVA/dashboard)
+COLL_INVOICES_EMESSE = "invoices_emesse"  # LEGACY/DEPRECATA (P1 §5.5): alias inglese; migrare in fatture_emesse con app/scripts/migra_invoices_emesse_a_fatture.py; NON scrivere qui
 
 # Fornitori
 COLL_SUPPLIERS = "fornitori"  # FIX: ora punta a "fornitori" (canonica). "suppliers" era alias inglese deprecato.
