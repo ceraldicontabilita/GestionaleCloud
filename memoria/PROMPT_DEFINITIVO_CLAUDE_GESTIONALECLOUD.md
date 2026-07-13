@@ -46,7 +46,11 @@ PROSSIMA FASE: P1 consolidamento collection/motori (§5-§8).
       ovunque; P0.7 aveva già redirezionato l'import F24-banca). `estratti_conto` tenuta
       SEPARATA (registro documenti EC, non movimenti). estratto_conto/bank_statements/
       movimenti_f24_banca deprecate (nessun accesso; nessun merge dei backup) (306 test).
-- [ ] §5.7 Fornitori · §5.8 Documenti classificati · §5.9 Magazzino
+- [x] §5.7 Fornitori: canonica `fornitori` (già consolidata: COLL_SUPPLIERS/
+      Collections.SUPPLIERS/SupplierCollections.SUPPLIERS = fornitori; nessuna scrittura
+      su `suppliers` letterale; POST /api/suppliers pubblico scrive in fornitori).
+      Blindato con test-guardia (308 test).
+- [ ] §5.8 Documenti classificati · §5.9 Magazzino
 - [ ] §6 Unificazione motori contabili · §7 Classificazione 390 endpoint · §8 Viewer documenti
       Deliverable: memoria/PIANO_MIGRAZIONE_COLLECTION.md
 ### FASE P1 — F24/quietanze/IVA/prestazioni (§9-§11) — non iniziata

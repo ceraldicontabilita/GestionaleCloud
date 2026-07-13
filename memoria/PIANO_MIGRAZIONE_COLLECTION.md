@@ -134,6 +134,18 @@ già a `estratto_conto_movimenti`, quindi gli indici sono corretti.
   importato (morto) con mappa legacy (`bank_statements`/`payslips`/`employees`);
   nessun effetto a runtime, da ripulire nella fase codice morto.
 
-## 5.7-5.9 — DA FARE
-Fornitori (`fornitori`), documenti classificati (`documents_classified` vs
-`documenti_classificati`), magazzino. Vedi PROMPT_DEFINITIVO §5.7-5.9.
+## 5.7 Fornitori — ✅ FATTO (già consolidato, blindato con test-guardia)
+**Canonica:** `fornitori`. Il consolidamento era già stato fatto: tutti gli alias
+inglesi risolvono alla canonica — `COLL_SUPPLIERS`, `Collections.SUPPLIERS`,
+`SupplierCollections.SUPPLIERS` = `fornitori`.
+
+- Nessuna scrittura su una collection `suppliers` letterale in tutto il codice.
+- Regola cardine del prompt rispettata: il `POST /api/suppliers` pubblico
+  (`public_api.py`) e il CRUD `suppliers_module/base.py` scrivono via
+  `Collections.SUPPLIERS` → `fornitori`, non in `suppliers`.
+- Test-guardia `tests/test_p1_fornitori.py`: gli alias risolvono a `fornitori` +
+  scan del sorgente che vieta qualsiasi scrittura su `db["suppliers"]`.
+
+## 5.8-5.9 — DA FARE
+Documenti classificati (`documents_classified` vs `documenti_classificati`),
+magazzino (no giacenza fisica). Vedi PROMPT_DEFINITIVO §5.8-5.9.
