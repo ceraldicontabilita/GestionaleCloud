@@ -31,7 +31,7 @@ La maggior parte degli scostamenti nasce dal fatto che il motore "specifica" è
 | 7 | Scadenza naturale 16 + giorni ritardo | CONFORME (16 coerente) | `tributi_engine.py:174-196` |
 | 8 | Stato pagamento | CONFORME | `tributi_engine.py:182-196` |
 | 9 | Doppio pagamento | CONFORME impianto, P1 sul calcolo quota | `tributi_engine.py:408-452` |
-| 10 | Fascicolo F24 | DUBBIO/PARZIALE (non materializzato) | P2-F |
+| 10 | Fascicolo F24 | MATERIALIZZATO (collezione `fascicoli_f24`) | `services/fascicolo_f24.py`, endpoint `/api/f24/fascicolo/*` |
 | 11 | Saldo F24 mai automaticamente costo | CONFORME | `fiscale_engine.py:53-97`, `calcolo_imposte.py:290-304` |
 | 12 | Associazione F24-cedolini (periodo/causale/posizione/soggetto) | CONFORME con riserve | `tributi_engine.py:289-343` → P1-E |
 
@@ -72,7 +72,10 @@ costi dai conti, non dal saldo F24.
   su collezione `db.f24` (disallineato dal flusso `pagato`/`f24_commercialista`).
 - P2-E doppio vocabolario stato + più collezioni F24 (`f24`, `f24_commercialista`,
   `f24_unificato`).
-- P2-F "fascicolo F24" §21 non materializzato.
+- P2-F "fascicolo F24" §21 — RISOLTO: materializzato in `fascicoli_f24`
+  (`services/fascicolo_f24.py`), endpoint `/api/f24/fascicolo/costruisci` e
+  `/api/f24/fascicolo/{cf}/{mese}/{anno}`. Collega F24 (DM10/RC01), quietanze e
+  cedolini del periodo con totali classificati; non crea documenti mancanti.
 - P2-G `3847/3848` etichettati "IMU" nella costante (impatto limitato).
 - P2-H TODO fallback AI parsing non implementato (`f24_riconciliazione.py:79-82`).
 - P2-I alert "F24 mancante" emesso anche quando l'F24 esiste ma non combacia.

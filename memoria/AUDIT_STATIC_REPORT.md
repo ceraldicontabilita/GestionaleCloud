@@ -1094,49 +1094,49 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/f24/f24_riconciliazione.py:36`
+- File: `app/routers/f24/f24_riconciliazione.py:79`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/f24/f24_riconciliazione.py:257`
+- File: `app/routers/f24/f24_riconciliazione.py:321`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/f24/f24_riconciliazione.py:440`
+- File: `app/routers/f24/f24_riconciliazione.py:504`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/f24/f24_riconciliazione.py:656`
+- File: `app/routers/f24/f24_riconciliazione.py:720`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/f24/f24_riconciliazione.py:717`
+- File: `app/routers/f24/f24_riconciliazione.py:781`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/f24/f24_riconciliazione.py:901`
+- File: `app/routers/f24/f24_riconciliazione.py:965`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/f24/f24_riconciliazione.py:1003`
+- File: `app/routers/f24/f24_riconciliazione.py:1067`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/f24/f24_riconciliazione.py:1296`
+- File: `app/routers/f24/f24_riconciliazione.py:1360`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 

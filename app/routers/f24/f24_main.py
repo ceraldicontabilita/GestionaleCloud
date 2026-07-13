@@ -1065,6 +1065,52 @@ async def statistiche_tributi_quietanze() -> Dict[str, Any]:
     }
 
 
+# ============== FASCICOLO F24 (§21) ==============
+
+def _parse_periodo_mm_aaaa(periodo: str) -> tuple:
+    """'MM/AAAA' o 'MM-AAAA' → (mese, anno). Solleva 400 se non valido."""
+    import re as _re
+    m = _re.match(r"^\s*(\d{1,2})[/-](\d{4})\s*$", periodo or "")
+    if not m:
+        raise HTTPException(status_code=400,
+                            detail="periodo non valido: usa 'MM/AAAA' (es. 06/2026)")
+    mese, anno = int(m.group(1)), int(m.group(2))
+    if not (1 <= mese <= 12):
+        raise HTTPException(status_code=400, detail="mese non valido (1-12)")
+    return (mese, anno)
+
+
+@router.post("/fascicolo/costruisci", summary="Costruisce e salva il fascicolo F24 di un soggetto/periodo (§21)")
+async def costruisci_fascicolo_f24(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    """Materializza il fascicolo mensile: collega F24 (DM10/RC01), quietanze e
+    cedolini del periodo e ne classifica i totali. Non crea documenti mancanti."""
+    from app.services import fascicolo_f24 as fasc
+    cf = (payload.get("codice_fiscale") or "").strip()
+    if not cf:
+        raise HTTPException(status_code=400, detail="codice_fiscale obbligatorio")
+    periodo = _parse_periodo_mm_aaaa(payload.get("periodo", ""))
+    db = Database.get_db()
+    fascicolo = await fasc.costruisci_e_salva(db, cf, periodo)
+    return {"success": True, "fascicolo": fascicolo}
+
+
+@router.get("/fascicolo/{codice_fiscale}/{mese}/{anno}", summary="Legge il fascicolo F24 materializzato")
+async def leggi_fascicolo_f24(codice_fiscale: str, mese: int, anno: int,
+                              costruisci_se_assente: bool = True) -> Dict[str, Any]:
+    """Ritorna il fascicolo salvato; se assente e richiesto, lo costruisce al volo."""
+    from app.services import fascicolo_f24 as fasc
+    if not (1 <= mese <= 12):
+        raise HTTPException(status_code=400, detail="mese non valido (1-12)")
+    db = Database.get_db()
+    periodo = (mese, anno)
+    fascicolo = await fasc.leggi_fascicolo(db, codice_fiscale, periodo)
+    if fascicolo is None and costruisci_se_assente:
+        fascicolo = await fasc.costruisci_e_salva(db, codice_fiscale, periodo)
+    if fascicolo is None:
+        raise HTTPException(status_code=404, detail="Fascicolo non trovato")
+    return {"success": True, "fascicolo": fascicolo}
+
+
 # Registrata per ULTIMA di proposito: una route dinamica a un segmento
 # cattura qualunque path statico definito dopo di lei (era il caso di
 # GET /quietanze, che non veniva mai raggiunta).
