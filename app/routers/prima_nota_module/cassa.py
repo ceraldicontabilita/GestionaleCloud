@@ -118,6 +118,17 @@ async def create_prima_nota_cassa(data: Dict[str, Any] = Body(...)) -> Dict[str,
                    "La Cassa registra solo movimenti in denaro contante."
         )
     
+    # Un movimento nasce da un'azione (corrispettivo/fattura) quando porta un
+    # collegamento esplicito (fattura_id) o una `source` d'azione nota. Altrimenti
+    # e' un inserimento MANUALE libero: consentito (scelta utente) ma marcato e
+    # tracciato in audit, cosi' resta distinguibile dai movimenti automatici.
+    _SOURCE_AZIONE = {"corrispettivo", "fattura", "paga_cassa", "riconciliazione",
+                      "anticipo_email", "quadratura"}
+    source = data.get("source")
+    da_azione = bool(data.get("fattura_id")) or (source in _SOURCE_AZIONE)
+    inserimento_manuale = not da_azione
+
+    now = datetime.now(timezone.utc).isoformat()
     movimento = {
         "id": str(uuid.uuid4()),
         "data": data["data"],
@@ -129,12 +140,31 @@ async def create_prima_nota_cassa(data: Dict[str, Any] = Body(...)) -> Dict[str,
         "fornitore_piva": data.get("fornitore_piva"),
         "fattura_id": data.get("fattura_id"),
         "note": data.get("note"),
-        "source": data.get("source"),
-        "created_at": datetime.now(timezone.utc).isoformat()
+        "source": source or ("manuale" if inserimento_manuale else None),
+        "inserimento_manuale": inserimento_manuale,
+        "origine": "manuale" if inserimento_manuale else (source or "azione"),
+        "created_at": now
     }
-    
+
     await db[COLLECTION_PRIMA_NOTA_CASSA].insert_one(movimento.copy())
-    return {"message": "Movimento cassa creato", "id": movimento["id"]}
+
+    if inserimento_manuale:
+        try:
+            await db["audit_log"].insert_one({
+                "id": str(uuid.uuid4()),
+                "evento": "prima_nota_cassa_inserimento_manuale",
+                "movimento_id": movimento["id"],
+                "tipo": movimento["tipo"],
+                "importo": movimento["importo"],
+                "descrizione": movimento["descrizione"],
+                "created_at": now,
+            })
+        except Exception:
+            # L'audit non deve bloccare la registrazione del movimento.
+            pass
+
+    return {"message": "Movimento cassa creato", "id": movimento["id"],
+            "inserimento_manuale": inserimento_manuale}
 
 
 async def update_prima_nota_cassa(

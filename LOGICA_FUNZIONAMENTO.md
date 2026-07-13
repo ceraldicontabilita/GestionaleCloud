@@ -169,7 +169,13 @@ Se il parser fallisce: stato di errore + avviso, il documento resta consultabile
 
 ## 4. Prima Nota (Cassa / Banca / Provvisoria)
 
-I movimenti non si inseriscono mai liberamente: nascono sempre da un'azione precisa.
+I movimenti nascono di norma da un'azione precisa (corrispettivo, fattura,
+riconciliazione). È però ammesso l'**inserimento manuale** in Prima Nota Cassa per i
+casi non coperti da un'azione (piccola spesa contanti, versamento, finanziamento
+soci): il movimento viene **marcato come "manuale"** (`inserimento_manuale=true`,
+`origine="manuale"`) e registrato nell'audit log, così resta distinguibile dai
+movimenti automatici. Restano comunque rifiutati i movimenti chiaramente bancari
+(bonifico, POS bancario, F24…), che vanno in Prima Nota Banca.
 
 **Cassa**
 - Conferma di un corrispettivo giornaliero → l'incasso viene **diviso per natura**:

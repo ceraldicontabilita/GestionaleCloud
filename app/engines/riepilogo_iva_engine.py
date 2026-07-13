@@ -157,7 +157,7 @@ def rileva_anomalie(fatture: List[Dict[str, Any]], mese_corrente: Optional[str] 
     """Anomalie §18. Ritorna {"bloccanti": [...], "avvisi": [...]}.
 
     Ogni anomalia: {tipo, fattura_id, messaggio}. `mese_corrente` ('YYYY-MM')
-    serve per l'avviso "non utilizzata da molti mesi" (>3 mesi fa).
+    serve per l'avviso "non utilizzata da molti mesi" (>2 mesi fa).
     """
     bloccanti: List[Dict[str, Any]] = []
     avvisi: List[Dict[str, Any]] = []
@@ -205,11 +205,11 @@ def rileva_anomalie(fatture: List[Dict[str, Any]], mese_corrente: Optional[str] 
             if chk.get("anomalia"):
                 _add(avvisi, "emessa_oltre_12_giorni", f, chk["messaggio"])
         if mese_corrente and periodo and f.get("iva_utilizzata") is not True and iva > 0:
-            # non utilizzata da più di 3 mesi
+            # non utilizzata da più di 2 mesi (soglia scelta dall'utente)
             try:
                 ap = int(periodo[:4]) * 12 + int(periodo[5:7])
                 am = int(mese_corrente[:4]) * 12 + int(mese_corrente[5:7])
-                if am - ap > 3:
+                if am - ap > 2:
                     _add(avvisi, "non_utilizzata_da_mesi", f,
                          f"IVA di {periodo} ancora non utilizzata: valutare il recupero annuale")
             except (ValueError, IndexError):

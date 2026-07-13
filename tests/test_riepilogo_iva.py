@@ -94,8 +94,19 @@ def test_anomalie_bloccanti_e_avvisi():
 
 def test_anomalia_non_utilizzata_da_mesi():
     fatture = [_f(id="v", periodo_iva_attribuito="2026-01", data_ricezione="2026-01-05")]
-    res = riep.rileva_anomalie(fatture, mese_corrente="2026-07")  # >3 mesi
+    res = riep.rileva_anomalie(fatture, mese_corrente="2026-07")  # >2 mesi
     assert any(a["tipo"] == "non_utilizzata_da_mesi" for a in res["avvisi"])
+
+
+def test_anomalia_non_utilizzata_soglia_2_mesi():
+    # Soglia scelta dall'utente: scatta oltre i 2 mesi (am - ap > 2).
+    f = _f(id="v", periodo_iva_attribuito="2026-01", data_ricezione="2026-01-05")
+    # 2 mesi esatti (gen→mar): NON scatta
+    res2 = riep.rileva_anomalie([f], mese_corrente="2026-03")
+    assert not any(a["tipo"] == "non_utilizzata_da_mesi" for a in res2["avvisi"])
+    # 3 mesi (gen→apr): scatta
+    res3 = riep.rileva_anomalie([f], mese_corrente="2026-04")
+    assert any(a["tipo"] == "non_utilizzata_da_mesi" for a in res3["avvisi"])
 
 
 # ─── Azioni manuali (router) ────────────────────────────────────────────────

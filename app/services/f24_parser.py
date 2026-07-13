@@ -128,18 +128,22 @@ def parse_quietanza_f24(pdf_path: str = None, pdf_content: bytes = None) -> Dict
         result["dati_generali"]["data_documento"] = parse_data(data_ora_match.group(1))
         result["dati_generali"]["ora_documento"] = data_ora_match.group(2)
     
-    # Data del versamento - pattern con cifre separate
-    # Pattern: 1 7 0 1 2 0 2 5 (17/01/2025)
-    data_vers_match = re.search(r'(\d)\s+(\d)\s+(\d)\s+(\d)\s+(\d)\s+(\d)\s+(\d)\s+(\d)\s+05034', text)
+    # Data del versamento - pattern con cifre separate seguite dall'ABI (5 cifre).
+    # Pattern: 1 7 0 1 2 0 2 5 05034 (17/01/2025 + ABI). L'ABI e' generico
+    # (qualsiasi banca, scelta utente): viene catturato qui perche' questa e' la
+    # posizione piu' affidabile in cui compare nella quietanza.
+    abi_dalla_delega = None
+    data_vers_match = re.search(r'(\d)\s+(\d)\s+(\d)\s+(\d)\s+(\d)\s+(\d)\s+(\d)\s+(\d)\s+(\d{5})', text)
     if data_vers_match:
         giorno = data_vers_match.group(1) + data_vers_match.group(2)
         mese = data_vers_match.group(3) + data_vers_match.group(4)
         anno = data_vers_match.group(5) + data_vers_match.group(6) + data_vers_match.group(7) + data_vers_match.group(8)
         result["dati_generali"]["data_pagamento"] = f"{anno}-{mese}-{giorno}"
-    
-    # Saldo Delega - pattern: 5.498,79 o simile prima di ABI
+        abi_dalla_delega = data_vers_match.group(9)
+
+    # Saldo Delega - pattern: 5.498,79 o simile prima di data+ABI (5 cifre generico)
     saldo_patterns = [
-        r'(\d{1,3}(?:\.\d{3})*,\d{2})\s*\d\s*\d\s*\d\s*\d\s*\d\s*\d\s*\d\s*\d\s*05034',  # Prima di data e ABI
+        r'(\d{1,3}(?:\.\d{3})*,\d{2})\s*\d\s*\d\s*\d\s*\d\s*\d\s*\d\s*\d\s*\d\s*\d{5}',  # Prima di data e ABI
         r'Saldo\s*delega\s*[\n\s]*(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})',
         r',\s*(\d{1,3}(?:\.\d{3})*,\d{2})\s*\n',
     ]
@@ -148,15 +152,21 @@ def parse_quietanza_f24(pdf_path: str = None, pdf_content: bytes = None) -> Dict
         if saldo_match:
             result["dati_generali"]["saldo_delega"] = parse_importo(saldo_match.group(1))
             break
-    
-    # ABI e CAB
-    abi_match = re.search(r'\b(05034|03069|01030|03002|02008)\b', text)
-    if abi_match:
-        result["dati_generali"]["abi"] = abi_match.group(1)
-    
-    cab_match = re.search(r'05034\s*\n?\s*(\d{5})', text)
-    if cab_match:
-        result["dati_generali"]["cab"] = cab_match.group(1)
+
+    # ABI e CAB (generici: qualsiasi banca). Priorita' all'ABI letto dalla delega;
+    # in fallback, una coppia ABI+CAB (5+5 cifre) e' un segnale bancario forte.
+    abi = abi_dalla_delega
+    if not abi:
+        coppia = re.search(r'\b(\d{5})\s*\n?\s*(\d{5})\b', text)
+        if coppia:
+            abi = coppia.group(1)
+            result["dati_generali"]["cab"] = coppia.group(2)
+    if abi:
+        result["dati_generali"]["abi"] = abi
+        if not result["dati_generali"].get("cab"):
+            cab_match = re.search(re.escape(abi) + r'\s*\n?\s*(\d{5})', text)
+            if cab_match:
+                result["dati_generali"]["cab"] = cab_match.group(1)
     
     # ============================================
     # SEZIONE ERARIO
