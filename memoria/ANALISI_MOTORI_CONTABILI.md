@@ -71,11 +71,13 @@ i valori sono invariati (test di caratterizzazione `tests/test_p1_saldo_prima_no
 - **Restano** da convogliare sulla funzione unica: `stats.get_saldo_finale`
   (itera i movimenti con logica propria) e `manutenzione` (usa dict già calcolati).
 
-## §6.5 — Cespiti: `cespiti.py` vs `contabilita_italiana /cespiti/*`
-Due sistemi di registrazione cespiti/ammortamenti.
-- **Azione:** scegliere il modello canonico (`cespiti.py` scrive `cespiti` + genera
-  movimenti ammortamento letti dalla chiusura esercizio) e migrare/deprecare l'altro.
-- **Rischio:** MEDIO. Da valutare quale ha i dati reali.
+## §6.5 — Cespiti — ✅ FATTO (canonico + parallelo deprecato)
+Entrambi i sistemi scrivono la STESSA collection `cespiti` (nessun data-split).
+- **Canonico:** `app/routers/cespiti.py` (`/api/cespiti/*`), quello usato dal frontend
+  (GestioneCespiti.jsx: get/riepilogo/categorie/registra/scan-fatture/PUT/DELETE).
+- `contabilita_italiana /cespiti/*`: implementazione PARALLELA sulla stessa collection,
+  NON usata dal frontend → marcata DEPRECATA (docstring). Non aggiungere logica lì.
+- Rischio basso: nessun cambio dati, solo indirizzo canonico + deprecazione.
 
 ## §6.6 — Estratto conto importer — ✅ VERIFICATO (già adapter corretto)
 - Canonico: `bank/estratto_conto.py` (scrive `estratto_conto_movimenti`).
@@ -88,11 +90,15 @@ Due sistemi di registrazione cespiti/ammortamenti.
   riga (N+1) con dedup/alert per-movimento; non convertibile a bulk senza perdere la
   semantica di dedup. Import occasionale, non hot path: lasciato.
 
-## §6.7 — PayPal — dominio dedicato
-Unificare mapping fornitore, stati, pipeline riconciliazione, origine statement/API,
-idempotenza. È un dominio ampio già parzialmente consolidato (task #23/#31).
-- **Azione:** audit dedicato del flusso PayPal (paypal_api/paypal_statements/
-  paypal_email_recovery) prima di unificare. Rischio MEDIO.
+## §6.7 — PayPal — 🟡 MAPPATO (refactor rinviato: dominio ampio)
+Landscape: 2 router (`paypal_api`, `paypal_statements`) + 6 service
+(`paypal_api_client`, `paypal_api_sync`, `paypal_email_recovery`, `paypal_integration`,
+`paypal_pdf_fetcher`, `paypal_riconciliazione`) + `parsers/paypal_csv_parser`.
+Origini statement multiple (API, CSV, PDF, email). Già parzialmente consolidato
+(task #23/#31).
+- **Azione (rinviata):** audit dedicato per unificare mapping fornitore, stati, pipeline
+  di riconciliazione, idempotenza — NON un fix rapido sicuro (troppi moduli vivi).
+  Da fare in una sessione dedicata PayPal. Rischio MEDIO.
 
 ## §6.8 — Prima Nota Cassa: `cash.py` — ✅ FATTO (adapter)
 Verifica: `Collections.CASH_MOVEMENTS` **è già** `prima_nota_cassa` (nessuna collezione
@@ -105,11 +111,19 @@ che il saldo Prima Nota (che aggrega su `tipo/importo/data/status`) ignorava.
   inglesi → il movimento è visto dal saldo Prima Nota. Adapter senza doppia scrittura.
 - Test `tests/test_p1_cash_adapter.py`. Rischio basso (endpoint FE-inutilizzato).
 
-## §6.9 — Verbali: tre router
-`verbali_noleggio`, `verbali_noleggio_api`, `verbali_riconciliazione`. Separare
-chiaramente ingest / CRUD / riconciliazione con uno schema comune.
-- **Azione:** definire lo schema verbale comune e assegnare a ciascun router un ruolo
-  unico (ingest vs CRUD vs riconciliazione) evitando sovrapposizioni. Rischio MEDIO.
+## §6.9 — Verbali: tre router — 🟡 RUOLI DOCUMENTATI (refactor rinviato)
+Ricognizione degli endpoint → i ruoli sono GIÀ in gran parte separati:
+- **`verbali_noleggio`** (19 ep): INGEST da Drive (cartelle-verbali, scarica-tutti) +
+  lettura verbali + PDF + associa-fatture.
+- **`verbali_noleggio_api`** (12 ep): CRUD + quietanze (dettaglio, lista, PUT verbale,
+  upload-quietanza, alert-pagamenti, note-consulente).
+- **`verbali_riconciliazione`** (26 ep): RICONCILIAZIONE (dashboard, associa-fattura,
+  registra-pagamento, scan-fatture-verbali, pulisci-duplicati).
+- **Sovrapposizioni da risolvere:** `lista`/lettura verbali presente in tutti e tre;
+  `associa-fatture` sia in noleggio sia in riconciliazione.
+- **Azione (rinviata):** consolidare le letture in un unico punto e lasciare
+  `associa-fatture` alla sola riconciliazione, con schema verbale comune. Spostare
+  endpoint tra router è rischioso (FE-wired) → sessione dedicata. Rischio MEDIO.
 
 ---
 

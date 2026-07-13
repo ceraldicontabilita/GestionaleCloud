@@ -477,8 +477,14 @@ async def crea_scrittura_contabile(db, data: str, ref: str, righe: List[Dict], t
 @router.post("/cespiti/registra")
 async def registra_cespite(cespite: CespiteCreate) -> Dict[str, Any]:
     """
+    [DEPRECATO §6.5] Implementazione PARALLELA dei cespiti sulla stessa collection
+    `cespiti`. Il modello CANONICO è `app/routers/cespiti.py` (`/api/cespiti/*`),
+    quello usato dal frontend (GestioneCespiti.jsx). Questi endpoint
+    `/api/contabilita-italiana/cespiti/*` non sono collegati al frontend: non
+    aggiungere logica qui, usare cespiti.py.
+
     Registra l'acquisto di un cespite ammortizzabile.
-    
+
     Scrittura contabile:
     - DARE: Conto cespite (es. Impianti)
     - DARE: IVA a credito (se applicabile)

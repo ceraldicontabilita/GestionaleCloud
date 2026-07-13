@@ -76,7 +76,9 @@ PROSSIMA FASE: P1 consolidamento collection/motori (§5-§8).
 - [x] §6.6 EC importer: VERIFICATO già adapter corretto — bank_statement_import scrive i
       movimenti nella canonica estratto_conto_movimenti (dedup+alert); bank_statements_imported
       = solo metadati statement, nessun lettore riconciliazione. Nessun ricablaggio.
-      RESTANO §6.5 cespiti, §6.7 PayPal, §6.8 cash adapter, §6.9 verbali (in attesa).
+      §6.5 cespiti (canonico cespiti.py, parallelo contab_italiana deprecato) · §6.8 cash
+      adapter (campi canonici in prima_nota_cassa) · §6.9 verbali (ruoli documentati) FATTI.
+      §6.7 PayPal + refactor endpoint verbali RINVIATI (dominio ampio, sessione dedicata).
 - [x] §6.2/§6.3 PIANO UFFICIALE: l'utente ha fornito il bilancio ufficiale → canonico =
       piano CEE del commercialista (231 conti) in app/services/piano_conti_ufficiale.py +
       doc memoria/PIANO_CONTI_UFFICIALE_CERALDI.md. mapping_piano_conti.OPERATIVO_A_UFFICIALE
