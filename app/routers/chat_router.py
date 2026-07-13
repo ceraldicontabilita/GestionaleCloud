@@ -350,6 +350,25 @@ async def _recupera_storico(db, session_id: str, limit: int = STORICO_MAX_VOCI) 
         return []
 
 
+@router.get("/health")
+async def chat_health() -> Dict[str, Any]:
+    """Diagnostica rapida del motore AI della chat: dice se la chiave è
+    configurata e quale modello verrebbe usato. Utile quando 'la chat non
+    risponde' per capire se è un problema di configurazione."""
+    from app.services import chat_ai_engine
+    configurata = chat_ai_engine.is_configured()
+    return {
+        "ai_configurata": configurata,
+        "modello": chat_ai_engine._model_name() if configurata else None,
+        "motore": "ai" if configurata else "solo_parole_chiave",
+        "nota": (
+            "Motore AI attivo." if configurata else
+            "ANTHROPIC_API_KEY non configurata: la chat usa solo il motore a "
+            "parole chiave. Imposta la chiave nelle variabili d'ambiente del server."
+        ),
+    }
+
+
 @router.get("/history")
 async def chat_history(request: Request, session_id: str = None) -> Dict[str, Any]:
     """Cronologia della chat per l'utente/sessione corrente — non si perde tra un accesso e l'altro."""
@@ -375,10 +394,15 @@ async def chat_ask(request: Request, data: Dict[str, Any] = Body(...)) -> Dict[s
     sid = _session_id(request, data)
 
     # ── MOTORE AI (se configurato e richiesto) ──
+    # `ai_stato` traccia perché eventualmente l'AI non ha risposto, così il
+    # fallback può dirlo all'utente invece di tacere ("non_configurata"/"errore").
+    ai_stato = None
     if data.get("use_ai", True) and domanda.strip():
-        try:
-            from app.services import chat_ai_engine
-            if chat_ai_engine.is_configured():
+        from app.services import chat_ai_engine
+        if not chat_ai_engine.is_configured():
+            ai_stato = "non_configurata"
+        else:
+            try:
                 storico = await _recupera_storico(db, sid)
                 strutturata = await chat_ai_engine.rispondi(domanda, sid, db, storico)
                 risultato = {
@@ -391,8 +415,9 @@ async def chat_ask(request: Request, data: Dict[str, Any] = Body(...)) -> Dict[s
                 risultato["risposta"] = risultato.get("response")
                 risultato["session_id"] = sid
                 return risultato
-        except Exception:
-            logger.exception("Motore AI chat fallito: fallback al motore a parole chiave")
+            except Exception:
+                logger.exception("Motore AI chat fallito: fallback al motore a parole chiave")
+                ai_stato = "errore"
 
     handler = None
     for keywords, fn in _INTENTI:
@@ -401,14 +426,36 @@ async def chat_ask(request: Request, data: Dict[str, Any] = Body(...)) -> Dict[s
             break
 
     if handler is None:
-        risultato = {
-            "response": (
-                "Posso rispondere su corrispettivi, fatture, F24, dipendenti, fornitori, bilancio "
-                "e darti un confronto sull'andamento ricavi/costi — prova ad esempio \"Totale "
-                "corrispettivo anno 2025\" oppure \"Dammi un consiglio sul flusso di cassa\"."
-            ),
-            "query_type": "non_riconosciuto",
-        }
+        if ai_stato == "non_configurata":
+            risultato = {
+                "response": (
+                    "⚠️ L'assistente AI non è attivo: manca la chiave ANTHROPIC_API_KEY "
+                    "nella configurazione del server. Una volta impostata risponderò alle "
+                    "domande in linguaggio naturale. Nel frattempo posso rispondere a "
+                    "richieste specifiche, es. \"Totale corrispettivo 2025\", \"Quanto ho "
+                    "in cassa\", \"Quanto ho speso\"."
+                ),
+                "query_type": "ai_non_configurata",
+            }
+        elif ai_stato == "errore":
+            risultato = {
+                "response": (
+                    "⚠️ L'assistente AI ha avuto un errore temporaneo e non ha risposto. "
+                    "Riprova tra poco; se il problema persiste va verificata la "
+                    "configurazione (chiave/modello). Nel frattempo posso rispondere a "
+                    "richieste specifiche, es. \"Totale corrispettivo 2025\", \"Quanto ho in cassa\"."
+                ),
+                "query_type": "ai_errore",
+            }
+        else:
+            risultato = {
+                "response": (
+                    "Posso rispondere su corrispettivi, fatture, F24, dipendenti, fornitori, bilancio "
+                    "e darti un confronto sull'andamento ricavi/costi — prova ad esempio \"Totale "
+                    "corrispettivo anno 2025\" oppure \"Dammi un consiglio sul flusso di cassa\"."
+                ),
+                "query_type": "non_riconosciuto",
+            }
     else:
         try:
             risultato = await handler(db, domanda)
