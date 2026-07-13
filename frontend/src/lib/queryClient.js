@@ -33,11 +33,6 @@ export const queryKeys = {
     salari: filters => ['prima-nota', 'salari', filters],
     dipendenti: () => ['prima-nota', 'dipendenti'],
   },
-  // Libro Unico
-  libroUnico: {
-    all: ['libro-unico'],
-    salaries: monthYear => ['libro-unico', 'salaries', monthYear],
-  },
   // Contratti
   contratti: {
     all: ['contratti'],

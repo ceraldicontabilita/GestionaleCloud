@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1076 endpoint** in **110 gruppi**.
+> Totale **1070 endpoint** in **110 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 639 · ext esterni = 76 · — da verificare = 361
+**Riepilogo uso:** ✓ frontend = 633 · ext esterni = 76 · — da verificare = 361
 
 ## AI Parser  (11)
 
@@ -450,7 +450,7 @@
 | GET | `/api/proposte` | — | dati_provvisori |
 | POST | `/api/rifiuta/{proposta_id}` | — | dati_provvisori |
 
-## Dipendenti  (51)
+## Dipendenti  (45)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -484,12 +484,6 @@
 | PUT | `/api/dipendenti/libretti-sanitari/{libretto_id}` | ✓ | employees.dipendenti |
 | DELETE | `/api/dipendenti/libretti-sanitari/{libretto_id}` | ✓ | employees.dipendenti |
 | GET | `/api/dipendenti/libretti/scadenze` | ✓ | employees.dipendenti |
-| GET | `/api/dipendenti/libro-unico/export-excel` | ✓ | employees.dipendenti |
-| GET | `/api/dipendenti/libro-unico/presenze` | ✓ | employees.dipendenti |
-| GET | `/api/dipendenti/libro-unico/salaries` | ✓ | employees.dipendenti |
-| PUT | `/api/dipendenti/libro-unico/salaries/{salary_id}` | ✓ | employees.dipendenti |
-| DELETE | `/api/dipendenti/libro-unico/salaries/{salary_id}` | ✓ | employees.dipendenti |
-| POST | `/api/dipendenti/libro-unico/upload` | ✓ | employees.dipendenti |
 | GET | `/api/dipendenti/mansioni` | ✓ | employees.dipendenti |
 | GET | `/api/dipendenti/portale/stats` | ✓ | employees.dipendenti |
 | GET | `/api/dipendenti/report-ferie-permessi-tutti` | ✓ | employees.dipendenti |

@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1076 · tenere: 650 · verificare: 407 · admin-only (migrazione/manutenzione): 19
+**Totale endpoint:** 1070 · tenere: 644 · verificare: 407 · admin-only (migrazione/manutenzione): 19
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -401,12 +401,6 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `DELETE /api/dipendenti/libretti-sanitari/{libretto_id}` | employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
 | `PUT /api/dipendenti/libretti-sanitari/{libretto_id}` | employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/dipendenti/libretti/scadenze` | employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/dipendenti/libro-unico/export-excel` | employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/dipendenti/libro-unico/presenze` | employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/dipendenti/libro-unico/salaries` | employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `DELETE /api/dipendenti/libro-unico/salaries/{salary_id}` | employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `PUT /api/dipendenti/libro-unico/salaries/{salary_id}` | employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/dipendenti/libro-unico/upload` | employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/dipendenti/mansioni` | employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/dipendenti/portale/stats` | employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/dipendenti/report-ferie-permessi-tutti` | employees.dipendenti | sì | — | — | — | — | tenere | in uso: FE |

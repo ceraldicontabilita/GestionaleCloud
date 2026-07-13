@@ -65,7 +65,7 @@ COLL_TFR_LIQUIDAZIONI = "tfr_liquidazioni"
 # Presenze e Giustificativi
 COLL_PRESENZE = "presenze"
 COLL_PRESENZE_MENSILI = "presenze_mensili"  # 211 docs - Da parser Libro Unico
-COLL_LIBRO_UNICO_PRESENZE = "libro_unico_presenze"
+COLL_LIBRO_UNICO_PRESENZE = "libro_unico_presenze"  # LEGACY/ARCHIVIO (§13.2, 2026-07-13): scritta solo dalla famiglia /libro-unico/* rimossa da dipendenti.py (con libro_unico_salaries); il flusso LUL canonico usa presenze_mensili/buste_paga via import-libro-unico
 COLL_ATTENDANCE_CALENDARIO = "attendance_presenze_calendario"  # 114 docs
 COLL_ATTENDANCE_TIMBRATURE = "attendance_timbrature"
 COLL_ATTENDANCE_ASSENZE = "attendance_assenze"

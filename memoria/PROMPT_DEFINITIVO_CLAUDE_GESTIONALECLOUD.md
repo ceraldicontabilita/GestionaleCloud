@@ -153,6 +153,13 @@ PROSSIMA FASE: P1 consolidamento collection/motori (§5-§8).
       sola route viva /disponibilita-liquide; rimosse 11 route morte doppioni dei flussi
       canonici + helper/modelli/costanti locali (PIANO_CONTI_CEE locale eliminato: il
       canonico è SOLO l'ufficiale CEE). File 1272 → ~110 righe; endpoint 1087 → 1076.
+- [x] §13.2 famiglia /api/dipendenti/libro-unico/* rimossa (2026-07-13): seconda
+      implementazione parallela del LUL con collection proprie libro_unico_presenze/
+      libro_unico_salaries, zero chiamanti reali (solo una query-key FE mai usata,
+      rimossa anch'essa — era pure un falso positivo "FE ✓" nella mappa) e zero
+      letture esterne delle collection (marcate LEGACY/ARCHIVIO in db_collections).
+      Flusso LUL canonico: import-libro-unico via upload-auto + prima_nota_salari.
+      Endpoint 1076 → 1070.
 ### FASE FINALE — Verifiche e deliverable (§14-§17) — COMPLETATA (2026-07-13)
 - [x] §15.3 mappe rigenerate: genera_mappa.py (1106 endpoint, 107 prefissi, FE ✓=639)
       + genera_classificazione_endpoint.py (650 tenere / 437 verificare / 19 admin-only).
