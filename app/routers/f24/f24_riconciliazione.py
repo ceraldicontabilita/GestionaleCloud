@@ -29,6 +29,49 @@ COLL_QUIETANZE = "quietanze_f24"
 COLL_F24_ALERTS = "f24_riconciliazione_alerts"
 
 
+def _adatta_output_ai_f24(ai_parsed: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """Adatta l'output del parser AI (parse_f24_ai / PROMPT_F24) allo schema
+    prodotto da parse_f24_commercialista, cosi' che il resto del flusso di
+    upload lo tratti in modo trasparente.
+
+    Differenze normalizzate:
+    - dati anagrafici/pagamento portati sotto `dati_generali`;
+    - `sezione_imu` dell'AI mappata su `sezione_tributi_locali`;
+    - `totali.saldo_finale` replicato anche su `saldo_netto`.
+    Ritorna None se l'AI non ha prodotto un risultato valido.
+    """
+    if not ai_parsed or not isinstance(ai_parsed, dict) or ai_parsed.get("error"):
+        return None
+
+    out = dict(ai_parsed)
+
+    # dati_generali (l'AI espone i campi al primo livello)
+    dg = dict(out.get("dati_generali") or {})
+    if out.get("data_pagamento") and not dg.get("data_versamento"):
+        dg["data_versamento"] = out.get("data_pagamento")
+    for campo in ("codice_fiscale", "ragione_sociale"):
+        if out.get(campo) and not dg.get(campo):
+            dg[campo] = out.get(campo)
+    out["dati_generali"] = dg
+
+    # Sezione IMU/tributi locali: allinea al nome usato dal resto del codice
+    if out.get("sezione_imu") and not out.get("sezione_tributi_locali"):
+        out["sezione_tributi_locali"] = out["sezione_imu"]
+    out.setdefault("sezione_erario", out.get("sezione_erario") or [])
+    out.setdefault("sezione_inps", out.get("sezione_inps") or [])
+    out.setdefault("sezione_regioni", out.get("sezione_regioni") or [])
+    out.setdefault("sezione_tributi_locali", out.get("sezione_tributi_locali") or [])
+
+    # Totali: garantisci saldo_netto (usato a valle per la f24_key e i confronti)
+    totali = dict(out.get("totali") or {})
+    if "saldo_netto" not in totali:
+        totali["saldo_netto"] = totali.get("saldo_finale", 0) or 0
+    out["totali"] = totali
+
+    out.setdefault("has_ravvedimento", False)
+    return out
+
+
 # ============================================
 # UPLOAD F24 COMMERCIALISTA
 # ============================================
@@ -77,9 +120,30 @@ async def upload_f24_commercialista(
                 len(parsed.get("sezione_tributi_locali", []))
             )
             if total_tributi == 0:
-                logger.warning("PyMuPDF non ha trovato tributi, AI non disponibile")
-                # TODO: Implementare fallback AI quando disponibile
-                
+                logger.warning("PyMuPDF non ha trovato tributi, provo fallback AI")
+                try:
+                    from app.services.ai_document_parser import parse_f24_ai
+                    ai_parsed = await parse_f24_ai(file_bytes=content)
+                    ai_adattato = _adatta_output_ai_f24(ai_parsed)
+                    if ai_adattato is not None:
+                        ai_tributi = (
+                            len(ai_adattato.get("sezione_erario", [])) +
+                            len(ai_adattato.get("sezione_inps", [])) +
+                            len(ai_adattato.get("sezione_regioni", [])) +
+                            len(ai_adattato.get("sezione_tributi_locali", []))
+                        )
+                        if ai_tributi > 0:
+                            parsed = ai_adattato
+                            parser_used = "ai"
+                            logger.info(f"Fallback AI: estratti {ai_tributi} tributi")
+                        else:
+                            logger.warning("Anche il fallback AI non ha trovato tributi")
+                    else:
+                        motivo = (ai_parsed or {}).get("error", "output non valido")
+                        logger.warning(f"Fallback AI non utilizzabile: {motivo}")
+                except Exception as ai_err:
+                    logger.warning(f"Fallback AI fallito: {ai_err}")
+
     except Exception as e:
         logger.error(f"Errore parsing F24: {e}")
         raise HTTPException(status_code=500, detail=f"Errore parsing: {str(e)}")
