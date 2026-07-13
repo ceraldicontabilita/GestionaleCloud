@@ -24,9 +24,13 @@ CENTRI_COSTO = {
         "deducibilita_ires": 1.0,
         "deducibilita_irap": 1.0,
         "detraibilita_iva": 1.0,
-        "keywords": ["caffè", "caffe", "coffee", "kimbo", "lavazza", "illy", "borbone", 
+        "keywords": ["caffè", "caffe", "coffee", "kimbo", "lavazza", "illy", "borbone",
                     "cialde", "capsule", "tè", "the", "tisana", "orzo", "ginseng",
-                    "cioccolata calda", "latte"],
+                    "cioccolata calda",
+                    # Latte (regola utente): fresco/intero → Bar; parzialmente
+                    # scremato / lunga conservazione (UHT) → Pasticceria (1.3).
+                    # "latte" generico resta al Bar come default (cappuccino).
+                    "latte", "latte fresco", "latte intero"],
         "fornitori": ["kimbo", "lavazza", "illy", "borbone", "nespresso"]
     },
     "1.2_BEVANDE_FREDDE_ALCOLICI": {
@@ -51,7 +55,13 @@ CENTRI_COSTO = {
         "keywords": ["farina", "zucchero", "uova", "burro", "lievito", "cacao",
                     "cioccolato", "vaniglia", "marmellata", "confettura", "crema",
                     "panna", "mascarpone", "ricotta", "mandorle", "nocciole",
-                    "pistacchio", "canditi", "uvetta"],
+                    "pistacchio", "canditi", "uvetta",
+                    # Latte da pasticceria (regola utente): parzialmente scremato
+                    # e a lunga conservazione (UHT). Keyword più lunghe del generico
+                    # "latte" del Bar → vincono nello scoring per contenuto.
+                    "latte parzialmente scremato", "latte scremato",
+                    "latte uht", "latte a lunga conservazione",
+                    "latte lunga conservazione"],
         "fornitori": ["dolciaria acquaviva", "siro s.r.l", "f.lli fiorentino", "i cozzolino",
                    "master frost", "eurouova", "big food", "sud ingrosso"]
     },
