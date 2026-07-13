@@ -81,7 +81,7 @@ async def save_f24_to_gestionale(db, data: Dict[str, Any], source_info: Dict[str
             return {"status": "duplicate", "message": "F24 già presente", "id": str(existing.get("_id"))}
         
         result = await db["f24_unificato"].insert_one(doc)
-        return {"status": "saved", "collection": "f24_models", "id": str(result.inserted_id)}
+        return {"status": "saved", "collection": "f24_unificato", "id": str(result.inserted_id)}
         
     except Exception as e:
         logger.error(f"Errore salvataggio F24: {e}")

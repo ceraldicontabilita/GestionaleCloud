@@ -25,7 +25,14 @@ Baseline: `b9ff5c7` · 257 test verdi · 1105 route · avvio lavori 13/07/2026.
 **FASE P0 COMPLETATA**: tutti i 12 bug corretti con test (287 test verdi, +30 su baseline).
 PROSSIMA FASE: P1 consolidamento collection/motori (§5-§8).
 
-### FASE P1 — Consolidamento collection/motori (§5-§8)  — non iniziata
+### FASE P1 — Consolidamento collection/motori (§5-§8)  — IN CORSO
+- [x] §5.1 F24: canonica f24_unificato + helper f24_canonico + migrazione idempotente
+      + redirect lettori/scrittori legacy + f24_analisi solo canonica (293 test).
+      Sottosistemi parser (f24_pagamenti/tributi_pagati/distinte_f24) e f24_tributi: rinviati (vivi).
+- [ ] §5.2 Dipendenti (parziale: employees migrato in P0.3) · §5.3 Cedolini · §5.4 Fatture passive
+- [ ] §5.5 Fatture emesse · §5.6 Estratto conto · §5.7 Fornitori · §5.8 Documenti classificati · §5.9 Magazzino
+- [ ] §6 Unificazione motori contabili · §7 Classificazione 390 endpoint · §8 Viewer documenti
+      Deliverable: memoria/PIANO_MIGRAZIONE_COLLECTION.md
 ### FASE P1 — F24/quietanze/IVA/prestazioni (§9-§11) — non iniziata
 ### FASE P2 — Sicurezza/pulizia (§12-§13) — non iniziata
 ### Deliverable (§16) — in corso: PROMPT salvato, tracker attivo

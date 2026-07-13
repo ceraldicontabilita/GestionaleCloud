@@ -138,6 +138,10 @@ class Database:
         await _safe_index("pagamenti", "idempotency_key", unique=True, sparse=True,
                           name="idx_pagamenti_idempotency")
 
+        # --- F24 (consolidamento P1 §5.1): chiave di deduplica naturale ---
+        await _safe_index("f24_unificato", "f24_dedup_key", sparse=True,
+                          name="idx_f24_dedup_key")
+
         # --- Verbali Noleggio ---
         await _safe_index("verbali_noleggio", [("data_verbale", -1)], name="idx_verbali_data")
         await _safe_index("verbali_noleggio", "veicolo_targa", sparse=True, name="idx_verbali_targa")

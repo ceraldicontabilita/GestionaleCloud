@@ -21,10 +21,12 @@ from app.engines import tributi_engine as te
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# Gli F24 vivono in due collezioni per storia: f24_commercialista (flusso
-# riconciliazione/quietanze) e f24_unificato (archivio). Il lookup le prova
-# entrambe — il motore lavora sul documento, non sulla collezione.
-_COLLEZIONI_F24 = ("f24_commercialista", "f24_unificato")
+# Consolidamento F24 (P1 §5.1): collezione canonica UNICA `f24_unificato`. La
+# vecchia `f24_commercialista` (letterale) è stata migrata qui in modo non
+# distruttivo (app/scripts/migra_f24_unificato.py); leggere entrambe dopo la
+# migrazione avrebbe contato due volte lo stesso F24. Il motore lavora sul
+# documento, non sulla collezione.
+_COLLEZIONI_F24 = ("f24_unificato",)
 
 
 async def _trova_f24(db, f24_id: str) -> Optional[Dict[str, Any]]:

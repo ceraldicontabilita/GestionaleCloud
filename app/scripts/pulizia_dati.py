@@ -132,7 +132,7 @@ async def elimina_record_vuoti() -> Dict[str, Any]:
     if backup:
         risultati["backups_creati"].append(backup)
     
-    result = await db.f24_models.delete_many(query_f24)
+    result = await db["f24_unificato"].delete_many(query_f24)
     risultati["f24_vuoti_eliminati"] = result.deleted_count
     
     # ⚠️ ASSEGNI: NON ELIMINARE MAI - sono dati critici!
@@ -170,7 +170,7 @@ async def correggi_date_f24() -> Dict[str, Any]:
     }
     
     # Trova F24 con date problematiche
-    f24_problematici = await db.f24_models.find({
+    f24_problematici = await db["f24_unificato"].find({
         "$or": [
             {"data_scadenza": {"$regex": "00/00|5462|/61$|/62$", "$options": "i"}},
             {"scadenza_display": {"$regex": "00/00|5462|/61$|/62$", "$options": "i"}}
@@ -191,7 +191,7 @@ async def correggi_date_f24() -> Dict[str, Any]:
                 nuova_scadenza = None
         
         try:
-            await db.f24_models.update_one(
+            await db["f24_unificato"].update_one(
                 {"id": f24.get("id")},
                 {"$set": {
                     "data_scadenza": nuova_scadenza,

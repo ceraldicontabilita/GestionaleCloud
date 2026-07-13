@@ -87,7 +87,7 @@ COLL_SHIFTS = "shifts"
 
 COLL_F24 = "f24_unificato"  # 83 docs - Collezione UNICA per F24
 COLL_F24_UNIFICATO = "f24_unificato"  # Alias esplicito
-COLL_F24_MODELS = "f24_models"  # 68 docs - Legacy, da migrare
+COLL_F24_MODELS = "f24_models"  # LEGACY/DEPRECATA (P1 §5.1) - migrare in f24_unificato con app/scripts/migra_f24_unificato.py; NON scrivere qui
 COLL_F24_COMMERCIALISTA = "f24_unificato"  # Alias retrocompatibilità
 COLL_QUIETANZE_F24 = "quietanze_f24"  # 303 docs
 COLL_F24_ALERTS = "f24_riconciliazione_alerts"  # 50 docs

@@ -777,8 +777,9 @@ async def analizza_estratto_conto_batch(limit: int = 100, solo_non_riconciliati:
     dipendenti = await db.employees.find({}, {"_id": 0}).to_list(500)
     dipendenti_map = {(d.get("nome_completo") or d.get("full_name") or "").lower(): d for d in dipendenti}
     
-    # Pre-carica F24 non pagati
-    f24_list = await db.f24_models.find(
+    # Pre-carica F24 non pagati — collezione canonica f24_unificato (era
+    # db.f24_models letterale, che non riceve più i nuovi F24). Vedi P1 §5.1.
+    f24_list = await db["f24_unificato"].find(
         {"pagato": {"$ne": True}},
         {"_id": 0}
     ).sort("data_scadenza", 1).to_list(500)

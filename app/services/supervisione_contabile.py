@@ -136,7 +136,7 @@ async def auto_riconcilia_f24_con_estratto_conto() -> Dict[str, Any]:
     }
     
     # 1. Trova tutti gli F24 non pagati
-    f24_non_pagati = await db.f24_models.find(
+    f24_non_pagati = await db["f24_unificato"].find(
         {"$or": [{"pagato": False}, {"pagato": {"$exists": False}}]},
         {"_id": 0}
     ).to_list(500)
@@ -174,7 +174,7 @@ async def auto_riconcilia_f24_con_estratto_conto() -> Dict[str, Any]:
         
         if movimento:
             # 3. MATCH TROVATO - Segna F24 come pagato
-            await db.f24_models.update_one(
+            await db["f24_unificato"].update_one(
                 {"id": f24.get("id")},
                 {"$set": {
                     "pagato": True,
@@ -252,7 +252,7 @@ async def get_alert_supervisione() -> List[Dict[str, Any]]:
         {"_id": 0, "id": 1, "fornitore": 1, "importo": 1, "data_spostamento": 1, "numero_fattura": 1}
     ).to_list(50)
     
-    f24_auto = await db.f24_models.find(
+    f24_auto = await db["f24_unificato"].find(
         {"auto_riconciliato": True, "riconciliato_at": {"$gte": data_limite}},
         {"_id": 0, "id": 1, "totale_debito": 1, "data_pagamento": 1}
     ).to_list(50)
