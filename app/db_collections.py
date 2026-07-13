@@ -100,12 +100,13 @@ COLL_RITENUTE_ACCONTO = "ritenute_acconto"
 # ===========================================
 
 # Estratti Conto
-COLL_ESTRATTO_CONTO = "estratto_conto_movimenti"  # 4261 docs - Collezione UNICA
-COLL_ESTRATTO_CONTO_LEGACY = "estratto_conto"  # 4244 docs - Legacy backup
+COLL_ESTRATTO_CONTO = "estratto_conto_movimenti"  # CANONICA (P1 §5.6): MOVIMENTI bancari (unica sorgente riconciliazione/saldi) - 4261 docs
+COLL_ESTRATTI_CONTO_DOCUMENTI = "estratti_conto"  # SEPARATA (P1 §5.6): registro dei DOCUMENTI estratto conto caricati (file/banca/periodo/saldo), NON i movimenti - come riepilogo_cedolini vs cedolini
+COLL_ESTRATTO_CONTO_LEGACY = "estratto_conto"  # LEGACY/DEPRECATA (P1 §5.6): backup archivio senza lettori; NON unire nella canonica (rischio doppio conteggio movimenti/saldi errati)
 COLL_ESTRATTO_CONTO_NEXI = "estratto_conto_nexi"  # 52 docs
 COLL_ESTRATTO_CONTO_BNL = "estratto_conto_bnl"
 COLL_ESTRATTO_CONTO_FORNITORI = "estratto_conto_fornitori"
-COLL_BANK_STATEMENTS = "bank_statements"  # Alias inglese
+COLL_BANK_STATEMENTS = "bank_statements"  # LEGACY/DEPRECATA (P1 §5.6): alias inglese senza accessi diretti; usare COLL_ESTRATTO_CONTO. NB Collections.BANK_STATEMENTS risolve già a estratto_conto_movimenti
 
 # Prima Nota
 COLL_PRIMA_NOTA_CASSA = "prima_nota_cassa"  # 1428 docs
@@ -356,6 +357,7 @@ Le seguenti collezioni sono DEPRECATE e non devono essere usate:
 - "f24_models" -> usare COLL_F24 (f24_unificato)
 - "movimenti_f24_banca" -> vuota, usare COLL_ESTRATTO_CONTO con QUERY_F24_PATTERN
 - "estratto_conto" -> usare COLL_ESTRATTO_CONTO (estratto_conto_movimenti)
+- "bank_statements" -> alias inglese, usare COLL_ESTRATTO_CONTO (estratto_conto_movimenti)
 - "warehouse_stocks" -> dati errati, usare COLL_WAREHOUSE (warehouse_inventory)
 - "anagrafica_dipendenti" -> usare COLL_EMPLOYEES (employees)
 - "buste_paga" -> usare COLL_CEDOLINI (cedolini)

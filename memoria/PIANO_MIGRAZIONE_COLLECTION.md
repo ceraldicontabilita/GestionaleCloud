@@ -112,8 +112,28 @@ leggeva `fatture_emesse` (vuota, senza writer) → crediti/ricavi/IVA incoerenti
   follow-up separato — qui è stato unificato il POSTO (collection unica).
 - Verifica: 304 test verdi · `tests/test_p1_fatture_emesse.py`.
 
-## 5.6-5.9 — DA FARE
-Estratto
-conto (canonica `estratto_conto_movimenti`), fornitori (`fornitori`), documenti
-classificati (`documents_classified` vs `documenti_classificati`), magazzino.
-Vedi PROMPT_DEFINITIVO §5.2/5.5-5.9.
+## 5.6 Estratto conto — ✅ FATTO
+**Canonica MOVIMENTI:** `estratto_conto_movimenti` (unica sorgente di riconciliazione
+e saldi; già usata ovunque via `COLL_ESTRATTO_CONTO`; P0.7 aveva già redirezionato
+l'import F24-banca a scrivere i movimenti qui). `Collections.BANK_STATEMENTS` risolve
+già a `estratto_conto_movimenti`, quindi gli indici sono corretti.
+
+- `estratti_conto`: **SEPARATA, si tiene** — è il registro dei DOCUMENTI estratto conto
+  caricati (file/banca/periodo/saldo/totali), granularità documento, non movimenti
+  (come `riepilogo_cedolini` vs `cedolini`). Usata coerentemente in
+  `bank/riconciliazione_f24_banca.py` (upload + `GET /estratti-conto`). Nuova costante
+  `COLL_ESTRATTI_CONTO_DOCUMENTI`.
+- `estratto_conto` (backup 4244 docs), `bank_statements`, `movimenti_f24_banca`:
+  **LEGACY/DEPRECATE** — nessun accesso DB diretto dal codice. `estratto_conto` NON va
+  unito nella canonica: è un backup archivio, il merge rischierebbe doppio conteggio
+  movimenti → saldi/riconciliazioni errate. Nessuna migrazione dati (i movimenti reali
+  sono già nella canonica).
+- Verifica: 306 test verdi · `tests/test_p1_estratto_conto.py` (canonica vs registro
+  distinti; nessun writer sulle legacy).
+- Nota debito (fase dead-code): `app/utils/referential_integrity.py` è un modulo NON
+  importato (morto) con mappa legacy (`bank_statements`/`payslips`/`employees`);
+  nessun effetto a runtime, da ripulire nella fase codice morto.
+
+## 5.7-5.9 — DA FARE
+Fornitori (`fornitori`), documenti classificati (`documents_classified` vs
+`documenti_classificati`), magazzino. Vedi PROMPT_DEFINITIVO §5.7-5.9.

@@ -42,7 +42,11 @@ PROSSIMA FASE: P1 consolidamento collection/motori (§5-§8).
       reale"). Risolto split-brain (writer su invoices_emesse, lettori su fatture_emesse):
       redirect writer CRUD + ragioneria/dashboard/piano_conti → fatture_emesse; invoices_emesse
       deprecata + migrazione. Follow-up: armonizzare gli schemi campi dei lettori (304 test).
-- [ ] §5.6 Estratto conto · §5.7 Fornitori · §5.8 Documenti classificati · §5.9 Magazzino
+- [x] §5.6 Estratto conto: canonica movimenti `estratto_conto_movimenti` (già usata
+      ovunque; P0.7 aveva già redirezionato l'import F24-banca). `estratti_conto` tenuta
+      SEPARATA (registro documenti EC, non movimenti). estratto_conto/bank_statements/
+      movimenti_f24_banca deprecate (nessun accesso; nessun merge dei backup) (306 test).
+- [ ] §5.7 Fornitori · §5.8 Documenti classificati · §5.9 Magazzino
 - [ ] §6 Unificazione motori contabili · §7 Classificazione 390 endpoint · §8 Viewer documenti
       Deliverable: memoria/PIANO_MIGRAZIONE_COLLECTION.md
 ### FASE P1 — F24/quietanze/IVA/prestazioni (§9-§11) — non iniziata
