@@ -207,7 +207,7 @@ Contabilità/Prima Nota (evidenze file:riga nella ricognizione):
 - **A3** — Libro giornale/mastro/partitario (`contabilita_gestionale.py:1025,1065,374+`) esposti ma senza chiamanti FE: partita doppia raggiungibile solo via bilancio-verifica.
 - **A4** — ✅ RISOLTA (2026-07-13, scelta utente): `contabilita_italiana.py` ridotto alla sola route viva `GET /disponibilita-liquide` (usata da ContabilitaAvanzata). Rimosse le 11 route morte (cespiti ×3, cassa-banca ×2, personale ×2, ritenute, ratei/risconti, bilancio SP/CE) — zero chiamanti e tutte doppioni dei flussi canonici (cespiti.py, accounting/bilancio.py, prima_nota_module, prima_nota_salari, /api/rapido) — più helper, modelli pydantic e le costanti locali COEFFICIENTI_AMMORTAMENTO/PIANO_CONTI_CEE (nessun import esterno; il piano conti canonico è SOLO l'ufficiale CEE). File: 1272 → ~110 righe; endpoint 1087 → 1076.
 - **A5** — Azioni manuali IVA per-fattura e rettifica liquidazione (`iva.py:440,650-703`) senza UI.
-- **A6** — `cespiti.py` e `chiusura_esercizio.py` senza test pur scrivendo stato contabile.
+- **A6** — ✅ RISOLTA (2026-07-13): aggiunti 11 test (`tests/test_cespiti_chiusura.py`) su classify_asset, calcolo ammortamenti (primo anno dimezzato, cap al residuo, skip anni registrati) e chiusura esercizio (verifica preliminare, conferma obbligatoria). Scrivendo i test è emerso e corretto un buco reale: `esegui-chiusura` non aveva guardia contro la DOPPIA chiusura dello stesso anno (avrebbe duplicato il movimento di risultato d'esercizio) → ora risponde 409 citando la chiusura esistente.
 - **A7** — Chiusura/ammortamenti scrivono `movimenti_contabili` mentre il libro giornale vive in `scritture_contabili`: due collezioni contabili parallele.
 
 Documenti/Dipendenti/Chat:
