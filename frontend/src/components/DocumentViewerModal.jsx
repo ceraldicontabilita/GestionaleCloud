@@ -1,33 +1,40 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import api from '../api';
 
 /**
- * Motore condiviso "Vedi Documento": modale in-page per visualizzare
- * qualsiasi documento (fattura AssoInvoice, PDF generico, F24, cedolino,
- * estratto conto, verbale...) senza aprire nuove schede del browser.
+ * Componente CANONICO "Vedi Documento" (PROMPT_DEFINITIVO §8.2): modale in-page per
+ * visualizzare QUALSIASI documento (fattura elettronica HTML/ASSO, fattura PDF,
+ * cedolino, F24, quietanza, estratto conto, documento fiscale, allegato email,
+ * verbale, ricevuta PagoPA, PDF generico) senza aprire nuove schede del browser.
  *
- * Prima di questo componente esistevano due implementazioni scollegate:
- * ModalFattura.jsx (solo fatture, riusato in 7 pagine) e un modale inline
- * duplicato dentro Documenti.jsx (documenti generici). Lo stile visivo è
- * quello di ModalFattura, già standard nelle pagine esistenti.
+ * Funzioni §8.2: Chiudi · Scarica · Schermo intero · Zoom +/− · Adatta larghezza ·
+ * Adatta pagina · scroll interno · touch/pinch · blocco scroll body · focus trap ·
+ * ESC · aria-label · ritorno focus al pulsante origine.
+ * Nota: per i PDF lo zoom/pagina/pinch è gestito anche dal viewer PDF nativo del
+ * browser dentro l'iframe; lo zoom CSS qui è utile soprattutto per i documenti HTML.
  *
  * Props:
- *  - title:        titolo mostrato nel header (es. "📄 Fattura 123")
- *  - subtitle:     riga secondaria opzionale sotto il titolo
- *  - src:          URL diretto da caricare nell'iframe (già pronto)
- *  - fetchUrl:     in alternativa a src: URL da scaricare via API come blob
- *                  (per endpoint autenticati che non si possono mettere
- *                  direttamente in un iframe); gestisce loading, errore e
- *                  revoca dell'object URL alla chiusura
+ *  - title:        titolo header (es. "📄 Fattura 123")
+ *  - subtitle:     riga secondaria opzionale
+ *  - documentType: tipo logico (fattura_html|fattura_pdf|cedolino|f24|quietanza|
+ *                  estratto_conto|documento_fiscale|allegato_email|verbale|pagopa|pdf)
+ *  - src:          URL diretto per l'iframe (già pronto)
+ *  - fetchUrl:     in alternativa a src: URL scaricato via API come blob (endpoint
+ *                  autenticati non inseribili direttamente in iframe)
  *  - mimeType:     tipo del blob per fetchUrl (default application/pdf)
  *  - onClose:      callback di chiusura
- *  - onDownload:   se presente, mostra il bottone "📥 Scarica" nel header
+ *  - onDownload:   se presente mostra "📥 Scarica"
  *  - maxWidth:     larghezza massima del modale (default 960)
- *  - testIdPrefix: prefisso per i data-testid (default "document-viewer")
+ *  - testIdPrefix: prefisso data-testid (default "document-viewer")
  */
+const ZOOM_MIN = 0.5;
+const ZOOM_MAX = 3;
+const ZOOM_STEP = 0.25;
+
 export default function DocumentViewerModal({
   title,
   subtitle,
+  documentType = 'pdf',
   src,
   fetchUrl,
   mimeType = 'application/pdf',
@@ -38,19 +45,58 @@ export default function DocumentViewerModal({
 }) {
   const [blobUrl, setBlobUrl] = useState(null);
   const [loadError, setLoadError] = useState(null);
+  const [zoom, setZoom] = useState(1);
+  const [fit, setFit] = useState('width'); // 'width' | 'page' | null
   const cardRef = useRef(null);
+  const scrollRef = useRef(null);
+  const originRef = useRef(null);
 
-  // Chiudi con tasto ESC
+  const zoomIn = useCallback(() => { setFit(null); setZoom(z => Math.min(ZOOM_MAX, z + ZOOM_STEP)); }, []);
+  const zoomOut = useCallback(() => { setFit(null); setZoom(z => Math.max(ZOOM_MIN, z - ZOOM_STEP)); }, []);
+  const fitWidth = useCallback(() => { setFit('width'); setZoom(1); }, []);
+  const fitPage = useCallback(() => { setFit('page'); setZoom(1); }, []);
+
+  // Ricorda il pulsante di origine e ripristina il focus alla chiusura (§8.2).
+  useEffect(() => {
+    originRef.current = document.activeElement;
+    // focus iniziale sul contenitore modale
+    const t = setTimeout(() => cardRef.current?.focus(), 0);
+    return () => {
+      clearTimeout(t);
+      if (originRef.current && typeof originRef.current.focus === 'function') {
+        originRef.current.focus();
+      }
+    };
+  }, []);
+
+  // ESC per chiudere + focus trap (Tab resta dentro il modale).
   useEffect(() => {
     const handleKey = e => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
+      if (e.key === 'Tab') {
+        const focusables = cardRef.current?.querySelectorAll(
+          'button, [href], input, select, textarea, iframe, [tabindex]:not([tabindex="-1"])'
+        );
+        if (!focusables || focusables.length === 0) return;
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
     };
     document.addEventListener('keydown', handleKey);
     return () => document.removeEventListener('keydown', handleKey);
   }, [onClose]);
 
-  // Blocca lo scroll della pagina sotto mentre il viewer è aperto (§5 "body
-  // bloccato"); ripristina alla chiusura.
+  // Blocca lo scroll del body mentre il viewer è aperto (§8.2); ripristina alla chiusura.
   useEffect(() => {
     const precedente = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
@@ -66,7 +112,7 @@ export default function DocumentViewerModal({
     else (el.requestFullscreen || el.webkitRequestFullscreen)?.call(el);
   };
 
-  // Modalità blob: scarica il documento via API e revoca l'URL alla chiusura
+  // Modalità blob: scarica il documento via API e revoca l'URL alla chiusura.
   useEffect(() => {
     if (!fetchUrl) return undefined;
     let revoked = false;
@@ -96,6 +142,39 @@ export default function DocumentViewerModal({
 
   const iframeSrc = src || blobUrl;
 
+  const btn = extra => ({
+    width: 40,
+    height: 40,
+    flexShrink: 0,
+    background: 'rgba(255,255,255,0.15)',
+    border: 'none',
+    borderRadius: 8,
+    color: 'white',
+    fontSize: 16,
+    lineHeight: 1,
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...extra,
+  });
+
+  // Stile dell'iframe: in fit-width riempie la larghezza; con zoom applica una
+  // scala CSS e lascia lo scroll interno al contenitore (§8.2 "scroll interno").
+  const iframeStyle =
+    fit === 'width'
+      ? { width: '100%', height: '100%', border: 'none', background: '#f8fafc' }
+      : fit === 'page'
+        ? { width: '100%', height: '100%', border: 'none', background: '#f8fafc', objectFit: 'contain' }
+        : {
+            width: `${100 / zoom}%`,
+            height: `${100 / zoom}%`,
+            transform: `scale(${zoom})`,
+            transformOrigin: 'top left',
+            border: 'none',
+            background: '#f8fafc',
+          };
+
   return (
     <div
       onClick={onClose}
@@ -113,6 +192,11 @@ export default function DocumentViewerModal({
     >
       <div
         ref={cardRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title || 'Documento'}
+        data-document-type={documentType}
+        tabIndex={-1}
         onClick={e => e.stopPropagation()}
         style={{
           background: 'white',
@@ -124,9 +208,10 @@ export default function DocumentViewerModal({
           flexDirection: 'column',
           overflow: 'hidden',
           boxShadow: '0 25px 50px -12px rgba(0,0,0,0.35)',
+          outline: 'none',
         }}
       >
-        {/* Header con titolo e X di chiusura ben tappabile */}
+        {/* Header: titolo + toolbar (zoom/fit/fullscreen/download/chiudi) */}
         <div
           style={{
             display: 'flex',
@@ -166,73 +251,26 @@ export default function DocumentViewerModal({
               </div>
             )}
           </div>
-          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-            <button
-              onClick={apriSchermoIntero}
-              aria-label="Schermo intero"
-              title="Schermo intero"
-              data-testid={`${testIdPrefix}-fullscreen`}
-              style={{
-                width: 40,
-                height: 40,
-                flexShrink: 0,
-                background: 'rgba(255,255,255,0.15)',
-                border: 'none',
-                borderRadius: 8,
-                color: 'white',
-                fontSize: 18,
-                lineHeight: 1,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              ⛶
-            </button>
+          <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <button onClick={zoomOut} aria-label="Riduci zoom" title="Zoom −"
+              data-testid={`${testIdPrefix}-zoom-out`} style={btn({ fontSize: 20 })}>−</button>
+            <button onClick={zoomIn} aria-label="Aumenta zoom" title="Zoom +"
+              data-testid={`${testIdPrefix}-zoom-in`} style={btn({ fontSize: 20 })}>+</button>
+            <button onClick={fitWidth} aria-label="Adatta alla larghezza" title="Adatta larghezza"
+              data-testid={`${testIdPrefix}-fit-width`}
+              style={btn({ width: 'auto', padding: '0 10px', fontSize: 16, opacity: fit === 'width' ? 1 : 0.7 })}>↔</button>
+            <button onClick={fitPage} aria-label="Adatta alla pagina" title="Adatta pagina"
+              data-testid={`${testIdPrefix}-fit-page`}
+              style={btn({ width: 'auto', padding: '0 10px', fontSize: 16, opacity: fit === 'page' ? 1 : 0.7 })}>⤢</button>
+            <button onClick={apriSchermoIntero} aria-label="Schermo intero" title="Schermo intero"
+              data-testid={`${testIdPrefix}-fullscreen`} style={btn({ fontSize: 18 })}>⛶</button>
             {onDownload && (
-              <button
-                onClick={onDownload}
+              <button onClick={onDownload} aria-label="Scarica documento" title="Scarica"
                 data-testid={`${testIdPrefix}-download`}
-                style={{
-                  height: 40,
-                  padding: '0 12px',
-                  background: 'rgba(255,255,255,0.15)',
-                  border: 'none',
-                  borderRadius: 8,
-                  color: 'white',
-                  fontSize: 13,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                }}
-              >
-                📥 Scarica
-              </button>
+                style={btn({ width: 'auto', padding: '0 12px', fontSize: 13, gap: 6 })}>📥 Scarica</button>
             )}
-            <button
-              onClick={onClose}
-              aria-label="Chiudi"
-              data-testid={`${testIdPrefix}-close`}
-              style={{
-                width: 40,
-                height: 40,
-                flexShrink: 0,
-                background: 'rgba(255,255,255,0.15)',
-                border: 'none',
-                borderRadius: 8,
-                color: 'white',
-                fontSize: 20,
-                lineHeight: 1,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              ✕
-            </button>
+            <button onClick={onClose} aria-label="Chiudi" title="Chiudi"
+              data-testid={`${testIdPrefix}-close`} style={btn({ fontSize: 20 })}>✕</button>
           </div>
         </div>
 
@@ -252,11 +290,18 @@ export default function DocumentViewerModal({
             {loadError}
           </div>
         ) : iframeSrc ? (
-          <iframe
-            title={title}
-            src={iframeSrc}
-            style={{ flex: 1, width: '100%', border: 'none', background: '#f8fafc' }}
-          />
+          <div
+            ref={scrollRef}
+            style={{
+              flex: 1,
+              overflow: 'auto',
+              WebkitOverflowScrolling: 'touch',
+              touchAction: 'pinch-zoom',
+              background: '#f8fafc',
+            }}
+          >
+            <iframe title={title || 'Documento'} src={iframeSrc} style={iframeStyle} />
+          </div>
         ) : (
           <div
             style={{

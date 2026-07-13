@@ -70,7 +70,12 @@ PROSSIMA FASE: P1 consolidamento collection/motori (§5-§8).
       table reale, incrocia FE/scheduler/chat/migrazione/test. 1106 endpoint: 650 tenere,
       437 verificare (nessun rif. noto → NON eliminare in blocco), 19 admin-only (migrazione/
       manutenzione one-shot). Follow-up: applicare guard Admin-only ai 19.
-- [ ] §8 Viewer documenti
+- [x] §8 Viewer documenti: componente canonico frontend DocumentViewerModal.jsx completato
+      con tutte le funzioni §8.2 (Chiudi/Scarica/Schermo intero/Zoom±/Adatta larghezza/
+      Adatta pagina/scroll interno/touch-pinch/blocco body/focus trap/ESC/aria-label/
+      role=dialog aria-modal/ritorno focus all'origine/documentType). Build FE OK.
+      Adozione nei call site (documentType) come rollout progressivo.
+**FASE P1 (§5-§8) COMPLETATA.** Restano §6.2-6.9 (contabilità viva, rinviate) come debito.
       Deliverable: memoria/PIANO_MIGRAZIONE_COLLECTION.md, memoria/ENDPOINT_CLASSIFICAZIONE_FINALE.md
 ### FASE P1 — F24/quietanze/IVA/prestazioni (§9-§11) — non iniziata
 ### FASE P2 — Sicurezza/pulizia (§12-§13) — non iniziata
