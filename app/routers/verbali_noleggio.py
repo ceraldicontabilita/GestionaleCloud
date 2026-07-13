@@ -30,7 +30,6 @@ EMAIL_PASSWORD = os.environ.get("EMAIL_PASSWORD", os.environ.get("GMAIL_APP_PASS
 
 # Collection
 COLLECTION_VERBALI = "verbali_noleggio"
-COLLECTION_FATTURE_NOLEGGIO = "fatture_noleggio"
 
 
 def get_imap_connection():

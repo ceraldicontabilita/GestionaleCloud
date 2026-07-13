@@ -1,5 +1,11 @@
 # Documentazione endpoint — indice
 
+> ⚠️ **Aggiornamento lug 2026**: la mappa endpoint aggiornata e rigenerabile è
+> `memoria/MAPPA_ENDPOINT_COMPLETA.md` (ogni endpoint reale con uso frontend) +
+> `memoria/MAPPA_MODULI.md` (come funziona ogni dominio + codice morto/duplicati).
+> I file numerati qui sotto (01-09) restano come analisi di dettaglio storica.
+
+
 Ogni file spiega, per ogni endpoint del backend, **cosa fa** (lato operativo) e **come funziona nel codice**
 (collezioni Mongo, algoritmo, validazioni, helper). Generata leggendo i sorgenti per intero, non i docstring
 (quando un docstring mente rispetto al codice, è segnalato in "Note").

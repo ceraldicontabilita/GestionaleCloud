@@ -8,7 +8,7 @@ banca/misto). "Assegno" non e' piu' una categoria a se': per decisione del
 2026-07 e' ricondotto a "banca" come ogni altro strumento che transita dal
 conto corrente.
 """
-from typing import Optional, Tuple
+from typing import Optional
 
 from app.engines.prima_nota_engine import normalizza_metodo_pagamento as _normalizza_canonico
 
@@ -25,18 +25,3 @@ def normalizza_metodo_pagamento(metodo_raw: Optional[str]) -> Optional[str]:
     bonifico, carta di credito…) sia codici MP FE (MP01, MP05, MP08…).
     """
     return _normalizza_canonico(metodo_raw)
-
-
-def destinazione_auto(metodo_fornitore: Optional[str]) -> Tuple[Optional[str], str]:
-    """
-    Ritorna (destinazione, descrizione) per log/UX:
-      destinazione ∈ {'cassa','banca','misto',None}
-    """
-    dest = normalizza_metodo_pagamento(metodo_fornitore)
-    if dest == "cassa":
-        return "cassa", "contanti → prima_nota_cassa"
-    if dest == "banca":
-        return "banca", "banca/carta/bonifico/assegno → prima_nota_banca"
-    if dest == "misto":
-        return "misto", "misto → Prima Nota Provvisoria, attesa conferma utente"
-    return None, f"metodo ambiguo/non configurato: {metodo_fornitore!r}"

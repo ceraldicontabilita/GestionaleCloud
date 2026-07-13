@@ -1184,25 +1184,25 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/fiscalita_italiana.py:927`
+- File: `app/routers/fiscalita_italiana.py:868`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/fiscalita_italiana.py:1002`
+- File: `app/routers/fiscalita_italiana.py:943`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/fiscalita_italiana.py:1144`
+- File: `app/routers/fiscalita_italiana.py:1085`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/fiscalita_italiana.py:1297`
+- File: `app/routers/fiscalita_italiana.py:1238`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
@@ -1724,49 +1724,49 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/verbali_noleggio.py:99`
+- File: `app/routers/verbali_noleggio.py:98`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/verbali_noleggio.py:266`
+- File: `app/routers/verbali_noleggio.py:265`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/verbali_noleggio.py:431`
+- File: `app/routers/verbali_noleggio.py:430`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/verbali_noleggio.py:517`
+- File: `app/routers/verbali_noleggio.py:516`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/verbali_noleggio.py:537`
+- File: `app/routers/verbali_noleggio.py:536`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/verbali_noleggio.py:740`
+- File: `app/routers/verbali_noleggio.py:739`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/verbali_noleggio.py:815`
+- File: `app/routers/verbali_noleggio.py:814`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/verbali_noleggio.py:838`
+- File: `app/routers/verbali_noleggio.py:837`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 

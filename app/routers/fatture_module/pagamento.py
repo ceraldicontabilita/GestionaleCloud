@@ -673,7 +673,7 @@ async def import_paypal_file(file: UploadFile = File(...)) -> Dict[str, Any]:
     """
     Importa un estratto conto PayPal (CSV o PDF) e riconcilia le fatture.
     """
-    from app.services.paypal_riconciliazione import riconcilia_pagamenti_paypal, parse_paypal_date
+    from app.services.paypal_riconciliazione import riconcilia_pagamenti_paypal
     import csv
     import io
     

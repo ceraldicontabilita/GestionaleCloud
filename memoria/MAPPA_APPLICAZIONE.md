@@ -1,13 +1,19 @@
 # CERALDI ERP — MAPPA APPLICAZIONE COMPLETA
 
-## Aggiornata: Aprile 2026 — Audit coerenza collection fornitori + regole canoniche
+## Aggiornata: Luglio 2026 — Audit mappa completa (lettura di tutti i router)
+
+> **Mappe di dettaglio** (rigenerabili con `python scripts/genera_mappa.py`):
+> - `memoria/MAPPA_MODULI.md` — come funziona ogni dominio, codice morto, duplicati.
+> - `memoria/MAPPA_ROUTER.md` — 1117 endpoint su 107 prefissi, con uso frontend.
+> - `memoria/MAPPA_ENDPOINT_COMPLETA.md` — ogni singolo endpoint.
+> - `memoria/MAPPA_COLLEZIONI.md` — 158 collezioni MongoDB con usi reali.
 
 ## ARCHITETTURA
 
 **Stack**: FastAPI (Python) + Motor async MongoDB + React 18 + Vite  
 **DB**: MongoDB Atlas, cluster `cluster0.vofh7iz`, database `Gestionale`  
-**Repo**: `github.com/ceraldicontabilita/gestionale2`  
-**Deploy**: app.emergent.sh -> impresasemplice.online  
+**Repo**: `github.com/ceraldicontabilita/gestionale`  
+**Deploy**: push su `main` -> **Render** auto-deploy -> impresasemplice.online  
 **Design system**: Navy `#0f2744` + Oro `#b8860b`, definito in `frontend/src/lib/utils.js`
 
 ## REGOLA CANONICA FORNITORI

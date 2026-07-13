@@ -14,10 +14,10 @@ logger = logging.getLogger(__name__)
 UPLOAD_DIR = Path("/tmp/bonifici_uploads")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
-# Collections
-COL_JOBS = "archivio_bonifici_jobs"
-COL_TRANSFERS = "archivio_bonifici"
-COL_RICONCILIAZIONE_TASKS = "bonifici_riconciliazione_tasks"
+# NB: le collezioni bonifici reali sono "bonifici_jobs" e "bonifici_transfers",
+# usate direttamente in jobs.py/transfers.py. Le vecchie costanti COL_JOBS/
+# COL_TRANSFERS/COL_RICONCILIAZIONE_TASKS puntavano a nomi mai usati e sono
+# state rimosse (audit mappa lug 2026) per non trarre in inganno.
 
 # Regex patterns
 IBAN_RE = re.compile(r"\b[A-Z]{2}[0-9]{2}[A-Z0-9]{1,30}\b")

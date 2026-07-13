@@ -865,65 +865,6 @@ async def get_notifiche_scadenze_imminenti(
         return {"success": False, "error": str(e), "trace": traceback.format_exc()[-300:]}
 
 
-async def _get_notifiche_impl(giorni: int = 7, anno: int = None) -> Dict[str, Any]:
-    db = Database.get_db()
-    
-    if not anno:
-        anno = datetime.now().year
-    
-    oggi = datetime.now().strftime("%Y-%m-%d")
-    data_limite = (datetime.now() + timedelta(days=giorni)).strftime("%Y-%m-%d")
-    
-    scadenze = await db["calendario_fiscale"].find(
-        {
-            "anno": anno,
-            "completato": {"$ne": True},
-            "data": {"$gte": oggi, "$lte": data_limite}
-        },
-        {"_id": 0}
-    ).sort("data", 1).to_list(50)
-    
-    # Raggruppa per urgenza
-    urgenti = []  # entro 3 giorni
-    prossime = []  # 4-7 giorni
-    pianificabili = []  # oltre 7 giorni
-    
-    oggi_dt = datetime.now()  # naive, coerente con strptime
-    for s in scadenze:
-        try:
-            data_scad = datetime.strptime(s.get("data", ""), "%Y-%m-%d") if s.get("data") else None
-            if data_scad:
-                diff = (data_scad - oggi_dt).days
-                if diff <= 3:
-                    s["urgenza"] = "critica"
-                    urgenti.append(s)
-                elif diff <= 7:
-                    s["urgenza"] = "alta"
-                    prossime.append(s)
-                else:
-                    s["urgenza"] = "normale"
-                    pianificabili.append(s)
-        except (ValueError, TypeError):
-            s["urgenza"] = "normale"
-            pianificabili.append(s)
-    
-    return {
-        "success": True,
-        "anno": anno,
-        "giorni_analizzati": giorni,
-        "data_riferimento": oggi,
-        "totale_imminenti": len(scadenze),
-        "urgenti": urgenti,
-        "prossime": prossime,
-        "pianificabili": pianificabili,
-        "riepilogo": {
-            "critiche": len(urgenti),
-            "alta_priorita": len(prossime),
-            "normali": len(pianificabili)
-        }
-    }
-
-
 @router.post("/notifiche-scadenze/invia")
 async def invia_notifica_scadenza(
     scadenza_id: str = Query(...),

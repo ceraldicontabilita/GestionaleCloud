@@ -1,6 +1,10 @@
 # Ceraldi ERP — Scheda rapida
 
-DB MongoDB: `Gestionale` · P.IVA: 04523831214 · aggiornato Apr 2026
+DB MongoDB: `Gestionale` · P.IVA: 04523831214 · aggiornato Lug 2026
+
+> **Mappa completa dell'app** (router, endpoint, collezioni, codice morto):
+> `memoria/MAPPA_MODULI.md` (narrativa) + `MAPPA_ROUTER.md` / `MAPPA_ENDPOINT_COMPLETA.md`
+> / `MAPPA_COLLEZIONI.md` (generate da `python scripts/genera_mappa.py`).
 
 ## Stack
 
