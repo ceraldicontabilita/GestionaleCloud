@@ -20,18 +20,9 @@ logger = logging.getLogger(__name__)
 # MODELLI
 # ============================================
 
-class BudgetInput(BaseModel):
-    anno: int
-    voce: str  # es: "personale", "materie_prime", "utenze", "affitto", etc.
-    categoria: str  # "costo" o "ricavo"
-    importo_budget: float
-    note: Optional[str] = None
-
-
-class BudgetMensileInput(BaseModel):
-    anno: int
-    voce: str
-    budget_mensili: Dict[int, float]  # {1: 1000, 2: 1200, ...}
+# NB: i modelli/endpoint Budget sono stati rimossi da questo router (audit mappa
+# lug 2026): il budget canonico è in accounting/contabilita_gestionale.py
+# (/api/contabilita-gestionale/budget*), usato dal frontend BudgetPrevisionale.jsx.
 
 
 # ============================================
@@ -262,125 +253,12 @@ async def get_costi_per_categoria(
 
 
 # ============================================
-# ENDPOINT BUDGET
+# ENDPOINT BUDGET — RIMOSSI (audit mappa lug 2026)
+# Il budget canonico vive in accounting/contabilita_gestionale.py, prefisso
+# /api/contabilita-gestionale/budget*, usato dal frontend (BudgetPrevisionale.jsx).
+# Questi endpoint duplicati (/api/controllo-gestione/budget*) non erano usati dal
+# frontend e sono stati eliminati per evitare due scritture sulla stessa coll `budget`.
 # ============================================
-
-@router.post("/budget")
-@handle_errors
-async def crea_budget(budget: BudgetInput) -> Dict[str, Any]:
-    """Crea o aggiorna una voce di budget."""
-    db = Database.get_db()
-    
-    # Verifica se esiste già
-    esistente = await db["budget"].find_one({
-        "anno": budget.anno,
-        "voce": budget.voce
-    })
-    
-    record = {
-        "anno": budget.anno,
-        "voce": budget.voce,
-        "categoria": budget.categoria,
-        "importo_budget": budget.importo_budget,
-        "note": budget.note,
-        "updated_at": datetime.now(timezone.utc).isoformat()
-    }
-    
-    if esistente:
-        await db["budget"].update_one(
-            {"anno": budget.anno, "voce": budget.voce},
-            {"$set": record}
-        )
-        return {"success": True, "messaggio": f"Budget '{budget.voce}' aggiornato"}
-    else:
-        record["id"] = str(uuid4())
-        record["created_at"] = datetime.now(timezone.utc).isoformat()
-        await db["budget"].insert_one(record.copy())
-        return {"success": True, "messaggio": f"Budget '{budget.voce}' creato", "id": record["id"]}
-
-
-@router.get("/budget/{anno}")
-@handle_errors
-async def get_budget(anno: int) -> Dict[str, Any]:
-    """Recupera il budget per l'anno."""
-    db = Database.get_db()
-    
-    budget_items = await db["budget"].find(
-        {"anno": anno},
-        {"_id": 0}
-    ).to_list(100)
-    
-    totale_costi = sum(b["importo_budget"] for b in budget_items if b["categoria"] == "costo")
-    totale_ricavi = sum(b["importo_budget"] for b in budget_items if b["categoria"] == "ricavo")
-    
-    return {
-        "anno": anno,
-        "voci": budget_items,
-        "totali": {
-            "costi_budget": round(totale_costi, 2),
-            "ricavi_budget": round(totale_ricavi, 2),
-            "margine_budget": round(totale_ricavi - totale_costi, 2)
-        }
-    }
-
-
-@router.get("/budget-vs-consuntivo/{anno}")
-@handle_errors
-async def get_budget_vs_consuntivo(
-    anno: int,
-    mese: int = None
-) -> Dict[str, Any]:
-    """
-    Confronto budget vs consuntivo.
-    Evidenzia scostamenti.
-    """
-    db = Database.get_db()
-    
-    # Recupera budget
-    budget_data = await get_budget(anno)
-    
-    # Recupera consuntivo
-    consuntivo = await get_analisi_costi_ricavi(anno=anno, mese=mese)
-    
-    # Proporziona budget se mese specificato
-    if mese:
-        # Budget mensile = budget annuale / 12
-        budget_costi = budget_data["totali"]["costi_budget"] / 12
-        budget_ricavi = budget_data["totali"]["ricavi_budget"] / 12
-    else:
-        budget_costi = budget_data["totali"]["costi_budget"]
-        budget_ricavi = budget_data["totali"]["ricavi_budget"]
-    
-    # Calcola scostamenti
-    scostamento_costi = consuntivo["costi"]["totale"] - budget_costi
-    scostamento_ricavi = consuntivo["ricavi"]["totale"] - budget_ricavi
-    
-    return {
-        "anno": anno,
-        "mese": mese,
-        "periodo": consuntivo["periodo"],
-        "confronto": {
-            "ricavi": {
-                "budget": round(budget_ricavi, 2),
-                "consuntivo": consuntivo["ricavi"]["totale"],
-                "scostamento": round(scostamento_ricavi, 2),
-                "scostamento_pct": round(scostamento_ricavi / budget_ricavi * 100, 1) if budget_ricavi > 0 else 0,
-                "valutazione": "positivo" if scostamento_ricavi >= 0 else "negativo"
-            },
-            "costi": {
-                "budget": round(budget_costi, 2),
-                "consuntivo": consuntivo["costi"]["totale"],
-                "scostamento": round(scostamento_costi, 2),
-                "scostamento_pct": round(scostamento_costi / budget_costi * 100, 1) if budget_costi > 0 else 0,
-                "valutazione": "negativo" if scostamento_costi > 0 else "positivo"  # per i costi, > budget è negativo
-            },
-            "margine": {
-                "budget": round(budget_ricavi - budget_costi, 2),
-                "consuntivo": consuntivo["margine"]["importo"],
-                "scostamento": round(consuntivo["margine"]["importo"] - (budget_ricavi - budget_costi), 2)
-            }
-        }
-    }
 
 
 @router.get("/kpi/{anno}")

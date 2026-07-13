@@ -1,7 +1,7 @@
 # MAPPA ROUTER — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py — leggendo la route table reale di `register_all_routers`.
-> Totale **1117 endpoint** in **107 prefissi**.
+> Totale **1107 endpoint** in **107 prefissi**.
 
 Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app collegata / webhook / chatbot / scheduler / API pubblica) · `—` nessun riferimento noto (candidato verifica).
 
@@ -33,7 +33,7 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/config` | 9 | ✓ | configurazioni |
 | `/api/contabilita` | 21 | ✓ | accounting.contabilita_avanzata, contabilita_italiana |
 | `/api/contabilita-gestionale` | 11 | ✓ | accounting.contabilita_gestionale |
-| `/api/controllo-gestione` | 7 | ✓ | controllo_gestione |
+| `/api/controllo-gestione` | 4 | ✓ | controllo_gestione |
 | `/api/corrispettivi` | 26 | ✓ | drive_corrispettivi, invoices.corrispettivi |
 | `/api/dashboard` | 9 | ✓ | public_api, reports.dashboard |
 | `/api/data-deletion` | 1 | — | legal_pages |
@@ -49,7 +49,7 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/email-scanner` | 5 | ✓ | email_scanner |
 | `/api/erp` | 2 | ext | erp_bridge |
 | `/api/estratto-conto-movimenti` | 12 | ✓ | bank.estratto_conto |
-| `/api/exports` | 13 | — | reports.exports, reports.simple_exports |
+| `/api/exports` | 8 | — | reports.simple_exports |
 | `/api/f24` | 27 | ✓ | drive_quietanze, f24.f24_main |
 | `/api/f24-analisi` | 4 | ✓ | f24_analisi |
 | `/api/f24-email` | 7 | ✓ | f24.email_f24 |
@@ -59,7 +59,7 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/fatture` | 15 | ✓ | invoices.fatture_drive, invoices.fatture_upload |
 | `/api/fatture-ricevute` | 19 | ✓ | fatture_module.crud, fatture_module.pagamento |
 | `/api/finanziaria` | 4 | ✓ | finanziaria |
-| `/api/fiscalita` | 12 | ✓ | fiscalita_italiana |
+| `/api/fiscalita` | 10 | ✓ | fiscalita_italiana |
 | `/api/fornitori-learning` | 16 | ✓ | fornitori_learning |
 | `/api/genera-proposte` | 1 | — | dati_provvisori |
 | `/api/gestione-riservata` | 7 | ✓ | gestione_riservata |

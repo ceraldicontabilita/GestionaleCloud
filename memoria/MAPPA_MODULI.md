@@ -112,6 +112,7 @@ PayPal Reporting API, Meta WhatsApp Cloud API, Google Drive/Gmail (ingest), VIES
 (arricchimento fornitori), SMTP (invio commercialista).
 
 ## 3. Codice morto ELIMINATO in questa sessione (13/07/2026)
+### 3a. Codice morto (zero chiamanti)
 - **`app/routers/documenti_module/`** (crud.py, monitor.py, common.py) — package mai montato,
   funzioni duplicate di `documenti.py`. 487 righe.
 - **`destinazione_auto()`** in `fatture_module/metodo_pagamento.py` — funzione senza chiamanti.
@@ -120,6 +121,25 @@ PayPal Reporting API, Meta WhatsApp Cloud API, Google Drive/Gmail (ingest), VIES
 - **`COL_JOBS`/`COL_TRANSFERS`/`COL_RICONCILIAZIONE_TASKS`** in `bonifici_module/common.py` —
   costanti che puntavano a nomi collezione mai usati (fuorvianti).
 - Import inutilizzato `parse_paypal_date` in `fatture_module/pagamento.py`.
+
+### 3b. Duplicati contabili UNIFICATI (tenuto il canonico usato dal frontend)
+- **Budget**: rimossi gli endpoint `/api/controllo-gestione/budget*` (FE-inutilizzati).
+  Canonico = `/api/contabilita-gestionale/budget*` (usato da `BudgetPrevisionale.jsx`).
+- **Chiusura/Apertura esercizio**: rimossi da `fiscalita_italiana.py` (partita doppia CEE,
+  FE-inutilizzati). Canonico = `chiusura_esercizio.py` `/api/chiusura-esercizio/*`
+  (usato da `ChiusuraEsercizio.jsx`).
+- **Export**: rimosso `reports/exports.py` (stub `/excel` vuoto + alias repository, FE-inutilizzato).
+  Canonico = `reports/simple_exports.py` (collezioni canoniche dirette).
+
+### 3c. NON rimossi — risultano ancora AGGANCIATI a pagine frontend
+La verifica sul frontend ha mostrato che questi "candidati" NON sono morti:
+- **`f24_parser.py`**: è il motore di import F24 usato da `documenti.py` (upload F24).
+- **`learning_machine.py`** → pagina `LearningMachine.jsx`.
+- **`learning_universal.py`** → pagina `LearningMachineUniversale.jsx`.
+- **Assegni legacy** (`auto-associa`, `cerca-combinazioni-assegni`, `assegni_learning`) →
+  bottoni in `GestioneAssegni.jsx` e `LearningMachine.jsx`.
+Rimuoverli richiede prima togliere/ricablare le pagine e i bottoni relativi — decisione
+di prodotto, in attesa dell'utente.
 
 ## 4. Rami morti / stub (segnalati, non ancora rimossi — a basso rischio)
 | Dove | Cosa | Perché |

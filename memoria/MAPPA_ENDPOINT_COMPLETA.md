@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1117 endpoint** in **111 gruppi**.
+> Totale **1107 endpoint** in **110 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 640 · ext esterni = 76 · — da verificare = 401
+**Riepilogo uso:** ✓ frontend = 640 · ext esterni = 76 · — da verificare = 391
 
 ## AI Parser  (11)
 
@@ -387,13 +387,10 @@
 | POST | `/api/contabilita/personale/busta-paga` | — | contabilita_italiana |
 | POST | `/api/contabilita/ritenute/registra` | — | contabilita_italiana |
 
-## Controllo Gestione  (7)
+## Controllo Gestione  (4)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
-| POST | `/api/controllo-gestione/budget` | — | controllo_gestione |
-| GET | `/api/controllo-gestione/budget-vs-consuntivo/{anno}` | — | controllo_gestione |
-| GET | `/api/controllo-gestione/budget/{anno}` | — | controllo_gestione |
 | GET | `/api/controllo-gestione/costi-per-categoria` | — | controllo_gestione |
 | GET | `/api/controllo-gestione/costi-ricavi` | ✓ | controllo_gestione |
 | GET | `/api/controllo-gestione/kpi/{anno}` | — | controllo_gestione |
@@ -703,16 +700,6 @@
 | GET | `/api/estratto-conto-movimenti/riepilogo` | — | bank.estratto_conto |
 | DELETE | `/api/estratto-conto-movimenti/{movimento_id}` | ✓ | bank.estratto_conto |
 
-## Exports  (5)
-
-| Metodo | Path | FE | File |
-|---|---|:-:|---|
-| GET | `/api/exports/accounting/excel` | — | reports.exports |
-| GET | `/api/exports/employees/excel` | — | reports.exports |
-| GET | `/api/exports/excel` | — | reports.exports |
-| GET | `/api/exports/invoices/excel` | — | reports.exports |
-| GET | `/api/exports/warehouse/excel` | — | reports.exports |
-
 ## F24  (24)
 
 | Metodo | Path | FE | File |
@@ -882,18 +869,16 @@
 | POST | `/api/finanziaria/costo` | — | finanziaria |
 | GET | `/api/finanziaria/summary` | ✓ | finanziaria |
 
-## Fiscalità Italiana  (12)
+## Fiscalità Italiana  (10)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
 | GET | `/api/fiscalita/agevolazioni` | — | fiscalita_italiana |
 | POST | `/api/fiscalita/agevolazioni/simula` | — | fiscalita_italiana |
 | GET | `/api/fiscalita/agevolazioni/{agevolazione_id}` | — | fiscalita_italiana |
-| POST | `/api/fiscalita/apertura-esercizio` | — | fiscalita_italiana |
 | POST | `/api/fiscalita/calendario/completa/{scadenza_id}` | ✓ | fiscalita_italiana |
 | GET | `/api/fiscalita/calendario/scadenze-imminenti` | — | fiscalita_italiana |
 | GET | `/api/fiscalita/calendario/{anno}` | ✓ | fiscalita_italiana |
-| POST | `/api/fiscalita/chiusura-esercizio` | — | fiscalita_italiana |
 | POST | `/api/fiscalita/f24/registra` | — | fiscalita_italiana |
 | GET | `/api/fiscalita/f24/storico` | — | fiscalita_italiana |
 | GET | `/api/fiscalita/notifiche-scadenze` | ✓ | fiscalita_italiana |

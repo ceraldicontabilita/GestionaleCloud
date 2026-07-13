@@ -214,10 +214,9 @@ def _register_employees(app: FastAPI):
 
 # ─── Reports Module ──────────────────────────────────────────────────────────
 def _register_reports(app: FastAPI):
-    from app.routers.reports import report_pdf, exports, simple_exports, dashboard
-    
+    from app.routers.reports import report_pdf, simple_exports, dashboard
+
     app.include_router(report_pdf.router, prefix="/api/report-pdf", tags=["Report PDF"])
-    app.include_router(exports.router, prefix="/api/exports", tags=["Exports"])
     app.include_router(simple_exports.router, prefix="/api/exports", tags=["Simple Exports"])
     app.include_router(dashboard.router, prefix="/api/dashboard", tags=["Dashboard"])
 
