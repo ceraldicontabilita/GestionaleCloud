@@ -788,10 +788,18 @@ async def download_documents_from_email(
         # === DIZIONARIO EMAIL: carica Message-IDs già visti ===
         seen_message_ids = set()
         try:
+            # §11.3: niente to_list(None) illimitato. Lookup in memoria (pattern §11.1)
+            # ma con tetto esplicito e log se raggiunto (niente troncamento silenzioso).
+            _CAP_DIZIONARIO = 500000
             seen_docs = await db["email_message_index"].find(
                 {}, {"_id": 0, "message_id": 1}
-            ).to_list(None)
+            ).to_list(_CAP_DIZIONARIO)
             seen_message_ids = {s["message_id"] for s in seen_docs if s.get("message_id")}
+            if len(seen_docs) >= _CAP_DIZIONARIO:
+                logger.warning(
+                    f"Dizionario email: raggiunto il tetto di {_CAP_DIZIONARIO} messaggi; "
+                    "la dedup potrebbe non coprire i più vecchi. Valutare indice/pulizia."
+                )
             logger.info(f"Dizionario email: {len(seen_message_ids)} messaggi già visti")
         except Exception as e:
             logger.warning(f"Errore caricamento dizionario email: {e}")

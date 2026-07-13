@@ -77,7 +77,15 @@ PROSSIMA FASE: P1 consolidamento collection/motori (§5-§8).
       Adozione nei call site (documentType) come rollout progressivo.
 **FASE P1 (§5-§8) COMPLETATA.** Restano §6.2-6.9 (contabilità viva, rinviate) come debito.
       Deliverable: memoria/PIANO_MIGRAZIONE_COLLECTION.md, memoria/ENDPOINT_CLASSIFICAZIONE_FINALE.md
-### FASE P1 — F24/quietanze/IVA/prestazioni (§9-§11) — non iniziata
+### FASE P1 — F24/quietanze/IVA/prestazioni (§9-§11) — COMPLETATA
+- [x] §9 F24/quietanze/cedolini: regole già implementate/testate (associazione,
+      DM10/RC01, doppio pagamento, deducibilità); +stato canonico QUIETANZA_PRESENTE_F24_MANCANTE
+      (§9.3) + test regressione (nessuna ricostruzione automatica).
+- [x] §10 IVA: modulo maturo non riscritto; aggiunti i 7 test scenario mancanti
+      (più aliquote, indetraibile parziale, recupero annuale, concorrenza conferme...).
+- [x] §11 Prestazioni: to_list(None) → tetto+log; §11.4 job state già fatto (P0.10);
+      deliverable memoria/AUDIT_PERFORMANCE_N1.md per i 22 to_list(100000)/N+1 (da
+      valutare uno per uno: aggregazioni finanziarie non troncabili a blocco).
 ### FASE P2 — Sicurezza/pulizia (§12-§13) — non iniziata
 ### Deliverable (§16) — in corso: PROMPT salvato, tracker attivo
 
