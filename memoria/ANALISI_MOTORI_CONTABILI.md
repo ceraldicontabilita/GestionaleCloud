@@ -22,15 +22,32 @@ corrispettivi in partita doppia, schema CEE puntato). Vedi commit §6.1.
   incompatibili in `prima_nota_cassa`.
 - **Rischio:** ALTO (tocca bilancio/mastro/giornale/saldo). Non procedere senza scelta.
 
-## §6.2 — Bilancio: 6 implementazioni — dipende da §6.3
+## §6.2 — Bilancio: 6 implementazioni — 🟡 FONDAMENTA FATTE (mapping + vista derivata)
 Implementazioni rilevate: `accounting/piano_conti /bilancio` (fonte: `_calcola_saldi_
 piano_conti`), `accounting/contabilita_avanzata /bilancio-dettagliato`,
 `contabilita_italiana /bilancio/*`, `accounting/contabilita_gestionale`,
 `reports/dashboard`, `openapi_it`.
-- **Azione:** eleggere UNA fonte contabile (i saldi calcolati da `piano_conti._calcola_
-  saldi_piano_conti`, già "fonte unica di verità" del suo bilancio) e trasformare le
-  altre in **viste derivate**, non motori indipendenti. Endpoint canonici documentati.
-- **Blocco:** richiede prima §6.3 (schema). Rischio ALTO.
+
+**Fatto (§6.3 deciso = CEE puntato):** creato `app/services/mapping_piano_conti.py`
+(tabella UNICA di corrispondenza) + test:
+- `PUNTATO_A_CEE`: ogni conto puntato → voce di bilancio CEE (SP/CE).
+- `NUMERICO_A_PUNTATO`: 96 conti numerici → conto puntato (molti-a-uno).
+- `classifica_saldi_cee(saldi)`: **vista derivata** pura del bilancio in forma CEE dai
+  saldi dei conti puntati (fonte unica) — pronta per far diventare le altre
+  implementazioni viste derivate, senza motori paralleli.
+
+**Constatazione tecnica:** il piano puntato (30 conti) è OPERATIVO/semplificato, il
+numerico (96) è CIVILISTICO dettagliato. La conversione numerico→puntato è **LOSSY**:
+~24 conti sono SOLO_CIVILISTICI (immobilizzazioni, riserve dettagliate, ratei/risconti,
+fondi) e NON hanno equivalente puntato (valgono `None`).
+
+**Da confermare con l'utente prima di rewiring dei bilanci:**
+1. ~24 conti SOLO_CIVILISTICI: il piano puntato va esteso per rappresentarli o restano
+   solo nel ramo civilistico? (il bilancio puntato non mostrerebbe immobilizzazioni/riserve).
+2. ~10 corrispondenze marcate `VERIFICARE` nel mapping (approssimazioni macro, es.
+   400440 quiescenza→TFR, 400900 oneri diversi→servizi, 230400 debiti banche→banca).
+- **Blocco residuo:** il rewiring effettivo dei 6 endpoint bilancio (vista derivata unica)
+  cambia l'output → va fatto dopo la conferma dei punti 1-2. Rischio ALTO su quel passo.
 
 ## §6.4 — Formula di saldo Prima Nota — ✅ FATTO (cassa/banca)
 Creata la funzione UNICA `prima_nota_module/common.aggrega_saldo_prima_nota(db,
