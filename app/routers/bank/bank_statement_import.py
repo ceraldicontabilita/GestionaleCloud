@@ -915,27 +915,55 @@ async def manual_reconcile(
     estratto_conto_movimento_id: str = Query(..., description="ID movimento estratto conto"),
     prima_nota_movimento_id: str = Query(..., description="ID movimento Prima Nota Banca")
 ) -> Dict[str, Any]:
-    """Riconcilia manualmente un movimento estratto conto con Prima Nota."""
+    """Riconcilia manualmente un movimento estratto conto con Prima Nota.
+
+    Guard anti-doppio-match (P1-2, LOGICA §6): se una delle due righe è già
+    riconciliata la richiesta viene rifiutata con 409 (mai sovrascrittura muta).
+    Marca riconciliati SIA la Prima Nota SIA il movimento estratto conto, così il
+    motore automatico non può ri-agganciare l'EC (prima restava scoperto).
+    """
     db = Database.get_db()
-    
-    # Update Prima Nota Banca
-    result = await db[COLLECTION_PRIMA_NOTA_BANCA].update_one(
+    now = datetime.now(timezone.utc).isoformat()
+
+    pn = await db[COLLECTION_PRIMA_NOTA_BANCA].find_one({"id": prima_nota_movimento_id}, {"_id": 0, "riconciliato": 1})
+    if not pn:
+        raise HTTPException(status_code=404, detail="Movimento Prima Nota non trovato")
+    if pn.get("riconciliato"):
+        raise HTTPException(status_code=409, detail="Movimento Prima Nota già riconciliato")
+
+    ec = await db[COLLECTION_ESTRATTO_CONTO].find_one({"id": estratto_conto_movimento_id}, {"_id": 0, "riconciliato": 1})
+    # L'EC potrebbe non essere presente in questa collezione (import parziali):
+    # in tal caso si procede aggiornando solo la Prima Nota, ma se esiste ed è
+    # già riconciliato si blocca.
+    if ec and ec.get("riconciliato"):
+        raise HTTPException(status_code=409, detail="Movimento estratto conto già riconciliato")
+
+    await db[COLLECTION_PRIMA_NOTA_BANCA].update_one(
         {"id": prima_nota_movimento_id},
         {"$set": {
             "riconciliato": True,
-            "data_riconciliazione": datetime.now(timezone.utc).isoformat(),
-            "estratto_conto_ref": estratto_conto_movimento_id
+            "data_riconciliazione": now,
+            "estratto_conto_ref": estratto_conto_movimento_id,
         }}
     )
-    
-    if result.modified_count == 0:
-        raise HTTPException(status_code=404, detail="Movimento Prima Nota non trovato")
-    
+    ec_aggiornato = 0
+    if ec is not None:
+        r_ec = await db[COLLECTION_ESTRATTO_CONTO].update_one(
+            {"id": estratto_conto_movimento_id},
+            {"$set": {
+                "riconciliato": True,
+                "data_riconciliazione": now,
+                "prima_nota_ref": prima_nota_movimento_id,
+            }}
+        )
+        ec_aggiornato = r_ec.modified_count
+
     return {
         "success": True,
         "message": "Riconciliazione completata",
         "prima_nota_id": prima_nota_movimento_id,
-        "estratto_conto_id": estratto_conto_movimento_id
+        "estratto_conto_id": estratto_conto_movimento_id,
+        "estratto_conto_marcato": bool(ec_aggiornato),
     }
 
 

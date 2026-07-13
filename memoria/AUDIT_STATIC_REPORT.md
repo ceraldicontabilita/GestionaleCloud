@@ -440,7 +440,7 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/bank/bank_statement_import.py:942`
+- File: `app/routers/bank/bank_statement_import.py:970`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
@@ -698,79 +698,79 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/documenti.py:417`
+- File: `app/routers/documenti.py:447`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/documenti.py:470`
+- File: `app/routers/documenti.py:500`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/documenti.py:525`
+- File: `app/routers/documenti.py:555`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/documenti.py:645`
+- File: `app/routers/documenti.py:675`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/documenti.py:917`
+- File: `app/routers/documenti.py:947`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/documenti.py:1057`
+- File: `app/routers/documenti.py:1087`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/documenti.py:1218`
+- File: `app/routers/documenti.py:1248`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/documenti.py:1423`
+- File: `app/routers/documenti.py:1453`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/documenti.py:1705`
+- File: `app/routers/documenti.py:1735`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/documenti.py:1866`
+- File: `app/routers/documenti.py:1896`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/documenti.py:1937`
+- File: `app/routers/documenti.py:1967`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/documenti.py:1991`
+- File: `app/routers/documenti.py:2021`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/documenti.py:2233`
+- File: `app/routers/documenti.py:2263`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 

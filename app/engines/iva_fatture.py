@@ -55,17 +55,28 @@ def campi_iva_da_fattura(inv: Dict[str, Any]) -> Dict[str, Any]:
 
     if gia_utilizzata:
         stato = "INSERITA_IN_LIQUIDAZIONE"
+        # P1-b (fix 13/07/2026): una fattura la cui IVA è già stata usata in una
+        # liquidazione confermata NON va ri-attribuita. Si preserva il periodo
+        # attribuito esistente (allineato al periodo utilizzato), evitando che
+        # un ricalcolo produca attribuito ≠ utilizzato e quadri incoerenti.
+        periodo_attribuito_finale = (
+            inv.get("periodo_iva_attribuito")
+            or inv.get("periodo_iva_utilizzato")
+            or periodo_attribuito
+        )
     elif periodo_attribuito is None:
         stato = "DA_VERIFICARE"
+        periodo_attribuito_finale = periodo_attribuito
     else:
         stato = "DA_INSERIRE"
+        periodo_attribuito_finale = periodo_attribuito
 
     return {
         "data_documento": data_documento,
         "data_operazione": data_operazione,
         "data_ricezione": data_ricezione,
         "data_registrazione": data_registrazione,
-        "periodo_iva_attribuito": periodo_attribuito,
+        "periodo_iva_attribuito": periodo_attribuito_finale,
         "regola_iva_applicata": regola,
         "iva_detraibile": round(iva, 2),
         "iva_utilizzata": gia_utilizzata,

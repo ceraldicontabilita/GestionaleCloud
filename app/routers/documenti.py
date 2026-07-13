@@ -383,16 +383,46 @@ async def get_documento(doc_id: str) -> Dict[str, Any]:
     return doc
 
 
+# Collezioni allegati email dove finiscono i documenti scaricati dalla posta
+# (oltre a documents_inbox usato da Drive/upload manuale). Il download generico
+# deve risolvere l'id anche qui, altrimenti gli allegati email danno 404
+# (fix 13/07/2026, P0-2 verifica Documenti).
+_COLLEZIONI_DOWNLOAD = [
+    "documents_inbox",
+    "documenti_non_associati",
+    "f24_email_attachments",
+    "fatture_email_attachments",
+    "cedolini_email_attachments",
+    "estratti_email_attachments",
+    "quietanze_email_attachments",
+    "bonifici_email_attachments",
+    "verbali_email_attachments",
+    "certificati_email_attachments",
+    "cartelle_email_attachments",
+    "avvisi_bonari_email_attachments",
+    "dichiarazioni_iva_email_attachments",
+]
+
+
+async def _trova_documento_scaricabile(db, doc_id: str):
+    """Cerca il documento per id nelle collezioni inbox + allegati email."""
+    for coll in _COLLEZIONI_DOWNLOAD:
+        doc = await db[coll].find_one({"id": doc_id}, {"_id": 0})
+        if doc:
+            return doc
+    return None
+
+
 @router.get("/documento/{doc_id}/download")
 @handle_errors
 async def download_documento(doc_id: str):
     """Scarica il file del documento da MongoDB (architettura MongoDB-only)."""
     db = Database.get_db()
-    
-    doc = await db["documents_inbox"].find_one({"id": doc_id}, {"_id": 0})
+
+    doc = await _trova_documento_scaricabile(db, doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Documento non trovato")
-    
+
     # Architettura MongoDB-only: usa solo pdf_data
     pdf_data = doc.get("pdf_data")
     if not pdf_data:

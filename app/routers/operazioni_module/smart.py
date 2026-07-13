@@ -214,6 +214,10 @@ async def riconcilia_manuale(request: RiconciliaManuale) -> Dict[str, Any]:
     movimento = await db.estratto_conto_movimenti.find_one({"id": request.movimento_id})
     if not movimento:
         raise HTTPException(status_code=404, detail="Movimento non trovato")
+    # Guard anti-doppio-match (P1-2, LOGICA §6): mai sovrascrivere una
+    # riconciliazione già fatta — rifiuta con 409.
+    if movimento.get("riconciliato"):
+        raise HTTPException(status_code=409, detail="Movimento già riconciliato")
 
     entita_id = request.associazioni[0].get("id") if request.associazioni else None
     # "fattura_sdd" è il sotto-tipo prodotto dall'analizzatore per gli SDD con
