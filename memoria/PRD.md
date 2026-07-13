@@ -2,8 +2,8 @@
 
 Prodotto: gestionale contabile / amministrativo interno
 Cliente: Ceraldi Group S.R.L. (P.IVA 04523831214) — Bar / Pasticceria, Napoli
-Ambiente: preview Emergent + produzione
-Data ultima revisione: Apr 2026
+Ambiente: produzione su Render (impresasemplice.online)
+Data ultima revisione: Lug 2026
 
 ## Obiettivo
 

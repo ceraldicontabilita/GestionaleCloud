@@ -7,8 +7,8 @@
 ## 0. Identita' del progetto
 
 - Azienda: Ceraldi Group S.R.L. — Bar/Pasticceria a Napoli — P.IVA `04523831214`
-- Repo: `github.com/ceraldicontabilita/gestionale2`
-- Deploy: app.emergent.sh -> `impresasemplice.online`
+- Repo: `github.com/ceraldicontabilita/gestionale`
+- Deploy: push su `main` -> Render -> `impresasemplice.online`
 - Utente unico: sistema non multi-tenant e non multi-utente
 - Lingua UI/documentazione: italiano. Codice tecnico in inglese ammesso quando gia' presente.
 

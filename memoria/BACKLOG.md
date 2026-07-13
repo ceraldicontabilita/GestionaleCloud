@@ -197,7 +197,7 @@ Già identificate (vedi messaggio precedente): `log_operatori`, `paypal_transact
 
 ## 🧠 Nota architetturale importante
 
-**MongoDB URL**: il cluster reale dove sono i dati è `cluster0.vofh7iz.mongodb.net` (Ceraldi), database `Gestionale`. NON è il cluster `customer-apps.zzr2e7` che Emergent propone come default. Quando si fa deploy, verificare sempre che `MONGO_URL` punti al cluster Ceraldi, altrimenti la produzione vede un DB vuoto.
+**MongoDB URL**: il cluster reale dove sono i dati è `cluster0.vofh7iz.mongodb.net` (Ceraldi), database `Gestionale`. Quando si fa deploy verificare sempre che `MONGO_URL` punti al cluster Ceraldi, altrimenti la produzione vede un DB vuoto.
 
 ---
 

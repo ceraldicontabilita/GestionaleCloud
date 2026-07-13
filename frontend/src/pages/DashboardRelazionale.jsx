@@ -26,8 +26,7 @@ import {
 
 // Il client `api` usa già baseURL='' (dominio corrente) + JWT interceptor.
 // Non usiamo VITE_BACKEND_URL qui perché al build time può puntare a un
-// dominio diverso (es. gestione-contabile.emergent.host) e causare errori
-// CORS in produzione.
+// dominio diverso e causare errori CORS in produzione.
 
 /* ================================================================
    DASHBOARD RELAZIONALE — Ceraldi ERP

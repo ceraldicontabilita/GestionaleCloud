@@ -601,7 +601,7 @@ Lavora principalmente sulla collection `invoices` (fatture non pagate = scadenze
 
 ## schede_tecniche.py (`/api/schede-tecniche`) — schede tecniche prodotti (HACCP)
 
-Estrae i prodotti dalle fatture XML su disco (`/tmp/uploads/pec_xml`, lookup via `fatture_passive.xml_filename` o glob per P.IVA), usa Claude (haiku, via `emergent_stub.LlmChat`) per identificare brand/sito/URL PDF, scarica i PDF (httpx) o li cerca negli allegati Gmail (IMAP sincrono in `asyncio.to_thread`), e archivia tutto in `schede_tecniche` (PDF come Binary in MongoDB). Job asincroni in `schede_tecniche_jobs`.
+Estrae i prodotti dalle fatture XML su disco (`/tmp/uploads/pec_xml`, lookup via `fatture_passive.xml_filename` o glob per P.IVA), usa Claude (haiku, via client Anthropic) per identificare brand/sito/URL PDF, scarica i PDF (httpx) o li cerca negli allegati Gmail (IMAP sincrono in `asyncio.to_thread`), e archivia tutto in `schede_tecniche` (PDF come Binary in MongoDB). Job asincroni in `schede_tecniche_jobs`.
 
 ### POST /api/schede-tecniche/popola-fornitore/{fornitore_id} — anagrafica da XML su disco
 **Cosa fa**: legge i file XML delle fatture del fornitore, estrae il blocco CedentePrestatore (telefono, email, indirizzo…) e aggiorna SOLO i campi mancanti in `fornitori`.
