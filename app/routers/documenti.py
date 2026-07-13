@@ -983,10 +983,17 @@ async def processa_f24_scaricati() -> Dict[str, Any]:
             
             pdf_content = base64.b64decode(pdf_data)
             parsed = parse_f24_commercialista(pdf_content=pdf_content)
-            
-            if parsed.get("success") and parsed.get("f24_data"):
-                f24_data = parsed["f24_data"]
-                
+
+            # Contratto reale del parser (P0.8): NON restituisce success/f24_data;
+            # ritorna {"error": ...} in errore, altrimenti il dict F24 direttamente
+            # (dati_generali/sezione_erario/sezione_inps/totali). Stesso contratto
+            # usato da sync-f24-automatico.
+            if not parsed.get("error") and (
+                parsed.get("sezione_erario") or parsed.get("sezione_inps") or parsed.get("totali")
+            ):
+                f24_data = dict(parsed)
+                f24_data["id"] = str(uuid4())
+
                 # Rimuovi _id
                 if "_id" in f24_data:
                     del f24_data["_id"]
@@ -1029,8 +1036,8 @@ async def processa_f24_scaricati() -> Dict[str, Any]:
                 f24_caricati.append({
                     "file": doc["filename"],
                     "importo": f24_data.get("totali", {}).get("saldo_netto", 0),
-                    "tributi": len(f24_data.get("sezioni", {}).get("erario", {}).get("tributi", [])) +
-                              len(f24_data.get("sezioni", {}).get("inps", {}).get("tributi", []))
+                    "tributi": len(f24_data.get("sezione_erario", []))
+                              + len(f24_data.get("sezione_inps", [])),
                 })
             else:
                 f24_errori.append({

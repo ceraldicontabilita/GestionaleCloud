@@ -83,3 +83,25 @@ Ogni bug: problema → correzione → test di regressione. Baseline `b9ff5c7` (2
 
 ---
 _Stato test: 283 verdi (baseline 257 + 26 nuovi). App boota (1112 route), build frontend verde._
+
+## P0.7 — Riconciliazione F24 scrive/legge collection diverse ✅
+- **File**: `bank/riconciliazione_f24_banca.py`.
+- **Problema**: `upload-estratto-bpm` scriveva i movimenti F24 in `movimenti_f24_banca`
+  ma `riconcilia-f24` legge `estratto_conto_movimenti` → collezione scritta mai riletta.
+- **Fix**: l'upload scrive i movimenti F24 nella collezione CANONICA
+  `estratto_conto_movimenti` (schema `data`/`importo`/`descrizione`/`tipo`, `is_f24`,
+  `source=estratto_bpm_f24`) con dedup per fingerprint (upsert). Rimosso il write morto.
+- **Test**: `tests/test_p0_07_f24_banca.py`.
+
+## P0.8 — Processo F24 scaricati usa contratto parser errato ✅
+- **File**: `documenti.py` (`processa-f24-scaricati`).
+- **Problema**: controllava `parsed.get("success")`/`parsed["f24_data"]` che il parser
+  `parse_f24_commercialista` non restituisce mai → import sempre saltato.
+- **Fix**: allineato al contratto reale del parser (`{"error"}` oppure il dict F24
+  con `dati_generali`/`sezione_erario`/`totali`), come già fa `sync-f24-automatico`.
+  Corretto anche il conteggio tributi (`sezione_erario`/`sezione_inps`).
+- **Test**: `tests/test_p0_08_f24_parser_contract.py`.
+
+---
+## ✅ FASE P0 COMPLETATA — tutti i 12 bug corretti con test di regressione.
+_Stato test: 287 verdi (baseline 257 + 30 nuovi). App boota (1112 route), build frontend verde._

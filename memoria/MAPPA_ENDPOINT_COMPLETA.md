@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1105 endpoint** in **110 gruppi**.
+> Totale **1106 endpoint** in **110 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 639 · ext esterni = 76 · — da verificare = 390
+**Riepilogo uso:** ✓ frontend = 639 · ext esterni = 76 · — da verificare = 391
 
 ## AI Parser  (11)
 
@@ -683,7 +683,7 @@
 | POST | `/api/email-scanner/scansiona-e-associa` | — | email_scanner |
 | GET | `/api/email-scanner/statistiche` | ✓ | email_scanner |
 
-## Estratto Conto  (12)
+## Estratto Conto  (13)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -695,6 +695,7 @@
 | POST | `/api/estratto-conto-movimenti/import` | ✓ | bank.estratto_conto |
 | GET | `/api/estratto-conto-movimenti/movimenti` | ✓ | bank.estratto_conto |
 | GET | `/api/estratto-conto-movimenti/movimenti-stipendi` | ✓ | bank.estratto_conto |
+| POST | `/api/estratto-conto-movimenti/reimport` | — | bank.estratto_conto |
 | POST | `/api/estratto-conto-movimenti/ricategorizza-batch` | ✓ | bank.estratto_conto |
 | POST | `/api/estratto-conto-movimenti/riconcilia-stipendi` | — | bank.estratto_conto |
 | GET | `/api/estratto-conto-movimenti/riepilogo` | — | bank.estratto_conto |

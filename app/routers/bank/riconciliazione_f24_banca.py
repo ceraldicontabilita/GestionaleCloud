@@ -8,6 +8,8 @@ insieme a f24_riconciliazione.py per gli endpoint banca-specifici.
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from typing import Optional
 from datetime import datetime, timezone
+from uuid import uuid4
+import hashlib
 import logging
 
 from app.database import Database
@@ -81,13 +83,44 @@ async def upload_estratto_conto_bpm(file: UploadFile = File(...)):
         }
         
         await db["estratti_conto"].insert_one(documento.copy())
-        
-        # Salva movimenti F24 per riconciliazione futura
-        if result["movimenti_f24"]:
-            for mov in result["movimenti_f24"]:
-                mov["estratto_file"] = file.filename
-                mov["upload_date"] = datetime.now(timezone.utc)
-            await db["movimenti_f24_banca"].insert_many(result["movimenti_f24"])
+
+        # Salva i movimenti F24 nella collezione CANONICA estratto_conto_movimenti
+        # (quella letta da /riconcilia-f24), non nella morta movimenti_f24_banca:
+        # prima l'import scriveva su movimenti_f24_banca ma la riconciliazione
+        # leggeva estratto_conto_movimenti → i movimenti non venivano mai trovati.
+        # Vedi P0.7. Dedup per fingerprint per non duplicare se l'estratto è già
+        # stato importato dall'importer principale.
+        f24_importati = 0
+        for mov in result["movimenti_f24"]:
+            data_mov = mov.get("data_contabile") or mov.get("data_valuta")
+            descr = mov.get("descrizione", "")
+            fingerprint = hashlib.md5(
+                f"{data_mov}|{mov.get('importo')}|{descr[:50]}".encode("utf-8")
+            ).hexdigest()
+            record = {
+                "id": str(uuid4()),
+                "data": data_mov,
+                "data_valuta": mov.get("data_valuta"),
+                "importo": mov.get("importo"),
+                "tipo": mov.get("tipo", "uscita"),
+                "descrizione": descr,
+                "categoria": mov.get("categoria", "F24"),
+                "banca": mov.get("banca", "BPM"),
+                "is_f24": True,
+                "f24_info": mov.get("f24_info"),
+                "source": "estratto_bpm_f24",
+                "estratto_file": file.filename,
+                "riconciliato": False,
+                "fingerprint": fingerprint,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }
+            res_up = await db[COLL_ESTRATTO_CONTO].update_one(
+                {"fingerprint": fingerprint},
+                {"$setOnInsert": record},
+                upsert=True,
+            )
+            if res_up.upserted_id is not None:
+                f24_importati += 1
         
         return {
             "success": True,

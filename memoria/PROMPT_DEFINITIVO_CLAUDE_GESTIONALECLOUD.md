@@ -15,14 +15,15 @@ Baseline: `b9ff5c7` · 257 test verdi · 1105 route · avvio lavori 13/07/2026.
 - [x] P0.4 Verbali cercano `items.descrizione` invece di `linee` — linee.*, test
 - [x] P0.5 Stato assegno "associato" non valido — "assegnato" + migrazione + test
 - [x] P0.6 Force reimport non rispetta il contratto — docstring veritiero + alias /reimport
-- [ ] P0.7 Riconciliazione F24 scrive/legge collection diverse
-- [ ] P0.8 Processo F24 scaricati usa contratto parser errato
+- [x] P0.7 Riconciliazione F24 scrive/legge collection diverse — upload su estratto_conto_movimenti + test
+- [x] P0.8 Processo F24 scaricati usa contratto parser errato — allineato al contratto reale + test
 - [x] P0.9 Pagamento fattura non idempotente — chiave idempotenza + indice unique
 - [x] P0.10 Stato job solo in memoria — persistito su MongoDB job_state
 - [x] P0.11 Gestione riservata protetta solo dal frontend — auth backend header + test
 - [x] P0.12 Token in query string — header X-API-Key + fallback deprecato + test
 
-FATTI: P0.1,2,3,4,5,6,9,10,11,12 (283 test verdi). RESTANO: P0.7, P0.8 (F24).
+**FASE P0 COMPLETATA**: tutti i 12 bug corretti con test (287 test verdi, +30 su baseline).
+PROSSIMA FASE: P1 consolidamento collection/motori (§5-§8).
 
 ### FASE P1 — Consolidamento collection/motori (§5-§8)  — non iniziata
 ### FASE P1 — F24/quietanze/IVA/prestazioni (§9-§11) — non iniziata
