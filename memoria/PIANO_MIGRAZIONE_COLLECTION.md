@@ -166,6 +166,23 @@ Learning Machine FE-wired (`documenti_classificati`: _key/categoria/has_pdf/proc
   Machine sotto la loro categoria (vista unica).
 - Verifica: 312 test verdi · `tests/test_p1_documenti_classificati.py`.
 
-## 5.9 — DA FARE
-Magazzino (no giacenza fisica: solo Dizionario Articoli + storico acquisti; nessuna
-nuova scrittura di giacenza). Vedi PROMPT_DEFINITIVO §5.9.
+## 5.9 Magazzino — ✅ FATTO (già conforme, blindato con test-guardia)
+GestionaleCloud NON usa la giacenza fisica. Ricognizione: **nessuna nuova scrittura**
+(insert/update) sulle 6 collezioni di giacenza del prompt (`warehouse_stocks`,
+`warehouse_products`, `magazzino`, `magazzino_articoli`, `magazzino_movimenti`,
+`movimenti_magazzino`). Gli unici tocchi sono `delete_many` di pulizia su
+`warehouse_stocks` (deprecata, dati errati) nel cascade di cancellazione fornitore:
+rimuovono, non creano giacenza; le collezioni condivise NON vengono droppate.
+
+- Si mantengono: Dizionario Articoli (`dizionario_prodotti`) e storico acquisti
+  (`acquisti_prodotti`, `dettaglio_righe_fatture`, `warehouse_movements`, lettura).
+- `db_collections.py`: le 6 collezioni di giacenza marcate **§5.9 NO-WRITE**.
+- Test-guardia `tests/test_p1_magazzino.py`: vieta qualsiasi nuova scrittura di
+  giacenza (regressione).
+
+---
+## STATO §5 — COMPLETATA
+§5.1 F24 · §5.2 Dipendenti · §5.3 Cedolini · §5.4 Fatture passive · §5.5 Fatture emesse ·
+§5.6 Estratto conto · §5.7 Fornitori · §5.8 Documenti classificati · §5.9 Magazzino.
+Debiti rinviati (sottosistemi vivi): `buste_paga` (Libro Unico/BPM/TFR), parser F24
+(f24_pagamenti/tributi_pagati/distinte_f24), armonizzazione campi fatture emesse.

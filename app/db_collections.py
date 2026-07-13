@@ -162,17 +162,22 @@ COLL_OPERAZIONI_DA_CONFERMARE = "operazioni_da_confermare"  # 277 docs
 # ===========================================
 
 # Inventario
-COLL_WAREHOUSE = "warehouse_inventory"  # 5372 docs - Collezione UNICA
+# P1 §5.9: GestionaleCloud NON usa la giacenza fisica. Si mantengono solo i dati per il
+# Dizionario Articoli (dizionario_prodotti) e lo storico acquisti (acquisti_prodotti/
+# dettaglio_righe_fatture/warehouse_movements). Le collezioni di GIACENZA qui sotto sono
+# NO-WRITE: nessuna NUOVA scrittura (insert/update) dal codice. NON cancellare le collezioni
+# (condivise con l'app di magazzino).
+COLL_WAREHOUSE = "warehouse_inventory"  # 5372 docs - Collezione UNICA (condivisa magazzino)
 COLL_WAREHOUSE_INVENTORY = "warehouse_inventory"  # Alias esplicito
-COLL_WAREHOUSE_STOCKS = "warehouse_stocks"  # 1484 docs - DEPRECATA (dati errati)
-COLL_WAREHOUSE_PRODUCTS = "warehouse_products"
-COLL_MAGAZZINO = "magazzino"
-COLL_MAGAZZINO_ARTICOLI = "magazzino_articoli"
+COLL_WAREHOUSE_STOCKS = "warehouse_stocks"  # 1484 docs - DEPRECATA (dati errati) · §5.9 NO-WRITE
+COLL_WAREHOUSE_PRODUCTS = "warehouse_products"  # §5.9 NO-WRITE (giacenza)
+COLL_MAGAZZINO = "magazzino"  # §5.9 NO-WRITE (giacenza)
+COLL_MAGAZZINO_ARTICOLI = "magazzino_articoli"  # §5.9 NO-WRITE (giacenza)
 
 # Movimenti
-COLL_WAREHOUSE_MOVEMENTS = "warehouse_movements"  # 3935 docs
-COLL_MAGAZZINO_MOVIMENTI = "magazzino_movimenti"
-COLL_MOVIMENTI_MAGAZZINO = "movimenti_magazzino"
+COLL_WAREHOUSE_MOVEMENTS = "warehouse_movements"  # 3935 docs - storico movimenti (lettura)
+COLL_MAGAZZINO_MOVIMENTI = "magazzino_movimenti"  # §5.9 NO-WRITE (giacenza)
+COLL_MOVIMENTI_MAGAZZINO = "movimenti_magazzino"  # §5.9 NO-WRITE (giacenza)
 
 # Acquisti
 COLL_ACQUISTI_PRODOTTI = "acquisti_prodotti"  # 15065 docs

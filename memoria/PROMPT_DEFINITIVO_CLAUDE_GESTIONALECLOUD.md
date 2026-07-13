@@ -54,7 +54,9 @@ PROSSIMA FASE: P1 consolidamento collection/motori (§5-§8).
       Redirect pipeline email (email_classifier_service/document_ai) → canonica con
       mapping campi; LM esclude pdf_base64 dalle liste; migrazione documents_classified.
       Effetto: doc email visibili in Learning Machine (312 test).
-- [ ] §5.9 Magazzino
+- [x] §5.9 Magazzino: già conforme (nessuna nuova scrittura di giacenza sulle 6 collezioni;
+      solo delete di pulizia su warehouse_stocks deprecata; collezioni condivise non droppate).
+      Marcate §5.9 NO-WRITE + test-guardia. **§5 COMPLETATA** (313 test).
 - [ ] §6 Unificazione motori contabili · §7 Classificazione 390 endpoint · §8 Viewer documenti
       Deliverable: memoria/PIANO_MIGRAZIONE_COLLECTION.md
 ### FASE P1 — F24/quietanze/IVA/prestazioni (§9-§11) — non iniziata
