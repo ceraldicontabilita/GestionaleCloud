@@ -32,15 +32,17 @@ piano_conti`), `accounting/contabilita_avanzata /bilancio-dettagliato`,
   altre in **viste derivate**, non motori indipendenti. Endpoint canonici documentati.
 - **Blocco:** richiede prima §6.3 (schema). Rischio ALTO.
 
-## §6.4 — Tre formule di saldo Prima Nota — AZIONE SICURA (con test)
-Le formule di saldo (filtri, esclusioni, segno, annullati, provvisori, intervallo
-date, saldo iniziale/finale) sono ripetute in più punti. NON esiste ancora una
-funzione unica (`prima_nota_engine.py` gestisce solo normalizzazione metodo/routing).
-- **Azione consigliata:** creare `calcola_saldo_prima_nota(movimenti, ...)` unica e
-  farla chiamare da tutti gli endpoint di saldo, con test su: esclusione annullati,
-  esclusione provvisori, segno entrate/uscite, saldo iniziale+intervallo.
-- **Rischio:** MEDIO (i valori attuali vanno preservati: prima catturare il
-  comportamento con test di caratterizzazione, poi unificare).
+## §6.4 — Formula di saldo Prima Nota — ✅ FATTO (cassa/banca)
+Creata la funzione UNICA `prima_nota_module/common.aggrega_saldo_prima_nota(db,
+collection, query, anno)` (segno entrate/uscite, riporto/saldo iniziale via
+`calcola_saldo_anni_precedenti`, saldo finale). `cassa.py` e `banca.py` la usano:
+i valori sono invariati (test di caratterizzazione `tests/test_p1_saldo_prima_nota.py`).
+- **FOLLOW-UP (scelta contabile):** la query dell'anno diverge leggermente tra cassa
+  e banca — `cassa` conta anche i doc con `anno == ""` (via `$in [None, ""]`), `banca`
+  no. NON uniformato per non alterare i totali banca senza conferma. Da decidere se
+  banca deve adottare la stessa query robusta di cassa.
+- **Restano** da convogliare sulla funzione unica: `stats.get_saldo_finale`
+  (itera i movimenti con logica propria) e `manutenzione` (usa dict già calcolati).
 
 ## §6.5 — Cespiti: `cespiti.py` vs `contabilita_italiana /cespiti/*`
 Due sistemi di registrazione cespiti/ammortamenti.

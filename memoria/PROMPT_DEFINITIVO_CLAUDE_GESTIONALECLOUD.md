@@ -69,6 +69,10 @@ PROSSIMA FASE: P1 consolidamento collection/motori (§5-§8).
       decisione per ogni sottosistema. §6.3 (schema piano conti CEE vs numerico) = decisione
       utente BLOCCANTE per §6.2. Ordine sicuro: §6.4 saldo Prima Nota → §6.6 EC → §6.3 → §6.2
       → §6.8 cash adapter/§6.5/§6.9/§6.7. Implementazione in attesa scelta schema.
+      Scelte utente: schema canonico = CEE puntato; ritmo = solo lavori sicuri uno per uno.
+- [x] §6.4 saldo Prima Nota: funzione unica common.aggrega_saldo_prima_nota (segno/riporto/
+      saldo finale) usata da cassa.py e banca.py, valori invariati + test caratterizzazione
+      (324 test). Follow-up: allineare query anno banca↔cassa (anno==""); stats/manutenzione.
 - [x] §7 Classificazione endpoint: deliverable memoria/ENDPOINT_CLASSIFICAZIONE_FINALE.md
       generato da scripts/genera_classificazione_endpoint.py (rigenerabile) sulla route
       table reale, incrocia FE/scheduler/chat/migrazione/test. 1106 endpoint: 650 tenere,

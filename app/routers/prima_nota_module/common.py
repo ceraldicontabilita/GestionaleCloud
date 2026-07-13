@@ -59,6 +59,47 @@ def clean_mongo_doc(doc: Dict[str, Any]) -> Dict[str, Any]:
     return doc
 
 
+def _pipeline_entrate_uscite(query: Dict[str, Any]) -> list:
+    """Pipeline di aggregazione entrate/uscite (segno §6.4): l'IMPORTO è sempre
+    positivo, il segno lo dà il campo `tipo` (entrata=+, uscita=−)."""
+    return [
+        {"$match": query},
+        {"$group": {
+            "_id": None,
+            "entrate": {"$sum": {"$cond": [{"$eq": ["$tipo", "entrata"]}, "$importo", 0]}},
+            "uscite": {"$sum": {"$cond": [{"$eq": ["$tipo", "uscita"]}, "$importo", 0]}},
+        }},
+    ]
+
+
+async def aggrega_saldo_prima_nota(db, collection: str, query: Dict[str, Any],
+                                   anno: int = None) -> Dict[str, float]:
+    """Funzione UNICA di saldo Prima Nota (§6.4) — cassa/banca/misto usano questa.
+
+    Uniforma segno, saldo iniziale (riporto anni precedenti) e saldo finale:
+      saldo_anno   = entrate − uscite (sui movimenti che soddisfano `query`)
+      saldo_iniziale = riporto cumulato di tutti gli anni precedenti (stesse esclusioni)
+      saldo_finale = saldo_iniziale + saldo_anno
+
+    Le esclusioni (status deleted/archived, CATEGORIE_ESCLUSE) fanno parte di `query`
+    costruita dal chiamante; il riporto usa `calcola_saldo_anni_precedenti` con le
+    stesse esclusioni. Ritorna importi già arrotondati a 2 decimali.
+    """
+    totals = await db[collection].aggregate(_pipeline_entrate_uscite(query)).to_list(1)
+    entrate = totals[0].get("entrate", 0) if totals else 0
+    uscite = totals[0].get("uscite", 0) if totals else 0
+    saldo_anno = entrate - uscite
+    saldo_precedente = await calcola_saldo_anni_precedenti(db, collection, anno) if anno else 0.0
+    saldo_finale = saldo_precedente + saldo_anno
+    return {
+        "totale_entrate": round(entrate, 2),
+        "totale_uscite": round(uscite, 2),
+        "saldo_anno": round(saldo_anno, 2),
+        "saldo_precedente": round(saldo_precedente, 2),
+        "saldo": round(saldo_finale, 2),
+    }
+
+
 async def calcola_saldo_anni_precedenti(db, collection: str, anno: int) -> float:
     """
     Calcola il saldo cumulativo di tutti gli anni precedenti all'anno specificato.

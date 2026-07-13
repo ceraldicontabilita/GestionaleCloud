@@ -9,7 +9,8 @@ import uuid
 
 from app.database import Database
 from .common import (
-    COLLECTION_PRIMA_NOTA_CASSA, TIPO_MOVIMENTO, CATEGORIE_ESCLUSE, calcola_saldo_anni_precedenti
+    COLLECTION_PRIMA_NOTA_CASSA, TIPO_MOVIMENTO, CATEGORIE_ESCLUSE,
+    calcola_saldo_anni_precedenti, aggrega_saldo_prima_nota
 )
 
 
@@ -50,31 +51,17 @@ async def list_prima_nota_cassa(
         query["categoria"] = categoria
     
     movimenti = await db[COLLECTION_PRIMA_NOTA_CASSA].find(query, {"_id": 0}).sort("data", -1).skip(skip).limit(limit).to_list(limit)
-    
-    pipeline = [
-        {"$match": query},
-        {"$group": {
-            "_id": None,
-            "entrate": {"$sum": {"$cond": [{"$eq": ["$tipo", "entrata"]}, "$importo", 0]}},
-            "uscite": {"$sum": {"$cond": [{"$eq": ["$tipo", "uscita"]}, "$importo", 0]}}
-        }}
-    ]
-    totals = await db[COLLECTION_PRIMA_NOTA_CASSA].aggregate(pipeline).to_list(1)
-    
-    entrate_anno = totals[0].get("entrate", 0) if totals else 0
-    uscite_anno = totals[0].get("uscite", 0) if totals else 0
-    saldo_anno = entrate_anno - uscite_anno
-    
-    saldo_precedente = await calcola_saldo_anni_precedenti(db, COLLECTION_PRIMA_NOTA_CASSA, anno) if anno else 0.0
-    saldo_finale = saldo_precedente + saldo_anno
-    
+
+    # §6.4: saldo tramite la funzione UNICA (segno/riporto/saldo finale uniformi)
+    saldi = await aggrega_saldo_prima_nota(db, COLLECTION_PRIMA_NOTA_CASSA, query, anno)
+
     return {
         "movimenti": movimenti,
-        "saldo": round(saldo_finale, 2),
-        "saldo_anno": round(saldo_anno, 2),
-        "saldo_precedente": round(saldo_precedente, 2),
-        "totale_entrate": round(entrate_anno, 2),
-        "totale_uscite": round(uscite_anno, 2),
+        "saldo": saldi["saldo"],
+        "saldo_anno": saldi["saldo_anno"],
+        "saldo_precedente": saldi["saldo_precedente"],
+        "totale_entrate": saldi["totale_entrate"],
+        "totale_uscite": saldi["totale_uscite"],
         "count": len(movimenti),
         "anno": anno
     }
