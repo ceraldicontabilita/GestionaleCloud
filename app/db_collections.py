@@ -76,8 +76,8 @@ COLL_RICHIESTE_ASSENZA = "richieste_assenza"
 COLL_RIPORTI_FERIE = "riporti_ferie"
 
 # Contratti
-COLL_CONTRATTI_DIPENDENTI = "contratti_dipendenti"
-COLL_EMPLOYEE_CONTRACTS = "employee_contracts"
+COLL_CONTRATTI_DIPENDENTI = "contratti_dipendenti"  # CANONICA contratti (tutto il CRUD)
+COLL_EMPLOYEE_CONTRACTS = "employee_contracts"  # LEGACY/DEPRECATA (P1 §5.2): alias inglese; migrare in contratti_dipendenti con app/scripts/migra_employee_contracts_a_contratti.py; NON scrivere qui
 COLL_TURNI_DIPENDENTI = "turni_dipendenti"
 COLL_SHIFTS = "shifts"
 
@@ -299,7 +299,7 @@ COLL_UTILE_OBIETTIVO = "utile_obiettivo"
 COLL_ABBUONI = "abbuoni_arrotondamenti"
 COLL_BUDGET = "budget"
 COLL_PLANNING_EVENTS = "planning_events"
-COLL_STAFF = "staff"
+COLL_STAFF = "staff"  # LEGACY/DEPRECATA (P1 §5.2): alias anagrafica; migrare in dipendenti con app/scripts/migra_staff_a_dipendenti.py; NON scrivere qui
 COLL_CARTS = "carts"
 COLL_ADR = "adr_definizione_agevolata"
 COLL_DELIBERE_FONSI = "delibere_fonsi"

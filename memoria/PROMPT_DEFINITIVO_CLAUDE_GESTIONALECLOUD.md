@@ -34,7 +34,10 @@ PROSSIMA FASE: P1 consolidamento collection/motori (§5-§8).
 - [x] §5.3 Cedolini: canonica `cedolini` + helper cedolini_canonico (chiave naturale
       contribuente+anno+mese) + migrazione payslips→cedolini + payslips deprecata (301 test).
       DEBITO: `buste_paga` (Libro Unico/BPM/TFR, vivo) rinviata a fase paghe dedicata.
-- [ ] §5.2 Dipendenti (parziale: employees migrato in P0.3; restano staff/employee_contracts)
+- [x] §5.2 Dipendenti: employees→dipendenti (P0.3), payslips→cedolini (§5.3),
+      employee_contracts→contratti_dipendenti (canonica CRUD; FIX cessazione che
+      terminava i contratti sull'alias vuoto) + test, staff→dipendenti (deprecata).
+      Migrazioni: migra_employee_contracts_a_contratti / migra_staff_a_dipendenti (302 test).
 - [ ] §5.5 Fatture emesse · §5.6 Estratto conto · §5.7 Fornitori · §5.8 Documenti classificati · §5.9 Magazzino
 - [ ] §6 Unificazione motori contabili · §7 Classificazione 390 endpoint · §8 Viewer documenti
       Deliverable: memoria/PIANO_MIGRAZIONE_COLLECTION.md

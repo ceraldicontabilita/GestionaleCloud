@@ -43,6 +43,18 @@ Canonica `dipendenti`. Legacy `employees` migrata con
 $setOnInsert). Redirect letture/scritture `libro_unico_parser`, `verbali_noleggio_api`.
 Restano da valutare: `staff`, `payslips`, `employee_contracts`.
 
+### 5.2 completamento — ✅ FATTO
+- `payslips` → `cedolini` (vedi §5.3).
+- `employee_contracts` (alias inglese contratti): **canonica = `contratti_dipendenti`**
+  (lì vive tutto il CRUD contratti). FIX: `dipendente_handlers.on_dipendente_cessato`
+  terminava i contratti su `employee_contracts` (vuota) invece che sulla canonica →
+  alla cessazione i contratti reali non venivano mai chiusi. Redirect a
+  `contratti_dipendenti` + test `tests/test_p1_dipendenti_cessazione.py`.
+  Migrazione dati legacy: `python -m app.scripts.migra_employee_contracts_a_contratti [--esegui]`.
+- `staff` (alias anagrafica): marcata DEPRECATA, nessun writer/reader applicativo.
+  Migrazione: `python -m app.scripts.migra_staff_a_dipendenti [--esegui]` (dedup per
+  codice_fiscale, non tocca l'`id` canonico esistente).
+
 ## 5.4 Fatture passive — ✅ FATTO
 **Canonica:** `invoices`. **Legacy:** `fatture_passive` (alimentata solo dal ponte
 ERP esterno, oggi disattivato fail-closed).

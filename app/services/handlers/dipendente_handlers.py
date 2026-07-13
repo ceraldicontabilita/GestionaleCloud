@@ -184,8 +184,11 @@ async def on_dipendente_cessato(event: Dict[str, Any], db) -> Optional[Dict]:
     }
 
     # 1. Termina contratti attivi
+    # P1 §5.2: canonica contratti = `contratti_dipendenti` (tutto il CRUD contratti
+    # vive lì); l'alias inglese legacy `employee_contracts` era vuoto, quindi la
+    # cessazione non terminava i contratti reali. Redirect alla canonica.
     try:
-        r_contratti = await db["employee_contracts"].update_many(
+        r_contratti = await db["contratti_dipendenti"].update_many(
             {
                 "dipendente_id": dip_id,
                 "stato": {"$in": ["attivo", "in_corso", None]},
