@@ -25,7 +25,10 @@ class Settings(BaseSettings):
     # MongoDB Atlas
     MONGODB_ATLAS_URI: Optional[str] = None
     MONGO_URL: Optional[str] = None
-    DB_NAME: str = "azienda_erp_db"
+    # Default allineato al DB reale (INDEX.md) e ai fallback interni
+    # (auth_secret): evita la divergenza 'azienda_erp_db' vs 'Gestionale'.
+    # In produzione è comunque impostato via env.
+    DB_NAME: str = "Gestionale"
     MONGODB_MAX_POOL_SIZE: int = 50
     MONGODB_MIN_POOL_SIZE: int = 10
     MONGODB_TIMEOUT_MS: int = 5000
@@ -229,7 +232,6 @@ class Settings(BaseSettings):
         #   3. fallback deterministico derivato dall'URI Mongo (stabile tra
         #      worker e riavvii anche se il DB e' momentaneamente irraggiungibile)
         if not self.SECRET_KEY:
-            import hashlib
             import logging
             import os as _os
             import secrets
@@ -268,16 +270,18 @@ class Settings(BaseSettings):
 
             if chiave_condivisa:
                 self.SECRET_KEY = chiave_condivisa
-            elif _uri:
-                # deterministico: stesso valore su ogni worker e a ogni riavvio
-                self.SECRET_KEY = hashlib.sha256(
-                    f"ceraldi-jwt-fallback::{_uri}".encode("utf-8")
-                ).hexdigest()
             else:
+                # Nessuna chiave esplicita e nessuna leggibile/creabile su Mongo.
+                # NON derivarla dall'URI (sarebbe prevedibile da chi conosce la
+                # stringa di connessione): usa una chiave casuale di processo con
+                # avviso critico. Se il DB è irraggiungibile l'app è comunque
+                # inoperante (è un'app MongoDB), quindi non si perde continuità
+                # reale delle sessioni.
                 self.SECRET_KEY = secrets.token_urlsafe(64)
                 logging.getLogger(__name__).critical(
-                    "⚠️ CRITICAL: SECRET_KEY non configurata e nessun MONGO_URL: "
-                    "chiave temporanea di processo, i token non sopravvivono al riavvio."
+                    "⚠️ CRITICAL: SECRET_KEY non configurata e auth_secret non "
+                    "disponibile su Mongo: chiave temporanea di processo. Imposta "
+                    "SECRET_KEY nelle variabili d'ambiente per token stabili."
                 )
         else:
             # SECRET_KEY esplicita: comunque prova ad allinearla alla chiave

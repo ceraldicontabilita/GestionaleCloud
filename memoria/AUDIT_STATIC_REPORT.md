@@ -476,19 +476,19 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/bonifici_module/associazioni.py:17`
+- File: `app/routers/bonifici_module/associazioni.py:18`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/bonifici_module/associazioni.py:118`
+- File: `app/routers/bonifici_module/associazioni.py:119`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
 ### P1 - body
 
-- File: `app/routers/bonifici_module/associazioni.py:282`
+- File: `app/routers/bonifici_module/associazioni.py:283`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 
@@ -1526,7 +1526,7 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/public_api.py:609`
+- File: `app/routers/public_api.py:610`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 

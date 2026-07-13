@@ -4,6 +4,7 @@ Login/Logout con bcrypt + PyJWT httpOnly cookie.
 Singolo utente admin configurato via env.
 """
 import os
+import hmac
 import jwt
 import bcrypt
 from datetime import datetime, timedelta, timezone
@@ -33,7 +34,8 @@ TOKEN_EXPIRE_HOURS  = 24 * 7   # 7 giorni
 def _check_password(plain: str) -> bool:
     """Verifica password: prima in chiaro, poi bcrypt se hash configurato."""
     if ADMIN_PASSWORD:
-        return plain == ADMIN_PASSWORD
+        # Confronto a tempo costante: evita timing attack sul confronto '=='.
+        return hmac.compare_digest(plain, ADMIN_PASSWORD)
     if ADMIN_PASSWORD_HASH:
         try:
             return bcrypt.checkpw(plain.encode(), ADMIN_PASSWORD_HASH.encode())
