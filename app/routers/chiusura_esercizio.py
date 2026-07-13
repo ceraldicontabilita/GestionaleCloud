@@ -249,7 +249,17 @@ async def esegui_chiusura_esercizio(input_data: ChiusuraEsercizioInput) -> Dict[
             status_code=400,
             detail="Devi confermare le scritture impostando conferma_scritture=true"
         )
-    
+
+    # Guardia doppia chiusura: senza questo controllo una seconda esecuzione
+    # inserirebbe un secondo movimento di risultato d'esercizio (A6, 2026-07-13)
+    esistente = await db["chiusure_esercizio"].find_one({"anno": input_data.anno})
+    if esistente:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Esercizio {input_data.anno} già chiuso il {esistente.get('created_at', '')[:10]} "
+                   f"(chiusura_id={esistente.get('id')})"
+        )
+
     # Verifica preliminare
     verifica = await verifica_preliminare_chiusura(input_data.anno)
     if not verifica["pronto_per_chiusura"]:
