@@ -80,7 +80,7 @@ async def calculate_live_kpi(db, anno: int) -> dict:
         oggi = datetime.now(timezone.utc)
         tra_7_giorni = oggi + timedelta(days=7)
         
-        scadenze_urgenti = await db[Collections.SCADENZARIO_FORNITORI].count_documents({
+        scadenze_urgenti = await db["scadenziario_fornitori"].count_documents({
             "data_scadenza": {
                 "$gte": oggi.strftime("%Y-%m-%d"),
                 "$lte": tra_7_giorni.strftime("%Y-%m-%d")

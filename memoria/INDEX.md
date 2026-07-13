@@ -177,3 +177,18 @@ scadenze §20, associazione §15, DM10↔RC01 §21, doppio pagamento §23),
 router `/api/f24-analisi/*`, tool chat `spiega_f24` e `doppi_pagamenti_f24`,
 Caso 3 in `app/services/quietanze_import.py`.
 Test: `tests/test_tributi_fiscale_engine.py` (incl. caso reale €50,61 §16).
+
+## Audit tecnico canonico (13/07/2026)
+
+Esecuzione del piano `AUDIT_TECNICO_CANONICO_GestionaleCloud.md`. Sintesi in
+`AUDIT_REPORT_FINALE.md` (priorità P0/P1/P2 + decisioni richieste all'utente).
+Report per area: `AUDIT_SICUREZZA.md`, `AUDIT_PRESTAZIONI.md`,
+`AUDIT_DATABASE.md`, `AUDIT_MATRICE.md` (+ `AUDIT_MATRICE_DATI.json`),
+`AUDIT_REACT.md`. Generatori: `scripts/estrai_matrice_api.py`,
+`scripts/classifica_matrice.py`, `scripts/audit_react.py`.
+- Dominio HACCP RIMOSSO dal codice (resta all'app esterna Tracciabilità):
+  schede tecniche, giacenze fisiche, alert sotto-scorta. Restano Dizionario
+  Articoli contabile, Previsioni Acquisti, Libretti sanitari. Collection HACCP
+  archiviabili con `app/scripts/archivia_collection_haccp.py` (non distruttivo).
+- Fix P0: `Collections.SCADENZARIO_FORNITORI` inesistente svuotava i KPI live
+  dashboard (`websocket_realtime.py`).
