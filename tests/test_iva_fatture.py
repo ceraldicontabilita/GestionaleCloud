@@ -53,9 +53,11 @@ def test_iva_gia_utilizzata_non_viene_toccata():
     assert c["periodo_iva_utilizzato"] == "2026-01"
 
 
-def test_fallback_data_ricezione_su_created_at():
-    # senza data_ricezione esplicita si usa la data di importazione
+def test_fallback_data_ricezione_su_data_documento():
+    # P2-a (fix 13/07/2026): senza data_ricezione esplicita si usa la data del
+    # DOCUMENTO, NON la data di importazione (created_at), che per le fatture
+    # storiche importate in blocco mis-attribuirebbe il pregresso.
     inv = {"invoice_date": "2026-05-31", "created_at": "2026-06-10T09:00:00", "iva": 10}
     c = ivf.campi_iva_da_fattura(inv)
-    assert c["data_ricezione"] == "2026-06-10"
-    assert c["periodo_iva_attribuito"] == "2026-05"  # entro il 15 → maggio
+    assert c["data_ricezione"] == "2026-05-31"
+    assert c["periodo_iva_attribuito"] == "2026-05"
