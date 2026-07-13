@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1087 endpoint** in **110 gruppi**.
+> Totale **1076 endpoint** in **110 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 639 · ext esterni = 76 · — da verificare = 372
+**Riepilogo uso:** ✓ frontend = 639 · ext esterni = 76 · — da verificare = 361
 
 ## AI Parser  (11)
 
@@ -370,22 +370,11 @@
 | GET | `/api/contabilita-gestionale/partitario/fornitori` | — | accounting.contabilita_gestionale |
 | GET | `/api/contabilita-gestionale/partitario/fornitori/{piva}` | — | accounting.contabilita_gestionale |
 
-## Contabilità Italiana  (12)
+## Contabilità Italiana  (1)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
-| POST | `/api/contabilita/assestamento/rateo-risconto` | — | contabilita_italiana |
-| GET | `/api/contabilita/bilancio/conto-economico` | — | contabilita_italiana |
-| GET | `/api/contabilita/bilancio/stato-patrimoniale` | — | contabilita_italiana |
-| POST | `/api/contabilita/cassa-banca/prelievo` | — | contabilita_italiana |
-| POST | `/api/contabilita/cassa-banca/versamento` | — | contabilita_italiana |
-| GET | `/api/contabilita/cespiti` | — | contabilita_italiana |
-| POST | `/api/contabilita/cespiti/ammortamento` | — | contabilita_italiana |
-| POST | `/api/contabilita/cespiti/registra` | — | contabilita_italiana |
 | GET | `/api/contabilita/disponibilita-liquide` | ✓ | contabilita_italiana |
-| POST | `/api/contabilita/personale/acconto` | — | contabilita_italiana |
-| POST | `/api/contabilita/personale/busta-paga` | — | contabilita_italiana |
-| POST | `/api/contabilita/ritenute/registra` | — | contabilita_italiana |
 
 ## Controllo Gestione  (4)
 

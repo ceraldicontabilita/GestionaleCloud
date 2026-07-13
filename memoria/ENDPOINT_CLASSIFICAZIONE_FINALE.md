@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1087 · tenere: 650 · verificare: 418 · admin-only (migrazione/manutenzione): 19
+**Totale endpoint:** 1076 · tenere: 650 · verificare: 407 · admin-only (migrazione/manutenzione): 19
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -322,25 +322,14 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/contabilita-gestionale/partitario/fornitori` | accounting.contabilita_gestionale | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/contabilita-gestionale/partitario/fornitori/{piva}` | accounting.contabilita_gestionale | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/contabilita/aliquote-irap` | accounting.contabilita_avanzata | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/contabilita/assestamento/rateo-risconto` | contabilita_italiana | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/contabilita/bilancio-dettagliato` | accounting.contabilita_avanzata | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/contabilita/bilancio/conto-economico` | contabilita_italiana | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/contabilita/bilancio/stato-patrimoniale` | contabilita_italiana | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/contabilita/calcolo-imposte` | accounting.contabilita_avanzata | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/contabilita/cassa-banca/prelievo` | contabilita_italiana | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/contabilita/cassa-banca/versamento` | contabilita_italiana | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/contabilita/categorizzazione-preview` | accounting.contabilita_avanzata | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/contabilita/cespiti` | contabilita_italiana | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/contabilita/cespiti/ammortamento` | contabilita_italiana | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/contabilita/cespiti/registra` | contabilita_italiana | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/contabilita/disponibilita-liquide` | contabilita_italiana | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/contabilita/export/pdf-dichiarazione` | accounting.contabilita_avanzata | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/contabilita/inizializza-piano-esteso` | accounting.contabilita_avanzata | sì | — | — | sì | — | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
-| `POST /api/contabilita/personale/acconto` | contabilita_italiana | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/contabilita/personale/busta-paga` | contabilita_italiana | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/contabilita/piano-conti-esteso` | accounting.contabilita_avanzata | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/contabilita/ricategorizza-fatture` | accounting.contabilita_avanzata | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/contabilita/ritenute/registra` | contabilita_italiana | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/contabilita/statistiche-categorizzazione` | accounting.contabilita_avanzata | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/controllo-gestione/costi-per-categoria` | controllo_gestione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/controllo-gestione/costi-ricavi` | controllo_gestione | sì | — | — | — | — | tenere | in uso: FE |

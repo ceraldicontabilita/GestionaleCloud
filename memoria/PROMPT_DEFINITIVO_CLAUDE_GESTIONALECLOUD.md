@@ -149,6 +149,10 @@ PROSSIMA FASE: P1 consolidamento collection/motori (§5-§8).
       (usati da upload-auto), Drive cedolini (scheduler), PDF cedolino (chat). Endpoint
       1106 → 1087. Residuo da valutare a parte: famiglia /api/dipendenti/libro-unico/*
       (query-key FE definita ma mai usata) e route /api/v1 (canale spento, scelta utente).
+- [x] §13.2 pulizia contabilita_italiana.py (2026-07-13, scelta utente): ridotto alla
+      sola route viva /disponibilita-liquide; rimosse 11 route morte doppioni dei flussi
+      canonici + helper/modelli/costanti locali (PIANO_CONTI_CEE locale eliminato: il
+      canonico è SOLO l'ufficiale CEE). File 1272 → ~110 righe; endpoint 1087 → 1076.
 ### FASE FINALE — Verifiche e deliverable (§14-§17) — COMPLETATA (2026-07-13)
 - [x] §15.3 mappe rigenerate: genera_mappa.py (1106 endpoint, 107 prefissi, FE ✓=639)
       + genera_classificazione_endpoint.py (650 tenere / 437 verificare / 19 admin-only).
