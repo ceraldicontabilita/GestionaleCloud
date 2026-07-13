@@ -565,37 +565,30 @@ async def get_utile_per_cdc(anno: int = Query(...)) -> Dict[str, Any]:
 
 # ============== RIBALTAMENTO CDC ==============
 
-# Chiavi di ribaltamento standard per i centri di supporto
+# Chiavi di ribaltamento standard per i centri di supporto.
+# NB: i codici devono coincidere con i centri "supporto" di CDC_STANDARD
+# (CDC-90 Personale, CDC-91 Amministrazione, CDC-92 Marketing, CDC-99
+# struttura), altrimenti nessun costo verrebbe intercettato. I vecchi codici
+# CDC-05/06/07 non esistono piu' e CDC-03/04 sono ora centri OPERATIVI
+# (Laboratorio/Asporto): ribaltarli redistribuirebbe per errore costi
+# operativi. Le percentuali dei criteri restano quelle configurate (valori
+# parametrici: non modificati d'iniziativa).
 CHIAVI_RIBALTAMENTO = {
-    "CDC-05": {  # Personale
+    "CDC-90": {  # Personale (era CDC-05)
         "descrizione": "Costo personale ribaltato sui centri operativi",
         "criteri": {
             "CDC-01": 0.50,  # 50% Bar
             "CDC-02": 0.50   # 50% Pasticceria
         }
     },
-    "CDC-06": {  # Amministrazione
+    "CDC-91": {  # Amministrazione (era CDC-06)
         "descrizione": "Costi amministrativi ribaltati sui centri operativi",
         "criteri": {
             "CDC-01": 0.50,
             "CDC-02": 0.50
         }
     },
-    "CDC-03": {  # Utenze
-        "descrizione": "Utenze ribaltate sui centri operativi",
-        "criteri": {
-            "CDC-01": 0.40,
-            "CDC-02": 0.60
-        }
-    },
-    "CDC-04": {  # Manutenzione
-        "descrizione": "Manutenzione ribaltata sui centri operativi",
-        "criteri": {
-            "CDC-01": 0.35,
-            "CDC-02": 0.65
-        }
-    },
-    "CDC-07": {  # Marketing
+    "CDC-92": {  # Marketing (era CDC-07)
         "descrizione": "Marketing ribaltato sui centri operativi",
         "criteri": {
             "CDC-01": 0.45,

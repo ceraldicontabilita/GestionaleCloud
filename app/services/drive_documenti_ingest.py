@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from app.config import settings
+from app.constants.tipi_documento import set_tassonomia_documento
 from app.services import drive_cedolini_ingest as _base
 
 logger = logging.getLogger(__name__)
@@ -63,16 +64,12 @@ def is_configured(canale: str) -> bool:
 def _build_inbox_doc(content: bytes, filename: str, canale: str) -> Dict[str, Any]:
     now = datetime.now(timezone.utc).isoformat()
     conf = CANALI[canale]
-    return {
+    doc = {
         "id": __import__("uuid").uuid4().hex,
         "filename": filename,
         "pdf_data": base64.b64encode(content).decode(),
         "file_hash": hashlib.md5(content).hexdigest(),
         "size_bytes": len(content),
-        "category": conf["category"],
-        "category_label": conf["label"],
-        "tipo_documento": conf["category"],
-        "categoria": conf["category"],
         "fonte": f"drive_{canale}",
         "source": f"drive_{canale}",
         "stato": "importato",
@@ -82,6 +79,8 @@ def _build_inbox_doc(content: bytes, filename: str, canale: str) -> Dict[str, An
         "created_at": now,
         "downloaded_at": now,
     }
+    # Tassonomia canonica: tipo_documento + alias categoria/category coerenti (P2-3)
+    return set_tassonomia_documento(doc, conf["category"], label=conf["label"])
 
 
 async def sync(db, canale: str) -> Dict[str, Any]:

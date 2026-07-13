@@ -720,9 +720,17 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
      "input_schema": {"type": "object", "properties": {
          "risposta_testuale": {**_S, "description": "risposta chiara e diretta in italiano"},
          "stato": {**_S, "description": "stato amministrativo/contabile sintetico"},
+         "motivazione": {**_S, "description": "perche' arrivi a questa conclusione: "
+                          "calcolo, regola o riscontro sui dati che la giustifica"},
          "livello_affidabilita": {**_S, "enum": ["certo", "probabile", "dubbio"]},
          "documenti_consultati": {"type": "array", "items": _S,
                                    "description": "fonti interne usate (es. '12 fatture 2026', 'cedolino 05/2026 Rossi')"},
+         "entita_principali": {"type": "array", "items": _S,
+                                "description": "soggetti/oggetti chiave della risposta "
+                                "(es. 'Rossi Mario', 'F24 06/2026', 'fornitore ACME')"},
+         "collegamenti": {"type": "array", "items": _S,
+                           "description": "relazioni rilevanti tra le entita' "
+                           "(es. 'quietanza 06/2026 ↔ cedolino Rossi 05/2026')"},
          "dati_mancanti": {"type": "array", "items": _S},
          "anomalie": {"type": "array", "items": _S},
          "azioni_proposte": {"type": "array", "items": _S},

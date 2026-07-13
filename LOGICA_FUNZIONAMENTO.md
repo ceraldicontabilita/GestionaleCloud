@@ -172,14 +172,20 @@ Se il parser fallisce: stato di errore + avviso, il documento resta consultabile
 I movimenti non si inseriscono mai liberamente: nascono sempre da un'azione precisa.
 
 **Cassa**
-- Conferma di un corrispettivo giornaliero → **due movimenti**: entrata per l'intero
-  corrispettivo, uscita per il POS elettronico (che è in viaggio verso la banca).
-  Il netto in cassa è il contante effettivo.
+- Conferma di un corrispettivo giornaliero → l'incasso viene **diviso per natura**:
+  in Prima Nota **Cassa** entra **solo la quota contanti** (categoria "Corrispettivi
+  contanti"); la quota elettronica NON tocca mai la cassa. Il saldo di cassa è quindi
+  il contante effettivo.
 - "Paga in Cassa" su una fattura → uscita collegata alla fattura.
 
 **Banca**
+- La **quota elettronica/POS** dello stesso corrispettivo entra in Prima Nota **Banca**
+  come entrata "Corrispettivi POS", **in attesa di conciliazione** con l'accredito reale
+  che arriverà dal provider (il POS è in viaggio verso la banca). Non è mai un'uscita di
+  cassa: è un'entrata bancaria da riscontrare.
 - "Paga in Banca" su una fattura → uscita collegata alla fattura.
-- Registrazione di un accredito POS → entrata con categoria "pos_accreditato".
+- Registrazione di un accredito POS in estratto conto → concilia la voce "Corrispettivi
+  POS" attesa (vedi §5), non crea un movimento nuovo.
 
 **Provvisoria**
 - Solo fatture di fornitori "misto", in attesa della tua divisione cassa/banca.
@@ -208,8 +214,8 @@ I movimenti non si inseriscono mai liberamente: nascono sempre da un'azione prec
 
 **Saldo progressivo**: ogni movimento porta il saldo aggiornato a quel punto, in
 ordine cronologico. Un movimento retrodatato ricalcola a cascata i saldi successivi.
-A parità di giorno l'ordine di inserimento è garantito (l'uscita POS segue sempre
-l'entrata corrispettivo).
+A parità di giorno l'ordine di inserimento è garantito (la quota contanti in cassa e
+la quota POS in banca nascono dallo stesso corrispettivo, in sequenza).
 
 **Protezioni**: un doppio click su "Conferma" non può creare movimenti doppi
 (la seconda richiesta viene rifiutata); ogni azione registra chi/quando (audit log).

@@ -136,10 +136,21 @@ def classifica_riga(sezione: str, codice: str) -> Dict[str, str]:
 # ── Periodi e scadenze (§20) ───────────────────────────────────────────────
 
 def _parse_periodo(valore: Any) -> Optional[tuple]:
-    """(mese, anno) da 'MM/YYYY', 'MM-YYYY', 'YYYY-MM' o simili. None se ignoto."""
+    """(mese, anno) da 'MM/YYYY', 'MM-YYYY', 'YYYY-MM' o dal formato
+    rateazione+anno di erario/regioni con anno separato da spazio
+    (es. '00/12 2024' → rata 00, mese rif. 12, anno 2024). None se ignoto.
+
+    Il mese '00' indica periodo annuale (nessun mese specifico, es.
+    addizionale regionale): resta ignoto → None, per non forzare
+    associazioni a un mese non reale (regole cardine F24)."""
     if not valore:
         return None
     s = str(valore).strip()
+    # Rateazione con anno separato da spazio: 'NN/MM YYYY' o 'NNMM YYYY'
+    m = re.match(r"^(\d{2})[/-]?(\d{2})\s+(\d{4})$", s)
+    if m:
+        mese, anno = int(m.group(2)), int(m.group(3))
+        return (mese, anno) if 1 <= mese <= 12 else None
     m = re.match(r"^(\d{1,2})[/-](\d{4})$", s)
     if m:
         mese, anno = int(m.group(1)), int(m.group(2))
