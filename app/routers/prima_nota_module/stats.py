@@ -10,7 +10,8 @@ import io
 
 from app.database import Database
 from .common import (
-    COLLECTION_PRIMA_NOTA_CASSA, COLLECTION_PRIMA_NOTA_BANCA
+    COLLECTION_PRIMA_NOTA_CASSA, COLLECTION_PRIMA_NOTA_BANCA,
+    CATEGORIE_ESCLUSE, aggrega_saldo_prima_nota
 )
 
 
@@ -111,28 +112,22 @@ async def get_saldo_finale(
     db = Database.get_db()
     
     collection = COLLECTION_PRIMA_NOTA_CASSA if tipo == "cassa" else COLLECTION_PRIMA_NOTA_BANCA
-    
-    anno_start = f"{anno}-01-01"
-    anno_end = f"{anno}-12-31"
-    
-    movimenti = await db[collection].find({
-        "data": {"$gte": anno_start, "$lte": anno_end},
-        "status": {"$ne": "deleted"}
-    }).to_list(length=None)
-    
-    saldo = 0
-    for m in movimenti:
-        importo = abs(m.get("importo", 0))
-        if m.get("tipo") == "entrata":
-            saldo += importo
-        else:
-            saldo -= importo
-    
+
+    # §6.4: stessa funzione/engine di cassa.py e banca.py (filtri, esclusioni e segno
+    # uniformi: niente deleted/archived né categorie escluse; niente to_list illimitato).
+    query = {
+        "data": {"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31"},
+        "status": {"$nin": ["deleted", "archived"]},
+        "categoria": {"$nin": CATEGORIE_ESCLUSE},
+    }
+    saldi = await aggrega_saldo_prima_nota(db, collection, query, anno=None)
+    movimenti_count = await db[collection].count_documents(query)
+
     return {
         "anno": anno,
         "tipo": tipo,
-        "saldo": round(saldo, 2),
-        "movimenti_count": len(movimenti)
+        "saldo": saldi["saldo"],
+        "movimenti_count": movimenti_count
     }
 
 

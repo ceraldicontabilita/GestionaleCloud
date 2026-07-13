@@ -32,10 +32,11 @@ async def list_prima_nota_banca(
     }
 
     if anno:
+        # §6.4: query anno allineata a cassa.py (copre anche i doc con anno == "")
         query["$or"] = [
             {"anno": anno},
-            {"anno": {"$exists": False}, "data": {"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31"}},
-            {"anno": None, "data": {"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31"}}
+            {"anno": {"$in": [None, ""]}, "data": {"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31"}},
+            {"anno": {"$exists": False}, "data": {"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31"}}
         ]
     
     if data_da:

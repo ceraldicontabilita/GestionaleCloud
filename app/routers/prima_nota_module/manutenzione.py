@@ -10,7 +10,10 @@ from datetime import datetime, timezone
 import uuid
 
 from app.database import Database
-from .common import COLLECTION_PRIMA_NOTA_CASSA, COLLECTION_PRIMA_NOTA_BANCA, logger
+from .common import (
+    COLLECTION_PRIMA_NOTA_CASSA, COLLECTION_PRIMA_NOTA_BANCA, logger,
+    CATEGORIE_ESCLUSE, aggrega_saldo_prima_nota,
+)
 from .sync import determina_tipo_movimento_fattura
 
 # Collection estratto conto bancario (non esportata da .common, la definisco qui)
@@ -85,28 +88,23 @@ async def recalculate_all_balances(anno: Optional[int] = Query(None)) -> Dict:
     """Ricalcola i saldi di Prima Nota Cassa e Banca."""
     db = Database.get_db()
     
-    query = {}
+    # §6.4: stessa funzione/engine di cassa/banca/stats (filtri ed esclusioni uniformi).
+    query = {
+        "status": {"$nin": ["deleted", "archived"]},
+        "categoria": {"$nin": CATEGORIE_ESCLUSE},
+    }
     if anno:
         query["data"] = {"$regex": f"^{anno}"}
-    
-    pipeline = lambda: [
-        {"$match": {**query, "status": {"$nin": ["deleted", "archived"]}}},
-        {"$group": {
-            "_id": None,
-            "entrate": {"$sum": {"$cond": [{"$eq": ["$tipo", "entrata"]}, "$importo", 0]}},
-            "uscite": {"$sum": {"$cond": [{"$eq": ["$tipo", "uscita"]}, "$importo", 0]}},
-            "count": {"$sum": 1}
-        }}
-    ]
-    
-    cassa_result = await db[COLLECTION_PRIMA_NOTA_CASSA].aggregate(pipeline()).to_list(1)
-    banca_result = await db[COLLECTION_PRIMA_NOTA_BANCA].aggregate(pipeline()).to_list(1)
-    
-    cassa = cassa_result[0] if cassa_result else {"entrate": 0, "uscite": 0, "count": 0}
-    banca = banca_result[0] if banca_result else {"entrate": 0, "uscite": 0, "count": 0}
-    
-    saldo_cassa = cassa.get("entrate", 0) - cassa.get("uscite", 0)
-    saldo_banca = banca.get("entrate", 0) - banca.get("uscite", 0)
+
+    s_cassa = await aggrega_saldo_prima_nota(db, COLLECTION_PRIMA_NOTA_CASSA, query, anno=None)
+    s_banca = await aggrega_saldo_prima_nota(db, COLLECTION_PRIMA_NOTA_BANCA, query, anno=None)
+    cassa = {"entrate": s_cassa["totale_entrate"], "uscite": s_cassa["totale_uscite"],
+             "count": await db[COLLECTION_PRIMA_NOTA_CASSA].count_documents(query)}
+    banca = {"entrate": s_banca["totale_entrate"], "uscite": s_banca["totale_uscite"],
+             "count": await db[COLLECTION_PRIMA_NOTA_BANCA].count_documents(query)}
+
+    saldo_cassa = s_cassa["saldo_anno"]
+    saldo_banca = s_banca["saldo_anno"]
     
     return {
         "anno": anno or "tutti",
