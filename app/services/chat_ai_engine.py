@@ -606,8 +606,10 @@ def _documenti_citati_da_tool(tool_name: str, risultato: Any) -> List[Dict[str, 
                         "download_url": f"/api/fatture-ricevute/fattura/{rid}/view-assoinvoice",
                         "page_url": "/fatture"})
         elif tool_name == "cerca_f24":
+            # P2-8: usare i campi effettivamente proiettati da _tool_cerca_f24
+            # (data_scadenza), non 'data_versamento' che restava sempre vuoto.
             out.append({"tipo": "f24", "id": rid,
-                        "etichetta": f"F24 {r.get('data_versamento') or ''}".strip(),
+                        "etichetta": f"F24 {r.get('data_scadenza') or ''}".strip(),
                         "download_url": f"/api/f24-public/pdf/{rid}",
                         "page_url": "/riconciliazione/f24"})
         elif tool_name == "cerca_documenti":
@@ -778,12 +780,15 @@ async def rispondi(domanda: str, session_id: str, db,
                 documenti_citati.append(d)
 
     for _ in range(MAX_ITERAZIONI_TOOL):
+        # P2-7: timeout esplicito sulla chiamata LLM (evita attese indefinite
+        # se il provider non risponde; oltre soglia si ricade sul motore keyword).
         response = await client.messages.create(
             model=_model_name(),
             max_tokens=2000,
             system=system,
             messages=messages,
             tools=TOOLS_SCHEMA,
+            timeout=60.0,
         )
 
         tool_uses = [b for b in response.content if b.type == "tool_use"]

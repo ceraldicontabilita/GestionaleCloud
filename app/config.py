@@ -170,7 +170,10 @@ class Settings(BaseSettings):
     
     # Feature Flags
     ENABLE_SMTP_EMAIL: bool = False
-    ENABLE_GMAIL_IMAP: bool = False
+    # Interruttore maestro della scansione email (Gmail IMAP). Default acceso
+    # (13/07/2026): coerente con i canali email attivi (cedolini/F24/verbali).
+    # Metterlo a False ferma TUTTA l'ingestione email dallo scheduler.
+    ENABLE_GMAIL_IMAP: bool = True
     ENABLE_DOCUMENT_AI: bool = False
     ENABLE_ASYNC_IMPORTS: bool = True
     ENABLE_CACHING: bool = True

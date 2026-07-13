@@ -392,6 +392,11 @@ async def gmail_full_scan_task():
     REGOLA: le fatture NON vengono scaricate da Gmail (solo PEC o import manuale).
     Dopo il download, esegue il pipeline di processamento automatico.
     """
+    from app.config import settings
+    if not getattr(settings, "ENABLE_GMAIL_IMAP", True):
+        logger.info("📧 [SCHEDULER-GMAIL] Scansione Gmail saltata (ENABLE_GMAIL_IMAP spento).")
+        return
+
     from app.database import Database
     from app.services.email_full_download import EmailFullDownloader
 

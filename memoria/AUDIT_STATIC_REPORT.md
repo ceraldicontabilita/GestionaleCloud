@@ -116,7 +116,7 @@ Generato da `scripts/audit_static.py`.
 
 ### P1 - body
 
-- File: `app/routers/accounting/centri_costo.py:612`
+- File: `app/routers/accounting/centri_costo.py:618`
 
 - Dettaglio: POST/PUT con Dict[str, Any] senza Body(...).
 

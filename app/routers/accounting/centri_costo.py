@@ -539,15 +539,21 @@ async def get_utile_per_cdc(anno: int = Query(...)) -> Dict[str, Any]:
             "tipo": info.get("tipo", "altro"),
             "costi": round(cdc["totale_costi"], 2),
             "ricavi_stimati": round(ricavi_cdc, 2),
+            "ricavi_sono_stima": True,  # P2-5: ripartizione ricavi non tracciata per CDC
             "margine": round(margine, 2),
             "margine_percentuale": round(margine_perc, 1),
             "fatture_count": cdc["count"],
-            "stato": "PROFITTO" if margine > 0 else "PERDITA"
+            "stato": "PROFITTO (stima)" if margine > 0 else "PERDITA (stima)"
         })
-    
+
     return {
         "anno": anno,
         "centri_costo": report,
+        "avviso_ricavi": (
+            "I ricavi per centro di costo sono una STIMA (ripartizione sui costi, "
+            "fattore 1.5): i ricavi reali non sono tracciati per CDC. Margini e "
+            "stato profitto/perdita sono quindi indicativi."
+        ),
         "totali": {
             "ricavi": round(ricavi_totali, 2),
             "costi": round(costi_totali, 2),

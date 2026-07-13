@@ -774,7 +774,9 @@ async def get_conto_economico_dettagliato(
                 "interessi_passivi_mutui": {
                     "imponibile": 0,  # Da implementare con collezione mutui
                     "deducibilita": "Limite ROL 30%",
-                    "note": "Art. 96 TUIR"
+                    "note": "Art. 96 TUIR",
+                    "stima": True,
+                    "avviso": "Valore non ancora calcolato dai mutui: NON è un dato reale.",
                 }
             },
             "totale_oneri_finanziari": round(totale_C17, 2)
