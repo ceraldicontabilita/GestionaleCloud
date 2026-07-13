@@ -229,7 +229,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
     setLoadingXML(true);
     setXmlMsg(null);
     try {
-      const res = await api.post(`/api/schede-tecniche/popola-fornitore/${fId}`);
+      const res = await api.post(`/api/anagrafica-fornitori/popola-fornitore/${fId}`);
       const d = res.data;
       if (d.success && d.dati_estratti) {
         const dati = d.dati_estratti;
@@ -1051,7 +1051,6 @@ function AzioniFornitore({
   onViewInvoices,
   onSearchPiva,
   onShowFatturato,
-  onShowSchedeTecniche,
   onToggleCessato,
 }) {
   const piva = supplier.partita_iva || supplier.piva || null;
@@ -1085,11 +1084,6 @@ function AzioniFornitore({
     hasPiva && {
       label: searching ? '🔎 Ricerca…' : '🔎 Cerca dati P.IVA',
       onClick: handleSearchPiva,
-    },
-    {
-      label: '📋 Schede tecniche',
-      onClick: () => onShowSchedeTecniche && onShowSchedeTecniche(supplier),
-      testId: `btn-schede-tecniche-${supplier.id}`,
     },
     { label: '📄 Estratto fatture', onClick: () => onViewInvoices(supplier) },
     onToggleCessato && {
@@ -1215,14 +1209,6 @@ export default function Fornitori() {
   const [modalOpen, setModalOpen] = useState(false);
   const [currentSupplier, setCurrentSupplier] = useState(null);
   const [saving, setSaving] = useState(false);
-
-  // === SCHEDE TECNICHE STATE ===
-  const [schedeTecnicheModal, setSchedeTecnicheModal] = useState({
-    open: false,
-    fornitore: null,
-    schede: [],
-    loading: false,
-  });
 
   // Debounce search per evitare troppe chiamate API
   const debouncedSearch = useDebounce(search, 500);
@@ -1621,72 +1607,6 @@ export default function Fornitori() {
     } catch (error) {
       alert('Errore: ' + (error.response?.data?.detail || error.message));
       setEstrattoModal(prev => ({ ...prev, loading: false }));
-    }
-  };
-
-  // === SCHEDE TECNICHE FUNCTIONS ===
-  const [schedeTecnicheJob, setSchedeTecnicheJob] = useState(null);
-
-  const handleViewSchedeTecniche = async supplier => {
-    setSchedeTecnicheModal({ open: true, fornitore: supplier, schede: [], loading: true });
-    setSchedeTecnicheJob(null);
-    try {
-      const res = await api.get(`/api/schede-tecniche/fornitore/${idFornitore(supplier)}`);
-      setSchedeTecnicheModal(prev => ({
-        ...prev,
-        schede: res.data.schede || [],
-        loading: false,
-        trovate: res.data.trovate || 0,
-        da_cercare: res.data.da_cercare || 0,
-      }));
-      if (res.data.job) setSchedeTecnicheJob(res.data.job);
-    } catch (error) {
-      console.error('Errore caricamento schede tecniche:', error);
-      setSchedeTecnicheModal(prev => ({ ...prev, loading: false }));
-    }
-  };
-
-  const handleCercaSchedeTecniche = async () => {
-    const supplier = schedeTecnicheModal.fornitore;
-    if (!supplier) return;
-    try {
-      setSchedeTecnicheJob({ stato: 'in_corso', prodotti_trovati: [], schede_trovate: 0 });
-      const res = await api.post('/api/schede-tecniche/cerca', { fornitore_id: idFornitore(supplier) });
-      const jobId = res.data.job_id;
-      // Polling ogni 3s finché completato
-      const poll = setInterval(async () => {
-        try {
-          const jobRes = await api.get(`/api/schede-tecniche/job/${jobId}`);
-          const job = jobRes.data;
-          setSchedeTecnicheJob(job);
-          if (
-            job.stato === 'completato' ||
-            job.stato === 'completato_vuoto' ||
-            job.stato === 'errore'
-          ) {
-            clearInterval(poll);
-            // Ricarica le schede
-            const schedeRes = await api.get(`/api/schede-tecniche/fornitore/${idFornitore(supplier)}`);
-            setSchedeTecnicheModal(prev => ({
-              ...prev,
-              schede: schedeRes.data.schede || [],
-              trovate: schedeRes.data.trovate || 0,
-              da_cercare: schedeRes.data.da_cercare || 0,
-            }));
-          }
-        } catch (e) {
-          clearInterval(poll);
-          // Prima il polling si fermava in silenzio lasciando lo spinner
-          // "Ricerca in corso" appeso: ora segnala l'interruzione.
-          setSchedeTecnicheJob(prev => ({
-            ...(prev || {}),
-            stato: 'errore',
-            errore: 'Verifica stato ricerca interrotta: ' + (e.response?.data?.detail || e.message),
-          }));
-        }
-      }, 3000);
-    } catch (err) {
-      alert('Errore avvio ricerca: ' + (err.response?.data?.detail || err.message));
     }
   };
 
@@ -2277,8 +2197,8 @@ export default function Fornitori() {
                       data-testid={`btn-toggle-esclude-magazzino-${s.id}`}
                       title={
                         s.esclude_magazzino
-                          ? 'Click: RIMETTI nel magazzino (le fatture popoleranno le giacenze)'
-                          : 'Click: ESCLUDI dal magazzino (le fatture NON creano carichi)'
+                          ? 'Click: RIMETTI nel magazzino (le fatture alimenteranno il dizionario articoli)'
+                          : 'Click: ESCLUDI dal magazzino (le fatture NON creano articoli)'
                       }
                       style={{ padding: '4px 10px', fontSize: 11 }}
                     >
@@ -2304,7 +2224,6 @@ export default function Fornitori() {
                       onViewInvoices={handleViewInvoices}
                       onSearchPiva={handleSearchPiva}
                       onShowFatturato={handleShowFatturato}
-                      onShowSchedeTecniche={handleViewSchedeTecniche}
                       onToggleCessato={handleToggleCessato}
                     />
                   ),
@@ -2625,8 +2544,8 @@ export default function Fornitori() {
                     }}
                     title={
                       estrattoModal.fornitore?.esclude_magazzino
-                        ? 'Click: RIMETTI nel magazzino (le fatture popoleranno le giacenze)'
-                        : 'Click: ESCLUDI dal magazzino (le fatture NON creano carichi)'
+                        ? 'Click: RIMETTI nel magazzino (le fatture alimenteranno il dizionario articoli)'
+                        : 'Click: ESCLUDI dal magazzino (le fatture NON creano articoli)'
                     }
                     style={{ marginLeft: 'auto', marginRight: 12 }}
                   >
@@ -3103,365 +3022,6 @@ export default function Fornitori() {
                     Chiudi
                   </Button>
                 </div>
-              </div>
-            </div>
-          </div>
-        </Portal>
-      )}
-
-      {/* MODALE SCHEDE TECNICHE */}
-      {schedeTecnicheModal.open && (
-        <Portal>
-          <div
-            style={{
-              position: 'fixed',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              background: 'rgba(0,0,0,0.5)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              zIndex: 9999,
-            }}
-            onClick={() =>
-              setSchedeTecnicheModal({ open: false, fornitore: null, schede: [], loading: false })
-            }
-          >
-            <div
-              style={{
-                background: COLORS.card,
-                borderRadius: BORDER_RADIUS.lg,
-                width: '90%',
-                maxWidth: 800,
-                maxHeight: '85vh',
-                overflow: 'hidden',
-                display: 'flex',
-                flexDirection: 'column',
-                boxShadow: SHADOWS.modal,
-              }}
-              onClick={e => e.stopPropagation()}
-            >
-              {/* Header */}
-              <div
-                style={{
-                  padding: '20px 24px',
-                  borderBottom: `1px solid ${COLORS.border}`,
-                  background: COLORS.primary,
-                  color: 'white',
-                }}
-              >
-                <div
-                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-                >
-                  <div>
-                    <h2 style={{ margin: 0, fontSize: 18, fontWeight: 'bold' }}>
-                      📋 Schede Tecniche Prodotti
-                    </h2>
-                    <p style={{ margin: '4px 0 0 0', fontSize: 13, opacity: 0.9 }}>
-                      {schedeTecnicheModal.fornitore?.ragione_sociale ||
-                        schedeTecnicheModal.fornitore?.nome ||
-                        schedeTecnicheModal.fornitore?.name}
-                    </p>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    onClick={() =>
-                      setSchedeTecnicheModal({
-                        open: false,
-                        fornitore: null,
-                        schede: [],
-                        loading: false,
-                      })
-                    }
-                    style={{
-                      background: 'rgba(255,255,255,0.2)',
-                      borderRadius: BORDER_RADIUS.full,
-                      width: 40,
-                      height: 40,
-                      padding: 0,
-                      color: 'white',
-                      fontSize: 18,
-                    }}
-                  >
-                    ×
-                  </Button>
-                </div>
-              </div>
-
-              {/* Content */}
-              <div style={{ flex: 1, overflow: 'auto', padding: 24 }}>
-                {schedeTecnicheModal.loading ? (
-                  <div style={{ textAlign: 'center', padding: 60, color: COLORS.textMuted }}>
-                    <div
-                      style={{
-                        width: 36,
-                        height: 36,
-                        border: `3px solid ${COLORS.border}`,
-                        borderTop: `3px solid ${COLORS.info}`,
-                        borderRadius: '50%',
-                        animation: 'spin 1s linear infinite',
-                        margin: '0 auto 16px',
-                      }}
-                    />
-                    <style>{`@keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}`}</style>
-                    Caricamento...
-                  </div>
-                ) : schedeTecnicheJob?.stato === 'in_corso' ? (
-                  <div style={{ textAlign: 'center', padding: 40 }}>
-                    <div
-                      style={{
-                        width: 40,
-                        height: 40,
-                        border: `4px solid ${COLORS.border}`,
-                        borderTop: `4px solid ${COLORS.info}`,
-                        borderRadius: '50%',
-                        animation: 'spin 1s linear infinite',
-                        margin: '0 auto 20px',
-                      }}
-                    />
-                    <h3 style={{ color: COLORS.primary, margin: '0 0 8px 0', fontSize: 16 }}>
-                      Ricerca in corso...
-                    </h3>
-                    <p style={{ color: COLORS.textMuted, fontSize: 13 }}>
-                      Analisi fatture XML e ricerca PDF sul web
-                    </p>
-                    {schedeTecnicheJob?.prodotti_trovati?.length > 0 && (
-                      <div
-                        style={{
-                          background: COLORS.infoLight,
-                          borderRadius: BORDER_RADIUS.md,
-                          padding: 16,
-                          marginTop: 16,
-                          textAlign: 'left',
-                        }}
-                      >
-                        <p
-                          style={{
-                            margin: '0 0 8px 0',
-                            fontWeight: 600,
-                            fontSize: 13,
-                            color: COLORS.primary,
-                          }}
-                        >
-                          Prodotti trovati nelle fatture (
-                          {schedeTecnicheJob.prodotti_trovati.length}):
-                        </p>
-                        {schedeTecnicheJob.prodotti_trovati.slice(0, 8).map((p, i) => (
-                          <div key={i} style={{ fontSize: 12, color: COLORS.gray[700], padding: '3px 0' }}>
-                            • {p}
-                          </div>
-                        ))}
-                        {schedeTecnicheJob.prodotti_trovati.length > 8 && (
-                          <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 4 }}>
-                            ...e altri {schedeTecnicheJob.prodotti_trovati.length - 8}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ) : schedeTecnicheModal.schede.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: 40 }}>
-                    <div style={{ fontSize: 52, marginBottom: 16 }}>📄</div>
-                    <h3 style={{ color: COLORS.gray[700], margin: '0 0 8px 0' }}>
-                      Nessuna scheda tecnica
-                    </h3>
-                    <p style={{ color: COLORS.textMuted, margin: '0 0 4px 0' }}>
-                      Nessuna scheda tecnica associata a questo fornitore.
-                    </p>
-                    <p style={{ color: COLORS.textSubtle, fontSize: 13, marginBottom: 24 }}>
-                      Il sistema leggerà le fatture XML, identificherà i prodotti e cercherà le
-                      schede tecniche ufficiali sul sito del produttore.
-                    </p>
-                    {schedeTecnicheJob?.stato === 'completato_vuoto' && (
-                      <div
-                        style={{
-                          background: COLORS.warningLight,
-                          borderRadius: BORDER_RADIUS.md,
-                          padding: 12,
-                          marginBottom: 16,
-                          fontSize: 13,
-                          color: COLORS.warning,
-                        }}
-                      >
-                        Nessun prodotto trovato nelle fatture XML di questo fornitore.
-                      </div>
-                    )}
-                    <Button variant="primary" onClick={handleCercaSchedeTecniche}>
-                      Cerca automaticamente
-                    </Button>
-                  </div>
-                ) : (
-                  <div>
-                    <div
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        marginBottom: 16,
-                      }}
-                    >
-                      <span style={{ fontSize: 13, color: COLORS.textMuted }}>
-                        {schedeTecnicheModal.schede.length} prodotti •{' '}
-                        <strong style={{ color: COLORS.success }}>
-                          {schedeTecnicheModal.trovate || 0} schede trovate
-                        </strong>
-                        {(schedeTecnicheModal.da_cercare || 0) > 0 && (
-                          <span style={{ color: COLORS.textSubtle }}>
-                            {' '}
-                            • {schedeTecnicheModal.da_cercare} da cercare
-                          </span>
-                        )}
-                      </span>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleCercaSchedeTecniche}
-                        style={{ background: COLORS.infoLight, borderColor: COLORS.infoLight }}
-                      >
-                        Aggiorna ricerca
-                      </Button>
-                    </div>
-                    <div style={{ display: 'grid', gap: 10 }}>
-                      {schedeTecnicheModal.schede.map((scheda, idx) => (
-                        <div
-                          key={scheda.id || idx}
-                          style={{
-                            background:
-                              scheda.stato === 'trovato'
-                                ? COLORS.successLight
-                                : scheda.stato === 'url_trovato'
-                                  ? COLORS.warningLight
-                                  : COLORS.bgAlt,
-                            borderRadius: BORDER_RADIUS.lg,
-                            padding: '14px 16px',
-                            border: `1px solid ${scheda.stato === 'trovato' ? COLORS.success : scheda.stato === 'url_trovato' ? COLORS.warning : COLORS.border}`,
-                            display: 'flex',
-                            alignItems: 'flex-start',
-                            gap: 14,
-                          }}
-                        >
-                          <div
-                            style={{
-                              width: 40,
-                              height: 40,
-                              borderRadius: BORDER_RADIUS.md,
-                              flexShrink: 0,
-                              background:
-                                scheda.stato === 'trovato'
-                                  ? COLORS.successLight
-                                  : scheda.stato === 'url_trovato'
-                                    ? COLORS.warningLight
-                                    : scheda.stato === 'url_suggerito'
-                                      ? COLORS.gray[200]
-                                      : scheda.stato === 'non_cercato'
-                                        ? COLORS.bg
-                                        : COLORS.bg,
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              fontSize: 20,
-                            }}
-                          >
-                            {scheda.stato === 'trovato'
-                              ? '✅'
-                              : scheda.stato === 'url_trovato'
-                                ? '🔗'
-                                : scheda.stato === 'url_suggerito'
-                                  ? '💡'
-                                  : scheda.stato === 'non_cercato'
-                                    ? '🔍'
-                                    : '❌'}
-                          </div>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div
-                              style={{
-                                fontWeight: 600,
-                                fontSize: 14,
-                                color: COLORS.primary,
-                                marginBottom: 3,
-                              }}
-                            >
-                              {scheda.prodotto_pulito || scheda.prodotto}
-                            </div>
-                            {scheda.brand && (
-                              <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 2 }}>
-                                Brand: <strong>{scheda.brand}</strong>
-                              </div>
-                            )}
-                            {scheda.sito_ufficiale && (
-                              <div style={{ fontSize: 11, color: COLORS.textMuted, marginBottom: 2 }}>
-                                Sito: {scheda.sito_ufficiale}
-                              </div>
-                            )}
-                            <div style={{ fontSize: 11, color: COLORS.textSubtle }}>
-                              {scheda.stato === 'trovato' &&
-                                `PDF scaricato • ${Math.round((scheda.dimensione_bytes || 0) / 1024)} KB`}
-                              {scheda.stato === 'url_trovato' &&
-                                'URL trovato (PDF non scaricabile direttamente)'}
-                              {scheda.stato === 'url_suggerito' &&
-                                'URL suggerito da AI — verifica manuale'}
-                              {scheda.stato === 'non_trovato' && 'Scheda non trovata online'}
-                              {scheda.stato === 'non_cercato' &&
-                                'Non ancora cercato — clicca "Cerca automaticamente"'}
-                            </div>
-                          </div>
-                          {(scheda.stato === 'trovato' ||
-                            scheda.stato === 'url_trovato' ||
-                            scheda.stato === 'url_suggerito') && (
-                            <a
-                              href={
-                                scheda.stato === 'trovato'
-                                  ? `${window.location.origin}/api/schede-tecniche/download/${scheda.id}`
-                                  : scheda.url_fonte
-                              }
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              style={{
-                                padding: '6px 14px',
-                                background: scheda.stato === 'trovato' ? COLORS.info : COLORS.primary,
-                                color: 'white',
-                                borderRadius: BORDER_RADIUS.sm,
-                                textDecoration: 'none',
-                                fontSize: 12,
-                                fontWeight: 500,
-                                whiteSpace: 'nowrap',
-                              }}
-                            >
-                              {scheda.stato === 'trovato' ? 'Scarica PDF' : 'Apri link'}
-                            </a>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Footer */}
-              <div
-                style={{
-                  padding: '16px 24px',
-                  borderTop: `1px solid ${COLORS.border}`,
-                  background: COLORS.bgAlt,
-                  display: 'flex',
-                  justifyContent: 'flex-end',
-                }}
-              >
-                <Button
-                  variant="primary"
-                  onClick={() =>
-                    setSchedeTecnicheModal({
-                      open: false,
-                      fornitore: null,
-                      schede: [],
-                      loading: false,
-                    })
-                  }
-                >
-                  Chiudi
-                </Button>
               </div>
             </div>
           </div>

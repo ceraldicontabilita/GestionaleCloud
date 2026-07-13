@@ -1,13 +1,16 @@
 """
 Handler Eventi Magazzino — Gestionale Ceraldi Group
 =====================================================
-Copre le specifiche di Magazzino_Acquisti_Prodotti.txt:
+Magazzino ESCLUSIVAMENTE contabile (dizionario articoli):
 - Matching prodotto 3 livelli (esatto → normalizzato → fuzzy)
 - Normalizzazione nomi prodotto
 - Auto-creazione prodotto se non trovato
-- Alert sotto scorta, prodotto incompleto, duplicato
+- Alert prodotto incompleto, duplicato
 - Aggiornamento dizionario prodotti (auto-learning)
-- Aggiornamento giacenze da fatture merce
+- Storico acquisti per Previsioni Acquisti
+
+La gestione della giacenza fisica e delle scorte (inventario, alert
+sotto-scorta) e' demandata all'app esterna Tracciabilita'/HACCP.
 """
 import logging
 import re
@@ -57,7 +60,7 @@ async def on_fattura_righe_magazzino(event: Dict[str, Any], db) -> Optional[Dict
         match = await _cerca_prodotto_3_livelli(desc, fornitore_id, db)
 
         if match["trovato"] and match["certezza"] == "certo":
-            # Aggiorna storico acquisti + giacenza
+            # Aggiorna storico acquisti + metadati dizionario
             await _aggiorna_prodotto_esistente(
                 match["prodotto_id"], qta, prezzo, udm, fattura_id, fornitore_id, db
             )
@@ -110,44 +113,6 @@ async def on_fattura_righe_magazzino(event: Dict[str, Any], db) -> Optional[Dict
             logger.exception(f"Errore generazione alert FAT_RIGHE_MERCE_NON_RISOLTE per {fattura_id}")
 
     return {"action": "magazzino_processato", "risultati": risultati}
-
-
-async def on_verifica_sotto_scorta(event: Dict[str, Any], db) -> Optional[Dict]:
-    """
-    Verifica periodica: genera alert MAG_SOTTO_SCORTA per prodotti
-    con giacenza ≤ giacenza minima.
-    """
-    from app.services.alert_engine import genera_alert, risolvi_alert
-
-    cursor = db["warehouse_inventory"].find(
-        {
-            "giacenza_minima": {"$exists": True, "$gt": 0},
-            "attivo": {"$ne": False}
-        },
-        {"_id": 0, "id": 1, "nome": 1, "giacenza": 1, "giacenza_minima": 1}
-    )
-
-    sotto_scorta = 0
-    ripristinati = 0
-    async for prod in cursor:
-        giacenza = prod.get("giacenza", 0) or 0
-        minima = prod.get("giacenza_minima", 0) or 0
-        prod_id = prod.get("id", "")
-
-        if giacenza <= minima:
-            await genera_alert(
-                "MAG_SOTTO_SCORTA", prod_id, "warehouse_inventory",
-                f"Prodotto '{prod.get('nome', '')}': giacenza {giacenza} ≤ minimo {minima}",
-                db
-            )
-            sotto_scorta += 1
-        else:
-            # Se era sotto scorta e ora è ok → risolvi
-            r = await risolvi_alert("MAG_SOTTO_SCORTA", prod_id, db)
-            if r > 0:
-                ripristinati += 1
-
-    return {"action": "sotto_scorta_verificato", "sotto_scorta": sotto_scorta, "ripristinati": ripristinati}
 
 
 # ============================================================
@@ -251,7 +216,7 @@ def _is_servizio(descrizione: str) -> bool:
 
 
 async def _aggiorna_prodotto_esistente(prod_id, qta, prezzo, udm, fattura_id, fornitore_id, db):
-    """Aggiorna giacenza e storico acquisti di un prodotto esistente."""
+    """Aggiorna metadati e storico acquisti di un prodotto esistente (niente giacenza fisica)."""
     # Unità di misura incoerente tra fatture diverse dello stesso prodotto
     # (es. comprato in "kg" e ora la riga dice "pz"): segnale di un match
     # 3-livelli sbagliato o di un fornitore che fattura in unità diverse.
@@ -280,15 +245,7 @@ async def _aggiorna_prodotto_esistente(prod_id, qta, prezzo, udm, fattura_id, fo
     if fornitore_id:
         update["ultimo_fornitore_id"] = fornitore_id
 
-    inc = {}
-    if qta and qta > 0:
-        inc["giacenza"] = qta
-
-    update_query = {"$set": update}
-    if inc:
-        update_query["$inc"] = inc
-
-    await db["warehouse_inventory"].update_one({"id": prod_id}, update_query)
+    await db["warehouse_inventory"].update_one({"id": prod_id}, {"$set": update})
 
     # Salva in storico acquisti
     await db["acquisti_prodotti"].insert_one({
@@ -330,8 +287,6 @@ async def _crea_prodotto_nuovo(desc, qta, prezzo, udm, fornitore_id, fornitore_n
         "id": prod_id,
         "nome": desc,
         "nome_normalizzato": norm,
-        "giacenza": qta or 0,
-        "giacenza_minima": None,
         "ultimo_prezzo": prezzo,
         "unita_misura": udm,
         "fornitore_principale_id": fornitore_id,
@@ -347,7 +302,7 @@ async def _crea_prodotto_nuovo(desc, qta, prezzo, udm, fornitore_id, fornitore_n
     await genera_alert(
         "MAG_PRODOTTO_INCOMPLETO", prod_id, "warehouse_inventory",
         f"Nuovo prodotto '{desc[:50]}' creato da fattura. "
-        f"Mancano giacenza minima e categoria.",
+        f"Manca la categoria.",
         db
     )
 

@@ -565,3 +565,27 @@ costi → pagamenti → driver assegnato → verbali → eventuali trattenute �
 
 Il principio è sempre lo stesso: **un canale si accende solo dopo che il suo parser
 è stato verificato su documenti veri** — meglio nessun dato che dati sbagliati.
+
+## 14. Cosa NON fa più questo gestionale (dominio HACCP)
+
+Decisione canonica (13/07/2026): il gestionale è un **ERP contabile**. Tutto il
+dominio HACCP — ricettario, lotti, tracciabilità, food cost, produzione/cucina,
+scadenze HACCP, schede tecniche dei prodotti alimentari — è demandato all'app
+esterna Tracciabilità/HACCP (ceraldiapp.it) e non esiste più qui.
+
+In concreto:
+- **Schede tecniche**: rimosse (pulsante in Fornitori, ricerca web/email, PDF
+  archiviati). Le collection `schede_tecniche*` si archiviano con
+  `python -m app.scripts.archivia_collection_haccp --esegui` (rinomina, non
+  cancella). La funzione "completa anagrafica fornitore dagli XML delle
+  fatture", che viveva nello stesso router, è stata **salvata** e spostata in
+  `/api/anagrafica-fornitori/popola-fornitore/{id}` (stesso pulsante di prima
+  nel form fornitore).
+- **Giacenze e scorte**: il gestionale non aggiorna più la giacenza fisica dei
+  prodotti e non genera più l'alert "sotto scorta" (il job delle 6:30 è stato
+  rimosso). Il **Dizionario Articoli resta contabile e vivo**: le fatture
+  continuano ad auto-creare/aggiornare gli articoli (matching 3 livelli, alias,
+  storico acquisti, ultimo prezzo/fornitore) e ad alimentare le Previsioni
+  Acquisti.
+- **Restano** (scelta 13/07/2026): Previsioni Acquisti (tab in Contabilità) e
+  Libretti sanitari nel modulo Dipendenti.

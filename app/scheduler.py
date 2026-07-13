@@ -305,33 +305,6 @@ async def check_scadenze_f24_task():
         logger.error(f"📅 [SCHEDULER] Errore controllo scadenze F24: {e}")
 
 
-async def check_scorta_magazzino_task():
-    """
-    Task eseguito ogni giorno alle 6:30.
-    Verifica i prodotti sotto scorta minima e genera/risolve l'alert
-    MAG_SOTTO_SCORTA. La funzione esiste da tempo (magazzino_handlers.py)
-    ma non era mai stata schedulata — vedi memoria/moduli/MAGAZZINO.md gap #3.
-    """
-    logger.info("📦 [SCHEDULER] Controllo scorta minima magazzino...")
-    try:
-        from app.database import Database
-        from app.services.handlers.magazzino_handlers import on_verifica_sotto_scorta
-
-        db = Database.get_db()
-        result = await on_verifica_sotto_scorta({}, db)
-        sotto_scorta = result.get("sotto_scorta", 0)
-        ripristinati = result.get("ripristinati", 0)
-        if sotto_scorta > 0 or ripristinati > 0:
-            logger.info(
-                f"📦 [SCHEDULER] Scorta magazzino: {sotto_scorta} sotto minimo, "
-                f"{ripristinati} ripristinati"
-            )
-        else:
-            logger.info("📦 [SCHEDULER] Nessun prodotto sotto scorta minima")
-    except Exception as e:
-        logger.error(f"📦 [SCHEDULER] Errore controllo scorta magazzino: {e}")
-
-
 async def check_fornitori_duplicati_task():
     """
     Task eseguito ogni giorno alle 6:00.
@@ -817,15 +790,6 @@ def start_scheduler():
         replace_existing=True
     )
     
-    # Task Scorta Minima Magazzino - ogni giorno alle 6:30
-    scheduler.add_job(
-        check_scorta_magazzino_task,
-        CronTrigger(hour=6, minute=30),
-        id="scorta_magazzino_check",
-        name="Controllo Scorta Minima Magazzino (ogni giorno ore 6:30)",
-        replace_existing=True
-    )
-
     # Task Fornitori Duplicati - ogni giorno alle 6:00
     scheduler.add_job(
         check_fornitori_duplicati_task,

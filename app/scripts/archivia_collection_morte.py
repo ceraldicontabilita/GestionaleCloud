@@ -108,7 +108,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     async def main():
-        await Database.connect()
+        await Database.connect_db()
 
         if not args.esegui:
             print("=== DRY RUN — nessuna modifica verrà applicata ===")

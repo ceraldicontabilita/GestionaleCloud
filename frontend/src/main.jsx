@@ -161,11 +161,6 @@ const router = createBrowserRouter([
       { path: "dizionario-prodotti/:prodotto", element: <Navigate to="/riconciliazione/coerenza-pos" replace /> },
       { path: "magazzino-dv", element: <Navigate to="/riconciliazione/coerenza-pos" replace /> },
       
-      // === REDIRECT CUCINA → MAGAZZINO (la sezione cucina è stata rimossa) ===
-      { path: "cucina", element: <Navigate to="/magazzino" replace /> },
-      { path: "cucina/:tab", element: <Navigate to="/magazzino" replace /> },
-      { path: "ricettario", element: <Navigate to="/magazzino" replace /> },
-      { path: "ricettario/:tab", element: <Navigate to="/magazzino" replace /> },
       { path: "centri-costo", element: <Navigate to="/contabilita/centri-costo" replace /> },
       { path: "centri-costo/:centro", element: <Navigate to="/contabilita/centri-costo" replace /> },
       { path: "learning-machine", element: <LazyPage><LearningMachine /></LazyPage> },

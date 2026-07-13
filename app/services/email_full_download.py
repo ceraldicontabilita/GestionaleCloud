@@ -45,7 +45,6 @@ CATEGORY_COLLECTIONS = {
     "cartella_esattoriale": "cartelle_email_attachments",
     "avviso_bonario": "avvisi_bonari_email_attachments",
     "dichiarazione_iva": "dichiarazioni_iva_email_attachments",
-    "scheda_tecnica": "schede_tecniche_prodotti",  # Schede tecniche prodotti
     "altro": "documenti_non_associati"  # Documenti da associare manualmente
 }
 
@@ -94,10 +93,6 @@ DOCUMENT_PATTERNS = {
     "dichiarazione_iva": [
         r"dichiarazione\s*iva", r"modello\s*iva\b", r"iva\s*annuale",
         r"lipe", r"liquidazion[ei].*periodic", r"comunicazione.*iva"
-    ],
-    "scheda_tecnica": [
-        r"scheda\s*tecnica", r"technical\s*sheet", r"data\s*sheet",
-        r"specifica.*tecnic", r"caratteristiche.*prodotto"
     ]
 }
 

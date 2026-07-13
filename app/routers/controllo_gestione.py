@@ -413,7 +413,7 @@ async def get_kpi_gestionali(anno: int) -> Dict[str, Any]:
                 "descrizione": "% costo personale su ricavi",
                 "benchmark": "< 35%"
             },
-            "food_cost": {
+            "incidenza_merce": {
                 "valore": round(costo_merce / ricavi * 100, 1) if ricavi > 0 else 0,
                 "descrizione": "% costo materie prime su ricavi",
                 "benchmark": "25-35%"

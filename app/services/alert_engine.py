@@ -324,13 +324,7 @@ ALERT_CATALOG: Dict[str, Dict[str, Any]] = {
         "modulo": "magazzino",
         "severita": "info",
         "titolo": "Prodotto nuovo da configurare",
-        "condizione_chiusura": "Giacenza minima impostata"
-    },
-    "MAG_SOTTO_SCORTA": {
-        "modulo": "magazzino",
-        "severita": "warning",
-        "titolo": "Prodotto sotto scorta",
-        "condizione_chiusura": "Giacenza ripristinata"
+        "condizione_chiusura": "Categoria impostata"
     },
     "MAG_MATCH_DUBBIO": {
         "modulo": "magazzino",

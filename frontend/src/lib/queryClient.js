@@ -38,11 +38,6 @@ export const queryKeys = {
     all: ['libro-unico'],
     salaries: monthYear => ['libro-unico', 'salaries', monthYear],
   },
-  // Libretti Sanitari
-  libretti: {
-    all: ['libretti'],
-    list: () => ['libretti', 'list'],
-  },
   // Contratti
   contratti: {
     all: ['contratti'],
