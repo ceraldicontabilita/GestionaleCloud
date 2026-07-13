@@ -48,7 +48,7 @@ COLL_DIPENDENTI = "dipendenti"  # Collection canonica (usa questa, identica a CO
 
 # Cedolini/Buste paga
 COLL_CEDOLINI = "cedolini"  # 916 docs - Collezione principale
-COLL_PAYSLIPS = "payslips"  # 480 docs - Alias inglese (legacy)
+COLL_PAYSLIPS = "payslips"  # 480 docs - LEGACY/DEPRECATA (P1 §5.3): migrare in cedolini con app/scripts/migra_payslips_a_cedolini.py; NON scrivere qui
 COLL_CEDOLINI_EMAIL = "cedolini_email_attachments"  # 224 docs
 COLL_RIEPILOGO_CEDOLINI = "riepilogo_cedolini"  # 190 docs
 

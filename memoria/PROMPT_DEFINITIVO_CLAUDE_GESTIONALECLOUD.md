@@ -31,7 +31,10 @@ PROSSIMA FASE: P1 consolidamento collection/motori (§5-§8).
       Sottosistemi parser (f24_pagamenti/tributi_pagati/distinte_f24) e f24_tributi: rinviati (vivi).
 - [x] §5.4 Fatture passive: canonica invoices + helper fatture_canonico + migrazione
       + ponte ERP su invoices + rimosso dedup runtime crud (297 test).
-- [ ] §5.2 Dipendenti (parziale: employees migrato in P0.3) · §5.3 Cedolini
+- [x] §5.3 Cedolini: canonica `cedolini` + helper cedolini_canonico (chiave naturale
+      contribuente+anno+mese) + migrazione payslips→cedolini + payslips deprecata (301 test).
+      DEBITO: `buste_paga` (Libro Unico/BPM/TFR, vivo) rinviata a fase paghe dedicata.
+- [ ] §5.2 Dipendenti (parziale: employees migrato in P0.3; restano staff/employee_contracts)
 - [ ] §5.5 Fatture emesse · §5.6 Estratto conto · §5.7 Fornitori · §5.8 Documenti classificati · §5.9 Magazzino
 - [ ] §6 Unificazione motori contabili · §7 Classificazione 390 endpoint · §8 Viewer documenti
       Deliverable: memoria/PIANO_MIGRAZIONE_COLLECTION.md
