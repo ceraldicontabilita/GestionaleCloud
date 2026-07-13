@@ -19,6 +19,7 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import api from '../api';
 import { Button, Badge } from './ds';
+import DocumentViewerModal from './DocumentViewerModal';
 import { COLORS, SHADOWS, BORDER_RADIUS, FONT } from '../lib/utils';
 
 // Traduzione codici PayPal in labels leggibili.
@@ -83,6 +84,7 @@ export default function PaypalTransactionDetailModal({
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [gmailLoading, setGmailLoading] = useState(false);
+  const [pdfViewer, setPdfViewer] = useState(null); // {title, src(blob)} — viewer canonico §8
   const [gmailData, setGmailData] = useState(null);
 
   useEffect(() => {
@@ -161,9 +163,8 @@ export default function PaypalTransactionDetailModal({
       for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
       const blob = new Blob([bytes], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
-      window.open(url, '_blank');
-      // libero l'URL dopo qualche secondo
-      setTimeout(() => URL.revokeObjectURL(url), 30000);
+      // Viewer canonico §8 (niente nuova scheda); l'URL blob viene revocato alla chiusura.
+      setPdfViewer({ title: `📄 Verbale ${verbale?.numero_verbale || ''}`, src: url });
     } catch (e) {
       toast.error('Errore apertura PDF: ' + (e?.response?.data?.detail || e?.message));
     }
@@ -581,6 +582,18 @@ export default function PaypalTransactionDetailModal({
           </Button>
         </div>
       </div>
+
+      {pdfViewer && (
+        <DocumentViewerModal
+          title={pdfViewer.title}
+          src={pdfViewer.src}
+          documentType="verbale"
+          onClose={() => {
+            URL.revokeObjectURL(pdfViewer.src);
+            setPdfViewer(null);
+          }}
+        />
+      )}
     </div>
   );
 }

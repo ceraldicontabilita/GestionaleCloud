@@ -19,6 +19,7 @@ import { useConfirm } from '../components/ui/ConfirmDialog';
 import { toast } from 'sonner';
 import { ExportButton } from '../components/ExportButton';
 import { PageLayout } from '../components/PageLayout';
+import DocumentViewerModal from '../components/DocumentViewerModal';
 
 const RiconciliazionePaypalLazy = lazy(() => import('./RiconciliazionePaypal.jsx'));
 
@@ -1818,6 +1819,7 @@ function TabellaAnalisiF24({ anno }) {
 
 function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefresh, anno }) {
   const [selezionati, setSelezionati] = useState(new Set());
+  const [pdfViewer, setPdfViewer] = useState(null); // {title, src} — viewer canonico §8
   const [metodoBatch] = useState('banca');
   const [salvandoBatch, setSalvandoBatch] = useState(false);
   const confirm = useConfirm();
@@ -2104,9 +2106,12 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
                     <button
                       onClick={async () => {
                         if (f.pdf_url) {
-                          window.open(f.pdf_url, '_blank');
+                          setPdfViewer({ title: `📄 F24 ${f.descrizione || f.numero || ''}`, src: f.pdf_url });
                         } else if (f.file_path) {
-                          window.open(`/api/download/${encodeURIComponent(f.file_path)}`, '_blank');
+                          setPdfViewer({
+                            title: `📄 F24 ${f.descrizione || f.numero || ''}`,
+                            src: `/api/download/${encodeURIComponent(f.file_path)}`,
+                          });
                         } else {
                           await confirm({
                             title: 'PDF non disponibile',
@@ -2139,12 +2144,22 @@ function F24Tab({ f24, onConfermaF24, processing, onLoadF24, f24Loading, onRefre
           );
         })}
       </div>
+
+      {pdfViewer && (
+        <DocumentViewerModal
+          title={pdfViewer.title}
+          src={pdfViewer.src}
+          documentType="f24"
+          onClose={() => setPdfViewer(null)}
+        />
+      )}
     </div>
   );
 }
 
 function DocumentiTab({ documenti, stats, onRefresh, processing }) {
   const [selectedDoc, setSelectedDoc] = useState(null);
+  const [pdfViewer, setPdfViewer] = useState(null); // {title, src} — viewer canonico §8
   const [collezioni, setCollezioni] = useState([]);
   const [associazioneForm, setAssociazioneForm] = useState({ collezione: '', campiJson: '' });
   const [message, setMessage] = useState(null);
@@ -2168,9 +2183,12 @@ function DocumentiTab({ documenti, stats, onRefresh, processing }) {
 
   const handleViewPdf = doc => {
     // Path relativo al dominio corrente, evita problemi se VITE_BACKEND_URL
-    // al build time puntasse a un dominio sbagliato.
-    const url = `/api/documenti-non-associati/pdf/${doc.id}`;
-    window.open(url, '_blank');
+    // al build time puntasse a un dominio sbagliato. Viewer canonico §8
+    // (niente nuova scheda).
+    setPdfViewer({
+      title: `📄 ${doc.filename || doc.nome || 'Documento'}`,
+      src: `/api/documenti-non-associati/pdf/${doc.id}`,
+    });
   };
 
   const handleAssocia = async () => {
@@ -2544,6 +2562,15 @@ function DocumentiTab({ documenti, stats, onRefresh, processing }) {
           </div>
         )}
       </div>
+
+      {pdfViewer && (
+        <DocumentViewerModal
+          title={pdfViewer.title}
+          src={pdfViewer.src}
+          documentType="documento_fiscale"
+          onClose={() => setPdfViewer(null)}
+        />
+      )}
     </div>
   );
 }

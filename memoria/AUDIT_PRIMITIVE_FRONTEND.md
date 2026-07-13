@@ -17,17 +17,22 @@ Tutti i confirm()/window.confirm() nativi convertiti nel ConfirmDialog canonico
 PuliziaPrimaNota (3), BatchReprocessing (3), Admin (1), Utenti (1),
 BudgetPrevisionale (1), VerbaliRiconciliazione (1). PrimaNota.jsx usava già il pattern.
 
-## `prompt(` — 3 occorrenze
-- `components/InstallAppButton.jsx` : righe 51
-- `pages/PrimaNota.jsx` : righe 1639
-- `pages/Utenti.jsx` : righe 77
+## `prompt(` — ✅ COMPLETATO (0 residue)
+Unico sito reale (cambio PIN in Utenti.jsx) sostituito con dialog in-app
+(input numerico, Enter/Escape, validazione 4-12 cifre). Gli altri match erano
+PWA install (deferredPrompt.prompt(), legittimo) e un commento.
 
-## `window.open(` — 13 occorrenze
-- `components/PaypalTransactionDetailModal.jsx` : righe 164, 457
-- `pages/ArchivioBonifici.jsx` : righe 266, 274
-- `pages/Bilancio.jsx` : righe 470, 485
-- `pages/Commercialista.jsx` : righe 1021
-- `pages/Fornitori.jsx` : righe 3004
-- `pages/GestionePagoPA.jsx` : righe 696
-- `pages/RiconciliazioneUnificata.jsx` : righe 2107, 2109, 2173
-- `pages/VerbaliRiconciliazione.jsx` : righe 801
+## `window.open(` — ✅ RIVISTI TUTTI (6 convertiti, 7 legittimi)
+**Convertiti a DocumentViewerModal (viewer canonico §8, niente nuova scheda):**
+- RiconciliazioneUnificata F24Tab: PDF F24 (pdf_url e file_path)
+- RiconciliazioneUnificata DocumentiTab: PDF documenti non associati
+- GestionePagoPA: PDF ricevuta PagoPA
+- PaypalTransactionDetailModal: PDF verbale (blob, revoca URL alla chiusura)
+
+**Legittimi, tenuti così (export/download/stampa/navigazione deliberata):**
+- Commercialista.jsx:1021 — export Excel (download)
+- Bilancio.jsx (2) — export PDF bilancio e confronto (download)
+- ArchivioBonifici.jsx (2) — export CSV/Excel + download ZIP
+- Fornitori.jsx — finestra di stampa (window.open('', '_blank') per print)
+- VerbaliRiconciliazione.jsx:805 — apertura verbale in nuova scheda (route interna, scelta UX)
+- PaypalTransactionDetailModal.jsx:457 — fallback apertura fattura quando onOpenInvoice non è fornito

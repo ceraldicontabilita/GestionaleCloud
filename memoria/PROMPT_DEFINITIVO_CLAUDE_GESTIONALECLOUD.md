@@ -118,10 +118,11 @@ PROSSIMA FASE: P1 consolidamento collection/motori (§5-§8).
 - [~] §12.7 protezione download: NON bulk — molti PDF sono in <iframe src> che non invia
       l'header auth; aggiungere Depends li romperebbe. Va fatto per-endpoint (blob-fetch/URL
       firmati). Documentato, rinviato.
-- [~] §13.1 frontend primitive: alert() ✅ (79 → toast sonner, 9 file) · confirm() ✅
-      (16 siti reali → ConfirmDialog/useConfirm con variant danger/warning, 7 file, build
-      verde). Restano: 1 window.prompt reale (PIN in Utenti.jsx) + window.open 12 (da
-      valutare uno a uno: molti legittimi verso URL esterni).
+- [x] §13.1 frontend primitive COMPLETATO: alert() ✅ (79 → toast sonner) · confirm() ✅
+      (16 → ConfirmDialog) · prompt() ✅ (dialog PIN in-app in Utenti.jsx) · window.open ✅
+      rivisti tutti (6 documenti → DocumentViewerModal: F24, doc non associati, ricevuta
+      PagoPA, verbale PayPal blob; 7 legittimi tenuti: export Excel/PDF/ZIP, stampa,
+      navigazione interna, fallback fattura). Build verde ad ogni passo.
       Esiste il sistema canonico (ConfirmDialog/use-toast) già parzialmente adottato, ma la
       conversione (specie confirm→dialog dichiarativo) cambia il control-flow: non
       automatizzabile in sicurezza. Deliverable checklist: memoria/AUDIT_PRIMITIVE_FRONTEND.md.

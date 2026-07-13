@@ -75,13 +75,21 @@ export default function Utenti() {
     }
   };
 
-  const cambiaPin = async u => {
-    const nuovo = window.prompt(`Nuovo PIN per ${u.nome} (4-12 cifre):`);
-    if (nuovo == null) return;
-    if (!/^\d{4,12}$/.test(nuovo)) { toast.error('PIN non valido'); return; }
+  // §13.1: dialog in-app al posto di window.prompt
+  const [pinModal, setPinModal] = useState(null); // utente selezionato
+  const [nuovoPin, setNuovoPin] = useState('');
+
+  const cambiaPin = u => {
+    setNuovoPin('');
+    setPinModal(u);
+  };
+
+  const salvaNuovoPin = async () => {
+    if (!/^\d{4,12}$/.test(nuovoPin)) { toast.error('PIN non valido: servono 4-12 cifre'); return; }
     try {
-      await api.put(`/api/utenti/${u.id}`, { pin: nuovo });
-      toast.success('PIN aggiornato');
+      await api.put(`/api/utenti/${pinModal.id}`, { pin: nuovoPin });
+      toast.success(`PIN di ${pinModal.nome} aggiornato`);
+      setPinModal(null);
     } catch (e) {
       toast.error(e.response?.data?.detail || 'Errore cambio PIN');
     }
@@ -182,6 +190,52 @@ export default function Utenti() {
           </div>
         )}
       </div>
+
+      {/* Dialog cambio PIN (sostituisce window.prompt, §13.1) */}
+      {pinModal && (
+        <div
+          onClick={() => setPinModal(null)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(15,39,68,0.55)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 2000, padding: 16,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            role="dialog" aria-modal="true" aria-label={`Nuovo PIN per ${pinModal.nome}`}
+            style={{
+              background: '#fff', borderRadius: 12, padding: 20, width: '100%',
+              maxWidth: 360, boxShadow: '0 25px 50px -12px rgba(0,0,0,0.35)',
+            }}
+          >
+            <h3 style={{ margin: '0 0 6px', color: COLORS.primary, fontSize: 16 }}>
+              Cambia PIN — {pinModal.nome}
+            </h3>
+            <label style={lbl}>Nuovo PIN (4-12 cifre)</label>
+            <input
+              style={inp} value={nuovoPin} inputMode="numeric" autoFocus
+              onChange={e => setNuovoPin(e.target.value.replace(/\D/g, ''))}
+              onKeyDown={e => { if (e.key === 'Enter') salvaNuovoPin(); if (e.key === 'Escape') setPinModal(null); }}
+              placeholder="Es. 246810"
+              data-testid="pin-modal-input"
+            />
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+              <button onClick={() => setPinModal(null)} style={btnGhost}>Annulla</button>
+              <button
+                onClick={salvaNuovoPin}
+                data-testid="pin-modal-save"
+                style={{
+                  background: COLORS.primary, color: '#fff', border: 'none',
+                  borderRadius: 8, padding: '8px 16px', fontWeight: 700, cursor: 'pointer',
+                }}
+              >
+                Salva PIN
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

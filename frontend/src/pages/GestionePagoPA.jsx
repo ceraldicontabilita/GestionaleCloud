@@ -16,6 +16,7 @@ import { Input } from '../components/ui/input';
 import { Badge } from '../components/ui/badge';
 import { Alert, AlertDescription } from '../components/ui/alert';
 import { PageLayout } from '../components/PageLayout';
+import DocumentViewerModal from '../components/DocumentViewerModal';
 import {
   FileText,
   RefreshCw,
@@ -32,6 +33,7 @@ import { toast } from '../components/ui/sonner';
 import api from '../api';
 
 export default function GestionePagoPA() {
+  const [pdfViewer, setPdfViewer] = useState(null); // {title, src} — viewer canonico §8
   const isMobile = useIsMobile();
   const [ricevute, setRicevute] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -693,7 +695,10 @@ export default function GestionePagoPA() {
                               <>
                                 <button
                                   onClick={() =>
-                                    window.open(`/api/pagopa/ricevute/${ricevuta.id}/pdf`, '_blank')
+                                    setPdfViewer({
+                                      title: `📄 Ricevuta PagoPA ${ricevuta.iuv || ricevuta.id}`,
+                                      src: `/api/pagopa/ricevute/${ricevuta.id}/pdf`,
+                                    })
                                   }
                                   style={{
                                     padding: '6px 10px',
@@ -733,6 +738,15 @@ export default function GestionePagoPA() {
           </div>
         </div>
       </div>
+
+      {pdfViewer && (
+        <DocumentViewerModal
+          title={pdfViewer.title}
+          src={pdfViewer.src}
+          documentType="pagopa"
+          onClose={() => setPdfViewer(null)}
+        />
+      )}
     </PageLayout>
   );
 }
