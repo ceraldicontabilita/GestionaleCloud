@@ -257,6 +257,37 @@ class Database:
         await _safe_index(Collections.INVOICES, "periodo_iva_attribuito", name="idx_invoices_periodo_iva")
         await _safe_index(Collections.INVOICES, "liquidazione_id", sparse=True, name="idx_invoices_liq_id")
 
+        # --- Indici mancanti (AUDIT §7) ---
+        # Scadenzario fornitori: query per fornitore/scadenza e per stato.
+        await _safe_index("scadenziario_fornitori", [("fornitore_piva", 1), ("data_scadenza", 1)],
+                          name="idx_scad_forn_piva_scad")
+        await _safe_index("scadenziario_fornitori", [("stato", 1), ("data_scadenza", 1)],
+                          name="idx_scad_forn_stato_scad")
+        # Cespiti: query per anno e per categoria.
+        await _safe_index("cespiti", [("anno", 1)], name="idx_cespiti_anno")
+        await _safe_index("cespiti", "categoria", sparse=True, name="idx_cespiti_categoria")
+        # Quietanze F24: chiave di collegamento quietanza↔F24 (SPECIFICA §22).
+        await _safe_index("quietanze_f24",
+                          [("codice_fiscale", 1), ("periodo", 1), ("saldo_delega", 1), ("data_versamento", 1)],
+                          name="idx_quietanze_chiave")
+        await _safe_index("quietanze_f24", "f24_id", sparse=True, name="idx_quietanze_f24_id")
+        # Contratti dipendenti: query per dipendente e per validità.
+        await _safe_index("contratti_dipendenti", "dipendente_id", name="idx_contratti_dip")
+        await _safe_index("contratti_dipendenti", [("dipendente_id", 1), ("data_inizio", -1)],
+                          name="idx_contratti_dip_inizio")
+        # Documenti non associati: dedup per impronta + coda per data.
+        await _safe_index("documenti_non_associati", "pdf_hash", sparse=True, name="idx_docnonass_hash")
+        await _safe_index("documenti_non_associati", [("created_at", -1)], name="idx_docnonass_data")
+
+        # --- Collezioni introdotte in questa sessione ---
+        # Fascicolo F24 (§21): chiave univoca soggetto+periodo.
+        await _safe_index("fascicoli_f24", "chiave", unique=True, sparse=True, name="idx_fascicoli_chiave")
+        # Mittenti attendibili unificati: accessor per tipo/canale/attivo.
+        await _safe_index("mittenti_email", [("tipo_documento", 1), ("canale", 1), ("attivo", 1)],
+                          name="idx_mittenti_tipo_canale")
+        # Dedup cross-canale documents_inbox per impronta md5.
+        await _safe_index("documents_inbox", "file_hash", sparse=True, name="idx_docs_inbox_hash")
+
         logger.info(f"✅ Database indexes: {created} creati, {skipped} già esistenti")
 
     @classmethod

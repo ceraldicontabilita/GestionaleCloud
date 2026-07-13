@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import api from '../api';
 
 /**
@@ -38,6 +38,7 @@ export default function DocumentViewerModal({
 }) {
   const [blobUrl, setBlobUrl] = useState(null);
   const [loadError, setLoadError] = useState(null);
+  const cardRef = useRef(null);
 
   // Chiudi con tasto ESC
   useEffect(() => {
@@ -47,6 +48,23 @@ export default function DocumentViewerModal({
     document.addEventListener('keydown', handleKey);
     return () => document.removeEventListener('keydown', handleKey);
   }, [onClose]);
+
+  // Blocca lo scroll della pagina sotto mentre il viewer è aperto (§5 "body
+  // bloccato"); ripristina alla chiusura.
+  useEffect(() => {
+    const precedente = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = precedente;
+    };
+  }, []);
+
+  const apriSchermoIntero = () => {
+    const el = cardRef.current;
+    if (!el) return;
+    if (document.fullscreenElement) document.exitFullscreen?.();
+    else (el.requestFullscreen || el.webkitRequestFullscreen)?.call(el);
+  };
 
   // Modalità blob: scarica il documento via API e revoca l'URL alla chiusura
   useEffect(() => {
@@ -94,6 +112,7 @@ export default function DocumentViewerModal({
       }}
     >
       <div
+        ref={cardRef}
         onClick={e => e.stopPropagation()}
         style={{
           background: 'white',
@@ -148,6 +167,29 @@ export default function DocumentViewerModal({
             )}
           </div>
           <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+            <button
+              onClick={apriSchermoIntero}
+              aria-label="Schermo intero"
+              title="Schermo intero"
+              data-testid={`${testIdPrefix}-fullscreen`}
+              style={{
+                width: 40,
+                height: 40,
+                flexShrink: 0,
+                background: 'rgba(255,255,255,0.15)',
+                border: 'none',
+                borderRadius: 8,
+                color: 'white',
+                fontSize: 18,
+                lineHeight: 1,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              ⛶
+            </button>
             {onDownload && (
               <button
                 onClick={onDownload}
