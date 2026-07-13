@@ -640,6 +640,19 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
     metodo_pagamento = invoice.get("metodo_pagamento")
     data_scadenza = invoice.get("data_scadenza")
 
+    # --- STORIA FATTURA: riconosci la fattura per invoice_key e, se ha già una
+    # storia (es. era stata azzerata), riapplica lo stato derivato salvato
+    # (pagamento, IVA, centro di costo, riconciliazioni). Best-effort. ---
+    try:
+        from app.services import storia_fatture as _storia
+        ripristino = await _storia.ripristina_stato(db, invoice)
+        if ripristino:
+            metodo_pagamento = invoice.get("metodo_pagamento", metodo_pagamento)
+            logger.info(f"Storia fattura {invoice_key}: ripristinati {len(ripristino)} "
+                        f"campi derivati dal reimport")
+    except Exception:
+        logger.exception(f"Storia fattura: hook import fallito per {invoice_key}")
+
     # --- EVENT BUS: propaga evento fattura creata (upload manuale) ---
     # Fuori dalla transazione per design: è già gestita come fail-safe/
     # best-effort (try/except sotto) e non deve bloccare né essere

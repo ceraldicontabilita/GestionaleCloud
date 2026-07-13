@@ -20,7 +20,7 @@ router = APIRouter()
 from .crud import (
     get_archivio_fatture, view_fattura_assoinvoice, download_pdf_allegato,
     get_fattura_dettaglio, update_fattura, get_fornitori, get_statistiche,
-    pulisci_duplicati_invoices
+    pulisci_duplicati_invoices, storia_fattura
 )
 from .pagamento import (
     paga_fattura_manuale, cambia_metodo_pagamento_fattura,
@@ -53,6 +53,7 @@ router.add_api_route("/import-paypal", import_paypal_file, methods=["POST"])
 # === ROTTE DINAMICHE (devono venire DOPO le statiche) ===
 
 # Dettaglio fattura
+router.add_api_route("/fattura/{fattura_id}/storia", storia_fattura, methods=["GET"])
 router.add_api_route("/fattura/{fattura_id}/view-assoinvoice", view_fattura_assoinvoice, methods=["GET"])
 router.add_api_route("/fattura/{fattura_id}/pdf/{allegato_id}", download_pdf_allegato, methods=["GET"])
 router.add_api_route("/fattura/{fattura_id}", get_fattura_dettaglio, methods=["GET"])

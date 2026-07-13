@@ -435,6 +435,30 @@ def _rendi_fattura_responsive(html_str: str) -> str:
     )
 
 
+async def storia_fattura(fattura_id: str) -> Dict[str, Any]:
+    """Storia cronologica della fattura: tutte le operazioni registrate dietro
+    di essa (importata, pagata, IVA, riconciliazioni, snapshot pre-azzeramento…)
+    e lo stato derivato corrente. Sopravvive all'azzeramento (chiave invoice_key)."""
+    from app.services import storia_fatture as _storia
+    db = Database.get_db()
+    fattura = await db["invoices"].find_one({"id": fattura_id}, {"_id": 0, "invoice_key": 1,
+                                                                 "invoice_number": 1})
+    if not fattura:
+        fattura = await db[COL_FATTURE_RICEVUTE].find_one(
+            {"id": fattura_id}, {"_id": 0, "invoice_key": 1, "invoice_number": 1})
+    if not fattura:
+        raise HTTPException(status_code=404, detail="Fattura non trovata")
+    key = fattura.get("invoice_key")
+    st = await _storia.storia(db, key) if key else None
+    return {
+        "fattura_id": fattura_id,
+        "invoice_key": key,
+        "operazioni": (st or {}).get("operazioni", []),
+        "stato_corrente": (st or {}).get("stato_corrente", {}),
+        "ha_storia": bool(st),
+    }
+
+
 async def view_fattura_assoinvoice(fattura_id: str) -> HTMLResponse:
     """
     Visualizza fattura nel formato ASSO Software (FoglioStileAssoSoftware.xsl).

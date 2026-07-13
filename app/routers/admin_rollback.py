@@ -319,6 +319,20 @@ async def azzera_tutte_le_fatture(
         return {"success": True, "fatture_archiviate": 0, "fatture_eliminate": 0,
                 "collezione_backup": None, "messaggio": "Nessuna fattura da azzerare."}
 
+    # STORIA FATTURA: prima di cancellare, registra lo stato derivato di ogni
+    # fattura nella collezione `storia_fatture` (che NON viene toccata). Così al
+    # reimport ogni fattura viene riconosciuta e rimessa al posto giusto.
+    from app.services import storia_fatture as _storia
+    snapshot_ok = 0
+    async for f in db["invoices"].find({}, {"_id": 0}):
+        try:
+            await _storia.registra_snapshot(
+                db, f, tipo="pre_azzeramento",
+                dettaglio="Stato salvato prima dell'azzeramento massivo")
+            snapshot_ok += 1
+        except Exception:
+            logger.exception("storia snapshot fallita durante azzeramento")
+
     # Copia server-side dell'intera collezione nel backup, poi svuota.
     await db["invoices"].aggregate([{"$match": {}}, {"$out": backup}]).to_list(1)
     archiviate = await db[backup].count_documents({})
@@ -335,7 +349,10 @@ async def azzera_tutte_le_fatture(
         "success": True,
         "fatture_archiviate": archiviate,
         "fatture_eliminate": result.deleted_count,
+        "storia_salvata": snapshot_ok,
         "collezione_backup": backup,
-        "messaggio": (f"{result.deleted_count} fatture azzerate e archiviate in '{backup}'. "
-                      "Ora puoi reimportare da Drive/email/upload. Il backup è recuperabile."),
+        "messaggio": (f"{result.deleted_count} fatture azzerate, archiviate in '{backup}' e "
+                      f"storia salvata per {snapshot_ok}. Al reimport ogni fattura verrà "
+                      "riconosciuta e rimessa al posto giusto (pagamento/IVA/centro costo/"
+                      "riconciliazioni ripristinati)."),
     }

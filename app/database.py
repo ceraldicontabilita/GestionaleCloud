@@ -282,6 +282,8 @@ class Database:
         # --- Collezioni introdotte in questa sessione ---
         # Fascicolo F24 (§21): chiave univoca soggetto+periodo.
         await _safe_index("fascicoli_f24", "chiave", unique=True, sparse=True, name="idx_fascicoli_chiave")
+        # Storia fattura: chiave stabile invoice_key (registro che sopravvive all'azzeramento).
+        await _safe_index("storia_fatture", "invoice_key", unique=True, sparse=True, name="idx_storia_invoice_key")
         # Mittenti attendibili unificati: accessor per tipo/canale/attivo.
         await _safe_index("mittenti_email", [("tipo_documento", 1), ("canale", 1), ("attivo", 1)],
                           name="idx_mittenti_tipo_canale")
