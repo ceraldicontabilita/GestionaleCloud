@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
 
 /**
@@ -22,7 +23,7 @@ export function ExportButton({
 
   const exportToCSV = () => {
     if (!data || data.length === 0) {
-      alert('Nessun dato da esportare');
+      toast.info('Nessun dato da esportare');
       return;
     }
 
@@ -72,7 +73,7 @@ export function ExportButton({
       URL.revokeObjectURL(url);
     } catch (error) {
       console.error('Errore export:', error);
-      alert("Errore durante l'esportazione");
+      toast.error("Errore durante l'esportazione");
     } finally {
       setExporting(false);
     }
@@ -80,7 +81,7 @@ export function ExportButton({
 
   const exportToExcel = async () => {
     if (!data || data.length === 0) {
-      alert('Nessun dato da esportare');
+      toast.info('Nessun dato da esportare');
       return;
     }
 
@@ -122,7 +123,7 @@ export function ExportButton({
       XLSX.writeFile(wb, `${filename}_${new Date().toISOString().split('T')[0]}.xlsx`);
     } catch (error) {
       console.error('Errore export Excel:', error);
-      alert("Errore durante l'esportazione Excel");
+      toast.error("Errore durante l'esportazione Excel");
     } finally {
       setExporting(false);
     }

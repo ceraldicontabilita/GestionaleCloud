@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../api';
+import { toast } from 'sonner';
 import { PageLayout } from '../components/PageLayout';
 import {
   RefreshCw,
@@ -68,7 +69,7 @@ export default function BatchReprocessing() {
       await loadStatus();
     } catch (err) {
       console.error('Errore avvio:', err);
-      alert(err.response?.data?.detail || 'Errore avvio riprocessamento');
+      toast.error(err.response?.data?.detail || 'Errore avvio riprocessamento');
     } finally {
       setLoading(false);
     }

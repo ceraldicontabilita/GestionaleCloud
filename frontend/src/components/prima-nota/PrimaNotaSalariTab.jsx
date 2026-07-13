@@ -14,6 +14,7 @@ import {
   ImportResultAlert,
 } from './PrimaNotaComponents';
 import api from '../../api';
+import { toast } from 'sonner';
 
 const PrimaNotaSalariTab = memo(function PrimaNotaSalariTab() {
   // Zustand store
@@ -185,22 +186,22 @@ const PrimaNotaSalariTab = memo(function PrimaNotaSalariTab() {
       link.click();
       link.remove();
     } catch (error) {
-      alert('Errore export: ' + (error.response?.data?.detail || error.message));
+      toast.error('Errore export: ' + (error.response?.data?.detail || error.message));
     }
   }, [selectedYear, selectedMonth]);
 
   const handleReset = useCallback(async () => {
     const success = await resetAllData();
-    if (success) alert('✅ Dati eliminati');
+    if (success) toast.success('Dati eliminati');
   }, [resetAllData]);
 
   const handlePulisciVuote = useCallback(async () => {
     try {
       const res = await api.delete('/api/prima-nota-salari/pulisci-righe-vuote');
-      alert(`✅ Eliminate ${res.data.righe_eliminate} righe vuote`);
+      toast.success(`Eliminate ${res.data.righe_eliminate} righe vuote`);
       await fetchSalari();
     } catch (error) {
-      alert('Errore: ' + (error.response?.data?.detail || error.message));
+      toast.error('Errore: ' + (error.response?.data?.detail || error.message));
     }
   }, [righeVuote, fetchSalari]);
 
@@ -225,10 +226,10 @@ const PrimaNotaSalariTab = memo(function PrimaNotaSalariTab() {
         };
         await api.post('/api/prima-nota-salari/salari/aggiustamento', payload);
         await fetchSalari();
-        alert('✅ Aggiustamento inserito');
+        toast.success('Aggiustamento inserito');
         return true;
       } catch (error) {
-        alert('Errore: ' + (error.response?.data?.detail || error.message));
+        toast.error('Errore: ' + (error.response?.data?.detail || error.message));
         return false;
       }
     },

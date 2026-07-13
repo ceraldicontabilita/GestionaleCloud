@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import api from '../api';
+import { toast } from 'sonner';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card';
 import { PageLayout } from '../components/PageLayout';
@@ -249,7 +250,7 @@ export default function GestioneCespiti() {
 
   const handleCreaCespite = async () => {
     if (!nuovoCespite.descrizione || !nuovoCespite.categoria || !nuovoCespite.valore_acquisto)
-      return alert('Campi obbligatori');
+      return toast.warning('Campi obbligatori');
     try {
       await api.post('/api/cespiti/', {
         ...nuovoCespite,
@@ -265,17 +266,17 @@ export default function GestioneCespiti() {
       });
       loadCespiti();
     } catch (e) {
-      alert('Errore: ' + (e.response?.data?.detail || e.message));
+      toast.error('Errore: ' + (e.response?.data?.detail || e.message));
     }
   };
 
   const handleCalcolaAmm = async () => {
     try {
       const r = await api.post(`/api/cespiti/registra/${anno}`);
-      alert(r?.data?.messaggio);
+      toast.success(r?.data?.messaggio);
       loadCespiti();
     } catch (e) {
-      alert('Errore');
+      toast.error('Errore');
     }
   };
 
@@ -284,15 +285,15 @@ export default function GestioneCespiti() {
       setLoading(true);
       const r = await api.post('/api/cespiti/scan-fatture?soglia_valore=200&dry_run=false');
       if (r.data.cespiti_creati > 0) {
-        alert(
-          `${r?.data?.messaggio}\nValore totale: EUR ${r?.data?.valore_totale?.toLocaleString('it-IT')}`
-        );
+        toast.success(r?.data?.messaggio, {
+          description: `Valore totale: EUR ${r?.data?.valore_totale?.toLocaleString('it-IT')}`,
+        });
       } else {
-        alert('Nessun nuovo cespite trovato nelle fatture XML.');
+        toast.info('Nessun nuovo cespite trovato nelle fatture XML.');
       }
       loadCespiti();
     } catch (e) {
-      alert('Errore scan: ' + (e.response?.data?.detail || e.message));
+      toast.error('Errore scan: ' + (e.response?.data?.detail || e.message));
     } finally {
       setLoading(false);
     }
@@ -316,7 +317,7 @@ export default function GestioneCespiti() {
       setEditData({});
       loadCespiti();
     } catch (e) {
-      alert('Errore: ' + (e.response?.data?.detail || e.message));
+      toast.error('Errore: ' + (e.response?.data?.detail || e.message));
     }
   };
 
@@ -336,7 +337,7 @@ export default function GestioneCespiti() {
       await api.delete(`/api/cespiti/${cespite.id}`);
       loadCespiti();
     } catch (e) {
-      alert('Errore: ' + (e.response?.data?.detail || e.message));
+      toast.error('Errore: ' + (e.response?.data?.detail || e.message));
     }
   };
 

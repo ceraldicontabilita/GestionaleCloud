@@ -8,6 +8,7 @@ import { formatEuro, formatDateIT, formatDateGGMM, STYLES, COLORS, SHADOWS, BORD
 import { PageLayout } from '../components/PageLayout';
 import ModalFattura from '../components/ModalFattura';
 import { useConfirm } from '../components/ui/ConfirmDialog';
+import { toast } from 'sonner';
 import { Button, Badge, StatCard, Table, TableWrap, Th, Td, Input, RowActions, RowActionButton, ListaAdattiva } from '../components/ds';
 
 const STATI_ASSEGNO = {
@@ -215,7 +216,7 @@ export default function GestioneAssegni() {
 
   const handleGenerate = async () => {
     if (!generateForm.numero_primo) {
-      alert('Inserisci il numero del primo assegno');
+      toast.warning('Inserisci il numero del primo assegno');
       return;
     }
 
@@ -226,7 +227,7 @@ export default function GestioneAssegni() {
       setGenerateForm({ numero_primo: '', quantita: 10 });
       loadData();
     } catch (error) {
-      alert('Errore: ' + (error.response?.data?.detail || error.message));
+      toast.error('Errore: ' + (error.response?.data?.detail || error.message));
     } finally {
       setGenerating(false);
     }
@@ -235,10 +236,10 @@ export default function GestioneAssegni() {
   const handleClearEmpty = async () => {
     try {
       const res = await api.delete(`/api/assegni/clear-generated?stato=vuoto`);
-      alert(res.data.message);
+      toast.success(res.data.message);
       loadData();
     } catch (error) {
-      alert('Errore: ' + (error.response?.data?.detail || error.message));
+      toast.error('Errore: ' + (error.response?.data?.detail || error.message));
     }
   };
 ;
@@ -266,7 +267,7 @@ export default function GestioneAssegni() {
       setEditingId(null);
       loadData();
     } catch (error) {
-      alert('Errore: ' + (error.response?.data?.detail || error.message));
+      toast.error('Errore: ' + (error.response?.data?.detail || error.message));
     }
   };
 
@@ -340,12 +341,9 @@ export default function GestioneAssegni() {
         fornitoreNuovo &&
         fornitoreNuovo.toLowerCase() !== fornitoreEsistente.toLowerCase()
       ) {
-        alert(
-          '⚠️ Non puoi collegare fatture di fornitori diversi allo stesso assegno!\n\nFornitore selezionato: ' +
-            fornitoreEsistente +
-            '\nStai cercando di aggiungere: ' +
-            fornitoreNuovo
-        );
+        toast.warning('Non puoi collegare fatture di fornitori diversi allo stesso assegno', {
+          description: 'Fornitore selezionato: ' + fornitoreEsistente + ' — stai cercando di aggiungere: ' + fornitoreNuovo,
+        });
         return;
       }
 
@@ -371,7 +369,7 @@ export default function GestioneAssegni() {
         },
       ]);
     } else {
-      alert('Puoi collegare massimo 4 fatture per assegno');
+      toast.warning('Puoi collegare massimo 4 fatture per assegno');
     }
   };
 
@@ -392,7 +390,7 @@ export default function GestioneAssegni() {
       setSelectedFatture([]);
       loadData();
     } catch (error) {
-      alert('Errore: ' + (error.response?.data?.detail || error.message));
+      toast.error('Errore: ' + (error.response?.data?.detail || error.message));
     }
   };
 
@@ -411,7 +409,7 @@ export default function GestioneAssegni() {
       await api.delete(`/api/assegni/${assegno.id}`);
       loadData();
     } catch (error) {
-      alert('Errore: ' + (error.response?.data?.detail || error.message));
+      toast.error('Errore: ' + (error.response?.data?.detail || error.message));
     }
   };
 
@@ -468,7 +466,7 @@ export default function GestioneAssegni() {
       setAutoAssocResult(res.data);
       loadData();
     } catch (error) {
-      alert('Errore: ' + (error.response?.data?.detail || error.message));
+      toast.error('Errore: ' + (error.response?.data?.detail || error.message));
     } finally {
       setAutoAssociating(false);
     }
@@ -487,7 +485,7 @@ export default function GestioneAssegni() {
       });
       if (!dryRun) loadData();
     } catch (error) {
-      alert('Errore Auto-Match: ' + (error.response?.data?.detail || error.message));
+      toast.error('Errore Auto-Match: ' + (error.response?.data?.detail || error.message));
     } finally {
       setAutoAssociating(false);
     }
@@ -506,7 +504,7 @@ export default function GestioneAssegni() {
       });
       setAmbiguiSelections(def);
     } catch (e) {
-      alert('Errore caricamento ambigui: ' + (e.response?.data?.detail || e.message));
+      toast.error('Errore caricamento ambigui: ' + (e.response?.data?.detail || e.message));
     } finally {
       setAmbiguiLoading(false);
     }
@@ -533,7 +531,7 @@ export default function GestioneAssegni() {
   const resolveAmbiguo = async assegnoId => {
     const fattura_ids = ambiguiSelections[assegnoId] || [];
     if (fattura_ids.length === 0) {
-      alert('Seleziona almeno una fattura');
+      toast.warning('Seleziona almeno una fattura');
       return;
     }
     setAmbiguiResolving(p => ({ ...p, [assegnoId]: true }));
@@ -542,7 +540,7 @@ export default function GestioneAssegni() {
       setAmbiguiList(list => list.filter(a => a.assegno_id !== assegnoId));
       loadData();
     } catch (e) {
-      alert('Errore: ' + (e.response?.data?.detail || e.message));
+      toast.error('Errore: ' + (e.response?.data?.detail || e.message));
     } finally {
       setAmbiguiResolving(p => ({ ...p, [assegnoId]: false }));
     }
@@ -558,7 +556,7 @@ export default function GestioneAssegni() {
       // Carica anche le stats aggiornate
       loadStatsAvanzate();
     } catch (error) {
-      alert('Errore Learning: ' + (error.response?.data?.detail || error.message));
+      toast.error('Errore Learning: ' + (error.response?.data?.detail || error.message));
     } finally {
       setLearningLoading(false);
     }
@@ -573,7 +571,7 @@ export default function GestioneAssegni() {
       setAutoAssocResult(res.data);
       loadData();
     } catch (error) {
-      alert('Errore: ' + (error.response?.data?.detail || error.message));
+      toast.error('Errore: ' + (error.response?.data?.detail || error.message));
     } finally {
       setAutoAssociating(false);
     }
@@ -590,7 +588,7 @@ export default function GestioneAssegni() {
         loadData();
       }
     } catch (error) {
-      alert('Errore: ' + (error.response?.data?.detail || error.message));
+      toast.error('Errore: ' + (error.response?.data?.detail || error.message));
     } finally {
       setPuliziaLoading(false);
     }
@@ -622,7 +620,7 @@ export default function GestioneAssegni() {
         loadData();
       }
     } catch (error) {
-      alert('Errore: ' + (error.response?.data?.detail || error.message));
+      toast.error('Errore: ' + (error.response?.data?.detail || error.message));
     } finally {
       setCombinazioneLoading(false);
     }
@@ -888,7 +886,7 @@ export default function GestioneAssegni() {
   // Genera PDF per assegni selezionati
   const generateSelectedPDF = () => {
     if (selectedAssegni.size === 0) {
-      alert('Seleziona almeno un assegno');
+      toast.warning('Seleziona almeno un assegno');
       return;
     }
 
@@ -2195,7 +2193,7 @@ export default function GestioneAssegni() {
                                     if (assegnoData) {
                                       openFattureModal(assegnoData);
                                     } else {
-                                      alert(
+                                      toast.warning(
                                         `Assegno ${numero} non trovato nella lista. Prova a rimuovere i filtri.`
                                       );
                                     }

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../api';
+import { toast } from 'sonner';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { RefreshCw, Download, AlertTriangle, CheckCircle, Loader2, Info } from 'lucide-react';
 
@@ -59,7 +60,7 @@ export default function VerificaMovimentiBanca() {
       }
     } catch (e) {
       setImported(s => ({ ...s, [ec_id]: 'err' }));
-      alert('Errore import: ' + (e?.response?.data?.detail || e?.message));
+      toast.error('Errore import: ' + (e?.response?.data?.detail || e?.message));
     } finally {
       setImporting(s => ({ ...s, [ec_id]: false }));
     }

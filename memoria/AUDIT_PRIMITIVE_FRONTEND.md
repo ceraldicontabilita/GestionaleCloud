@@ -3,17 +3,12 @@
 > (toast per alert informativi, dialog per confirm, DocumentViewerModal per window.open
 > di documenti; lasciare window.open legittimi verso URL esterni).
 
-## `alert(` — 79 occorrenze
-- `components/ExportButton.jsx` : righe 25, 75, 83, 125
-- `components/prima-nota/PrimaNotaComponents.jsx` : righe 538, 542
-- `components/prima-nota/PrimaNotaSalariTab.jsx` : righe 188, 194, 200, 203, 228, 231
-- `pages/Admin.jsx` : righe 236, 245, 254, 256, 259, 274, 285, 349, 356, 365, 371, 382, 386, 395, 401, 1586, 1589
-- `pages/BatchReprocessing.jsx` : righe 71
-- `pages/Fornitori.jsx` : righe 261, 1331, 1349, 1366, 1380, 1404, 1447, 1461, 1496, 1501, 1506, 1537, 1547, 1557, 1582, 1608, 2908, 2942
-- `pages/GestioneAssegni.jsx` : righe 218, 229, 238, 241, 269, 343, 374, 395, 414, 471, 490, 509, 536, 545, 561, 576, 593, 625, 891, 2198
-- `pages/GestioneCespiti.jsx` : righe 252, 268, 275, 278, 287, 291, 295, 319, 339
-- `pages/NoleggioAuto.jsx` : righe 1784
-- `pages/VerificaMovimentiBanca.jsx` : righe 62
+## `alert(` — ✅ COMPLETATO (0 residue)
+Tutti gli alert() convertiti in toast sonner (toast.success/error/warning/info),
+una pagina alla volta con build verificata: GestioneAssegni (20), Fornitori (18),
+Admin (17), GestioneCespiti (9), PrimaNotaSalariTab (6), ExportButton (4),
+PrimaNotaComponents (2), VerificaMovimentiBanca (1), BatchReprocessing (1).
+Restano confirm()/prompt()/window.open() (sezioni sotto).
 
 ## `confirm(` — 36 occorrenze
 - `pages/Admin.jsx` : righe 1195

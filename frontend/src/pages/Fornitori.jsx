@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { useNavigate, Link } from 'react-router-dom';
 import api from '../api';
+import { toast } from 'sonner';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import Portal from '../components/Portal';
 import ModalFattura from '../components/ModalFattura';
@@ -258,7 +259,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
 
   const handleSubmit = () => {
     if (!form.ragione_sociale) {
-      alert('Inserisci la ragione sociale');
+      toast.warning('Inserisci la ragione sociale');
       return;
     }
     onSave(form);
@@ -1328,9 +1329,9 @@ export default function Fornitori() {
 
       // Mostra feedback se sono stati rimossi prodotti dal magazzino
       if (response.data?.prodotti_rimossi_magazzino > 0) {
-        alert(
-          `✅ Fornitore salvato!\n\n🗑️ ${response.data.prodotti_rimossi_magazzino} prodotti rimossi automaticamente dal magazzino (fornitore escluso).`
-        );
+        toast.success('Fornitore salvato', {
+          description: `${response.data.prodotti_rimossi_magazzino} prodotti rimossi automaticamente dal magazzino (fornitore escluso).`,
+        });
       }
 
       setModalOpen(false);
@@ -1346,7 +1347,7 @@ export default function Fornitori() {
       }
       setCurrentSupplier(null);
     } catch (error) {
-      alert('Errore salvataggio: ' + (error.response?.data?.detail || error.message));
+      toast.error('Errore salvataggio: ' + (error.response?.data?.detail || error.message));
     } finally {
       setSaving(false);
     }
@@ -1363,7 +1364,7 @@ export default function Fornitori() {
         prev.map(s => (idFornitore(s) === supplierId ? { ...s, ...payload } : s))
       );
     } catch (error) {
-      alert('Errore aggiornamento metodo: ' + (error.response?.data?.detail || error.message));
+      toast.error('Errore aggiornamento metodo: ' + (error.response?.data?.detail || error.message));
     }
   };
 
@@ -1377,7 +1378,7 @@ export default function Fornitori() {
         )
       );
     } catch (error) {
-      alert('Errore aggiornamento magazzino: ' + (error.response?.data?.detail || error.message));
+      toast.error('Errore aggiornamento magazzino: ' + (error.response?.data?.detail || error.message));
     }
   };
 
@@ -1401,7 +1402,7 @@ export default function Fornitori() {
         prev.map(s => (idFornitore(s) === chiave ? { ...s, cessato: nuovoValore } : s))
       );
     } catch (error) {
-      alert('Errore aggiornamento stato: ' + (error.response?.data?.detail || error.message));
+      toast.error('Errore aggiornamento stato: ' + (error.response?.data?.detail || error.message));
     }
   };
 
@@ -1444,7 +1445,7 @@ export default function Fornitori() {
           handleDelete(id, true);
         }
       } else {
-        alert('Errore eliminazione: ' + errorMsg);
+        toast.error('Errore eliminazione: ' + errorMsg);
       }
     }
   };
@@ -1458,7 +1459,7 @@ export default function Fornitori() {
   const handleSearchPiva = async supplier => {
     const piva = supplier.partita_iva || supplier.piva;
     if (!piva) {
-      alert('Questo fornitore non ha una Partita IVA');
+      toast.warning('Questo fornitore non ha una Partita IVA');
       return;
     }
 
@@ -1493,17 +1494,17 @@ export default function Fornitori() {
             prev.map(s => (idFornitore(s) === chiave ? { ...s, ...updates } : s))
           );
         } else {
-          alert(
-            `Nessun dato nuovo trovato per ${supplier.ragione_sociale || supplier.partita_iva}.\nI dati sono già completi o non disponibili su VIES.`
+          toast.info(
+            `Nessun dato nuovo trovato per ${supplier.ragione_sociale || supplier.partita_iva}: dati già completi o non disponibili su VIES.`
           );
         }
       } else {
-        alert(
-          `Partita IVA ${supplier.partita_iva} non trovata nel database VIES.\n\nNota: VIES contiene solo aziende registrate per operazioni intracomunitarie UE.`
-        );
+        toast.warning(`Partita IVA ${supplier.partita_iva} non trovata nel database VIES`, {
+          description: 'VIES contiene solo aziende registrate per operazioni intracomunitarie UE.',
+        });
       }
     } catch (error) {
-      alert('Errore ricerca: ' + (error.response?.data?.detail || error.message));
+      toast.error('Errore ricerca: ' + (error.response?.data?.detail || error.message));
     }
   };
 
@@ -1534,7 +1535,7 @@ export default function Fornitori() {
   // Mostra fatturato fornitore per anno
   const handleShowFatturato = async (supplier, anno) => {
     if (!(supplier.partita_iva || supplier.piva || supplier.vat_number)) {
-      alert('Questo fornitore non ha una Partita IVA');
+      toast.warning('Questo fornitore non ha una Partita IVA');
       return;
     }
 
@@ -1544,7 +1545,7 @@ export default function Fornitori() {
       const res = await api.get(`/api/suppliers/${idFornitore(supplier)}/fatturato?anno=${anno}`);
       setFatturatoModal({ open: true, fornitore: supplier, data: res.data, loading: false });
     } catch (error) {
-      alert('Errore caricamento fatturato: ' + (error.response?.data?.detail || error.message));
+      toast.error('Errore caricamento fatturato: ' + (error.response?.data?.detail || error.message));
       setFatturatoModal({ open: false, fornitore: null, data: null, loading: false });
     }
   };
@@ -1554,7 +1555,7 @@ export default function Fornitori() {
   // arriva dal riepilogo fatturato di un anno preciso.
   const handleViewInvoicesModal = async (supplier, anno = '') => {
     if (!idFornitore(supplier)) {
-      alert('Questo fornitore non ha una Partita IVA');
+      toast.warning('Questo fornitore non ha una Partita IVA');
       return;
     }
 
@@ -1579,7 +1580,7 @@ export default function Fornitori() {
       );
       setEstrattoModal(prev => ({ ...prev, data: res.data, loading: false }));
     } catch (error) {
-      alert('Errore caricamento fatture: ' + (error.response?.data?.detail || error.message));
+      toast.error('Errore caricamento fatture: ' + (error.response?.data?.detail || error.message));
       setEstrattoModal(prev => ({ ...prev, open: false, loading: false }));
     }
   };
@@ -1605,7 +1606,7 @@ export default function Fornitori() {
       );
       setEstrattoModal(prev => ({ ...prev, data: res.data, loading: false }));
     } catch (error) {
-      alert('Errore: ' + (error.response?.data?.detail || error.message));
+      toast.error('Errore: ' + (error.response?.data?.detail || error.message));
       setEstrattoModal(prev => ({ ...prev, loading: false }));
     }
   };
@@ -2905,7 +2906,7 @@ export default function Fornitori() {
                                           });
                                           reloadEstratto();
                                         } catch (e) {
-                                          alert(
+                                          toast.error(
                                             'Errore: ' + (e.response?.data?.detail || e.message)
                                           );
                                         }
@@ -2939,7 +2940,7 @@ export default function Fornitori() {
                                           });
                                           reloadEstratto();
                                         } catch (e) {
-                                          alert(
+                                          toast.error(
                                             'Errore: ' + (e.response?.data?.detail || e.message)
                                           );
                                         }

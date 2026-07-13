@@ -4,6 +4,7 @@
  * - useCallback per funzioni stabili
  */
 import React, { memo, useCallback, useState } from 'react';
+import { toast } from 'sonner';
 import { formatEuro } from '../../lib/utils';
 
 // Costanti
@@ -535,11 +536,11 @@ export const AggiustamentoModal = memo(function AggiustamentoModal({
 
   const handleSubmit = useCallback(async () => {
     if (!formData.dipendente) {
-      alert('Seleziona un dipendente');
+      toast.warning('Seleziona un dipendente');
       return;
     }
     if (!formData.importo || formData.importo === 0) {
-      alert('Inserisci un importo');
+      toast.warning('Inserisci un importo');
       return;
     }
 

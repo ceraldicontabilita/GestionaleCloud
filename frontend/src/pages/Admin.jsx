@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import api from '../api';
+import { toast } from 'sonner';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { COLORS, SHADOWS, BORDER_RADIUS, useIsMobile } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
@@ -233,7 +234,7 @@ export default function Admin() {
       });
       setNewKeywordInput('');
     } catch (e) {
-      alert('Errore: ' + (e.response?.data?.detail || e.message));
+      toast.error('Errore: ' + (e.response?.data?.detail || e.message));
     }
   }
 
@@ -242,7 +243,7 @@ export default function Admin() {
       await api.delete(`/api/config/email-accounts/${accountId}`);
       loadEmailAccounts();
     } catch (e) {
-      alert('Errore: ' + (e.response?.data?.detail || e.message));
+      toast.error('Errore: ' + (e.response?.data?.detail || e.message));
     }
   }
 
@@ -251,12 +252,12 @@ export default function Admin() {
     try {
       const r = await api.post(`/api/config/email-accounts/${accountId}/test`);
       if (r.data.success) {
-        alert(`✅ Connessione riuscita!\n\nEmail nella casella: ${r?.data?.email_count}`);
+        toast.success('Connessione riuscita', { description: `Email nella casella: ${r?.data?.email_count}` });
       } else {
-        alert(`❌ Connessione fallita:\n${r?.data?.message}`);
+        toast.error('Connessione fallita', { description: r?.data?.message });
       }
     } catch (e) {
-      alert('Errore test: ' + (e.response?.data?.detail || e.message));
+      toast.error('Errore test: ' + (e.response?.data?.detail || e.message));
     } finally {
       setTestingConnection(null);
     }
@@ -271,7 +272,7 @@ export default function Admin() {
       loadParoleChiave();
       setNewKeyword({ ...newKeyword, parola: '' });
     } catch (e) {
-      alert('Errore: ' + (e.response?.data?.detail || e.message));
+      toast.error('Errore: ' + (e.response?.data?.detail || e.message));
     }
   }
 
@@ -282,7 +283,7 @@ export default function Admin() {
       );
       loadParoleChiave();
     } catch (e) {
-      alert('Errore: ' + (e.response?.data?.detail || e.message));
+      toast.error('Errore: ' + (e.response?.data?.detail || e.message));
     }
   }
 
@@ -346,14 +347,14 @@ export default function Admin() {
     setSyncLoading(true);
     try {
       const r = await api.post(`/api/prima-nota/cassa/fix-corrispettivi-importo?anno=${anno}`);
-      alert(
-        `Corretti ${r?.data?.corretti} movimenti.\nDifferenza totale: €${r?.data?.totale_differenza_euro?.toLocaleString('it-IT')}`
-      );
+      toast.success(`Corretti ${r?.data?.corretti} movimenti`, {
+        description: `Differenza totale: €${r?.data?.totale_differenza_euro?.toLocaleString('it-IT')}`,
+      });
       await verificaEntrateCorrette();
       await loadSyncStatus();
     } catch (e) {
       console.error('Error fix:', e);
-      alert('Errore durante la correzione');
+      toast.error('Errore durante la correzione');
     }
     setSyncLoading(false);
   }
@@ -362,13 +363,13 @@ export default function Admin() {
     setSyncLoading(true);
     try {
       const r = await api.post('/api/sync/match-fatture-cassa');
-      alert(
-        `Match completato:\n- Trovate: ${r?.data?.matched}\n- Non trovate: ${r?.data?.not_matched}`
-      );
+      toast.success('Match completato', {
+        description: `Trovate: ${r?.data?.matched} — non trovate: ${r?.data?.not_matched}`,
+      });
       await loadSyncStatus();
     } catch (e) {
       console.error('Error match:', e);
-      alert('Errore durante il match');
+      toast.error('Errore durante il match');
     }
     setSyncLoading(false);
   }
@@ -379,11 +380,11 @@ export default function Admin() {
       const r = await api.post('/api/admin/fatture-set-metodo-pagamento', {
         metodo_pagamento: 'Bonifico',
       });
-      alert(`Aggiornate ${r?.data?.updated || r.data.modified_count || 0} fatture`);
+      toast.success(`Aggiornate ${r?.data?.updated || r.data.modified_count || 0} fatture`);
       await loadSyncStatus();
     } catch (e) {
       console.error('Error:', e);
-      alert('Errore');
+      toast.error('Errore');
     }
     setSyncLoading(false);
   }
@@ -392,13 +393,13 @@ export default function Admin() {
     setSyncLoading(true);
     try {
       const r = await api.post('/api/sync/match-fatture-banca');
-      alert(
-        `Match completato:\n- Associate: ${r?.data?.matched}\n- Non trovate: ${r?.data?.not_matched}`
-      );
+      toast.success('Match completato', {
+        description: `Associate: ${r?.data?.matched} — non trovate: ${r?.data?.not_matched}`,
+      });
       await loadSyncStatus();
     } catch (e) {
       console.error('Error match banca:', e);
-      alert('Errore durante il match');
+      toast.error('Errore durante il match');
     }
     setSyncLoading(false);
   }
@@ -1583,10 +1584,10 @@ function FattureAdminTab() {
       const res = await api.post('/api/admin/fatture-set-metodo-pagamento', {
         metodo_pagamento: metodo,
       });
-      alert(`✅ ${res?.data?.message}\n\nFatture aggiornate: ${res?.data?.updated}`);
+      toast.success(res?.data?.message, { description: `Fatture aggiornate: ${res?.data?.updated}` });
       loadFattureStats();
     } catch (e) {
-      alert('❌ Errore: ' + (e.response?.data?.detail || e.message));
+      toast.error('Errore: ' + (e.response?.data?.detail || e.message));
     }
     setUpdating(false);
     setConfirmAction(null);
