@@ -115,9 +115,11 @@ PROSSIMA FASE: P1 consolidamento collection/motori (§5-§8).
 - [x] §12.2 fail-fast produzione: opt-in via env SECRET_KEY_REQUIRED=true (default off,
       comportamento invariato) — rifiuta l'avvio se SECRET_KEY manca in produzione.
 - [x] §13.2 router non montati: verificato 0 (backend già pulito su questo fronte).
-- [~] §12.7 protezione download: NON bulk — molti PDF sono in <iframe src> che non invia
-      l'header auth; aggiungere Depends li romperebbe. Va fatto per-endpoint (blob-fetch/URL
-      firmati). Documentato, rinviato.
+- [x] §12.7 protezione download VERIFICATA: tutti gli endpoint PDF usati dai viewer sono
+      sotto /api/* e FUORI dall'allowlist → il middleware globale li protegge; gli <iframe>
+      funzionano perché stessa origine → il browser invia il cookie access_token (rinnovo
+      scorrevole incluso). Nessun Depends per-endpoint necessario. Verbale PayPal usa già
+      blob-fetch autenticato.
 - [x] §13.1 frontend primitive COMPLETATO: alert() ✅ (79 → toast sonner) · confirm() ✅
       (16 → ConfirmDialog) · prompt() ✅ (dialog PIN in-app in Utenti.jsx) · window.open ✅
       rivisti tutti (6 documenti → DocumentViewerModal: F24, doc non associati, ricevuta
@@ -126,7 +128,19 @@ PROSSIMA FASE: P1 consolidamento collection/motori (§5-§8).
       Esiste il sistema canonico (ConfirmDialog/use-toast) già parzialmente adottato, ma la
       conversione (specie confirm→dialog dichiarativo) cambia il control-flow: non
       automatizzabile in sicurezza. Deliverable checklist: memoria/AUDIT_PRIMITIVE_FRONTEND.md.
-- [ ] §12 allowlist endpoint pubblici · §13.2 altro codice morto (stub/v1): da fare con verifica.
+- [x] §12 allowlist endpoint pubblici CHIUSA: l'auth è centralizzata in
+      app/middleware/authentication.py (AuthenticationMiddleware montato in main.py) che
+      protegge OGNI /api/* con JWT salvo allowlist esplicita (health, login/setup, webhook
+      WhatsApp con verify_token, ponte ERP con secret, pagine legali, docs, SEO). Lo scan
+      per-route "75 protette / 1031 pubbliche" era fuorviante: le dependency per-route sono
+      il secondo livello (ruoli/admin), il primo è il middleware. Aggiunto test-fotografia
+      (tests/test_sicurezza_auth.py::TestAllowlistCongelata) che congela l'intera allowlist
+      con set-equality + verifica che il middleware sia montato: ogni nuovo path pubblico fa
+      fallire la suite. NOTA /api/v1 (API key esterne): oggi richiede ANCHE il JWT perché
+      non è whitelistato — canale di fatto spento verso l'esterno; NON whitelistato di mia
+      iniziativa (regola parametri: /api/v1/keys/generate non ha altra auth propria,
+      aprirlo permetterebbe a chiunque di generare chiavi). Decisione lasciata all'utente.
+- [ ] §13.2 altro codice morto (stub/v1): da fare con verifica.
 ### Deliverable (§16) — in corso: PROMPT salvato, tracker attivo
 
 ---

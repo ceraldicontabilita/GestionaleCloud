@@ -85,6 +85,68 @@ class TestPublicPrefixes:
         assert "/api/bank/" not in PUBLIC_PREFIXES
 
 
+class TestAllowlistCongelata:
+    """§12: fotografia ESATTA dell'allowlist del middleware.
+
+    Se questi test falliscono, qualcuno ha aggiunto (o tolto) un path
+    pubblico: la modifica va fatta DELIBERATAMENTE aggiornando anche
+    questa fotografia e memoria/ENDPOINT_CLASSIFICAZIONE_FINALE.md.
+    Ogni path qui dentro è raggiungibile da internet SENZA login.
+    """
+
+    ALLOWLIST_PATHS_ATTESA = {
+        # Health check
+        "/", "/health", "/api/health", "/api/ping",
+        # Autenticazione (login PIN + setup primo admin)
+        "/api/auth/login", "/api/auth/setup",
+        # Integrazioni esterne con auth propria (verify_token Meta, ERP_BRIDGE_SECRET)
+        "/api/whatsapp/webhook", "/api/erp/ponte/fattura-ricevuta",
+        # Pagine legali (revisione app Meta)
+        "/api/privacy", "/api/terms", "/api/data-deletion",
+        # OpenAPI docs
+        "/docs", "/redoc", "/openapi.json",
+        # SEO/crawler
+        "/robots.txt", "/sitemap.xml", "/favicon.ico",
+    }
+
+    ALLOWLIST_PREFISSI_ATTESA = ["/api/auth/", "/api/public/", "/docs", "/redoc"]
+
+    def test_public_paths_esattamente_quelli_attesi(self):
+        assert PUBLIC_PATHS == self.ALLOWLIST_PATHS_ATTESA, (
+            f"Allowlist path pubblici cambiata!\n"
+            f"Aggiunti: {PUBLIC_PATHS - self.ALLOWLIST_PATHS_ATTESA}\n"
+            f"Rimossi: {self.ALLOWLIST_PATHS_ATTESA - PUBLIC_PATHS}"
+        )
+
+    def test_public_prefixes_esattamente_quelli_attesi(self):
+        assert sorted(PUBLIC_PREFIXES) == sorted(self.ALLOWLIST_PREFISSI_ATTESA), (
+            f"Prefissi pubblici cambiati: {PUBLIC_PREFIXES}"
+        )
+
+    def test_middleware_montato_in_app(self):
+        """Il middleware deve essere davvero montato: senza, l'allowlist è carta."""
+        import app.main as main_mod
+        from app.middleware.authentication import AuthenticationMiddleware
+        stack = [m.cls for m in main_mod.app.user_middleware]
+        assert AuthenticationMiddleware in stack, (
+            "AuthenticationMiddleware NON è montato su app: tutte le route sarebbero pubbliche"
+        )
+
+    def test_nessun_prefisso_pubblico_su_dati_reali(self):
+        """Nessun prefisso pubblico deve coprire router con dati aziendali."""
+        prefissi_vietati = {
+            "/api/f24", "/api/invoices", "/api/fatture", "/api/employees",
+            "/api/dipendenti", "/api/cash", "/api/bank", "/api/assegni",
+            "/api/warehouse", "/api/suppliers", "/api/prima-nota",
+            "/api/accounting", "/api/bilancio", "/api/exports", "/api/v1",
+        }
+        for prefix in PUBLIC_PREFIXES:
+            for vietato in prefissi_vietati:
+                assert not vietato.startswith(prefix.rstrip("/")) or prefix == "/api/auth/", (
+                    f"Il prefisso pubblico {prefix} copre {vietato} (dati reali)"
+                )
+
+
 class TestPathMatching:
     """Test matching dei path con la logica del middleware."""
 
