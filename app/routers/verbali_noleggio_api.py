@@ -62,7 +62,7 @@ async def get_verbale_dettaglio(numero_verbale: str) -> Dict[str, Any]:
     
     # Arricchisci con dati driver se disponibile
     if verbale.get("driver_id"):
-        driver = await db.employees.find_one({"id": verbale["driver_id"]})
+        driver = await db["dipendenti"].find_one({"id": verbale["driver_id"]})
         if driver:
             verbale["driver_dettaglio"] = {
                 "nome": driver.get("nome"),
@@ -349,7 +349,7 @@ async def associa_driver_verbale(
     db = Database.get_db()
     
     # Verifica che il driver esista
-    driver = await db.employees.find_one({"id": driver_id})
+    driver = await db["dipendenti"].find_one({"id": driver_id})
     if not driver:
         raise HTTPException(status_code=404, detail=f"Driver {driver_id} non trovato")
     

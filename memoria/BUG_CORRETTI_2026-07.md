@@ -51,9 +51,35 @@ Ogni bug: problema → correzione → test di regressione. Baseline `b9ff5c7` (2
   fallback con warning; la chiave non viene loggata.
 - **Test**: `tests/test_p0_12_api_key_header.py`.
 
+## P0.3 — Libro Unico usa `employees`, TFR usa `dipendenti` ✅
+- **File**: `libro_unico_parser.py`, `verbali_noleggio_api.py`.
+- **Fix**: anagrafica su `Collections.EMPLOYEES` (=`dipendenti`); driver verbali su `dipendenti`.
+  Migrazione non distruttiva `app/scripts/migra_employees_a_dipendenti.py`.
+- **Test**: `tests/test_p0_03_employees_dipendenti.py`.
+
+## P0.6 — Force-reimport non rispetta il contratto ✅
+- **File**: `bank/estratto_conto.py`.
+- **Problema**: docstring prometteva di cancellare l'anno, ma il codice fa import additivo/dedup.
+- **Fix**: docstring veritiero (NON cancella; import additivo, preserva riconciliazioni);
+  alias onesto `POST /reimport`. Route `force-reimport` mantenuta per compat frontend.
+- **Test**: `tests/test_p0_06_force_reimport.py`.
+
+## P0.9 — Pagamento fattura non idempotente ✅
+- **File**: `multi_pagamento.py`, `database.py`.
+- **Fix**: `chiave_idempotenza_pagamento()` (esplicita client o naturale fattura+importo+
+  data+metodo+assegno); se il pagamento esiste già si ritorna quello senza duplicare la
+  Prima Nota. Indice unique sparse `pagamenti.idempotency_key`.
+- **Test**: `tests/test_p0_09_pagamento_idempotente.py`.
+
+## P0.10 — Stato job solo in memoria ✅
+- **File**: `batch_reprocessing.py`.
+- **Fix**: stato persistito su MongoDB (collezione `job_state`, chiave `batch_reprocessing`),
+  non più variabile globale → sopravvive a restart/multi-worker.
+- **Test**: `tests/test_p0_10_job_state.py`.
+
 ## In lavorazione
-- P0.3 (Libro Unico `employees` vs `dipendenti`), P0.6 (force-reimport), P0.7 (F24 banca
-  collection), P0.8 (parser F24 DTO), P0.9 (pagamento idempotente), P0.10 (job state).
+- P0.7 (F24 banca: upload scrive `movimenti_f24_banca`, riconcilia legge `estratto_conto_movimenti`),
+  P0.8 (parser F24 DTO unico).
 
 ---
-_Stato test: 273 verdi (baseline 257 + 16 nuovi). App boota (1111 route), build frontend verde._
+_Stato test: 283 verdi (baseline 257 + 26 nuovi). App boota (1112 route), build frontend verde._

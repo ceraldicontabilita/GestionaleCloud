@@ -753,8 +753,11 @@ async def import_libro_unico(
                     if pat_inail:
                         anagrafica_update["pat_inail"] = pat_inail
                     
-                    # Upsert anagrafica
-                    ana_result = await db.employees.update_one(
+                    # Upsert anagrafica — collezione canonica dipendenti (era
+                    # db.employees: STEP1 scriveva "employees" mentre lo STEP3b TFR
+                    # leggeva "dipendenti" → il collegamento non trovava mai il
+                    # dipendente appena creato. Vedi P0.3.
+                    ana_result = await db[Collections.EMPLOYEES].update_one(
                         {"codice_fiscale": cf},
                         {
                             "$set": anagrafica_update,

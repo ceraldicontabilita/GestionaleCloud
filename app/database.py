@@ -134,6 +134,9 @@ class Database:
         await _safe_index("pagamenti", "fattura_id", sparse=True, name="idx_pagamenti_fattura")
         await _safe_index("pagamenti", [("data", -1)], name="idx_pagamenti_data")
         await _safe_index("pagamenti", "stato", name="idx_pagamenti_stato")
+        # Idempotenza pagamenti (P0.9): stesso submit -> stesso documento, no doppioni
+        await _safe_index("pagamenti", "idempotency_key", unique=True, sparse=True,
+                          name="idx_pagamenti_idempotency")
 
         # --- Verbali Noleggio ---
         await _safe_index("verbali_noleggio", [("data_verbale", -1)], name="idx_verbali_data")

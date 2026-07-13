@@ -696,16 +696,19 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
 
 
 @router.post("/force-reimport")
+@router.post("/reimport")  # alias onesto: NON cancella nulla (vedi P0.6)
 @handle_errors
 async def force_reimport_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
     """
-    Reimport FORZATO dell'estratto conto.
-    - Cancella TUTTI i record degli anni presenti nel CSV
-    - Inserisce TUTTE le righe del CSV senza deduplicazione
-    - Preserva i dati di anni NON presenti nel CSV
-    
-    Utile quando il CSV ha righe duplicate volute (es. commissioni €1 ripetute)
-    o quando si vuole sincronizzare esattamente con il file bancario.
+    Re-import ADDITIVO dell'estratto conto da CSV (NON distruttivo).
+    - NON cancella alcun record: i movimenti esistenti e le riconciliazioni
+      restano intatti (`record_cancellati` è sempre 0).
+    - Inserisce solo i movimenti NUOVI, saltando i duplicati per fingerprint.
+    - Sincronizza gli assegni dai nuovi movimenti.
+
+    NB (P0.6): il nome storico "force-reimport" è fuorviante — l'endpoint non
+    forza né sovrascrive; è un import additivo con deduplica. Il contratto della
+    risposta è quello reale (nessuna cancellazione).
     """
     import hashlib as _hashlib
     import uuid as _uuid

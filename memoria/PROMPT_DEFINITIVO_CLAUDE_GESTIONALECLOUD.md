@@ -11,18 +11,18 @@ Baseline: `b9ff5c7` · 257 test verdi · 1105 route · avvio lavori 13/07/2026.
 ### FASE P0 — Bug di correttezza (§4)  — dettaglio in memoria/BUG_CORRETTI_2026-07.md
 - [x] P0.1 Widget F24 legge sorgente sbagliata — conta_f24_da_pagare, test
 - [ ] P0.2 Auto-riconciliazione filtra importi negativi inesistenti  ✅ fatto (test)
-- [ ] P0.3 Libro Unico usa `employees`, TFR usa `dipendenti`
+- [x] P0.3 Libro Unico usa `employees`, TFR usa `dipendenti` — canonica dipendenti + migrazione
 - [x] P0.4 Verbali cercano `items.descrizione` invece di `linee` — linee.*, test
 - [x] P0.5 Stato assegno "associato" non valido — "assegnato" + migrazione + test
-- [ ] P0.6 Force reimport non rispetta il contratto
+- [x] P0.6 Force reimport non rispetta il contratto — docstring veritiero + alias /reimport
 - [ ] P0.7 Riconciliazione F24 scrive/legge collection diverse
 - [ ] P0.8 Processo F24 scaricati usa contratto parser errato
-- [ ] P0.9 Pagamento fattura non idempotente
-- [ ] P0.10 Stato job solo in memoria
+- [x] P0.9 Pagamento fattura non idempotente — chiave idempotenza + indice unique
+- [x] P0.10 Stato job solo in memoria — persistito su MongoDB job_state
 - [x] P0.11 Gestione riservata protetta solo dal frontend — auth backend header + test
 - [x] P0.12 Token in query string — header X-API-Key + fallback deprecato + test
 
-FATTI: P0.1, P0.2, P0.4, P0.5, P0.11, P0.12 (273 test verdi). PROSSIMI: P0.3, poi P0.6-P0.10.
+FATTI: P0.1,2,3,4,5,6,9,10,11,12 (283 test verdi). RESTANO: P0.7, P0.8 (F24).
 
 ### FASE P1 — Consolidamento collection/motori (§5-§8)  — non iniziata
 ### FASE P1 — F24/quietanze/IVA/prestazioni (§9-§11) — non iniziata

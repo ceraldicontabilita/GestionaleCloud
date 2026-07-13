@@ -1,10 +1,15 @@
 """
 Router per Batch Reprocessing di F24 e Cedolini.
 Espone endpoint per il frontend BatchReprocessing.jsx.
+
+Lo stato del job è PERSISTITO in MongoDB (collezione `job_state`), non in una
+variabile globale di processo: così sopravvive a restart e funziona con più worker
+uvicorn. Vedi P0.10 / §11.4.
 """
 import asyncio
 import logging
-from typing import Dict, Any
+from datetime import datetime, timezone
+from typing import Dict, Any, Optional
 from fastapi import APIRouter, Query
 
 from app.database import Database
@@ -13,13 +18,32 @@ from app.services.batch_reprocessing import BatchReprocessingService
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Batch Reprocessing"])
 
-# Stato globale del job in corso
-_job_state: Dict[str, Any] = {
+COLL_JOB_STATE = "job_state"
+JOB_KEY = "batch_reprocessing"
+
+_STATO_INIZIALE = {
+    "job_id": JOB_KEY,
     "running": False,
     "progress": None,
     "result": None,
     "error": None,
+    "updated_at": None,
 }
+
+
+async def _get_state(db) -> Dict[str, Any]:
+    doc = await db[COLL_JOB_STATE].find_one({"job_id": JOB_KEY}, {"_id": 0})
+    return doc or dict(_STATO_INIZIALE)
+
+
+async def _set_state(db, patch: Dict[str, Any]) -> None:
+    patch = dict(patch)
+    patch["updated_at"] = datetime.now(timezone.utc).isoformat()
+    await db[COLL_JOB_STATE].update_one(
+        {"job_id": JOB_KEY},
+        {"$set": patch, "$setOnInsert": {"job_id": JOB_KEY}},
+        upsert=True,
+    )
 
 
 @router.get("/preview")
@@ -67,17 +91,20 @@ async def get_preview() -> Dict[str, Any]:
 
 @router.get("/status")
 async def get_status() -> Dict[str, Any]:
-    """Stato corrente del job di riprocessamento."""
-    return _job_state
+    """Stato corrente del job di riprocessamento (persistito su MongoDB)."""
+    return await _get_state(Database.get_db())
 
 
 async def _run_job(service: BatchReprocessingService, method: str, dry_run: bool):
-    """Esegue il job in background aggiornando lo stato globale."""
-    global _job_state
+    """Esegue il job in background aggiornando lo stato persistito."""
+    db = Database.get_db()
     try:
-        _job_state["running"] = True
-        _job_state["error"] = None
-        _job_state["progress"] = f"In corso... ({'DRY RUN' if dry_run else 'PRODUZIONE'})"
+        await _set_state(db, {
+            "running": True,
+            "error": None,
+            "result": None,
+            "progress": f"In corso... ({'DRY RUN' if dry_run else 'PRODUZIONE'})",
+        })
 
         if method == "f24":
             result = await service.reprocess_all_f24(dry_run)
@@ -86,41 +113,35 @@ async def _run_job(service: BatchReprocessingService, method: str, dry_run: bool
         else:
             result = await service.reprocess_all(dry_run)
 
-        _job_state["result"] = result
-        _job_state["progress"] = "Completato"
+        await _set_state(db, {"result": result, "progress": "Completato", "running": False})
     except Exception as exc:
         logger.exception("Errore batch reprocessing")
-        _job_state["error"] = str(exc)
-        _job_state["progress"] = "Errore"
-    finally:
-        _job_state["running"] = False
+        await _set_state(db, {"error": str(exc), "progress": "Errore", "running": False})
+
+
+async def _avvia(method: str, dry_run: bool, label: str) -> Dict[str, str]:
+    db = Database.get_db()
+    stato = await _get_state(db)
+    if stato.get("running"):
+        return {"detail": "Job gia in corso"}
+    service = BatchReprocessingService()
+    asyncio.create_task(_run_job(service, method, dry_run))
+    return {"detail": label}
 
 
 @router.post("/start")
 async def start_reprocessing(dry_run: bool = Query(True)) -> Dict[str, str]:
     """Avvia riprocessamento completo (F24 + Cedolini)."""
-    if _job_state["running"]:
-        return {"detail": "Job gia in corso"}
-    service = BatchReprocessingService()
-    asyncio.create_task(_run_job(service, "all", dry_run))
-    return {"detail": "Riprocessamento avviato"}
+    return await _avvia("all", dry_run, "Riprocessamento avviato")
 
 
 @router.post("/f24-only")
 async def start_f24_only(dry_run: bool = Query(True)) -> Dict[str, str]:
     """Avvia riprocessamento solo F24."""
-    if _job_state["running"]:
-        return {"detail": "Job gia in corso"}
-    service = BatchReprocessingService()
-    asyncio.create_task(_run_job(service, "f24", dry_run))
-    return {"detail": "Riprocessamento F24 avviato"}
+    return await _avvia("f24", dry_run, "Riprocessamento F24 avviato")
 
 
 @router.post("/cedolini-only")
 async def start_cedolini_only(dry_run: bool = Query(True)) -> Dict[str, str]:
     """Avvia riprocessamento solo Cedolini."""
-    if _job_state["running"]:
-        return {"detail": "Job gia in corso"}
-    service = BatchReprocessingService()
-    asyncio.create_task(_run_job(service, "cedolini", dry_run))
-    return {"detail": "Riprocessamento Cedolini avviato"}
+    return await _avvia("cedolini", dry_run, "Riprocessamento Cedolini avviato")

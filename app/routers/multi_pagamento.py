@@ -12,10 +12,11 @@ Stato fattura:
 - pagata: somma pagamenti >= totale
 - eccedenza: somma pagamenti > totale (acconto o errore)
 """
+import hashlib
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query, Body
 from app.database import Database
@@ -23,6 +24,20 @@ from app.utils.error_handler import handle_errors
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def chiave_idempotenza_pagamento(
+    fattura_id: str, importo: float, data_pag: str, metodo: str,
+    assegno_numero: str = "", esplicita: Optional[str] = None,
+) -> str:
+    """Chiave stabile di un pagamento. Se il client fornisce una chiave esplicita
+    la si usa; altrimenti si deriva dai dati naturali (fattura+importo+data+metodo
+    +assegno). Serve a rendere `registra_pagamento` IDEMPOTENTE: due submit uguali
+    non creano due movimenti Prima Nota. Vedi P0.9."""
+    if esplicita:
+        return str(esplicita)
+    base = f"{fattura_id}|{round(float(importo or 0), 2)}|{data_pag}|{metodo}|{assegno_numero}"
+    return "pag_" + hashlib.sha256(base.encode("utf-8")).hexdigest()[:24]
 
 
 async def _ricalcola_stato_fattura(db, fattura_id: str) -> Dict[str, Any]:
@@ -124,11 +139,24 @@ async def registra_pagamento(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]
     fattura = await db["invoices"].find_one({"id": fattura_id}, {"_id": 0})
     if not fattura:
         raise HTTPException(status_code=404, detail="Fattura non trovata")
-    
+
+    # Idempotenza: se lo stesso pagamento è già stato registrato (stesso submit),
+    # NON crearne un altro né duplicare il movimento Prima Nota. Vedi P0.9.
+    idem = chiave_idempotenza_pagamento(
+        fattura_id, importo, data_pag, metodo,
+        assegno_numero=data.get("assegno_numero", ""),
+        esplicita=data.get("idempotency_key"),
+    )
+    esistente = await db["pagamenti"].find_one({"idempotency_key": idem}, {"_id": 0})
+    if esistente:
+        stato = await _ricalcola_stato_fattura(db, fattura_id)
+        return {"success": True, "idempotente": True, "pagamento": esistente, "stato_fattura": stato}
+
     # Crea il pagamento
     pag_id = str(uuid.uuid4())
     pagamento = {
         "id": pag_id,
+        "idempotency_key": idem,
         "fattura_id": fattura_id,
         "fattura_numero": fattura.get("invoice_number", ""),
         "fornitore": fattura.get("supplier_name", ""),
@@ -142,7 +170,7 @@ async def registra_pagamento(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]
         "prima_nota_id": None,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
-    
+
     await db["pagamenti"].insert_one(pagamento)
     
     # Registra in Prima Nota
