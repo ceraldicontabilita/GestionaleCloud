@@ -7,7 +7,8 @@ Questo modulo implementa una "learning machine" per:
 3. Suggerire associazioni basate su pattern storici
 4. Gestire l'associazione robusta con tolleranze configurabili
 """
-from fastapi import APIRouter, HTTPException, Query, Body
+from fastapi import APIRouter, HTTPException, Query, Body, Depends
+from app.utils.dependencies import get_current_admin_user
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 from collections import Counter, defaultdict
@@ -31,7 +32,8 @@ COLLECTION_FORNITORI_KEYWORDS = "fornitori_keywords"
 
 @router.post("/pulizia-duplicati")
 async def pulizia_duplicati(
-    dry_run: bool = Query(True, description="Se True, mostra solo cosa verrebbe eliminato senza eliminare")
+    dry_run: bool = Query(True, description="Se True, mostra solo cosa verrebbe eliminato senza eliminare"),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
 ) -> Dict[str, Any]:
     """
     Identifica ed elimina duplicati nella collezione assegni.

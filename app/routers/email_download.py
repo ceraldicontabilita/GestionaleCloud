@@ -2,7 +2,8 @@
 Router per Download Completo Email e Gestione Documenti Non Associati
 """
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Query, Body
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Query, Body, Depends
+from app.utils.dependencies import get_current_admin_user
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 import logging
@@ -915,7 +916,7 @@ async def list_mittenti() -> Dict[str, Any]:
 
 
 @router.post("/mittenti/migra-legacy")
-async def migra_mittenti_legacy_endpoint(dry_run: bool = True) -> Dict[str, Any]:
+async def migra_mittenti_legacy_endpoint(dry_run: bool = True, _admin: Dict[str, Any] = Depends(get_current_admin_user)) -> Dict[str, Any]:
     """Migra i mittenti dalla vecchia collezione `mittenti_attendibili` alla
     canonica `mittenti_email` (P2-2). Idempotente e non distruttiva. Con
     `dry_run=true` (default) riporta solo cosa farebbe."""
@@ -1051,7 +1052,7 @@ async def get_dizionario_email(limit: int = 100) -> Dict[str, Any]:
 
 
 @router.delete("/dizionario-email/reset")
-async def reset_dizionario_email() -> Dict[str, Any]:
+async def reset_dizionario_email(_admin: Dict[str, Any] = Depends(get_current_admin_user)) -> Dict[str, Any]:
     """Resetta il dizionario email (forza re-download di tutte le email)."""
     db = Database.get_db()
     result = await db["email_message_index"].delete_many({})

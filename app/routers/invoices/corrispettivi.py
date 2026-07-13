@@ -2,7 +2,8 @@
 Corrispettivi Router - Gestione corrispettivi telematici.
 Refactored from public_api.py
 """
-from fastapi import APIRouter, HTTPException, UploadFile, File, Query, Body
+from fastapi import APIRouter, HTTPException, UploadFile, File, Query, Body, Depends
+from app.utils.dependencies import get_current_admin_user
 from typing import Dict, Any, List
 from datetime import datetime, timezone, timedelta
 import uuid
@@ -826,7 +827,7 @@ async def hard_delete_corrispettivi_bulk(data: Dict[str, Any]) -> Dict[str, Any]
 
 @router.post("/cleanup-duplicati-forte")
 @handle_errors
-async def cleanup_duplicati_forte(anno: int = Query(None, description="Anno (opzionale). Se omesso agisce su tutti gli anni")) -> Dict[str, Any]:
+async def cleanup_duplicati_forte(anno: int = Query(None, description="Anno (opzionale). Se omesso agisce su tutti gli anni"), _admin: Dict[str, Any] = Depends(get_current_admin_user)) -> Dict[str, Any]:
     """
     Pulizia forte dei duplicati nella collection 'corrispettivi'.
     Raggruppa per (data, matricola_rt, totale arrotondato a 0.01) e mantiene il più vecchio.

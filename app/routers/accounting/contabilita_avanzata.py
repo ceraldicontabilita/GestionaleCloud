@@ -7,7 +7,8 @@ Endpoint per:
 - Rielaborazione massiva delle fatture
 - Bilancio dettagliato con deducibilità
 """
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
+from app.utils.dependencies import get_current_admin_user
 from fastapi.responses import StreamingResponse
 from typing import Dict, Any
 from datetime import datetime, timezone
@@ -91,7 +92,7 @@ async def get_piano_conti_esteso() -> Dict[str, Any]:
 
 @router.post("/inizializza-piano-esteso")
 @handle_errors
-async def inizializza_piano_conti_esteso() -> Dict[str, Any]:
+async def inizializza_piano_conti_esteso(_admin: Dict[str, Any] = Depends(get_current_admin_user)) -> Dict[str, Any]:
     """
     Inizializza/aggiorna il Piano dei Conti con tutte le voci estese.
     Preserva i saldi esistenti.

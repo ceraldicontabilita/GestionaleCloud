@@ -41,6 +41,13 @@ def test_endpoint_distruttivi_sono_admin_only():
         ("/reimporta-da-filesystem", "POST"),
         ("/cleanup-orphan-movements", "POST"),
         ("/migrazione-pulisci-bancari-cassa", "POST"),
+        ("/cleanup-duplicati-forte", "POST"),
+        ("/mittenti/migra-legacy", "POST"),
+        ("/dizionario-email/reset", "DELETE"),
+        ("/inizializza-piano-esteso", "POST"),
+        ("/pulizia-duplicati", "POST"),
+        ("/backfill-autoroute", "POST"),
+        ("/reset-riconciliazione", "POST"),
     ]
     for frag, metodo in casi:
         res = _route_ha_admin(app, frag, metodo)

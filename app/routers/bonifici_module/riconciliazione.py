@@ -1,7 +1,8 @@
 """
 Bonifici Module - Riconciliazione con estratto conto.
 """
-from fastapi import HTTPException
+from fastapi import HTTPException, Depends
+from app.utils.dependencies import get_current_admin_user
 from typing import Dict, Any
 from datetime import datetime, timezone
 import uuid
@@ -287,7 +288,7 @@ async def dashboard_bonifici() -> Dict[str, Any]:
     }
 
 
-async def reset_riconciliazione() -> Dict[str, Any]:
+async def reset_riconciliazione(_admin: Dict[str, Any] = Depends(get_current_admin_user)) -> Dict[str, Any]:
     """Reset riconciliazione per tutti i bonifici."""
     db = Database.get_db()
     

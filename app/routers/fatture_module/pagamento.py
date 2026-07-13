@@ -1,7 +1,8 @@
 """
 Fatture Module - Operazioni di pagamento e riconciliazione.
 """
-from fastapi import HTTPException, File, UploadFile, Body
+from fastapi import HTTPException, File, UploadFile, Body, Depends
+from app.utils.dependencies import get_current_admin_user
 from typing import Dict, Any
 from datetime import datetime, timezone
 import uuid
@@ -403,7 +404,7 @@ async def aggiorna_metodi_pagamento_da_fornitori() -> Dict[str, Any]:
     }
 
 
-async def backfill_autoroute_da_metodo_fornitore() -> Dict[str, Any]:
+async def backfill_autoroute_da_metodo_fornitore(_admin: Dict[str, Any] = Depends(get_current_admin_user)) -> Dict[str, Any]:
     """
     Backfill massivo: per ogni fattura NON ancora registrata in prima nota,
     legge il metodo di pagamento dell'anagrafica fornitore e crea automaticamente
