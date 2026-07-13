@@ -151,245 +151,98 @@ async def inizializza_piano_conti_esteso() -> Dict[str, Any]:
 @handle_errors
 async def ricategorizza_tutte_fatture() -> Dict[str, Any]:
     """
-    Ricategorizza TUTTE le fatture esistenti usando il sistema
-    di categorizzazione intelligente.
-    
-    Per ogni fattura:
-    1. Analizza le descrizioni delle linee
-    2. Determina il conto corretto
-    3. Aggiorna i movimenti contabili
-    4. Ricalcola i saldi del piano dei conti
+    Ricostruzione contabile completa: ricategorizza TUTTE le fatture con il sistema
+    intelligente (deducibilità IRES/IRAP) e ri-registra i corrispettivi.
+
+    Passa per il MOTORE UNICO `app.services.registrazione_contabile` (P1 §6.1):
+    schema/idempotenza/numero registrazione/audit unificati. La CATEGORIZZAZIONE
+    ricca resta qui (conti passati al motore). Preserva i movimenti di
+    ammortamento/TFR (prima venivano cancellati: azzeravano la chiusura esercizio).
     """
-    db = Database.get_db()
-    categorizzatore = get_categorizzatore()
-    
-    # Reset saldi piano dei conti (tranne cassa/banca popolati da altre fonti)
-    conti_da_non_resettare = ["01.01.01", "01.01.02"]  # Cassa, Banca
-    await db["piano_conti"].update_many(
-        {"codice": {"$nin": conti_da_non_resettare}},
-        {"$set": {"saldo": 0}}
+    from app.services.registrazione_contabile import (
+        registra_fattura, registra_tutti_corrispettivi,
     )
-    
-    # Elimina movimenti contabili esistenti
-    await db["movimenti_contabili"].delete_many({})
-    
-    # Processa tutte le fatture
+
+    db = Database.get_db()
+
+    # Reset saldi piano dei conti (tranne cassa/banca popolati da altre fonti)
+    conti_da_non_resettare = ["01.01.01", "01.01.02"]
+    await db["piano_conti"].update_many(
+        {"codice": {"$nin": conti_da_non_resettare}}, {"$set": {"saldo": 0}}
+    )
+
+    # Elimina SOLO i movimenti che ricostruiamo (fatture + corrispettivi),
+    # preservando ammortamenti/TFR letti dalla chiusura esercizio.
+    await db["movimenti_contabili"].delete_many(
+        {"tipo": {"$in": ["fattura_acquisto", "corrispettivo"]}}
+    )
+    await db["invoices"].update_many(
+        {"registrata_contabilita": True},
+        {"$set": {"registrata_contabilita": False}},
+    )
+    await db["corrispettivi"].update_many(
+        {"registrato_contabilita": True},
+        {"$set": {"registrato_contabilita": False}},
+    )
+
     fatture = await db["invoices"].find({
         "$or": [
             {"entity_status": {"$ne": "deleted"}},
-            {"entity_status": {"$exists": False}}
+            {"entity_status": {"$exists": False}},
         ]
     }, {"_id": 0}).to_list(10000)
-    
-    stats = {
-        "fatture_processate": 0,
-        "movimenti_creati": 0,
-        "errori": [],
-        "categorie": {},
-        "conti_utilizzati": {}
-    }
-    
+
+    stats = {"fatture_processate": 0, "movimenti_creati": 0, "errori": [],
+             "categorie": {}, "conti_utilizzati": {}}
+
     for fattura in fatture:
         try:
-            fattura_id = fattura.get("id")
-            if not fattura_id:
+            if not fattura.get("id"):
                 continue
-            
             linee = fattura.get("linee", [])
             fornitore = fattura.get("supplier_name", "")
-            
-            # Categorizza la fattura
             categorizzazione = categorizza_fattura_completa(linee, fornitore)
-            
-            # Estrai importi
-            importo_totale = float(fattura.get("total_amount", 0) or 0)
-            iva = float(fattura.get("iva", fattura.get("total_tax", 0)) or 0)
-            imponibile = importo_totale - iva if importo_totale > iva else importo_totale
-            
-            if importo_totale <= 0:
-                continue
-            
-            # Determina conto costo principale dalla categorizzazione
-            conto_costo = "05.01.01"  # Default
-            conto_nome = "Acquisto merci"
-            
+
+            conto_costo, conto_nome = "05.01.01", "Acquisto merci"
             if categorizzazione["riepilogo_conti"]:
-                # Usa il conto con importo maggiore
-                conto_principale = max(
-                    categorizzazione["riepilogo_conti"],
-                    key=lambda x: x["importo"]
-                )
-                conto_costo = conto_principale["codice"]
-                conto_nome = conto_principale["nome"]
-            
-            # Crea movimento contabile
-            movimento_id = str(uuid.uuid4())
-            data_fattura = fattura.get("invoice_date", datetime.now(timezone.utc).isoformat()[:10])
-            
-            movimento = {
-                "id": movimento_id,
-                "tipo": "fattura_acquisto",
-                "data": data_fattura,
-                "descrizione": f"Fattura {fattura.get('invoice_number', '')} - {fornitore}",
-                "fattura_id": fattura_id,
+                principale = max(categorizzazione["riepilogo_conti"], key=lambda x: x["importo"])
+                conto_costo, conto_nome = principale["codice"], principale["nome"]
+
+            conti = {
+                "costo": {"codice": conto_costo, "nome": conto_nome},
+                "iva_credito": {"codice": "01.04.01", "nome": "IVA a credito"},
+                "debito_fornitore": {"codice": "02.01.01", "nome": "Debiti v/fornitori"},
+            }
+            extra_mov = {
                 "categoria_principale": categorizzazione["categoria_principale"],
                 "percentuale_deducibilita_ires": categorizzazione["percentuale_deducibilita_ires"],
                 "percentuale_deducibilita_irap": categorizzazione["percentuale_deducibilita_irap"],
-                "righe": [
-                    {
-                        "conto_codice": conto_costo,
-                        "conto_nome": conto_nome,
-                        "dare": imponibile,
-                        "avere": 0
-                    },
-                    {
-                        "conto_codice": "01.04.01",
-                        "conto_nome": "IVA a credito",
-                        "dare": iva,
-                        "avere": 0
-                    },
-                    {
-                        "conto_codice": "02.01.01",
-                        "conto_nome": "Debiti v/fornitori",
-                        "dare": 0,
-                        "avere": importo_totale
-                    }
-                ],
-                "totale_dare": imponibile + iva,
-                "totale_avere": importo_totale,
-                "created_at": datetime.now(timezone.utc).isoformat()
             }
-            
-            await db["movimenti_contabili"].insert_one(movimento.copy())
-            
-            # Aggiorna saldi conti
-            await aggiorna_saldo_conto(db, conto_costo, imponibile, "dare")
-            await aggiorna_saldo_conto(db, "01.04.01", iva, "dare")
-            await aggiorna_saldo_conto(db, "02.01.01", importo_totale, "avere")
-            
-            # Aggiorna fattura con categorizzazione
-            await db["invoices"].update_one(
-                {"id": fattura_id},
-                {"$set": {
-                    "registrata_contabilita": True,
-                    "movimento_contabile_id": movimento_id,
-                    "categoria_contabile": categorizzazione["categoria_principale"],
-                    "conto_costo_codice": conto_costo,
-                    "conto_costo_nome": conto_nome,
-                    "percentuale_deducibilita_ires": categorizzazione["percentuale_deducibilita_ires"],
-                    "percentuale_deducibilita_irap": categorizzazione["percentuale_deducibilita_irap"]
-                }}
-            )
-            
-            # Aggiorna statistiche
+            extra_fatt = {
+                "categoria_contabile": categorizzazione["categoria_principale"],
+                "conto_costo_codice": conto_costo,
+                "conto_costo_nome": conto_nome,
+                "percentuale_deducibilita_ires": categorizzazione["percentuale_deducibilita_ires"],
+                "percentuale_deducibilita_irap": categorizzazione["percentuale_deducibilita_irap"],
+            }
+            r = await registra_fattura(db, fattura, force=True, conti=conti,
+                                       extra_movimento=extra_mov, extra_fattura=extra_fatt)
+            if r.get("stato") != "registrato":
+                continue
             stats["fatture_processate"] += 1
             stats["movimenti_creati"] += 1
-            
             cat = categorizzazione["categoria_principale"]
             stats["categorie"][cat] = stats["categorie"].get(cat, 0) + 1
             stats["conti_utilizzati"][conto_costo] = stats["conti_utilizzati"].get(conto_costo, 0) + 1
-            
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             stats["errori"].append(f"Fattura {fattura.get('invoice_number', 'N/A')}: {str(e)}")
-    
-    # Registra anche i corrispettivi
-    corrispettivi = await db["corrispettivi"].find({}, {"_id": 0}).to_list(5000)
-    
-    for corr in corrispettivi:
-        try:
-            corr_id = corr.get("id")
-            if not corr_id:
-                continue
-            
-            totale = float(corr.get("totale", 0) or 0)
-            if totale <= 0:
-                continue
-            
-            # Calcola IVA (10% per ristorazione)
-            aliquota = 0.10
-            iva = round(totale * aliquota / (1 + aliquota), 2)
-            imponibile = totale - iva
-            
-            # Importi per tipo pagamento
-            cassa = float(corr.get("pagato_contante", corr.get("pagato_cassa", 0)) or 0)
-            pos = float(corr.get("pagato_elettronico", 0) or 0)
-            
-            if cassa + pos == 0:
-                cassa = totale
-            
-            # Crea movimento
-            movimento_id = str(uuid.uuid4())
-            data_corr = corr.get("data", datetime.now(timezone.utc).isoformat()[:10])
-            
-            righe = []
-            
-            if cassa > 0:
-                righe.append({
-                    "conto_codice": "01.01.01",
-                    "conto_nome": "Cassa",
-                    "dare": cassa,
-                    "avere": 0
-                })
-            
-            if pos > 0:
-                righe.append({
-                    "conto_codice": "01.01.02",
-                    "conto_nome": "Banca c/c",
-                    "dare": pos,
-                    "avere": 0
-                })
-            
-            righe.extend([
-                {
-                    "conto_codice": "04.01.02",
-                    "conto_nome": "Ricavi vendite bar",
-                    "dare": 0,
-                    "avere": imponibile
-                },
-                {
-                    "conto_codice": "02.03.01",
-                    "conto_nome": "IVA a debito",
-                    "dare": 0,
-                    "avere": iva
-                }
-            ])
-            
-            movimento = {
-                "id": movimento_id,
-                "tipo": "corrispettivo",
-                "data": data_corr,
-                "descrizione": f"Corrispettivo del {data_corr}",
-                "corrispettivo_id": corr_id,
-                "righe": righe,
-                "totale_dare": cassa + pos,
-                "totale_avere": totale,
-                "created_at": datetime.now(timezone.utc).isoformat()
-            }
-            
-            await db["movimenti_contabili"].insert_one(movimento.copy())
-            
-            # Aggiorna saldi
-            if cassa > 0:
-                await aggiorna_saldo_conto(db, "01.01.01", cassa, "dare")
-            if pos > 0:
-                await aggiorna_saldo_conto(db, "01.01.02", pos, "dare")
-            await aggiorna_saldo_conto(db, "04.01.02", imponibile, "avere")
-            await aggiorna_saldo_conto(db, "02.03.01", iva, "avere")
-            
-            # Marca corrispettivo
-            await db["corrispettivi"].update_one(
-                {"id": corr_id},
-                {"$set": {"registrato_contabilita": True, "movimento_contabile_id": movimento_id}}
-            )
-            
-        except Exception as e:
-            stats["errori"].append(f"Corrispettivo {corr.get('id', 'N/A')}: {str(e)}")
-    
-    return {
-        "success": True,
-        **stats,
-        "errori": stats["errori"][:20]
-    }
+
+    # Ri-registra i corrispettivi tramite lo stesso motore
+    res_corr = await registra_tutti_corrispettivi(db)
+    stats["corrispettivi_registrati"] = res_corr.get("registrati", 0)
+    stats["errori"].extend(res_corr.get("errori", []))
+
+    return {"success": True, **stats, "errori": stats["errori"][:20]}
 
 
 async def aggiorna_saldo_conto(db, codice_conto: str, importo: float, tipo: str):

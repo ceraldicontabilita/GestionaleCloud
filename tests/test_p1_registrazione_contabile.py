@@ -1,0 +1,137 @@
+"""P1 §6.1 — Motore UNICO di registrazione contabile (partita doppia, schema CEE).
+Idempotenza, numero registrazione progressivo, fonte documento, data competenza,
+DARE/AVERE quadrati, centro di costo, aggiornamento saldi. Mock async del DB."""
+import asyncio
+
+import app.services.registrazione_contabile as motore
+
+
+class _Coll:
+    def __init__(self):
+        self.docs = []
+
+    async def insert_one(self, doc):
+        self.docs.append(dict(doc))
+
+    async def find_one(self, query, proj=None, sort=None):
+        cand = [d for d in self.docs if all(_match(d, k, v) for k, v in query.items())]
+        if sort:
+            key, direction = sort[0]
+            cand.sort(key=lambda d: d.get(key) or 0, reverse=(direction < 0))
+        return dict(cand[0]) if cand else None
+
+    async def update_one(self, query, update, upsert=False):
+        for d in self.docs:
+            if all(_match(d, k, v) for k, v in query.items()):
+                d.update(update.get("$set", {}))
+                return
+        if upsert:
+            nd = dict(query)
+            nd.update(update.get("$set", {}))
+            self.docs.append(nd)
+
+
+def _match(doc, k, v):
+    if isinstance(v, dict) and "$exists" in v:
+        return (k in doc) == v["$exists"]
+    return doc.get(k) == v
+
+
+class _Db:
+    def __init__(self):
+        self.colls = {}
+
+    def __getitem__(self, name):
+        return self.colls.setdefault(name, _Coll())
+
+
+def _run(c):
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(c)
+    finally:
+        loop.close()
+
+
+def _prepara(db, monkeypatch):
+    # piano_conti con i conti usati
+    pc = db["piano_conti"]
+    for codice, cat in [("05.01.01", "costi"), ("01.04.01", "attivo"),
+                        ("02.01.01", "passivo"), ("01.01.01", "attivo"),
+                        ("01.01.02", "attivo"), ("04.01.02", "ricavi"),
+                        ("02.03.01", "passivo")]:
+        pc.docs.append({"codice": codice, "categoria": cat, "saldo": 0.0})
+
+    async def _det(_db, _fatt):
+        return {"costo": {"codice": "05.01.01", "nome": "Acquisto merci"},
+                "iva_credito": {"codice": "01.04.01", "nome": "IVA a credito"},
+                "debito_fornitore": {"codice": "02.01.01", "nome": "Debiti v/fornitori"}}
+
+    async def _saldo(_db, codice, importo, verso):
+        for d in pc.docs:
+            if d["codice"] == codice:
+                cat = d["categoria"]
+                if cat in ("attivo", "costi"):
+                    d["saldo"] += importo if verso == "dare" else -importo
+                else:
+                    d["saldo"] += importo if verso == "avere" else -importo
+
+    import app.routers.accounting.piano_conti as pcmod
+    monkeypatch.setattr(pcmod, "determina_conti_fattura", _det)
+    monkeypatch.setattr(pcmod, "aggiorna_saldo_conto", _saldo)
+
+
+def test_registra_fattura_idempotente_e_quadrata(monkeypatch):
+    db = _Db()
+    _prepara(db, monkeypatch)
+    fattura = {"id": "F1", "total_amount": 122.0, "total_tax": 22.0,
+               "invoice_number": "1/2026", "invoice_date": "2026-03-10",
+               "supplier_name": "ACME"}
+
+    r1 = _run(motore.registra_fattura(db, fattura))
+    assert r1["stato"] == "registrato"
+    mov = r1["movimento"]
+    # quadratura DARE=AVERE
+    assert round(mov["totale_dare"], 2) == round(mov["totale_avere"], 2) == 122.0
+    # requisiti §6.1
+    assert mov["numero_registrazione"] == 1
+    assert mov["fonte_documento"]["id"] == "F1"
+    assert mov["data_competenza"] == "2026-03-10"
+    assert mov["anno"] == 2026
+    assert {r["conto_codice"] for r in mov["righe"]} == {"05.01.01", "01.04.01", "02.01.01"}
+
+    # idempotenza: seconda chiamata non registra di nuovo
+    r2 = _run(motore.registra_fattura(db, fattura))
+    assert r2["stato"] == "gia_registrato"
+    assert len(db["movimenti_contabili"].docs) == 1
+
+    # saldi aggiornati una sola volta
+    saldi = {d["codice"]: d["saldo"] for d in db["piano_conti"].docs}
+    assert saldi["05.01.01"] == 100.0   # costo (dare)
+    assert saldi["01.04.01"] == 22.0    # iva credito (dare)
+    assert saldi["02.01.01"] == 122.0   # debito fornitore (avere)
+
+
+def test_numero_registrazione_progressivo(monkeypatch):
+    db = _Db()
+    _prepara(db, monkeypatch)
+    r1 = _run(motore.registra_fattura(db, {"id": "A", "total_amount": 10, "total_tax": 0,
+                                           "invoice_date": "2026-01-01"}))
+    r2 = _run(motore.registra_fattura(db, {"id": "B", "total_amount": 20, "total_tax": 0,
+                                           "invoice_date": "2026-01-02"}))
+    assert r1["movimento"]["numero_registrazione"] == 1
+    assert r2["movimento"]["numero_registrazione"] == 2
+
+
+def test_registra_corrispettivo_scorporo(monkeypatch):
+    db = _Db()
+    _prepara(db, monkeypatch)
+    r = _run(motore.registra_corrispettivo(db, {"id": "C1", "totale": 110.0,
+                                                "data": "2026-04-01"}))
+    assert r["stato"] == "registrato"
+    mov = r["movimento"]
+    assert round(mov["totale_dare"], 2) == round(mov["totale_avere"], 2) == 110.0
+    assert mov["iva"] == 10.0 and mov["imponibile"] == 100.0
+    # idempotenza
+    r2 = _run(motore.registra_corrispettivo(db, {"id": "C1", "totale": 110.0}))
+    assert r2["stato"] == "gia_registrato"

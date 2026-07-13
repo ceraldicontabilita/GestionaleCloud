@@ -57,7 +57,15 @@ PROSSIMA FASE: P1 consolidamento collection/motori (§5-§8).
 - [x] §5.9 Magazzino: già conforme (nessuna nuova scrittura di giacenza sulle 6 collezioni;
       solo delete di pulizia su warehouse_stocks deprecata; collezioni condivise non droppate).
       Marcate §5.9 NO-WRITE + test-guardia. **§5 COMPLETATA** (313 test).
-- [ ] §6 Unificazione motori contabili · §7 Classificazione 390 endpoint · §8 Viewer documenti
+- [~] §6 Motori contabili: §6.1 FATTO (scelta utente: solo §6.1 schema CEE) — motore unico
+      app/services/registrazione_contabile.py (idempotenza/numero registrazione/fonte doc/
+      data competenza/DARE-AVERE/centro costo/audit/ricostruzione); i 3 endpoint
+      (registra-fattura, registra-tutte-fatture, registra-corrispettivi, ricategorizza-fatture)
+      delegano al motore; ricategorizza conserva la categorizzazione ricca (deducibilità IRES/
+      IRAP) e ora preserva ammortamenti/TFR (prima li cancellava). FIX giornale: date coerenti.
+      §6.2/6.3/6.4 (bilancio unico, schema numerico contabilita_italiana, saldi Prima Nota):
+      RINVIATE (contabilità viva, richiedono decisione schema canonico) (316 test).
+- [ ] §7 Classificazione 390 endpoint · §8 Viewer documenti
       Deliverable: memoria/PIANO_MIGRAZIONE_COLLECTION.md
 ### FASE P1 — F24/quietanze/IVA/prestazioni (§9-§11) — non iniziata
 ### FASE P2 — Sicurezza/pulizia (§12-§13) — non iniziata

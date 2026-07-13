@@ -636,99 +636,30 @@ async def create_regola(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
 async def registra_fattura_contabilita(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     """
     Registra una fattura nella contabilità generale (partita doppia).
-    
-    Per una fattura acquisto:
-    DARE: Costo acquisto merce (05.01.01) + IVA a credito (01.04.01)
-    AVERE: Debito v/fornitore (02.01.01)
+
+    Delega al MOTORE UNICO `app.services.registrazione_contabile` (P1 §6.1):
+    idempotente, con numero registrazione, fonte documento, data competenza,
+    DARE/AVERE, centro di costo e audit log.
     """
+    from app.services.registrazione_contabile import registra_fattura as _registra
+
     db = Database.get_db()
-    
     fattura_id = data.get("fattura_id")
     if not fattura_id:
         raise HTTPException(status_code=400, detail="fattura_id obbligatorio")
-    
-    # Cerca la fattura
+
     fattura = await db["invoices"].find_one({"id": fattura_id})
     if not fattura:
         raise HTTPException(status_code=404, detail="Fattura non trovata")
-    
-    # Verifica se già registrata
-    existing = await db[COLLECTION_MOVIMENTI_CONTABILI].find_one({"fattura_id": fattura_id})
-    if existing:
-        return {"success": False, "message": "Fattura già registrata in contabilità", "movimento_id": existing.get("id")}
-    
-    # Determina i conti da utilizzare
-    conti = await determina_conti_fattura(db, fattura)
-    
-    importo_totale = float(fattura.get("total_amount") or fattura.get("importo_totale") or 0)
-    imponibile = float(fattura.get("imponibile") or importo_totale)
-    iva = float(fattura.get("iva") or 0)
-    
-    now = datetime.now(timezone.utc).isoformat()
-    movimento_id = str(uuid.uuid4())
-    
-    # Crea movimento contabile (partita doppia)
-    movimento = {
-        "id": movimento_id,
-        "fattura_id": fattura_id,
-        "data_registrazione": now,
-        "data_documento": fattura.get("invoice_date") or fattura.get("data_fattura"),
-        "numero_documento": fattura.get("invoice_number") or fattura.get("numero_fattura"),
-        "fornitore": fattura.get("supplier_name") or fattura.get("cedente_denominazione"),
-        "descrizione": f"Fattura {fattura.get('invoice_number') or fattura.get('numero_fattura')}",
-        "importo_totale": importo_totale,
-        "imponibile": imponibile,
-        "iva": iva,
-        "righe": [
-            # DARE: Costo merce
-            {
-                "tipo": "DARE",
-                "conto_codice": conti["costo"]["codice"],
-                "conto_nome": conti["costo"]["nome"],
-                "importo": imponibile,
-                "descrizione": "Costo acquisto"
-            },
-            # DARE: IVA a credito
-            {
-                "tipo": "DARE",
-                "conto_codice": conti["iva_credito"]["codice"],
-                "conto_nome": conti["iva_credito"]["nome"],
-                "importo": iva,
-                "descrizione": "IVA a credito"
-            },
-            # AVERE: Debito fornitore
-            {
-                "tipo": "AVERE",
-                "conto_codice": conti["debito_fornitore"]["codice"],
-                "conto_nome": conti["debito_fornitore"]["nome"],
-                "importo": importo_totale,
-                "descrizione": "Debito v/fornitore"
-            }
-        ],
-        "stato": "registrato",
-        "created_at": now
-    }
-    
-    await db[COLLECTION_MOVIMENTI_CONTABILI].insert_one(movimento.copy())
-    
-    # Aggiorna saldi conti
-    await aggiorna_saldo_conto(db, conti["costo"]["codice"], imponibile, "dare")
-    await aggiorna_saldo_conto(db, conti["iva_credito"]["codice"], iva, "dare")
-    await aggiorna_saldo_conto(db, conti["debito_fornitore"]["codice"], importo_totale, "avere")
-    
-    # Marca fattura come registrata
-    await db["invoices"].update_one(
-        {"id": fattura_id},
-        {"$set": {"registrata_contabilita": True, "movimento_contabile_id": movimento_id}}
-    )
-    
-    movimento.pop("_id", None)
-    
-    return {
-        "success": True,
-        "message": "Fattura registrata in contabilità",
-        "movimento": movimento
-    }
+
+    res = await _registra(db, fattura)
+    if res.get("stato") == "gia_registrato":
+        return {"success": False, "message": "Fattura già registrata in contabilità",
+                "movimento_id": res.get("movimento_id")}
+    if res.get("stato") != "registrato":
+        return {"success": False, "message": res.get("motivo", "Registrazione non eseguita")}
+    return {"success": True, "message": "Fattura registrata in contabilità",
+            "movimento": res["movimento"]}
 
 
 async def determina_conti_fattura(db, fattura: Dict[str, Any]) -> Dict[str, Dict[str, str]]:
@@ -1132,217 +1063,18 @@ async def get_bilancio(anno: str = None) -> Dict[str, Any]:
 async def registra_tutte_fatture_contabilita() -> Dict[str, Any]:
     """
     Registra tutte le fatture non ancora registrate in contabilità.
-    Utile per inizializzazione o recupero dati.
+    Delega al MOTORE UNICO `app.services.registrazione_contabile` (P1 §6.1).
     """
-    db = Database.get_db()
-    
-    # Trova fatture non registrate
-    fatture = await db["invoices"].find({
-        "$or": [
-            {"registrata_contabilita": {"$ne": True}},
-            {"registrata_contabilita": {"$exists": False}}
-        ]
-    }, {"_id": 0}).to_list(5000)
-    
-    registrate = 0
-    errori = []
-    
-    for fattura in fatture:
-        try:
-            fattura_id = fattura.get("id")
-            if not fattura_id:
-                continue
-            
-            # Estrai importi
-            imponibile = float(fattura.get("total_amount", 0) or 0) - float(fattura.get("total_tax", 0) or 0)
-            iva = float(fattura.get("total_tax", fattura.get("totale_iva", 0)) or 0)
-            importo_totale = imponibile + iva
-            
-            if importo_totale <= 0:
-                continue
-            
-            # Determina conti
-            conti = await determina_conti_fattura(db, fattura)
-            
-            # Crea movimento
-            movimento_id = str(uuid.uuid4())
-            data_fattura = fattura.get("invoice_date", datetime.now(timezone.utc).isoformat()[:10])
-            
-            movimento = {
-                "id": movimento_id,
-                "tipo": "fattura_acquisto",
-                "data": data_fattura,
-                "descrizione": f"Fattura {fattura.get('invoice_number', '')} - {fattura.get('supplier_name', '')}",
-                "fattura_id": fattura_id,
-                "righe": [
-                    {
-                        "conto_codice": conti["costo"]["codice"],
-                        "conto_nome": conti["costo"]["nome"],
-                        "dare": imponibile,
-                        "avere": 0
-                    },
-                    {
-                        "conto_codice": conti["iva_credito"]["codice"],
-                        "conto_nome": conti["iva_credito"]["nome"],
-                        "dare": iva,
-                        "avere": 0
-                    },
-                    {
-                        "conto_codice": conti["debito_fornitore"]["codice"],
-                        "conto_nome": conti["debito_fornitore"]["nome"],
-                        "dare": 0,
-                        "avere": importo_totale
-                    }
-                ],
-                "totale_dare": imponibile + iva,
-                "totale_avere": importo_totale,
-                "created_at": datetime.now(timezone.utc).isoformat()
-            }
-            
-            await db[COLLECTION_MOVIMENTI_CONTABILI].insert_one(movimento.copy())
-            
-            # Aggiorna saldi
-            await aggiorna_saldo_conto(db, conti["costo"]["codice"], imponibile, "dare")
-            await aggiorna_saldo_conto(db, conti["iva_credito"]["codice"], iva, "dare")
-            await aggiorna_saldo_conto(db, conti["debito_fornitore"]["codice"], importo_totale, "avere")
-            
-            # Marca fattura
-            await db["invoices"].update_one(
-                {"id": fattura_id},
-                {"$set": {"registrata_contabilita": True, "movimento_contabile_id": movimento_id}}
-            )
-            
-            registrate += 1
-            
-        except Exception as e:
-            errori.append(f"Fattura {fattura.get('invoice_number', 'N/A')}: {str(e)}")
-    
-    return {
-        "success": True,
-        "fatture_processate": len(fatture),
-        "registrate": registrate,
-        "errori": errori[:20]
-    }
+    from app.services.registrazione_contabile import registra_tutte_fatture
+    return await registra_tutte_fatture(Database.get_db())
 
 
 @router.post("/registra-corrispettivi")
 @handle_errors
 async def registra_corrispettivi_contabilita() -> Dict[str, Any]:
     """
-    Registra i corrispettivi in contabilità.
-    Crea movimenti: Cassa/Banca -> Ricavi e IVA a debito
+    Registra i corrispettivi in contabilità (Cassa/Banca -> Ricavi + IVA a debito).
+    Delega al MOTORE UNICO `app.services.registrazione_contabile` (P1 §6.1).
     """
-    db = Database.get_db()
-    
-    # Trova corrispettivi non registrati
-    corrispettivi = await db["corrispettivi"].find({
-        "$or": [
-            {"registrato_contabilita": {"$ne": True}},
-            {"registrato_contabilita": {"$exists": False}}
-        ]
-    }, {"_id": 0}).to_list(5000)
-    
-    registrati = 0
-    errori = []
-    
-    for corr in corrispettivi:
-        try:
-            corr_id = corr.get("id")
-            if not corr_id:
-                continue
-            
-            totale = float(corr.get("totale", 0) or 0)
-            if totale <= 0:
-                continue
-            
-            # Calcola IVA (tipicamente 10% per ristorazione)
-            aliquota = 0.10
-            iva = round(totale * aliquota / (1 + aliquota), 2)
-            imponibile = totale - iva
-            
-            # Importi per tipo pagamento
-            cassa = float(corr.get("pagato_contante", corr.get("pagato_cassa", 0)) or 0)
-            pos = float(corr.get("pagato_elettronico", 0) or 0)
-            
-            if cassa + pos == 0:
-                cassa = totale  # Default tutto in cassa
-            
-            # Crea movimento
-            movimento_id = str(uuid.uuid4())
-            data_corr = corr.get("data", datetime.now(timezone.utc).isoformat()[:10])
-            
-            righe = []
-            
-            # Entrata cassa
-            if cassa > 0:
-                righe.append({
-                    "conto_codice": "01.01.01",
-                    "conto_nome": "Cassa",
-                    "dare": cassa,
-                    "avere": 0
-                })
-            
-            # Entrata banca (POS)
-            if pos > 0:
-                righe.append({
-                    "conto_codice": "01.01.02",
-                    "conto_nome": "Banca c/c",
-                    "dare": pos,
-                    "avere": 0
-                })
-            
-            # Ricavi vendite
-            righe.append({
-                "conto_codice": "04.01.02",
-                "conto_nome": "Ricavi vendite bar",
-                "dare": 0,
-                "avere": imponibile
-            })
-            
-            # IVA a debito
-            righe.append({
-                "conto_codice": "02.03.01",
-                "conto_nome": "IVA a debito",
-                "dare": 0,
-                "avere": iva
-            })
-            
-            movimento = {
-                "id": movimento_id,
-                "tipo": "corrispettivo",
-                "data": data_corr,
-                "descrizione": f"Corrispettivo del {data_corr}",
-                "corrispettivo_id": corr_id,
-                "righe": righe,
-                "totale_dare": cassa + pos,
-                "totale_avere": totale,
-                "created_at": datetime.now(timezone.utc).isoformat()
-            }
-            
-            await db[COLLECTION_MOVIMENTI_CONTABILI].insert_one(movimento.copy())
-            
-            # Aggiorna saldi
-            if cassa > 0:
-                await aggiorna_saldo_conto(db, "01.01.01", cassa, "dare")
-            if pos > 0:
-                await aggiorna_saldo_conto(db, "01.01.02", pos, "dare")
-            await aggiorna_saldo_conto(db, "04.01.02", imponibile, "avere")
-            await aggiorna_saldo_conto(db, "02.03.01", iva, "avere")
-            
-            # Marca corrispettivo
-            await db["corrispettivi"].update_one(
-                {"id": corr_id},
-                {"$set": {"registrato_contabilita": True, "movimento_contabile_id": movimento_id}}
-            )
-            
-            registrati += 1
-            
-        except Exception as e:
-            errori.append(f"Corrispettivo {corr.get('id', 'N/A')}: {str(e)}")
-    
-    return {
-        "success": True,
-        "corrispettivi_processati": len(corrispettivi),
-        "registrati": registrati,
-        "errori": errori[:20]
-    }
+    from app.services.registrazione_contabile import registra_tutti_corrispettivi
+    return await registra_tutti_corrispettivi(Database.get_db())
