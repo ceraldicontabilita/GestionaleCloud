@@ -7,7 +7,7 @@ import "./styles.css";
 import "./index.css";
 import "./styles/ds/ds.css"; // Ceraldi design-system tokens (canonical) — authoritative
 import { AnnoProvider } from "./contexts/AnnoContext.jsx";
-import { AuthProvider, RequireAuth } from "./contexts/AuthContext.jsx";
+import { AuthProvider, RequireAuth, RequireAdmin } from "./contexts/AuthContext.jsx";
 import { queryClient } from "./lib/queryClient.js";
 import { ConfirmProvider } from "./components/ui/ConfirmDialog.jsx";
 import { Toaster } from "./components/ui/sonner.jsx";
@@ -35,6 +35,7 @@ const DocumentiHub = lazy(() => import("./pages/hub/DocumentiHub.jsx"));
 const StrumentiHub = lazy(() => import("./pages/hub/StrumentiHub.jsx"));
 const IntegrazioniHub = lazy(() => import("./pages/hub/IntegrazioniHub.jsx"));
 const AdminHub     = lazy(() => import("./pages/hub/AdminHub.jsx"));
+const Utenti       = lazy(() => import("./pages/Utenti.jsx"));
 const RiconciliazioneHub = lazy(() => import("./pages/hub/RiconciliazioneHub.jsx"));
 const FattureHub = lazy(() => import("./pages/hub/FattureHub.jsx"));
 
@@ -218,8 +219,9 @@ const router = createBrowserRouter([
       { path: "pagopa/:pratica", element: <Navigate to="/integrazioni/pagopa" replace /> },
 
       // === ADMIN ===
-      { path: "admin", element: <LazyPage><AdminHub /></LazyPage> },
-      { path: "admin/:sezione", element: <LazyPage><AdminHub /></LazyPage> },
+      { path: "admin", element: <RequireAdmin><LazyPage><AdminHub /></LazyPage></RequireAdmin> },
+      { path: "admin/:sezione", element: <RequireAdmin><LazyPage><AdminHub /></LazyPage></RequireAdmin> },
+      { path: "utenti", element: <RequireAdmin><LazyPage><Utenti /></LazyPage></RequireAdmin> },
       { path: "batch-reprocessing", element: <LazyPage><AdminHub /></LazyPage> },
       { path: "batch-processor", element: <LazyPage><AdminHub /></LazyPage> },
       

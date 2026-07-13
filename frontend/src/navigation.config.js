@@ -60,7 +60,8 @@ export const NAV_ALTRO = [
   { to: '/strumenti', label: 'Strumenti', Icon: Wrench },
   { to: '/mappa-gestionale', label: 'Mappa gestionale', Icon: Map },
   { to: null, href: APP_DIPENDENTI_URL, label: 'HR', Icon: Users, external: true },
-  { to: '/admin', label: 'Admin', Icon: Settings },
+  { to: '/utenti', label: 'Utenti', Icon: Users, adminOnly: true },
+  { to: '/admin', label: 'Admin', Icon: Settings, adminOnly: true },
 ];
 
 // Tutte le voci raggiungibili — usate dal menù mobile a griglia e dai test.

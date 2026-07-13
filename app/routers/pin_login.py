@@ -111,47 +111,62 @@ async def pin_login(
         _register_failure(ip)
         raise HTTPException(status_code=400, detail="PIN non valido")
 
-    # Verifica contro ADMIN_PIN (in chiaro) o PIN_HASH_ADMIN (SHA-256)
+    # 1) PIN amministratore (ADMIN_PIN in chiaro o PIN_HASH_ADMIN SHA-256).
     esito = _verifica_pin(pin)
-    if esito is None:
-        logger.error("PIN-login: nessuna variabile ADMIN_PIN o PIN_HASH_ADMIN configurata")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Login PIN non configurato sul server: impostare ADMIN_PIN "
-                   "(o PIN_HASH_ADMIN) nelle variabili d'ambiente",
-        )
-    if not esito:
-        _register_failure(ip)
-        logger.warning(f"PIN-login: PIN errato da IP {ip}")
-        raise HTTPException(status_code=401, detail="PIN non valido")
-
-    # PIN corretto: recupera l'utente admin dal DB se esiste; il sistema e'
-    # mono-utente, quindi in assenza di utenti in collection il login funziona
-    # comunque con un'identita' admin sintetica (come il login email/password,
-    # che vive solo di variabili d'ambiente).
     user = None
-    try:
-        db = Database.get_db()
-        user_repo = UserRepository(db[Collections.USERS])
-        try:
-            user = await user_repo.find_by_username(PIN_ADMIN_USERNAME)
-        except Exception:
-            user = None
-        if not user:
-            user = await db[Collections.USERS].find_one({"role": "admin"})
-        if not user:
-            user = await db[Collections.USERS].find_one({"is_active": True})
-    except Exception:
-        logger.exception("PIN-login: lookup utente fallito, uso identita' admin sintetica")
-        user_repo = None
+    user_repo = None
+    db = Database.get_db()
 
-    if not user:
-        user = {
-            "id": "admin",
-            "email": PIN_ADMIN_EMAIL_DEFAULT,
-            "name": "Amministratore",
-            "role": "admin",
-        }
+    if esito is True:
+        # Admin: recupera l'identità dal DB se esiste, altrimenti sintetica.
+        try:
+            user_repo = UserRepository(db[Collections.USERS])
+            try:
+                user = await user_repo.find_by_username(PIN_ADMIN_USERNAME)
+            except Exception:
+                user = None
+            if not user:
+                user = await db[Collections.USERS].find_one({"role": "admin"})
+            if not user:
+                user = await db[Collections.USERS].find_one({"is_active": True})
+        except Exception:
+            logger.exception("PIN-login: lookup utente admin fallito, uso identita' sintetica")
+            user_repo = None
+        if not user:
+            user = {
+                "id": "admin",
+                "email": PIN_ADMIN_EMAIL_DEFAULT,
+                "name": "Amministratore",
+                "role": "admin",
+            }
+    else:
+        # 2) PIN di un utente creato dall'admin (Operatore / Sola lettura).
+        from app.services import utenti_pin as _utenti_pin
+        match = await _utenti_pin.verifica_pin(db, pin)
+        if match:
+            user = {
+                "id": match["id"],
+                "email": "",
+                "name": match.get("nome"),
+                "role": match.get("ruolo", "operatore"),
+            }
+        else:
+            # Nessuna corrispondenza. Se NEANCHE l'admin-PIN è configurato e non
+            # esistono utenti, il login PIN è del tutto disattivato → 503.
+            _register_failure(ip)
+            if esito is None:
+                try:
+                    n_utenti = await db[_utenti_pin.COLLECTION].count_documents({"attivo": True})
+                except Exception:
+                    n_utenti = 0
+                if n_utenti == 0:
+                    logger.error("PIN-login: nessun ADMIN_PIN e nessun utente PIN configurato")
+                    raise HTTPException(
+                        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                        detail="Login PIN non configurato sul server",
+                    )
+            logger.warning(f"PIN-login: PIN errato da IP {ip}")
+            raise HTTPException(status_code=401, detail="PIN non valido")
 
     # Estrai user_id
     user_id = str(user.get("id") or user.get("_id"))
@@ -164,7 +179,7 @@ async def pin_login(
         "email": user.get("email", ""),
         "name": user.get("name"),
         "role": user.get("role", "admin"),
-        "tipo": "admin",
+        "tipo": user.get("role", "admin"),
         "exp": expire,
         "iat": datetime.now(timezone.utc),
         "auth_method": "pin",  # traccia che è un token da PIN

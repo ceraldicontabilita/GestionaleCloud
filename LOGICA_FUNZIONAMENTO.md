@@ -566,6 +566,27 @@ costi → pagamenti → driver assegnato → verbali → eventuali trattenute �
 Il principio è sempre lo stesso: **un canale si accende solo dopo che il suo parser
 è stato verificato su documenti veri** — meglio nessun dato che dati sbagliati.
 
+## 13-bis. Utenti e ruoli (chi può fare cosa)
+
+Scelte utente 13/07/2026. Il gestionale ora distingue tre ruoli:
+- **Admin**: può tutto, incluse cancellazioni di massa, rollback e impostazioni.
+  Entra col PIN configurato sul server (o email+password admin).
+- **Operatore**: usa e inserisce dati, ma non accede alle sezioni Admin/Utenti
+  né alle cancellazioni di massa.
+- **Sola lettura**: può solo consultare; ogni tentativo di modifica è bloccato
+  dal server (e vede un banner giallo "sei in sola lettura").
+
+L'admin crea gli altri utenti dalla pagina **Utenti** (voce di menù visibile
+solo all'admin): nome, ruolo e un **PIN personale** (4-12 cifre). Ogni persona
+entra col proprio PIN e ottiene i permessi del suo ruolo. I PIN non sono mai
+salvati in chiaro; il login è protetto da blocco anti-tentativi (5 errori →
+5 minuti di attesa, vale sia per il PIN sia per email+password).
+
+Sicurezza correlata (audit): l'accesso da browser esterni (CORS) si chiude al
+solo dominio del gestionale impostando la variabile d'ambiente
+`CORS_ALLOWED_ORIGINS`; finché non è impostata resta aperto (con avviso nei log)
+per non interrompere il servizio.
+
 ## 14. Cosa NON fa più questo gestionale (dominio HACCP)
 
 Decisione canonica (13/07/2026): il gestionale è un **ERP contabile**. Tutto il

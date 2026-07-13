@@ -13,9 +13,13 @@ import "./styles/topnav.css";
 // Navigazione: FONTE UNICA in navigation.config.js, condivisa con TopNav.jsx.
 // Prima qui c'erano due elenchi mantenuti a mano (MOBILE_NAV/ALL_NAV_ITEMS)
 // gi\u00E0 andati fuori sincrono col desktop (voci ed etichette diverse).
-import { NAV_TUTTE, NAV_MOBILE_BAR } from "./navigation.config";
+import { NAV_TUTTE as NAV_TUTTE_RAW, NAV_MOBILE_BAR } from "./navigation.config";
+import { useAuth } from "./contexts/AuthContext.jsx";
 
 export default function App() {
+  const { isAdmin, isReadOnly } = useAuth();
+  // Voci solo-admin (Utenti, Admin) nascoste agli altri ruoli anche nel menù mobile.
+  const NAV_TUTTE = NAV_TUTTE_RAW.filter(i => !i.adminOnly || isAdmin);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [alertCommercialista, setAlertCommercialista] = useState(null);
   const [showF24Sync, setShowF24Sync] = useState(false);
@@ -47,6 +51,15 @@ export default function App() {
   return (
     <UploadProvider>
       <div className="topnav-layout" data-testid="topnav-layout">
+        {isReadOnly && (
+          <div data-testid="banner-sola-lettura" style={{
+            background: '#fef3c7', color: '#92400e', textAlign: 'center',
+            padding: '6px 12px', fontSize: 13, fontWeight: 600,
+            borderBottom: '1px solid #fcd34d',
+          }}>
+            👁 Sei in modalità sola lettura: puoi consultare i dati ma non modificarli.
+          </div>
+        )}
         {/* Banner notifiche browser rimosso */}
 
         {/* Upload Status Bar */}

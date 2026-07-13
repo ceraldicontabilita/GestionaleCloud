@@ -34,7 +34,9 @@ export function AuthProvider({ children }) {
       id: user_id,
       email: userEmail,
       name: name,
-      role: 'admin'
+      // Il ruolo lo decide il server (res.data.user.role); l'admin via env
+      // resta 'admin'.
+      role: res.data.user?.role || 'admin'
     };
     setUser(userData);
     return res.data;
@@ -61,12 +63,38 @@ export function AuthProvider({ children }) {
   }, []);
 
   const isAuthenticated = !!user;
+  // Ruolo assente/sconosciuto → admin (mono-utente storico), coerente col
+  // backend (app/utils/ruoli.py normalizza_ruolo).
+  const role = user?.role && ['admin', 'operatore', 'sola_lettura'].includes(user.role)
+    ? user.role
+    : 'admin';
+  const isAdmin = role === 'admin';
+  const isReadOnly = role === 'sola_lettura';
+  const canWrite = role !== 'sola_lettura';
 
   return (
-    <AuthContext.Provider value={{ user, login, loginWithPin, logout, isAuthenticated, loading }}>
+    <AuthContext.Provider value={{
+      user, login, loginWithPin, logout, isAuthenticated, loading,
+      role, isAdmin, isReadOnly, canWrite,
+    }}>
       {children}
     </AuthContext.Provider>
   );
+}
+
+/**
+ * Nasconde i figli a chi non ha il ruolo richiesto.
+ * <SoloAdmin>...</SoloAdmin>  → visibile solo all'admin
+ * <SeScrittura>...</SeScrittura> → nascosto agli utenti in sola lettura
+ */
+export function SoloAdmin({ children, fallback = null }) {
+  const { isAdmin } = useAuth();
+  return isAdmin ? children : fallback;
+}
+
+export function SeScrittura({ children, fallback = null }) {
+  const { canWrite } = useAuth();
+  return canWrite ? children : fallback;
 }
 
 export function useAuth() {
@@ -93,6 +121,24 @@ export function RequireAuth({ children }) {
     return <Navigate to="/login" replace />;
   }
 
+  return children;
+}
+
+/** Instrada solo l'admin; gli altri ruoli vengono rimandati alla Dashboard. */
+export function RequireAdmin({ children }) {
+  const { isAuthenticated, isAdmin, loading } = useAuth();
+  if (loading) {
+    return (
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        height: '100vh', background: '#0f172a'
+      }}>
+        <div style={{ color: '#94a3b8', fontSize: 18 }}>Caricamento...</div>
+      </div>
+    );
+  }
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (!isAdmin) return <Navigate to="/" replace />;
   return children;
 }
 

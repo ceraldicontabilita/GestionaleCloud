@@ -252,6 +252,7 @@ def _register_core(app: FastAPI):
     from app.routers import websocket_realtime, learning_machine, fornitori_learning
     from app.routers import sync_relazionale, pagopa
     from app.routers import anagrafica_fornitori_xml
+    from app.routers import utenti
 
     app.include_router(suppliers_router, prefix="/api/suppliers", tags=["Suppliers"])
     app.include_router(cash.router, prefix="/api/cash", tags=["Cash"])
@@ -283,6 +284,7 @@ def _register_core(app: FastAPI):
     app.include_router(chat_router.router, prefix="/api", tags=["Chat"])
     app.include_router(learning_universal.router, prefix="/api/learning-universal", tags=["Learning Universal"])
     app.include_router(anagrafica_fornitori_xml.router, prefix="/api/anagrafica-fornitori", tags=["Anagrafica Fornitori"])
+    app.include_router(utenti.router, prefix="/api", tags=["Utenti"])
     app.include_router(websocket_realtime.router, prefix="/api", tags=["WebSocket"])
     app.include_router(learning_machine.router, prefix="/api/learning-machine", tags=["Learning Machine"])
     app.include_router(fornitori_learning.router, prefix="/api/fornitori-learning", tags=["Fornitori Learning"])

@@ -7,7 +7,8 @@ import { COLORS, SHADOWS, useIsMobile } from '../../lib/utils';
 import InstallAppButton from '../InstallAppButton';
 // Navigazione: FONTE UNICA in navigation.config.js (condivisa col menù mobile
 // di App.jsx — prima erano 4 elenchi separati che andavano fuori sincrono).
-import { NAV_PRINCIPALI as NAV_ITEMS, NAV_ALTRO as ALTRO_ITEMS } from '../../navigation.config';
+import { NAV_PRINCIPALI as NAV_ITEMS, NAV_ALTRO as ALTRO_ITEMS_RAW } from '../../navigation.config';
+import { useAuth } from '../../contexts/AuthContext.jsx';
 
 /* Stili (definiti fuori dal componente — creati una volta sola) */
 const S = {
@@ -151,6 +152,9 @@ const S = {
 const AltroDropdown = memo(function AltroDropdown({ isAltroActive }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef(null);
+  const { isAdmin } = useAuth();
+  // Le voci solo-admin (Utenti, Admin) non compaiono agli altri ruoli.
+  const ALTRO_ITEMS = ALTRO_ITEMS_RAW.filter(i => !i.adminOnly || isAdmin);
 
   // Chiudi se si clicca fuori
   useEffect(() => {

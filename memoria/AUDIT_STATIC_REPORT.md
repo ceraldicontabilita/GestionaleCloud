@@ -7,7 +7,7 @@ Generato da `scripts/audit_static.py`.
 
 - P1: 307
 - P2: 17
-- P3: 53
+- P3: 54
 - INFO: 16
 
 ## Findings
@@ -2054,7 +2054,7 @@ Generato da `scripts/audit_static.py`.
 
 ### P3 - fetch-race
 
-- File: `frontend/src/App.jsx:32`
+- File: `frontend/src/App.jsx:36`
 
 - Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.
 
@@ -2090,7 +2090,7 @@ Generato da `scripts/audit_static.py`.
 
 ### P3 - fetch-race
 
-- File: `frontend/src/components/layout/TopNav.jsx:356`
+- File: `frontend/src/components/layout/TopNav.jsx:360`
 
 - Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.
 
@@ -2343,6 +2343,12 @@ Generato da `scripts/audit_static.py`.
 ### P3 - fetch-race
 
 - File: `frontend/src/pages/Scadenze.jsx:55`
+
+- Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.
+
+### P3 - fetch-race
+
+- File: `frontend/src/pages/Utenti.jsx:27`
 
 - Dettaglio: api.get in componente con useEffect senza AbortController; verificare race condition.
 
