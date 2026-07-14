@@ -379,76 +379,34 @@ class CorrispettiviService:
     
     async def _create_prima_nota_entry(self, corr: Dict[str, Any]) -> Optional[str]:
         """
-        Crea movimenti Prima Nota Cassa per il corrispettivo.
-        Logica dare/avere:
-          1. ENTRATA (dare)  = totale corrispettivo
-          2. USCITA  (avere) = quota elettronica/POS → va in banca
-          Saldo cassa netto  = contanti (differenza)
+        Crea i movimenti Prima Nota per il corrispettivo.
+
+        Bug scoperto il 14/07/2026 mentre si estendeva il filtro anno
+        all'ingest Drive dei corrispettivi: questa era una TERZA
+        implementazione parallela della stessa regola contabile già
+        unificata altrove in app/routers/invoices/corrispettivi_helpers.py
+        (_create_prima_nota_movements, usata dal caricamento diretto e
+        dallo scheduler prima_nota_module/sync.py). Leggeva
+        `pagato_pos` invece di `pagato_elettronico` (il nome scritto dal
+        parser XML ufficiale, confermato dall'utente) e — più grave — non
+        creava MAI la riga entrata in prima_nota_banca: i corrispettivi
+        importati da questo canale (Drive corrispettivi, e create_manual
+        che riusa questo stesso metodo) non alimentavano mai Coerenza POS,
+        esattamente come il "Bug A" della quick-form POS già corretto in
+        Prima Nota. Ora delega alla stessa implementazione condivisa.
         """
         try:
-            data        = corr["data"]
-            totale      = corr.get("totale", 0)
-            elettronico = corr.get("pagato_pos", 0)
-            desc_base   = f"Corrispettivi {data}"
-            corr_id     = corr.get("id", "")
-            now         = datetime.now(timezone.utc).isoformat()
-
-            entrata_id = None
-
-            # Dedup: se per questo corrispettivo esistono gia' movimenti cassa
-            # (es. creati dalla conferma serale manuale, o da un import XML
-            # precedente), NON duplicarli — si allineano gli importi al dato
-            # XML ufficiale.
-            esistente = await self.db["prima_nota_cassa"].find_one(
-                {"corrispettivo_id": corr_id, "tipo": "entrata",
-                 "status": {"$nin": ["deleted", "archived"]}},
-                {"_id": 0, "id": 1},
+            from app.routers.invoices.corrispettivi_helpers import (
+                _create_prima_nota_movements, _delete_prima_nota_for_corrispettivo,
             )
-            if esistente:
-                if totale > 0:
-                    await self.db["prima_nota_cassa"].update_one(
-                        {"corrispettivo_id": corr_id, "tipo": "entrata"},
-                        {"$set": {"importo": round(totale, 2), "updated_at": now}},
-                    )
-                if elettronico and elettronico > 0:
-                    await self.db["prima_nota_cassa"].update_one(
-                        {"corrispettivo_id": corr_id, "tipo": "uscita"},
-                        {"$set": {"importo": round(elettronico, 2), "updated_at": now}},
-                    )
-                return esistente.get("id")
-
-            # 1. DARE — entrata totale corrispettivo in cassa
-            if totale > 0:
-                entrata_id = self._generate_id()
-                await self.db["prima_nota_cassa"].insert_one({
-                    "id":             entrata_id,
-                    "data":           data,
-                    "tipo":           "entrata",
-                    "importo":        round(totale, 2),
-                    "descrizione":    f"{desc_base} — Incasso totale",
-                    "categoria":      "Corrispettivi",
-                    "source":         "corrispettivo_xml",
-                    "corrispettivo_id": corr_id,
-                    "status":         "active",
-                    "created_at":     now,
-                })
-
-            # 2. AVERE — uscita quota POS (transita in banca)
-            if elettronico and elettronico > 0:
-                await self.db["prima_nota_cassa"].insert_one({
-                    "id":             self._generate_id(),
-                    "data":           data,
-                    "tipo":           "uscita",
-                    "importo":        round(elettronico, 2),
-                    "descrizione":    f"{desc_base} — Quota POS → Banca",
-                    "categoria":      "Girofondi POS",
-                    "source":         "corrispettivo_xml",
-                    "corrispettivo_id": corr_id,
-                    "status":         "active",
-                    "created_at":     now,
-                })
-
-            return entrata_id
+            corr_id = corr.get("id", "")
+            data = corr.get("data", "")
+            # Pulisce eventuali movimenti precedenti per lo stesso corrispettivo
+            # (stessa idempotenza già garantita dal vecchio dedup su
+            # corrispettivo_id) prima di rigenerarli con la regola corretta.
+            await _delete_prima_nota_for_corrispettivo(self.db, corr_id, data)
+            risultato = await _create_prima_nota_movements(self.db, corr)
+            return risultato.get("prima_nota_cassa_id")
         except Exception as e:
             logger.error(f"Error creating prima nota entry: {e}")
             return None
