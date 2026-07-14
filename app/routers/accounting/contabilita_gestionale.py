@@ -1197,3 +1197,34 @@ async def import_libro_giornale(
         "gia_presenti": gia_presenti,
         "scartate_senza_righe_o_protocollo": scartate,
     }
+
+
+@router.get("/libro-giornale/controllo-60-giorni")
+async def controllo_registrazioni_60_giorni() -> Dict[str, Any]:
+    """Controllo di conformità DPR 600/73 art. 22: le registrazioni nelle
+    scritture cronologiche vanno eseguite entro 60 giorni. Segnala fatture e
+    corrispettivi con data documento più vecchia di 60 giorni non ancora
+    registrati in contabilità (motore §6.1)."""
+    from datetime import timedelta
+    db = Database.get_db()
+    limite = (datetime.now(timezone.utc) - timedelta(days=60)).strftime("%Y-%m-%d")
+
+    fatture_in_ritardo = await db[Collections.INVOICES].count_documents({
+        "$or": [{"invoice_date": {"$lt": limite, "$gt": ""}},
+                {"data_fattura": {"$lt": limite, "$gt": ""}}],
+        "registrata_contabilita": {"$ne": True},
+    })
+    corrispettivi_in_ritardo = await db["corrispettivi"].count_documents({
+        "data": {"$lt": limite, "$gt": ""},
+        "registrato_contabilita": {"$ne": True},
+    })
+    totale = fatture_in_ritardo + corrispettivi_in_ritardo
+    return {
+        "limite_60_giorni": limite,
+        "fatture_non_registrate_oltre_60gg": fatture_in_ritardo,
+        "corrispettivi_non_registrati_oltre_60gg": corrispettivi_in_ritardo,
+        "totale_in_ritardo": totale,
+        "conforme": totale == 0,
+        "azione": None if totale == 0 else
+                  "Eseguire la registrazione contabile (Piano dei Conti → Registra fatture / corrispettivi)",
+    }

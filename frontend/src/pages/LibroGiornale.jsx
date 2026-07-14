@@ -24,18 +24,21 @@ export default function LibroGiornale() {
   const [mastro, setMastro] = useState(null);
   const [loading, setLoading] = useState(true);
   const [espansa, setEspansa] = useState(null); // id scrittura espansa
+  const [controllo60, setControllo60] = useState(null);
   const fileInputRef = useRef(null);
 
   const carica = useCallback(async () => {
     setLoading(true);
     try {
       const range = `data_da=${anno}-01-01&data_a=${anno}-12-31`;
-      const [g, m] = await Promise.all([
+      const [g, m, c60] = await Promise.all([
         api.get(`/api/contabilita-gestionale/libro-giornale?${range}&limit=2000`),
         api.get(`/api/contabilita-gestionale/libro-mastro?${range}`),
+        api.get('/api/contabilita-gestionale/libro-giornale/controllo-60-giorni'),
       ]);
       setGiornale(g.data);
       setMastro(m.data);
+      setControllo60(c60.data);
     } catch (e) {
       toast.error('Errore caricamento registro', {
         description: e.response?.data?.detail || e.message,
@@ -128,6 +131,19 @@ export default function LibroGiornale() {
         Provvisoria finché non vengono confermate. L'export permette di ricostruire
         la contabilità pari pari, come registrata all'epoca dei fatti.
       </p>
+
+      {/* Controllo 60 giorni (DPR 600/73 art. 22) */}
+      {controllo60 && !controllo60.conforme && (
+        <div data-testid="alert-60-giorni" style={{
+          padding: '10px 14px', background: '#fffbeb', border: '1px solid #fcd34d',
+          borderRadius: 8, color: '#92400e', fontSize: 13, marginBottom: 14,
+        }}>
+          ⏰ <strong>{controllo60.totale_in_ritardo} documenti oltre i 60 giorni</strong> non
+          ancora registrati in contabilità ({controllo60.fatture_non_registrate_oltre_60gg} fatture,{' '}
+          {controllo60.corrispettivi_non_registrati_oltre_60gg} corrispettivi).
+          Le registrazioni cronologiche vanno eseguite entro 60 giorni: {controllo60.azione}
+        </div>
+      )}
 
       {loading ? (
         <div style={{ color: COLORS.textMuted, padding: 24 }}>Caricamento registro…</div>
