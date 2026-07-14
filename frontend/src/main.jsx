@@ -217,6 +217,7 @@ const router = createBrowserRouter([
       { path: "integrazioni", element: <LazyPage><IntegrazioniHub /></LazyPage> },
       { path: "integrazioni-openapi", element: <Navigate to="/integrazioni" replace /> },
       { path: "integrazioni-openapi/:tab", element: <LazyPage><IntegrazioniHub /></LazyPage> },
+      { path: "integrazioni/mittenti-email", element: <LazyPage><IntegrazioniHub /></LazyPage> },
       { path: "pagopa", element: <Navigate to="/integrazioni/pagopa" replace /> },
       { path: "pagopa/:pratica", element: <Navigate to="/integrazioni/pagopa" replace /> },
 

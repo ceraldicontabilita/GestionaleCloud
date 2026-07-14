@@ -235,6 +235,22 @@ movimenti automatici. Restano comunque rifiutati i movimenti chiaramente bancari
 - Vale solo dall'attivazione in avanti: il pregresso resta coperto dalla quadratura
   Drive settimanale.
 
+**Fatture ESTERE via email** (Integrazioni → Mittenti Email)
+- Le fatture **italiane** arrivano sempre via SDI/Aruba/Drive: non si scaricano
+  mai da Gmail. I fornitori **esteri** invece non passano dallo SDI e a volte
+  mandano l'XML vero in allegato via email — ma non si può sapere in anticipo
+  chi sono: si scoprono solo dopo aver ricevuto la prima fattura.
+- Quando ne arriva una, in **Integrazioni → Mittenti Email** aggiungi
+  l'indirizzo/dominio del mittente scegliendo il tipo "Fattura estera (XML)":
+  da quel momento il sistema legge automaticamente le email di quel mittente,
+  **ogni ora**, e fa il parsing vero dell'XML con la stessa pipeline di
+  Drive/upload manuale (stesso schema campi, stesso rispetto del metodo
+  fornitore, stessa registrazione in prima nota). Zero mittenti configurati =
+  nessuna email scaricata (nessun rischio di prendere roba indesiderata).
+- La stessa pagina permette di configurare anche altri tipi di documento
+  (cedolino, PagoPA, INPS, INAIL, PayPal, cartella esattoriale) se un giorno
+  servisse un mittente attendibile per quei canali.
+
 **Saldo progressivo**: ogni movimento porta il saldo aggiornato a quel punto, in
 ordine cronologico. Un movimento retrodatato ricalcola a cascata i saldi successivi.
 A parità di giorno l'ordine di inserimento è garantito (la quota contanti in cassa e

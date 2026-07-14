@@ -625,6 +625,39 @@ def start_scheduler():
         replace_existing=True,
     )
 
+    # ── Documenti da mittenti Gmail attendibili (ceraldigroupsrl@gmail.com),
+    #    ogni ora. Copre TUTTI i tipi configurati in "Mittenti Email"
+    #    (Integrazioni → Mittenti): fatture ESTERE (tipo_documento=
+    #    "fattura_xml", parsing XML vero con la pipeline unica condivisa con
+    #    Drive/upload — le fatture italiane arrivano SEMPRE via SDI/Aruba/
+    #    Drive, mai da qui), oltre a cedolino/pagopa/inps/inail/paypal/
+    #    cartella esattoriale se un mittente è configurato per quei tipi.
+    #    Trovato dormiente in sessione di debug 2026-07-14 (stessa causa di
+    #    aruba_notifiche_scan: nessuno chiamava sync_email_documents), attivato
+    #    su richiesta esplicita dell'utente contestualmente alla pagina di
+    #    gestione mittenti. Senza mittenti configurati è un no-op innocuo
+    #    (0 mittenti attivi → 0 email scaricate).
+    async def _mittenti_email_job():
+        from app.database import Database
+        from app.services.email_monitor_service import sync_email_documents
+        try:
+            result = await sync_email_documents(Database.get_db(), giorni=1)
+            if result.get("success") is False:
+                logger.info(f"[SCHEDULER-MITTENTI-EMAIL] non eseguito: {result.get('error')}")
+            else:
+                logger.info(f"[SCHEDULER-MITTENTI-EMAIL] nuovi={result.get('new_documents')} "
+                            f"xml_processati={result.get('xml_processed')}")
+        except Exception as e:
+            logger.error(f"[SCHEDULER-MITTENTI-EMAIL] errore: {e}")
+
+    scheduler.add_job(
+        _mittenti_email_job,
+        'interval', hours=1,
+        id="mittenti_email_sync",
+        name="Documenti da mittenti email attendibili: fatture estere XML + altri tipi (ogni ora)",
+        replace_existing=True,
+    )
+
     # ── Google Drive: nuovi canali documentali (dichiarazione IVA, cartelle
     # esattoriali, avvisi bonari) ogni ora. Ogni canale gira solo se acceso e
     # con la cartella configurata su Render (altrimenti no-op). ──

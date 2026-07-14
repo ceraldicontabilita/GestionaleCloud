@@ -24,7 +24,7 @@ qualcosa in una collection" lo segnalo come da verificare con te.
 | Area | Automatismo dichiarato | Dove nel codice | Trigger reale trovato | Stato | Nota |
 |---|---|---|---|---|---|
 | Email/Aruba | Notifiche Aruba → fatture attese/provvisorie | `services/aruba_notifiche.py` | Job `aruba_notifiche_scan`, ogni ora | ✅ | Fix di ieri |
-| Email/Documenti | **Fatture ESTERE via email → parsing XML vero** | `services/email_monitor_service.py::sync_email_documents` (tipo_documento="fattura_xml" per mittente attendibile) | Nessuno (raggiungibile solo da `run_full_sync`, mai schedulato) | 🟠 + ⚪ | Deliberatamente escluso ieri dal job Aruba (comportamento diverso). Serve sapere se hai già mittenti esteri configurati in `mittenti_email` prima di schedularlo (altrimenti il job non farebbe nulla) |
+| Email/Documenti | **Fatture ESTERE via email → parsing XML vero** | `services/email_monitor_service.py::sync_email_documents` (tipo_documento="fattura_xml" per mittente attendibile) | ✅ RISOLTA (2026-07-14): job `mittenti_email_sync`, ogni ora + pagina **Integrazioni → Mittenti Email** per aggiungere i mittenti man mano che arrivano (scelta utente: si scoprono solo dopo la prima fattura ricevuta) | ✅ | Con zero mittenti configurati il job è un no-op innocuo; appena aggiungi un mittente con tipo "Fattura estera (XML)" viene processato entro un'ora |
 | Email/Documenti | Import fatture/cedolini/corrispettivi/quietanze/documenti fiscali da Drive | `services/drive_*_ingest.py` | 5 job orari + quadrature domenicali | ✅ | — |
 | Email | Scan verbali CdS + link a fatture | `services/verbali_gmail_scanner.py` | Job ogni 30/60 min | ✅ | — |
 | Email | Gmail full scan multi-cartella (F24/cedolini/verbali/quietanze PDF) | `services/email_full_download.py` | Job orario | ✅ | Regola esplicita nel codice: le fatture NON si scaricano da qui (solo PEC/import manuale) — coerente coi due punti sopra |
@@ -49,10 +49,10 @@ qualcosa in una collection" lo segnalo come da verificare con te.
 
 ## Riepilogo per priorità
 
-**🟠 Dormienti trovati (3), da tua conferma prima di agire — nessuno toccato**:
-1. **Fatture estere via email** — meccanismo di parsing pronto, manca sia la schedulazione sia (forse) la configurazione dei mittenti e la pagina per gestirli.
-2. **Anomalie IVA** — calcolate solo su richiesta, mai segnalate proattivamente.
-3. **Libretti sanitari scadenze** — nessun trigger, nemmeno un pulsante in UI.
+**🟠 Dormienti trovati (3)**:
+1. ✅ **Fatture estere via email** — RISOLTA 2026-07-14: job `mittenti_email_sync` (ogni ora) + pagina Integrazioni → Mittenti Email per aggiungere i mittenti man mano.
+2. **Anomalie IVA** — calcolate solo su richiesta, mai segnalate proattivamente. Ancora da decidere.
+3. **Libretti sanitari scadenze** — nessun trigger, nemmeno un pulsante in UI. Ancora da decidere.
 
 **🔵 Manuali per scelta (cespiti/ammortamenti, TFR annuale, chiusura esercizio)**: corretto che restino un'azione deliberata dell'utente; segnalo solo che oggi non c'è nemmeno un promemoria "è ora di farlo" — se lo vuoi, è un'aggiunta leggera (un alert, non un'automazione).
 

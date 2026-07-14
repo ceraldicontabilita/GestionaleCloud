@@ -1,10 +1,11 @@
 import React, { lazy, Suspense, useEffect, useState } from 'react';
-import { Braces, Landmark } from 'lucide-react';
+import { Braces, Landmark, Mail } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { HubTabs, PageLoader } from '../../components/ds';
 
 const OpenAPIContent = lazy(() => import('../IntegrazioniOpenAPI.jsx'));
 const PagoPAContent = lazy(() => import('../GestionePagoPA.jsx'));
+const MittentiEmailContent = lazy(() => import('../MittentiEmail.jsx'));
 
 
 export default function IntegrazioniHub() {
@@ -12,7 +13,8 @@ export default function IntegrazioniHub() {
   const location = useLocation();
   const path = location.pathname;
   const isPagoPA = path.includes('/pagopa');
-  const activeTab = isPagoPA ? 'pagopa' : 'openapi';
+  const isMittenti = path.includes('/mittenti-email');
+  const activeTab = isPagoPA ? 'pagopa' : isMittenti ? 'mittenti-email' : 'openapi';
   const [visitedTabs, setVisitedTabs] = useState(() => new Set([activeTab]));
 
   useEffect(() => {
@@ -26,6 +28,7 @@ export default function IntegrazioniHub() {
   const tabs = [
     { id: 'openapi', label: 'OpenAPI', Icon: Braces, to: '/integrazioni' },
     { id: 'pagopa', label: 'PagoPA', Icon: Landmark, to: '/integrazioni/pagopa' },
+    { id: 'mittenti-email', label: 'Mittenti Email', Icon: Mail, to: '/integrazioni/mittenti-email' },
   ];
 
   return (
@@ -41,6 +44,9 @@ export default function IntegrazioniHub() {
       </div>
       <div style={{ display: activeTab === 'pagopa' ? 'block' : 'none' }}>
         <Suspense fallback={<PageLoader />}>{visitedTabs.has('pagopa') && <PagoPAContent />}</Suspense>
+      </div>
+      <div style={{ display: activeTab === 'mittenti-email' ? 'block' : 'none' }}>
+        <Suspense fallback={<PageLoader />}>{visitedTabs.has('mittenti-email') && <MittentiEmailContent />}</Suspense>
       </div>
     </div>
   );
