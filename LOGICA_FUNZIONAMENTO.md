@@ -259,6 +259,13 @@ movimenti automatici. Restano comunque rifiutati i movimenti chiaramente bancari
   estere (PDF)"). Se l'estrazione fallisce o non riesce a leggere numero e
   importo, non viene creata nessuna fattura: resta solo il PDF archiviato,
   da lavorare a mano (nessun dato inventato).
+- Il fornitore viene agganciato/creato **esplicitamente sulla P.IVA estera**
+  (formati UE non italiani inclusi, non solo l'11 cifre italiano): fatture
+  successive dello stesso fornitore convergono sullo stesso record invece
+  di restare orfane, ed è un segnale in più di lettura corretta oltre al
+  nome. La nazione viene dedotta dal prefisso della P.IVA (es. "DE..." →
+  Germania), per non marcare per errore un fornitore estero come "P.IVA
+  italiana non standard".
 - La stessa pagina permette di configurare anche altri tipi di documento
   (cedolino, PagoPA, INPS, INAIL, PayPal, cartella esattoriale) se un giorno
   servisse un mittente attendibile per quei canali.

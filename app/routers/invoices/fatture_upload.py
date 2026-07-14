@@ -170,13 +170,35 @@ def _piva_plausibile(vat: str) -> bool:
     return bool(_re.fullmatch(r"\d{11}", v))
 
 
-async def ensure_supplier_exists(db, parsed_invoice: Dict[str, Any], session=None) -> Dict[str, Any]:
+def _piva_estera_plausibile(vat: str) -> bool:
+    """Come `_piva_plausibile` ma accetta anche i formati P.IVA/VAT-ID degli
+    altri paesi UE (lunghezza e alfabeto variano per stato: es. DE 9 cifre,
+    FR 2 lettere/cifre di controllo + 9 cifre, IE alfanumerico, ecc.) — 2
+    lettere paese + 2-13 alfanumerici. USATA SOLO per le fatture ESTERE PDF
+    (mai per l'XML italiano: lì l'11 cifre resta un vincolo di qualità dati,
+    vedi `_piva_plausibile`), per agganciare/creare il fornitore anche
+    quando il formato non è quello italiano — così più fatture dello stesso
+    fornitore estero convergono sullo stesso record invece di restare
+    orfane, aumentando la certezza che l'estrazione abbia letto bene."""
+    import re as _re
+    v = (vat or "").strip().upper().replace(" ", "")
+    if _piva_plausibile(v):
+        return True
+    return bool(_re.fullmatch(r"[A-Z]{2}[A-Z0-9]{2,13}", v))
+
+
+async def ensure_supplier_exists(db, parsed_invoice: Dict[str, Any], session=None,
+                                  piva_validator=_piva_plausibile) -> Dict[str, Any]:
     """
     Verifica se il fornitore esiste. Se sì, aggiorna i campi anagrafici mancanti.
     Se non esiste, lo crea automaticamente con i dati dalla fattura XML.
 
     session: sessione Mongo opzionale, per partecipare a una transazione del
     chiamante (es. process_fattura_to_db). None per gli altri chiamanti.
+    piva_validator: funzione di plausibilità P.IVA da usare per la guardia
+    sotto — default `_piva_plausibile` (solo formato italiano/UE 11 cifre).
+    Le fatture estere PDF passano `_piva_estera_plausibile` per accettare
+    anche i formati P.IVA degli altri paesi UE.
     """
     supplier_vat = parsed_invoice.get("supplier_vat") or ""
     supplier_name = parsed_invoice.get("supplier_name") or "Fornitore Sconosciuto"
@@ -219,7 +241,7 @@ async def ensure_supplier_exists(db, parsed_invoice: Dict[str, Any], session=Non
     # ── GUARDIA P.IVA VALIDA ──────────────────────────────────────────────
     # Mai creare/agganciare un fornitore con un codice fiscale personale o
     # una stringa qualsiasi nel campo partita_iva.
-    if not _piva_plausibile(supplier_vat):
+    if not piva_validator(supplier_vat):
         logger.warning(
             f"Identificativo cedente '{supplier_vat}' non è una P.IVA valida "
             f"({supplier_name}): fornitore non creato automaticamente"
@@ -1085,7 +1107,8 @@ async def process_xml_bytes(db, content: bytes, filename: str, source: str = "xm
 
 
 async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, source: str,
-                                 xml_raw: Optional[str] = None) -> Dict[str, Any]:
+                                 xml_raw: Optional[str] = None,
+                                 piva_validator=_piva_plausibile) -> Dict[str, Any]:
     """Pipeline CONDIVISA per importare una fattura già "parsata" in un dict
     con lo schema di `parse_fattura_xml` (invoice_number/supplier_vat/...).
 
@@ -1093,7 +1116,7 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
     dalle fatture ESTERE arrivate come PDF via email, estratte via AI
     (vedi `process_fattura_estera_pdf`): stessa dedup, stesso fornitore,
     stessa prima nota provvisoria, stesso event bus — qualunque sia la
-    fonte del `parsed`.
+    fonte del `parsed`. `piva_validator` passa a `ensure_supplier_exists`.
     """
     # 3. Dedup tramite invoice_key
     invoice_key = generate_invoice_key(
@@ -1106,7 +1129,7 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
                 "invoice_number": parsed.get("invoice_number")}
 
     # 4. Fornitore (crea se nuovo) + metodo pagamento
-    supplier_result = await ensure_supplier_exists(db, parsed)
+    supplier_result = await ensure_supplier_exists(db, parsed, piva_validator=piva_validator)
     # REGOLA: metodo pagamento SOLO dal fornitore (mai dal documento).
     # Se il fornitore non ha un metodo → "sospesa" → resta nei provvisori.
     metodo_pagamento = supplier_result.get("metodo_pagamento") or "sospesa"
@@ -1246,7 +1269,8 @@ async def process_fattura_estera_pdf(db, pdf_base64: str, filename: str,
     if not parsed.get("invoice_number") and not parsed.get("total_amount"):
         return {"status": "dati_insufficienti", "filename": filename}
 
-    return await import_parsed_invoice(db, parsed, filename, source, xml_raw=None)
+    return await import_parsed_invoice(db, parsed, filename, source, xml_raw=None,
+                                        piva_validator=_piva_estera_plausibile)
 
 
 def _ai_fattura_a_parsed(data: Dict[str, Any]) -> Dict[str, Any]:
@@ -1259,11 +1283,16 @@ def _ai_fattura_a_parsed(data: Dict[str, Any]) -> Dict[str, Any]:
     fornitore = data.get("fornitore") or {}
     cliente = data.get("cliente") or {}
     invoice_date = parse_date(data.get("data_fattura")) or ""
+    supplier_vat = (fornitore.get("partita_iva") or "").strip().upper()
+    # Prefisso paese della P.IVA UE (es. "DE123456789" -> "DE"): evita che
+    # ensure_supplier_exists dia per scontato "IT" su un fornitore estero e
+    # generi un falso alert "P.IVA non standard italiana".
+    nazione = supplier_vat[:2] if len(supplier_vat) > 2 and supplier_vat[:2].isalpha() else ""
 
     return {
         "invoice_number": (data.get("numero_fattura") or "").strip(),
         "invoice_date": invoice_date,
-        "supplier_vat": (fornitore.get("partita_iva") or "").strip(),
+        "supplier_vat": supplier_vat,
         "supplier_name": (fornitore.get("denominazione") or "").strip(),
         "total_amount": parse_amount(data.get("totale")),
         "imponibile": parse_amount(data.get("imponibile")),
@@ -1274,6 +1303,7 @@ def _ai_fattura_a_parsed(data: Dict[str, Any]) -> Dict[str, Any]:
         "fornitore": {
             "codice_fiscale": fornitore.get("codice_fiscale") or "",
             "indirizzo": fornitore.get("indirizzo") or "",
+            "nazione": nazione,
         },
         "cliente": {
             "denominazione": cliente.get("denominazione") or "",

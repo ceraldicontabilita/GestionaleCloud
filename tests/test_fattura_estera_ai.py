@@ -6,6 +6,7 @@ import asyncio
 
 from app.routers.invoices.fatture_upload import (
     _ai_fattura_a_parsed,
+    _piva_estera_plausibile,
     process_fattura_estera_pdf,
 )
 
@@ -132,6 +133,39 @@ def test_estrazione_riuscita_crea_fattura_vera(monkeypatch):
     assert inv["cedente_denominazione"] == "Foreign Supplies GmbH"
     assert inv["source"] == "email_gmail_estera"
     assert inv["status"] == "imported"
+
+
+def test_piva_estera_plausibile_formati_ue():
+    # Italiana: accettata come sempre (delega a _piva_plausibile)
+    assert _piva_estera_plausibile("IT06714021000")
+    # Tedesca (9 cifre), francese (2 lettere/cifre controllo + 9 cifre),
+    # irlandese (alfanumerica) — mai valide per _piva_plausibile
+    assert _piva_estera_plausibile("DE123456789")
+    assert _piva_estera_plausibile("FR12345678901")
+    assert _piva_estera_plausibile("IE1234567AB")
+    # Un CF personale italiano resta rifiutato
+    assert not _piva_estera_plausibile("PMUGLN65L23F839F")
+    assert not _piva_estera_plausibile("")
+
+
+def test_fornitore_estero_agganciato_su_piva_e_nazione_dedotta(monkeypatch):
+    """Una P.IVA estera (formato non italiano) crea comunque il fornitore,
+    con la nazione dedotta dal prefisso — non genera il falso alert 'non
+    standard italiano' che scatterebbe col default nazione=IT."""
+    _patch_extraction(monkeypatch, {"success": True, "data": AI_OK})
+    db = _FakeDb()
+
+    _run(process_fattura_estera_pdf(db, "base64...", "fattura_estera.pdf"))
+
+    fornitori = db.collections.get("fornitori")
+    assert fornitori is not None and len(fornitori.docs) == 1
+    fornitore = fornitori.docs[0]
+    assert fornitore["partita_iva"] == "DE123456789"
+    assert fornitore["nazione"] == "DE"
+
+    alerts = db.collections.get("alerts")
+    codici_alert = [a.get("codice") for a in (alerts.docs if alerts else [])]
+    assert "FORN_DATI_INCOERENTI" not in codici_alert
 
 
 def test_dedup_seconda_fattura_identica(monkeypatch):
