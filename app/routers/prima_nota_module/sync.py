@@ -77,6 +77,15 @@ def costruisci_campi_movimento_fattura(
     reso incoerente tra un punto e l'altro.
     """
     tipo_movimento, categoria, desc_prefisso = determina_tipo_movimento_fattura(fattura)
+    # Bug 14/07/2026 (errore 400 segnalato dall'utente su una "BOLLETTE...":
+    # una rettifica di credito fornitore, es. utenze, arrivata con
+    # tipo_documento ancora TD01 ma importo già negativo nella sorgente,
+    # veniva trattata come uscita normale). Il segno dell'importo è un
+    # indizio più forte del tipo_documento su una sorgente dati non sempre
+    # affidabile: un importo negativo su quella che sarebbe un'uscita è
+    # sempre un'entrata/nota di credito, mai bloccata o forzata in uscita.
+    if importo < 0 and tipo_movimento == "uscita":
+        tipo_movimento, categoria, desc_prefisso = "entrata", "Nota credito fornitore", "Nota credito"
     numero_fattura = fattura.get("invoice_number") or fattura.get("numero_fattura") or ""
     fornitore = fattura.get("supplier_name") or fattura.get("cedente_denominazione") or "Fornitore"
     descrizione = f"{desc_prefisso} {numero_fattura} - {fornitore[:lunghezza_fornitore]}"
@@ -86,7 +95,7 @@ def costruisci_campi_movimento_fattura(
         "tipo": tipo_movimento,
         "categoria": categoria,
         "descrizione": descrizione,
-        "importo": importo,
+        "importo": abs(importo),
         "numero_fattura": numero_fattura,
         "tipo_documento": fattura.get("tipo_documento"),
     }

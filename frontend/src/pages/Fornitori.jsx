@@ -1665,6 +1665,39 @@ export default function Fornitori() {
     }
   };
 
+  // Elimina una fattura direttamente dall'Estratto Fatture (richiesta utente
+  // 14/07/2026). L'endpoint DELETE /api/fatture/{id} applica le business
+  // rules (blocca fatture pagate/con Prima Nota senza force=true): se il
+  // primo tentativo torna 400, si propone la conferma esplicita.
+  const eliminaFatturaEstratto = async (fattura, force = false) => {
+    if (
+      !(await confirm({
+        title: force ? 'Elimina comunque' : 'Elimina fattura',
+        message: force
+          ? `"${fattura.numero}" ha registrazioni collegate (Prima Nota/magazzino/scadenze): eliminarla comunque? Verranno rimosse anche quelle.`
+          : `Eliminare definitivamente la fattura ${fattura.numero || fattura.id}? Questa operazione non può essere annullata.`,
+        variant: 'danger',
+      }))
+    ) {
+      return;
+    }
+    try {
+      await api.delete(`/api/fatture/${fattura.id}${force ? '?force=true' : ''}`);
+      toast.success('Fattura eliminata');
+      reloadEstratto();
+    } catch (error) {
+      const status = error.response?.status;
+      const detail = error.response?.data?.detail || error.message;
+      if (status === 400 && !force) {
+        // Business rule bloccante (es. fattura pagata/con Prima Nota):
+        // ripropone la stessa azione con force=true invece di un vicolo cieco.
+        eliminaFatturaEstratto(fattura, true);
+      } else {
+        toast.error('Errore eliminazione: ' + detail);
+      }
+    }
+  };
+
   const stats = {
     total: suppliers.length,
     withInvoices: suppliers.filter(s => (s.fatture_count || 0) > 0).length,
@@ -3018,6 +3051,23 @@ export default function Fornitori() {
                                       🏦 Banca
                                     </Button>
                                   </>
+                                )}
+                                {/* Elimina fattura direttamente dall'estratto
+                                    (richiesta utente 14/07/2026): stessa
+                                    validazione business-rule del backend —
+                                    fatture pagate/con Prima Nota richiedono
+                                    conferma esplicita "forza comunque". */}
+                                {f.id && (
+                                  <Button
+                                    variant="danger"
+                                    size="sm"
+                                    onClick={() => eliminaFatturaEstratto(f)}
+                                    data-testid={`btn-elimina-fattura-${f.id}`}
+                                    style={{ padding: '3px 8px', fontSize: 10 }}
+                                    title="Elimina fattura"
+                                  >
+                                    🗑️
+                                  </Button>
                                 )}
                                 </div>
                               </Td>

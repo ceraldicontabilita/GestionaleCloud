@@ -25,10 +25,16 @@ async def paga_fattura_manuale(payload: Dict[str, Any] = Body(...)) -> Dict[str,
     data_pagamento = payload.get("data_pagamento")
     fornitore = payload.get("fornitore", "Fornitore")
     numero_fattura = payload.get("numero_fattura", "")
-    
-    if not fattura_id or importo <= 0:
+
+    # Bug 14/07/2026 (errore 400 segnalato dall'utente su una "BOLLETTE..."
+    # con importo negativo): "importo <= 0" bloccava qualunque fattura con
+    # importo negativo (rettifiche di credito fornitore — es. utenze — che
+    # arrivano con tipo_documento ancora TD01 ma importo già negativo nella
+    # sorgente). Un importo negativo è un dato legittimo (nota di credito),
+    # solo importo == 0 non ha senso da registrare.
+    if not fattura_id or importo == 0:
         raise HTTPException(status_code=400, detail="fattura_id e importo sono obbligatori")
-    
+
     if metodo not in ["cassa", "banca"]:
         raise HTTPException(status_code=400, detail="metodo deve essere 'cassa' o 'banca'")
 
@@ -37,7 +43,7 @@ async def paga_fattura_manuale(payload: Dict[str, Any] = Body(...)) -> Dict[str,
     auto_riconciliato = False
 
     risultato = {"success": True, "movimento_id": None, "metodo": metodo, "importo": importo, "riconciliato": auto_riconciliato}
-    
+
     try:
         collection = "prima_nota_cassa" if metodo == "cassa" else "prima_nota_banca"
 
@@ -47,15 +53,30 @@ async def paga_fattura_manuale(payload: Dict[str, Any] = Body(...)) -> Dict[str,
             risultato["movimento_id"] = existing_mov.get("id")
             risultato["message"] = "Movimento già presente, aggiornato stato riconciliazione"
         else:
+            # Stessa regola nota di credito già unificata altrove
+            # (prima_nota_module/sync.py::costruisci_campi_movimento_fattura):
+            # tipo_documento TD04/TD08 O importo negativo -> ENTRATA "Nota
+            # credito fornitore", mai un'uscita bloccata dalla validazione.
+            from app.routers.prima_nota_module.sync import costruisci_campi_movimento_fattura
+            fattura_doc = await db["invoices"].find_one({"id": fattura_id}, {"_id": 0, "tipo_documento": 1}) or {}
+            fattura_per_helper = {
+                "tipo_documento": fattura_doc.get("tipo_documento"),
+                "invoice_number": numero_fattura,
+                "supplier_name": fornitore,
+            }
+            campi = costruisci_campi_movimento_fattura(fattura_per_helper, importo)
+
             movimento_id = str(uuid.uuid4())
             movimento = {
                 "id": movimento_id,
                 "data": data_pagamento,
-                "descrizione": f"Pagamento Fatt. {numero_fattura} - {fornitore}",
+                "descrizione": campi["descrizione"],
                 "causale": "Pagamento fattura fornitore",
-                "importo": importo,
-                "tipo": "uscita",
-                "categoria": "fornitori",
+                "importo": campi["importo"],
+                "tipo": campi["tipo"],
+                "categoria": campi["categoria"],
+                "numero_fattura": campi["numero_fattura"],
+                "tipo_documento": campi["tipo_documento"],
                 "stato": "confermato",
                 "fattura_id": fattura_id,
                 "fattura_collegata": fattura_id,
