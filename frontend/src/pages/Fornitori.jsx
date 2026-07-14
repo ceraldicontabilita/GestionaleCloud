@@ -1077,6 +1077,23 @@ function AzioniFornitore({
   // di icone"): restano visibili solo fatturato anno corrente e Modifica,
   // tutto il resto va nel menù "⋯".
   const [menuAperto, setMenuAperto] = useState(false);
+  const menuBtnRef = useRef(null);
+  const [menuPos, setMenuPos] = useState(null);
+
+  // Bug 14/07/2026: il menù era posizionato con `position: absolute` DENTRO
+  // la cella della tabella. TableWrap ha overflow-x:auto, che per spec CSS
+  // forza anche overflow-y ad 'auto' (clipping) quando non è 'visible':
+  // per l'ULTIMA riga il menù si apriva sotto il bordo del box tabella e
+  // veniva tagliato via, invisibile ("non compare... è troppo giù").
+  // Fix: portal fuori dalla tabella, posizionato in `fixed` sulle
+  // coordinate reali del bottone — non risente più del clipping del contenitore.
+  const apriMenu = () => {
+    const rect = menuBtnRef.current?.getBoundingClientRect();
+    if (rect) {
+      setMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+    }
+    setMenuAperto(a => !a);
+  };
 
   const vociMenu = [
     {
@@ -1127,23 +1144,24 @@ function AzioniFornitore({
       </RowActionButton>
       <div style={{ position: 'relative', display: 'inline-block' }}>
         <RowActionButton
+          ref={menuBtnRef}
           variant="neutral"
-          onClick={() => setMenuAperto(a => !a)}
+          onClick={apriMenu}
           title="Altre azioni"
           style={{ fontWeight: 800, width: 30, height: 30, fontSize: 16 }}
         >
           ⋯
         </RowActionButton>
-        {menuAperto && (
-          <>
+        {menuAperto && menuPos && (
+          <Portal>
             {/* chiude il menù cliccando fuori */}
             <div
               onClick={() => setMenuAperto(false)}
-              style={{ position: 'fixed', inset: 0, zIndex: 90 }}
+              style={{ position: 'fixed', inset: 0, zIndex: 9998 }}
             />
             <div
               style={{
-                position: 'absolute', right: 0, top: '110%', zIndex: 100,
+                position: 'fixed', top: menuPos.top, right: menuPos.right, zIndex: 9999,
                 background: 'white', border: `1px solid ${COLORS.border}`,
                 borderRadius: 8, boxShadow: '0 8px 24px rgba(15,39,68,0.18)',
                 minWidth: 190, padding: 4,
@@ -1171,7 +1189,7 @@ function AzioniFornitore({
                 </button>
               ))}
             </div>
-          </>
+          </Portal>
         )}
       </div>
     </RowActions>

@@ -168,14 +168,26 @@ async def trova_duplicati() -> Dict[str, Any]:
     }
 
 
-async def _migra_riferimenti(db, from_id: str, to_id: str) -> Dict[str, int]:
+async def _migra_riferimenti(
+    db, from_id: str, to_id: str,
+    piva_da: Optional[str] = None, piva_a: Optional[str] = None,
+) -> Dict[str, int]:
     """
     Re-punta le entità collegate al fornitore duplicato verso il target.
-    Le collezioni chiave per P.IVA (non per supplier_id) convergono da sole
-    una volta unificata la P.IVA sul record superstite — non richiedono
-    migrazione esplicita qui.
+
+    Bug 14/07/2026 (segnalato dall'utente: fornitori duplicati con P.IVA/CF
+    diverse, es. "Ceraldi Group" 3 volte): il vecchio commento qui assumeva
+    che "le collezioni chiave per P.IVA convergono da sole una volta
+    unificata la P.IVA sul record superstite" — falso quando i due fornitori
+    hanno P.IVA/CF DIVERSE (il caso tipico del gruppo "denominazione_simile",
+    certezza media): merge_fornitori non sovrascrive la P.IVA del target se
+    già valorizzata, quindi la P.IVA del duplicato resta orfana e Prima
+    Nota/pagamenti indicizzati su quella P.IVA testuale non seguono il
+    merge. Se piva_da != piva_a, ripuntiamo esplicitamente anche quelle.
     """
-    stats = {"fatture_migrate": 0, "scadenze_migrate": 0}
+    stats = {"fatture_migrate": 0, "scadenze_migrate": 0,
+              "prima_nota_cassa_migrati": 0, "prima_nota_banca_migrati": 0,
+              "pagamenti_migrati": 0}
 
     res = await db[Collections.INVOICES].update_many(
         {"supplier_id": from_id},
@@ -189,6 +201,26 @@ async def _migra_riferimenti(db, from_id: str, to_id: str) -> Dict[str, int]:
             {"$set": {"fornitore_id": to_id}},
         )
         stats["scadenze_migrate"] = res.modified_count
+
+    if piva_da and piva_a and piva_da != piva_a:
+        res = await db["prima_nota_cassa"].update_many(
+            {"fornitore_piva": piva_da},
+            {"$set": {"fornitore_piva": piva_a}},
+        )
+        stats["prima_nota_cassa_migrati"] = res.modified_count
+
+        res = await db["prima_nota_banca"].update_many(
+            {"fornitore_piva": piva_da},
+            {"$set": {"fornitore_piva": piva_a}},
+        )
+        stats["prima_nota_banca_migrati"] = res.modified_count
+
+        if "pagamenti" in await db.list_collection_names():
+            res = await db["pagamenti"].update_many(
+                {"fornitore_piva": piva_da},
+                {"$set": {"fornitore_piva": piva_a}},
+            )
+            stats["pagamenti_migrati"] = res.modified_count
 
     return stats
 
@@ -230,11 +262,20 @@ async def merge_fornitori(target_id: str, duplicate_id: str, soft: bool = True) 
     if fatture_count_dup:
         merge_update["fatture_count"] = fatture_count_target + fatture_count_dup
 
+    # P.IVA effettiva del duplicato e del target DOPO il merge (serve per
+    # ripuntare Prima Nota/pagamenti indicizzati sulla P.IVA testuale, non
+    # sul supplier_id — vedi _migra_riferimenti).
+    piva_dup = dup.get("partita_iva") or dup.get("piva")
+    piva_target_finale = (
+        merge_update.get("partita_iva") or merge_update.get("piva")
+        or target.get("partita_iva") or target.get("piva")
+    )
+
     merge_update["updated_at"] = datetime.now(timezone.utc).isoformat()
     if merge_update:
         await coll.update_one({"id": target_id}, {"$set": merge_update})
 
-    stats = await _migra_riferimenti(db, duplicate_id, target_id)
+    stats = await _migra_riferimenti(db, duplicate_id, target_id, piva_dup, piva_target_finale)
 
     if soft:
         await coll.update_one(

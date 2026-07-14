@@ -96,7 +96,10 @@ export function RowActions({ children, style = {} }) {
   );
 }
 
-export function RowActionButton({ variant = 'neutral', children, style = {}, ...props }) {
+export const RowActionButton = React.forwardRef(function RowActionButton(
+  { variant = 'neutral', children, style = {}, ...props },
+  ref
+) {
   const variants = {
     neutral: { background: COLORS.gray[100], color: COLORS.textMuted },
     primary: { background: COLORS.primarySoft, color: COLORS.primary },
@@ -106,6 +109,7 @@ export function RowActionButton({ variant = 'neutral', children, style = {}, ...
   };
   return (
     <button
+      ref={ref}
       style={{
         display: 'inline-flex',
         alignItems: 'center',
@@ -124,6 +128,6 @@ export function RowActionButton({ variant = 'neutral', children, style = {}, ...
       {children}
     </button>
   );
-}
+});
 
 export default Table;
