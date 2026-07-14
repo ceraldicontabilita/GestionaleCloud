@@ -16,19 +16,24 @@ class _Coll:
     def __init__(self):
         self.docs = []
 
+    def _match(self, d, query):
+        for k, v in query.items():
+            if isinstance(v, dict):
+                if v.get("$exists") and k not in d:
+                    return False
+            elif d.get(k) != v:
+                # {"anno": None} deve intercettare sia i doc senza `anno`
+                # sia quelli con `anno: None`, come in Mongo reale.
+                return False
+        return True
+
     async def find_one(self, query, projection=None, sort=None):
+        candidati = [d for d in self.docs if self._match(d, query)]
         if sort:
             campo, direzione = sort[0]
-            docs = sorted([d for d in self.docs if campo in d],
-                          key=lambda d: d[campo], reverse=(direzione == -1))
-            return docs[0] if docs else None
-        for d in self.docs:
-            if all(d.get(k) == v for k, v in query.items()
-                   if not isinstance(v, dict)):
-                if all(k in d for k, v in query.items()
-                       if isinstance(v, dict) and v.get("$exists")):
-                    return d
-        return None
+            candidati = sorted([d for d in candidati if campo in d],
+                               key=lambda d: d[campo], reverse=(direzione == -1))
+        return candidati[0] if candidati else None
 
     async def insert_one(self, doc):
         self.docs.append(doc)
@@ -102,6 +107,46 @@ def test_numero_registrazione_progressivo():
     db = _Db()
     _run(_scrittura_tfr(db, dip="d1"))
     doc2 = _run(_scrittura_tfr(db, dip="d2"))
+    assert doc2["numero_registrazione"] == 2
+
+
+def test_protocollo_si_azzera_a_ogni_anno():
+    """Scelta utente 2026-07-14: il protocollo riparte da 1 a ogni anno
+    solare, come nella prassi dei registri contabili (non un contatore
+    globale che continua a crescere tra un anno e l'altro)."""
+    db = _Db()
+    d1_2025 = _run(_scrittura_tfr(db, anno=2025, dip="d1"))
+    d2_2025 = _run(_scrittura_tfr(db, anno=2025, dip="d2"))
+    d1_2026 = _run(_scrittura_tfr(db, anno=2026, dip="d1"))
+    d2_2026 = _run(_scrittura_tfr(db, anno=2026, dip="d2"))
+    assert d1_2025["numero_registrazione"] == 1
+    assert d2_2025["numero_registrazione"] == 2
+    assert d1_2026["numero_registrazione"] == 1  # riparte da 1, non da 3
+    assert d2_2026["numero_registrazione"] == 2
+
+
+def test_protocollo_anno_derivato_dalla_data_se_assente():
+    """registra_scrittura_semplice deduce l'anno da data_documento/data
+    quando il chiamante non lo passa esplicitamente nel movimento."""
+    db = _Db()
+    doc = _run(rc.registra_scrittura_semplice(
+        db,
+        movimento={"data": "2027-03-15", "tipo": "test_senza_anno"},
+        righe=[rc.riga(rc._C_TFR_COSTO, dare=10.0),
+               rc.riga(rc._C_TFR_DEBITO, avere=10.0)],
+        chiave_naturale={"tipo": "test_senza_anno"},
+    ))
+    salvato = db[rc.COLL_MOVIMENTI].docs[0]
+    assert salvato["anno"] == 2027
+    assert doc["numero_registrazione"] == 1
+    # un'altra scrittura nel 2027 continua la stessa sequenza
+    doc2 = _run(rc.registra_scrittura_semplice(
+        db,
+        movimento={"data": "2027-06-01", "tipo": "test_senza_anno_2"},
+        righe=[rc.riga(rc._C_TFR_COSTO, dare=5.0),
+               rc.riga(rc._C_TFR_DEBITO, avere=5.0)],
+        chiave_naturale={"tipo": "test_senza_anno_2"},
+    ))
     assert doc2["numero_registrazione"] == 2
 
 

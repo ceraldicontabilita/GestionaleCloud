@@ -44,7 +44,7 @@ async def migra(esegui: bool) -> dict:
 
 async def _main():
     esegui = "--esegui" in sys.argv
-    await Database.connect()
+    await Database.connect_db()
     r = await migra(esegui)
     print(f"staff -> {CANONICA}: {r['migrati']}/{r['trovati']} migrati, "
           f"{r['incompleti']} incompleti, applicato={r['applicato']} "

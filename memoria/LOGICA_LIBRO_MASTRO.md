@@ -169,7 +169,9 @@ Corrispondenza nel gestionale:
 - **Registro provvisorio** = Prima Nota Provvisoria (operazioni definitive ma
   non certe: modificabili, fuori dal registro ufficiale).
 - **Protocollo definitivo** = `numero_registrazione` di `movimenti_contabili`
-  (motore §6.1): unico, progressivo, immutabile.
+  (motore §6.1): unico e progressivo **PER ANNO** (riparte da 1 a ogni anno
+  solare, scelta utente 2026-07-14, coerente con la prassi Zucchetti/
+  TeamSystem/GB/ViaLibera), immutabile una volta assegnato.
 - **Ricostruzione pari pari**: `GET /api/contabilita-gestionale/libro-giornale/export`
   produce il dump autosufficiente del registro (protocolli, righe DARE/AVERE,
   date e fonte documento originali); `POST .../libro-giornale/import` (Admin)

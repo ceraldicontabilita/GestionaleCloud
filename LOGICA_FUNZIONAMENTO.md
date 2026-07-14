@@ -657,8 +657,10 @@ In concreto:
 Il registro contabile UFFICIALE del gestionale è unico: ogni operazione
 definitiva (fatture e corrispettivi registrati in contabilità, accantonamenti
 e liquidazioni TFR, ammortamenti annuali) riceve un **numero di protocollo
-definitivo** unico, progressivo e immutabile, con la scrittura in partita
-doppia (DARE = AVERE).
+definitivo**, con la scrittura in partita doppia (DARE = AVERE). Il
+protocollo è unico e progressivo **all'interno dello stesso anno**: riparte
+da 1 a ogni nuovo anno solare (es. 1/2026, 2/2026, ... poi 1/2027), come nei
+principali software di contabilità; una volta assegnato è immutabile.
 
 - Le operazioni **provvisorie** (Prima Nota Provvisoria) sono definitive ma
   non certe: restano nel registro provvisorio, modificabili, e NON compaiono

@@ -13,7 +13,9 @@ Requisiti §6.1 garantiti:
 - idempotenza: una fattura/corrispettivo non viene registrato due volte (chiave naturale
   tipo+documento);
 - fonte documento: `fonte_documento` {tipo, id, numero};
-- numero registrazione progressivo: `numero_registrazione`;
+- numero di protocollo PROGRESSIVO PER ANNO (`numero_registrazione`, scelta utente
+  2026-07-14): riparte da 1 a ogni nuovo anno solare, come nella prassi dei registri
+  contabili (Zucchetti/TeamSystem/GB); univoco all'interno dello stesso anno;
 - data competenza: `data_competenza` oltre a data documento/registrazione;
 - DARE/AVERE espliciti su ogni riga (colonne `dare`/`avere`), con conto e centro di costo;
 - audit log su ogni scrittura;
@@ -50,10 +52,14 @@ def _anno_da_data(data: Optional[str]) -> Optional[int]:
         return None
 
 
-async def _prossimo_numero(db) -> int:
-    """Numero di registrazione progressivo (max esistente + 1)."""
+async def _prossimo_numero(db, anno: Optional[int]) -> int:
+    """Numero di protocollo PROGRESSIVO PER ANNO (scelta utente 2026-07-14,
+    prassi dei registri contabili): riparte da 1 a ogni nuovo anno solare.
+    `{"anno": anno}` in Mongo intercetta sia i documenti con `anno` uguale
+    sia quelli senza il campo, quando `anno` è None (fallback per scritture
+    senza data individuabile)."""
     ultimo = await db[COLL_MOVIMENTI].find_one(
-        {"numero_registrazione": {"$exists": True}},
+        {"numero_registrazione": {"$exists": True}, "anno": anno},
         {"_id": 0, "numero_registrazione": 1},
         sort=[("numero_registrazione", -1)],
     )
@@ -129,6 +135,7 @@ async def registra_fattura(db, fattura: Dict[str, Any], *, force: bool = False,
     centro_costo = fattura.get("centro_costo") or fattura.get("centro_di_costo")
     data_doc = fattura.get("invoice_date") or fattura.get("data_fattura")
     numero = fattura.get("invoice_number") or fattura.get("numero_fattura")
+    anno = _anno_da_data(fattura.get("data_competenza") or data_doc)
 
     righe = [
         {"conto_codice": conti["costo"]["codice"], "conto_nome": conti["costo"]["nome"],
@@ -141,7 +148,7 @@ async def registra_fattura(db, fattura: Dict[str, Any], *, force: bool = False,
     now = _now()
     movimento = {
         "id": str(uuid.uuid4()),
-        "numero_registrazione": await _prossimo_numero(db),
+        "numero_registrazione": await _prossimo_numero(db, anno),
         "tipo": "fattura_acquisto",
         "fonte_documento": {"tipo": "fattura", "id": fattura_id, "numero": numero},
         "fattura_id": fattura_id,
@@ -149,7 +156,7 @@ async def registra_fattura(db, fattura: Dict[str, Any], *, force: bool = False,
         "data": data_doc, "data_documento": data_doc,
         "data_competenza": fattura.get("data_competenza") or data_doc,
         "data_registrazione": now,
-        "anno": _anno_da_data(fattura.get("data_competenza") or data_doc),
+        "anno": anno,
         "importo_totale": importo_totale, "imponibile": imponibile, "iva": iva,
         "righe": righe,
         "totale_dare": round(imponibile + iva, 2), "totale_avere": round(importo_totale, 2),
@@ -208,17 +215,18 @@ async def registra_corrispettivo(db, corr: Dict[str, Any], *, force: bool = Fals
     saldi.append((_C_IVA_DEBITO[0], iva, "avere"))
 
     data_corr = corr.get("data") or _now()[:10]
+    anno = _anno_da_data(data_corr)
     now = _now()
     movimento = {
         "id": str(uuid.uuid4()),
-        "numero_registrazione": await _prossimo_numero(db),
+        "numero_registrazione": await _prossimo_numero(db, anno),
         "tipo": "corrispettivo",
         "fonte_documento": {"tipo": "corrispettivo", "id": corr_id, "numero": None},
         "corrispettivo_id": corr_id,
         "descrizione": f"Corrispettivo del {data_corr}",
         "data": data_corr, "data_documento": data_corr,
         "data_competenza": data_corr, "data_registrazione": now,
-        "anno": _anno_da_data(data_corr),
+        "anno": anno,
         "importo_totale": totale, "imponibile": imponibile, "iva": iva,
         "righe": righe,
         "totale_dare": round(cassa + pos, 2), "totale_avere": round(totale, 2),
@@ -328,10 +336,14 @@ async def registra_scrittura_semplice(db, movimento: Dict[str, Any],
     doc.setdefault("id", str(uuid.uuid4()))
     if doc.get("data"):
         doc.setdefault("data_documento", doc["data"])
+    anno = doc.get("anno")
+    if anno is None:
+        anno = _anno_da_data(doc.get("data_documento") or doc.get("data"))
+        doc["anno"] = anno
     doc["righe"] = righe
     doc["totale_dare"] = tot_dare
     doc["totale_avere"] = tot_avere
-    doc["numero_registrazione"] = await _prossimo_numero(db)
+    doc["numero_registrazione"] = await _prossimo_numero(db, anno)
     doc.setdefault("created_at", _now())
     await db[COLL_MOVIMENTI].insert_one(dict(doc))
     await _audit(db, "scrittura_semplice", doc["id"],

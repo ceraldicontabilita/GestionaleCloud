@@ -11,7 +11,7 @@ DPR 600/73 art. 22, L. 383/2001, prassi software Zucchetti/TeamSystem/GB/ViaLibe
 | 1 | **Cronologicità giorno per giorno** — il libro giornale indica giorno per giorno le operazioni (art. 2216 c.c.) | ✅ | Il giornale ordina per `data_documento`; ogni scrittura porta data documento, data registrazione e data competenza (motore §6.1) |
 | 2 | **Registrazione analitica, operazione per operazione** (art. 2216, dottrina) | ✅ | Una scrittura per documento/evento: fattura, corrispettivo, TFR (accantonamento/liquidazione/ritenute/acconti), ammortamenti annuali |
 | 3 | **Partita doppia: ogni scrittura quadra (DARE=AVERE)** (prassi, OIC) | ✅ | `registra_scrittura_semplice` e il motore rifiutano scritture sbilanciate; badge di quadratura su giornale e mastro; test dedicati |
-| 4 | **Numerazione unica e progressiva delle operazioni** (DPR 600/73 art. 22 per sistemi meccanografici) | ✅ | `numero_registrazione` unico, progressivo, immutabile (protocollo definitivo). Nota: progressivo globale, non per anno — la norma chiede "unica e progressiva", soddisfatta; l'export riporta l'anno di ogni scrittura |
+| 4 | **Numerazione unica e progressiva delle operazioni** (DPR 600/73 art. 22 per sistemi meccanografici) | ✅ | `numero_registrazione` unico e progressivo **PER ANNO** (scelta utente 2026-07-14): riparte da 1 a ogni anno solare, come nella prassi Zucchetti/TeamSystem/GB/ViaLibera; immutabile una volta assegnato (protocollo definitivo) |
 | 5 | **Stato provvisorio vs definitivo** (prassi software: provvisorio = modificabile, fuori dal registro; definitivo = protocollo automatico immutabile) | ✅ | Prima Nota Provvisoria = registro provvisorio (operazioni definitive ma non certe, modificabili, NON compaiono nel giornale); alla conferma → flussi canonici → protocollo definitivo. Le scritture protocollate non hanno API di modifica |
 | 6 | **Registrazioni entro 60 giorni** (DPR 600/73 art. 22) | ✅ (aggiunto 2026-07-14) | Nuovo controllo `GET /api/contabilita-gestionale/libro-giornale/controllo-60-giorni` + banner nella pagina Libro Giornale: segnala fatture/corrispettivi oltre 60gg non ancora registrati |
 | 7 | **Libro mastro = scrittura ausiliaria derivata** (art. 2214: obbligatorio per natura/dimensione; niente numerazione/bollo/vidimazione) | ✅ | Il mastro è DERIVATO dal giornale (aggregazione delle righe per conto), mai scritto a mano: coerenza garantita per costruzione |
@@ -23,10 +23,14 @@ DPR 600/73 art. 22, L. 383/2001, prassi software Zucchetti/TeamSystem/GB/ViaLibe
 
 ## Scostamenti/note (nessuno bloccante)
 
-- **Numerazione per anno**: la prassi di molti software azzera il protocollo a
-  inizio anno ("1/2026"); noi usiamo un progressivo globale. Entrambi
-  soddisfano la norma; cambiare ora richiederebbe una migrazione dei protocolli
-  esistenti — se lo vorrai, è una decisione da prendere esplicitamente.
+- **Numerazione per anno**: ✅ RISOLTA (2026-07-14, scelta utente). Il
+  protocollo (`numero_registrazione`) riparte da 1 a ogni anno solare invece
+  di un contatore globale crescente. Migrazione non distruttiva e idempotente
+  per riallineare le scritture esistenti già protocollate:
+  `python -m app.scripts.migra_numerazione_protocollo_annuale --esegui`
+  (rinumera in ordine cronologico per anno, senza toccare righe/importi/date).
+  Indice `(anno, numero_registrazione)` aggiunto per ricerca e verifica
+  di univocità nell'anno.
 - **Imposta di bollo e conservazione sostitutiva a norma** (firma digitale/
   marca temporale ex art. 2215-bis): adempimenti esterni al software, in capo
   al commercialista. L'export JSON è lo strumento, non la conservazione a norma.

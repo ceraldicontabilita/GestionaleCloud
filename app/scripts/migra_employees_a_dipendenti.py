@@ -44,7 +44,7 @@ async def migra(esegui: bool) -> dict:
 
 async def _main():
     esegui = "--esegui" in sys.argv
-    await Database.connect()
+    await Database.connect_db()
     res = await migra(esegui)
     print(f"employees -> dipendenti: {res['migrati']}/{res['trovati']} "
           f"applicato={res['applicato']} (collezione legacy NON cancellata)")

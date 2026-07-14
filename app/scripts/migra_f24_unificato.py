@@ -49,7 +49,7 @@ async def migra(esegui: bool) -> dict:
 
 async def _main():
     esegui = "--esegui" in sys.argv
-    await Database.connect()
+    await Database.connect_db()
     r = await migra(esegui)
     print(f"F24 -> {COLL}: {r['migrati']} da migrare, {r['gia_presenti']} già presenti, "
           f"applicato={r['applicato']}")

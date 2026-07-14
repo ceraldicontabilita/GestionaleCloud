@@ -201,6 +201,10 @@ class Database:
         # --- Movimenti contabili ---
         await _safe_index("movimenti_contabili", [("data", -1)], name="idx_mov_cont_data")
         await _safe_index("movimenti_contabili", [("anno", 1), ("conto", 1)], name="idx_mov_cont_anno_conto")
+        # Protocollo per anno (§6.1/A7, scelta utente 2026-07-14): ricerca veloce
+        # del "prossimo numero" e verifica di unicità del protocollo nell'anno.
+        await _safe_index("movimenti_contabili", [("anno", 1), ("numero_registrazione", 1)],
+                          name="idx_mov_cont_anno_protocollo")
 
         # --- Cash ---
         await _safe_index("cash", [("data", -1)], name="idx_cash_data")

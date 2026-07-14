@@ -54,7 +54,7 @@ async def migra(esegui: bool) -> dict:
 
 async def _main():
     esegui = "--esegui" in sys.argv
-    await Database.connect()
+    await Database.connect_db()
     r = await migra(esegui)
     print(f"employee_contracts -> {CANONICA}: {r['da_migrare']} da migrare, "
           f"{r['gia_presenti']} già presenti, {r['incompleti']} incompleti "

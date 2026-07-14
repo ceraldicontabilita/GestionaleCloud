@@ -30,7 +30,7 @@ async def migra(esegui: bool) -> dict:
 
 async def _main():
     esegui = "--esegui" in sys.argv
-    await Database.connect()
+    await Database.connect_db()
     res = await migra(esegui)
     print(f"assegni stato='{STATO_INVALIDO}' -> '{STATO_CANONICO}': "
           f"{res['trovati']} trovati, applicato={res['applicato']}")
