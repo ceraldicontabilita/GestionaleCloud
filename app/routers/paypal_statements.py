@@ -218,9 +218,17 @@ async def paypal_dashboard(
         tipo_map[tipo]['totale'] += p['lordo']
         tipo_map[tipo]['count'] += 1
     
-    # Riconciliazione con estratto conto
+    # Riconciliazione con estratto conto — conta entrambi i flag: il percorso
+    # statement scrive riconciliato_banca, il percorso API sync scrive
+    # riconciliato_con_estratto_banca (stessa unificazione già fatta nel
+    # dettaglio transazione più sotto; senza, il KPI sottostimava le
+    # transazioni riconciliate solo lato API — piano residuo op.14,
+    # indagine 14/07/2026).
     riconciliati = await db[COLL_PAYPAL_TRANSACTIONS].count_documents(
-        {**tx_query, "riconciliato_banca": True}
+        {"$and": [tx_query, {"$or": [
+            {"riconciliato_banca": True},
+            {"riconciliato_con_estratto_banca": True},
+        ]}]}
     )
     
     # Transazioni in estratto conto bancario con PayPal
@@ -615,14 +623,27 @@ async def dettaglio_transazione_paypal(transaction_id: str) -> Dict[str, Any]:
             {"_id": 0}
         )
 
-    # 5. Mapping fornitore PayPal
+    # 5. Mapping fornitore PayPal — il mapping vivo è il campo
+    # fornitori.paypal_account_id (stesso pattern di paypal_api.py
+    # account-ids-non-mappati/mappa-fornitore), NON la collection
+    # "paypal_mapping_fornitori" che non viene mai scritta da nessuna parte
+    # del codice (piano residuo op.14, indagine 14/07/2026, era un ramo
+    # morto che ritornava sempre None).
     mapping_fornitore = None
     paypal_account_id = tx.get("paypal_account_id") or tx.get("account_id")
     if paypal_account_id:
-        mapping_fornitore = await db["paypal_mapping_fornitori"].find_one(
+        forn = await db["fornitori"].find_one(
             {"paypal_account_id": paypal_account_id},
-            {"_id": 0}
+            {"_id": 0, "id": 1, "nome": 1, "ragione_sociale": 1, "piva": 1, "partita_iva": 1}
         )
+        if forn:
+            mapping_fornitore = {
+                "paypal_account_id": paypal_account_id,
+                "fornitore_id": forn.get("id"),
+                "fornitore_nome": forn.get("nome"),
+                "fornitore_ragione_sociale": forn.get("ragione_sociale"),
+                "fornitore_piva": forn.get("piva") or forn.get("partita_iva"),
+            }
 
     # 6. Fatture del fornitore associato (best-effort).
     # STRATEGIA MULTI-LIVELLO:
