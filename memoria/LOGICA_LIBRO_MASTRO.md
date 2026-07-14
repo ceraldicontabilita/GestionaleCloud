@@ -132,3 +132,24 @@ Ogni scrittura viene **salvata in `scritture_contabili`** (libro giornale) con:
 - pmi.it — *Contabilità generale: partita doppia e mastrini*
 - economiaziendale.net — *Il libro mastro*
 - startyerp.com — *La scheda contabile / mastrino*
+
+---
+
+## AGGIORNAMENTO A7 (2026-07-13, scelta utente)
+
+Il registro UNICO in partita doppia è **`movimenti_contabili`** (motore
+`app/services/registrazione_contabile`, §6.1): fatture e corrispettivi alla
+registrazione contabile, più le **scritture semplici** (TFR accantonamento/
+liquidazione/ritenute/acconti, ammortamenti annuali) via
+`registra_scrittura_semplice` — bilanciate, idempotenti, SENZA aggiornamento
+saldi (il bilancio aggrega dai documenti sorgente).
+
+- Nuovo conto operativo `01.05.01 Fondo ammortamento` (→ ufficiale `41`):
+  ammortamenti in partita doppia DARE 05.04.01 / AVERE 01.05.01.
+- Gli endpoint `/api/contabilita-gestionale/libro-giornale` e `/libro-mastro`
+  leggono `movimenti_contabili` (righe `conto_codice`, compat. `conto`).
+- Gli hook che scrivevano `scritture_contabili` a ogni upload/pagamento
+  fattura sono DISATTIVATI: la collection resta come archivio storico
+  (`app/services/libro_giornale.py` = legacy).
+- Il risultato d'esercizio resta scrittura semplice con segno (niente conto
+  di epilogo, scelta utente), protetto dalla guardia anti-doppia chiusura.

@@ -1,5 +1,10 @@
-"""Libro giornale e libro mastro — genera e persiste le scritture in partita
-doppia agli eventi della fattura, e ne ricava i mastrini per conto.
+"""Libro giornale e libro mastro — LEGACY/ARCHIVIO (A7, scelta utente 2026-07-13).
+
+Gli hook che scrivevano `scritture_contabili` a ogni fattura (upload/pagamento)
+sono stati disattivati: il registro UNICO in partita doppia è `movimenti_contabili`
+(motore app/services/registrazione_contabile §6.1) e gli endpoint libro giornale/
+mastro di contabilita_gestionale ora leggono quello. Questo modulo resta per
+l'archivio storico di `scritture_contabili` e per i test di caratterizzazione.
 
 Vedi memoria/LOGICA_LIBRO_MASTRO.md per la logica contabile.
 

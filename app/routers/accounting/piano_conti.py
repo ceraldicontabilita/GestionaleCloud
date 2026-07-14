@@ -38,6 +38,9 @@ STRUTTURA_BASE = {
             {"codice": "01.02.01", "nome": "Crediti v/clienti", "natura": "finanziario"},
             {"codice": "01.03.01", "nome": "Magazzino merci", "natura": "economico"},
             {"codice": "01.04.01", "nome": "IVA a credito", "natura": "finanziario"},
+            # A7 (scelta utente 2026-07-13): conto rettificativo dell'attivo per
+            # la partita doppia degli ammortamenti (mappa all'ufficiale 41)
+            {"codice": "01.05.01", "nome": "Fondo ammortamento", "natura": "economico"},
         ]
     },
     "passivo": {

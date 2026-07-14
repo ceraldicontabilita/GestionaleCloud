@@ -534,25 +534,31 @@ async def registra_ammortamenti_anno(anno: int) -> Dict[str, Any]:
             update
         )
     
-    # Crea movimento contabile riepilogativo
-    movimento = {
-        "id": str(uuid4()),
-        "data": f"{anno}-12-31",
-        "descrizione": f"Ammortamenti cespiti {anno}",
-        "tipo": "ammortamento",
-        "importo": calcolo["totale_ammortamenti"],
-        "anno": anno,
-        "num_cespiti": len(calcolo["ammortamenti"]),
-        "dettaglio": [
-            {
-                "descrizione": a["descrizione"],
-                "quota": a["quota_anno"]
-            }
-            for a in calcolo["ammortamenti"]
-        ],
-        "created_at": datetime.now(timezone.utc).isoformat()
-    }
-    await db["movimenti_contabili"].insert_one(movimento.copy())
+    # Scrittura contabile riepilogativa in partita doppia (motore §6.1/A7,
+    # scelta utente): DARE costo ammortamento, AVERE fondo ammortamento
+    # (conto 01.05.01, mappato all'ufficiale 41). Idempotente per anno.
+    from app.services.registrazione_contabile import (
+        registra_scrittura_semplice, riga, _C_AMMORTAMENTO, _C_FONDO_AMMORTAMENTO,
+    )
+    imp = round(calcolo["totale_ammortamenti"], 2)
+    await registra_scrittura_semplice(
+        db,
+        movimento={
+            "data": f"{anno}-12-31",
+            "descrizione": f"Ammortamenti cespiti {anno}",
+            "tipo": "ammortamento",
+            "importo": imp,
+            "anno": anno,
+            "num_cespiti": len(calcolo["ammortamenti"]),
+            "dettaglio": [
+                {"descrizione": a["descrizione"], "quota": a["quota_anno"]}
+                for a in calcolo["ammortamenti"]
+            ],
+        },
+        righe=[riga(_C_AMMORTAMENTO, dare=imp, descrizione=f"Quote ammortamento {anno}"),
+               riga(_C_FONDO_AMMORTAMENTO, avere=imp, descrizione="Accantonamento a fondo")],
+        chiave_naturale={"tipo": "ammortamento", "anno": anno},
+    )
 
     # NB: l'ammortamento è un costo NON monetario: registrarlo anche in
     # prima_nota_cassa come "uscita" (come faceva il blocco rimosso qui)

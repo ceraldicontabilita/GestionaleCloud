@@ -288,6 +288,8 @@ async def ricostruisci_fatture(db) -> Dict[str, Any]:
 _C_TFR_COSTO = ("05.03.03", "TFR")
 _C_TFR_DEBITO = ("02.04.01", "TFR")
 _C_DEBITI_TRIBUTARI = ("02.02.01", "Debiti tributari")
+_C_AMMORTAMENTO = ("05.04.01", "Ammortamento immobilizzazioni")
+_C_FONDO_AMMORTAMENTO = ("01.05.01", "Fondo ammortamento")
 
 
 def riga(conto: tuple, dare: float = 0, avere: float = 0,
@@ -324,6 +326,8 @@ async def registra_scrittura_semplice(db, movimento: Dict[str, Any],
 
     doc = dict(movimento)
     doc.setdefault("id", str(uuid.uuid4()))
+    if doc.get("data"):
+        doc.setdefault("data_documento", doc["data"])
     doc["righe"] = righe
     doc["totale_dare"] = tot_dare
     doc["totale_avere"] = tot_avere

@@ -653,18 +653,12 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
     except Exception:
         logger.exception(f"Storia fattura: hook import fallito per {invoice_key}")
 
-    # LIBRO GIORNALE: registra la scrittura d'acquisto in partita doppia
-    # (DARE Acquisti + IVA credito / AVERE Debiti v/fornitori). Dedup per hash,
-    # quindi il reimport non la duplica. Best-effort. Vedi LOGICA_LIBRO_MASTRO.md.
-    try:
-        from app.services import libro_giornale as _lg, storia_fatture as _storia2
-        scr_id = await _lg.genera_scrittura_acquisto(db, invoice)
-        if scr_id:
-            await _storia2.registra(db, invoice_key, "scrittura_acquisto",
-                                    "Registrata scrittura d'acquisto in partita doppia",
-                                    patch={"scrittura_acquisto_id": scr_id})
-    except Exception:
-        logger.exception(f"Libro giornale: scrittura acquisto fallita per {invoice_key}")
+    # LIBRO GIORNALE — hook DISATTIVATO (A7, scelta utente 2026-07-13): il
+    # registro parallelo scritture_contabili non riceve più scritture; il
+    # libro giornale/mastro legge il registro UNICO movimenti_contabili, che
+    # la fattura raggiunge alla registrazione contabile (motore §6.1,
+    # "Registra fatture" dal Piano dei Conti). scritture_contabili resta come
+    # archivio storico. Vedi LOGICA_LIBRO_MASTRO.md.
 
     # --- EVENT BUS: propaga evento fattura creata (upload manuale) ---
     # Fuori dalla transazione per design: è già gestita come fail-safe/

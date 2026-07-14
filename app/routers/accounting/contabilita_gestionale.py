@@ -1029,21 +1029,24 @@ async def get_libro_giornale(
     invoice_key: Optional[str] = Query(None, description="Filtra per chiave fattura"),
     limit: int = Query(500, description="Max scritture da restituire"),
 ) -> Dict[str, Any]:
-    """Libro giornale: elenco cronologico delle scritture in partita doppia
-    (collezione `scritture_contabili`), separato dalle fatture → sopravvive
-    all'azzeramento. Ogni scrittura riporta il documento di origine e
-    l'`invoice_key` per la ricostruzione."""
+    """Libro giornale: elenco cronologico delle scritture in partita doppia.
+
+    A7 (scelta utente 2026-07-13): legge il registro UNICO `movimenti_contabili`
+    (motore registrazione_contabile §6.1: fatture, corrispettivi, TFR,
+    ammortamenti), non più il registro parallelo `scritture_contabili`
+    (rimasto come archivio storico)."""
     db = Database.get_db()
-    match: Dict[str, Any] = {}
+    match: Dict[str, Any] = {"righe": {"$exists": True, "$ne": []}}
     if invoice_key:
-        match["invoice_key"] = invoice_key
+        match["$or"] = [{"invoice_key": invoice_key}, {"fattura_id": invoice_key},
+                        {"fonte_documento.id": invoice_key}]
     if data_da or data_a:
         match["data_documento"] = {}
         if data_da:
             match["data_documento"]["$gte"] = data_da
         if data_a:
             match["data_documento"]["$lte"] = data_a
-    scritture = await db["scritture_contabili"].find(
+    scritture = await db["movimenti_contabili"].find(
         match, {"_id": 0}
     ).sort("data_documento", 1).to_list(limit)
     tot_dare = 0.0
@@ -1068,10 +1071,43 @@ async def get_libro_mastro(
     data_a: Optional[str] = Query(None, description="Data fine (YYYY-MM-DD)"),
 ) -> Dict[str, Any]:
     """Libro mastro: le scritture riclassificate per conto (mastrini) con saldo
-    dare/avere. È la base da cui il commercialista ricostruisce la contabilità."""
-    from app.services.libro_giornale import libro_mastro as _libro_mastro
+    dare/avere. È la base da cui il commercialista ricostruisce la contabilità.
+
+    A7: aggrega il registro UNICO `movimenti_contabili` (righe del motore
+    §6.1); gestisce sia `righe.conto_codice` (motore) sia `righe.conto`
+    (schema storico)."""
     db = Database.get_db()
-    mastrini = await _libro_mastro(db, data_da, data_a)
+    match: Dict[str, Any] = {"righe": {"$exists": True, "$ne": []}}
+    if data_da or data_a:
+        match["data_documento"] = {}
+        if data_da:
+            match["data_documento"]["$gte"] = data_da
+        if data_a:
+            match["data_documento"]["$lte"] = data_a
+    pipeline = [
+        {"$match": match},
+        {"$unwind": "$righe"},
+        {"$group": {
+            "_id": {"$ifNull": ["$righe.conto_codice", "$righe.conto"]},
+            "conto_nome": {"$last": "$righe.conto_nome"},
+            "dare": {"$sum": {"$toDouble": {"$ifNull": ["$righe.dare", 0]}}},
+            "avere": {"$sum": {"$toDouble": {"$ifNull": ["$righe.avere", 0]}}},
+            "righe": {"$sum": 1},
+        }},
+        {"$sort": {"_id": 1}},
+    ]
+    mastrini = []
+    async for m in db["movimenti_contabili"].aggregate(pipeline):
+        dare = round(m.get("dare", 0), 2)
+        avere = round(m.get("avere", 0), 2)
+        mastrini.append({
+            "conto": m["_id"],
+            "conto_nome": m.get("conto_nome"),
+            "dare": dare,
+            "avere": avere,
+            "saldo": round(dare - avere, 2),
+            "movimenti": m.get("righe", 0),
+        })
     tot_dare = round(sum(m["dare"] for m in mastrini), 2)
     tot_avere = round(sum(m["avere"] for m in mastrini), 2)
     return {

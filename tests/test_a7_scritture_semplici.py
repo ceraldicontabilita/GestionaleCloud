@@ -110,3 +110,36 @@ def test_nessun_aggiornamento_saldi():
     db = _Db()
     _run(_scrittura_tfr(db))
     assert rc.COLL_PIANO_CONTI not in db or db[rc.COLL_PIANO_CONTI].docs == []
+
+
+def test_ammortamento_in_partita_doppia():
+    """A7 (scelta utente): DARE costo ammortamento / AVERE fondo (01.05.01→41)."""
+    db = _Db()
+    imp = 500.0
+    doc = _run(rc.registra_scrittura_semplice(
+        db,
+        movimento={"data": "2026-12-31", "tipo": "ammortamento",
+                   "importo": imp, "anno": 2026, "num_cespiti": 3},
+        righe=[rc.riga(rc._C_AMMORTAMENTO, dare=imp),
+               rc.riga(rc._C_FONDO_AMMORTAMENTO, avere=imp)],
+        chiave_naturale={"tipo": "ammortamento", "anno": 2026},
+    ))
+    salvato = db[rc.COLL_MOVIMENTI].docs[0]
+    conti = {r["conto_codice"] for r in salvato["righe"]}
+    assert conti == {"05.04.01", "01.05.01"}
+    assert salvato["num_cespiti"] == 3
+    assert doc["totale_dare"] == doc["totale_avere"] == imp
+    # idempotente per anno: una seconda registrazione non duplica
+    doc2 = _run(rc.registra_scrittura_semplice(
+        db, movimento={"tipo": "ammortamento"}, righe=[],
+        chiave_naturale={"tipo": "ammortamento", "anno": 2026}))
+    assert doc2["gia_presente"] is True
+
+
+def test_fondo_ammortamento_mappato_ufficiale():
+    """Il nuovo conto 01.05.01 esiste nel piano operativo ed è mappato al 41."""
+    from app.services.mapping_piano_conti import OPERATIVO_A_UFFICIALE
+    from app.routers.accounting.piano_conti import STRUTTURA_BASE
+    codici_attivo = {c["codice"] for c in STRUTTURA_BASE["attivo"]["conti_tipici"]}
+    assert "01.05.01" in codici_attivo
+    assert OPERATIVO_A_UFFICIALE["01.05.01"] == "41"

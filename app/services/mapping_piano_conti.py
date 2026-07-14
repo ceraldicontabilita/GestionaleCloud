@@ -27,6 +27,7 @@ OPERATIVO_A_UFFICIALE: Dict[str, str] = {
     "01.02.01": "15.05",      # Crediti v/clienti → Crediti vari v/terzi (macro; no leaf clienti nel bilancio)
     "01.03.01": "51.01.03",   # Magazzino merci → Rimanenze di merci
     "01.04.01": "35.01",      # IVA a credito → Erario c/IVA
+    "01.05.01": "41",         # Fondo ammortamento → B.II Fondi ammortamento (A7, scelta utente)
     # PASSIVO
     "02.01.01": "33.03.01",   # Debiti v/fornitori → Fornitori terzi Italia
     "02.02.01": "35.07",      # Debiti tributari → Erario c/imposte

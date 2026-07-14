@@ -117,18 +117,16 @@ async def paga_fattura_manuale(payload: Dict[str, Any] = Body(...)) -> Dict[str,
                 or await db[COL_FATTURE_RICEVUTE].find_one({"id": fattura_id}, {"_id": 0})
             key = (inv or {}).get("invoice_key")
             if key:
-                from app.services import storia_fatture as _storia, libro_giornale as _lg
+                from app.services import storia_fatture as _storia
                 await _storia.registra(
                     db, key, "pagata",
                     f"Pagata in {metodo} il {data_pagamento} (€{importo})",
                     patch={"stato_pagamento": "pagata", "metodo_pagamento": metodo,
                            "data_pagamento": data_pagamento},
                 )
-                scr_id = await _lg.genera_scrittura_pagamento(db, inv, mezzo=metodo)
-                if scr_id:
-                    await _storia.registra(db, key, "scrittura_pagamento",
-                                           "Registrata scrittura di pagamento in partita doppia",
-                                           patch={"scrittura_pagamento_id": scr_id})
+                # Hook libro giornale DISATTIVATO (A7, scelta utente
+                # 2026-07-13): il registro parallelo scritture_contabili non
+                # riceve più scritture; resta come archivio storico.
         except Exception:
             logger.exception(f"Storia/libro giornale: hook pagamento fallito per {fattura_id}")
 
