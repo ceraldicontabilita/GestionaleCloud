@@ -1,172 +1,156 @@
-# PIANO DI CONSOLIDAMENTO — Indice di avanzamento
+# PIANO RESIDUO — Indice di avanzamento
 
-> Documento vivo, richiesto dall'utente il 14/07/2026 a partire da
-> `REPORT_FINALE_VERIFICA_REALE_GESTIONALECLOUD.md`. Va aggiornato ad ogni
-> operazione eseguita, così l'utente sa sempre "sono all'operazione N di
-> TOTALE" e cosa resta. Non cancellare le righe completate: si spuntano.
+> Documento vivo. Sostituisce la prima versione (14/07/2026, basata sul
+> report esterno) con il `PIANO_RESIDUO_AGGIORNATO_GESTIONALECLOUD.md`
+> fornito dall'utente lo stesso giorno — più preciso perché pinnato a un
+> commit e perché distingue nettamente il già-fatto dal residuo reale.
+> Va aggiornato ad ogni operazione: l'utente deve poter leggere "operazione
+> N di 19" e sapere cosa resta.
 
-Fonte: report di verifica esterna sul branch `main` (snapshot precedente a
-questa sessione). Molti punti del report risultano già superati da lavoro
-successivo già in `main` — segnalato caso per caso sotto con l'evidenza.
+**Commit di riferimento del piano:** `16dcc570` (poi `0eb3f73` con la prima
+versione di questo tracking — nessuna attività di codice tra i due).
 
-## Legenda
+## Regola di aggiornamento (vincolante, dal documento dell'utente)
 
-- ✅ FATTO — verificato nel codice/documenti attuali
-- 🟡 PARZIALE — esiste una base, manca il completamento
-- ⛔ DA FARE — non iniziato
-- ❓ DECISIONE UTENTE — bloccato: per la REGOLA PARAMETRI di CLAUDE.md
-  (valori configurabili/architetturali non si toccano di iniziativa) serve
-  una scelta esplicita prima di agire
+Quando un'attività è completata:
+1. rimuoverla da "Attività residue";
+2. aggiungerla a "Completate dopo il 14/07/2026" con commit, file
+   modificati, test, risultato;
+3. rigenerare le mappe (`scripts/genera_mappa.py`,
+   `scripts/genera_classificazione_endpoint.py`);
+4. nessuna duplicazione tra fatto e da fare.
+
+Le voci in **NON RIPETERE** non vanno mai riproposte come domande né
+rilavorate da zero.
 
 ## Stato di avanzamento
 
-**Operazioni chiuse: 3 di 23** (verificate in questa sessione, già presenti
-prima di oggi) · **Prossima operazione aperta: #1** (CI unica di coerenza mappe)
+**Operazioni residue aperte: 19 di 19.** Prossima operazione: **#1**
+(rigenerare tutti gli inventari sullo stesso commit + test di coerenza).
 
 ---
 
-## FASE 1 — Sincronizzare gli audit (2 operazioni)
+## NON RIPETERE — già completate, non richiedere di nuovo
 
-**1. ⛔ Comando CI unico "route-map-consistency"**
-Deve rigenerare `MAPPA_ROUTER.md`, `MAPPA_ENDPOINT_COMPLETA.md`,
-`ENDPOINT_CLASSIFICAZIONE_FINALE.md` sullo stesso commit e fallire se i
-totali non coincidono. Oggi non esiste (le 4 workflow CI presenti —
-`audit-static.yml`, `smoke-runtime.yml`, `audit-layout.yml`,
-`verifica-produzione.yml` — non fanno questo controllo).
+- fornitori canonici su `fornitori`, non `suppliers`;
+- dipendenti canonici su `dipendenti`, non `employees`;
+- cedolini canonici su `cedolini`;
+- F24 canonici su `f24_unificato`;
+- estratto conto canonico su `estratto_conto_movimenti`;
+- fatture passive canoniche su `invoices`;
+- rimozione del dominio HACCP operativo;
+- rimozione contratti di lavoro e libretti sanitari dal dominio dipendenti;
+- riduzione del router dipendenti;
+- motore IVA (regola del 15 e anti-doppia-detrazione);
+- motore F24/tributi e fiscale;
+- quietanza senza F24 con alert bloccante;
+- gestione DM10/RC01 e possibile doppio pagamento;
+- viewer documentale canonico (`DocumentViewerModal`);
+- sostituzione della maggior parte di `alert`/`confirm`/`prompt`/`window.open`;
+- middleware globale di autenticazione;
+- protezione endpoint distruttivi;
+- saldo Prima Nota tramite motore unico;
+- Piano dei Conti ufficiale con mapping;
+- i 12 bug P0 (coperti da test);
+- rimozione Emergent e codice morto già censito;
+- pipeline Fatture Estere (AI + coda di verifica + rating);
+- audit atomico e mappe aggiornate al 14/07/2026.
 
-**2. ⛔ Rigenerare le mappe e verificare la coerenza**
-Confermata l'incoerenza segnalata dal report:
-`MAPPA_ROUTER.md` e `AUDIT_ATOMICO_APPLICAZIONE.md` dichiarano **1059**
-endpoint; `AUDIT_ESECUZIONE_DEFINITIVO.md` dichiara ancora **1105/1106**
-(documento narrativo di una sessione precedente alla pulizia delle 19 route
-morte della pipeline paghe, mai rigenerato). `ENDPOINT_CLASSIFICAZIONE_FINALE.md`
-riporta nell'intestazione "1072" ma "1059" più avanti nel testo — da
-rigenerare con `python scripts/genera_classificazione_endpoint.py` per avere
-un numero unico e verificato.
-
----
-
-## FASE 2 — Audit React reale (3 operazioni)
-
-**3. ⛔ `scripts/audit_frontend_dead_code.py`** — non esiste (verificato:
-in `scripts/` ci sono solo `audit_static.py`, `smoke_app.py`,
-`genera_mappa.py`, `genera_classificazione_endpoint.py`).
-
-**4. ⛔ `memoria/AUDIT_FRONTEND_DEAD_CODE.md`** — non esiste. Il vecchio
-elenco di componenti inutilizzati è stato superato/rimosso.
-
-**5. ⛔ Eliminazione file `ORFANO_ELIMINABILE`** — dipende da #3/#4.
+Su queste voci: solo verifica di assenza regressioni, mai ricostruzione.
 
 ---
 
-## FASE 3 — Endpoint "verificare" (9 operazioni, una per gruppo prioritario)
+## Attività residue (19 operazioni)
 
-Numeri confermati in `ENDPOINT_CLASSIFICAZIONE_FINALE.md`: 1059-1072
-endpoint totali, 648 tenere, 405 verificare, 19 admin-only. Ogni gruppo è
-❓ DECISIONE UTENTE: prima di smontare o ricollegare un router chiederò
-conferma con opzioni (per la regola parametri di CLAUDE.md — sono scelte
-architetturali con impatto su produzione, non modifiche di iniziativa).
+### P0 — allineamento e verità unica dei report
 
-| # | Gruppo | Endpoint | Note |
-|---|---|---|---|
-| 6 | ❓ Batch operations | 6 | `/api/batch/*` — nessun chiamante noto |
-| 7 | ❓ Drive cedolini | 3 | `drive/sync` resta (usato da scheduler) |
-| 8 | ❓ Dati provvisori | 5 | `riconcilia-estratto-conto` resta (scheduler) |
-| 9 | ❓ Export | 8 | `/api/exports/*`, incl. `suppliers` — nessun chiamante noto |
-| 10 | ❓ Paghe import | 3 | verificare se usati internamente da `documenti.py` |
-| 11 | ❓ POS accredito | 5 | candidato forte a rimozione (sostituito da `pos_corrispettivi_check`) |
-| 12 | ❓ Report PDF | 4 | `report-pdf/magazzino` incoerente con rimozione HACCP |
-| 13 | ❓ Realtime status | 1 | valutare se il websocket è realmente usato |
-| 14 | ❓ Trattenute verbali + verbali_noleggio/verbali_riconciliazione | decine | gruppo più ampio, la maggior parte "verificare" nell'ultima classificazione |
+**1. ⛔ Rigenerare tutti gli inventari sullo stesso commit + test anti-mismatch**
+```
+python scripts/genera_mappa.py
+python scripts/genera_classificazione_endpoint.py
+```
+Rigenerare insieme `MAPPA_ROUTER.md`, `MAPPA_ENDPOINT_COMPLETA.md`,
+`MAPPA_COLLEZIONI.md`, `ENDPOINT_CLASSIFICAZIONE_FINALE.md`,
+`AUDIT_ATOMICO_APPLICAZIONE.md`. Aggiungere un test che fallisca se i
+totali non coincidono. Sicura, non tocca produzione — può partire subito.
 
----
+### P1 — eliminazione endpoint realmente inutili
 
-## FASE 4 — Database (3 operazioni)
+Route table corrente: ~1059 endpoint. Ogni gruppo è ❓ decisione utente
+prima di smontare (impatto produzione):
 
-**15. ❓ DECISIONE UTENTE — Eseguire le migrazioni canoniche in produzione**
-`memoria/PIANO_CONSOLIDAMENTO_COLLECTION.md` (13/07/2026) registra una
-scelta esplicita già presa dall'utente: *"preparare il piano, NON toccare i
-dati di produzione. Nessuna migrazione è stata eseguita."* Unica eccezione:
-F24 modelli (`memoria/PIANO_MIGRAZIONE_COLLECTION.md` §5.1) è ✅ codificata
-e idempotente, ma il documento stesso dice *"eseguire contestualmente al
-deploy"* — non è confermato che sia già girata in produzione. Prima di
-lanciare qualunque migrazione su dati reali chiederò conferma esplicita,
-migrazione per migrazione (F24, fatture_passive→invoices,
-invoices_emesse→fatture_emesse, employees→dipendenti, payslips→cedolini,
-employee_contracts→contratti, documents_classified→documenti_classificati).
+**2. ❓ `/api/batch/*`** (6 endpoint, nessun chiamante noto)
+**3. ❓ `/api/cedolini/*`** (drive/status, drive/quadratura, {id}/pdf — `drive/sync` resta, usato da scheduler)
+**4. ❓ `/api/dati-provvisori/*`** (upload-xml, sposta-banca, sposta-cassa, delete — `riconcilia-estratto-conto` resta, scheduler)
+**5. ❓ `/api/exports/*`** (8 endpoint incl. `suppliers`)
+**6. ❓ `/api/paghe/*`** (import-distinte-bpm, import-f24, import-libro-unico — verificare uso interno da `documenti.py` prima di decidere)
+**7. ❓ `/api/pos-accredito/*`** (5 endpoint, candidato forte: sostituito da `pos_corrispettivi_check`)
+**8. ❓ `/api/realtime/*`** (status — verificare se il websocket è realmente usato)
+**9. ❓ `/api/report-pdf/*`** (magazzino incoerente con rimozione HACCP)
+**10. ❓ `/api/trattenute-verbali/*`** e gruppo verbali_noleggio/verbali_riconciliazione
 
-**16. ✅ FATTO — `suppliers`/`fornitori`**
-Già risolto (non dal report, prima di questa sessione):
-`memoria/FORNITORI_REGOLA_CANONICA.md` (aprile 2026) fissa `fornitori` come
-unica collection canonica; `suppliers` è solo nome tecnico compatibile che
-deve puntare a `fornitori`. Nessuna azione necessaria salvo audit di
-conformità puntuale se emergono nuovi hardcoded.
+Non eliminare mai: scheduler Drive cedolini, parser F24/Libro Unico usati
+internamente, webhook, Chat, API esterne documentate, endpoint manutentivi
+ancora necessari.
 
-**17. ⛔ Bloccare scritture sulle collection legacy** — dipende da #15.
+### P1 — altre attività
 
----
+**11. ⛔ Audit reale frontend inutilizzato** — creare
+`scripts/audit_frontend_dead_code.py` + `memoria/AUDIT_FRONTEND_DEAD_CODE.md`
+(entry point `main.jsx`/`App.jsx`/`navigation.config.js`, classificazioni
+ENTRYPOINT/ROUTE_ATTIVA/COMPONENTE_USATO/MODALE_USATO/HOOK_USATO/TEST_ONLY/
+DINAMICO_DA_VERIFICARE/ORFANO_ELIMINABILE). Eliminare solo gli
+`ORFANO_ELIMINABILE`, con `yarn build && yarn lint` dopo ogni gruppo.
 
-## FASE 5 — Moduli rinviati (3 operazioni)
+**12. ⛔ Completare l'adozione di `app/db_collections.py`** — trovare le
+stringhe collection ancora hardcoded, sostituirle con le costanti,
+trasformare `database.py::Collections` in alias o eliminarla, aggiungere
+un test statico anti-hardcode. Non riaprire le decisioni fornitori/
+dipendenti/cedolini/invoices/f24_unificato (già chiuse).
 
-**18. ⛔ PayPal** — 2 router + 6 service ancora paralleli, consolidamento
-esplicitamente rinviato dal report a una sessione dedicata.
+**13. ⛔ Verificare le migrazioni realmente eseguite in produzione** — per
+ognuna delle collection canoniche (`fornitori`, `dipendenti`, `cedolini`,
+`invoices`, `f24_unificato`, `estratto_conto_movimenti`,
+`documenti_classificati`) controllare nel DB di produzione: sorgente,
+destinazione, documenti copiati, duplicati, errori, scritture legacy dopo
+la migrazione. Produrre `memoria/VERIFICA_MIGRAZIONI_PRODUZIONE.md`.
+Nota: richiede accesso al DB di produzione — non eseguire nuove
+migrazioni scrivendo dati, solo verificare lo stato.
 
-**19. ⛔ Verbali** — refactoring router (`verbali_noleggio`,
-`verbali_noleggio_api`, `verbali_riconciliazione`, `trattenute_verbali`)
-rinviato perché collegato al frontend.
+**14. ❓ PayPal** — unificare 2 router, service paralleli, mapping
+fornitore, import statement/API, stati, riconciliazione, idempotenza.
 
-**20. ⛔ Fatture emesse** — armonizzazione campi inglesi/italiani (numero,
-data, cliente, imponibile, IVA, totale), serve DTO canonico + migration
-adapter.
+**15. ❓ Verbali** — architettura unica (ingest/CRUD/riconciliazione/
+trattenute) con schema e collection canonici.
 
----
+**16. ⛔ Fatture emesse** — armonizzare campi italiano/inglese duplicati
+con DTO canonico + adapter di migrazione, senza rompere l'app esterna.
 
-## FASE 6 — Prestazioni (1 operazione articolata)
+**17. 🟡 Prestazioni — query N+1/`to_list` ancora aperte** —
+`memoria/AUDIT_PERFORMANCE_N1.md` le censisce già (23 query, 1 corretta).
+Per ognuna: misurare, classificare interattivo/report, sostituire con
+aggregation/cursor/`$in`/`bulk_write` dove è un'API interattiva,
+paginazione reale, soglie di durata. Priorità: sincronizzazione
+relazionale, fatture, estratto conto, Prima Nota, documenti, scheduler.
 
-**21. 🟡 PARZIALE — query illimitate/N+1**
-`memoria/AUDIT_PERFORMANCE_N1.md` censisce già le 23 query con
-`to_list(50000/100000)` e un'azione consigliata per ciascuna (non una
-correzione a blocco: alcune sono aggregazioni finanziarie che richiedono il
-set completo). Una correzione già applicata
-(`email_document_downloader.py`: tetto esplicito 500000 + log). Restano le
-altre ~22 da valutare e correggere una per una.
+**18. 🟡 Viewer — certificazione dinamica finale** — `DocumentViewerModal`
+esiste già (non ricostruire). Manca la certificazione automatizzata sugli
+8 tipi documento (fattura ASSO HTML, fattura PDF, cedolino, F24, quietanza,
+PagoPA, verbale, documento non associato) × 8 viewport (320×568 → 1920×1080),
+verificando fit/zoom/fullscreen/download/scroll/chiusura/focus/
+autorizzazione/rotazione.
 
----
+### P2 — CI obbligatoria su main
 
-## FASE 7 — CI ed E2E (2 operazioni)
-
-**22. 🟡 PARZIALE — CI completa**
-Esistono già 4 workflow: `audit-static.yml` (heuristics statiche, oggi
-P1:309 P2:17 P3:54 INFO:16), `smoke-runtime.yml` (smoke runtime su
-produzione), `audit-layout.yml` (Playwright, overflow/leggibilità su tutte
-le pagine), `verifica-produzione.yml` (bundle atteso vs servito). Mancano
-ancora, come blocking check: `route-map-consistency` (vedi #1),
-`dead-react-check` (vedi #3/#4), `endpoint-classification`,
-`migration-dry-run`, `security-tests` dedicato, `viewer-e2e` per tipo
-documento. Il deploy Render non dipende oggi da nessuna di queste CI.
-
-**23. 🟡 PARZIALE — Test viewer per tipo documento × viewport**
-`DocumentViewerModal.jsx` è il componente canonico unico (confermato),
-`memoria/AUDIT_VIEWER_DOCUMENTI.md` (13/07/2026) ne censisce l'uso in tutto
-il frontend, `audit-layout.yml` testa overflow/leggibilità su varie pagine.
-Manca la matrice di test automatizzati esatta richiesta dal report (8 tipi
-documento × 8 viewport, focus trap/ESC/zoom/fullscreen/download per
-ciascuno).
+**19. 🟡 CI completa e gate deploy** — esistono già `audit-static.yml`,
+`smoke-runtime.yml`, `audit-layout.yml`, `verifica-produzione.yml`. Mancano
+come blocking check: `backend-tests`, `frontend-lint`,
+`route-map-consistency` (vedi #1), `endpoint-classification`,
+`frontend-dead-code` (vedi #11), `security-tests`, `viewer-e2e` (vedi #18).
+Il deploy Render deve dipendere dal verde di questi check.
 
 ---
 
-## Punti del report già superati (non richiedono nuova azione)
+## Completate dopo il 14/07/2026
 
-- Dominio Dipendenti: contratti di lavoro e libretti sanitari già rimossi
-  dal codice (HR esterno, `memoria/AUDIT_DEFINITIVO_SESSIONE_20260714.md`).
-- Suite test: 374 passed, 2 skipped (report ne citava 335) — build Vite
-  verificata.
-- Pipeline Fatture Estere (AI extraction + coda di verifica + rating)
-  implementata e testata (17 test nuovi).
-
-## Prossimo passo proposto
-
-Operazione #1 (rigenerare le mappe e certificare i numeri) è sicura,
-non distruttiva e non tocca produzione: può partire subito. Le operazioni
-❓ (Fase 3 endpoint, Fase 4 migrazioni, Fase 5 moduli) richiedono una
-decisione esplicita dell'utente prima di agire.
+_(nessuna ancora — questo tracking è stato appena adottato)_
