@@ -172,6 +172,7 @@ def _register_invoices(app: FastAPI):
         corrispettivi,
     )
     from app.routers.fatture_module import router as fatture_ricevute_router
+    from app.routers import fatture_estera_verifica
 
     app.include_router(invoices_emesse.router, prefix="/api/invoices/emesse", tags=["Invoices Emesse"])
     app.include_router(invoices_main.router, prefix="/api/invoices", tags=["Invoices"])
@@ -179,6 +180,7 @@ def _register_invoices(app: FastAPI):
     app.include_router(fatture_drive.router, prefix="/api/fatture", tags=["Fatture Drive"])
     app.include_router(fatture_ricevute_router, prefix="/api/fatture-ricevute", tags=["Fatture Ricevute"])
     app.include_router(corrispettivi.router, prefix="/api/corrispettivi", tags=["Corrispettivi"])
+    app.include_router(fatture_estera_verifica.router, prefix="/api/fatture-estere", tags=["Fatture Estere Verifica"])
 
 
 

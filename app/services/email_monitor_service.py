@@ -243,7 +243,10 @@ async def sync_email_documents(db, giorni: int = 30) -> Dict[str, Any]:
             fname = doc.get("filename", "")
             try:
                 from app.routers.invoices.fatture_upload import process_fattura_estera_pdf
-                res = await process_fattura_estera_pdf(db, doc["pdf_data"], fname, source="email_gmail_estera")
+                res = await process_fattura_estera_pdf(
+                    db, doc["pdf_data"], fname, source="email_gmail_estera",
+                    documento_inbox_id=doc["id"],
+                )
             except Exception as ex:
                 logger.warning(f"[Gmail] Errore fattura estera {fname}: {ex}")
                 res = {"status": "extraction_error", "error": str(ex)}

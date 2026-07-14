@@ -3,7 +3,8 @@ import { COLORS, BORDER_RADIUS } from '../lib/utils';
 import { Button, Badge, Card, PageHeader, Input, Select, TableWrap, Table, Th, Td, RowActions, RowActionButton } from '../components/ds';
 import { toast } from 'sonner';
 import { useConfirm } from '../components/ui/ConfirmDialog';
-import { Plus, Trash2, RefreshCw, Mail, Power } from 'lucide-react';
+import { Plus, Trash2, RefreshCw, Mail, Power, FileSearch } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import api from '../api';
 
 const TIPI_DOCUMENTO = [
@@ -96,15 +97,28 @@ export default function MittentiEmail() {
 
       <div style={{
         background: COLORS.infoLight, border: `1px solid ${COLORS.info}`, borderRadius: BORDER_RADIUS.md,
-        padding: '10px 14px', fontSize: 13, color: COLORS.text, marginBottom: 16,
+        padding: '10px 14px', fontSize: 13, color: COLORS.text, marginBottom: 12,
       }}>
         Le fatture <strong>italiane</strong> arrivano sempre via SDI/Aruba/Drive in formato XML
         (FatturaPA), mai da qui. I fornitori <strong>esteri</strong> non passano dallo SDI
         (sistema tutto italiano) e mandano un semplice <strong>PDF</strong> in allegato via
         email: aggiungili qui man mano che li scopri (dopo aver ricevuto la prima fattura),
         scegliendo il tipo <strong>"Fattura estera (PDF)"</strong> — il PDF verrà scaricato
-        automaticamente entro un'ora e archiviato in Documenti, pronto da associare/registrare.
+        automaticamente entro un'ora, letto dall'intelligenza artificiale e registrato come
+        fattura vera, in attesa che tu confermi o corregga i dati letti.
       </div>
+
+      <Link to="/fatture-estere-verifica" style={{ textDecoration: 'none' }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          background: COLORS.warningLight, border: `1px solid ${COLORS.warning}`,
+          borderRadius: BORDER_RADIUS.md, padding: '10px 14px', fontSize: 13,
+          color: COLORS.text, marginBottom: 16, cursor: 'pointer',
+        }}>
+          <FileSearch size={16} />
+          Vai alla coda di verifica delle fatture estere lette dall'AI →
+        </div>
+      </Link>
 
       <Card style={{ marginBottom: 20, padding: 16 }}>
         <form onSubmit={aggiungi} style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>

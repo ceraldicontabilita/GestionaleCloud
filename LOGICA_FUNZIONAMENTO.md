@@ -266,6 +266,21 @@ movimenti automatici. Restano comunque rifiutati i movimenti chiaramente bancari
   nome. La nazione viene dedotta dal prefisso della P.IVA (es. "DE..." →
   Germania), per non marcare per errore un fornitore estero come "P.IVA
   italiana non standard".
+- **Coda di verifica + rating di affidabilità** (pagina **Fatture estere
+  da verificare**, link dalla pagina Mittenti Email e alert cliccabile):
+  ogni fattura estera importata dall'AI entra in questa coda finché
+  l'utente non conferma o corregge i dati letti (numero, data, fornitore,
+  P.IVA, imponibile, IVA, totale) confrontandoli col PDF originale (link
+  diretto al PDF nella stessa riga). Se correggi un campo, la fattura
+  viene aggiornata con il valore giusto (compresi i campi speculari
+  italiani, e se cambi numero/P.IVA/data anche la chiave di dedup e la
+  scadenza vengono ricalcolate); se l'importo era sbagliato e la partita
+  aperta collegata non ha ancora ricevuto nessun pagamento, viene
+  corretta anche quella (se invece è già parzialmente pagata NON viene
+  toccata in automatico, per sicurezza). Ogni conferma/correzione
+  alimenta uno storico per fornitore ("X/Y letture corrette") mostrato
+  sulla stessa pagina, così nel tempo si vede quali fornitori l'AI legge
+  sempre bene e quali richiedono più attenzione.
 - La stessa pagina permette di configurare anche altri tipi di documento
   (cedolino, PagoPA, INPS, INAIL, PayPal, cartella esattoriale) se un giorno
   servisse un mittente attendibile per quei canali.

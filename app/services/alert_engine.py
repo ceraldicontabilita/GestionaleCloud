@@ -104,6 +104,12 @@ ALERT_CATALOG: Dict[str, Dict[str, Any]] = {
         "titolo": "Dati fattura incompleti",
         "condizione_chiusura": "Dati completati"
     },
+    "FAT_ESTERA_DA_VERIFICARE": {
+        "modulo": "fatture",
+        "severita": "warning",
+        "titolo": "Fattura estera letta dall'AI — da verificare",
+        "condizione_chiusura": "Utente conferma o corregge i dati letti"
+    },
     "FAT_DA_PAGARE_SCADUTA": {
         "modulo": "fatture",
         "severita": "critical",

@@ -1237,7 +1237,8 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
 
 
 async def process_fattura_estera_pdf(db, pdf_base64: str, filename: str,
-                                      source: str = "email_gmail_estera") -> Dict[str, Any]:
+                                      source: str = "email_gmail_estera",
+                                      documento_inbox_id: Optional[str] = None) -> Dict[str, Any]:
     """Fattura ESTERA arrivata come PDF via email (mai XML: lo SDI è solo
     italiano). Estrae i dati con l'AI già usata per gli altri documenti
     (`document_ai_extractor`, stessa ANTHROPIC_API_KEY già configurata) e la
@@ -1251,6 +1252,12 @@ async def process_fattura_estera_pdf(db, pdf_base64: str, filename: str,
     Se l'estrazione fallisce o non legge né numero né importo, non crea
     nulla: meglio lasciare il PDF solo archiviato (comportamento di prima)
     che registrare una fattura con dati inventati.
+
+    A differenza delle fatture XML italiane (lettura deterministica), la
+    fattura creata qui viene marcata `verifica_ai: "in_attesa"` e resta
+    nella coda `/api/fatture-estere/da-verificare` finché l'utente non
+    conferma o corregge i dati letti (scelta utente 14/07/2026, per avere
+    un rating di affidabilità della lettura AI per fornitore).
     """
     try:
         from app.services.document_ai_extractor import process_document_from_base64
@@ -1269,8 +1276,32 @@ async def process_fattura_estera_pdf(db, pdf_base64: str, filename: str,
     if not parsed.get("invoice_number") and not parsed.get("total_amount"):
         return {"status": "dati_insufficienti", "filename": filename}
 
-    return await import_parsed_invoice(db, parsed, filename, source, xml_raw=None,
-                                        piva_validator=_piva_estera_plausibile)
+    esito = await import_parsed_invoice(db, parsed, filename, source, xml_raw=None,
+                                         piva_validator=_piva_estera_plausibile)
+
+    if esito.get("status") == "imported":
+        try:
+            update = {"verifica_ai": "in_attesa"}
+            if documento_inbox_id:
+                update["documento_inbox_id"] = documento_inbox_id
+            await db[Collections.INVOICES].update_one({"id": esito["id"]}, {"$set": update})
+
+            from app.services.alert_engine import genera_alert
+            alert = await genera_alert(
+                "FAT_ESTERA_DA_VERIFICARE", esito["id"], Collections.INVOICES,
+                f"Fattura estera '{esito.get('invoice_number', '?')}' di "
+                f"{esito.get('supplier', '?')} letta dall'AI: verifica i dati prima "
+                f"che vengano usati per la riconciliazione",
+                db, extra={"filename": filename},
+            )
+            if alert:
+                await db["alerts"].update_one(
+                    {"id": alert["id"]}, {"$set": {"link": "/fatture-estere-verifica"}}
+                )
+        except Exception:
+            logger.exception(f"Errore marcatura verifica_ai/alert per fattura estera {esito.get('id')}")
+
+    return esito
 
 
 def _ai_fattura_a_parsed(data: Dict[str, Any]) -> Dict[str, Any]:
