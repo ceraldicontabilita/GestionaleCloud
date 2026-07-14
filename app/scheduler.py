@@ -505,6 +505,33 @@ def start_scheduler():
         except Exception as e:
             logger.error(f"[SCHEDULER-DRIVE-QUIETANZE] errore: {e}")
 
+    # ── Notifiche Aruba (ceraldigroupsrl@gmail.com) → Prima Nota provvisoria,
+    #    ogni ora ──────────────────────────────────────────────────────────
+    # Prima esisteva SOLO come endpoint manuale (/api/prima-nota/attese/
+    # scan-notifiche-ora, mai chiamato da nessuno: FE/scheduler/test): la
+    # scansione notifiche Aruba → fatture attese/provvisorie non partiva MAI
+    # da sola (trovato in sessione di debug 2026-07-14, scelta utente:
+    # automatico e orario). Stessa coppia di funzioni dell'endpoint manuale
+    # (scan_notifiche_aruba + controlla_attese_scadute), entrambe già
+    # a prova di credenziali mancanti (ritornano success:False, non
+    # sollevano eccezioni). Deliberatamente NON usa il più ampio
+    # email_monitor_service.run_full_sync: quello include anche il parsing
+    # di XML fattura via email (sync_email_documents), un comportamento
+    # diverso da quanto approvato qui (regola parametri).
+    async def _aruba_notifiche_job():
+        from app.database import Database
+        from app.services.aruba_notifiche import scan_notifiche_aruba, controlla_attese_scadute
+        try:
+            db = Database.get_db()
+            esito = await scan_notifiche_aruba(db)
+            scadute = await controlla_attese_scadute(db)
+            stats = esito.get("stats") or {}
+            logger.info(f"[SCHEDULER-ARUBA] nuove={stats.get('nuove')} "
+                        f"auto_registrate={stats.get('auto_registrate')} "
+                        f"gia_note={stats.get('gia_note')} scadute={scadute.get('scadute')}")
+        except Exception as e:
+            logger.error(f"[SCHEDULER-ARUBA] errore: {e}")
+
     # ── Automazioni Prima Nota: le ex funzioni "manuali" girano da sole ────
     # 1. corrispettivi → prima nota cassa (idempotente)
     # 2. fatture provvisorie → cassa/banca secondo il metodo fornitore
@@ -588,6 +615,13 @@ def start_scheduler():
         _drive_quietanze_job,
         'interval', hours=1,
         id="drive_quietanze_ingest", name="Import Quietanze F24 da Google Drive (ogni ora)",
+        replace_existing=True,
+    )
+
+    scheduler.add_job(
+        _aruba_notifiche_job,
+        'interval', hours=1,
+        id="aruba_notifiche_scan", name="Notifiche Aruba → Prima Nota provvisoria (ogni ora)",
         replace_existing=True,
     )
 

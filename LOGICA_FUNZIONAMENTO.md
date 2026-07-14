@@ -211,6 +211,9 @@ movimenti automatici. Restano comunque rifiutati i movimenti chiaramente bancari
 - Solo fatture di fornitori "misto", in attesa della tua divisione cassa/banca.
 
 **Fatture attese (avvisi email Aruba)** — nel tab Provvisori
+- **Scansione**: automatica, ogni ora (job schedulato — prima di questa
+  correzione, 2026-07-14, esisteva solo come funzione manuale mai richiamata
+  da nessuna pagina: la casella non veniva mai controllata da sola).
 - Quando Aruba avvisa che una fattura è stata recapitata, il sistema crea una
   "fattura attesa" con fornitore, numero e importo letti dalla mail, e il
   suggerimento cassa/banca preso dal metodo del fornitore (stesso motore di tutto
