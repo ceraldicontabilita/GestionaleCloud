@@ -25,11 +25,14 @@ rilavorate da zero.
 
 ## Stato di avanzamento
 
-**Operazioni residue aperte: 7 di 19.** Operazioni #1, #2-#10, #11 chiuse
-il 14/07/2026 (vedi "Completate" in fondo). Prossima operazione libera:
-**#12** (adozione `app/db_collections.py`) o **#17** (prestazioni N+1) —
-le operazioni #14, #15 (PayPal, Verbali — architettura, non solo pulizia
-endpoint) restano ❓ in attesa di decisione utente.
+**Operazioni chiuse o portate al massimo eseguibile qui: 1, 2-10, 11, 12,
+13, 16, 17, 18, 19.** Restano **14 e 15** (PayPal, architettura Verbali) —
+indagati con evidenze, in attesa dell'esito prima di decidere se c'è un
+fix sicuro isolabile o se restano debito per una sessione dedicata (vedi
+sotto). Dettaglio di ciascuna in "Completate dopo il 14/07/2026". Il
+"debito tecnico da implementare" residuo (compreso quanto NON è stato
+possibile chiudere del tutto in #13/#16/#17/#18/#19) è riepilogato in
+fondo a questo file.
 
 ---
 
@@ -63,56 +66,15 @@ Su queste voci: solo verifica di assenza regressioni, mai ricostruzione.
 
 ---
 
-## Attività residue (7 operazioni aperte)
+## Attività residue
 
-### P1 — altre attività
+**14. ❓ PayPal** — sotto indagine (evidenze in corso di raccolta,
+memoria/PIANO_CONSOLIDAMENTO_TRACKING.md verrà aggiornato con il verdetto:
+già mitigato / fix isolato sicuro / refactor ampio da confermare).
 
-**12. ⛔ Completare l'adozione di `app/db_collections.py`** — trovare le
-stringhe collection ancora hardcoded, sostituirle con le costanti,
-trasformare `database.py::Collections` in alias o eliminarla, aggiungere
-un test statico anti-hardcode. Non riaprire le decisioni fornitori/
-dipendenti/cedolini/invoices/f24_unificato (già chiuse).
-
-**13. ⛔ Verificare le migrazioni realmente eseguite in produzione** — per
-ognuna delle collection canoniche (`fornitori`, `dipendenti`, `cedolini`,
-`invoices`, `f24_unificato`, `estratto_conto_movimenti`,
-`documenti_classificati`) controllare nel DB di produzione: sorgente,
-destinazione, documenti copiati, duplicati, errori, scritture legacy dopo
-la migrazione. Produrre `memoria/VERIFICA_MIGRAZIONI_PRODUZIONE.md`.
-Nota: richiede accesso al DB di produzione — non eseguire nuove
-migrazioni scrivendo dati, solo verificare lo stato.
-
-**14. ❓ PayPal** — unificare 2 router, service paralleli, mapping
-fornitore, import statement/API, stati, riconciliazione, idempotenza.
-
-**15. ❓ Verbali** — architettura unica (ingest/CRUD/riconciliazione/
-trattenute) con schema e collection canonici.
-
-**16. ⛔ Fatture emesse** — armonizzare campi italiano/inglese duplicati
-con DTO canonico + adapter di migrazione, senza rompere l'app esterna.
-
-**17. 🟡 Prestazioni — query N+1/`to_list` ancora aperte** —
-`memoria/AUDIT_PERFORMANCE_N1.md` le censisce già (23 query, 1 corretta).
-Per ognuna: misurare, classificare interattivo/report, sostituire con
-aggregation/cursor/`$in`/`bulk_write` dove è un'API interattiva,
-paginazione reale, soglie di durata. Priorità: sincronizzazione
-relazionale, fatture, estratto conto, Prima Nota, documenti, scheduler.
-
-**18. 🟡 Viewer — certificazione dinamica finale** — `DocumentViewerModal`
-esiste già (non ricostruire). Manca la certificazione automatizzata sugli
-8 tipi documento (fattura ASSO HTML, fattura PDF, cedolino, F24, quietanza,
-PagoPA, verbale, documento non associato) × 8 viewport (320×568 → 1920×1080),
-verificando fit/zoom/fullscreen/download/scroll/chiusura/focus/
-autorizzazione/rotazione.
-
-### P2 — CI obbligatoria su main
-
-**19. 🟡 CI completa e gate deploy** — esistono già `audit-static.yml`,
-`smoke-runtime.yml`, `audit-layout.yml`, `verifica-produzione.yml`. Mancano
-come blocking check: `backend-tests`, `frontend-lint`,
-`route-map-consistency` (vedi #1), `endpoint-classification`,
-`frontend-dead-code` (vedi #11), `security-tests`, `viewer-e2e` (vedi #18).
-Il deploy Render deve dipendere dal verde di questi check.
+**15. ❓ Verbali — architettura unica** — sotto indagine, stessa logica:
+lo stato reale va riverificato DOPO la pulizia endpoint dell'operazione
+2-10 (il report originale descriveva una situazione precedente).
 
 ---
 
@@ -237,3 +199,125 @@ Il deploy Render deve dipendere dal verde di questi check.
   0 ORFANO_ELIMINABILE, 22 DINAMICO_DA_VERIFICARE (nome trovato altrove nel
   codice, non eliminabili senza verifica manuale mirata — restano per una
   eventuale prossima passata).
+
+**12. ✅ Adozione `app/db_collections.py` (scope: chiudere il drift, non riscrivere ~2000 letterali già corretti)**
+- Commit: `dfb2f63`.
+- Trovati e corretti 2 bug reali (non solo hardcode stilistico):
+  `app/services/trattenute_verbali_service.py` e
+  `app/routers/paypal_statements.py` leggevano l'arricchimento dipendente
+  dalla collection legacy vuota `employees` invece di `dipendenti` — il
+  lookup falliva sempre, silenziosamente.
+  `app/database.py::Collections`: i 13 attributi con un corrispondente in
+  `db_collections.py` sono ora alias delle costanti (`COLL_*`) invece di
+  stringhe duplicate — elimina il rischio di drift silenzioso futuro.
+- File nuovo: `tests/test_no_hardcoded_deprecated_collections.py` — blocca
+  l'uso diretto (fuori dagli script di migrazione) delle collection
+  deprecate note, con eccezioni esplicite documentate per 2 cleanup a
+  cascata legittimi (`cascade_operations.py`,
+  `suppliers_module/base.py` — `delete_many` su `warehouse_stocks`
+  durante l'eliminazione fornitore, non lettura come fonte dati) e per un
+  modulo orfano scoperto durante l'indagine (`app/utils/
+  warehouse_helpers.py`, 0 importer in tutto il repo, legge
+  `warehouse_stocks` con uno schema — `descrizione`/`codice`/`giacenza` —
+  incompatibile con quello reale di `warehouse_inventory` —
+  `nome`/`codice_articolo_fornitore` — segnalato come debito tecnico, non
+  toccato: nessun chiamante quindi nessun rischio immediato, ma andrebbe
+  riscritto o eliminato).
+- Non affrontato (basso rischio, basso valore): conversione delle ~2000
+  stringhe letterali già corrette (es. `db["invoices"]`) alle costanti
+  importate — il valore è già quello canonico, solo non centralizzato.
+- Risultato: `python -m pytest -q` → 379 passed, 2 skipped.
+
+**13. 🟡 Verifica migrazioni produzione — bloccata qui, tooling pronto**
+- Commit: `d02f99d`.
+- Questo ambiente non ha credenziali del DB di produzione (nessun `.env`,
+  nessuna `MONGO_URL`) — impossibile eseguire la verifica da qui.
+- File nuovo: `scripts/verifica_migrazioni_produzione.py` — sola lettura,
+  richiama ogni script di migrazione già esistente nella sua modalità
+  dry-run (`migra(esegui=False)`, non scrive nulla) per le 7 migrazioni
+  del piano, aggrega conteggi attuali + residuo da migrare in
+  `memoria/VERIFICA_MIGRAZIONI_PRODUZIONE.md`. Verificato che fallisce in
+  modo pulito e comprensibile senza DB configurato.
+- **Azione richiesta all'utente**: lanciare
+  `python scripts/verifica_migrazioni_produzione.py` in un ambiente con
+  accesso al DB di produzione (o incollarmi l'output se preferisce che
+  interpreti io il risultato).
+
+**16. 🟡 Fatture emesse — normalizzazione in scrittura fatta, dato storico non verificabile da qui**
+- Commit: `3f43d6f`.
+- Indagine (agente dedicato): il CRUD (`invoices_emesse.py`) non aveva mai
+  avuto uno schema — `POST` salvava qualunque dict così com'è. 6+ lettori
+  contabili (IVA a debito, bilancio, dashboard, piano conti) avevano
+  fallback IT/EN manuali e incoerenti — `imponibile`/`iva` in particolare
+  SENZA fallback inglese da nessuna parte (rischio concreto: una fattura
+  con solo `taxable_amount`/`vat` conteggiata a IVA zero, senza errore
+  visibile). Nessun frontend usa oggi questo router; nessuna evidenza di
+  un writer esterno attivo (il canale pubblico `/api/v1/fatture` è spento
+  per decisione utente precedente).
+- Aggiunta `normalizza_fattura_emessa()`: riempie i campi canonici
+  italiani dalle alternative osservate, applicata in creazione (unico
+  endpoint di scrittura). Non tocca i documenti già in produzione.
+- **Non affrontato, richiede conferma esplicita prima di procedere**: il
+  fallback mancante nell'aggregation pipeline di
+  `app/services/ragioneria_service.py::calcola_iva_debito_corretto` (IVA a
+  debito) per i documenti GIÀ in produzione — servirebbe `$ifNull` su
+  `imponibile`/`iva`, ma è un calcolo fiscale live, senza test di
+  copertura, e non posso verificare da qui la forma reale dei dati
+  esistenti. Fix pronto da applicare (vedi commit `3f43d6f` per i
+  dettagli), ma tocca l'IVA a debito calcolata: da confermare.
+- Risultato: `python -m pytest -q` → 382 passed, 2 skipped (+3 nuovi test
+  sul normalizzatore).
+
+**17. ✅ Prestazioni — reso visibile il troncamento silenzioso (non riscritte le query)**
+- Commit: `1450060`.
+- Non riscritte le 22 query in aggregation pipeline (rischio reale su
+  codice contabile senza analisi caso per caso — restano in
+  `AUDIT_PERFORMANCE_N1.md` come debito tecnico esplicito, priorità alle 4
+  marcate "VERIFICARE: aggregazione potenzialmente completa" in
+  `assegni.py` e `bonifici_module/riconciliazione.py`/
+  `prima_nota_module/manutenzione.py`).
+- Fix minimo e sicuro applicato a 20 dei 21 punti (14 router applicativi +
+  6 script di migrazione): log/print di warning quando il risultato
+  raggiunge esattamente il tetto (50000/100000), che oggi passa
+  inosservato. Non cambia nessuna logica né tetto numerico. 1 punto
+  (`migra_employee_contracts_a_contratti.py`) non esiste più nel repo
+  (già rimosso in una sessione precedente, audit non aggiornato).
+- Risultato: `python -m pytest -q` → 379 passed, 2 skipped, nessuna
+  regressione.
+
+**18. 🟡 Viewer — E2E per il componente condiviso su 3 viewport**
+- Commit: `ed8bb53`.
+- `frontend/scripts/audit-viewer.cjs` + workflow `viewer-e2e.yml` (stesso
+  pattern di `audit-layout.cjs`: API finte via `page.route`, nessun
+  backend/DB reale necessario). Copre `DocumentViewerModal` (componente
+  canonico condiviso da tutti gli 8 tipi documento) attraverso il flusso
+  `/documenti`: overflow, chiusura, presenza controlli (fit/zoom/
+  fullscreen/download), ESC, ritorno del focus. Verificato localmente
+  (chromium locale, 390×844/768×1024/1920×1080) → 30/30 controlli verdi
+  prima di committare.
+- **Non affrontato**: i flussi specifici degli altri 7 tipi documento
+  (bottone/pagina/endpoint diversi per ognuno — fattura ASSO HTML, fattura
+  PDF, cedolino, F24, quietanza, PagoPA, verbale), il comportamento
+  funzionale di zoom/fit/fullscreen/download (qui solo presenza/click),
+  l'autorizzazione del download, i restanti 5 viewport della matrice
+  originale (320×568, 360×800, 412×915, 1024×768, 1366×768).
+
+**19. 🟡 CI — backend-tests, frontend-build, dead-code check aggiunti**
+- Commit: `f05c9dd`, `ed8bb53` (viewer-e2e).
+- Ad oggi (prima di questa operazione) NESSUNA pipeline eseguiva pytest o
+  yarn build su push/PR: solo audit statico, smoke runtime, audit layout,
+  verifica produzione.
+- Nuovi workflow, tutti verificati localmente prima di committare:
+  `backend-tests.yml` (pytest completa + verifica che le mappe rigenerate
+  coincidano con quelle committate → copre anche route-map-consistency ed
+  endpoint-classification), `frontend-build.yml`, `frontend-dead-code.yml`
+  (fallisce se compare un file ORFANO_ELIMINABILE non rimosso),
+  `viewer-e2e.yml` (solo su modifiche al viewer, vedi op.18).
+- **Non affrontato**: `frontend-lint` (nessuno script "lint" in
+  `frontend/package.json` — serve decidere se introdurre eslint),
+  `security-tests` dedicato (bandit non installato — le guardie esistenti,
+  es. `test_p2_admin_guards.py`, restano coperte da backend-tests),
+  `migration-dry-run` in CI (richiede credenziali del DB — vedi op.13,
+  lo script è pronto, manca solo il secret in GitHub Actions), gate del
+  deploy Render su CI verde (si configura nel dashboard Render o nelle
+  branch protection di GitHub, non è modificabile dal repo).
