@@ -25,8 +25,11 @@ rilavorate da zero.
 
 ## Stato di avanzamento
 
-**Operazioni residue aperte: 19 di 19.** Prossima operazione: **#1**
-(rigenerare tutti gli inventari sullo stesso commit + test di coerenza).
+**Operazioni residue aperte: 18 di 19.** Operazione #1 chiusa il
+14/07/2026 (vedi "Completate" in fondo). Prossima operazione libera (non
+❓): **#11** (audit frontend dead code) o **#12**
+(adozione `app/db_collections.py`) o **#17** (prestazioni N+1) — le
+operazioni #2-#10, #14, #15 restano ❓ in attesa di decisione utente.
 
 ---
 
@@ -60,19 +63,7 @@ Su queste voci: solo verifica di assenza regressioni, mai ricostruzione.
 
 ---
 
-## Attività residue (19 operazioni)
-
-### P0 — allineamento e verità unica dei report
-
-**1. ⛔ Rigenerare tutti gli inventari sullo stesso commit + test anti-mismatch**
-```
-python scripts/genera_mappa.py
-python scripts/genera_classificazione_endpoint.py
-```
-Rigenerare insieme `MAPPA_ROUTER.md`, `MAPPA_ENDPOINT_COMPLETA.md`,
-`MAPPA_COLLEZIONI.md`, `ENDPOINT_CLASSIFICAZIONE_FINALE.md`,
-`AUDIT_ATOMICO_APPLICAZIONE.md`. Aggiungere un test che fallisca se i
-totali non coincidono. Sicura, non tocca produzione — può partire subito.
+## Attività residue (18 operazioni aperte, #1 chiusa)
 
 ### P1 — eliminazione endpoint realmente inutili
 
@@ -153,4 +144,26 @@ Il deploy Render deve dipendere dal verde di questi check.
 
 ## Completate dopo il 14/07/2026
 
-_(nessuna ancora — questo tracking è stato appena adottato)_
+**1. ✅ Rigenerare tutti gli inventari sullo stesso commit + test anti-mismatch**
+- Commit: `f79260f` → questa chiusura.
+- Rilanciati `python scripts/genera_mappa.py` e
+  `python scripts/genera_classificazione_endpoint.py`: `MAPPA_ROUTER.md` e
+  `MAPPA_ENDPOINT_COMPLETA.md` erano già coerenti (1059 endpoint, invariati).
+  `ENDPOINT_CLASSIFICAZIONE_FINALE.md` era stale (dichiarava 1072 nell'header
+  ma 1059 nel corpo, con 13 route dipendenti/contratti/libretti già rimosse
+  dal codice ma ancora presenti in tabella): rigenerato a 1059 endpoint · 640
+  tenere · 400 verificare · 19 admin-only.
+- `AUDIT_ATOMICO_APPLICAZIONE.md` già riportava 1059, nessuna modifica
+  necessaria. `MAPPA_COLLEZIONI.md` non ha uno script generatore dedicato
+  (resta aggiornamento manuale, nota di debito tecnico separato).
+- Aggiunta nota "documento storico, non autoritativo" in testa a
+  `AUDIT_ESECUZIONE_DEFINITIVO.md` (dichiarava ancora 1105/1106, baseline
+  13/07 pre-pulizia) per evitare confusione futura, senza riscrivere la
+  cronaca storica.
+- File nuovo: `tests/test_route_map_consistency.py` (4 test: MAPPA_ROUTER,
+  MAPPA_ENDPOINT_COMPLETA e ENDPOINT_CLASSIFICAZIONE_FINALE coerenti con la
+  route table reale via `register_all_routers`; somma tenere+verificare+
+  admin-only = totale). Verrà collegato come check bloccante CI
+  nell'operazione #19.
+- Risultato: `python -m pytest -q` → 378 passed, 2 skipped (era 374 passed:
+  +4 dai nuovi test), nessuna regressione.

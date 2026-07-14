@@ -3,6 +3,15 @@
 > Deliverable §16 del PROMPT_DEFINITIVO. Fotografia finale dell'esecuzione:
 > baseline, cosa è stato fatto, come è stato verificato, cosa resta.
 > Aggiornato al 2026-07-13.
+>
+> **Documento storico (baseline 13/07/2026), non autoritativo sui conteggi
+> correnti.** Dopo questa data sono state rimosse altre route morte (vedi
+> `memoria/AUDIT_DEFINITIVO_SESSIONE_20260714.md`). Il totale endpoint
+> aggiornato è sempre quello di `memoria/MAPPA_ROUTER.md` /
+> `memoria/ENDPOINT_CLASSIFICAZIONE_FINALE.md`, rigenerabili con
+> `python scripts/genera_mappa.py` e
+> `python scripts/genera_classificazione_endpoint.py` — coerenza garantita
+> da `tests/test_route_map_consistency.py`.
 
 ## 1. Baseline
 
