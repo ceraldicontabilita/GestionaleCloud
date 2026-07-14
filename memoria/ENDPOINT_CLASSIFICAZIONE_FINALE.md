@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1070 · tenere: 644 · verificare: 407 · admin-only (migrazione/manutenzione): 19
+**Totale endpoint:** 1072 · tenere: 648 · verificare: 405 · admin-only (migrazione/manutenzione): 19
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -266,7 +266,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/centri-costo/utile-obiettivo/suggerimenti` | accounting.centri_costo | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/cespiti/` | cespiti | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/cespiti/` | cespiti | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/cespiti/calcolo/{anno}` | cespiti | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/cespiti/calcolo/{anno}` | cespiti | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/cespiti/categorie` | cespiti | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/cespiti/dismissione` | cespiti | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/cespiti/registra/{anno}` | cespiti | sì | — | — | — | — | tenere | in uso: FE |
@@ -280,11 +280,11 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/chat/history` | chat_router | — | — | sì | — | — | tenere | in uso: chat |
 | `POST /api/chiusura-esercizio/apertura-nuovo-esercizio` | chiusura_esercizio | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/chiusura-esercizio/bilancino-verifica/{anno}` | chiusura_esercizio | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/chiusura-esercizio/esegui-chiusura` | chiusura_esercizio | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/chiusura-esercizio/esegui-chiusura` | chiusura_esercizio | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/chiusura-esercizio/saldi-iniziali/{anno}` | chiusura_esercizio | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/chiusura-esercizio/stato/{anno}` | chiusura_esercizio | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/chiusura-esercizio/storico` | chiusura_esercizio | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/chiusura-esercizio/verifica-preliminare/{anno}` | chiusura_esercizio | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/chiusura-esercizio/verifica-preliminare/{anno}` | chiusura_esercizio | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/commercialista/alert-status` | commercialista | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/commercialista/config` | commercialista | sì | — | — | — | — | tenere | in uso: FE |
 | `PUT /api/commercialista/config` | commercialista | sì | — | — | — | — | tenere | in uso: FE |
@@ -316,8 +316,10 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/contabilita-gestionale/budget/duplica/{anno_origine}/{anno_destinazione}` | accounting.contabilita_gestionale | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/contabilita-gestionale/budget/{anno}` | accounting.contabilita_gestionale | sì | — | — | — | — | tenere | in uso: FE |
 | `DELETE /api/contabilita-gestionale/budget/{anno}/{voce}` | accounting.contabilita_gestionale | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/contabilita-gestionale/libro-giornale` | accounting.contabilita_gestionale | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/contabilita-gestionale/libro-mastro` | accounting.contabilita_gestionale | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/contabilita-gestionale/libro-giornale` | accounting.contabilita_gestionale | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/contabilita-gestionale/libro-giornale/export` | accounting.contabilita_gestionale | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/contabilita-gestionale/libro-giornale/import` | accounting.contabilita_gestionale | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/contabilita-gestionale/libro-mastro` | accounting.contabilita_gestionale | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/contabilita-gestionale/partitario/clienti` | accounting.contabilita_gestionale | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/contabilita-gestionale/partitario/fornitori` | accounting.contabilita_gestionale | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/contabilita-gestionale/partitario/fornitori/{piva}` | accounting.contabilita_gestionale | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |

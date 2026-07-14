@@ -153,3 +153,34 @@ saldi (il bilancio aggrega dai documenti sorgente).
   (`app/services/libro_giornale.py` = legacy).
 - Il risultato d'esercizio resta scrittura semplice con segno (niente conto
   di epilogo, scelta utente), protetto dalla guardia anti-doppia chiusura.
+
+## Protocollo provvisorio/definitivo e ricostruzione (2026-07-14, ricerca web + specifica utente)
+
+Prassi confermata dalla ricerca (fonti in fondo):
+- **Art. 2216 c.c.**: libro giornale cronologico, giorno per giorno; numerazione
+  progressiva per anno; registrazioni entro 60 giorni; per ogni operazione una
+  numerazione UNICA e progressiva.
+- **Prassi software** (Zucchetti, TeamSystem, GB, ViaLibera): le registrazioni
+  hanno stato "provvisorio" o "confermato/definitivo". Le provvisorie hanno
+  protocollo e dati modificabili e NON entrano nel registro ufficiale; alla
+  conferma scatta il protocollo definitivo automatico e immutabile.
+
+Corrispondenza nel gestionale:
+- **Registro provvisorio** = Prima Nota Provvisoria (operazioni definitive ma
+  non certe: modificabili, fuori dal registro ufficiale).
+- **Protocollo definitivo** = `numero_registrazione` di `movimenti_contabili`
+  (motore §6.1): unico, progressivo, immutabile.
+- **Ricostruzione pari pari**: `GET /api/contabilita-gestionale/libro-giornale/export`
+  produce il dump autosufficiente del registro (protocolli, righe DARE/AVERE,
+  date e fonte documento originali); `POST .../libro-giornale/import` (Admin)
+  lo reimporta in modo idempotente — anche dopo una cancellazione totale le
+  operazioni rinascono come registrate all'epoca dei fatti.
+- **UI**: Contabilità → tab "Libro Giornale" (pagina LibroGiornale.jsx):
+  giornale cronologico con protocollo e righe espandibili, mastrini per conto,
+  badge di quadratura, Esporta/Reimporta.
+
+Fonti: tuttocamere.it (Numerazione, bollatura, tenuta scritture contabili),
+finom.co/it-it/blog/libro-giornale, marchegianionline.net (Il libro giornale),
+help.zucchetti.it (Primanota), teamsystem.com (Prima nota),
+guidegbsoftware.it (Gestione Prima Nota), lyberastudio.vialibera.it (ST-03
+Registrazioni Prima Nota).

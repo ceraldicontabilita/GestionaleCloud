@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1070 endpoint** in **110 gruppi**.
+> Totale **1072 endpoint** in **110 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 633 · ext esterni = 76 · — da verificare = 361
+**Riepilogo uso:** ✓ frontend = 637 · ext esterni = 76 · — da verificare = 359
 
 ## AI Parser  (11)
 
@@ -354,7 +354,7 @@
 | POST | `/api/contabilita/ricategorizza-fatture` | ✓ | accounting.contabilita_avanzata |
 | GET | `/api/contabilita/statistiche-categorizzazione` | ✓ | accounting.contabilita_avanzata |
 
-## Contabilità Gestionale  (11)
+## Contabilità Gestionale  (13)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -364,8 +364,10 @@
 | POST | `/api/contabilita-gestionale/budget/duplica/{anno_origine}/{anno_destinazione}` | ✓ | accounting.contabilita_gestionale |
 | GET | `/api/contabilita-gestionale/budget/{anno}` | ✓ | accounting.contabilita_gestionale |
 | DELETE | `/api/contabilita-gestionale/budget/{anno}/{voce}` | ✓ | accounting.contabilita_gestionale |
-| GET | `/api/contabilita-gestionale/libro-giornale` | — | accounting.contabilita_gestionale |
-| GET | `/api/contabilita-gestionale/libro-mastro` | — | accounting.contabilita_gestionale |
+| GET | `/api/contabilita-gestionale/libro-giornale` | ✓ | accounting.contabilita_gestionale |
+| GET | `/api/contabilita-gestionale/libro-giornale/export` | ✓ | accounting.contabilita_gestionale |
+| POST | `/api/contabilita-gestionale/libro-giornale/import` | ✓ | accounting.contabilita_gestionale |
+| GET | `/api/contabilita-gestionale/libro-mastro` | ✓ | accounting.contabilita_gestionale |
 | GET | `/api/contabilita-gestionale/partitario/clienti` | — | accounting.contabilita_gestionale |
 | GET | `/api/contabilita-gestionale/partitario/fornitori` | — | accounting.contabilita_gestionale |
 | GET | `/api/contabilita-gestionale/partitario/fornitori/{piva}` | — | accounting.contabilita_gestionale |

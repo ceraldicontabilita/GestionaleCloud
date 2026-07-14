@@ -5,7 +5,7 @@ Contabilità Gestionale - 3 moduli:
 3. Budget e Previsionale (budget per voce, confronto consuntivo, scostamenti)
 """
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, HTTPException, Depends
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
 from uuid import uuid4
@@ -13,6 +13,7 @@ from collections import defaultdict
 import logging
 
 from app.database import Database, Collections
+from app.utils.dependencies import get_current_admin_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Contabilità Gestionale"])
@@ -1117,4 +1118,82 @@ async def get_libro_mastro(
         "totale_dare": tot_dare,
         "totale_avere": tot_avere,
         "quadratura": abs(round(tot_dare - tot_avere, 2)) < 0.01,
+    }
+
+
+# ============================================
+# 5. EXPORT / REIMPORT DEL LIBRO GIORNALE
+#    Requisito utente (art. 2216 c.c. + prassi): il registro definitivo deve
+#    permettere di RICOSTRUIRE la contabilità pari pari — anche dopo una
+#    cancellazione totale, reimportando il registro si ricreano tutte le
+#    operazioni con il loro numero di protocollo originale.
+# ============================================
+
+@router.get("/libro-giornale/export")
+async def export_libro_giornale(
+    anno: Optional[int] = Query(None, description="Solo l'anno indicato; vuoto = tutto"),
+) -> Dict[str, Any]:
+    """Dump completo del registro definitivo (movimenti_contabili con righe).
+
+    Il file è autosufficiente per la ricostruzione: contiene ogni scrittura
+    con numero_registrazione (protocollo definitivo), righe DARE/AVERE,
+    fonte documento e date originali.
+    """
+    db = Database.get_db()
+    match: Dict[str, Any] = {"righe": {"$exists": True, "$ne": []}}
+    if anno:
+        match["anno"] = anno
+    movimenti = await db["movimenti_contabili"].find(
+        match, {"_id": 0}
+    ).sort("numero_registrazione", 1).to_list(100000)
+    return {
+        "tipo": "libro_giornale_gestionalecloud",
+        "versione": 1,
+        "generato_il": datetime.now(timezone.utc).isoformat(),
+        "anno": anno,
+        "numero_scritture": len(movimenti),
+        "scritture": movimenti,
+    }
+
+
+@router.post("/libro-giornale/import")
+async def import_libro_giornale(
+    dump: Dict[str, Any],
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Ricostruzione del registro da un export precedente (Admin-only).
+
+    NON distruttivo e idempotente: ogni scrittura viene reinserita SOLO se il
+    suo protocollo non esiste già (dedup per `id`, poi per numero_registrazione
+    + anno). Le scritture ricreate mantengono numero di protocollo, date e
+    righe originali — "pari pari" come registrate all'epoca dei fatti.
+    """
+    if dump.get("tipo") != "libro_giornale_gestionalecloud":
+        raise HTTPException(status_code=400,
+                            detail="File non riconosciuto: usare un export del libro giornale")
+    db = Database.get_db()
+    ricreate, gia_presenti, scartate = 0, 0, 0
+    for scrittura in dump.get("scritture", []):
+        if not scrittura.get("righe") or not scrittura.get("numero_registrazione"):
+            scartate += 1
+            continue
+        esiste = None
+        if scrittura.get("id"):
+            esiste = await db["movimenti_contabili"].find_one(
+                {"id": scrittura["id"]}, {"_id": 1})
+        if not esiste:
+            esiste = await db["movimenti_contabili"].find_one(
+                {"numero_registrazione": scrittura["numero_registrazione"],
+                 "anno": scrittura.get("anno")}, {"_id": 1})
+        if esiste:
+            gia_presenti += 1
+            continue
+        await db["movimenti_contabili"].insert_one(dict(scrittura))
+        ricreate += 1
+    return {
+        "success": True,
+        "scritture_nel_file": len(dump.get("scritture", [])),
+        "ricreate": ricreate,
+        "gia_presenti": gia_presenti,
+        "scartate_senza_righe_o_protocollo": scartate,
     }

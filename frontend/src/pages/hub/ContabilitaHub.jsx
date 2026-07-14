@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import {
   BarChart3, TrendingUp, BadgeCheck, CalendarCheck, Calendar,
   Building2, Banknote, Lock, ClipboardList, Landmark, Wrench,
-  Target, Package,
+  Target, Package, BookOpen,
 } from 'lucide-react';
 import { useAnnoGlobale } from '../../contexts/AnnoContext';
 import { HubTabs, PageLoader } from '../../components/ds';
@@ -11,6 +11,7 @@ import { HubTabs, PageLoader } from '../../components/ds';
 const PianoContiContent = lazy(() => import('../PianoDeiConti.jsx'));
 const BilancioContent = lazy(() => import('../Bilancio.jsx'));
 const BilancioVerContent = lazy(() => import('../BilancioVerifica.jsx'));
+const LibroGiornaleContent = lazy(() => import('../LibroGiornale.jsx'));
 const ControlloContent = lazy(() => import('../ControlloMensile.jsx'));
 const CalendarioContent = lazy(() => import('../CalendarioFiscale.jsx'));
 const CespitiContent = lazy(() => import('../GestioneCespiti.jsx'));
@@ -29,6 +30,7 @@ const TABS = [
   { id: 'piano-conti', label: 'Piano dei Conti', Icon: BarChart3 },
   { id: 'bilancio', label: 'Bilancio', Icon: TrendingUp },
   { id: 'verifica', label: 'Verifica Bilancio', Icon: BadgeCheck },
+  { id: 'giornale', label: 'Libro Giornale', Icon: BookOpen },
   { id: 'controllo', label: 'Controllo Mensile', Icon: CalendarCheck },
   { id: 'calendario', label: 'Calendario Fiscale', Icon: Calendar },
   { id: 'cespiti', label: 'Cespiti', Icon: Building2 },
@@ -163,6 +165,7 @@ export default function ContabilitaHub() {
           { id: 'piano-conti', C: PianoContiContent },
           { id: 'bilancio', C: BilancioContent },
           { id: 'verifica', C: BilancioVerContent },
+          { id: 'giornale', C: LibroGiornaleContent },
           { id: 'controllo', C: ControlloContent },
           { id: 'calendario', C: CalendarioContent },
           { id: 'cespiti', C: CespitiContent },

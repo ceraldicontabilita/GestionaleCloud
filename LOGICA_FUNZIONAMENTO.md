@@ -651,3 +651,22 @@ In concreto:
   Acquisti.
 - **Restano** (scelta 13/07/2026): Previsioni Acquisti (tab in Contabilità) e
   Libretti sanitari nel modulo Dipendenti.
+
+## Libro Giornale e Libro Mastro (Contabilità → Libro Giornale)
+
+Il registro contabile UFFICIALE del gestionale è unico: ogni operazione
+definitiva (fatture e corrispettivi registrati in contabilità, accantonamenti
+e liquidazioni TFR, ammortamenti annuali) riceve un **numero di protocollo
+definitivo** unico, progressivo e immutabile, con la scrittura in partita
+doppia (DARE = AVERE).
+
+- Le operazioni **provvisorie** (Prima Nota Provvisoria) sono definitive ma
+  non certe: restano nel registro provvisorio, modificabili, e NON compaiono
+  nel libro giornale finché non vengono confermate.
+- **Libro Giornale**: elenco cronologico delle scritture con protocollo,
+  righe per conto e verifica di quadratura.
+- **Libro Mastro**: le stesse righe riclassificate per conto (mastrini).
+- **Esporta registro**: scarica il file JSON autosufficiente dell'anno.
+- **Reimporta** (solo Admin): ricostruisce le operazioni PARI PARI — stessi
+  protocolli, date e importi di quando furono registrate — anche dopo una
+  cancellazione totale del database.
