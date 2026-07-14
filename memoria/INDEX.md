@@ -159,6 +159,12 @@ Corrispettivi: SOLO import manuale XML dal registratore telematico, MAI da Gmail
 Per il dettaglio funzionale vedi `LOGICA_OPERATIVA.md`.
 Per lo stato di progetto vedi `PRD.md`.
 
+## Piano di consolidamento in corso (14/07/2026)
+
+Indice numerato e stato di avanzamento del piano derivato dal report esterno
+di verifica: `memoria/PIANO_CONSOLIDAMENTO_TRACKING.md` — da aggiornare ad
+ogni operazione eseguita.
+
 ## Specifica vincolante F24 / Cedolini / IRES / IRAP / Chat (10/07/2026)
 
 `SPECIFICA_F24_CEDOLINI_IRES_IRAP_CHAT.md` — documento dell'utente, fonte
