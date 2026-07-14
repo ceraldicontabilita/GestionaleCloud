@@ -142,6 +142,8 @@ async def process_files_background(job_id: str, file_paths: List[Path]):
     # Carica chiavi esistenti per deduplicazione veloce
     existing_keys = set()
     existing_docs = await db.bonifici_transfers.find({}, {'_id': 0, 'dedup_key': 1}).to_list(50000)
+    if len(existing_docs) >= 50000:
+        logger.warning("process_job_bonifici: raggiunto il tetto di 50000 documenti, possibile troncamento")
     for doc in existing_docs:
         if doc.get('dedup_key'):
             existing_keys.add(doc['dedup_key'])

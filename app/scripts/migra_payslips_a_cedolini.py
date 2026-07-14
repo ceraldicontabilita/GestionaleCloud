@@ -26,6 +26,8 @@ async def migra(esegui: bool) -> dict:
         presenti.add(chiave_cedolino(d))
 
     docs = await db[LEGACY].find({}, {"_id": 0}).to_list(100000)
+    if len(docs) >= 100000:
+        print("migra_payslips_a_cedolini: raggiunto il tetto di 100000 documenti, possibile troncamento")
     migrati = 0
     gia_presenti = 0
     incompleti = 0

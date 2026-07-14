@@ -22,6 +22,8 @@ CANONICA = "dipendenti"
 async def migra(esegui: bool) -> dict:
     db = Database.get_db()
     docs = await db[LEGACY].find({}, {"_id": 0}).to_list(100000)
+    if len(docs) >= 100000:
+        print("migra_staff_a_dipendenti: raggiunto il tetto di 100000 documenti, possibile troncamento")
     migrati = 0
     incompleti = 0
     for doc in docs:

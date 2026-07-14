@@ -363,6 +363,8 @@ async def verifica_associazioni_assegni() -> Dict[str, Any]:
     
     # Carica tutte le fatture per lookup veloce
     fatture_cursor = await db["invoices"].find({}, {"_id": 0}).to_list(50000)
+    if len(fatture_cursor) >= 50000:
+        logger.warning("verifica_associazioni_assegni_fatture: raggiunto il tetto di 50000 documenti, possibile troncamento")
     fatture_by_id = {f.get("id"): f for f in fatture_cursor}
     
     problemi = []
@@ -2099,7 +2101,9 @@ async def associa_beneficiari_robusto() -> Dict[str, Any]:
     fatture = await db.invoices.find({
         "total_amount": {"$gt": 0}
     }, {"_id": 0}).to_list(50000)
-    
+    if len(fatture) >= 50000:
+        logger.warning("associa_fatture_per_importo_assegni: raggiunto il tetto di 50000 documenti, possibile troncamento")
+
     # Indice fatture per importo approssimativo (arrotondato)
     fatture_by_importo = {}
     for f in fatture:

@@ -39,6 +39,8 @@ async def migra(esegui: bool) -> dict:
     db = Database.get_db()
     # Solo il flusso upload AI (il flusso "da rivedere" di ai_parser usa `status`)
     docs = await db[LEGACY].find({"status": {"$exists": False}}).to_list(100000)
+    if len(docs) >= 100000:
+        print("migra_extracted_documents: raggiunto il tetto di 100000 documenti, possibile troncamento")
     migrati = 0
     gia_presenti = 0
     for doc in docs:

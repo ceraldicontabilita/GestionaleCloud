@@ -995,6 +995,8 @@ async def cleanup_duplicati_estratto_conto() -> Dict[str, Any]:
         "_id": 1, "data": 1, "data_contabile": 1, "data_valuta": 1,
         "importo": 1, "descrizione": 1, "tipo": 1,
     }).to_list(100000)
+    if len(records) >= 100000:
+        logger.warning("bank_statement_import: raggiunto il tetto di 100000 documenti, possibile troncamento")
 
     before = len(records)
     groups = defaultdict(list)

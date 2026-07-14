@@ -7,8 +7,11 @@ from typing import Dict, Any
 from datetime import datetime, timezone
 import uuid
 import asyncio
+import logging
 
 from app.database import Database
+
+logger = logging.getLogger(__name__)
 
 # Cache per task di riconciliazione
 _riconciliazione_task: Dict[str, Dict[str, Any]] = {}
@@ -48,7 +51,9 @@ async def riconcilia_bonifici_con_estratto(background: bool = False) -> Dict[str
     ).to_list(10000)
     
     movimenti = await db.estratto_conto_movimenti.find({}, {"_id": 0}).to_list(50000)
-    
+    if len(movimenti) >= 50000:
+        logger.warning("riconcilia_bonifici_con_estratto: raggiunto il tetto di 50000 documenti, possibile troncamento")
+
     if not bonifici:
         return {"success": True, "message": "Nessun bonifico da riconciliare", "riconciliati": 0}
     
@@ -134,7 +139,9 @@ async def _execute_riconciliazione_batch(task_id: str):
         ).to_list(10000)
         
         movimenti = await db.estratto_conto_movimenti.find({}, {"_id": 0}).to_list(50000)
-        
+        if len(movimenti) >= 50000:
+            logger.warning("_execute_riconciliazione_batch: raggiunto il tetto di 50000 documenti, possibile troncamento")
+
         _riconciliazione_task[task_id]["total"] = len(bonifici)
         _riconciliazione_task[task_id]["status"] = "processing"
         

@@ -398,6 +398,8 @@ async def rebuild_prima_nota_from_corrispettivi(
     processed = 0
     skipped = 0
     corrispettivi = await db["corrispettivi"].find(query, {"_id": 0}).to_list(100000)
+    if len(corrispettivi) >= 100000:
+        logger.warning("rebuild_prima_nota_from_corrispettivi: raggiunto il tetto di 100000 documenti, possibile troncamento")
     for corr in corrispettivi:
         if not corr.get("data") or _to_float(corr.get("totale", 0)) <= 0:
             skipped += 1
@@ -451,6 +453,8 @@ async def cleanup_duplicate_corrispettivi(db, anno: Optional[int] = None) -> Dic
         {"$match": {"count": {"$gt": 1}}},
     ]
     dupes = await db["corrispettivi"].aggregate(pipeline).to_list(100000)
+    if len(dupes) >= 100000:
+        logger.warning("cleanup_duplicate_corrispettivi: raggiunto il tetto di 100000 gruppi duplicati, possibile troncamento")
 
     deleted = 0
     groups = 0

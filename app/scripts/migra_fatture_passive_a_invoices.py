@@ -22,6 +22,8 @@ LEGACY = "fatture_passive"
 async def migra(esegui: bool) -> dict:
     db = Database.get_db()
     docs = await db[LEGACY].find({}, {"_id": 0}).to_list(100000)
+    if len(docs) >= 100000:
+        print("migra_fatture_passive_a_invoices: raggiunto il tetto di 100000 documenti, possibile troncamento")
     migrati = 0
     saltati_incompleti = 0
     gia_presenti = 0

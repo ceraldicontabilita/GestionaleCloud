@@ -593,7 +593,9 @@ async def migrazione_pulisci_bancari_da_cassa(_admin: Dict[str, Any] = Depends(g
         {"status": {"$nin": ["deleted", "archived"]}},
         {"_id": 1, "descrizione": 1, "categoria": 1, "source": 1, "importo": 1, "data": 1, "tipo": 1}
     ).to_list(100000)
-    
+    if len(tutti) >= 100000:
+        logger.warning("manutenzione prima nota cassa: raggiunto il tetto di 100000 documenti, possibile troncamento")
+
     ids_da_eliminare = []
     campione_eliminati = []
     
@@ -701,6 +703,8 @@ async def dedup_fatture_prima_nota(
             query["data"] = {"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31"}
 
         movimenti = await db[collection_name].find(query, {"_id": 0}).to_list(50000)
+        if len(movimenti) >= 50000:
+            logger.warning("manutenzione prima nota %s: raggiunto il tetto di 50000 documenti, possibile troncamento", label)
 
         # Raggruppamento per chiave di dedup
         gruppi: Dict[str, list] = {}

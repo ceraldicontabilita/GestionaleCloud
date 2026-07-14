@@ -1146,6 +1146,8 @@ async def export_libro_giornale(
     movimenti = await db["movimenti_contabili"].find(
         match, {"_id": 0}
     ).sort("numero_registrazione", 1).to_list(100000)
+    if len(movimenti) >= 100000:
+        logger.warning("libro_giornale: raggiunto il tetto di 100000 documenti, possibile troncamento")
     return {
         "tipo": "libro_giornale_gestionalecloud",
         "versione": 1,

@@ -40,6 +40,8 @@ def _mappa(doc: dict) -> dict:
 async def migra(esegui: bool) -> dict:
     db = Database.get_db()
     docs = await db[LEGACY].find({}).to_list(100000)
+    if len(docs) >= 100000:
+        print("migra_documents_classified: raggiunto il tetto di 100000 documenti, possibile troncamento")
     migrati = 0
     gia_presenti = 0
     for doc in docs:

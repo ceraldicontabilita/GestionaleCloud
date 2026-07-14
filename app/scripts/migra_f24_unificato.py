@@ -32,6 +32,8 @@ async def migra(esegui: bool) -> dict:
         if coll == COLL:
             continue
         docs = await db[coll].find({}, {"_id": 0}).to_list(100000)
+        if len(docs) >= 100000:
+            print(f"migra_f24_unificato ({coll}): raggiunto il tetto di 100000 documenti, possibile troncamento")
         n_mig = 0
         for doc in docs:
             k = chiave_f24(doc)

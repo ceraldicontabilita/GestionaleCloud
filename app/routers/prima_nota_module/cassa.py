@@ -6,12 +6,15 @@ from fastapi import HTTPException, Query, Body
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 import uuid
+import logging
 
 from app.database import Database
 from .common import (
     COLLECTION_PRIMA_NOTA_CASSA, TIPO_MOVIMENTO, CATEGORIE_ESCLUSE,
     calcola_saldo_anni_precedenti, aggrega_saldo_prima_nota
 )
+
+logger = logging.getLogger(__name__)
 
 
 async def list_prima_nota_cassa(
@@ -305,7 +308,9 @@ async def analisi_movimenti_bancari_errati_in_cassa() -> Dict[str, Any]:
         {"_id": 0, "id": 1, "descrizione": 1, "importo": 1, "data": 1, "tipo": 1, 
          "categoria": 1, "source": 1, "riferimento": 1}
     ).to_list(50000)
-    
+    if len(tutti_movimenti) >= 50000:
+        logger.warning("analisi_movimenti_bancari_errati_in_cassa: raggiunto il tetto di 50000 documenti, possibile troncamento")
+
     # Categorie SICURAMENTE legittime in cassa
     categorie_cassa_ok = {'Corrispettivi', 'POS', 'Versamento', 'Finanziamento', 
                           'Finanziamento soci', 'Nota credito contanti'}
@@ -416,7 +421,9 @@ async def elimina_movimenti_bancari_da_cassa() -> Dict[str, Any]:
         {"status": {"$nin": ["deleted", "archived"]}},
         {"_id": 1, "descrizione": 1, "categoria": 1, "source": 1}
     ).to_list(50000)
-    
+    if len(tutti_movimenti) >= 50000:
+        logger.warning("elimina_movimenti_bancari_da_cassa: raggiunto il tetto di 50000 documenti, possibile troncamento")
+
     ids_da_eliminare = []
     
     for m in tutti_movimenti:

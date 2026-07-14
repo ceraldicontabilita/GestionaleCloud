@@ -127,6 +127,8 @@ def _f24_pagato(doc: Dict[str, Any]) -> bool:
 async def _risposta_f24(db, domanda: str) -> Dict[str, Any]:
     anno = _estrai_anno(domanda)
     tutti = await db[Collections.F24_MODELS].find({}, {"_id": 0}).to_list(50000)
+    if len(tutti) >= 50000:
+        logger.warning("_risposta_f24: raggiunto il tetto di 50000 documenti, possibile troncamento")
     f24_list = [f for f in tutti if _f24_anno(f) == anno]
     count = len(f24_list)
     totale = sum(_f24_importo(f) for f in f24_list)
