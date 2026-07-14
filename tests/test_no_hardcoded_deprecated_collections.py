@@ -19,12 +19,10 @@ Eccezioni esplicite (cleanup/migrazione intenzionali, non bug):
   cancellano (delete_many) anche dai residui in warehouse_stocks durante
   l'eliminazione a cascata di un fornitore — pulizia, non lettura di dati
   come fonte di verità.
-- app/utils/warehouse_helpers.py: modulo orfano (0 importer in tutto il
-  repo, verificato 14/07/2026) che legge warehouse_stocks con uno schema
-  (descrizione/codice/giacenza) incompatibile con quello reale di
-  warehouse_inventory (nome/codice_articolo_fornitore/...) — debito tecnico
-  noto (memoria/PIANO_CONSOLIDAMENTO_TRACKING.md op.12): se mai viene
-  ri-agganciato va riscritto, non basta cambiare il nome della collection.
+
+(app/utils/warehouse_helpers.py, modulo orfano che leggeva warehouse_stocks
+con uno schema incompatibile con warehouse_inventory, è stato eliminato il
+14/07/2026 — 0 importer in tutto il repo, vedi git history.)
 """
 import os
 import re
@@ -41,7 +39,6 @@ COLLEZIONI_DEPRECATE = [
 FILE_ESENTI = {
     os.path.normpath(os.path.join(APP_DIR, "services", "cascade_operations.py")),
     os.path.normpath(os.path.join(APP_DIR, "routers", "suppliers_module", "base.py")),
-    os.path.normpath(os.path.join(APP_DIR, "utils", "warehouse_helpers.py")),
 }
 
 PATTERN = re.compile(

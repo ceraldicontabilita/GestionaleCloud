@@ -426,19 +426,21 @@ in ordine di priorità/rischio, con l'azione concreta per ciascuno.
    c'è, serve il secret DB in GitHub Actions), il gate del deploy Render
    su CI verde (si configura fuori dal repo: dashboard Render o branch
    protection GitHub).
-7. **PayPal — copertura test zero (op.14)**: nessun test unitario esiste
-   per `paypal-api`/`paypal-statements`. I 2 fix applicati sono a basso
-   rischio (query in lettura) ma senza rete di sicurezza automatica.
-   Debito minore: `app/services/paypal_integration.py` (secondo client
-   OAuth2, usato solo da endpoint `email_download.py` probabilmente
-   morti) non verificato; disallineamento `tipo`/T-code cosmetico.
-8. **`app/utils/warehouse_helpers.py` orfano (scoperta durante op.12)**:
-   0 importer in tutto il repo, legge la collection deprecata
-   `warehouse_stocks` con uno schema incompatibile con quello reale di
-   `warehouse_inventory`. Nessun rischio immediato (nessun chiamante),
-   ma se mai riagganciato va riscritto, non basta cambiare il nome della
-   collection. Candidato a eliminazione come gli orfani frontend
-   dell'op.11, non ancora deciso.
+7. ~~PayPal — copertura test zero (op.14)~~ **CHIUSO 14/07/2026**: aggiunti
+   3 test (`tests/test_paypal_statements_fix.py`) che verificano
+   direttamente i 2 fix (mapping fornitore da `fornitori`, non dalla
+   collection morta; KPI dashboard che conta entrambi i flag di
+   riconciliazione) con un fake DB, non solo strutturalmente — un
+   regressione su uno dei due fix farebbe fallire il test. Resta debito
+   minore: `app/services/paypal_integration.py` (secondo client OAuth2,
+   usato solo da endpoint `email_download.py` probabilmente morti) non
+   verificato; disallineamento `tipo`/T-code cosmetico; nessun test sul
+   resto dei 24 endpoint PayPal.
+8. ~~`app/utils/warehouse_helpers.py` orfano~~ **ELIMINATO 14/07/2026**:
+   0 importer confermati, riletto e riconfermato prima della cancellazione
+   (stesso criterio conservativo dell'op.11). L'eccezione dedicata nel
+   test anti-hardcode (`tests/test_no_hardcoded_deprecated_collections.py`)
+   è stata rimossa di conseguenza.
 9. **`memoria/pagine/*.json` (mappe funzionali dettagliate)**: alcuni
    file (es. `noleggio-verbali.json`, `dettaglio-verbale.json`) citano
    ancora endpoint/funzioni rimossi nell'operazione 2-10. Sono
