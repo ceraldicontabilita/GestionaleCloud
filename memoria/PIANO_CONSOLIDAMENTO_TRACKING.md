@@ -25,11 +25,11 @@ rilavorate da zero.
 
 ## Stato di avanzamento
 
-**Operazioni residue aperte: 18 di 19.** Operazione #1 chiusa il
+**Operazioni residue aperte: 17 di 19.** Operazioni #1 e #11 chiuse il
 14/07/2026 (vedi "Completate" in fondo). Prossima operazione libera (non
-❓): **#11** (audit frontend dead code) o **#12**
-(adozione `app/db_collections.py`) o **#17** (prestazioni N+1) — le
-operazioni #2-#10, #14, #15 restano ❓ in attesa di decisione utente.
+❓): **#12** (adozione `app/db_collections.py`) o **#17** (prestazioni
+N+1) — le operazioni #2-#10, #14, #15 restano ❓ in attesa di decisione
+utente.
 
 ---
 
@@ -85,13 +85,6 @@ internamente, webhook, Chat, API esterne documentate, endpoint manutentivi
 ancora necessari.
 
 ### P1 — altre attività
-
-**11. ⛔ Audit reale frontend inutilizzato** — creare
-`scripts/audit_frontend_dead_code.py` + `memoria/AUDIT_FRONTEND_DEAD_CODE.md`
-(entry point `main.jsx`/`App.jsx`/`navigation.config.js`, classificazioni
-ENTRYPOINT/ROUTE_ATTIVA/COMPONENTE_USATO/MODALE_USATO/HOOK_USATO/TEST_ONLY/
-DINAMICO_DA_VERIFICARE/ORFANO_ELIMINABILE). Eliminare solo gli
-`ORFANO_ELIMINABILE`, con `yarn build && yarn lint` dopo ogni gruppo.
 
 **12. ⛔ Completare l'adozione di `app/db_collections.py`** — trovare le
 stringhe collection ancora hardcoded, sostituirle con le costanti,
@@ -167,3 +160,45 @@ Il deploy Render deve dipendere dal verde di questi check.
   nell'operazione #19.
 - Risultato: `python -m pytest -q` → 378 passed, 2 skipped (era 374 passed:
   +4 dai nuovi test), nessuna regressione.
+
+**11. ✅ Audit reale frontend inutilizzato + eliminazione orfani**
+- Commit: chiusura in corso (vedi prossimo commit su questo branch).
+- File nuovo: `scripts/audit_frontend_dead_code.py` — grafo di import reale
+  a partire da `main.jsx`/`App.jsx`/`navigation.config.js` (import statici,
+  `import()` dinamici, `lazy(() => import(...))`, re-export `export {X}
+  from`/`export * from` per i barrel file), classificazione
+  ENTRYPOINT/ROUTE_ATTIVA/COMPONENTE_USATO/MODALE_USATO/HOOK_USATO/
+  TEST_ONLY/DINAMICO_DA_VERIFICARE/ORFANO_ELIMINABILE, con safety net
+  anti falso-positivo (grep del basename in tutto il codice prima di
+  dichiarare un file orfano — se il nome compare altrove, va in
+  DINAMICO_DA_VERIFICARE, mai eliminato in automatico).
+- File nuovo: `memoria/AUDIT_FRONTEND_DEAD_CODE.md` (rigenerabile).
+- Eliminati 34 file orfani confermati (0 riferimenti ovunque nel repo,
+  verificati manualmente con grep incrociato prima di ogni cancellazione),
+  in 3 gruppi (30 diretti + 4 rivelati a cascata dopo il primo giro + 1
+  dopo il secondo, fino a convergenza a 0 orfani):
+  - 21 componenti `components/ui/*` di shadcn/ui mai adottati (accordion,
+    alert-dialog, aspect-ratio, breadcrumb, calendar, carousel,
+    collapsible, context-menu, dropdown-menu, hover-card, input-otp,
+    menubar, navigation-menu, pagination, radio-group, resizable,
+    scroll-area, separator, skeleton, slider, toggle-group);
+  - 3 componenti applicativi morti (`InvoiceXMLViewer.jsx`,
+    `WidgetAgenti.jsx`, `WidgetVerificaCoerenza.jsx`);
+  - l'intera cartella `components/prima-nota/` (barrel `index.js` +
+    `PrimaNotaComponents.jsx` + `PrimaNotaSalariTab.jsx`, superata dal
+    consolidamento hub — cartella rimossa, ora vuota);
+  - 3 barrel file mai importati come directory (`hooks/index.js`,
+    `stores/index.js`) + 4 hook morti (`useResponsive.js`,
+    `useScrollRestore.js`, `useAbortableEffect.js`);
+  - 3 utility morte (`utils/constants.js`, `utils/dateUtils.js`,
+    `utils/urlHelpers.js`).
+- Verifica: `yarn build` verde dopo ogni gruppo (bundle `frontend/dist`
+  invariato byte-per-byte: i file erano già fuori dal grafo di build,
+  conferma indipendente che erano davvero morti). Nessuno script `yarn
+  lint` esiste in questo repo (non in `package.json`), quindi solo build
+  come verifica statica. `python -m pytest -q` → 378 passed, 2 skipped
+  (nessun impatto sul backend).
+- Risultato finale: `AUDIT_FRONTEND_DEAD_CODE.md` → 139 file analizzati,
+  0 ORFANO_ELIMINABILE, 22 DINAMICO_DA_VERIFICARE (nome trovato altrove nel
+  codice, non eliminabili senza verifica manuale mirata — restano per una
+  eventuale prossima passata).
