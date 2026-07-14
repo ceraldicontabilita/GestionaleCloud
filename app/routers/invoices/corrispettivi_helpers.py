@@ -133,6 +133,19 @@ async def _delete_prima_nota_for_corrispettivo(db, corrispettivo_id: str, data: 
                     "zip_upload", "manual_entry", "manual", "corrispettivo_manuale",
                 ]}, "categoria": "Corrispettivi"},
                 {"categoria": "Corrispettivi", "corrispettivo_id": {"$in": [None, ""]}},
+                # Bug A (segnalato dall'utente 14/07/2026): la quick-form
+                # "💳 POS" di Prima Nota (PrimaNota.jsx::handleSavePos) crea
+                # un'uscita provvisoria categoria "POS"/source "manual_pos"
+                # con commento "Sarà sovrascritto quando arriva XML" — ma
+                # nessuna delle due clausole sopra la intercetta (categoria
+                # diversa da "Corrispettivi"), quindi restava un'uscita
+                # cassa fantasma per sempre, mai riconciliata con
+                # Coerenza POS (che legge solo prima_nota_banca) e mai
+                # sostituita dal vero movimento "POS Verso Banca" creato
+                # dall'import XML: le due finivano per sommarsi, gonfiando
+                # le uscite cassa. Ora viene ripulita quando arriva il
+                # corrispettivo reale per la stessa data, come promesso.
+                {"source": "manual_pos", "categoria": "POS"},
             ],
         })
         await db["prima_nota_banca"].delete_many({

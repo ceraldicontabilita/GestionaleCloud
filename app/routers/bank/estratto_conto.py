@@ -14,7 +14,7 @@ import csv
 from app.database import Database
 from app.utils.error_handler import handle_errors
 from app.routers.prima_nota_module.common import aggrega_saldo_prima_nota
-from app.routers.prima_nota_module.sync import determina_tipo_movimento_fattura
+from app.routers.prima_nota_module.sync import costruisci_campi_movimento_fattura
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -474,15 +474,10 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
                     # fornitore in uscita: stessa regola già applicata in
                     # prima_nota_module/sync.py (bug segnalato dall'utente
                     # 14/07/2026, qui era hardcoded "uscita"/"Fatture").
-                    numero_fatt = f.get("invoice_number", "")
-                    tipo_mov, categoria, desc_prefisso = determina_tipo_movimento_fattura(f)
                     await db["prima_nota_banca"].insert_one({
                         "id": pn_id, "data": match.get("data") or match.get("data_contabile") or f.get("invoice_date", ""),
-                        "tipo": tipo_mov, "categoria": categoria,
-                        "descrizione": f"{desc_prefisso} {numero_fatt} - {(f.get('supplier_name',''))[:30]}",
-                        "importo": importo, "fattura_id": f["id"],
-                        "numero_fattura": numero_fatt,
-                        "tipo_documento": f.get("tipo_documento"),
+                        **costruisci_campi_movimento_fattura(f, importo),
+                        "fattura_id": f["id"],
                         "riferimento": rif,
                         "fornitore_piva": f.get("supplier_vat", ""),
                         "estratto_conto_id": match.get("id"),

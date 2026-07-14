@@ -190,21 +190,20 @@ async def conferma_proposta(db, proposta_id: str) -> Dict[str, Any]:
     # segnalato dall'utente 14/07/2026, qui era hardcoded "uscita"/"Fatture"
     # indipendentemente dal tipo_documento). La proposta non porta con sé
     # tipo_documento: lo si legge dalla fattura.
-    from app.routers.prima_nota_module.sync import determina_tipo_movimento_fattura
+    from app.routers.prima_nota_module.sync import costruisci_campi_movimento_fattura
     fattura_doc = await db["invoices"].find_one({"id": fatt_id}, {"_id": 0, "tipo_documento": 1}) or {}
-    tipo_mov, categoria, desc_prefisso = determina_tipo_movimento_fattura(fattura_doc)
+    fattura_per_helper = {
+        "tipo_documento": fattura_doc.get("tipo_documento"),
+        "invoice_number": numero,
+        "supplier_name": fornitore,
+    }
 
     # Registra in Prima Nota Banca
     pn_id = str(uuid.uuid4())
     movimento = {
         "id": pn_id,
         "data": data_iso,
-        "tipo": tipo_mov,
-        "categoria": categoria,
-        "descrizione": f"{desc_prefisso} {numero} - {fornitore[:30]}",
-        "importo": importo,
-        "numero_fattura": numero,
-        "tipo_documento": fattura_doc.get("tipo_documento"),
+        **costruisci_campi_movimento_fattura(fattura_per_helper, importo),
         "riferimento": f"FATT-{fatt_id}",
         "fattura_id": fatt_id,
         "movimento_banca_id": proposta.get("movimento_id"),

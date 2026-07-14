@@ -45,16 +45,51 @@ def determina_tipo_movimento_fattura(fattura: Dict) -> tuple:
     """Determina tipo movimento (entrata/uscita) e categoria dalla fattura."""
     tipo_doc = fattura.get("tipo_documento", "TD01").upper()
     supplier_vat = fattura.get("supplier_vat") or fattura.get("cedente_piva") or ""
-    
+
     is_nota_credito = tipo_doc in TIPI_NOTA_CREDITO
     is_fattura_attiva = tipo_doc in TIPI_FATTURA_ATTIVA
-    
+
     if is_nota_credito:
         return ("entrata", "Nota credito fornitore", "Nota credito")
     elif is_fattura_attiva:
         return ("entrata", "Incasso cliente", "Incasso fattura")
     else:
         return ("uscita", "Pagamento fornitore", "Pagamento fattura")
+
+
+def costruisci_campi_movimento_fattura(
+    fattura: Dict, importo: float, *, lunghezza_fornitore: int = 30, suffisso: str = ""
+) -> Dict[str, Any]:
+    """Punto UNICO per calcolare i campi comuni di un movimento Prima Nota
+    generato da una fattura: tipo/categoria (via determina_tipo_movimento_fattura),
+    descrizione, numero_fattura e tipo_documento.
+
+    Unifica (14/07/2026, richiesta utente: "tieni dei 5 punti solo la logica
+    di adesso") la logica che prima era duplicata, con piccole differenze
+    l'una dall'altra, in 5 punti diversi che scrivono un movimento fattura
+    in Prima Nota: registra_pagamento_fattura, sync_fatture_pagate,
+    conferma_fattura_provvisoria, bank/estratto_conto.py (riconciliazione EC
+    automatica), services/dati_provvisori_service.py::conferma_proposta,
+    multi_pagamento.py::registra_pagamento. Ogni punto resta responsabile
+    delle proprie chiavi specifiche (id, data, riferimento, source, dedup,
+    collection cassa/banca): qui si calcola solo la parte comune, quella
+    che il bug della nota di credito e del numero fattura mancante avevano
+    reso incoerente tra un punto e l'altro.
+    """
+    tipo_movimento, categoria, desc_prefisso = determina_tipo_movimento_fattura(fattura)
+    numero_fattura = fattura.get("invoice_number") or fattura.get("numero_fattura") or ""
+    fornitore = fattura.get("supplier_name") or fattura.get("cedente_denominazione") or "Fornitore"
+    descrizione = f"{desc_prefisso} {numero_fattura} - {fornitore[:lunghezza_fornitore]}"
+    if suffisso:
+        descrizione = f"{descrizione} {suffisso}"
+    return {
+        "tipo": tipo_movimento,
+        "categoria": categoria,
+        "descrizione": descrizione,
+        "importo": importo,
+        "numero_fattura": numero_fattura,
+        "tipo_documento": fattura.get("tipo_documento"),
+    }
 
 
 async def registra_pagamento_fattura(
@@ -346,29 +381,13 @@ async def sync_fatture_pagate(anno: int = Query(...)) -> Dict:
             continue
         
         metodo = fatt.get("metodo_pagamento", "bonifico").lower()
-        fornitore = fatt.get("supplier_name") or fatt.get("cedente_denominazione", "Fornitore")
 
-        # Stessa regola di registra_pagamento_fattura/conferma_fattura_provvisoria:
-        # nota di credito (TD04/TD08) ed fatture attive (TD24-27) non sono un
-        # pagamento uscita a fornitore (bug segnalato dall'utente 14/07/2026,
-        # qui era hardcoded "uscita"/"Fatture" indipendentemente dal tipo).
-        tipo_movimento, categoria, desc_prefisso = determina_tipo_movimento_fattura(fatt)
-        # Bug 14/07/2026: il documento fattura non ha un campo "numero" (è
-        # invoice_number/numero_fattura) — leggerlo con la chiave sbagliata
-        # produceva sempre stringa vuota, quindi descrizioni tipo
-        # "Fattura  - RONDINELLA MARKET S.R.L." senza numero.
-        numero_fatt = fatt.get("invoice_number") or fatt.get("numero_fattura") or ""
         movimento = {
             "id": str(uuid.uuid4()),
             "data": fatt.get("invoice_date") or fatt.get("data_pagamento"),
-            "tipo": tipo_movimento,
-            "importo": totale,
-            "descrizione": f"{desc_prefisso} {numero_fatt} - {fornitore[:30]}",
-            "categoria": categoria,
-            "numero_fattura": numero_fatt,
+            **costruisci_campi_movimento_fattura(fatt, totale),
             "riferimento": ref,
             "fattura_id": fattura_id,
-            "tipo_documento": fatt.get("tipo_documento"),
             "source": "sync_fatture",
             "created_at": datetime.now(timezone.utc).isoformat()
         }
@@ -683,7 +702,6 @@ async def conferma_fattura_provvisoria(data: Dict = Body(...)) -> Dict:
     
     importo = float(fattura.get("total_amount", 0))
     fornitore = fattura.get("supplier_name", "")
-    numero = fattura.get("invoice_number", "")
     data_fatt = fattura.get("invoice_date", "")
     
     # SOSPESA: non creare movimento in prima nota, solo aggiorna stato fattura
@@ -730,25 +748,12 @@ async def conferma_fattura_provvisoria(data: Dict = Body(...)) -> Dict:
     if claim is None:
         return {"success": True, "message": "Già registrata (conferma concorrente)"}
 
-    # Nota di credito (TD04/TD08) e fatture attive (TD24-27) NON sono un
-    # pagamento a fornitore: determina_tipo_movimento_fattura applica la
-    # stessa regola già usata da registra_pagamento_fattura, così una nota
-    # di credito confermata da qui risulta ENTRATA (segno +), categoria
-    # "Nota credito fornitore" — prima veniva sempre forzata a
-    # tipo="uscita"/categoria="Fatture" indipendentemente dal tipo_documento
-    # (bug segnalato dall'utente 14/07/2026).
-    tipo_movimento, categoria, desc_prefisso = determina_tipo_movimento_fattura(fattura)
     movimento = {
         "id": pn_id,
         "data": data_fatt,
-        "tipo": tipo_movimento,
-        "categoria": categoria,
-        "descrizione": f"{desc_prefisso} {numero} - {fornitore[:30]}",
-        "importo": importo,
-        "numero_fattura": numero,
+        **costruisci_campi_movimento_fattura(fattura, importo),
         "riferimento": f"FATT-{fattura_id}",
         "fattura_id": fattura_id,
-        "tipo_documento": fattura.get("tipo_documento"),
         "source": "conferma_provvisori",
         "created_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
     }
