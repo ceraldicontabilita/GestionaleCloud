@@ -99,7 +99,6 @@ def _register_accounting(app: FastAPI):
     )
     from app.routers.prima_nota_module import router as prima_nota_router
     from app.routers import contabilita_italiana, fiscalita_italiana
-    from app.routers import batch_operations
 
     app.include_router(prima_nota_router, prefix="/api/prima-nota", tags=["Prima Nota"])
     app.include_router(prima_nota_salari.router, prefix="/api/prima-nota-salari", tags=["Prima Nota Salari"])
@@ -109,7 +108,10 @@ def _register_accounting(app: FastAPI):
     app.include_router(centri_costo.router, prefix="/api/centri-costo", tags=["Centri di Costo"])
     app.include_router(contabilita_avanzata.router, prefix="/api/contabilita", tags=["Contabilita Avanzata"])
     app.include_router(regole_categorizzazione.router, prefix="/api/regole", tags=["Regole"])
-    app.include_router(batch_operations.router, prefix="/api/batch", tags=["Batch Operations"])
+    # batch_operations: smontato (audit 14/07/2026, piano residuo op.2) — zero
+    # chiamanti verificati (frontend/scheduler/interno/test). File conservato in
+    # git: tests/test_p0_02_auto_riconcilia.py importa ancora l'helper puro
+    # filtro_uscite_da_riconciliare direttamente dal modulo.
     app.include_router(contabilita_italiana.router, prefix="/api/contabilita", tags=["Contabilità Italiana"])
     app.include_router(fiscalita_italiana.router, prefix="/api/fiscalita", tags=["Fiscalità Italiana"])
 
@@ -127,24 +129,31 @@ def _register_bank(app: FastAPI):
     # documenti corrotti nella collezione condivisa con la riconciliazione vera.
     from app.routers.bank import (
         bank_statement_import,
-        estratto_conto, assegni, pos_accredito,
+        estratto_conto, assegni,
         assegni_learning
     )
     from app.routers.bonifici_module import router as archivio_bonifici_router
     from app.routers.bonifici_module import associazioni as bonifici_associazioni
-    from app.routers import paypal_statements, distinte_bpm
+    from app.routers import paypal_statements
 
     app.include_router(bank_statement_import.router, prefix="/api/bank-statement", tags=["Bank Statement"])
     app.include_router(estratto_conto.router, prefix="/api/estratto-conto-movimenti", tags=["Estratto Conto"])
     app.include_router(archivio_bonifici_router, prefix="/api/archivio-bonifici", tags=["Archivio Bonifici"])
     app.include_router(assegni.router, prefix="/api/assegni", tags=["Assegni"])
     app.include_router(assegni_learning.router, prefix="/api/assegni/learning", tags=["Assegni Learning"])
-    app.include_router(pos_accredito.router, prefix="/api/pos-accredito", tags=["POS Accredito"])
+    # pos_accredito (router HTTP): smontato (audit 14/07/2026, piano residuo
+    # op.6) — sostituito funzionalmente da pos_corrispettivi_check, zero
+    # chiamanti verificati. app/utils/pos_accredito.py (le funzioni di calcolo,
+    # NON questo router) resta vivo: importato direttamente da
+    # pos_corrispettivi_check.py, corrispettivi_service.py e corrispettivi.py.
     app.include_router(paypal_statements.router, prefix="/api/paypal-statements", tags=["PayPal"])
 
     # (paypal_api è registrato in _register_core con prefix="/api/paypal-api")
     app.include_router(bonifici_associazioni.router, prefix="/api", tags=["Bonifici Associazioni"])
-    app.include_router(distinte_bpm.router, prefix="/api/paghe", tags=["Distinte BPM"])
+    # distinte_bpm (router HTTP): smontato (audit 14/07/2026, piano residuo
+    # op.5) — la route stessa non ha chiamanti, ma la funzione
+    # import_distinte_bpm resta viva: importata e chiamata direttamente da
+    # app/routers/documenti.py (pipeline di ingest documentale).
 
     # bonifici_import_unificato: wrapper per ImportUnificato UI.
     # Il router ha prefix interno "/archivio-bonifici/jobs", quindi prefix="/api" qui.
@@ -189,16 +198,16 @@ def _register_invoices(app: FastAPI):
 # Restano solo i router usati da flussi NON-HR di questo gestionale:
 #   - dipendenti: anagrafica in lettura (verbali noleggio, inserimento rapido, portale)
 #   - tfr: riepilogo fondo TFR mostrato in Gestione Cespiti (contabilità)
-#   - libro_unico_parser / f24_parser: pipeline paghe -> prima nota/TFR e
-#     widget "buste paga / distinte F24 da pagare" della Dashboard
+# libro_unico_parser / f24_parser (router HTTP): smontati (audit 14/07/2026,
+# piano residuo op.5) — le route stesse non hanno chiamanti, ma le funzioni
+# import_libro_unico/import_f24 restano vive: importate e chiamate
+# direttamente da app/routers/documenti.py (pipeline di ingest documentale).
 def _register_employees(app: FastAPI):
     from app.routers.employees import dipendenti
-    from app.routers import tfr, libro_unico_parser, f24_parser, drive_cedolini, drive_corrispettivi, drive_quietanze
+    from app.routers import tfr, drive_cedolini, drive_corrispettivi, drive_quietanze
 
     app.include_router(dipendenti.router, prefix="/api/dipendenti", tags=["Dipendenti"])
     app.include_router(tfr.router, prefix="/api/tfr", tags=["TFR"])
-    app.include_router(libro_unico_parser.router, prefix="/api/paghe", tags=["Libro Unico Parser"])
-    app.include_router(f24_parser.router, prefix="/api/paghe", tags=["F24 Parser"])
     app.include_router(drive_cedolini.router, prefix="/api/cedolini", tags=["Cedolini Drive"])
     app.include_router(drive_corrispettivi.router, prefix="/api/corrispettivi", tags=["Corrispettivi Drive"])
     app.include_router(drive_quietanze.router, prefix="/api/f24/quietanze", tags=["Quietanze Drive"])
@@ -215,11 +224,12 @@ def _register_employees(app: FastAPI):
 
 
 # ─── Reports Module ──────────────────────────────────────────────────────────
+# report_pdf, simple_exports: smontati (audit 14/07/2026, piano residuo
+# op.9/op.4) — zero chiamanti verificati (frontend/scheduler/interno/test).
+# File conservati in git, non montati in produzione.
 def _register_reports(app: FastAPI):
-    from app.routers.reports import report_pdf, simple_exports, dashboard
+    from app.routers.reports import dashboard
 
-    app.include_router(report_pdf.router, prefix="/api/report-pdf", tags=["Report PDF"])
-    app.include_router(simple_exports.router, prefix="/api/exports", tags=["Simple Exports"])
     app.include_router(dashboard.router, prefix="/api/dashboard", tags=["Dashboard"])
 
 
@@ -331,14 +341,17 @@ def _register_noleggio(app: FastAPI):
     # (stato/anno/data_scadenza_noleggio) e zero chiamanti frontend — vedi
     # memoria/endpoints/07-hr-noleggio-verbali.md. noleggio.py (prefisso
     # /api/noleggio) resta l'unico scrittore canonico della collezione.
-    from app.routers import noleggio, verbali_noleggio, verbali_noleggio_api, verbali_riconciliazione, trattenute_verbali
+    from app.routers import noleggio, verbali_noleggio, verbali_noleggio_api, verbali_riconciliazione
 
     app.include_router(noleggio.router, prefix="/api/noleggio", tags=["Noleggio Auto"])
     app.include_router(verbali_noleggio.router, tags=["Verbali Noleggio"])
     app.include_router(verbali_noleggio_api.router, prefix="/api/verbali-noleggio", tags=["Verbali API"])
     app.include_router(verbali_riconciliazione.router, prefix="/api/verbali-riconciliazione", tags=["Verbali Riconciliazione"])
-    # Ciclo di vita trattenute dipendenti da verbali pagati dalla società
-    app.include_router(trattenute_verbali.router, prefix="/api/trattenute-verbali", tags=["Trattenute Verbali"])
+    # trattenute_verbali: smontato (audit 14/07/2026, piano residuo op.10) —
+    # tutti i 7 endpoint del router erano "verificare" (zero chiamanti); solo
+    # retro-verifica aveva un servizio vivo dietro (verifica_trattenute_retroattiva,
+    # già chiamata direttamente dallo scheduler, non tramite questa route).
+    # File conservato in git, non montato in produzione.
     from app.routers import admin_export
     app.include_router(admin_export.router, prefix="/api", tags=["Admin Export"])
 

@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 1059 · tenere: 640 · verificare: 400 · admin-only (migrazione/manutenzione): 19
+**Totale endpoint:** 991 · tenere: 637 · verificare: 335 · admin-only (migrazione/manutenzione): 19
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -14,50 +14,8 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/batch-reprocess/preview` | batch_reprocessing | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
 | `POST /api/batch-reprocess/start` | batch_reprocessing | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
 | `GET /api/batch-reprocess/status` | batch_reprocessing | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
-| `POST /api/batch/auto-riconcilia-tutto` | batch_operations | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/batch/categorizza` | batch_operations | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/batch/chiudi-scadenze` | batch_operations | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/batch/paga` | batch_operations | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/batch/processa-fatture-pendenti` | batch_operations | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/batch/riconcilia` | batch_operations | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/cedolini/drive/quadratura` | drive_cedolini | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/cedolini/drive/status` | drive_cedolini | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/cedolini/drive/sync` | drive_cedolini | — | sì | — | — | — | tenere | in uso: scheduler |
-| `GET /api/cedolini/{cedolino_id}/pdf` | drive_cedolini | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/dati-provvisori` | dati_provvisori | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/dati-provvisori/riconcilia-estratto-conto` | dati_provvisori | — | sì | — | — | — | tenere | in uso: scheduler |
-| `POST /api/dati-provvisori/sposta-banca` | dati_provvisori | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/dati-provvisori/sposta-cassa` | dati_provvisori | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/dati-provvisori/upload-xml` | dati_provvisori | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `DELETE /api/dati-provvisori/{dato_id}` | dati_provvisori | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/exports/bank` | reports.simple_exports | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/exports/cash` | reports.simple_exports | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/exports/employees` | reports.simple_exports | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/exports/invoices` | reports.simple_exports | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/exports/products` | reports.simple_exports | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/exports/riconciliazione` | reports.simple_exports | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/exports/salari` | reports.simple_exports | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/exports/suppliers` | reports.simple_exports | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/paghe/import-distinte-bpm` | distinte_bpm | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/paghe/import-f24` | f24_parser | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/paghe/import-libro-unico` | libro_unico_parser | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/pos-accredito/accrediti-attesi/{data_accredito}` | bank.pos_accredito | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/pos-accredito/calcola-accredito` | bank.pos_accredito | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/pos-accredito/calendario-mensile/{anno}/{mese}` | bank.pos_accredito | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/pos-accredito/festivi/{anno}` | bank.pos_accredito | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/pos-accredito/riconciliazione-pos/{anno}/{mese}` | bank.pos_accredito | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/realtime/status` | websocket_realtime | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/report-pdf/dipendenti` | reports.report_pdf | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/report-pdf/magazzino` | reports.report_pdf | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/report-pdf/mensile` | reports.report_pdf | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/report-pdf/scadenze` | reports.report_pdf | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/trattenute-verbali/` | trattenute_verbali | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/trattenute-verbali/report-consulente` | trattenute_verbali | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/trattenute-verbali/retro-verifica` | trattenute_verbali | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/trattenute-verbali/{trattenuta_id}/comunica` | trattenute_verbali | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/trattenute-verbali/{trattenuta_id}/conferma` | trattenute_verbali | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/trattenute-verbali/{trattenuta_id}/escludi` | trattenute_verbali | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/trattenute-verbali/{trattenuta_id}/rimanda` | trattenute_verbali | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 
 ## Tutti gli endpoint
 | Metodo/path | Router | FE | Sch | Chat | Migr | Test | Decisione | Motivo |
@@ -67,50 +25,8 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/batch-reprocess/preview` | batch_reprocessing | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
 | `POST /api/batch-reprocess/start` | batch_reprocessing | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
 | `GET /api/batch-reprocess/status` | batch_reprocessing | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
-| `POST /api/batch/auto-riconcilia-tutto` | batch_operations | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/batch/categorizza` | batch_operations | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/batch/chiudi-scadenze` | batch_operations | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/batch/paga` | batch_operations | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/batch/processa-fatture-pendenti` | batch_operations | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/batch/riconcilia` | batch_operations | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/cedolini/drive/quadratura` | drive_cedolini | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/cedolini/drive/status` | drive_cedolini | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/cedolini/drive/sync` | drive_cedolini | — | sì | — | — | — | tenere | in uso: scheduler |
-| `GET /api/cedolini/{cedolino_id}/pdf` | drive_cedolini | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/dati-provvisori` | dati_provvisori | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/dati-provvisori/riconcilia-estratto-conto` | dati_provvisori | — | sì | — | — | — | tenere | in uso: scheduler |
-| `POST /api/dati-provvisori/sposta-banca` | dati_provvisori | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/dati-provvisori/sposta-cassa` | dati_provvisori | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/dati-provvisori/upload-xml` | dati_provvisori | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `DELETE /api/dati-provvisori/{dato_id}` | dati_provvisori | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/exports/bank` | reports.simple_exports | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/exports/cash` | reports.simple_exports | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/exports/employees` | reports.simple_exports | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/exports/invoices` | reports.simple_exports | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/exports/products` | reports.simple_exports | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/exports/riconciliazione` | reports.simple_exports | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/exports/salari` | reports.simple_exports | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/exports/suppliers` | reports.simple_exports | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/paghe/import-distinte-bpm` | distinte_bpm | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/paghe/import-f24` | f24_parser | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/paghe/import-libro-unico` | libro_unico_parser | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/pos-accredito/accrediti-attesi/{data_accredito}` | bank.pos_accredito | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/pos-accredito/calcola-accredito` | bank.pos_accredito | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/pos-accredito/calendario-mensile/{anno}/{mese}` | bank.pos_accredito | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/pos-accredito/festivi/{anno}` | bank.pos_accredito | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/pos-accredito/riconciliazione-pos/{anno}/{mese}` | bank.pos_accredito | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/realtime/status` | websocket_realtime | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/report-pdf/dipendenti` | reports.report_pdf | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/report-pdf/magazzino` | reports.report_pdf | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/report-pdf/mensile` | reports.report_pdf | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/report-pdf/scadenze` | reports.report_pdf | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/trattenute-verbali/` | trattenute_verbali | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/trattenute-verbali/report-consulente` | trattenute_verbali | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/trattenute-verbali/retro-verifica` | trattenute_verbali | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/trattenute-verbali/{trattenuta_id}/comunica` | trattenute_verbali | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/trattenute-verbali/{trattenuta_id}/conferma` | trattenute_verbali | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/trattenute-verbali/{trattenuta_id}/escludi` | trattenute_verbali | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/trattenute-verbali/{trattenuta_id}/rimanda` | trattenute_verbali | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `DELETE /api/admin/cleanup-trattenute-disciplinari` | admin | — | — | — | sì | — | admin-only | endpoint di migrazione/manutenzione one-shot: tenere ma Admin-only, disabilitabile, documentato, non esposto a lungo (§7) |
 | `GET /api/admin/collections` | admin | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/admin/dashboard-summary` | admin | sì | — | — | — | — | tenere | in uso: FE |
@@ -299,7 +215,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/commercialista/prima-nota-cassa/{anno}/{mese}` | commercialista | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/commercialista/schedula-export` | commercialista | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/commercialista/segna-inviata` | commercialista | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/conferma-tutte` | dati_provvisori | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/conferma-tutte` | dati_provvisori | — | sì | — | — | — | tenere | in uso: scheduler |
 | `POST /api/conferma/{proposta_id}` | dati_provvisori | — | sì | sì | — | sì | tenere | in uso: scheduler, chat |
 | `GET /api/config/email-accounts` | configurazioni | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/config/email-accounts` | configurazioni | sì | — | — | — | — | tenere | in uso: FE |
@@ -672,7 +588,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/fornitori-learning/stats` | fornitori_learning | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/fornitori-learning/suggerisci-keywords/{fornitore_nome}` | fornitori_learning | sì | — | — | — | — | tenere | in uso: FE |
 | `DELETE /api/fornitori-learning/{fornitore_id}` | fornitori_learning | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/genera-proposte` | dati_provvisori | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/genera-proposte` | dati_provvisori | — | sì | — | — | — | tenere | in uso: scheduler |
 | `POST /api/gestione-riservata/login` | gestione_riservata | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/gestione-riservata/movimenti` | gestione_riservata | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/gestione-riservata/movimenti` | gestione_riservata | sì | — | — | — | — | tenere | in uso: FE |
@@ -853,10 +769,10 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/previsioni-acquisti/statistiche` | previsioni_acquisti | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/prima-nota-salari/consolida-record` | accounting.prima_nota_salari | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/prima-nota-salari/dipendenti-lista` | accounting.prima_nota_salari | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/prima-nota-salari/export-excel` | accounting.prima_nota_salari | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/prima-nota-salari/export-excel` | accounting.prima_nota_salari | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/prima-nota-salari/import-bonifici` | accounting.prima_nota_salari | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/prima-nota-salari/import-paghe` | accounting.prima_nota_salari | sì | — | — | — | — | tenere | in uso: FE |
-| `DELETE /api/prima-nota-salari/pulisci-righe-vuote` | accounting.prima_nota_salari | sì | — | — | — | — | tenere | in uso: FE |
+| `DELETE /api/prima-nota-salari/pulisci-righe-vuote` | accounting.prima_nota_salari | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/prima-nota-salari/ricalcola-progressivi` | accounting.prima_nota_salari | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/prima-nota-salari/salari` | accounting.prima_nota_salari | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/prima-nota-salari/salari/aggiustamento` | accounting.prima_nota_salari | sì | — | — | — | — | tenere | in uso: FE |
@@ -917,11 +833,11 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/prima-nota/recalculate-balances` | prima_nota_module.manutenzione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/prima-nota/regenerate-from-invoices` | prima_nota_module.manutenzione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/prima-nota/registra-fattura` | prima_nota_module.sync | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/prima-nota/salari` | prima_nota_module.salari | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/prima-nota/salari` | prima_nota_module.salari | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/prima-nota/salari/auto-ricostruisci-dati` | prima_nota_module | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/prima-nota/salari/stats` | prima_nota_module.salari | sì | — | — | — | — | tenere | in uso: FE |
-| `DELETE /api/prima-nota/salari/{movimento_id}` | prima_nota_module.salari | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/prima-nota/salari` | prima_nota_module.salari | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/prima-nota/salari` | prima_nota_module.salari | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/prima-nota/salari/auto-ricostruisci-dati` | prima_nota_module | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/prima-nota/salari/stats` | prima_nota_module.salari | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `DELETE /api/prima-nota/salari/{movimento_id}` | prima_nota_module.salari | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/prima-nota/saldo-finale` | prima_nota_module.stats | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/prima-nota/sposta-movimento` | prima_nota_module.manutenzione | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/prima-nota/sposta-scrittura` | prima_nota_module.sync | sì | — | — | — | — | tenere | in uso: FE |
@@ -929,7 +845,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/prima-nota/sync-corrispettivi` | prima_nota_module.sync | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/prima-nota/verifica-metodo-fattura/{fattura_id}` | prima_nota_module.manutenzione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/privacy` | legal_pages | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/proposte` | dati_provvisori | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/proposte` | dati_provvisori | — | sì | — | — | — | tenere | in uso: scheduler |
 | `POST /api/rapido/acconto-dipendente` | rapido | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/rapido/apporto-soci` | rapido | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/rapido/corrispettivo` | rapido | sì | — | — | — | — | tenere | in uso: FE |
@@ -947,7 +863,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/regole/upload-regole` | accounting.regole_categorizzazione | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/ricerca-globale` | public_api | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/riconciliazione/stats` | riconciliazione_stats_api | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/rifiuta/{proposta_id}` | dati_provvisori | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/rifiuta/{proposta_id}` | dati_provvisori | — | sì | — | — | sì | tenere | in uso: scheduler |
 | `GET /api/scadenzario-fornitori/` | scadenzario_fornitori | sì | — | — | — | — | tenere | in uso: FE |
 | `PUT /api/scadenzario-fornitori/aggiorna-scadenza` | scadenzario_fornitori | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/scadenzario-fornitori/aging` | scadenzario_fornitori | sì | — | — | — | — | tenere | in uso: FE |
@@ -1043,37 +959,11 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/v1/keys/generate` | public_api | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/v1/movimenti` | public_api | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/v1/stats` | public_api | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/verbali-noleggio/alert-pagamenti` | verbali_noleggio_api | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/verbali-noleggio/associa-driver` | verbali_noleggio_api | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/verbali-noleggio/associa-fatture` | verbali_noleggio | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/verbali-noleggio/bulk-assegna-pagamento` | verbali_noleggio_api | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/verbali-noleggio/cartelle-verbali` | verbali_noleggio | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/verbali-noleggio/classifica-verbali-posta` | verbali_noleggio | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/verbali-noleggio/dettaglio/{numero_verbale:path}` | verbali_noleggio_api | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/verbali-noleggio/dettaglio/{numero_verbale:path}` | verbali_noleggio_api | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
 | `GET /api/verbali-noleggio/dettaglio/{numero_verbale}` | verbali_noleggio | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/verbali-noleggio/lista` | verbali_noleggio_api | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/verbali-noleggio/note-consulente` | verbali_noleggio_api | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/verbali-noleggio/operazioni-sospese` | verbali_noleggio | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/verbali-noleggio/pdf/{numero_verbale}` | verbali_noleggio | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/verbali-noleggio/riclassifica-verbale` | verbali_noleggio | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/verbali-noleggio/riconcilia` | verbali_noleggio | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/verbali-noleggio/riconcilia-completo` | verbali_noleggio_api | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/verbali-noleggio/risolvi-sospeso` | verbali_noleggio | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/verbali-noleggio/scan-gmail` | verbali_noleggio_api | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/verbali-noleggio/scansiona-fatture` | verbali_noleggio | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/verbali-noleggio/scarica-tutti` | verbali_noleggio | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/verbali-noleggio/stats` | verbali_noleggio | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/verbali-noleggio/tutti-verbali` | verbali_noleggio | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/verbali-noleggio/verbale/{numero_verbale}` | verbali_noleggio | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/verbali-noleggio/verbali` | verbali_noleggio | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/verbali-noleggio/verbali-attesa-fattura` | verbali_noleggio | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/verbali-noleggio/verbali-completi` | verbali_noleggio | — | — | sì | — | — | tenere | in uso: chat |
-| `GET /api/verbali-noleggio/verbali-privati` | verbali_noleggio | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/verbali-noleggio/verifica-nuove-fatture` | verbali_noleggio | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `PUT /api/verbali-noleggio/{verbale_id}` | verbali_noleggio_api | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/verbali-noleggio/{verbale_id}/cerca-pagamento` | verbali_noleggio_api | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/verbali-noleggio/{verbale_id}/ricevuta-pdf` | verbali_noleggio_api | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/verbali-noleggio/{verbale_id}/upload-quietanza` | verbali_noleggio_api | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/verbali-noleggio/{verbale_id}/upload-quietanza` | verbali_noleggio_api | — | sì | — | — | — | tenere | in uso: scheduler |
 | `POST /api/verbali-riconciliazione/associa-fattura` | verbali_riconciliazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/verbali-riconciliazione/automazione-completa` | verbali_riconciliazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/verbali-riconciliazione/collega-driver-massivo` | verbali_riconciliazione | sì | — | — | — | — | tenere | in uso: FE |
@@ -1106,7 +996,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/verifica-coerenza/iva/{anno}/{mese}` | verifica_coerenza | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/verifica-coerenza/riepilogo-giornaliero` | verifica_coerenza | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/verifica-coerenza/verifica-bonifici-vs-banca/{anno}` | verifica_coerenza | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/verifica-coerenza/widget` | verifica_coerenza | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/verifica-coerenza/widget` | verifica_coerenza | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/warehouse/movements` | public_api | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/warehouse/movements` | public_api | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/warehouse/products` | public_api | sì | — | — | — | — | tenere | in uso: FE |

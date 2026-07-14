@@ -1,7 +1,7 @@
 # MAPPA ROUTER — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py — leggendo la route table reale di `register_all_routers`.
-> Totale **1059 endpoint** in **108 prefissi**.
+> Totale **991 endpoint** in **101 prefissi**.
 
 Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app collegata / webhook / chatbot / scheduler / API pubblica) · `—` nessun riferimento noto (candidato verifica).
 
@@ -18,11 +18,10 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/auto-repair` | 1 | ✓ | auto_repair |
 | `/api/bank` | 2 | ✓ | public_api |
 | `/api/bank-statement` | 6 | ✓ | bank.bank_statement_import |
-| `/api/batch` | 6 | — | batch_operations |
 | `/api/batch-reprocess` | 5 | ✓ | batch_reprocessing |
 | `/api/bilancio` | 7 | ✓ | accounting.bilancio |
 | `/api/cash` | 10 | ✓ | cash, public_api |
-| `/api/cedolini` | 4 | — | drive_cedolini |
+| `/api/cedolini` | 1 | — | drive_cedolini |
 | `/api/centri-costo` | 10 | ✓ | accounting.centri_costo |
 | `/api/cespiti` | 11 | ✓ | cespiti |
 | `/api/chat` | 3 | ✓ | chat_router |
@@ -37,7 +36,7 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/corrispettivi` | 26 | ✓ | drive_corrispettivi, invoices.corrispettivi |
 | `/api/dashboard` | 9 | ✓ | public_api, reports.dashboard |
 | `/api/data-deletion` | 1 | — | legal_pages |
-| `/api/dati-provvisori` | 6 | — | dati_provvisori |
+| `/api/dati-provvisori` | 1 | — | dati_provvisori |
 | `/api/dipendenti` | 28 | ✓ | employees.dipendenti |
 | `/api/dizionario-articoli` | 11 | ✓ | warehouse.dizionario_articoli |
 | `/api/document-ai` | 10 | ✓ | document_ai |
@@ -49,7 +48,6 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/email-scanner` | 5 | ✓ | email_scanner |
 | `/api/erp` | 2 | ext | erp_bridge |
 | `/api/estratto-conto-movimenti` | 13 | ✓ | bank.estratto_conto |
-| `/api/exports` | 8 | — | reports.simple_exports |
 | `/api/f24` | 27 | ✓ | drive_quietanze, f24.f24_main |
 | `/api/f24-analisi` | 4 | ✓ | f24_analisi |
 | `/api/f24-email` | 7 | ✓ | f24.email_f24 |
@@ -75,7 +73,6 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/openapi-imprese` | 6 | ext | openapi_imprese |
 | `/api/operazioni-da-confermare` | 10 | ✓ | operazioni_module, operazioni_module.smart |
 | `/api/pagamenti` | 6 | ✓ | multi_pagamento |
-| `/api/paghe` | 3 | — | distinte_bpm, f24_parser, libro_unico_parser |
 | `/api/pagopa` | 8 | ✓ | pagopa |
 | `/api/partite-aperte` | 3 | ✓ | partite_aperte_api |
 | `/api/paypal-api` | 11 | ✓ | paypal_api |
@@ -83,7 +80,6 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/pianificazione` | 5 | ✓ | pianificazione, public_api |
 | `/api/piano-conti` | 12 | ✓ | accounting.piano_conti |
 | `/api/portal` | 1 | ext | public_api |
-| `/api/pos-accredito` | 5 | — | bank.pos_accredito |
 | `/api/pos-corrispettivi` | 8 | ✓ | pos_corrispettivi_check |
 | `/api/previsioni-acquisti` | 5 | ✓ | previsioni_acquisti |
 | `/api/prima-nota` | 63 | ✓ | prima_nota_module, prima_nota_module.attese, prima_nota_module.banca, prima_nota_module.cassa, prima_nota_module.manutenzione, prima_nota_module.salari, prima_nota_module.stats, prima_nota_module.sync |
@@ -91,9 +87,7 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/privacy` | 1 | — | legal_pages |
 | `/api/proposte` | 1 | — | dati_provvisori |
 | `/api/rapido` | 8 | ✓ | rapido |
-| `/api/realtime` | 1 | — | websocket_realtime |
 | `/api/regole` | 7 | ✓ | accounting.regole_categorizzazione |
-| `/api/report-pdf` | 4 | — | reports.report_pdf |
 | `/api/ricerca-globale` | 1 | — | public_api |
 | `/api/riconciliazione` | 1 | ✓ | riconciliazione_stats_api |
 | `/api/rifiuta` | 1 | — | dati_provvisori |
@@ -104,10 +98,9 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/sync` | 8 | ✓ | sync_relazionale |
 | `/api/terms` | 1 | — | legal_pages |
 | `/api/tfr` | 17 | ✓ | tfr |
-| `/api/trattenute-verbali` | 7 | — | trattenute_verbali |
 | `/api/utenti` | 4 | ✓ | utenti |
 | `/api/v1` | 5 | ext | public_api |
-| `/api/verbali-noleggio` | 31 | ✓ | verbali_noleggio, verbali_noleggio_api |
+| `/api/verbali-noleggio` | 5 | ✓ | verbali_noleggio, verbali_noleggio_api |
 | `/api/verbali-riconciliazione` | 26 | ✓ | verbali_riconciliazione |
 | `/api/verifica-coerenza` | 7 | ✓ | verifica_coerenza |
 | `/api/warehouse` | 6 | ✓ | public_api |

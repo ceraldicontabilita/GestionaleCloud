@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1059 endpoint** in **111 gruppi**.
+> Totale **991 endpoint** in **102 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 630 · ext esterni = 76 · — da verificare = 353
+**Riepilogo uso:** ✓ frontend = 624 · ext esterni = 76 · — da verificare = 291
 
 ## AI Parser  (11)
 
@@ -182,17 +182,6 @@
 | POST | `/api/bank-statement/riconcilia-manuale` | — | bank.bank_statement_import |
 | GET | `/api/bank-statement/stats` | — | bank.bank_statement_import |
 
-## Batch Operations  (6)
-
-| Metodo | Path | FE | File |
-|---|---|:-:|---|
-| POST | `/api/batch/auto-riconcilia-tutto` | — | batch_operations |
-| POST | `/api/batch/categorizza` | — | batch_operations |
-| POST | `/api/batch/chiudi-scadenze` | — | batch_operations |
-| POST | `/api/batch/paga` | — | batch_operations |
-| POST | `/api/batch/processa-fatture-pendenti` | — | batch_operations |
-| POST | `/api/batch/riconcilia` | — | batch_operations |
-
 ## Batch Reprocessing  (5)
 
 | Metodo | Path | FE | File |
@@ -247,14 +236,11 @@
 | DELETE | `/api/cash/movements/{movement_id}` | ✓ | cash |
 | GET | `/api/cash/stats` | ✓ | cash |
 
-## Cedolini Drive  (4)
+## Cedolini Drive  (1)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
-| POST | `/api/cedolini/drive/quadratura` | — | drive_cedolini |
-| GET | `/api/cedolini/drive/status` | — | drive_cedolini |
 | POST | `/api/cedolini/drive/sync` | — | drive_cedolini |
-| GET | `/api/cedolini/{cedolino_id}/pdf` | — | drive_cedolini |
 
 ## Centri di Costo  (10)
 
@@ -437,18 +423,13 @@
 | GET | `/api/dashboard/summary` | ✓ | reports.dashboard |
 | GET | `/api/dashboard/trend-mensile` | ✓ | reports.dashboard |
 
-## Dati Provvisori  (11)
+## Dati Provvisori  (6)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
 | POST | `/api/conferma-tutte` | — | dati_provvisori |
 | POST | `/api/conferma/{proposta_id}` | — | dati_provvisori |
-| GET | `/api/dati-provvisori` | — | dati_provvisori |
 | POST | `/api/dati-provvisori/riconcilia-estratto-conto` | — | dati_provvisori |
-| POST | `/api/dati-provvisori/sposta-banca` | — | dati_provvisori |
-| POST | `/api/dati-provvisori/sposta-cassa` | — | dati_provvisori |
-| POST | `/api/dati-provvisori/upload-xml` | — | dati_provvisori |
-| DELETE | `/api/dati-provvisori/{dato_id}` | — | dati_provvisori |
 | POST | `/api/genera-proposte` | — | dati_provvisori |
 | GET | `/api/proposte` | — | dati_provvisori |
 | POST | `/api/rifiuta/{proposta_id}` | — | dati_provvisori |
@@ -485,12 +466,6 @@
 | DELETE | `/api/dipendenti/{dipendente_id}` | ✓ | employees.dipendenti |
 | POST | `/api/dipendenti/{dipendente_id}/invita-portale` | ✓ | employees.dipendenti |
 | GET | `/api/dipendenti/{dipendente_id}/report-ferie-permessi` | ✓ | employees.dipendenti |
-
-## Distinte BPM  (1)
-
-| Metodo | Path | FE | File |
-|---|---|:-:|---|
-| POST | `/api/paghe/import-distinte-bpm` | — | distinte_bpm |
 
 ## Dizionario Articoli  (11)
 
@@ -727,12 +702,6 @@
 | POST | `/api/f24-email/processa-allegati` | ✓ | f24.email_f24 |
 | POST | `/api/f24-email/scarica-e-processa` | ✓ | f24.email_f24 |
 | POST | `/api/f24-email/scarica-email` | ✓ | f24.email_f24 |
-
-## F24 Parser  (1)
-
-| Metodo | Path | FE | File |
-|---|---|:-:|---|
-| POST | `/api/paghe/import-f24` | — | f24_parser |
 
 ## F24 Public  (9)
 
@@ -973,12 +942,6 @@
 | GET | `/privacy` | ext | legal_pages |
 | GET | `/terms` | ext | legal_pages |
 
-## Libro Unico Parser  (1)
-
-| Metodo | Path | FE | File |
-|---|---|:-:|---|
-| POST | `/api/paghe/import-libro-unico` | — | libro_unico_parser |
-
 ## Multi-Pagamento  (6)
 
 | Metodo | Path | FE | File |
@@ -1091,16 +1054,6 @@
 |---|---|:-:|---|
 | POST | `/api/auth/pin-login` | ext | pin_login |
 | GET | `/api/auth/pin-login/health` | ext | pin_login |
-
-## POS Accredito  (5)
-
-| Metodo | Path | FE | File |
-|---|---|:-:|---|
-| GET | `/api/pos-accredito/accrediti-attesi/{data_accredito}` | — | bank.pos_accredito |
-| GET | `/api/pos-accredito/calcola-accredito` | — | bank.pos_accredito |
-| GET | `/api/pos-accredito/calendario-mensile/{anno}/{mese}` | — | bank.pos_accredito |
-| GET | `/api/pos-accredito/festivi/{anno}` | — | bank.pos_accredito |
-| GET | `/api/pos-accredito/riconciliazione-pos/{anno}/{mese}` | — | bank.pos_accredito |
 
 ## POS Check  (8)
 
@@ -1261,9 +1214,9 @@
 | POST | `/api/prima-nota/recalculate-balances` | — | prima_nota_module.manutenzione |
 | POST | `/api/prima-nota/regenerate-from-invoices` | — | prima_nota_module.manutenzione |
 | POST | `/api/prima-nota/registra-fattura` | — | prima_nota_module.sync |
-| GET | `/api/prima-nota/salari` | ✓ | prima_nota_module.salari |
-| POST | `/api/prima-nota/salari` | ✓ | prima_nota_module.salari |
-| POST | `/api/prima-nota/salari/auto-ricostruisci-dati` | ✓ | prima_nota_module |
+| GET | `/api/prima-nota/salari` | — | prima_nota_module.salari |
+| POST | `/api/prima-nota/salari` | — | prima_nota_module.salari |
+| POST | `/api/prima-nota/salari/auto-ricostruisci-dati` | — | prima_nota_module |
 | GET | `/api/prima-nota/salari/stats` | — | prima_nota_module.salari |
 | DELETE | `/api/prima-nota/salari/{movimento_id}` | — | prima_nota_module.salari |
 | GET | `/api/prima-nota/saldo-finale` | — | prima_nota_module.stats |
@@ -1279,10 +1232,10 @@
 |---|---|:-:|---|
 | POST | `/api/prima-nota-salari/consolida-record` | — | accounting.prima_nota_salari |
 | GET | `/api/prima-nota-salari/dipendenti-lista` | ✓ | accounting.prima_nota_salari |
-| GET | `/api/prima-nota-salari/export-excel` | ✓ | accounting.prima_nota_salari |
+| GET | `/api/prima-nota-salari/export-excel` | — | accounting.prima_nota_salari |
 | POST | `/api/prima-nota-salari/import-bonifici` | ✓ | accounting.prima_nota_salari |
 | POST | `/api/prima-nota-salari/import-paghe` | ✓ | accounting.prima_nota_salari |
-| DELETE | `/api/prima-nota-salari/pulisci-righe-vuote` | ✓ | accounting.prima_nota_salari |
+| DELETE | `/api/prima-nota-salari/pulisci-righe-vuote` | — | accounting.prima_nota_salari |
 | POST | `/api/prima-nota-salari/ricalcola-progressivi` | ✓ | accounting.prima_nota_salari |
 | GET | `/api/prima-nota-salari/salari` | ✓ | accounting.prima_nota_salari |
 | POST | `/api/prima-nota-salari/salari/aggiustamento` | ✓ | accounting.prima_nota_salari |
@@ -1342,15 +1295,6 @@
 | DELETE | `/api/regole/elimina/{tipo}/{pattern}` | ✓ | accounting.regole_categorizzazione |
 | POST | `/api/regole/fornitore` | ✓ | accounting.regole_categorizzazione |
 | POST | `/api/regole/upload-regole` | ✓ | accounting.regole_categorizzazione |
-
-## Report PDF  (4)
-
-| Metodo | Path | FE | File |
-|---|---|:-:|---|
-| GET | `/api/report-pdf/dipendenti` | — | reports.report_pdf |
-| GET | `/api/report-pdf/magazzino` | — | reports.report_pdf |
-| GET | `/api/report-pdf/mensile` | — | reports.report_pdf |
-| GET | `/api/report-pdf/scadenze` | — | reports.report_pdf |
 
 ## Riconciliazione F24 Banca  (5)
 
@@ -1415,19 +1359,6 @@
 | POST | `/api/settings/logo` | — | settings |
 | GET | `/api/settings/user-preferences` | ✓ | settings |
 | PUT | `/api/settings/user-preferences` | ✓ | settings |
-
-## Simple Exports  (8)
-
-| Metodo | Path | FE | File |
-|---|---|:-:|---|
-| GET | `/api/exports/bank` | — | reports.simple_exports |
-| GET | `/api/exports/cash` | — | reports.simple_exports |
-| GET | `/api/exports/employees` | — | reports.simple_exports |
-| GET | `/api/exports/invoices` | — | reports.simple_exports |
-| GET | `/api/exports/products` | — | reports.simple_exports |
-| GET | `/api/exports/riconciliazione` | — | reports.simple_exports |
-| GET | `/api/exports/salari` | — | reports.simple_exports |
-| GET | `/api/exports/suppliers` | — | reports.simple_exports |
 
 ## Suppliers  (30)
 
@@ -1499,18 +1430,6 @@
 | GET | `/api/tfr/situazione/{dipendente_id}` | — | tfr |
 | GET | `/api/tfr/storico-tfr/{dipendente_id}` | — | tfr |
 
-## Trattenute Verbali  (7)
-
-| Metodo | Path | FE | File |
-|---|---|:-:|---|
-| GET | `/api/trattenute-verbali/` | — | trattenute_verbali |
-| GET | `/api/trattenute-verbali/report-consulente` | — | trattenute_verbali |
-| POST | `/api/trattenute-verbali/retro-verifica` | — | trattenute_verbali |
-| POST | `/api/trattenute-verbali/{trattenuta_id}/comunica` | — | trattenute_verbali |
-| POST | `/api/trattenute-verbali/{trattenuta_id}/conferma` | — | trattenute_verbali |
-| POST | `/api/trattenute-verbali/{trattenuta_id}/escludi` | — | trattenute_verbali |
-| POST | `/api/trattenute-verbali/{trattenuta_id}/rimanda` | — | trattenute_verbali |
-
 ## Utenti  (4)
 
 | Metodo | Path | FE | File |
@@ -1520,46 +1439,20 @@
 | PUT | `/api/utenti/{utente_id}` | ✓ | utenti |
 | DELETE | `/api/utenti/{utente_id}` | ✓ | utenti |
 
-## Verbali API  (12)
+## Verbali API  (2)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
-| GET | `/api/verbali-noleggio/alert-pagamenti` | — | verbali_noleggio_api |
-| POST | `/api/verbali-noleggio/associa-driver` | — | verbali_noleggio_api |
-| POST | `/api/verbali-noleggio/bulk-assegna-pagamento` | — | verbali_noleggio_api |
 | GET | `/api/verbali-noleggio/dettaglio/{numero_verbale:path}` | ✓ | verbali_noleggio_api |
-| GET | `/api/verbali-noleggio/lista` | — | verbali_noleggio_api |
-| GET | `/api/verbali-noleggio/note-consulente` | — | verbali_noleggio_api |
-| POST | `/api/verbali-noleggio/riconcilia-completo` | — | verbali_noleggio_api |
-| POST | `/api/verbali-noleggio/scan-gmail` | — | verbali_noleggio_api |
-| PUT | `/api/verbali-noleggio/{verbale_id}` | — | verbali_noleggio_api |
-| POST | `/api/verbali-noleggio/{verbale_id}/cerca-pagamento` | — | verbali_noleggio_api |
-| GET | `/api/verbali-noleggio/{verbale_id}/ricevuta-pdf` | — | verbali_noleggio_api |
 | POST | `/api/verbali-noleggio/{verbale_id}/upload-quietanza` | — | verbali_noleggio_api |
 
-## Verbali Noleggio  (19)
+## Verbali Noleggio  (3)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
-| POST | `/api/verbali-noleggio/associa-fatture` | — | verbali_noleggio |
-| GET | `/api/verbali-noleggio/cartelle-verbali` | — | verbali_noleggio |
-| POST | `/api/verbali-noleggio/classifica-verbali-posta` | — | verbali_noleggio |
 | GET | `/api/verbali-noleggio/dettaglio/{numero_verbale}` | ✓ | verbali_noleggio |
-| GET | `/api/verbali-noleggio/operazioni-sospese` | — | verbali_noleggio |
 | GET | `/api/verbali-noleggio/pdf/{numero_verbale}` | — | verbali_noleggio |
-| POST | `/api/verbali-noleggio/riclassifica-verbale` | — | verbali_noleggio |
-| POST | `/api/verbali-noleggio/riconcilia` | — | verbali_noleggio |
-| POST | `/api/verbali-noleggio/risolvi-sospeso` | — | verbali_noleggio |
-| POST | `/api/verbali-noleggio/scansiona-fatture` | — | verbali_noleggio |
-| POST | `/api/verbali-noleggio/scarica-tutti` | — | verbali_noleggio |
-| GET | `/api/verbali-noleggio/stats` | — | verbali_noleggio |
-| GET | `/api/verbali-noleggio/tutti-verbali` | — | verbali_noleggio |
-| GET | `/api/verbali-noleggio/verbale/{numero_verbale}` | — | verbali_noleggio |
-| GET | `/api/verbali-noleggio/verbali` | — | verbali_noleggio |
-| GET | `/api/verbali-noleggio/verbali-attesa-fattura` | — | verbali_noleggio |
 | GET | `/api/verbali-noleggio/verbali-completi` | — | verbali_noleggio |
-| GET | `/api/verbali-noleggio/verbali-privati` | — | verbali_noleggio |
-| POST | `/api/verbali-noleggio/verifica-nuove-fatture` | — | verbali_noleggio |
 
 ## Verbali Riconciliazione  (26)
 
@@ -1602,13 +1495,7 @@
 | GET | `/api/verifica-coerenza/iva/{anno}/{mese}` | ✓ | verifica_coerenza |
 | GET | `/api/verifica-coerenza/riepilogo-giornaliero` | — | verifica_coerenza |
 | GET | `/api/verifica-coerenza/verifica-bonifici-vs-banca/{anno}` | — | verifica_coerenza |
-| GET | `/api/verifica-coerenza/widget` | ✓ | verifica_coerenza |
-
-## WebSocket  (1)
-
-| Metodo | Path | FE | File |
-|---|---|:-:|---|
-| GET | `/api/realtime/status` | — | websocket_realtime |
+| GET | `/api/verifica-coerenza/widget` | — | verifica_coerenza |
 
 ## WhatsApp  (5)
 

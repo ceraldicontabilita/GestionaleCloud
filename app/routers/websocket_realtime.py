@@ -216,17 +216,6 @@ async def websocket_notifications(websocket: WebSocket):
         await ws_manager.disconnect(websocket, "notifications")
 
 
-@router.get("/realtime/status")
-async def get_realtime_status():
-    """
-    Restituisce lo stato delle connessioni WebSocket.
-    """
-    return {
-        "status": "online",
-        "connections": {
-            "total": ws_manager.get_connection_count(),
-            "dashboard": ws_manager.get_connection_count("dashboard"),
-            "notifications": ws_manager.get_connection_count("notifications")
-        },
-        "timestamp": datetime.now(timezone.utc).isoformat()
-    }
+# GET /realtime/status: smontato (audit 14/07/2026, piano residuo op.7) —
+# zero chiamanti verificati. Il websocket reale (/ws/notifications, sopra)
+# resta attivo, usato da frontend/src/hooks/useWebSocket.js.
