@@ -7,7 +7,7 @@ import { Plus, Trash2, RefreshCw, Mail, Power } from 'lucide-react';
 import api from '../api';
 
 const TIPI_DOCUMENTO = [
-  { value: 'fattura_xml', label: 'Fattura estera (XML) — es. fornitori UE/extra-UE' },
+  { value: 'fattura_estera_pdf', label: 'Fattura estera (PDF) — fornitori UE/extra-UE, niente SDI' },
   { value: 'cedolino', label: 'Cedolino / busta paga' },
   { value: 'pagopa', label: 'PagoPA' },
   { value: 'inps', label: 'INPS' },
@@ -23,7 +23,7 @@ export default function MittentiEmail() {
   const confirm = useConfirm();
   const [mittenti, setMittenti] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState({ pattern: '', canale: 'gmail', tipo_documento: 'fattura_xml', descrizione: '' });
+  const [form, setForm] = useState({ pattern: '', canale: 'gmail', tipo_documento: 'fattura_estera_pdf', descrizione: '' });
   const [salvando, setSalvando] = useState(false);
 
   const carica = useCallback(async () => {
@@ -52,7 +52,7 @@ export default function MittentiEmail() {
       toast.success(`Mittente "${form.pattern}" aggiunto`, {
         description: `Sarà processato ogni ora come "${labelTipo(form.tipo_documento)}"`,
       });
-      setForm({ pattern: '', canale: 'gmail', tipo_documento: 'fattura_xml', descrizione: '' });
+      setForm({ pattern: '', canale: 'gmail', tipo_documento: 'fattura_estera_pdf', descrizione: '' });
       carica();
     } catch (e2) {
       toast.error('Errore aggiunta mittente', { description: e2.response?.data?.detail || e2.message });
@@ -98,11 +98,12 @@ export default function MittentiEmail() {
         background: COLORS.infoLight, border: `1px solid ${COLORS.info}`, borderRadius: BORDER_RADIUS.md,
         padding: '10px 14px', fontSize: 13, color: COLORS.text, marginBottom: 16,
       }}>
-        Le fatture <strong>italiane</strong> arrivano sempre via SDI/Aruba/Drive, mai da qui.
-        Solo i fornitori <strong>esteri</strong> (che non passano dallo SDI) mandano la fattura
-        vera in allegato via email: aggiungili qui man mano che li scopri (dopo aver ricevuto
-        la prima fattura), scegliendo il tipo <strong>"Fattura estera (XML)"</strong> — verrà
-        letta automaticamente entro un'ora, con la stessa logica di Drive/upload manuale.
+        Le fatture <strong>italiane</strong> arrivano sempre via SDI/Aruba/Drive in formato XML
+        (FatturaPA), mai da qui. I fornitori <strong>esteri</strong> non passano dallo SDI
+        (sistema tutto italiano) e mandano un semplice <strong>PDF</strong> in allegato via
+        email: aggiungili qui man mano che li scopri (dopo aver ricevuto la prima fattura),
+        scegliendo il tipo <strong>"Fattura estera (PDF)"</strong> — il PDF verrà scaricato
+        automaticamente entro un'ora e archiviato in Documenti, pronto da associare/registrare.
       </div>
 
       <Card style={{ marginBottom: 20, padding: 16 }}>
@@ -172,7 +173,7 @@ export default function MittentiEmail() {
                   <Td>{m.pattern}</Td>
                   <Td>{m.canale?.toUpperCase()}</Td>
                   <Td>
-                    <Badge variant={m.tipo_documento === 'fattura_xml' ? 'primary' : 'neutral'}>
+                    <Badge variant={m.tipo_documento === 'fattura_estera_pdf' ? 'primary' : 'neutral'}>
                       {labelTipo(m.tipo_documento)}
                     </Badge>
                   </Td>

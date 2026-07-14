@@ -628,10 +628,14 @@ def start_scheduler():
     # ── Documenti da mittenti Gmail attendibili (ceraldigroupsrl@gmail.com),
     #    ogni ora. Copre TUTTI i tipi configurati in "Mittenti Email"
     #    (Integrazioni → Mittenti): fatture ESTERE (tipo_documento=
-    #    "fattura_xml", parsing XML vero con la pipeline unica condivisa con
-    #    Drive/upload — le fatture italiane arrivano SEMPRE via SDI/Aruba/
-    #    Drive, mai da qui), oltre a cedolino/pagopa/inps/inail/paypal/
-    #    cartella esattoriale se un mittente è configurato per quei tipi.
+    #    "fattura_estera_pdf" — il sistema SDI/FatturaPA è SOLO italiano, i
+    #    fornitori esteri mandano un semplice PDF in allegato, MAI un XML;
+    #    il PDF viene scaricato e archiviato in Documenti categoria "Fatture
+    #    estere (PDF)", pronto da associare/registrare — nessuna estrazione
+    #    automatica dei dati per ora, decisione rimandata) più cedolino/
+    #    pagopa/inps/inail/paypal/cartella esattoriale se un mittente è
+    #    configurato per quei tipi. Le fatture ITALIANE arrivano SEMPRE via
+    #    SDI/Aruba/Drive in XML, mai da qui.
     #    Trovato dormiente in sessione di debug 2026-07-14 (stessa causa di
     #    aruba_notifiche_scan: nessuno chiamava sync_email_documents), attivato
     #    su richiesta esplicita dell'utente contestualmente alla pagina di

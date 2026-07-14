@@ -236,17 +236,20 @@ movimenti automatici. Restano comunque rifiutati i movimenti chiaramente bancari
   Drive settimanale.
 
 **Fatture ESTERE via email** (Integrazioni → Mittenti Email)
-- Le fatture **italiane** arrivano sempre via SDI/Aruba/Drive: non si scaricano
-  mai da Gmail. I fornitori **esteri** invece non passano dallo SDI e a volte
-  mandano l'XML vero in allegato via email — ma non si può sapere in anticipo
-  chi sono: si scoprono solo dopo aver ricevuto la prima fattura.
+- Le fatture **italiane** arrivano sempre via SDI/Aruba/Drive in XML (FatturaPA):
+  non si scaricano mai da Gmail. Lo SDI è un sistema **solo italiano**: i
+  fornitori **esteri** non ci passano e mandano un semplice **PDF** in
+  allegato via email — ma non si può sapere in anticipo chi sono: si
+  scoprono solo dopo aver ricevuto la prima fattura.
 - Quando ne arriva una, in **Integrazioni → Mittenti Email** aggiungi
-  l'indirizzo/dominio del mittente scegliendo il tipo "Fattura estera (XML)":
-  da quel momento il sistema legge automaticamente le email di quel mittente,
-  **ogni ora**, e fa il parsing vero dell'XML con la stessa pipeline di
-  Drive/upload manuale (stesso schema campi, stesso rispetto del metodo
-  fornitore, stessa registrazione in prima nota). Zero mittenti configurati =
-  nessuna email scaricata (nessun rischio di prendere roba indesiderata).
+  l'indirizzo/dominio del mittente scegliendo il tipo "Fattura estera (PDF)":
+  da quel momento il sistema scarica automaticamente le email di quel
+  mittente, **ogni ora**, e archivia il PDF in **Documenti** (categoria
+  "Fatture estere (PDF)"), pronto da consultare/associare. Zero mittenti
+  configurati = nessuna email scaricata (nessun rischio di prendere roba
+  indesiderata). **Nota**: a differenza delle fatture italiane, il PDF non
+  viene ancora letto automaticamente (nessuna estrazione dati/registrazione
+  in prima nota) — è un passo successivo, da decidere insieme.
 - La stessa pagina permette di configurare anche altri tipi di documento
   (cedolino, PagoPA, INPS, INAIL, PayPal, cartella esattoriale) se un giorno
   servisse un mittente attendibile per quei canali.
