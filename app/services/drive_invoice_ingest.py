@@ -222,7 +222,7 @@ async def _do_sync(db) -> Dict[str, Any]:
     parent_id = settings.GOOGLE_DRIVE_FATTURE_FOLDER_ID
     result = {
         "status": "ok", "total": 0, "imported": 0, "duplicates": 0,
-        "errors": 0, "moved": 0, "details": [],
+        "archiviate": 0, "errors": 0, "moved": 0, "details": [],
     }
     try:
         elaborate_id = _get_or_create_elaborate_folder(service, parent_id)
@@ -232,17 +232,27 @@ async def _do_sync(db) -> Dict[str, Any]:
             fid, fname = f["id"], f["name"]
             try:
                 content = _download_bytes(service, fid)
-                res = await process_xml_bytes(db, content, fname, source="google_drive")
+                # applica_filtro_anno (richiesta utente 14/07/2026): solo le
+                # fatture Drive con data fattura nell'anno corrente entrano
+                # nel flusso attivo (Prima Nota/scadenzario/alert/magazzino);
+                # gli anni precedenti finiscono in archivio_storico, sola
+                # consultazione — vedi archivia_fattura_storica.
+                res = await process_xml_bytes(
+                    db, content, fname, source="google_drive", applica_filtro_anno=True
+                )
                 st = res.get("status")
                 if st == "imported":
                     result["imported"] += 1
                 elif st == "duplicate":
                     result["duplicates"] += 1
+                elif st == "archiviata":
+                    result["archiviate"] += 1
                 else:
                     result["errors"] += 1
                     result["details"].append({"file": fname, "error": res.get("error")})
                     continue  # non spostare i file in errore: restano per il retry
-                # Sposta in `Elaborate` i file processati (importati o duplicati noti).
+                # Sposta in `Elaborate` i file processati (importati, archiviati
+                # o duplicati noti).
                 if elaborate_id:
                     _move_to_elaborate(service, fid, parent_id, elaborate_id)
                     result["moved"] += 1
@@ -265,7 +275,7 @@ async def _do_sync(db) -> Dict[str, Any]:
         return {"status": "error", "message": str(e)}
 
     prev = await db[_SYNC_STATE_COLLECTION].find_one({"_id": _SYNC_STATE_ID}) or {}
-    last_result = {k: result[k] for k in ("total", "imported", "duplicates", "errors", "moved")}
+    last_result = {k: result[k] for k in ("total", "imported", "duplicates", "archiviate", "errors", "moved")}
     # Persisti i primi errori per-file: senza, la card Admin mostra solo il
     # conteggio e la diagnosi è impossibile.
     last_result["details"] = result["details"][:5]
@@ -329,11 +339,16 @@ async def verifica_quadratura_elaborate(db) -> Dict[str, Any]:
             fid, fname = f["id"], f["name"]
             try:
                 content = _download_bytes(service, fid)
-                res = await process_xml_bytes(db, content, fname, source="quadratura_drive")
+                # Stesso filtro anno di _do_sync: un buco riparato qui non
+                # deve "ripescare" nel flusso attivo una fattura storica già
+                # correttamente archiviata (o mai vista) — vedi archivia_fattura_storica.
+                res = await process_xml_bytes(
+                    db, content, fname, source="quadratura_drive", applica_filtro_anno=True
+                )
                 st = res.get("status")
                 if st == "duplicate":
                     esito["quadrati"] += 1
-                elif st == "imported":
+                elif st in ("imported", "archiviata"):
                     # BUCO TROVATO E RIPARATO: il file era in Elaborate ma la
                     # fattura non esisteva nel gestionale.
                     esito["recuperati"] += 1

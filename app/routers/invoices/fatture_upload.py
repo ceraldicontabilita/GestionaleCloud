@@ -1064,13 +1064,26 @@ async def upload_fattura_xml(file: UploadFile = File(...)) -> Dict[str, Any]:
     }
 
 
-async def process_xml_bytes(db, content: bytes, filename: str, source: str = "xml_upload") -> Dict[str, Any]:
+async def process_xml_bytes(db, content: bytes, filename: str, source: str = "xml_upload",
+                             applica_filtro_anno: bool = False) -> Dict[str, Any]:
     """Pipeline CONDIVISA per importare una singola fattura XML dai suoi bytes.
 
     Usata sia dall'upload bulk (`/upload-xml-bulk`) sia dall'ingest Google Drive,
     per non duplicare la logica di decodifica/parse/dedup/import.
 
-    Ritorna un dict con `status` in {"imported", "duplicate", "error"}.
+    `applica_filtro_anno` (richiesta utente 14/07/2026, SOLO per l'ingest
+    automatico dalla cartella Drive condivisa: "carica solo quelle con data
+    fattura 2026, gli anni precedenti metti in un archivio fatture
+    consultabile per visione personale"): se True e la data fattura non è
+    nell'anno corrente, la fattura NON entra nel flusso contabile attivo
+    (niente Prima Nota, scadenzario, alert, magazzino) — viene solo
+    archiviata per consultazione (vedi archivia_fattura_storica). Default
+    False: l'upload manuale via UI e le altre fonti (PEC/SDI, fatture
+    estere) restano invariate, un utente che carica volontariamente una
+    fattura di un anno passato si aspetta che venga registrata normalmente.
+
+    Ritorna un dict con `status` in {"imported", "duplicate", "error",
+    "archiviata"}.
     """
     # 0. Busta firmata .p7m (CAdES): estrai l'XML interno prima di decodificare.
     if is_p7m_content(filename):
@@ -1103,7 +1116,84 @@ async def process_xml_bytes(db, content: bytes, filename: str, source: str = "xm
     if parsed.get("error"):
         return {"status": "error", "filename": filename, "error": parsed["error"]}
 
+    if applica_filtro_anno:
+        invoice_date = parsed.get("invoice_date") or ""
+        anno_fattura = int(invoice_date[:4]) if invoice_date[:4].isdigit() else None
+        anno_corrente = datetime.now(timezone.utc).year
+        # Data mancante/illeggibile: NON archiviare silenziosamente una
+        # fattura che potrebbe essere dell'anno corrente solo per un XML
+        # malformato — resta nel flusso attivo, dove è comunque visibile e
+        # correggibile (a differenza dell'archivio storico, pensato per
+        # sola consultazione).
+        if anno_fattura and anno_fattura != anno_corrente:
+            return await archivia_fattura_storica(db, parsed, filename, source, xml_raw=xml_content)
+
     return await import_parsed_invoice(db, parsed, filename, source, xml_raw=xml_content)
+
+
+async def archivia_fattura_storica(db, parsed: Dict[str, Any], filename: str, source: str,
+                                    xml_raw: Optional[str] = None) -> Dict[str, Any]:
+    """Archivia una fattura di un anno precedente SENZA farla entrare nel
+    flusso contabile attivo (richiesta utente 14/07/2026: import Drive solo
+    per l'anno corrente, il resto "in un archivio fatture consultabile per
+    visione personale"). A differenza di import_parsed_invoice, qui NON si
+    chiama ensure_supplier_exists (nessun nuovo fornitore/statistica creata
+    nell'anagrafica attiva solo per una fattura storica), NON si registra
+    Prima Nota, NON si propaga l'evento fattura.created (niente scadenzario/
+    alert/magazzino). Il documento resta comunque nella stessa collection
+    `invoices` — la pagina Archivio Fatture Ricevute lo mostra già
+    selezionando quell'anno — ma marcato `stato_import: "archivio_storico"`
+    così i job schedulati che scansionano `invoices` per Prima Nota/alert/
+    scadenzario possono riconoscerlo ed escluderlo esplicitamente.
+    """
+    invoice_key = generate_invoice_key(
+        parsed.get("invoice_number", ""),
+        parsed.get("supplier_vat", ""),
+        parsed.get("invoice_date", ""),
+    )
+    if await db[Collections.INVOICES].find_one({"invoice_key": invoice_key}):
+        return {"status": "duplicate", "filename": filename,
+                "invoice_number": parsed.get("invoice_number")}
+
+    invoice_date = parsed.get("invoice_date", "")
+    invoice = {
+        "id": str(uuid.uuid4()),
+        "invoice_key": invoice_key,
+        "supplier_id": None,
+        "invoice_number": parsed.get("invoice_number", ""),
+        "invoice_date": invoice_date,
+        "tipo_documento": parsed.get("tipo_documento", ""),
+        "tipo_documento_desc": parsed.get("tipo_documento_desc", ""),
+        "supplier_name": parsed.get("supplier_name", ""),
+        "supplier_vat": parsed.get("supplier_vat", ""),
+        "total_amount": float(parsed.get("total_amount", 0) or 0),
+        "imponibile": float(parsed.get("imponibile", 0) or 0),
+        "iva": float(parsed.get("iva", 0) or 0),
+        "divisa": parsed.get("divisa", "EUR"),
+        "fornitore": parsed.get("fornitore", {}),
+        "cliente": parsed.get("cliente", {}),
+        "linee": parsed.get("linee", []),
+        "riepilogo_iva": parsed.get("riepilogo_iva", []),
+        "causali": parsed.get("causali", []),
+        "status": "archiviata",
+        "stato_import": "archivio_storico",
+        "source": source,
+        "filename": filename,
+        "xml_raw": xml_raw,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "cedente_piva": parsed.get("supplier_vat", ""),
+        "cedente_denominazione": parsed.get("supplier_name", ""),
+        "numero_fattura": parsed.get("invoice_number", ""),
+        "data_fattura": invoice_date,
+        "importo_totale": float(parsed.get("total_amount", 0) or 0),
+        "anno": int(invoice_date[:4]) if invoice_date[:4].isdigit() else None,
+    }
+    await db[Collections.INVOICES].insert_one(invoice.copy())
+    invoice.pop("_id", None)
+
+    return {"status": "archiviata", "filename": filename,
+            "invoice_number": parsed.get("invoice_number"),
+            "supplier": parsed.get("supplier_name"), "id": invoice["id"]}
 
 
 async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, source: str,
