@@ -126,98 +126,13 @@ class TestPaypalRicevutaPdf:
         assert len(r.content) > 500, f"PDF troppo piccolo: {len(r.content)} byte"
 
 
-# ── FASE 3: /api/verbali-noleggio/{id}/cerca-pagamento ───────────────
-
-class TestVerbaliCercaPagamento:
-    def test_cerca_pagamento_verbale_reale(self, api_client):
-        r = api_client.post(
-            f"{BASE_URL}/api/verbali-noleggio/{VERBALE_TEST_ID}/cerca-pagamento",
-            timeout=120,
-        )
-        assert r.status_code == 200, r.text[:500]
-        data = r.json()
-        assert "trovato" in data, data
-        assert isinstance(data["trovato"], bool)
-        if data["trovato"]:
-            # Se è trovato, tutti i campi obbligatori
-            for key in ("fonte", "psp", "importo", "data_pagamento",
-                        "metodo_pagamento", "pdf_disponibile"):
-                assert key in data, f"campo {key} mancante in risposta 'trovato=True': {data}"
-            assert data["fonte"] in ("paypal", "gmail", "estratto_conto"), data["fonte"]
-
-    def test_cerca_pagamento_verbale_inesistente(self, api_client):
-        r = api_client.post(
-            f"{BASE_URL}/api/verbali-noleggio/FAKE_VERBALE_ID_XYZ/cerca-pagamento",
-            timeout=30,
-        )
-        assert r.status_code == 404, r.text[:300]
-
-
-# ── FASE 3: /api/verbali-noleggio/{id}/ricevuta-pdf ──────────────────
-
-class TestVerbaliRicevutaPdf:
-    def test_ricevuta_pdf_verbale_reale(self, api_client):
-        r = api_client.get(
-            f"{BASE_URL}/api/verbali-noleggio/{VERBALE_TEST_ID}/ricevuta-pdf",
-            timeout=60,
-        )
-        # Se PDF non ancora scaricato, 404 accettabile
-        if r.status_code == 404:
-            pytest.skip(
-                "PDF ricevuta non ancora associato al verbale (serve prima /cerca-pagamento che scarichi Gmail)"
-            )
-        assert r.status_code == 200, r.text[:500]
-        ctype = r.headers.get("content-type", "")
-        assert "application/pdf" in ctype
-        assert r.content[:4] == b"%PDF"
-
-    def test_ricevuta_pdf_404_se_inesistente(self, api_client):
-        r = api_client.get(
-            f"{BASE_URL}/api/verbali-noleggio/FAKE_VERBALE_XYZ/ricevuta-pdf",
-            timeout=30,
-        )
-        assert r.status_code == 404
-
-
-# ── FASE 4: /api/verbali-noleggio/scan-gmail ─────────────────────────
-
-class TestVerbaliScanGmail:
-    def test_scan_gmail_7_giorni(self, api_client):
-        r = api_client.post(
-            f"{BASE_URL}/api/verbali-noleggio/scan-gmail?days_back=7",
-            timeout=120,
-        )
-        assert r.status_code == 200, r.text[:500]
-        data = r.json()
-        # Chiavi tipiche di uno scanner: email_analizzate/nuovi_verbali/etc.
-        # Verifico almeno che sia dict non vuoto
-        assert isinstance(data, dict)
-        assert len(data) > 0
-
-    def test_scan_gmail_30_giorni(self, api_client):
-        r = api_client.post(
-            f"{BASE_URL}/api/verbali-noleggio/scan-gmail?days_back=30",
-            timeout=180,
-        )
-        assert r.status_code == 200, r.text[:500]
-        data = r.json()
-        assert isinstance(data, dict)
-
-
-# ── FASE 4: /api/verbali-noleggio/riconcilia-completo ────────────────
-
-class TestVerbaliRiconciliaCompleto:
-    def test_riconcilia_completo_pipeline(self, api_client):
-        r = api_client.post(
-            f"{BASE_URL}/api/verbali-noleggio/riconcilia-completo",
-            timeout=300,
-        )
-        assert r.status_code == 200, r.text[:500]
-        data = r.json()
-        # La pipeline torna struct con 3 step (scan+link+ricerca)
-        assert isinstance(data, dict)
-        # check che il dict contenga almeno qualcosa di rappresentativo
-        assert len(data) > 0, f"risposta pipeline vuota: {data}"
+# ── FASE 3/4: /api/verbali-noleggio/{id}/cerca-pagamento, {id}/ricevuta-pdf,
+# scan-gmail, riconcilia-completo rimossi (audit 14/07/2026, piano residuo
+# op.10) ────────────────────────────────────────────────────────────────
+# Zero chiamanti verificati (frontend/scheduler/interno/test unitari). I
+# servizi sottostanti (scan_gmail_verbali, collega_verbali_a_fatture)
+# restano vivi: chiamati direttamente da app/scheduler.py, non più
+# raggiungibili via queste route HTTP.
 
 
 # ── FASE 4: /api/alert-verbali rimosso (audit lug 2026) ──────────────

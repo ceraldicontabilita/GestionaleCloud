@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 991 · tenere: 637 · verificare: 335 · admin-only (migrazione/manutenzione): 19
+**Totale endpoint:** 971 · tenere: 637 · verificare: 315 · admin-only (migrazione/manutenzione): 19
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -964,32 +964,12 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/verbali-noleggio/pdf/{numero_verbale}` | verbali_noleggio | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/verbali-noleggio/verbali-completi` | verbali_noleggio | — | — | sì | — | — | tenere | in uso: chat |
 | `POST /api/verbali-noleggio/{verbale_id}/upload-quietanza` | verbali_noleggio_api | — | sì | — | — | — | tenere | in uso: scheduler |
-| `POST /api/verbali-riconciliazione/associa-fattura` | verbali_riconciliazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/verbali-riconciliazione/automazione-completa` | verbali_riconciliazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/verbali-riconciliazione/collega-driver-massivo` | verbali_riconciliazione | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/verbali-riconciliazione/crea-prima-nota-verbale/{numero_verbale}` | verbali_riconciliazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/verbali-riconciliazione/dashboard` | verbali_riconciliazione | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/verbali-riconciliazione/dettaglio-completo/{numero_verbale}` | verbali_riconciliazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/verbali-riconciliazione/lista` | verbali_riconciliazione | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/verbali-riconciliazione/pending-status` | verbali_riconciliazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/verbali-riconciliazione/per-dipendente/{driver_id}` | verbali_riconciliazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/verbali-riconciliazione/per-driver/{driver_id}` | verbali_riconciliazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/verbali-riconciliazione/per-targa/{targa}` | verbali_riconciliazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/verbali-riconciliazione/per-veicolo/{targa}` | verbali_riconciliazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/verbali-riconciliazione/pulisci-duplicati` | verbali_riconciliazione | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/verbali-riconciliazione/quietanze-verbale/{numero_verbale}` | verbali_riconciliazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/verbali-riconciliazione/quietanze-verbale/{numero_verbale}/pdf` | verbali_riconciliazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/verbali-riconciliazione/registra-pagamento` | verbali_riconciliazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/verbali-riconciliazione/registra-quietanza/{numero_verbale}` | verbali_riconciliazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/verbali-riconciliazione/riconcilia-estratto-conto-paypal` | verbali_riconciliazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/verbali-riconciliazione/riconcilia/{numero_verbale}` | verbali_riconciliazione | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/verbali-riconciliazione/scan-email` | verbali_riconciliazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/verbali-riconciliazione/scan-email-storico` | verbali_riconciliazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/verbali-riconciliazione/scan-fatture-verbali` | verbali_riconciliazione | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/verbali-riconciliazione/scan-pagopa` | verbali_riconciliazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/verbali-riconciliazione/scan-verbale/{numero_verbale}` | verbali_riconciliazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/verbali-riconciliazione/scheduler-status` | verbali_riconciliazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/verbali-riconciliazione/{numero_verbale}/pdf` | verbali_riconciliazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/verbali-riconciliazione/collega-driver-massivo` | verbali_riconciliazione | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
+| `GET /api/verbali-riconciliazione/dashboard` | verbali_riconciliazione | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
+| `GET /api/verbali-riconciliazione/lista` | verbali_riconciliazione | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
+| `POST /api/verbali-riconciliazione/pulisci-duplicati` | verbali_riconciliazione | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
+| `POST /api/verbali-riconciliazione/riconcilia/{numero_verbale}` | verbali_riconciliazione | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
+| `POST /api/verbali-riconciliazione/scan-fatture-verbali` | verbali_riconciliazione | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
 | `GET /api/verifica-coerenza/completa/{anno}` | verifica_coerenza | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/verifica-coerenza/confronto-iva-completo/{anno}` | verifica_coerenza | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/verifica-coerenza/discrepanze/{anno}` | verifica_coerenza | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |

@@ -25,11 +25,11 @@ rilavorate da zero.
 
 ## Stato di avanzamento
 
-**Operazioni residue aperte: 17 di 19.** Operazioni #1 e #11 chiuse il
-14/07/2026 (vedi "Completate" in fondo). Prossima operazione libera (non
-❓): **#12** (adozione `app/db_collections.py`) o **#17** (prestazioni
-N+1) — le operazioni #2-#10, #14, #15 restano ❓ in attesa di decisione
-utente.
+**Operazioni residue aperte: 7 di 19.** Operazioni #1, #2-#10, #11 chiuse
+il 14/07/2026 (vedi "Completate" in fondo). Prossima operazione libera:
+**#12** (adozione `app/db_collections.py`) o **#17** (prestazioni N+1) —
+le operazioni #14, #15 (PayPal, Verbali — architettura, non solo pulizia
+endpoint) restano ❓ in attesa di decisione utente.
 
 ---
 
@@ -63,26 +63,7 @@ Su queste voci: solo verifica di assenza regressioni, mai ricostruzione.
 
 ---
 
-## Attività residue (18 operazioni aperte, #1 chiusa)
-
-### P1 — eliminazione endpoint realmente inutili
-
-Route table corrente: ~1059 endpoint. Ogni gruppo è ❓ decisione utente
-prima di smontare (impatto produzione):
-
-**2. ❓ `/api/batch/*`** (6 endpoint, nessun chiamante noto)
-**3. ❓ `/api/cedolini/*`** (drive/status, drive/quadratura, {id}/pdf — `drive/sync` resta, usato da scheduler)
-**4. ❓ `/api/dati-provvisori/*`** (upload-xml, sposta-banca, sposta-cassa, delete — `riconcilia-estratto-conto` resta, scheduler)
-**5. ❓ `/api/exports/*`** (8 endpoint incl. `suppliers`)
-**6. ❓ `/api/paghe/*`** (import-distinte-bpm, import-f24, import-libro-unico — verificare uso interno da `documenti.py` prima di decidere)
-**7. ❓ `/api/pos-accredito/*`** (5 endpoint, candidato forte: sostituito da `pos_corrispettivi_check`)
-**8. ❓ `/api/realtime/*`** (status — verificare se il websocket è realmente usato)
-**9. ❓ `/api/report-pdf/*`** (magazzino incoerente con rimozione HACCP)
-**10. ❓ `/api/trattenute-verbali/*`** e gruppo verbali_noleggio/verbali_riconciliazione
-
-Non eliminare mai: scheduler Drive cedolini, parser F24/Libro Unico usati
-internamente, webhook, Chat, API esterne documentate, endpoint manutentivi
-ancora necessari.
+## Attività residue (7 operazioni aperte)
 
 ### P1 — altre attività
 
@@ -160,6 +141,60 @@ Il deploy Render deve dipendere dal verde di questi check.
   nell'operazione #19.
 - Risultato: `python -m pytest -q` → 378 passed, 2 skipped (era 374 passed:
   +4 dai nuovi test), nessuna regressione.
+
+**2-10. ✅ Smontaggio endpoint "verificare" senza chiamanti (9 gruppi, ~88 endpoint)**
+- Commit: `71a68b7` (batch/exports/report_pdf/pos_accredito/dati_provvisori/
+  drive_cedolini/realtime/paghe import) + chiusura in corso su questo branch
+  (gruppo verbali/trattenute).
+- Indagine preliminare (agente dedicato) su chiamate interne/scheduler/test
+  per ognuno dei 9 gruppi, prima di qualunque modifica — evidenze file:riga
+  citate per ogni verdetto (MORTO/VIVO-INTERNO/INCERTO).
+- Decisione utente raccolta via 3 domande (AskUserQuestion): sì a smontare
+  i morti confermati, sì a smontare solo la route HTTP dove il servizio
+  resta vivo altrove, sì a includere anche il gruppo verbali/trattenute in
+  questo giro (upload-quietanza escluso per prudenza, caso incerto).
+- Smontati interamente (0 chiamanti ovunque, codice conservato in git, non
+  montato in produzione): `batch_operations` (6), `reports.simple_exports`
+  (8), `reports.report_pdf` (4), `bank.pos_accredito` (5 — `app/utils/
+  pos_accredito.py` resta vivo, usato da `pos_corrispettivi_check` e
+  `corrispettivi.py`), `trattenute_verbali` (7).
+- Route HTTP morta ma funzione Python viva (rimossa solo la route, la
+  funzione resta servizio interno normale): `distinte_bpm`,
+  `libro_unico_parser`, `f24_parser` (chiamati da `documenti.py`),
+  `drive_cedolini` quadratura (chiamata dallo scheduler),
+  `websocket_realtime` GET /realtime/status (i websocket reali
+  `/ws/notifications` e `/ws/dashboard` restano intatti), `verbali_noleggio_
+  api` scan-gmail/riconcilia-completo, `verbali_riconciliazione` scan-email
+  (servizi già chiamati direttamente da `app/scheduler.py`).
+- `dati_provvisori`: rimossi 5 endpoint del vecchio flusso (upload-xml,
+  sposta-banca, sposta-cassa, delete, lista) superato dal tab Provvisori in
+  `PrimaNota.jsx` (`/api/prima-nota/provvisori/*`); `riconcilia-estratto-
+  conto` (scheduler) e i 5 endpoint proposte/conferma non toccati.
+- `drive_cedolini`: rimossi anche status e `{id}/pdf` (0 chiamanti).
+- Gruppo verbali (3 file, ~3269 righe totali, lavoro delegato a 3 agenti in
+  parallelo con istruzione precisa endpoint-per-endpoint): `verbali_
+  noleggio.py` (16 handler rimossi, tenuti dettaglio/pdf/verbali-completi),
+  `verbali_noleggio_api.py` (10 rimossi inclusi i 2 "route morta/servizio
+  vivo", tenuti dettaglio:path e upload-quietanza), `verbali_
+  riconciliazione.py` (19 rimossi, tenuti dashboard/lista/scan-fatture-
+  verbali/pulisci-duplicati/riconcilia/collega-driver-massivo). Rimossi
+  anche gli helper privati diventati orfani di conseguenza (verificato con
+  grep che non fossero usati da altro).
+- Fix collaterale: `backend/tests/test_fase2_fase3_fase4.py` (test di
+  integrazione live, self-skip senza `REACT_APP_BACKEND_URL`, quindi non
+  intercettato dalla suite locale) testava cerca-pagamento/ricevuta-pdf/
+  scan-gmail/riconcilia-completo dei verbali: rimossi i 4 test-case ormai
+  orfani con nota esplicativa, altrimenti avrebbero fallito con 404 in un
+  ambiente con l'URL configurato.
+- Debito noto, non affrontato in questa operazione: `memoria/pagine/
+  noleggio-verbali.json` e `memoria/pagine/dettaglio-verbale.json`
+  potrebbero citare nomi di funzioni rimosse (mappe/documentazione, non
+  eseguibili — nessun impatto funzionale).
+- Mappe rigenerate ad ogni gruppo: 1059 → 991 (checkpoint) → **971**
+  endpoint totali, 637 tenere, 315 verificare, 19 admin-only (verificato
+  che il delta -88 torna esatto sommando i singoli gruppi).
+- Risultato: `python -m pytest -q` → 378 passed, 2 skipped (nessuna
+  regressione), `python -m pytest backend/tests/ -q` → 2 skipped (invariato).
 
 **11. ✅ Audit reale frontend inutilizzato + eliminazione orfani**
 - Commit: chiusura in corso (vedi prossimo commit su questo branch).

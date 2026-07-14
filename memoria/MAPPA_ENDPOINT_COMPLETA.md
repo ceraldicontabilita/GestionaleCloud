@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **991 endpoint** in **102 gruppi**.
+> Totale **971 endpoint** in **102 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 624 · ext esterni = 76 · — da verificare = 291
+**Riepilogo uso:** ✓ frontend = 624 · ext esterni = 76 · — da verificare = 271
 
 ## AI Parser  (11)
 
@@ -1454,36 +1454,16 @@
 | GET | `/api/verbali-noleggio/pdf/{numero_verbale}` | — | verbali_noleggio |
 | GET | `/api/verbali-noleggio/verbali-completi` | — | verbali_noleggio |
 
-## Verbali Riconciliazione  (26)
+## Verbali Riconciliazione  (6)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
-| POST | `/api/verbali-riconciliazione/associa-fattura` | — | verbali_riconciliazione |
-| POST | `/api/verbali-riconciliazione/automazione-completa` | — | verbali_riconciliazione |
 | POST | `/api/verbali-riconciliazione/collega-driver-massivo` | ✓ | verbali_riconciliazione |
-| POST | `/api/verbali-riconciliazione/crea-prima-nota-verbale/{numero_verbale}` | — | verbali_riconciliazione |
 | GET | `/api/verbali-riconciliazione/dashboard` | ✓ | verbali_riconciliazione |
-| GET | `/api/verbali-riconciliazione/dettaglio-completo/{numero_verbale}` | — | verbali_riconciliazione |
 | GET | `/api/verbali-riconciliazione/lista` | ✓ | verbali_riconciliazione |
-| GET | `/api/verbali-riconciliazione/pending-status` | — | verbali_riconciliazione |
-| GET | `/api/verbali-riconciliazione/per-dipendente/{driver_id}` | — | verbali_riconciliazione |
-| GET | `/api/verbali-riconciliazione/per-driver/{driver_id}` | — | verbali_riconciliazione |
-| GET | `/api/verbali-riconciliazione/per-targa/{targa}` | — | verbali_riconciliazione |
-| GET | `/api/verbali-riconciliazione/per-veicolo/{targa}` | — | verbali_riconciliazione |
 | POST | `/api/verbali-riconciliazione/pulisci-duplicati` | ✓ | verbali_riconciliazione |
-| GET | `/api/verbali-riconciliazione/quietanze-verbale/{numero_verbale}` | — | verbali_riconciliazione |
-| GET | `/api/verbali-riconciliazione/quietanze-verbale/{numero_verbale}/pdf` | — | verbali_riconciliazione |
-| POST | `/api/verbali-riconciliazione/registra-pagamento` | — | verbali_riconciliazione |
-| POST | `/api/verbali-riconciliazione/registra-quietanza/{numero_verbale}` | — | verbali_riconciliazione |
-| POST | `/api/verbali-riconciliazione/riconcilia-estratto-conto-paypal` | — | verbali_riconciliazione |
 | POST | `/api/verbali-riconciliazione/riconcilia/{numero_verbale}` | ✓ | verbali_riconciliazione |
-| POST | `/api/verbali-riconciliazione/scan-email` | — | verbali_riconciliazione |
-| POST | `/api/verbali-riconciliazione/scan-email-storico` | — | verbali_riconciliazione |
 | POST | `/api/verbali-riconciliazione/scan-fatture-verbali` | ✓ | verbali_riconciliazione |
-| POST | `/api/verbali-riconciliazione/scan-pagopa` | — | verbali_riconciliazione |
-| POST | `/api/verbali-riconciliazione/scan-verbale/{numero_verbale}` | — | verbali_riconciliazione |
-| GET | `/api/verbali-riconciliazione/scheduler-status` | — | verbali_riconciliazione |
-| GET | `/api/verbali-riconciliazione/{numero_verbale}/pdf` | — | verbali_riconciliazione |
 
 ## Verifica Coerenza  (7)
 
