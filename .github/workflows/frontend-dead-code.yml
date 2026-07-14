@@ -1,0 +1,36 @@
+name: Frontend dead code
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Rigenera l'audit e verifica che sia aggiornato
+        run: |
+          python scripts/audit_frontend_dead_code.py
+          git diff --exit-code -- memoria/AUDIT_FRONTEND_DEAD_CODE.md || {
+            echo "::error::memoria/AUDIT_FRONTEND_DEAD_CODE.md non è aggiornato. Rilancia 'python scripts/audit_frontend_dead_code.py' e committa il risultato.";
+            exit 1;
+          }
+
+      - name: Fallisce se ci sono file ORFANO_ELIMINABILE non ancora rimossi
+        run: |
+          ORFANI=$(grep -oP '(?<=\| ORFANO_ELIMINABILE \| )\d+' memoria/AUDIT_FRONTEND_DEAD_CODE.md || echo 0)
+          echo "File ORFANO_ELIMINABILE trovati: $ORFANI"
+          if [ "$ORFANI" -gt 0 ]; then
+            echo "::error::Ci sono $ORFANI file React orfani non rimossi (vedi memoria/AUDIT_FRONTEND_DEAD_CODE.md, sezione ORFANO_ELIMINABILE).";
+            exit 1;
+          fi
