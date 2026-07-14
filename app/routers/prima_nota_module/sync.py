@@ -353,13 +353,19 @@ async def sync_fatture_pagate(anno: int = Query(...)) -> Dict:
         # pagamento uscita a fornitore (bug segnalato dall'utente 14/07/2026,
         # qui era hardcoded "uscita"/"Fatture" indipendentemente dal tipo).
         tipo_movimento, categoria, desc_prefisso = determina_tipo_movimento_fattura(fatt)
+        # Bug 14/07/2026: il documento fattura non ha un campo "numero" (è
+        # invoice_number/numero_fattura) — leggerlo con la chiave sbagliata
+        # produceva sempre stringa vuota, quindi descrizioni tipo
+        # "Fattura  - RONDINELLA MARKET S.R.L." senza numero.
+        numero_fatt = fatt.get("invoice_number") or fatt.get("numero_fattura") or ""
         movimento = {
             "id": str(uuid.uuid4()),
             "data": fatt.get("invoice_date") or fatt.get("data_pagamento"),
             "tipo": tipo_movimento,
             "importo": totale,
-            "descrizione": f"{desc_prefisso} {fatt.get('numero', '')} - {fornitore[:30]}",
+            "descrizione": f"{desc_prefisso} {numero_fatt} - {fornitore[:30]}",
             "categoria": categoria,
+            "numero_fattura": numero_fatt,
             "riferimento": ref,
             "fattura_id": fattura_id,
             "tipo_documento": fatt.get("tipo_documento"),
@@ -739,6 +745,7 @@ async def conferma_fattura_provvisoria(data: Dict = Body(...)) -> Dict:
         "categoria": categoria,
         "descrizione": f"{desc_prefisso} {numero} - {fornitore[:30]}",
         "importo": importo,
+        "numero_fattura": numero,
         "riferimento": f"FATT-{fattura_id}",
         "fattura_id": fattura_id,
         "tipo_documento": fattura.get("tipo_documento"),

@@ -184,15 +184,24 @@ async def registra_pagamento(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]
     # Registra in Prima Nota
     pn_collection = "prima_nota_cassa" if metodo in ["contanti", "cassa", "carta"] else "prima_nota_banca"
     pn_tipo = "cassa" if metodo in ["contanti", "cassa", "carta"] else "banca"
-    
+
+    # Nota di credito (TD04/TD08) NON è un pagamento a fornitore in uscita:
+    # stessa regola già applicata in prima_nota_module/sync.py (bug
+    # segnalato dall'utente 14/07/2026, qui era hardcoded "uscita"/"Fatture").
+    from app.routers.prima_nota_module.sync import determina_tipo_movimento_fattura
+    tipo_mov, categoria, desc_prefisso = determina_tipo_movimento_fattura(fattura)
+    numero_fatt = fattura.get('invoice_number', '')
+
     pn_id = str(uuid.uuid4())
     await db[pn_collection].insert_one({
         "id": pn_id,
         "data": data_pag,
-        "tipo": "uscita",
-        "categoria": "Fatture",
-        "descrizione": f"Pag. {metodo} Fatt. {fattura.get('invoice_number','')} - {fattura.get('supplier_name','')[:25]}",
+        "tipo": tipo_mov,
+        "categoria": categoria,
+        "descrizione": f"{desc_prefisso} ({metodo}) {numero_fatt} - {fattura.get('supplier_name','')[:25]}",
         "importo": importo,
+        "numero_fattura": numero_fatt,
+        "tipo_documento": fattura.get("tipo_documento"),
         "riferimento": f"PAG-{pag_id}",
         "fattura_id": fattura_id,
         "pagamento_id": pag_id,

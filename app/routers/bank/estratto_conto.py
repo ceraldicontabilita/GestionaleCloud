@@ -14,6 +14,7 @@ import csv
 from app.database import Database
 from app.utils.error_handler import handle_errors
 from app.routers.prima_nota_module.common import aggrega_saldo_prima_nota
+from app.routers.prima_nota_module.sync import determina_tipo_movimento_fattura
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -451,7 +452,7 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
             "pagato": {"$ne": True},
             "$or": [{"prima_nota_id": None}, {"prima_nota_id": {"$exists": False}}, {"prima_nota_id": ""}]
         }, {"_id": 0, "id": 1, "supplier_name": 1, "supplier_vat": 1, "total_amount": 1,
-            "invoice_date": 1, "invoice_number": 1}).to_list(500)
+            "invoice_date": 1, "invoice_number": 1, "tipo_documento": 1}).to_list(500)
 
         for f in provvisori:
             importo = float(f.get("total_amount", 0))
@@ -469,11 +470,19 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
                     pn_id = existing_pn.get("id")
                 else:
                     pn_id = str(_uuid.uuid4())
+                    # Nota di credito (TD04/TD08) NON è un pagamento a
+                    # fornitore in uscita: stessa regola già applicata in
+                    # prima_nota_module/sync.py (bug segnalato dall'utente
+                    # 14/07/2026, qui era hardcoded "uscita"/"Fatture").
+                    numero_fatt = f.get("invoice_number", "")
+                    tipo_mov, categoria, desc_prefisso = determina_tipo_movimento_fattura(f)
                     await db["prima_nota_banca"].insert_one({
                         "id": pn_id, "data": match.get("data") or match.get("data_contabile") or f.get("invoice_date", ""),
-                        "tipo": "uscita", "categoria": "Fatture",
-                        "descrizione": f"Fatt. {f.get('invoice_number','')} - {(f.get('supplier_name',''))[:30]}",
+                        "tipo": tipo_mov, "categoria": categoria,
+                        "descrizione": f"{desc_prefisso} {numero_fatt} - {(f.get('supplier_name',''))[:30]}",
                         "importo": importo, "fattura_id": f["id"],
+                        "numero_fattura": numero_fatt,
+                        "tipo_documento": f.get("tipo_documento"),
                         "riferimento": rif,
                         "fornitore_piva": f.get("supplier_vat", ""),
                         "estratto_conto_id": match.get("id"),

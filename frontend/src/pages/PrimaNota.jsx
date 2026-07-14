@@ -4,6 +4,7 @@ import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import {
   formatEuro,
+  formatEuroD,
   formatDateIT,
   STYLES,
   COLORS,
@@ -2725,7 +2726,7 @@ function MovementsTable({
                     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
                   }}
                 >
-                  {mov.tipo === 'entrata' ? formatEuro(mov.importo) : '-'}
+                  {mov.tipo === 'entrata' ? formatEuroD(mov.importo) : '-'}
                 </td>
                 <td
                   style={{
@@ -2738,7 +2739,7 @@ function MovementsTable({
                     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
                   }}
                 >
-                  {mov.tipo === 'uscita' ? formatEuro(mov.importo) : '-'}
+                  {mov.tipo === 'uscita' ? formatEuroD(mov.importo) : '-'}
                 </td>
                 <td
                   style={{
@@ -2751,7 +2752,7 @@ function MovementsTable({
                     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
                   }}
                 >
-                  {formatEuro(mov.saldoProgressivo)}
+                  {formatEuroD(mov.saldoProgressivo)}
                 </td>
                 <td style={{ padding: '6px 8px', textAlign: 'center' }}>
                   {/* Pulsante VEDI documento - Supporta: Fattura, F24, Corrispettivi, Bonifici */}

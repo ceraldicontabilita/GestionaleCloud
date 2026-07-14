@@ -184,16 +184,27 @@ async def conferma_proposta(db, proposta_id: str) -> Dict[str, Any]:
         parts = data_mov.split("/")
         if len(parts) == 3:
             data_iso = f"{parts[2]}-{parts[1]}-{parts[0]}"
-    
+
+    # Nota di credito (TD04/TD08) NON è un pagamento a fornitore in uscita:
+    # stessa regola già applicata in prima_nota_module/sync.py (bug
+    # segnalato dall'utente 14/07/2026, qui era hardcoded "uscita"/"Fatture"
+    # indipendentemente dal tipo_documento). La proposta non porta con sé
+    # tipo_documento: lo si legge dalla fattura.
+    from app.routers.prima_nota_module.sync import determina_tipo_movimento_fattura
+    fattura_doc = await db["invoices"].find_one({"id": fatt_id}, {"_id": 0, "tipo_documento": 1}) or {}
+    tipo_mov, categoria, desc_prefisso = determina_tipo_movimento_fattura(fattura_doc)
+
     # Registra in Prima Nota Banca
     pn_id = str(uuid.uuid4())
     movimento = {
         "id": pn_id,
         "data": data_iso,
-        "tipo": "uscita",
-        "categoria": "Fatture",
-        "descrizione": f"Fatt. {numero} - {fornitore[:30]}",
+        "tipo": tipo_mov,
+        "categoria": categoria,
+        "descrizione": f"{desc_prefisso} {numero} - {fornitore[:30]}",
         "importo": importo,
+        "numero_fattura": numero,
+        "tipo_documento": fattura_doc.get("tipo_documento"),
         "riferimento": f"FATT-{fatt_id}",
         "fattura_id": fatt_id,
         "movimento_banca_id": proposta.get("movimento_id"),
