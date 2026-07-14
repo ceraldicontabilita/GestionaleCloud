@@ -631,26 +631,11 @@ async def get_dashboard_scadenze() -> Dict[str, Any]:
     oggi = datetime.now()
     oggi_str = oggi.strftime('%Y-%m-%d')
     limite_30 = (oggi + timedelta(days=30)).strftime('%Y-%m-%d')
-    limite_60 = (oggi + timedelta(days=60)).strftime('%Y-%m-%d')
-    
+
     # Fatture da pagare
     fatture_urgenti = await db[Collections.INVOICES].count_documents({
         "data_scadenza": {"$lte": limite_30},
         "stato_pagamento": {"$in": ["non_pagata", "da_pagare", None]}
-    })
-    
-    # Contratti in scadenza
-    contratti_scadenza = await db["contratti_dipendenti"].count_documents({
-        "data_fine": {"$lte": limite_60, "$gte": oggi_str},
-        "stato": "attivo"
-    })
-    
-    # Libretti scaduti o in scadenza
-    libretti_scaduti = await db["libretti_sanitari"].count_documents({
-        "data_scadenza": {"$lt": oggi_str}
-    })
-    libretti_in_scadenza = await db["libretti_sanitari"].count_documents({
-        "data_scadenza": {"$gte": oggi_str, "$lte": limite_30}
     })
     
     # F24 da pagare — collezione canonica unica f24_unificato, conteggio distinto
@@ -665,27 +650,15 @@ async def get_dashboard_scadenze() -> Dict[str, Any]:
     
     totale_alert = (
         (1 if fatture_urgenti > 0 else 0) +
-        (1 if contratti_scadenza > 0 else 0) +
-        (1 if libretti_scaduti > 0 else 0) +
-        (1 if libretti_in_scadenza > 0 else 0) +
         (1 if f24_da_pagare > 0 else 0) +
         len(scadenze_urgenti)
     )
-    
+
     return {
         "totale_alert": totale_alert,
         "fatture": {
             "da_pagare_30gg": fatture_urgenti,
             "urgenza": "alta" if fatture_urgenti > 5 else "media" if fatture_urgenti > 0 else "bassa"
-        },
-        "contratti": {
-            "in_scadenza_60gg": contratti_scadenza,
-            "urgenza": "alta" if contratti_scadenza > 2 else "media" if contratti_scadenza > 0 else "bassa"
-        },
-        "libretti_sanitari": {
-            "scaduti": libretti_scaduti,
-            "in_scadenza_30gg": libretti_in_scadenza,
-            "urgenza": "alta" if libretti_scaduti > 0 else "media" if libretti_in_scadenza > 0 else "bassa"
         },
         "f24": {
             "da_pagare_30gg": f24_da_pagare,

@@ -671,8 +671,15 @@ In concreto:
   continuano ad auto-creare/aggiornare gli articoli (matching 3 livelli, alias,
   storico acquisti, ultimo prezzo/fornitore) e ad alimentare le Previsioni
   Acquisti.
-- **Restano** (scelta 13/07/2026): Previsioni Acquisti (tab in Contabilità) e
-  Libretti sanitari nel modulo Dipendenti.
+- **Restano** (scelta 13/07/2026): Previsioni Acquisti (tab in Contabilità).
+- **Dipendenti — solo dati contabili/fiscali** (scelta 14/07/2026): il
+  gestionale HR completo (contratti di lavoro, libretti sanitari,
+  regolamento aziendale, presenze/turni disciplinari, ecc.) è un programma
+  **esterno** a questo gestionale. Qui nel modulo Dipendenti restano solo i
+  dati che servono alla contabilità: anagrafica minima (per collegare CF↔
+  cedolino), cedolini paga e TFR. Rimossi dal codice: CRUD contratti
+  (`contratti_dipendenti`), CRUD e import massivo libretti sanitari
+  (`libretti_sanitari`), relativi alert/scadenze/report PDF.
 
 ## Libro Giornale e Libro Mastro (Contabilità → Libro Giornale)
 

@@ -3,7 +3,7 @@ Handler Eventi Dipendenti — Gestionale Ceraldi Group
 ======================================================
 Copre le specifiche di DIPENDENTI.txt:
 - Deduplica su CF/nome+cognome+nascita
-- Alert anagrafica incompleta (IBAN, contratto)
+- Alert anagrafica incompleta (IBAN)
 - Alert cessato con flussi attivi
 - Audit trail creazione/aggiornamento
 - Risoluzione alert quando fascicolo completato
@@ -29,7 +29,6 @@ async def on_dipendente_created(event: Dict[str, Any], db) -> Optional[Dict]:
     cognome = event.get("cognome", "")
     cf = event.get("codice_fiscale", "")
     iban = event.get("iban_cedolino")
-    contratto = event.get("tipo_contratto")
     stato = event.get("stato", "attivo")
     nome_completo = f"{nome} {cognome}".strip()
 
@@ -77,8 +76,6 @@ async def on_dipendente_created(event: Dict[str, Any], db) -> Optional[Dict]:
         campi_mancanti.append("codice fiscale")
     if not iban:
         campi_mancanti.append("IBAN stipendio")
-    if not contratto:
-        campi_mancanti.append("tipo contratto")
 
     if campi_mancanti:
         await genera_alert(
@@ -93,14 +90,6 @@ async def on_dipendente_created(event: Dict[str, Any], db) -> Optional[Dict]:
         await genera_alert(
             "DIP_IBAN_MANCANTE", dip_id, "dipendenti",
             f"Dipendente '{nome_completo}' senza IBAN per stipendio",
-            db
-        )
-
-    # Alert contratto specifico
-    if not contratto:
-        await genera_alert(
-            "DIP_CONTRATTO_MANCANTE", dip_id, "dipendenti",
-            f"Dipendente '{nome_completo}' senza contratto collegato",
             db
         )
 
@@ -127,24 +116,20 @@ async def on_dipendente_updated_risolvi(event: Dict[str, Any], db) -> Optional[D
     dip_id = event.get("dipendente_id", "")
     iban = event.get("iban_cedolino")
     cf = event.get("codice_fiscale")
-    contratto = event.get("tipo_contratto")
 
     risolti = 0
 
     if iban:
         risolti += await risolvi_alert("DIP_IBAN_MANCANTE", dip_id, db)
 
-    if contratto:
-        risolti += await risolvi_alert("DIP_CONTRATTO_MANCANTE", dip_id, db)
-
-    if cf and iban and contratto:
+    if cf and iban:
         risolti += await risolvi_alert("DIP_INCOMPLETO", dip_id, db)
 
     # Audit
     await log_evento(
         modulo="dipendenti", azione="aggiornato", entita_id=dip_id,
         entita_collection="dipendenti", db=db,
-        nuovo_stato={"iban": bool(iban), "cf": bool(cf), "contratto": bool(contratto)},
+        nuovo_stato={"iban": bool(iban), "cf": bool(cf)},
         fonte=event.get("source_module", "manuale"),
         dettaglio=f"Alert risolti: {risolti}"
     )
@@ -156,11 +141,10 @@ async def on_dipendente_cessato(event: Dict[str, Any], db) -> Optional[Dict]:
     """
     Quando un dipendente viene cessato esegue il ciclo completo di chiusura:
 
-    1. Termina tutti i contratti attivi (employee_contracts) con data_fine = data_cessazione
-    2. Rifiuta automaticamente richieste assenza pending con data > data_cessazione
-    3. Annulla partite aperte stipendio residue
-    4. Risolve alert aperti sul dipendente (tranne DIP_CESSATO_FLUSSI_ATTIVI nuovo)
-    5. Genera audit + eventuale alert se restano flussi anomali
+    1. Rifiuta automaticamente richieste assenza pending con data > data_cessazione
+    2. Annulla partite aperte stipendio residue
+    3. Risolve alert aperti sul dipendente (tranne DIP_CESSATO_FLUSSI_ATTIVI nuovo)
+    4. Genera audit + eventuale alert se restano flussi anomali
 
     Idempotente: se ricevuto due volte non duplica azioni (skip se già terminato).
     """
@@ -177,41 +161,12 @@ async def on_dipendente_cessato(event: Dict[str, Any], db) -> Optional[Dict]:
 
     now_iso = datetime.now(timezone.utc).isoformat()
     azioni = {
-        "contratti_terminati": 0,
         "richieste_future_rifiutate": 0,
         "partite_annullate": 0,
         "alerts_risolti": 0,
     }
 
-    # 1. Termina contratti attivi
-    # P1 §5.2: canonica contratti = `contratti_dipendenti` (tutto il CRUD contratti
-    # vive lì); l'alias inglese legacy `employee_contracts` era vuoto, quindi la
-    # cessazione non terminava i contratti reali. Redirect alla canonica.
-    try:
-        r_contratti = await db["contratti_dipendenti"].update_many(
-            {
-                "dipendente_id": dip_id,
-                "stato": {"$in": ["attivo", "in_corso", None]},
-                "$or": [
-                    {"data_fine": None},
-                    {"data_fine": {"$exists": False}},
-                    {"data_fine": ""},
-                    {"data_fine": {"$gte": data_cessazione}},
-                ],
-            },
-            {"$set": {
-                "stato": "terminato",
-                "data_fine": data_cessazione,
-                "motivo_fine": "cessazione_rapporto",
-                "terminato_automaticamente": True,
-                "terminato_at": now_iso,
-            }}
-        )
-        azioni["contratti_terminati"] = r_contratti.modified_count
-    except Exception as e:
-        logger.exception(f"Errore terminazione contratti per dip {dip_id}: {e}")
-
-    # 2. Rifiuta richieste assenza future pending
+    # 1. Rifiuta richieste assenza future pending
     try:
         r_richieste = await db["richieste_assenza"].update_many(
             {
@@ -230,7 +185,7 @@ async def on_dipendente_cessato(event: Dict[str, Any], db) -> Optional[Dict]:
     except Exception as e:
         logger.exception(f"Errore rifiuto richieste future per dip {dip_id}: {e}")
 
-    # 3. Annulla partite aperte stipendio residue
+    # 2. Annulla partite aperte stipendio residue
     try:
         r_partite = await db["partite_aperte"].update_many(
             {
@@ -248,7 +203,7 @@ async def on_dipendente_cessato(event: Dict[str, Any], db) -> Optional[Dict]:
     except Exception as e:
         logger.exception(f"Errore annullamento partite per dip {dip_id}: {e}")
 
-    # 4. Risolve alert aperti sul dipendente
+    # 3. Risolve alert aperti sul dipendente
     try:
         r_alerts = await db["alerts"].update_many(
             {
@@ -269,7 +224,7 @@ async def on_dipendente_cessato(event: Dict[str, Any], db) -> Optional[Dict]:
     except Exception as e:
         logger.exception(f"Errore risoluzione alert per dip {dip_id}: {e}")
 
-    # 5. Check flussi residui anomali (cedolini recenti NON dovrebbero essere
+    # 4. Check flussi residui anomali (cedolini recenti NON dovrebbero essere
     #    un problema se la cessazione è arrivata proprio da cedolino, quindi
     #    l'alert è generato solo se siamo in cessazione manuale)
     if not auto_from_cedolino:
@@ -297,8 +252,7 @@ async def on_dipendente_cessato(event: Dict[str, Any], db) -> Optional[Dict]:
     if auto_from_cedolino:
         dettaglio += f" (rilevato da cedolino: {', '.join(diciture) if diciture else 'diciture cessazione'})"
     dettaglio += (
-        f" — contratti={azioni['contratti_terminati']}, "
-        f"richieste={azioni['richieste_future_rifiutate']}, "
+        f" — richieste={azioni['richieste_future_rifiutate']}, "
         f"partite={azioni['partite_annullate']}, "
         f"alerts={azioni['alerts_risolti']}"
     )

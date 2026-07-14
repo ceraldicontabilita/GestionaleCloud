@@ -3,6 +3,25 @@
 Fonte specifica: `DIPENDENTI.txt` (fornita dall'utente).
 Verificato leggendo il codice attuale (post-consolidamento router del 2026-07-07).
 
+## AGGIORNAMENTO 2026-07-14 — scelta vincolante utente: HR fuori da questo repo
+
+L'utente ha chiarito in modo esplicito che il gestionale HR completo è
+**esterno** a questo programma (AppDipendenti). Di conseguenza sono stati
+**rimossi dal codice** di questo repo: CRUD contratti di lavoro
+(`contratti_dipendenti`, incl. import Excel/scadenze), CRUD e import massivo
+libretti sanitari (`libretti_sanitari`), i relativi alert (`DIP_CONTRATTO_
+MANCANTE`), il conteggio in `/dipendenti/stats`, le sezioni corrispondenti in
+`/dashboard-widget` (scadenze.py) e nei report PDF, i campi `tipo_contratto`/
+`livello`/`data_fine_contratto`/`libretto_*` da create/update/bulk-upsert
+dipendente, il modello Pydantic morto `app/models/employee.py` e i
+repository/service associati (mai wired su router reali). **Restano** in
+questo repo solo: anagrafica minima (per collegare CF↔cedolino), turni,
+portale dipendenti, cedolini paga (`cedolini_manager.py` e affini) e TFR
+(`app/routers/tfr.py`) — moduli verificati isolati, zero riferimenti a
+contratto/libretto. Gran parte delle sezioni sotto ("Gap confermati",
+"contratti/buste paga/libretti sanitari") descrive lo stato PRIMA di questa
+rimozione: tenerne conto leggendo il resto del documento come storico.
+
 ## Correzione importante: NON è "solo anagrafica in sola lettura"
 
 Un'analisi precedente in questa sessione aveva concluso che l'HR fosse interamente spostato

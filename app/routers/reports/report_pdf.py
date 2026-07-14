@@ -248,74 +248,36 @@ async def generate_report_dipendenti(
     """
     Genera report PDF dipendenti con:
     - Anagrafica
-    - Contratti attivi
-    - Libretti sanitari
-    - Buste paga (se specificato mese)
     """
     db = Database.get_db()
-    
+
     # Recupera dati
     dipendenti = await db[Collections.EMPLOYEES].find(
         {"status": {"$in": ["attivo", "active", None]}},
         {"_id": 0}
     ).sort("nome_completo", 1).to_list(500)
-    
-    contratti = await db["contratti_dipendenti"].find(
-        {"stato": "attivo"},
-        {"_id": 0}
-    ).to_list(500)
-    
-    libretti = await db["libretti_sanitari"].find({}, {"_id": 0}).to_list(500)
-    
-    # Mappa per lookup veloce
-    contratti_map = {c.get("dipendente_id"): c for c in contratti}
-    libretti_map = {lib.get("dipendente_id"): lib for lib in libretti}
-    
+
     # Genera PDF
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=2*cm, bottomMargin=2*cm)
     styles = get_styles()
     elements = []
-    
+
     # Intestazione
     periodo = f" - {mese}/{anno}" if anno and mese else ""
     elements.append(Paragraph(f"REPORT DIPENDENTI{periodo}", styles['TitleCustom']))
     elements.append(Paragraph(f"Totale: {len(dipendenti)} dipendenti attivi", styles['SubtitleCustom']))
     elements.append(Spacer(1, 20))
-    
+
     # Tabella dipendenti
-    data = [["Nome", "Mansione", "Contratto", "Libretto Sanitario"]]
-    
+    data = [["Nome", "Mansione"]]
+
     for dip in dipendenti:
         nome = dip.get("nome_completo") or f"{dip.get('nome', '')} {dip.get('cognome', '')}".strip()
         mansione = dip.get("mansione", "-")
-        
-        # Contratto
-        contratto = contratti_map.get(dip.get("id"))
-        if contratto:
-            tipo = contratto.get("tipo_contratto", "").replace("_", " ").title()
-            contratto_str = f"{tipo}"
-            if contratto.get("data_fine"):
-                contratto_str += f" (fino al {format_date_it(contratto.get('data_fine'))})"
-        else:
-            contratto_str = "Non registrato"
-        
-        # Libretto
-        libretto = libretti_map.get(dip.get("id"))
-        if libretto:
-            scadenza = libretto.get("data_scadenza")
-            if scadenza:
-                libretto_str = f"Scade: {format_date_it(scadenza)}"
-                if datetime.strptime(scadenza[:10], "%Y-%m-%d") < datetime.now():
-                    libretto_str += " ⚠️ SCADUTO"
-            else:
-                libretto_str = "Da compilare"
-        else:
-            libretto_str = "Non presente"
-        
-        data.append([nome, mansione, contratto_str, libretto_str])
-    
-    t = Table(data, colWidths=[5*cm, 3*cm, 4*cm, 4*cm])
+        data.append([nome, mansione])
+
+    t = Table(data, colWidths=[8*cm, 8*cm])
     t.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1e3a5f')),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
@@ -351,33 +313,20 @@ async def generate_report_scadenze(giorni: int = Query(30, description="Giorni p
     """
     Genera report PDF delle scadenze imminenti:
     - Fatture da pagare
-    - Contratti in scadenza
-    - Libretti sanitari in scadenza
     - F24 da versare
     """
     db = Database.get_db()
-    
+
     oggi = datetime.now(timezone.utc)
     limite = (oggi + timedelta(days=giorni)).strftime('%Y-%m-%d')
     oggi_str = oggi.strftime('%Y-%m-%d')
-    
+
     # Fatture da pagare
     fatture_scadenza = await db[Collections.INVOICES].find({
         "data_scadenza": {"$lte": limite},
         "stato_pagamento": {"$in": ["non_pagata", "da_pagare", None]}
     }, {"_id": 0}).sort("data_scadenza", 1).to_list(100)
-    
-    # Contratti in scadenza
-    contratti_scadenza = await db["contratti_dipendenti"].find({
-        "data_fine": {"$lte": limite, "$gte": oggi_str},
-        "stato": "attivo"
-    }, {"_id": 0}).sort("data_fine", 1).to_list(100)
-    
-    # Libretti in scadenza
-    libretti_scadenza = await db["libretti_sanitari"].find({
-        "data_scadenza": {"$lte": limite}
-    }, {"_id": 0}).sort("data_scadenza", 1).to_list(100)
-    
+
     # F24 da pagare
     f24_scadenza = await db["f24_unificato"].find({
         "data_scadenza": {"$lte": limite},
@@ -417,49 +366,6 @@ async def generate_report_scadenze(giorni: int = Query(30, description="Giorni p
         elements.append(t)
         elements.append(Spacer(1, 15))
     
-    # Contratti
-    if contratti_scadenza:
-        elements.append(Paragraph(f"📋 CONTRATTI IN SCADENZA ({len(contratti_scadenza)})", styles['SectionTitle']))
-        data = [["Dipendente", "Tipo", "Scadenza"]]
-        for c in contratti_scadenza:
-            data.append([
-                c.get("dipendente_nome", "-"),
-                c.get("tipo_contratto", "-").replace("_", " ").title(),
-                format_date_it(c.get("data_fine"))
-            ])
-        t = Table(data, colWidths=[7*cm, 5*cm, 3*cm])
-        t.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#ca8a04')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, -1), 9),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
-        ]))
-        elements.append(t)
-        elements.append(Spacer(1, 15))
-    
-    # Libretti
-    if libretti_scadenza:
-        elements.append(Paragraph(f"🏥 LIBRETTI SANITARI ({len(libretti_scadenza)})", styles['SectionTitle']))
-        data = [["Dipendente", "Scadenza", "Stato"]]
-        for lib in libretti_scadenza:
-            scaduto = lib.get("data_scadenza") and lib.get("data_scadenza") < oggi_str
-            data.append([
-                lib.get("dipendente_nome", "-"),
-                format_date_it(lib.get("data_scadenza")),
-                "SCADUTO" if scaduto else "In scadenza"
-            ])
-        t = Table(data, colWidths=[7*cm, 4*cm, 4*cm])
-        t.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#ef4444')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, -1), 9),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
-        ]))
-        elements.append(t)
-        elements.append(Spacer(1, 15))
-    
     # F24
     if f24_scadenza:
         elements.append(Paragraph(f"💳 F24 DA VERSARE ({len(f24_scadenza)})", styles['SectionTitle']))
@@ -481,7 +387,7 @@ async def generate_report_scadenze(giorni: int = Query(30, description="Giorni p
         ]))
         elements.append(t)
     
-    if not any([fatture_scadenza, contratti_scadenza, libretti_scadenza, f24_scadenza]):
+    if not any([fatture_scadenza, f24_scadenza]):
         elements.append(Paragraph("✅ Nessuna scadenza nei prossimi giorni!", styles['SubtitleCustom']))
     
     # Footer

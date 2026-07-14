@@ -13,7 +13,6 @@ from .invoice_service_v2 import InvoiceServiceV2, get_invoice_service_v2
 from .warehouse_service import WarehouseService
 from .accounting_service import AccountingService
 from .accounting_entries_service import AccountingEntriesService
-from .employee_service import EmployeeService
 from .cash_service import CashService
 from .chart_service import ChartOfAccountsService
 from .email_service import EmailService
@@ -30,7 +29,6 @@ __all__ = [
     "WarehouseService",
     "AccountingService",
     "AccountingEntriesService",
-    "EmployeeService",
     "CashService",
     "ChartOfAccountsService",
     "EmailService",

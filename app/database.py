@@ -282,10 +282,6 @@ class Database:
                           [("codice_fiscale", 1), ("periodo", 1), ("saldo_delega", 1), ("data_versamento", 1)],
                           name="idx_quietanze_chiave")
         await _safe_index("quietanze_f24", "f24_id", sparse=True, name="idx_quietanze_f24_id")
-        # Contratti dipendenti: query per dipendente e per validità.
-        await _safe_index("contratti_dipendenti", "dipendente_id", name="idx_contratti_dip")
-        await _safe_index("contratti_dipendenti", [("dipendente_id", 1), ("data_inizio", -1)],
-                          name="idx_contratti_dip_inizio")
         # Documenti non associati: dedup per impronta + coda per data.
         await _safe_index("documenti_non_associati", "pdf_hash", sparse=True, name="idx_docnonass_hash")
         await _safe_index("documenti_non_associati", [("created_at", -1)], name="idx_docnonass_data")
@@ -382,9 +378,7 @@ class Collections:
     # Employees
     EMPLOYEES = "dipendenti"
     PAYSLIPS = "cedolini"  # Cambiato a collezione principale
-    
-    LIBRETTI_SANITARI = "libretti_sanitari"
-    
+
     # Cash & Bank
     CASH_MOVEMENTS = "prima_nota_cassa"
     BANK_STATEMENTS = "estratto_conto_movimenti"  # Collezione principale

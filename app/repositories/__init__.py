@@ -7,11 +7,6 @@ from .user_repository import UserRepository
 from .invoice_repository import InvoiceRepository
 from .supplier_repository import SupplierRepository
 from .warehouse_repository import WarehouseRepository, WarehouseMovementRepository
-from .employee_repository import (
-    EmployeeRepository,
-    PayslipRepository,
-    LibrettoSanitarioRepository
-)
 from .cash_repository import (
     CashMovementRepository,
     CorrissettivoRepository
@@ -24,9 +19,6 @@ __all__ = [
     "SupplierRepository",
     "WarehouseRepository",
     "WarehouseMovementRepository",
-    "EmployeeRepository",
-    "PayslipRepository",
-    "LibrettoSanitarioRepository",
     "CashMovementRepository",
     "CorrissettivoRepository",
     "ChartOfAccountsRepository",

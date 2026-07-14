@@ -43,21 +43,6 @@ from .warehouse import (
     StockAlert
 )
 
-from .employee import (
-    Employee,
-    EmployeeCreate,
-    EmployeeUpdate,
-    EmployeeResponse,
-    Payslip,
-    PayslipCreate,
-    PayslipResponse,
-    LibrettoSanitario,
-    LibrettoSanitarioCreate,
-    LibrettoSanitarioUpdate,
-    LibrettoSanitarioResponse,
-    EmployeeStats
-)
-
 from .cash import (
     CashMovement,
     CashMovementCreate,
@@ -107,21 +92,7 @@ __all__ = [
     "ProductMapping",
     "InventorySnapshot",
     "StockAlert",
-    
-    # Employee models
-    "Employee",
-    "EmployeeCreate",
-    "EmployeeUpdate",
-    "EmployeeResponse",
-    "Payslip",
-    "PayslipCreate",
-    "PayslipResponse",
-    "LibrettoSanitario",
-    "LibrettoSanitarioCreate",
-    "LibrettoSanitarioUpdate",
-    "LibrettoSanitarioResponse",
-    "EmployeeStats",
-    
+
     # Cash models
     "CashMovement",
     "CashMovementCreate",

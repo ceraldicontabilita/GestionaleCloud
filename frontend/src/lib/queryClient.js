@@ -33,12 +33,6 @@ export const queryKeys = {
     salari: filters => ['prima-nota', 'salari', filters],
     dipendenti: () => ['prima-nota', 'dipendenti'],
   },
-  // Contratti
-  contratti: {
-    all: ['contratti'],
-    list: () => ['contratti', 'list'],
-    scadenze: () => ['contratti', 'scadenze'],
-  },
   // Dipendenti
   dipendenti: {
     all: ['dipendenti'],

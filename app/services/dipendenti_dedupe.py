@@ -33,7 +33,7 @@ def _score_completezza(d: Dict[str, Any]) -> int:
     """Assegna un punteggio di completezza al record dipendente."""
     score = 0
     campi_pesanti = [
-        "codice_fiscale", "iban", "mansione", "livello", "tipo_contratto",
+        "codice_fiscale", "iban", "mansione",
         "data_assunzione", "telefono", "email", "indirizzo", "importo_netto",
         "importo_stipendio", "paga_base", "progressivi", "tfr", "ultimo_cedolino",
     ]

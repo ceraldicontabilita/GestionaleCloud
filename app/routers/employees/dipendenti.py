@@ -1,6 +1,8 @@
 """
 Gestione Dipendenti - Router API completo.
-Anagrafica, turni, libro unico, libretti sanitari.
+Anagrafica, turni, libro unico, buste paga/cedolini, TFR.
+Gestione HR completa (contratti, libretti sanitari, ecc.) e' un gestionale
+esterno a questo programma: qui restano solo i dati contabili/fiscali.
 """
 from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Body
 from typing import Dict, Any, List, Optional
@@ -30,11 +32,6 @@ TURNI_TIPI = {
 MANSIONI = [
     "Cameriere", "Cuoco", "Aiuto Cuoco", "Barista", "Pizzaiolo", 
     "Lavapiatti", "Cassiera", "Responsabile Sala", "Chef", "Sommelier"
-]
-
-CONTRATTI_TIPI = [
-    "Tempo Indeterminato", "Tempo Determinato", "Apprendistato", 
-    "Stage/Tirocinio", "Collaborazione", "Part-time"
 ]
 
 
@@ -118,20 +115,12 @@ async def get_dipendenti_stats() -> Dict[str, Any]:
         {"$group": {"_id": "$mansione", "count": {"$sum": 1}}}
     ]
     by_mansione = await db[Collections.EMPLOYEES].aggregate(pipeline).to_list(100)
-    
-    # Libretti in scadenza (prossimi 30 giorni)
-    today = datetime.now(timezone.utc)
-    deadline = today + timedelta(days=30)
-    libretti_scadenza = await db[Collections.EMPLOYEES].count_documents({
-        "libretto_scadenza": {"$lte": deadline.isoformat()[:10], "$gte": today.isoformat()[:10]}
-    })
-    
+
     return {
         "totale": total,
         "attivi": attivi,
         "inattivi": total - attivi,
-        "per_mansione": {item["_id"] or "N/D": item["count"] for item in by_mansione},
-        "libretti_in_scadenza": libretti_scadenza
+        "per_mansione": {item["_id"] or "N/D": item["count"] for item in by_mansione}
     }
 
 
@@ -382,13 +371,6 @@ async def get_mansioni() -> List[str]:
     return MANSIONI
 
 
-@router.get("/tipi-contratto")
-@handle_errors
-async def get_tipi_contratto() -> List[str]:
-    """Ritorna i tipi di contratto disponibili."""
-    return CONTRATTI_TIPI
-
-
 @router.post("/bulk-upsert", summary="Import/update massivo dipendenti (match su CF)")
 @handle_errors
 async def bulk_upsert_dipendenti(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
@@ -436,9 +418,9 @@ async def bulk_upsert_dipendenti(payload: Dict[str, Any] = Body(...)) -> Dict[st
     CAMPI_AGGIORNABILI = {
         "nome", "cognome", "nome_completo",
         "data_nascita", "luogo_nascita",
-        "mansione", "qualifica", "livello", "tipo_contratto",
+        "mansione", "qualifica",
         "email", "telefono", "indirizzo",
-        "data_assunzione", "data_fine_contratto",
+        "data_assunzione",
         "ore_settimanali", "giorni_lavoro",
         "iban", "iban_cedolino",
         "matricola", "codice_dipendente",
@@ -529,10 +511,7 @@ async def bulk_upsert_dipendenti(payload: Dict[str, Any] = Body(...)) -> Dict[st
                 "luogo_nascita": raw.get("luogo_nascita", ""),
                 "mansione": raw.get("mansione", ""),
                 "qualifica": raw.get("qualifica", ""),
-                "livello": raw.get("livello", ""),
-                "tipo_contratto": raw.get("tipo_contratto", ""),
                 "data_assunzione": raw.get("data_assunzione"),
-                "data_fine_contratto": raw.get("data_fine_contratto"),
                 "ore_settimanali": raw.get("ore_settimanali", 40),
                 "giorni_lavoro": raw.get("giorni_lavoro", ["lun", "mar", "mer", "gio", "ven", "sab"]),
                 "iban": raw.get("iban", ""),
@@ -607,9 +586,9 @@ async def bulk_upsert_preview(payload: Dict[str, Any] = Body(...)) -> Dict[str, 
     CAMPI_AGGIORNABILI = {
         "nome", "cognome", "nome_completo",
         "data_nascita", "luogo_nascita",
-        "mansione", "qualifica", "livello", "tipo_contratto",
+        "mansione", "qualifica",
         "email", "telefono", "indirizzo",
-        "data_assunzione", "data_fine_contratto",
+        "data_assunzione",
         "ore_settimanali", "giorni_lavoro",
         "iban", "iban_cedolino",
         "matricola", "codice_dipendente",
@@ -753,10 +732,7 @@ async def create_dipendente(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
         "luogo_nascita": data.get("luogo_nascita", ""),
         "mansione": data.get("mansione", ""),
         "qualifica": data.get("qualifica", ""),
-        "livello": data.get("livello", ""),
-        "tipo_contratto": data.get("tipo_contratto", ""),
         "data_assunzione": data.get("data_assunzione"),
-        "data_fine_contratto": data.get("data_fine_contratto"),
         "ore_settimanali": data.get("ore_settimanali", 40),
         "giorni_lavoro": data.get("giorni_lavoro", ["lun", "mar", "mer", "gio", "ven", "sab"]),
         "iban": iban_value,
@@ -780,9 +756,6 @@ async def create_dipendente(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
             "rol_residui": data.get("rol_residui", 0)
         },
         "acconti": data.get("acconti", []),
-        "libretto_numero": data.get("libretto_numero", ""),
-        "libretto_scadenza": data.get("libretto_scadenza"),
-        "libretto_file": data.get("libretto_file"),
         "portale_invitato": False,
         "portale_registrato": False,
         "portale_ultimo_accesso": None,
@@ -811,7 +784,6 @@ async def create_dipendente(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
             "cognome": cognome,
             "codice_fiscale": dipendente["codice_fiscale"],
             "iban_cedolino": iban_value,
-            "tipo_contratto": dipendente["tipo_contratto"],
             "stato": "attivo",
         }, db, source_module="dipendenti")
     except Exception:
@@ -914,28 +886,6 @@ async def create_busta_paga(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
 # ============== NOTA: Sezione SALARI rimossa ==============
 # La gestione salari/prima nota è stata spostata in /app/app/routers/prima_nota_salari.py
 # Endpoints disponibili: /api/prima-nota-salari/*
-
-# ============== GESTIONE CONTRATTI - lista (must be BEFORE /{dipendente_id}) ==============
-
-@router.get("/contratti")
-@handle_errors
-async def list_contratti_proxy(
-    dipendente_id: Optional[str] = Query(None),
-    tipo: Optional[str] = Query(None),
-    stato: Optional[str] = Query(None)
-) -> List[Dict[str, Any]]:
-    """Lista tutti i contratti (proxy pre-routing per evitare conflitto con /{dipendente_id})."""
-    db = Database.get_db()
-    query = {}
-    if dipendente_id:
-        query["dipendente_id"] = dipendente_id
-    if tipo:
-        query["tipo_contratto"] = tipo
-    if stato:
-        query["stato"] = stato
-    contratti = await db["contratti_dipendenti"].find(query, {"_id": 0}).sort("data_inizio", -1).to_list(500)
-    return contratti
-
 
 # ============== DIPENDENTE DETAIL (must be after specific routes) ==============
 
@@ -1209,58 +1159,6 @@ async def salva_turni(data: Dict[str, Any] = Body(...)) -> Dict[str, str]:
     return {"message": "Turni salvati"}
 
 
-# ============== LIBRETTI SANITARI ==============
-
-@router.get("/libretti/scadenze")
-@handle_errors
-async def get_libretti_scadenze(days: int = Query(30, ge=1, le=365)) -> List[Dict[str, Any]]:
-    """Ritorna dipendenti con libretto in scadenza."""
-    db = Database.get_db()
-    
-    today = datetime.now(timezone.utc)
-    deadline = today + timedelta(days=days)
-    
-    dipendenti = await db[Collections.EMPLOYEES].find(
-        {
-            "libretto_scadenza": {"$ne": None},
-            "$or": [
-                {"libretto_scadenza": {"$lte": deadline.isoformat()[:10]}},
-                {"libretto_scadenza": {"$lt": today.isoformat()[:10]}}  # Già scaduti
-            ]
-        },
-        {"_id": 0}
-    ).sort("libretto_scadenza", 1).to_list(100)
-    
-    return dipendenti
-
-
-@router.put("/{dipendente_id}/libretto")
-@handle_errors
-async def update_libretto(dipendente_id: str, data: Dict[str, Any] = Body(...)) -> Dict[str, str]:
-    """Aggiorna dati libretto sanitario."""
-    db = Database.get_db()
-    
-    update_data = {}
-    if "libretto_numero" in data:
-        update_data["libretto_numero"] = data["libretto_numero"]
-    if "libretto_scadenza" in data:
-        update_data["libretto_scadenza"] = data["libretto_scadenza"]
-    if "libretto_file" in data:
-        update_data["libretto_file"] = data["libretto_file"]
-    
-    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
-    
-    result = await db[Collections.EMPLOYEES].update_one(
-        {"$or": [{"id": dipendente_id}, {"codice_fiscale": dipendente_id}]},
-        {"$set": update_data}
-    )
-    
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Dipendente non trovato")
-    
-    return {"message": "Libretto aggiornato"}
-
-
 # ============== PORTALE DIPENDENTI ==============
 
 @router.post("/{dipendente_id}/invita-portale")
@@ -1302,78 +1200,6 @@ async def invita_multipli(dipendenti_ids: List[str] = Body(...)) -> Dict[str, An
     return {"message": f"Invitati {result.modified_count} dipendenti"}
 
 
-# ============== LIBRETTI SANITARI - COLLECTION SEPARATA ==============
-
-@router.get("/libretti-sanitari/all")
-@handle_errors
-async def get_all_libretti_sanitari() -> List[Dict[str, Any]]:
-    """Lista tutti i libretti sanitari."""
-    db = Database.get_db()
-    
-    libretti = await db["libretti_sanitari"].find({}, {"_id": 0}).sort("data_scadenza", 1).to_list(500)
-    return libretti
-
-
-@router.post("/libretti-sanitari")
-@handle_errors
-async def create_libretto_sanitario(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
-    """Crea nuovo libretto sanitario."""
-    db = Database.get_db()
-    
-    libretto = {
-        "id": str(uuid.uuid4()),
-        "dipendente_nome": data.get("dipendente_nome", ""),
-        "dipendente_id": data.get("dipendente_id"),
-        "numero_libretto": data.get("numero_libretto", ""),
-        "data_rilascio": data.get("data_rilascio"),
-        "data_scadenza": data.get("data_scadenza"),
-        "stato": data.get("stato", "valido"),
-        "note": data.get("note", ""),
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "updated_at": datetime.now(timezone.utc).isoformat()
-    }
-    
-    await db["libretti_sanitari"].insert_one(libretto.copy())
-    libretto.pop("_id", None)
-    
-    return libretto
-
-
-@router.put("/libretti-sanitari/{libretto_id}")
-@handle_errors
-async def update_libretto_sanitario(libretto_id: str, data: Dict[str, Any] = Body(...)) -> Dict[str, str]:
-    """Aggiorna libretto sanitario."""
-    db = Database.get_db()
-    
-    data.pop("id", None)
-    data.pop("created_at", None)
-    data["updated_at"] = datetime.now(timezone.utc).isoformat()
-    
-    result = await db["libretti_sanitari"].update_one(
-        {"id": libretto_id},
-        {"$set": data}
-    )
-    
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Libretto non trovato")
-    
-    return {"message": "Libretto aggiornato"}
-
-
-@router.delete("/libretti-sanitari/{libretto_id}")
-@handle_errors
-async def delete_libretto_sanitario(libretto_id: str) -> Dict[str, str]:
-    """Elimina libretto sanitario."""
-    db = Database.get_db()
-    
-    result = await db["libretti_sanitari"].delete_one({"id": libretto_id})
-    
-    if result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="Libretto non trovato")
-    
-    return {"message": "Libretto eliminato"}
-
-
 # ============== LIBRO UNICO ==============
 
 # (§13.2, pulizia 2026-07-13 — scelta utente: rimossa la famiglia
@@ -1404,551 +1230,6 @@ async def get_portale_stats() -> Dict[str, Any]:
         "invitati": invitati,
         "registrati": registrati
     }
-
-
-# ============== IMPORT MASSIVO LIBRETTI SANITARI ==============
-
-@router.post("/libretti-sanitari/import-excel")
-@handle_errors
-async def import_libretti_sanitari_excel(file: UploadFile = File(...)) -> Dict[str, Any]:
-    """
-    Import massivo libretti sanitari da Excel.
-    Colonne richieste: Nome Dipendente, Numero Libretto, Data Rilascio, Data Scadenza, Note
-    """
-    import pandas as pd
-    
-    db = Database.get_db()
-    content = await file.read()
-    
-    try:
-        # Leggi Excel
-        df = pd.read_excel(io.BytesIO(content))
-        
-        # Normalizza nomi colonne
-        df.columns = df.columns.str.lower().str.strip().str.replace(' ', '_')
-        
-        created = 0
-        updated = 0
-        errors = []
-        
-        for idx, row in df.iterrows():
-            try:
-                # Estrai dati
-                nome = str(row.get('nome_dipendente', row.get('dipendente', row.get('nome', '')))).strip()
-                numero = str(row.get('numero_libretto', row.get('numero', ''))).strip()
-                
-                if not nome:
-                    continue
-                
-                # Parse date
-                data_rilascio = None
-                data_scadenza = None
-                
-                for col in ['data_rilascio', 'rilascio', 'emissione']:
-                    if col in row and pd.notna(row[col]):
-                        val = row[col]
-                        if isinstance(val, str):
-                            for fmt in ['%d/%m/%Y', '%Y-%m-%d', '%d-%m-%Y']:
-                                try:
-                                    data_rilascio = datetime.strptime(val, fmt).strftime('%Y-%m-%d')
-                                    break
-                                except (ValueError, TypeError):
-                                    pass
-                        elif hasattr(val, 'strftime'):
-                            data_rilascio = val.strftime('%Y-%m-%d')
-                        break
-                
-                for col in ['data_scadenza', 'scadenza', 'validita']:
-                    if col in row and pd.notna(row[col]):
-                        val = row[col]
-                        if isinstance(val, str):
-                            for fmt in ['%d/%m/%Y', '%Y-%m-%d', '%d-%m-%Y']:
-                                try:
-                                    data_scadenza = datetime.strptime(val, fmt).strftime('%Y-%m-%d')
-                                    break
-                                except (ValueError, TypeError):
-                                    pass
-                        elif hasattr(val, 'strftime'):
-                            data_scadenza = val.strftime('%Y-%m-%d')
-                        break
-                
-                note = str(row.get('note', row.get('osservazioni', ''))).strip()
-                if note == 'nan':
-                    note = ''
-                
-                # Cerca dipendente esistente
-                dipendente = await db[Collections.EMPLOYEES].find_one({
-                    "$or": [
-                        {"nome_completo": {"$regex": nome, "$options": "i"}},
-                        {"nome": {"$regex": nome.split()[0] if nome else "", "$options": "i"}}
-                    ]
-                })
-                
-                dipendente_id = dipendente.get("id") if dipendente else None
-                
-                # Determina stato
-                stato = "valido"
-                if data_scadenza:
-                    try:
-                        scad = datetime.strptime(data_scadenza, '%Y-%m-%d')
-                        if scad < datetime.now():
-                            stato = "scaduto"
-                        elif (scad - datetime.now()).days < 30:
-                            stato = "in_scadenza"
-                    except (ValueError, TypeError):
-                        pass
-                
-                # Check duplicato
-                existing = await db["libretti_sanitari"].find_one({
-                    "$or": [
-                        {"dipendente_nome": {"$regex": nome, "$options": "i"}},
-                        {"numero_libretto": numero} if numero else {"_id": None}
-                    ]
-                })
-                
-                if existing:
-                    # Aggiorna
-                    await db["libretti_sanitari"].update_one(
-                        {"id": existing["id"]},
-                        {"$set": {
-                            "numero_libretto": numero or existing.get("numero_libretto"),
-                            "data_rilascio": data_rilascio or existing.get("data_rilascio"),
-                            "data_scadenza": data_scadenza or existing.get("data_scadenza"),
-                            "stato": stato,
-                            "note": note or existing.get("note", ""),
-                            "dipendente_id": dipendente_id or existing.get("dipendente_id"),
-                            "updated_at": datetime.now(timezone.utc).isoformat()
-                        }}
-                    )
-                    updated += 1
-                else:
-                    # Crea nuovo
-                    libretto = {
-                        "id": str(uuid.uuid4()),
-                        "dipendente_nome": nome,
-                        "dipendente_id": dipendente_id,
-                        "numero_libretto": numero,
-                        "data_rilascio": data_rilascio,
-                        "data_scadenza": data_scadenza,
-                        "stato": stato,
-                        "note": note,
-                        "created_at": datetime.now(timezone.utc).isoformat(),
-                        "updated_at": datetime.now(timezone.utc).isoformat()
-                    }
-                    await db["libretti_sanitari"].insert_one(libretto.copy())
-                    created += 1
-                    
-            except Exception as e:
-                errors.append(f"Riga {idx+2}: {str(e)}")
-        
-        return {
-            "success": True,
-            "created": created,
-            "updated": updated,
-            "errors": errors[:20]
-        }
-        
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Errore lettura file: {str(e)}")
-
-
-@router.get("/libretti-sanitari/scadenze")
-@handle_errors
-async def get_libretti_in_scadenza(giorni: int = Query(30, description="Giorni per scadenza")) -> Dict[str, Any]:
-    """Ritorna libretti in scadenza nei prossimi N giorni."""
-    db = Database.get_db()
-    
-    oggi = datetime.now(timezone.utc)
-    limite = (oggi + timedelta(days=giorni)).strftime('%Y-%m-%d')
-    oggi_str = oggi.strftime('%Y-%m-%d')
-    
-    # Scaduti
-    scaduti = await db["libretti_sanitari"].find(
-        {"data_scadenza": {"$lt": oggi_str}},
-        {"_id": 0}
-    ).sort("data_scadenza", 1).to_list(100)
-    
-    # In scadenza
-    in_scadenza = await db["libretti_sanitari"].find(
-        {"data_scadenza": {"$gte": oggi_str, "$lte": limite}},
-        {"_id": 0}
-    ).sort("data_scadenza", 1).to_list(100)
-    
-    return {
-        "scaduti": scaduti,
-        "in_scadenza": in_scadenza,
-        "totale_scaduti": len(scaduti),
-        "totale_in_scadenza": len(in_scadenza)
-    }
-
-
-@router.post("/libretti-sanitari/genera-da-dipendenti")
-@handle_errors
-async def genera_libretti_da_dipendenti() -> Dict[str, Any]:
-    """
-    Genera automaticamente i libretti sanitari per tutti i dipendenti attivi
-    che non hanno ancora un libretto.
-    """
-    db = Database.get_db()
-    
-    # Trova dipendenti attivi
-    dipendenti = await db[Collections.EMPLOYEES].find(
-        {"status": {"$in": ["attivo", "active", None]}},
-        {"_id": 0}
-    ).to_list(500)
-    
-    created = 0
-    skipped = 0
-    
-    for dip in dipendenti:
-        nome = dip.get("nome_completo") or f"{dip.get('nome', '')} {dip.get('cognome', '')}".strip()
-        dip_id = dip.get("id")
-        
-        if not nome:
-            continue
-        
-        # Verifica se ha già libretto
-        existing = await db["libretti_sanitari"].find_one({
-            "$or": [
-                {"dipendente_id": dip_id},
-                {"dipendente_nome": {"$regex": f"^{re.escape(nome)}$", "$options": "i"}}
-            ]
-        })
-        
-        if existing:
-            skipped += 1
-            continue
-        
-        # Crea libretto vuoto
-        libretto = {
-            "id": str(uuid.uuid4()),
-            "dipendente_nome": nome,
-            "dipendente_id": dip_id,
-            "numero_libretto": "",
-            "data_rilascio": None,
-            "data_scadenza": None,
-            "stato": "da_compilare",
-            "note": "Libretto generato automaticamente",
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "updated_at": datetime.now(timezone.utc).isoformat()
-        }
-        await db["libretti_sanitari"].insert_one(libretto.copy())
-        created += 1
-    
-    return {
-        "success": True,
-        "created": created,
-        "skipped": skipped,
-        "message": f"Creati {created} libretti, {skipped} dipendenti avevano già un libretto"
-    }
-
-
-# ============== GESTIONE CONTRATTI ==============
-# NB: la GET /contratti che era qui è stata rimossa (audit lug 2026): era
-# la seconda definizione identica dello stesso path — FastAPI usa la prima
-# registrata (list_contratti_proxy, più sopra), questa era irraggiungibile.
-
-
-@router.post("/contratti")
-@handle_errors
-async def create_contratto(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
-    """Crea nuovo contratto per dipendente."""
-    db = Database.get_db()
-    
-    # Verifica dipendente
-    dipendente = await db[Collections.EMPLOYEES].find_one(
-        {"$or": [{"id": data.get("dipendente_id")}, {"codice_fiscale": data.get("dipendente_id")}]}
-    )
-    
-    if not dipendente:
-        raise HTTPException(status_code=404, detail="Dipendente non trovato")
-
-    # Validazioni business sui dati del contratto
-    retribuzione = data.get("retribuzione_lorda")
-    if retribuzione is not None and float(retribuzione) < 0:
-        raise HTTPException(status_code=422, detail="retribuzione_lorda non può essere negativa")
-
-    data_inizio = data.get("data_inizio")
-    data_fine = data.get("data_fine")
-    if data_inizio and data_fine and str(data_fine) < str(data_inizio):
-        raise HTTPException(status_code=422, detail="data_fine non può essere precedente a data_inizio")
-
-    contratto = {
-        "id": str(uuid.uuid4()),
-        "dipendente_id": dipendente.get("id"),
-        "dipendente_nome": dipendente.get("nome_completo") or f"{dipendente.get('nome', '')} {dipendente.get('cognome', '')}".strip(),
-        "tipo_contratto": data.get("tipo_contratto", "tempo_determinato"),
-        "livello": data.get("livello", ""),
-        "mansione": data.get("mansione", dipendente.get("mansione", "")),
-        "retribuzione_lorda": data.get("retribuzione_lorda", 0),
-        "ore_settimanali": data.get("ore_settimanali", 40),
-        "data_inizio": data.get("data_inizio"),
-        "data_fine": data.get("data_fine"),  # None per indeterminato
-        "ccnl": data.get("ccnl", "Turismo - Pubblici Esercizi"),
-        "sede_lavoro": data.get("sede_lavoro", ""),
-        "note": data.get("note", ""),
-        "stato": "attivo",
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "updated_at": datetime.now(timezone.utc).isoformat()
-    }
-    
-    await db["contratti_dipendenti"].insert_one(contratto.copy())
-    
-    # Aggiorna anche il dipendente
-    await db[Collections.EMPLOYEES].update_one(
-        {"id": dipendente.get("id")},
-        {"$set": {
-            "contratto_attivo_id": contratto["id"],
-            "tipo_contratto": contratto["tipo_contratto"],
-            "livello": contratto["livello"],
-            "updated_at": datetime.now(timezone.utc).isoformat()
-        }}
-    )
-    
-    contratto.pop("_id", None)
-    return contratto
-
-
-@router.put("/contratti/{contratto_id}")
-@handle_errors
-async def update_contratto(contratto_id: str, data: Dict[str, Any] = Body(...)) -> Dict[str, str]:
-    """Aggiorna contratto esistente. Non permette modifiche su contratti terminati."""
-    db = Database.get_db()
-
-    # Blocca modifiche su contratti terminati
-    existing = await db["contratti_dipendenti"].find_one({"id": contratto_id}, {"_id": 0, "stato": 1})
-    if not existing:
-        raise HTTPException(status_code=404, detail="Contratto non trovato")
-    if existing.get("stato") == "terminato":
-        raise HTTPException(status_code=409, detail="Impossibile modificare un contratto terminato")
-    
-    data.pop("id", None)
-    data.pop("created_at", None)
-    data.pop("dipendente_id", None)  # Non modificabile
-    data["updated_at"] = datetime.now(timezone.utc).isoformat()
-    
-    result = await db["contratti_dipendenti"].update_one(
-        {"id": contratto_id},
-        {"$set": data}
-    )
-    
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Contratto non trovato")
-    
-    return {"message": "Contratto aggiornato"}
-
-
-@router.post("/contratti/{contratto_id}/termina")
-@handle_errors
-async def termina_contratto(
-    contratto_id: str,
-    data_fine: str = Query(..., description="Data fine contratto YYYY-MM-DD"),
-    motivo: str = Query("", description="Motivo cessazione")
-) -> Dict[str, str]:
-    """Termina un contratto attivo."""
-    db = Database.get_db()
-    
-    contratto = await db["contratti_dipendenti"].find_one({"id": contratto_id})
-    if not contratto:
-        raise HTTPException(status_code=404, detail="Contratto non trovato")
-    
-    await db["contratti_dipendenti"].update_one(
-        {"id": contratto_id},
-        {"$set": {
-            "stato": "terminato",
-            "data_fine": data_fine,
-            "motivo_cessazione": motivo,
-            "updated_at": datetime.now(timezone.utc).isoformat()
-        }}
-    )
-    
-    # Aggiorna dipendente
-    await db[Collections.EMPLOYEES].update_one(
-        {"id": contratto.get("dipendente_id")},
-        {"$set": {
-            "contratto_attivo_id": None,
-            "status": "cessato" if motivo else "attivo",
-            "updated_at": datetime.now(timezone.utc).isoformat()
-        }}
-    )
-    
-    return {"message": "Contratto terminato"}
-
-
-@router.delete("/contratti/{contratto_id}")
-@handle_errors
-async def delete_contratto(contratto_id: str) -> Dict[str, str]:
-    """Elimina un contratto. Solo contratti in stato 'bozza' o creati per errore possono essere eliminati."""
-    db = Database.get_db()
-    result = await db["contratti_dipendenti"].delete_one({"id": contratto_id})
-    if result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="Contratto non trovato")
-    return {"message": "Contratto eliminato"}
-
-
-@router.get("/contratti/scadenze")
-@handle_errors
-async def get_contratti_in_scadenza(giorni: int = Query(60, description="Giorni per scadenza")) -> Dict[str, Any]:
-    """Ritorna contratti a tempo determinato in scadenza."""
-    db = Database.get_db()
-    
-    oggi = datetime.now(timezone.utc)
-    limite = (oggi + timedelta(days=giorni)).strftime('%Y-%m-%d')
-    oggi_str = oggi.strftime('%Y-%m-%d')
-    
-    # Scaduti
-    scaduti = await db["contratti_dipendenti"].find(
-        {
-            "tipo_contratto": {"$in": ["tempo_determinato", "determinato", "Tempo Determinato", "Tempo determinato"]},
-            "data_fine": {"$lt": oggi_str},
-            "stato": "attivo"
-        },
-        {"_id": 0}
-    ).sort("data_fine", 1).to_list(100)
-    
-    # In scadenza
-    in_scadenza = await db["contratti_dipendenti"].find(
-        {
-            "tipo_contratto": {"$in": ["tempo_determinato", "determinato", "Tempo Determinato", "Tempo determinato"]},
-            "data_fine": {"$gte": oggi_str, "$lte": limite},
-            "stato": "attivo"
-        },
-        {"_id": 0}
-    ).sort("data_fine", 1).to_list(100)
-    
-    return {
-        "scaduti": scaduti,
-        "in_scadenza": in_scadenza,
-        "totale_scaduti": len(scaduti),
-        "totale_in_scadenza": len(in_scadenza)
-    }
-
-
-@router.post("/contratti/import-excel")
-@handle_errors
-async def import_contratti_excel(file: UploadFile = File(...)) -> Dict[str, Any]:
-    """
-    Import massivo contratti da Excel.
-    Colonne: Nome Dipendente, Tipo Contratto, Livello, Mansione, Data Inizio, Data Fine, Retribuzione
-    """
-    import pandas as pd
-    
-    db = Database.get_db()
-    content = await file.read()
-    
-    try:
-        df = pd.read_excel(io.BytesIO(content))
-        df.columns = df.columns.str.lower().str.strip().str.replace(' ', '_')
-        
-        created = 0
-        errors = []
-        
-        for idx, row in df.iterrows():
-            try:
-                nome = str(row.get('nome_dipendente', row.get('dipendente', row.get('nome', '')))).strip()
-                if not nome or nome == 'nan':
-                    continue
-                
-                # Cerca dipendente
-                dipendente = await db[Collections.EMPLOYEES].find_one({
-                    "$or": [
-                        {"nome_completo": {"$regex": nome, "$options": "i"}},
-                        {"nome": {"$regex": nome.split()[0] if ' ' in nome else nome, "$options": "i"}}
-                    ]
-                })
-                
-                if not dipendente:
-                    errors.append(f"Riga {idx+2}: Dipendente '{nome}' non trovato")
-                    continue
-                
-                # Parse date
-                data_inizio = None
-                data_fine = None
-                
-                for col in ['data_inizio', 'inizio', 'assunzione']:
-                    if col in row and pd.notna(row[col]):
-                        val = row[col]
-                        if isinstance(val, str):
-                            for fmt in ['%d/%m/%Y', '%Y-%m-%d']:
-                                try:
-                                    data_inizio = datetime.strptime(val, fmt).strftime('%Y-%m-%d')
-                                    break
-                                except (ValueError, TypeError):
-                                    pass
-                        elif hasattr(val, 'strftime'):
-                            data_inizio = val.strftime('%Y-%m-%d')
-                        break
-                
-                for col in ['data_fine', 'fine', 'scadenza']:
-                    if col in row and pd.notna(row[col]):
-                        val = row[col]
-                        if isinstance(val, str):
-                            for fmt in ['%d/%m/%Y', '%Y-%m-%d']:
-                                try:
-                                    data_fine = datetime.strptime(val, fmt).strftime('%Y-%m-%d')
-                                    break
-                                except (ValueError, TypeError):
-                                    pass
-                        elif hasattr(val, 'strftime'):
-                            data_fine = val.strftime('%Y-%m-%d')
-                        break
-                
-                tipo = str(row.get('tipo_contratto', row.get('tipo', 'tempo_determinato'))).strip()
-                if tipo == 'nan':
-                    tipo = 'tempo_determinato'
-                
-                retribuzione = 0
-                for col in ['retribuzione', 'retribuzione_lorda', 'stipendio', 'ral']:
-                    if col in row and pd.notna(row[col]):
-                        try:
-                            retribuzione = float(row[col])
-                        except (ValueError, TypeError):
-                            pass
-                        break
-                
-                contratto = {
-                    "id": str(uuid.uuid4()),
-                    "dipendente_id": dipendente.get("id"),
-                    "dipendente_nome": dipendente.get("nome_completo") or nome,
-                    "tipo_contratto": tipo,
-                    "livello": str(row.get('livello', '')).strip() if pd.notna(row.get('livello')) else "",
-                    "mansione": str(row.get('mansione', dipendente.get('mansione', ''))).strip() if pd.notna(row.get('mansione')) else dipendente.get('mansione', ''),
-                    "retribuzione_lorda": retribuzione,
-                    "ore_settimanali": int(row.get('ore', row.get('ore_settimanali', 40))) if pd.notna(row.get('ore', row.get('ore_settimanali'))) else 40,
-                    "data_inizio": data_inizio,
-                    "data_fine": data_fine,
-                    "ccnl": str(row.get('ccnl', 'Turismo - Pubblici Esercizi')).strip() if pd.notna(row.get('ccnl')) else 'Turismo - Pubblici Esercizi',
-                    "stato": "attivo",
-                    "created_at": datetime.now(timezone.utc).isoformat(),
-                    "updated_at": datetime.now(timezone.utc).isoformat()
-                }
-                
-                await db["contratti_dipendenti"].insert_one(contratto.copy())
-                
-                # Aggiorna dipendente
-                await db[Collections.EMPLOYEES].update_one(
-                    {"id": dipendente.get("id")},
-                    {"$set": {
-                        "contratto_attivo_id": contratto["id"],
-                        "tipo_contratto": tipo,
-                        "updated_at": datetime.now(timezone.utc).isoformat()
-                    }}
-                )
-                
-                created += 1
-                
-            except Exception as e:
-                errors.append(f"Riga {idx+2}: {str(e)}")
-        
-        return {
-            "success": True,
-            "created": created,
-            "errors": errors[:20]
-        }
-        
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Errore lettura file: {str(e)}")
-
 
 
 # ============== IMPORT BUSTE PAGA ==============

@@ -75,9 +75,6 @@ COLL_GIUSTIFICATIVI_SALDI_FINALI = "giustificativi_saldi_finali"  # NUOVO: Saldi
 COLL_RICHIESTE_ASSENZA = "richieste_assenza"
 COLL_RIPORTI_FERIE = "riporti_ferie"
 
-# Contratti
-COLL_CONTRATTI_DIPENDENTI = "contratti_dipendenti"  # CANONICA contratti (tutto il CRUD)
-COLL_EMPLOYEE_CONTRACTS = "employee_contracts"  # LEGACY/DEPRECATA (P1 §5.2): alias inglese; migrare in contratti_dipendenti con app/scripts/migra_employee_contracts_a_contratti.py; NON scrivere qui
 COLL_TURNI_DIPENDENTI = "turni_dipendenti"
 COLL_SHIFTS = "shifts"
 
