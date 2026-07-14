@@ -3,6 +3,7 @@ import api from '../api';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { PageLayout, PageSection } from '../components/PageLayout';
+import { formatEuroD } from '../lib/utils';
 import { AlertTriangle, CheckCircle, Search, Eye, Trash2, RefreshCw, Loader2 } from 'lucide-react';
 
 /**
@@ -150,7 +151,7 @@ export default function PuliziaPrimaNota() {
       title: 'Sposta movimento',
       message:
         `Spostare il movimento del ${voce.data} (${voce.numero_fattura || voce.descrizione}, ` +
-        `${Number(voce.importo || 0).toFixed(2)} €) da ${voce.registro_attuale.toUpperCase()} ` +
+        `${formatEuroD(voce.importo || 0)}) da ${voce.registro_attuale.toUpperCase()} ` +
         `a ${voce.registro_atteso.toUpperCase()}? La fattura collegata viene aggiornata di conseguenza.`,
       confirmText: 'Sposta',
     });
@@ -464,7 +465,7 @@ export default function PuliziaPrimaNota() {
                       <div style={{ flex: 1, minWidth: 180, fontSize: 13 }}>
                         <strong>{v.numero_fattura || v.descrizione}</strong>
                         <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 2 }}>
-                          Operazione del {v.data} · {Number(v.importo || 0).toFixed(2)} € · oggi in{' '}
+                          Operazione del {v.data} · {formatEuroD(v.importo || 0)} · oggi in{' '}
                           <strong style={{ color: '#dc2626' }}>{v.registro_attuale.toUpperCase()}</strong>,
                           {' '}il fornitore è{' '}
                           <strong style={{ color: '#16a34a' }}>{v.registro_atteso.toUpperCase()}</strong>

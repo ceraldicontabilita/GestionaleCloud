@@ -451,16 +451,27 @@ export function parseDateIT(dateStr) {
   }
 }
 
+// Bug 14/07/2026 segnalato dall'utente (screenshot Fatture/Dashboard:
+// "1119 €", "8660 €" — simbolo dopo, niente punto delle migliaia, niente
+// virgola decimale): Intl.NumberFormat('it-IT', {style:'currency', ...})
+// con minimumFractionDigits/maximumFractionDigits forzati a 0 non applica
+// in modo affidabile il separatore delle migliaia su tutti i motori
+// JS/ICU (verificato: con fractionDigits a 0 la formattazione "currency"
+// perde il punto delle migliaia), e mette comunque il simbolo dopo il
+// numero per la convenzione it-IT — mai quella usata in un gestionale
+// italiano ("€ 1.119,00", mai "1119 €"). Formattazione manuale, sempre
+// con 2 decimali e simbolo prima, stessa identica logica di formatEuroD
+// qui sotto: un importo contabile senza centesimi visibili nasconde
+// discrepanze reali, meglio sempre "€ 0,00" che "€ 0".
 export function formatEuro(amount) {
-  if (amount === null || amount === undefined) return '€ 0';
+  if (amount === null || amount === undefined) return '€ 0,00';
   const v = parseFloat(amount);
-  if (isNaN(v)) return '€ 0';
-  return new Intl.NumberFormat('it-IT', {
-    style: 'currency',
-    currency: 'EUR',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(Math.round(v));
+  if (isNaN(v)) return '€ 0,00';
+  return `€ ${new Intl.NumberFormat('it-IT', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+    useGrouping: true,
+  }).format(v)}`;
 }
 
 // formatEuroD — con decimali, per tabelle dettaglio e tooltip
