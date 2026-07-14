@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **1072 endpoint** in **110 gruppi**.
+> Totale **1059 endpoint** in **111 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 637 · ext esterni = 76 · — da verificare = 359
+**Riepilogo uso:** ✓ frontend = 630 · ext esterni = 76 · — da verificare = 353
 
 ## AI Parser  (11)
 
@@ -354,7 +354,7 @@
 | POST | `/api/contabilita/ricategorizza-fatture` | ✓ | accounting.contabilita_avanzata |
 | GET | `/api/contabilita/statistiche-categorizzazione` | ✓ | accounting.contabilita_avanzata |
 
-## Contabilità Gestionale  (13)
+## Contabilità Gestionale  (14)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -365,6 +365,7 @@
 | GET | `/api/contabilita-gestionale/budget/{anno}` | ✓ | accounting.contabilita_gestionale |
 | DELETE | `/api/contabilita-gestionale/budget/{anno}/{voce}` | ✓ | accounting.contabilita_gestionale |
 | GET | `/api/contabilita-gestionale/libro-giornale` | ✓ | accounting.contabilita_gestionale |
+| GET | `/api/contabilita-gestionale/libro-giornale/controllo-60-giorni` | ✓ | accounting.contabilita_gestionale |
 | GET | `/api/contabilita-gestionale/libro-giornale/export` | ✓ | accounting.contabilita_gestionale |
 | POST | `/api/contabilita-gestionale/libro-giornale/import` | ✓ | accounting.contabilita_gestionale |
 | GET | `/api/contabilita-gestionale/libro-mastro` | ✓ | accounting.contabilita_gestionale |
@@ -452,7 +453,7 @@
 | GET | `/api/proposte` | — | dati_provvisori |
 | POST | `/api/rifiuta/{proposta_id}` | — | dati_provvisori |
 
-## Dipendenti  (45)
+## Dipendenti  (28)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
@@ -467,31 +468,15 @@
 | POST | `/api/dipendenti/buste-paga/import` | ✓ | employees.dipendenti |
 | GET | `/api/dipendenti/buste-paga/scan` | ✓ | employees.dipendenti |
 | GET | `/api/dipendenti/by-google-email` | ✓ | employees.dipendenti |
-| GET | `/api/dipendenti/contratti` | ✓ | employees.dipendenti |
-| POST | `/api/dipendenti/contratti` | ✓ | employees.dipendenti |
-| POST | `/api/dipendenti/contratti/import-excel` | ✓ | employees.dipendenti |
-| GET | `/api/dipendenti/contratti/scadenze` | ✓ | employees.dipendenti |
-| PUT | `/api/dipendenti/contratti/{contratto_id}` | ✓ | employees.dipendenti |
-| DELETE | `/api/dipendenti/contratti/{contratto_id}` | ✓ | employees.dipendenti |
-| POST | `/api/dipendenti/contratti/{contratto_id}/termina` | ✓ | employees.dipendenti |
 | GET | `/api/dipendenti/duplicati` | ✓ | employees.dipendenti |
 | POST | `/api/dipendenti/duplicati/auto-merge` | ✓ | employees.dipendenti |
 | POST | `/api/dipendenti/duplicati/merge` | ✓ | employees.dipendenti |
 | POST | `/api/dipendenti/invita-multipli` | ✓ | employees.dipendenti |
-| POST | `/api/dipendenti/libretti-sanitari` | ✓ | employees.dipendenti |
-| GET | `/api/dipendenti/libretti-sanitari/all` | ✓ | employees.dipendenti |
-| POST | `/api/dipendenti/libretti-sanitari/genera-da-dipendenti` | ✓ | employees.dipendenti |
-| POST | `/api/dipendenti/libretti-sanitari/import-excel` | ✓ | employees.dipendenti |
-| GET | `/api/dipendenti/libretti-sanitari/scadenze` | ✓ | employees.dipendenti |
-| PUT | `/api/dipendenti/libretti-sanitari/{libretto_id}` | ✓ | employees.dipendenti |
-| DELETE | `/api/dipendenti/libretti-sanitari/{libretto_id}` | ✓ | employees.dipendenti |
-| GET | `/api/dipendenti/libretti/scadenze` | ✓ | employees.dipendenti |
 | GET | `/api/dipendenti/mansioni` | ✓ | employees.dipendenti |
 | GET | `/api/dipendenti/portale/stats` | ✓ | employees.dipendenti |
 | GET | `/api/dipendenti/report-ferie-permessi-tutti` | ✓ | employees.dipendenti |
 | GET | `/api/dipendenti/stats` | ✓ | employees.dipendenti |
 | POST | `/api/dipendenti/sync-iban` | ✓ | employees.dipendenti |
-| GET | `/api/dipendenti/tipi-contratto` | ✓ | employees.dipendenti |
 | GET | `/api/dipendenti/tipi-turno` | ✓ | employees.dipendenti |
 | POST | `/api/dipendenti/turni/salva` | ✓ | employees.dipendenti |
 | GET | `/api/dipendenti/turni/settimana` | ✓ | employees.dipendenti |
@@ -499,7 +484,6 @@
 | PUT | `/api/dipendenti/{dipendente_id}` | ✓ | employees.dipendenti |
 | DELETE | `/api/dipendenti/{dipendente_id}` | ✓ | employees.dipendenti |
 | POST | `/api/dipendenti/{dipendente_id}/invita-portale` | ✓ | employees.dipendenti |
-| PUT | `/api/dipendenti/{dipendente_id}/libretto` | ✓ | employees.dipendenti |
 | GET | `/api/dipendenti/{dipendente_id}/report-ferie-permessi` | ✓ | employees.dipendenti |
 
 ## Distinte BPM  (1)
@@ -625,12 +609,12 @@
 | POST | `/api/email-download/estrai-importi-verbali` | — | email_download |
 | POST | `/api/email-download/fix-numeri-verbali` | — | email_download |
 | GET | `/api/email-download/inbox-documents` | — | email_download |
-| GET | `/api/email-download/mittenti` | — | email_download |
-| POST | `/api/email-download/mittenti` | — | email_download |
-| GET | `/api/email-download/mittenti/check` | — | email_download |
-| POST | `/api/email-download/mittenti/migra-legacy` | — | email_download |
-| DELETE | `/api/email-download/mittenti/{mittente_id}` | — | email_download |
-| PUT | `/api/email-download/mittenti/{mittente_id}` | — | email_download |
+| GET | `/api/email-download/mittenti` | ✓ | email_download |
+| POST | `/api/email-download/mittenti` | ✓ | email_download |
+| GET | `/api/email-download/mittenti/check` | ✓ | email_download |
+| POST | `/api/email-download/mittenti/migra-legacy` | ✓ | email_download |
+| DELETE | `/api/email-download/mittenti/{mittente_id}` | ✓ | email_download |
+| PUT | `/api/email-download/mittenti/{mittente_id}` | ✓ | email_download |
 | POST | `/api/email-download/parse-f24-llm` | — | email_download |
 | POST | `/api/email-download/parse-verbali-llm` | — | email_download |
 | GET | `/api/email-download/paypal-transazioni` | — | email_download |
@@ -794,6 +778,14 @@
 | POST | `/api/fatture/drive/quadratura` | — | invoices.fatture_drive |
 | GET | `/api/fatture/drive/status` | ✓ | invoices.fatture_drive |
 | POST | `/api/fatture/drive/sync` | ✓ | invoices.fatture_drive |
+
+## Fatture Estere Verifica  (3)
+
+| Metodo | Path | FE | File |
+|---|---|:-:|---|
+| GET | `/api/fatture-estere/affidabilita` | ✓ | fatture_estera_verifica |
+| GET | `/api/fatture-estere/da-verificare` | ✓ | fatture_estera_verifica |
+| POST | `/api/fatture-estere/{fattura_id}/verifica` | ✓ | fatture_estera_verifica |
 
 ## Fatture Ricevute  (19)
 

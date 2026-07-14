@@ -1,10 +1,16 @@
 # MAPPA MODULI — come è costruita l'app (lettura router per router)
 
-> Aggiornata 13/07/2026. Ricavata leggendo **tutti i 137 file router** uno per uno
-> + route table reale (`register_all_routers`) + uso nel frontend.
+> Aggiornata 13/07/2026, numeri e §2 EMPLOYEES aggiornati 14/07/2026 dopo
+> la sessione Dipendenti (rimozione contratti/libretti, HR esterno) +
+> Fatture Estere (pipeline AI). Ricavata leggendo **tutti i file router**
+> uno per uno + route table reale (`register_all_routers`) + uso nel
+> frontend. Vedi `AUDIT_DEFINITIVO_SESSIONE_20260714.md` per il dettaglio
+> tecnico di quella sessione.
 >
-> Mappe collegate (rigenerabili con `python scripts/genera_mappa.py`):
-> - **`MAPPA_ROUTER.md`** — un prefisso per riga (endpoint, uso FE, file).
+> Mappe collegate (`MAPPA_ROUTER.md`/`MAPPA_ENDPOINT_COMPLETA.md`
+> rigenerabili con `python scripts/genera_mappa.py`; `MAPPA_COLLEZIONI.md`
+> aggiornata manualmente):
+> - **`MAPPA_ROUTER.md`** — un prefisso per riga (endpoint, uso FE, file). **108 prefissi, 1059 endpoint** (rigenerata 14/07/2026).
 > - **`MAPPA_ENDPOINT_COMPLETA.md`** — ogni singolo endpoint (metodo, path, uso FE).
 > - **`MAPPA_COLLEZIONI.md`** — tutte le collezioni MongoDB usate.
 > - Codice morto e duplicati: sezione §4-§6 di questo file.
@@ -16,10 +22,13 @@
 - **Registrazione router**: unico punto `app/router_registry.py` → `register_all_routers(app)`,
   organizzato in 12 gruppi (`_register_auth/f24/accounting/bank/warehouse/invoices/
   employees/reports/core/email/noleggio/ai`).
-- **Numeri reali**: **1117 endpoint** su **107 prefissi** / **111 tag**, da **137 file router**.
-  Uso frontend: **640 endpoint** referenziati dal FE, **76** da chiamanti esterni
-  (app collegate/webhook/chatbot/scheduler/API pubblica), **401** senza riferimento
+- **Numeri reali (rigenerati 14/07/2026)**: **1059 endpoint** su **108 prefissi** / **111 tag**.
+  Uso frontend: **630 endpoint** referenziati dal FE, **76** da chiamanti esterni
+  (app collegate/webhook/chatbot/scheduler/API pubblica), **353** senza riferimento
   noto (candidati verifica — vedi §5, molti sono manutenzione one-shot o usati dalla chat).
+  Calo rispetto al 13/07 (1117→1059, -58) dovuto principalmente alla rimozione di 17
+  route contratti/libretti sanitari da `employees/dipendenti.py` (vedi §2 EMPLOYEES),
+  compensato in minima parte dal nuovo router `/api/fatture-estere` (+3).
 
 ### Flusso dati principale
 ```
@@ -78,12 +87,30 @@ crea fornitore, note credito, riconciliazione EC/assegni, storia+libro giornale)
 Corrispettivi (upload XML/ZIP/CSV, scorporo IVA, sync Prima Nota). ⚠️ Doppia sorgente
 `invoices` + `fatture_passive` con dedup a runtime — vedi §6.
 
-### EMPLOYEES/HR — `employees/dipendenti`, `tfr`, `libro_unico_parser`, `f24_parser`, `drive_{cedolini,corrispettivi,quietanze}`, `documenti_fiscali`, `iva`
-Anagrafica **`dipendenti`** (CRUD, bulk-upsert, dedupe), cedolini (`cedolini`), contratti,
-turni, libretti sanitari, TFR (Art.2120 + acconti + riconciliazione banca), Libro Unico
-Zucchetti (presenze+buste). Ingest Google Drive (cedolini/corrispettivi/quietanze).
+### EMPLOYEES/HR — `employees/dipendenti`, `tfr`, `libro_unico_parser`, `f24_parser`, `drive_{cedolini,corrispettivi,quietanze}`, `documenti_fiscali`, `iva`, `fatture_estera_verifica`
+**Scelta utente 14/07/2026: il gestionale HR completo è un programma ESTERNO
+(AppDipendenti).** In questo repo restano SOLO i dati contabili/fiscali:
+anagrafica **`dipendenti`** minima (CRUD, bulk-upsert, dedupe — CF↔cedolino),
+**cedolini** (`cedolini`), turni, portale dipendenti, TFR (Art.2120 + acconti +
+riconciliazione banca), Libro Unico Zucchetti (presenze+buste). **Rimossi dal
+codice**: CRUD contratti di lavoro (`contratti_dipendenti`), CRUD e import
+massivo libretti sanitari (`libretti_sanitari`), 17 route in totale — vedi
+`AUDIT_DEFINITIVO_SESSIONE_20260714.md` §2 per il dettaglio (route rimosse,
+handler event bus aggiornati, file morti eliminati). Ingest Google Drive
+(cedolini/corrispettivi/quietanze) invariato.
 ⚠️ `libro_unico_parser` scrive anagrafica in `employees` invece di `dipendenti`, e buste in
-`buste_paga` invece di `cedolini` — vedi §6.
+`buste_paga` invece di `cedolini` — vedi §6 (non toccato in questa sessione).
+
+**Fatture ESTERE via email (nuovo 14/07/2026)** — modulo separato ma
+strettamente collegato al flusso documentale HR/email: fornitori esteri
+(fuori SDI) mandano PDF via email → estrazione AI (`document_ai_extractor`)
+→ fattura vera in `invoices` con la stessa pipeline delle fatture XML
+(`import_parsed_invoice`, condivisa con `process_xml_bytes`) → coda di
+verifica umana (`fatture_estera_verifica.py`, `/api/fatture-estere/*`) →
+rating di affidabilità per fornitore (`fatture_estere_verifiche`). Aggancia
+gratis il matching PayPal/bonifico e l'alert scadenza già esistenti (nessun
+motore di riconciliazione nuovo). Dettaglio completo, diagramma di flusso,
+guardie dati: `AUDIT_DEFINITIVO_SESSIONE_20260714.md` §3.
 
 ### REPORTS — `reports/{dashboard,exports,simple_exports,report_pdf}`
 Dashboard KPI, export Excel/JSON, report PDF (mensile/dipendenti/scadenze/magazzino).
@@ -140,6 +167,24 @@ La verifica sul frontend ha mostrato che questi "candidati" NON sono morti:
   bottoni in `GestioneAssegni.jsx` e `LearningMachine.jsx`.
 Rimuoverli richiede prima togliere/ricablare le pagine e i bottoni relativi — decisione
 di prodotto, in attesa dell'utente.
+
+### 3d. Codice morto ELIMINATO nella sessione 14/07/2026 (HR esterno + Fatture Estere AI)
+- **17 route** rimosse da `employees/dipendenti.py`: CRUD contratti di lavoro,
+  CRUD + import massivo libretti sanitari (scelta utente: HR completo è un
+  programma esterno, AppDipendenti — qui restano solo cedolini/TFR/anagrafica minima).
+- **File interi eliminati** (codice morto verificato, zero import esterni):
+  `app/models/employee.py`, `app/services/employee_service.py`,
+  `app/repositories/employee_repository.py`,
+  `app/scripts/migra_employee_contracts_a_contratti.py`,
+  `tests/test_p1_dipendenti_cessazione.py`, `frontend/src/components/attendance/`.
+- **Collection dismesse** (dati non purgati, solo codice smesso di leggerle):
+  `contratti_dipendenti`, `libretti_sanitari`, `employee_contracts`.
+- **Aggiunto** (non rimozione): router `fatture_estera_verifica.py`
+  (`/api/fatture-estere`, 3 endpoint) + refactor `fatture_upload.py`
+  (`process_xml_bytes` diviso in `import_parsed_invoice` condivisa, riusata
+  dalla nuova `process_fattura_estera_pdf`) + nuova collection
+  `fatture_estere_verifiche`. Dettaglio completo:
+  `AUDIT_DEFINITIVO_SESSIONE_20260714.md`.
 
 ## 4. Rami morti / stub (segnalati, non ancora rimossi — a basso rischio)
 | Dove | Cosa | Perché |

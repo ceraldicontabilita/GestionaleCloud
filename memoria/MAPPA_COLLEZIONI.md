@@ -3,8 +3,17 @@
 > Rigenerata 13/07/2026. Fonte: registro canonico `app/db_collections.py`
 > (158 costanti `COLL_*`) + conteggio usi reali nel codice.
 > Colonna Usi = occorrenze `db["nome"]`/`get_collection` + costante `COLL_*`.
+>
+> **Aggiornamento manuale 14/07/2026** (sessione Dipendenti + Fatture Estere,
+> vedi `AUDIT_DEFINITIVO_SESSIONE_20260714.md`): `contratti_dipendenti` ed
+> `employee_contracts` rimosse dal codice (righe sotto marcate); nuova
+> `fatture_estere_verifiche` aggiunta. `libretti_sanitari` (mai registrata
+> come costante `COLL_*`, solo stringa letterale) è stata rimossa dal codice
+> nella stessa sessione — non compariva in questa mappa nemmeno prima
+> perché generata solo dalle costanti di `db_collections.py`.
 
-Totale collezioni distinte nel registro: **158**.
+Totale collezioni distinte nel registro: **158** (snapshot 13/07; non
+rigenerato oggi — i 2 aggiornamenti sopra sono manuali, mirati).
 
 | Collezione | Usi | Costanti | Nota |
 |---|---:|---|---|
@@ -31,7 +40,7 @@ Totale collezioni distinte nel registro: **158**.
 | `f24_riconciliazione_alerts` | 16 | COLL_F24_ALERTS | 50 docs |
 | `quietanze_f24` | 16 | COLL_QUIETANZE_F24 | 303 docs |
 | `documenti_non_associati` | 15 | COLL_DOCUMENTI_NON_ASSOCIATI | 285 docs |
-| `contratti_dipendenti` | 14 | COLL_CONTRATTI_DIPENDENTI |  |
+| `contratti_dipendenti` | 0 | — | RIMOSSA dal codice il 14/07/2026 (HR spostato su AppDipendenti esterna). Dati storici non purgati su MongoDB, costante COLL_* rimossa da db_collections.py |
 | `documenti_email` | 13 | COLL_DOCUMENTI_EMAIL | 218 docs |
 | `fatture_email_attachments` | 13 | COLL_FATTURE_EMAIL | 158 docs |
 | `movimenti_contabili` | 13 | COLL_MOVIMENTI_CONTABILI |  |
@@ -98,7 +107,8 @@ Totale collezioni distinte nel registro: **158**.
 | `config` | 2 | COLL_CONFIG |  |
 | `configurazioni` | 2 | COLL_CONFIGURAZIONI |  |
 | `email_accounts` | 2 | COLL_EMAIL_ACCOUNTS |  |
-| `employee_contracts` | 2 | COLL_EMPLOYEE_CONTRACTS |  |
+| `employee_contracts` | 0 | — | RIMOSSA dal codice il 14/07/2026 (era già alias legacy morto). Costante COLL_* rimossa da db_collections.py |
+| `fatture_estere_verifiche` | 3 | — (stringa letterale) | NUOVA il 14/07/2026 — storico conferme/correzioni lettura AI fatture estere, fonte del rating per fornitore. Vedi `app/routers/fatture_estera_verifica.py` |
 | `estratto_conto_bnl` | 2 | COLL_ESTRATTO_CONTO_BNL |  |
 | `giustificativi` | 2 | COLL_GIUSTIFICATIVI | Permessi/ferie |
 | `learning_feedback` | 2 | COLL_LEARNING_FEEDBACK | Feedback utente |
