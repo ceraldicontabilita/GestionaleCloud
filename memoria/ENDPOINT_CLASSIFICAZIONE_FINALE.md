@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 971 · tenere: 637 · verificare: 315 · admin-only (migrazione/manutenzione): 19
+**Totale endpoint:** 972 · tenere: 638 · verificare: 315 · admin-only (migrazione/manutenzione): 19
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -73,6 +73,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/alerts/{alert_id}/risolvi` | alerts | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/alerts/{alert_id}/segna-letto` | alerts | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/anagrafica-fornitori/popola-fornitore/{fornitore_id}` | anagrafica_fornitori_xml | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/anagrafica-fornitori/popola-tutti` | anagrafica_fornitori_xml | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/archivio-bonifici/associa-dipendenti` | bonifici_module.riconciliazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/archivio-bonifici/associa-fattura` | bonifici_module.associazioni | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/archivio-bonifici/associa-salario` | bonifici_module.associazioni | sì | — | — | — | — | tenere | in uso: FE |
@@ -725,7 +726,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/paypal-api/webhook` | paypal_api | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/paypal-statements/auto-associa` | paypal_statements | — | sì | — | — | — | tenere | in uso: scheduler |
 | `POST /api/paypal-statements/auto-cerca-gmail` | paypal_statements | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/paypal-statements/dashboard` | paypal_statements | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/paypal-statements/dashboard` | paypal_statements | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/paypal-statements/import-all-local` | paypal_statements | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/paypal-statements/import-csv` | paypal_statements | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/paypal-statements/import-pdf` | paypal_statements | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
@@ -735,7 +736,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/paypal-statements/transactions` | paypal_statements | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/paypal-statements/transazione/{transaction_id}/associa` | paypal_statements | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/paypal-statements/transazione/{transaction_id}/cerca-gmail` | paypal_statements | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/paypal-statements/transazione/{transaction_id}/dettaglio` | paypal_statements | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/paypal-statements/transazione/{transaction_id}/dettaglio` | paypal_statements | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/pianificazione/costi-previsionali` | pianificazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/pianificazione/costi-previsionali` | pianificazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `DELETE /api/pianificazione/costi-previsionali/{costo_id}` | pianificazione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
@@ -804,7 +805,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `DELETE /api/prima-nota/cassa/elimina-movimenti-bancari-errati` | prima_nota_module.cassa | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/prima-nota/cassa/fix-corrispettivi-importo` | prima_nota_module.manutenzione | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/prima-nota/cassa/sync-corrispettivi` | prima_nota_module.sync | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/prima-nota/cassa/sync-fatture-pagate` | prima_nota_module.sync | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/prima-nota/cassa/sync-fatture-pagate` | prima_nota_module.sync | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/prima-nota/cassa/template-csv` | prima_nota_module | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/prima-nota/cassa/verifica-entrate-corrispettivi` | prima_nota_module.manutenzione | sì | — | — | — | — | tenere | in uso: FE |
 | `DELETE /api/prima-nota/cassa/{movimento_id}` | prima_nota_module.cassa | sì | — | — | — | — | tenere | in uso: FE |
@@ -828,7 +829,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/prima-nota/provvisori` | prima_nota_module.sync | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/prima-nota/provvisori/annulla-auto-conferma` | prima_nota_module.sync | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/prima-nota/provvisori/auto-conferma-per-metodo` | prima_nota_module.sync | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/prima-nota/provvisori/conferma` | prima_nota_module.sync | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/prima-nota/provvisori/conferma` | prima_nota_module.sync | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/prima-nota/provvisori/conferma-divisione` | prima_nota_module.sync | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/prima-nota/recalculate-balances` | prima_nota_module.manutenzione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/prima-nota/regenerate-from-invoices` | prima_nota_module.manutenzione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |

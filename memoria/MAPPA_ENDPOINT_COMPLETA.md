@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **971 endpoint** in **102 gruppi**.
+> Totale **972 endpoint** in **102 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 624 · ext esterni = 76 · — da verificare = 271
+**Riepilogo uso:** ✓ frontend = 625 · ext esterni = 76 · — da verificare = 271
 
 ## AI Parser  (11)
 
@@ -81,11 +81,12 @@
 | POST | `/api/alerts/{alert_id}/risolvi` | ✓ | alerts |
 | POST | `/api/alerts/{alert_id}/segna-letto` | ✓ | alerts |
 
-## Anagrafica Fornitori  (1)
+## Anagrafica Fornitori  (2)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
 | POST | `/api/anagrafica-fornitori/popola-fornitore/{fornitore_id}` | ✓ | anagrafica_fornitori_xml |
+| POST | `/api/anagrafica-fornitori/popola-tutti` | ✓ | anagrafica_fornitori_xml |
 
 ## Archivio Bonifici  (19)
 

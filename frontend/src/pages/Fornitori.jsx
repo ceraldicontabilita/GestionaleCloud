@@ -1230,6 +1230,7 @@ export default function Fornitori() {
   const [modalOpen, setModalOpen] = useState(false);
   const [currentSupplier, setCurrentSupplier] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [popolandoTutti, setPopolandoTutti] = useState(false);
 
   // Debounce search per evitare troppe chiamate API
   const debouncedSearch = useDebounce(search, 500);
@@ -1479,6 +1480,33 @@ export default function Fornitori() {
   const handleViewInvoices = supplier => {
     // Apre il modale con estratto fatture invece di navigare
     handleViewInvoicesModal(supplier);
+  };
+
+  // Ricostruzione una tantum (richiesta utente 14/07/2026): completa IBAN
+  // (via metodo/anagrafica), email, telefono, comune, indirizzo dei
+  // fornitori con dati mancanti leggendo le fatture XML già in archivio.
+  // Non distruttivo: aggiorna solo i campi vuoti, mai quelli già valorizzati.
+  const handlePopolaTuttiXml = async () => {
+    if (
+      !(await confirm({
+        title: 'Popola dati mancanti da XML',
+        message:
+          'Rilegge le fatture XML dei fornitori con dati incompleti (email, telefono, comune, indirizzo) e completa SOLO i campi vuoti. Può richiedere qualche secondo. Procedere?',
+      }))
+    ) {
+      return;
+    }
+    setPopolandoTutti(true);
+    try {
+      const res = await api.post('/api/anagrafica-fornitori/popola-tutti');
+      toast.success(res.data.message || 'Popolamento completato');
+      // Ricarica la lista per mostrare subito i campi aggiornati
+      await reloadData();
+    } catch (error) {
+      toast.error('Errore nel popolamento: ' + (error.response?.data?.detail || error.message));
+    } finally {
+      setPopolandoTutti(false);
+    }
   };
 
   // Ricerca dati azienda tramite Partita IVA
@@ -1905,6 +1933,17 @@ export default function Fornitori() {
               />
               ⚠️ Fatture senza metodo
             </label>
+
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handlePopolaTuttiXml}
+              disabled={popolandoTutti}
+              title="Rilegge le fatture XML dei fornitori con dati mancanti e completa email, telefono, comune, indirizzo — non tocca i campi già valorizzati"
+              data-testid="btn-popola-tutti-xml"
+            >
+              {popolandoTutti ? '⏳ Popolamento...' : '📥 Popola dati mancanti da XML'}
+            </Button>
 
             <CopyLinkButton style={{ flexShrink: 0 }} />
           </div>
