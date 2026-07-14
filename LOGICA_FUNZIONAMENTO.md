@@ -244,12 +244,21 @@ movimenti automatici. Restano comunque rifiutati i movimenti chiaramente bancari
 - Quando ne arriva una, in **Integrazioni → Mittenti Email** aggiungi
   l'indirizzo/dominio del mittente scegliendo il tipo "Fattura estera (PDF)":
   da quel momento il sistema scarica automaticamente le email di quel
-  mittente, **ogni ora**, e archivia il PDF in **Documenti** (categoria
-  "Fatture estere (PDF)"), pronto da consultare/associare. Zero mittenti
-  configurati = nessuna email scaricata (nessun rischio di prendere roba
-  indesiderata). **Nota**: a differenza delle fatture italiane, il PDF non
-  viene ancora letto automaticamente (nessuna estrazione dati/registrazione
-  in prima nota) — è un passo successivo, da decidere insieme.
+  mittente, **ogni ora**. Zero mittenti configurati = nessuna email
+  scaricata (nessun rischio di prendere roba indesiderata).
+- **Dal 14/07/2026 il PDF viene anche letto automaticamente** (stessa AI già
+  usata per gli altri documenti): estrae numero, data, fornitore, imponibile,
+  IVA, totale e crea una fattura vera con la stessa pipeline delle fatture
+  XML italiane (fornitore auto-creato/aggiornato, **prima nota sempre
+  provvisoria** — conferma manuale come per tutte le altre fatture — e
+  partita aperta collegata). Da quel momento la fattura estera è visibile
+  come le altre e il matching automatico **PayPal** e **bonifico bancario**
+  già esistenti la aggancia da sola per importo+fornitore, e l'alert
+  "fattura scaduta non pagata" scatta anche per lei come per le italiane.
+  Il PDF resta comunque sempre archiviato in Documenti (categoria "Fatture
+  estere (PDF)"). Se l'estrazione fallisce o non riesce a leggere numero e
+  importo, non viene creata nessuna fattura: resta solo il PDF archiviato,
+  da lavorare a mano (nessun dato inventato).
 - La stessa pagina permette di configurare anche altri tipi di documento
   (cedolino, PagoPA, INPS, INAIL, PayPal, cartella esattoriale) se un giorno
   servisse un mittente attendibile per quei canali.

@@ -1081,6 +1081,20 @@ async def process_xml_bytes(db, content: bytes, filename: str, source: str = "xm
     if parsed.get("error"):
         return {"status": "error", "filename": filename, "error": parsed["error"]}
 
+    return await import_parsed_invoice(db, parsed, filename, source, xml_raw=xml_content)
+
+
+async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, source: str,
+                                 xml_raw: Optional[str] = None) -> Dict[str, Any]:
+    """Pipeline CONDIVISA per importare una fattura già "parsata" in un dict
+    con lo schema di `parse_fattura_xml` (invoice_number/supplier_vat/...).
+
+    Estratta da `process_xml_bytes` (passi 3-7) per essere riusata anche
+    dalle fatture ESTERE arrivate come PDF via email, estratte via AI
+    (vedi `process_fattura_estera_pdf`): stessa dedup, stesso fornitore,
+    stessa prima nota provvisoria, stesso event bus — qualunque sia la
+    fonte del `parsed`.
+    """
     # 3. Dedup tramite invoice_key
     invoice_key = generate_invoice_key(
         parsed.get("invoice_number", ""),
@@ -1093,7 +1107,7 @@ async def process_xml_bytes(db, content: bytes, filename: str, source: str = "xm
 
     # 4. Fornitore (crea se nuovo) + metodo pagamento
     supplier_result = await ensure_supplier_exists(db, parsed)
-    # REGOLA: metodo pagamento SOLO dal fornitore (mai dall'XML).
+    # REGOLA: metodo pagamento SOLO dal fornitore (mai dal documento).
     # Se il fornitore non ha un metodo → "sospesa" → resta nei provvisori.
     metodo_pagamento = supplier_result.get("metodo_pagamento") or "sospesa"
 
@@ -1135,7 +1149,7 @@ async def process_xml_bytes(db, content: bytes, filename: str, source: str = "xm
         "status": "imported",
         "source": source,
         "filename": filename,
-        "xml_raw": xml_content,
+        "xml_raw": xml_raw,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "cedente_piva": parsed.get("supplier_vat", ""),
         "cedente_denominazione": parsed.get("supplier_name", ""),
@@ -1197,6 +1211,81 @@ async def process_xml_bytes(db, content: bytes, filename: str, source: str = "xm
     return {"status": "imported", "filename": filename,
             "invoice_number": parsed.get("invoice_number"),
             "supplier": parsed.get("supplier_name"), "id": invoice["id"]}
+
+
+async def process_fattura_estera_pdf(db, pdf_base64: str, filename: str,
+                                      source: str = "email_gmail_estera") -> Dict[str, Any]:
+    """Fattura ESTERA arrivata come PDF via email (mai XML: lo SDI è solo
+    italiano). Estrae i dati con l'AI già usata per gli altri documenti
+    (`document_ai_extractor`, stessa ANTHROPIC_API_KEY già configurata) e la
+    importa con la pipeline condivisa `import_parsed_invoice` — stessa
+    dedup, stesso fornitore, stessa prima nota provvisoria — così il
+    matching PayPal (`auto_associa_transazioni`) e bonifico
+    (`riconcilia_movimenti_banca`), e l'alert di scadenza
+    `FAT_DA_PAGARE_SCADUTA` già esistenti la prendono in carico da soli,
+    senza nessun codice nuovo lato riconciliazione.
+
+    Se l'estrazione fallisce o non legge né numero né importo, non crea
+    nulla: meglio lasciare il PDF solo archiviato (comportamento di prima)
+    che registrare una fattura con dati inventati.
+    """
+    try:
+        from app.services.document_ai_extractor import process_document_from_base64
+        result = await process_document_from_base64(pdf_base64, filename, document_type="fattura")
+    except Exception as e:
+        logger.warning(f"Estrazione AI fallita per fattura estera {filename}: {e}")
+        return {"status": "extraction_error", "filename": filename, "error": str(e)}
+
+    structured = (result or {}).get("structured_data") or {}
+    if not structured.get("success"):
+        return {"status": "extraction_error", "filename": filename,
+                "error": structured.get("error") or (result or {}).get("error") or "estrazione non riuscita"}
+
+    parsed = _ai_fattura_a_parsed(structured.get("data") or {})
+
+    if not parsed.get("invoice_number") and not parsed.get("total_amount"):
+        return {"status": "dati_insufficienti", "filename": filename}
+
+    return await import_parsed_invoice(db, parsed, filename, source, xml_raw=None)
+
+
+def _ai_fattura_a_parsed(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Converte il JSON estratto dall'AI (schema `document_ai_extractor`,
+    prompt "fattura": numero_fattura/data_fattura/fornitore/totale/...) nello
+    schema `parsed` atteso da `import_parsed_invoice` — lo stesso prodotto da
+    `parse_fattura_xml` per le fatture italiane."""
+    from app.services.document_data_saver import parse_date, parse_amount
+
+    fornitore = data.get("fornitore") or {}
+    cliente = data.get("cliente") or {}
+    invoice_date = parse_date(data.get("data_fattura")) or ""
+
+    return {
+        "invoice_number": (data.get("numero_fattura") or "").strip(),
+        "invoice_date": invoice_date,
+        "supplier_vat": (fornitore.get("partita_iva") or "").strip(),
+        "supplier_name": (fornitore.get("denominazione") or "").strip(),
+        "total_amount": parse_amount(data.get("totale")),
+        "imponibile": parse_amount(data.get("imponibile")),
+        "iva": parse_amount(data.get("iva")),
+        "divisa": "EUR",
+        "tipo_documento": "",
+        "tipo_documento_desc": "",
+        "fornitore": {
+            "codice_fiscale": fornitore.get("codice_fiscale") or "",
+            "indirizzo": fornitore.get("indirizzo") or "",
+        },
+        "cliente": {
+            "denominazione": cliente.get("denominazione") or "",
+            "partita_iva": cliente.get("partita_iva") or "",
+            "codice_fiscale": cliente.get("codice_fiscale") or "",
+        },
+        "linee": [],
+        "riepilogo_iva": [],
+        "causali": [],
+        "dati_fatture_collegate": [],
+        "dati_ordine_acquisto": [],
+    }
 
 
 @router.post("/upload-xml-bulk")

@@ -234,6 +234,34 @@ async def sync_email_documents(db, giorni: int = 30) -> Dict[str, Any]:
             except Exception as ex:
                 logger.debug(f"[Gmail] Errore XML {fname}: {ex}")
 
+        elif tipo == "fattura_estera_pdf" and doc.get("pdf_data"):
+            # ── Fattura ESTERA (PDF, mai XML: lo SDI è solo italiano) ──────
+            # Estrazione AI + import con la stessa pipeline condivisa delle
+            # fatture XML (import_parsed_invoice): se l'estrazione fallisce
+            # o non legge dati sufficienti, il PDF resta comunque archiviato
+            # come prima (nessuna regressione sul comportamento esistente).
+            fname = doc.get("filename", "")
+            try:
+                from app.routers.invoices.fatture_upload import process_fattura_estera_pdf
+                res = await process_fattura_estera_pdf(db, doc["pdf_data"], fname, source="email_gmail_estera")
+            except Exception as ex:
+                logger.warning(f"[Gmail] Errore fattura estera {fname}: {ex}")
+                res = {"status": "extraction_error", "error": str(ex)}
+
+            if res.get("status") == "imported":
+                xml_processed += 1
+            await db["documents_inbox"].update_one(
+                {"id": doc["id"]},
+                {"$set": {
+                    "xml_processed": True,
+                    "tipo_documento": tipo,
+                    "categoria": tipo,
+                    "mittente_pattern": mittente.get("pattern"),
+                    "xml_result": {"routed": True, "tipo": tipo, "estrazione": res}
+                }}
+            )
+            logger.info(f"[Gmail] Fattura estera {res.get('status')}: {fname} da {from_addr}")
+
         else:
             # ── cedolino / pagopa / inps / inail / paypal / cartella ──────────
             await db["documents_inbox"].update_one(
