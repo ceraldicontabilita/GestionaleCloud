@@ -354,44 +354,58 @@ async def get_database() -> AsyncIOMotorDatabase:
 
 
 # Collection name constants - IMPORTARE DA db_collections.py per nuovi sviluppi
-# Questa classe è mantenuta per retrocompatibilità
+# Questa classe è mantenuta per retrocompatibilità. Ogni attributo che ha un
+# corrispondente in db_collections.py è un ALIAS della costante canonica (non
+# una stringa duplicata): elimina il rischio che le due fonti divergano in
+# silenzio (piano residuo P1 §12, audit 14/07/2026).
+from app.db_collections import (
+    COLL_INVOICES, COLL_INVOICES_METADATA, COLL_FORNITORI,
+    COLL_WAREHOUSE, COLL_WAREHOUSE_MOVEMENTS, COLL_RIMANENZE,
+    COLL_CORRISPETTIVI, COLL_EMPLOYEES, COLL_CEDOLINI,
+    COLL_PRIMA_NOTA_CASSA, COLL_ESTRATTO_CONTO, COLL_PIANO_CONTI,
+    COLL_ACCOUNTING_ENTRIES, COLL_F24, COLL_CHIUSURE_ESERCIZIO,
+)
+
+
 class Collections:
     """MongoDB collection names - LEGACY. Usare db_collections.py per nuovi sviluppi."""
-    # Core
+    # Core (nessun corrispondente in db_collections.py)
     USERS = "users"
-    
+
     # Invoices
-    INVOICES = "invoices"
-    INVOICE_METADATA_TEMPLATES = "invoice_metadata_templates"
-    
+    INVOICES = COLL_INVOICES
+    INVOICE_METADATA_TEMPLATES = COLL_INVOICES_METADATA
+
     # Suppliers - usa "fornitori" come collection canonica (deduplicata)
-    SUPPLIERS = "fornitori"
-    
+    SUPPLIERS = COLL_FORNITORI
+
     # Warehouse
-    WAREHOUSE_PRODUCTS = "warehouse_inventory"
-    WAREHOUSE_MOVEMENTS = "warehouse_movements"
-    RIMANENZE = "rimanenze"
-    
+    WAREHOUSE_PRODUCTS = COLL_WAREHOUSE
+    WAREHOUSE_MOVEMENTS = COLL_WAREHOUSE_MOVEMENTS
+    RIMANENZE = COLL_RIMANENZE
+
     # Corrispettivi
-    CORRISPETTIVI = "corrispettivi"
-    
+    CORRISPETTIVI = COLL_CORRISPETTIVI
+
     # Employees
-    EMPLOYEES = "dipendenti"
-    PAYSLIPS = "cedolini"  # Cambiato a collezione principale
+    EMPLOYEES = COLL_EMPLOYEES
+    PAYSLIPS = COLL_CEDOLINI  # Cambiato a collezione principale
 
     # Cash & Bank
-    CASH_MOVEMENTS = "prima_nota_cassa"
-    BANK_STATEMENTS = "estratto_conto_movimenti"  # Collezione principale
-    
+    CASH_MOVEMENTS = COLL_PRIMA_NOTA_CASSA
+    BANK_STATEMENTS = COLL_ESTRATTO_CONTO  # Collezione principale
+
     # Accounting
-    CHART_OF_ACCOUNTS = "piano_conti"  # Collezione italiana
-    ACCOUNTING_ENTRIES = "accounting_entries"
+    CHART_OF_ACCOUNTS = COLL_PIANO_CONTI  # Collezione italiana
+    ACCOUNTING_ENTRIES = COLL_ACCOUNTING_ENTRIES
+    # VAT_LIQUIDATIONS, VAT_REGISTRY, BALANCE_SHEETS: nessun corrispondente in
+    # db_collections.py (usate solo qui) — restano stringhe dirette.
     VAT_LIQUIDATIONS = "vat_liquidations"
     VAT_REGISTRY = "vat_registry"
-    F24_MODELS = "f24_unificato"  # Collezione unificata
+    F24_MODELS = COLL_F24  # Collezione unificata
     BALANCE_SHEETS = "balance_sheets"
-    YEAR_END_CLOSURES = "chiusure_esercizio"
-    
-    # Settings
+    YEAR_END_CLOSURES = COLL_CHIUSURE_ESERCIZIO
+
+    # Settings (nessun corrispondente in db_collections.py)
     WAREHOUSE_SETTINGS = "warehouse_settings"
     SYSTEM_SETTINGS = "system_settings"

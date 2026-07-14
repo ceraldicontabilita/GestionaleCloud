@@ -21,6 +21,8 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from app.db_collections import COLL_EMPLOYEES
+
 logger = logging.getLogger(__name__)
 
 COLL_TRATTENUTE = "trattenute_dipendenti"
@@ -216,7 +218,7 @@ async def dati_dipendente_per_trattenuta(
 ) -> Dict[str, Any]:
     """
     Recupera nome, codice fiscale e matricola del dipendente (se disponibili)
-    dalle collection employees / dipendenti. Best-effort: mai eccezioni.
+    dalla collection dipendenti. Best-effort: mai eccezioni.
     """
     out = {
         "dipendente": nome_fallback or "",
@@ -225,7 +227,7 @@ async def dati_dipendente_per_trattenuta(
     }
     try:
         if driver_id:
-            emp = await db["employees"].find_one(
+            emp = await db[COLL_EMPLOYEES].find_one(
                 {"id": driver_id},
                 {"_id": 0, "nome": 1, "cognome": 1, "codice_fiscale": 1, "matricola": 1},
             )

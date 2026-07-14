@@ -14,7 +14,8 @@ from app.database import Database
 from app.db_collections import (
     COLL_ESTRATTO_CONTO,
     COLL_INVOICES,
-    COLL_FORNITORI
+    COLL_FORNITORI,
+    COLL_EMPLOYEES
 )
 
 logger = logging.getLogger(__name__)
@@ -601,7 +602,7 @@ async def dettaglio_transazione_paypal(transaction_id: str) -> Dict[str, Any]:
     # 3. Dipendente (se verbale ha driver_id)
     dipendente = None
     if verbale and verbale.get("driver_id"):
-        dipendente = await db["employees"].find_one(
+        dipendente = await db[COLL_EMPLOYEES].find_one(
             {"id": verbale["driver_id"]},
             {"_id": 0, "id": 1, "nome": 1, "cognome": 1, "codice_fiscale": 1, "ruolo": 1}
         )
