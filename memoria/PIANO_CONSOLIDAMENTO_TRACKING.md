@@ -25,14 +25,13 @@ rilavorate da zero.
 
 ## Stato di avanzamento
 
-**Operazioni chiuse o portate al massimo eseguibile qui: 1, 2-10, 11, 12,
-13, 16, 17, 18, 19.** Restano **14 e 15** (PayPal, architettura Verbali) —
-indagati con evidenze, in attesa dell'esito prima di decidere se c'è un
-fix sicuro isolabile o se restano debito per una sessione dedicata (vedi
-sotto). Dettaglio di ciascuna in "Completate dopo il 14/07/2026". Il
-"debito tecnico da implementare" residuo (compreso quanto NON è stato
-possibile chiudere del tutto in #13/#16/#17/#18/#19) è riepilogato in
-fondo a questo file.
+**Tutte le 19 operazioni del piano sono chiuse o portate al massimo
+eseguibile in sicurezza da questo ambiente** (1, 2-10, 11, 12, 13, 14, 15,
+16, 17, 18, 19). Dettaglio di ciascuna in "Completate dopo il
+14/07/2026". Il "debito tecnico da implementare" residuo — quanto NON è
+stato possibile chiudere del tutto (produzione irraggiungibile da qui,
+decisioni che toccano dati finanziari/fiscali, o volutamente rimandato a
+bassa priorità) — è riepilogato in fondo a questo file.
 
 ---
 
@@ -68,13 +67,10 @@ Su queste voci: solo verifica di assenza regressioni, mai ricostruzione.
 
 ## Attività residue
 
-**14. ❓ PayPal** — sotto indagine (evidenze in corso di raccolta,
-memoria/PIANO_CONSOLIDAMENTO_TRACKING.md verrà aggiornato con il verdetto:
-già mitigato / fix isolato sicuro / refactor ampio da confermare).
-
-**15. ❓ Verbali — architettura unica** — sotto indagine, stessa logica:
-lo stato reale va riverificato DOPO la pulizia endpoint dell'operazione
-2-10 (il report originale descriveva una situazione precedente).
+Nessuna: tutte le 19 operazioni del piano sono state chiuse o portate al
+massimo eseguibile in sicurezza da questo ambiente (senza credenziali di
+produzione). Il debito tecnico rimanente — sempre concreto, mai generico —
+è elencato in fondo a questo file.
 
 ---
 
@@ -321,3 +317,156 @@ lo stato reale va riverificato DOPO la pulizia endpoint dell'operazione
   lo script è pronto, manca solo il secret in GitHub Actions), gate del
   deploy Render su CI verde (si configura nel dashboard Render o nelle
   branch protection di GitHub, non è modificabile dal repo).
+
+**14. ✅ PayPal — 2 fix isolati applicati, nessun refactor ampio necessario**
+- Commit: `2f65c3b`.
+- Indagine (agente dedicato): la premessa del report originale ("2 router,
+  6 service in conflitto") era sovrastimata. I due router
+  (`paypal-api`, `paypal-statements`) sono complementari non ridondanti,
+  entrambi vivi, usati insieme dalla stessa pagina FE
+  (`RiconciliazionePaypal.jsx`). Dedup su `transaction_id` reale impedisce
+  duplicati anche lanciando entrambe le pipeline sullo stesso periodo.
+- Corretti: (1) il dettaglio transazione leggeva il mapping fornitore da
+  `paypal_mapping_fornitori`, una collection mai scritta da nessuna parte
+  del codice (verificato con `git log -S` su tutta la storia) — ora legge
+  `fornitori.paypal_account_id`, il percorso vivo reale; (2) il KPI
+  "riconciliati" della dashboard contava solo `riconciliato_banca`
+  (percorso statement), ignorando `riconciliato_con_estratto_banca`
+  (percorso API) — sottostimava le transazioni riconciliate solo lato
+  API, ora unificati con `$or`.
+- **Non affrontato, resta debito**: zero test coverage su PayPal (nessun
+  test unitario esiste oggi per questi router — non solo per queste 2
+  funzioni), il disallineamento `tipo` (stringa italiana vs T-code PayPal
+  grezzo tra le due fonti — cosmetico, il FE ha già un fallback
+  silenzioso), un secondo client OAuth2 verso PayPal
+  (`app/services/paypal_integration.py`, usato solo da endpoint
+  `email_download.py` verosimilmente morti, non verificato in questa
+  operazione).
+- Risultato: `python -m pytest -q` → 382 passed, 2 skipped.
+
+**15. ✅ Verbali — 1 fix isolato applicato, migrazione dati resta debito esplicito**
+- Commit: `81fac0b`.
+- Indagine (agente dedicato): la pulizia endpoint dell'operazione 2-10 ha
+  già risolto il problema a livello di *route* (da ~56 a 11 endpoint,
+  zero morti). Il problema reale oggi è sui *dati*: due collection
+  (`verbali_noleggio`, `verbali_noleggio_completi`) per lo stesso
+  concetto, alimentate da 8 percorsi di scrittura indipendenti, senza
+  indice unico, con due macchine a stati diverse (`stato` vs
+  `stato_pagamento`) e naming duplicato (`fattura_numero`/
+  `numero_fattura`). `DettaglioVerbale.jsx` lo dimostra da solo: fa
+  fallback difensivo su nomi di campo alternativi perché non sa quale
+  schema riceverà a seconda che il numero verbale contenga uno slash.
+- Corretto: `app/routers/verbali_noleggio.py` aveva una costante di modulo
+  `COLLECTION_VERBALI = "verbali_noleggio"` shadowata da un import locale
+  con lo STESSO nome ma valore diverso (`"verbali_noleggio_completi"`,
+  da `verbali_service.py`) in 2 funzioni — rinominato l'import locale in
+  `COLLECTION_VERBALI_COMPLETI`. Nessun cambio di comportamento, solo
+  leggibilità/manutenibilità (era un bug latente in attesa di succedere
+  al prossimo refactor disattento).
+- **Non affrontato, richiede conferma esplicita e sessione dedicata**:
+  unificare le due collection in una sola canonica con schema/stato
+  comune è una migrazione di dati di produzione (piccola, ~64 documenti
+  totali tra le due) che richiede una decisione esplicita su quale
+  campo/stato diventa canonico — non eseguibile alla cieca da qui.
+- Risultato: `python -m pytest -q` → 382 passed, 2 skipped.
+
+---
+
+## DEBITO TECNICO DA IMPLEMENTARE (riepilogo finale, 14/07/2026)
+
+Tutte le 19 operazioni del piano sono state chiuse o portate al massimo
+eseguibile in sicurezza da questo ambiente. Quanto segue è ciò che resta,
+in ordine di priorità/rischio, con l'azione concreta per ciascuno.
+
+### Bloccato per mancanza di accesso — priorità alta
+
+1. **Verifica migrazioni in produzione (op.13)**: lanciare
+   `python scripts/verifica_migrazioni_produzione.py` con le credenziali
+   del DB di produzione (`.env`, vedi `app/database.py`). Lo script è
+   pronto e sola-lettura. Serve prima di considerare "vera" qualunque
+   migrazione dichiarata fatta nel codice.
+
+### Decisioni utente richieste prima di procedere — rischio finanziario/fiscale
+
+2. **IVA a debito su fatture emesse storiche (op.16)**:
+   `app/services/ragioneria_service.py::calcola_iva_debito_corretto`
+   non ha fallback inglese su `imponibile`/`iva` nell'aggregation
+   pipeline — una fattura emessa già in produzione con solo
+   `taxable_amount`/`vat` verrebbe conteggiata a IVA zero, senza errore
+   visibile. Fix pronto (`$ifNull` a cascata), non applicato perché tocca
+   un calcolo fiscale live senza test di copertura e senza modo di
+   verificare da qui la forma reale dei documenti in produzione. **Prima
+   di applicarlo**: eseguire punto 1, controllare quanti documenti
+   `fatture_emesse` esistono con solo campi inglesi.
+3. **Unificazione dati Verbali (op.15)**: `verbali_noleggio` (52 doc) e
+   `verbali_noleggio_completi` (12 doc) restano due collection per lo
+   stesso concetto, con due macchine a stati diverse. Migrarle in una
+   sola richiede decidere quale campo/stato diventa canonico — non
+   eseguibile senza conferma esplicita.
+
+### Debito noto, basso rischio, rimandabile
+
+4. **22 query N+1/`to_list` non riscritte (op.17)**: reso visibile il
+   troncamento (log/print se il tetto viene raggiunto), ma la logica
+   resta O(n) su `to_list(50000/100000)`. Priorità alle 4 marcate
+   "VERIFICARE: aggregazione potenzialmente completa" in
+   `app/routers/bank/assegni.py`, `bonifici_module/riconciliazione.py`,
+   `prima_nota_module/manutenzione.py` — vedi `memoria/AUDIT_PERFORMANCE_N1.md`.
+5. **Viewer E2E incompleto (op.18)**: coperto solo il flusso PDF generico
+   (`/documenti`) su 3 viewport. Mancano i flussi specifici di fattura
+   ASSO HTML, fattura PDF, cedolino, F24, quietanza, PagoPA, verbale
+   (bottone/pagina/endpoint diversi per ognuno — lo script
+   `frontend/scripts/audit-viewer.cjs` è un template pronto da estendere),
+   il comportamento funzionale di zoom/fit/fullscreen/download (oggi solo
+   presenza/click), l'autorizzazione del download, 5 viewport della
+   matrice originale (320×568, 360×800, 412×915, 1024×768, 1366×768).
+6. **CI incompleta (op.19)**: manca `frontend-lint` (nessuno script
+   "lint" nel repo — decidere se introdurre eslint), `security-tests`
+   dedicato (bandit non installato), `migration-dry-run` in CI (lo script
+   c'è, serve il secret DB in GitHub Actions), il gate del deploy Render
+   su CI verde (si configura fuori dal repo: dashboard Render o branch
+   protection GitHub).
+7. **PayPal — copertura test zero (op.14)**: nessun test unitario esiste
+   per `paypal-api`/`paypal-statements`. I 2 fix applicati sono a basso
+   rischio (query in lettura) ma senza rete di sicurezza automatica.
+   Debito minore: `app/services/paypal_integration.py` (secondo client
+   OAuth2, usato solo da endpoint `email_download.py` probabilmente
+   morti) non verificato; disallineamento `tipo`/T-code cosmetico.
+8. **`app/utils/warehouse_helpers.py` orfano (scoperta durante op.12)**:
+   0 importer in tutto il repo, legge la collection deprecata
+   `warehouse_stocks` con uno schema incompatibile con quello reale di
+   `warehouse_inventory`. Nessun rischio immediato (nessun chiamante),
+   ma se mai riagganciato va riscritto, non basta cambiare il nome della
+   collection. Candidato a eliminazione come gli orfani frontend
+   dell'op.11, non ancora deciso.
+9. **`memoria/pagine/*.json` (mappe funzionali dettagliate)**: alcuni
+   file (es. `noleggio-verbali.json`, `dettaglio-verbale.json`) citano
+   ancora endpoint/funzioni rimossi nell'operazione 2-10. Sono
+   documentazione, non codice eseguibile — nessun impatto su test/CI/
+   runtime, ma disallineati con lo stato reale. Da riscrivere in una
+   sessione dedicata alla documentazione, non prioritario.
+10. **22 file `DINAMICO_DA_VERIFICARE` nel frontend (op.11)**:
+    `memoria/AUDIT_FRONTEND_DEAD_CODE.md` li elenca — il loro nome
+    compare altrove nel codice (spesso solo perché parola generica, es.
+    "table", "form") ma nessun import statico li raggiunge. Nessuno
+    eliminato per prudenza: richiedono verifica manuale mirata,
+    caso per caso.
+11. **Conversione stringhe letterali → costanti `db_collections.py`
+    (op.12)**: ~2000 usi di `db["invoices"]` e simili con valore già
+    corretto ma non centralizzato. Basso rischio, basso valore, non
+    affrontato: il test anti-hardcode aggiunto copre già il rischio
+    reale (nomi SBAGLIATI), non lo stile.
+
+### Criterio di completamento originale — stato
+
+Dal report iniziale (§13): conteggi endpoint coerenti ✅, file React
+orfani ✅ (0 rimasti, 22 da verificare manualmente), ogni endpoint montato
+con un chiamante documentato ✅ (971 endpoint, classificazione
+rigenerata), collection legacy senza nuove scritture 🟡 (bloccato senza
+verifica produzione, punto 1), migrazioni eseguite 🟡 (bloccato, punto 1),
+`suppliers`/`fornitori` risolto ✅ (già chiuso prima di questa sessione),
+PayPal e verbali con architettura unica 🟡 (endpoint sì, dati no — punti
+2-3), query N+1 corrette 🟡 (visibili, non riscritte — punto 4), viewer
+certificato 🟡 (parziale — punto 5), CI verde su main 🟡 (backend-tests/
+frontend-build/dead-code/viewer-e2e sì, resto no — punto 6), deploy
+dipendente da CI 🟡 (non configurabile dal repo).
