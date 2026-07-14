@@ -143,14 +143,26 @@ async def _delete_prima_nota_for_corrispettivo(db, corrispettivo_id: str, data: 
 
 async def _create_prima_nota_movements(db, corr_doc: Dict[str, Any]) -> Dict[str, Optional[str]]:
     """
-    Crea i movimenti Prima Nota:
-    - prima_nota_cassa (DARE) per la quota contanti
-    - prima_nota_banca (DARE - entrata da conciliare) per la quota POS/elettronica
+    Crea i movimenti Prima Nota dal corrispettivo (regola contabile fissata
+    dall'utente il 14/07/2026, coerente con lo scheduler
+    prima_nota_module/sync.py::_sync_corrispettivi_impl):
+
+    - prima_nota_cassa: ENTRATA (dare) = totale corrispettivo (contanti + POS)
+    - prima_nota_cassa: USCITA (avere) = quota POS/elettronica (esce dalla
+      cassa verso la banca) — il saldo cassa netto risulta quindi il solo
+      contante
+    - prima_nota_banca: ENTRATA (dare) = quota POS/elettronica, copiata (mai
+      duplicata: chi chiama questa funzione pulisce sempre prima i movimenti
+      precedenti con _delete_prima_nota_for_corrispettivo) — alimenta anche
+      Coerenza POS, che legge prima_nota_banca con source='corrispettivo_pos'
     """
     data = corr_doc.get("data", "")
     totale = _to_float(corr_doc.get("totale", 0))
     contanti = _to_float(corr_doc.get("pagato_contanti", 0))
-    elettronico = _to_float(corr_doc.get("pagato_elettronico", 0))
+    # Nome campo storicamente incoerente tra gli importer (alcuni scrivono
+    # pagato_pos, altri pagato_elettronico): leggiamo entrambi, come già fa
+    # prima_nota_module/sync.py.
+    elettronico = _to_float(corr_doc.get("pagato_pos", 0)) or _to_float(corr_doc.get("pagato_elettronico", 0))
     non_riscosso = _to_float(corr_doc.get("pagato_non_riscosso", 0))
     iva = _to_float(corr_doc.get("totale_iva", 0))
     imponibile = _to_float(corr_doc.get("totale_imponibile", 0))
@@ -158,15 +170,19 @@ async def _create_prima_nota_movements(db, corr_doc: Dict[str, Any]) -> Dict[str
     # Se i dettagli pagamento non ci sono, considera tutto contanti
     if contanti == 0 and elettronico == 0 and totale > 0:
         contanti = totale
+    # Se manca il totale ma ci sono i dettagli pagamento, ricostruiscilo
+    if totale == 0 and (contanti or elettronico):
+        totale = contanti + elettronico
 
     anno = int(data[:4]) if data and len(data) >= 4 and data[:4].isdigit() else datetime.now().year
     mese = int(data[5:7]) if data and len(data) >= 7 and data[5:7].isdigit() else datetime.now().month
 
     now = datetime.now(timezone.utc).isoformat()
     cassa_id = None
+    cassa_uscita_pos_id = None
     banca_id = None
 
-    if contanti > 0:
+    if totale > 0:
         cassa_id = str(uuid.uuid4())
         mov_cassa = {
             "id": cassa_id,
@@ -175,10 +191,10 @@ async def _create_prima_nota_movements(db, corr_doc: Dict[str, Any]) -> Dict[str
             "date": data,
             "tipo": "entrata",
             "type": "entrata",
-            "importo": round(contanti, 2),
-            "amount": round(contanti, 2),
-            "descrizione": f"Corrispettivo contanti {data}",
-            "description": f"Corrispettivo contanti {data}",
+            "importo": round(totale, 2),
+            "amount": round(totale, 2),
+            "descrizione": f"Corrispettivi {data}",
+            "description": f"Corrispettivi {data}",
             "categoria": "Corrispettivi",
             "category": "Corrispettivi",
             "source": "corrispettivo_import",
@@ -201,6 +217,27 @@ async def _create_prima_nota_movements(db, corr_doc: Dict[str, Any]) -> Dict[str
         await db["prima_nota_cassa"].insert_one(mov_cassa.copy())
 
     if elettronico > 0:
+        cassa_uscita_pos_id = str(uuid.uuid4())
+        mov_cassa_uscita = {
+            "id": cassa_uscita_pos_id,
+            "corrispettivo_id": corr_doc.get("id"),
+            "data": data,
+            "date": data,
+            "tipo": "uscita",
+            "type": "uscita",
+            "importo": round(elettronico, 2),
+            "amount": round(elettronico, 2),
+            "descrizione": f"Pagamento elettronico {data} → Banca",
+            "description": f"Pagamento elettronico {data} → Banca",
+            "categoria": "POS Verso Banca",
+            "category": "POS Verso Banca",
+            "source": "corrispettivo_import",
+            "anno": anno,
+            "mese": mese,
+            "created_at": now,
+        }
+        await db["prima_nota_cassa"].insert_one(mov_cassa_uscita.copy())
+
         banca_id = str(uuid.uuid4())
         mov_banca = {
             "id": banca_id,
@@ -223,7 +260,11 @@ async def _create_prima_nota_movements(db, corr_doc: Dict[str, Any]) -> Dict[str
         }
         await db["prima_nota_banca"].insert_one(mov_banca.copy())
 
-    return {"prima_nota_cassa_id": cassa_id, "prima_nota_banca_id": banca_id}
+    return {
+        "prima_nota_cassa_id": cassa_id,
+        "prima_nota_cassa_uscita_pos_id": cassa_uscita_pos_id,
+        "prima_nota_banca_id": banca_id,
+    }
 
 
 async def ingest_corrispettivo_parsed(

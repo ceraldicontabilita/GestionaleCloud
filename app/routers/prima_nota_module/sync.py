@@ -314,6 +314,32 @@ async def _sync_corrispettivi_impl(anno: int = None) -> Dict:
                     "created_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
                 }
                 await db[COLLECTION_PRIMA_NOTA_CASSA].insert_one(movimento_pos)
+
+            # ENTRATA BANCA: copia del pagamento elettronico, mai duplicata.
+            # Alimenta anche Coerenza POS (pos_corrispettivi_check.py legge
+            # prima_nota_banca con source in [chiusura_pos_mobile,
+            # corrispettivo_pos]). Controllo anti-duplicato indipendente da
+            # quello sopra: questo corrispettivo potrebbe essere già stato
+            # processato dal percorso di caricamento diretto
+            # (corrispettivi_helpers.py::_create_prima_nota_movements), che
+            # usa lo stesso source "corrispettivo_pos".
+            existing_banca = await db["prima_nota_banca"].find_one(
+                {"corrispettivo_id": corr_id, "source": "corrispettivo_pos"}
+            )
+            if not existing_banca:
+                movimento_banca = {
+                    "id": str(__import__("uuid").uuid4()),
+                    "data": data,
+                    "tipo": "entrata",
+                    "categoria": "Corrispettivi POS",
+                    "descrizione": f"POS corrispettivo {data}",
+                    "importo": round(elettronico, 2),
+                    "corrispettivo_id": corr_id,
+                    "source": "corrispettivo_pos",
+                    "riconciliato": False,
+                    "created_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+                }
+                await db["prima_nota_banca"].insert_one(movimento_banca)
     
     return {
         "message": f"Sincronizzati {inseriti} corrispettivi in Prima Nota Cassa",
