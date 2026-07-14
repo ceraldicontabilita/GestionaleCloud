@@ -3078,10 +3078,22 @@ function EditMovimentoModal({ movimento, tipo, onClose, onSave }) {
   });
   const [saving, setSaving] = useState(false);
 
-  const categorie =
+  // Elenco allineato alle categorie REALMENTE scritte dal backend (grep su
+  // app/routers/prima_nota_module/, app/routers/invoices/corrispettivi*.py —
+  // audit 14/07/2026): un valore assente qui fa apparire il <select>
+  // controllato vuoto ("-- Seleziona --") anche quando il movimento ha una
+  // categoria valida, perché React non trova l'<option> corrispondente.
+  const categorieBase =
     tipo === 'cassa'
-      ? ['Corrispettivi', 'POS', 'Versamento', 'Pagamento fornitore', 'Incasso', 'Spese', 'Altro']
-      : ['Pagamento fornitore', 'Bonifico', 'Assegno', 'F24', 'Altro'];
+      ? ['Corrispettivi', 'POS', 'POS Verso Banca', 'Versamento', 'Pagamento fornitore',
+         'Nota credito fornitore', 'Fatture', 'Incasso', 'Spese', 'Altro']
+      : ['Pagamento fornitore', 'Nota credito fornitore', 'Incasso cliente', 'Fatture',
+         'Corrispettivi POS', 'Bonifico', 'Assegno', 'F24', 'Altro'];
+  // Difensivo: qualunque sia la categoria reale del movimento (anche se non
+  // ancora censita sopra), resta sempre selezionabile invece di sparire.
+  const categorie = movimento.categoria && !categorieBase.includes(movimento.categoria)
+    ? [movimento.categoria, ...categorieBase]
+    : categorieBase;
 
   const handleSubmit = async e => {
     e.preventDefault();

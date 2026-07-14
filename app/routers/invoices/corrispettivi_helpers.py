@@ -156,23 +156,33 @@ async def _create_prima_nota_movements(db, corr_doc: Dict[str, Any]) -> Dict[str
       precedenti con _delete_prima_nota_for_corrispettivo) — alimenta anche
       Coerenza POS, che legge prima_nota_banca con source='corrispettivo_pos'
     """
-    data = corr_doc.get("data", "")
-    totale = _to_float(corr_doc.get("totale", 0))
+    data = corr_doc.get("data", corr_doc.get("data_operazione", ""))
     contanti = _to_float(corr_doc.get("pagato_contanti", 0))
-    # Nome campo storicamente incoerente tra gli importer (alcuni scrivono
-    # pagato_pos, altri pagato_elettronico): leggiamo entrambi, come già fa
-    # prima_nota_module/sync.py.
-    elettronico = _to_float(corr_doc.get("pagato_pos", 0)) or _to_float(corr_doc.get("pagato_elettronico", 0))
+    # Nome campo storicamente incoerente tra gli importer (il parser XML/UI
+    # scrive pagato_elettronico — vedi PagatoElettronico nell'XML
+    # DatiCorrispettivi SDI — altri importer scrivono pagato_pos): leggiamo
+    # entrambi, in quest'ordine (pagato_elettronico prima: è il nome scritto
+    # dal parser XML ufficiale, la fonte più comune).
+    elettronico = _to_float(corr_doc.get("pagato_elettronico", 0)) or _to_float(corr_doc.get("pagato_pos", 0))
     non_riscosso = _to_float(corr_doc.get("pagato_non_riscosso", 0))
     iva = _to_float(corr_doc.get("totale_iva", 0))
     imponibile = _to_float(corr_doc.get("totale_imponibile", 0))
 
+    # Totale: prova tutti i nomi di campo osservati nei documenti reali
+    # (diversi importer/percorsi storici), poi ricostruiscilo dai dettagli
+    # pagamento come ultima spiaggia.
+    totale = _to_float(
+        corr_doc.get("totale")
+        or corr_doc.get("totale_complessivo")
+        or corr_doc.get("importo")
+        or corr_doc.get("totale_giornaliero")
+        or (contanti + elettronico)
+        or 0
+    )
+
     # Se i dettagli pagamento non ci sono, considera tutto contanti
     if contanti == 0 and elettronico == 0 and totale > 0:
         contanti = totale
-    # Se manca il totale ma ci sono i dettagli pagamento, ricostruiscilo
-    if totale == 0 and (contanti or elettronico):
-        totale = contanti + elettronico
 
     anno = int(data[:4]) if data and len(data) >= 4 and data[:4].isdigit() else datetime.now().year
     mese = int(data[5:7]) if data and len(data) >= 7 and data[5:7].isdigit() else datetime.now().month

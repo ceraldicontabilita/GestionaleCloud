@@ -214,133 +214,68 @@ async def sync_corrispettivi_anno(anno: int = Query(...)) -> Dict:
 
 
 async def _sync_corrispettivi_impl(anno: int = None) -> Dict:
-    """Implementazione sync corrispettivi → prima nota cassa."""
+    """Implementazione sync corrispettivi → prima nota cassa/banca.
+
+    Catch-up periodico (scheduler ogni 30 min) per i corrispettivi che non
+    sono ancora passati dal percorso di caricamento diretto. Unificato
+    (14/07/2026, richiesta utente) su un'unica implementazione condivisa con
+    quel percorso — corrispettivi_helpers.py::_create_prima_nota_movements —
+    così la regola contabile (cassa entrata=totale/uscita=POS, banca
+    entrata=POS) e la lettura dei campi pagamento vivono in un solo posto,
+    non due copie che potevano divergere.
+    """
     import logging
+    from app.routers.invoices.corrispettivi_helpers import _create_prima_nota_movements
     from .common import COLLECTION_PRIMA_NOTA_CASSA
     logger = logging.getLogger(__name__)
     db = Database.get_db()
-    
+
     query = {}
     if anno:
         query["anno"] = anno
-    
+
     corrispettivi = await db["corrispettivi"].find(query, {"_id": 0}).to_list(5000)
-    
+
     inseriti = 0
     duplicati = 0
     saltati_importo_zero = []  # diagnostica: quali corrispettivi vengono scartati
-    
+
     for c in corrispettivi:
         corr_id = c.get("id", "")
-        
-        # Check dedup
+
+        # Check dedup: se questo corrispettivo ha già un movimento cassa
+        # (da questo stesso sync o dal caricamento diretto), non rigenerare.
         existing = await db[COLLECTION_PRIMA_NOTA_CASSA].find_one({"corrispettivo_id": corr_id})
         if existing:
             duplicati += 1
             continue
-        
-        data = c.get("data", c.get("data_operazione", ""))
-        
-        # REGOLA CONTABILE: 
-        # ENTRATA = totale corrispettivo (contanti + POS)
-        # USCITA = POS verso banca (il POS esce dalla cassa verso la banca)
-        # SALDO = solo contanti rimasti in cassa
-        contanti = float(c.get("pagato_contanti", 0) or 0)
-        # FIX: il DB salva "pagato_pos", il vecchio codice leggeva "pagato_elettronico"
-        # Manteniamo entrambi i nomi per retrocompatibilità con vecchi documenti.
-        elettronico = float(c.get("pagato_pos", 0) or c.get("pagato_elettronico", 0) or 0)
-        totale = float(
-            c.get("totale", 0)
-            or c.get("totale_complessivo", 0)
-            or c.get("importo", 0)
-            or c.get("totale_giornaliero", 0)
-            or (contanti + elettronico)  # fallback: somma dei metodi di pagamento
-            or 0
-        )
-        
-        if totale <= 0:
-            # Log diagnostico: aiuta a capire perché alcuni corrispettivi non compaiono in cassa
+
+        risultato = await _create_prima_nota_movements(db, c)
+
+        if not risultato.get("prima_nota_cassa_id"):
+            # Totale non ricostruibile da nessun campo noto: stessa diagnostica
+            # di prima, per non perdere visibilità sui corrispettivi scartati.
             saltati_importo_zero.append({
                 "id": corr_id,
-                "data": data,
+                "data": c.get("data", c.get("data_operazione", "")),
                 "anno": c.get("anno"),
                 "campi_totale": {
                     "totale": c.get("totale"),
                     "totale_complessivo": c.get("totale_complessivo"),
                     "importo": c.get("importo"),
                     "pagato_contanti": c.get("pagato_contanti"),
+                    "pagato_elettronico": c.get("pagato_elettronico"),
                     "pagato_pos": c.get("pagato_pos"),
                 },
             })
             logger.warning(
                 "Corrispettivo %s (data=%s) saltato: totale=0 su tutti i campi noti",
-                corr_id, data,
+                corr_id, c.get("data", ""),
             )
             continue
-        
-        # ENTRATA CASSA: totale corrispettivo
-        movimento = {
-            "id": str(__import__("uuid").uuid4()),
-            "data": data,
-            "tipo": "entrata",
-            "categoria": "Corrispettivi",
-            "descrizione": f"Corrispettivi {data}",
-            "importo": round(totale, 2),
-            "corrispettivo_id": corr_id,
-            "pagato_contanti": round(contanti, 2),
-            "pagato_elettronico": round(elettronico, 2),
-            "totale_giornata": round(totale, 2),
-            "source": "corrispettivi_sync",
-            "created_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
-        }
-        await db[COLLECTION_PRIMA_NOTA_CASSA].insert_one(movimento)
-        inseriti += 1
-        
-        # USCITA CASSA: POS verso banca
-        if elettronico > 0:
-            existing_pos = await db[COLLECTION_PRIMA_NOTA_CASSA].find_one(
-                {"corrispettivo_id": corr_id, "source": "corrispettivi_pos_sync"}
-            )
-            if not existing_pos:
-                movimento_pos = {
-                    "id": str(__import__("uuid").uuid4()),
-                    "data": data,
-                    "tipo": "uscita",
-                    "categoria": "POS Verso Banca",
-                    "descrizione": f"Pagamento elettronico {data} → Banca",
-                    "importo": round(elettronico, 2),
-                    "corrispettivo_id": corr_id,
-                    "source": "corrispettivi_pos_sync",
-                    "created_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
-                }
-                await db[COLLECTION_PRIMA_NOTA_CASSA].insert_one(movimento_pos)
 
-            # ENTRATA BANCA: copia del pagamento elettronico, mai duplicata.
-            # Alimenta anche Coerenza POS (pos_corrispettivi_check.py legge
-            # prima_nota_banca con source in [chiusura_pos_mobile,
-            # corrispettivo_pos]). Controllo anti-duplicato indipendente da
-            # quello sopra: questo corrispettivo potrebbe essere già stato
-            # processato dal percorso di caricamento diretto
-            # (corrispettivi_helpers.py::_create_prima_nota_movements), che
-            # usa lo stesso source "corrispettivo_pos".
-            existing_banca = await db["prima_nota_banca"].find_one(
-                {"corrispettivo_id": corr_id, "source": "corrispettivo_pos"}
-            )
-            if not existing_banca:
-                movimento_banca = {
-                    "id": str(__import__("uuid").uuid4()),
-                    "data": data,
-                    "tipo": "entrata",
-                    "categoria": "Corrispettivi POS",
-                    "descrizione": f"POS corrispettivo {data}",
-                    "importo": round(elettronico, 2),
-                    "corrispettivo_id": corr_id,
-                    "source": "corrispettivo_pos",
-                    "riconciliato": False,
-                    "created_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
-                }
-                await db["prima_nota_banca"].insert_one(movimento_banca)
-    
+        inseriti += 1
+
     return {
         "message": f"Sincronizzati {inseriti} corrispettivi in Prima Nota Cassa",
         "inseriti": inseriti,
@@ -412,16 +347,22 @@ async def sync_fatture_pagate(anno: int = Query(...)) -> Dict:
         
         metodo = fatt.get("metodo_pagamento", "bonifico").lower()
         fornitore = fatt.get("supplier_name") or fatt.get("cedente_denominazione", "Fornitore")
-        
+
+        # Stessa regola di registra_pagamento_fattura/conferma_fattura_provvisoria:
+        # nota di credito (TD04/TD08) ed fatture attive (TD24-27) non sono un
+        # pagamento uscita a fornitore (bug segnalato dall'utente 14/07/2026,
+        # qui era hardcoded "uscita"/"Fatture" indipendentemente dal tipo).
+        tipo_movimento, categoria, desc_prefisso = determina_tipo_movimento_fattura(fatt)
         movimento = {
             "id": str(uuid.uuid4()),
             "data": fatt.get("invoice_date") or fatt.get("data_pagamento"),
-            "tipo": "uscita",
+            "tipo": tipo_movimento,
             "importo": totale,
-            "descrizione": f"Fattura {fatt.get('numero', '')} - {fornitore[:30]}",
-            "categoria": "Fatture",
+            "descrizione": f"{desc_prefisso} {fatt.get('numero', '')} - {fornitore[:30]}",
+            "categoria": categoria,
             "riferimento": ref,
             "fattura_id": fattura_id,
+            "tipo_documento": fatt.get("tipo_documento"),
             "source": "sync_fatture",
             "created_at": datetime.now(timezone.utc).isoformat()
         }
@@ -783,15 +724,24 @@ async def conferma_fattura_provvisoria(data: Dict = Body(...)) -> Dict:
     if claim is None:
         return {"success": True, "message": "Già registrata (conferma concorrente)"}
 
+    # Nota di credito (TD04/TD08) e fatture attive (TD24-27) NON sono un
+    # pagamento a fornitore: determina_tipo_movimento_fattura applica la
+    # stessa regola già usata da registra_pagamento_fattura, così una nota
+    # di credito confermata da qui risulta ENTRATA (segno +), categoria
+    # "Nota credito fornitore" — prima veniva sempre forzata a
+    # tipo="uscita"/categoria="Fatture" indipendentemente dal tipo_documento
+    # (bug segnalato dall'utente 14/07/2026).
+    tipo_movimento, categoria, desc_prefisso = determina_tipo_movimento_fattura(fattura)
     movimento = {
         "id": pn_id,
         "data": data_fatt,
-        "tipo": "uscita",
-        "categoria": "Fatture",
-        "descrizione": f"Fatt. {numero} - {fornitore[:30]}",
+        "tipo": tipo_movimento,
+        "categoria": categoria,
+        "descrizione": f"{desc_prefisso} {numero} - {fornitore[:30]}",
         "importo": importo,
         "riferimento": f"FATT-{fattura_id}",
         "fattura_id": fattura_id,
+        "tipo_documento": fattura.get("tipo_documento"),
         "source": "conferma_provvisori",
         "created_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
     }
