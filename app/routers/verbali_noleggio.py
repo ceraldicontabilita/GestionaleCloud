@@ -89,7 +89,14 @@ async def get_verbali_completi(
     - targa: Filtra per targa veicolo
     - stato_pagamento: da_verificare, pagato, sospeso
     """
-    from app.services.verbali_service import COLLECTION_VERBALI
+    # ATTENZIONE: import locale con nome diverso dalla costante di modulo
+    # COLLECTION_VERBALI (riga 23, = "verbali_noleggio") — questo endpoint
+    # legge invece "verbali_noleggio_completi" (alimentata dalle fatture,
+    # vedi app/services/verbali_service.py). Rinominato per non shadoware
+    # in modo fuorviante lo stesso identificatore con due valori diversi
+    # (piano residuo op.15, indagine 14/07/2026 — nessun cambio di
+    # comportamento, solo leggibilità).
+    from app.services.verbali_service import COLLECTION_VERBALI as COLLECTION_VERBALI_COMPLETI
     db = Database.get_db()
 
     query = {}
@@ -100,14 +107,14 @@ async def get_verbali_completi(
     if stato_pagamento:
         query["stato_pagamento"] = stato_pagamento
 
-    cursor = db[COLLECTION_VERBALI].find(query, {"_id": 0}).sort("data_fattura", -1).limit(limit)
+    cursor = db[COLLECTION_VERBALI_COMPLETI].find(query, {"_id": 0}).sort("data_fattura", -1).limit(limit)
     verbali = await cursor.to_list(limit)
 
     # Statistiche
-    totale = await db[COLLECTION_VERBALI].count_documents(query if query else {})
-    pagati = await db[COLLECTION_VERBALI].count_documents({"stato_pagamento": "pagato"})
-    sospesi = await db[COLLECTION_VERBALI].count_documents({"stato_pagamento": "sospeso"})
-    da_verificare = await db[COLLECTION_VERBALI].count_documents({"stato_pagamento": "da_verificare"})
+    totale = await db[COLLECTION_VERBALI_COMPLETI].count_documents(query if query else {})
+    pagati = await db[COLLECTION_VERBALI_COMPLETI].count_documents({"stato_pagamento": "pagato"})
+    sospesi = await db[COLLECTION_VERBALI_COMPLETI].count_documents({"stato_pagamento": "sospeso"})
+    da_verificare = await db[COLLECTION_VERBALI_COMPLETI].count_documents({"stato_pagamento": "da_verificare"})
 
     return {
         "verbali": verbali,
@@ -131,11 +138,13 @@ async def get_dettaglio_verbale(numero_verbale: str) -> Dict[str, Any]:
     """
     Restituisce il dettaglio completo di un verbale con tutti i documenti associati.
     """
-    from app.services.verbali_service import COLLECTION_VERBALI
+    # Vedi nota in get_verbali_completi sopra: nome rinominato per non
+    # shadoware COLLECTION_VERBALI di modulo con un valore diverso.
+    from app.services.verbali_service import COLLECTION_VERBALI as COLLECTION_VERBALI_COMPLETI
     db = Database.get_db()
 
     # Cerca nel nuovo sistema (incluso vecchio numero)
-    verbale = await db[COLLECTION_VERBALI].find_one(
+    verbale = await db[COLLECTION_VERBALI_COMPLETI].find_one(
         {"$or": [
             {"numero_verbale": numero_verbale},
             {"numero_verbale_old": numero_verbale},
