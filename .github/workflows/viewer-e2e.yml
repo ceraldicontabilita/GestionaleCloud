@@ -1,0 +1,44 @@
+name: Viewer E2E
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/src/components/DocumentViewerModal.jsx"
+      - "frontend/src/pages/Documenti.jsx"
+      - "frontend/scripts/audit-viewer.cjs"
+      - ".github/workflows/viewer-e2e.yml"
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: yarn
+          cache-dependency-path: frontend/yarn.lock
+
+      - name: Installa dipendenze
+        run: yarn install --frozen-lockfile
+
+      - name: Build
+        run: yarn build
+
+      - name: Installa Chromium per Playwright
+        run: |
+          yarn add --dev playwright-core@1
+          npx playwright-core install --with-deps chromium || npx playwright install --with-deps chromium
+
+      - name: Avvia preview e lancia l'audit viewer
+        run: |
+          npx vite preview --port 4173 &
+          sleep 4
+          node scripts/audit-viewer.cjs
