@@ -178,22 +178,32 @@ async def registra_accantonamento_tfr(input_data: AccantonamentoTFRInput) -> Dic
         {"$set": {"tfr_accantonato": round(nuovo_tfr_totale, 2)}}
     )
     
-    # Registra movimento contabile
-    movimento = {
-        "id": str(uuid4()),
-        "data": f"{input_data.anno}-12-31",
-        "descrizione": f"Accantonamento TFR {input_data.anno} - {dipendente.get('nome_completo', '')}",
-        "tipo": "tfr_accantonamento",
-        "importo": round(totale_accantonamento, 2),
-        "dipendente_id": input_data.dipendente_id,
-        "anno": input_data.anno,
-        "dettaglio": {
-            "quota_annuale": round(quota_annuale, 2),
-            "rivalutazione": round(rivalutazione, 2)
+    # Registra scrittura contabile in partita doppia (motore §6.1/A7):
+    # DARE costo TFR, AVERE debito/fondo TFR. Idempotente per dipendente+anno.
+    from app.services.registrazione_contabile import (
+        registra_scrittura_semplice, riga, _C_TFR_COSTO, _C_TFR_DEBITO,
+    )
+    imp = round(totale_accantonamento, 2)
+    await registra_scrittura_semplice(
+        db,
+        movimento={
+            "data": f"{input_data.anno}-12-31",
+            "descrizione": f"Accantonamento TFR {input_data.anno} - {dipendente.get('nome_completo', '')}",
+            "tipo": "tfr_accantonamento",
+            "importo": imp,
+            "dipendente_id": input_data.dipendente_id,
+            "anno": input_data.anno,
+            "dettaglio": {
+                "quota_annuale": round(quota_annuale, 2),
+                "rivalutazione": round(rivalutazione, 2)
+            },
         },
-        "created_at": datetime.now(timezone.utc).isoformat()
-    }
-    await db["movimenti_contabili"].insert_one(movimento.copy())
+        righe=[riga(_C_TFR_COSTO, dare=imp, descrizione="Accantonamento TFR"),
+               riga(_C_TFR_DEBITO, avere=imp, descrizione="Debito TFR")],
+        chiave_naturale={"tipo": "tfr_accantonamento",
+                         "dipendente_id": input_data.dipendente_id,
+                         "anno": input_data.anno},
+    )
     
     return {
         "success": True,
@@ -302,32 +312,49 @@ async def liquida_tfr(input_data: LiquidazioneTFRInput) -> Dict[str, Any]:
         {"$set": {"tfr_accantonato": round(nuovo_tfr, 2)}}
     )
     
-    # Registra movimenti contabili
-    # 1. Utilizzo fondo TFR
-    movimento_fondo = {
-        "id": str(uuid4()),
-        "data": input_data.data_liquidazione,
-        "descrizione": f"Liquidazione TFR - {dipendente.get('nome_completo', '')}",
-        "tipo": "tfr_liquidazione",
-        "importo": round(importo_lordo, 2),
-        "dipendente_id": input_data.dipendente_id,
-        "motivo": input_data.motivo,
-        "created_at": datetime.now(timezone.utc).isoformat()
-    }
-    await db["movimenti_contabili"].insert_one(movimento_fondo.copy())
-    
-    # 2. Ritenute
-    if ritenute > 0:
-        movimento_ritenute = {
-            "id": str(uuid4()),
+    # Registra scritture contabili in partita doppia (motore §6.1/A7),
+    # idempotenti sulla liquidazione.
+    from app.services.registrazione_contabile import (
+        registra_scrittura_semplice, riga, _C_TFR_DEBITO, _C_DEBITI_TRIBUTARI,
+        _C_BANCA,
+    )
+    # 1. Utilizzo fondo TFR: DARE fondo (lordo), AVERE banca
+    lordo = round(importo_lordo, 2)
+    await registra_scrittura_semplice(
+        db,
+        movimento={
             "data": input_data.data_liquidazione,
-            "descrizione": f"Ritenute TFR - {dipendente.get('nome_completo', '')}",
-            "tipo": "ritenuta_tfr",
-            "importo": round(ritenute, 2),
+            "descrizione": f"Liquidazione TFR - {dipendente.get('nome_completo', '')}",
+            "tipo": "tfr_liquidazione",
+            "importo": lordo,
             "dipendente_id": input_data.dipendente_id,
-            "created_at": datetime.now(timezone.utc).isoformat()
-        }
-        await db["movimenti_contabili"].insert_one(movimento_ritenute.copy())
+            "motivo": input_data.motivo,
+            "liquidazione_id": liquidazione["id"],
+        },
+        righe=[riga(_C_TFR_DEBITO, dare=lordo, descrizione="Utilizzo fondo TFR"),
+               riga(_C_BANCA, avere=lordo, descrizione="Pagamento TFR")],
+        chiave_naturale={"tipo": "tfr_liquidazione",
+                         "liquidazione_id": liquidazione["id"]},
+    )
+
+    # 2. Ritenute trattenute: DARE banca (netto trattenuto), AVERE debiti tributari
+    if ritenute > 0:
+        rit = round(ritenute, 2)
+        await registra_scrittura_semplice(
+            db,
+            movimento={
+                "data": input_data.data_liquidazione,
+                "descrizione": f"Ritenute TFR - {dipendente.get('nome_completo', '')}",
+                "tipo": "ritenuta_tfr",
+                "importo": rit,
+                "dipendente_id": input_data.dipendente_id,
+                "liquidazione_id": liquidazione["id"],
+            },
+            righe=[riga(_C_BANCA, dare=rit, descrizione="Ritenuta trattenuta"),
+                   riga(_C_DEBITI_TRIBUTARI, avere=rit, descrizione="Debito ritenute TFR")],
+            chiave_naturale={"tipo": "ritenuta_tfr",
+                             "liquidazione_id": liquidazione["id"]},
+        )
     
     return {
         "success": True,
@@ -759,18 +786,28 @@ async def registra_acconto(input_data: AccontoInput) -> Dict[str, Any]:
             {"$set": {"tfr_accantonato": round(nuovo_tfr, 2)}}
         )
 
-        # Registra movimento contabile
-        movimento = {
-            "id": str(uuid4()),
-            "data": input_data.data,
-            "descrizione": f"Acconto TFR - {dipendente.get('nome_completo', '')}",
-            "tipo": "acconto_tfr",
-            "importo": round(input_data.importo, 2),
-            "dipendente_id": input_data.dipendente_id,
-            "note": input_data.note or "",
-            "created_at": now_iso,
-        }
-        await db["movimenti_contabili"].insert_one(movimento.copy())
+        # Registra scrittura contabile in partita doppia (motore §6.1/A7):
+        # DARE fondo TFR (riduzione), AVERE banca. Idempotente sull'acconto.
+        from app.services.registrazione_contabile import (
+            registra_scrittura_semplice, riga, _C_TFR_DEBITO, _C_BANCA,
+        )
+        imp = round(input_data.importo, 2)
+        await registra_scrittura_semplice(
+            db,
+            movimento={
+                "data": input_data.data,
+                "descrizione": f"Acconto TFR - {dipendente.get('nome_completo', '')}",
+                "tipo": "acconto_tfr",
+                "importo": imp,
+                "dipendente_id": input_data.dipendente_id,
+                "note": input_data.note or "",
+                "acconto_id": acconto["id"],
+                "created_at": now_iso,
+            },
+            righe=[riga(_C_TFR_DEBITO, dare=imp, descrizione="Acconto su TFR"),
+                   riga(_C_BANCA, avere=imp, descrizione="Pagamento acconto TFR")],
+            chiave_naturale={"tipo": "acconto_tfr", "acconto_id": acconto["id"]},
+        )
 
     return {
         "success": True,

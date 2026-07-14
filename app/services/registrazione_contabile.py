@@ -277,3 +277,61 @@ async def ricostruisci_fatture(db) -> Dict[str, Any]:
     res = await registra_tutte_fatture(db)
     res["ricostruzione"] = True
     return res
+
+
+# ============================================================
+# SCRITTURE SEMPLICI (A7): eventi non-documentali in partita doppia
+# ============================================================
+
+# Conti operativi ESISTENTI usati dalle scritture semplici (niente conti
+# inventati: regola vincolante utente sul piano dei conti).
+_C_TFR_COSTO = ("05.03.03", "TFR")
+_C_TFR_DEBITO = ("02.04.01", "TFR")
+_C_DEBITI_TRIBUTARI = ("02.02.01", "Debiti tributari")
+
+
+def riga(conto: tuple, dare: float = 0, avere: float = 0,
+         descrizione: str = "") -> Dict[str, Any]:
+    """Riga di partita doppia nello stesso schema delle scritture del motore."""
+    return {"conto_codice": conto[0], "conto_nome": conto[1],
+            "dare": round(float(dare), 2), "avere": round(float(avere), 2),
+            "centro_costo": None, "descrizione": descrizione}
+
+
+async def registra_scrittura_semplice(db, movimento: Dict[str, Any],
+                                      righe: list,
+                                      chiave_naturale: Dict[str, Any]) -> Dict[str, Any]:
+    """Registra in `movimenti_contabili` una scrittura in partita doppia per
+    eventi NON documentali (TFR, ammortamenti, risultato d'esercizio...).
+
+    Differenze rispetto a registra_fattura/corrispettivo (deliberate, A7):
+    - NON aggiorna i saldi dei conti: il bilancio CEE aggrega dai documenti
+      sorgente (cedolini, cespiti, fatture) — aggiornare i saldi qui
+      produrrebbe DOPPIO CONTEGGIO.
+    - Mantiene nel documento tutti i campi passati in `movimento` (tipo,
+      importo, dettaglio, dipendente_id...): i lettori esistenti non cambiano.
+    - Idempotente sulla `chiave_naturale` (es. {"tipo":..., "anno":...}).
+    """
+    esistente = await db[COLL_MOVIMENTI].find_one(chiave_naturale, {"_id": 0, "id": 1})
+    if esistente:
+        return {"id": esistente["id"], "gia_presente": True}
+
+    tot_dare = round(sum(float(r.get("dare", 0) or 0) for r in righe), 2)
+    tot_avere = round(sum(float(r.get("avere", 0) or 0) for r in righe), 2)
+    if abs(tot_dare - tot_avere) > 0.01:
+        raise ValueError(
+            f"Scrittura non bilanciata: DARE {tot_dare} != AVERE {tot_avere}")
+
+    doc = dict(movimento)
+    doc.setdefault("id", str(uuid.uuid4()))
+    doc["righe"] = righe
+    doc["totale_dare"] = tot_dare
+    doc["totale_avere"] = tot_avere
+    doc["numero_registrazione"] = await _prossimo_numero(db)
+    doc.setdefault("created_at", _now())
+    await db[COLL_MOVIMENTI].insert_one(dict(doc))
+    await _audit(db, "scrittura_semplice", doc["id"],
+                 f"{doc.get('tipo', '?')} DARE={tot_dare} AVERE={tot_avere}")
+    doc.pop("_id", None)
+    doc["gia_presente"] = False
+    return doc
