@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 972 · tenere: 638 · verificare: 315 · admin-only (migrazione/manutenzione): 19
+**Totale endpoint:** 974 · tenere: 638 · verificare: 317 · admin-only (migrazione/manutenzione): 19
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -218,6 +218,8 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/commercialista/segna-inviata` | commercialista | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/conferma-tutte` | dati_provvisori | — | sì | — | — | — | tenere | in uso: scheduler |
 | `POST /api/conferma/{proposta_id}` | dati_provvisori | — | sì | sì | — | sì | tenere | in uso: scheduler, chat |
+| `GET /api/config-import/anno` | config_import | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `PUT /api/config-import/anno` | config_import | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/config/email-accounts` | configurazioni | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/config/email-accounts` | configurazioni | sì | — | — | — | — | tenere | in uso: FE |
 | `DELETE /api/config/email-accounts/{account_id}` | configurazioni | sì | — | — | — | — | tenere | in uso: FE |

@@ -843,6 +843,9 @@ export default function Admin() {
             )}
           </Card>
 
+          {/* Anno di importazione attivo — governa i canali Drive (fatture + corrispettivi) sotto */}
+          <AnnoImportazioneCard />
+
           {/* CARD GOOGLE DRIVE — import fatture */}
           <div data-testid="drive-fatture-card">
             <Card
@@ -1172,6 +1175,70 @@ export default function Admin() {
 // (nessun file toccato) e solo dopo sposti nel CESTINO Drive — recuperabile
 // per 30 giorni. L'anno viene letto dalla data del documento dentro l'XML;
 // i file con anno non determinabile NON vengono mai toccati.
+// Selettore globale "anno di importazione attivo" (richiesta utente
+// 14/07/2026): governa sia l'import Drive fatture sia l'import Drive
+// corrispettivi — solo i documenti con data nell'anno scelto entrano nel
+// flusso attivo (Prima Nota/scadenzario/alert/magazzino), gli altri anni
+// vengono archiviati per sola consultazione. Un'unica impostazione
+// condivisa (non una per canale), come scelto dall'utente.
+function AnnoImportazioneCard() {
+  const [anno, setAnno] = useState(null);
+  const [salvando, setSalvando] = useState(false);
+  const [caricando, setCaricando] = useState(true);
+
+  const annoCorrente = new Date().getFullYear();
+  const opzioniAnno = Array.from({ length: 6 }, (_, i) => annoCorrente - 4 + i);
+
+  useEffect(() => {
+    api
+      .get('/api/config-import/anno')
+      .then(res => setAnno(res.data.anno))
+      .catch(() => setAnno(annoCorrente))
+      .finally(() => setCaricando(false));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const salva = async nuovoAnno => {
+    setSalvando(true);
+    try {
+      await api.put('/api/config-import/anno', { anno: nuovoAnno });
+      setAnno(nuovoAnno);
+      toast.success(`Anno di importazione impostato su ${nuovoAnno}`);
+    } catch (e) {
+      toast.error('Errore salvataggio: ' + (e.response?.data?.detail || e.message));
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  return (
+    <Card title="📅 Anno di importazione attivo">
+      <p style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 12 }}>
+        Solo i documenti (fatture e corrispettivi) con data in questo anno vengono importati
+        automaticamente da Drive nel flusso contabile attivo (Prima Nota, scadenzario, alert,
+        magazzino). Gli anni precedenti vengono archiviati per sola consultazione, senza toccare
+        Prima Nota. Non riguarda il caricamento manuale via UI, sempre attivo.
+      </p>
+      {caricando ? (
+        <span style={{ fontSize: 13, color: COLORS.textMuted }}>Caricamento...</span>
+      ) : (
+        <Select
+          value={anno ?? ''}
+          onChange={e => salva(parseInt(e.target.value, 10))}
+          disabled={salvando}
+          data-testid="select-anno-importazione-attivo"
+          style={{ minWidth: 140 }}
+        >
+          {opzioniAnno.map(a => (
+            <option key={a} value={a}>
+              {a}
+            </option>
+          ))}
+        </Select>
+      )}
+    </Card>
+  );
+}
+
 function PuliziaDriveFattureCard() {
   const confirm = useConfirm();
   const [folder, setFolder] = useState('');

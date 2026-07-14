@@ -104,8 +104,10 @@ def test_process_xml_bytes_filtro_anno_route_verso_archivio(monkeypatch):
     monkeypatch.setattr(fu_mod, "archivia_fattura_storica", fake_archivia)
     monkeypatch.setattr(fu_mod, "import_parsed_invoice", fake_import)
 
+    # _FakeDb() senza doc in sistema_stato -> get_anno_importazione_attivo
+    # ricade sull'anno solare corrente, che qui coincide con _ANNO_CORRENTE.
     res = _run(fu_mod.process_xml_bytes(
-        None, b"<x/>", "f.xml", source="google_drive", applica_filtro_anno=True
+        _FakeDb(), b"<x/>", "f.xml", source="google_drive", applica_filtro_anno=True
     ))
 
     assert res["status"] == "archiviata"
@@ -128,7 +130,7 @@ def test_process_xml_bytes_filtro_anno_corrente_va_al_flusso_attivo(monkeypatch)
     monkeypatch.setattr(fu_mod, "import_parsed_invoice", fake_import)
 
     res = _run(fu_mod.process_xml_bytes(
-        None, b"<x/>", "f.xml", source="google_drive", applica_filtro_anno=True
+        _FakeDb(), b"<x/>", "f.xml", source="google_drive", applica_filtro_anno=True
     ))
 
     assert res["status"] == "imported"
@@ -179,7 +181,36 @@ def test_process_xml_bytes_data_illeggibile_resta_nel_flusso_attivo(monkeypatch)
     monkeypatch.setattr(fu_mod, "import_parsed_invoice", fake_import)
 
     res = _run(fu_mod.process_xml_bytes(
-        None, b"<x/>", "f.xml", source="google_drive", applica_filtro_anno=True
+        _FakeDb(), b"<x/>", "f.xml", source="google_drive", applica_filtro_anno=True
     ))
 
+    assert chiamate == ["attivo"]
+
+
+def test_process_xml_bytes_rispetta_anno_configurato_non_solo_anno_solare(monkeypatch):
+    # Richiesta utente 14/07/2026: l'anno attivo è un'impostazione (vedi
+    # app.services.config_import), NON necessariamente l'anno solare del
+    # server. Con anno attivo=2024 configurato, una fattura del 2024 deve
+    # andare al flusso attivo anche se il calendario segna un altro anno.
+    db = _FakeDb()
+    db["sistema_stato"].docs = [{"chiave": "config_import_anno_attivo", "anno": 2024}]
+    monkeypatch.setattr(fu_mod, "parse_fattura_xml", lambda xml: _parsed(2024))
+    chiamate = []
+
+    async def fake_archivia(*a, **k):
+        chiamate.append("archivio")
+        return {"status": "archiviata"}
+
+    async def fake_import(*a, **k):
+        chiamate.append("attivo")
+        return {"status": "imported"}
+
+    monkeypatch.setattr(fu_mod, "archivia_fattura_storica", fake_archivia)
+    monkeypatch.setattr(fu_mod, "import_parsed_invoice", fake_import)
+
+    res = _run(fu_mod.process_xml_bytes(
+        db, b"<x/>", "f.xml", source="google_drive", applica_filtro_anno=True
+    ))
+
+    assert res["status"] == "imported"
     assert chiamate == ["attivo"]

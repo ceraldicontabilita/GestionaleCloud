@@ -1117,15 +1117,16 @@ async def process_xml_bytes(db, content: bytes, filename: str, source: str = "xm
         return {"status": "error", "filename": filename, "error": parsed["error"]}
 
     if applica_filtro_anno:
+        from app.services.config_import import get_anno_importazione_attivo
         invoice_date = parsed.get("invoice_date") or ""
         anno_fattura = int(invoice_date[:4]) if invoice_date[:4].isdigit() else None
-        anno_corrente = datetime.now(timezone.utc).year
+        anno_attivo = await get_anno_importazione_attivo(db)
         # Data mancante/illeggibile: NON archiviare silenziosamente una
-        # fattura che potrebbe essere dell'anno corrente solo per un XML
+        # fattura che potrebbe essere dell'anno attivo solo per un XML
         # malformato — resta nel flusso attivo, dove è comunque visibile e
         # correggibile (a differenza dell'archivio storico, pensato per
         # sola consultazione).
-        if anno_fattura and anno_fattura != anno_corrente:
+        if anno_fattura and anno_fattura != anno_attivo:
             return await archivia_fattura_storica(db, parsed, filename, source, xml_raw=xml_content)
 
     return await import_parsed_invoice(db, parsed, filename, source, xml_raw=xml_content)

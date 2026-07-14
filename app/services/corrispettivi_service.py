@@ -12,6 +12,7 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 import hashlib
 import logging
+import uuid
 import xml.etree.ElementTree as ET
 
 from app.database import Database
@@ -40,22 +41,43 @@ class CorrispettiviService:
         self.corrispettivi = self.db["corrispettivi"]
         self.cash_movements = self.db["prima_nota_cassa"]  # Usa collection corretta
         self.db["prima_nota_cassa"] = self.db["prima_nota_cassa"]
-    
+
+    def _generate_id(self) -> str:
+        """Bug scoperto il 14/07/2026: mancava del tutto — process_xml e
+        create_manual (che lo chiamano per l'id del corrispettivo) andavano
+        in AttributeError ad ogni chiamata reale. L'unico chiamante di
+        process_xml in produzione è drive_corrispettivi_ingest.py (il
+        canale Drive corrispettivi appena attivato): ogni sync sarebbe
+        fallito su ogni singolo file."""
+        return str(uuid.uuid4())
+
     # ==================== CREATE ====================
     
-    async def process_xml(self, xml_content: bytes, filename: str) -> Dict[str, Any]:
+    async def process_xml(self, xml_content: bytes, filename: str,
+                           applica_filtro_anno: bool = False) -> Dict[str, Any]:
         """
         Processa un file XML corrispettivo.
+
+        `applica_filtro_anno` (richiesta utente 14/07/2026, propagazione
+        dello stesso filtro già applicato all'import Drive delle fatture:
+        SOLO l'ingest automatico da Drive lo attiva): se True e la data del
+        corrispettivo non è nell'anno di importazione attivo configurato
+        (vedi app.services.config_import), il corrispettivo viene comunque
+        salvato per consultazione ma marcato `stato_import="archivio_storico"`
+        e NON propagato a Prima Nota né all'event bus (niente Coerenza POS,
+        niente calendario accrediti) — un corrispettivo storico non deve
+        alterare il saldo cassa/banca dell'anno attivo. Default False:
+        l'import manuale da UI resta invariato.
         """
         logger.info(f"Processing corrispettivo XML: {filename}")
-        
+
         # 1. Parse XML
         try:
             parsed = self._parse_corrispettivo_xml(xml_content)
         except Exception as e:
             logger.error(f"XML parse error: {e}")
             return {"status": "error", "message": f"Errore parsing XML: {str(e)}"}
-        
+
         # 2. Check duplicato
         content_hash = hashlib.sha256(xml_content).hexdigest()
         existing = await self.corrispettivi.find_one({"content_hash": content_hash})
@@ -65,7 +87,7 @@ class CorrispettiviService:
                 "corrispettivo_id": str(existing.get("id")),
                 "message": "Corrispettivo già presente"
             }
-        
+
         # Check duplicato per data
         existing_date = await self.corrispettivi.find_one({
             "data": parsed["data"],
@@ -77,7 +99,17 @@ class CorrispettiviService:
                 "corrispettivo_id": str(existing_date.get("id")),
                 "message": f"Corrispettivo per {parsed['data']} già presente"
             }
-        
+
+        # Filtro anno: data mancante/illeggibile resta nel flusso attivo di
+        # proposito (mai archiviare alla cieca un XML sospetto).
+        archivia_solo = False
+        if applica_filtro_anno:
+            from app.services.config_import import get_anno_importazione_attivo
+            anno_attivo = await get_anno_importazione_attivo(self.db)
+            data_str = parsed.get("data") or ""
+            anno_corr = int(data_str[:4]) if data_str[:4].isdigit() else None
+            archivia_solo = bool(anno_corr and anno_corr != anno_attivo)
+
         # 3. Prepara documento
         corr_doc = {
             "id": self._generate_id(),
@@ -111,6 +143,21 @@ class CorrispettiviService:
             "prima_nota_id": None
         }
 
+        if archivia_solo:
+            corr_doc["status"] = "archiviata"
+            corr_doc["stato_import"] = "archivio_storico"
+            await self.corrispettivi.insert_one(corr_doc.copy())
+            logger.info(f"Corrispettivo archiviato (anno storico): {corr_doc['id']}")
+            return {
+                "status": "archiviata",
+                "corrispettivo_id": corr_doc["id"],
+                "data": corr_doc["data"],
+                "totale": corr_doc["totale"],
+                "prima_nota_id": None,
+                "message": "Corrispettivo di un anno storico: archiviato per sola consultazione, "
+                           "non registrato in Prima Nota"
+            }
+
         # Calendario accrediti POS: se c'e' quota elettronica, il corrispettivo
         # entra "in attesa accredito" con la data prevista dal calendario
         # (giorni lavorativi + festivi, mai il semplice mese contabile).
@@ -124,7 +171,7 @@ class CorrispettiviService:
         # 4. Salva corrispettivo
         await self.corrispettivi.insert_one(corr_doc.copy())
         corr_id = corr_doc["id"]
-        
+
         # 5. Propaga a Prima Nota Cassa
         prima_nota_id = await self._create_prima_nota_entry(corr_doc)
         if prima_nota_id:
@@ -132,7 +179,7 @@ class CorrispettiviService:
                 {"id": corr_id},
                 {"$set": {"prima_nota_id": prima_nota_id}}
             )
-        
+
         logger.info(f"Corrispettivo created: {corr_id}")
 
         # ── EVENTO: pubblica sul bus unico per prima nota e check POS ──

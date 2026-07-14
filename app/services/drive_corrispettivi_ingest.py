@@ -171,7 +171,7 @@ async def _do_sync(db) -> Dict[str, Any]:
     parent_id = _folder_id()
     result = {
         "status": "ok", "total": 0, "imported": 0, "duplicates": 0,
-        "errors": 0, "moved": 0, "details": [],
+        "archiviate": 0, "errors": 0, "moved": 0, "details": [],
     }
     try:
         elaborate_id = _get_or_create_elaborate_folder(service, parent_id)
@@ -187,7 +187,11 @@ async def _do_sync(db) -> Dict[str, Any]:
                     continue  # non spostare: resta per il retry
                 # Pipeline UNICA corrispettivi: dedup per hash e per data
                 # sono già dentro process_xml — nessun doppione possibile.
-                esito = await corr_service.process_xml(content, fname)
+                # applica_filtro_anno (richiesta utente 14/07/2026, stesso
+                # selettore anno condiviso con l'import fatture): un
+                # corrispettivo di un anno diverso da quello attivo viene
+                # archiviato per sola consultazione, non in Prima Nota.
+                esito = await corr_service.process_xml(content, fname, applica_filtro_anno=True)
                 stato = esito.get("status")
                 if stato == "duplicate":
                     result["duplicates"] += 1
@@ -195,6 +199,9 @@ async def _do_sync(db) -> Dict[str, Any]:
                     result["errors"] += 1
                     result["details"].append({"file": fname, "error": esito.get("message")})
                     continue  # file in errore: resta per il retry, non si sposta
+                elif stato == "archiviata":
+                    result["archiviate"] += 1
+                    logger.info(f"Drive corrispettivi: archiviato (anno storico) {fname}")
                 else:
                     result["imported"] += 1
                     logger.info(f"Drive corrispettivi: importato {fname}")
@@ -217,7 +224,7 @@ async def _do_sync(db) -> Dict[str, Any]:
         return {"status": "error", "message": str(e)}
 
     prev = await db["sistema_stato"].find_one({"chiave": _STATO_KEY}, {"_id": 0}) or {}
-    last_result = {k: result[k] for k in ("total", "imported", "duplicates", "errors", "moved")}
+    last_result = {k: result[k] for k in ("total", "imported", "duplicates", "archiviate", "errors", "moved")}
     last_result["details"] = result["details"][:5]
     now = datetime.now(timezone.utc).isoformat()
     await db["sistema_stato"].update_one(
@@ -266,7 +273,10 @@ async def verifica_quadratura_elaborate(db) -> Dict[str, Any]:
                 if not content:
                     esito["errori"] += 1
                     continue
-                r = await corr_service.process_xml(content, f["name"])
+                # Stesso filtro anno di _do_sync: un buco riparato qui non
+                # deve ripescare nel flusso attivo un corrispettivo storico
+                # (finisce comunque archiviato, non in Prima Nota).
+                r = await corr_service.process_xml(content, f["name"], applica_filtro_anno=True)
                 if r.get("status") == "duplicate":
                     esito["quadrati"] += 1
                 elif r.get("status") == "error":
