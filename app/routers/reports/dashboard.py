@@ -651,10 +651,17 @@ async def get_bilancio_istantaneo(
         
         costi = costi_res[0] if costi_res else {"imponibile": 0, "iva": 0, "totale": 0}
         
-        # Calcoli
-        ricavi_totali = float(ricavi_corr.get("totale", 0) or 0) + float(ricavi_fatt.get("totale", 0) or 0)
-        imponibile_ricavi = float(ricavi_corr.get("imponibile", 0) or 0) + float(ricavi_fatt.get("imponibile", 0) or 0)
-        iva_debito = float(ricavi_corr.get("iva", 0) or 0) + float(ricavi_fatt.get("iva", 0) or 0)
+        # Calcoli. Bug corretto 15/07/2026 (audit funzionale, confermato
+        # dall'utente): le fatture emesse NON sono mai ricavo aggiuntivo,
+        # sostituiscono sempre uno scontrino/corrispettivo già registrato
+        # (stessa regola del Conto Economico ufficiale in
+        # app/routers/accounting/bilancio.py::get_conto_economico) — qui
+        # venivano invece sommate ai corrispettivi senza alcuna deduplica,
+        # sovrastimando i ricavi. "da_fatture_emesse" resta nella risposta
+        # solo come dato informativo, non più incluso nel totale.
+        ricavi_totali = float(ricavi_corr.get("totale", 0) or 0)
+        imponibile_ricavi = float(ricavi_corr.get("imponibile", 0) or 0)
+        iva_debito = float(ricavi_corr.get("iva", 0) or 0)
         
         costi_totali = float(costi.get("totale", 0) or 0)
         imponibile_costi = float(costi.get("imponibile", 0) or 0)
