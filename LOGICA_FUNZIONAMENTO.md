@@ -90,8 +90,8 @@ Altre garanzie trasversali:
 | Estratti conto | Google Drive (CSV/Excel Banco BPM) | ogni ora (oggi spento, in attesa di validazione) |
 | Quietanze F24 | Google Drive (PDF) + upload manuale dalla pagina F24 | ogni ora (**attivo** dal 10/07/2026) |
 | Cedolini | **Email** da mittenti attendibili + **cartella Drive cedolini paga** (PDF) | ogni ora (attivo) |
-| F24 commercialista | Email da mittenti attendibili | ogni ora (oggi spento) |
-| Verbali/multe | Email da mittenti attendibili | ogni ora (oggi spento) |
+| F24 commercialista | Email da mittenti attendibili | ogni ora (**attivo** dal 13/07/2026, `ENABLE_EMAIL_F24_SYNC` — parser non ancora validato su F24 reali) |
+| Verbali/multe | Email da mittenti attendibili | ogni ora (**attivo** dal 13/07/2026, `ENABLE_EMAIL_VERBALI_SYNC`) |
 | Avvisi fattura in arrivo | **Email** da noreply@fatturazioneelettronica.aruba.it | ogni ora (attivo, solo dall'attivazione in avanti) |
 
 Regola non negoziabile: **le fatture arrivano SOLO da Drive, mai da Gmail**. Se una
@@ -133,7 +133,7 @@ codice dichiarava di filtrare anche per mittente ma non lo faceva mai davvero):
 | Canale | Filtro mittente | Dove si configura |
 |---|---|---|
 | Cedolini (email) | Sì, attivo | Mittenti Email → tipo "Cedolino" |
-| Verbali/multe (email) | Sì, attivo (oggi spento) | Mittenti Email → tipo (dedicato ai verbali) |
+| Verbali/multe (email) | Sì, attivo | Mittenti Email → tipo (dedicato ai verbali) |
 | Fatture estere (PDF) | Sì, attivo | Mittenti Email → tipo "Fattura estera (PDF)" |
 | **Scansione generica ("Documenti")** | **Sì da questa correzione**, ma **nessun mittente configurato = nessuna restrizione** (per non spegnere di colpo il canale) | Mittenti Email → tipo "Generico (solo archivio)" |
 
@@ -552,8 +552,9 @@ prova UFFICIALE dell'avvenuto pagamento.** Sono due archivi separati che il sist
 collega — mai confusi. Per questo **non esiste** un bottone "segna F24 pagato": un
 F24 risulta pagato solo quando gli viene collegata una quietanza.
 
-- Gli F24 arrivano via email dal commercialista (mittenti attendibili — canale oggi
-  spento in attesa di file reali di conferma). Le **quietanze** entrano da DUE porte
+- Gli F24 arrivano via email dal commercialista (mittenti attendibili — canale
+  attivo dal 13/07/2026, `ENABLE_EMAIL_F24_SYNC`; parser non ancora validato
+  su F24 reali, vedi §13). Le **quietanze** entrano da DUE porte
   con lo STESSO motore (parsing, dedup per impronta md5, matching automatico):
   la cartella **Google Drive dedicata** (controllo ogni ora, file spostati in
   `Elaborate`, quadratura domenicale ore 5:45 che recupera i buchi) e l'**upload
@@ -865,6 +866,8 @@ In generale il principio resta: **un canale andrebbe acceso dopo che il suo
 parser è stato verificato su documenti veri** — meglio nessun dato che dati
 sbagliati. Verificare i primi F24/verbali importati da email prima di fidarsi.
 
+---
+
 ## 13-bis. Utenti e ruoli (chi può fare cosa)
 
 Scelte utente 13/07/2026. Il gestionale ora distingue tre ruoli:
@@ -881,9 +884,7 @@ entra col proprio PIN e ottiene i permessi del suo ruolo. I PIN non sono mai
 salvati in chiaro; il login è protetto da blocco anti-tentativi (5 errori →
 5 minuti di attesa, vale sia per il PIN sia per email+password).
 
-**Durata sessione**: il login vale **1 ora di inattività**; mentre lavori si
-rinnova da solo (non cade mai durante l'uso), se resti fermo oltre un'ora devi
-rientrare.
+Durata sessione: vedi §0 (1 ora di inattività, rinnovo automatico durante l'uso).
 
 Sicurezza correlata (audit 13/07/2026):
 - Accesso da browser esterni (CORS) chiuso al solo dominio del gestionale
@@ -895,6 +896,8 @@ Sicurezza correlata (audit 13/07/2026):
 - **Ponte ERP disattivato** (scelta utente: non in uso): l'endpoint che
   riceveva fatture dall'app esterna ora rifiuta sempre finché non lo si
   riattiva impostando `ERP_BRIDGE_SECRET`.
+
+---
 
 ## 14. Cosa NON fa più questo gestionale (dominio HACCP)
 
@@ -927,7 +930,9 @@ In concreto:
   (`contratti_dipendenti`), CRUD e import massivo libretti sanitari
   (`libretti_sanitari`), relativi alert/scadenze/report PDF.
 
-## Libro Giornale e Libro Mastro (Contabilità → Libro Giornale)
+---
+
+## 15. Libro Giornale e Libro Mastro (Contabilità → Libro Giornale)
 
 Il registro contabile UFFICIALE del gestionale è unico: ogni operazione
 definitiva (fatture e corrispettivi registrati in contabilità, accantonamenti
