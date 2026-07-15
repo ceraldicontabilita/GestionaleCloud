@@ -23,14 +23,12 @@ from app.database import Database
 logger = logging.getLogger(__name__)
 
 # Costanti
+# f24_unificato copre sia gli F24 con schema italiano (stato="pagato",
+# data_scadenza) sia quelli con schema inglese arrivati dalla scansione email
+# automatica (status="paid", scadenza) — unificato come collection il
+# 13/07/2026, ma vedi controlla_scadenze_f24 sotto per come vengono
+# riconosciuti entrambi gli schemi nella stessa query.
 COLLECTION_F24 = "f24_unificato"
-# f24_commercialista: secondo archivio F24 vivo, alimentato dalla scansione
-# email automatica (schema campi diverso: status/scadenza invece di
-# stato/data_scadenza). Prima non veniva controllato da questo servizio:
-# le scadenze fiscali arrivate via email non generavano MAI un alert
-# proattivo (Telegram/email/campanella), a prescindere da quanto fossero
-# imminenti o scadute.
-COLLECTION_F24_COMMERCIALISTA = "f24_unificato"  # unificato 13/07/2026
 COLLECTION_ALERT = "alert_scadenze_f24"
 COLLECTION_NOTIFICHE = "notifiche_scadenze"
 
@@ -109,20 +107,24 @@ async def controlla_scadenze_f24() -> Dict[str, Any]:
     oggi = date.today()
     limite = oggi + timedelta(days=15)
     
-    # Trova F24 non pagati — su ENTRAMBI gli archivi vivi (schema campi diverso
-    # tra i due, vedi commento su COLLECTION_F24_COMMERCIALISTA sopra).
+    # Bug trovato in audit 15/07/2026: COLLECTION_F24 e
+    # COLLECTION_F24_COMMERCIALISTA sono la STESSA collection dall'unificazione
+    # del 13/07 ("f24_unificato" per entrambe), ma qui venivano ancora
+    # interrogate con DUE query separate e concatenate — ogni F24 finiva
+    # doppio nella lista. In più, le due query controllavano solo UNO dei due
+    # schemi campo (stato="pagato" / status="paid") ciascuna: un F24 pagato
+    # tramite create_f24 (campo "status", valore inglese "paid") non veniva
+    # MAI riconosciuto come pagato da nessuna delle due — generava un falso
+    # alert "scaduto/non pagato" ogni giorno (Telegram/email/campanella).
+    # Ora un'unica query sulla stessa collection, che riconosce entrambi gli
+    # schemi contemporaneamente (un campo mancante non blocca l'altro).
     f24_list = await db[COLLECTION_F24].find(
         {
             "stato": {"$nin": ["pagato", "annullato", "deleted"]},
+            "status": {"$nin": ["paid", "pagato", "annullato", "deleted", "cancelled"]},
         },
         {"_id": 0}
-    ).to_list(500)
-    f24_list += await db[COLLECTION_F24_COMMERCIALISTA].find(
-        {
-            "status": {"$nin": ["pagato", "annullato", "deleted"]},
-        },
-        {"_id": 0}
-    ).to_list(500)
+    ).to_list(1000)
     
     scadenze_imminenti = []
     scadenze_scadute = []
