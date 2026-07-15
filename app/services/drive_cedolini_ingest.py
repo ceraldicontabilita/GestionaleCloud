@@ -380,3 +380,50 @@ async def verifica_quadratura_elaborate(db) -> Dict[str, Any]:
         upsert=True,
     )
     return esito
+
+
+# Sotto quante ore un documento non ancora processato non è un "buco" ma
+# semplicemente in attesa del prossimo giro schedulato (orario).
+_ORE_SOGLIA_BLOCCATO = 6
+
+
+async def verifica_documenti_bloccati(db) -> Dict[str, Any]:
+    """Richiesta utente 15/07/2026: "sii sicuro che tutti i cedolini che ci
+    sono sono stati caricati in contabilità" — verifica_quadratura_elaborate
+    controlla solo Drive ↔ documents_inbox (il file è arrivato nel
+    gestionale), ma NON che sia davvero diventato un cedolino vero in
+    `cedolini` (parsing PDF fallito, dipendente non riconosciuto, o
+    eccezione nella pipeline lasciano il documento con `processed=False`
+    per sempre, senza nessun avviso).
+
+    Ripassa i due punti di ingresso reali dei cedolini (Drive → documents_inbox
+    categoria "busta_paga"; email → cedolini_email_attachments) e segnala
+    quelli MAI marcati come processati oltre la soglia (non un semplice "in
+    attesa del prossimo giro orario"). Sola lettura: non tocca né riprocessa
+    nulla, la riparazione resta un'azione esplicita (drive_sync /
+    quadratura)."""
+    from datetime import timedelta
+
+    now = datetime.now(timezone.utc)
+    soglia = (now - timedelta(hours=_ORE_SOGLIA_BLOCCATO)).isoformat()
+
+    bloccati_drive = await db["documents_inbox"].find(
+        {"category": "busta_paga", "processed": {"$ne": True}, "created_at": {"$lt": soglia}},
+        {"_id": 0, "id": 1, "filename": 1, "created_at": 1},
+    ).to_list(500)
+
+    bloccati_email = await db["cedolini_email_attachments"].find(
+        {"processed": {"$ne": True}, "created_at": {"$lt": soglia}},
+        {"_id": 0, "id": 1, "filename": 1, "created_at": 1},
+    ).to_list(500)
+
+    for d in bloccati_drive:
+        d["canale"] = "drive"
+    for d in bloccati_email:
+        d["canale"] = "email"
+
+    return {
+        "soglia_ore": _ORE_SOGLIA_BLOCCATO,
+        "totale_bloccati": len(bloccati_drive) + len(bloccati_email),
+        "bloccati": bloccati_drive + bloccati_email,
+    }

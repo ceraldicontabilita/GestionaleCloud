@@ -35,3 +35,13 @@ async def drive_sync() -> Dict[str, Any]:
     if not drive_cedolini_ingest.start_background_sync(db):
         return {"status": "running", "message": "Sincronizzazione già in corso"}
     return {"status": "started", "message": "Sincronizzazione avviata"}
+
+
+@router.get("/drive/quadratura-completa")
+async def quadratura_completa() -> Dict[str, Any]:
+    """Richiesta utente 15/07/2026: verifica che i cedolini arrivati (Drive
+    o email) siano davvero diventati un cedolino vero in contabilità, non
+    solo che il file sia arrivato nel gestionale. Sola lettura — chiama la
+    stessa funzione del controllo automatico settimanale, on demand."""
+    db = Database.get_db()
+    return await drive_cedolini_ingest.verifica_documenti_bloccati(db)

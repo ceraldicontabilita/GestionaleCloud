@@ -107,6 +107,31 @@ def test_apertura_esercizio_non_crea_movimenti_riporto(monkeypatch):
     assert apertura["saldi_riportati"]["saldo_banca"] == 7000.0
 
 
+class _FakeCollectionTfr(_FakeCollection):
+    """tfr_accantonamenti ha due schemi campo mai compresenti sullo stesso
+    documento (quota="canale email/Drive", quota_annuale="import manuale
+    Libro Unico): l'aggregate reale li somma entrambi con $ifNull/$add."""
+
+    def aggregate(self, pipeline, *a, **k):
+        matched = self.docs
+        totale = sum((d.get("quota") or 0) + (d.get("quota_annuale") or 0) for d in matched)
+        return _FakeCursor([{"_id": None, "totale": totale}] if matched else [])
+
+
+def test_apertura_esercizio_somma_tfr_di_entrambi_i_canali(monkeypatch):
+    db = _FakeDb()
+    monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
+    db["chiusure_esercizio"].docs = [{"anno": 2025}]
+    db.collections["tfr_accantonamenti"] = _FakeCollectionTfr([
+        {"quota": 137.0},        # canale email/Drive (handler_aggiorna_tfr)
+        {"quota_annuale": 823.5},  # import manuale Libro Unico
+    ])
+
+    esito = _run(mod.apertura_nuovo_esercizio(2026))
+
+    assert esito["saldi_riportati"]["tfr_accantonato"] == 960.5
+
+
 def test_saldi_iniziali_letti_da_aperture_esercizio_non_da_prima_nota(monkeypatch):
     db = _FakeDb()
     monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))

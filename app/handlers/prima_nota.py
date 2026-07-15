@@ -34,9 +34,21 @@ async def handler_prima_nota_cedolino(payload: Dict[str, Any], db) -> Dict[str, 
     # che rischiare movimenti stipendio duplicati (l'handler ora scatta per
     # TUTTI i canali di import, inclusa la pipeline email dove il dipendente
     # puo' non essere ancora in anagrafica).
+    #
+    # Bug corretto 15/07/2026 (audit funzionale): il filtro includeva anche
+    # source="cedolino_auto", ma salari_unificati_v2.py::processa_cedolino_v2
+    # (canale cedolini_manager/Drive/email "v2") scrive DIRETTAMENTE un
+    # movimento in prima_nota_salari per lo stesso dipendente+mese+anno PRIMA
+    # di propagare questo stesso evento, con source="cedolino_v2" (non
+    # "cedolino_auto"): l'anti-duplicato non lo trovava mai e questo handler
+    # inseriva un SECONDO movimento (doppio conteggio reale dello stipendio
+    # in cassa/bilancio). Un qualsiasi movimento già presente per lo stesso
+    # dipendente+mese+anno in prima_nota_salari, da qualunque canale sia
+    # nato, e' comunque "lo stipendio di quel mese": basta a bloccare il
+    # doppione, senza serve il match esatto sul source.
     if not (dipendente_id and mese and anno):
         return {"skipped": True, "reason": "chiave anti-duplicato incompleta (dipendente/mese/anno)"}
-    anti_dup = {"dipendente_id": dipendente_id, "mese": mese, "anno": anno, "source": "cedolino_auto"}
+    anti_dup = {"dipendente_id": dipendente_id, "mese": mese, "anno": anno}
     esistente = await db["prima_nota_salari"].find_one(anti_dup)
     if esistente:
         return {"skipped": True, "reason": "movimento già presente", "movimento_id": esistente["id"]}

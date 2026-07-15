@@ -442,9 +442,16 @@ async def apertura_nuovo_esercizio(anno_nuovo: int) -> Dict[str, Any]:
     ]).to_list(1)
     assegni_da_incassare = assegni_portafoglio[0]["totale"] if assegni_portafoglio else 0
     
-    # 5. TFR accantonato
+    # 5. TFR accantonato. Bug corretto 15/07/2026 (stesso audit funzionale
+    # del punto 15/07 sopra): il campo si chiama "quota" (canale email/Drive,
+    # handler_aggiorna_tfr) o "quota_annuale" (import manuale Libro Unico) —
+    # mai "importo". Un singolo documento ha sempre uno solo dei due schemi,
+    # quindi sommarli entrambi con $ifNull non rischia doppio conteggio.
     tfr_accantonato = await db["tfr_accantonamenti"].aggregate([
-        {"$group": {"_id": None, "totale": {"$sum": "$importo"}}}
+        {"$group": {"_id": None, "totale": {"$sum": {"$add": [
+            {"$ifNull": ["$quota", 0]},
+            {"$ifNull": ["$quota_annuale", 0]},
+        ]}}}}
     ]).to_list(1)
     totale_tfr = tfr_accantonato[0]["totale"] if tfr_accantonato else 0
     

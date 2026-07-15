@@ -526,7 +526,13 @@ async def get_conto_economico_dettagliato(
             "totale_inps_dip": {"$sum": {"$ifNull": ["$inps_dipendente", 0]}},
             "totale_inps_az": {"$sum": {"$ifNull": ["$inps_azienda", 0]}},
             "totale_inail": {"$sum": {"$ifNull": ["$inail", 0]}},
-            "totale_tfr": {"$sum": {"$ifNull": ["$tfr", 0]}},
+            # Bug corretto 15/07/2026 (audit funzionale): il campo si chiama
+            # "tfr_mese" sui documenti di 'cedolini' (salari_unificati_v2.py),
+            # mai "tfr" — questa somma dava sempre 0 e il ramo sotto cadeva
+            # sistematicamente sulla stima forfettaria (lordo*6.91%) invece
+            # di usare il TFR realmente accantonato dai cedolini. Stesso
+            # campo già usato correttamente in piano_conti.py.
+            "totale_tfr": {"$sum": {"$ifNull": ["$tfr_mese", 0]}},
             "totale_costo_azienda": {"$sum": {"$ifNull": ["$costo_azienda", 0]}},
             "totale_irpef": {"$sum": {"$ifNull": ["$irpef", 0]}},
             "count": {"$sum": 1}

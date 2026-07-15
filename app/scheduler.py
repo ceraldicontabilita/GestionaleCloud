@@ -707,11 +707,29 @@ def start_scheduler():
     async def _drive_quadratura_cedolini_job():
         from app.database import Database
         from app.services import drive_cedolini_ingest
+        db = Database.get_db()
         try:
-            r = await drive_cedolini_ingest.verifica_quadratura_elaborate(Database.get_db())
+            r = await drive_cedolini_ingest.verifica_quadratura_elaborate(db)
             logger.info(f"[SCHEDULER-QUADRATURA-CEDOLINI] {r if r.get('status') != 'ok' else {k: r[k] for k in ('controllati', 'quadrati', 'recuperati', 'errori')}}")
         except Exception as e:
             logger.error(f"[SCHEDULER-QUADRATURA-CEDOLINI] errore: {e}")
+        # Richiesta utente 15/07/2026: la quadratura sopra verifica solo
+        # Drive ↔ documents_inbox (il file è arrivato), non che sia
+        # diventato un cedolino vero in contabilità — un buco lì (parsing
+        # fallito, dipendente non trovato) restava invisibile per sempre.
+        try:
+            bloccati = await drive_cedolini_ingest.verifica_documenti_bloccati(db)
+            if bloccati["totale_bloccati"] > 0:
+                logger.warning(f"[SCHEDULER-QUADRATURA-CEDOLINI] {bloccati['totale_bloccati']} documenti cedolini mai processati oltre {bloccati['soglia_ore']}h")
+                from app.services.alert_engine import genera_alert
+                await genera_alert(
+                    "CEDOLINO_MAI_PROCESSATO", "quadratura_cedolini_bloccati", "documents_inbox",
+                    f"{bloccati['totale_bloccati']} cedolini arrivati (Drive/email) ma mai diventati un "
+                    f"cedolino vero in contabilità da oltre {bloccati['soglia_ore']} ore: verifica manualmente.",
+                    db, extra={"bloccati": bloccati["bloccati"][:20]},
+                )
+        except Exception as e:
+            logger.error(f"[SCHEDULER-QUADRATURA-CEDOLINI] errore verifica bloccati: {e}")
 
     async def _drive_quadratura_corrispettivi_job():
         from app.database import Database

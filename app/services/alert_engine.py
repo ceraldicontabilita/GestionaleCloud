@@ -388,6 +388,12 @@ ALERT_CATALOG: Dict[str, Dict[str, Any]] = {
         "titolo": "Quadratura Drive: fatture archiviate senza record recuperate",
         "condizione_chiusura": "Verificato l'esito del recupero"
     },
+    "CEDOLINO_MAI_PROCESSATO": {
+        "modulo": "cedolini",
+        "severita": "warning",
+        "titolo": "Cedolino arrivato ma mai diventato un cedolino vero in contabilità",
+        "condizione_chiusura": "Verificato/riprocessato manualmente"
+    },
     "FATTURA_ANNUNCIATA_NON_ARRIVATA": {
         "modulo": "documenti",
         "severita": "warning",

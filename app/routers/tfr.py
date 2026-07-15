@@ -381,20 +381,42 @@ async def get_riepilogo_tfr_aziendale(anno: int = Query(None)) -> Dict[str, Any]
     if not anno:
         anno = datetime.now().year
     
-    # Dipendenti attivi
+    # Dipendenti attivi. Bug corretto 15/07/2026 (audit funzionale): il
+    # canale email/Drive (handler_aggiorna_tfr, quello davvero usato — il
+    # caricamento manuale Libro Unico è un percorso separato e alternativo)
+    # accumula il TFR su dipendenti.tfr_maturato, non su tfr_accantonato
+    # (scritto solo dall'import manuale LUL). Sommando solo tfr_accantonato,
+    # il Fondo TFR mostrava sempre 0 per ogni dipendente il cui cedolino
+    # arriva solo via email/Drive. Per dipendente si usa quale dei due campi
+    # è valorizzato (non si sommano: rappresentano due canali alternativi,
+    # mai calcolati insieme sullo stesso periodo).
     dipendenti = await db["dipendenti"].find(
         {"status": {"$in": ["attivo", "active"]}},
-        {"_id": 0, "id": 1, "nome_completo": 1, "tfr_accantonato": 1}
+        {"_id": 0, "id": 1, "nome_completo": 1, "tfr_accantonato": 1, "tfr_maturato": 1}
     ).to_list(1000)
-    
-    # Accantonamenti dell'anno
+
+    def _tfr_dipendente(d: Dict[str, Any]) -> float:
+        accantonato = float(d.get("tfr_accantonato") or 0)
+        return accantonato if accantonato > 0 else float(d.get("tfr_maturato") or 0)
+
+    # Accantonamenti dell'anno. Stesso bug: handler_aggiorna_tfr scrive il
+    # campo "quota" (per mese), non "quota_annuale"/"totale_accantonamento"
+    # (scritti solo dall'import manuale LUL) — un singolo documento ha
+    # sempre e solo uno dei due schemi, quindi sommarli entrambi con
+    # $ifNull è sicuro (nessun doppio conteggio sullo stesso record).
     accantonamenti_anno = await db["tfr_accantonamenti"].aggregate([
         {"$match": {"anno": anno}},
         {"$group": {
             "_id": None,
-            "totale_quota": {"$sum": "$quota_annuale"},
-            "totale_rivalutazione": {"$sum": "$rivalutazione"},
-            "totale_accantonato": {"$sum": "$totale_accantonamento"},
+            "totale_quota": {"$sum": {"$add": [
+                {"$ifNull": ["$quota_annuale", 0]},
+                {"$ifNull": ["$quota", 0]},
+            ]}},
+            "totale_rivalutazione": {"$sum": {"$ifNull": ["$rivalutazione", 0]}},
+            "totale_accantonato": {"$sum": {"$add": [
+                {"$ifNull": ["$totale_accantonamento", 0]},
+                {"$ifNull": ["$quota", 0]},
+            ]}},
             "num_dipendenti": {"$sum": 1}
         }}
     ]).to_list(1)
@@ -412,17 +434,17 @@ async def get_riepilogo_tfr_aziendale(anno: int = Query(None)) -> Dict[str, Any]
     ]).to_list(1)
     
     # Totale fondo TFR
-    totale_fondo = sum(float(d.get("tfr_accantonato", 0)) for d in dipendenti)
-    
+    totale_fondo = sum(_tfr_dipendente(d) for d in dipendenti)
+
     # Dettaglio per dipendente
     dettaglio_dipendenti = [
         {
             "dipendente_id": d["id"],
             "nome": d.get("nome_completo", ""),
-            "tfr_accantonato": round(float(d.get("tfr_accantonato", 0)), 2)
+            "tfr_accantonato": round(_tfr_dipendente(d), 2)
         }
         for d in dipendenti
-        if float(d.get("tfr_accantonato", 0)) > 0
+        if _tfr_dipendente(d) > 0
     ]
     
     return {

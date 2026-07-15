@@ -382,11 +382,20 @@ async def processa_cedolino_v2(
         result["cedolino_id"] = cedolino_id
         
         # --- 3. Prima Nota Salari ---
+        # Bug corretto 15/07/2026 (audit funzionale): questo controllo
+        # cercava solo {codice_fiscale, mese, anno, tipo:"stipendio"} — il
+        # movimento scritto da handler_prima_nota_cedolino (event bus,
+        # canale email "ufficiale") ha invece tipo="uscita" e nessun campo
+        # codice_fiscale sull'anti-duplicato dell'handler stesso: nessuno dei
+        # due controlli riconosceva l'altro, rischio di doppio movimento a
+        # seconda di quale canale processa il cedolino per primo. Ora basta
+        # un movimento esistente per lo stesso dipendente+mese+anno, da
+        # qualunque canale sia nato.
         existing_pn = await db["prima_nota_salari"].find_one({
-            "codice_fiscale": cf,
-            "mese": int(mese),
-            "anno": int(anno),
-            "tipo": "stipendio"
+            "$or": [
+                {"codice_fiscale": cf, "mese": int(mese), "anno": int(anno), "tipo": "stipendio"},
+                {"dipendente_id": dipendente_id, "mese": int(mese), "anno": int(anno)},
+            ]
         })
         
         if not existing_pn:

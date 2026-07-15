@@ -667,9 +667,22 @@ attribuita per competenza*, *in quale liquidazione è stata effettivamente usata
   Ferrantini (mittenti attendibili configurati; canale attivo). Il PDF viene anche
   archiviato in copia su Drive.
 - In alternativa i PDF possono essere messi nella **cartella Drive dei cedolini
-  paga**: ogni ora il sistema li scarica, li deduplica per hash (stessi controlli
-  dei cedolini email) e li immette nella stessa pipeline di elaborazione; i file
-  lavorati vengono spostati nella sottocartella Drive `Elaborate`.
+  paga**: ogni ora il sistema li scarica, li deduplica per hash MD5 (stesso campo
+  `file_hash` usato per la dedup dei cedolini email) e li immette nella stessa
+  pipeline di elaborazione; i file lavorati vengono spostati nella sottocartella
+  Drive `Elaborate`. **Non esiste un canale di upload manuale generico per i
+  cedolini**: solo email e questa cartella Drive.
+- **Quadratura settimanale (domenica alle 5:15)**: ripassa TUTTI i PDF nella
+  sottocartella Elaborate e verifica che ciascuno abbia il suo documento nel
+  gestionale; un buco (file spostato in Elaborate ma mai arrivato al gestionale)
+  viene **recuperato automaticamente**, rielaborandolo. **Corretto 15/07/2026**:
+  questo controllo verificava solo che il file fosse arrivato nel gestionale, non
+  che fosse davvero diventato un cedolino vero in contabilità (un parsing fallito
+  o un dipendente non riconosciuto lasciavano il documento bloccato per sempre,
+  senza nessun avviso). Ora la stessa quadratura verifica anche questo: se un
+  documento (Drive o email) resta "non processato" per più di 6 ore, genera un
+  alert `CEDOLINO_MAI_PROCESSATO` con l'elenco dei file bloccati (consultabile
+  anche a mano, `GET /api/cedolini/drive/quadratura-completa`).
 - Il parser estrae: dati anagrafici, periodo, netto, lordo, competenze, trattenute,
   IRPEF, contributi, TFR, ferie/permessi, tredicesima/quattordicesima, presenze
   giornaliere, ecc.
@@ -680,8 +693,25 @@ attribuita per competenza*, *in quale liquidazione è stata effettivamente usata
 - Un PDF che contiene più di un dipendente non viene elaborato automaticamente:
   genera un avviso di verifica (mai un'elaborazione alla cieca su un formato mai
   visto).
-- La creazione automatica del movimento stipendio e la riconciliazione
-  cedolino↔banca/cassa non sono ancora attive (fase successiva della roadmap).
+- **La creazione automatica del movimento stipendio e la riconciliazione
+  cedolino↔banca/cassa SONO attive** (nota corretta 15/07/2026: questa sezione
+  diceva il contrario, non era più vero). Ogni cedolino elaborato crea un
+  movimento in `prima_nota_salari` e un accantonamento TFR mensile; la
+  riconciliazione con l'accredito reale in banca/cassa è automatica per importo
+  e nome dipendente.
+- **Bug corretto 15/07/2026 (doppio conteggio reale)**: il canale che elabora
+  davvero i PDF (parser + evento `cedolino.importato`) poteva generare **due**
+  movimenti in `prima_nota_salari` per lo stesso stipendio, perché il controllo
+  anti-duplicato dell'handler cercava una combinazione di campi che il
+  movimento scritto dal parser non aveva mai. Ora un movimento già presente
+  per lo stesso dipendente+mese+anno blocca sempre il secondo, da qualunque
+  parte del sistema sia nato.
+- **Bug corretto 15/07/2026 (Fondo TFR invisibile)**: il riepilogo TFR aziendale
+  e il Conto Economico leggevano il fondo accantonato da un campo che viene
+  valorizzato SOLO da un vecchio percorso di caricamento manuale (Libro Unico),
+  mai usato in pratica: il TFR maturato dai cedolini email/Drive (il canale
+  realmente attivo) risultava sempre a zero nei report, pur essendo accantonato
+  correttamente "sotto al cofano". Corretto per leggere entrambi i canali.
 
 ---
 
