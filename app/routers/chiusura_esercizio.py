@@ -470,39 +470,20 @@ async def apertura_nuovo_esercizio(anno_nuovo: int) -> Dict[str, Any]:
     }
     
     await db["aperture_esercizio"].insert_one(scrittura_apertura.copy())
-    
-    # Crea movimento di apertura in Prima Nota Cassa (se c'è saldo)
-    if saldo_cassa != 0:
-        movimento_cassa = {
-            "id": str(uuid4()),
-            "data": data_apertura,
-            "anno": anno_nuovo,
-            "tipo": "entrata" if saldo_cassa > 0 else "uscita",
-            "importo": abs(saldo_cassa),
-            "descrizione": f"Saldo iniziale da esercizio {anno_precedente}",
-            "categoria": "Riporto",
-            "source": "apertura_esercizio",
-            "apertura_id": apertura_id,
-            "created_at": datetime.now(timezone.utc).isoformat()
-        }
-        await db["prima_nota_cassa"].insert_one(movimento_cassa.copy())
-    
-    # Crea movimento di apertura in Prima Nota Banca (se c'è saldo)
-    if saldo_banca != 0:
-        movimento_banca = {
-            "id": str(uuid4()),
-            "data": data_apertura,
-            "anno": anno_nuovo,
-            "tipo": "entrata" if saldo_banca > 0 else "uscita",
-            "importo": abs(saldo_banca),
-            "descrizione": f"Saldo iniziale da esercizio {anno_precedente}",
-            "categoria": "Riporto",
-            "source": "apertura_esercizio",
-            "apertura_id": apertura_id,
-            "created_at": datetime.now(timezone.utc).isoformat()
-        }
-        await db["prima_nota_banca"].insert_one(movimento_banca.copy())
-    
+
+    # Bug corretto 15/07/2026 (audit funzionale): qui PRIMA venivano creati due
+    # movimenti "Riporto" in prima_nota_cassa/banca con il saldo dell'anno
+    # precedente. Ma calcola_saldo_anni_precedenti() (prima_nota_module/common.py,
+    # la funzione UNICA di saldo §6.4) calcola già il riporto sommando TUTTI i
+    # movimenti reali con data < 1/1/anno — è automaticamente cumulativo, non
+    # serve alcuna scrittura esplicita. Il movimento "Riporto" si sommava quindi
+    # IN PIÙ al saldo già portato avanti dai movimenti reali, raddoppiando il
+    # saldo cassa/banca ad ogni apertura d'esercizio (e l'errore si accumulava
+    # ad ogni chiusura successiva, restando permanentemente nello storico).
+    # Il riepilogo "saldi_riportati" resta comunque salvato in aperture_esercizio
+    # per lo storico/audit (letto da GET /saldi-iniziali/{anno}), senza alcuna
+    # scrittura contabile duplicata.
+
     logger.info(f"Apertura esercizio {anno_nuovo} completata: Cassa={saldo_cassa}, Banca={saldo_banca}")
     
     return {

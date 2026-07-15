@@ -227,6 +227,7 @@ export default function LibroGiornale() {
                 <tr style={{ background: COLORS.bgAlt, textAlign: 'left' }}>
                   <th style={th}>Conto</th>
                   <th style={th}>Nome</th>
+                  <th style={th}>Conto CEE ufficiale</th>
                   <th style={{ ...th, textAlign: 'right' }}>DARE</th>
                   <th style={{ ...th, textAlign: 'right' }}>AVERE</th>
                   <th style={{ ...th, textAlign: 'right' }}>Saldo</th>
@@ -238,6 +239,11 @@ export default function LibroGiornale() {
                   <tr key={m.conto} style={{ borderBottom: `1px solid ${COLORS.border}` }}>
                     <td style={{ ...td, fontWeight: 700 }}>{m.conto}</td>
                     <td style={td}>{m.conto_nome}</td>
+                    <td style={td}>
+                      {m.conto_ufficiale
+                        ? `${m.conto_ufficiale} — ${m.conto_ufficiale_nome || ''}`
+                        : <span style={{ color: COLORS.textMuted }}>—</span>}
+                    </td>
                     <td style={{ ...td, textAlign: 'right' }}>€ {eur(m.dare)}</td>
                     <td style={{ ...td, textAlign: 'right' }}>€ {eur(m.avere)}</td>
                     <td style={{

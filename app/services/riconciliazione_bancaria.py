@@ -158,6 +158,28 @@ async def _alert_match_ambiguo(db, mov_id: Optional[str], motivo: str) -> None:
         logger.exception(f"Errore generazione alert RIC_MATCH_AMBIGUO per {mov_id}")
 
 
+async def _crea_operazione_da_confermare_idempotente(db, operazione: dict) -> bool:
+    """Inserisce una riga in operazioni_da_confermare SOLO se non ne esiste già
+    una aperta (stato="da_confermare") per lo stesso movimento_ec_id.
+
+    Bug trovato nell'audit funzionale del 15/07/2026: lo scheduler rilancia la
+    riconciliazione ogni 30 minuti; un movimento ambiguo (più fatture
+    candidate con punteggio simile) resta `riconciliato=False` finché
+    l'utente non conferma/ignora, quindi ad ogni passaggio veniva rielaborato
+    e finiva di nuovo qui — senza questo controllo si creava un nuovo record
+    duplicato ogni 30 minuti per lo stesso movimento, invece di riusare
+    quello già aperto. Ritorna True se ha davvero inserito (per non
+    rigenerare anche l'alert collegato quando il record esisteva già)."""
+    esistente = await db[COLLECTION_OPERAZIONI_DA_CONFERMARE].find_one({
+        "movimento_ec_id": operazione["movimento_ec_id"],
+        "stato": "da_confermare",
+    })
+    if esistente:
+        return False
+    await db[COLLECTION_OPERAZIONI_DA_CONFERMARE].insert_one(operazione.copy())
+    return True
+
+
 async def _alert_differenza_importo(db, mov_id: Optional[str], importo_banca: float, importo_fattura: float, fattura_id: Optional[str]) -> None:
     """Genera l'alert RIC_DIFFERENZA_IMPORTO quando una fattura viene
     riconciliata con un movimento bancario di importo diverso (rata,
@@ -794,9 +816,10 @@ async def riconcilia_movimenti_banca() -> Dict[str, Any]:
                             "created_at": now
                         }
 
-                        await db[COLLECTION_OPERAZIONI_DA_CONFERMARE].insert_one(operazione.copy())
+                        creata = await _crea_operazione_da_confermare_idempotente(db, operazione)
                         results["dubbi"] += 1
-                        await _alert_match_ambiguo(db, mov_id, operazione["dettagli"]["motivo_dubbio"])
+                        if creata:
+                            await _alert_match_ambiguo(db, mov_id, operazione["dettagli"]["motivo_dubbio"])
 
                 # Se solo importo esatto (score = 10) e UNA sola fattura → riconcilia
                 elif fatture_scored and fatture_scored[0][1] == 10:
@@ -861,9 +884,10 @@ async def riconcilia_movimenti_banca() -> Dict[str, Any]:
                             "created_at": now
                         }
 
-                        await db[COLLECTION_OPERAZIONI_DA_CONFERMARE].insert_one(operazione.copy())
+                        creata = await _crea_operazione_da_confermare_idempotente(db, operazione)
                         results["dubbi"] += 1
-                        await _alert_match_ambiguo(db, mov_id, operazione["dettagli"]["motivo_dubbio"])
+                        if creata:
+                            await _alert_match_ambiguo(db, mov_id, operazione["dettagli"]["motivo_dubbio"])
 
             # === 2. CERCA F24 (per USCITE) ===
             if tipo == "uscita" and not match_found and "F24" in descrizione.upper():

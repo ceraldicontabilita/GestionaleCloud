@@ -14,6 +14,7 @@ import logging
 
 from app.database import Database, Collections
 from app.utils.dependencies import get_current_admin_user
+from app.services.mapping_piano_conti import operativo_a_ufficiale, descrizione_ufficiale
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Contabilità Gestionale"])
@@ -1056,6 +1057,16 @@ async def get_libro_giornale(
         for r in (s.get("righe") or []):
             tot_dare += float(r.get("dare") or 0)
             tot_avere += float(r.get("avere") or 0)
+            # Regola vincolante (CLAUDE.md): il piano dei conti ufficiale è
+            # SOLO il CEE. Il codice operativo interno (conto_codice, es.
+            # "05.01.01") resta per la ricostruibilità pari-pari richiesta
+            # dall'art. 2216 c.c.; qui si AGGIUNGE la conversione ufficiale,
+            # senza sostituirlo, così il commercialista legge sempre anche
+            # il conto CEE corretto.
+            cod_op = r.get("conto_codice") or r.get("conto")
+            cod_uff = operativo_a_ufficiale(cod_op) if cod_op else None
+            r["conto_codice_ufficiale"] = cod_uff
+            r["conto_nome_ufficiale"] = descrizione_ufficiale(cod_uff) if cod_uff else None
     return {
         "success": True,
         "scritture": scritture,
@@ -1101,9 +1112,14 @@ async def get_libro_mastro(
     async for m in db["movimenti_contabili"].aggregate(pipeline):
         dare = round(m.get("dare", 0), 2)
         avere = round(m.get("avere", 0), 2)
+        # Stessa regola vincinante del libro giornale: aggiunge il conto
+        # ufficiale CEE accanto al codice operativo interno, senza sostituirlo.
+        cod_uff = operativo_a_ufficiale(m["_id"]) if m["_id"] else None
         mastrini.append({
             "conto": m["_id"],
             "conto_nome": m.get("conto_nome"),
+            "conto_ufficiale": cod_uff,
+            "conto_ufficiale_nome": descrizione_ufficiale(cod_uff) if cod_uff else None,
             "dare": dare,
             "avere": avere,
             "saldo": round(dare - avere, 2),

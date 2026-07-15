@@ -491,6 +491,14 @@ la tua richiesta viene rifiutata con un conflitto (mai una sovrascrittura muta).
 Le righe già riconciliate non rientrano mai nei giri successivi (né dello scheduler
 né di un nuovo import). Un movimento va "in verifica" solo su tua azione.
 
+**Corretto 15/07/2026**: un movimento "dubbio" resta `riconciliato=False` finché non
+lo confermi, quindi lo scheduler (ogni 30 minuti) lo rielabora ad ogni passaggio.
+Prima di questa correzione, ogni rielaborazione creava un **nuovo** record
+duplicato in "operazioni da confermare" per lo stesso movimento, invece di
+riusare quello già aperto: il conteggio dei dubbi cresceva ogni mezz'ora finché
+non intervenivi. Ora, se per quel movimento esiste già un'operazione aperta, non
+ne viene creata una seconda.
+
 ---
 
 ## 7. F24 e Quietanze
@@ -856,3 +864,31 @@ principali software di contabilità; una volta assegnato è immutabile.
 - **Reimporta** (solo Admin): ricostruisce le operazioni PARI PARI — stessi
   protocolli, date e importi di quando furono registrate — anche dopo una
   cancellazione totale del database.
+- **Corretto 15/07/2026**: ogni riga del Libro Giornale/Mastro mostra ora
+  anche il **conto ufficiale CEE** corrispondente (colonna "Conto CEE
+  ufficiale"), oltre al codice operativo interno (es. "05.01.01") usato dal
+  motore di registrazione. Prima i due report più usati dal commercialista
+  mostravano SOLO il codice operativo interno, senza mai passare dalla
+  conversione ufficiale (`app/services/mapping_piano_conti.py`) — in
+  contrasto con la regola vincolante "piano dei conti solo CEE ufficiale".
+  Il codice operativo resta comunque visibile (serve alla ricostruzione
+  pari-pari della contabilità, art. 2216 c.c.); il conto CEE si aggiunge,
+  non lo sostituisce. Se per un codice operativo non esiste ancora un
+  mapping ufficiale, la colonna resta vuota — segnale che va aggiunto in
+  `OPERATIVO_A_UFFICIALE`.
+
+**Chiusura Esercizio / Apertura Nuovo Esercizio** (pagina Chiusura Esercizio)
+- **Bug gravissimo corretto 15/07/2026**: il bottone "Apri nuovo esercizio"
+  calcolava il saldo cassa/banca dell'anno appena chiuso e lo inseriva come
+  movimento "Riporto" in Prima Nota Cassa/Banca per il 1° gennaio del nuovo
+  anno. Ma il saldo mostrato in Prima Nota (§4) è **già automaticamente
+  cumulativo** su tutta la storia (somma tutti i movimenti reali con data
+  precedente al 1° gennaio dell'anno in corso): il movimento "Riporto" si
+  sommava quindi IN PIÙ al saldo già portato avanti dai movimenti veri,
+  **raddoppiando** il saldo cassa/banca ad ogni apertura d'esercizio (e
+  l'errore restava per sempre nello storico, peggiorando ad ogni chiusura
+  successiva). Verificato che nessuna chiusura era mai stata eseguita in
+  produzione prima della correzione: nessun dato reale è stato corrotto.
+  Ora "Apri nuovo esercizio" salva solo il riepilogo saldi (consultabile da
+  `GET /saldi-iniziali/{anno}`) senza creare alcuna scrittura contabile
+  aggiuntiva — il riporto resta automatico come sempre.

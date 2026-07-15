@@ -307,8 +307,13 @@ async def processa_fatture_pendenti(
         "errori": []
     }
     
-    # Carica keywords fornitori per classificazione
-    keywords_fornitori = await db["fornitori_learning"].find({}).to_list(5000)
+    # Carica keywords fornitori per classificazione. Bug corretto 15/07/2026
+    # (audit funzionale): leggeva dalla collection "fornitori_learning", che
+    # non esiste — nessuno scrive mai lì. Il nome corretto, scritto da
+    # handlers/fornitore.py e letto da tutto il resto del codice, è
+    # "fornitori_keywords": prima questa azione batch non classificava mai
+    # nulla (keywords_map sempre vuota).
+    keywords_fornitori = await db["fornitori_keywords"].find({}).to_list(5000)
     keywords_map = {}
     for kw in keywords_fornitori:
         for word in kw.get("keywords", []):
