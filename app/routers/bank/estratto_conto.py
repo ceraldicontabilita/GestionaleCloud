@@ -42,6 +42,21 @@ def estrai_numero_fattura(descrizione: str) -> Optional[str]:
     return None
 
 
+def is_versamento_contanti(descrizione: str) -> bool:
+    """Riconosce la causale di un versamento di contanti in banca.
+
+    Bug segnalato dall'utente 15/07/2026: l'export reale della banca (Banco
+    BPM) usa l'abbreviazione "VERS." (es. "VERS. CONTANTI - VVVVV"), MAI la
+    parola intera "VERSAMENTO" — verificato su un export reale di 4287
+    movimenti: 96 causali "VERS. CONTANTI", zero contenenti "VERSAMENTO".
+    Riconosce entrambe le forme.
+    """
+    desc_upper = (descrizione or "").upper()
+    if "CONTANT" not in desc_upper:
+        return False
+    return "VERSAMENTO" in desc_upper or bool(re.search(r"VERS\.?\s*CONTANT", desc_upper))
+
+
 def estrai_fornitore_pulito(descrizione: str) -> Optional[str]:
     """Estrae il nome fornitore dalla descrizione, pulendolo."""
     if not descrizione:
@@ -555,7 +570,6 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
                 stato_aggiornato[m["id"]] = m
 
             KEYWORDS_PRELIEVO = ["BANCOMAT", "CONTANT", "SPORTELLO", " ATM"]
-            KEYWORDS_VERSAMENTO_CONTANTI = ["CONTANT"]
             # P0-1 (verifica Contabilità): un accredito POS (NUMIA) è la stessa
             # moneta della quota "Corrispettivi POS" già registrata in
             # prima_nota_banca all'import del corrispettivo. Se lo inserissimo
@@ -597,7 +611,7 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
                 })
 
                 is_prelievo = "PRELIEVO" in desc_upper and any(k in desc_upper for k in KEYWORDS_PRELIEVO)
-                is_versamento = "VERSAMENTO" in desc_upper and any(k in desc_upper for k in KEYWORDS_VERSAMENTO_CONTANTI)
+                is_versamento = is_versamento_contanti(desc_upper)
                 if is_prelievo:
                     cassa_batch.append({
                         "id": str(_uuid.uuid4()), "data": mov["data"], "tipo": "entrata",
@@ -1562,3 +1576,77 @@ async def ricategorizza_batch_movimenti() -> Dict[str, Any]:
                 break
 
     return {"totale_analizzati": len(movimenti), "aggiornati": aggiornati}
+
+
+@router.post("/ripara-versamenti-cassa")
+@handle_errors
+async def ripara_versamenti_cassa(anno: int = Query(None, description="Anno (opzionale). Se omesso ripara tutti gli anni")) -> Dict[str, Any]:
+    """
+    Bug segnalato dall'utente 15/07/2026: la causale reale usata dalla banca
+    per i versamenti di contanti è l'abbreviazione "VERS. CONTANTI" (es.
+    Banco BPM), mai la parola intera "VERSAMENTO" che il controllo
+    `is_versamento` di import_estratto_conto cercava — verificato su un
+    export reale di 4287 movimenti: 96 righe "VERS. CONTANTI" per
+    complessivi migliaia di euro, zero riconosciute. L'entrata in Prima
+    Nota Banca veniva comunque creata (fallback generico), ma la Prima
+    Nota Cassa non registrava MAI l'uscita di quel contante — la cassa
+    risultava "gonfiata" rispetto al reale.
+
+    Il controllo è stato corretto per i NUOVI import, ma le righe già
+    importate risultano già marcate riconciliato=True (l'entrata banca
+    generica le aveva già chiuse) e quindi non vengono più riprocessate
+    automaticamente: questo endpoint ripara lo storico, cercando le
+    causali VERS.+CONTANT già in estratto_conto_movimenti prive della
+    corrispondente uscita in prima_nota_cassa e creandola.
+    """
+    import uuid as _uuid
+    db = Database.get_db()
+
+    query: Dict[str, Any] = {}
+    if anno:
+        query["data"] = {"$regex": f"^{anno}"}
+
+    movimenti = await db["estratto_conto_movimenti"].find(query, {"_id": 0}).to_list(100000)
+
+    riparati = 0
+    gia_presenti = 0
+    analizzati = 0
+
+    for mov in movimenti:
+        desc = mov.get("descrizione_originale") or mov.get("descrizione") or ""
+        if not is_versamento_contanti(desc):
+            continue
+        analizzati += 1
+        mid = mov.get("id")
+
+        esistente = await db["prima_nota_cassa"].find_one({
+            "categoria": "Versamento",
+            "$or": [
+                {"estratto_conto_id": mid},
+                {"data": mov.get("data"), "importo": mov.get("importo")},
+            ],
+        })
+        if esistente:
+            gia_presenti += 1
+            continue
+
+        await db["prima_nota_cassa"].insert_one({
+            "id": str(_uuid.uuid4()),
+            "data": mov.get("data"),
+            "tipo": "uscita",
+            "importo": mov.get("importo"),
+            "descrizione": f"Versamento in banca - {desc[:100]}",
+            "categoria": "Versamento",
+            "estratto_conto_id": mid,
+            "source": "estratto_conto_auto_versamento_riparazione",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+        riparati += 1
+
+    return {
+        "success": True,
+        "anno": anno,
+        "movimenti_versamento_trovati": analizzati,
+        "riparati": riparati,
+        "gia_presenti": gia_presenti,
+    }

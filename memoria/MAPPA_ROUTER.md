@@ -1,7 +1,7 @@
 # MAPPA ROUTER — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py — leggendo la route table reale di `register_all_routers`.
-> Totale **974 endpoint** in **102 prefissi**.
+> Totale **975 endpoint** in **102 prefissi**.
 
 Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app collegata / webhook / chatbot / scheduler / API pubblica) · `—` nessun riferimento noto (candidato verifica).
 
@@ -30,7 +30,7 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/conferma` | 1 | — | dati_provvisori |
 | `/api/conferma-tutte` | 1 | — | dati_provvisori |
 | `/api/config` | 9 | ✓ | configurazioni |
-| `/api/config-import` | 2 | — | config_import |
+| `/api/config-import` | 2 | ✓ | config_import |
 | `/api/contabilita` | 10 | ✓ | accounting.contabilita_avanzata, contabilita_italiana |
 | `/api/contabilita-gestionale` | 14 | ✓ | accounting.contabilita_gestionale |
 | `/api/controllo-gestione` | 4 | ✓ | controllo_gestione |
@@ -48,7 +48,7 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/email-download` | 40 | ✓ | email_download |
 | `/api/email-scanner` | 5 | ✓ | email_scanner |
 | `/api/erp` | 2 | ext | erp_bridge |
-| `/api/estratto-conto-movimenti` | 13 | ✓ | bank.estratto_conto |
+| `/api/estratto-conto-movimenti` | 14 | ✓ | bank.estratto_conto |
 | `/api/f24` | 27 | ✓ | drive_quietanze, f24.f24_main |
 | `/api/f24-analisi` | 4 | ✓ | f24_analisi |
 | `/api/f24-email` | 7 | ✓ | f24.email_f24 |

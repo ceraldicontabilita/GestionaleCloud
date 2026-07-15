@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 974 · tenere: 638 · verificare: 317 · admin-only (migrazione/manutenzione): 19
+**Totale endpoint:** 975 · tenere: 641 · verificare: 315 · admin-only (migrazione/manutenzione): 19
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -218,8 +218,8 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/commercialista/segna-inviata` | commercialista | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/conferma-tutte` | dati_provvisori | — | sì | — | — | — | tenere | in uso: scheduler |
 | `POST /api/conferma/{proposta_id}` | dati_provvisori | — | sì | sì | — | sì | tenere | in uso: scheduler, chat |
-| `GET /api/config-import/anno` | config_import | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `PUT /api/config-import/anno` | config_import | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/config-import/anno` | config_import | sì | — | — | — | — | tenere | in uso: FE |
+| `PUT /api/config-import/anno` | config_import | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/config/email-accounts` | configurazioni | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/config/email-accounts` | configurazioni | sì | — | — | — | — | tenere | in uso: FE |
 | `DELETE /api/config/email-accounts/{account_id}` | configurazioni | sì | — | — | — | — | tenere | in uso: FE |
@@ -271,7 +271,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/corrispettivi/import-csv` | invoices.corrispettivi | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/corrispettivi/manuale` | invoices.corrispettivi | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/corrispettivi/manuali-senza-xml` | invoices.corrispettivi | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/corrispettivi/rebuild-prima-nota` | invoices.corrispettivi | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/corrispettivi/rebuild-prima-nota` | invoices.corrispettivi | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/corrispettivi/ricalcola-annulli-non-riscosso` | invoices.corrispettivi | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/corrispettivi/ricalcola-iva` | invoices.corrispettivi | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/corrispettivi/sincronizza-prima-nota` | invoices.corrispettivi | sì | — | — | — | — | tenere | in uso: FE |
@@ -443,6 +443,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/estratto-conto-movimenti/ricategorizza-batch` | bank.estratto_conto | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/estratto-conto-movimenti/riconcilia-stipendi` | bank.estratto_conto | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/estratto-conto-movimenti/riepilogo` | bank.estratto_conto | — | — | sì | — | — | tenere | in uso: chat |
+| `POST /api/estratto-conto-movimenti/ripara-versamenti-cassa` | bank.estratto_conto | sì | — | — | — | sì | tenere | in uso: FE |
 | `DELETE /api/estratto-conto-movimenti/{movimento_id}` | bank.estratto_conto | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/f24` | f24.f24_main | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/f24` | f24.f24_main | sì | — | — | — | sì | tenere | in uso: FE |
@@ -540,7 +541,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/fatture-ricevute/fornitori` | fatture_module.crud | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/fatture-ricevute/import-paypal` | fatture_module.pagamento | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/fatture-ricevute/lista-paypal` | fatture_module.pagamento | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `POST /api/fatture-ricevute/paga-manuale` | fatture_module.pagamento | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/fatture-ricevute/paga-manuale` | fatture_module.pagamento | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/fatture-ricevute/pulisci-duplicati` | fatture_module.crud | — | sì | — | — | — | tenere | in uso: scheduler |
 | `POST /api/fatture-ricevute/riconcilia-con-estratto-conto` | fatture_module.pagamento | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/fatture-ricevute/riconcilia-paypal` | fatture_module.pagamento | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
@@ -555,12 +556,12 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/fatture/sync-suppliers` | invoices.fatture_upload | — | sì | — | — | — | tenere | in uso: scheduler |
 | `POST /api/fatture/upload-xml` | invoices.fatture_upload | — | sì | — | — | — | tenere | in uso: scheduler |
 | `POST /api/fatture/upload-xml-bulk` | invoices.fatture_upload | — | sì | — | — | — | tenere | in uso: scheduler |
-| `DELETE /api/fatture/{invoice_id}` | invoices.fatture_upload | — | sì | — | — | — | tenere | in uso: scheduler |
-| `GET /api/fatture/{invoice_id}` | invoices.fatture_upload | — | sì | — | — | — | tenere | in uso: scheduler |
-| `PUT /api/fatture/{invoice_id}` | invoices.fatture_upload | — | sì | — | — | — | tenere | in uso: scheduler |
-| `PUT /api/fatture/{invoice_id}/classifica` | invoices.fatture_upload | — | sì | — | — | — | tenere | in uso: scheduler |
-| `GET /api/fatture/{invoice_id}/entita-correlate` | invoices.fatture_upload | — | sì | — | — | — | tenere | in uso: scheduler |
-| `PUT /api/fatture/{invoice_id}/paga` | invoices.fatture_upload | — | sì | — | — | — | tenere | in uso: scheduler |
+| `DELETE /api/fatture/{invoice_id}` | invoices.fatture_upload | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
+| `GET /api/fatture/{invoice_id}` | invoices.fatture_upload | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
+| `PUT /api/fatture/{invoice_id}` | invoices.fatture_upload | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
+| `PUT /api/fatture/{invoice_id}/classifica` | invoices.fatture_upload | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
+| `GET /api/fatture/{invoice_id}/entita-correlate` | invoices.fatture_upload | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
+| `PUT /api/fatture/{invoice_id}/paga` | invoices.fatture_upload | sì | sì | — | — | sì | tenere | in uso: FE, scheduler |
 | `GET /api/finanziaria/cost-categories` | finanziaria | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/finanziaria/costi` | finanziaria | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/finanziaria/costo` | finanziaria | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
