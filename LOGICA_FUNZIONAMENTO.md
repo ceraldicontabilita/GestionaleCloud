@@ -412,17 +412,21 @@ per quella riga provvisoria, ma se per una data non esiste (ancora) nessun
 corrispettivo XML corrispondente, il pulsante la elimina senza ricrearne una al
 suo posto — la cassa di quel giorno resta scoperta senza un avviso esplicito.
 
-**Più registratori di cassa nello stesso negozio** (fix 15/07/2026): se in un
-punto vendita ci sono più casse/PDV che emettono ciascuna il proprio corrispettivo
-XML nello stesso giorno, il sistema li tiene **entrambi** — il controllo duplicati
-guarda data **+ dispositivo emittente**, non solo la data. Prima di questa
-correzione il corrispettivo del secondo dispositivo veniva scartato come
-"duplicato" di quello del primo (stessa data, dispositivo ignorato): spariva del
-tutto da Prima Nota invece di sommarsi, con l'incasso — sia contanti che
-elettronico — sistematicamente dimezzato. Per riparare lo storico: pagina
-**Pulizia Prima Nota → "Quadratura corrispettivi da Drive"** (ripassa gli XML
-originali e recupera quelli mai salvati) seguito da **"Ricostruisci da
-corrispettivi"** (rigenera Cassa/Banca dai corrispettivi ora completi).
+**Un solo registratore telematico, matricola che può cambiare** (fix 15/07/2026,
+precisazione utente): l'attività ha **un unico registratore di cassa**, non più
+punti vendita — ma la sua matricola/ID dispositivo può cambiare nel tempo (es.
+al risigillo triennale obbligatorio in occasione della verifica fiscale
+periodica). Il controllo duplicati dei corrispettivi guarda data **+ dispositivo
+emittente**, non solo la data: questo evita che un corrispettivo con la matricola
+nuova (dopo un risigillo) venga scartato come "duplicato" di uno con la matricola
+vecchia sulla stessa data, o viceversa. Prima di questa correzione il controllo
+guardava solo la data e ignorava la matricola: un corrispettivo con ID diverso
+dall'ultimo registrato poteva sparire del tutto da Prima Nota invece di essere
+salvato, con l'incasso — sia contanti che elettronico — sistematicamente perso
+per quella giornata. Per riparare lo storico: pagina **Pulizia Prima Nota →
+"Quadratura corrispettivi da Drive"** (ripassa gli XML originali e recupera
+quelli mai salvati) seguito da **"Ricostruisci da corrispettivi"** (rigenera
+Cassa/Banca dai corrispettivi ora completi).
 
 ---
 

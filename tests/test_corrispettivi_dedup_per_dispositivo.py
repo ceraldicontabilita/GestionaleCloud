@@ -4,13 +4,13 @@ corrispettivi mancanti sia in Cassa che in Banca).
 
 Causa: CorrispettiviService.process_xml controllava i duplicati SOLO per
 data ("un corrispettivo per questa data esiste già → scarta"), ignorando
-id_dispositivo (il registratore telematico/PDV che ha emesso il
-corrispettivo). Il negozio ha più casse/PDV (confermato dall'estratto
-conto reale: causali POS con "PDV 3757283/00011" e "PDV 3757283/00012"
-distinti): il corrispettivo del SECONDO dispositivo nella stessa data
-veniva scartato come "duplicato" del primo — sparendo del tutto da Prima
-Nota Cassa/Banca invece di sommarsi, ogni singolo giorno con due caselle
-chiuse."""
+id_dispositivo (la matricola del registratore telematico che ha emesso il
+corrispettivo). Precisazione utente: l'attività ha UN SOLO registratore,
+ma la sua matricola può cambiare nel tempo (es. al risigillo triennale
+obbligatorio in occasione della verifica fiscale periodica) — senza
+guardare la matricola, un corrispettivo con matricola diversa da quella
+già vista sulla stessa data veniva scartato come "duplicato" invece di
+essere salvato, sparendo del tutto da Prima Nota Cassa/Banca."""
 import asyncio
 
 from app.services.corrispettivi_service import CorrispettiviService
@@ -86,15 +86,19 @@ def _corr_xml(*, id_dispositivo, totale, contanti, pos):
     </RicevutaTelematica>""".encode()
 
 
-def test_due_dispositivi_stessa_data_non_sono_duplicati():
+def test_matricole_diverse_stessa_data_non_sono_duplicati():
+    # Simula il caso reale segnalato dall'utente: stesso registratore, ma
+    # matricola diversa da quella già vista sulla stessa data (es. a
+    # cavallo di un risigillo triennale) — non deve essere trattato come
+    # un duplicato del corrispettivo già salvato.
     db = _FakeDb()
     svc = CorrispettiviService(db=db)
 
-    xml_cassa1 = _corr_xml(id_dispositivo="00011", totale="500.00", contanti="300.00", pos="200.00")
-    xml_cassa2 = _corr_xml(id_dispositivo="00012", totale="400.00", contanti="250.00", pos="150.00")
+    xml_matricola_vecchia = _corr_xml(id_dispositivo="00011", totale="500.00", contanti="300.00", pos="200.00")
+    xml_matricola_nuova = _corr_xml(id_dispositivo="00012", totale="400.00", contanti="250.00", pos="150.00")
 
-    esito1 = _run(svc.process_xml(xml_cassa1, "cassa1.xml"))
-    esito2 = _run(svc.process_xml(xml_cassa2, "cassa2.xml"))
+    esito1 = _run(svc.process_xml(xml_matricola_vecchia, "matricola_vecchia.xml"))
+    esito2 = _run(svc.process_xml(xml_matricola_nuova, "matricola_nuova.xml"))
 
     assert esito1["status"] == "created"
     assert esito2["status"] == "created", esito2  # bug: prima risultava "duplicate"
