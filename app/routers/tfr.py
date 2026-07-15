@@ -391,7 +391,7 @@ async def get_riepilogo_tfr_aziendale(anno: int = Query(None)) -> Dict[str, Any]
     # è valorizzato (non si sommano: rappresentano due canali alternativi,
     # mai calcolati insieme sullo stesso periodo).
     dipendenti = await db["dipendenti"].find(
-        {"status": {"$in": ["attivo", "active"]}},
+        {"stato": {"$in": ["attivo", "active"]}},
         {"_id": 0, "id": 1, "nome_completo": 1, "tfr_accantonato": 1, "tfr_maturato": 1}
     ).to_list(1000)
 
@@ -478,7 +478,7 @@ async def calcola_tfr_batch(anno: int) -> Dict[str, Any]:
     
     # Dipendenti attivi
     dipendenti = await db["dipendenti"].find(
-        {"status": {"$in": ["attivo", "active"]}},
+        {"stato": {"$in": ["attivo", "active"]}},
         {"_id": 0}
     ).to_list(1000)
     

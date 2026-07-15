@@ -253,7 +253,7 @@ async def generate_report_dipendenti(
 
     # Recupera dati
     dipendenti = await db[Collections.EMPLOYEES].find(
-        {"status": {"$in": ["attivo", "active", None]}},
+        {"stato": {"$in": ["attivo", "active"]}},
         {"_id": 0}
     ).sort("nome_completo", 1).to_list(500)
 

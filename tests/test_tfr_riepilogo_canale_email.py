@@ -76,10 +76,10 @@ def test_fondo_tfr_include_i_dipendenti_solo_canale_email(monkeypatch):
     db["dipendenti"].docs = [
         # Mai passato dall'import manuale LUL: solo il canale email/Drive
         # (handler_aggiorna_tfr) ha accumulato il suo TFR.
-        {"id": "dip-1", "status": "attivo", "nome_completo": "Mario Rossi",
+        {"id": "dip-1", "stato": "attivo", "nome_completo": "Mario Rossi",
          "tfr_accantonato": 0, "tfr_maturato": 411.0},
         # Dipendente storico, passato solo dall'import manuale LUL.
-        {"id": "dip-2", "status": "attivo", "nome_completo": "Anna Bianchi",
+        {"id": "dip-2", "stato": "attivo", "nome_completo": "Anna Bianchi",
          "tfr_accantonato": 823.5, "tfr_maturato": 0},
     ]
     db["tfr_accantonamenti"].docs = []
