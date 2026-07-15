@@ -218,6 +218,22 @@ CENTRI_COSTO = {
         "keywords": ["manutenzione forno", "riparazione frigorifero", "vetrina refrigerata",
                     "cella frigorifera", "abbattitore", "congelatore"]
     },
+    # Richiesta utente (15/07/2026): mancava una voce per la manutenzione
+    # del locale in sé (muratura, idraulica, elettricista, imbiancatura,
+    # infissi...), distinta dalla manutenzione delle singole attrezzature
+    # (5.1/5.2) già presenti.
+    "5.4_MANUTENZIONE_LOCALI": {
+        "codice": "B7.5.4",
+        "nome": "Manutenzione locali",
+        "categoria_bilancio": "B7",
+        "deducibilita_ires": 1.0,
+        "deducibilita_irap": 1.0,
+        "detraibilita_iva": 1.0,
+        "keywords": ["manutenzione locale", "manutenzione locali", "imbiancatura",
+                    "idraulico", "elettricista", "muratore", "infissi", "serranda",
+                    "insegna luminosa", "impianto elettrico", "impianto idraulico",
+                    "ristrutturazione locale", "riparazione locale"]
+    },
     "5.3_PICCOLE_ATTREZZATURE": {
         "codice": "B7.5.3",
         # Richiesta utente (11/07): voce per i beni strumentali sotto la
@@ -474,6 +490,27 @@ CENTRI_COSTO = {
                     "nastro", "tovagliolo", "piattino", "bicchiere carta"]
     },
     
+    # 14. OMAGGI E RAPPRESENTANZA
+    # Richiesta utente (15/07/2026). Riusa la regola fiscale già codificata
+    # in app/schemas/accounting_rules.py (OMAGGI_RULES / determina_conto_
+    # omaggio) e app/services/categorizzazione_contabile.py ("premi_omaggi"):
+    # art. 108 TUIR, omaggio di valore unitario ≤ €50 → 100% deducibile IRES/
+    # IRAP e IVA detraibile (art. 19-bis1 lett. h DPR 633/72). Sopra i €50 la
+    # deducibilità è limitata (spese di rappresentanza) — qui si applica il
+    # caso più comune per un bar/pasticceria (piccoli omaggi promozionali);
+    # un omaggio di valore più alto va verificato singolarmente.
+    "14.1_OMAGGI": {
+        "codice": "B14.14.1",
+        "nome": "Omaggi clienti (valore unitario ≤ €50)",
+        "categoria_bilancio": "B14",
+        "deducibilita_ires": 1.0,
+        "deducibilita_irap": 1.0,
+        "detraibilita_iva": 1.0,
+        "keywords": ["omaggio", "omaggi", "confezione regalo", "gadget promozionale",
+                    "campione omaggio", "campioni omaggio", "cesto natalizio",
+                    "cesto regalo", "pacco dono"]
+    },
+
     # FALLBACK
     "99_ALTRI_COSTI": {
         "codice": "B14.99",

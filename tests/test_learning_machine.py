@@ -263,3 +263,28 @@ def test_settore_da_centro_dettaglio():
     assert lm.settore_di("2.1_ENERGIA_ELETTRICA") == "CDC-99"
     assert lm.settore_di(None) == "CDC-99"
     assert lm.settore_di("codice_sconosciuto") == "CDC-99"
+
+
+def test_manutenzione_locali_distinta_da_attrezzature():
+    """Richiesta utente 15/07/2026: mancava un centro di costo per la
+    manutenzione del locale (muratura/idraulica/elettricista), distinta
+    dalla manutenzione delle singole attrezzature (macchina caffè, forni)."""
+    def cdc(desc):
+        cid, _, _ = lm.classifica_fattura_per_centro_costo("Fornitore Generico Srl", desc)
+        return cid
+    assert cdc("Riparazione impianto idraulico bagno locale") == "5.4_MANUTENZIONE_LOCALI"
+    assert cdc("Imbiancatura sala") == "5.4_MANUTENZIONE_LOCALI"
+    assert cdc("Manutenzione macchina caffè") == "5.1_MANUTENZIONE_MACCHINA_CAFFE"
+    assert lm.settore_di("5.4_MANUTENZIONE_LOCALI") == "CDC-99"
+
+
+def test_omaggi_clienti_classificati():
+    """Richiesta utente 15/07/2026: gli omaggi clienti (valore unitario
+    ≤ €50, art. 108 TUIR) finivano tra gli "Altri costi non classificati"."""
+    def cdc(desc):
+        cid, _, _ = lm.classifica_fattura_per_centro_costo("Fornitore Generico Srl", desc)
+        return cid
+    assert cdc("Cesto natalizio omaggio clienti") == "14.1_OMAGGI"
+    config = lm.CENTRI_COSTO["14.1_OMAGGI"]
+    assert config["deducibilita_ires"] == 1.0
+    assert config["detraibilita_iva"] == 1.0

@@ -555,61 +555,115 @@ async def classifica_ambigue_con_ai(limite: int = 25) -> Dict[str, Any]:
             "ancora_ambigue": len(fatture) - classificate, "dettaglio": dettaglio}
 
 
+# Parole scartate dalla proposta keyword: oltre alle congiunzioni, i termini
+# di DOCUMENTO/LOGISTICA (ddt, bolle, spedizione, riferimenti...) che non
+# dicono nulla sulla merce (richiesta utente 11/07: 'elimina dalla proposta
+# i bollettini, i DDT, le cose che non sono materie prime') e i descrittori
+# di taglia/unità di misura che spezzano il nome prodotto (richiesta utente
+# 15/07: 'gilet unisex taglia XXL' deve proporre 'gilet unisex', non
+# frammenti come 'unisex' o 'taglia').
+_KEYWORD_STOP_WORDS = {
+    "di", "da", "per", "con", "il", "la", "i", "le", "un", "una", "e", "o",
+    "in", "su", "del", "della", "dei", "delle", "al", "alla", "ai", "alle",
+    "n.", "nr.", "art.",
+    # termini di documento/logistica, mai keyword di merce
+    "ddt", "d.d.t.", "bolla", "bolle", "bollettino", "bollettini",
+    "documento", "documenti", "trasporto", "spedizione", "spedizioni",
+    "consegna", "consegne", "ordine", "ordini", "fattura", "fatture",
+    "riferimento", "rif", "rif.", "codice", "articolo", "articoli",
+    "colli", "collo", "porto", "vettore", "imballo", "imballaggio",
+    "resa", "pagamento", "totale", "sconto", "omaggio", "cauzione",
+    "acconto", "saldo", "iva", "imponibile", "aliquota", "listino",
+    "contributo", "conai", "spese", "costi", "diritti", "segreteria",
+    "periodo", "mese", "anno", "data", "numero", "cliente", "fornitore",
+    # unità di misura e descrittori di taglia: separano il prodotto dal
+    # resto della riga invece di far parte del nome
+    "pz", "pz.", "pzi", "kg", "kg.", "gr", "gr.", "g", "g.", "lt", "lt.",
+    "l", "ml", "ml.", "cm", "cm.", "mm", "mm.", "cf", "cf.", "conf",
+    "confezione", "confezioni", "pacco", "pacchi", "cartone", "cartoni",
+    "taglia", "taglie", "colore", "colori", "misura", "misure",
+    "xs", "s", "m", "l", "xl", "xxl", "xxxl", "preventivo", "preventivi",
+}
+
+
+def _estrai_frasi_da_descrizione(desc: str) -> List[str]:
+    """Segmenta una descrizione riga fattura in frasi complete di senso
+    compiuto, invece di singole parole: le parole "di contenuto" restano
+    unite finché non incontrano uno stop-word/unità-di-misura/taglia, che
+    chiude il segmento corrente. Così "GILET UNISEX TAGLIA XXL" produce
+    "gilet unisex" (una frase) invece di tre parole isolate, e "AMARENA
+    VISCIOLA INTERA KG 5" produce "amarena visciola intera"."""
+    if not desc:
+        return []
+    frasi: List[str] = []
+    corrente: List[str] = []
+    for token in desc.lower().split():
+        parola = token.strip(".,;:!?()[]{}\"'")
+        if not parola:
+            continue
+        scarta = (
+            parola in _KEYWORD_STOP_WORDS
+            or parola.isdigit()
+            # codici/quantità alfanumerici corti con cifre (es. "kg2", "n.5")
+            or (len(parola) <= 4 and any(c.isdigit() for c in parola))
+        )
+        if scarta:
+            if corrente:
+                frasi.append(" ".join(corrente))
+                corrente = []
+        else:
+            corrente.append(parola)
+    if corrente:
+        frasi.append(" ".join(corrente))
+    return frasi
+
+
 @router.get("/suggerisci-keywords/{fornitore_nome}")
 async def suggerisci_keywords(fornitore_nome: str) -> Dict[str, Any]:
     """
-    Suggerisce keywords basandosi sulle descrizioni delle linee fattura del fornitore.
-    Aiuta l'utente a configurare rapidamente le keywords.
+    Suggerisce keywords basandosi sulle descrizioni delle linee fattura del
+    fornitore. Aiuta l'utente a configurare rapidamente le keywords.
+
+    Le keyword proposte sono FRASI complete (es. "amarena visciola", "gilet
+    unisex"), non parole singole isolate — bug segnalato dall'utente
+    15/07/2026: lo split per singola parola produceva frammenti senza senso
+    ("unisex", "preventivo", "taglia XXL" come parole a sé stanti).
     """
     db = Database.get_db()
-    
+
     # Trova fatture del fornitore
     fatture = await db["invoices"].find(
         {"supplier_name": {"$regex": fornitore_nome, "$options": "i"}},
         {"_id": 0, "linee": 1, "descrizione": 1}
     ).limit(20).to_list(20)
-    
-    # Estrai parole frequenti dalle descrizioni.
-    # Oltre alle congiunzioni, si scartano i termini di DOCUMENTO/LOGISTICA
-    # (ddt, bolle, spedizione, riferimenti...) che non dicono nulla sulla
-    # merce: suggerire 'ddt' o 'spedizione' come keyword classificava
-    # tutto a caso (richiesta utente 11/07: 'elimina dalla proposta i
-    # bollettini, i DDT, le cose che non sono materie prime').
-    parole = {}
-    stop_words = {"di", "da", "per", "con", "il", "la", "i", "le", "un", "una", "e", "o",
-                  "in", "su", "del", "della", "dei", "delle", "al", "alla", "ai", "alle",
-                  "n.", "nr.", "art.", "pz.", "kg.", "lt.", "ml.", "cm.", "mm.",
-                  # termini di documento/logistica, mai keyword di merce
-                  "ddt", "d.d.t.", "bolla", "bolle", "bollettino", "bollettini",
-                  "documento", "documenti", "trasporto", "spedizione", "spedizioni",
-                  "consegna", "consegne", "ordine", "ordini", "fattura", "fatture",
-                  "riferimento", "rif", "rif.", "codice", "articolo", "articoli",
-                  "colli", "collo", "porto", "vettore", "imballo", "imballaggio",
-                  "resa", "pagamento", "totale", "sconto", "omaggio", "cauzione",
-                  "acconto", "saldo", "iva", "imponibile", "aliquota", "listino",
-                  "contributo", "conai", "spese", "costi", "diritti", "segreteria",
-                  "periodo", "mese", "anno", "data", "numero", "cliente", "fornitore"}
-    
+
+    frasi_frequenza: Dict[str, int] = {}
+
     for fatt in fatture:
-        # Descrizione generale
+        candidate = []
         if fatt.get("descrizione"):
-            for parola in fatt["descrizione"].lower().split():
-                parola = parola.strip(".,;:!?()[]{}\"'")
-                if len(parola) > 3 and parola not in stop_words:
-                    parole[parola] = parole.get(parola, 0) + 1
-        
-        # Linee fattura
+            candidate.append(fatt["descrizione"])
         for linea in fatt.get("linee", []):
             if isinstance(linea, dict):
                 desc = linea.get("descrizione") or linea.get("description", "")
-                for parola in desc.lower().split():
-                    parola = parola.strip(".,;:!?()[]{}\"'")
-                    if len(parola) > 3 and parola not in stop_words:
-                        parole[parola] = parole.get(parola, 0) + 1
-    
-    # Ordina per frequenza e prendi le top 15
-    keywords_suggerite = sorted(parole.items(), key=lambda x: x[1], reverse=True)[:15]
-    
+                if desc:
+                    candidate.append(desc)
+
+        for testo in candidate:
+            for frase in _estrai_frasi_da_descrizione(testo):
+                # Scarta frasi troppo corte per essere utili (una singola
+                # lettera/sigla residua) tenendo comunque le parole singole
+                # di senso compiuto (es. "cornetti").
+                if len(frase) <= 3:
+                    continue
+                frasi_frequenza[frase] = frasi_frequenza.get(frase, 0) + 1
+
+    # Ordina per frequenza (a parità, le frasi più lunghe/specifiche prima)
+    # e prendi le top 15.
+    keywords_suggerite = sorted(
+        frasi_frequenza.items(), key=lambda x: (x[1], len(x[0])), reverse=True
+    )[:15]
+
     return {
         "fornitore": fornitore_nome,
         "keywords_suggerite": [k for k, _ in keywords_suggerite],
