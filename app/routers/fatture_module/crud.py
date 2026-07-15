@@ -165,7 +165,12 @@ async def get_archivio_fatture(
     db = Database.get_db()
 
     # ── Costruisci filtri per `invoices` ─────────────────────────────────────
-    q_inv: dict = {}
+    # Bug corretto 15/07/2026: una fattura "eliminata" da DELETE /api/fatture/{id}
+    # è di norma un soft-delete (CascadeOperations.delete_fattura_cascade imposta
+    # status/entity_status="deleted"), ma questa query non escludeva mai quello
+    # stato — una fattura "eliminata" poteva ricomparire qui nonostante il
+    # messaggio di conferma dicesse che l'eliminazione è irreversibile.
+    q_inv: dict = {"entity_status": {"$ne": "deleted"}, "status": {"$ne": "deleted"}}
     if anno:
         # I doc di import_xml (schema italiano) non hanno `anno` né `invoice_date`:
         # filtra su entrambi gli schemi usando $and per non collidere con gli
@@ -578,7 +583,12 @@ async def get_fattura_dettaglio(fattura_id: str) -> Dict[str, Any]:
             pass
     if not fattura:
         raise HTTPException(status_code=404, detail="Fattura non trovata")
-    
+    if fattura.get("entity_status") == "deleted" or fattura.get("status") == "deleted":
+        # Stesso bug del 15/07/2026: una fattura archiviata da DELETE
+        # /api/fatture/{id} deve comportarsi come inesistente per l'utente,
+        # non ricomparire nel dettaglio.
+        raise HTTPException(status_code=404, detail="Fattura non trovata")
+
     righe = await db[COL_DETTAGLIO_RIGHE].find({"fattura_id": fattura_id}, {"_id": 0}).to_list(1000)
     allegati = await db[COL_ALLEGATI].find({"fattura_id": fattura_id}, {"_id": 0, "base64_data": 0}).to_list(10)
     

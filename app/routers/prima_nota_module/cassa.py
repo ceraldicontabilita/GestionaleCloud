@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 import uuid
 import logging
 
-from app.database import Database
+from app.database import Database, Collections
 from .common import (
     COLLECTION_PRIMA_NOTA_CASSA, TIPO_MOVIMENTO, CATEGORIE_ESCLUSE,
     calcola_saldo_anni_precedenti, aggrega_saldo_prima_nota
@@ -137,6 +137,25 @@ async def create_prima_nota_cassa(data: Dict[str, Any] = Body(...)) -> Dict[str,
     }
 
     await db[COLLECTION_PRIMA_NOTA_CASSA].insert_one(movimento.copy())
+
+    # Bug corretto 15/07/2026: un'uscita cassa collegata a una fattura
+    # (fattura_id) segnava il movimento ma non la fattura come pagata. Una
+    # riconciliazione bancaria successiva trovava ancora la fattura "da
+    # pagare" (filtro pagato!=True) e poteva creare un SECONDO movimento
+    # reale in Prima Nota Banca per lo stesso pagamento — doppio conteggio.
+    # Stesso aggiornamento già fatto dal flusso "Paga in Cassa"/Provvisori
+    # (registra_fattura_prima_nota, prima_nota_module/sync.py).
+    if data["tipo"] == "uscita" and data.get("fattura_id"):
+        await db[Collections.INVOICES].update_one(
+            {"id": data["fattura_id"]},
+            {"$set": {
+                "pagato": True,
+                "stato_pagamento": "pagata",
+                "data_pagamento": data["data"],
+                "metodo_pagamento": "cassa",
+                "prima_nota_cassa_id": movimento["id"],
+            }}
+        )
 
     if inserimento_manuale:
         try:

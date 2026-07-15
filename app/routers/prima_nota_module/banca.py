@@ -7,7 +7,7 @@ from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 import uuid
 
-from app.database import Database
+from app.database import Database, Collections
 from .common import (
     COLLECTION_PRIMA_NOTA_BANCA, TIPO_MOVIMENTO, CATEGORIE_ESCLUSE,
     calcola_saldo_anni_precedenti, aggrega_saldo_prima_nota
@@ -96,6 +96,23 @@ async def create_prima_nota_banca(data: Dict[str, Any] = Body(...)) -> Dict[str,
     }
     
     await db[COLLECTION_PRIMA_NOTA_BANCA].insert_one(movimento.copy())
+
+    # Stesso bug/fix di cassa.py::create_prima_nota_cassa (15/07/2026): un'uscita
+    # banca collegata a una fattura deve marcarla pagata, altrimenti resta
+    # candidabile per un secondo pagamento reale via riconciliazione bancaria
+    # o "Paga in Cassa" — doppio conteggio della stessa spesa.
+    if data["tipo"] == "uscita" and data.get("fattura_id"):
+        await db[Collections.INVOICES].update_one(
+            {"id": data["fattura_id"]},
+            {"$set": {
+                "pagato": True,
+                "stato_pagamento": "pagata",
+                "data_pagamento": data["data"],
+                "metodo_pagamento": "banca",
+                "prima_nota_banca_id": movimento["id"],
+            }}
+        )
+
     return {"message": "Movimento banca creato", "id": movimento["id"]}
 
 

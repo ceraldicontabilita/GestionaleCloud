@@ -218,12 +218,9 @@ fonte.
    righe, Prima Nota e scadenze collegate; i movimenti di magazzino vengono
    annullati, gli assegni collegati solo sganciati). La cancellazione fisica
    esiste (`hard_delete=true`) ma **nessuna pagina la usa**: dall'interfaccia
-   non è raggiungibile. ⚠️ **Bug aperto**: la pagina Archivio Fatture e il
-   dettaglio fattura oggi **non** escludono le fatture archiviate dalla
-   query — una fattura "eliminata" può quindi ricomparire in lista/dettaglio
-   nonostante il messaggio di conferma dica che l'operazione non si può
-   annullare. Da correggere: aggiungere il filtro `entity_status != "deleted"`
-   alle query di lista/dettaglio fatture.
+   non è raggiungibile. **Corretto il 15/07/2026**: la pagina Archivio
+   Fatture e il dettaglio fattura ora escludono `entity_status/status
+   ="deleted"` — una fattura eliminata non ricompare più in lista/dettaglio.
 
 **Pagina Fornitori (anagrafica).**
 - La lista è a **pagine numerate** (1 · 2 · 3 …, 50 fornitori per pagina, barra sia
@@ -275,22 +272,18 @@ distinto da uno automatico né controllato per duplicati.
 **Provvisoria**
 - Solo fatture di fornitori "misto", in attesa della tua divisione cassa/banca.
 
-**⚠️ Rischio confermato (audit 15/07/2026): pagamento fattura registrato a mano in
-Cassa non blocca un doppio pagamento in Banca.** Quando registri a mano in Prima
-Nota Cassa il pagamento di una fattura specifica (`fattura_id` collegato), il
-sistema **non aggiorna lo stato della fattura** (`stato_pagamento`/`pagato`
-restano quelli di prima): a differenza del flusso automatico ("Paga in Cassa" da
-scheda fattura, o conferma da Provvisori), che marca sempre la fattura come
-pagata. Se in seguito arriva l'estratto conto reale, la riconciliazione bancaria
-considera ancora quella fattura "da pagare" (il suo filtro è
-`pagato != True` e `stato_pagamento` non "pagata/paid/sospesa") e — se trova un
-match per importo/fornitore — crea un **secondo movimento reale in Prima Nota
-Banca** per la stessa fattura: il controllo anti-duplicato di quel percorso
-guarda solo dentro la collection di destinazione (Banca), non incrocia mai la
-Cassa. Risultato: doppio conteggio reale della stessa spesa. Finché non è
-corretto, un pagamento fattura va sempre registrato dal bottone "Paga in
-Cassa/Banca" sulla fattura (o da Provvisori), **mai** dal form libero di
-inserimento manuale quando è collegato a una fattura specifica.
+**Corretto 15/07/2026 — pagamento fattura registrato a mano in Cassa/Banca ora
+marca sempre la fattura come pagata.** Prima di questa correzione, registrare a
+mano in Prima Nota Cassa (o Banca) il pagamento di una fattura specifica
+(`fattura_id` collegato a un'uscita) creava il movimento ma **non aggiornava lo
+stato della fattura**: una riconciliazione bancaria successiva la trovava ancora
+"da pagare" e, se trovava un match per importo/fornitore, creava un **secondo
+movimento reale** per la stessa fattura (doppio conteggio). Ora un'uscita
+Cassa/Banca con `fattura_id` marca sempre `pagato=true`, `stato_pagamento=
+"pagata"`, `metodo_pagamento` e l'id del movimento collegato — stesso
+comportamento del flusso "Paga in Cassa/Banca" da scheda fattura. Un'entrata
+(es. corrispettivo) collegata per errore a un `fattura_id` non tocca invece
+nulla: non rappresenta mai un pagamento fornitore.
 
 **Fatture attese (avvisi email Aruba)** — nel tab Provvisori
 - **Scansione**: automatica, ogni ora (job schedulato — prima di questa
