@@ -397,6 +397,45 @@ function PrimaNotaDesktop() {
     }
   };
 
+  // Visualizza F24 — fetch autenticato (via api.js, che allega il JWT).
+  // Bug segnalato dall'utente 15/07/2026: il bottone era un <a href> diretto
+  // a /api/f24/{id}, che richiede login (get_current_user) ma un <a> non
+  // porta con sé l'header Authorization — risultato: 401 "Authentication
+  // required" ad ogni click. Le uniche route PDF già esistenti per l'F24
+  // sono pubbliche (nessun controllo accesso): usarle qui avrebbe esposto
+  // documenti fiscali a chiunque avesse il link, quindi si passa dal
+  // dettaglio JSON autenticato invece che da un link diretto al PDF.
+  const handleViewF24 = async f24Id => {
+    try {
+      const res = await api.get(`/api/f24/${f24Id}`);
+      const f24 = res.data;
+      if (f24?.error) {
+        showFeedback('F24 non trovato', f24.error, 'warning');
+        return;
+      }
+      const righe = Object.entries(f24 || {})
+        .filter(([k]) => !['_id', 'id'].includes(k))
+        .map(
+          ([k, v]) =>
+            `<tr><td style="padding:6px 10px;font-weight:bold;border-bottom:1px solid #e5e7eb">${k}</td>` +
+            `<td style="padding:6px 10px;border-bottom:1px solid #e5e7eb">${
+              typeof v === 'object' && v !== null ? JSON.stringify(v) : String(v ?? '')
+            }</td></tr>`
+        )
+        .join('');
+      const win = window.open('', '_blank');
+      win.document.write(
+        `<html><head><title>F24 ${f24Id}</title><style>
+          body{font-family:Arial,sans-serif;padding:20px;color:#0f2744}
+          table{width:100%;border-collapse:collapse;font-size:13px}
+        </style></head><body><h2>Dettaglio F24</h2><table>${righe}</table></body></html>`
+      );
+      win.document.close();
+    } catch (error) {
+      showFeedback('Errore apertura F24', getErrorMessage(error), 'danger');
+    }
+  };
+
   // Download template CSV
   const handleDownloadTemplate = async tipo => {
     try {
@@ -2817,10 +2856,8 @@ function MovementsTable({
                       Bonifico
                     </a>
                   ) : mov.f24_id ? (
-                    <a
-                      href={`/api/f24/${mov.f24_id}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    <button
+                      onClick={() => handleViewF24(mov.f24_id)}
                       style={{
                         display: 'inline-block',
                         padding: '6px 12px',
@@ -2831,13 +2868,12 @@ function MovementsTable({
                         cursor: 'pointer',
                         fontSize: 12,
                         fontWeight: 'bold',
-                        textDecoration: 'none',
                       }}
                       title="Visualizza F24"
                       data-testid={`view-f24-${mov.id || idx}`}
                     >
                       📄 F24
-                    </a>
+                    </button>
                   ) : mov.corrispettivo_id || mov.xml_filename ? (
                     <a
                       href={

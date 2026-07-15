@@ -88,11 +88,22 @@ class CorrispettiviService:
                 "message": "Corrispettivo già presente"
             }
 
-        # Check duplicato per data
-        existing_date = await self.corrispettivi.find_one({
+        # Check duplicato per data + dispositivo. Bug segnalato dall'utente
+        # 15/07/2026 (saldo Prima Nota sballato di decine di migliaia di
+        # euro): il controllo guardava SOLO la data, ignorando
+        # id_dispositivo (il registratore telematico/PDV che ha emesso il
+        # corrispettivo) — con più casse/PDV nello stesso negozio (es. PDV
+        # 00011 e 00012, entrambi presenti negli estratti conto reali), il
+        # corrispettivo del SECONDO dispositivo veniva scartato come
+        # "duplicato" del primo solo perché stessa data, sparendo del tutto
+        # da Prima Nota Cassa/Banca invece di sommarsi.
+        dup_query = {
             "data": parsed["data"],
             "entity_status": {"$ne": EntityStatus.DELETED.value}
-        })
+        }
+        if parsed.get("id_dispositivo"):
+            dup_query["id_dispositivo"] = parsed["id_dispositivo"]
+        existing_date = await self.corrispettivi.find_one(dup_query)
         if existing_date:
             return {
                 "status": "duplicate",

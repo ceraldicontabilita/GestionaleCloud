@@ -102,6 +102,43 @@ export default function PuliziaPrimaNota() {
     }
   };
 
+  // Quadratura corrispettivi da Drive: ripassa TUTTI gli XML archiviati e
+  // recupera quelli che risultano mancanti nel gestionale. Bug segnalato
+  // dall'utente 15/07/2026 (saldo Prima Nota sballato di decine di
+  // migliaia di euro): il controllo duplicati di CorrispettiviService
+  // guardava SOLO la data, non il dispositivo/PDV che ha emesso il
+  // corrispettivo — con più casse nello stesso negozio, il corrispettivo
+  // della seconda cassa veniva scartato come "duplicato" della prima ogni
+  // giorno, sparendo del tutto da Prima Nota invece di sommarsi. Corretto
+  // nel codice: questo pulsante recupera lo storico ripassando gli XML
+  // originali già su Drive (nessun dato perso, si riparte dalla fonte
+  // fiscale invece che da un'importazione derivata).
+  const [risultatoQuadratura, setRisultatoQuadratura] = useState(null);
+
+  const lanciaQuadraturaCorrispettivi = async () => {
+    const conferma = await confirm({
+      title: 'Quadratura corrispettivi da Drive',
+      message:
+        'Ripassa tutti gli XML dei corrispettivi archiviati su Drive e recupera quelli mancanti ' +
+        'nel gestionale (es. corrispettivi di una seconda cassa scartati per errore come duplicati). ' +
+        'Operazione sicura: non tocca né duplica i corrispettivi già presenti.',
+      confirmText: 'Avvia quadratura',
+      variant: 'warning',
+    });
+    if (!conferma) return;
+    azzeraErrori();
+    setLoading('quadratura');
+    setRisultatoQuadratura(null);
+    try {
+      const res = await api.post('/api/corrispettivi/drive/quadratura');
+      setRisultatoQuadratura(res.data);
+    } catch (e) {
+      setErrore(e?.response?.data?.detail || e?.message || 'Errore durante la quadratura');
+    } finally {
+      setLoading(null);
+    }
+  };
+
   // Ricostruzione completa Cassa+Banca dai corrispettivi archiviati: a
   // differenza del passo 4 (che inserisce solo quelli mai sincronizzati),
   // questo cancella e ricrea TUTTI i movimenti con source=corrispettivo_*
@@ -413,6 +450,64 @@ export default function PuliziaPrimaNota() {
                   </div>
                 )}
               </div>
+            </div>
+          )}
+        </StepCard>
+
+        {/* STEP 4a - QUADRATURA CORRISPETTIVI DA DRIVE (recupera i buchi) */}
+        <StepCard
+          numero="4a"
+          titolo="Quadratura corrispettivi da Drive (recupera i mancanti)"
+          descrizione={
+            'Da eseguire PRIMA del passo 4b se sospetti corrispettivi interi mai arrivati in Prima Nota ' +
+            '(es. una cassa/PDV su due). Ripassa gli XML originali già archiviati su Drive e ricrea solo ' +
+            "quelli che risultano mancanti nel gestionale — non tocca quelli già presenti."
+          }
+        >
+          <button
+            onClick={lanciaQuadraturaCorrispettivi}
+            disabled={isBusy}
+            style={btnStyle('primary', isBusy)}
+          >
+            {loading === 'quadratura' ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+            Avvia quadratura Drive
+          </button>
+
+          {risultatoQuadratura && (
+            <div style={{ ...resultBoxStyle, background: '#f0fdf4', borderColor: '#22c55e' }}>
+              {risultatoQuadratura.status === 'not_configured' ? (
+                <div style={{ fontSize: 13, color: '#78350f' }}>
+                  Integrazione Google Drive corrispettivi non configurata su questo ambiente.
+                </div>
+              ) : (
+                <>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+                    <CheckCircle size={18} color="#059669" />
+                    <strong style={{ color: '#065f46' }}>Quadratura completata</strong>
+                  </div>
+                  <div style={{ fontSize: 13, color: '#065f46', lineHeight: 1.6 }}>
+                    File controllati: <strong>{risultatoQuadratura.controllati}</strong>
+                    <br />
+                    Già presenti (quadrati): {risultatoQuadratura.quadrati}
+                    <br />
+                    <span style={{ color: risultatoQuadratura.recuperati > 0 ? '#b91c1c' : '#065f46', fontWeight: 700 }}>
+                      Recuperati (mancanti nel gestionale): {risultatoQuadratura.recuperati}
+                    </span>
+                    {risultatoQuadratura.errori > 0 && (
+                      <>
+                        <br />
+                        <span style={{ color: '#991b1b' }}>Errori: {risultatoQuadratura.errori}</span>
+                      </>
+                    )}
+                  </div>
+                  {risultatoQuadratura.recuperati > 0 && (
+                    <div style={{ fontSize: 12, color: '#78350f', background: '#fffbeb', padding: 8, borderRadius: 6, marginTop: 8 }}>
+                      Corrispettivi recuperati: esegui ora il passo 4b ("Ricostruisci da corrispettivi")
+                      per rigenerare correttamente Prima Nota Cassa e Banca con i dati completi.
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           )}
         </StepCard>
