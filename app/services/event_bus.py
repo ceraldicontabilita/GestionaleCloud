@@ -324,6 +324,17 @@ def register_all_handlers():
     except Exception as e:
         logger.warning(f"Handler controllo IBAN non registrato: {e}")
 
+    # --- Auto-cespiti da righe fattura XML ---
+    # Richiesta utente 15/07/2026: le attrezzature/impianti individuati nelle
+    # fatture XML devono confluire da soli nel registro cespiti, non solo con
+    # lo scan manuale "Scan Fatture XML" (che resta per il backfill dello
+    # storico importato prima di questo handler).
+    try:
+        from app.handlers.cespiti import handler_auto_cespite_da_fattura
+        register_handler(EventTypes.FATTURA_CREATED, handler_auto_cespite_da_fattura)
+    except Exception as e:
+        logger.warning(f"Handler auto-cespiti non registrato: {e}")
+
     # --- Documenti/Inbox (Chat 9d) ---
     try:
         from app.services.handlers.documento_handlers import (

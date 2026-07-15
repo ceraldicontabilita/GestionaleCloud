@@ -486,7 +486,13 @@ async def scan_fatture_per_cespiti(
                 if not categoria:
                     continue
 
-                dedup_key = (descrizione[:100], round(prezzo, 2))
+                # Stessa lunghezza di troncamento della descrizione salvata nel
+                # cespite (descrizione[:200] più sotto) e di existing_set: un
+                # dedup_key troncato a una lunghezza diversa (bug corretto
+                # 15/07/2026: prima era [:100]) faceva coincidere per errore
+                # descrizioni diverse o mancare duplicati con testo oltre i
+                # 100 caratteri.
+                dedup_key = (descrizione[:200], round(prezzo, 2))
                 if dedup_key in seen or dedup_key in existing_set:
                     continue
                 seen.add(dedup_key)

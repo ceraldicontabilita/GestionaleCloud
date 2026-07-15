@@ -1047,3 +1047,17 @@ sovrastimato.
   registro cespiti. Serve per imputare un ammortamento coerente in un
   bilancio provvisorio infra-annuale, senza toccare l'ammortamento
   definitivo (quello resta registrato solo a fine anno).
+- **Cespiti creati automaticamente dalle fatture XML**: da questa data, ogni
+  fattura passiva importata (email o upload manuale) fa scattare in
+  automatico lo stesso riconoscimento del bottone "Scan Fatture XML" di
+  Cespiti & TFR (parole chiave su descrizione riga + soglia 200€): se una
+  riga fattura viene riconosciuta come attrezzatura/impianto/mobilio/ecc.,
+  il cespite viene creato subito, senza bisogno di lanciare lo scan a mano.
+  Lo scan manuale resta utile solo per il backfill delle fatture importate
+  prima di questa data. Anti-duplicato: stessa chiave (descrizione + valore)
+  tra scan manuale e trigger automatico, non crea mai due cespiti per la
+  stessa riga fattura. **Bug corretto nello stesso intervento**: lo scan
+  manuale confrontava un dedup_key troncato a 100 caratteri contro
+  descrizioni salvate troncate a 200 — per righe con descrizione tra 100 e
+  200 caratteri il confronto non coincideva mai, rischiando un duplicato ad
+  ogni riscan.
