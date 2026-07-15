@@ -465,7 +465,22 @@ async def rebuild_prima_nota_from_corrispettivi(
     if len(corrispettivi) >= 100000:
         logger.warning("rebuild_prima_nota_from_corrispettivi: raggiunto il tetto di 100000 documenti, possibile troncamento")
     for corr in corrispettivi:
-        if not corr.get("data") or _to_float(corr.get("totale", 0)) <= 0:
+        # Stessa regola di fallback usata da _create_prima_nota_movements: un
+        # corrispettivo storico può non avere il campo "totale" popolato e
+        # riportare solo pagato_contanti/pagato_elettronico (es. record creati
+        # dal vecchio data_propagation.py). Controllare solo "totale" qui
+        # scartava questi record dalla ricostruzione DOPO che il movimento
+        # Prima Nota corrispondente era già stato eliminato dal purge sopra
+        # (stesso source "corrispettivo_import"), facendo sparire il
+        # corrispettivo da Prima Nota invece di ricrearlo correttamente.
+        totale_o_fallback = _to_float(
+            corr.get("totale")
+            or corr.get("totale_complessivo")
+            or corr.get("importo")
+            or corr.get("totale_giornaliero")
+            or (_to_float(corr.get("pagato_contanti", 0)) + _to_float(corr.get("pagato_elettronico", 0)) or _to_float(corr.get("pagato_pos", 0)))
+        )
+        if not corr.get("data") or totale_o_fallback <= 0:
             skipped += 1
             continue
         pn = await _create_prima_nota_movements(db, corr)

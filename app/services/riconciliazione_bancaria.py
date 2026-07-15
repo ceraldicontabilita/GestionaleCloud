@@ -1000,7 +1000,33 @@ async def riconcilia_movimenti_banca() -> Dict[str, Any]:
                             }}
                         )
 
-                        match_details = {"versamento_id": versamento.get("id"), "importo": versamento.get("importo")}
+                        # Bug segnalato dall'utente 15/07/2026: il match
+                        # marcava riconciliati sia la riga cassa che l'EC, ma
+                        # non creava MAI la voce in dare corrispondente in
+                        # prima_nota_banca — il versamento risultava uscito
+                        # dalla cassa senza mai comparire come entrata in
+                        # banca. Idempotente per costruzione: una volta
+                        # riconciliato, l'EC esce dalla query di riga 534 e
+                        # non viene mai riprocessato.
+                        banca_versamento_id = str(uuid.uuid4())
+                        await db["prima_nota_banca"].insert_one({
+                            "id": banca_versamento_id,
+                            "data": data_ec,
+                            "tipo": "entrata",
+                            "importo": versamento.get("importo", importo),
+                            "descrizione": f"Versamento contanti in banca - {descrizione[:100]}",
+                            "categoria": "Versamento",
+                            "estratto_conto_id": mov_id,
+                            "prima_nota_cassa_id": versamento["id"],
+                            "source": "riconciliazione_ec_versamento",
+                            "created_at": now,
+                        })
+
+                        match_details = {
+                            "versamento_id": versamento.get("id"),
+                            "importo": versamento.get("importo"),
+                            "prima_nota_banca_id": banca_versamento_id,
+                        }
                         results["riconciliati_versamenti"] += 1
 
             # === AGGIORNA EC ===
