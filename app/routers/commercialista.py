@@ -618,87 +618,95 @@ async def get_alert_status() -> Dict[str, Any]:
     }
 
 
+async def _get_prima_nota_banca_mensile(anno: int, mese: int) -> Dict[str, Any]:
+    """Prima Nota Banca del mese, stessa forma di get_prima_nota_cassa_mensile
+    ma sulla collezione canonica prima_nota_banca (nessun fallback legacy:
+    a differenza della cassa, per la banca esiste una sola collezione)."""
+    db = Database.get_db()
+    month_prefix = f"{anno}-{mese:02d}"
+
+    movements = await db["prima_nota_banca"].find({
+        "data": {"$regex": f"^{month_prefix}"}
+    }, {"_id": 0}).sort([("data", 1), ("categoria", 1)]).to_list(5000)
+
+    totale_entrate = 0.0
+    totale_uscite = 0.0
+    for m in movements:
+        tipo = (m.get("tipo") or "").lower()
+        importo = float(m.get("importo") or 0)
+        if tipo == "entrata":
+            totale_entrate += abs(importo)
+        else:
+            totale_uscite += abs(importo)
+
+    return {
+        "movimenti": movements,
+        "totale_entrate": round(totale_entrate, 2),
+        "totale_uscite": round(totale_uscite, 2),
+        "saldo": round(totale_entrate - totale_uscite, 2),
+    }
+
+
+async def _get_assegni_emessi_mensile(anno: int, mese: int) -> list:
+    """Assegni EMESSI (consegnati a un beneficiario, non i numeri ancora in
+    bianco) con data di emissione nel mese: stato diverso da "vuoto"/
+    "compilato" e data_emissione valorizzata nel periodo."""
+    db = Database.get_db()
+    month_prefix = f"{anno}-{mese:02d}"
+
+    return await db["assegni"].find({
+        "stato": {"$nin": ["vuoto", "compilato"]},
+        "data_emissione": {"$regex": f"^{month_prefix}"}
+    }, {"_id": 0}).sort("data_emissione", 1).to_list(5000)
+
+
+async def _get_fatture_estere_mensili(anno: int, mese: int) -> list:
+    """Fatture ESTERE ricevute via email nel mese (mai le fatture italiane,
+    che arrivano sempre via SDI/XML): identificate dal source impostato da
+    process_fattura_estera_pdf, l'unico punto che le crea (fatture_upload.py)."""
+    db = Database.get_db()
+    month_prefix = f"{anno}-{mese:02d}"
+
+    return await db["invoices"].find({
+        "source": "email_gmail_estera",
+        "invoice_date": {"$regex": f"^{month_prefix}"}
+    }, {"_id": 0}).to_list(500)
+
+
 @router.get("/export-completo/{anno}/{mese}")
 @handle_errors
 async def export_dati_completi(anno: int, mese: int):
     """
-    Export completo dati mensili per commercialista in formato ZIP.
-    Include: fatture, corrispettivi, prima nota, IVA, dipendenti.
+    Export mensile per commercialista in formato ZIP (richiesta utente
+    15/07/2026, sostituisce la vecchia versione che includeva anche fatture/
+    corrispettivi/riepilogo IVA/buste paga — dati che il commercialista
+    riceve già da altre fonti, non da qui).
+
+    Include SOLO:
+    - Prima Nota Cassa e Prima Nota Banca del mese (CSV)
+    - Assegni emessi nel mese (CSV)
+    - PDF delle fatture ESTERE ricevute via email nel mese (allegati): le
+      fatture italiane arrivano sempre via SDI/XML, non servono qui.
     """
     import zipfile
+    import base64
     import csv
     from io import BytesIO, StringIO
     from fastapi.responses import StreamingResponse
-    
+
     db = Database.get_db()
     mese_str = f"{anno}-{mese:02d}"
-    mese_nome = ["", "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
-                 "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"][mese]
-    
-    # Crea ZIP in memoria
+
     zip_buffer = BytesIO()
-    
+
     with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
-        # 1. FATTURE
-        fatture = await db["invoices"].find({
-            "invoice_date": {"$regex": f"^{mese_str}"}
-        }, {"_id": 0}).to_list(10000)
-        
-        if fatture:
-            csv_buffer = StringIO()
-            writer = csv.writer(csv_buffer, delimiter=';')
-            writer.writerow(['Data', 'Numero', 'Fornitore', 'P.IVA', 'Imponibile', 'IVA', 'Totale', 'Pagamento'])
-            
-            for f in fatture:
-                writer.writerow([
-                    f.get('invoice_date', '')[:10],
-                    f.get('invoice_number', ''),
-                    f.get('supplier_name', ''),
-                    f.get('supplier_vat', ''),
-                    f.get('total_amount', 0) - f.get('total_tax', 0),
-                    f.get('total_tax', 0),
-                    f.get('total_amount', 0),
-                    f.get('metodo_pagamento', 'N/D')
-                ])
-            
-            zf.writestr(f'fatture_{mese_str}.csv', csv_buffer.getvalue())
-        
-        # 2. CORRISPETTIVI
-        corrispettivi = await db["corrispettivi"].find({
-            "$or": [
-                {"data": {"$regex": f"^{mese_str}"}},
-                {"data_trasmissione": {"$regex": f"^{mese_str}"}}
-            ]
-        }, {"_id": 0}).to_list(10000)
-        
-        if corrispettivi:
-            csv_buffer = StringIO()
-            writer = csv.writer(csv_buffer, delimiter=';')
-            writer.writerow(['Data', 'Totale', 'Contanti', 'Elettronico', 'IVA 10%', 'Matricola RT'])
-            
-            for c in corrispettivi:
-                totale = c.get('totale', 0)
-                iva = round(totale * 0.10 / 1.10, 2)
-                writer.writerow([
-                    c.get('data', c.get('data_trasmissione', ''))[:10],
-                    totale,
-                    c.get('pagato_contante', c.get('pagato_cassa', 0)),
-                    c.get('pagato_elettronico', 0),
-                    iva,
-                    c.get('matricola_rt', '')
-                ])
-            
-            zf.writestr(f'corrispettivi_{mese_str}.csv', csv_buffer.getvalue())
-        
-        # 3. PRIMA NOTA CASSA
-        prima_nota_data = await get_prima_nota_cassa_mensile(anno, mese)
-        
-        if prima_nota_data.get('movimenti'):
+        # 1. PRIMA NOTA CASSA
+        prima_nota_cassa = await get_prima_nota_cassa_mensile(anno, mese)
+        if prima_nota_cassa.get('movimenti'):
             csv_buffer = StringIO()
             writer = csv.writer(csv_buffer, delimiter=';')
             writer.writerow(['Data', 'Descrizione', 'Categoria', 'Entrata', 'Uscita', 'Tipo'])
-            
-            for m in prima_nota_data['movimenti']:
+            for m in prima_nota_cassa['movimenti']:
                 importo = m.get('importo', 0)
                 writer.writerow([
                     m.get('data', '')[:10],
@@ -708,62 +716,63 @@ async def export_dati_completi(anno: int, mese: int):
                     abs(importo) if importo < 0 else '',
                     m.get('tipo', '')
                 ])
-            
             zf.writestr(f'prima_nota_cassa_{mese_str}.csv', csv_buffer.getvalue())
-        
-        # 4. RIEPILOGO IVA
-        totale_fatture = sum(f.get('total_amount', 0) for f in fatture)
-        iva_credito = sum(f.get('total_tax', 0) for f in fatture)
-        totale_corrispettivi = sum(c.get('totale', 0) for c in corrispettivi)
-        iva_debito = round(totale_corrispettivi * 0.10 / 1.10, 2)
-        saldo_iva = iva_debito - iva_credito
-        
-        riepilogo = f"""RIEPILOGO IVA - {mese_nome} {anno}
-=====================================
 
-ACQUISTI (Fatture):
-  Numero Fatture: {len(fatture)}
-  Totale Imponibile: € {totale_fatture - iva_credito:,.2f}
-  IVA a Credito: € {iva_credito:,.2f}
-  Totale Fatture: € {totale_fatture:,.2f}
-
-VENDITE (Corrispettivi):
-  Numero Corrispettivi: {len(corrispettivi)}
-  Totale Incassato: € {totale_corrispettivi:,.2f}
-  IVA a Debito (10%): € {iva_debito:,.2f}
-
-SALDO IVA: € {saldo_iva:,.2f}
-{'DA VERSARE' if saldo_iva > 0 else 'A CREDITO'}
-
-=====================================
-Generato il {datetime.now().strftime('%d-%m-%Y %H:%M')}
-"""
-        zf.writestr(f'riepilogo_iva_{mese_str}.txt', riepilogo)
-        
-        # 5. DIPENDENTI (se ci sono buste paga)
-        buste_paga = await db["cedolini"].find({
-            "mese": mese,
-            "anno": anno
-        }, {"_id": 0}).to_list(500)
-        
-        if buste_paga:
+        # 2. PRIMA NOTA BANCA
+        prima_nota_banca = await _get_prima_nota_banca_mensile(anno, mese)
+        if prima_nota_banca.get('movimenti'):
             csv_buffer = StringIO()
             writer = csv.writer(csv_buffer, delimiter=';')
-            writer.writerow(['Dipendente', 'Netto', 'Lordo', 'Contributi', 'Data Pagamento'])
-            
-            for b in buste_paga:
+            writer.writerow(['Data', 'Descrizione', 'Categoria', 'Entrata', 'Uscita', 'Tipo'])
+            for m in prima_nota_banca['movimenti']:
+                importo = m.get('importo', 0)
                 writer.writerow([
-                    b.get('dipendente_nome', ''),
-                    b.get('netto', 0),
-                    b.get('lordo', 0),
-                    b.get('contributi', 0),
-                    b.get('data_pagamento', '')
+                    m.get('data', '')[:10],
+                    m.get('descrizione', ''),
+                    m.get('categoria', ''),
+                    importo if importo > 0 else '',
+                    abs(importo) if importo < 0 else '',
+                    m.get('tipo', '')
                 ])
-            
-            zf.writestr(f'buste_paga_{mese_str}.csv', csv_buffer.getvalue())
-    
+            zf.writestr(f'prima_nota_banca_{mese_str}.csv', csv_buffer.getvalue())
+
+        # 3. ASSEGNI EMESSI
+        assegni = await _get_assegni_emessi_mensile(anno, mese)
+        if assegni:
+            csv_buffer = StringIO()
+            writer = csv.writer(csv_buffer, delimiter=';')
+            writer.writerow(['Numero', 'Data Emissione', 'Beneficiario', 'Importo', 'Causale', 'Stato'])
+            for a in assegni:
+                writer.writerow([
+                    a.get('numero', ''),
+                    (a.get('data_emissione') or '')[:10],
+                    a.get('beneficiario', ''),
+                    a.get('importo', 0),
+                    a.get('causale', ''),
+                    a.get('stato', '')
+                ])
+            zf.writestr(f'assegni_emessi_{mese_str}.csv', csv_buffer.getvalue())
+
+        # 4. FATTURE ESTERE (PDF allegati, non le fatture italiane via SDI)
+        fatture_estere = await _get_fatture_estere_mensili(anno, mese)
+        for f in fatture_estere:
+            documento_inbox_id = f.get("documento_inbox_id")
+            if not documento_inbox_id:
+                continue
+            doc = await db["documents_inbox"].find_one(
+                {"id": documento_inbox_id}, {"_id": 0, "pdf_data": 1, "filename": 1}
+            )
+            if not doc or not doc.get("pdf_data"):
+                continue
+            try:
+                pdf_bytes = base64.b64decode(doc["pdf_data"])
+            except Exception:
+                continue
+            nome_file = doc.get("filename") or f"{f.get('invoice_number', 'fattura')}.pdf"
+            zf.writestr(f'fatture_estere/{nome_file}', pdf_bytes)
+
     zip_buffer.seek(0)
-    
+
     return StreamingResponse(
         zip_buffer,
         media_type='application/zip',

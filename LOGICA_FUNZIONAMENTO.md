@@ -437,6 +437,25 @@ per quella giornata. Per riparare lo storico: pagina **Pulizia Prima Nota →
 quelli mai salvati) seguito da **"Ricostruisci da corrispettivi"** (rigenera
 Cassa/Banca dai corrispettivi ora completi).
 
+**Export mensile per il commercialista** (pagina Commercialista, bottone
+"🗂️ Export ZIP completo", `GET /api/commercialista/export-completo/{anno}/{mese}`
+— riscritto e collegato al bottone il 15/07/2026, prima l'endpoint esisteva
+ma non era raggiungibile da nessuna pagina). Lo ZIP contiene **solo**:
+- **Prima Nota Cassa** e **Prima Nota Banca** del mese (CSV);
+- **Assegni emessi** nel mese (CSV) — solo quelli davvero consegnati a un
+  beneficiario (stato diverso da "vuoto"/"compilato"), non i numeri ancora
+  in bianco;
+- i **PDF delle fatture ESTERE** ricevute via email nel mese (cartella
+  `fatture_estere/` dentro lo ZIP) — **mai** le fatture italiane, che
+  arrivano sempre via SDI/XML e il commercialista riceve già da quel
+  canale. Le fatture estere sono riconosciute dal campo interno che le
+  identifica in modo univoco (`source="email_gmail_estera"`, l'unico punto
+  del sistema che le crea), e il PDF viene recuperato dall'archivio email
+  (`documents_inbox`) tramite il collegamento salvato sulla fattura.
+Non include più fatture italiane, corrispettivi, riepilogo IVA o buste
+paga come nella versione precedente: sono dati che il commercialista
+riceve già da altri canali.
+
 ---
 
 ## 6. Riconciliazione bancaria (estratto conto ↔ prima nota banca)

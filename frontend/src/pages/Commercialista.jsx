@@ -1025,6 +1025,19 @@ export default function Commercialista() {
             >
               📊 Export Excel Commercialista
             </Button>
+
+            {/* Export ZIP completo: Prima Nota Cassa/Banca, Assegni emessi, PDF fatture estere */}
+            <Button
+              variant="secondary"
+              onClick={() => {
+                const url = `/api/commercialista/export-completo/${selectedYear}/${selectedMonth + 1}`;
+                window.open(url, '_blank');
+              }}
+              data-testid="export-completo-btn"
+              title="ZIP con Prima Nota Cassa, Prima Nota Banca, Assegni emessi e PDF delle fatture estere del mese"
+            >
+              🗂️ Export ZIP completo
+            </Button>
           </div>
         </Card>
 
