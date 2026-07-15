@@ -468,6 +468,10 @@ async def processa_cedolino_v2(
                 "mese": int(mese),
                 "anno": int(anno),
                 "tipo_cedolino": cedolino_data.get("tipo_cedolino", "mensile"),
+                # TFR letto dal cedolino (regex "Quota anno/TFR mese" sul PDF,
+                # vedi cedolino_record["tfr_mese"] sopra): handler_aggiorna_tfr
+                # lo usa al posto della stima lordo/13.5 quando disponibile.
+                "tfr_quota_mese": cedolino_record["tfr_mese"],
                 # Testo grezzo del PDF: usato dal handler per verificare la
                 # presenza delle voci di trattenuta verbale (evento in-memory,
                 # non viene persistito).
