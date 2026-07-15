@@ -198,6 +198,15 @@ fonte.
    utenze, manutenzione) stanno su centri dedicati (CDC-90/91/92, CDC-99).
    Il campo `classificazione_fonte` dice da dove viene la scelta
    (keywords personalizzate / keywords apprese / tabella statica).
+   **Corretto 15/07/2026**: il parsing AI di fatture e F24 da foto/PDF non
+   testuale (`/api/ai-parser/parse-fattura`, `/parse-f24`) usava due
+   percorsi di classificazione paralleli e divergenti dal motore unico —
+   niente fallback sulla tabella statica per le fatture (un fornitore non
+   ancora configurato restava sempre "non classificato" anche quando il
+   contenuto delle righe bastava), e una mappatura tributi F24 hardcoded
+   con ID di fantasia per gli F24. Ora entrambi passano dallo stesso
+   motore usato ovunque altro (`classifica_fattura_con_learning`,
+   `classifica_f24_per_tributo`).
 8. **Documenti classificati (vista unica)**: i documenti classificati
    automaticamente dalle email e quelli analizzati dalla Learning Machine ora
    vivono in un'unica raccolta. I documenti arrivati da email compaiono nella
@@ -527,6 +536,15 @@ F24 risulta pagato solo quando gli viene collegata una quietanza.
   sovrapposizione dei codici tributo come spareggio. Stessa scala
   certo/probabile/dubbio della banca: il certo si applica da solo, il resto aspetta te.
   (Un pagamento può precedere la scadenza: qui il "certo" non richiede stessa data.)
+- **Corretto 15/07/2026**: un F24 PDF caricato dalla pagina **Import Documenti**
+  (classificazione automatica del tipo file) passava dal workflow "parser paghe"
+  (`f24_parser.py`, collection separata `f24_pagamenti`, tributi/distinte/
+  riconciliazione dedicati) e non compariva **mai** nella lista F24 né nel
+  conteggio "F24 da pagare" di Scadenze, che leggono solo la collezione
+  canonica `f24_unificato`. Ora ogni F24 caricato da lì genera anche un
+  record "ponte" nella collezione canonica (stesso F24, stesso stato), così
+  resta visibile ovunque — senza toccare il flusso parser-paghe originale,
+  che continua a funzionare come prima.
 
 **Motore tributi (specifica vincolante, 10/07/2026 — dettagli in
 memoria/SPECIFICA_F24_CEDOLINI_IRES_IRAP_CHAT.md).**

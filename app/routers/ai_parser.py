@@ -133,25 +133,31 @@ async def parse_fattura_endpoint(
         if not result.get("success"):
             return result
         
-        # Applica Learning Machine per classificazione CDC
+        # Applica Learning Machine per classificazione CDC. Bug corretto
+        # 15/07/2026 (audit funzionale): prima questo endpoint bypassava
+        # completamente il motore unico (classifica_fattura_con_learning),
+        # con una ricerca ridotta solo sul nome fornitore — niente fallback
+        # sulla tabella statica CENTRI_COSTO, niente scoring sul contenuto
+        # delle righe, niente FORNITORE_MISTO, nessun campo
+        # classificazione_fonte. Una fattura passata da qui poteva restare
+        # "non configurata" anche quando il motore unico l'avrebbe
+        # classificata correttamente dal contenuto delle righe.
         if apply_learning:
             db = Database.get_db()
+            from app.services.learning_machine_cdc import classifica_fattura_con_learning
+
             fornitore_nome = result.get("fornitore", {}).get("denominazione", "")
-            
-            if fornitore_nome:
-                # Cerca nelle keywords fornitori
-                keyword_doc = await db["fornitori_keywords"].find_one(
-                    {"fornitore_nome": {"$regex": fornitore_nome, "$options": "i"}},
-                    {"_id": 0}
-                )
-                
-                if keyword_doc:
-                    result["centro_costo_suggerito"] = keyword_doc.get("centro_costo_suggerito")
-                    result["centro_costo_nome"] = keyword_doc.get("centro_costo_nome")
-                    result["classificazione_automatica"] = True
-                else:
-                    result["classificazione_automatica"] = False
-                    result["note_classificazione"] = "Fornitore non configurato nella Learning Machine"
+            righe = result.get("righe", [])
+            cdc_id, cdc_config, confidence, fonte = await classifica_fattura_con_learning(
+                db, fornitore_nome, descrizione="", linee_fattura=righe,
+            )
+            result["centro_costo_suggerito"] = cdc_id
+            result["centro_costo_nome"] = cdc_config.get("nome") if cdc_config else None
+            result["classificazione_fonte"] = fonte
+            result["classificazione_confidence"] = confidence
+            result["classificazione_automatica"] = cdc_id != "99_ALTRI_COSTI"
+            if not result["classificazione_automatica"]:
+                result["note_classificazione"] = "Nessuna corrispondenza specifica: centro di costo generico"
         
         # Salva nel database
         if save_to_db:
@@ -194,34 +200,24 @@ async def parse_f24_endpoint(
         if not result.get("success"):
             return result
         
-        # Applica Learning Machine per classificazione CDC tributi
+        # Applica Learning Machine per classificazione CDC tributi. Bug
+        # corretto 15/07/2026 (audit funzionale): questa mappatura era
+        # hardcoded qui con ID di fantasia ("CDC_PERSONALE", "CDC_SERVIZI",
+        # "CDC_TASSE") che NON esistono in CENTRI_COSTO e divergeva dal
+        # mapping ufficiale TRIBUTI_F24_MAPPING/classifica_f24_per_tributo
+        # (es. tributo "1040" finiva su "CDC_SERVIZI" qui, ma su
+        # "7.1_COMMERCIALISTA" nel motore canonico).
         if apply_learning:
-            db = Database.get_db()
-            
-            # Mappatura codici tributo -> CDC
-            mappatura_tributi = {
-                # Erario - Ritenute
-                "1001": {"cdc": "CDC_PERSONALE", "nome": "Costo del Personale"},
-                "1040": {"cdc": "CDC_SERVIZI", "nome": "Servizi Esterni"},
-                # INPS
-                "DM10": {"cdc": "CDC_PERSONALE", "nome": "Costo del Personale"},
-                # IVA
-                "6001": {"cdc": "CDC_TASSE", "nome": "Imposte e Tasse"},
-                "6002": {"cdc": "CDC_TASSE", "nome": "Imposte e Tasse"},
-                "6012": {"cdc": "CDC_TASSE", "nome": "Imposte e Tasse"},
-                # Addizionali
-                "3801": {"cdc": "CDC_TASSE", "nome": "Imposte e Tasse"},
-                "3802": {"cdc": "CDC_TASSE", "nome": "Imposte e Tasse"},
-            }
-            
-            # Classifica ogni tributo
+            from app.services.learning_machine_cdc import classifica_f24_per_tributo
+
             for sezione in ["sezione_erario", "sezione_inps", "sezione_regioni", "sezione_imu"]:
                 tributi = result.get(sezione, [])
                 for tributo in tributi:
                     codice = tributo.get("codice_tributo") or tributo.get("causale") or tributo.get("codice")
-                    if codice and codice in mappatura_tributi:
-                        tributo["centro_costo_id"] = mappatura_tributi[codice]["cdc"]
-                        tributo["centro_costo_nome"] = mappatura_tributi[codice]["nome"]
+                    if codice:
+                        cdc_id, cdc_config = classifica_f24_per_tributo(codice)
+                        tributo["centro_costo_id"] = cdc_id
+                        tributo["centro_costo_nome"] = cdc_config.get("nome")
             
             result["classificazione_applicata"] = True
         

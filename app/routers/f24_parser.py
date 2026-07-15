@@ -14,6 +14,7 @@ Estrae i dati dal Modello F24 (Agenzia delle Entrate):
 Workflow completo: parsing → f24_pagamenti → tributi_pagati → distinta_f24 → scadenza → riconciliazione bancaria
 """
 
+import hashlib
 import re
 import uuid
 import pdfplumber
@@ -643,7 +644,53 @@ async def import_f24(
                         }}
                     )
                     riconciliato = True
-            
+
+            # ============================================================
+            # STEP 6: BRIDGE verso la collezione canonica f24_unificato
+            # ============================================================
+            # Bug corretto 15/07/2026 (audit funzionale): questo workflow
+            # salva SOLO in f24_pagamenti/tributi_pagati/distinte_f24 (il
+            # sottosistema parser paghe, volutamente separato dalla
+            # collezione canonica — vedi f24_canonico.py). Un F24 caricato
+            # da qui (es. dalla pagina "Import Documenti") non compariva
+            # MAI nella lista F24 né nel conteggio "F24 da pagare" di
+            # Scadenze, che leggono solo f24_unificato. Additivo: non tocca
+            # il flusso f24_pagamenti (tributi/distinte/riconciliazione
+            # restano come prima), aggiunge solo la visibilità canonica.
+            try:
+                from app.services import f24_canonico
+                from app.services.event_bus import propagate_event, EventTypes
+
+                codici_tributo = sorted({
+                    riga.get("codice_tributo")
+                    for sezione in ("sezione_erario", "sezione_inps", "sezione_regioni", "sezione_inail")
+                    for riga in (parsed.get(sezione, {}) or {}).get("righe", [])
+                    if riga.get("codice_tributo")
+                })
+                bridge_id = await f24_canonico.salva_f24(db, {
+                    "codice_fiscale": cf,
+                    "contribuente": parsed.get("contribuente", {}).get("ragione_sociale", ""),
+                    "scadenza": data_scadenza_iso or scadenza,
+                    "importo_totale": totale,
+                    "saldo": totale,
+                    "periodo_riferimento": scadenza,
+                    "status": "pagato" if riconciliato else "da_pagare",
+                    "pagato": bool(riconciliato),
+                    "codici_tributo": codici_tributo,
+                    "pdf_hash": hashlib.sha256(content).hexdigest(),
+                }, source="import_documenti_f24_parser")
+                if not riconciliato:
+                    await propagate_event(EventTypes.F24_ACQUISITO, {
+                        "f24_id": bridge_id,
+                        "importo_totale": totale,
+                        "data_scadenza": data_scadenza_iso or scadenza,
+                        "periodo": scadenza,
+                        "codice_tributo": ", ".join(codici_tributo),
+                        "data_acquisizione": datetime.now(timezone.utc).isoformat(),
+                    }, db, source_module="f24_parser_import_f24")
+            except Exception:
+                logger.exception(f"Bridge f24_unificato non riuscito per F24 {f24_id} (non bloccante)")
+
             return {
                 "success": True,
                 "message": f"F24 {action} con successo" + (" - RICONCILIATO" if riconciliato else " - in attesa riconciliazione"),
