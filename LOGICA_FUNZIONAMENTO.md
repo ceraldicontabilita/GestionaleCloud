@@ -207,6 +207,18 @@ fonte.
    con ID di fantasia per gli F24. Ora entrambi passano dallo stesso
    motore usato ovunque altro (`classifica_fattura_con_learning`,
    `classifica_f24_per_tributo`).
+   **Deducibilità IRES/IRAP/IVA**: esistono 5 tabelle indipendenti nel
+   codice con le stesse percentuali per categoria (centro di costo
+   ufficiale, più altri 4 motori di categorizzazione/bilancio/calcolo
+   imposte) — non ancora unificate su un'unica fonte. **Bug corretto
+   15/07/2026**: una di queste (`categorizzazione_contabile.py`, voce
+   "carburante") deduceva il carburante al 100% invece del 20% corretto
+   per auto aziendali a uso promiscuo (art. 164 TUIR) — le altre 4 fonti
+   usavano già tutte 20%, coerenti tra loro. Per la stessa fattura di
+   carburante il gestionale poteva mostrare contemporaneamente €100 e €20
+   di costo deducibile a seconda della pagina interrogata. Le altre voci
+   delle 5 tabelle non sono state riconciliate voce per voce: se noti un
+   altro numero che non torna tra due pagine, segnalalo.
 8. **Documenti classificati (vista unica)**: i documenti classificati
    automaticamente dalle email e quelli analizzati dalla Learning Machine ora
    vivono in un'unica raccolta. I documenti arrivati da email compaiono nella

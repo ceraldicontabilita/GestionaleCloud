@@ -224,9 +224,17 @@ PATTERNS_DESCRIZIONE = {
         ],
         "conto": ("05.02.11", "Carburanti e lubrificanti"),
         "categoria_fiscale": CategoriaFiscale.CARBURANTE,
-        "deducibilita_ires": 100,  # Se veicolo strumentale
-        "deducibilita_irap": 100,
-        "note": "Carburante - 100% se veicolo strumentale, 20% se uso promiscuo (auto aziendali)"
+        # Bug corretto 15/07/2026 (audit funzionale): qui era 100 ("se
+        # veicolo strumentale"), ma nessuna logica in questo file distingue
+        # mai i due casi — restava sempre 100%, in contrasto con le altre
+        # 4 fonti indipendenti del gestionale (CENTRI_COSTO in
+        # learning_machine_cdc.py, classificazione_costi.py,
+        # regole_categorizzazione.py, calcolo_imposte.py), che usano tutte
+        # 20% come default corretto per un'attività con auto aziendali a
+        # uso promiscuo (art. 164 TUIR, caso tipico bar/pasticceria).
+        "deducibilita_ires": 20,
+        "deducibilita_irap": 20,
+        "note": "Carburante - 20% (uso promiscuo, auto aziendali). 100% solo per veicoli strumentali esclusivi."
     },
     
     # FERRAMENTA E UTENSILERIA
