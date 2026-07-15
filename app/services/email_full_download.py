@@ -191,6 +191,7 @@ class EmailFullDownloader:
             "errors": []
         }
         self._cached_keywords = None  # Cache per le parole chiave
+        self._cached_trusted_senders = None  # Cache mittenti attendibili "generico"
     
     async def _load_admin_keywords(self) -> list:
         """
@@ -256,7 +257,41 @@ class EmailFullDownloader:
         self._cached_keywords = default_keywords
         logger.info(f"Usando {len(default_keywords)} parole chiave di default")
         return default_keywords
-    
+
+    async def _load_trusted_senders_generico(self) -> set:
+        """
+        Mittenti attendibili per la scansione email generica (tipo_documento
+        "generico" in Mittenti Email, canale gmail). Stessa collezione
+        canonica già usata da cedolini/verbali/F24 commercialista
+        (app.services.mittenti.senders_attendibili).
+
+        Bug segnalato dall'utente 15/07/2026: il docstring di
+        download_all_emails dichiarava "Filtra per parole chiave
+        amministrative e mittenti attendibili", ma il filtro mittenti non
+        era mai stato implementato — la scansione scaricava da QUALSIASI
+        mittente il cui testo contenesse una delle ~50 parole chiave
+        amministrative molto generiche (es. "enel", "bolletta", "fattura"),
+        prendendo anche allegati da mittenti come "Raffaele Mangiacapra" o
+        domini come "saveris2.net" mai autorizzati dall'utente.
+
+        Lista vuota (nessun mittente configurato per tipo "generico" in
+        Mittenti Email) = nessuna restrizione, per non bloccare di colpo
+        tutto il canale finché l'utente non la popola: comportamento
+        esplicitamente scelto in accordo con la REGOLA PARAMETRI del
+        progetto (CLAUDE.md) — la lista dei mittenti fidati è una scelta
+        dell'utente, mai decisa in automatico dal codice.
+        """
+        if self._cached_trusted_senders is not None:
+            return self._cached_trusted_senders
+        try:
+            from app.services.mittenti import senders_attendibili
+            senders = await senders_attendibili(self.db, tipo_documento="generico", canale="gmail")
+        except Exception as e:
+            logger.warning(f"Errore caricamento mittenti attendibili 'generico': {e}")
+            senders = set()
+        self._cached_trusted_senders = senders
+        return senders
+
     def connect(self) -> bool:
         """Connette al server IMAP."""
         try:
@@ -486,7 +521,17 @@ class EmailFullDownloader:
             # Email non amministrativa - SALTA
             logger.debug(f"Email saltata (no keyword): {subject[:50]} [{source_folder}]")
             return 0
-        
+
+        # FILTRO MITTENTI ATTENDIBILI (vedi _load_trusted_senders_generico):
+        # applicato solo se l'utente ha configurato almeno un mittente per il
+        # tipo "generico" in Mittenti Email — altrimenti nessuna restrizione.
+        trusted_senders = await self._load_trusted_senders_generico()
+        if trusted_senders:
+            from_lower = from_addr.lower()
+            if not any(s in from_lower for s in trusted_senders):
+                logger.debug(f"Email saltata (mittente non attendibile): {from_addr} [{subject[:50]}]")
+                return 0
+
         email_info = {
             "uid": email_uid.decode() if isinstance(email_uid, bytes) else str(email_uid),
             "subject": subject,
