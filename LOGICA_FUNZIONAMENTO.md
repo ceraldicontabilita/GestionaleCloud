@@ -725,6 +725,16 @@ attribuita per competenza*, *in quale liquidazione è stata effettivamente usata
   mai usato in pratica: il TFR maturato dai cedolini email/Drive (il canale
   realmente attivo) risultava sempre a zero nei report, pur essendo accantonato
   correttamente "sotto al cofano". Corretto per leggere entrambi i canali.
+- **Il TFR non viene mai calcolato dal sistema quando il valore reale è
+  stampato sul cedolino**: il parser legge dal PDF la quota TFR del mese
+  (voce "TFR mese"/"Quota anno"); questo valore reale viene usato per
+  l'accantonamento mensile. Solo se il cedolino non riporta questa voce (PDF
+  di formato non standard, dato non presente) il sistema ricade su una stima
+  (lordo del mese / 13,5, art. 2120 c.c.), chiaramente distinguibile perché
+  non è il dato stampato in busta. **Bug corretto 15/07/2026**: il canale
+  email/Drive estraeva già questo valore dal PDF ma non lo passava
+  all'accantonamento, che quindi usava sempre la stima anche quando il dato
+  reale era disponibile.
 
 ---
 
