@@ -4,8 +4,9 @@ import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { formatEuro, COLORS, BORDER_RADIUS, FONT } from '../lib/utils';
 import { PageLayout, PageSection, PageGrid, PageLoading } from '../components/PageLayout';
-import { Button, Select, TableWrap, Table, Td } from '../components/ds';
-import { FileText, Download, TrendingUp, TrendingDown, Scale } from 'lucide-react';
+import { Button, Select, TableWrap, Table, Th, Td, Input } from '../components/ds';
+import { FileText, Download, TrendingUp, TrendingDown, Scale, Trash2, Plus } from 'lucide-react';
+import { toast } from 'sonner';
 
 export default function Bilancio() {
   const { anno } = useAnnoGlobale();
@@ -13,6 +14,9 @@ export default function Bilancio() {
   const [contoEconomico, setContoEconomico] = useState(null);
   const [loading, setLoading] = useState(true);
   const [mese, setMese] = useState(null);
+  const [vociBilancio, setVociBilancio] = useState(null);
+  const [codiciDisponibili, setCodiciDisponibili] = useState([]);
+  const [nuovaVoce, setNuovaVoce] = useState({ codice_cee: '', importo: '', note: '' });
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -51,7 +55,12 @@ export default function Bilancio() {
 
   useEffect(() => {
     loadBilancio();
+    loadVociBilancio();
   }, [anno, mese]);
+
+  useEffect(() => {
+    api.get('/api/voci-bilancio/codici-disponibili').then(r => setCodiciDisponibili(r.data.codici)).catch(() => {});
+  }, []);
 
   const loadBilancio = async () => {
     try {
@@ -66,6 +75,45 @@ export default function Bilancio() {
       console.error('Errore caricamento bilancio:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadVociBilancio = async () => {
+    try {
+      const r = await api.get(`/api/voci-bilancio/${anno}`);
+      setVociBilancio(r.data);
+    } catch (error) {
+      console.error('Errore caricamento voci bilancio manuali:', error);
+    }
+  };
+
+  const handleSalvaVoce = async () => {
+    if (!nuovaVoce.codice_cee || nuovaVoce.importo === '') {
+      toast.warning('Seleziona un codice e inserisci un importo');
+      return;
+    }
+    try {
+      await api.post('/api/voci-bilancio/', {
+        codice_cee: nuovaVoce.codice_cee,
+        importo: parseFloat(nuovaVoce.importo),
+        anno,
+        note: nuovaVoce.note || null,
+      });
+      setNuovaVoce({ codice_cee: '', importo: '', note: '' });
+      loadVociBilancio();
+      loadBilancio();
+    } catch (error) {
+      toast.error('Errore: ' + (error.response?.data?.detail || error.message));
+    }
+  };
+
+  const handleEliminaVoce = async voceId => {
+    try {
+      await api.delete(`/api/voci-bilancio/${voceId}`);
+      loadVociBilancio();
+      loadBilancio();
+    } catch (error) {
+      toast.error('Errore: ' + (error.response?.data?.detail || error.message));
     }
   };
 
@@ -175,6 +223,41 @@ export default function Bilancio() {
               </Table>
             </TableWrap>
           </div>
+          {attivo.immobilizzazioni && attivo.immobilizzazioni.totale > 0 && (
+            <div style={{ marginBottom: 20 }}>
+              <h4 style={{ color: COLORS.success, fontSize: 14, marginBottom: 12 }}>
+                Immobilizzazioni
+              </h4>
+              <TableWrap>
+                <Table>
+                  <tbody>
+                    {attivo.immobilizzazioni.da_cespiti > 0 && (
+                      <tr>
+                        <Td style={{ color: COLORS.gray[700] }}>Da cespiti (Cespiti &amp; TFR)</Td>
+                        <Td align="right" mono style={{ fontWeight: 500 }}>
+                          {formatEuro(attivo.immobilizzazioni.da_cespiti)}
+                        </Td>
+                      </tr>
+                    )}
+                    {attivo.immobilizzazioni.da_voci_manuali > 0 && (
+                      <tr>
+                        <Td style={{ color: COLORS.gray[700] }}>Da voci inserite a mano</Td>
+                        <Td align="right" mono style={{ fontWeight: 500 }}>
+                          {formatEuro(attivo.immobilizzazioni.da_voci_manuali)}
+                        </Td>
+                      </tr>
+                    )}
+                    <tr style={{ borderTop: `1px solid ${COLORS.border}` }}>
+                      <Td style={{ fontWeight: 600 }}>Totale</Td>
+                      <Td align="right" mono style={{ fontWeight: 600 }}>
+                        {formatEuro(attivo.immobilizzazioni.totale)}
+                      </Td>
+                    </tr>
+                  </tbody>
+                </Table>
+              </TableWrap>
+            </div>
+          )}
           <div
             style={{
               marginTop: 20,
@@ -229,6 +312,14 @@ export default function Bilancio() {
                       {formatEuro(passivo.debiti.debiti_vs_fornitori)}
                     </Td>
                   </tr>
+                  {passivo.fondo_tfr > 0 && (
+                    <tr>
+                      <Td style={{ color: COLORS.gray[700] }}>Fondo TFR</Td>
+                      <Td align="right" mono style={{ fontWeight: 500 }}>
+                        {formatEuro(passivo.fondo_tfr)}
+                      </Td>
+                    </tr>
+                  )}
                 </tbody>
               </Table>
             </TableWrap>
@@ -241,7 +332,7 @@ export default function Bilancio() {
               <Table>
                 <tbody>
                   <tr>
-                    <Td style={{ color: COLORS.gray[700] }}>Capitale</Td>
+                    <Td style={{ color: COLORS.gray[700] }}>Capitale (calcolato per differenza)</Td>
                     <Td
                       align="right"
                       mono
@@ -253,6 +344,16 @@ export default function Bilancio() {
                       {formatEuro(passivo.patrimonio_netto)}
                     </Td>
                   </tr>
+                  {passivo.patrimonio_netto_dettaglio_manuale > 0 && (
+                    <tr>
+                      <Td style={{ color: COLORS.textMuted, fontSize: 12, fontStyle: 'italic' }}>
+                        di cui da voci inserite a mano (capitale/riserve)
+                      </Td>
+                      <Td align="right" mono style={{ fontSize: 12, color: COLORS.textMuted }}>
+                        {formatEuro(passivo.patrimonio_netto_dettaglio_manuale)}
+                      </Td>
+                    </tr>
+                  )}
                 </tbody>
               </Table>
             </TableWrap>
@@ -278,6 +379,86 @@ export default function Bilancio() {
           </div>
         </div>
       </PageGrid>
+      <PageSection title="Voci di bilancio inserite manualmente" icon="✍️" style={{ marginTop: 24 }}>
+        <p style={{ margin: '0 0 12px', fontSize: 13, color: COLORS.textMuted }}>
+          Capitale sociale, riserve, saldi di apertura o altre immobilizzazioni che il
+          sistema non deriva da prima nota/fatture/cedolini — codici del piano dei conti
+          CEE ufficiale, riferiti all'anno {anno}.
+        </p>
+        {vociBilancio && vociBilancio.voci.length > 0 && (
+          <TableWrap style={{ marginBottom: 16 }}>
+            <Table>
+              <thead>
+                <tr>
+                  <Th>Codice CEE</Th>
+                  <Th>Descrizione</Th>
+                  <Th>Note</Th>
+                  <Th align="right">Importo</Th>
+                  <Th></Th>
+                </tr>
+              </thead>
+              <tbody>
+                {vociBilancio.voci.map(v => (
+                  <tr key={v.id}>
+                    <Td mono>{v.codice_cee}</Td>
+                    <Td>{v.descrizione}</Td>
+                    <Td style={{ color: COLORS.textMuted, fontSize: 12 }}>{v.note || '-'}</Td>
+                    <Td align="right" mono style={{ fontWeight: 500 }}>{formatEuro(v.importo)}</Td>
+                    <Td align="right">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleEliminaVoce(v.id)}
+                        data-testid={`elimina-voce-bilancio-${v.id}`}
+                      >
+                        <Trash2 size={14} color={COLORS.danger} />
+                      </Button>
+                    </Td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </TableWrap>
+        )}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <Select
+            value={nuovaVoce.codice_cee}
+            onChange={e => setNuovaVoce({ ...nuovaVoce, codice_cee: e.target.value })}
+            data-testid="nuova-voce-codice-select"
+            style={{ minWidth: 260 }}
+          >
+            <option value="">Seleziona voce...</option>
+            {codiciDisponibili.map(c => (
+              <option key={c.codice_cee} value={c.codice_cee}>
+                {c.codice_cee} — {c.descrizione}
+              </option>
+            ))}
+          </Select>
+          <Input
+            type="number"
+            placeholder="Importo"
+            value={nuovaVoce.importo}
+            onChange={e => setNuovaVoce({ ...nuovaVoce, importo: e.target.value })}
+            style={{ width: 140 }}
+            data-testid="nuova-voce-importo-input"
+          />
+          <Input
+            placeholder="Note (opzionale)"
+            value={nuovaVoce.note}
+            onChange={e => setNuovaVoce({ ...nuovaVoce, note: e.target.value })}
+            style={{ width: 220 }}
+          />
+          <Button
+            variant="primary"
+            size="sm"
+            iconLeft={<Plus size={14} />}
+            onClick={handleSalvaVoce}
+            data-testid="salva-voce-bilancio-btn"
+          >
+            Salva
+          </Button>
+        </div>
+      </PageSection>
       {renderVociUfficiali(statoPatrimoniale.voci_ufficiali, 'Stato Patrimoniale')}
       </>
     );

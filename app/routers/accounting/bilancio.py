@@ -160,7 +160,36 @@ async def get_stato_patrimoniale(
         totale_crediti = crediti[0]["totale"] if crediti else 0
     except Exception:
         totale_crediti = 0
-    
+
+    # Immobilizzazioni (Bug corretto 15/07/2026: lo Stato Patrimoniale non
+    # includeva MAI questa voce dell'attivo). Due componenti additive, mai
+    # sovrapposte: i cespiti tracciati automaticamente da GestioneCespiti
+    # (registro con ammortamenti, valore_residuo già al netto del fondo) e
+    # le voci inserite a mano in voci_bilancio_manuali (saldi di apertura,
+    # avviamento o altre immobilizzazioni che il sistema non deriva da una
+    # fattura XML/cespite). I cespiti acquistati dopo data_fine non sono
+    # ancora in bilancio a quella data.
+    cespiti_attivi = await db["cespiti"].find(
+        {"stato": "attivo", "data_acquisto": {"$lte": data_fine}},
+        {"_id": 0, "valore_residuo": 1}
+    ).to_list(5000)
+    totale_immobilizzazioni_cespiti = sum(c.get("valore_residuo", 0) for c in cespiti_attivi)
+
+    voci_manuali = await db["voci_bilancio_manuali"].find({"anno": anno}, {"_id": 0}).to_list(500)
+    totale_immobilizzazioni_manuali = sum(
+        v["importo"] for v in voci_manuali if v["codice_cee"][:2] in ("03", "05", "07")
+    )
+    totale_immobilizzazioni = totale_immobilizzazioni_cespiti + totale_immobilizzazioni_manuali
+
+    # Capitale e riserve inserite a mano (informativo): mostrate a confronto
+    # col patrimonio netto calcolato per differenza (plug) più sotto, MAI
+    # sommate nel totale — sommarle romperebbe l'uguaglianza attivo=passivo
+    # se non coincidono esattamente col plug (es. utile/perdita dell'anno in
+    # corso non ancora chiuso).
+    totale_capitale_riserve_manuale = sum(
+        v["importo"] for v in voci_manuali if v["codice_cee"][:2] in ("23", "25")
+    )
+
     # === PASSIVO ===
     
     # Debiti (fatture ricevute non pagate)
@@ -181,12 +210,32 @@ async def get_stato_patrimoniale(
         {"$group": {"_id": None, "totale": {"$sum": {"$ifNull": ["$total_amount", {"$ifNull": ["$importo_totale", 0]}]}}}}
     ]).to_list(1)
     totale_debiti = debiti[0]["totale"] if debiti else 0
-    
+
+    # Fondo TFR (Bug corretto 15/07/2026: mancava, pur essendo un debito
+    # reale verso i dipendenti). Somma tfr_accantonamenti fino a data_fine
+    # (entrambi gli schemi/canali: "quota" mensile del canale cedolini,
+    # "quota_annuale" dell'import manuale LUL — mai valorizzati insieme
+    # sullo stesso record, sommarli è sicuro).
+    anno_fine = int(data_fine[:4])
+    mese_fine = int(data_fine[5:7])
+    fondo_tfr_agg = await db["tfr_accantonamenti"].aggregate([
+        {"$match": {"$or": [
+            {"anno": {"$lt": anno_fine}},
+            {"anno": anno_fine, "mese": {"$lte": mese_fine}},
+            {"anno": anno_fine, "mese": {"$exists": False}},
+        ]}},
+        {"$group": {"_id": None, "totale": {"$sum": {"$add": [
+            {"$ifNull": ["$quota", 0]},
+            {"$ifNull": ["$quota_annuale", 0]},
+        ]}}}}
+    ]).to_list(1)
+    totale_fondo_tfr = fondo_tfr_agg[0]["totale"] if fondo_tfr_agg else 0
+
     # Calcoli
-    totale_attivo = saldo_cassa + saldo_banca + totale_crediti
-    totale_passivo = totale_debiti
+    totale_attivo = saldo_cassa + saldo_banca + totale_crediti + totale_immobilizzazioni
+    totale_passivo = totale_debiti + totale_fondo_tfr
     patrimonio_netto = totale_attivo - totale_passivo
-    
+
     return {
         "anno": anno,
         "data_riferimento": data_fine,
@@ -200,6 +249,11 @@ async def get_stato_patrimoniale(
                 "crediti_vs_clienti": round(totale_crediti, 2),
                 "totale": round(totale_crediti, 2)
             },
+            "immobilizzazioni": {
+                "da_cespiti": round(totale_immobilizzazioni_cespiti, 2),
+                "da_voci_manuali": round(totale_immobilizzazioni_manuali, 2),
+                "totale": round(totale_immobilizzazioni, 2)
+            },
             "totale_attivo": round(totale_attivo, 2)
         },
         "passivo": {
@@ -207,8 +261,10 @@ async def get_stato_patrimoniale(
                 "debiti_vs_fornitori": round(totale_debiti, 2),
                 "totale": round(totale_debiti, 2)
             },
+            "fondo_tfr": round(totale_fondo_tfr, 2),
             "patrimonio_netto": round(patrimonio_netto, 2),
-            "totale_passivo": round(totale_debiti + patrimonio_netto, 2)
+            "patrimonio_netto_dettaglio_manuale": round(totale_capitale_riserve_manuale, 2),
+            "totale_passivo": round(totale_passivo + patrimonio_netto, 2)
         }
     }
 

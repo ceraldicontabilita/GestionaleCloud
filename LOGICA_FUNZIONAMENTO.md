@@ -735,6 +735,15 @@ attribuita per competenza*, *in quale liquidazione è stata effettivamente usata
   email/Drive estraeva già questo valore dal PDF ma non lo passava
   all'accantonamento, che quindi usava sempre la stima anche quando il dato
   reale era disponibile.
+- **Registro TFR mese per mese** (pagina Cespiti & TFR, tab "TFR"): ogni
+  dipendente in elenco è espandibile e mostra il dettaglio degli
+  accantonamenti mensili (periodo, quota del mese estratta dal cedolino,
+  eventuale rivalutazione), oltre a liquidazioni/anticipi già erogati e
+  disponibile residuo. Serve da base per imputare gli ammortamenti a rateo
+  nel bilancio provvisorio. **Bug corretto 15/07/2026**: anche l'endpoint
+  che alimenta questo dettaglio (`GET /api/tfr/situazione/{id}`) leggeva il
+  totale solo dal campo dell'import manuale mai usato in pratica — stesso
+  bug del riepilogo aziendale, corretto allo stesso modo.
 
 ---
 
@@ -990,3 +999,41 @@ principali software di contabilità; una volta assegnato è immutabile.
   Ora "Apri nuovo esercizio" salva solo il riepilogo saldi (consultabile da
   `GET /saldi-iniziali/{anno}`) senza creare alcuna scrittura contabile
   aggiuntiva — il riporto resta automatico come sempre.
+
+---
+
+## 16. Stato Patrimoniale: Immobilizzazioni, Fondo TFR e Voci di Bilancio Manuali
+
+Richiesta utente 15/07/2026: poter comporre un vero bilancio di esercizio,
+non solo cassa/banca/crediti/debiti. **Bug corretto**: fino a questa data lo
+Stato Patrimoniale (pagina Bilancio) non includeva MAI le immobilizzazioni
+né il Fondo TFR, pur essendo entrambe voci reali di bilancio — il patrimonio
+netto (calcolato per differenza attivo-passivo) risultava quindi sempre
+sovrastimato.
+
+- **Immobilizzazioni (attivo)**: somma di due fonti, mai sovrapposte —
+  1) i cespiti tracciati nella pagina Cespiti & TFR (`valore_residuo`,
+  già al netto del fondo ammortamento), filtrati per data di acquisto non
+  successiva alla data del bilancio; 2) le voci inserite a mano (vedi sotto)
+  con codice CEE nei macro-gruppi 03/05/07 (immobilizzazioni immateriali,
+  materiali, finanziarie) — per saldi di apertura, avviamento o beni non
+  tracciati da una fattura XML.
+- **Fondo TFR (passivo)**: somma degli accantonamenti TFR (`tfr_accantonamenti`,
+  entrambi gli schemi/canali — vedi §9) fino alla data del bilancio incluso
+  il mese selezionato: un bilancio a giugno 2026 include gli accantonamenti
+  fino a giugno 2026, non quelli successivi.
+- **Voci di bilancio manuali** (nuova sezione in fondo alla pagina Bilancio,
+  tab Stato Patrimoniale): per capitale sociale, riserva legale, riserva
+  straordinaria, risultati portati a nuovo e immobilizzazioni non derivabili
+  automaticamente. Usa SOLO i codici del piano dei conti CEE ufficiale
+  (regola vincolante CLAUDE.md), ristretti alle voci di Stato Patrimoniale —
+  endpoint `GET/POST/DELETE /api/voci-bilancio/`. Una sola voce per
+  (codice, anno): salvare di nuovo lo stesso codice nello stesso anno
+  aggiorna l'importo, non lo duplica.
+- **Capitale e riserve manuali sono solo informative**: il patrimonio netto
+  del bilancio resta calcolato per differenza (attivo - passivo), così lo
+  Stato Patrimoniale è sempre in pareggio; le voci di capitale/riserve
+  inserite a mano sono mostrate a confronto ("di cui da voci inserite a
+  mano") ma MAI sommate nel totale, perché potrebbero non coincidere
+  esattamente col plug (es. utile dell'esercizio in corso non ancora
+  chiuso) — sommarle romperebbe l'uguaglianza attivo=passivo.

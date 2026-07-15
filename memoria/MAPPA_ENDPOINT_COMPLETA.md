@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **976 endpoint** in **103 gruppi**.
+> Totale **980 endpoint** in **104 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 628 · ext esterni = 76 · — da verificare = 272
+**Riepilogo uso:** ✓ frontend = 629 · ext esterni = 76 · — da verificare = 275
 
 ## AI Parser  (11)
 
@@ -1437,7 +1437,7 @@
 | POST | `/api/tfr/liquidazione` | — | tfr |
 | GET | `/api/tfr/parse-payslips` | — | tfr |
 | GET | `/api/tfr/riepilogo-aziendale` | ✓ | tfr |
-| GET | `/api/tfr/situazione/{dipendente_id}` | — | tfr |
+| GET | `/api/tfr/situazione/{dipendente_id}` | ✓ | tfr |
 | GET | `/api/tfr/storico-tfr/{dipendente_id}` | — | tfr |
 
 ## Utenti  (4)
@@ -1486,6 +1486,15 @@
 | GET | `/api/verifica-coerenza/riepilogo-giornaliero` | — | verifica_coerenza |
 | GET | `/api/verifica-coerenza/verifica-bonifici-vs-banca/{anno}` | — | verifica_coerenza |
 | GET | `/api/verifica-coerenza/widget` | — | verifica_coerenza |
+
+## Voci Bilancio Manuali  (4)
+
+| Metodo | Path | FE | File |
+|---|---|:-:|---|
+| POST | `/api/voci-bilancio/` | — | voci_bilancio |
+| GET | `/api/voci-bilancio/codici-disponibili` | — | voci_bilancio |
+| GET | `/api/voci-bilancio/{anno}` | — | voci_bilancio |
+| DELETE | `/api/voci-bilancio/{voce_id}` | — | voci_bilancio |
 
 ## WhatsApp  (5)
 

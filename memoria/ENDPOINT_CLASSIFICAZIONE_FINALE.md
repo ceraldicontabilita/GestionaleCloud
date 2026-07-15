@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 976 · tenere: 643 · verificare: 314 · admin-only (migrazione/manutenzione): 19
+**Totale endpoint:** 980 · tenere: 644 · verificare: 317 · admin-only (migrazione/manutenzione): 19
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -162,7 +162,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/bilancio/export-pdf` | accounting.bilancio | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/bilancio/export/pdf/confronto` | accounting.bilancio | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/bilancio/riepilogo` | accounting.bilancio | — | — | sì | — | — | tenere | in uso: chat |
-| `GET /api/bilancio/stato-patrimoniale` | accounting.bilancio | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/bilancio/stato-patrimoniale` | accounting.bilancio | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/cash` | public_api | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/cash` | public_api | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/cash/corrispettivi` | cash | sì | — | — | — | — | tenere | in uso: FE |
@@ -855,7 +855,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/rapido/acconto-dipendente` | rapido | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/rapido/apporto-soci` | rapido | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/rapido/corrispettivo` | rapido | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/rapido/dipendenti-attivi` | rapido | sì | — | sì | — | — | tenere | in uso: FE, chat |
+| `GET /api/rapido/dipendenti-attivi` | rapido | sì | — | sì | — | sì | tenere | in uso: FE, chat |
 | `POST /api/rapido/paga-fattura` | rapido | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/rapido/presenza` | rapido | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/rapido/ultimi-inserimenti` | rapido | sì | — | — | — | — | tenere | in uso: FE |
@@ -954,7 +954,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/tfr/liquidazione` | tfr | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/tfr/parse-payslips` | tfr | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/tfr/riepilogo-aziendale` | tfr | sì | — | — | — | sì | tenere | in uso: FE |
-| `GET /api/tfr/situazione/{dipendente_id}` | tfr | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/tfr/situazione/{dipendente_id}` | tfr | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/tfr/storico-tfr/{dipendente_id}` | tfr | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/utenti` | utenti | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/utenti` | utenti | sì | — | — | — | — | tenere | in uso: FE |
@@ -964,7 +964,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/v1/keys` | public_api | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/v1/keys/generate` | public_api | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/v1/movimenti` | public_api | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
-| `GET /api/v1/stats` | public_api | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/v1/stats` | public_api | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/verbali-noleggio/dettaglio/{numero_verbale:path}` | verbali_noleggio_api | sì | sì | — | — | — | tenere | in uso: FE, scheduler |
 | `GET /api/verbali-noleggio/dettaglio/{numero_verbale}` | verbali_noleggio | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/verbali-noleggio/pdf/{numero_verbale}` | verbali_noleggio | sì | — | — | — | — | tenere | in uso: FE |
@@ -983,6 +983,10 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/verifica-coerenza/riepilogo-giornaliero` | verifica_coerenza | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/verifica-coerenza/verifica-bonifici-vs-banca/{anno}` | verifica_coerenza | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/verifica-coerenza/widget` | verifica_coerenza | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/voci-bilancio/` | voci_bilancio | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/voci-bilancio/codici-disponibili` | voci_bilancio | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/voci-bilancio/{anno}` | voci_bilancio | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `DELETE /api/voci-bilancio/{voce_id}` | voci_bilancio | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/warehouse/movements` | public_api | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/warehouse/movements` | public_api | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/warehouse/products` | public_api | sì | — | — | — | — | tenere | in uso: FE |

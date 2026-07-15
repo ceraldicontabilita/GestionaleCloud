@@ -255,7 +255,7 @@ def _register_core(app: FastAPI):
         mutui, mutui_parser, auto_repair,
         rapido, settings_router, dati_provvisori,
         batch_reprocessing, pos_corrispettivi_check,
-        chat_router, learning_universal
+        chat_router, learning_universal, voci_bilancio
     )
     from app.routers.suppliers_module import router as suppliers_router
     from app.routers.operazioni_module import router as operazioni_router
@@ -282,6 +282,7 @@ def _register_core(app: FastAPI):
     app.include_router(documenti.router, prefix="/api/documenti", tags=["Documenti"])
     app.include_router(operazioni_router, prefix="/api/operazioni-da-confermare", tags=["Operazioni"])
     app.include_router(cespiti.router, prefix="/api/cespiti", tags=["Cespiti"])
+    app.include_router(voci_bilancio.router, prefix="/api/voci-bilancio", tags=["Voci Bilancio Manuali"])
     app.include_router(scadenzario_fornitori.router, prefix="/api/scadenzario-fornitori", tags=["Scadenzario"])
     app.include_router(controllo_gestione.router, prefix="/api/controllo-gestione", tags=["Controllo Gestione"])
     app.include_router(chiusura_esercizio.router, prefix="/api/chiusura-esercizio", tags=["Chiusura Esercizio"])
