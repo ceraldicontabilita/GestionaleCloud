@@ -480,7 +480,25 @@ export default function Scadenze() {
                         borderLeft: `4px solid ${s.da_versare ? COLORS.warning : COLORS.success}`,
                       }}
                     >
-                      <div style={{ fontWeight: 'bold', marginBottom: 8 }}>{s.periodo}</div>
+                      <div style={{ fontWeight: 'bold', marginBottom: 8 }}>
+                        {s.periodo}
+                        {s.fonte === 'stima' && (
+                          <span
+                            title="Nessuna liquidazione confermata per questo periodo in Gestione IVA: importo calcolato in tempo reale, non ancora definitivo."
+                            style={{
+                              marginLeft: 8,
+                              fontSize: 10,
+                              fontWeight: 'normal',
+                              padding: '2px 6px',
+                              borderRadius: BORDER_RADIUS.sm,
+                              background: 'rgba(255,255,255,0.2)',
+                              opacity: 0.9,
+                            }}
+                          >
+                            stima
+                          </span>
+                        )}
+                      </div>
                       <div style={{ fontSize: 13, opacity: 0.9 }}>
                         <div>Debito: {formatEuro(s.iva_debito)}</div>
                         <div>Credito: {formatEuro(s.iva_credito)}</div>
@@ -542,6 +560,22 @@ export default function Scadenze() {
                     >
                       <div style={{ fontWeight: 'bold', marginBottom: 6, fontSize: 13 }}>
                         {s.mese_nome}
+                        {s.fonte === 'stima' && (
+                          <span
+                            title="Nessuna liquidazione confermata per questo mese in Gestione IVA: importo calcolato in tempo reale, non ancora definitivo."
+                            style={{
+                              marginLeft: 6,
+                              fontSize: 9,
+                              fontWeight: 'normal',
+                              padding: '1px 5px',
+                              borderRadius: BORDER_RADIUS.sm,
+                              background: 'rgba(255,255,255,0.2)',
+                              opacity: 0.9,
+                            }}
+                          >
+                            stima
+                          </span>
+                        )}
                       </div>
                       <div style={{ fontSize: 11, opacity: 0.9 }}>
                         <div>D: {formatEuro(s.iva_debito)}</div>

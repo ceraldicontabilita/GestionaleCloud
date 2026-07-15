@@ -24,6 +24,48 @@ router = APIRouter()
 COLL_F24_CANONICA = "f24_unificato"
 
 
+async def _iva_acquisti_ufficiale(db, periodo: str) -> Dict[str, Any]:
+    """IVA acquisti detraibile del periodo 'YYYY-MM' secondo il motore
+    ufficiale di liquidazione (memoria/SPECIFICA_IVA.md §10-11), la stessa
+    logica usata da POST /api/iva/liquidazioni/calcola — non una terza
+    formula parallela.
+
+    Bug corretto 15/07/2026: prima questa pagina sommava semplicemente
+    `iva` di TUTTE le fatture ricevute/emesse nel mese, senza escludere
+    quelle già utilizzate in una liquidazione precedente (doppio conteggio
+    quando una fattura di fine mese viene attribuita al mese prima per la
+    regola del giorno 15), le note di credito, o i documenti annullati —
+    poteva mostrare un "IVA da versare" diverso da quello confermato nella
+    pagina Gestione IVA.
+
+    Se per il periodo esiste già una liquidazione CONFERMATA/TRASMESSA,
+    ritorna il suo valore definitivo (fonte="liquidazione_confermata");
+    altrimenti calcola una STIMA live con le stesse regole di selezione,
+    mai persistita (fonte="stima" — il numero definitivo nasce solo
+    confermando la liquidazione dalla pagina Gestione IVA).
+    """
+    from app.routers.iva import _fatture_del_periodo, COLL_LIQ
+    from app.engines import liquidazione_iva_engine as liq
+
+    confermata = await db[COLL_LIQ].find_one(
+        {"periodo": periodo, "stato": {"$in": [liq.CONFERMATA, liq.TRASMESSA]}},
+        sort=[("versione", -1)],
+    )
+    if confermata:
+        return {
+            "iva_acquisti": round(float(confermata.get("iva_acquisti") or 0), 2),
+            "fonte": "liquidazione_confermata",
+        }
+
+    fatture = await _fatture_del_periodo(db, periodo)
+    incluse, _escluse = liq.seleziona_fatture_per_liquidazione(fatture, periodo)
+    iva_acquisti = round(sum(
+        round(float(f.get("iva_detraibile") if f.get("iva_detraibile") is not None else (f.get("iva") or 0)), 2)
+        for f in incluse
+    ), 2)
+    return {"iva_acquisti": iva_acquisti, "fonte": "stima"}
+
+
 async def conta_f24_da_pagare(db, limite_30: str) -> int:
     """Conta i F24 non pagati con scadenza entro `limite_30`, leggendo SOLO la
     collezione canonica `f24_unificato` e contando i documenti DISTINTI una volta
@@ -244,21 +286,17 @@ async def get_scadenze_iva(anno: int) -> Dict[str, Any]:
             ]).to_list(1)
             iva_debito += result[0]["totale"] if result else 0
         
-        # IVA Credito (fatture)
+        # IVA Credito (fatture) — motore ufficiale di liquidazione, vedi
+        # _iva_acquisti_ufficiale.
         iva_credito = 0
+        fonte_stima = False
         for m in range(start_month, end_month + 1):
-            prefix = f"{anno}-{m:02d}"
-            result = await db[Collections.INVOICES].aggregate([
-                {"$match": {
-                    "$or": [
-                        {"data_ricezione": {"$regex": f"^{prefix}"}},
-                        {"invoice_date": {"$regex": f"^{prefix}"}}
-                    ]
-                }},
-                {"$group": {"_id": None, "totale": {"$sum": "$iva"}}}
-            ]).to_list(1)
-            iva_credito += result[0]["totale"] if result else 0
-        
+            periodo = f"{anno}-{m:02d}"
+            esito = await _iva_acquisti_ufficiale(db, periodo)
+            iva_credito += esito["iva_acquisti"]
+            if esito["fonte"] == "stima":
+                fonte_stima = True
+
         saldo = iva_debito - iva_credito
         
         # Data scadenza
@@ -282,7 +320,11 @@ async def get_scadenze_iva(anno: int) -> Dict[str, Any]:
             "importo_versamento": round(max(saldo, 0), 2),
             "a_credito": round(abs(min(saldo, 0)), 2),  # Importo a credito quando saldo < 0
             "stato": "da_versare" if saldo > 0 else "a_credito",
-            "giorni_mancanti": _giorni_mancanti(data_scad)
+            "giorni_mancanti": _giorni_mancanti(data_scad),
+            # "stima" se almeno un mese del trimestre non ha ancora una
+            # liquidazione confermata in Gestione IVA — il numero definitivo
+            # nasce solo confermandola lì.
+            "fonte": "stima" if fonte_stima else "liquidazione_confermata",
         })
     
     totale_da_versare = sum(s["importo_versamento"] for s in scadenze_iva)
@@ -317,18 +359,11 @@ async def get_scadenze_iva_mensile(anno: int) -> Dict[str, Any]:
         ]).to_list(1)
         iva_debito = result_debito[0]["totale"] if result_debito else 0
         
-        # IVA Credito (fatture)
-        result_credito = await db[Collections.INVOICES].aggregate([
-            {"$match": {
-                "$or": [
-                    {"data_ricezione": {"$regex": f"^{prefix}"}},
-                    {"invoice_date": {"$regex": f"^{prefix}"}}
-                ]
-            }},
-            {"$group": {"_id": None, "totale": {"$sum": "$iva"}}}
-        ]).to_list(1)
-        iva_credito = result_credito[0]["totale"] if result_credito else 0
-        
+        # IVA Credito (fatture) — motore ufficiale di liquidazione, vedi
+        # _iva_acquisti_ufficiale.
+        esito_credito = await _iva_acquisti_ufficiale(db, prefix)
+        iva_credito = esito_credito["iva_acquisti"]
+
         saldo = iva_debito - iva_credito
         
         # Data scadenza: 16 del mese successivo
@@ -352,9 +387,10 @@ async def get_scadenze_iva_mensile(anno: int) -> Dict[str, Any]:
             "importo_versamento": round(max(saldo, 0), 2),
             "a_credito": round(abs(min(saldo, 0)), 2),  # Importo a credito quando saldo < 0
             "stato": "da_versare" if saldo > 0 else "a_credito",
-            "giorni_mancanti": _giorni_mancanti(data_scad)
+            "giorni_mancanti": _giorni_mancanti(data_scad),
+            "fonte": esito_credito["fonte"],
         })
-    
+
     totale_da_versare = sum(s["importo_versamento"] for s in scadenze_mensili)
     totale_a_credito = sum(abs(s["saldo"]) for s in scadenze_mensili if s["saldo"] < 0)
     

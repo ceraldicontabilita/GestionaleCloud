@@ -1,0 +1,1 @@
+import{j as i}from"./query-vendor-BspPuSqR.js";import"./react-vendor-DOuoiqAa.js";import{D as o}from"./DocumentViewerModal-J5UrshSz.js";function m({fatturaId:t,numero:r,onClose:e}){return t?i.jsx(o,{title:`📄 Fattura ${r||t}`,src:`/api/fatture-ricevute/fattura/${t}/view-assoinvoice`,onClose:e,testIdPrefix:"modal-fattura"}):null}export{m as M};
