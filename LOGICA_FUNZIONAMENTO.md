@@ -15,7 +15,7 @@ Documento di riferimento per chi usa il gestionale (amministrazione, commerciali
 Descrive come funziona davvero il sistema, letto dal codice implementato — non è una
 specifica di progetto ma il comportamento reale in produzione.
 
-Ultimo aggiornamento: 11/07/2026.
+Ultimo aggiornamento: 15/07/2026.
 
 ---
 
@@ -105,6 +105,53 @@ arrivare, ma il documento vero resta quello XML che arriva da Drive.
 Ogni documento entra in "Documenti / Import" con uno stato di lavorazione:
 trovato → importato → classificato → elaborato dal parser → record gestionale creato.
 Se il parser fallisce: stato di errore + avviso, il documento resta consultabile.
+
+---
+
+## 2-bis. Pagina "Scarica Documenti da Email" (Documenti)
+
+Aggiunta 15/07/2026 dopo una segnalazione dell'utente. La pagina ha **tre viste**,
+che leggono da fonti diverse — non sono la stessa lista mostrata in modo diverso:
+
+- **Per Mittente**: raggruppa i documenti "non associati" (non ancora collegati a
+  un fornitore/pratica) per l'ente/mittente che li ha mandati — pensata per
+  smaltire un arretrato, es. vecchie ricevute Agenzia Entrate Riscossione mai
+  lavorate.
+- **Tutti i Documenti**: l'elenco completo di ciò che il sistema ha scaricato via
+  email, con categoria, mittente, oggetto, data email, dimensione e stato.
+- **AI Estratti**: i documenti che l'intelligenza artificiale ha già letto ed
+  estratto (numero, importo, date...).
+
+**Cosa scarica il job automatico** (ogni ora, `gmail_full_scan_task`): tutte le
+cartelle della casella, filtrando **solo per parole chiave amministrative**
+(circa 50 termini generici tipo "fattura", "f24", "bolletta", "enel", "verbale",
+"cedolino"...) — **mai le fatture italiane**, che arrivano solo da Drive/SDI (§3).
+
+**Mittenti attendibili — stato per canale** (bug corretto il 15/07/2026: il
+codice dichiarava di filtrare anche per mittente ma non lo faceva mai davvero):
+
+| Canale | Filtro mittente | Dove si configura |
+|---|---|---|
+| Cedolini (email) | Sì, attivo | Mittenti Email → tipo "Cedolino" |
+| Verbali/multe (email) | Sì, attivo (oggi spento) | Mittenti Email → tipo (dedicato ai verbali) |
+| Fatture estere (PDF) | Sì, attivo | Mittenti Email → tipo "Fattura estera (PDF)" |
+| **Scansione generica ("Documenti")** | **Sì da questa correzione**, ma **nessun mittente configurato = nessuna restrizione** (per non spegnere di colpo il canale) | Mittenti Email → tipo "Generico (solo archivio)" |
+
+Finché in "Mittenti Email" non aggiungi almeno un indirizzo/dominio col tipo
+"Generico", la scansione **continua a scaricare da chiunque** scriva un'email che
+contiene una delle parole chiave amministrative — è così che sono arrivati
+documenti da mittenti mai autorizzati (dominio esterno, persona non in lista,
+bollette non richieste). Per attivare davvero il filtro: vai in **Mittenti Email**,
+aggiungi i mittenti che consideri fidati con tipo "Generico (solo archivio)".
+
+**Campi talvolta vuoti ("-") in "Tutti i Documenti"**: "Mittente"/"Da Email" sono
+vuoti per i documenti arrivati da **Google Drive** (es. Libro Unico/cedolini
+sincronizzati dalla cartella Drive dedicata) — è corretto, quei documenti non
+hanno un mittente email. La colonna "Data Doc." (la data scritta sul documento,
+diversa dalla data dell'email) risulta invece **sempre vuota per qualunque
+documento**: nessun servizio di importazione la valorizza oggi — non è un dato
+mancante solo per le Buste Paga, è una colonna non ancora collegata a nessuna
+fonte.
 
 ---
 
@@ -327,45 +374,84 @@ filtrava su un campo `tipo` non sempre valorizzato, quindi non agganciava gli
 accrediti NUMIA e la card "Accrediti banca mancanti" mostrava un falso disavanzo
 (soldi in realtà incassati e presenti in banca).
 
+**Più registratori di cassa nello stesso negozio** (fix 15/07/2026): se in un
+punto vendita ci sono più casse/PDV che emettono ciascuna il proprio corrispettivo
+XML nello stesso giorno, il sistema li tiene **entrambi** — il controllo duplicati
+guarda data **+ dispositivo emittente**, non solo la data. Prima di questa
+correzione il corrispettivo del secondo dispositivo veniva scartato come
+"duplicato" di quello del primo (stessa data, dispositivo ignorato): spariva del
+tutto da Prima Nota invece di sommarsi, con l'incasso — sia contanti che
+elettronico — sistematicamente dimezzato. Per riparare lo storico: pagina
+**Pulizia Prima Nota → "Quadratura corrispettivi da Drive"** (ripassa gli XML
+originali e recupera quelli mai salvati) seguito da **"Ricostruisci da
+corrispettivi"** (rigenera Cassa/Banca dai corrispettivi ora completi).
+
 ---
 
 ## 6. Riconciliazione bancaria (estratto conto ↔ prima nota banca)
 
+Riscritta il 15/07/2026 per rispecchiare il motore realmente in produzione
+(`app/services/riconciliazione_bancaria.py`, "motore A" — la versione precedente
+di questo paragrafo descriveva un algoritmo a soglie fisse mai davvero
+implementato).
+
 **Da dove arrivano i movimenti banca**: l'estratto conto (CSV/Excel Banco BPM,
-cartella Drive dedicata) viene letto riga per riga; ogni riga diventa un movimento
-bancario con saldo progressivo. Ogni riga ha un'impronta propria: ricaricare lo
-stesso estratto non duplica nulla.
+cartella Drive dedicata **o** upload manuale dalla pagina Prima Nota) viene letto
+riga per riga; ogni riga diventa un movimento in `estratto_conto_movimenti` con
+un'impronta propria (data+importo+descrizione): ricaricare lo stesso estratto non
+duplica nulla. Il motore di riconciliazione gira **subito dopo ogni import** e poi
+di nuovo ogni 30 minuti (scheduler), sempre e solo sui movimenti non ancora
+riconciliati.
 
-**Il matching automatico** confronta ogni movimento banca non riconciliato con le
-righe di Prima Nota Banca non riconciliate:
+**Come cerca un pagamento (per le USCITE)**: per ogni movimento banca in uscita non
+riconciliato, cerca fra le fatture fornitore **non pagate** con importo compatibile
+(uguale ±0,05€, o "a rata" fra il 50% e il 200%) e assegna un punteggio:
+- +10 se l'importo combacia esattamente (+5 se combacia solo al ±10%, +2 se è solo
+  "plausibile" come rata);
+- +5 se il nome del fornitore compare nella causale (+3 se somiglia soltanto);
+- +5 se il numero fattura compare nella causale;
+- +2 se la data del movimento è vicina alla scadenza fattura (±7gg), **-5** se la
+  data è irrealistica (pagamento prima della fattura o oltre ~13 mesi dopo — scarta
+  quel candidato anche se l'importo tornasse per puro caso);
+- se il fornitore ha metodo "Cassa" in anagrafica, un match sulla sola banca viene
+  scartato a meno che il punteggio non sia già molto alto (evita falsi positivi:
+  un fornitore che paghi sempre in contanti non deve "agganciarsi" a un movimento
+  bancario casuale con lo stesso importo).
 
-- **Filtri duri** (un candidato che non li passa non viene proprio considerato,
-  qualunque cosa dica la descrizione):
-  - stesso segno (entrata con entrata, uscita con uscita);
-  - differenza importo entro **2,00 €**;
-  - distanza tra le date entro **5 giorni**.
-- La somiglianza del testo (descrizione/causale) serve **solo** a scegliere tra più
-  candidati già validi — mai a far passare un candidato con importo o data fuori
-  soglia.
+**Cosa succede in base al punteggio:**
 
-**Classificazione:**
-
-| Esito | Condizione | Cosa fa il sistema |
+| Punteggio | Condizione | Cosa fa il sistema |
 |---|---|---|
-| **Certo** | un solo candidato, stesso importo (±0,01 €) e stessa data | collega automaticamente le due righe (operazione atomica: o entrambe o nessuna) e registra la riconciliazione come "auto confermata" |
-| **Probabile** | un solo candidato ma non esatto; oppure più candidati con un vincitore netto | crea una **proposta**: le righe restano non riconciliate finché non confermi (o rifiuti) tu |
-| **Dubbio** | nessun candidato, o più candidati troppo vicini tra loro | apre un "dubbio" con l'elenco dei candidati, **mai** una scelta automatica |
+| **≥ 15** | importo + fornitore/numero fattura in causale | segna la fattura **pagata**, crea il movimento in Prima Nota Banca, propaga l'evento "fattura pagata" — tutto automatico |
+| **10–14** | solo importo + un altro indizio, **un solo** candidato con data plausibile | pagata automaticamente ma a confidenza media |
+| **10–14** | più fatture con punteggio simile, o data non plausibile | **non decide**: crea un "dubbio" (`operazioni_da_confermare`) con l'elenco dei candidati e un alert — la scelta resta tua |
+| **= 10** | solo importo, **un solo** candidato con quell'importo esatto | pagata automaticamente (bassa confidenza, ma univoco) |
+| **= 10** | più fatture con lo stesso importo esatto | "dubbio", stessa logica di cui sopra |
+| **nessun candidato** | — | il movimento resta **non riconciliato**: nessuna fattura si sblocca da sola |
+
+**F24** (uscite): se la causale contiene "F24" e l'importo torna (±0,05€) con un F24
+non ancora riconciliato, lo segna pagato in automatico e propaga l'evento.
+**Versamenti di contanti** (entrate, causale con "vers"/"contanti"): se esiste già
+in Prima Nota Cassa l'uscita "Versamento" della stessa data/importo, la concilia e
+crea la corrispondente entrata "voce in dare" in Prima Nota Banca (prima del
+15/07/2026 questa voce banca non veniva mai creata: il contante risultava uscito
+dalla cassa senza mai arrivare in banca — bug corretto). **Accrediti POS**
+(causale con "NUMIA" o simili): non creano una nuova entrata (la quota POS è già
+in Prima Nota Banca dal corrispettivo, vedi §5) — marcano solo riconciliato il
+movimento per non contare due volte lo stesso incasso.
+
+**Se non trova nulla di tutto questo**, il movimento banca resta "non riconciliato"
+ma **non sparisce mai**: subito dopo l'import, un passaggio generico crea comunque
+una riga in Prima Nota Banca con categoria "Da categorizzare" (o quella letta dal
+file, se presente) collegata al movimento originale — così ogni euro che passa in
+banca è sempre visibile e ricategorizzabile a mano, mai perso in silenzio.
 
 Esiste anche la **riconciliazione manuale**: colleghi tu un movimento banca a una
 riga di prima nota. Se nel frattempo il sistema aveva già riconciliato quella riga,
 la tua richiesta viene rifiutata con un conflitto (mai una sovrascrittura muta).
 
-Le righe già riconciliate (incluse quelle POS, che nascono già riconciliate) non
-rientrano mai nei giri successivi. Un movimento va "in verifica" solo su tua azione.
-
-Nota: le soglie (2 €, 5 giorni, ecc.) sono valori di partenza ragionevoli, mai
-ancora tarati su un ciclo reale di dati — quando la banca inizierà a popolarsi
-davvero andranno riviste.
+Le righe già riconciliate non rientrano mai nei giri successivi (né dello scheduler
+né di un nuovo import). Un movimento va "in verifica" solo su tua azione.
 
 ---
 
