@@ -272,7 +272,7 @@ export default function PianoDeiConti() {
               { key: 'regole', label: '⚙️ Regole Categorizzazione' },
             ]}
             value={activeTab}
-            onChange={tab => setActiveTab(tab)}
+            onChange={handleTabChange}
           />
         </div>
 

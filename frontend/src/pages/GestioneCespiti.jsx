@@ -379,7 +379,10 @@ export default function GestioneCespiti() {
 
   return (
     <PageLayout title="Cespiti & TFR" icon="🏢" subtitle={`Anno ${anno}`}>
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
+      {/* handleTabChange (non setActiveTab): il cambio tab deve aggiornare
+          anche l'URL (/cespiti/{tab}), altrimenti deep-link e tasto indietro
+          non riflettono mai la tab attiva. */}
+      <Tabs value={activeTab} onValueChange={handleTabChange}>
         <TabsList style={{ height: 32 }}>
           <TabsTrigger value="cespiti" style={{ fontSize: 12, height: 28, padding: '0 12px' }}>
             <Building2 style={styles.icon} />
@@ -724,6 +727,7 @@ export default function GestioneCespiti() {
                               ) : !registroTFRDettaglio?.accantonamenti?.length ? (
                                 <div style={styles.small}>Nessun accantonamento mensile registrato.</div>
                               ) : (
+                                <div style={{ overflowX: 'auto' }}>
                                 <table style={styles.table}>
                                   <thead>
                                     <tr>
@@ -742,6 +746,7 @@ export default function GestioneCespiti() {
                                     ))}
                                   </tbody>
                                 </table>
+                                </div>
                               )}
                               {registroTFRDettaglio?.totale_liquidato > 0 && (
                                 <div style={{ ...styles.small, marginTop: 6 }}>
