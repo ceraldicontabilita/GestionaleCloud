@@ -1,10 +1,10 @@
 # MAPPA ENDPOINT COMPLETA — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py. Ogni endpoint REALMENTE montato, per gruppo (tag).
-> Totale **980 endpoint** in **104 gruppi**.
+> Totale **981 endpoint** in **104 gruppi**.
 > FE: `✓` usato dal frontend · `ext` chiamante esterno · `—` nessun riferimento noto.
 
-**Riepilogo uso:** ✓ frontend = 629 · ext esterni = 76 · — da verificare = 275
+**Riepilogo uso:** ✓ frontend = 634 · ext esterni = 76 · — da verificare = 271
 
 ## AI Parser  (11)
 
@@ -259,12 +259,13 @@
 | GET | `/api/centri-costo/utile-obiettivo/per-cdc` | ✓ | accounting.centri_costo |
 | GET | `/api/centri-costo/utile-obiettivo/suggerimenti` | ✓ | accounting.centri_costo |
 
-## Cespiti  (11)
+## Cespiti  (12)
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
 | POST | `/api/cespiti/` | ✓ | cespiti |
 | GET | `/api/cespiti/` | ✓ | cespiti |
+| GET | `/api/cespiti/calcolo-rateo/{anno}/{mese}` | ✓ | cespiti |
 | GET | `/api/cespiti/calcolo/{anno}` | ✓ | cespiti |
 | GET | `/api/cespiti/categorie` | ✓ | cespiti |
 | POST | `/api/cespiti/dismissione` | ✓ | cespiti |
@@ -1491,10 +1492,10 @@
 
 | Metodo | Path | FE | File |
 |---|---|:-:|---|
-| POST | `/api/voci-bilancio/` | — | voci_bilancio |
-| GET | `/api/voci-bilancio/codici-disponibili` | — | voci_bilancio |
-| GET | `/api/voci-bilancio/{anno}` | — | voci_bilancio |
-| DELETE | `/api/voci-bilancio/{voce_id}` | — | voci_bilancio |
+| POST | `/api/voci-bilancio/` | ✓ | voci_bilancio |
+| GET | `/api/voci-bilancio/codici-disponibili` | ✓ | voci_bilancio |
+| GET | `/api/voci-bilancio/{anno}` | ✓ | voci_bilancio |
+| DELETE | `/api/voci-bilancio/{voce_id}` | ✓ | voci_bilancio |
 
 ## WhatsApp  (5)
 

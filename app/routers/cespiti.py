@@ -315,6 +315,73 @@ async def calcola_ammortamenti_anno(anno: int) -> Dict[str, Any]:
     }
 
 
+@router.get("/calcolo-rateo/{anno}/{mese}")
+@handle_errors
+async def calcola_rateo_ammortamenti(anno: int, mese: int) -> Dict[str, Any]:
+    """
+    Ammortamenti a rateo mensile per un bilancio provvisorio (infra-annuale).
+
+    Rateo lineare da inizio anno: quota_mese = quota annuale ordinaria / 12
+    (la stessa quota, primo anno dimezzato incluso, di calcola_ammortamenti_anno);
+    il rateo al mese richiesto è quota_mese moltiplicata per i mesi trascorsi
+    dall'inizio dell'anno. Solo preview, NON registra nulla: i cespiti sono
+    ammortizzati definitivamente solo da POST /registra/{anno}, a fine anno.
+    """
+    if mese < 1 or mese > 12:
+        raise HTTPException(status_code=400, detail="Mese non valido (1-12)")
+
+    db = Database.get_db()
+
+    cespiti = await db["cespiti"].find(
+        {"stato": "attivo", "ammortamento_completato": False},
+        {"_id": 0}
+    ).to_list(1000)
+
+    rateo_cespiti = []
+    totale = 0
+
+    for cespite in cespiti:
+        anno_acquisto = cespite["anno_acquisto"]
+        if anno_acquisto > anno:
+            continue
+
+        valore = cespite["valore_acquisto"]
+        coeff = cespite["coefficiente_ammortamento"]
+        fondo = cespite.get("fondo_ammortamento", 0)
+        valore_residuo = valore - fondo
+
+        piano = cespite.get("piano_ammortamento", [])
+        if any(p.get("anno") == anno for p in piano):
+            continue  # già ammortizzato definitivamente per questo anno
+
+        quota_ordinaria = valore * coeff / 100
+        quota_annua = quota_ordinaria / 2 if anno_acquisto == anno else quota_ordinaria
+        quota_mensile = quota_annua / 12
+        rateo = min(quota_mensile * mese, valore_residuo)
+
+        if rateo > 0:
+            rateo_cespiti.append({
+                "cespite_id": cespite["id"],
+                "descrizione": cespite["descrizione"],
+                "categoria": cespite["categoria"],
+                "quota_annua_ordinaria": round(quota_annua, 2),
+                "quota_mensile": round(quota_mensile, 2),
+                "mesi_rateo": mese,
+                "rateo_al_mese": round(rateo, 2),
+            })
+            totale += rateo
+
+    return {
+        "anno": anno,
+        "mese": mese,
+        "preview": True,
+        "rateo_lineare_da_inizio_anno": True,
+        "cespiti": rateo_cespiti,
+        "totale_rateo": round(totale, 2),
+        "num_cespiti": len(rateo_cespiti),
+    }
+
+
 # ============================================
 # AUTO-SCAN: Estrai cespiti da righe fatture XML
 # (Must be before /{cespite_id} route to avoid catch-all conflict)

@@ -1037,3 +1037,13 @@ sovrastimato.
   mano") ma MAI sommate nel totale, perché potrebbero non coincidere
   esattamente col plug (es. utile dell'esercizio in corso non ancora
   chiuso) — sommarle romperebbe l'uguaglianza attivo=passivo.
+- **Ammortamenti a rateo mensile** (pagina Bilancio, quando si seleziona un
+  mese specifico invece di "Anno intero"): mostra, solo a titolo
+  informativo, l'ammortamento maturato dai cespiti fino a quel mese —
+  rateo lineare da inizio anno (`quota annuale ordinaria / 12 × mesi
+  trascorsi`, stesso calcolo del pulsante "Ammort. {anno}" di Cespiti &
+  TFR ma diviso per mese). Endpoint `GET /api/cespiti/calcolo-rateo/{anno}/{mese}`,
+  solo preview come l'analogo `/calcolo/{anno}`: non scrive mai sul
+  registro cespiti. Serve per imputare un ammortamento coerente in un
+  bilancio provvisorio infra-annuale, senza toccare l'ammortamento
+  definitivo (quello resta registrato solo a fine anno).

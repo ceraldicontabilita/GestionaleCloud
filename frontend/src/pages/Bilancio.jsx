@@ -17,6 +17,7 @@ export default function Bilancio() {
   const [vociBilancio, setVociBilancio] = useState(null);
   const [codiciDisponibili, setCodiciDisponibili] = useState([]);
   const [nuovaVoce, setNuovaVoce] = useState({ codice_cee: '', importo: '', note: '' });
+  const [rateoAmmortamenti, setRateoAmmortamenti] = useState(null);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -56,7 +57,22 @@ export default function Bilancio() {
   useEffect(() => {
     loadBilancio();
     loadVociBilancio();
+    loadRateoAmmortamenti();
   }, [anno, mese]);
+
+  const loadRateoAmmortamenti = async () => {
+    if (!mese) {
+      setRateoAmmortamenti(null); // bilancio annuo pieno: il rateo mensile non si applica
+      return;
+    }
+    try {
+      const r = await api.get(`/api/cespiti/calcolo-rateo/${anno}/${mese}`);
+      setRateoAmmortamenti(r.data);
+    } catch (error) {
+      console.error('Errore caricamento rateo ammortamenti:', error);
+      setRateoAmmortamenti(null);
+    }
+  };
 
   useEffect(() => {
     api.get('/api/voci-bilancio/codici-disponibili').then(r => setCodiciDisponibili(r.data.codici)).catch(() => {});
@@ -379,6 +395,42 @@ export default function Bilancio() {
           </div>
         </div>
       </PageGrid>
+      {mese && rateoAmmortamenti && rateoAmmortamenti.num_cespiti > 0 && (
+        <PageSection title="Ammortamenti a rateo (bilancio provvisorio)" icon="📐" style={{ marginTop: 24 }}>
+          <p style={{ margin: '0 0 12px', fontSize: 13, color: COLORS.textMuted }}>
+            Rateo lineare da inizio anno (quota annuale ordinaria / 12 × mesi trascorsi):
+            l'ammortamento maturato dai cespiti fino a {mesi.find(m => m.value === mese)?.label} {anno}, per
+            imputarlo a un bilancio infra-annuale. Solo informativo: non modifica il registro
+            cespiti né lo Stato Patrimoniale sopra — l'ammortamento definitivo resta quello
+            registrato a fine anno in Cespiti &amp; TFR.
+          </p>
+          <TableWrap>
+            <Table>
+              <thead>
+                <tr>
+                  <Th>Cespite</Th>
+                  <Th align="right">Quota annua ordinaria</Th>
+                  <Th align="right">Rateo al mese {mese}</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {rateoAmmortamenti.cespiti.map(c => (
+                  <tr key={c.cespite_id}>
+                    <Td>{c.descrizione}</Td>
+                    <Td align="right" mono>{formatEuro(c.quota_annua_ordinaria)}</Td>
+                    <Td align="right" mono style={{ fontWeight: 500 }}>{formatEuro(c.rateo_al_mese)}</Td>
+                  </tr>
+                ))}
+                <tr style={{ borderTop: `1px solid ${COLORS.border}` }}>
+                  <Td style={{ fontWeight: 600 }}>Totale rateo</Td>
+                  <Td></Td>
+                  <Td align="right" mono style={{ fontWeight: 600 }}>{formatEuro(rateoAmmortamenti.totale_rateo)}</Td>
+                </tr>
+              </tbody>
+            </Table>
+          </TableWrap>
+        </PageSection>
+      )}
       <PageSection title="Voci di bilancio inserite manualmente" icon="✍️" style={{ marginTop: 24 }}>
         <p style={{ margin: '0 0 12px', fontSize: 13, color: COLORS.textMuted }}>
           Capitale sociale, riserve, saldi di apertura o altre immobilizzazioni che il

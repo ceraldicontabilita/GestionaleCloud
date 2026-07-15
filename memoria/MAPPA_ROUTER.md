@@ -1,7 +1,7 @@
 # MAPPA ROUTER — GestionaleCloud
 
 > rigenerata via scripts/genera_mappa.py — leggendo la route table reale di `register_all_routers`.
-> Totale **980 endpoint** in **103 prefissi**.
+> Totale **981 endpoint** in **103 prefissi**.
 
 Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app collegata / webhook / chatbot / scheduler / API pubblica) · `—` nessun riferimento noto (candidato verifica).
 
@@ -23,7 +23,7 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/cash` | 10 | ✓ | cash, public_api |
 | `/api/cedolini` | 2 | — | drive_cedolini |
 | `/api/centri-costo` | 10 | ✓ | accounting.centri_costo |
-| `/api/cespiti` | 11 | ✓ | cespiti |
+| `/api/cespiti` | 12 | ✓ | cespiti |
 | `/api/chat` | 3 | ✓ | chat_router |
 | `/api/chiusura-esercizio` | 7 | ✓ | chiusura_esercizio |
 | `/api/commercialista` | 14 | ✓ | commercialista |
@@ -104,7 +104,7 @@ Colonna FE: `✓` prefisso usato dal frontend · `ext` chiamante esterno (app co
 | `/api/verbali-noleggio` | 5 | ✓ | verbali_noleggio, verbali_noleggio_api |
 | `/api/verbali-riconciliazione` | 6 | ✓ | verbali_riconciliazione |
 | `/api/verifica-coerenza` | 7 | ✓ | verifica_coerenza |
-| `/api/voci-bilancio` | 4 | — | voci_bilancio |
+| `/api/voci-bilancio` | 4 | ✓ | voci_bilancio |
 | `/api/warehouse` | 6 | ✓ | public_api |
 | `/api/whatsapp` | 5 | ext | whatsapp_webhook |
 | `/data-deletion` | 1 | ext | legal_pages |
