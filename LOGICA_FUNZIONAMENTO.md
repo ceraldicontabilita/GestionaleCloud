@@ -212,6 +212,18 @@ fonte.
    settore. I ricavi per settore non sono tracciati: di default sono stimati
    (proporzionali ai costi diretti, con avviso "stima"); puoi impostare le quote
    reali con `POST /api/centri-costo/ribaltamento/quote-ricavo`.
+9. **"Elimina fattura" non cancella mai dal database** (verificato 15/07/2026):
+   di default il bottone Elimina fa un'archiviazione ("soft delete" — la
+   fattura resta nel database con `status/entity_status="deleted"`, così come
+   righe, Prima Nota e scadenze collegate; i movimenti di magazzino vengono
+   annullati, gli assegni collegati solo sganciati). La cancellazione fisica
+   esiste (`hard_delete=true`) ma **nessuna pagina la usa**: dall'interfaccia
+   non è raggiungibile. ⚠️ **Bug aperto**: la pagina Archivio Fatture e il
+   dettaglio fattura oggi **non** escludono le fatture archiviate dalla
+   query — una fattura "eliminata" può quindi ricomparire in lista/dettaglio
+   nonostante il messaggio di conferma dica che l'operazione non si può
+   annullare. Da correggere: aggiungere il filtro `entity_status != "deleted"`
+   alle query di lista/dettaglio fatture.
 
 **Pagina Fornitori (anagrafica).**
 - La lista è a **pagine numerate** (1 · 2 · 3 …, 50 fornitori per pagina, barra sia
@@ -236,13 +248,16 @@ casi non coperti da un'azione (piccola spesa contanti, versamento, finanziamento
 soci): il movimento viene **marcato come "manuale"** (`inserimento_manuale=true`,
 `origine="manuale"`) e registrato nell'audit log, così resta distinguibile dai
 movimenti automatici. Restano comunque rifiutati i movimenti chiaramente bancari
-(bonifico, POS bancario, F24…), che vanno in Prima Nota Banca.
+(bonifico, POS bancario, F24…), che vanno in Prima Nota Banca. **Prima Nota Banca
+non ha questa marcatura**: un inserimento manuale diretto in banca non viene
+distinto da uno automatico né controllato per duplicati.
 
 **Cassa**
-- Conferma di un corrispettivo giornaliero → l'incasso viene **diviso per natura**:
-  in Prima Nota **Cassa** entra **solo la quota contanti** (categoria "Corrispettivi
-  contanti"); la quota elettronica NON tocca mai la cassa. Il saldo di cassa è quindi
-  il contante effettivo.
+- Conferma di un corrispettivo giornaliero → il sistema registra in Prima Nota
+  **Cassa** un'**entrata per il totale intero** (categoria "Corrispettivi") più
+  un'**uscita per la sola quota elettronica** (categoria "POS Verso Banca", verso
+  la Banca). Il saldo netto di cassa che ne risulta è quindi il solo contante,
+  ma in due righe distinte, non in un'unica riga "solo contanti".
 - "Paga in Cassa" su una fattura → uscita collegata alla fattura.
 
 **Banca**
@@ -252,10 +267,30 @@ movimenti automatici. Restano comunque rifiutati i movimenti chiaramente bancari
   cassa: è un'entrata bancaria da riscontrare.
 - "Paga in Banca" su una fattura → uscita collegata alla fattura.
 - Registrazione di un accredito POS in estratto conto → concilia la voce "Corrispettivi
-  POS" attesa (vedi §5), non crea un movimento nuovo.
+  POS" attesa (vedi §5), non crea un movimento nuovo (riconoscimento per parola chiave
+  sulla causale bancaria: NUMIA, ACCREDITO POS, INCASSO POS, ecc. — se l'accredito reale
+  non contiene nessuna di queste parole, non nasce un doppio movimento ma la voce
+  "Corrispettivi POS" resta scoperta/non riconciliata senza avviso esplicito).
 
 **Provvisoria**
 - Solo fatture di fornitori "misto", in attesa della tua divisione cassa/banca.
+
+**⚠️ Rischio confermato (audit 15/07/2026): pagamento fattura registrato a mano in
+Cassa non blocca un doppio pagamento in Banca.** Quando registri a mano in Prima
+Nota Cassa il pagamento di una fattura specifica (`fattura_id` collegato), il
+sistema **non aggiorna lo stato della fattura** (`stato_pagamento`/`pagato`
+restano quelli di prima): a differenza del flusso automatico ("Paga in Cassa" da
+scheda fattura, o conferma da Provvisori), che marca sempre la fattura come
+pagata. Se in seguito arriva l'estratto conto reale, la riconciliazione bancaria
+considera ancora quella fattura "da pagare" (il suo filtro è
+`pagato != True` e `stato_pagamento` non "pagata/paid/sospesa") e — se trova un
+match per importo/fornitore — crea un **secondo movimento reale in Prima Nota
+Banca** per la stessa fattura: il controllo anti-duplicato di quel percorso
+guarda solo dentro la collection di destinazione (Banca), non incrocia mai la
+Cassa. Risultato: doppio conteggio reale della stessa spesa. Finché non è
+corretto, un pagamento fattura va sempre registrato dal bottone "Paga in
+Cassa/Banca" sulla fattura (o da Provvisori), **mai** dal form libero di
+inserimento manuale quando è collegato a una fattura specifica.
 
 **Fatture attese (avvisi email Aruba)** — nel tab Provvisori
 - **Scansione**: automatica, ogni ora (job schedulato — prima di questa
@@ -373,6 +408,16 @@ Nota (fix 12/07/2026): prima il caricatore non cercava la parola "NUMIA" e
 filtrava su un campo `tipo` non sempre valorizzato, quindi non agganciava gli
 accrediti NUMIA e la card "Accrediti banca mancanti" mostrava un falso disavanzo
 (soldi in realtà incassati e presenti in banca).
+
+**Nota sul corrispettivo manuale provvisorio** (audit 15/07/2026): il pulsante
+rapido "Corrispettivo" nel tab Prima Nota Cassa crea una riga cassa segnata
+esplicitamente `provvisorio: true`, pensata per essere **sostituita** quando
+arriva il vero XML del corrispettivo. Il pulsante "Ricostruisci da corrispettivi"
+in Pulizia Prima Nota (§ sotto) la cancella fisicamente insieme alle righe
+automatiche per rigenerarle dai corrispettivi reali: è il comportamento voluto
+per quella riga provvisoria, ma se per una data non esiste (ancora) nessun
+corrispettivo XML corrispondente, il pulsante la elimina senza ricrearne una al
+suo posto — la cassa di quel giorno resta scoperta senza un avviso esplicito.
 
 **Più registratori di cassa nello stesso negozio** (fix 15/07/2026): se in un
 punto vendita ci sono più casse/PDV che emettono ciascuna il proprio corrispettivo
