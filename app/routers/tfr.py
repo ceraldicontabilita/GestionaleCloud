@@ -65,33 +65,55 @@ async def get_situazione_tfr(dipendente_id: str) -> Dict[str, Any]:
     Include storico accantonamenti e rivalutazioni.
     """
     db = Database.get_db()
-    
+
     # Recupera dipendente
     dipendente = await db["dipendenti"].find_one(
         {"id": dipendente_id},
         {"_id": 0}
     )
-    
+
     if not dipendente:
         raise HTTPException(status_code=404, detail="Dipendente non trovato")
-    
-    # TFR accantonato totale
-    tfr_accantonato = float(dipendente.get("tfr_accantonato", 0))
-    
-    # Storico accantonamenti
-    accantonamenti = await db["tfr_accantonamenti"].find(
+
+    # TFR accantonato totale. Stesso bug corretto in get_riepilogo_tfr_aziendale
+    # (15/07/2026): tfr_accantonato lo scrive solo l'import manuale Libro
+    # Unico (mai usato in pratica); il canale realmente attivo (cedolini
+    # email/Drive, handler_aggiorna_tfr) accumula su tfr_maturato. Sono due
+    # canali alternativi sullo stesso dipendente, mai valorizzati insieme:
+    # si usa quale dei due è popolato, non si sommano.
+    tfr_manuale = float(dipendente.get("tfr_accantonato") or 0)
+    tfr_da_cedolini = float(dipendente.get("tfr_maturato") or 0)
+    tfr_accantonato = tfr_manuale if tfr_manuale > 0 else tfr_da_cedolini
+
+    # Storico accantonamenti. Registro mese per mese: il canale cedolini
+    # scrive un documento per (dipendente, mese, anno) con campo "quota";
+    # l'import manuale LUL scrive un documento annuale con "quota_annuale"
+    # (senza "mese"). Si ordina per anno e poi mese (le voci annuali senza
+    # mese vanno in fondo all'anno) e si espone un campo unico "quota_mese"
+    # e "periodo" leggibile, senza toccare i campi originali.
+    accantonamenti_raw = await db["tfr_accantonamenti"].find(
         {"dipendente_id": dipendente_id},
         {"_id": 0}
-    ).sort("anno", 1).to_list(100)
-    
+    ).sort([("anno", 1)]).to_list(500)
+    accantonamenti = sorted(
+        accantonamenti_raw,
+        key=lambda a: (a.get("anno") or 0, a.get("mese") or 13),
+    )
+    for a in accantonamenti:
+        a["quota_mese"] = round(float(a.get("quota") or 0) + float(a.get("quota_annuale") or 0), 2)
+        a["periodo"] = (
+            f"{int(a['mese']):02d}/{a['anno']}" if a.get("mese")
+            else f"Anno {a.get('anno')} (import manuale)"
+        )
+
     # Storico liquidazioni/anticipi
     liquidazioni = await db["tfr_liquidazioni"].find(
         {"dipendente_id": dipendente_id},
         {"_id": 0}
     ).sort("data", -1).to_list(100)
-    
+
     totale_liquidato = sum(l.get("importo_lordo", 0) for l in liquidazioni)
-    
+
     return {
         "dipendente_id": dipendente_id,
         "dipendente_nome": dipendente.get("nome_completo", ""),

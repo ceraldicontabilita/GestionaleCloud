@@ -27,6 +27,8 @@ import {
   Trash2,
   X,
   Check,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
 import { STYLES, COLORS, button, badge, formatEuro, formatDateIT, useIsMobile } from '../lib/utils';
 
@@ -182,6 +184,9 @@ export default function GestioneCespiti() {
     fornitore: '',
   });
   const [riepilogoTFR, setRiepilogoTFR] = useState(null);
+  const [registroTFRAperto, setRegistroTFRAperto] = useState(null); // dipendente_id espanso
+  const [registroTFRDettaglio, setRegistroTFRDettaglio] = useState(null);
+  const [registroTFRLoading, setRegistroTFRLoading] = useState(false);
   const [scadenzario, setScadenzario] = useState(null);
   const [urgenti, setUrgenti] = useState(null);
   const [editingCespite, setEditingCespite] = useState(null);
@@ -232,6 +237,25 @@ export default function GestioneCespiti() {
       setLoading(false);
     }
   };
+  const toggleRegistroTFR = async dipendenteId => {
+    if (registroTFRAperto === dipendenteId) {
+      setRegistroTFRAperto(null);
+      setRegistroTFRDettaglio(null);
+      return;
+    }
+    setRegistroTFRAperto(dipendenteId);
+    setRegistroTFRDettaglio(null);
+    try {
+      setRegistroTFRLoading(true);
+      const r = await api.get(`/api/tfr/situazione/${dipendenteId}`);
+      setRegistroTFRDettaglio(r.data);
+    } catch (e) {
+      toast.error('Errore: ' + (e.response?.data?.detail || e.message));
+    } finally {
+      setRegistroTFRLoading(false);
+    }
+  };
+
   const loadScadenzario = async () => {
     try {
       setLoading(true);
@@ -644,7 +668,10 @@ export default function GestioneCespiti() {
               </div>
               <div style={styles.card}>
                 <div style={{ padding: '4px 8px', borderBottom: '1px solid #f1f5f9' }}>
-                  <span style={{ fontSize: 12, fontWeight: '600' }}>TFR per Dipendente</span>
+                  <span style={{ fontSize: 12, fontWeight: '600' }}>Registro TFR per Dipendente</span>
+                  <span style={{ ...styles.small, marginLeft: 8 }}>
+                    (clicca per il dettaglio mese per mese, estratto dai cedolini)
+                  </span>
                 </div>
                 <div style={styles.cardContent}>
                   {riepilogoTFR?.dettaglio_dipendenti?.length === 0 ? (
@@ -652,23 +679,75 @@ export default function GestioneCespiti() {
                   ) : (
                     <div>
                       {riepilogoTFR.dettaglio_dipendenti.map((d, i) => (
-                        <div
-                          key={i}
-                          style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            padding: '6px 8px',
-                            background: '#f8fafc',
-                            borderRadius: 4,
-                            marginBottom: 4,
-                            fontSize: 12,
-                          }}
-                        >
-                          <span>{d.nome}</span>
-                          <span style={{ fontWeight: 'bold', color: '#0f2744', fontFamily: MONO }}>
-                            {fmt(d.tfr_accantonato)}
-                          </span>
+                        <div key={i} style={{ marginBottom: 4 }}>
+                          <div
+                            onClick={() => toggleRegistroTFR(d.dipendente_id)}
+                            data-testid={`tfr-riga-dipendente-${d.dipendente_id}`}
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              padding: '6px 8px',
+                              background: '#f8fafc',
+                              borderRadius: 4,
+                              fontSize: 12,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                              {registroTFRAperto === d.dipendente_id ? (
+                                <ChevronDown style={styles.icon} />
+                              ) : (
+                                <ChevronRight style={styles.icon} />
+                              )}
+                              {d.nome}
+                            </span>
+                            <span style={{ fontWeight: 'bold', color: '#0f2744', fontFamily: MONO }}>
+                              {fmt(d.tfr_accantonato)}
+                            </span>
+                          </div>
+                          {registroTFRAperto === d.dipendente_id && (
+                            <div
+                              style={{
+                                padding: '6px 8px 6px 24px',
+                                background: '#fff',
+                                border: '1px solid #f1f5f9',
+                                borderTop: 'none',
+                                borderRadius: '0 0 4px 4px',
+                              }}
+                            >
+                              {registroTFRLoading ? (
+                                <div style={styles.small}>Caricamento...</div>
+                              ) : !registroTFRDettaglio?.accantonamenti?.length ? (
+                                <div style={styles.small}>Nessun accantonamento mensile registrato.</div>
+                              ) : (
+                                <table style={styles.table}>
+                                  <thead>
+                                    <tr>
+                                      <th style={styles.th}>Periodo</th>
+                                      <th style={styles.thRight}>Quota mese</th>
+                                      <th style={styles.thRight}>Rivalutazione</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {registroTFRDettaglio.accantonamenti.map((a, j) => (
+                                      <tr key={j}>
+                                        <td style={styles.td}>{a.periodo}</td>
+                                        <td style={styles.tdRight}>{fmt(a.quota_mese)}</td>
+                                        <td style={styles.tdRight}>{fmt(a.rivalutazione || 0)}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              )}
+                              {registroTFRDettaglio?.totale_liquidato > 0 && (
+                                <div style={{ ...styles.small, marginTop: 6 }}>
+                                  Liquidato/anticipato: {fmt(registroTFRDettaglio.totale_liquidato)} —
+                                  disponibile: {fmt(registroTFRDettaglio.tfr_disponibile)}
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
