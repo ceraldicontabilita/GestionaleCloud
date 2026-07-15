@@ -78,9 +78,22 @@ def estrai_fornitore_pulito(descrizione: str) -> Optional[str]:
         # Rimuovi forme societarie alla fine per pulizia display
         # Ma mantienile se sono parte del nome
         nome = after.strip()
-        
+
         return nome if nome else None
-    
+
+    # Addebiti diretti SDD (CORE o B2B): niente "FAVORE", il beneficiario è
+    # il testo dopo il codice mandato/riferimento (senza spazi), es. "SDD
+    # CORE: <codice mandato> Nome Beneficiario" o "SDD B2B : <codice>
+    # Nome Fornitore Srl". Bug segnalato dall'utente 15/07/2026: su un
+    # export reale di 4287 movimenti, 240 righe SDD (utenze, leasing,
+    # assicurazioni, fornitori ricorrenti) non estraevano MAI il fornitore,
+    # perdendo il bonus di punteggio "nome in causale" nel matching con le
+    # fatture.
+    match_sdd = re.search(r"SDD\s+(?:CORE|B2B)\s*:\s*\S+\s+(.+)$", descrizione, re.IGNORECASE)
+    if match_sdd:
+        nome = match_sdd.group(1).strip()
+        return nome if nome else None
+
     return None
 
 
