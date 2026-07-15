@@ -102,6 +102,40 @@ export default function PuliziaPrimaNota() {
     }
   };
 
+  // Ricostruzione completa Cassa+Banca dai corrispettivi archiviati: a
+  // differenza del passo 4 (che inserisce solo quelli mai sincronizzati),
+  // questo cancella e ricrea TUTTI i movimenti con source=corrispettivo_*
+  // dell'anno selezionato — serve quando l'importo totale corrispettivi o
+  // la quota "pagamento elettronico" in Prima Nota Cassa risultano diversi
+  // dal corrispettivo originale (es. dati importati prima della correzione
+  // della logica unificata).
+  const [risultatoRicostruzione, setRisultatoRicostruzione] = useState(null);
+
+  const lanciaRicostruzione = async () => {
+    const conferma = await confirm({
+      title: `Ricostruisci Prima Nota da Corrispettivi — anno ${anno}`,
+      message:
+        `Elimina e ricrea tutti i movimenti di Prima Nota Cassa e Banca generati dai ` +
+        `corrispettivi dell'anno ${anno} (categoria "Corrispettivi", "POS Verso Banca", ` +
+        `"Corrispettivi POS"), usando i dati oggi presenti nell'archivio corrispettivi. ` +
+        `Non tocca fatture, versamenti o altri movimenti manuali.`,
+      confirmText: 'Ricostruisci',
+      variant: 'warning',
+    });
+    if (!conferma) return;
+    azzeraErrori();
+    setLoading('ricostruisci');
+    setRisultatoRicostruzione(null);
+    try {
+      const res = await api.post(`/api/corrispettivi/rebuild-prima-nota?anno=${anno}`);
+      setRisultatoRicostruzione(res.data);
+    } catch (e) {
+      setErrore(e?.response?.data?.detail || e?.message || 'Errore durante la ricostruzione');
+    } finally {
+      setLoading(null);
+    }
+  };
+
   const lanciaAutoConferma = async () => {
     const conferma = await confirm({
       title: `Smistamento provvisorie — anno ${anno}`,
@@ -347,6 +381,47 @@ export default function PuliziaPrimaNota() {
                     {risultatoSync.saltati} corrispettivi saltati (importo 0 su tutti i campi) — vanno corretti a mano nella sezione Corrispettivi.
                   </div>
                 )}
+              </div>
+            </div>
+          )}
+        </StepCard>
+
+        {/* STEP 4bis - RICOSTRUZIONE COMPLETA DA CORRISPETTIVI */}
+        <StepCard
+          numero="4b"
+          titolo="Ricostruisci importi corrispettivi e pagamento elettronico"
+          descrizione={
+            'Se in Prima Nota Cassa il totale corrispettivi o la quota "pagamento elettronico" ' +
+            'non tornano (es. dati importati prima della correzione), usa questo pulsante: cancella ' +
+            "e ricrea da zero i movimenti generati dai corrispettivi dell'anno selezionato."
+          }
+        >
+          <button
+            onClick={lanciaRicostruzione}
+            disabled={isBusy}
+            style={btnStyle('primary', isBusy)}
+          >
+            {loading === 'ricostruisci' ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+            Ricostruisci da corrispettivi ({anno})
+          </button>
+
+          {risultatoRicostruzione && (
+            <div style={{ ...resultBoxStyle, background: '#f0fdf4', borderColor: '#22c55e' }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+                <CheckCircle size={18} color="#059669" />
+                <strong style={{ color: '#065f46' }}>Ricostruzione completata</strong>
+              </div>
+              <div style={{ fontSize: 13, color: '#065f46', lineHeight: 1.6 }}>
+                Corrispettivi processati: <strong>{risultatoRicostruzione.corrispettivi_processati}</strong>
+                {risultatoRicostruzione.corrispettivi_saltati > 0 && (
+                  <> (saltati: {risultatoRicostruzione.corrispettivi_saltati})</>
+                )}
+                <br />
+                Movimenti Cassa ricreati: <strong>{risultatoRicostruzione.prima_nota_cassa_creati}</strong>{' '}
+                (eliminati prima: {risultatoRicostruzione.prima_nota_cassa_eliminati})
+                <br />
+                Movimenti Banca ricreati: <strong>{risultatoRicostruzione.prima_nota_banca_creati}</strong>{' '}
+                (eliminati prima: {risultatoRicostruzione.prima_nota_banca_eliminati})
               </div>
             </div>
           )}

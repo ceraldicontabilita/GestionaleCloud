@@ -592,6 +592,15 @@ function PrimaNotaDesktop() {
     cassaData.movimenti
       ?.filter(m => m.categoria === 'Corrispettivi')
       .reduce((s, m) => s + m.importo, 0) || 0;
+  // Quota elettronica dei corrispettivi (uscita cassa → banca), creata da
+  // corrispettivi_helpers.py::_create_prima_nota_movements con categoria
+  // "POS Verso Banca". Distinta dalla categoria "POS" (form manuale di
+  // questa pagina), che viene ripulita non appena arriva il corrispettivo
+  // reale — per questo serve una card separata per non farla sparire.
+  const totaleElettronico =
+    cassaData.movimenti
+      ?.filter(m => m.categoria === 'POS Verso Banca')
+      .reduce((s, m) => s + m.importo, 0) || 0;
 
   // Giorno record
   const giornoRecord = cassaData.movimenti?.reduce((best, m) => {
@@ -1178,6 +1187,11 @@ function PrimaNotaDesktop() {
               title="Corrispettivi"
               value={formatEuro(totaleCorrispettivi)}
               color="#d97706"
+            />
+            <TinyStatCard
+              title="Pagamento elettronico"
+              value={formatEuro(totaleElettronico)}
+              color="#2563eb"
             />
             <TinyStatCard title="POS" value={formatEuro(totalePOS)} color="#0f2744" />
             <TinyStatCard title="Versamenti" value={formatEuro(totaleVersamenti)} color="#16a34a" />
