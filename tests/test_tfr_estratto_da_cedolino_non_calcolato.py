@@ -11,6 +11,7 @@ stampato sul cedolino."""
 import asyncio
 
 from app.services import salari_unificati_v2 as mod
+from app.services.event_bus import EventTypes
 
 
 def _run(c):
@@ -82,21 +83,18 @@ def test_tfr_reale_dal_pdf_passa_nel_payload_evento(monkeypatch):
         "netto": 1500.0,
         "lordo": 2000.0,
     }
-    pdf_text = "TFR mese: 148,15\nAltri dati busta paga..."
+    pdf_text = "TFR mese: 95,50\nAltri dati busta paga..."
 
     esito = _run(mod.processa_cedolino_v2(db, cedolino_data, pdf_text=pdf_text))
 
     assert esito["success"] is True
     assert len(catturati) == 1
     evento, payload = catturati[0]
-    assert evento == mod_event_types().CEDOLINO_IMPORTATO
-    # Valore reale estratto dal PDF, non la stima lordo/13.5 (che darebbe 148.15).
-    assert payload["tfr_quota_mese"] == 148.15
-
-
-def mod_event_types():
-    from app.services.event_bus import EventTypes
-    return EventTypes
+    assert evento == EventTypes.CEDOLINO_IMPORTATO
+    # Valore reale estratto dal PDF, chiaramente diverso dalla stima
+    # lordo/13.5 (2000/13.5 = 148.15): se il payload riportasse la stima
+    # invece del dato stampato in busta, il test fallirebbe.
+    assert payload["tfr_quota_mese"] == 95.50
 
 
 def test_senza_tfr_nel_pdf_il_payload_riporta_zero_non_lo_stima(monkeypatch):

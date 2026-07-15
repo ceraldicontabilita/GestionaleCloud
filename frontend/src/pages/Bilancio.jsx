@@ -104,14 +104,15 @@ export default function Bilancio() {
   };
 
   const handleSalvaVoce = async () => {
-    if (!nuovaVoce.codice_cee || nuovaVoce.importo === '') {
-      toast.warning('Seleziona un codice e inserisci un importo');
+    const importo = parseFloat(nuovaVoce.importo);
+    if (!nuovaVoce.codice_cee || Number.isNaN(importo)) {
+      toast.warning('Seleziona un codice e inserisci un importo valido');
       return;
     }
     try {
       await api.post('/api/voci-bilancio/', {
         codice_cee: nuovaVoce.codice_cee,
-        importo: parseFloat(nuovaVoce.importo),
+        importo,
         anno,
         note: nuovaVoce.note || null,
       });
@@ -468,6 +469,16 @@ export default function Bilancio() {
                     </Td>
                   </tr>
                 ))}
+                <tr style={{ borderTop: `1px solid ${COLORS.border}` }}>
+                  <Td colSpan={3} style={{ fontWeight: 600 }}>
+                    Totale — immobilizzazioni {formatEuro(vociBilancio.totale_immobilizzazioni)},
+                    capitale e riserve {formatEuro(vociBilancio.totale_patrimonio_netto)}
+                  </Td>
+                  <Td align="right" mono style={{ fontWeight: 600 }}>
+                    {formatEuro(vociBilancio.totale_immobilizzazioni + vociBilancio.totale_patrimonio_netto)}
+                  </Td>
+                  <Td></Td>
+                </tr>
               </tbody>
             </Table>
           </TableWrap>
@@ -480,10 +491,20 @@ export default function Bilancio() {
             style={{ minWidth: 260 }}
           >
             <option value="">Seleziona voce...</option>
-            {codiciDisponibili.map(c => (
-              <option key={c.codice_cee} value={c.codice_cee}>
-                {c.codice_cee} — {c.descrizione}
-              </option>
+            {[...new Set(codiciDisponibili.map(c => c.macro))].map(macro => (
+              <optgroup
+                key={macro}
+                label={codiciDisponibili.find(c => c.codice_cee === macro)?.descrizione || macro}
+              >
+                {codiciDisponibili
+                  .filter(c => c.macro === macro)
+                  .map(c => (
+                    <option key={c.codice_cee} value={c.codice_cee}>
+                      {c.codice_cee} — {c.descrizione}
+                      {c.codice_cee === macro ? ' (totale gruppo)' : ''}
+                    </option>
+                  ))}
+              </optgroup>
             ))}
           </Select>
           <Input

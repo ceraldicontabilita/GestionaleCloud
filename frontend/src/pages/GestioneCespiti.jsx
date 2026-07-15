@@ -64,22 +64,25 @@ const styles = {
   cardContent: { padding: 8 },
   input: { height: 28, fontSize: 12 },
   btn: { minHeight: 40, fontSize: 13 },
-  statBox: () => ({
-    background: 'white',
+  // I call-site passano la tinta di sfondo (statBox) e i colori di
+  // etichetta/valore (statLabel/statValue): vanno rispettati, con fallback
+  // neutro quando non indicati.
+  statBox: (bg = 'white') => ({
+    background: bg,
     border: '1px solid #e2e8f0',
     borderLeft: '4px solid #0f2744',
     padding: '8px 10px',
     borderRadius: 8,
     textAlign: 'left',
   }),
-  statLabel: () => ({
+  statLabel: (color = '#64748b') => ({
     fontSize: 10,
-    color: '#64748b',
+    color,
     fontWeight: 600,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   }),
-  statValue: () => ({ fontSize: 22, fontWeight: 700, color: '#0f2744', fontFamily: MONO }),
+  statValue: (color = '#0f2744') => ({ fontSize: 22, fontWeight: 700, color, fontFamily: MONO }),
   table: { width: '100%', fontSize: 12, borderCollapse: 'collapse' },
   th: {
     padding: '8px',
