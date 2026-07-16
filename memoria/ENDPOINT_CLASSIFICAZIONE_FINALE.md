@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 982 · tenere: 649 · verificare: 314 · admin-only (migrazione/manutenzione): 19
+**Totale endpoint:** 985 · tenere: 652 · verificare: 314 · admin-only (migrazione/manutenzione): 19
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -847,6 +847,9 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/prima-nota/salari/stats` | prima_nota_module.salari | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `DELETE /api/prima-nota/salari/{movimento_id}` | prima_nota_module.salari | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `GET /api/prima-nota/saldo-finale` | prima_nota_module.stats | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `GET /api/prima-nota/saldo-iniziale` | prima_nota_module.stats | sì | — | — | — | sì | tenere | in uso: FE |
+| `PUT /api/prima-nota/saldo-iniziale` | prima_nota_module.stats | sì | — | — | — | sì | tenere | in uso: FE |
+| `DELETE /api/prima-nota/saldo-iniziale/{tipo}/{anno}` | prima_nota_module.stats | sì | — | — | — | sì | tenere | in uso: FE |
 | `POST /api/prima-nota/sposta-movimento` | prima_nota_module.manutenzione | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/prima-nota/sposta-scrittura` | prima_nota_module.sync | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/prima-nota/stats` | prima_nota_module.stats | sì | — | — | — | — | tenere | in uso: FE |

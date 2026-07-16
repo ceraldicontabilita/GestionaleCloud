@@ -308,6 +308,28 @@ distinto da uno automatico né controllato per duplicati.
   reale e movimenti del gestionale) ora nasconde gli accrediti POS del
   provider dalle somme: sono la stessa moneta della quota POS giornaliera
   già in elenco.
+- **Riporto iniziale modificabile a mano (16/07/2026)**: nelle schede Cassa
+  e Banca della pagina Prima Nota la card "Riporto iniziale" ha una matita:
+  puoi impostare a mano il saldo al 1° gennaio dell'anno (es. il riporto che
+  viene dal 2025). Quando è impostato **sostituisce** il riporto calcolato
+  dai movimenti degli anni precedenti in tutti i punti che usano la funzione
+  unica di saldo (Prima Nota, Bilancio, Finanziaria, Stats) — utile quando
+  lo storico a sistema è parziale e il riporto calcolato non è affidabile.
+  Endpoint: `GET/PUT /api/prima-nota/saldo-iniziale`,
+  `DELETE /api/prima-nota/saldo-iniziale/{tipo}/{anno}` (tornare al calcolato).
+- **Pulizia duplicati corrispettivi in Prima Nota (16/07/2026)**: verificato
+  live che vecchie pipeline smantellate avevano lasciato in cassa 1066
+  entrate "Corrispettivi" per 149 corrispettivi reali (37 giorni con 26
+  copie), 50 giorni con l'uscita POS doppia (categoria "POS" oltre a "POS
+  Verso Banca") e 37 "Girofondi POS". Il rebuild
+  (`POST /api/corrispettivi/rebuild-prima-nota`) ora ripulisce TUTTE le
+  righe generate dai corrispettivi (per source, qualunque categoria) e
+  ricrea per ogni giornata SOLO i due movimenti canonici di cassa (entrata
+  totale + uscita quota POS verso banca) più l'entrata POS in banca; i
+  movimenti manuali (versamenti, pagamenti fatture) non vengono toccati.
+  Il rebuild inoltre non crea mai due entrate per lo stesso
+  (giorno, matricola, totale) anche se in collection restano documenti
+  corrispettivi duplicati.
 
 **Provvisoria**
 - Solo fatture di fornitori "misto", in attesa della tua divisione cassa/banca.

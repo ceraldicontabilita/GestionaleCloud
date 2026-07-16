@@ -1,18 +1,89 @@
 """
 Prima Nota Module - Statistiche e Export.
-Statistiche aggregate, export Excel, anni disponibili.
+Statistiche aggregate, export Excel, anni disponibili, saldo iniziale manuale.
 """
-from fastapi import HTTPException, Query
+from fastapi import HTTPException, Query, Body
 from fastapi.responses import StreamingResponse
 from typing import Dict, Any, Optional, Literal
-from datetime import datetime
+from datetime import datetime, timezone
 import io
+import uuid
 
 from app.database import Database
 from .common import (
     COLLECTION_PRIMA_NOTA_CASSA, COLLECTION_PRIMA_NOTA_BANCA,
+    COLLECTION_SALDI_INIZIALI,
     CATEGORIE_ESCLUSE, ESCLUSIONI_PRIMA_NOTA, aggrega_saldo_prima_nota
 )
+
+
+async def get_saldi_iniziali(anno: int = Query(...)) -> Dict[str, Any]:
+    """Saldi iniziali (riporto) inseriti a mano per l'anno: cassa e banca."""
+    db = Database.get_db()
+    docs = await db[COLLECTION_SALDI_INIZIALI].find(
+        {"anno": int(anno)}, {"_id": 0}
+    ).to_list(10)
+    per_tipo = {d["tipo"]: d for d in docs}
+    return {
+        "anno": anno,
+        "cassa": per_tipo.get("cassa"),
+        "banca": per_tipo.get("banca"),
+    }
+
+
+async def set_saldo_iniziale(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    """Imposta (upsert) il saldo iniziale manuale di cassa o banca per un anno.
+
+    Richiesta utente 16/07/2026: il riporto dell'anno (es. saldo al 2 gennaio
+    2026, che viene dal 2025) deve essere modificabile a mano. Quando è
+    impostato, sostituisce il riporto calcolato dai movimenti degli anni
+    precedenti in TUTTI i punti che usano la funzione unica di saldo
+    (pagina Prima Nota, bilancio, finanziaria, stats).
+    """
+    tipo = data.get("tipo")
+    anno = data.get("anno")
+    importo = data.get("importo")
+    if tipo not in ("cassa", "banca"):
+        raise HTTPException(status_code=400, detail="tipo deve essere 'cassa' o 'banca'")
+    if not anno:
+        raise HTTPException(status_code=400, detail="anno obbligatorio")
+    try:
+        importo = float(importo)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="importo non valido")
+
+    db = Database.get_db()
+    now = datetime.now(timezone.utc).isoformat()
+    esistente = await db[COLLECTION_SALDI_INIZIALI].find_one({"tipo": tipo, "anno": int(anno)})
+    if esistente:
+        await db[COLLECTION_SALDI_INIZIALI].update_one(
+            {"id": esistente["id"]},
+            {"$set": {"importo": importo, "note": data.get("note"), "updated_at": now}},
+        )
+        saldo_id = esistente["id"]
+    else:
+        saldo_id = str(uuid.uuid4())
+        await db[COLLECTION_SALDI_INIZIALI].insert_one({
+            "id": saldo_id,
+            "tipo": tipo,
+            "anno": int(anno),
+            "importo": importo,
+            "note": data.get("note"),
+            "created_at": now,
+            "updated_at": now,
+        })
+    return {"id": saldo_id, "tipo": tipo, "anno": int(anno), "importo": importo}
+
+
+async def delete_saldo_iniziale(tipo: str, anno: int) -> Dict[str, Any]:
+    """Rimuove il saldo iniziale manuale: si torna al riporto calcolato."""
+    if tipo not in ("cassa", "banca"):
+        raise HTTPException(status_code=400, detail="tipo deve essere 'cassa' o 'banca'")
+    db = Database.get_db()
+    esito = await db[COLLECTION_SALDI_INIZIALI].delete_one({"tipo": tipo, "anno": int(anno)})
+    if esito.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Saldo iniziale non trovato")
+    return {"eliminato": True, "tipo": tipo, "anno": anno}
 
 
 async def get_anni_disponibili() -> Dict[str, Any]:

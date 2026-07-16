@@ -438,16 +438,25 @@ async def rebuild_prima_nota_from_corrispettivi(
     if anno:
         query["data"] = {"$regex": f"^{anno}"}
 
-    # 1) purge Prima Nota corrispettivi
+    # 1) purge Prima Nota corrispettivi.
+    # Bug corretto 16/07/2026 (verifica live sui dati reali): il purge era
+    # limitato a categoria "Corrispettivi" + una lista parziale di source,
+    # quindi NON eliminava mai né le uscite POS (categoria "POS Verso Banca",
+    # stesso source corrispettivo_import) né i residui delle pipeline
+    # smantellate (source corrispettivo_xml → entrate duplicate e "Girofondi
+    # POS"; corrispettivi_pos_sync → seconda uscita POS "POS"; manuale_da_xml).
+    # In produzione: 1066 entrate Corrispettivi per 149 corrispettivi reali
+    # (37 giorni con 26 copie) e 50 giorni con uscita POS doppia. Ora il
+    # purge è per SOURCE su tutte le righe generate dai corrispettivi, di
+    # qualunque categoria; i movimenti manuali/di altra origine (versamenti,
+    # pagamenti fatture) non vengono toccati.
     purge_sources_cassa = [
         "corrispettivo_import", "corrispettivo_pos",
         "xml_import", "sincronizzazione", "corrispettivi_sync",
         "zip_upload", "manual_entry", "manual", "corrispettivo_manuale",
+        "corrispettivo_xml", "corrispettivi_pos_sync", "manuale_da_xml",
     ]
-    purge_filter_cassa = {
-        "categoria": "Corrispettivi",
-        "source": {"$in": purge_sources_cassa},
-    }
+    purge_filter_cassa = {"source": {"$in": purge_sources_cassa}}
     purge_filter_banca = {"source": {"$in": ["corrispettivo_pos", "corrispettivi_sync"]}}
     if anno:
         purge_filter_cassa["data"] = {"$regex": f"^{anno}"}
@@ -461,9 +470,19 @@ async def rebuild_prima_nota_from_corrispettivi(
     created_banca = 0
     processed = 0
     skipped = 0
+    duplicati_saltati = 0
+    # Dedup difensivo per (data, matricola, totale): esiste un solo
+    # registratore (regola utente §5) quindi un solo corrispettivo per
+    # giorno/matricola — se in collection restano documenti duplicati
+    # (reimport storici non ancora ripuliti da cleanup_duplicate_corrispettivi)
+    # il rebuild NON deve creare due entrate per lo stesso giorno.
+    visti = set()
     corrispettivi = await db["corrispettivi"].find(query, {"_id": 0}).to_list(100000)
     if len(corrispettivi) >= 100000:
         logger.warning("rebuild_prima_nota_from_corrispettivi: raggiunto il tetto di 100000 documenti, possibile troncamento")
+    # Ordina per created_at (i più vecchi prima): a parità di giorno/matricola
+    # sopravvive il documento originale, i reimport successivi vengono saltati.
+    corrispettivi.sort(key=lambda c: c.get("created_at") or "9999")
     for corr in corrispettivi:
         # Stessa regola di fallback usata da _create_prima_nota_movements: un
         # corrispettivo storico può non avere il campo "totale" popolato e
@@ -483,6 +502,11 @@ async def rebuild_prima_nota_from_corrispettivi(
         if not corr.get("data") or totale_o_fallback <= 0:
             skipped += 1
             continue
+        chiave = (corr.get("data"), corr.get("matricola_rt") or "", round(totale_o_fallback, 2))
+        if chiave in visti:
+            duplicati_saltati += 1
+            continue
+        visti.add(chiave)
         pn = await _create_prima_nota_movements(db, corr)
         await db["corrispettivi"].update_one(
             {"id": corr.get("id")},
@@ -502,6 +526,7 @@ async def rebuild_prima_nota_from_corrispettivi(
         "anno": anno,
         "corrispettivi_processati": processed,
         "corrispettivi_saltati": skipped,
+        "corrispettivi_duplicati_saltati": duplicati_saltati,
         "prima_nota_cassa_eliminati": del_cassa.deleted_count,
         "prima_nota_banca_eliminati": del_banca.deleted_count,
         "prima_nota_cassa_creati": created_cassa,

@@ -18,6 +18,11 @@ class _Coll:
     def __init__(self, movimenti):
         self.movimenti = movimenti
 
+    async def find_one(self, query, *a, **k):
+        # Lookup del saldo iniziale manuale (16/07/2026): questi test coprono
+        # il riporto CALCOLATO, quindi nessun saldo manuale impostato.
+        return None
+
     def aggregate(self, pipeline):
         # emula $match + $group entrate/uscite della pipeline reale,
         # incluso il $convert dell'importo (onError/onNull → 0)

@@ -256,7 +256,12 @@ function PrimaNotaDesktop() {
       // Unisci: prima i manuali (con fattura_id linkati), poi l'estratto conto deduppato
       const movimentiUniti = [...movimentiManuali, ...movimentiECDedup];
 
-      const saldoPrec = ecData.saldo_precedente || 0;
+      // Riporto iniziale: se l'utente lo ha impostato a mano (PUT
+      // /api/prima-nota/saldo-iniziale) prevale su quello dell'estratto conto.
+      const riportoManuale = bancaManRes.data?.saldo_iniziale_manuale;
+      const saldoPrec = riportoManuale
+        ? bancaManRes.data.saldo_precedente || 0
+        : ecData.saldo_precedente || 0;
       const saldoAnno = (ecData.totale_entrate || 0) - (ecData.totale_uscite || 0);
       setBancaData({
         movimenti: movimentiUniti,
@@ -270,6 +275,7 @@ function PrimaNotaDesktop() {
           .reduce((sum, m) => sum + Math.abs(m.importo || 0), 0),
         saldo_anno: saldoAnno,
         saldo_precedente: saldoPrec,
+        saldo_iniziale_manuale: !!riportoManuale,
         saldo:
           saldoPrec +
           movimentiUniti.reduce(
@@ -290,6 +296,33 @@ function PrimaNotaDesktop() {
 
   const getErrorMessage = error =>
     error?.response?.data?.detail || error?.response?.data?.message || error?.message || 'Errore imprevisto';
+
+  // Riporto iniziale (saldo al 1° gennaio) modificabile a mano: quando
+  // impostato sostituisce il riporto calcolato dagli anni precedenti
+  // (PUT /api/prima-nota/saldo-iniziale, vedi prima_nota_module/stats.py).
+  const handleModificaRiporto = async (tipo, valoreAttuale) => {
+    const input = window.prompt(
+      `Riporto iniziale ${tipo === 'cassa' ? 'Cassa' : 'Banca'} al 1° gennaio ${selectedYear} (es. saldo finale ${selectedYear - 1}):`,
+      valoreAttuale != null ? String(valoreAttuale) : '0'
+    );
+    if (input === null) return;
+    const importo = parseFloat(String(input).replace(/\./g, '').replace(',', '.'));
+    if (Number.isNaN(importo)) {
+      showFeedback('Riporto non valido', `"${input}" non è un importo. Usa il formato 12345,67.`, 'error');
+      return;
+    }
+    try {
+      await api.put('/api/prima-nota/saldo-iniziale', {
+        tipo,
+        anno: selectedYear,
+        importo,
+        note: 'Inserito manualmente da Prima Nota',
+      });
+      loadAllData();
+    } catch (error) {
+      showFeedback('Errore salvataggio riporto', getErrorMessage(error), 'error');
+    }
+  };
 
   const showFeedback = (title, message, tone = 'info') => {
     setFeedbackModal({ title, message, tone });
@@ -1223,6 +1256,19 @@ function PrimaNotaDesktop() {
               }
               highlight
             />
+            <MiniCard
+              title={`Riporto iniziale${cassaData.saldo_iniziale_manuale ? ' (manuale)' : ''}`}
+              value={formatEuro(cassaData.saldo_precedente || 0)}
+              color="#6b7280"
+              onEdit={() => handleModificaRiporto('cassa', cassaData.saldo_precedente)}
+              editTestId="modifica-riporto-cassa"
+            />
+            <MiniCard
+              title="Saldo Cumulativo"
+              value={formatEuro(cassaData.saldo)}
+              color={(cassaData.saldo || 0) >= 0 ? '#0f2744' : '#dc2626'}
+              highlight
+            />
           </div>
 
           {/* Logica Corrispettivi - Toolbar Ricostruzione */}
@@ -1606,21 +1652,19 @@ function PrimaNotaDesktop() {
               }
               highlight
             />
-            {bancaData.saldo_precedente !== undefined && bancaData.saldo_precedente !== 0 && (
-              <MiniCard
-                title="Saldo Cumulativo"
-                value={formatEuro(bancaData.saldo)}
-                color="#0f2744"
-                highlight
-              />
-            )}
-            {bancaData.saldo_precedente !== undefined && bancaData.saldo_precedente !== 0 && (
-              <MiniCard
-                title="Riporto Anni Prec."
-                value={formatEuro(bancaData.saldo_precedente)}
-                color="#6b7280"
-              />
-            )}
+            <MiniCard
+              title="Saldo Cumulativo"
+              value={formatEuro(bancaData.saldo)}
+              color={(bancaData.saldo || 0) >= 0 ? '#0f2744' : '#dc2626'}
+              highlight
+            />
+            <MiniCard
+              title={`Riporto iniziale${bancaData.saldo_iniziale_manuale ? ' (manuale)' : ''}`}
+              value={formatEuro(bancaData.saldo_precedente || 0)}
+              color="#6b7280"
+              onEdit={() => handleModificaRiporto('banca', bancaData.saldo_precedente)}
+              editTestId="modifica-riporto-banca"
+            />
           </div>
 
           {/* Nota banca */}
@@ -2030,7 +2074,7 @@ function ResolveProvvisorioModal({ provvisorio, onClose, onResolve }) {
   );
 }
 
-function MiniCard({ title, value, color, highlight: _highlight }) {
+function MiniCard({ title, value, color, highlight: _highlight, onEdit, editTestId }) {
   return (
     <div
       style={{
@@ -2039,10 +2083,25 @@ function MiniCard({ title, value, color, highlight: _highlight }) {
         padding: 10,
         border: '1px solid #e2e8f0',
         borderLeft: '4px solid #0f2744',
+        position: 'relative',
       }}
     >
       <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>{title}</div>
       <div style={{ fontSize: 20, fontWeight: 700, color, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>{value}</div>
+      {onEdit && (
+        <button
+          onClick={onEdit}
+          data-testid={editTestId}
+          title="Modifica riporto iniziale"
+          style={{
+            position: 'absolute', top: 6, right: 6, border: 'none',
+            background: '#f1f5f9', borderRadius: 6, cursor: 'pointer',
+            fontSize: 12, padding: '2px 6px',
+          }}
+        >
+          ✏️
+        </button>
+      )}
     </div>
   );
 }

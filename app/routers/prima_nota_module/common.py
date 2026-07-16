@@ -102,6 +102,27 @@ def _pipeline_entrate_uscite(query: Dict[str, Any]) -> list:
     ]
 
 
+# Saldo iniziale (riporto) inserito A MANO dall'utente per (cassa|banca, anno).
+# Richiesta utente 16/07/2026: "il 2 gennaio 2026 il saldo deve essere
+# modificabile perché io ho il riporto nel 2025" — il riporto calcolato dai
+# movimenti degli anni precedenti non è affidabile quando lo storico a
+# sistema è parziale (es. solo uscite di vecchi backfill). Se per un anno
+# esiste un saldo iniziale manuale, SOSTITUISCE il riporto calcolato.
+COLLECTION_SALDI_INIZIALI = "prima_nota_saldi_iniziali"
+_COLLECTION_A_TIPO = {"prima_nota_cassa": "cassa", "prima_nota_banca": "banca"}
+
+
+async def get_saldo_iniziale_manuale(db, collection: str, anno: int):
+    """Saldo iniziale manuale per (collection, anno), None se non impostato."""
+    tipo = _COLLECTION_A_TIPO.get(collection)
+    if not tipo or not anno:
+        return None
+    doc = await db[COLLECTION_SALDI_INIZIALI].find_one({"tipo": tipo, "anno": int(anno)})
+    if doc is None or doc.get("importo") is None:
+        return None
+    return float(doc["importo"])
+
+
 async def aggrega_saldo_prima_nota(db, collection: str, query: Dict[str, Any],
                                    anno: int = None,
                                    query_base_precedente: Dict[str, Any] = None) -> Dict[str, float]:
@@ -109,7 +130,8 @@ async def aggrega_saldo_prima_nota(db, collection: str, query: Dict[str, Any],
 
     Uniforma segno, saldo iniziale (riporto anni precedenti) e saldo finale:
       saldo_anno   = entrate − uscite (sui movimenti che soddisfano `query`)
-      saldo_iniziale = riporto cumulato di tutti gli anni precedenti
+      saldo_iniziale = riporto manuale dell'anno se impostato dall'utente,
+                       altrimenti riporto cumulato degli anni precedenti
       saldo_finale = saldo_iniziale + saldo_anno
 
     Le esclusioni (status deleted/archived, CATEGORIE_ESCLUSE) fanno parte di `query`
@@ -123,16 +145,21 @@ async def aggrega_saldo_prima_nota(db, collection: str, query: Dict[str, Any],
     entrate = totals[0].get("entrate", 0) if totals else 0
     uscite = totals[0].get("uscite", 0) if totals else 0
     saldo_anno = entrate - uscite
-    saldo_precedente = (
-        await calcola_saldo_anni_precedenti(db, collection, anno, query_base_precedente)
-        if anno else 0.0
-    )
+    saldo_manuale = await get_saldo_iniziale_manuale(db, collection, anno) if anno else None
+    if saldo_manuale is not None:
+        saldo_precedente = saldo_manuale
+    else:
+        saldo_precedente = (
+            await calcola_saldo_anni_precedenti(db, collection, anno, query_base_precedente)
+            if anno else 0.0
+        )
     saldo_finale = saldo_precedente + saldo_anno
     return {
         "totale_entrate": round(entrate, 2),
         "totale_uscite": round(uscite, 2),
         "saldo_anno": round(saldo_anno, 2),
         "saldo_precedente": round(saldo_precedente, 2),
+        "saldo_iniziale_manuale": saldo_manuale is not None,
         "saldo": round(saldo_finale, 2),
     }
 

@@ -16,7 +16,8 @@ router = APIRouter()
 
 # Import functions from modules
 from .stats import (
-    get_anni_disponibili, get_prima_nota_stats, get_saldo_finale, export_prima_nota_excel
+    get_anni_disponibili, get_prima_nota_stats, get_saldo_finale, export_prima_nota_excel,
+    get_saldi_iniziali, set_saldo_iniziale, delete_saldo_iniziale,
 )
 from .cassa import (
     list_prima_nota_cassa, create_prima_nota_cassa, update_prima_nota_cassa,
@@ -62,6 +63,9 @@ from .manutenzione import (
 router.add_api_route("/anni-disponibili", get_anni_disponibili, methods=["GET"])
 router.add_api_route("/stats", get_prima_nota_stats, methods=["GET"])
 router.add_api_route("/saldo-finale", get_saldo_finale, methods=["GET"])
+router.add_api_route("/saldo-iniziale", get_saldi_iniziali, methods=["GET"])
+router.add_api_route("/saldo-iniziale", set_saldo_iniziale, methods=["PUT"])
+router.add_api_route("/saldo-iniziale/{tipo}/{anno}", delete_saldo_iniziale, methods=["DELETE"])
 router.add_api_route("/export/excel", export_prima_nota_excel, methods=["GET"])
 
 # Cassa - Statiche
