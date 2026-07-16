@@ -283,6 +283,56 @@ async def fix_versamenti_duplicati(anno: Optional[int] = Query(None)) -> Dict:
     }
 
 
+async def fix_date_formato_italiano() -> Dict:
+    """Normalizza in ISO (YYYY-MM-DD) le date salvate come GG/MM/AAAA in
+    prima_nota_cassa e prima_nota_banca.
+
+    Bug trovato in verifica live 16/07/2026: 11 movimenti banca legacy
+    (source "riconciliazione_ec", writer non più esistente) hanno la data in
+    formato italiano. Tutti i saldi confrontano le date come STRINGHE:
+    "04/02/2026" < "2024-01-01", quindi quei movimenti finivano nel riporto
+    "anni precedenti" di ogni anno (−17.254€ fantasma nel saldo iniziale)
+    invece che nell'anno vero. Il fix normalizza la data e riallinea anno/mese.
+    """
+    import re as _re
+    db = Database.get_db()
+
+    pattern = _re.compile(r"^(\d{2})/(\d{2})/(\d{4})")
+    corretti = {"prima_nota_cassa": 0, "prima_nota_banca": 0}
+    dettaglio = []
+
+    for collection in (COLLECTION_PRIMA_NOTA_CASSA, COLLECTION_PRIMA_NOTA_BANCA):
+        docs = await db[collection].find(
+            {"data": {"$regex": r"^\d{2}/\d{2}/\d{4}"}},
+            {"_id": 0, "id": 1, "data": 1},
+        ).to_list(10000)
+        for d in docs:
+            m = pattern.match(d["data"])
+            if not m:
+                continue
+            gg, mm, aaaa = m.groups()
+            data_iso = f"{aaaa}-{mm}-{gg}"
+            await db[collection].update_one(
+                {"id": d["id"]},
+                {"$set": {
+                    "data": data_iso,
+                    "anno": int(aaaa),
+                    "mese": int(mm),
+                    "data_originale_malformata": d["data"],
+                }},
+            )
+            corretti[collection] += 1
+            dettaglio.append({"collection": collection, "id": d["id"],
+                              "da": d["data"], "a": data_iso})
+
+    return {
+        "success": True,
+        "corretti": corretti,
+        "totale": sum(corretti.values()),
+        "dettaglio": dettaglio[:50],
+    }
+
+
 async def fix_categories_and_duplicates(anno: Optional[int] = Query(None)) -> Dict:
     """Corregge le categorie errate e rimuove i duplicati."""
     db = Database.get_db()

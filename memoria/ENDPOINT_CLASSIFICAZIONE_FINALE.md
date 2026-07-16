@@ -2,7 +2,7 @@
 > Generato da `scripts/genera_classificazione_endpoint.py` sulla route table reale.
 > NON modificare a mano: rilancia lo script.
 
-**Totale endpoint:** 981 · tenere: 649 · verificare: 313 · admin-only (migrazione/manutenzione): 19
+**Totale endpoint:** 982 · tenere: 649 · verificare: 314 · admin-only (migrazione/manutenzione): 19
 
 Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. Decisione conservativa: nulla viene eliminata in blocco (§7).
 
@@ -183,15 +183,15 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `POST /api/centri-costo/utile-obiettivo` | accounting.centri_costo | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/centri-costo/utile-obiettivo/per-cdc` | accounting.centri_costo | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/centri-costo/utile-obiettivo/suggerimenti` | accounting.centri_costo | sì | — | — | — | — | tenere | in uso: FE |
-| `GET /api/cespiti/` | cespiti | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/cespiti/` | cespiti | sì | — | — | — | — | tenere | in uso: FE |
+| `GET /api/cespiti/` | cespiti | sì | — | — | — | sì | tenere | in uso: FE |
+| `POST /api/cespiti/` | cespiti | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/cespiti/calcolo-rateo/{anno}/{mese}` | cespiti | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/cespiti/calcolo/{anno}` | cespiti | sì | — | — | — | sì | tenere | in uso: FE |
 | `GET /api/cespiti/categorie` | cespiti | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/cespiti/dismissione` | cespiti | sì | — | — | — | — | tenere | in uso: FE |
 | `POST /api/cespiti/registra/{anno}` | cespiti | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/cespiti/riepilogo` | cespiti | sì | — | — | — | — | tenere | in uso: FE |
-| `POST /api/cespiti/scan-fatture` | cespiti | sì | — | — | — | — | tenere | in uso: FE |
+| `POST /api/cespiti/scan-fatture` | cespiti | sì | — | — | — | sì | tenere | in uso: FE |
 | `DELETE /api/cespiti/{cespite_id}` | cespiti | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/cespiti/{cespite_id}` | cespiti | sì | — | — | — | — | tenere | in uso: FE |
 | `PUT /api/cespiti/{cespite_id}` | cespiti | sì | — | — | — | — | tenere | in uso: FE |
@@ -825,6 +825,7 @@ Colonne: FE=frontend, Sch=scheduler, Chat, Migr=migrazione/manutenzione, Test. D
 | `GET /api/prima-nota/diagnostica-metodi` | prima_nota_module.manutenzione | sì | — | — | — | — | tenere | in uso: FE |
 | `GET /api/prima-nota/export/excel` | prima_nota_module.stats | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/prima-nota/fix-categories-and-duplicates` | prima_nota_module.manutenzione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
+| `POST /api/prima-nota/fix-date-formato-italiano` | prima_nota_module.manutenzione | — | — | — | — | sì | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/prima-nota/fix-tipo-movimento` | prima_nota_module.manutenzione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/prima-nota/fix-versamenti-duplicati` | prima_nota_module.manutenzione | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |
 | `POST /api/prima-nota/import-batch` | prima_nota_module.sync | — | — | — | — | — | verificare | nessun riferimento noto (FE/scheduler/chat/test): verificare prima di deprecare |

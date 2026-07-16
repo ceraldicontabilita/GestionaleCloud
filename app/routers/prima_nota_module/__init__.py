@@ -50,7 +50,7 @@ from .manutenzione import (
     fix_tipo_movimento_fatture, recalculate_all_balances, cleanup_orphan_movements,
     regenerate_from_invoices, fix_versamenti_duplicati, fix_categories_and_duplicates,
     sposta_movimento, verifica_metodo_fattura, verifica_entrate_corrispettivi,
-    fix_corrispettivi_importo, migrazione_pulisci_bancari_da_cassa,
+    fix_corrispettivi_importo, fix_date_formato_italiano, migrazione_pulisci_bancari_da_cassa,
     dedup_fatture_prima_nota, diagnostica_corrispettivi_vs_cassa,
     lista_movimenti_ec_non_in_prima_nota, importa_movimento_ec_in_prima_nota,
     diagnostica_metodi_discordanti,
@@ -100,6 +100,7 @@ router.add_api_route("/recalculate-balances", recalculate_all_balances, methods=
 router.add_api_route("/cleanup-orphan-movements", cleanup_orphan_movements, methods=["POST"])
 router.add_api_route("/regenerate-from-invoices", regenerate_from_invoices, methods=["POST"])
 router.add_api_route("/fix-versamenti-duplicati", fix_versamenti_duplicati, methods=["POST"])
+router.add_api_route("/fix-date-formato-italiano", fix_date_formato_italiano, methods=["POST"])
 router.add_api_route("/fix-categories-and-duplicates", fix_categories_and_duplicates, methods=["POST"])
 router.add_api_route("/sposta-movimento", sposta_movimento, methods=["POST"])
 router.add_api_route("/migrazione-pulisci-bancari-cassa", migrazione_pulisci_bancari_da_cassa, methods=["POST"])
