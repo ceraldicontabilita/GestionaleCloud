@@ -114,17 +114,33 @@ def test_saldo_con_riporto_anni_precedenti():
 
 
 def test_esclusioni_non_contano():
+    """Semantica corretta 16/07/2026: l'esclusione è per SOURCE, non più per
+    l'intera categoria "Corrispettivi POS" — quella categoria la scrivono sia
+    le chiusure di verifica (chiusura_pos_mobile, da escludere) sia l'incasso
+    POS reale del corrispettivo XML (corrispettivo_pos, da CONTARE: prima
+    veniva buttato via e la banca mostrava solo uscite)."""
     movimenti = [
         {"tipo": "entrata", "importo": 100.0, "data": "2026-03-01", "status": "ok"},
         {"tipo": "entrata", "importo": 999.0, "data": "2026-03-01", "status": "deleted"},
+        # Incasso POS reale da corrispettivo XML: CONTA (bug corretto).
         {"tipo": "entrata", "importo": 888.0, "data": "2026-03-01", "status": "ok",
-         "categoria": "Corrispettivi POS"},
+         "categoria": "Corrispettivi POS", "source": "corrispettivo_pos"},
+        # Chiusura POS serale di verifica: esclusa (non è un secondo incasso).
+        {"tipo": "entrata", "importo": 777.0, "data": "2026-03-01", "status": "ok",
+         "categoria": "Corrispettivi POS", "source": "chiusura_pos_mobile"},
+        # Copia legacy dell'estratto conto reale: esclusa (duplicherebbe
+        # pagamenti fatture e accrediti POS già registrati altrove).
+        {"tipo": "entrata", "importo": 666.0, "data": "2026-03-01", "status": "ok",
+         "categoria": "Ricavi - Incasso tramite POS", "source": "estratto_conto_sync"},
+        # POS_DUPLICATO resta escluso per categoria.
+        {"tipo": "entrata", "importo": 555.0, "data": "2026-03-01", "status": "ok",
+         "categoria": "POS_DUPLICATO"},
     ]
     db = _Db(_Coll(movimenti))
     query = {"status": {"$nin": ["deleted", "archived"]},
-             "categoria": {"$nin": common.CATEGORIE_ESCLUSE}}
-    s = _run(common.aggrega_saldo_prima_nota(db, "prima_nota_cassa", query, anno=None))
-    assert s["saldo"] == 100.0  # deleted e Corrispettivi POS esclusi
+             **common.ESCLUSIONI_PRIMA_NOTA}
+    s = _run(common.aggrega_saldo_prima_nota(db, "prima_nota_banca", query, anno=None))
+    assert s["saldo"] == 988.0  # 100 + 888; deleted/verifica/legacy-EC/duplicato esclusi
 
 
 def test_importo_stringa_convertito():

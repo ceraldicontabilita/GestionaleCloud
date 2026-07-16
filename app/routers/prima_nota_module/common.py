@@ -44,12 +44,35 @@ CATEGORIE_BANCA = [
 
 # Categorie da escludere nei conteggi: non sono movimenti bancari/di cassa
 # reali, quindi non devono mai contribuire a saldi/entrate/uscite.
-# "Corrispettivi POS" è la chiusura POS serale inserita manualmente
-# dall'utente (PUT /api/pos-corrispettivi/chiusura-giornaliera) — serve solo
-# per la verifica di coerenza con l'importo elettronico dichiarato nel
-# corrispettivo XML (che è già la fonte fiscale corretta ed è già contato
-# in Prima Nota Cassa all'import); non è un secondo incasso reale.
-CATEGORIE_ESCLUSE = ["POS_DUPLICATO", "Corrispettivi POS"]
+CATEGORIE_ESCLUSE = ["POS_DUPLICATO"]
+
+# Source da escludere nei conteggi. Bug corretto 16/07/2026: prima qui era
+# esclusa l'intera categoria "Corrispettivi POS", ma quella categoria la
+# scrivono DUE percorsi diversi: la chiusura POS serale di verifica (source
+# chiusura_pos_mobile — giustamente da escludere, non è un secondo incasso)
+# E la quota POS del corrispettivo XML (source corrispettivo_pos /
+# corrispettivi_sync — che è l'INCASSO REALE in banca, l'unico: l'import
+# dell'estratto conto NON copia gli accrediti POS proprio perché già qui,
+# vedi bank/estratto_conto.py). Risultato: la Prima Nota Banca mostrava
+# solo uscite, con ~204.000€ di incassi POS 2026 spariti dai saldi.
+# La distinzione giusta è per source, non per categoria:
+#  - chiusura_pos_mobile / import_manuale_pos: chiusure serali di VERIFICA
+#    (coerenza col battuto POS), mai un secondo incasso reale.
+#  - estratto_conto_sync: copia integrale del vecchio endpoint di sync
+#    dell'estratto conto reale dentro prima_nota_banca — duplicherebbe sia
+#    i pagamenti fatture (già registrati dai flussi gestionali) sia gli
+#    accrediti POS (già registrati come quota POS del corrispettivo).
+#    L'estratto conto reale vive in estratto_conto_movimenti e serve a
+#    riconciliare, non a sommare (verificato live 16/07/2026: 409 uscite
+#    gen-apr contate due volte per questo).
+SOURCES_ESCLUSE = ["chiusura_pos_mobile", "import_manuale_pos", "estratto_conto_sync"]
+
+# Esclusioni standard complete della Prima Nota (da spargere con ** nelle
+# query dei chiamanti, insieme al filtro status deleted/archived).
+ESCLUSIONI_PRIMA_NOTA = {
+    "categoria": {"$nin": CATEGORIE_ESCLUSE},
+    "source": {"$nin": SOURCES_ESCLUSE},
+}
 
 
 def clean_mongo_doc(doc: Dict[str, Any]) -> Dict[str, Any]:
@@ -129,7 +152,7 @@ async def calcola_saldo_anni_precedenti(db, collection: str, anno: int,
     if query_base is None:
         query_base = {
             "status": {"$nin": ["deleted", "archived"]},
-            "categoria": {"$nin": CATEGORIE_ESCLUSE}
+            **ESCLUSIONI_PRIMA_NOTA,
         }
     query = {**query_base, "data": {"$lt": f"{anno}-01-01"}}
 

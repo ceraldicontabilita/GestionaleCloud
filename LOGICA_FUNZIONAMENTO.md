@@ -289,6 +289,25 @@ distinto da uno automatico né controllato per duplicati.
   sulla causale bancaria: NUMIA, ACCREDITO POS, INCASSO POS, ecc. — se l'accredito reale
   non contiene nessuna di queste parole, non nasce un doppio movimento ma la voce
   "Corrispettivi POS" resta scoperta/non riconciliata senza avviso esplicito).
+- **Bug grave corretto 16/07/2026 — la Banca mostrava solo uscite.** I saldi
+  della Prima Nota escludevano l'intera categoria "Corrispettivi POS", ma
+  quella categoria la scrivono due percorsi diversi: la chiusura POS serale
+  di verifica (giustamente da escludere: non è un secondo incasso) E la quota
+  POS del corrispettivo XML — che è **l'unico incasso POS reale in banca**
+  (l'estratto conto per progetto NON lo duplica, vedi il punto precedente).
+  Risultato: ~204.000€ di incassi POS 2026 sparivano dai saldi banca. Adesso
+  l'esclusione distingue per **origine** del movimento, non per categoria:
+  - quota POS da corrispettivo XML → **conta** (entrata banca reale);
+  - chiusure POS di verifica (serale mobile, import pos.xlsx) → escluse;
+  - la vecchia copia integrale dell'estratto conto dentro Prima Nota Banca
+    (sync legacy, usato in passato per gen-apr 2026) → esclusa dai saldi:
+    duplicava sia i pagamenti fatture (già registrati dai flussi del
+    gestionale, contati due volte) sia gli accrediti POS. I movimenti
+    restano nel database, semplicemente non vengono più sommati.
+  Anche la vista Banca della pagina Prima Nota (che affianca estratto conto
+  reale e movimenti del gestionale) ora nasconde gli accrediti POS del
+  provider dalle somme: sono la stessa moneta della quota POS giornaliera
+  già in elenco.
 
 **Provvisoria**
 - Solo fatture di fornitori "misto", in attesa della tua divisione cassa/banca.

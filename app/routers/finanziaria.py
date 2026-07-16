@@ -7,7 +7,7 @@ import logging
 
 from app.database import Database
 from app.models.stati import STATI_PAGATI
-from app.routers.prima_nota_module.common import CATEGORIE_ESCLUSE
+from app.routers.prima_nota_module.common import CATEGORIE_ESCLUSE, ESCLUSIONI_PRIMA_NOTA
 from app.utils.error_handler import handle_errors
 
 logger = logging.getLogger(__name__)
@@ -39,7 +39,7 @@ async def get_financial_summary(
     # dedup restavano comunque sommati qui, gonfiando i totali.
     prima_nota_match = {
         "status": {"$nin": ["deleted", "archived"]},
-        "categoria": {"$nin": CATEGORIE_ESCLUSE},
+        **ESCLUSIONI_PRIMA_NOTA,
     }
 
     try:

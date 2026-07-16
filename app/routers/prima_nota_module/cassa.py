@@ -10,7 +10,7 @@ import logging
 
 from app.database import Database, Collections
 from .common import (
-    COLLECTION_PRIMA_NOTA_CASSA, TIPO_MOVIMENTO, CATEGORIE_ESCLUSE,
+    COLLECTION_PRIMA_NOTA_CASSA, TIPO_MOVIMENTO, CATEGORIE_ESCLUSE, ESCLUSIONI_PRIMA_NOTA,
     calcola_saldo_anni_precedenti, aggrega_saldo_prima_nota
 )
 
@@ -31,7 +31,7 @@ async def list_prima_nota_cassa(
     
     query = {
         "status": {"$nin": ["deleted", "archived"]},
-        "categoria": {"$nin": CATEGORIE_ESCLUSE}
+        **ESCLUSIONI_PRIMA_NOTA,
     }
     
     if anno:

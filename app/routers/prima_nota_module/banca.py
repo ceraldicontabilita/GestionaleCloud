@@ -9,7 +9,7 @@ import uuid
 
 from app.database import Database, Collections
 from .common import (
-    COLLECTION_PRIMA_NOTA_BANCA, TIPO_MOVIMENTO, CATEGORIE_ESCLUSE,
+    COLLECTION_PRIMA_NOTA_BANCA, TIPO_MOVIMENTO, CATEGORIE_ESCLUSE, ESCLUSIONI_PRIMA_NOTA,
     calcola_saldo_anni_precedenti, aggrega_saldo_prima_nota
 )
 
@@ -28,7 +28,7 @@ async def list_prima_nota_banca(
 
     query = {
         "status": {"$nin": ["deleted", "archived"]},
-        "categoria": {"$nin": CATEGORIE_ESCLUSE}
+        **ESCLUSIONI_PRIMA_NOTA,
     }
 
     if anno:

@@ -201,7 +201,21 @@ function PrimaNotaDesktop() {
 
       // Trasforma i dati dell'estratto conto nel formato della Prima Nota Banca
       const ecData = estrattoContoRes.data;
-      const movimentiEC = (ecData.movimenti || []).map(m => ({
+      // P0-1 (stessa regola del backend, bank/estratto_conto.py): un accredito
+      // POS del provider (NUMIA, ecc.) è la STESSA moneta della quota POS
+      // giornaliera già registrata in prima_nota_banca all'import del
+      // corrispettivo XML (source corrispettivo_pos, ora inclusa nei totali).
+      // Mostrarlo anche qui come entrata la conterebbe due volte.
+      const POS_ACCREDITO_KEYWORDS = ['NUMIA', 'ACCREDITO POS', 'INCASSO POS',
+        'POS ACQUIRING', 'ACCR. POS', 'ACCRED POS'];
+      const isAccreditoPos = m => {
+        if ((m.tipo || (m.importo >= 0 ? 'entrata' : 'uscita')) !== 'entrata') return false;
+        const desc = (m.descrizione_originale || m.descrizione || '').toUpperCase();
+        const cat = m.categoria || '';
+        return POS_ACCREDITO_KEYWORDS.some(k => desc.includes(k)) ||
+          cat.startsWith('Ricavi - Incasso tramite POS');
+      };
+      const movimentiEC = (ecData.movimenti || []).filter(m => !isAccreditoPos(m)).map(m => ({
         ...m,
         tipo: m.tipo || (m.importo >= 0 ? 'entrata' : 'uscita'),
         importo: Math.abs(m.importo || 0),

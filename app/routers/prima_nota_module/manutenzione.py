@@ -12,7 +12,7 @@ import uuid
 from app.database import Database
 from .common import (
     COLLECTION_PRIMA_NOTA_CASSA, COLLECTION_PRIMA_NOTA_BANCA, logger,
-    CATEGORIE_ESCLUSE, aggrega_saldo_prima_nota,
+    CATEGORIE_ESCLUSE, ESCLUSIONI_PRIMA_NOTA, aggrega_saldo_prima_nota,
 )
 from .sync import determina_tipo_movimento_fattura
 
@@ -91,7 +91,7 @@ async def recalculate_all_balances(anno: Optional[int] = Query(None)) -> Dict:
     # §6.4: stessa funzione/engine di cassa/banca/stats (filtri ed esclusioni uniformi).
     query = {
         "status": {"$nin": ["deleted", "archived"]},
-        "categoria": {"$nin": CATEGORIE_ESCLUSE},
+        **ESCLUSIONI_PRIMA_NOTA,
     }
     if anno:
         query["data"] = {"$regex": f"^{anno}"}

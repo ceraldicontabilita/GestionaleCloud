@@ -11,7 +11,7 @@ import io
 from app.database import Database
 from .common import (
     COLLECTION_PRIMA_NOTA_CASSA, COLLECTION_PRIMA_NOTA_BANCA,
-    CATEGORIE_ESCLUSE, aggrega_saldo_prima_nota
+    CATEGORIE_ESCLUSE, ESCLUSIONI_PRIMA_NOTA, aggrega_saldo_prima_nota
 )
 
 
@@ -118,7 +118,7 @@ async def get_saldo_finale(
     query = {
         "data": {"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31"},
         "status": {"$nin": ["deleted", "archived"]},
-        "categoria": {"$nin": CATEGORIE_ESCLUSE},
+        **ESCLUSIONI_PRIMA_NOTA,
     }
     saldi = await aggrega_saldo_prima_nota(db, collection, query, anno=None)
     movimenti_count = await db[collection].count_documents(query)

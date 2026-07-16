@@ -55,7 +55,7 @@ from io import BytesIO
 import logging
 
 from app.models.stati import STATI_PAGATI
-from app.routers.prima_nota_module.common import CATEGORIE_ESCLUSE
+from app.routers.prima_nota_module.common import CATEGORIE_ESCLUSE, ESCLUSIONI_PRIMA_NOTA
 from app.utils.error_handler import handle_errors
 
 # Esclude movimenti soft-deleted (status deleted/archived) e i duplicati POS
@@ -65,7 +65,7 @@ from app.utils.error_handler import handle_errors
 # toglieva dal Totale Attivo del Bilancio, che restava quindi gonfiato.
 PRIMA_NOTA_MATCH = {
     "status": {"$nin": ["deleted", "archived"]},
-    "categoria": {"$nin": CATEGORIE_ESCLUSE},
+    **ESCLUSIONI_PRIMA_NOTA,
 }
 
 logger = logging.getLogger(__name__)
