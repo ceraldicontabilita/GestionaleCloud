@@ -2202,6 +2202,11 @@ function MovementsTable({
   readOnly = false,
   saldoPrecedente = 0,
 }) {
+  // Rifattorizzazione grafica (richiesta utente 16/07/2026): su telefono i
+  // movimenti diventano CARD — tutto di un giorno in un blocco leggibile
+  // senza scroll orizzontale; su tablet/monitor resta la tabella che si
+  // allarga con lo schermo. Stessa ricetta di ListaAdattiva/pagina Fatture.
+  const isMobile = useIsMobile();
   const [currentPage, setCurrentPage] = useState(1);
   const [editingMovimento, setEditingMovimento] = useState(null);
   const [spostando, setSpostando] = useState(null);
@@ -2320,6 +2325,94 @@ function MovementsTable({
   }, saldoIniziale);
   // Applica il saldo progressivo REALE (dal conto completo) ai movimenti
   // filtrati mostrati in tabella.
+  // Bottone "vedi documento" unico per tabella (desktop) e card (mobile):
+  // Fattura, Bonifico, F24, Corrispettivo. compact = versione da card.
+  const documentoBadge = (mov, idx, compact = false) => {
+    const base = {
+      display: 'inline-block',
+      padding: compact ? '5px 10px' : '6px 12px',
+      border: 'none',
+      borderRadius: 6,
+      cursor: 'pointer',
+      fontSize: compact ? 11 : 12,
+      fontWeight: 'bold',
+      textDecoration: 'none',
+      whiteSpace: 'nowrap',
+    };
+    if (mov.fattura_id) {
+      return (
+        <button
+          onClick={() =>
+            setFatturaView({
+              id: mov.fattura_id,
+              numero: mov.numero_fattura || mov.numero || mov.descrizione,
+            })
+          }
+          style={{ ...base, background: '#3b82f6', color: 'white' }}
+          title="Visualizza Fattura"
+          data-testid={`view-fattura-${mov.id || idx}`}
+        >
+          Fattura
+        </button>
+      );
+    }
+    if (mov.bonifico_pdf_id) {
+      return (
+        <a
+          href={`/api/archivio-bonifici/transfers/${mov.bonifico_pdf_id}/pdf`}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ ...base, background: '#0f2744', color: 'white' }}
+          title="Visualizza Bonifico PDF"
+          data-testid={`view-bonifico-${mov.id || idx}`}
+        >
+          Bonifico
+        </a>
+      );
+    }
+    if (mov.f24_id) {
+      return (
+        <button
+          onClick={() => handleViewF24(mov.f24_id)}
+          style={{ ...base, background: '#dc2626', color: 'white' }}
+          title="Visualizza F24"
+          data-testid={`view-f24-${mov.id || idx}`}
+        >
+          📄 F24
+        </button>
+      );
+    }
+    if (mov.corrispettivo_id || mov.xml_filename) {
+      return (
+        <a
+          href={
+            mov.corrispettivo_id
+              ? `/api/corrispettivi/${mov.corrispettivo_id}/view`
+              : `/api/corrispettivi/view-by-filename?filename=${encodeURIComponent(mov.xml_filename)}`
+          }
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ ...base, background: '#16a34a', color: 'white' }}
+          title="Visualizza Corrispettivo"
+          data-testid={`view-corrispettivo-${mov.id || idx}`}
+        >
+          🧾 Corrisp.
+        </a>
+      );
+    }
+    if (mov.categoria === 'F24' || (mov.descrizione && mov.descrizione.includes('F24'))) {
+      return (
+        <span
+          style={{ ...base, background: '#fef3c7', color: '#92400e', border: '1px solid #d97706', cursor: 'default' }}
+          title="F24 - Documento da allegare"
+        >
+          📄 F24
+        </span>
+      );
+    }
+    return null;
+  };
+
   const movimentiWithBalance = movimentiFiltrati.map(m => ({
     ...m,
     saldoProgressivo: balanceMap[m.id || m.data + m.importo] ?? saldoIniziale,
@@ -2690,7 +2783,135 @@ function MovementsTable({
         </div>
       )}
 
-      {/* Table */}
+      {/* Su telefono: una CARD per movimento (tutto il giorno in un blocco,
+          niente scroll orizzontale). Su tablet/monitor: tabella completa. */}
+      {isMobile ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '10px 12px' }}>
+          {currentWithBalance.map((mov, idx) => {
+            const entrata = mov.tipo === 'entrata';
+            const { numero, descr } = splitNumeroFattura(mov);
+            return (
+              <div
+                key={mov.id || idx}
+                data-testid={`movimento-card-${mov.id || idx}`}
+                style={{
+                  background: 'white',
+                  borderRadius: 12,
+                  border: '1px solid #e2e8f0',
+                  borderLeft: `4px solid ${entrata ? '#16a34a' : '#dc2626'}`,
+                  boxShadow: '0 1px 2px rgba(15,39,68,0.06)',
+                  padding: '10px 12px',
+                  minWidth: 0,
+                }}
+              >
+                {/* riga 1: data + categoria | importo colorato */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <span style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 11.5, color: '#334155', fontWeight: 600 }}>
+                      {formatDate(mov.data)}
+                    </span>
+                    {mov.categoria && (
+                      <span
+                        style={{
+                          marginLeft: 8, background: '#f1f5f9', color: '#475569',
+                          padding: '2px 7px', borderRadius: 999, fontSize: 10.5, fontWeight: 600,
+                        }}
+                      >
+                        {mov.categoria}
+                      </span>
+                    )}
+                  </div>
+                  <div
+                    style={{
+                      fontWeight: 800, fontSize: 15.5, whiteSpace: 'nowrap', flexShrink: 0,
+                      color: entrata ? '#16a34a' : '#dc2626',
+                      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                    }}
+                  >
+                    {entrata ? '↑' : '↓'} {formatEuroD(mov.importo)}
+                  </div>
+                </div>
+                {/* riga 2: descrizione (+ n. fattura) */}
+                {(descr || numero) && (
+                  <div style={{ marginTop: 4, fontSize: 12.5, color: '#1e293b', lineHeight: 1.35, overflowWrap: 'anywhere' }}>
+                    {descr || '-'}
+                    {numero && (
+                      <span style={{ marginLeft: 6, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 11, color: '#64748b' }}>
+                        · {numero}
+                      </span>
+                    )}
+                  </div>
+                )}
+                {/* riga 3: saldo progressivo | documento + azioni */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginTop: 8, minWidth: 0 }}>
+                  <div style={{ fontSize: 11.5, color: '#64748b', whiteSpace: 'nowrap' }}>
+                    Saldo{' '}
+                    <span
+                      style={{
+                        fontWeight: 700,
+                        color: mov.saldoProgressivo >= 0 ? '#0f2744' : '#dc2626',
+                        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                        fontSize: 12.5,
+                      }}
+                    >
+                      {formatEuroD(mov.saldoProgressivo)}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                    {documentoBadge(mov, idx, true)}
+                    {!readOnly && (
+                      <>
+                        <button
+                          onClick={async () => {
+                            setSpostando(mov.id);
+                            try {
+                              await onSposta(mov.id, tipo, tipo === 'cassa' ? 'banca' : 'cassa');
+                            } finally {
+                              setSpostando(null);
+                            }
+                          }}
+                          disabled={spostando === mov.id}
+                          style={{
+                            background: '#0f2744', color: 'white', border: 'none', borderRadius: 8,
+                            padding: '7px 9px', fontSize: 13, cursor: 'pointer',
+                            opacity: spostando === mov.id ? 0.6 : 1,
+                          }}
+                          title={tipo === 'cassa' ? 'Sposta in Banca' : 'Sposta in Cassa'}
+                          data-testid={`sposta-movimento-${mov.id}`}
+                        >
+                          {spostando === mov.id ? '⏳' : tipo === 'cassa' ? '🏦' : '💵'}
+                        </button>
+                        <button
+                          onClick={() => setEditingMovimento(mov)}
+                          style={{
+                            background: '#f1f5f9', color: '#0f2744', border: '1px solid #e2e8f0',
+                            borderRadius: 8, padding: '7px 9px', fontSize: 13, cursor: 'pointer',
+                          }}
+                          title="Modifica"
+                          data-testid={`edit-movimento-${mov.id}`}
+                        >
+                          📝
+                        </button>
+                        <button
+                          onClick={() => onDelete(mov.id)}
+                          style={{
+                            background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca',
+                            borderRadius: 8, padding: '7px 9px', fontSize: 13, cursor: 'pointer',
+                          }}
+                          title="Elimina"
+                          data-testid={`delete-movimento-${mov.id}`}
+                        >
+                          🗑️
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
           <thead>
@@ -2882,117 +3103,7 @@ function MovementsTable({
                 </td>
                 <td style={{ padding: '6px 8px', textAlign: 'center' }}>
                   {/* Pulsante VEDI documento - Supporta: Fattura, F24, Corrispettivi, Bonifici */}
-                  {mov.fattura_id ? (
-                    <button
-                      onClick={() =>
-                        setFatturaView({
-                          id: mov.fattura_id,
-                          numero: mov.numero_fattura || mov.numero || mov.descrizione,
-                        })
-                      }
-                      style={{
-                        display: 'inline-block',
-                        padding: '6px 12px',
-                        background: '#3b82f6',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: 6,
-                        cursor: 'pointer',
-                        fontSize: 12,
-                        fontWeight: 'bold',
-                      }}
-                      title="Visualizza Fattura"
-                      data-testid={`view-fattura-${mov.id || idx}`}
-                    >
-                      Fattura
-                    </button>
-                  ) : mov.bonifico_pdf_id ? (
-                    <a
-                      href={`/api/archivio-bonifici/transfers/${mov.bonifico_pdf_id}/pdf`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{
-                        display: 'inline-block',
-                        padding: '6px 12px',
-                        background: '#0f2744',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: 6,
-                        cursor: 'pointer',
-                        fontSize: 12,
-                        fontWeight: 'bold',
-                        textDecoration: 'none',
-                      }}
-                      title="Visualizza Bonifico PDF"
-                      data-testid={`view-bonifico-${mov.id || idx}`}
-                    >
-                      Bonifico
-                    </a>
-                  ) : mov.f24_id ? (
-                    <button
-                      onClick={() => handleViewF24(mov.f24_id)}
-                      style={{
-                        display: 'inline-block',
-                        padding: '6px 12px',
-                        background: '#dc2626',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: 6,
-                        cursor: 'pointer',
-                        fontSize: 12,
-                        fontWeight: 'bold',
-                      }}
-                      title="Visualizza F24"
-                      data-testid={`view-f24-${mov.id || idx}`}
-                    >
-                      📄 F24
-                    </button>
-                  ) : mov.corrispettivo_id || mov.xml_filename ? (
-                    <a
-                      href={
-                        mov.corrispettivo_id
-                          ? `/api/corrispettivi/${mov.corrispettivo_id}/view`
-                          : `/api/corrispettivi/view-by-filename?filename=${encodeURIComponent(mov.xml_filename)}`
-                      }
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{
-                        display: 'inline-block',
-                        padding: '6px 12px',
-                        background: '#16a34a',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: 6,
-                        cursor: 'pointer',
-                        fontSize: 12,
-                        fontWeight: 'bold',
-                        textDecoration: 'none',
-                      }}
-                      title="Visualizza Corrispettivo"
-                      data-testid={`view-corrispettivo-${mov.id || idx}`}
-                    >
-                      🧾 Corrisp.
-                    </a>
-                  ) : mov.categoria === 'F24' ||
-                    (mov.descrizione && mov.descrizione.includes('F24')) ? (
-                    <span
-                      style={{
-                        display: 'inline-block',
-                        padding: '6px 12px',
-                        background: '#fef3c7',
-                        color: '#92400e',
-                        border: '1px solid #d97706',
-                        borderRadius: 6,
-                        fontSize: 11,
-                        fontWeight: 'bold',
-                      }}
-                      title="F24 - Documento da allegare"
-                    >
-                      📄 F24
-                    </span>
-                  ) : (
-                    <span style={{ color: '#9ca3af', fontSize: 11 }}>-</span>
-                  )}
+                  {documentoBadge(mov, idx) || <span style={{ color: '#9ca3af', fontSize: 11 }}>-</span>}
                 </td>
                 {!readOnly && (
                   // Azioni LARGHE e leggibili (richiesta utente 10/07): bottoni
@@ -3070,6 +3181,7 @@ function MovementsTable({
           </tbody>
         </table>
       </div>
+      )}
 
       {movimenti.length === 0 && (
         <div style={{ padding: 40, textAlign: 'center', color: '#6b7280' }}>

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import api from '../api';
 import { toast } from 'sonner';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
-import { COLORS } from '../lib/utils.js';
+import { COLORS, useIsMobile } from '../lib/utils.js';
 
 /**
  * Libro Giornale e Libro Mastro (art. 2216 c.c.) — registro UNICO
@@ -19,6 +19,9 @@ import { COLORS } from '../lib/utils.js';
  */
 export default function LibroGiornale() {
   const { anno } = useAnnoGlobale();
+  // Su telefono le scritture/mastrini diventano card (16/07/2026, stessa
+  // ricetta di Fatture/Prima Nota); su monitor resta la tabella.
+  const isMobile = useIsMobile();
   const [vista, setVista] = useState('giornale'); // giornale | mastro
   const [giornale, setGiornale] = useState(null);
   const [mastro, setMastro] = useState(null);
@@ -158,6 +161,58 @@ export default function LibroGiornale() {
               {giornale?.quadratura ? '✓ Quadra' : '✗ Non quadra'}
             </Badge>
           </div>
+          {isMobile ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {(giornale?.scritture || []).map(s => (
+                <div
+                  key={s.id}
+                  onClick={() => setEspansa(espansa === s.id ? null : s.id)}
+                  data-testid={`scrittura-${s.numero_registrazione}`}
+                  style={{
+                    background: 'white', borderRadius: 12, border: `1px solid ${COLORS.border}`,
+                    borderLeft: '4px solid #0f2744', boxShadow: '0 1px 2px rgba(15,39,68,0.06)',
+                    padding: '10px 12px', cursor: 'pointer', minWidth: 0,
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <span style={{ fontWeight: 800, color: '#0f2744', fontSize: 13 }}>
+                        n. {s.numero_registrazione}
+                      </span>
+                      <span style={{ marginLeft: 8, fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 11.5, color: '#475569' }}>
+                        {s.data_documento || s.data}
+                      </span>
+                      <span style={{ marginLeft: 8, background: '#f1f5f9', color: '#475569', padding: '2px 7px', borderRadius: 999, fontSize: 10.5, fontWeight: 600 }}>
+                        {s.tipo}
+                      </span>
+                    </div>
+                    <span style={{ color: COLORS.textMuted, flexShrink: 0 }}>{espansa === s.id ? '▲' : '▼'}</span>
+                  </div>
+                  <div style={{ marginTop: 4, fontSize: 12.5, color: '#1e293b', overflowWrap: 'anywhere' }}>
+                    {s.descrizione}
+                  </div>
+                  <div style={{ marginTop: 6, display: 'flex', gap: 14, fontSize: 12, fontFamily: 'ui-monospace, Menlo, monospace' }}>
+                    <span style={{ color: '#16a34a', fontWeight: 700 }}>DARE € {eur(s.totale_dare)}</span>
+                    <span style={{ color: '#dc2626', fontWeight: 700 }}>AVERE € {eur(s.totale_avere)}</span>
+                  </div>
+                  {espansa === s.id && (
+                    <div style={{ marginTop: 8, borderTop: `1px solid ${COLORS.border}`, paddingTop: 6 }}>
+                      {(s.righe || []).map((r, i) => (
+                        <div key={i} style={{ fontSize: 11.5, color: '#475569', padding: '3px 0', display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                          <span style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
+                            {r.conto_codice || r.conto} — {r.conto_nome}
+                          </span>
+                          <span style={{ whiteSpace: 'nowrap', fontFamily: 'ui-monospace, Menlo, monospace' }}>
+                            {r.dare ? `D € ${eur(r.dare)}` : `A € ${eur(r.avere)}`}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
@@ -202,6 +257,7 @@ export default function LibroGiornale() {
               </tbody>
             </table>
           </div>
+          )}
           {(giornale?.scritture || []).length === 0 && (
             <div style={{ color: COLORS.textMuted, padding: 24, textAlign: 'center' }}>
               Nessuna scrittura definitiva per il {anno}. Le scritture nascono dalla
@@ -221,6 +277,47 @@ export default function LibroGiornale() {
               {mastro?.quadratura ? '✓ Quadra' : '✗ Non quadra'}
             </Badge>
           </div>
+          {isMobile ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {(mastro?.mastrini || []).map(m => (
+                <div
+                  key={m.conto}
+                  style={{
+                    background: 'white', borderRadius: 12, border: `1px solid ${COLORS.border}`,
+                    borderLeft: `4px solid ${m.saldo >= 0 ? '#0f2744' : '#dc2626'}`,
+                    boxShadow: '0 1px 2px rgba(15,39,68,0.06)', padding: '10px 12px', minWidth: 0,
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <span style={{ fontWeight: 800, color: '#0f2744', fontSize: 13, fontFamily: 'ui-monospace, Menlo, monospace' }}>
+                        {m.conto}
+                      </span>
+                      <div style={{ fontSize: 12.5, color: '#1e293b', overflowWrap: 'anywhere' }}>{m.conto_nome}</div>
+                      {m.conto_ufficiale && (
+                        <div style={{ fontSize: 11, color: COLORS.textMuted, overflowWrap: 'anywhere' }}>
+                          CEE {m.conto_ufficiale} — {m.conto_ufficiale_nome || ''}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                      <div style={{
+                        fontWeight: 800, fontSize: 14.5, fontFamily: 'ui-monospace, Menlo, monospace',
+                        color: m.saldo >= 0 ? '#0f2744' : '#dc2626',
+                      }}>
+                        € {eur(m.saldo)}
+                      </div>
+                      <div style={{ fontSize: 10.5, color: COLORS.textMuted }}>{m.movimenti} righe</div>
+                    </div>
+                  </div>
+                  <div style={{ marginTop: 6, display: 'flex', gap: 14, fontSize: 11.5, fontFamily: 'ui-monospace, Menlo, monospace' }}>
+                    <span style={{ color: '#16a34a' }}>DARE € {eur(m.dare)}</span>
+                    <span style={{ color: '#dc2626' }}>AVERE € {eur(m.avere)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
@@ -256,6 +353,7 @@ export default function LibroGiornale() {
               </tbody>
             </table>
           </div>
+          )}
         </>
       )}
     </div>
