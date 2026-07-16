@@ -330,6 +330,16 @@ distinto da uno automatico né controllato per duplicati.
   Il rebuild inoltre non crea mai due entrate per lo stesso
   (giorno, matricola, totale) anche se in collection restano documenti
   corrispettivi duplicati.
+- **REGOLA (utente, 16/07/2026): in contabilità restano SOLO i dati
+  dall'anno operativo 2026 in poi.** I dati di anni precedenti (movimenti
+  2021-2022 da vecchi backfill, fatture 2021-2022, salari 2023-2025,
+  partite aperte 2023-2024 — 4.236 documenti in totale) sono stati
+  eliminati definitivamente il 16/07/2026 con
+  `POST /api/prima-nota/pulizia-pre-anno` (endpoint admin, dry_run di
+  default per contare prima di eliminare). Da allora i riporti di cassa e
+  banca partono da 0 e si impostano a mano con la card "Riporto iniziale"
+  (vedi sopra). Se in futuro rientrano dati di anni vecchi (reimport
+  storici), la stessa pulizia è rieseguibile.
 
 **Provvisoria**
 - Solo fatture di fornitori "misto", in attesa della tua divisione cassa/banca.
